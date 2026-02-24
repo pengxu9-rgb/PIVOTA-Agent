@@ -3229,9 +3229,18 @@ function normalizeAgentSource(source) {
     .replace(/_/g, '-');
 }
 
+const SHOPPING_AGENT_SOURCE_ALIASES = new Set([
+  'shopping-agent',
+  'shopping-agent-ui',
+  'agent-sdk-fixed-delegate',
+  'agent-sdk-delegate',
+  'agent-sdk',
+  'agent-sdk-ui',
+]);
+
 function isShoppingSource(source) {
   const normalized = normalizeAgentSource(source);
-  return normalized === 'shopping-agent' || normalized === 'shopping-agent-ui';
+  return SHOPPING_AGENT_SOURCE_ALIASES.has(normalized);
 }
 
 function isCreatorUiSource(source) {
@@ -14862,6 +14871,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       ).trim();
       const isCrossMerchantQuerySearch =
         !isCreatorUi && cacheSearchQueryText.length > 0 && !hasMerchantScope;
+      const cacheStageBudgetMs = hasFragranceSearchSignal(cacheSearchQueryText)
+        ? Math.max(FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 3600)
+        : FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
       if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
         try {
           const cacheStageStartedAt = Date.now();
@@ -14871,7 +14883,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             searchCrossMerchantFromCache(cacheSearchQueryText, page, limit, {
               inStockOnly,
             }),
-            FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+            cacheStageBudgetMs,
             'cache_stage',
           );
           const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
@@ -15679,7 +15691,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             limit: search.limit || search.page_size || 20,
             in_stock_only: inStockOnly,
             cache_hit: false,
-            timeout_budget_ms: FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+            timeout_budget_ms: cacheStageBudgetMs,
             stage_timeout: String(err?.code || '').toUpperCase() === 'STAGE_TIMEOUT',
             error: String(err && err.message ? err.message : err),
           };

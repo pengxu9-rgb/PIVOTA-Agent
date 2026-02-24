@@ -215,6 +215,92 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     expect(resp.body.metadata?.search_trace?.query_class).toBe('category');
   });
 
+  test('agent_sdk_fixed_delegate treats category answer as shopping search and keeps external seed enabled', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async () => ({ rows: [] }),
+    }));
+
+    const seenQueries = [];
+    const upstreamScope = nock('http://pivota.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply((uri) => {
+        const query = new URLSearchParams(String(uri || '').split('?')[1] || '');
+        seenQueries.push(Object.fromEntries(query.entries()));
+        return [
+          200,
+          {
+            status: 'success',
+            success: true,
+            total: 1,
+            page: 1,
+            page_size: 1,
+            products: [
+              {
+                id: 'tom_ford_1',
+                product_id: 'tom_ford_1',
+                merchant_id: 'external_seed',
+                source: 'external_seed',
+                title: 'Tom Ford Noir Extreme Eau de Parfum',
+                description: 'fragrance perfume for date night',
+                price: 168,
+                currency: 'USD',
+                inventory_quantity: 8,
+                status: 'published',
+              },
+            ],
+            metadata: {
+              source: 'agent_sdk_fixed_delegate',
+              query_source: 'agent_products_search',
+            },
+          },
+        ];
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '香水',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'agent_sdk_fixed_delegate',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.clarification).toBeUndefined();
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+      }),
+    );
+    expect(String(resp.body.products[0].title || '')).toMatch(/tom ford/i);
+    expect(
+      seenQueries.some(
+        (q) =>
+          String(q.allow_external_seed || '').toLowerCase() === 'true' &&
+          String(q.external_seed_strategy || '') === 'supplement_internal_first' &&
+          String(q.query || '').includes('香水'),
+      ),
+    ).toBe(true);
+    expect(
+      seenQueries.some((q) => String(q.merchant_id || '') === 'external_seed'),
+    ).toBe(true);
+    expect(upstreamScope.isDone()).toBe(true);
+    nock.cleanAll();
+  });
+
   test('fragrance query can recover products from beauty fallback without extra clarify', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql, params) => {
