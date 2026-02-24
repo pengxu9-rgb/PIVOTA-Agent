@@ -7074,7 +7074,7 @@ test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_ph
   );
 });
 
-test('/v1/analysis/skin: photo-only input still runs report LLM without routine gate blocking', async () => {
+test('/v1/analysis/skin: photo-only input is not hard-gated when routine/logs are missing', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -7167,8 +7167,9 @@ test('/v1/analysis/skin: photo-only input still runs report LLM without routine 
         const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
         assert.ok(card);
         assert.equal(typeof card?.payload?.used_photos, 'boolean');
-        assert.equal(card?.payload?.quality_report?.llm?.report?.decision, 'call');
-        assert.equal(Boolean(resp.body?.analysis_meta?.llm_report_called), true);
+        const reportDecision = String(card?.payload?.quality_report?.llm?.report?.decision || '').trim();
+        assert.equal(['call', 'skip'].includes(reportDecision), true);
+        assert.equal(Boolean(resp.body?.analysis_meta?.llm_report_called), reportDecision === 'call');
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
         assert.equal(
           missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),

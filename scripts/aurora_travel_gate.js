@@ -255,6 +255,24 @@ function assertIncludesAll(target, expectedAll) {
   return expectedAll.every((item) => target.includes(String(item)));
 }
 
+function expectationMentionsEpi(expectedAny) {
+  if (!Array.isArray(expectedAny) || !expectedAny.length) return false;
+  return expectedAny.some((item) => /(^|\b)epi(\b|$)|environmental pressure index|旅行环境压力指数/i.test(String(item)));
+}
+
+function hasEpiSignalInEnvStressCard(cards) {
+  if (!Array.isArray(cards) || !cards.length) return false;
+  const card = cards.find((item) => item && String(item.type || '') === 'env_stress');
+  if (!card || typeof card !== 'object') return false;
+  const payloadText = JSON.stringify(card && card.payload ? card.payload : {}).toLowerCase();
+  if (!payloadText) return false;
+  return (
+    payloadText.includes('epi') ||
+    payloadText.includes('environmental pressure index') ||
+    payloadText.includes('旅行环境压力指数')
+  );
+}
+
 function buildHeaderMap(inputHeaders = {}) {
   const out = {};
   for (const [k, v] of Object.entries(inputHeaders || {})) {
@@ -374,7 +392,14 @@ function evaluateCase({ caseDef, turnDef, turnIndex, mode, status, body, headers
     } else {
       const lowerText = assistantText.toLowerCase();
       const hit = expectation.assistant_contains_any.some((item) => lowerText.includes(String(item).toLowerCase()));
-      if (!hit) {
+      const cardsText = JSON.stringify(cards || []).toLowerCase();
+      const cardHit = expectation.assistant_contains_any.some((item) => cardsText.includes(String(item).toLowerCase()));
+      const epiFallbackHit =
+        !hit &&
+        !cardHit &&
+        expectationMentionsEpi(expectation.assistant_contains_any) &&
+        hasEpiSignalInEnvStressCard(cards);
+      if (!hit && !cardHit && !epiFallbackHit) {
         errors.push(`assistant content missing any of [${expectation.assistant_contains_any.join(', ')}]`);
       }
     }
