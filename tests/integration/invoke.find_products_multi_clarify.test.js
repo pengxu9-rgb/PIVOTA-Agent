@@ -530,6 +530,109 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     expect(upstreamScope.isDone()).toBe(true);
   });
 
+  test('external-seed fragrance result backfills image_url from image_urls', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async () => ({ rows: [] }),
+    }));
+
+    const upstreamScope = nock('http://pivota.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply((uri) => {
+        const query = new URLSearchParams(String(uri || '').split('?')[1] || '');
+        const merchantId = String(query.get('merchant_id') || '');
+        if (merchantId === 'external_seed') {
+          return [
+            200,
+            {
+              status: 'success',
+              success: true,
+              total: 1,
+              page: 1,
+              page_size: 1,
+              products: [
+                {
+                  id: 'tom_ford_img_1',
+                  product_id: 'tom_ford_img_1',
+                  merchant_id: 'external_seed',
+                  source: 'external_seed',
+                  title: 'Tom Ford Noir Extreme Eau de Parfum',
+                  description: 'fragrance perfume for date night',
+                  image_url: null,
+                  images: [],
+                  image_urls: [
+                    'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
+                    'https://sdcdn.io/tf/tf_sku_T14Q01_2000x2000_1.jpg',
+                  ],
+                  price: 168,
+                  currency: 'USD',
+                  inventory_quantity: 8,
+                  status: 'published',
+                },
+              ],
+            },
+          ];
+        }
+        return [
+          200,
+          {
+            status: 'success',
+            success: true,
+            total: 1,
+            page: 1,
+            page_size: 1,
+            products: [
+              {
+                id: 'brush_for_image_test',
+                product_id: 'brush_for_image_test',
+                merchant_id: 'merch_efbc46b4619cfbdf',
+                title: 'Contour Brush',
+                description: 'makeup contour brush',
+                price: 19,
+                currency: 'USD',
+                inventory_quantity: 12,
+                status: 'published',
+              },
+            ],
+          },
+        ];
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '香水',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'agent_sdk_fixed_delegate',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    const externalSeedProduct = (resp.body.products || []).find(
+      (product) => String(product.merchant_id || '') === 'external_seed',
+    );
+    expect(externalSeedProduct).toBeTruthy();
+    expect(String(externalSeedProduct.image_url || '')).toBe(
+      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
+    );
+    expect(Array.isArray(externalSeedProduct.images)).toBe(true);
+    expect(String(externalSeedProduct.images[0] || '')).toBe(
+      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
+    );
+    nock.cleanAll();
+    expect(upstreamScope.isDone()).toBe(true);
+  });
+
   test('fragrance query can recover products from beauty fallback without extra clarify', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql, params) => {

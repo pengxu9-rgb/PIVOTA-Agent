@@ -2708,6 +2708,80 @@ function buildQueryString(params) {
   return qs ? `?${qs}` : '';
 }
 
+function toHttpImageUrl(value) {
+  const url = String(value || '').trim();
+  if (!url) return '';
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+
+function extractImageUrlsFromCollection(collection) {
+  if (!Array.isArray(collection)) return [];
+  const urls = [];
+  for (const item of collection) {
+    if (!item) continue;
+    if (typeof item === 'string') {
+      const normalized = toHttpImageUrl(item);
+      if (normalized) urls.push(normalized);
+      continue;
+    }
+    if (typeof item === 'object') {
+      const normalized =
+        toHttpImageUrl(item.url) ||
+        toHttpImageUrl(item.image_url) ||
+        toHttpImageUrl(item.imageUrl) ||
+        toHttpImageUrl(item.src);
+      if (normalized) urls.push(normalized);
+    }
+  }
+  return urls;
+}
+
+function extractProductImageCandidates(product) {
+  if (!product || typeof product !== 'object') return [];
+  const candidates = [];
+  const pushCandidate = (value) => {
+    const normalized = toHttpImageUrl(value);
+    if (!normalized) return;
+    candidates.push(normalized);
+  };
+  pushCandidate(product.image_url);
+  pushCandidate(product.imageUrl);
+  pushCandidate(product.image);
+  for (const url of extractImageUrlsFromCollection(product.images)) pushCandidate(url);
+  for (const url of extractImageUrlsFromCollection(product.image_urls)) pushCandidate(url);
+  return candidates;
+}
+
+function normalizeProductImages(product) {
+  if (!product || typeof product !== 'object') {
+    return { primaryImageUrl: '', normalizedImages: [] };
+  }
+  const candidates = [];
+  const seen = new Set();
+  for (const candidate of extractProductImageCandidates(product)) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    candidates.push(candidate);
+  }
+
+  const explicitPrimary =
+    toHttpImageUrl(product.image_url) ||
+    toHttpImageUrl(product.imageUrl) ||
+    toHttpImageUrl(product.image);
+  const primaryImageUrl = explicitPrimary || candidates[0] || '';
+
+  const existingImages = Array.isArray(product.images) ? product.images : [];
+  const existingRenderableImageUrls = extractImageUrlsFromCollection(existingImages);
+  const normalizedImages =
+    existingRenderableImageUrls.length > 0
+      ? existingImages
+      : (primaryImageUrl ? [primaryImageUrl] : []).concat(
+          candidates.filter((url) => url !== primaryImageUrl),
+        );
+
+  return { primaryImageUrl, normalizedImages };
+}
+
 function normalizeAgentProductsListResponse(raw, ctx = {}) {
   if (!raw) return raw;
 
@@ -2729,7 +2803,17 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
   };
 
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-  const products = getProducts(raw);
+  const products = getProducts(raw).map((item) => {
+    if (!item || typeof item !== 'object') return item;
+    const { primaryImageUrl, normalizedImages } = normalizeProductImages(item);
+    return {
+      ...item,
+      image_url: primaryImageUrl || item.image_url || '',
+      ...(item.images && Array.isArray(item.images) && item.images.length > 0
+        ? {}
+        : { images: normalizedImages }),
+    };
+  });
 
   const totalRaw =
     base.total ??
