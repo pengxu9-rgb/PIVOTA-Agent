@@ -3323,6 +3323,7 @@ function buildExternalSeedSupplementQueryText(queryText) {
   if (!hasFragranceSearchSignal(base)) return base;
 
   const normalizedBase = normalizeSearchTextForMatch(base);
+  const hasLatinOrNumericToken = /[a-z0-9]/i.test(base);
   const fragranceHints = [
     'perfume',
     'fragrance',
@@ -3334,12 +3335,13 @@ function buildExternalSeedSupplementQueryText(queryText) {
     'diptyque',
     'byredo',
   ];
-  const merged = [base];
+  const merged = hasLatinOrNumericToken ? [base] : [];
   for (const hint of fragranceHints) {
     const normalizedHint = normalizeSearchTextForMatch(hint);
     if (!normalizedHint || normalizedBase.includes(normalizedHint)) continue;
     merged.push(hint);
   }
+  if (!merged.length) merged.push(base);
   return merged.join(' ');
 }
 
