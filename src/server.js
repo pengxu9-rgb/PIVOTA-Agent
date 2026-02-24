@@ -7136,21 +7136,28 @@ function hasPetLeashSearchSignal(queryText) {
 function hasFragranceSearchSignal(queryText) {
   const q = String(queryText || '');
   if (!q) return false;
-  return (
-    /\b(perfume|fragrance|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum)\b/i.test(
-      q,
-    ) || /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(q)
-  );
+  const hasStrongSignal =
+    /\b(perfume|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum)\b/i.test(q) ||
+    /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(q);
+  if (hasStrongSignal) return true;
+
+  const hasGenericFragrance = /\bfragrance\b/i.test(q);
+  if (!hasGenericFragrance) return false;
+  return !/\bfragrance[-\s]*free\b/i.test(q);
 }
 
 function hasFragranceCatalogProductSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
-  return (
-    /\b(perfume|fragrance|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum)\b/i.test(
-      text,
-    ) || /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(text)
-  );
+  const hasStrongSignal =
+    /\b(perfume|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum)\b/i.test(text) ||
+    /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(text);
+  if (hasStrongSignal) return true;
+
+  const hasGenericFragrance = /\bfragrance\b/i.test(text);
+  if (!hasGenericFragrance) return false;
+  if (/\bfragrance[-\s]*free\b/i.test(text) || /无香|無香|无香精|無香精/.test(text)) return false;
+  return true;
 }
 
 function hasStrictPetHarnessCatalogSignal(candidateText) {
@@ -8017,7 +8024,24 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     total: strictTotal,
   });
 
-  if (strictRanked.products.length > 0) {
+  const fragranceQuery = hasFragranceSearchSignal(q);
+  const strictFragranceCount = fragranceQuery
+    ? strictRanked.products.filter((product) =>
+        hasFragranceCatalogProductSignal(buildFallbackCandidateText(product)),
+      ).length
+    : 0;
+  const strictNeedsFragranceBackfill =
+    fragranceQuery && strictRanked.products.length > 0 && strictFragranceCount === 0;
+  if (strictNeedsFragranceBackfill) {
+    retrievalSources.push({
+      source: 'lexical_cache_strict_missing_fragrance',
+      used: true,
+      count: strictRanked.products.length,
+      fragrance_count: strictFragranceCount,
+    });
+  }
+
+  if (strictRanked.products.length > 0 && !strictNeedsFragranceBackfill) {
     await applyShopifyCurrencyOverride(strictRanked.products);
     return {
       products: strictRanked.products,
@@ -8065,6 +8089,32 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       candidate_count: relaxedRanked.candidateCount,
       total: relaxedTotal,
     });
+
+    if (strictNeedsFragranceBackfill) {
+      const relaxedFragrance = relaxedRanked.products.filter((product) =>
+        hasFragranceCatalogProductSignal(buildFallbackCandidateText(product)),
+      );
+      retrievalSources.push({
+        source: 'lexical_cache_relaxed_fragrance_backfill',
+        used: true,
+        count: relaxedFragrance.length,
+      });
+      if (relaxedFragrance.length > 0) {
+        const merged = collapseNearDuplicateSearchProducts(
+          [...relaxedFragrance, ...strictRanked.products, ...relaxedRanked.products],
+          { perTitleLimit: 2 },
+        );
+        const fragranceFirst = prioritizeFragranceProducts(merged, true).slice(0, safeLimit);
+        await applyShopifyCurrencyOverride(fragranceFirst);
+        return {
+          products: fragranceFirst,
+          total: Math.max(strictTotal, relaxedTotal, fragranceFirst.length),
+          page: safePage,
+          page_size: fragranceFirst.length,
+          retrieval_sources: retrievalSources,
+        };
+      }
+    }
 
     if (relaxedRanked.products.length === 0 && hasPetSearchSignal(q)) {
       const preferHarnessResults = hasPetHarnessSearchSignal(q);
@@ -8148,6 +8198,16 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     }
 
     await applyShopifyCurrencyOverride(relaxedRanked.products);
+    if (strictNeedsFragranceBackfill && strictRanked.products.length > 0) {
+      await applyShopifyCurrencyOverride(strictRanked.products);
+      return {
+        products: strictRanked.products,
+        total: Math.max(strictTotal, relaxedTotal, strictRanked.products.length),
+        page: safePage,
+        page_size: strictRanked.products.length,
+        retrieval_sources: retrievalSources,
+      };
+    }
     return {
       products: relaxedRanked.products,
       total: Math.max(strictTotal, relaxedTotal, relaxedRanked.products.length),
