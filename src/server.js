@@ -4093,7 +4093,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     options?.fragranceExternalSeedBypass === true &&
     isExternalSeedProduct(product)
   ) {
-    return hasFragranceBackfillSignal(candidateText) || inferCacheProductDomainKey(product) === 'beauty';
+    return hasFragranceBackfillSignal(candidateText);
   }
 
   const meaningfulTokens = ingredientIntent
@@ -4226,7 +4226,7 @@ function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
         topDomains.length
       : null;
   const countOk = list.length >= minCount;
-  const anchorOk = anchorRatio >= SEARCH_CACHE_MIN_ANCHOR;
+  const anchorOk = (fragranceQuery && hasFragranceCandidate) || anchorRatio >= SEARCH_CACHE_MIN_ANCHOR;
   const entropyOk = domainEntropy <= SEARCH_CACHE_MAX_DOMAIN_ENTROPY;
   const crossDomainOk =
     (fragranceQuery && hasFragranceCandidate) ||
@@ -7210,7 +7210,9 @@ function hasFragranceCatalogProductSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
   const hasStrongSignal =
-    /\b(perfume|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum)\b/i.test(text) ||
+    /\b(perfume|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum|edp|edt|extrait)\b/i.test(
+      text,
+    ) ||
     /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(text);
   if (hasStrongSignal) return true;
 
