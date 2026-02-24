@@ -1,6 +1,7 @@
 import axios, { AxiosError } from "axios";
 import { z } from "zod";
 import sharp from "sharp";
+import { getAxiosKeepAliveConfig } from "../http/axiosKeepAlive";
 
 export type ImageInput =
   | { kind: "url"; url: string }
@@ -312,6 +313,7 @@ async function resolveImageForGemini(image: ImageInput): Promise<{ mimeType: str
     responseType: "arraybuffer",
     timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000"),
     validateStatus: (s) => s >= 200 && s < 300,
+    ...getAxiosKeepAliveConfig(),
   });
   const contentType = String(res.headers?.["content-type"] || "").split(";")[0].trim();
   const mimeType = contentType || "image/jpeg";
@@ -337,6 +339,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
+    ...getAxiosKeepAliveConfig(),
   });
 
   const disableResponseFormat = parseEnvBool(
@@ -550,6 +553,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
+        ...getAxiosKeepAliveConfig(),
       });
 
       const disableResponseFormat = parseEnvBool(
