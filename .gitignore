@@ -79,6 +79,14 @@ artifacts/
 loadtest_report.md
 stability_report.json
 RELEASE_GATE.md
+reports/aurora_travel_*_*.json
+reports/aurora_travel_*_*.md
+reports/travel-expert-benchmark-*.json
+reports/travel-expert-benchmark-*.md
+reports/travel-expert-multiturn/runs/
+reports/travel-expert-multiturn/scoring-packets/
+reports/travel-expert-multiturn/aurora_scores.json
+reports/travel-expert-multiturn/gemini_scores.json
 
 # Pivota specific - ensure no real API keys
 pivota-credentials.json
