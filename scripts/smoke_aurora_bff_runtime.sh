@@ -130,16 +130,24 @@ printf "%s\n" "$routine_json" | jq_assert "heatmap has 2+ steps" '(.cards[]|sele
 printf "%s\n" "$routine_json" | jq_assert "heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
 printf "%s\n" "$routine_json" | jq_assert "first cell has headline/why/recommendations" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items[0]) | ((.headline_i18n.en//"")|length>0) and ((.why_i18n.en//"")|length>0) and ((.recommendations|length) >= 1)'
 
-say "chat conflict question (should include routine_simulation + conflict_heatmap)"
+say "chat conflict question (allow safety gate or simulation cards)"
 chat_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \
   "${COMMON_HEADERS[@]}" \
   --data '{"message":"My PM treatment is retinol. Can I add a glycolic acid toner? Check conflicts.","session":{"state":"S7_PRODUCT_RECO"}}')"
 
 printf "%s\n" "$chat_json" | jq_assert "/v1/chat returns cards array" '.cards | type=="array"'
-printf "%s\n" "$chat_json" | jq_assert "chat includes routine_simulation" '.cards | any(.type=="routine_simulation")'
-printf "%s\n" "$chat_json" | jq_assert "chat includes conflict_heatmap" '.cards | any(.type=="conflict_heatmap")'
-printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
+if printf "%s\n" "$chat_json" | jq -e '(.cards | any(.type=="routine_simulation")) and (.cards | any(.type=="conflict_heatmap"))' >/dev/null; then
+  printf "[PASS] chat includes routine_simulation + conflict_heatmap\n"
+  printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
+else
+  printf "%s\n" "$chat_json" | jq_assert "chat conflict can gate with confidence_notice" '.cards | any(.type=="confidence_notice")'
+  printf "%s\n" "$chat_json" | jq_assert "chat conflict gate asks pregnancy clarification chips" '
+    ((.suggested_chips // []) | map(.chip_id // "")) as $ids |
+    ($ids | any(test("pregnancy"; "i")))
+  '
+  printf "%s\n" "$chat_json" | jq_assert "chat conflict gate emits safety event" '.events | any(.event_name=="safety_gate_require_info")'
+fi
 
 say "chat reco (recommendations OR confidence_notice under artifact gate)"
 reco_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
