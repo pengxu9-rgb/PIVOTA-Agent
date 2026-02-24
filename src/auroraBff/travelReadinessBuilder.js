@@ -333,6 +333,43 @@ function normalizePreviewProducts(recommendationCandidates, language) {
   return out;
 }
 
+function normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, language) {
+  const out = [];
+  const seen = new Set();
+  for (const row of Array.isArray(recoBundle) ? recoBundle : []) {
+    if (!isPlainObject(row)) continue;
+    const category = normalizeText(row.trigger, 80) || t(language, '旅行护肤', 'Travel skincare');
+    const reasons = uniqStrings(
+      [
+        normalizeText(row.action, 180),
+        normalizeText(row.ingredient_logic, 180),
+        t(language, '基于旅行环境差异的规则化建议。', 'Rule-based recommendation from travel condition deltas.'),
+      ],
+      3,
+    );
+    const productTypes = Array.isArray(row.product_types) ? row.product_types : [];
+    for (const productType of productTypes) {
+      const name = normalizeText(productType, 140);
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        rank: out.length + 1,
+        product_id: null,
+        name,
+        brand: null,
+        category,
+        reasons,
+        price: null,
+        currency: null,
+      });
+      if (out.length >= 3) return out;
+    }
+  }
+  return out;
+}
+
 function buildAdaptiveActions({ language, summaryTags }) {
   const actions = [];
   const push = (why, whatToDo) => {
@@ -548,6 +585,10 @@ function buildTravelReadiness({
     profile,
   });
   const storeExamples = buildStoreExamples({ language: lang, destination: destinationText });
+  const previewProductsFromCatalog = normalizePreviewProducts(recommendationCandidates, lang);
+  const previewProducts = previewProductsFromCatalog.length
+    ? previewProductsFromCatalog
+    : normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, lang);
 
   return {
     destination_context: {
@@ -577,7 +618,7 @@ function buildTravelReadiness({
     reco_bundle: recoBundle,
     store_examples: storeExamples,
     shopping_preview: {
-      products: normalizePreviewProducts(recommendationCandidates, lang),
+      products: previewProducts,
       buying_channels: ['beauty_retail', 'pharmacy', 'department_store', 'duty_free', 'ecommerce'],
       city_hint: destinationText || null,
       note: t(
@@ -598,6 +639,7 @@ module.exports = {
     buildJetlagSleep,
     buildConfidence,
     normalizePreviewProducts,
+    normalizeFallbackPreviewProductsFromRecoBundle,
     getTimezoneOffsetHours,
   },
 };

@@ -129,3 +129,56 @@ test('buildJetlagSleep derives high risk for large timezone differences', () => 
   assert.ok(Array.isArray(jetlag.mask_tips));
   assert.ok(jetlag.mask_tips.length >= 1);
 });
+
+test('buildTravelReadiness backfills shopping preview products from reco_bundle when catalog products are missing', () => {
+  const payload = buildTravelReadiness({
+    language: 'EN',
+    profile: {
+      skinType: 'oily',
+      sensitivity: 'medium',
+      barrierStatus: 'healthy',
+      goals: ['pores'],
+      region: 'San Francisco, CA',
+    },
+    recentLogs: [],
+    destination: 'Paris',
+    startDate: '2026-03-10',
+    endDate: '2026-03-15',
+    destinationWeather: {
+      source: 'weather_api',
+      location: { timezone: 'Europe/Paris' },
+      summary: {
+        temperature_max_c: 25,
+        humidity_mean: 80,
+        uv_index_max: 8.2,
+        wind_kph_max: 19,
+        precipitation_mm: 2.8,
+      },
+      forecast_window: [
+        { date: '2026-03-10', temp_low_c: 15, temp_high_c: 25, humidity_mean: 80, uv_max: 8.2, precip_mm: 2.8, wind_kph: 19 },
+      ],
+    },
+    homeWeather: {
+      source: 'weather_api',
+      location: { timezone: 'America/Los_Angeles' },
+      summary: {
+        temperature_max_c: 18,
+        humidity_mean: 56,
+        uv_index_max: 5.2,
+        wind_kph_max: 10,
+        precipitation_mm: 1.1,
+      },
+    },
+    epiPayload: { env_source: 'weather_api', epi: 70 },
+    recommendationCandidates: [],
+    nowMs: Date.parse('2026-03-01T12:00:00.000Z'),
+  });
+
+  assert.ok(Array.isArray(payload.shopping_preview.products));
+  assert.ok(payload.shopping_preview.products.length >= 1);
+  assert.equal(payload.shopping_preview.products[0].product_id, null);
+  assert.equal(typeof payload.shopping_preview.products[0].name, 'string');
+  assert.ok(payload.shopping_preview.products[0].name.length > 0);
+  assert.ok(Array.isArray(payload.shopping_preview.products[0].reasons));
+  assert.ok(payload.shopping_preview.products[0].reasons.length >= 1);
+});
