@@ -1808,6 +1808,52 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.body.metadata.search_trace).toHaveProperty('intent_scenario');
   });
 
+  test('does not re-ask scenario when query already includes explicit scenario', async () => {
+    const queryText = '今晚要出去约会，有什么推荐用的';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '').includes('约会'))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          source: 'agent_sdk_fixed_delegate',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.search_trace?.query_class).toBe('scenario');
+    expect(resp.body.metadata?.search_trace?.association_plan?.scenario_key).toBe('date');
+    expect(resp.body.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
+      }),
+    );
+    expect(resp.body.clarification?.reason_code).toBe('CLARIFY_CATEGORY_SCOPE');
+    expect(resp.body.clarification?.reason_code).not.toBe('CLARIFY_SCENARIO');
+    expect(String(resp.body.clarification?.question || '')).toMatch(/哪一类|category/i);
+  });
+
   test('emits relevance_debug when SEARCH_RELEVANCE_DEBUG is enabled', async () => {
     const queryText = '推荐化妆刷';
     process.env.SEARCH_RELEVANCE_DEBUG = 'true';

@@ -1,4 +1,57 @@
-function buildZhClarification(queryClass, intent) {
+function normalizeText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function hasAnyScenarioSignal(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return false;
+  const scenarioSignals = [
+    '约会',
+    '約會',
+    '通勤',
+    '上班',
+    '面试',
+    '面試',
+    '出差',
+    '旅行',
+    '旅游',
+    '差旅',
+    '露营',
+    '露營',
+    '登山',
+    '徒步',
+    '户外',
+  ];
+  const zhHit = scenarioSignals.some((signal) => normalized.includes(signal));
+  if (zhHit) return true;
+  const enPatterns = [
+    /\bhiking\b/i,
+    /\boutdoor\b/i,
+    /\bcommute\b/i,
+    /\binterview\b/i,
+    /\btravel\b/i,
+    /\bbusiness[\s-]?trip\b/i,
+    /\bdate[\s-]?night\b/i,
+    /\bdate\b/i,
+  ];
+  return enPatterns.some((pattern) => pattern.test(normalized));
+}
+
+function hasSpecificScenario({ intent, rawQuery, associationPlan } = {}) {
+  const scenarioName = normalizeText(intent?.scenario?.name);
+  if (scenarioName && !['general', 'browse', 'discovery', 'default'].includes(scenarioName)) {
+    return true;
+  }
+  const associationScenario = normalizeText(associationPlan?.scenario_key);
+  if (associationScenario && associationScenario !== 'default') {
+    return true;
+  }
+  return hasAnyScenarioSignal(rawQuery);
+}
+
+function buildZhClarification(queryClass, intent, context = {}) {
   const domain = String(intent?.primary_domain || '');
   if (queryClass === 'gift') {
     return {
@@ -20,6 +73,13 @@ function buildZhClarification(queryClass, intent) {
         question: '你这次主要想要哪类宠物用品？',
         options: ['牵引/背带', '宠物衣服', '出行配件', '先看热门'],
         reason_code: 'CLARIFY_PET_CATEGORY',
+      };
+    }
+    if (hasSpecificScenario({ intent, rawQuery: context.rawQuery, associationPlan: context.associationPlan })) {
+      return {
+        question: '你想优先看哪一类商品？',
+        options: ['护肤/彩妆', '穿搭/服饰', '香水/个护', '旅行/户外装备'],
+        reason_code: 'CLARIFY_CATEGORY_SCOPE',
       };
     }
     return {
@@ -49,7 +109,7 @@ function buildZhClarification(queryClass, intent) {
   };
 }
 
-function buildEnClarification(queryClass, intent) {
+function buildEnClarification(queryClass, intent, context = {}) {
   const domain = String(intent?.primary_domain || '');
   if (queryClass === 'gift') {
     return {
@@ -71,6 +131,13 @@ function buildEnClarification(queryClass, intent) {
         question: 'What do you want first for your pet?',
         options: ['Leash/harness', 'Pet apparel', 'Travel accessories', 'Show popular picks'],
         reason_code: 'CLARIFY_PET_CATEGORY',
+      };
+    }
+    if (hasSpecificScenario({ intent, rawQuery: context.rawQuery, associationPlan: context.associationPlan })) {
+      return {
+        question: 'Which product category should I prioritize first?',
+        options: ['Skincare/makeup', 'Outfit/apparel', 'Fragrance/personal care', 'Travel/outdoor gear'],
+        reason_code: 'CLARIFY_CATEGORY_SCOPE',
       };
     }
     return {
@@ -100,10 +167,20 @@ function buildEnClarification(queryClass, intent) {
   };
 }
 
-function buildClarification({ queryClass, intent, language }) {
+function buildClarification({ queryClass, intent, language, rawQuery = '', associationPlan = null }) {
   const lang = String(language || intent?.language || 'en').toLowerCase();
   const normalizedClass = String(queryClass || intent?.query_class || 'exploratory').toLowerCase();
-  const payload = lang === 'zh' ? buildZhClarification(normalizedClass, intent) : buildEnClarification(normalizedClass, intent);
+  const context = {
+    rawQuery,
+    associationPlan:
+      associationPlan && typeof associationPlan === 'object' && !Array.isArray(associationPlan)
+        ? associationPlan
+        : null,
+  };
+  const payload =
+    lang === 'zh'
+      ? buildZhClarification(normalizedClass, intent, context)
+      : buildEnClarification(normalizedClass, intent, context);
   return {
     question: String(payload.question || ''),
     options: Array.isArray(payload.options) ? payload.options.slice(0, 4) : [],

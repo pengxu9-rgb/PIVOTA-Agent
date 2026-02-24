@@ -3292,6 +3292,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       queryClass,
       intent,
       language: intent?.language,
+      rawQuery,
+      associationPlan: associationPlanFromMeta,
     });
     filtered = [];
     finalDecision = 'clarify';

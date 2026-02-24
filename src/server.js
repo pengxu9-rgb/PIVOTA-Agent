@@ -3108,6 +3108,7 @@ function buildProxySearchSoftFallbackResponse({
         language:
           (intent && typeof intent === 'object' ? intent.language : null) ||
           (typeof queryText === 'string' && /[\u4e00-\u9fff]/.test(queryText) ? 'zh' : 'en'),
+        rawQuery: queryText,
       })
     : null;
   const resolvedReply =
