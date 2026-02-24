@@ -53,6 +53,10 @@ const {
   recordAuroraTravelKbWrite,
   recordAuroraTravelResponseSource,
   recordAuroraTravelWeatherSource,
+  recordAuroraTravelForecastSource,
+  recordAuroraTravelAlertSource,
+  recordAuroraTravelBaselineIntegrity,
+  recordAuroraTravelResponseQuality,
   recordAuroraTravelReplyMode,
   recordAuroraTravelEnvCardEmitted,
   recordUpstreamCall,
@@ -245,6 +249,7 @@ const { getAuroraKbV0, getAuroraKbFailMode } = require('./kbV0/loader');
 const { resolveQaPlan } = require('./qaPlanner');
 const { BLOCK_LEVEL, evaluateSafety } = require('./safetyEngineV1');
 const { getTravelWeather, climateFallback } = require('./weatherAdapter');
+const { getTravelAlerts } = require('./travelAlertsProvider');
 const { buildEpiPayload } = require('./epiCalculator');
 const {
   normalizeTravelProfilePatch,
@@ -14702,6 +14707,78 @@ function normalizeTravelWeatherReason({ weather, liveWeatherEnabled }) {
   return 'live_error';
 }
 
+function normalizeIsoTimestamp(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const ms = Date.parse(text);
+  if (!Number.isFinite(ms)) return '';
+  try {
+    return new Date(ms).toISOString();
+  } catch (_err) {
+    return '';
+  }
+}
+
+function maxTravelDataFreshness({ weather, alertsResult }) {
+  const candidates = [
+    normalizeIsoTimestamp(weather && weather.data_freshness_utc),
+    normalizeIsoTimestamp(alertsResult && alertsResult.data_freshness_utc),
+  ].filter(Boolean);
+  if (!candidates.length) return new Date().toISOString();
+  let latest = candidates[0];
+  let latestMs = Date.parse(latest);
+  for (const token of candidates.slice(1)) {
+    const ms = Date.parse(token);
+    if (Number.isFinite(ms) && ms > latestMs) {
+      latest = token;
+      latestMs = ms;
+    }
+  }
+  return latest;
+}
+
+function sanitizeTravelReadiness(travelReadiness) {
+  const payload = isPlainObject(travelReadiness) ? { ...travelReadiness } : {};
+  const deltaVsHome = isPlainObject(payload.delta_vs_home) ? { ...payload.delta_vs_home } : null;
+  if (!deltaVsHome) {
+    return {
+      travelReadiness: payload,
+      baselineIntegrity: 'missing',
+    };
+  }
+
+  const baselineStatus = String(deltaVsHome.baseline_status || '').trim().toLowerCase();
+  if (baselineStatus !== 'baseline_unavailable') {
+    return {
+      travelReadiness: { ...payload, delta_vs_home: deltaVsHome },
+      baselineIntegrity: 'ok',
+    };
+  }
+
+  const metricKeys = ['temperature', 'humidity', 'uv', 'wind', 'precip'];
+  let hadInvalidBaseline = false;
+  for (const key of metricKeys) {
+    const row = isPlainObject(deltaVsHome[key]) ? { ...deltaVsHome[key] } : null;
+    if (!row) continue;
+
+    const hasHome = row.home !== null && row.home !== undefined;
+    const hasDelta = row.delta !== null && row.delta !== undefined;
+    if (hasHome || hasDelta) hadInvalidBaseline = true;
+
+    row.home = null;
+    row.delta = null;
+    deltaVsHome[key] = row;
+  }
+
+  return {
+    travelReadiness: {
+      ...payload,
+      delta_vs_home: deltaVsHome,
+    },
+    baselineIntegrity: hadInvalidBaseline ? 'invalid_zero_coercion' : 'missing',
+  };
+}
+
 function looksLikeTravelCardRequest(message) {
   const text = String(message || '').trim();
   if (!text) return false;
@@ -27482,6 +27559,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         policyMeta.travel_reply_mode = 'fallback';
         policyMeta.travel_weather_source = null;
         policyMeta.travel_weather_reason = null;
+        policyMeta.travel_forecast_source = null;
+        policyMeta.travel_alert_source = null;
+        policyMeta.travel_alert_count = 0;
+        policyMeta.travel_data_freshness_utc = null;
+        policyMeta.travel_baseline_integrity = 'ok';
         policyMeta.travel_followup = isTravelFollowup;
 
         const entityDestination =
@@ -27545,7 +27627,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
           policyMeta.travel_weather_source = weatherSource;
           policyMeta.travel_weather_reason = weatherReason;
+          policyMeta.travel_forecast_source = weatherSource;
           recordAuroraTravelWeatherSource({ source: weatherSource, reason: weatherReason });
+          recordAuroraTravelForecastSource({ source: weatherSource });
           logger?.info(
             {
               request_id: ctx.request_id,
@@ -27587,6 +27671,47 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
           policyMeta.travel_home_baseline_available = Boolean(homeWeather);
+          let travelAlertsResult = {
+            source: 'none',
+            reason: 'unavailable',
+            alerts: [],
+            data_freshness_utc: new Date().toISOString(),
+          };
+          try {
+            travelAlertsResult = await getTravelAlerts({
+              destination,
+              destinationCountry:
+                (weather &&
+                  weather.location &&
+                  (weather.location.country_code || weather.location.country)) ||
+                null,
+              language: ctx.lang,
+            });
+          } catch (err) {
+            logger?.warn(
+              {
+                err: err && (err.code || err.message) ? err.code || err.message : String(err),
+                destination,
+              },
+              'aurora bff: travel alerts fetch failed',
+            );
+            travelAlertsResult = {
+              source: 'degraded',
+              reason: 'provider_error',
+              alerts: [],
+              data_freshness_utc: new Date().toISOString(),
+            };
+          }
+          const travelAlerts = Array.isArray(travelAlertsResult && travelAlertsResult.alerts)
+            ? travelAlertsResult.alerts
+            : [];
+          policyMeta.travel_alert_source = String(travelAlertsResult && travelAlertsResult.source ? travelAlertsResult.source : 'none');
+          policyMeta.travel_alert_count = travelAlerts.length;
+          policyMeta.travel_data_freshness_utc = maxTravelDataFreshness({
+            weather,
+            alertsResult: travelAlertsResult,
+          });
+          recordAuroraTravelAlertSource({ source: policyMeta.travel_alert_source });
           const epiPayload = buildEpiPayload({
             weather,
             profile,
@@ -27674,6 +27799,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             endDate,
             destinationWeather: weather,
             homeWeather,
+            travelAlerts,
             epiPayload,
             recommendationCandidates,
           });
@@ -27729,7 +27855,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               end_date: endDate || null,
               env_source: epiPayload.env_source || weather.source || null,
               weather: isPlainObject(weather && weather.summary) ? weather.summary : null,
+              forecast_window: Array.isArray(weather && weather.forecast_window) ? weather.forecast_window.slice(0, 7) : [],
               home_weather: isPlainObject(homeWeather && homeWeather.summary) ? homeWeather.summary : null,
+              alerts: Array.isArray(travelAlerts) ? travelAlerts.slice(0, 4) : [],
               epi: Number.isFinite(Number(epiPayload && epiPayload.epi)) ? Number(epiPayload.epi) : null,
               profile: profileSummaryForTravelReco || profile,
               recent_logs: Array.isArray(recentLogs) ? recentLogs.slice(0, 10) : [],
@@ -27763,6 +27891,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           ) {
             travelReadiness = llmCalibrationResult.travel_readiness;
           }
+          const sanitizedTravel = sanitizeTravelReadiness(travelReadiness);
+          travelReadiness = sanitizedTravel.travelReadiness;
+          policyMeta.travel_baseline_integrity = sanitizedTravel.baselineIntegrity;
+          recordAuroraTravelBaselineIntegrity({ status: policyMeta.travel_baseline_integrity });
           policyMeta.llm_calibration_used = Boolean(llmCalibrationResult && llmCalibrationResult.used);
           policyMeta.llm_stage = String(
             (llmCalibrationResult && llmCalibrationResult.stage) || policyMeta.llm_stage || 'travel_readiness_calibration_v1',
@@ -27884,6 +28016,12 @@ function mountAuroraBffRoutes(app, { logger }) {
               typeof composedReply.reply_mode === 'string' && composedReply.reply_mode.trim()
                 ? composedReply.reply_mode.trim()
                 : 'focused';
+            const qualitySections = Array.isArray(composedReply.quality_sections)
+              ? composedReply.quality_sections
+              : [];
+            for (const section of qualitySections) {
+              recordAuroraTravelResponseQuality({ section });
+            }
             if (typeof composedReply.home_baseline_available === 'boolean') {
               policyMeta.travel_home_baseline_available = composedReply.home_baseline_available;
             }
@@ -27896,10 +28034,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           policyMeta.travel_reply_mode = 'fallback';
           policyMeta.travel_weather_source = 'climate_fallback';
           policyMeta.travel_weather_reason = effectiveChatFlags.travel_weather_live_v1 ? 'live_error' : 'live_disabled';
+          policyMeta.travel_forecast_source = 'climate_fallback';
+          policyMeta.travel_alert_source = 'none';
+          policyMeta.travel_alert_count = 0;
+          policyMeta.travel_data_freshness_utc = new Date().toISOString();
+          policyMeta.travel_baseline_integrity = 'missing';
           recordAuroraTravelWeatherSource({
             source: policyMeta.travel_weather_source,
             reason: policyMeta.travel_weather_reason,
           });
+          recordAuroraTravelForecastSource({ source: policyMeta.travel_forecast_source });
+          recordAuroraTravelAlertSource({ source: policyMeta.travel_alert_source });
+          recordAuroraTravelBaselineIntegrity({ status: policyMeta.travel_baseline_integrity });
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);

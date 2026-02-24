@@ -70,6 +70,90 @@ function normalizeBrandCandidates(value) {
   return out
 }
 
+function normalizeForecastWindow(value) {
+  if (!Array.isArray(value)) return []
+  const out = []
+  for (const raw of value) {
+    const row = isPlainObject(raw) ? raw : {}
+    const date = normalizeText(row.date, 24)
+    if (!date) continue
+    out.push({
+      date,
+      temp_low_c: normalizeNumber(row.temp_low_c),
+      temp_high_c: normalizeNumber(row.temp_high_c),
+      humidity_mean: normalizeNumber(row.humidity_mean),
+      uv_max: normalizeNumber(row.uv_max),
+      precip_mm: normalizeNumber(row.precip_mm),
+      wind_kph: normalizeNumber(row.wind_kph),
+      condition_text: normalizeText(row.condition_text, 120) || null,
+    })
+    if (out.length >= 7) break
+  }
+  return out
+}
+
+function normalizeAlerts(value) {
+  if (!Array.isArray(value)) return []
+  const out = []
+  for (const raw of value) {
+    const row = isPlainObject(raw) ? raw : {}
+    const title = normalizeText(row.title, 160)
+    const severity = normalizeText(row.severity, 24)
+    if (!title && !severity) continue
+    out.push({
+      provider: normalizeText(row.provider, 80) || null,
+      severity: severity || null,
+      title: title || null,
+      summary: normalizeText(row.summary, 260) || null,
+      start_at: normalizeText(row.start_at, 64) || null,
+      end_at: normalizeText(row.end_at, 64) || null,
+      region: normalizeText(row.region, 120) || null,
+      action_hint: normalizeText(row.action_hint, 220) || null,
+    })
+    if (out.length >= 4) break
+  }
+  return out
+}
+
+function normalizeRecoBundle(value) {
+  if (!Array.isArray(value)) return []
+  const out = []
+  for (const raw of value) {
+    const row = isPlainObject(raw) ? raw : {}
+    const trigger = normalizeText(row.trigger, 120)
+    const action = normalizeText(row.action, 260)
+    if (!trigger && !action) continue
+    out.push({
+      trigger: trigger || null,
+      action: action || null,
+      ingredient_logic: normalizeText(row.ingredient_logic, 220) || null,
+      product_types: normalizeStringArray(row.product_types, 4, 140),
+      reapply_rule: normalizeText(row.reapply_rule, 220) || null,
+    })
+    if (out.length >= 5) break
+  }
+  return out
+}
+
+function normalizeStoreExamples(value) {
+  if (!Array.isArray(value)) return []
+  const out = []
+  for (const raw of value) {
+    const row = isPlainObject(raw) ? raw : {}
+    const name = normalizeText(row.name, 120)
+    if (!name) continue
+    out.push({
+      name,
+      type: normalizeText(row.type, 80) || null,
+      address: normalizeText(row.address, 180) || null,
+      district: normalizeText(row.district, 80) || null,
+      source: normalizeText(row.source, 60) || null,
+    })
+    if (out.length >= 6) break
+  }
+  return out
+}
+
 function normalizeShoppingPreview(value) {
   if (!isPlainObject(value)) return undefined
   const productsRaw = Array.isArray(value.products) ? value.products : []
@@ -138,6 +222,12 @@ function normalizeTravelReadinessPatch(value) {
     if (Object.keys(deltaVsHome).length) out.delta_vs_home = deltaVsHome
   }
 
+  const forecastWindow = normalizeForecastWindow(value.forecast_window)
+  if (forecastWindow.length) out.forecast_window = forecastWindow
+
+  const alerts = normalizeAlerts(value.alerts)
+  if (alerts.length) out.alerts = alerts
+
   if (Array.isArray(value.adaptive_actions)) {
     const adaptiveActions = []
     for (const raw of value.adaptive_actions) {
@@ -153,6 +243,12 @@ function normalizeTravelReadinessPatch(value) {
     }
     if (adaptiveActions.length) out.adaptive_actions = adaptiveActions
   }
+
+  const recoBundle = normalizeRecoBundle(value.reco_bundle)
+  if (recoBundle.length) out.reco_bundle = recoBundle
+
+  const storeExamples = normalizeStoreExamples(value.store_examples)
+  if (storeExamples.length) out.store_examples = storeExamples
 
   if (Array.isArray(value.personal_focus)) {
     const personalFocus = []
@@ -200,6 +296,26 @@ function normalizeTravelReadinessPatch(value) {
   }
 
   return out
+}
+
+function sanitizeBaselineIntegrity(travelReadiness) {
+  const payload = isPlainObject(travelReadiness) ? { ...travelReadiness } : {}
+  const delta = isPlainObject(payload.delta_vs_home) ? { ...payload.delta_vs_home } : null
+  if (!delta) return payload
+
+  const baselineStatus = normalizeText(delta.baseline_status, 64).toLowerCase()
+  if (baselineStatus !== 'baseline_unavailable') return payload
+
+  const metricKeys = ['temperature', 'humidity', 'uv', 'wind', 'precip']
+  for (const key of metricKeys) {
+    const row = isPlainObject(delta[key]) ? { ...delta[key] } : null
+    if (!row) continue
+    row.home = null
+    row.delta = null
+    delta[key] = row
+  }
+  payload.delta_vs_home = delta
+  return payload
 }
 
 function deepMerge(base, patch) {
@@ -334,7 +450,7 @@ async function calibrateTravelReadinessWithLlm({
   logger = null,
 } = {}) {
   const stage = 'travel_readiness_calibration_v1'
-  const baseline = isPlainObject(baseTravelReadiness) ? baseTravelReadiness : {}
+  const baseline = sanitizeBaselineIntegrity(isPlainObject(baseTravelReadiness) ? baseTravelReadiness : {})
 
   if (!openaiClient || !openaiClient.chat || !openaiClient.chat.completions) {
     return {
@@ -378,7 +494,7 @@ async function calibrateTravelReadinessWithLlm({
         continue
       }
 
-      const merged = deepMerge(baseline, parsed.travel_readiness_patch)
+      const merged = sanitizeBaselineIntegrity(deepMerge(baseline, parsed.travel_readiness_patch))
       return {
         stage,
         used: true,
@@ -427,6 +543,11 @@ module.exports = {
     normalizeTravelReadinessPatch,
     normalizeShoppingPreview,
     normalizeBrandCandidates,
+    normalizeForecastWindow,
+    normalizeAlerts,
+    normalizeRecoBundle,
+    normalizeStoreExamples,
+    sanitizeBaselineIntegrity,
     deepMerge,
     parseCalibrationPayload,
     buildTravelCalibrationPrompts,

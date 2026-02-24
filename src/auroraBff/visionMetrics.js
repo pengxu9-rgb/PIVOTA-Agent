@@ -104,6 +104,10 @@ const auroraTravelKbHitCounter = new Map();
 const auroraTravelKbWriteCounter = new Map();
 const auroraTravelResponseSourceCounter = new Map();
 const auroraTravelWeatherSourceCounter = new Map();
+const auroraTravelForecastSourceCounter = new Map();
+const auroraTravelAlertSourceCounter = new Map();
+const auroraTravelBaselineIntegrityCounter = new Map();
+const auroraTravelResponseQualityCounter = new Map();
 const auroraTravelReplyModeCounter = new Map();
 const auroraTravelEnvCardEmittedCounter = new Map();
 const prelabelRequestsCounter = new Map();
@@ -646,6 +650,30 @@ function normalizeAuroraTravelWeatherReason(reason) {
   return 'unknown';
 }
 
+function normalizeAuroraTravelForecastSource(source) {
+  const token = cleanMetricToken(source, 'climate_fallback');
+  if (token === 'weather_api' || token === 'climate_fallback') return token;
+  return 'climate_fallback';
+}
+
+function normalizeAuroraTravelAlertSource(source) {
+  const token = cleanMetricToken(source, 'none');
+  if (token === 'official_api' || token === 'none' || token === 'degraded') return token;
+  return 'none';
+}
+
+function normalizeAuroraTravelBaselineIntegrity(status) {
+  const token = cleanMetricToken(status, 'ok');
+  if (token === 'ok' || token === 'missing' || token === 'invalid_zero_coercion') return token;
+  return 'ok';
+}
+
+function normalizeAuroraTravelResponseQualitySection(section) {
+  const token = cleanMetricToken(section, 'unknown');
+  if (token === 'answer_delta' || token === 'actions' || token === 'products' || token === 'alerts') return token;
+  return 'unknown';
+}
+
 function normalizeAuroraTravelReplyMode(mode) {
   const token = cleanMetricToken(mode, 'fallback');
   if (token === 'focused' || token === 'fallback' || token === 'followup_text_only') return token;
@@ -1171,6 +1199,46 @@ function recordAuroraTravelWeatherSource({ source, reason, delta } = {}) {
       source: normalizeAuroraTravelWeatherSource(source),
       reason: normalizeAuroraTravelWeatherReason(reason),
     },
+    amount,
+  );
+}
+
+function recordAuroraTravelForecastSource({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelForecastSourceCounter,
+    { source: normalizeAuroraTravelForecastSource(source) },
+    amount,
+  );
+}
+
+function recordAuroraTravelAlertSource({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelAlertSourceCounter,
+    { source: normalizeAuroraTravelAlertSource(source) },
+    amount,
+  );
+}
+
+function recordAuroraTravelBaselineIntegrity({ status, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelBaselineIntegrityCounter,
+    { status: normalizeAuroraTravelBaselineIntegrity(status) },
+    amount,
+  );
+}
+
+function recordAuroraTravelResponseQuality({ section, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelResponseQualityCounter,
+    { section: normalizeAuroraTravelResponseQualitySection(section) },
     amount,
   );
 }
@@ -2302,6 +2370,22 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_travel_weather_source_total counter');
   renderCounter(lines, 'aurora_travel_weather_source_total', auroraTravelWeatherSourceCounter);
 
+  lines.push('# HELP aurora_travel_forecast_source_total Travel forecast source split.');
+  lines.push('# TYPE aurora_travel_forecast_source_total counter');
+  renderCounter(lines, 'aurora_travel_forecast_source_total', auroraTravelForecastSourceCounter);
+
+  lines.push('# HELP aurora_travel_alert_source_total Travel alert source split.');
+  lines.push('# TYPE aurora_travel_alert_source_total counter');
+  renderCounter(lines, 'aurora_travel_alert_source_total', auroraTravelAlertSourceCounter);
+
+  lines.push('# HELP aurora_travel_baseline_integrity_total Travel baseline integrity status.');
+  lines.push('# TYPE aurora_travel_baseline_integrity_total counter');
+  renderCounter(lines, 'aurora_travel_baseline_integrity_total', auroraTravelBaselineIntegrityCounter);
+
+  lines.push('# HELP aurora_travel_response_quality_total Travel response quality section coverage.');
+  lines.push('# TYPE aurora_travel_response_quality_total counter');
+  renderCounter(lines, 'aurora_travel_response_quality_total', auroraTravelResponseQualityCounter);
+
   lines.push('# HELP aurora_travel_reply_mode_total Travel reply mode split.');
   lines.push('# TYPE aurora_travel_reply_mode_total counter');
   renderCounter(lines, 'aurora_travel_reply_mode_total', auroraTravelReplyModeCounter);
@@ -2719,6 +2803,10 @@ function resetVisionMetrics() {
   auroraTravelKbWriteCounter.clear();
   auroraTravelResponseSourceCounter.clear();
   auroraTravelWeatherSourceCounter.clear();
+  auroraTravelForecastSourceCounter.clear();
+  auroraTravelAlertSourceCounter.clear();
+  auroraTravelBaselineIntegrityCounter.clear();
+  auroraTravelResponseQualityCounter.clear();
   auroraTravelReplyModeCounter.clear();
   auroraTravelEnvCardEmittedCounter.clear();
   prelabelRequestsCounter.clear();
@@ -2862,6 +2950,10 @@ function snapshotVisionMetrics() {
     auroraTravelKbWrite: Array.from(auroraTravelKbWriteCounter.entries()),
     auroraTravelResponseSource: Array.from(auroraTravelResponseSourceCounter.entries()),
     auroraTravelWeatherSource: Array.from(auroraTravelWeatherSourceCounter.entries()),
+    auroraTravelForecastSource: Array.from(auroraTravelForecastSourceCounter.entries()),
+    auroraTravelAlertSource: Array.from(auroraTravelAlertSourceCounter.entries()),
+    auroraTravelBaselineIntegrity: Array.from(auroraTravelBaselineIntegrityCounter.entries()),
+    auroraTravelResponseQuality: Array.from(auroraTravelResponseQualityCounter.entries()),
     auroraTravelReplyMode: Array.from(auroraTravelReplyModeCounter.entries()),
     auroraTravelEnvCardEmitted: Array.from(auroraTravelEnvCardEmittedCounter.entries()),
     prelabelRequests: Array.from(prelabelRequestsCounter.entries()),
@@ -2966,6 +3058,10 @@ module.exports = {
   recordAuroraTravelKbWrite,
   recordAuroraTravelResponseSource,
   recordAuroraTravelWeatherSource,
+  recordAuroraTravelForecastSource,
+  recordAuroraTravelAlertSource,
+  recordAuroraTravelBaselineIntegrity,
+  recordAuroraTravelResponseQuality,
   recordAuroraTravelReplyMode,
   recordAuroraTravelEnvCardEmitted,
   setRecoGuardrailRates,
