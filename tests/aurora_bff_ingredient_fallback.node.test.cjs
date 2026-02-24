@@ -116,8 +116,10 @@ test('ingredient fallback executor: builds realtime candidates from search + cra
       products: [
         {
           product_id: 'amz_az_1',
-          name: 'Azelaic Serum 10%',
+          name: 'Azelaic Face Serum SPF 30',
           brand: 'Brand A',
+          category: 'Facial treatment serum',
+          why_match: 'Topical face serum for azelaic acid routine',
           pdp_url: 'https://www.amazon.com/dp/B00TEST123',
           image_url: 'https://images.example.com/az_1.jpg',
         },
@@ -169,4 +171,63 @@ test('ingredient fallback executor: returns google fallback metadata when search
   assert.equal(out.candidates.length, 0);
   assert.equal(typeof out.candidate_url, 'string');
   assert.equal(out.candidate_url.includes('google.com/search'), true);
+});
+
+test('ingredient fallback relevance: rejects non-skincare tool candidates for UV filters', () => {
+  const decision = routeInternals.evaluateIngredientCandidateSkincareRelevance({
+    ingredientId: 'uv_filters',
+    ingredientName: 'UV filters',
+    strictFilterEnabled: true,
+    candidate: {
+      name: 'Contour Brush - Sculpt & Soften',
+      category: 'Beauty tool',
+      source: 'google',
+      why_match: 'Fallback from Google',
+      pdp_url: 'https://example.com/brush',
+    },
+  });
+
+  assert.ok(decision && typeof decision === 'object');
+  assert.equal(decision.pass, false);
+  assert.equal(String(decision.reason || '').startsWith('negative_keyword:'), true);
+});
+
+test('ingredient fallback executor: all non-skincare candidates are dropped and downgraded to google fallback', async () => {
+  const out = await routeInternals.runIngredientExternalExecutorForIngredient({
+    ingredientId: 'uv_filters',
+    ingredientName: 'UV Filters',
+    budgetTier: 'mid',
+    deadlineMs: Date.now() + 1800,
+    searchFn: async () => ({
+      ok: true,
+      reason: null,
+      products: [
+        {
+          product_id: 'brush_1',
+          name: 'Contour Brush - With Pouch',
+          brand: 'Tool Brand',
+          category: 'Makeup brush',
+          pdp_url: 'https://example.com/brush_1',
+        },
+        {
+          product_id: 'brush_2',
+          name: 'Soft Synthetic Brush',
+          brand: 'Tool Brand',
+          category: 'Beauty tools',
+          pdp_url: 'https://example.com/brush_2',
+        },
+      ],
+    }),
+    fetchHtmlFn: async () => '',
+    llmExtractFn: async () => null,
+  });
+
+  assert.ok(out);
+  assert.equal(out.status, 'external_executor_empty');
+  assert.equal(Array.isArray(out.candidates), true);
+  assert.equal(out.candidates.length, 0);
+  assert.equal(typeof out.candidate_url, 'string');
+  assert.equal(out.candidate_url.includes('google.com/search'), true);
+  assert.equal(Array.isArray(out.rejected_candidates), true);
+  assert.equal(out.rejected_candidates.length >= 1, true);
 });

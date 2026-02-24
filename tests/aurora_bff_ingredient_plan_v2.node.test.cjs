@@ -208,3 +208,68 @@ test('ingredient_plan_v2 consumes realtime external candidates when provided', (
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('ingredient_plan_v2 product entries keep rich media/open fields for rendering', () => {
+  const { dir, file } = createTempCatalog([]);
+  try {
+    const plan = buildIngredientPlanV2({
+      plan: {
+        intensity: 'balanced',
+        targets: [{ ingredient_id: 'sunscreen_filters', priority: 90 }],
+        avoid: [],
+        conflicts: [],
+      },
+      profile: { budgetTier: 'mid' },
+      catalogPath: file,
+      externalCandidatesByIngredient: {
+        sunscreen_filters: [
+          {
+            product_id: 'spf_ext_1',
+            name: 'Broad Spectrum SPF 50',
+            brand: 'Shield Lab',
+            thumb_url: 'https://images.example.com/spf_ext_1.jpg',
+            price: 21.5,
+            currency: 'USD',
+            price_tier: 'mid',
+            rating_value: 4.6,
+            rating_count: 980,
+            pdp_url: 'https://www.amazon.com/dp/B00SPF001',
+            source: 'amazon',
+            source_confidence: 0.82,
+            fallback_type: 'external',
+            open_target: 'external',
+            why_match: 'Daily UV protection',
+          },
+        ],
+      },
+      externalMetaByIngredient: {
+        sunscreen_filters: {
+          query: 'sunscreen spf50 broad spectrum',
+          normalized_query: 'sunscreen_spf50_broad_spectrum',
+          capture_mode: 'sync_external_executor',
+          status: 'external_executor_returned',
+        },
+      },
+    });
+
+    assert.ok(plan);
+    assert.equal(plan.schema_version, 'aurora.ingredient_plan.v2');
+    const target = plan.targets.find((item) => item.ingredient_id === 'sunscreen_filters');
+    assert.ok(target);
+    const merged = [...target.products.competitors, ...target.products.dupes];
+    assert.equal(merged.length >= 1, true);
+    const product = merged[0];
+    assert.equal(product.product_id, 'spf_ext_1');
+    assert.equal(product.name, 'Broad Spectrum SPF 50');
+    assert.equal(product.brand, 'Shield Lab');
+    assert.equal(product.thumb_url, 'https://images.example.com/spf_ext_1.jpg');
+    assert.equal(product.currency, 'USD');
+    assert.equal(typeof product.price, 'number');
+    assert.equal(product.source, 'amazon');
+    assert.equal(product.fallback_type, 'external');
+    assert.equal(product.open_target, 'external');
+    assert.equal(typeof product.pdp_url, 'string');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

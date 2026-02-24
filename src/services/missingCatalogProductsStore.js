@@ -174,7 +174,8 @@ async function listMissingCatalogProducts(options = {}) {
           COALESCE(hints->>'candidate_url','') AS candidate_url,
           COALESCE(hints->>'capture_mode','') AS capture_mode,
           COALESCE(hints->>'status','unknown') AS status,
-          COALESCE(hints->>'failure_reason','') AS failure_reason
+          COALESCE(hints->>'failure_reason','') AS failure_reason,
+          COALESCE(hints->>'rejected_reason','') AS rejected_reason
         FROM missing_catalog_products
         WHERE ${where}
         ORDER BY ${orderBy}
@@ -218,6 +219,8 @@ function toCsv(rows) {
     'first_seen_at',
     'last_seen_at',
     'last_reason',
+    'failure_reason',
+    'rejected_reason',
     'last_caller',
     'last_session_id',
   ];
@@ -246,6 +249,8 @@ function toCsv(rows) {
         escape(r.first_seen_at),
         escape(r.last_seen_at),
         escape(r.last_reason),
+        escape(r.failure_reason),
+        escape(r.rejected_reason),
         escape(r.last_caller),
         escape(r.last_session_id),
       ].join(','),
