@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { getAxiosKeepAliveConfig } = require('../http/axiosKeepAlive');
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').trim().replace(/\/$/, '');
@@ -20,6 +21,7 @@ async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs } = {
       const resp = await axios.post(url, body, {
         timeout: Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000,
         validateStatus: () => true,
+        ...getAxiosKeepAliveConfig(),
       });
       if (resp.status >= 200 && resp.status < 300) return resp;
       // Retry only on 5xx.

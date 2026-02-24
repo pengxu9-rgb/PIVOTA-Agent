@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { AxiosError } = require('axios');
 const { z } = require('zod');
+const { getAxiosKeepAliveConfig } = require('../http/axiosKeepAlive');
 
 let sharp = null;
 try {
@@ -302,6 +303,7 @@ async function resolveImageForGemini(image) {
     responseType: 'arraybuffer',
     timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000'),
     validateStatus: (s) => s >= 200 && s < 300,
+    ...getAxiosKeepAliveConfig(),
   });
   const contentType = String(res.headers?.['content-type'] || '').split(';')[0].trim();
   const mimeType = contentType || 'image/jpeg';
@@ -364,6 +366,7 @@ function createProviderFromEnv(purpose = 'generic') {
         baseURL: baseUrl.replace(/\/$/, ''),
         timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000'),
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        ...getAxiosKeepAliveConfig(),
       });
 
       const disableResponseFormat =
@@ -697,6 +700,7 @@ function createOpenAiCompatibleProvider() {
     baseURL: baseUrl.replace(/\/$/, ''),
     timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000'),
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    ...getAxiosKeepAliveConfig(),
   });
 
   async function postWithRetry(body, schema) {
