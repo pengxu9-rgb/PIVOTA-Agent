@@ -99,6 +99,10 @@ const recoAsyncUpdateCounter = new Map();
 const recoAsyncUpdateChangedItemsCounter = new Map();
 const recoContextUsedCounter = new Map();
 const travelPlanSelectionCounter = new Map();
+const auroraTravelLlmCallCounter = new Map();
+const auroraTravelKbHitCounter = new Map();
+const auroraTravelKbWriteCounter = new Map();
+const auroraTravelResponseSourceCounter = new Map();
 const prelabelRequestsCounter = new Map();
 const prelabelSuccessCounter = new Map();
 const prelabelInvalidJsonCounter = new Map();
@@ -558,6 +562,42 @@ function normalizeTravelPlanSelectionMode(mode) {
   return 'none';
 }
 
+function normalizeAuroraTravelLlmOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'skip_no_client');
+  if (
+    token === 'call' ||
+    token === 'skip_no_client' ||
+    token === 'skip_disabled' ||
+    token === 'timeout' ||
+    token === 'error'
+  ) {
+    return token;
+  }
+  return 'error';
+}
+
+function normalizeAuroraTravelKbHitMode(mode) {
+  const token = cleanMetricToken(mode, 'miss');
+  if (token === 'hit' || token === 'miss') return token;
+  return 'miss';
+}
+
+function normalizeAuroraTravelKbWriteOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'skip');
+  if (token === 'queued' || token === 'success' || token === 'skip' || token === 'error') return token;
+  return 'skip';
+}
+
+function normalizeAuroraTravelKbWriteReason(reason) {
+  return cleanMetricToken(reason, 'unknown');
+}
+
+function normalizeAuroraTravelResponseSource(source) {
+  const token = cleanMetricToken(source, 'rules_only');
+  if (token === 'llm_enriched' || token === 'rules_only') return token;
+  return 'rules_only';
+}
+
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
   return {
     issue_type: normalizeIssueType(issueType),
@@ -1015,6 +1055,49 @@ function recordTravelPlanSelection({ mode, delta } = {}) {
   incCounter(
     travelPlanSelectionCounter,
     { mode: normalizeTravelPlanSelectionMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraTravelLlmCall({ outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelLlmCallCounter,
+    { outcome: normalizeAuroraTravelLlmOutcome(outcome) },
+    amount,
+  );
+}
+
+function recordAuroraTravelKbHit({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelKbHitCounter,
+    { mode: normalizeAuroraTravelKbHitMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraTravelKbWrite({ outcome, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelKbWriteCounter,
+    {
+      outcome: normalizeAuroraTravelKbWriteOutcome(outcome),
+      reason: normalizeAuroraTravelKbWriteReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraTravelResponseSource({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelResponseSourceCounter,
+    { source: normalizeAuroraTravelResponseSource(source) },
     amount,
   );
 }
@@ -2051,6 +2134,22 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_travel_plan_selection_total counter');
   renderCounter(lines, 'aurora_travel_plan_selection_total', travelPlanSelectionCounter);
 
+  lines.push('# HELP aurora_travel_llm_call_total Total travel LLM calibration outcomes.');
+  lines.push('# TYPE aurora_travel_llm_call_total counter');
+  renderCounter(lines, 'aurora_travel_llm_call_total', auroraTravelLlmCallCounter);
+
+  lines.push('# HELP aurora_travel_kb_hit_total Total travel KB lookup hit/miss counts.');
+  lines.push('# TYPE aurora_travel_kb_hit_total counter');
+  renderCounter(lines, 'aurora_travel_kb_hit_total', auroraTravelKbHitCounter);
+
+  lines.push('# HELP aurora_travel_kb_write_total Total travel KB write queue/upsert outcomes.');
+  lines.push('# TYPE aurora_travel_kb_write_total counter');
+  renderCounter(lines, 'aurora_travel_kb_write_total', auroraTravelKbWriteCounter);
+
+  lines.push('# HELP aurora_travel_response_source_total Travel response source split.');
+  lines.push('# TYPE aurora_travel_response_source_total counter');
+  renderCounter(lines, 'aurora_travel_response_source_total', auroraTravelResponseSourceCounter);
+
   lines.push('# HELP reco_competitors_same_brand_rate Last observed same-brand rate in competitors block.');
   lines.push('# TYPE reco_competitors_same_brand_rate gauge');
   lines.push(`reco_competitors_same_brand_rate ${recoCompetitorsSameBrandRateGauge}`);
@@ -2435,6 +2534,10 @@ function resetVisionMetrics() {
   recoAsyncUpdateChangedItemsCounter.clear();
   recoContextUsedCounter.clear();
   travelPlanSelectionCounter.clear();
+  auroraTravelLlmCallCounter.clear();
+  auroraTravelKbHitCounter.clear();
+  auroraTravelKbWriteCounter.clear();
+  auroraTravelResponseSourceCounter.clear();
   prelabelRequestsCounter.clear();
   prelabelSuccessCounter.clear();
   prelabelInvalidJsonCounter.clear();
@@ -2564,6 +2667,10 @@ function snapshotVisionMetrics() {
     recoAsyncUpdateChangedItems: Array.from(recoAsyncUpdateChangedItemsCounter.entries()),
     recoContextUsed: Array.from(recoContextUsedCounter.entries()),
     travelPlanSelection: Array.from(travelPlanSelectionCounter.entries()),
+    auroraTravelLlmCall: Array.from(auroraTravelLlmCallCounter.entries()),
+    auroraTravelKbHit: Array.from(auroraTravelKbHitCounter.entries()),
+    auroraTravelKbWrite: Array.from(auroraTravelKbWriteCounter.entries()),
+    auroraTravelResponseSource: Array.from(auroraTravelResponseSourceCounter.entries()),
     prelabelRequests: Array.from(prelabelRequestsCounter.entries()),
     prelabelSuccess: Array.from(prelabelSuccessCounter.entries()),
     prelabelInvalidJson: Array.from(prelabelInvalidJsonCounter.entries()),
@@ -2656,6 +2763,10 @@ module.exports = {
   recordRecoAsyncUpdate,
   recordRecoContextUsed,
   recordTravelPlanSelection,
+  recordAuroraTravelLlmCall,
+  recordAuroraTravelKbHit,
+  recordAuroraTravelKbWrite,
+  recordAuroraTravelResponseSource,
   setRecoGuardrailRates,
   recordPrelabelRequest,
   recordPrelabelSuccess,

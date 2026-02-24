@@ -6051,6 +6051,127 @@ test('/v1/chat: weather question short-circuits to env_stress (trigger_source=te
   assert.equal(vm?.data?.scenario, 'snow');
 });
 
+test('/v1/chat: travel/weather response includes travel_readiness and internal decision provenance meta', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const uid = `test_uid_env_readiness_${Date.now()}`;
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      };
+
+      await supertest(app)
+        .post('/v1/profile/update')
+        .set(headers)
+        .send({
+          skinType: 'oily',
+          sensitivity: 'low',
+          barrierStatus: 'healthy',
+          goals: ['pores'],
+          region: 'San Francisco, CA',
+          travel_plans: [
+            {
+              destination: 'Paris',
+              start_date: '2026-03-10',
+              end_date: '2026-03-15',
+            },
+          ],
+        })
+        .expect(200);
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'How is weather there? Will it be humid?',
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const envStress = cards.find((c) => c && c.type === 'env_stress') || null;
+      assert.ok(envStress);
+      assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
+      assert.ok(envStress?.payload?.travel_readiness);
+      assert.equal(typeof envStress?.payload?.travel_readiness?.destination_context, 'object');
+      assert.equal(typeof envStress?.payload?.travel_readiness?.delta_vs_home, 'object');
+      assert.ok(Array.isArray(envStress?.payload?.travel_readiness?.adaptive_actions));
+      assert.ok(Array.isArray(envStress?.payload?.travel_readiness?.personal_focus));
+      assert.ok(Array.isArray(envStress?.payload?.travel_readiness?.shopping_preview?.products));
+      assert.ok(Array.isArray(envStress?.payload?.travel_readiness?.shopping_preview?.buying_channels));
+      assert.match(String(resp.body?.assistant_message?.content || ''), /Home region: San Francisco, CA -> Destination: Paris/i);
+      assert.match(String(resp.body?.assistant_message?.content || ''), /Humidity/i);
+
+      const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+      assert.equal(types.includes('diagnosis_gate'), false);
+      assert.equal(types.includes('gate_notice'), false);
+
+      const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+      const chipLabels = chips.map((chip) => String(chip && chip.label ? chip.label : ''));
+      assert.ok(chipLabels.includes('Refine with AM/PM'));
+      assert.ok(chipLabels.includes('See full recommendations'));
+
+      const topMeta = resp.body?.meta || {};
+      assert.equal(topMeta.decision_engine, 'aurora_rules_weather_plus_llm_calibration');
+      assert.equal(topMeta.llm_calibration_used, false);
+      assert.equal(topMeta.llm_stage, 'travel_readiness_calibration_v1');
+      assert.equal(typeof topMeta.travel_kb_hit, 'boolean');
+      assert.equal(typeof topMeta.travel_kb_write_queued, 'boolean');
+      assert.equal(topMeta.travel_home_region_present, true);
+      assert.equal(typeof topMeta.travel_home_baseline_available, 'boolean');
+      assert.ok(['active_trip', 'entity', 'home_region', null].includes(topMeta.travel_destination_source || null));
+      assert.equal(topMeta.travel_reply_mode, 'focused');
+      assert.equal(typeof resp.body?.session_patch?.state?.travel_last_focus, 'string');
+      assert.equal(typeof resp.body?.session_patch?.state?.travel_last_reply_sig, 'string');
+      assert.ok(resp.body?.session_patch?.meta);
+      assert.equal(resp.body.session_patch.meta.decision_engine, 'aurora_rules_weather_plus_llm_calibration');
+
+      const firstAssistant = String(resp.body?.assistant_message?.content || '');
+      const followupSessionState =
+        resp.body?.session_patch?.state && typeof resp.body.session_patch.state === 'object' && !Array.isArray(resp.body.session_patch.state)
+          ? { ...resp.body.session_patch.state }
+          : {};
+      const respFollow = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'What about temperature then?',
+          session: { state: followupSessionState },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const secondAssistant = String(respFollow.body?.assistant_message?.content || '');
+      assert.match(secondAssistant, /Temperature/i);
+      assert.notEqual(secondAssistant, firstAssistant);
+      const followMeta = respFollow.body?.meta || {};
+      assert.equal(followMeta.travel_reply_mode, 'focused');
+      assert.equal(respFollow.body?.session_patch?.state?.travel_last_focus, 'temperature');
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');

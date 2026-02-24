@@ -28,6 +28,13 @@ function parseDateStartMs(dateToken) {
   return Number.isFinite(ts) ? ts : null;
 }
 
+function diffDays(targetDateToken, fromDateToken) {
+  const targetMs = parseDateStartMs(targetDateToken);
+  const fromMs = parseDateStartMs(fromDateToken);
+  if (!Number.isFinite(targetMs) || !Number.isFinite(fromMs)) return null;
+  return Math.round((targetMs - fromMs) / DAY_MS);
+}
+
 function normalizeText(value, maxLen) {
   if (typeof value !== 'string') return '';
   const text = value.trim();
@@ -49,6 +56,17 @@ function clampRatio(value) {
   if (n <= 0) return 0;
   if (n >= 1) return 1;
   return n;
+}
+
+function coerceBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value !== 'string') return fallback;
+  const t = value.trim().toLowerCase();
+  if (!t) return fallback;
+  if (t === 'true' || t === '1' || t === 'yes' || t === 'y' || t === 'on') return true;
+  if (t === 'false' || t === '0' || t === 'no' || t === 'n' || t === 'off') return false;
+  return fallback;
 }
 
 function safeInt(value, fallback) {
@@ -107,7 +125,12 @@ function normalizeTravelPlanItem(raw, options = {}) {
   const tripId = normalizeText(raw && raw.trip_id, 80) || buildTripId();
   const createdAtMs = safeInt(raw && raw.created_at_ms, nowMs);
   const updatedRaw = safeInt(raw && raw.updated_at_ms, createdAtMs);
-  const updatedAtMs = Math.max(createdAtMs, updatedRaw);
+  const isArchived = coerceBoolean(raw && raw.is_archived, false);
+  const archivedAtRaw = raw && Number.isFinite(Number(raw.archived_at_ms))
+    ? safeInt(raw.archived_at_ms, updatedRaw)
+    : null;
+  const archivedAtMs = isArchived ? Math.max(createdAtMs, archivedAtRaw != null ? archivedAtRaw : updatedRaw) : null;
+  const updatedAtMs = Math.max(createdAtMs, updatedRaw, archivedAtMs != null ? archivedAtMs : 0);
 
   return {
     trip_id: tripId,
@@ -118,6 +141,8 @@ function normalizeTravelPlanItem(raw, options = {}) {
     ...(base.itinerary ? { itinerary: base.itinerary } : {}),
     created_at_ms: createdAtMs,
     updated_at_ms: updatedAtMs,
+    is_archived: isArchived,
+    ...(archivedAtMs != null ? { archived_at_ms: archivedAtMs } : {}),
   };
 }
 
@@ -179,12 +204,21 @@ function selectActiveTrip(rawPlans, options = {}) {
   const nowMs = safeInt(options.nowMs, Date.now());
   const plans = normalizeTravelPlans(rawPlans, { nowMs, maxItems: 100 });
   const nowDate = normalizeDateToken(options.nowDate) || toIsoDateUtc(new Date(nowMs));
-  const nonExpired = plans.filter((plan) => !isTravelPlanExpired(plan, { nowMs }));
+  const nonArchived = plans.filter((plan) => !plan.is_archived);
+  const nonExpired = nonArchived.filter((plan) => !isTravelPlanExpired(plan, { nowMs }));
+  const expiredCount = nonArchived.length - nonExpired.length;
+  const archivedCount = plans.length - nonArchived.length;
   const inRange = nonExpired
     .filter((plan) => plan.start_date <= nowDate && nowDate <= plan.end_date)
     .sort((a, b) => Number(b.updated_at_ms || 0) - Number(a.updated_at_ms || 0));
   if (inRange.length) {
-    return { trip: inRange[0], mode: 'in_range', non_expired_plans: nonExpired, expired_count: plans.length - nonExpired.length };
+    return {
+      trip: inRange[0],
+      mode: 'in_range',
+      non_expired_plans: nonExpired,
+      expired_count: expiredCount,
+      archived_count: archivedCount,
+    };
   }
 
   const upcoming = nonExpired
@@ -199,11 +233,163 @@ function selectActiveTrip(rawPlans, options = {}) {
       trip: upcoming[0],
       mode: 'nearest_upcoming',
       non_expired_plans: nonExpired,
-      expired_count: plans.length - nonExpired.length,
+      expired_count: expiredCount,
+      archived_count: archivedCount,
     };
   }
 
-  return { trip: null, mode: 'none', non_expired_plans: nonExpired, expired_count: plans.length - nonExpired.length };
+  return {
+    trip: null,
+    mode: 'none',
+    non_expired_plans: nonExpired,
+    expired_count: expiredCount,
+    archived_count: archivedCount,
+  };
+}
+
+function computeTravelPlanStatus(plan, options = {}) {
+  if (!isPlainObject(plan)) return 'upcoming';
+  if (coerceBoolean(plan.is_archived, false)) return 'archived';
+  const nowMs = safeInt(options.nowMs, Date.now());
+  const nowDate = normalizeDateToken(options.nowDate) || toIsoDateUtc(new Date(nowMs));
+  const startDate = normalizeDateToken(plan.start_date);
+  const endDate = normalizeDateToken(plan.end_date);
+  if (startDate && endDate) {
+    if (nowDate < startDate) return 'upcoming';
+    if (nowDate > endDate) return 'completed';
+    return 'in_trip';
+  }
+  return 'upcoming';
+}
+
+function buildPrepChecklist(plan, options = {}) {
+  const lang = String(options.lang || 'EN').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const status = computeTravelPlanStatus(plan, options);
+  const ratio = clampRatio(plan && plan.indoor_outdoor_ratio);
+  const itinerary = normalizeText(plan && plan.itinerary, 1200);
+  const itineraryLower = itinerary.toLowerCase();
+  const hasFlightCue = /(flight|air|red eye|red-eye|plane|机场|航班|飞行)/i.test(itinerary);
+  const highOutdoor = ratio != null && ratio >= 0.6;
+  const startDate = normalizeDateToken(plan && plan.start_date);
+  const endDate = normalizeDateToken(plan && plan.end_date);
+  const spanDaysRaw =
+    startDate && endDate && Number.isFinite(parseDateStartMs(startDate)) && Number.isFinite(parseDateStartMs(endDate))
+      ? Math.max(1, Math.round((parseDateStartMs(endDate) - parseDateStartMs(startDate)) / DAY_MS) + 1)
+      : 0;
+  const longTrip = spanDaysRaw >= 7;
+  const destination = normalizeDestinationText(plan && plan.destination, 100);
+  const homeRegion = normalizeText(options.homeRegion, 120);
+  const crossRegion = Boolean(destination && homeRegion && destination.toLowerCase() !== homeRegion.toLowerCase());
+
+  const out = [];
+  const add = (cn, en) => out.push(lang === 'CN' ? cn : en);
+
+  if (status === 'upcoming') {
+    add('出发前 48 小时避免新上高刺激活性（强酸/高浓维A）。', 'Avoid introducing strong actives 48h before departure.');
+    add('准备基础三件套：温和洁面、保湿修护、防晒。', 'Pack the core trio: gentle cleanser, moisturizer, and sunscreen.');
+    add('先做局部试用，确认新产品不过敏。', 'Patch-test any new products before travel.');
+  } else if (status === 'in_trip') {
+    add('白天严格防晒并按需补涂。', 'Prioritize daytime UV protection and reapply sunscreen.');
+    add('夜间以修护保湿为主，避免过度去角质。', 'Keep PM routine barrier-focused and avoid over-exfoliation.');
+    add('若出现刺痛/泛红，立即切换到简化护理。', 'If irritation appears, switch to a simplified routine immediately.');
+  } else if (status === 'completed') {
+    add('返程后 2-3 天先做修护，减少高刺激活性。', 'For 2-3 days after the trip, focus on recovery and reduce strong actives.');
+    add('观察皮肤状态再逐步恢复常规节奏。', 'Resume your usual routine gradually based on skin tolerance.');
+  }
+
+  if (highOutdoor) {
+    add('户外比例高：准备防晒补涂工具（帽子/太阳镜/便携防晒）。', 'High outdoor exposure: prepare sun-protection extras (hat/sunglasses/portable SPF).');
+  }
+  if (hasFlightCue) {
+    add('飞行日增加保湿与饮水，避免机舱环境导致屏障受损。', 'On flight days, increase hydration and keep barrier care simple.');
+  }
+  if (longTrip) {
+    add('行程较长：准备旅行装与补给清单，避免中途断货。', 'Long trip: pack travel-size backups to avoid running out mid-trip.');
+  }
+  if (crossRegion) {
+    add('跨地区气候变化明显：前 2-3 天优先低风险稳态方案。', 'For climate transitions, use a conservative routine for the first 2-3 days.');
+  }
+  if (/ski|snow|high uv|beach|沙滩|滑雪|暴晒|强紫外/.test(itineraryLower)) {
+    add('高紫外场景：提高防晒等级并增加晒后舒缓。', 'High-UV scenario: strengthen UV defense and add post-sun soothing.');
+  }
+
+  const dedup = [];
+  const seen = new Set();
+  for (const item of out) {
+    const key = String(item).trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    dedup.push(key);
+    if (dedup.length >= 8) break;
+  }
+  return dedup;
+}
+
+function compareTravelPlansForDisplay(a, b) {
+  const rank = (status) => {
+    if (status === 'in_trip') return 0;
+    if (status === 'upcoming') return 1;
+    if (status === 'completed') return 2;
+    if (status === 'archived') return 3;
+    return 4;
+  };
+  const statusA = computeTravelPlanStatus(a);
+  const statusB = computeTravelPlanStatus(b);
+  const byRank = rank(statusA) - rank(statusB);
+  if (byRank !== 0) return byRank;
+
+  if (statusA === 'upcoming') {
+    const byStart = String(a.start_date || '').localeCompare(String(b.start_date || ''));
+    if (byStart !== 0) return byStart;
+  } else if (statusA === 'completed') {
+    const byEndDesc = String(b.end_date || '').localeCompare(String(a.end_date || ''));
+    if (byEndDesc !== 0) return byEndDesc;
+  } else if (statusA === 'archived') {
+    const byArchivedDesc = Number(b.archived_at_ms || 0) - Number(a.archived_at_ms || 0);
+    if (byArchivedDesc !== 0) return byArchivedDesc;
+  } else if (statusA === 'in_trip') {
+    const byEnd = String(a.end_date || '').localeCompare(String(b.end_date || ''));
+    if (byEnd !== 0) return byEnd;
+  }
+
+  return Number(b.updated_at_ms || 0) - Number(a.updated_at_ms || 0);
+}
+
+function listTravelPlansForView(profile, options = {}) {
+  const nowMs = safeInt(options.nowMs, Date.now());
+  const nowDate = normalizeDateToken(options.nowDate) || toIsoDateUtc(new Date(nowMs));
+  const includeArchived = coerceBoolean(options.includeArchived, false);
+  const lang = String(options.lang || 'EN').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const state = resolveTravelPlansState(profile, { nowMs, maxItems: options.maxItems });
+
+  const enriched = state.travel_plans.map((plan) => {
+    const status = computeTravelPlanStatus(plan, { nowMs, nowDate });
+    return {
+      ...plan,
+      status,
+      days_to_start: diffDays(plan.start_date, nowDate),
+      days_to_end: diffDays(plan.end_date, nowDate),
+      prep_checklist: buildPrepChecklist(plan, { nowMs, nowDate, lang, homeRegion: state.home_region }),
+    };
+  });
+
+  const visiblePlans = enriched
+    .filter((plan) => (includeArchived ? true : !plan.is_archived))
+    .sort(compareTravelPlansForDisplay);
+
+  const counts = { in_trip: 0, upcoming: 0, completed: 0, archived: 0 };
+  for (const plan of enriched) {
+    const key = plan.status;
+    if (Object.prototype.hasOwnProperty.call(counts, key)) counts[key] += 1;
+  }
+
+  return {
+    plans: visiblePlans,
+    summary: {
+      active_trip_id: state.active_trip ? state.active_trip.trip_id : null,
+      counts,
+    },
+  };
 }
 
 function toLegacyTravelPlan(trip) {
@@ -295,6 +481,7 @@ function resolveTravelPlansState(profile, options = {}) {
     active_mode: selected.mode,
     legacy_travel_plan: legacySnapshot || null,
     expired_count: selected.expired_count,
+    archived_count: selected.archived_count,
   };
 }
 
@@ -383,6 +570,9 @@ module.exports = {
   normalizeTravelProfilePatch,
   resolveTravelPlansState,
   selectActiveTrip,
+  computeTravelPlanStatus,
+  buildPrepChecklist,
+  listTravelPlansForView,
   toLegacyTravelPlan,
   applyTravelExtractionToProfile,
   __internal: {
@@ -392,5 +582,8 @@ module.exports = {
     mergeLegacyTravelPlanIntoTravelPlans,
     normalizeDateToken,
     parseDateStartMs,
+    diffDays,
+    coerceBoolean,
+    compareTravelPlansForDisplay,
   },
 };
