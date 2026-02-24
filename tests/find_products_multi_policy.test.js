@@ -78,6 +78,31 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
   });
 
+  test('single category answer (香水) returns products instead of re-clarify', () => {
+    const intent = extractIntentRuleBased('香水', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'f1',
+            title: 'Floral Perfume',
+            description: 'fragrance perfume for date night',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '香水' } },
+      metadata: { ambiguity_score_pre: 0.42 },
+      rawUserQuery: '香水',
+    });
+
+    expect(resp.metadata?.search_decision?.query_class).toBe('category');
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+  });
+
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {
     withPolicyEnv(
       {

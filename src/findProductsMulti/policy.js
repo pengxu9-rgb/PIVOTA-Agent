@@ -853,18 +853,26 @@ function normalizeQueryClass(value, options = {}) {
   return 'exploratory';
 }
 
+function hasDirectCategorySignal(query) {
+  const q = String(query || '').toLowerCase();
+  if (!q) return false;
+  return /香水|香氛|个护|个人护理|彩妆|化妆|护肤|服饰|穿搭|宠物用品|香氛喷雾|fragrance|perfume|cologne|body mist|personal care|makeup|skincare|apparel|fashion|pet supplies/.test(
+    q,
+  );
+}
+
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   const explicit = normalizeQueryClass(intent?.query_class, { defaultValue: null });
-  if (explicit) return explicit;
+  const query = String(rawQuery || '').toLowerCase();
+  const hasPriceConstraint =
+    intent?.hard_constraints?.price &&
+    (intent.hard_constraints.price.min != null || intent.hard_constraints.price.max != null);
+  if (explicit && explicit !== 'exploratory') return explicit;
 
   const scenarioName = String(intent?.scenario?.name || '').toLowerCase();
   const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
   const targetType = String(intent?.target_object?.type || '').toLowerCase();
   const categoryRequired = Array.isArray(intent?.category?.required) ? intent.category.required : [];
-  const query = String(rawQuery || '').toLowerCase();
-  const hasPriceConstraint =
-    intent?.hard_constraints?.price &&
-    (intent.hard_constraints.price.min != null || intent.hard_constraints.price.max != null);
 
   if (
     /how to|tutorial|guide|return policy|refund policy|after sales|怎么用|教程|退货|售后/.test(query)
@@ -890,12 +898,14 @@ function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   ) {
     return 'lookup';
   }
-  if (scenarioName === 'discovery' || scenarioName === 'browse') return 'exploratory';
   if (hasPriceConstraint || /预算|預算|以内|以内|以上|不超过|under|above|at least|waterproof|windproof|fragrance/.test(query)) {
     return 'attribute';
   }
+  if (hasDirectCategorySignal(query)) return 'category';
   if (categoryRequired.length > 0) return 'category';
+  if (scenarioName === 'discovery' || scenarioName === 'browse') return 'exploratory';
   if (scenarioName && scenarioName !== 'general') return 'scenario';
+  if (explicit) return explicit;
   if ((primaryDomain === 'other' && targetType === 'unknown') || !rawQuery) return 'exploratory';
   return 'category';
 }

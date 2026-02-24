@@ -156,4 +156,60 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
       }),
     );
   });
+
+  test('category answer after clarify returns products without second clarify', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 1 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'perfume_1',
+                  product_id: 'perfume_1',
+                  merchant_id: 'merch_1',
+                  title: 'Floral Perfume',
+                  description: 'fragrance perfume for date night',
+                  status: 'published',
+                  inventory_quantity: 6,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '香水',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.clarification).toBeUndefined();
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.metadata?.search_trace?.final_decision).toBe('products_returned');
+    expect(resp.body.metadata?.search_trace?.query_class).toBe('category');
+  });
 });
