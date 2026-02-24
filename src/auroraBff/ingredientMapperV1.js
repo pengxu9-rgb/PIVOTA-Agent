@@ -1,5 +1,64 @@
+const fs = require('node:fs');
+const path = require('node:path');
+
 const LOW_CONFIDENCE_THRESHOLD = 0.55;
 const MEDIUM_CONFIDENCE_THRESHOLD = 0.75;
+const DEFAULT_PRODUCT_CATALOG_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  'data',
+  'external',
+  'products',
+  'product_catalog_seed.json',
+);
+
+const INGREDIENT_ALIAS_TO_CANONICAL = Object.freeze({
+  ceramide: 'ceramide_np',
+  ceramides: 'ceramide_np',
+  ceramide_np: 'ceramide_np',
+  vitamin_b5: 'panthenol',
+  b5: 'panthenol',
+  panthenol: 'panthenol',
+  nicotinamide: 'niacinamide',
+  niacinamide: 'niacinamide',
+  zinc: 'zinc_pca',
+  zinc_pca: 'zinc_pca',
+  salicylic: 'salicylic_acid',
+  salicylic_acid: 'salicylic_acid',
+  bha: 'salicylic_acid',
+  azelaic: 'azelaic_acid',
+  azelaic_acid: 'azelaic_acid',
+  vitamin_c: 'ascorbic_acid',
+  ascorbic_acid: 'ascorbic_acid',
+  retinol: 'retinol',
+  benzoyl_peroxide: 'benzoyl_peroxide',
+  bp: 'benzoyl_peroxide',
+  sunscreen_filters: 'sunscreen_filters',
+  glycerin: 'glycerin',
+  hyaluronic_acid: 'hyaluronic_acid',
+});
+
+const INGREDIENT_NAME_MAP = Object.freeze({
+  ceramide_np: 'Ceramide NP',
+  panthenol: 'Panthenol (B5)',
+  niacinamide: 'Niacinamide',
+  zinc_pca: 'Zinc PCA',
+  salicylic_acid: 'Salicylic acid (BHA)',
+  azelaic_acid: 'Azelaic acid',
+  ascorbic_acid: 'Vitamin C (Ascorbic acid)',
+  retinol: 'Retinol',
+  benzoyl_peroxide: 'Benzoyl peroxide',
+  sunscreen_filters: 'UV filters',
+  glycerin: 'Glycerin',
+  hyaluronic_acid: 'Hyaluronic acid',
+});
+
+const INGREDIENT_PRIORITY_LEVELS = Object.freeze({
+  HIGH: 'high',
+  MEDIUM: 'medium',
+  LOW: 'low',
+});
 
 const ACTIVE_INGREDIENTS = new Set([
   'retinol',
@@ -368,6 +427,112 @@ function normalizeToken(value) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+const productCatalogCache = {
+  path: '',
+  mtimeMs: -1,
+  items: [],
+};
+
+function normalizeObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function normalizePriceTier(value) {
+  const token = normalizeToken(value);
+  if (!token) return null;
+  if (token === 'low' || token === 'budget' || token === 'entry') return 'low';
+  if (token === 'high' || token === 'premium' || token === 'lux' || token === 'luxury') return 'high';
+  if (token === 'mid' || token === 'middle' || token === 'medium') return 'mid';
+  return null;
+}
+
+function parseNumericPrice(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function resolveCanonicalIngredientId(value) {
+  const token = normalizeToken(value);
+  if (!token) return null;
+  return INGREDIENT_ALIAS_TO_CANONICAL[token] || token;
+}
+
+function resolveIngredientName(ingredientId) {
+  const canonical = resolveCanonicalIngredientId(ingredientId);
+  if (!canonical) return 'Ingredient';
+  return INGREDIENT_NAME_MAP[canonical] || canonical.replace(/_/g, ' ');
+}
+
+function parseCatalogProduct(raw) {
+  const obj = normalizeObject(raw);
+  if (!obj) return null;
+  const productId = String(obj.product_id || obj.productId || '').trim();
+  const name = String(obj.name || obj.title || '').trim();
+  if (!productId || !name) return null;
+  const ingredientIds = asArray(obj.ingredient_ids || obj.ingredients || obj.ingredientIds)
+    .map((value) => resolveCanonicalIngredientId(value))
+    .filter(Boolean);
+  const explicitTier = normalizePriceTier(
+    obj.price_tier || obj.priceTier || obj.price_band || obj.priceBand || obj.budget_tier || obj.budgetTier,
+  );
+  const price = parseNumericPrice(obj.price || obj.price_usd || obj.priceUsd || obj.amount);
+  const currency = String(obj.currency || (obj.price_cny ? 'CNY' : 'USD') || '').trim() || null;
+  let priceTier = explicitTier;
+  if (!priceTier && price != null) {
+    // Fallback bucketing by rough USD-like thresholds.
+    if (price < 20) priceTier = 'low';
+    else if (price > 60) priceTier = 'high';
+    else priceTier = 'mid';
+  }
+  if (!priceTier) priceTier = 'mid';
+
+  return {
+    product_id: productId,
+    name,
+    brand: String(obj.brand || '').trim() || null,
+    ingredient_ids: ingredientIds,
+    price,
+    currency,
+    price_tier: priceTier,
+  };
+}
+
+function loadProductCatalog(catalogPath) {
+  const resolved = path.resolve(catalogPath || process.env.AURORA_PRODUCT_REC_CATALOG_PATH || DEFAULT_PRODUCT_CATALOG_PATH);
+  if (!fs.existsSync(resolved)) return [];
+  const stat = fs.statSync(resolved);
+  if (
+    productCatalogCache.path === resolved &&
+    Number(productCatalogCache.mtimeMs) === Number(stat.mtimeMs) &&
+    Array.isArray(productCatalogCache.items)
+  ) {
+    return productCatalogCache.items;
+  }
+  let parsed = null;
+  try {
+    parsed = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  } catch {
+    parsed = null;
+  }
+  const rows = asArray(parsed).map(parseCatalogProduct).filter(Boolean);
+  productCatalogCache.path = resolved;
+  productCatalogCache.mtimeMs = Number(stat.mtimeMs);
+  productCatalogCache.items = rows;
+  return rows;
+}
+
+function priorityLevelFromScore(score) {
+  const s = Math.max(0, Math.min(100, Math.round(Number(score) || 0)));
+  if (s >= 75) return INGREDIENT_PRIORITY_LEVELS.HIGH;
+  if (s >= 45) return INGREDIENT_PRIORITY_LEVELS.MEDIUM;
+  return INGREDIENT_PRIORITY_LEVELS.LOW;
+}
+
+function normalizeBudgetTier(value) {
+  const token = normalizePriceTier(value);
+  return token || 'unknown';
 }
 
 function confidenceLevelFromScore(score) {
@@ -749,10 +914,276 @@ function buildIngredientPlan({ artifact, profile } = {}) {
   };
 }
 
+function mapIntensityV2(intensityToken) {
+  const level = (() => {
+    const token = normalizeToken(intensityToken);
+    if (token === 'gentle' || token === 'balanced' || token === 'active') return token;
+    return 'balanced';
+  })();
+  if (level === 'gentle') {
+    return {
+      level,
+      label: 'Gentle',
+      explanation: 'Barrier-first, lower-irritation progression.',
+    };
+  }
+  if (level === 'active') {
+    return {
+      level,
+      label: 'Active',
+      explanation: 'Targeted actives with tighter tolerance monitoring.',
+    };
+  }
+  return {
+    level: 'balanced',
+    label: 'Balanced',
+    explanation: 'Moderate treatment intensity with repair support.',
+  };
+}
+
+function dedupeTargetsByCanonicalId(targets) {
+  const map = new Map();
+  for (const raw of asArray(targets)) {
+    const obj = normalizeObject(raw);
+    if (!obj) continue;
+    const canonicalId = resolveCanonicalIngredientId(obj.ingredient_id || obj.ingredientId);
+    if (!canonicalId) continue;
+    const current = map.get(canonicalId);
+    const score = Math.max(0, Math.min(100, Math.round(Number(obj.priority || obj.priority_score_0_100 || 0))));
+    const next = {
+      ingredient_id: canonicalId,
+      priority_score_0_100: score,
+      role: String(obj.role || '').toLowerCase() === 'hero' ? 'hero' : 'support',
+      usage_guidance: asArray(obj.usage_guidance).map((entry) => String(entry || '').trim()).filter(Boolean),
+      rationale: asArray(obj?.confidence?.rationale).map((entry) => String(entry || '').trim()).filter(Boolean),
+      confidence_score: Number(obj?.confidence?.score),
+    };
+    if (!current || next.priority_score_0_100 > current.priority_score_0_100) {
+      map.set(canonicalId, next);
+    } else if (current && next.usage_guidance.length) {
+      const merged = Array.from(new Set([...current.usage_guidance, ...next.usage_guidance])).slice(0, 6);
+      current.usage_guidance = merged;
+      current.rationale = Array.from(new Set([...current.rationale, ...next.rationale])).slice(0, 6);
+      map.set(canonicalId, current);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.priority_score_0_100 - a.priority_score_0_100);
+}
+
+function normalizeAvoidByCanonicalId(avoidItems) {
+  const map = new Map();
+  for (const raw of asArray(avoidItems)) {
+    const obj = normalizeObject(raw);
+    if (!obj) continue;
+    const canonicalId = resolveCanonicalIngredientId(obj.ingredient_id || obj.ingredientId);
+    if (!canonicalId) continue;
+    const severity = String(obj.severity || 'caution').trim().toLowerCase() === 'avoid' ? 'avoid' : 'caution';
+    const existing = map.get(canonicalId);
+    const reasons = asArray(obj.reason).map((entry) => String(entry || '').trim()).filter(Boolean);
+    if (!existing) {
+      map.set(canonicalId, {
+        ingredient_id: canonicalId,
+        severity,
+        reason: reasons,
+      });
+      continue;
+    }
+    existing.severity = existing.severity === 'avoid' || severity === 'avoid' ? 'avoid' : 'caution';
+    existing.reason = Array.from(new Set([...existing.reason, ...reasons])).slice(0, 6);
+    map.set(canonicalId, existing);
+  }
+  return map;
+}
+
+function scoreCatalogCandidateForIngredient(candidate, ingredientId, budgetTier) {
+  const containsIngredient = new Set(asArray(candidate.ingredient_ids)).has(ingredientId);
+  if (!containsIngredient) return -1;
+  let score = 1;
+  if (budgetTier !== 'unknown') {
+    if (candidate.price_tier === budgetTier) score += 0.25;
+    else score -= 0.05;
+  }
+  if (candidate.brand) score += 0.05;
+  if (candidate.price != null) score += 0.03;
+  return score;
+}
+
+function selectIngredientProducts({ ingredientId, budgetTier, catalogRows, maxCompetitors = 2, maxDupes = 1 }) {
+  const candidates = asArray(catalogRows)
+    .map((row) => normalizeObject(row))
+    .filter(Boolean)
+    .map((row) => ({
+      product: row,
+      score: scoreCatalogCandidateForIngredient(row, ingredientId, budgetTier),
+    }))
+    .filter((entry) => entry.score >= 0)
+    .sort((a, b) => b.score - a.score);
+
+  const unique = [];
+  const seen = new Set();
+  for (const entry of candidates) {
+    const productId = String(entry.product.product_id || '').trim();
+    if (!productId || seen.has(productId)) continue;
+    seen.add(productId);
+    unique.push(entry.product);
+  }
+
+  const toProductView = (product, sourceBlock, reasonText) => ({
+    product_id: String(product.product_id || ''),
+    name: String(product.name || ''),
+    brand: String(product.brand || ''),
+    ...(product.price != null ? { price: Number(product.price) } : {}),
+    ...(product.currency ? { currency: String(product.currency) } : {}),
+    price_tier: normalizeBudgetTier(product.price_tier),
+    why_match: reasonText,
+    source_block: sourceBlock,
+  });
+
+  if (!unique.length) {
+    return { competitors: [], dupes: [] };
+  }
+
+  const remaining = unique.slice();
+  const takeByTier = (tier) => {
+    const idx = remaining.findIndex((row) => normalizeBudgetTier(row.price_tier) === tier);
+    if (idx < 0) return null;
+    return remaining.splice(idx, 1)[0];
+  };
+
+  let dupe = null;
+  if (budgetTier === 'unknown') {
+    dupe = takeByTier('low') || remaining.shift() || null;
+  } else {
+    dupe = takeByTier('low') || takeByTier(budgetTier) || remaining.shift() || null;
+  }
+
+  const competitors = [];
+  if (budgetTier === 'unknown') {
+    const tierOrder = ['mid', 'high', 'low'];
+    for (const tier of tierOrder) {
+      if (competitors.length >= maxCompetitors) break;
+      const picked = takeByTier(tier);
+      if (picked) competitors.push(picked);
+    }
+  } else {
+    const tierOrder = [budgetTier, 'mid', 'high', 'low'];
+    for (const tier of tierOrder) {
+      if (competitors.length >= maxCompetitors) break;
+      const picked = takeByTier(tier);
+      if (picked) competitors.push(picked);
+    }
+  }
+  while (competitors.length < maxCompetitors && remaining.length) {
+    competitors.push(remaining.shift());
+  }
+
+  const ingredientLabel = resolveIngredientName(ingredientId);
+  return {
+    competitors: competitors
+      .slice(0, maxCompetitors)
+      .map((product) =>
+        toProductView(
+          product,
+          'competitor',
+          `Contains ${ingredientLabel} and fits the current tolerance strategy.`,
+        ),
+      ),
+    dupes: dupe
+      ? [
+          toProductView(
+            dupe,
+            'dupe',
+            `Budget-friendly alternative featuring ${ingredientLabel}.`,
+          ),
+        ].slice(0, maxDupes)
+      : [],
+  };
+}
+
+function buildIngredientPlanV2({ plan, profile, catalogPath } = {}) {
+  const base = normalizeObject(plan);
+  if (!base) return null;
+  const profileObj = normalizeObject(profile) || {};
+  const budgetTier = normalizeBudgetTier(profileObj.budgetTier);
+  const catalog = loadProductCatalog(catalogPath);
+
+  const avoidMap = normalizeAvoidByCanonicalId(base.avoid);
+  const conflictRows = asArray(base.conflicts).map((item) => normalizeObject(item)).filter(Boolean);
+
+  const targetsDeduped = dedupeTargetsByCanonicalId(base.targets);
+  const filteredTargets = [];
+  for (const target of targetsDeduped) {
+    const avoid = avoidMap.get(target.ingredient_id);
+    if (avoid) {
+      conflictRows.push({
+        id: `target_avoid_${target.ingredient_id}`,
+        description: `${resolveIngredientName(target.ingredient_id)} is deprioritized because it is listed in avoid/caution.`,
+      });
+      continue;
+    }
+    filteredTargets.push(target);
+  }
+
+  const targets = filteredTargets.slice(0, 10).map((target) => {
+    const products = selectIngredientProducts({
+      ingredientId: target.ingredient_id,
+      budgetTier,
+      catalogRows: catalog,
+      maxCompetitors: 2,
+      maxDupes: 1,
+    });
+    const why = target.rationale.length
+      ? target.rationale.map((entry) => `Rule signal: ${entry}`).slice(0, 4)
+      : ['Matched by profile + concern signals.'];
+    const usageGuidance = target.usage_guidance.length
+      ? target.usage_guidance.slice(0, 4)
+      : normalizeIngredientGuidance(target.ingredient_id).slice(0, 4);
+
+    return {
+      ingredient_id: target.ingredient_id,
+      ingredient_name: resolveIngredientName(target.ingredient_id),
+      priority_score_0_100: target.priority_score_0_100,
+      priority_level: priorityLevelFromScore(target.priority_score_0_100),
+      why,
+      usage_guidance: usageGuidance,
+      products,
+    };
+  });
+
+  const avoid = Array.from(avoidMap.values())
+    .slice(0, 10)
+    .map((item) => ({
+      ingredient_id: item.ingredient_id,
+      ingredient_name: resolveIngredientName(item.ingredient_id),
+      severity: item.severity,
+      reason: item.reason.length ? item.reason.slice(0, 4) : ['Potential irritation or conflict with current plan.'],
+    }));
+
+  const conflicts = conflictRows.slice(0, 8).map((row, idx) => ({
+    id: String(row.id || `conflict_${idx + 1}`),
+    description: String(row.description || row.message || '').trim() || 'Potential routine conflict detected.',
+  }));
+
+  return {
+    schema_version: 'aurora.ingredient_plan.v2',
+    created_at: new Date().toISOString(),
+    intensity: mapIntensityV2(base.intensity),
+    targets,
+    avoid,
+    conflicts,
+    budget_context: {
+      effective_tier: budgetTier,
+      source: budgetTier === 'unknown' ? 'unknown' : 'profile',
+      diversified_when_unknown: budgetTier === 'unknown',
+    },
+  };
+}
+
 module.exports = {
   LOW_CONFIDENCE_THRESHOLD,
   MEDIUM_CONFIDENCE_THRESHOLD,
   INGREDIENT_RULES,
   computeArtifactOverallConfidence,
   buildIngredientPlan,
+  buildIngredientPlanV2,
 };

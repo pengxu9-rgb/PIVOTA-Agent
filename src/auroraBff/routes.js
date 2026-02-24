@@ -262,6 +262,7 @@ const {
 const {
   LOW_CONFIDENCE_THRESHOLD,
   buildIngredientPlan,
+  buildIngredientPlanV2,
 } = require('./ingredientMapperV1');
 const {
   buildProductRecommendationsBundle,
@@ -10896,6 +10897,77 @@ function sanitizeBBoxNorm(rawBBox) {
   return { ok: true, clipped, bbox: ordered };
 }
 
+function isNormPointNearlyEqual(a, b, eps = 1e-6) {
+  if (!a || !b) return false;
+  return Math.abs(Number(a.x) - Number(b.x)) <= eps && Math.abs(Number(a.y) - Number(b.y)) <= eps;
+}
+
+function sanitizePolygonNorm(rawPolygon) {
+  if (!rawPolygon || typeof rawPolygon !== 'object' || !Array.isArray(rawPolygon.points)) {
+    return { ok: false, clipped: false, polygon: null, bbox_norm: null };
+  }
+
+  let clipped = false;
+  const points = [];
+  for (const point of rawPolygon.points) {
+    if (!point || typeof point !== 'object') continue;
+    const rawX = Number(point.x);
+    const rawY = Number(point.y);
+    if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) {
+      clipped = true;
+      continue;
+    }
+    const x = clampGeometry01(rawX);
+    const y = clampGeometry01(rawY);
+    if (x !== rawX || y !== rawY) clipped = true;
+    const normalized = { x, y };
+    const prev = points[points.length - 1];
+    if (prev && isNormPointNearlyEqual(prev, normalized)) {
+      clipped = true;
+      continue;
+    }
+    points.push(normalized);
+  }
+
+  if (points.length >= 2 && isNormPointNearlyEqual(points[0], points[points.length - 1])) {
+    points.pop();
+    clipped = true;
+  }
+
+  if (points.length < 3) return { ok: false, clipped: true, polygon: null, bbox_norm: null };
+
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const point of points) {
+    if (point.x < minX) minX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y > maxY) maxY = point.y;
+  }
+
+  const bboxNorm = {
+    x0: minX,
+    y0: minY,
+    x1: maxX,
+    y1: maxY,
+  };
+  if (bboxNorm.x1 - bboxNorm.x0 <= 0.001 || bboxNorm.y1 - bboxNorm.y0 <= 0.001) {
+    return { ok: false, clipped: true, polygon: null, bbox_norm: null };
+  }
+
+  return {
+    ok: true,
+    clipped,
+    polygon: {
+      points,
+      closed: true,
+    },
+    bbox_norm: bboxNorm,
+  };
+}
+
 function sanitizeGridGeometry(rawGeometry) {
   if (!rawGeometry || typeof rawGeometry !== 'object') return { ok: false, clipped: false, grid: null };
   const rawRows = Number(rawGeometry.rows);
@@ -10956,6 +11028,21 @@ function sanitizeFindingGeometry(rawGeometry) {
       dropped += 1;
     }
     if (bbox.clipped) clipped += 1;
+  }
+
+  if (rawGeometry.polygon && typeof rawGeometry.polygon === 'object') {
+    checked += 1;
+    const polygon = sanitizePolygonNorm(rawGeometry.polygon);
+    if (polygon.ok && polygon.polygon) {
+      geometry.polygon = polygon.polygon;
+      if (polygon.bbox_norm) {
+        geometry.bbox_norm = polygon.bbox_norm;
+      }
+      hasGeometry = true;
+    } else {
+      dropped += 1;
+    }
+    if (polygon.clipped) clipped += 1;
   }
 
   if (
@@ -11098,7 +11185,16 @@ function buildExecutablePlanForAnalysis({
     for (const finding of photoFindings) {
       const geometry = finding && finding.geometry && typeof finding.geometry === 'object' ? finding.geometry : null;
       if (!geometry) continue;
-      if (geometry.bbox_norm && typeof geometry.bbox_norm === 'object') {
+      const hasPolygon = geometry.polygon && typeof geometry.polygon === 'object' && Array.isArray(geometry.polygon.points);
+      if (hasPolygon) {
+        evidenceRegions.push({
+          concern_type: finding.issue_type,
+          severity: finding.severity,
+          confidence: finding.confidence,
+          region: { kind: 'polygon', polygon: geometry.polygon },
+          evidence_text: finding.evidence || '',
+        });
+      } else if (geometry.bbox_norm && typeof geometry.bbox_norm === 'object') {
         evidenceRegions.push({
           concern_type: finding.issue_type,
           severity: finding.severity,
@@ -12330,7 +12426,7 @@ function shouldApplyRecoOutputGuard({ envelope, ctx } = {}) {
   if (events.some((evt) => evt && evt.event_name === 'recos_requested')) return true;
 
   const cards = Array.isArray(rows.cards) ? rows.cards : [];
-  const recoCardTypes = new Set(['recommendations', 'confidence_notice', 'ingredient_plan']);
+  const recoCardTypes = new Set(['recommendations', 'confidence_notice', 'ingredient_plan', 'ingredient_plan_v2']);
   if (
     cards.some((card) => {
       if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
@@ -12387,6 +12483,14 @@ function buildIngredientPlanCard(plan, requestId) {
       conflicts: Array.isArray(plan && plan.conflicts) ? plan.conflicts : [],
       confidence: plan && plan.confidence && typeof plan.confidence === 'object' ? plan.confidence : null,
     },
+  };
+}
+
+function buildIngredientPlanV2Card(planV2, requestId) {
+  return {
+    card_id: `ing_plan_v2_${requestId}`,
+    type: 'ingredient_plan_v2',
+    payload: planV2 && typeof planV2 === 'object' ? planV2 : {},
   };
 }
 
@@ -24347,6 +24451,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let diagnosisArtifact = null;
         let ingredientPlan = null;
+        let ingredientPlanV2 = null;
         let recommendationReady = false;
         let latestArtifactId = null;
         let artifactGate = null;
@@ -24404,6 +24509,14 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : planBuilt;
               logger?.info({ kind: 'metric', name: 'aurora.skin.ingredient_plan_rate', value: ingredientPlan ? 1 : 0 }, 'metric');
               recordAuroraSkinFlowMetric({ stage: 'ingredient_plan', hit: Boolean(ingredientPlan) });
+            }
+
+            if (ingredientPlan) {
+              ingredientPlanV2 = buildIngredientPlanV2({
+                plan: ingredientPlan,
+                profile: profileSummary || profile || {},
+                catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+              });
             }
 
             artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
@@ -24474,6 +24587,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
           ...(diagnosisArtifact ? { diagnosis_artifact: diagnosisArtifact } : {}),
           ...(ingredientPlan ? { ingredient_plan: ingredientPlan } : {}),
+          ...(ingredientPlanV2 ? { ingredient_plan_v2: ingredientPlanV2 } : {}),
           recommendation_ready: Boolean(recommendationReady),
           photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
         };
@@ -24482,7 +24596,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifactId);
 
         const extraCards = [];
-        if (ingredientPlan) {
+        if (ingredientPlanV2) {
+          extraCards.push(buildIngredientPlanV2Card(ingredientPlanV2, ctx.request_id));
+        } else if (ingredientPlan) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
         }
         const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
@@ -27932,6 +28048,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         let mappedIngredientPlan = null;
+        let mappedIngredientPlanV2 = null;
         if (latestArtifact && AURORA_INGREDIENT_PLAN_ENABLED) {
           const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
           try {
@@ -27971,6 +28088,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
+        if (mappedIngredientPlan) {
+          mappedIngredientPlanV2 = buildIngredientPlanV2({
+            plan: mappedIngredientPlan,
+            profile: profile || {},
+            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+          });
+        }
 
         let matcherBundle = null;
         let matcherPayload = null;
@@ -27996,7 +28120,14 @@ function mountAuroraBffRoutes(app, { logger }) {
             const planForMatcher =
               mappedIngredientPlan ||
               buildIngredientPlan({ artifact: artifactPayload, profile: profile || {} });
-            if (!mappedIngredientPlan) mappedIngredientPlan = planForMatcher;
+            if (!mappedIngredientPlan) {
+              mappedIngredientPlan = planForMatcher;
+              mappedIngredientPlanV2 = buildIngredientPlanV2({
+                plan: mappedIngredientPlan,
+                profile: profile || {},
+                catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+              });
+            }
 
             matcherBundle = buildProductRecommendationsBundle({
               ingredientPlan: planForMatcher,
@@ -28113,7 +28244,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               }),
             },
           ];
-          if (mappedIngredientPlan) {
+          if (mappedIngredientPlanV2) {
+            cards.push(buildIngredientPlanV2Card(mappedIngredientPlanV2, ctx.request_id));
+          } else if (mappedIngredientPlan) {
             cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
           }
           const sessionPatch = {};
@@ -28194,7 +28327,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
           });
         }
-        if (mappedIngredientPlan) {
+        if (mappedIngredientPlanV2) {
+          cards.push(buildIngredientPlanV2Card(mappedIngredientPlanV2, ctx.request_id));
+        } else if (mappedIngredientPlan) {
           cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
         }
         if (latestArtifact && lowConfidenceArtifact) {

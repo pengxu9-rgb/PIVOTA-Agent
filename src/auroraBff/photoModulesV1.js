@@ -17,6 +17,11 @@ const {
 
 const FACE_COORD_SPACE = 'face_crop_norm_v1';
 const HEATMAP_GRID_DEFAULT = Object.freeze({ w: 64, h: 64 });
+const HEATMAP_CONTOUR_MIN_THRESHOLD = 0.28;
+const HEATMAP_CONTOUR_MAX_THRESHOLD = 0.65;
+const HEATMAP_CONTOUR_EPSILON = 0.006;
+const HEATMAP_CONTOUR_MIN_AREA = 0.005;
+const HEATMAP_CONTOUR_MIN_POINTS = 6;
 const MODULE_MASK_GRID_SIZE = 64;
 const MODULE_BOXES = Object.freeze({
   forehead: { x: 0.2, y: 0.03, w: 0.6, h: 0.22 },
@@ -519,6 +524,316 @@ function sanitizeHeatmap(rawHeatmap) {
   };
 }
 
+function polygonArea(points) {
+  const safe = Array.isArray(points) ? points : [];
+  if (safe.length < 3) return 0;
+  let acc = 0;
+  for (let i = 0; i < safe.length; i += 1) {
+    const a = safe[i];
+    const b = safe[(i + 1) % safe.length];
+    acc += (Number(a.x) * Number(b.y)) - (Number(b.x) * Number(a.y));
+  }
+  return Math.abs(acc) / 2;
+}
+
+function polygonPerimeter(points) {
+  const safe = Array.isArray(points) ? points : [];
+  if (safe.length < 2) return 0;
+  let p = 0;
+  for (let i = 0; i < safe.length; i += 1) {
+    const a = safe[i];
+    const b = safe[(i + 1) % safe.length];
+    const dx = Number(b.x) - Number(a.x);
+    const dy = Number(b.y) - Number(a.y);
+    p += Math.sqrt((dx * dx) + (dy * dy));
+  }
+  return p;
+}
+
+function perpendicularDistance(point, lineStart, lineEnd) {
+  const x = Number(point.x);
+  const y = Number(point.y);
+  const x1 = Number(lineStart.x);
+  const y1 = Number(lineStart.y);
+  const x2 = Number(lineEnd.x);
+  const y2 = Number(lineEnd.y);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const denom = Math.sqrt((dx * dx) + (dy * dy));
+  if (denom <= 1e-12) return Math.sqrt(((x - x1) * (x - x1)) + ((y - y1) * (y - y1)));
+  return Math.abs(((dy * x) - (dx * y) + (x2 * y1) - (y2 * x1)) / denom);
+}
+
+function simplifyPolylineDouglasPeucker(points, epsilon) {
+  const safe = Array.isArray(points) ? points : [];
+  if (safe.length <= 2) return safe.slice();
+  const eps = Math.max(1e-6, Number(epsilon) || 0.001);
+  let maxDist = -1;
+  let index = -1;
+  const start = safe[0];
+  const end = safe[safe.length - 1];
+  for (let i = 1; i < safe.length - 1; i += 1) {
+    const d = perpendicularDistance(safe[i], start, end);
+    if (d > maxDist) {
+      maxDist = d;
+      index = i;
+    }
+  }
+  if (maxDist > eps && index > 0) {
+    const left = simplifyPolylineDouglasPeucker(safe.slice(0, index + 1), eps);
+    const right = simplifyPolylineDouglasPeucker(safe.slice(index), eps);
+    return [...left.slice(0, -1), ...right];
+  }
+  return [start, end];
+}
+
+function simplifyClosedPolygon(points, epsilon = HEATMAP_CONTOUR_EPSILON) {
+  const safe = Array.isArray(points) ? points : [];
+  if (safe.length < 4) return safe.slice();
+  const open = safe.slice();
+  open.push(safe[0]);
+  const simplifiedOpen = simplifyPolylineDouglasPeucker(open, epsilon);
+  const simplified = [];
+  for (let i = 0; i < simplifiedOpen.length; i += 1) {
+    const current = simplifiedOpen[i];
+    if (!current) continue;
+    const prev = simplified[simplified.length - 1];
+    if (prev && isPointNearlyEqual(prev, current)) continue;
+    simplified.push(current);
+  }
+  if (simplified.length >= 2 && isPointNearlyEqual(simplified[0], simplified[simplified.length - 1])) {
+    simplified.pop();
+  }
+  return simplified;
+}
+
+function monotonicChainHull(points) {
+  const safe = Array.isArray(points) ? points : [];
+  if (safe.length <= 1) return safe.slice();
+  const sorted = safe
+    .map((point) => ({ x: Number(point.x), y: Number(point.y) }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+  if (sorted.length <= 1) return sorted;
+  const cross = (o, a, b) => ((a.x - o.x) * (b.y - o.y)) - ((a.y - o.y) * (b.x - o.x));
+  const lower = [];
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
+      lower.pop();
+    }
+    lower.push(point);
+  }
+  const upper = [];
+  for (let i = sorted.length - 1; i >= 0; i -= 1) {
+    const point = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
+      upper.pop();
+    }
+    upper.push(point);
+  }
+  lower.pop();
+  upper.pop();
+  return [...lower, ...upper];
+}
+
+function ensurePolygonMinPoints(points, minPoints = HEATMAP_CONTOUR_MIN_POINTS) {
+  const safe = Array.isArray(points) ? points.slice() : [];
+  const target = Math.max(3, Math.trunc(Number(minPoints) || 3));
+  if (safe.length >= target) return safe;
+  let out = safe.slice();
+  let guard = 0;
+  while (out.length < target && out.length >= 2 && guard < 64) {
+    const next = [];
+    for (let i = 0; i < out.length; i += 1) {
+      const a = out[i];
+      const b = out[(i + 1) % out.length];
+      next.push(a);
+      if (next.length < target) {
+        next.push({
+          x: round3(clamp01((Number(a.x) + Number(b.x)) / 2)),
+          y: round3(clamp01((Number(a.y) + Number(b.y)) / 2)),
+        });
+      }
+    }
+    out = next;
+    guard += 1;
+  }
+  return out;
+}
+
+function bboxFromPoints(points) {
+  const safe = Array.isArray(points) ? points : [];
+  if (!safe.length) return null;
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const point of safe) {
+    const x = clamp01(Number(point.x));
+    const y = clamp01(Number(point.y));
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  const bbox = {
+    x: round3(minX),
+    y: round3(minY),
+    w: round3(Math.max(0, maxX - minX)),
+    h: round3(Math.max(0, maxY - minY)),
+  };
+  if (bbox.w <= 0.001 || bbox.h <= 0.001) return null;
+  return bbox;
+}
+
+function collectLargestHeatmapComponent(values, width, height, threshold) {
+  const total = width * height;
+  const mask = new Uint8Array(total);
+  for (let i = 0; i < total; i += 1) {
+    mask[i] = Number(values[i] || 0) >= threshold ? 1 : 0;
+  }
+  const visited = new Uint8Array(total);
+  let best = [];
+  const offsets = [
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+  ];
+  for (let idx = 0; idx < total; idx += 1) {
+    if (mask[idx] !== 1 || visited[idx] === 1) continue;
+    const queue = [idx];
+    visited[idx] = 1;
+    const component = [];
+    while (queue.length) {
+      const current = queue.pop();
+      component.push(current);
+      const x = current % width;
+      const y = Math.floor(current / width);
+      for (const [dx, dy] of offsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const nIdx = (ny * width) + nx;
+        if (mask[nIdx] !== 1 || visited[nIdx] === 1) continue;
+        visited[nIdx] = 1;
+        queue.push(nIdx);
+      }
+    }
+    if (component.length > best.length) best = component;
+  }
+  return best;
+}
+
+function contourPolygonFromHeatmap({ heatmap, severity0to4, confidence0to1 } = {}) {
+  const safeHeatmap = heatmap && typeof heatmap === 'object' ? heatmap : null;
+  if (!safeHeatmap || !safeHeatmap.grid || !Array.isArray(safeHeatmap.values)) {
+    return { ok: false, reason: 'heatmap_missing', polygon: null, bbox: null };
+  }
+  const width = Math.max(1, Math.trunc(Number(safeHeatmap.grid.w || 0)));
+  const height = Math.max(1, Math.trunc(Number(safeHeatmap.grid.h || 0)));
+  if (safeHeatmap.values.length < width * height) {
+    return { ok: false, reason: 'heatmap_values_length_mismatch', polygon: null, bbox: null };
+  }
+
+  const thresholdRaw =
+    0.18 +
+    (0.10 * clamp01(normalizeSeverity0to4(severity0to4) / 4)) +
+    (0.15 * clamp01(Number(confidence0to1)));
+  const threshold = clamp01(
+    Math.max(HEATMAP_CONTOUR_MIN_THRESHOLD, Math.min(HEATMAP_CONTOUR_MAX_THRESHOLD, thresholdRaw)),
+  );
+
+  const component = collectLargestHeatmapComponent(safeHeatmap.values, width, height, threshold);
+  if (!component.length) {
+    return { ok: false, reason: 'heatmap_component_missing', polygon: null, bbox: null };
+  }
+
+  const componentSet = new Set(component);
+  const boundaryPoints = [];
+  const addPoint = (x, y) => {
+    boundaryPoints.push({ x: round3(clamp01(x)), y: round3(clamp01(y)) });
+  };
+
+  for (const idx of component) {
+    const x = idx % width;
+    const y = Math.floor(idx / width);
+    const x0 = x / width;
+    const x1 = (x + 1) / width;
+    const y0 = y / height;
+    const y1 = (y + 1) / height;
+
+    const top = y === 0 || !componentSet.has(((y - 1) * width) + x);
+    const bottom = y === height - 1 || !componentSet.has(((y + 1) * width) + x);
+    const left = x === 0 || !componentSet.has((y * width) + (x - 1));
+    const right = x === width - 1 || !componentSet.has((y * width) + (x + 1));
+
+    if (top) {
+      addPoint(x0, y0);
+      addPoint(x1, y0);
+    }
+    if (bottom) {
+      addPoint(x0, y1);
+      addPoint(x1, y1);
+    }
+    if (left) {
+      addPoint(x0, y0);
+      addPoint(x0, y1);
+    }
+    if (right) {
+      addPoint(x1, y0);
+      addPoint(x1, y1);
+    }
+  }
+
+  if (boundaryPoints.length < 3) {
+    return { ok: false, reason: 'heatmap_boundary_missing', polygon: null, bbox: null };
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const point of boundaryPoints) {
+    const key = `${point.x.toFixed(4)}:${point.y.toFixed(4)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(point);
+  }
+  if (unique.length < 3) {
+    return { ok: false, reason: 'heatmap_boundary_missing', polygon: null, bbox: null };
+  }
+
+  let hull = monotonicChainHull(unique);
+  if (hull.length < 3) {
+    return { ok: false, reason: 'heatmap_hull_invalid', polygon: null, bbox: null };
+  }
+  hull = simplifyClosedPolygon(hull, HEATMAP_CONTOUR_EPSILON);
+  hull = ensurePolygonMinPoints(hull, HEATMAP_CONTOUR_MIN_POINTS);
+
+  const bbox = bboxFromPoints(hull);
+  if (!bbox) return { ok: false, reason: 'heatmap_contour_bbox_invalid', polygon: null, bbox: null };
+
+  const area = polygonArea(hull);
+  if (area < HEATMAP_CONTOUR_MIN_AREA) {
+    return { ok: false, reason: 'heatmap_contour_too_small', polygon: null, bbox: null };
+  }
+
+  if (hull.length < HEATMAP_CONTOUR_MIN_POINTS || polygonPerimeter(hull) <= 0.01) {
+    return { ok: false, reason: 'heatmap_contour_sparse', polygon: null, bbox: null };
+  }
+
+  return {
+    ok: true,
+    reason: 'ok',
+    clip_reason: 'contour_from_heatmap',
+    threshold: round3(threshold),
+    polygon: {
+      points: hull.map((point) => ({ x: round3(clamp01(point.x)), y: round3(clamp01(point.y)) })),
+      closed: true,
+    },
+    bbox,
+  };
+}
+
 function computeBoxOverlapRatio(moduleBox, regionBox) {
   const x0 = Math.max(moduleBox.x, regionBox.x);
   const y0 = Math.max(moduleBox.y, regionBox.y);
@@ -719,6 +1034,40 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
     clips.push({ reason, region_type: regionType || 'unknown' });
   }
 
+  function pushRegion({
+    regionId,
+    regionType,
+    issueType,
+    severity,
+    confidence,
+    style,
+    bbox = null,
+    polygon = null,
+    heatmap = null,
+    notes = [],
+  }) {
+    const region = {
+      region_id: regionId,
+      type: regionType,
+      coord_space: FACE_COORD_SPACE,
+      style,
+      ...(bbox ? { bbox } : {}),
+      ...(polygon ? { polygon } : {}),
+      ...(heatmap ? { heatmap } : {}),
+      ...(notes.length ? { notes } : {}),
+      ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+    };
+    regions.push(region);
+    regionMeta.set(regionId, {
+      issue_type: issueType,
+      severity_0_4: severity,
+      confidence_0_1: confidence,
+      region_type: regionType,
+      bbox: bbox || (polygon && bboxFromPoints(polygon.points)) || null,
+      heatmap: regionType === 'heatmap' ? heatmap : null,
+    });
+  }
+
   for (let i = 0; i < safeFindings.length; i += 1) {
     const finding = safeFindings[i];
     if (!finding || typeof finding !== 'object') continue;
@@ -739,71 +1088,10 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
     }
 
     const rawBBox = geometry.bbox_norm ? toBBoxFromNorm(geometry.bbox_norm) : geometry.bbox;
-    if (rawBBox) {
-      const bbox = sanitizeBBox(rawBBox);
-      if (!bbox.ok || !bbox.bbox) {
-        drop(bbox.reason || 'bbox_invalid', 'bbox');
-      } else {
-        const regionId = `${findingId}_bbox`;
-        const notes = [];
-        if (bbox.clipped) {
-          const clipReason = bbox.clip_reason || 'bbox_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'bbox');
-        }
-        const region = {
-          region_id: regionId,
-          type: 'bbox',
-          coord_space: FACE_COORD_SPACE,
-          bbox: bbox.bbox,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'bbox',
-          bbox: bbox.bbox,
-          heatmap: null,
-        });
-      }
-    }
-
-    if (geometry.polygon && typeof geometry.polygon === 'object') {
-      const polygon = sanitizePolygon(geometry.polygon);
-      if (!polygon.ok || !polygon.polygon) {
-        drop(polygon.reason || 'polygon_invalid', 'polygon');
-      } else {
-        const regionId = `${findingId}_polygon`;
-        const notes = [];
-        if (polygon.clipped) {
-          const clipReason = polygon.clip_reason || 'polygon_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'polygon');
-        }
-        const region = {
-          region_id: regionId,
-          type: 'polygon',
-          coord_space: FACE_COORD_SPACE,
-          polygon: polygon.polygon,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'polygon',
-          bbox: polygon.bbox,
-          heatmap: null,
-        });
-      }
-    }
+    const bbox = rawBBox ? sanitizeBBox(rawBBox) : null;
+    const polygon = geometry.polygon && typeof geometry.polygon === 'object'
+      ? sanitizePolygon(geometry.polygon)
+      : null;
 
     const maybeHeatmap =
       geometry &&
@@ -813,38 +1101,109 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
           ? geometry.heatmap
           : null);
 
-    if (maybeHeatmap) {
-      const heatmap = sanitizeHeatmap(maybeHeatmap);
-      if (!heatmap.ok || !heatmap.heatmap) {
-        drop(heatmap.reason || 'heatmap_invalid', 'heatmap');
-      } else {
-        const regionId = `${findingId}_heatmap`;
-        const notes = [];
-        if (heatmap.clipped) {
-          const clipReason = heatmap.clip_reason || 'heatmap_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'heatmap');
-        }
-        const region = {
-          region_id: regionId,
-          type: 'heatmap',
-          coord_space: FACE_COORD_SPACE,
-          heatmap: heatmap.heatmap,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'heatmap',
-          bbox: rawBBox ? sanitizeBBox(rawBBox).bbox : null,
-          heatmap: heatmap.heatmap,
-        });
-      }
+    const heatmap = maybeHeatmap ? sanitizeHeatmap(maybeHeatmap) : null;
+
+    if (bbox && (!bbox.ok || !bbox.bbox)) {
+      drop(bbox.reason || 'bbox_invalid', 'bbox');
     }
+    if (polygon && (!polygon.ok || !polygon.polygon)) {
+      drop(polygon.reason || 'polygon_invalid', 'polygon');
+    }
+    if (heatmap && (!heatmap.ok || !heatmap.heatmap)) {
+      drop(heatmap.reason || 'heatmap_invalid', 'heatmap');
+    }
+
+    // 1) polygon from model has the highest priority.
+    if (polygon && polygon.ok && polygon.polygon) {
+      const notes = [];
+      if (polygon.clipped) {
+        const clipReason = polygon.clip_reason || 'polygon_clipped';
+        notes.push(clipReason);
+        clip(clipReason, 'polygon');
+      }
+      pushRegion({
+        regionId: `${findingId}_polygon`,
+        regionType: 'polygon',
+        issueType,
+        severity,
+        confidence,
+        style,
+        polygon: polygon.polygon,
+        bbox: polygon.bbox || null,
+        notes,
+      });
+      continue;
+    }
+
+    // 2) fallback to contour polygon derived from heatmap.
+    if (heatmap && heatmap.ok && heatmap.heatmap) {
+      if (heatmap.clipped) {
+        const clipReason = heatmap.clip_reason || 'heatmap_clipped';
+        clip(clipReason, 'heatmap');
+      }
+      const contour = contourPolygonFromHeatmap({
+        heatmap: heatmap.heatmap,
+        severity0to4: severity,
+        confidence0to1: confidence,
+      });
+      if (contour.ok && contour.polygon) {
+        const notes = [];
+        if (contour.clip_reason) notes.push(contour.clip_reason);
+        if (Number.isFinite(Number(contour.threshold))) notes.push(`contour_t=${Number(contour.threshold).toFixed(3)}`);
+        pushRegion({
+          regionId: `${findingId}_polygon`,
+          regionType: 'polygon',
+          issueType,
+          severity,
+          confidence,
+          style,
+          polygon: contour.polygon,
+          bbox: contour.bbox || null,
+          notes,
+        });
+        continue;
+      }
+      drop(contour.reason || 'heatmap_contour_failed', 'polygon');
+    }
+
+    // 3) last fallback: bbox.
+    if (bbox && bbox.ok && bbox.bbox) {
+      const notes = [];
+      if (bbox.clipped) {
+        const clipReason = bbox.clip_reason || 'bbox_clipped';
+        notes.push(clipReason);
+        clip(clipReason, 'bbox');
+      }
+      pushRegion({
+        regionId: `${findingId}_bbox`,
+        regionType: 'bbox',
+        issueType,
+        severity,
+        confidence,
+        style,
+        bbox: bbox.bbox,
+        notes,
+      });
+      continue;
+    }
+
+    // 4) if bbox is unavailable but heatmap is valid, keep heatmap as a final visibility fallback.
+    if (heatmap && heatmap.ok && heatmap.heatmap) {
+      pushRegion({
+        regionId: `${findingId}_heatmap`,
+        regionType: 'heatmap',
+        issueType,
+        severity,
+        confidence,
+        style,
+        heatmap: heatmap.heatmap,
+        bbox: bbox && bbox.ok ? bbox.bbox : null,
+        notes: ['heatmap_only_fallback'],
+      });
+      continue;
+    }
+
+    drop('finding_no_renderable_geometry', 'unknown');
   }
 
   return {
