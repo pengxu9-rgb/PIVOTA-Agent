@@ -516,6 +516,12 @@ const RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL = (() => {
   if (!port) return '';
   return `http://127.0.0.1:${port}`;
 })();
+const RECO_CATALOG_AURORA_SELF_PROXY_FIRST = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST || '')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_MULTI_SOURCE_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED || 'true')
     .trim()
@@ -665,7 +671,11 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_FANOUT_CAP = (() => {
   return Math.max(1, Math.min(4, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS || 150);
+  const n = Number(
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS
+    || process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS
+    || 150,
+  );
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(800, v));
 })();
@@ -675,9 +685,21 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS = (() => {
   return Math.max(0, Math.min(320, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS || 150);
+  const n = Number(
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS
+    || process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS
+    || 150,
+  );
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(1000, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS
+    || PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS,
+  );
+  const v = Number.isFinite(n) ? Math.trunc(n) : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS;
+  return Math.max(120, Math.min(1200, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
@@ -1030,6 +1052,110 @@ const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_GEMINI_MODEL =
   String(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_GEMINI_MODEL || SKIN_VISION_MODEL_GEMINI || 'gemini-2.0-flash').trim() ||
   'gemini-2.0-flash';
 const AURORA_INGREDIENT_EXTERNAL_ALLOWED_SOURCES = Object.freeze(['amazon', 'google', 'reddit', 'xiaohongshu']);
+const AURORA_ANALYSIS_STORY_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_ANALYSIS_STORY_V2_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_ROUTINE_SOFT_GATE_DELAY_RECO = (() => {
+  const raw = String(process.env.AURORA_ROUTINE_SOFT_GATE_DELAY_RECO || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PRODUCT_STRICT_SKINCARE_FILTER = (() => {
+  const raw = String(process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA = (() => {
+  const raw = String(process.env.AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PRODUCT_RELEVANCE_QA_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_PRODUCT_RELEVANCE_QA_TIMEOUT_MS || 700);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 700;
+  return Math.max(250, Math.min(2500, v));
+})();
+const AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 1800);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
+  return Math.max(500, Math.min(4500, v));
+})();
+const AURORA_ANALYSIS_STORY_OPENAI_MODEL =
+  String(process.env.AURORA_ANALYSIS_STORY_OPENAI_MODEL || SKIN_VISION_MODEL_OPENAI || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
+const AURORA_ANALYSIS_STORY_GEMINI_MODEL =
+  String(process.env.AURORA_ANALYSIS_STORY_GEMINI_MODEL || SKIN_VISION_MODEL_GEMINI || 'gemini-2.0-flash').trim() || 'gemini-2.0-flash';
+const AURORA_SKINCARE_POSITIVE_KEYWORDS = Object.freeze([
+  'skincare',
+  'skin care',
+  'sunscreen',
+  'sun screen',
+  'sunblock',
+  'spf',
+  'serum',
+  'cream',
+  'moisturizer',
+  'moisturiser',
+  'lotion',
+  'cleanser',
+  'face wash',
+  'gel',
+  'essence',
+  'toner',
+  'ampoule',
+  'mask',
+  'face cream',
+]);
+const AURORA_SKINCARE_NEGATIVE_KEYWORDS = Object.freeze([
+  'brush',
+  'contour brush',
+  'makeup brush',
+  'powder brush',
+  'blush brush',
+  'foundation brush',
+  'eyeshadow brush',
+  'kabuki',
+  'cosmetic brush',
+  'toothbrush',
+  'hair brush',
+  'makeup sponge',
+  'beauty blender',
+  'puff',
+  'pouch',
+  'lingerie',
+  'bra',
+  'panty',
+  'underwear',
+  'wig',
+  'extension',
+  'tripod',
+  'phone case',
+  'keyboard',
+  'mouse',
+  'jewelry',
+  'necklace',
+  'earring',
+]);
+const AURORA_INGREDIENT_RELEVANCE_HINTS = Object.freeze({
+  sunscreen_filters: ['sunscreen', 'sun screen', 'sunblock', 'spf', 'uva', 'uvb', 'uv filter', 'broad spectrum'],
+  uv_filters: ['sunscreen', 'sun screen', 'sunblock', 'spf', 'uva', 'uvb', 'uv filter', 'broad spectrum'],
+  uv_filter: ['sunscreen', 'sun screen', 'sunblock', 'spf', 'uva', 'uvb', 'uv filter', 'broad spectrum'],
+  niacinamide: ['niacinamide', 'nicotinamide', 'vitamin b3'],
+  azelaic_acid: ['azelaic', 'azelaic acid'],
+  salicylic_acid: ['salicylic', 'bha', 'salicylic acid'],
+  retinol: ['retinol', 'retinal', 'retinoid'],
+  ascorbic_acid: ['vitamin c', 'ascorbic', 'ascorbic acid'],
+  benzoyl_peroxide: ['benzoyl peroxide', 'acne treatment'],
+  ceramide_np: ['ceramide', 'ceramide np'],
+  panthenol: ['panthenol', 'vitamin b5', 'b5'],
+  zinc_pca: ['zinc pca', 'zinc'],
+  glycerin: ['glycerin', 'glycerine'],
+  hyaluronic_acid: ['hyaluronic acid', 'sodium hyaluronate', 'hyaluronic'],
+});
+const AURORA_EXTERNAL_SOURCE_PRIORITY = Object.freeze({
+  amazon: 0,
+  google: 1,
+  reddit: 2,
+  xiaohongshu: 3,
+  kb: 4,
+});
 const AURORA_PRODUCT_MATCHER_ENABLED = (() => {
   const raw = String(process.env.AURORA_PRODUCT_MATCHER_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -2022,6 +2148,7 @@ function buildRecoCatalogSearchBaseUrlCandidates({
   includeLocalFallback = false,
   preferConfigured = RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS,
   includeSelfProxy = RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED,
+  preferSelfProxyFirst = false,
 } = {}) {
   const out = [];
   const seen = new Set();
@@ -2040,14 +2167,15 @@ function buildRecoCatalogSearchBaseUrlCandidates({
       .filter(Boolean);
     for (const token of tokens) add(token);
   };
+  if (preferSelfProxyFirst && includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
   if (preferConfigured) {
     addConfigured();
-    if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
+    if (includeSelfProxy && !preferSelfProxyFirst) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
     add(PIVOTA_BACKEND_BASE_URL);
   } else {
     add(PIVOTA_BACKEND_BASE_URL);
     addConfigured();
-    if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
+    if (includeSelfProxy && !preferSelfProxyFirst) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
   }
   if (includeLocalFallback) add(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   return out;
@@ -2392,8 +2520,11 @@ async function searchPivotaBackendProducts({
   const shouldAttemptLocalSearchFallback =
     localSearchFallbackConfigured &&
     (forceLocalFallbackEnabled || RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT);
+  const sourceToken = String(params.source || '').trim().toLowerCase();
+  const preferSelfProxyFirst = RECO_CATALOG_AURORA_SELF_PROXY_FIRST && sourceToken === 'aurora-bff';
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
+    preferSelfProxyFirst,
   });
   const pathCandidates = buildRecoCatalogSearchPathCandidates();
   if (!baseUrlCandidates.length) {
@@ -4997,7 +5128,17 @@ async function buildRealtimeCompetitorCandidates({
       RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED,
   });
   if (!catalogSearchBaseUrls.length) {
-    return { candidates: [], queries: [], reason: 'pivota_backend_not_configured' };
+    return {
+      candidates: [],
+      queries: [],
+      reason: 'pivota_backend_not_configured',
+      reason_breakdown: {},
+      meta: {
+        reason_counts: {},
+        reason_breakdown: {},
+        query_attempted: 0,
+      },
+    };
   }
   const startedAt = Date.now();
   const effectiveTimeoutMs = Math.max(
@@ -5078,7 +5219,19 @@ async function buildRealtimeCompetitorCandidates({
     categoryToken,
     maxQueries,
   });
-  if (!queries.length) return { candidates: [], queries: [], reason: 'query_missing' };
+  if (!queries.length) {
+    return {
+      candidates: [],
+      queries: [],
+      reason: 'query_missing',
+      reason_breakdown: {},
+      meta: {
+        reason_counts: {},
+        reason_breakdown: {},
+        query_attempted: 0,
+      },
+    };
+  }
 
   const rankAsyncQuery = (queryText) => {
     const text = String(queryText || '').trim().toLowerCase();
@@ -5128,6 +5281,7 @@ async function buildRealtimeCompetitorCandidates({
     reasonCounts[token] = Number(reasonCounts[token] || 0) + 1;
   };
   const observedRecallHits = new Set();
+  const observedCrossBrandRecallHits = new Set();
   const earlyStopTarget =
     runMode === 'main_path'
       ? Math.max(1, Math.min(maxCandidates, PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT))
@@ -5171,11 +5325,17 @@ async function buildRealtimeCompetitorCandidates({
           220,
           Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
         );
+    const mainPathTimeoutFloorMs = allowExternalSeed
+      ? Math.max(
+        PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS,
+        PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS,
+      )
+      : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS;
     const perQueryMinMs =
       runMode === 'async_backfill'
         ? 260
         : runMode === 'main_path'
-          ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS
+          ? mainPathTimeoutFloorMs
           : 220;
     const perQueryTimeoutMs = Math.max(perQueryMinMs, Math.min(effectiveSearchTimeoutMs, fairShareMs));
     // eslint-disable-next-line no-await-in-loop
@@ -5203,10 +5363,18 @@ async function buildRealtimeCompetitorCandidates({
       if (!normalized) continue;
       const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
       if (!productId) continue;
-      observedRecallHits.add(String(productId).toLowerCase());
+      const lowerProductId = String(productId).toLowerCase();
+      observedRecallHits.add(lowerProductId);
+      const candidateBrand = pickFirstTrimmed(normalized.brand);
+      const isSameBrand =
+        anchorBrand &&
+        candidateBrand &&
+        String(anchorBrand).toLowerCase() === String(candidateBrand).toLowerCase();
+      if (!isSameBrand) observedCrossBrandRecallHits.add(lowerProductId);
     }
-    if (observedRecallHits.size >= earlyStopTarget) break;
-    if (observedRecallHits.size >= maxCandidates) break;
+    const earlyStopRecallSet = runMode === 'main_path' ? observedCrossBrandRecallHits : observedRecallHits;
+    if (earlyStopRecallSet.size >= earlyStopTarget) break;
+    if (earlyStopRecallSet.size >= maxCandidates) break;
   }
 
   const diagnosticQueries = searchResults.map((row) => String(row?.query || '').trim()).filter(Boolean);
@@ -5383,8 +5551,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: finalCandidates,
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
+      reason_breakdown: reasonCounts,
       meta: {
         reason_counts: reasonCounts,
+        reason_breakdown: reasonCounts,
         query_attempted: searchResults.length,
       },
     };
@@ -5401,8 +5571,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
+      reason_breakdown: reasonCounts,
       meta: {
         reason_counts: reasonCounts,
+        reason_breakdown: reasonCounts,
         query_attempted: searchResults.length,
       },
     };
@@ -5412,8 +5584,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: 'catalog_search_no_candidates',
+      reason_breakdown: reasonCounts,
       meta: {
         reason_counts: reasonCounts,
+        reason_breakdown: reasonCounts,
         query_attempted: searchResults.length,
       },
     };
@@ -5423,8 +5597,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_budget_exhausted',
+      reason_breakdown: reasonCounts,
       meta: {
         reason_counts: reasonCounts,
+        reason_breakdown: reasonCounts,
         query_attempted: searchResults.length,
       },
     };
@@ -5580,8 +5756,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: finalCandidates,
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
+      reason_breakdown: reasonCounts,
       meta: {
         reason_counts: reasonCounts,
+        reason_breakdown: reasonCounts,
         query_attempted: searchResults.length,
       },
     };
@@ -5593,8 +5771,10 @@ async function buildRealtimeCompetitorCandidates({
     candidates: [],
     queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
     reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty',
+    reason_breakdown: reasonCounts,
     meta: {
       reason_counts: reasonCounts,
+      reason_breakdown: reasonCounts,
       query_attempted: searchResults.length,
     },
   };
@@ -12437,6 +12617,757 @@ function buildConfidenceNoticeCardPayload({
   };
 }
 
+function normalizeAnalysisStoryList(value, max = 8) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(value) ? value : []) {
+    const text = String(raw || '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function normalizeAnalysisStoryPlanRows(value, max = 6) {
+  const out = [];
+  for (const raw of Array.isArray(value) ? value : []) {
+    const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+    if (!obj) continue;
+    const step = String(obj.step || obj.name || obj.title || '').trim();
+    const purpose = String(obj.purpose || obj.why || obj.goal || '').trim();
+    if (!step && !purpose) continue;
+    out.push({
+      step: step || 'Step',
+      purpose: purpose || '',
+    });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function normalizeAnalysisStoryConfidenceLevel(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return 'low';
+  if (n < 0.55) return 'low';
+  if (n <= 0.78) return 'medium';
+  return 'high';
+}
+
+function pickAnalysisStoryStrengths({ profileSummary, analysis } = {}) {
+  const strengths = [];
+  const goals = Array.isArray(profileSummary && profileSummary.goals) ? profileSummary.goals : [];
+  if (profileSummary && String(profileSummary.sensitivity || '').trim().toLowerCase() === 'low') {
+    strengths.push('Sensitivity baseline appears stable for gradual active introduction.');
+  }
+  if (profileSummary && String(profileSummary.barrierStatus || '').trim().toLowerCase() === 'healthy') {
+    strengths.push('Barrier baseline appears stable from current profile inputs.');
+  }
+  if (Array.isArray(analysis && analysis.features)) {
+    for (const row of analysis.features) {
+      const obs = String(row && row.observation || '').trim();
+      if (!obs) continue;
+      if (/no obvious|minimal|stable|clean|well[- ]tolerated|good baseline/i.test(obs)) strengths.push(obs);
+      if (strengths.length >= 3) break;
+    }
+  }
+  if (!strengths.length && goals.length) {
+    strengths.push(`Goals are already explicit (${goals.slice(0, 2).join(', ')}), which improves follow-up recommendation quality.`);
+  }
+  return normalizeAnalysisStoryList(strengths, 3);
+}
+
+function mapAnalysisStoryModuleFindings(photoModulesCard) {
+  const payload = photoModulesCard && typeof photoModulesCard.payload === 'object' && !Array.isArray(photoModulesCard.payload)
+    ? photoModulesCard.payload
+    : null;
+  const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
+  const rows = [];
+  for (const module of modules) {
+    const moduleObj = module && typeof module === 'object' && !Array.isArray(module) ? module : null;
+    if (!moduleObj) continue;
+    const moduleId = String(moduleObj.module_id || '').trim();
+    const issues = Array.isArray(moduleObj.issues) ? moduleObj.issues : [];
+    for (const issue of issues) {
+      const issueObj = issue && typeof issue === 'object' && !Array.isArray(issue) ? issue : null;
+      if (!issueObj) continue;
+      const issueType = String(issueObj.issue_type || '').trim();
+      const confidence = Number(issueObj.confidence_0_1);
+      const severity = Number(issueObj.severity_0_4);
+      const explanation = String(issueObj.explanation_short || '').trim();
+      const evidenceRegionIds = Array.isArray(issueObj.evidence_region_ids)
+        ? issueObj.evidence_region_ids.map((id) => String(id || '').trim()).filter(Boolean).slice(0, 6)
+        : [];
+      if (!issueType && !explanation) continue;
+      rows.push({
+        id: `${moduleId || 'module'}_${issueType || 'issue'}`,
+        module_id: moduleId || null,
+        issue_type: issueType || null,
+        severity_0_4: Number.isFinite(severity) ? Math.max(0, Math.min(4, severity)) : 0,
+        confidence_0_1: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,
+        explanation_short: explanation,
+        evidence_region_ids: evidenceRegionIds,
+      });
+    }
+  }
+  rows.sort((a, b) => (b.severity_0_4 + b.confidence_0_1) - (a.severity_0_4 + a.confidence_0_1));
+  return rows.slice(0, 8);
+}
+
+function buildAnalysisStoryEvidence({
+  language,
+  profileSummary,
+  recentLogsSummary,
+  analysis,
+  analysisSource,
+  hasRoutine,
+  lowConfidence,
+  photoModulesCard,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const profile = profileSummary && typeof profileSummary === 'object' ? profileSummary : {};
+  const features = Array.isArray(analysis && analysis.features) ? analysis.features : [];
+  const moduleFindings = mapAnalysisStoryModuleFindings(photoModulesCard);
+  const findingRows = moduleFindings.length
+    ? moduleFindings.map((row, idx) => ({
+        finding_id: row.id || `finding_${idx + 1}`,
+        priority_rank: idx + 1,
+        area: row.module_id || 'face',
+        issue_type: row.issue_type || 'observation',
+        summary: row.explanation_short || `Observation: ${row.issue_type || 'signal'}`,
+        evidence: {
+          module_id: row.module_id,
+          issue_type: row.issue_type,
+          region_ids: row.evidence_region_ids,
+          confidence_0_1: row.confidence_0_1,
+          severity_0_4: row.severity_0_4,
+        },
+      }))
+    : features.slice(0, 5).map((row, idx) => ({
+        finding_id: `feature_${idx + 1}`,
+        priority_rank: idx + 1,
+        area: 'face',
+        issue_type: 'observation',
+        summary: String(row && row.observation || '').trim(),
+        evidence: {
+          module_id: null,
+          issue_type: null,
+          region_ids: [],
+          confidence_0_1:
+            String(row && row.confidence || '').toLowerCase() === 'pretty_sure'
+              ? 0.82
+              : String(row && row.confidence || '').toLowerCase() === 'somewhat_sure'
+                ? 0.66
+                : 0.48,
+          severity_0_4: 2,
+        },
+      }));
+
+  const confidenceScore = (() => {
+    if (moduleFindings.length) {
+      const avg = moduleFindings.reduce((sum, row) => sum + row.confidence_0_1, 0) / moduleFindings.length;
+      return Math.max(0.28, Math.min(0.95, avg));
+    }
+    if (String(analysisSource || '').trim().toLowerCase() === 'baseline_low_confidence') return 0.4;
+    return lowConfidence ? 0.56 : 0.74;
+  })();
+
+  const routineMissingFields = hasRoutine
+    ? []
+    : ['am.cleanser', 'am.treatment', 'am.moisturizer', 'am.spf', 'pm.cleanser', 'pm.treatment', 'pm.moisturizer'];
+  const recentLog = Array.isArray(recentLogsSummary) && recentLogsSummary.length
+    ? recentLogsSummary[0]
+    : null;
+  const goals = Array.isArray(profile.goals) ? profile.goals.map((v) => String(v || '').trim()).filter(Boolean).slice(0, 6) : [];
+
+  return {
+    language: lang,
+    analysis_source: String(analysisSource || '').trim() || 'unknown',
+    low_confidence: Boolean(lowConfidence),
+    profile: {
+      skin_type: String(profile.skinType || '').trim() || 'unknown',
+      sensitivity: String(profile.sensitivity || '').trim() || 'unknown',
+      barrier_status: String(profile.barrierStatus || '').trim() || 'unknown',
+      goals,
+      has_routine: Boolean(hasRoutine),
+    },
+    findings: findingRows,
+    recent_log:
+      recentLog && typeof recentLog === 'object'
+        ? {
+            redness: Number.isFinite(Number(recentLog.redness)) ? Number(recentLog.redness) : null,
+            acne: Number.isFinite(Number(recentLog.acne)) ? Number(recentLog.acne) : null,
+            hydration: Number.isFinite(Number(recentLog.hydration)) ? Number(recentLog.hydration) : null,
+          }
+        : null,
+    strengths: pickAnalysisStoryStrengths({ profileSummary: profile, analysis }),
+    routine_missing_fields: routineMissingFields,
+    feature_observations: features.map((row) => String(row && row.observation || '').trim()).filter(Boolean).slice(0, 8),
+    confidence_score: confidenceScore,
+  };
+}
+
+function buildAnalysisStoryTemplateFromEvidence(evidence) {
+  const lang = evidence && evidence.language === 'CN' ? 'CN' : 'EN';
+  const profile = evidence && evidence.profile && typeof evidence.profile === 'object' ? evidence.profile : {};
+  const goals = Array.isArray(profile.goals) ? profile.goals : [];
+  const findings = Array.isArray(evidence && evidence.findings) ? evidence.findings : [];
+  const confidenceScore = Number(evidence && evidence.confidence_score);
+  const score = Number.isFinite(confidenceScore) ? Math.max(0, Math.min(1, confidenceScore)) : 0.6;
+  const level = normalizeAnalysisStoryConfidenceLevel(score);
+  const routineMissing = Array.isArray(evidence && evidence.routine_missing_fields) ? evidence.routine_missing_fields : [];
+  const hasRoutine = profile && profile.has_routine === true;
+
+  const defaultFindingRows = findings.length
+    ? findings.slice(0, 5).map((row, idx) => ({
+        finding_id: String(row.finding_id || `finding_${idx + 1}`),
+        priority_rank: Number.isFinite(Number(row.priority_rank)) ? Math.max(1, Math.trunc(Number(row.priority_rank))) : idx + 1,
+        area: String(row.area || 'face'),
+        issue_type: String(row.issue_type || 'observation'),
+        summary: String(row.summary || '').trim(),
+        evidence: row.evidence && typeof row.evidence === 'object' ? row.evidence : {},
+      }))
+    : [
+        {
+          finding_id: 'finding_1',
+          priority_rank: 1,
+          area: 'face',
+          issue_type: 'observation',
+          summary: lang === 'CN' ? '基于当前输入，建议先从低刺激稳态策略开始。' : 'Based on current inputs, start with a low-irritation stabilization strategy.',
+          evidence: {},
+        },
+      ];
+
+  const strengths = normalizeAnalysisStoryList(evidence && evidence.strengths, 4);
+  const principles = normalizeAnalysisStoryList(
+    lang === 'CN'
+      ? [
+          '先稳屏障，再叠加活性。',
+          '白天防晒是色素与光老化管理的上限。',
+          hasRoutine ? '结合你现有 AM/PM 流程，优先做低冲突优化。' : '先补全 AM/PM routine，再做个性化推荐可显著提升准确度。',
+        ]
+      : [
+          'Stabilize barrier first, then layer actives.',
+          'Daytime sunscreen is the upper bound for pigment and photo-aging control.',
+          hasRoutine
+            ? 'Prioritize low-conflict optimization based on your current AM/PM routine.'
+            : 'Complete AM/PM routine first to unlock high-precision recommendations.',
+        ],
+    4,
+  );
+
+  const amPlan = normalizeAnalysisStoryPlanRows(
+    lang === 'CN'
+      ? [
+          { step: '温和清洁', purpose: '减少额外刺激，维持皮脂膜稳定。' },
+          { step: '提亮/均匀肤色主力（择一）', purpose: '按耐受选择维C或烟酰胺路线，避免过度叠加。' },
+          { step: '保湿与防晒', purpose: '锁水并保护白天暴露，减少色素与炎症反复。' },
+        ]
+      : [
+          { step: 'Gentle cleanse', purpose: 'Minimize irritation and preserve barrier function.' },
+          { step: 'One brightening active', purpose: 'Choose a single primary lane (vitamin C or niacinamide) based on tolerance.' },
+          { step: 'Moisturize + SPF', purpose: 'Lock hydration and protect from daytime UV-driven relapse.' },
+        ],
+    4,
+  );
+  const pmPlan = normalizeAnalysisStoryPlanRows(
+    lang === 'CN'
+      ? [
+          { step: '卸防晒 + 温和清洁', purpose: '先清除残留，再避免过度清洁。' },
+          { step: '夜间主力（壬二酸或维A择一先上）', purpose: '控制节奏，先低频建立耐受。' },
+          { step: '修护保湿', purpose: '降低爆皮/刺痛风险，保证可持续执行。' },
+        ]
+      : [
+          { step: 'Remove SPF + gentle cleanse', purpose: 'Clear residue while avoiding over-cleansing.' },
+          { step: 'One PM core active (azelaic acid or retinoid)', purpose: 'Start low-frequency and build tolerance progressively.' },
+          { step: 'Repair moisturizer', purpose: 'Reduce irritation risk and keep plan sustainable.' },
+        ],
+    4,
+  );
+
+  const routineBridge = {
+    missing_fields: routineMissing,
+    cta_text:
+      lang === 'CN'
+        ? '补全 AM/PM routine 后生成精准产品推荐'
+        : 'Complete AM/PM routine to unlock precise product recommendations',
+    why_now:
+      lang === 'CN'
+        ? '当前分析已给出方向，但缺少你真实在用步骤会显著降低个性化推荐准确度。'
+        : 'The diagnostic direction is ready, but missing your current steps materially reduces recommendation precision.',
+  };
+
+  const existingProductsOptimization = {
+    keep: hasRoutine
+      ? [lang === 'CN' ? '保留耐受稳定、无刺激反馈的基础保湿与防晒步骤。' : 'Keep well-tolerated moisturizer and sunscreen basics.']
+      : [],
+    add: [
+      lang === 'CN' ? '按目标补一个主力活性（先单点引入）。' : 'Add one primary active aligned to your top goal.',
+    ],
+    replace: [
+      lang === 'CN' ? '若出现刺痛/泛红，优先替换高刺激高频组合。' : 'Replace high-irritation stacked actives when stinging/redness appears.',
+    ],
+    remove: [
+      lang === 'CN' ? '临时移除同晚叠加的强活性组合。' : 'Temporarily remove same-night stacking of strong actives.',
+    ],
+  };
+
+  return {
+    schema_version: 'aurora.analysis_story.v2',
+    confidence_overall: {
+      score,
+      level,
+      source: String(evidence && evidence.analysis_source || 'unknown'),
+    },
+    skin_profile: {
+      skin_type_tendency: String(profile.skin_type || 'unknown'),
+      sensitivity_tendency: String(profile.sensitivity || 'unknown'),
+      strengths,
+    },
+    priority_findings: defaultFindingRows,
+    target_state:
+      lang === 'CN'
+        ? '目标状态：肤色更均匀、刺激更可控、并在可持续节奏下逐步提升皮肤稳定度。'
+        : 'Target state: more even tone, tighter irritation control, and sustainable stepwise skin stability improvement.',
+    core_principles: principles,
+    am_plan: amPlan,
+    pm_plan: pmPlan,
+    routine_bridge: routineBridge,
+    existing_products_optimization: existingProductsOptimization,
+    timeline: {
+      week_1_4:
+        lang === 'CN'
+          ? ['第1周：稳态与修护', '第2周：加入单一主力活性', '第3周：按耐受增加频率', '第4周：根据反馈微调']
+          : ['Week 1: stabilize + repair', 'Week 2: add one primary active', 'Week 3: increase frequency by tolerance', 'Week 4: refine based on feedback'],
+      expectation_8_12_weeks:
+        lang === 'CN'
+          ? '8-12周通常可观察到更稳定的肤色与刺激事件下降（前提是防晒和执行一致性达标）。'
+          : 'Visible improvements typically appear over 8-12 weeks if SPF and execution consistency stay high.',
+    },
+    safety_notes: normalizeAnalysisStoryList(
+      lang === 'CN'
+        ? ['任何新活性从低频开始并观察72小时。', '若持续刺痛/红斑加重，先停刺激源并寻求专业评估。']
+        : ['Start all new actives at low frequency and watch the 72h response.', 'If persistent irritation worsens, pause irritants and seek professional evaluation.'],
+      5,
+    ),
+    disclaimer_non_medical:
+      lang === 'CN'
+        ? '以上为护肤建议，不构成医疗诊断。'
+        : 'This is skincare guidance and not a medical diagnosis.',
+  };
+}
+
+function sanitizeAnalysisStoryV2Payload(raw, { evidence } = {}) {
+  const fallback = buildAnalysisStoryTemplateFromEvidence(evidence);
+  const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!obj) return fallback;
+
+  const confidenceObj = obj.confidence_overall && typeof obj.confidence_overall === 'object' && !Array.isArray(obj.confidence_overall)
+    ? obj.confidence_overall
+    : {};
+  const confidenceScore = Number(confidenceObj.score);
+  const confidenceLevel = normalizeAnalysisStoryConfidenceLevel(confidenceScore);
+
+  const skinProfileObj = obj.skin_profile && typeof obj.skin_profile === 'object' && !Array.isArray(obj.skin_profile)
+    ? obj.skin_profile
+    : {};
+  const findingsRaw = Array.isArray(obj.priority_findings) ? obj.priority_findings : [];
+  const findings = findingsRaw
+    .map((row, idx) => {
+      const item = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+      if (!item) return null;
+      const summary = String(item.summary || '').trim();
+      if (!summary) return null;
+      return {
+        finding_id: String(item.finding_id || `finding_${idx + 1}`).trim() || `finding_${idx + 1}`,
+        priority_rank: Number.isFinite(Number(item.priority_rank))
+          ? Math.max(1, Math.trunc(Number(item.priority_rank)))
+          : idx + 1,
+        area: String(item.area || 'face').trim() || 'face',
+        issue_type: String(item.issue_type || 'observation').trim() || 'observation',
+        summary,
+        evidence: item.evidence && typeof item.evidence === 'object' && !Array.isArray(item.evidence)
+          ? item.evidence
+          : {},
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+  const routineBridgeObj = obj.routine_bridge && typeof obj.routine_bridge === 'object' && !Array.isArray(obj.routine_bridge)
+    ? obj.routine_bridge
+    : {};
+  const timelineObj = obj.timeline && typeof obj.timeline === 'object' && !Array.isArray(obj.timeline)
+    ? obj.timeline
+    : {};
+  const optimizationObj =
+    obj.existing_products_optimization && typeof obj.existing_products_optimization === 'object' && !Array.isArray(obj.existing_products_optimization)
+      ? obj.existing_products_optimization
+      : {};
+
+  return {
+    schema_version: 'aurora.analysis_story.v2',
+    confidence_overall: {
+      score: Number.isFinite(confidenceScore) ? Math.max(0, Math.min(1, confidenceScore)) : fallback.confidence_overall.score,
+      level: String(confidenceObj.level || '').trim().toLowerCase() || confidenceLevel || fallback.confidence_overall.level,
+      source: String(confidenceObj.source || fallback.confidence_overall.source || '').trim() || fallback.confidence_overall.source,
+    },
+    skin_profile: {
+      skin_type_tendency:
+        String(skinProfileObj.skin_type_tendency || '').trim() || fallback.skin_profile.skin_type_tendency,
+      sensitivity_tendency:
+        String(skinProfileObj.sensitivity_tendency || '').trim() || fallback.skin_profile.sensitivity_tendency,
+      strengths: normalizeAnalysisStoryList(skinProfileObj.strengths, 4).length
+        ? normalizeAnalysisStoryList(skinProfileObj.strengths, 4)
+        : fallback.skin_profile.strengths,
+    },
+    priority_findings: findings.length ? findings : fallback.priority_findings,
+    target_state: String(obj.target_state || '').trim() || fallback.target_state,
+    core_principles: normalizeAnalysisStoryList(obj.core_principles, 5).length
+      ? normalizeAnalysisStoryList(obj.core_principles, 5)
+      : fallback.core_principles,
+    am_plan: normalizeAnalysisStoryPlanRows(obj.am_plan, 6).length
+      ? normalizeAnalysisStoryPlanRows(obj.am_plan, 6)
+      : fallback.am_plan,
+    pm_plan: normalizeAnalysisStoryPlanRows(obj.pm_plan, 6).length
+      ? normalizeAnalysisStoryPlanRows(obj.pm_plan, 6)
+      : fallback.pm_plan,
+    routine_bridge: {
+      missing_fields: normalizeAnalysisStoryList(routineBridgeObj.missing_fields, 12).length
+        ? normalizeAnalysisStoryList(routineBridgeObj.missing_fields, 12)
+        : fallback.routine_bridge.missing_fields,
+      cta_text: String(routineBridgeObj.cta_text || '').trim() || fallback.routine_bridge.cta_text,
+      why_now: String(routineBridgeObj.why_now || '').trim() || fallback.routine_bridge.why_now,
+    },
+    existing_products_optimization: {
+      keep: normalizeAnalysisStoryList(optimizationObj.keep, 6).length
+        ? normalizeAnalysisStoryList(optimizationObj.keep, 6)
+        : fallback.existing_products_optimization.keep,
+      add: normalizeAnalysisStoryList(optimizationObj.add, 6).length
+        ? normalizeAnalysisStoryList(optimizationObj.add, 6)
+        : fallback.existing_products_optimization.add,
+      replace: normalizeAnalysisStoryList(optimizationObj.replace, 6).length
+        ? normalizeAnalysisStoryList(optimizationObj.replace, 6)
+        : fallback.existing_products_optimization.replace,
+      remove: normalizeAnalysisStoryList(optimizationObj.remove, 6).length
+        ? normalizeAnalysisStoryList(optimizationObj.remove, 6)
+        : fallback.existing_products_optimization.remove,
+    },
+    timeline: {
+      week_1_4: normalizeAnalysisStoryList(timelineObj.week_1_4, 6).length
+        ? normalizeAnalysisStoryList(timelineObj.week_1_4, 6)
+        : fallback.timeline.week_1_4,
+      expectation_8_12_weeks:
+        String(timelineObj.expectation_8_12_weeks || '').trim() || fallback.timeline.expectation_8_12_weeks,
+    },
+    safety_notes: normalizeAnalysisStoryList(obj.safety_notes, 6).length
+      ? normalizeAnalysisStoryList(obj.safety_notes, 6)
+      : fallback.safety_notes,
+    disclaimer_non_medical:
+      String(obj.disclaimer_non_medical || '').trim() || fallback.disclaimer_non_medical,
+  };
+}
+
+async function generateAnalysisStoryV2WithLlm({
+  evidence,
+  language,
+  logger,
+  feedback = '',
+  timeoutMs = AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const compactEvidence = JSON.stringify(evidence || {}, null, 2).slice(0, 10000);
+  const feedbackBlock = String(feedback || '').trim()
+    ? `\nQA_FEEDBACK:\n${String(feedback || '').trim().slice(0, 1500)}\n`
+    : '';
+  const prompt = [
+    'You are producing a strict JSON card payload for skincare analysis story.',
+    'Output JSON only. No markdown. No additional text.',
+    'Must include keys exactly:',
+    'schema_version, confidence_overall, skin_profile, priority_findings, target_state, core_principles, am_plan, pm_plan, routine_bridge, existing_products_optimization, timeline, safety_notes, disclaimer_non_medical.',
+    'Rules:',
+    '- Evidence-first: never invent facts not present in EVIDENCE.',
+    '- No medical diagnosis language.',
+    '- Include concrete next actions and why routine completion matters.',
+    '- If routine fields are missing, keep product recommendations conditional and emphasize routine completion.',
+    `Language: ${lang}.`,
+    `EVIDENCE:\n${compactEvidence}`,
+    feedbackBlock,
+  ].join('\n');
+
+  const normalizedTimeout = Math.max(400, Math.min(4000, Number(timeoutMs) || AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS));
+  const openai = getOpenAIClient();
+  if (openai) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), normalizedTimeout);
+    try {
+      const resp = await openai.chat.completions.create(
+        {
+          model: AURORA_ANALYSIS_STORY_OPENAI_MODEL,
+          temperature: 0.2,
+          max_tokens: 900,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'You output strict JSON only.' },
+            { role: 'user', content: prompt },
+          ],
+        },
+        { signal: controller.signal },
+      );
+      const content = String(resp?.choices?.[0]?.message?.content || '').trim();
+      const parsed = parseJsonOnlyObject(unwrapCodeFence(content));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return {
+          ok: true,
+          provider: 'openai',
+          payload: parsed,
+        };
+      }
+    } catch (err) {
+      logger?.debug?.({ err: err?.message || String(err) }, 'analysis_story_v2 openai generation failed');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const gemini = getGeminiClient();
+  if (gemini && gemini.client) {
+    try {
+      const resp = await withVisionTimeout(
+        gemini.client.models.generateContent({
+          model: AURORA_ANALYSIS_STORY_GEMINI_MODEL,
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }],
+            },
+          ],
+          config: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+          },
+        }),
+        normalizedTimeout,
+      );
+      const content = await extractTextFromGeminiResponse(resp);
+      const parsed = parseJsonOnlyObject(unwrapCodeFence(content));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return {
+          ok: true,
+          provider: 'gemini',
+          payload: parsed,
+        };
+      }
+    } catch (err) {
+      logger?.debug?.({ err: err?.message || String(err) }, 'analysis_story_v2 gemini generation failed');
+    }
+  }
+
+  return {
+    ok: false,
+    provider: null,
+    payload: null,
+  };
+}
+
+async function qaAnalysisStoryV2WithSecondaryLlm({
+  provider,
+  storyPayload,
+  evidence,
+  logger,
+  timeoutMs = AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS,
+} = {}) {
+  const target = String(provider || '').trim().toLowerCase();
+  if (!target) return { checked: false, pass: false, feedback: 'secondary_provider_missing' };
+  const prompt = [
+    'You are validating a skincare JSON card against evidence.',
+    'Output strict JSON only: pass (boolean), fixable (boolean), feedback (string), violations (string[]).',
+    'Validation rules:',
+    '- Facts must not conflict with evidence.',
+    '- No medical diagnosis tone.',
+    '- Must contain actionable next steps and routine completion rationale.',
+    `EVIDENCE:\n${JSON.stringify(evidence || {}, null, 2).slice(0, 7000)}`,
+    `CANDIDATE:\n${JSON.stringify(storyPayload || {}, null, 2).slice(0, 7000)}`,
+  ].join('\n');
+  const normalizedTimeout = Math.max(350, Math.min(3000, Number(timeoutMs) || AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS));
+
+  if (target === 'openai') {
+    const openai = getOpenAIClient();
+    if (!openai) return { checked: false, pass: false, feedback: 'openai_unavailable' };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), normalizedTimeout);
+    try {
+      const resp = await openai.chat.completions.create(
+        {
+          model: AURORA_ANALYSIS_STORY_OPENAI_MODEL,
+          temperature: 0,
+          max_tokens: 260,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'Return strict JSON only.' },
+            { role: 'user', content: prompt },
+          ],
+        },
+        { signal: controller.signal },
+      );
+      const parsed = parseJsonOnlyObject(unwrapCodeFence(String(resp?.choices?.[0]?.message?.content || '')));
+      const pass = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.pass === true : false;
+      const fixable = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.fixable !== false : true;
+      const feedback = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? String(parsed.feedback || '').trim()
+        : '';
+      return {
+        checked: true,
+        pass,
+        fixable,
+        feedback,
+      };
+    } catch (err) {
+      logger?.debug?.({ err: err?.message || String(err) }, 'analysis_story_v2 openai qa failed');
+      return { checked: false, pass: false, feedback: 'openai_qa_failed' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const gemini = getGeminiClient();
+  if (!gemini || !gemini.client) return { checked: false, pass: false, feedback: 'gemini_unavailable' };
+  try {
+    const resp = await withVisionTimeout(
+      gemini.client.models.generateContent({
+        model: AURORA_ANALYSIS_STORY_GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          temperature: 0,
+          responseMimeType: 'application/json',
+        },
+      }),
+      normalizedTimeout,
+    );
+    const parsed = parseJsonOnlyObject(unwrapCodeFence(await extractTextFromGeminiResponse(resp)));
+    const pass = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.pass === true : false;
+    const fixable = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.fixable !== false : true;
+    const feedback = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? String(parsed.feedback || '').trim()
+      : '';
+    return {
+      checked: true,
+      pass,
+      fixable,
+      feedback,
+    };
+  } catch (err) {
+    logger?.debug?.({ err: err?.message || String(err) }, 'analysis_story_v2 gemini qa failed');
+    return { checked: false, pass: false, feedback: 'gemini_qa_failed' };
+  }
+}
+
+async function buildAnalysisStoryV2({
+  language,
+  profileSummary,
+  recentLogsSummary,
+  analysis,
+  analysisSource,
+  hasRoutine,
+  lowConfidence,
+  photoModulesCard,
+  logger,
+} = {}) {
+  const evidence = buildAnalysisStoryEvidence({
+    language,
+    profileSummary,
+    recentLogsSummary,
+    analysis,
+    analysisSource,
+    hasRoutine,
+    lowConfidence,
+    photoModulesCard,
+  });
+  const fallback = buildAnalysisStoryTemplateFromEvidence(evidence);
+  if (!AURORA_ANALYSIS_STORY_V2_ENABLED) return fallback;
+
+  const generated = await generateAnalysisStoryV2WithLlm({
+    evidence,
+    language,
+    logger,
+    timeoutMs: AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS,
+  });
+  if (!generated.ok || !generated.payload) return fallback;
+  let candidate = sanitizeAnalysisStoryV2Payload(generated.payload, { evidence });
+
+  const shouldRunDualQa = Boolean(getOpenAIClient()) && Boolean(getGeminiClient() && getGeminiClient().client);
+  if (!shouldRunDualQa) return candidate;
+
+  const secondaryProvider = generated.provider === 'openai' ? 'gemini' : 'openai';
+  const qa = await qaAnalysisStoryV2WithSecondaryLlm({
+    provider: secondaryProvider,
+    storyPayload: candidate,
+    evidence,
+    logger,
+    timeoutMs: AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS,
+  });
+  if (qa.checked && qa.pass) return candidate;
+  if (qa.checked && qa.fixable && qa.feedback) {
+    const rewritten = await generateAnalysisStoryV2WithLlm({
+      evidence,
+      language,
+      logger,
+      feedback: qa.feedback,
+      timeoutMs: Math.max(500, Math.min(2200, AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS)),
+    });
+    if (rewritten.ok && rewritten.payload) {
+      candidate = sanitizeAnalysisStoryV2Payload(rewritten.payload, { evidence });
+      const reQa = await qaAnalysisStoryV2WithSecondaryLlm({
+        provider: secondaryProvider,
+        storyPayload: candidate,
+        evidence,
+        logger,
+        timeoutMs: Math.max(450, Math.min(1600, AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS)),
+      });
+      if (reQa.checked && reQa.pass) return candidate;
+    }
+  }
+  return fallback;
+}
+
+function buildAnalysisStoryV2Card(storyPayload, requestId) {
+  return {
+    card_id: `analysis_story_${requestId}`,
+    type: 'analysis_story_v2',
+    payload: storyPayload && typeof storyPayload === 'object' && !Array.isArray(storyPayload)
+      ? storyPayload
+      : {},
+  };
+}
+
+function buildRoutinePromptCard({ language, requestId, missingFields } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const ctaText = lang === 'CN' ? '补全 AM/PM routine' : 'Complete AM/PM routine';
+  return {
+    card_id: `routine_prompt_${requestId}`,
+    type: 'routine_prompt',
+    payload: {
+      schema_version: 'aurora.routine_prompt.v1',
+      title: lang === 'CN' ? '先补全 routine，再做精准推荐' : 'Complete routine first for precise recommendations',
+      subtitle:
+        lang === 'CN'
+          ? '你当前分析已经完成。补全 AM/PM 后，我会按你真实在用步骤做冲突规避与精准排序。'
+          : 'Your analysis is ready. Add AM/PM steps so recommendations can be ranked with conflict-aware personalization.',
+      cta_text: ctaText,
+      action_id: 'chip.start.routine',
+      reply_text:
+        lang === 'CN'
+          ? '我来补全 AM/PM routine，再给我个性化产品建议。'
+          : 'Let me complete AM/PM routine, then give me personalized product recommendations.',
+      missing_fields: normalizeAnalysisStoryList(missingFields, 12),
+      why_now:
+        lang === 'CN'
+          ? '当前缺少在用步骤信息，直接推商品容易不准或冲突。'
+          : 'Current routine steps are missing; recommending products now is more error-prone and conflict-prone.',
+    },
+  };
+}
+
 function hasRenderableCards(cards) {
   return (Array.isArray(cards) ? cards : []).some((card) => {
     if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
@@ -12695,6 +13626,351 @@ function buildIngredientExternalExecutorQuery({ ingredientId, ingredientName, bu
   return {
     query,
     normalized_query: normalizeMissingCatalogQuery(query),
+  };
+}
+
+function normalizeKeywordText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function containsKeywordToken(text, keyword) {
+  const haystack = normalizeKeywordText(text);
+  const needle = normalizeKeywordText(keyword);
+  if (!haystack || !needle) return false;
+  const hayTokens = haystack.split(' ').filter(Boolean);
+  const needleTokens = needle.split(' ').filter(Boolean);
+  if (!hayTokens.length || !needleTokens.length) return false;
+  if (needleTokens.length === 1) {
+    const n = needleTokens[0];
+    for (const token of hayTokens) {
+      if (token === n) return true;
+      if (token.startsWith(n)) {
+        const suffix = token.slice(n.length);
+        // Keep SPF50/SPF30 style matching, but avoid broad substring false positives (e.g. bra -> brand).
+        if (suffix && /^[0-9]+$/.test(suffix)) return true;
+      }
+    }
+    return false;
+  }
+  for (let idx = 0; idx <= hayTokens.length - needleTokens.length; idx += 1) {
+    let matched = true;
+    for (let offset = 0; offset < needleTokens.length; offset += 1) {
+      if (hayTokens[idx + offset] !== needleTokens[offset]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return true;
+  }
+  return false;
+}
+
+function collectIngredientCandidateSearchText(candidate) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  const fields = [
+    row.name,
+    row.title,
+    row.brand,
+    row.why_match,
+    row.category,
+    row.category_name,
+    row.categoryName,
+    row.department,
+    row.subcategory,
+    row.type,
+    row.tags,
+    row.query,
+    row.ingredient_name,
+    row.ingredient_id,
+    row.source,
+    row.source_block,
+    row.pdp_url,
+  ];
+  return normalizeKeywordText(
+    fields
+      .map((item) => {
+        if (Array.isArray(item)) return item.join(' ');
+        return String(item == null ? '' : item);
+      })
+      .join(' '),
+  );
+}
+
+function resolveIngredientRelevanceHints({ ingredientId, ingredientName } = {}) {
+  const key = normalizeIngredientExecutorKey(ingredientId || ingredientName || '');
+  const direct = Array.isArray(AURORA_INGREDIENT_RELEVANCE_HINTS[key])
+    ? AURORA_INGREDIENT_RELEVANCE_HINTS[key]
+    : null;
+  if (direct && direct.length) return direct;
+
+  const name = normalizeKeywordText(ingredientName || '').replace(/\s+/g, '_');
+  if (name && Array.isArray(AURORA_INGREDIENT_RELEVANCE_HINTS[name])) {
+    return AURORA_INGREDIENT_RELEVANCE_HINTS[name];
+  }
+  if (key.includes('uv') || key.includes('sunscreen') || name.includes('uv')) {
+    return AURORA_INGREDIENT_RELEVANCE_HINTS.sunscreen_filters;
+  }
+  if (!key) return [];
+  return key
+    .split('_')
+    .filter((token) => token.length >= 4)
+    .slice(0, 4);
+}
+
+function evaluateIngredientCandidateSkincareRelevance({
+  candidate,
+  ingredientId,
+  ingredientName,
+  strictFilterEnabled = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+} = {}) {
+  const row = isPlainObject(candidate) ? candidate : null;
+  if (!row) {
+    return {
+      pass: false,
+      needsDualQa: false,
+      reason: 'invalid_candidate',
+      score: 0,
+    };
+  }
+
+  const searchText = collectIngredientCandidateSearchText(row);
+  const negativeKeyword = AURORA_SKINCARE_NEGATIVE_KEYWORDS.find((token) =>
+    containsKeywordToken(searchText, token),
+  );
+  if (negativeKeyword) {
+    return {
+      pass: false,
+      needsDualQa: false,
+      reason: `negative_keyword:${negativeKeyword}`,
+      score: 0,
+    };
+  }
+
+  const positiveMatches = AURORA_SKINCARE_POSITIVE_KEYWORDS.filter((token) =>
+    containsKeywordToken(searchText, token),
+  );
+  const ingredientHints = resolveIngredientRelevanceHints({ ingredientId, ingredientName });
+  const hintMatches = ingredientHints.filter((token) => containsKeywordToken(searchText, token));
+  const hasTopicalSignal =
+    containsKeywordToken(searchText, 'face') ||
+    containsKeywordToken(searchText, 'facial') ||
+    containsKeywordToken(searchText, 'topical') ||
+    containsKeywordToken(searchText, 'spf');
+
+  const score =
+    (positiveMatches.length ? 0.45 : 0) +
+    Math.min(0.45, hintMatches.length * 0.18) +
+    (hasTopicalSignal ? 0.1 : 0);
+
+  if (strictFilterEnabled && positiveMatches.length === 0 && hintMatches.length === 0 && !hasTopicalSignal) {
+    return {
+      pass: false,
+      needsDualQa: false,
+      reason: 'non_skincare_or_non_topical',
+      score,
+    };
+  }
+
+  const needsDualQa = Boolean(
+    strictFilterEnabled &&
+      AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA &&
+      score > 0 &&
+      score < 0.7,
+  );
+  const pass = strictFilterEnabled ? score >= 0.35 : true;
+  return {
+    pass,
+    needsDualQa,
+    reason:
+      score >= 0.7
+        ? 'local_match_high'
+        : score >= 0.45
+          ? 'local_match_medium'
+          : 'local_match_borderline',
+    score,
+  };
+}
+
+async function judgeIngredientCandidateRelevanceWithProvider({
+  provider,
+  ingredientId,
+  ingredientName,
+  candidate,
+  timeoutMs = AURORA_PRODUCT_RELEVANCE_QA_TIMEOUT_MS,
+  logger,
+} = {}) {
+  const token = String(provider || '').trim().toLowerCase();
+  if (token !== 'openai' && token !== 'gemini') {
+    return { provider: token || 'unknown', checked: false, pass: false, reason: 'provider_invalid' };
+  }
+  const row = isPlainObject(candidate) ? candidate : null;
+  if (!row) return { provider: token, checked: false, pass: false, reason: 'candidate_invalid' };
+
+  const productSummary = {
+    name: String(row.name || row.title || '').slice(0, 200),
+    brand: String(row.brand || '').slice(0, 120),
+    category: String(row.category || row.category_name || row.department || '').slice(0, 180),
+    why_match: String(row.why_match || '').slice(0, 320),
+    source: String(row.source || '').slice(0, 40),
+    pdp_url: String(row.pdp_url || '').slice(0, 260),
+  };
+
+  const prompt = [
+    'You are validating skincare recommendation relevance.',
+    'Question: Is PRODUCT a topical skincare/sunscreen candidate relevant for TARGET_INGREDIENT?',
+    'Reject non-skincare tools/accessories (brush, pouch, device, lingerie, etc.).',
+    'Return strict JSON only with keys: pass (boolean), confidence_0_1 (number), reason (string).',
+    `TARGET_INGREDIENT_ID: ${String(ingredientId || '').trim()}`,
+    `TARGET_INGREDIENT_NAME: ${String(ingredientName || '').trim()}`,
+    `PRODUCT: ${JSON.stringify(productSummary)}`,
+  ].join('\n');
+
+  const normalizedTimeout = Math.max(240, Math.min(2200, Number(timeoutMs) || AURORA_PRODUCT_RELEVANCE_QA_TIMEOUT_MS));
+  if (token === 'openai') {
+    const openai = getOpenAIClient();
+    if (!openai) return { provider: token, checked: false, pass: false, reason: 'openai_unavailable' };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), normalizedTimeout);
+    try {
+      const resp = await openai.chat.completions.create(
+        {
+          model: AURORA_ANALYSIS_STORY_OPENAI_MODEL,
+          temperature: 0,
+          max_tokens: 180,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'Output strict JSON only.' },
+            { role: 'user', content: prompt },
+          ],
+        },
+        { signal: controller.signal },
+      );
+      const parsed = parseJsonOnlyObject(unwrapCodeFence(String(resp?.choices?.[0]?.message?.content || '')));
+      const pass = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.pass === true : false;
+      return {
+        provider: token,
+        checked: true,
+        pass,
+        reason:
+          parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.reason
+            ? String(parsed.reason).trim().slice(0, 180)
+            : pass
+              ? 'openai_pass'
+              : 'openai_reject',
+      };
+    } catch (err) {
+      logger?.debug?.({ err: err?.message || String(err) }, 'ingredient relevance qa (openai) failed');
+      return { provider: token, checked: false, pass: false, reason: 'openai_failed' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const gemini = getGeminiClient();
+  if (!gemini || !gemini.client) return { provider: token, checked: false, pass: false, reason: 'gemini_unavailable' };
+  try {
+    const resp = await withVisionTimeout(
+      gemini.client.models.generateContent({
+        model: AURORA_ANALYSIS_STORY_GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          temperature: 0,
+          responseMimeType: 'application/json',
+        },
+      }),
+      normalizedTimeout,
+    );
+    const parsed = parseJsonOnlyObject(unwrapCodeFence(await extractTextFromGeminiResponse(resp)));
+    const pass = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.pass === true : false;
+    return {
+      provider: token,
+      checked: true,
+      pass,
+      reason:
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.reason
+          ? String(parsed.reason).trim().slice(0, 180)
+          : pass
+            ? 'gemini_pass'
+            : 'gemini_reject',
+    };
+  } catch (err) {
+    logger?.debug?.({ err: err?.message || String(err) }, 'ingredient relevance qa (gemini) failed');
+    return { provider: token, checked: false, pass: false, reason: 'gemini_failed' };
+  }
+}
+
+async function evaluateIngredientCandidateWithDualLlm({
+  ingredientId,
+  ingredientName,
+  candidate,
+  logger,
+  timeoutMs = AURORA_PRODUCT_RELEVANCE_QA_TIMEOUT_MS,
+} = {}) {
+  if (!AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA) {
+    return { applied: false, pass: true, reason: 'dual_llm_disabled' };
+  }
+  const hasOpenAi = Boolean(getOpenAIClient());
+  const gemini = getGeminiClient();
+  const hasGemini = Boolean(gemini && gemini.client);
+  if (!hasOpenAi && !hasGemini) {
+    return { applied: false, pass: true, reason: 'dual_llm_unavailable' };
+  }
+
+  const tasks = [];
+  if (hasOpenAi) {
+    tasks.push(judgeIngredientCandidateRelevanceWithProvider({
+      provider: 'openai',
+      ingredientId,
+      ingredientName,
+      candidate,
+      timeoutMs,
+      logger,
+    }));
+  }
+  if (hasGemini) {
+    tasks.push(judgeIngredientCandidateRelevanceWithProvider({
+      provider: 'gemini',
+      ingredientId,
+      ingredientName,
+      candidate,
+      timeoutMs,
+      logger,
+    }));
+  }
+  const results = await Promise.all(tasks);
+  const checked = results.filter((item) => item && item.checked);
+  if (!checked.length) {
+    return {
+      applied: hasOpenAi || hasGemini,
+      pass: false,
+      reason: 'dual_llm_timeout_or_failed',
+    };
+  }
+  if (checked.some((item) => item.pass !== true)) {
+    const firstReject = checked.find((item) => item.pass !== true);
+    return {
+      applied: true,
+      pass: false,
+      reason: firstReject && firstReject.reason ? firstReject.reason : 'dual_llm_reject',
+    };
+  }
+  if ((hasOpenAi && !results.find((item) => item && item.provider === 'openai' && item.checked)) ||
+      (hasGemini && !results.find((item) => item && item.provider === 'gemini' && item.checked))) {
+    return {
+      applied: true,
+      pass: false,
+      reason: 'dual_llm_partial_timeout',
+    };
+  }
+  return {
+    applied: true,
+    pass: true,
+    reason: 'dual_llm_pass',
   };
 }
 
@@ -13122,22 +14398,39 @@ async function runIngredientExternalExecutorForIngredient({
   }
 
   const rawProducts = Array.isArray(searched?.products) ? searched.products : [];
-  const initialCandidates = rawProducts
-    .map((product, idx) =>
-      mapSearchProductToIngredientExternalCandidate({
-        product,
-        ingredientId: key,
-        ingredientName: ingredientName || key.replace(/_/g, ' '),
-        budgetTier,
-        query,
-        index: idx,
-      }))
-    .filter(Boolean)
-    .slice(0, AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT);
+  const rejectedCandidates = [];
+  const preFiltered = [];
+  for (let idx = 0; idx < rawProducts.length; idx += 1) {
+    const mapped = mapSearchProductToIngredientExternalCandidate({
+      product: rawProducts[idx],
+      ingredientId: key,
+      ingredientName: ingredientName || key.replace(/_/g, ' '),
+      budgetTier,
+      query,
+      index: idx,
+    });
+    if (!mapped) continue;
+    const initialRelevance = evaluateIngredientCandidateSkincareRelevance({
+      candidate: mapped,
+      ingredientId: key,
+      ingredientName: ingredientName || key.replace(/_/g, ' '),
+    });
+    if (!initialRelevance.pass) {
+      rejectedCandidates.push({
+        product_id: String(mapped.product_id || '').trim() || null,
+        source: String(mapped.source || 'google').trim() || 'google',
+        candidate_url: String(mapped.pdp_url || '').trim() || buildExternalGoogleSearchUrl(query),
+        rejected_reason: String(initialRelevance.reason || 'strict_filter_reject').trim(),
+      });
+      continue;
+    }
+    preFiltered.push(mapped);
+    if (preFiltered.length >= Math.max(6, AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT * 3)) break;
+  }
 
-  const enrichedCandidates = [];
-  for (let idx = 0; idx < initialCandidates.length; idx += 1) {
-    const candidate = initialCandidates[idx];
+  const screenedCandidates = [];
+  for (let idx = 0; idx < preFiltered.length; idx += 1) {
+    const candidate = preFiltered[idx];
     const enriched = await enrichIngredientExternalCandidateWithRealtimeFetch({
       candidate,
       deadlineMs: endMs,
@@ -13146,18 +14439,61 @@ async function runIngredientExternalExecutorForIngredient({
       llmExtractFn,
     });
     const row = isPlainObject(enriched) ? enriched : candidate;
-    row.source_block = idx >= Math.max(1, AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT - 1) ? 'dupe' : 'competitor';
-    enrichedCandidates.push(row);
+    const relevance = evaluateIngredientCandidateSkincareRelevance({
+      candidate: row,
+      ingredientId: key,
+      ingredientName: ingredientName || key.replace(/_/g, ' '),
+    });
+    if (!relevance.pass) {
+      rejectedCandidates.push({
+        product_id: String(row.product_id || '').trim() || null,
+        source: String(row.source || 'google').trim() || 'google',
+        candidate_url: String(row.pdp_url || '').trim() || buildExternalGoogleSearchUrl(query),
+        rejected_reason: String(relevance.reason || 'strict_filter_reject').trim(),
+      });
+      continue;
+    }
+    if (relevance.needsDualQa) {
+      const qa = await evaluateIngredientCandidateWithDualLlm({
+        ingredientId: key,
+        ingredientName: ingredientName || key.replace(/_/g, ' '),
+        candidate: row,
+        logger,
+        timeoutMs: AURORA_PRODUCT_RELEVANCE_QA_TIMEOUT_MS,
+      });
+      if (!qa.pass) {
+        rejectedCandidates.push({
+          product_id: String(row.product_id || '').trim() || null,
+          source: String(row.source || 'google').trim() || 'google',
+          candidate_url: String(row.pdp_url || '').trim() || buildExternalGoogleSearchUrl(query),
+          rejected_reason: String(qa.reason || 'dual_llm_reject').trim(),
+        });
+        continue;
+      }
+    }
+    row.source_block =
+      screenedCandidates.length >= Math.max(1, AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT - 1)
+        ? 'dupe'
+        : 'competitor';
+    screenedCandidates.push(row);
   }
 
   const unique = [];
   const seen = new Set();
-  for (const row of enrichedCandidates) {
+  for (const row of screenedCandidates) {
     const keyToken = normalizeMissingCatalogQuery(row.product_id || row.pdp_url || row.name);
     if (!keyToken || seen.has(keyToken)) continue;
     seen.add(keyToken);
     unique.push(row);
   }
+
+  const rejectedReasonCounts = Object.create(null);
+  for (const row of rejectedCandidates) {
+    const reason = String(row && row.rejected_reason ? row.rejected_reason : '').trim() || 'rejected';
+    rejectedReasonCounts[reason] = Number(rejectedReasonCounts[reason] || 0) + 1;
+  }
+  const primaryRejectedReason = Object.entries(rejectedReasonCounts)
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0]?.[0] || null;
 
   const fallbackUrl = buildExternalGoogleSearchUrl(query);
   const firstUrl = String(unique[0]?.pdp_url || '').trim() || fallbackUrl;
@@ -13169,6 +14505,11 @@ async function runIngredientExternalExecutorForIngredient({
     capture_mode: 'sync_external_executor',
     status: unique.length ? 'external_executor_returned' : 'external_executor_empty',
     failure_reason: unique.length ? null : String(searched?.reason || '').trim() || 'executor_empty',
+    ...(primaryRejectedReason ? { rejected_reason: primaryRejectedReason } : {}),
+    ...(rejectedCandidates.length ? { rejected_count: rejectedCandidates.length } : {}),
+    ...(rejectedCandidates.length
+      ? { rejected_candidates: rejectedCandidates.slice(0, 8) }
+      : {}),
     candidate_url: firstUrl,
   };
 }
@@ -13263,6 +14604,8 @@ async function buildIngredientExternalExecutorBundleForPlan({
       capture_mode: String(out.capture_mode || 'sync_external_executor').trim() || 'sync_external_executor',
       status: String(out.status || '').trim() || 'external_executor_empty',
       ...(String(out.failure_reason || '').trim() ? { failure_reason: String(out.failure_reason).trim() } : {}),
+      ...(String(out.rejected_reason || '').trim() ? { rejected_reason: String(out.rejected_reason).trim() } : {}),
+      ...(Number.isFinite(Number(out.rejected_count)) ? { rejected_count: Math.max(0, Math.trunc(Number(out.rejected_count))) } : {}),
     };
   }
 
@@ -13331,6 +14674,8 @@ async function enqueueMissingCatalogSignalsForIngredientPlanV2({ planV2, ctx, lo
           capture_mode: captureMode || null,
           status: statusToken || null,
           failure_reason: String(item.failure_reason || '').trim() || null,
+          rejected_reason: String(item.rejected_reason || '').trim() || null,
+          rejected_count: Number.isFinite(Number(item.rejected_count)) ? Math.max(0, Math.trunc(Number(item.rejected_count))) : null,
         },
         caller: caller || 'aurora_bff_ingredient_plan_v2',
         session_id: sessionId,
@@ -25625,6 +26970,30 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(degradeReason ? { degrade_reason: degradeReason } : {}),
         };
         const lowConfidence = Boolean(analysisSource === 'baseline_low_confidence' || !hasPrimaryInput);
+        const analysisStoryV2 = analysis
+          ? await buildAnalysisStoryV2({
+              language: ctx.lang,
+              profileSummary,
+              recentLogsSummary,
+              analysis,
+              analysisSource: renderedAnalysisSource,
+              hasRoutine,
+              lowConfidence,
+              photoModulesCard,
+              logger,
+            })
+          : null;
+        const routineBridgeMissingFields = Array.isArray(
+          analysisStoryV2 && analysisStoryV2.routine_bridge && analysisStoryV2.routine_bridge.missing_fields,
+        )
+          ? analysisStoryV2.routine_bridge.missing_fields
+          : [];
+        const delayRecoForRoutine = Boolean(
+          AURORA_ROUTINE_SOFT_GATE_DELAY_RECO &&
+            !hasRoutine &&
+            (ingredientPlanV2 || ingredientPlan),
+        );
+        if (delayRecoForRoutine) recommendationReady = false;
         const dedupedAnalysisFieldMissing = mergeFieldMissing([], analysisFieldMissing);
         profiler.start('render', { kind: 'envelope' });
         const analysisSummaryPayload = {
@@ -25645,7 +27014,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
           ...(diagnosisArtifact ? { diagnosis_artifact: diagnosisArtifact } : {}),
           ...(ingredientPlan ? { ingredient_plan: ingredientPlan } : {}),
-          ...(ingredientPlanV2 ? { ingredient_plan_v2: ingredientPlanV2 } : {}),
+          ...(ingredientPlanV2 && !delayRecoForRoutine ? { ingredient_plan_v2: ingredientPlanV2 } : {}),
+          ...(delayRecoForRoutine
+            ? {
+                recommendation_delayed_for_routine: true,
+                routine_missing_fields: routineBridgeMissingFields.slice(0, 12),
+              }
+            : {}),
           recommendation_ready: Boolean(recommendationReady),
           photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
         };
@@ -25654,7 +27029,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifactId);
 
         const extraCards = [];
-        if (ingredientPlanV2) {
+        if (analysisStoryV2) {
+          extraCards.push(buildAnalysisStoryV2Card(analysisStoryV2, ctx.request_id));
+        }
+        if (delayRecoForRoutine) {
+          extraCards.push(
+            buildRoutinePromptCard({
+              language: ctx.lang,
+              requestId: ctx.request_id,
+              missingFields: routineBridgeMissingFields,
+            }),
+          );
+        } else if (ingredientPlanV2) {
           extraCards.push(buildIngredientPlanV2Card(ingredientPlanV2, ctx.request_id));
         } else if (ingredientPlan) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
@@ -31348,6 +32734,7 @@ const __internal = {
   buildLabelQueue,
   runRecoBlocksForUrl,
   buildRealtimeCompetitorCandidates,
+  maybeSyncRepairLowCoverageCompetitors,
   resolveProductAnalysisSocialState,
   applyProductAnalysisSocialProvenance,
   applyRecoGuardrailToProductAnalysisPayload,
@@ -31359,9 +32746,13 @@ const __internal = {
   resolveCatalogProductForProductInput,
   extractProductPriceFromHtml,
   normalizePriceObject,
+  evaluateIngredientCandidateSkincareRelevance,
   runIngredientExternalExecutorForIngredient,
   buildIngredientExternalExecutorBundleForPlan,
   buildIngredientPlanV2WithFallbackSync,
+  buildAnalysisStoryV2,
+  buildAnalysisStoryV2Card,
+  buildRoutinePromptCard,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,

@@ -86,6 +86,7 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT = new Set([
   'competitor_async_backfill_used',
   'profile_context_dropped_for_reliability',
   'competitor_candidates_filtered_noise',
+  'reco_blocks_schema_invalid',
   'reco_guardrail_applied',
   'reco_guardrail_same_brand_filtered',
   'reco_guardrail_on_page_filtered',

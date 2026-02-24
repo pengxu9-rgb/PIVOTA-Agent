@@ -355,6 +355,27 @@ test('/v1/analysis/skin acceptance: emits valid photo_modules_v1 payload without
         }
 
         const modules = Array.isArray(payload.modules) ? payload.modules : [];
+        assert.ok(modules.length > 0, 'photo_modules_v1.modules should not be empty');
+        const modulesWithMask = modules.filter(
+          (moduleEntry) =>
+            moduleEntry &&
+            typeof moduleEntry.mask_rle_norm === 'string' &&
+            moduleEntry.mask_rle_norm.trim().length > 0,
+        );
+        const modulesWithBox = modules.filter(
+          (moduleEntry) =>
+            moduleEntry &&
+            moduleEntry.box &&
+            Number.isFinite(Number(moduleEntry.box.x)) &&
+            Number.isFinite(Number(moduleEntry.box.y)) &&
+            Number.isFinite(Number(moduleEntry.box.w)) &&
+            Number.isFinite(Number(moduleEntry.box.h)),
+        );
+        assert.ok(modulesWithBox.length > 0, 'expected at least one module to include normalized box');
+        for (const moduleEntry of modulesWithMask) {
+          assert.ok(Number(moduleEntry.mask_grid) > 0, 'module mask_grid should be positive when mask exists');
+        }
+
         for (const moduleEntry of modules) {
           const issues = Array.isArray(moduleEntry?.issues) ? moduleEntry.issues : [];
           for (const issue of issues) {

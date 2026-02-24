@@ -70,6 +70,10 @@ function parseEnvNumber(value, fallback, min = -Infinity, max = Infinity) {
 }
 
 const FACE_OVAL_CLIP_ENABLED = parseEnvBoolean(process.env.DIAG_FACE_OVAL_CLIP, true);
+const AURORA_PHOTO_MODULE_MASK_OVERLAY_ENABLED = parseEnvBoolean(
+  process.env.AURORA_PHOTO_MODULE_MASK_OVERLAY_ENABLED,
+  true,
+);
 const MODULE_SHRINK_CHIN = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHIN, 0.55, 0.4, 1);
 const MODULE_SHRINK_FOREHEAD = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_FOREHEAD, 0.45, 0.3, 1);
 const MODULE_SHRINK_CHEEK = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHEEK, 0.65, 0.4, 1);
@@ -3870,6 +3874,14 @@ function buildPhotoModulesCard({
   const sourceSlotId = sourcePhoto && typeof sourcePhoto.slot_id === 'string' ? sourcePhoto.slot_id.trim() : '';
   const sourcePhotoId = sourcePhoto && typeof sourcePhoto.photo_id === 'string' ? sourcePhoto.photo_id.trim() : '';
 
+  const modulesForPayload = AURORA_PHOTO_MODULE_MASK_OVERLAY_ENABLED
+    ? moduleMaskBuild.modules
+    : (Array.isArray(moduleMaskBuild.modules) ? moduleMaskBuild.modules : []).map((row) => {
+      const moduleRow = row && typeof row === 'object' ? row : {};
+      const { mask_rle_norm, mask_grid, module_pixels, ...rest } = moduleRow;
+      return rest;
+    });
+
   const payload = {
     used_photos: true,
     quality_grade: qualityGrade,
@@ -3882,7 +3894,7 @@ function buildPhotoModulesCard({
       ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),
     },
     regions,
-    modules: moduleMaskBuild.modules,
+    modules: modulesForPayload,
     ...(Array.isArray(moduleMaskBuild.degraded_reasons) && moduleMaskBuild.degraded_reasons.length
       ? { degraded_reason: moduleMaskBuild.degraded_reasons[0], degraded_reasons: moduleMaskBuild.degraded_reasons }
       : {}),
@@ -3901,6 +3913,7 @@ function buildPhotoModulesCard({
       risk_tier: modulesBuild.riskTier,
       ingredient_rec_enabled: Boolean(ingredientRecEnabled),
       product_rec_enabled: Boolean(productRecEnabled),
+      mask_overlay_enabled: Boolean(AURORA_PHOTO_MODULE_MASK_OVERLAY_ENABLED),
       module_count: Array.isArray(moduleMaskBuild.modules) ? moduleMaskBuild.modules.length : 0,
       skinmask_available: moduleMaskBuild.skinmask_available,
       skinmask_refined_modules: moduleMaskBuild.skinmask_refined_modules,
