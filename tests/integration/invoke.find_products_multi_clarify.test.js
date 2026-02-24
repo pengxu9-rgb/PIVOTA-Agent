@@ -402,6 +402,134 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     expect(upstreamScope.isDone()).toBe(true);
   });
 
+  test('fragrance supplement retries external seed with brand hints when first pass is irrelevant', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async () => ({ rows: [] }),
+    }));
+
+    const externalSeedQueries = [];
+    const upstreamScope = nock('http://pivota.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply((uri) => {
+        const query = new URLSearchParams(String(uri || '').split('?')[1] || '');
+        const merchantId = String(query.get('merchant_id') || '');
+        const queryText = String(query.get('query') || '');
+
+        if (merchantId !== 'external_seed') {
+          return [
+            200,
+            {
+              status: 'success',
+              success: true,
+              total: 1,
+              page: 1,
+              page_size: 1,
+              products: [
+                {
+                  id: 'brush_2',
+                  product_id: 'brush_2',
+                  merchant_id: 'merch_efbc46b4619cfbdf',
+                  title: 'Contour Brush',
+                  description: 'makeup contour brush',
+                  price: 19,
+                  currency: 'USD',
+                  inventory_quantity: 12,
+                  status: 'published',
+                },
+              ],
+            },
+          ];
+        }
+
+        externalSeedQueries.push(queryText);
+        if (externalSeedQueries.length === 1) {
+          return [
+            200,
+            {
+              status: 'success',
+              success: true,
+              total: 1,
+              page: 1,
+              page_size: 1,
+              products: [
+                {
+                  id: 'non_perfume_1',
+                  product_id: 'non_perfume_1',
+                  merchant_id: 'external_seed',
+                  source: 'external_seed',
+                  title: 'The Ordinary Collection Set',
+                  description: 'hydration skincare set',
+                  price: 68,
+                  currency: 'USD',
+                  inventory_quantity: 10,
+                  status: 'published',
+                },
+              ],
+            },
+          ];
+        }
+
+        return [
+          200,
+          {
+            status: 'success',
+            success: true,
+            total: 1,
+            page: 1,
+            page_size: 1,
+            products: [
+              {
+                id: 'tom_ford_retry_1',
+                product_id: 'tom_ford_retry_1',
+                merchant_id: 'external_seed',
+                source: 'external_seed',
+                title: 'Tom Ford Noir Extreme Eau de Parfum',
+                description: 'fragrance perfume for date night',
+                price: 168,
+                currency: 'USD',
+                inventory_quantity: 8,
+                status: 'published',
+              },
+            ],
+          },
+        ];
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '香水',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'agent_sdk_fixed_delegate',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.clarification).toBeUndefined();
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(
+      (resp.body.products || []).some(
+        (product) =>
+          String(product.merchant_id || '') === 'external_seed' &&
+          /tom ford/i.test(String(product.title || '')),
+      ),
+    ).toBe(true);
+    expect(externalSeedQueries.length).toBeGreaterThanOrEqual(2);
+    nock.cleanAll();
+    expect(upstreamScope.isDone()).toBe(true);
+  });
+
   test('fragrance query can recover products from beauty fallback without extra clarify', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql, params) => {

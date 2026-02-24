@@ -4378,84 +4378,125 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   }
 
   const upstreamQueryText = buildExternalSeedSupplementQueryText(queryText);
+  const fragranceRetryQuery = hasFragranceSearchSignal(queryText)
+    ? 'tom ford perfume jo malone perfume diptyque perfume byredo perfume'
+    : null;
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const limit = Math.min(Math.max(requestedCount * 4, 20), 200);
-  const upstreamParams = {
-    merchant_id: 'external_seed',
-    query: upstreamQueryText,
-    ...(query.category ? { category: query.category } : {}),
-    ...(query.min_price != null ? { min_price: query.min_price } : {}),
-    ...(query.max_price != null ? { max_price: query.max_price } : {}),
-    in_stock_only: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
-    limit,
-    offset: 0,
-    allow_external_seed: true,
-    allow_stale_cache: false,
-    external_seed_strategy: 'supplement_internal_first',
-    fast_mode: true,
-  };
-
   const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
-  const resp = await axios({
-    method: 'GET',
-    url,
-    params: upstreamParams,
-    headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
-    },
-    timeout: Math.min(6500, getUpstreamTimeoutMs('find_products_multi')),
-    validateStatus: () => true,
-  });
-
-  const normalized = normalizeAgentProductsListResponse(resp.data, {
-    limit,
-    offset: 0,
-  });
-  const products = (Array.isArray(normalized?.products) ? normalized.products : [])
-    .map((rawProduct) => {
-      if (!rawProduct || typeof rawProduct !== 'object') return null;
-      const product = { ...rawProduct };
-      const merchantId = String(product.merchant_id || product.merchantId || '').trim();
-      const sourceTag = String(product.source || product.source_type || '').trim().toLowerCase();
-      if (!merchantId) product.merchant_id = 'external_seed';
-      if (!sourceTag) product.source = 'external_seed';
-      return product;
-    })
-    .filter(Boolean)
-    .filter((p) => isExternalSeedProduct(p));
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
-  const relevantProducts = products.filter((p) =>
-    isSupplementCandidateRelevant(p, queryText, {
-      normalizedQuery,
-      anchorTokens,
-      queryTokens,
-    }),
+
+  const searchByQuery = async (searchQueryText) => {
+    const upstreamParams = {
+      merchant_id: 'external_seed',
+      query: searchQueryText,
+      ...(query.category ? { category: query.category } : {}),
+      ...(query.min_price != null ? { min_price: query.min_price } : {}),
+      ...(query.max_price != null ? { max_price: query.max_price } : {}),
+      in_stock_only: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
+      limit,
+      offset: 0,
+      allow_external_seed: true,
+      allow_stale_cache: false,
+      external_seed_strategy: 'supplement_internal_first',
+      fast_mode: true,
+    };
+
+    const resp = await axios({
+      method: 'GET',
+      url,
+      params: upstreamParams,
+      headers: {
+        ...(checkoutToken
+          ? { 'X-Checkout-Token': checkoutToken }
+          : {
+              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+            }),
+      },
+      timeout: Math.min(6500, getUpstreamTimeoutMs('find_products_multi')),
+      validateStatus: () => true,
+    });
+
+    const normalized = normalizeAgentProductsListResponse(resp.data, {
+      limit,
+      offset: 0,
+    });
+    const products = (Array.isArray(normalized?.products) ? normalized.products : [])
+      .map((rawProduct) => {
+        if (!rawProduct || typeof rawProduct !== 'object') return null;
+        const product = { ...rawProduct };
+        const merchantId = String(product.merchant_id || product.merchantId || '').trim();
+        const sourceTag = String(product.source || product.source_type || '').trim().toLowerCase();
+        if (!merchantId) product.merchant_id = 'external_seed';
+        if (!sourceTag) product.source = 'external_seed';
+        return product;
+      })
+      .filter(Boolean)
+      .filter((p) => isExternalSeedProduct(p));
+    const relevantProducts = products.filter((p) =>
+      isSupplementCandidateRelevant(p, queryText, {
+        normalizedQuery,
+        anchorTokens,
+        queryTokens,
+      }),
+    );
+    return {
+      query: searchQueryText,
+      status: Number(resp.status || 0) || 0,
+      products,
+      relevantProducts,
+      filteredOutIrrelevantCount: Math.max(0, products.length - relevantProducts.length),
+    };
+  };
+
+  const attempts = [];
+  const firstAttempt = await searchByQuery(upstreamQueryText);
+  attempts.push(firstAttempt);
+
+  let mergedRelevantProducts = [...firstAttempt.relevantProducts];
+  if (
+    mergedRelevantProducts.length === 0 &&
+    fragranceRetryQuery &&
+    normalizeSearchTextForMatch(fragranceRetryQuery) !== normalizeSearchTextForMatch(upstreamQueryText)
+  ) {
+    const retryAttempt = await searchByQuery(fragranceRetryQuery);
+    attempts.push(retryAttempt);
+    const seen = new Set(mergedRelevantProducts.map((product) => buildSearchProductKey(product)).filter(Boolean));
+    for (const product of retryAttempt.relevantProducts) {
+      const key = buildSearchProductKey(product);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      mergedRelevantProducts.push(product);
+    }
+  }
+
+  const fetchedCount = attempts.reduce((sum, attempt) => sum + attempt.relevantProducts.length, 0);
+  const filteredOutIrrelevantCount = attempts.reduce(
+    (sum, attempt) => sum + attempt.filteredOutIrrelevantCount,
+    0,
   );
-  const filteredOutIrrelevantCount = Math.max(0, products.length - relevantProducts.length);
+  const finalStatus = Number(attempts[attempts.length - 1]?.status || firstAttempt.status || 0) || 0;
 
   return {
-    products: relevantProducts,
+    products: mergedRelevantProducts,
     metadata: {
       attempted: true,
-      applied: relevantProducts.length > 0,
+      applied: mergedRelevantProducts.length > 0,
       reason:
-        relevantProducts.length > 0
+        mergedRelevantProducts.length > 0
           ? 'external_seed_candidates_found'
           : filteredOutIrrelevantCount > 0
             ? 'external_seed_candidates_filtered_irrelevant'
             : 'no_external_seed_candidates',
       requested_count: requestedCount,
-      fetched_count: relevantProducts.length,
+      fetched_count: fetchedCount,
       filtered_out_irrelevant_count: filteredOutIrrelevantCount,
-      upstream_status: Number(resp.status || 0) || 0,
+      upstream_status: finalStatus,
       upstream_query: upstreamQueryText,
+      attempt_queries: attempts.map((attempt) => attempt.query),
     },
   };
 }
