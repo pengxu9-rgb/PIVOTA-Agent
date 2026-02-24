@@ -6249,6 +6249,132 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
   );
 });
 
+test('/v1/chat: travel kb backfill queues on first call and hits on second call for same destination/month/lang', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'true',
+      TRAVEL_KB_WRITE_CONFIDENCE_MIN: '0',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const travelKbStoreModuleId = require.resolve('../src/auroraBff/travelKbStore');
+      const travelKbPolicyModuleId = require.resolve('../src/auroraBff/travelKbPolicy');
+      delete require.cache[routesModuleId];
+      delete require.cache[travelKbStoreModuleId];
+      delete require.cache[travelKbPolicyModuleId];
+      const travelKbPolicy = require('../src/auroraBff/travelKbPolicy');
+      const originalEvaluateTravelKbBackfill = travelKbPolicy.evaluateTravelKbBackfill;
+
+      try {
+        travelKbPolicy.evaluateTravelKbBackfill = () => ({
+          eligible: true,
+          reason: 'eligible',
+          confidence_score: 0.95,
+        });
+
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const uidFirst = `test_uid_travel_kb_hit_first_${Date.now()}`;
+        const headersFirst = {
+          'X-Aurora-UID': uidFirst,
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        };
+
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headersFirst)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['pores'],
+            region: 'San Francisco, CA',
+            travel_plans: [
+              {
+                destination: 'Paris',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            ],
+          })
+          .expect(200);
+
+        const firstResp = await supertest(app)
+          .post('/v1/chat')
+          .set(headersFirst)
+          .send({
+            message: 'How is weather there? Will it be humid?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const firstMeta = firstResp.body?.meta || {};
+        assert.equal(firstMeta.travel_kb_hit, false);
+        assert.equal(firstMeta.travel_kb_write_queued, true);
+
+        await new Promise((resolve) => setTimeout(resolve, 40));
+
+        const uidSecond = `test_uid_travel_kb_hit_second_${Date.now()}`;
+        const headersSecond = {
+          'X-Aurora-UID': uidSecond,
+          'X-Trace-ID': 'test_trace_2',
+          'X-Brief-ID': 'test_brief_2',
+          'X-Lang': 'EN',
+        };
+
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headersSecond)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['pores'],
+            region: 'San Francisco, CA',
+            travel_plans: [
+              {
+                destination: 'Paris',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            ],
+          })
+          .expect(200);
+
+        const secondResp = await supertest(app)
+          .post('/v1/chat')
+          .set(headersSecond)
+          .send({
+            message: 'How is weather there? Will it be humid?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const secondMeta = secondResp.body?.meta || {};
+        assert.equal(secondMeta.travel_kb_hit, true);
+      } finally {
+        travelKbPolicy.evaluateTravelKbBackfill = originalEvaluateTravelKbBackfill;
+        delete require.cache[routesModuleId];
+        delete require.cache[travelKbStoreModuleId];
+        delete require.cache[travelKbPolicyModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');

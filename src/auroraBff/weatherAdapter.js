@@ -25,11 +25,11 @@ function clampDateRange(startDate, endDate) {
   const now = new Date();
   const fallbackStart = toIsoDate(now);
   const fallbackEndDate = new Date(now);
-  fallbackEndDate.setUTCDate(fallbackEndDate.getUTCDate() + 3);
+  fallbackEndDate.setUTCDate(fallbackEndDate.getUTCDate() + 4);
   const fallbackEnd = toIsoDate(fallbackEndDate);
 
   const start = normalizeDateToken(startDate) || fallbackStart;
-  const endCandidate = normalizeDateToken(endDate) || start || fallbackEnd;
+  const endCandidate = normalizeDateToken(endDate) || fallbackEnd;
 
   if (endCandidate < start) {
     return { start, end: start };
@@ -38,9 +38,9 @@ function clampDateRange(startDate, endDate) {
   const startObj = new Date(`${start}T00:00:00.000Z`);
   const endObj = new Date(`${endCandidate}T00:00:00.000Z`);
   const diffDays = Math.floor((endObj.getTime() - startObj.getTime()) / 86400000);
-  if (diffDays > 10) {
+  if (diffDays > 6) {
     const capped = new Date(startObj);
-    capped.setUTCDate(capped.getUTCDate() + 10);
+    capped.setUTCDate(capped.getUTCDate() + 6);
     return { start, end: toIsoDate(capped) };
   }
 
@@ -399,7 +399,7 @@ function climateFallback({ destination, startDate, endDate, reason, userLocale }
       humidity_mean: hotSeason ? 72 : 50,
       precipitation_mm: hotSeason ? 2.6 : 1.2,
       wind_kph_max: coldSeason ? 24 : 18,
-      days_count: 3,
+      days_count: 5,
     };
   })();
 
@@ -416,7 +416,7 @@ function climateFallback({ destination, startDate, endDate, reason, userLocale }
         humidity_mean: mapHumidityToMean(profile.humidity),
         precipitation_mm: mapPollutionToPrecipitation(profile.pollution, profile.humidity),
         wind_kph_max: mapWindToKph(profile.wind),
-        days_count: 3,
+        days_count: 5,
       };
     })()
     : defaultSummary;
