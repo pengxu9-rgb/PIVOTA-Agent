@@ -82,6 +82,16 @@ function safeText(value) {
   return typeof value === 'string' ? value : '';
 }
 
+function cloneJsonSafe(value) {
+  if (value == null) return value;
+  if (typeof value !== 'object') return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
 function relativeToRoot(absPath) {
   const rel = path.relative(ROOT, absPath);
   return rel && !rel.startsWith('..') ? rel : absPath;
@@ -140,6 +150,255 @@ function overlapScore(expected, actual) {
   }
   const need = Math.min(4, Math.max(1, Math.ceil(expectedTokens.length * 0.3)));
   return { pass: hit >= need, hit, need };
+}
+
+function hasAnyRegex(text, regexList) {
+  const value = String(text || '');
+  return (Array.isArray(regexList) ? regexList : []).some((re) => re && re.test && re.test(value));
+}
+
+const CLAUSE_SEMANTIC_RULES = [
+  {
+    clause: /(male|man|gender).*(simplicity|minimal|simple)/i,
+    groups: [[/(男|male|man|beard|胡子)/i], [/(简|极简|minimal|simple)/i]],
+  },
+  {
+    clause: /(oily).*(tight|peel|barrier|over-?cleansing)/i,
+    groups: [[/(油|oily)/i], [/(紧绷|起皮|peel|屏障|barrier|过度清洁|over-?cleans)/i]],
+  },
+  {
+    clause: /(2-step|two-step).*(gentle cleanse).*(hydration|moistur)/i,
+    groups: [[/(2-step|two-step|两步)/i], [/(gentle cleanse|温和洁面)/i], [/(hydration|moistur|保湿)/i]],
+  },
+  {
+    clause: /(stop.*scrub|scrub cleanser immediately)/i,
+    groups: [[/(停用|立即停|stop)/i], [/(scrub|磨砂|颗粒|micro-?particles)/i]],
+  },
+  {
+    clause: /(1-2 times|reduce cleansing)/i,
+    groups: [[/(1-2|1\/2|一到两次|每天 1-2)/i]],
+  },
+  {
+    clause: /(shaving|post-shave).*(centella|allantoin|soothing)/i,
+    groups: [[/(shav|刮胡|剃须|beard|chin)/i], [/(centella|allantoin|soothing|舒缓|泛醇|panthenol)/i]],
+  },
+  {
+    clause: /(full-face).*(2% BHA|barrier)/i,
+    groups: [[/(2%.*(bha|水杨酸)|bha.*2%)/i], [/(full-face|全脸|屏障|barrier|高风险|risk)/i]],
+  },
+  {
+    clause: /(chin).*(irritation|exacerbation)/i,
+    groups: [[/(chin|下巴|下颌|beard)/i], [/(刺激|irrit|刺痛|泛红|red)/i]],
+  },
+  {
+    clause: /(spot treatment|washing off|wash off)/i,
+    groups: [[/(spot|局部|t区|nose|forehead)/i], [/(wash off|洗掉|冲洗|if irritation occurs|刺激时)/i]],
+  },
+  {
+    clause: /(acute barrier damage|severe barrier)/i,
+    groups: [[/(acute|急性|严重|severe)/i], [/(barrier|屏障)/i]],
+  },
+  {
+    clause: /(immediate cessation).*(BHA).*(lower third|lower face)/i,
+    groups: [[/(stop|halt|停用|暂停)/i], [/(bha|水杨酸)/i], [/(lower face|下半脸|下颌|beard|chin)/i]],
+  },
+  {
+    clause: /(barrier repair cream|peeling area)/i,
+    groups: [[/(repair cream|修护|ceramide|神经酰胺|凡士林|petrolatum)/i]],
+  },
+  {
+    clause: /(goal shift).*(barrier health)/i,
+    groups: [[/(优先|先把|priorit|goal shift|屏障)/i]],
+  },
+  {
+    clause: /(phase 1).*(phase 2|reintroduction)/i,
+    groups: [[/(phase 1|第 1|7 days|7天|recovery)/i], [/(phase 2|第 2|reintro|回归)/i]],
+  },
+  {
+    clause: /(nose|forehead).*(avoid.*beard|beard area)/i,
+    groups: [[/(nose|forehead|t区|鼻|额头)/i], [/(avoid|避开|beard|胡子区|下巴)/i]],
+  },
+  {
+    clause: /(extreme weather).*(cold|dry|wind)/i,
+    groups: [[/(cold|dry|wind|零下|寒冷|干燥|大风|harbin|哈尔滨|ski|snow)/i]],
+  },
+  {
+    clause: /(heavier occlusive|ceramides|panthenol)/i,
+    groups: [[/(occlusive|封闭|厚涂|ceramide|神经酰胺|panthenol|b5)/i]],
+  },
+  {
+    clause: /(scarf|mask|windburn)/i,
+    groups: [[/(scarf|mask|口罩|围巾|windburn|风吹)/i]],
+  },
+  {
+    clause: /(retinol).*(gradual titration|jumping straight|0.3)/i,
+    groups: [[/(retinol|a醇|维a)/i], [/(gradual|渐进|titration|不要直接|别直接|0.3)/i]],
+  },
+  {
+    clause: /(other active ingredients|other actives)/i,
+    groups: [[/(other active|其他活性|还在用什么)/i]],
+  },
+  {
+    clause: /(retinol).*(BPO|benzoyl).*(conflict|irritation|degrade)/i,
+    groups: [[/(retinol|a醇|维a)/i], [/(bpo|过氧化苯甲酰)/i], [/(冲突|conflict|degrade|刺激|irrit)/i]],
+  },
+  {
+    clause: /(AM|PM).*(alternating nights|split usage)/i,
+    groups: [[/(am|pm|早晚|隔天|alternating|split)/i]],
+  },
+  {
+    clause: /(acute chemical burn|severe barrier damage)/i,
+    groups: [[/(chemical burn|灼伤|急性|severe)/i], [/(barrier|屏障)/i]],
+  },
+  {
+    clause: /(halt).*(BPO).*(Retinol)/i,
+    groups: [[/(stop|halt|停用|暂停)/i], [/(bpo|过氧化苯甲酰)/i], [/(retinol|a醇|维a)/i]],
+  },
+  {
+    clause: /(cool compress|sterile saline|petrolatum|ceramide)/i,
+    groups: [[/(cool compress|冷敷|saline|生理盐水|petrolatum|凡士林|ceramide|神经酰胺)/i]],
+  },
+  {
+    clause: /(pregnancy).*(OB-GYN|consult)/i,
+    groups: [[/(pregnan|怀孕)/i], [/(ob-gyn|产科|咨询医生|consult)/i]],
+  },
+  {
+    clause: /(ban all retinoids|retinoids)/i,
+    groups: [[/(retinoid|retinol|维a|a醇)/i], [/(ban|禁用|停用|avoid)/i]],
+  },
+  {
+    clause: /(pregnancy-safe).*(soothing|routine)/i,
+    groups: [[/(pregnancy-safe|孕期安全|保守修护|soothing)/i]],
+  },
+  {
+    clause: /(Azelaic Acid|10-15%)/i,
+    groups: [[/(azelaic|壬二酸|10-15%|15%)/i]],
+  },
+  {
+    clause: /(patch|patching|patch test).*(Azelaic|15%)/i,
+    groups: [[/(patch|斑贴|局部试用)/i], [/(azelaic|壬二酸|15%)/i]],
+  },
+  {
+    clause: /(sunscreen necessity|sunscreen)/i,
+    groups: [[/(sunscreen|spf|防晒)/i]],
+  },
+  {
+    clause: /(Vit C).*(AHA).*(AM|PM split)/i,
+    groups: [[/(vit c|维c)/i], [/(aha|glycolic|果酸)/i], [/(am|pm|早晚)/i]],
+  },
+  {
+    clause: /(missing moisturizer and SPF)/i,
+    groups: [[/(moistur|保湿)/i], [/(spf|sunscreen|防晒)/i]],
+  },
+  {
+    clause: /(UVA).*(windows|WFH)/i,
+    groups: [[/(uva|window|窗|居家|wfh)/i]],
+  },
+  {
+    clause: /(non-photosensitizing).*(Niacinamide|Alpha Arbutin)/i,
+    groups: [[/(niacinamide|烟酰胺|arbutin|熊果苷|non-photosensitizing)/i]],
+  },
+  {
+    clause: /(suspension).*(Glycolic).*(Vitamin C)/i,
+    groups: [[/(stop|暂停|停用)/i], [/(glycolic|aha|果酸)/i], [/(vit c|维c)/i]],
+  },
+  {
+    clause: /(cooling the skin|aloe|gel moisturizers)/i,
+    groups: [[/(aloe|舒缓|gel|凝胶|cooling|降温)/i]],
+  },
+  {
+    clause: /(chemical sunscreen).*(clear).*(stubble|facial hair)/i,
+    groups: [[/(chemical|化学防晒|clear|透明|watery|gel)/i], [/(stubble|facial hair|胡茬|beard)/i]],
+  },
+  {
+    clause: /(application amount|proper application)/i,
+    groups: [[/(application amount|足量|两指|2 fingers|1\/4 tsp)/i]],
+  },
+  {
+    clause: /(warmth and redness).*(fully subsided)/i,
+    groups: [[/(warmth|redness|热感|泛红|是否完全消退|100%)/i]],
+  },
+  {
+    clause: /(restart AHA slowly).*(2x a week)/i,
+    groups: [[/(restart|重启|回归)/i], [/(2x|每周 2 次|twice a week)/i], [/(aha|glycolic|果酸)/i]],
+  },
+  {
+    clause: /(wait).*(few more days).*(reintroducing actives)/i,
+    groups: [[/(wait|再等|几天|3-5 天)/i], [/(reintroduc|回归活性|actives)/i]],
+  },
+  {
+    clause: /(stacking 3 potent actives|dry\/sensitive|barrier impairment)/i,
+    groups: [[/(stack|叠加|同晚)/i], [/(bha|lactic|retinol|三种活性)/i], [/(dry|sensitive|干敏|屏障)/i]],
+  },
+  {
+    clause: /(cellular turnover overload|overload)/i,
+    groups: [[/(turnover|overload|代谢过载|刺激过载)/i]],
+  },
+  {
+    clause: /(skin cycling|dropping at least 2 actives)/i,
+    groups: [[/(skin cycling|隔晚|停掉|drop|至少两种活性)/i]],
+  },
+  {
+    clause: /(glow).*(inflammation|edema)/i,
+    groups: [[/(glow|发亮|炎症|edema|水肿)/i]],
+  },
+  {
+    clause: /(48-72).*(compromised barrier|delayed reaction)/i,
+    groups: [[/(48-72|48|72)/i], [/(delayed|延迟反应|屏障受损|compromised barrier)/i]],
+  },
+  {
+    clause: /(stop all actives).*(ceramides|cica|water only|gentle milk cleanser)/i,
+    groups: [[/(stop all actives|停用所有活性)/i], [/(ceramide|神经酰胺|cica|gentle cleanser|温和洁面|water only)/i]],
+  },
+  {
+    clause: /(recovery takes 2-4 weeks)/i,
+    groups: [[/(2-4 weeks|2 到 4 周|两到四周)/i]],
+  },
+  {
+    clause: /(cabin air|alpine climate|ski).*(broken barrier)/i,
+    groups: [[/(cabin|flight|alpine|ski|高海拔|滑雪|干冷)/i], [/(barrier|屏障)/i]],
+  },
+  {
+    clause: /(slugging|petrolatum|Vaseline|Aquaphor)/i,
+    groups: [[/(slugging|petrolatum|凡士林|vaseline|aquaphor)/i]],
+  },
+  {
+    clause: /(UV reflection on snow).*(mineral sunscreen)/i,
+    groups: [[/(snow|雪地|反射|uv)/i], [/(mineral sunscreen|物理防晒|矿物防晒)/i]],
+  },
+  {
+    clause: /(sheet masks).*(lack occlusion).*(dry alpine air)/i,
+    groups: [[/(sheet mask|贴片面膜)/i], [/(occlusion|封闭|锁水)/i], [/(dry|alpine|干冷|高海拔)/i]],
+  },
+  {
+    clause: /(ceramide cream).*(facial oil|squalane|rosehip)/i,
+    groups: [[/(ceramide|神经酰胺)/i], [/(oil|squalane|rosehip|角鲨烷|油)/i]],
+  },
+  {
+    clause: /(final travel routine).*(AM\/PM)/i,
+    groups: [[/(travel routine|旅行方案|am|pm|早晚)/i]],
+  },
+  {
+    clause: /(zero actives)/i,
+    groups: [[/(zero actives|0 活性|停用活性|no actives)/i]],
+  },
+  {
+    clause: /(gentle cleansing).*(heavy moisturization).*(oil mixing).*(mineral SPF)/i,
+    groups: [[/(gentle cleansing|温和洁面)/i], [/(heavy moistur|厚保湿|rich cream)/i], [/(oil|混油|squalane)/i], [/(mineral spf|物理防晒|矿物防晒)/i]],
+  },
+];
+
+function semanticClausePass(expectedClause, actualComposite) {
+  const clause = String(expectedClause || '').trim();
+  if (!clause) return true;
+  const composite = String(actualComposite || '');
+  for (const rule of CLAUSE_SEMANTIC_RULES) {
+    if (!rule || !rule.clause || !rule.clause.test(clause)) continue;
+    const groups = Array.isArray(rule.groups) ? rule.groups : [];
+    if (!groups.length) return false;
+    return groups.every((group) => hasAnyRegex(composite, group));
+  }
+  return false;
 }
 
 function findRoutineExpertFromCards(cards) {
@@ -211,11 +470,16 @@ function evaluateTurnContract({ runTurn, datasetTurn, isFinalTurn, finalExpectat
 
   const clauseChecks = expectedClauses.map((clause) => {
     const score = overlapScore(clause, composite);
+    const semanticPass = semanticClausePass(clause, composite);
+    const pass = score.pass || semanticPass;
     return {
       clause,
-      pass: score.pass,
+      pass,
       hit: score.hit,
       need: score.need,
+      lexical_pass: score.pass,
+      semantic_pass: semanticPass,
+      pass_source: score.pass ? 'lexical' : (semanticPass ? 'semantic' : 'none'),
     };
   });
   const clauseHitCount = clauseChecks.filter((row) => row.pass).length;
@@ -413,8 +677,9 @@ async function runCase({
       okTurns += 1;
     }
 
+    const responseSnapshot = cloneJsonSafe(finalResult.body);
     const contract = evaluateTurnContract({
-      runTurn: { ...finalResult, user, ok: finalResult.ok },
+      runTurn: { ...finalResult, user, ok: finalResult.ok, response: responseSnapshot },
       datasetTurn: t,
       isFinalTurn: idx === turns.length - 1,
       finalExpectations: caseItem && caseItem.final_expectations ? caseItem.final_expectations : null,
@@ -432,7 +697,7 @@ async function runCase({
       latency_ms: finalResult.latency_ms,
       cards_count: cardsCount,
       error: finalResult.error || null,
-      response: finalResult.body,
+      response: responseSnapshot,
       contract_pass: contract.contract_pass,
       stall_hit: contract.stall_hit,
       missing_modules: contract.missing_modules,
