@@ -4040,7 +4040,8 @@ function inferCacheProductDomainKey(product) {
   }
   if (
     /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
-    /化妆|美妆|护肤|精华|口红|粉底|防晒|唇膏|眼影/.test(text)
+    /化妆|美妆|护肤|精华|口红|粉底|防晒|唇膏|眼影/.test(text) ||
+    hasFragranceCatalogProductSignal(text)
   ) {
     return 'beauty';
   }
@@ -7080,6 +7081,26 @@ function hasPetLeashSearchSignal(queryText) {
   );
 }
 
+function hasFragranceSearchSignal(queryText) {
+  const q = String(queryText || '');
+  if (!q) return false;
+  return (
+    /\b(perfume|fragrance|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum)\b/i.test(
+      q,
+    ) || /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(q)
+  );
+}
+
+function hasFragranceCatalogProductSignal(candidateText) {
+  const text = String(candidateText || '');
+  if (!text) return false;
+  return (
+    /\b(perfume|fragrance|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum)\b/i.test(
+      text,
+    ) || /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(text)
+  );
+}
+
 function hasStrictPetHarnessCatalogSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
@@ -7094,27 +7115,27 @@ function hasStrictPetHarnessCatalogSignal(candidateText) {
 function hasBeautyMakeupSearchSignal(queryText) {
   const q = String(queryText || '');
   if (!q) return false;
-  return (
+  const hasBeautyCore =
     /\b(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow)\b/i.test(
       q,
     ) ||
     /化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|约会妆|約會妝/.test(
       q,
-    )
-  );
+    );
+  return hasBeautyCore || hasFragranceSearchSignal(q);
 }
 
 function hasBeautyCatalogProductSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
-  return (
+  const hasBeautyCore =
     /\b(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|fenty|tom ford|winona|ipsa)\b/i.test(
       text,
     ) ||
     /(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水)/.test(
       text,
-    )
-  );
+    );
+  return hasBeautyCore || hasFragranceCatalogProductSignal(text);
 }
 
 function classifyBeautyBucketFromProduct(product) {
@@ -7240,9 +7261,9 @@ function buildPetHarnessSignalSql(startIndex) {
 
 function buildBeautySignalSql(startIndex) {
   const latin =
-    '(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|fenty|tom\\s*ford|winona|ipsa)';
+    '(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|perfume|fragrance|cologne|body\\s*mist|parfum|eau\\s+de\\s+parfum|eau\\s+de\\s+toilette|fenty|tom\\s*ford|winona|ipsa)';
   const cjk =
-    '(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水)';
+    '(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水|香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧)';
   const re = `(\\m${latin}\\M|${cjk})`;
   const fields = [
     "coalesce(product_data->>'title','')",

@@ -67,6 +67,15 @@ function buildSlotFollowUp({ language, slot }) {
   return '';
 }
 
+function buildOptimizationFollowUp({ language }) {
+  const lang = normalizeLanguage(language);
+  if (lang === 'zh') return '如果你愿意，我可以再按预算、品牌或香型把这份清单进一步优化。';
+  if (lang === 'ja') return '必要なら、予算・ブランド・香りタイプでさらに絞り込みます。';
+  if (lang === 'fr') return 'Si tu veux, je peux affiner cette sélection par budget, marque ou type de parfum.';
+  if (lang === 'es') return 'Si quieres, puedo optimizar esta lista por presupuesto, marca o tipo de fragancia.';
+  return 'If you want, I can refine this shortlist by budget, brand, or scent profile.';
+}
+
 function selectFollowUpSlot({ slotState, reasonCodes, queryClass }) {
   const asked = new Set(
     (Array.isArray(slotState?.asked_slots) ? slotState.asked_slots : [])
@@ -97,6 +106,7 @@ function composeReplyWithContext({
   slotState,
   queryClass,
   reasonCodes,
+  productCount = 0,
 }) {
   const replyText = String(baseReply || '').trim();
   if (!replyText) return replyText;
@@ -106,8 +116,10 @@ function composeReplyWithContext({
   const prefix = buildContextPrefix({ language, scenarioLabel });
   const followUpSlot = selectFollowUpSlot({ slotState, reasonCodes, queryClass });
   const followUp = buildSlotFollowUp({ language, slot: followUpSlot });
+  const optimizationFollowUp =
+    !followUp && Number(productCount || 0) > 0 ? buildOptimizationFollowUp({ language }) : '';
 
-  const lines = [prefix, replyText, followUp].filter(Boolean);
+  const lines = [prefix, replyText, followUp || optimizationFollowUp].filter(Boolean);
   return lines.join('\n');
 }
 

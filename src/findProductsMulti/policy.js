@@ -476,6 +476,9 @@ function buildAnchorAliasTerms(rawQuery, intent, queryClass) {
   if (detectLeashSignal(q)) {
     terms.push('dog leash', 'pet leash', 'dog collar', 'dog harness', 'lead');
   }
+  if (/香水|香氛|古龙|古龍|perfume|fragrance|cologne|body mist|eau de parfum|eau de toilette/i.test(q)) {
+    terms.push('perfume', 'fragrance', 'cologne', 'body mist', 'parfum');
+  }
   if (/\b(makeup brush|foundation brush|powder brush|brush set)\b/i.test(q) || /化妆刷|化妝刷|刷具|粉底刷|散粉刷/.test(q)) {
     terms.push('makeup brush', 'foundation brush', 'powder brush', 'brush set');
   }
@@ -856,7 +859,7 @@ function normalizeQueryClass(value, options = {}) {
 function hasDirectCategorySignal(query) {
   const q = String(query || '').toLowerCase();
   if (!q) return false;
-  return /香水|香氛|个护|个人护理|彩妆|化妆|护肤|服饰|穿搭|宠物用品|香氛喷雾|fragrance|perfume|cologne|body mist|personal care|makeup|skincare|apparel|fashion|pet supplies/.test(
+  return /香水|香氛|古龙|古龍|香氛喷雾|perfume|fragrance|cologne|body\s*mist|parfum|eau de parfum|eau de toilette|fragancia|colonia|フレグランス|コロン/.test(
     q,
   );
 }
@@ -898,7 +901,12 @@ function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   ) {
     return 'lookup';
   }
-  if (hasPriceConstraint || /预算|預算|以内|以内|以上|不超过|under|above|at least|waterproof|windproof|fragrance/.test(query)) {
+  if (
+    hasPriceConstraint ||
+    /预算|預算|以内|以内|以上|不超过|under|above|at least|waterproof|windproof|fragrance[-\s]?free/.test(
+      query,
+    )
+  ) {
     return 'attribute';
   }
   if (hasDirectCategorySignal(query)) return 'category';
@@ -1013,6 +1021,9 @@ function inferSearchDomainKey(intent, rawQuery) {
   const query = String(rawQuery || '').toLowerCase();
   if (target === 'pet') return 'pet';
   if (primaryDomain === 'beauty') return 'beauty';
+  if (/香水|香氛|古龙|古龍|perfume|fragrance|cologne|body\s*mist|eau de parfum|eau de toilette/.test(query)) {
+    return 'beauty';
+  }
   if (
     /travel|trip|business trip|packing|luggage|toiletry|出差|旅行|旅游|差旅/.test(query)
   ) {
@@ -1077,8 +1088,10 @@ function inferProductDomainKey(product) {
     return 'pet';
   }
   if (
-    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
-    /化妆|美妆|护肤|精华|口红|粉底|防晒/.test(text)
+    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic|perfume|fragrance|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(
+      text,
+    ) ||
+    /化妆|美妆|护肤|精华|口红|粉底|防晒|香水|香氛|古龙|古龍/.test(text)
   ) {
     return 'beauty';
   }
@@ -1147,7 +1160,9 @@ function inferSuperDomainFromToken(token) {
   const t = String(token || '').toLowerCase();
   if (!t) return null;
   if (
-    /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|化妆|美妆|护肤|口红|粉底|眼影|睫毛)/.test(t)
+    /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|perfume|fragrance|cologne|body\s*mist|parfum|eau|化妆|美妆|护肤|口红|粉底|眼影|睫毛|香水|香氛|古龙|古龍)/.test(
+      t,
+    )
   ) {
     return 'beauty';
   }
@@ -1196,7 +1211,7 @@ function resolveDomainCondenserTargetSuperDomain({ intent, rawQuery, anchorToken
   if (SEARCH_DOMAIN_CONDENSER_RAW_FALLBACK) {
     const normalizedQuery = String(rawQuery || '').toLowerCase();
     if (
-      /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|化妆|化妝|美妆|美妝|护肤|護膚|口红|口紅|粉底|眼影|约会|約會|妆|妝)/.test(
+      /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|perfume|fragrance|cologne|body\s*mist|parfum|eau|化妆|化妝|美妆|美妝|护肤|護膚|口红|口紅|粉底|眼影|约会|約會|妆|妝|香水|香氛|古龙|古龍)/.test(
         normalizedQuery,
       )
     ) {
@@ -3030,12 +3045,22 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	        if (lang === 'ja') extra.push('メイクブラシ');
 	      }
 	    } else if (intent?.primary_domain === 'beauty') {
+	      const wantsFragrance =
+	        /香水|香氛|古龙|古龍|perfume|fragrance|cologne|body mist|eau de parfum|eau de toilette/i.test(
+	          q,
+	        );
 	      const wantsSkincare =
 	        /护肤|護膚|skincare|skin\s*care|serum|toner|essence|moisturizer|cleanser|sunscreen|cream/i.test(
 	          q,
 	        );
 	      const wantsDateLook = /约会|約會|\bdate\b|\bnight\s*out\b/i.test(q);
-	      if (wantsSkincare) {
+	      if (wantsFragrance) {
+	        extra.push('perfume', 'fragrance', 'cologne', 'body mist', 'eau de parfum');
+	        if (lang === 'zh') extra.push('香水', '香氛', '古龙');
+	        if (lang === 'es') extra.push('perfume', 'fragancia', 'colonia');
+	        if (lang === 'fr') extra.push('parfum', 'fragrance', 'eau de toilette');
+	        if (lang === 'ja') extra.push('香水', 'フレグランス', 'コロン');
+	      } else if (wantsSkincare) {
 	        extra.push('skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
 	        if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
 	        if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'tónico', 'hidratante');
@@ -3408,9 +3433,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     ambiguityScorePre > AMBIGUITY_THRESHOLD_STRICT_EMPTY &&
     ambiguityScorePost > AMBIGUITY_THRESHOLD_STRICT_EMPTY &&
     (!baselineStats.has_good_match || filtered.length === 0);
+  const forceResultsFirstCategory = hasDirectCategorySignal(rawQuery);
   const clarifyByAmbiguityRaw =
     clarifyEligible &&
     clarifyIntentGate &&
+    !forceResultsFirstCategory &&
     !strictEmptyByAmbiguity &&
     (postQualityTriggered ||
       postCandidateCountForGate === 0 ||
@@ -3783,6 +3810,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     slotState,
     queryClass,
     reasonCodes: Array.from(reasonCodes),
+    productCount: after,
   });
 
   const slotStateForTrace = {

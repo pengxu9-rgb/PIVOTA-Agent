@@ -103,6 +103,24 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
   });
 
+  test('direct category signal does not trigger second clarify on empty result', () => {
+    const intent = extractIntentRuleBased('香水', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '香水' } },
+      metadata: { ambiguity_score_pre: 0.45 },
+      rawUserQuery: '香水',
+    });
+
+    expect(resp.metadata?.search_decision?.query_class).toBe('category');
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+  });
+
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {
     withPolicyEnv(
       {

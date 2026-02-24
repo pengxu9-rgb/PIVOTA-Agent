@@ -145,6 +145,22 @@ describe('find_products_multi context building', () => {
     expect(intent.query_class).toBe('scenario');
   });
 
+  test('fragrance category query maps to beauty and category-like expansion', async () => {
+    const { intent, adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: '香水' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: '香水' }],
+      },
+      metadata: {},
+    });
+
+    expect(intent.primary_domain).toBe('beauty');
+    expect(expansion_meta.query_class).toBe('category');
+    const q = String(adjustedPayload?.search?.query || '').toLowerCase();
+    expect(q).toContain('perfume');
+  });
+
   test('scenario association plan is exposed in context metadata', async () => {
     const { expansion_meta } = await buildFindProductsMultiContext({
       payload: {
