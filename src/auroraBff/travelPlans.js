@@ -441,13 +441,30 @@ function mergeLegacyTravelPlanIntoTravelPlans(travelPlans, legacyTravelPlan, opt
 
   if (matchIndex >= 0) {
     const prev = out[matchIndex];
-    out[matchIndex] = {
-      ...prev,
-      ...legacyTrip,
+    const prevUpdatedAt = Number(prev.updated_at_ms || 0);
+    const legacyUpdatedAt = Number(legacyTrip.updated_at_ms || 0);
+    const preferLegacy = legacyUpdatedAt > prevUpdatedAt;
+    const merged = preferLegacy ? { ...prev, ...legacyTrip } : { ...legacyTrip, ...prev };
+    const keepArchived = coerceBoolean(prev.is_archived, false) && !coerceBoolean(legacyTrip.is_archived, false);
+    const nextArchived = keepArchived ? true : coerceBoolean(merged.is_archived, false);
+    const nextArchivedAt = nextArchived
+      ? Math.max(
+          Number(prev.archived_at_ms || 0),
+          Number(legacyTrip.archived_at_ms || 0),
+          Number(merged.updated_at_ms || 0),
+        )
+      : null;
+
+    const nextItem = {
+      ...merged,
       trip_id: prev.trip_id || legacyTrip.trip_id,
       created_at_ms: Math.min(Number(prev.created_at_ms || nowMs), Number(legacyTrip.created_at_ms || nowMs)),
       updated_at_ms: Math.max(Number(prev.updated_at_ms || nowMs), Number(legacyTrip.updated_at_ms || nowMs)),
+      is_archived: nextArchived,
     };
+    if (nextArchivedAt != null) nextItem.archived_at_ms = nextArchivedAt;
+    else delete nextItem.archived_at_ms;
+    out[matchIndex] = nextItem;
   } else {
     out.push(legacyTrip);
   }
