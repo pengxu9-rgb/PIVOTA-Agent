@@ -3999,7 +3999,7 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
       if (!hasUsableSearchProduct(product)) continue;
       const candidateText = buildFallbackCandidateText(product);
       if (!candidateText) continue;
-      if (hasFragranceCatalogProductSignal(candidateText)) return true;
+      if (hasFragranceBackfillSignal(candidateText)) return true;
     }
     return false;
   }
@@ -4208,7 +4208,14 @@ function resolveCacheValidationMinCount(queryClass) {
 
 function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
   const list = Array.isArray(products) ? products : [];
-  const minCount = resolveCacheValidationMinCount(queryClass);
+  const fragranceQuery = hasFragranceSearchSignal(queryText);
+  const hasFragranceCandidate =
+    fragranceQuery &&
+    list
+      .slice(0, 10)
+      .some((item) => hasFragranceBackfillSignal(buildFallbackCandidateText(item)));
+  const minCountBase = resolveCacheValidationMinCount(queryClass);
+  const minCount = fragranceQuery ? Math.min(minCountBase, 3) : minCountBase;
   const anchorRatio = computeAnchorRatioTopK(queryText, list, 10);
   const domainEntropy = computeDomainEntropyTopK(list, 10);
   const expectedDomain = inferIntentDomainKeyForCacheValidation(intent, queryText);
@@ -4222,7 +4229,9 @@ function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
   const anchorOk = anchorRatio >= SEARCH_CACHE_MIN_ANCHOR;
   const entropyOk = domainEntropy <= SEARCH_CACHE_MAX_DOMAIN_ENTROPY;
   const crossDomainOk =
-    crossDomainRatio == null || crossDomainRatio <= SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO;
+    (fragranceQuery && hasFragranceCandidate) ||
+    crossDomainRatio == null ||
+    crossDomainRatio <= SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO;
   const accepted = countOk && anchorOk && entropyOk && crossDomainOk;
   return {
     enabled: SEARCH_CACHE_VALIDATE,
