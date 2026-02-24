@@ -24947,6 +24947,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             !rollout.llmKillSwitch &&
             userRequestedPhoto &&
             photosProvided &&
+            photoQuality.grade !== 'fail' &&
             hasLlmPrimaryInput &&
             reportAvailable &&
             photoFailureCodes.length > 0 &&
@@ -24970,6 +24971,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             !rollout.llmKillSwitch &&
             userRequestedPhoto &&
             photosProvided &&
+            photoQuality.grade !== 'fail' &&
             hasLlmPrimaryInput &&
             reportAvailable &&
             !forceReportOnPhotoFetchFailure &&
