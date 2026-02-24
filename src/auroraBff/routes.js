@@ -1394,6 +1394,7 @@ function getPhotoBytesCache({ photoId, auroraUid } = {}) {
 }
 
 function getCheckoutToken(req) {
+  if (!req || typeof req.get !== 'function') return '';
   const v = req.get('X-Checkout-Token') || req.get('x-checkout-token');
   return v ? String(v).trim() : '';
 }
@@ -9083,7 +9084,7 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
   let downloadUrl = '';
   let lastGenerateFailure = null;
   for (let attempt = 0; attempt < generateAttempts; attempt += 1) {
-    const generated = await requestPhotoDownloadUrlOnce({ photoId, authHeaders });
+    const generated = await requestPhotoDownloadUrlOnce({ req, photoId, authHeaders });
     if (generated && generated.ok) {
       upstreamResp = generated.upstreamResp;
       download = generated.download;
@@ -9238,7 +9239,7 @@ async function buildInlinePreviewDataUrl(imageBuffer) {
   }
 }
 
-async function requestPhotoDownloadUrlOnce({ req, photoId } = {}) {
+async function requestPhotoPreviewDownloadUrlOnce({ req, photoId, authHeaders } = {}) {
   const id = String(photoId || '').trim();
   if (!id) return { ok: false, reason_code: 'no_source_photo', detail: 'photo_id_missing' };
   if (!PIVOTA_BACKEND_BASE_URL) {
@@ -9249,8 +9250,9 @@ async function requestPhotoDownloadUrlOnce({ req, photoId } = {}) {
     };
   }
 
-  const authHeaders = buildPivotaBackendAuthHeaders(req);
-  if (!Object.keys(authHeaders).length) {
+  const resolvedAuthHeaders =
+    authHeaders && typeof authHeaders === 'object' ? authHeaders : buildPivotaBackendAuthHeaders(req);
+  if (!Object.keys(resolvedAuthHeaders).length) {
     return {
       ok: false,
       reason_code: 'missing_auth',
@@ -9263,7 +9265,7 @@ async function requestPhotoDownloadUrlOnce({ req, photoId } = {}) {
     upstreamResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/download-url`, {
       timeout: PHOTO_DOWNLOAD_URL_TIMEOUT_MS,
       validateStatus: () => true,
-      headers: authHeaders,
+      headers: resolvedAuthHeaders,
       params: { upload_id: id },
     });
   } catch (err) {
@@ -9337,7 +9339,7 @@ async function ensurePhotoModulesRenderableFaceCrop({
     source = 'existing';
     reasonCode = 'ok_existing';
   } else {
-    const signedUrlOut = await requestPhotoDownloadUrlOnce({ req, photoId });
+    const signedUrlOut = await requestPhotoPreviewDownloadUrlOnce({ req, photoId });
     if (signedUrlOut && signedUrlOut.ok && isRenderableImageUrl(signedUrlOut.url)) {
       setFaceCropRenderableUrl(faceCrop, signedUrlOut.url);
       source = 'signed_url';
