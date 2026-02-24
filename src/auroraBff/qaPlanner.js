@@ -27,8 +27,13 @@ function getTravelMissing(profile) {
   const travelObj = travel && typeof travel === 'object' && !Array.isArray(travel) ? travel : {};
   const missing = [];
   if (!isNonEmptyString(travelObj.destination)) missing.push('travel_plan.destination');
-  if (!isNonEmptyString(travelObj.start_date)) missing.push('travel_plan.start_date');
-  if (!isNonEmptyString(travelObj.end_date)) missing.push('travel_plan.end_date');
+  const hasConcreteDates = isNonEmptyString(travelObj.start_date) && isNonEmptyString(travelObj.end_date);
+  const hasTimeWindow = isNonEmptyString(travelObj.time_window);
+  // Non-blocking travel policy: destination + time_window is enough for a safe generic strategy.
+  if (!hasConcreteDates && !hasTimeWindow) {
+    missing.push('travel_plan.start_date');
+    missing.push('travel_plan.end_date');
+  }
   return missing;
 }
 
@@ -182,6 +187,9 @@ function computeLoopControl({ session, signature, profileDelta, anchorDelta }) {
 function computeNextStep({ intent, gateType, requiredFields }) {
   if (gateType === 'hard' && requiredFields.length > 0) return 'ask';
   if (intent === INTENT_ENUM.TRAVEL_PLANNING || intent === INTENT_ENUM.WEATHER_ENV) {
+    if (requiredFields.length <= 2 && requiredFields.every((field) => String(field || '').startsWith('travel_plan.'))) {
+      return 'tool_call';
+    }
     if (requiredFields.length) return 'ask';
     return 'tool_call';
   }
@@ -231,6 +239,8 @@ function resolveQaPlan({
       loop.break_applied === 'stop_asking' ||
       loop.break_applied === 'conservative_defaults' ||
       gateType === 'none' ||
+      ((safeIntent === INTENT_ENUM.TRAVEL_PLANNING || safeIntent === INTENT_ENUM.WEATHER_ENV) &&
+        requiredFields.every((field) => String(field || '').startsWith('travel_plan.'))) ||
       (gateType === 'soft' && requiredFields.length <= 1)
     );
 

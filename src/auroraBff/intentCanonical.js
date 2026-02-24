@@ -185,6 +185,16 @@ function extractTravelEntities(message) {
     entities.destination = String(destination).trim();
   }
 
+  const lowered = text.toLowerCase();
+  if (/下周|\bnext\s+week\b/i.test(text)) entities.time_window = 'next_week';
+  else if (/这周|\bthis\s+week\b/i.test(text)) entities.time_window = 'this_week';
+  else if (/下个月|\bnext\s+month\b/i.test(text)) entities.time_window = 'next_month';
+  else if (/这个月|\bthis\s+month\b/i.test(text)) entities.time_window = 'this_month';
+  else if (/周末|\bweekend\b/i.test(text)) entities.time_window = 'weekend';
+  else if (/明天|\btomorrow\b/i.test(text)) entities.time_window = 'tomorrow';
+  else if (/今天|\btoday\b/i.test(text)) entities.time_window = 'today';
+  else if (/travel|trip|itinerary|出差|旅行/.test(lowered)) entities.time_window = 'unknown';
+
   return entities;
 }
 

@@ -221,6 +221,9 @@ const UserProfilePatchSchema = z
         destination: z.string().min(1).optional(),
         start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        time_window: z
+          .enum(['today', 'tomorrow', 'this_week', 'next_week', 'this_month', 'next_month', 'weekend', 'unknown'])
+          .optional(),
         indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
       })
       .strict()

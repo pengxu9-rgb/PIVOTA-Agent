@@ -379,6 +379,30 @@ const AURORA_CHAT_RESPONSE_META_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_ROUTER_DST_PATCH_V1_ENABLED = (() => {
+  const raw = String(process.env.AURORA_ROUTER_DST_PATCH_V1 || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_NONBLOCKING_GATE_V1 || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CATALOG_DOMAIN_GUARD_V1 || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_MULTITURN_CONTRACT_GATE_V1_ENABLED = (() => {
+  const raw = String(process.env.AURORA_MULTITURN_CONTRACT_GATE_V1 || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_CHAT_POLICY_VERSION = String(process.env.AURORA_CHAT_POLICY_VERSION || 'aurora_chat_v2_p0').trim();
 const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   profile_v2: AURORA_PROFILE_V2_ENABLED,
@@ -387,6 +411,10 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
   loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
   chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
+  router_dst_patch_v1: AURORA_ROUTER_DST_PATCH_V1_ENABLED,
+  nonblocking_gate_v1: AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
+  catalog_domain_guard_v1: AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED,
+  multiturn_contract_gate_v1: AURORA_MULTITURN_CONTRACT_GATE_V1_ENABLED,
 });
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
@@ -921,6 +949,23 @@ const AURORA_BFF_CHAT_RECO_BUDGET_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
   return Math.max(1000, Math.min(60000, v));
 })();
+const AURORA_BFF_CHAT_ROUTINE_BUDGET_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_CHAT_ROUTINE_BUDGET_MS || 11000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 11000;
+  return Math.max(1000, Math.min(60000, v));
+})();
+const AURORA_BFF_CHAT_ROUTINE_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_ROUTINE_EXPERT_HARDSTOP_ENABLED = (() => {
+  const raw = String(process.env.AURORA_ROUTINE_EXPERT_HARDSTOP_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_ROUTINE_EVIDENCE_REFS_ENABLED = (() => {
+  const raw = String(process.env.AURORA_ROUTINE_EVIDENCE_REFS_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
@@ -954,9 +999,9 @@ const RECO_UPSTREAM_TIMEOUT_MS = (() => {
 })();
 
 const RECO_ROUTINE_UPSTREAM_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ROUTINE_TIMEOUT_MS || 14000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 14000;
-  return Math.max(3000, Math.min(22000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_ROUTINE_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  return Math.max(2000, Math.min(20000, v));
 })();
 
 const RECO_PDP_RESOLVE_ENABLED = (() => {
@@ -2800,6 +2845,12 @@ const recoPdpFallbackMetrics = {
   pdp_external_fallback_total_by_reason: Object.create(null),
 };
 
+const chatQualityMetrics = {
+  chat_stall_phrase_total: 0,
+  catalog_poison_block_total: 0,
+  contract_fail_total_by_reason: Object.create(null),
+};
+
 function recordRecoPdpExternalFallbackBlocked(delta = 1) {
   const n = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 0;
   if (!n) return;
@@ -2818,6 +2869,26 @@ function recordRecoPdpExternalFallback(reasonCode, delta = 1) {
   const reason = normalizeResolveReasonCode(reasonCode || '', 'no_candidates');
   recoPdpFallbackMetrics.pdp_external_fallback_total_by_reason[reason] =
     Number(recoPdpFallbackMetrics.pdp_external_fallback_total_by_reason[reason] || 0) + n;
+}
+
+function recordChatStallPhrase(delta = 1) {
+  const n = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 0;
+  if (!n) return;
+  chatQualityMetrics.chat_stall_phrase_total += n;
+}
+
+function recordCatalogPoisonBlock(delta = 1) {
+  const n = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 0;
+  if (!n) return;
+  chatQualityMetrics.catalog_poison_block_total += n;
+}
+
+function recordContractFail(reasonCode, delta = 1) {
+  const n = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 0;
+  if (!n) return;
+  const reason = String(reasonCode || '').trim() || 'unknown';
+  chatQualityMetrics.contract_fail_total_by_reason[reason] =
+    Number(chatQualityMetrics.contract_fail_total_by_reason[reason] || 0) + n;
 }
 
 function renderRecoPdpFallbackMetricsPrometheus() {
@@ -2839,6 +2910,30 @@ function renderRecoPdpFallbackMetricsPrometheus() {
     for (const reasonCode of reasonCodes) {
       const count = Number(reasonCounts[reasonCode] || 0);
       lines.push(`pdp_external_fallback_total{reason_code="${String(reasonCode)}"} ${count}`);
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function renderChatQualityMetricsPrometheus() {
+  const lines = [
+    '# HELP chat_stall_phrase_total Number of chat responses that matched stall/blocking phrase patterns.',
+    '# TYPE chat_stall_phrase_total counter',
+    `chat_stall_phrase_total ${Number(chatQualityMetrics.chat_stall_phrase_total || 0)}`,
+    '# HELP catalog_poison_block_total Number of catalog short-circuit results blocked by skincare domain guard.',
+    '# TYPE catalog_poison_block_total counter',
+    `catalog_poison_block_total ${Number(chatQualityMetrics.catalog_poison_block_total || 0)}`,
+    '# HELP contract_fail_total Number of quality contract failures by reason.',
+    '# TYPE contract_fail_total counter',
+  ];
+  const reasonCounts = chatQualityMetrics.contract_fail_total_by_reason || {};
+  const reasonCodes = Object.keys(reasonCounts).sort();
+  if (!reasonCodes.length) {
+    lines.push('contract_fail_total{reason="none"} 0');
+  } else {
+    for (const reasonCode of reasonCodes) {
+      const count = Number(reasonCounts[reasonCode] || 0);
+      lines.push(`contract_fail_total{reason="${String(reasonCode)}"} ${count}`);
     }
   }
   return `${lines.join('\n')}\n`;
@@ -2866,10 +2961,40 @@ function messageHasAvailabilityHint(text) {
   const raw = String(text || '').trim();
   if (!raw) return false;
   return (
-    /(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|能买|购买|下单|链接|渠道|旗舰|自营|店|请问|\?)/.test(raw) ||
+    /(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|能买|购买|下单|链接|渠道|旗舰|自营|店|请问)/.test(raw) ||
     /\b(in stock|available|availability|where (can i|to) buy|do you have|have any|buy|purchase|link)\b/i.test(raw) ||
     /^有[^\n]{1,80}(产品|单品|品牌|[a-z0-9%+\-/]{2,})[^\n]{0,12}(吗|么|嗎|？|\?)$/iu.test(raw)
   );
+}
+
+function hasExplicitCatalogPurchaseIntent(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  return /(哪里买|怎么买|购买|下单|有货|现货|库存|链接|旗舰|自营|店铺|where (can i|to) buy|in stock|available|availability|purchase|buy|shop)/i.test(
+    raw,
+  );
+}
+
+function hasLikelyProductEntityMention(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  if (/https?:\/\//i.test(raw)) return true;
+  if (/(serum|cleanser|moisturizer|cream|toner|sunscreen|spf|retinol|niacinamide|mask|精华|洁面|面霜|乳液|爽肤水|防晒|面膜)/i.test(raw)) {
+    return true;
+  }
+  const tokens = raw
+    .replace(/[，。！？!?]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const informative = tokens.filter(
+    (token) => token.length >= 3 && !/^(i|me|you|he|she|it|we|they|the|a|an|to|for|and|or|my|your|this|that)$/i.test(token),
+  );
+  return informative.length >= 2;
+}
+
+function shouldAllowCatalogAvailabilityShortCircuit(text) {
+  return hasExplicitCatalogPurchaseIntent(text) && hasLikelyProductEntityMention(text);
 }
 
 function stripGenericAvailabilityTokens(value) {
@@ -3079,6 +3204,57 @@ function isSpecificAvailabilityQuery(queryText, availabilityIntent) {
   if (!genericOnly) return false;
   if (genericOnly === brandCompact) return false;
   return genericOnly.length > brandCompact.length + 2;
+}
+
+function isSkincareCatalogProduct(product) {
+  const p = product && typeof product === 'object' ? product : {};
+  const joined = [
+    p.category,
+    p.category_name,
+    p.category_path,
+    p.name,
+    p.display_name,
+    p.title,
+    p.product_type,
+    p.type,
+    p.tags,
+  ]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').toLowerCase())
+    .join(' ');
+  if (!joined.trim()) return true;
+  const skincareHit = /(skincare|cleanser|serum|essence|moistur|cream|toner|mask|sunscreen|spf|lotion|barrier|护肤|洁面|精华|面霜|乳液|爽肤水|面膜|防晒|修护)/.test(
+    joined,
+  );
+  const poisonHit = /(brush|blush|foundation brush|makeup brush|eyeshadow|lipstick|mascara|化妆刷|腮红刷|彩妆刷)/.test(joined);
+  if (poisonHit) return false;
+  return skincareHit;
+}
+
+function isSkincareCatalogCard(card) {
+  if (!card || typeof card !== 'object' || Array.isArray(card)) return true;
+  const type = String(card.type || '').trim().toLowerCase();
+  if (type === 'product_parse') {
+    const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload)
+      ? card.payload
+      : {};
+    const product = payload.product && typeof payload.product === 'object' ? payload.product : null;
+    return isSkincareCatalogProduct(product);
+  }
+  if (type === 'offers_resolved') {
+    const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload)
+      ? card.payload
+      : {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    if (!items.length) return true;
+    return items.every((item) => {
+      const product = item && typeof item === 'object' && item.product && typeof item.product === 'object'
+        ? item.product
+        : null;
+      return isSkincareCatalogProduct(product);
+    });
+  }
+  return true;
 }
 
 function buildAvailabilityResolvedProduct({
@@ -9693,6 +9869,13 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     photoFailureCode: photoNotice && typeof photoNotice.failure_code === 'string' ? photoNotice.failure_code : '',
     photosProvided: true,
   });
+  analysis = attachRoutineExpertToAnalysis({
+    analysis,
+    routineCandidate,
+    profileSummary,
+    recentLogs: recentLogsSummary,
+    language,
+  });
   const geometrySanitizer =
     analysis && analysis.__geometry_sanitizer && typeof analysis.__geometry_sanitizer === 'object'
       ? analysis.__geometry_sanitizer
@@ -9934,7 +10117,7 @@ async function runOpenAIVisionSkinAnalysis({
                   content: [
                     {
                       type: 'text',
-                      text: `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and end strategy with a single direct question mark.\n`,
+                      text: `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and keep strategy actionable.\n`,
                     },
                     { type: 'image_url', image_url: { url: dataUrl } },
                   ],
@@ -10085,7 +10268,7 @@ async function runGeminiVisionSkinAnalysis({
                     },
                   },
                   {
-                    text: `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and end strategy with a single direct question mark.\n`,
+                    text: `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and keep strategy actionable.\n`,
                   },
                 ],
               },
@@ -10261,32 +10444,57 @@ function normalizeSkinAnalysisFromLLM(obj, { language } = {}) {
     features.push({ observation, confidence });
   }
 
-  let strategyRaw = clampText(o.strategy, 420);
+  const normalizeStringArray = (value, maxItems = 3, maxLen = 180) => {
+    if (!Array.isArray(value)) return [];
+    const out = [];
+    for (const item of value) {
+      const s = clampText(item, maxLen);
+      if (!s) continue;
+      if (forbiddenRegex.test(s)) return [];
+      if (out.includes(s)) continue;
+      out.push(s);
+      if (out.length >= maxItems) break;
+    }
+    return out;
+  };
+
+  let strategyRaw = clampText(o.strategy, 900);
   const needsRiskCheckRaw = o.needs_risk_check ?? o.needsRiskCheck;
   const needs_risk_check = typeof needsRiskCheckRaw === 'boolean' ? needsRiskCheckRaw : false;
+  if (strategyRaw && forbiddenRegex.test(strategyRaw)) return null;
 
-  const fallbackStrategy = lang === 'CN' ? '我需要再确认一点信息：你最近是否有刺痛/泛红？' : 'Quick check: have you had stinging or redness recently?';
-  if (strategyRaw) {
-    const qIdx = Math.max(strategyRaw.lastIndexOf('?'), strategyRaw.lastIndexOf('？'));
-    if (qIdx !== -1) strategyRaw = strategyRaw.slice(0, qIdx + 1).trim();
-    // Ensure "ONE direct question": replace earlier question marks with sentence punctuation.
-    if (strategyRaw) {
-      const last = strategyRaw[strategyRaw.length - 1];
-      const replaceWith = lang === 'CN' ? '。' : '.';
-      const body = strategyRaw.slice(0, -1).replace(/[?？]/g, replaceWith);
-      strategyRaw = `${body}${last}`.trim();
-    }
-    if (forbiddenRegex.test(strategyRaw)) return null;
-  }
+  const fallbackStrategy =
+    lang === 'CN'
+      ? '先执行 7 天温和基线（洁面-保湿-防晒），若出现持续刺痛/泛红立即降阶。'
+      : 'Run a gentle 7-day baseline first (cleanse-moisturize-SPF), and de-escalate immediately if persistent stinging/redness appears.';
   const strategy = strategyRaw || fallbackStrategy;
-  if (!/[?？]$/.test(strategy)) return null;
 
   if (features.length < 2 && !strategyRaw) return null;
+
+  const ask3Raw = normalizeStringArray(o.ask_3_questions ?? o.ask3Questions ?? o.followup_questions, 3, 140);
+  const primaryQuestionRaw = clampText(o.primary_question ?? o.primaryQuestion, 140);
+  const primary_question =
+    primaryQuestionRaw && !forbiddenRegex.test(primaryQuestionRaw)
+      ? primaryQuestionRaw
+      : ask3Raw[0] ||
+        (lang === 'CN' ? '你最近是否有刺痛/泛红？' : 'Have you noticed stinging or redness recently?');
+  const conditional_followups = normalizeStringArray(o.conditional_followups ?? o.conditionalFollowups, 2, 140).filter(
+    (line) => line !== primary_question,
+  );
+  const ask_3_questions = [];
+  for (const q of [primary_question, ...conditional_followups, ...ask3Raw]) {
+    if (!q || ask_3_questions.includes(q)) continue;
+    ask_3_questions.push(q);
+    if (ask_3_questions.length >= 3) break;
+  }
 
   return {
     features: features.slice(0, 6),
     strategy,
     needs_risk_check,
+    ...(ask_3_questions.length ? { ask_3_questions } : {}),
+    ...(primary_question ? { primary_question } : {}),
+    ...(conditional_followups.length ? { conditional_followups } : {}),
   };
 }
 
@@ -11282,6 +11490,819 @@ function buildExecutablePlanForAnalysis({
     fixed_n: Number(geometrySanitizer.fixed_n || 0),
     by_issue: geometryByIssue,
   };
+  return base;
+}
+
+function normalizeRoutineRole(stepLabel, productLabel) {
+  const joined = `${String(stepLabel || '')} ${String(productLabel || '')}`.trim().toLowerCase();
+  if (!joined) return 'other';
+  if (/(cleanser|cleanse|face wash|facewash|foam|wash|soap|洁面|洗面)/.test(joined)) return 'cleanser';
+  if (/(spf|sunscreen|sun screen|uv|防晒)/.test(joined)) return 'spf';
+  if (/(moist|cream|lotion|gel|repair|barrier|保湿|面霜|乳液)/.test(joined)) return 'moisturizer';
+  if (/(serum|active|treatment|acid|retinol|retinoid|vitamin c|niacinamide|精华|活性|酸|维a|维c|烟酰胺)/.test(joined)) {
+    return 'treatment';
+  }
+  return 'other';
+}
+
+function detectRoutineActiveFamilies(productLabel) {
+  const text = String(productLabel || '').trim().toLowerCase();
+  const families = [];
+  if (!text) return families;
+  if (/(retinol|retinal|retinoid|adapalene|tretinoin|维a|a醇|维甲酸)/.test(text)) families.push('retinoid');
+  if (/(glycolic|lactic|mandelic|salicylic|aha|bha|pha|果酸|水杨酸|乳酸|杏仁酸)/.test(text)) families.push('acids');
+  if (/(benzoyl|bpo|过氧化苯甲酰)/.test(text)) families.push('benzoyl_peroxide');
+  if (/(vitamin c|ascorbic|l-ascorbic|维c|vc)/.test(text)) families.push('vitamin_c');
+  if (/(niacinamide|烟酰胺)/.test(text)) families.push('niacinamide');
+  if (/(azelaic|壬二酸)/.test(text)) families.push('azelaic_acid');
+  return families;
+}
+
+function detectRoutineRiskFlags(productLabel) {
+  const text = String(productLabel || '').trim().toLowerCase();
+  const flags = [];
+  if (!text) return flags;
+  if (/(scrub|microbead|beads|exfoliating cleanser|磨砂|颗粒|去角质颗粒)/.test(text)) flags.push('physical_exfoliation_cleanser');
+  if (/(deep clean|oil control cleanser|strong cleanser|foaming cleanser|强清洁|深层清洁)/.test(text)) flags.push('high_cleanse_intensity');
+  if (/(fragrance|parfum|香精)/.test(text)) flags.push('fragrance_present');
+  return flags;
+}
+
+function normalizeRoutineStepRow(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const step = String(raw.step || raw.role || raw.category || '').trim();
+  const product = String(raw.product || raw.name || raw.value || '').trim();
+  if (!step && !product) return null;
+  const role = normalizeRoutineRole(step, product);
+  return {
+    role,
+    step: step || role,
+    product: product || step || '',
+  };
+}
+
+function normalizeRoutineStepArray(input, fallbackPhase = 'am') {
+  const out = [];
+  if (Array.isArray(input)) {
+    for (const row of input) {
+      const normalized = normalizeRoutineStepRow(row);
+      if (!normalized) continue;
+      out.push(normalized);
+      if (out.length >= 8) break;
+    }
+    return out;
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+
+  const source = input;
+  const orderedKeys = fallbackPhase === 'am'
+    ? ['cleanser', 'treatment', 'moisturizer', 'spf']
+    : ['cleanser', 'treatment', 'moisturizer', 'spf'];
+  for (const key of orderedKeys) {
+    const val = String(source[key] || '').trim();
+    if (!val) continue;
+    out.push({ role: normalizeRoutineRole(key, val), step: key, product: val });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function parseRoutineFromPlainText(rawText) {
+  const text = String(rawText || '').trim();
+  const empty = { am_steps: [], pm_steps: [], notes: '' };
+  if (!text) return empty;
+
+  const maybeJson = (() => {
+    const t = text.trim();
+    if (!(t.startsWith('{') || t.startsWith('['))) return null;
+    try {
+      return JSON.parse(t);
+    } catch {
+      return null;
+    }
+  })();
+  if (maybeJson && typeof maybeJson === 'object') {
+    return parseRoutineIntake(maybeJson);
+  }
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  let phase = 'am';
+  const amSteps = [];
+  const pmSteps = [];
+  const notes = [];
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (/^(am|morning|早上|早晨)/.test(lower)) {
+      phase = 'am';
+      continue;
+    }
+    if (/^(pm|evening|night|晚上|夜间)/.test(lower)) {
+      phase = 'pm';
+      continue;
+    }
+
+    const match = line.match(/^([^:：]{2,30})[:：]\s*(.+)$/);
+    if (match) {
+      const step = String(match[1] || '').trim();
+      const product = String(match[2] || '').trim();
+      const row = {
+        role: normalizeRoutineRole(step, product),
+        step: step || 'other',
+        product: product || step,
+      };
+      if (phase === 'am') amSteps.push(row);
+      else pmSteps.push(row);
+      continue;
+    }
+    notes.push(line);
+  }
+
+  return {
+    am_steps: amSteps.slice(0, 8),
+    pm_steps: pmSteps.slice(0, 8),
+    notes: notes.join(' ').slice(0, 800),
+  };
+}
+
+function parseRoutineIntake(routineCandidate) {
+  const empty = { am_steps: [], pm_steps: [], notes: '' };
+  if (routineCandidate == null) return empty;
+  if (typeof routineCandidate === 'string') return parseRoutineFromPlainText(routineCandidate);
+  if (Array.isArray(routineCandidate)) return empty;
+  if (typeof routineCandidate !== 'object') return empty;
+
+  const source = routineCandidate;
+  const amSteps = [];
+  const pmSteps = [];
+
+  if (Array.isArray(source.am)) amSteps.push(...normalizeRoutineStepArray(source.am, 'am'));
+  else if (source.am && typeof source.am === 'object') amSteps.push(...normalizeRoutineStepArray(source.am, 'am'));
+
+  if (Array.isArray(source.pm)) pmSteps.push(...normalizeRoutineStepArray(source.pm, 'pm'));
+  else if (source.pm && typeof source.pm === 'object') pmSteps.push(...normalizeRoutineStepArray(source.pm, 'pm'));
+
+  if (!amSteps.length && Array.isArray(source.am_steps)) amSteps.push(...normalizeRoutineStepArray(source.am_steps, 'am'));
+  if (!pmSteps.length && Array.isArray(source.pm_steps)) pmSteps.push(...normalizeRoutineStepArray(source.pm_steps, 'pm'));
+
+  const notes = String(source.notes || source.note || source.memo || '').trim().slice(0, 800);
+  return {
+    am_steps: amSteps.slice(0, 8),
+    pm_steps: pmSteps.slice(0, 8),
+    notes,
+  };
+}
+
+function mapFamilyTokenLabel(token, language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const map = {
+    retinoid: lang === 'CN' ? '维A类' : 'retinoid',
+    acids: lang === 'CN' ? '酸类(AHA/BHA/PHA)' : 'acids (AHA/BHA/PHA)',
+    benzoyl_peroxide: lang === 'CN' ? '过氧化苯甲酰' : 'benzoyl peroxide',
+    vitamin_c: lang === 'CN' ? '维C' : 'vitamin C',
+    niacinamide: lang === 'CN' ? '烟酰胺' : 'niacinamide',
+    azelaic_acid: lang === 'CN' ? '壬二酸' : 'azelaic acid',
+  };
+  return map[token] || token;
+}
+
+const ROUTINE_EVIDENCE_CATALOG = Object.freeze({
+  biotherm_force_cleanser_micro_particles: {
+    id: 'biotherm_force_cleanser_micro_particles',
+    title: {
+      EN: 'Biotherm Force Supreme Cleanser (micro-particles)',
+      CN: 'Biotherm Force Supreme 洁面（含去角质颗粒）',
+    },
+    url: 'https://www.biotherm.ca/en/men/force-supreme-anti-aging-cleanser-BIO5172.html',
+    why_relevant: {
+      EN: 'The official product page states exfoliating micro-particles, which increases friction risk under barrier stress.',
+      CN: '官方页面标注含去角质颗粒，在屏障压力期会增加摩擦刺激风险。',
+    },
+  },
+  cleanser_ph_barrier_review: {
+    id: 'cleanser_ph_barrier_review',
+    title: {
+      EN: 'JAAD review: cleanser pH and skin barrier',
+      CN: 'JAAD 综述：洁面 pH 与皮肤屏障',
+    },
+    url: 'https://www.jaad.org/article/S0190-9622(17)31962-X/abstract',
+    why_relevant: {
+      EN: 'High-pH soap systems are associated with poorer barrier compatibility than milder syndet approaches.',
+      CN: '综述指出高 pH 皂基体系通常不如温和 syndet 体系有利于屏障稳定。',
+    },
+  },
+  aquasource_lha_fragrance_inci: {
+    id: 'aquasource_lha_fragrance_inci',
+    title: {
+      EN: 'INCI list: Aquasource Hydra Barrier Cream (LHA + fragrance)',
+      CN: 'Aquasource Hydra Barrier Cream 配方清单（LHA + 香精）',
+    },
+    url: 'https://incidecoder.com/products/biotherm-aquasource-hydra-barrier-cream',
+    why_relevant: {
+      EN: 'INCI references include Capryloyl Salicylic Acid (LHA) and fragrance, useful when triaging stinging tolerance.',
+      CN: 'INCI 显示含 LHA 与香精，可用于刺痛耐受评估时的配方排查。',
+    },
+  },
+  lha_definition_reference: {
+    id: 'lha_definition_reference',
+    title: {
+      EN: 'Capryloyl Salicylic Acid (LHA) ingredient reference',
+      CN: 'Capryloyl Salicylic Acid（LHA）成分参考',
+    },
+    url: 'https://www.paulaschoice.com/ingredient-dictionary/ingredient-capryloyl-salicylic-acid.html',
+    why_relevant: {
+      EN: 'LHA is a keratolytic salicylic-acid derivative; helpful context when skin is currently stinging.',
+      CN: 'LHA 属于水杨酸衍生角质调理成分，在刺痛期需谨慎评估耐受。',
+    },
+  },
+});
+
+const ROUTINE_ISSUE_EVIDENCE_LINKS = Object.freeze({
+  hard_stop_cleanser: ['biotherm_force_cleanser_micro_particles', 'cleanser_ph_barrier_review'],
+  over_cleansing: ['cleanser_ph_barrier_review'],
+  moisturizer_stinging_threshold: ['aquasource_lha_fragrance_inci', 'lha_definition_reference'],
+});
+
+function getRoutineEvidenceIdsForIssue(issueId) {
+  const ids = ROUTINE_ISSUE_EVIDENCE_LINKS[String(issueId || '').trim()] || [];
+  return Array.isArray(ids) ? ids.slice(0, 2) : [];
+}
+
+function buildRoutineEvidenceRefs(issueIds, language) {
+  if (!AURORA_ROUTINE_EVIDENCE_REFS_ENABLED) return [];
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const refs = [];
+  const seen = new Set();
+  for (const issueId of Array.isArray(issueIds) ? issueIds : []) {
+    const refIds = getRoutineEvidenceIdsForIssue(issueId);
+    for (const refId of refIds) {
+      if (seen.has(refId)) continue;
+      const entry = ROUTINE_EVIDENCE_CATALOG[refId];
+      if (!entry) continue;
+      seen.add(refId);
+      refs.push({
+        id: entry.id,
+        title: entry.title[lang],
+        url: entry.url,
+        why_relevant: entry.why_relevant[lang],
+      });
+      if (refs.length >= 6) return refs;
+    }
+  }
+  return refs;
+}
+
+function detectStingingDurationSeconds(text) {
+  const raw = String(text || '').toLowerCase();
+  if (!raw.trim()) return null;
+  const enSec = raw.match(/(\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds)\b/);
+  if (enSec) return Math.max(0, Math.round(Number(enSec[1])));
+  const enMin = raw.match(/(\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes)\b/);
+  if (enMin) return Math.max(0, Math.round(Number(enMin[1]) * 60));
+  const zhSec = raw.match(/(\d+(?:\.\d+)?)\s*秒/);
+  if (zhSec) return Math.max(0, Math.round(Number(zhSec[1])));
+  const zhMin = raw.match(/(\d+(?:\.\d+)?)\s*分(?:钟)?/);
+  if (zhMin) return Math.max(0, Math.round(Number(zhMin[1]) * 60));
+  return null;
+}
+
+function hasPersistentStingingSignal(text) {
+  const raw = String(text || '').toLowerCase();
+  if (!raw.trim()) return false;
+  if (/(持续|一直|反复).{0,8}(刺痛|灼热|泛红)/.test(raw)) return true;
+  if (/(stinging|burning|redness).{0,12}(persist|lasting|ongoing|constant)/.test(raw)) return true;
+  return false;
+}
+
+function rankRoutineIssueSeverity(issue) {
+  const s = String(issue && issue.severity ? issue.severity : '').trim().toLowerCase();
+  const id = String(issue && issue.id ? issue.id : '').trim();
+  const base = s === 'high' ? 30 : s === 'medium' ? 20 : 10;
+  const priorityMap = {
+    hard_stop_cleanser: 9,
+    moisturizer_stinging_threshold: 8,
+    missing_spf: 7,
+    over_cleansing: 6,
+    stacked_strong_actives: 5,
+    barrier_stress_with_actives: 4,
+    goal_mismatch: 3,
+  };
+  return base + (priorityMap[id] || 0);
+}
+
+function buildRoutineExpertV1({ routineCandidate, profileSummary, recentLogs, language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const parsed = parseRoutineIntake(routineCandidate);
+  const allSteps = [...parsed.am_steps, ...parsed.pm_steps];
+  if (!allSteps.length && !parsed.notes) return null;
+
+  const amCleanser = parsed.am_steps.find((row) => row.role === 'cleanser') || null;
+  const pmCleanser = parsed.pm_steps.find((row) => row.role === 'cleanser') || null;
+  const amSpf = parsed.am_steps.find((row) => row.role === 'spf') || null;
+  const moisturizerRows = allSteps.filter((row) => row.role === 'moisturizer');
+  const treatmentRows = allSteps.filter((row) => row.role === 'treatment');
+  const notesRaw = String(parsed.notes || '').trim();
+  const notesLower = notesRaw.toLowerCase();
+  const stingingDurationSec = detectStingingDurationSeconds(notesRaw);
+
+  const activeFamilies = [];
+  const riskFlags = [];
+  const strongFamilySet = new Set(['retinoid', 'acids', 'benzoyl_peroxide']);
+  const strongFamiliesPresent = new Set();
+  for (const row of allSteps) {
+    for (const family of detectRoutineActiveFamilies(row.product)) {
+      if (!activeFamilies.includes(family)) activeFamilies.push(family);
+      if (strongFamilySet.has(family)) strongFamiliesPresent.add(family);
+    }
+    for (const flag of detectRoutineRiskFlags(row.product)) {
+      if (!riskFlags.includes(flag)) riskFlags.push(flag);
+    }
+  }
+
+  const skinType = String((profileSummary && profileSummary.skinType) || '').trim().toLowerCase();
+  const barrierStatus = String((profileSummary && profileSummary.barrierStatus) || '').trim().toLowerCase();
+  const sensitivity = String((profileSummary && profileSummary.sensitivity) || '').trim().toLowerCase();
+  const goals = Array.isArray(profileSummary && profileSummary.goals)
+    ? profileSummary.goals.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const latestLog = Array.isArray(recentLogs) && recentLogs.length ? recentLogs[0] : null;
+  const rednessHigh = Boolean(latestLog && Number.isFinite(Number(latestLog.redness)) && Number(latestLog.redness) >= 3);
+  const hydrationLow = Boolean(latestLog && Number.isFinite(Number(latestLog.hydration)) && Number(latestLog.hydration) <= 2);
+  const persistentStingingSignal = hasPersistentStingingSignal(notesLower) || (Number.isFinite(stingingDurationSec) && stingingDurationSec >= 30);
+  const barrierStressSignal =
+    barrierStatus === 'impaired' ||
+    sensitivity === 'high' ||
+    /sting|stinging|burn|red|tight|flak|peel|刺痛|泛红|紧绷|脱皮|爆皮/.test(notesLower) ||
+    persistentStingingSignal ||
+    rednessHigh ||
+    hydrationLow;
+
+  const cleanserProductText = `${String((amCleanser && amCleanser.product) || '')} ${String((pmCleanser && pmCleanser.product) || '')}`.toLowerCase();
+  const cleanserRiskFlags = riskFlags.filter((flag) => flag === 'physical_exfoliation_cleanser' || flag === 'high_cleanse_intensity');
+  const hasCleanserRiskSignal =
+    cleanserRiskFlags.length > 0 ||
+    /force cleanser|deep clean|scrub|exfoliating cleanser|磨砂|颗粒|强清洁|去角质洁面/.test(cleanserProductText);
+
+  const issues = [];
+  const whyItHappens = [];
+  const pushIssue = (issue) => {
+    const next = issue && typeof issue === 'object' ? issue : null;
+    if (!next || !next.id) return;
+    if (issues.some((item) => item.id === next.id)) return;
+    const sourceRefIds = getRoutineEvidenceIdsForIssue(next.id);
+    issues.push({
+      ...next,
+      ...(sourceRefIds.length ? { source_ref_ids: sourceRefIds } : {}),
+    });
+  };
+
+  const hardStopCleanser = Boolean(AURORA_ROUTINE_EXPERT_HARDSTOP_ENABLED && barrierStressSignal && hasCleanserRiskSignal);
+  if (hardStopCleanser) {
+    pushIssue({
+      id: 'hard_stop_cleanser',
+      severity: 'high',
+      title: lang === 'CN' ? '先硬止损：立即停用强清洁/颗粒洁面' : 'Hard stop first: stop strong/scrub cleanser immediately',
+      evidence: [
+        lang === 'CN'
+          ? '存在屏障压力信号（刺痛/泛红/紧绷）且洁面有强清洁或颗粒线索。'
+          : 'Barrier-stress signals (stinging/redness/tightness) are present with strong/scrub cleanser signals.',
+      ],
+      impact:
+        lang === 'CN'
+          ? '继续使用会提高刺激与反复波动风险，应先切换到温和洁面稳定 1-2 周。'
+          : 'Continuing increases flare risk; switch to a gentle non-scrub cleanser and stabilize for 1-2 weeks first.',
+    });
+    whyItHappens.push(
+      lang === 'CN'
+        ? '当屏障处于压力期时，强清洁与摩擦会放大经皮失水与炎症反应。'
+        : 'During barrier stress, high-cleansing intensity and friction amplify transepidermal water loss and inflammation.',
+    );
+  }
+
+  if (!amSpf) {
+    pushIssue({
+      id: 'missing_spf',
+      severity: 'high',
+      title: lang === 'CN' ? 'AM 缺少防晒步骤' : 'AM routine is missing sunscreen',
+      evidence: [
+        lang === 'CN' ? 'AM 步骤未检测到 SPF/防晒产品。' : 'No SPF/sunscreen step detected in AM routine.',
+      ],
+      impact:
+        lang === 'CN'
+          ? '会显著拖慢提亮/淡印/抗老目标，并放大炎症后色沉风险。'
+          : 'This undermines brightening/spot-fading/anti-aging progress and increases rebound discoloration risk.',
+    });
+    whyItHappens.push(
+      lang === 'CN'
+        ? '紫外线会持续触发炎症和色沉；即使护理做得好，没有防晒也容易被抵消。'
+        : 'UV exposure keeps driving inflammation and discoloration; gains are easily erased without sunscreen.',
+    );
+  }
+
+  const hasHighCleanseSignal = hasCleanserRiskSignal || /tight|dry|stinging|紧绷|干|刺痛/.test(notesLower);
+  if (amCleanser && pmCleanser && hasHighCleanseSignal) {
+    pushIssue({
+      id: 'over_cleansing',
+      severity: hardStopCleanser || barrierStressSignal ? 'high' : 'medium',
+      title: lang === 'CN' ? '清洁强度/频次可能偏高' : 'Cleansing intensity/frequency may be too high',
+      evidence: [
+        lang === 'CN'
+          ? 'AM+PM 都在使用洁面，且检测到强清洁/颗粒或紧绷刺痛线索。'
+          : 'Both AM and PM include cleanser, with strong-cleansing/scrub or tightness-stinging signals.',
+      ],
+      impact:
+        lang === 'CN'
+          ? '可能造成外油内干、刺痛泛红和屏障波动，反而让毛孔与暗沉更明显。'
+          : 'Can drive oil-rebound, stinging/redness, and barrier instability, making pores and dullness appear worse.',
+    });
+    whyItHappens.push(
+      lang === 'CN'
+        ? '清洁过强会破坏角质层脂质平衡，导致水分流失和补偿性出油。'
+        : 'Over-cleansing disrupts stratum corneum lipids, leading to water loss and compensatory oiliness.',
+    );
+  }
+
+  const moisturizerContext = `${moisturizerRows.map((row) => row.product).join(' ')} ${notesRaw}`.toLowerCase();
+  const moisturizerStingingSignal =
+    (Number.isFinite(stingingDurationSec) && stingingDurationSec >= 30) ||
+    (/moistur|cream|lotion|gel|barrier|面霜|乳液|保湿/.test(moisturizerContext) && /sting|burn|刺痛|灼热/.test(moisturizerContext));
+  if (moisturizerStingingSignal) {
+    pushIssue({
+      id: 'moisturizer_stinging_threshold',
+      severity: 'high',
+      title: lang === 'CN' ? '面霜阶段存在刺痛阈值超限' : 'Moisturizer step shows stinging above tolerance threshold',
+      evidence: [
+        Number.isFinite(stingingDurationSec)
+          ? lang === 'CN'
+            ? `备注中记录刺痛约 ${stingingDurationSec} 秒（>=30 秒阈值）。`
+            : `Notes indicate stinging around ${stingingDurationSec}s (>=30s threshold).`
+          : lang === 'CN'
+            ? '备注出现“涂抹后刺痛/灼热”信号。'
+            : 'Notes indicate stinging/burning after application.',
+      ],
+      impact:
+        lang === 'CN'
+          ? '当前更适合先走纯修护基线，暂缓潜在刺激成分配方。'
+          : 'A pure-repair baseline is safer now; pause potentially irritating formulas until tolerance stabilizes.',
+    });
+    whyItHappens.push(
+      lang === 'CN'
+        ? '刺痛持续时间越长，通常代表耐受阈值被突破，应先做减法再谈功能升级。'
+        : 'Longer stinging duration often means tolerance threshold is exceeded; simplify first before escalating actives.',
+    );
+  }
+
+  if (strongFamiliesPresent.size >= 2) {
+    pushIssue({
+      id: 'stacked_strong_actives',
+      severity: 'high',
+      title: lang === 'CN' ? '存在强活性叠加风险' : 'Strong active stacking risk detected',
+      evidence: [
+        lang === 'CN'
+          ? `检测到多类强活性：${Array.from(strongFamiliesPresent).map((f) => mapFamilyTokenLabel(f, lang)).join(' / ')}。`
+          : `Multiple strong families detected: ${Array.from(strongFamiliesPresent).map((f) => mapFamilyTokenLabel(f, lang)).join(' / ')}.`,
+      ],
+      impact:
+        lang === 'CN'
+          ? '在同一阶段叠加会放大刺激概率，影响坚持和效果判断。'
+          : 'Stacking these in the same window raises irritation probability and obscures what is working.',
+    });
+    whyItHappens.push(
+      lang === 'CN'
+        ? '强活性并用会累积刺激阈值，尤其在屏障未稳定时更容易翻车。'
+        : 'Combining strong actives compounds irritation load, especially when barrier resilience is not stable.',
+    );
+  }
+
+  if (barrierStressSignal && strongFamiliesPresent.size > 0) {
+    pushIssue({
+      id: 'barrier_stress_with_actives',
+      severity: 'high',
+      title: lang === 'CN' ? '屏障压力期仍在推进强活性' : 'Strong actives used during barrier-stress period',
+      evidence: [
+        lang === 'CN'
+          ? '检测到屏障压力信号（敏感/泛红/补水低分/刺痛备注）+ 强活性并行。'
+          : 'Barrier-stress signals (sensitivity/redness/low hydration/stinging notes) are present while strong actives continue.',
+      ],
+      impact:
+        lang === 'CN'
+          ? '会提高刺激与反复波动风险，建议先稳定再升级。'
+          : 'This increases flare-up risk; stabilization should precede aggressive upgrades.',
+    });
+  }
+
+  const goalNeedsPoreControl = goals.includes('pores') || goals.includes('acne');
+  const goalNeedsToneOrAntiAging =
+    goals.includes('dark_spots') || goals.includes('dullness') || goals.includes('wrinkles') || goals.includes('anti-aging') || goals.includes('aging');
+  const hasAnyTreatment = treatmentRows.length > 0;
+  if ((goalNeedsPoreControl && !hasAnyTreatment) || (goalNeedsToneOrAntiAging && !amSpf)) {
+    pushIssue({
+      id: 'goal_mismatch',
+      severity: 'medium',
+      title: lang === 'CN' ? '目标与当前步骤存在错配' : 'Current steps are misaligned with your stated goals',
+      evidence: [
+        lang === 'CN'
+          ? '目标需要更针对性的步骤，但当前 routine 以基础保湿为主。'
+          : 'Goals need more targeted sequencing, but current routine is mostly baseline care.',
+      ],
+      impact:
+        lang === 'CN'
+          ? '容易出现“努力很多但改善有限”的体验。'
+          : 'This often creates high effort with limited visible progress.',
+    });
+  }
+
+  const dedupWhy = Array.from(new Set(whyItHappens)).slice(0, 3);
+  const sortedIssues = issues
+    .sort((a, b) => rankRoutineIssueSeverity(b) - rankRoutineIssueSeverity(a))
+    .slice(0, 3);
+  const issueIds = sortedIssues.map((issue) => issue.id);
+
+  const amPlan = [];
+  const pmPlan = [];
+
+  if (issueIds.includes('hard_stop_cleanser')) {
+    amPlan.push(
+      lang === 'CN'
+        ? '立刻停用强清洁/颗粒洁面，改为温和非颗粒洁面；AM 先用清水或极少量温和洁面。'
+        : 'Stop strong/scrub cleanser now; switch to a gentle non-scrub cleanser. AM should be water-only or minimal gentle cleanser.',
+    );
+  } else if (issueIds.includes('over_cleansing')) {
+    amPlan.push(
+      lang === 'CN'
+        ? 'AM 先改为清水或极少量洁面；不做长时间揉搓。'
+        : 'AM: switch to water-only or a very small amount of cleanser; avoid long rubbing.',
+    );
+  } else {
+    amPlan.push(
+      lang === 'CN'
+        ? 'AM 保持温和洁面 + 轻薄保湿。'
+        : 'AM: keep gentle cleansing plus a light moisturizer.',
+    );
+  }
+
+  if (!amSpf) {
+    amPlan.push(
+      lang === 'CN'
+        ? 'AM 必加广谱 SPF30-50（通勤可先选易卸除配方，足量涂抹，户外尽量补涂）。'
+        : 'AM: add broad-spectrum SPF30-50 (prefer commuter-friendly, easy-removal formulas first; apply full amount and reapply outdoors).',
+    );
+  } else {
+    amPlan.push(
+      lang === 'CN'
+        ? 'AM 防晒保持足量，优先保证连续执行。'
+        : 'AM: keep sunscreen at full amount with consistent daily adherence.',
+    );
+  }
+
+  if (issueIds.includes('stacked_strong_actives') || issueIds.includes('barrier_stress_with_actives')) {
+    pmPlan.push(
+      lang === 'CN'
+        ? 'PM 本周先停同晚叠加强活性，只保留 1 个低频活性。'
+        : 'PM: stop same-night stacking this week; keep only one low-frequency active.',
+    );
+  } else {
+    pmPlan.push(
+      lang === 'CN'
+        ? 'PM 维持洁面 + 保湿，新增成分一次只加一个。'
+        : 'PM: keep cleanser + moisturizer; introduce only one new variable at a time.',
+    );
+  }
+
+  pmPlan.push(
+    lang === 'CN'
+      ? 'PM 洁面控制在 10-20 秒，避免过度清洁和摩擦。'
+      : 'PM: keep cleansing within 10-20 seconds and avoid excessive friction.',
+  );
+  if (!amSpf) {
+    pmPlan.push(
+      lang === 'CN'
+        ? '若白天用了防晒：PM 先温和卸除成膜层，再用温和洁面一次；不要回到暴力清洁。'
+        : 'If SPF was worn: PM should remove film with a gentle remover first, then one gentle cleanse; avoid harsh washback.',
+    );
+  }
+  if (issueIds.includes('moisturizer_stinging_threshold')) {
+    pmPlan.push(
+      lang === 'CN'
+        ? '若保湿后刺痛持续超过 30-60 秒，先停潜在刺激配方，切纯修护面霜（无香精/无酸）。'
+        : 'If stinging persists beyond 30-60s after moisturizer, pause potentially irritating formulas and switch to pure-repair moisturizer (fragrance-free, acid-free).',
+    );
+  }
+
+  const observeMetrics = [
+    lang === 'CN' ? '洗后 3 分钟紧绷/刺痛是否下降' : 'Does tightness/stinging within 3 minutes after cleansing decrease?',
+    lang === 'CN' ? '中午出油是否更稳定（不再明显反弹）' : 'Is midday oiliness more stable (less rebound)?',
+    lang === 'CN' ? '泛红与新爆痘是否减少' : 'Are redness spikes and new breakouts reducing?',
+  ];
+
+  const stopConditions = [
+    lang === 'CN'
+      ? '连续 2 天出现明显刺痛/灼热/大片泛红，立即回到“洁面+保湿+防晒”。'
+      : 'If clear stinging/burning/diffuse redness persists for 2 days, revert to cleanser+moisturizer+SPF only.',
+    lang === 'CN'
+      ? '出现持续脱皮或炎症加重，暂停所有强活性并观察 3-5 天。'
+      : 'If persistent peeling or inflammatory worsening appears, pause strong actives for 3-5 days.',
+  ];
+
+  const week2Focus = goalNeedsPoreControl
+    ? (lang === 'CN' ? '控油与毛孔通透' : 'oil control and pore clarity')
+    : goalNeedsToneOrAntiAging
+      ? (lang === 'CN' ? '提亮与抗氧化' : 'brightening and antioxidant support')
+      : (lang === 'CN' ? '稳态维护' : 'stability maintenance');
+  const week2Action = goalNeedsPoreControl
+    ? (lang === 'CN' ? '第 2 周加入 2-5% 烟酰胺，每日 1 次。' : 'Week 2: add 2-5% niacinamide once daily.')
+    : goalNeedsToneOrAntiAging
+      ? (lang === 'CN' ? '第 2 周加入温和提亮成分（如烟酰胺或温和 VC）每日 1 次。' : 'Week 2: add a gentle brightening active (niacinamide or mild vitamin C) once daily.')
+      : (lang === 'CN' ? '第 2 周维持当前方案，仅优化用量与顺序。' : 'Week 2: maintain baseline and optimize amount/order only.');
+
+  const week3Action = goalNeedsPoreControl
+    ? (lang === 'CN' ? '第 3 周再加留敷型 BHA（每周 2 晚起步）。' : 'Week 3: add leave-on BHA (start at 2 nights/week).')
+    : (lang === 'CN' ? '第 3 周按耐受把功能活性提升到每周 3-4 次。' : 'Week 3: increase target active frequency to 3-4 times/week if tolerated.');
+
+  const week4Action = goalNeedsToneOrAntiAging
+    ? (lang === 'CN' ? '第 4 周考虑夜间低频维A类（每周 2 晚）。' : 'Week 4: consider low-frequency nighttime retinoid (2 nights/week).')
+    : (lang === 'CN' ? '第 4 周保持单变量迭代，不同晚避免强活性叠加。' : 'Week 4: keep one-variable iteration and avoid same-night strong stacking.');
+
+  const defaultAsk = [
+    lang === 'CN'
+      ? '洗完脸后是否会在 3 分钟内出现紧绷/刺痛？'
+      : 'Do you feel tightness or stinging within 3 minutes after cleansing?',
+    lang === 'CN'
+      ? '你更偏油、混油、混干还是干？'
+      : 'Which profile fits better: oily, combo-oily, combo-dry, or dry?',
+    lang === 'CN'
+      ? '你最想优先解决的问题是什么（痘痘/出油/暗沉/毛孔/抗老）？'
+      : 'Which one is the top priority right now (acne, oiliness, dullness, pores, or anti-aging)?',
+    lang === 'CN'
+      ? '白天通勤/户外时长大概多久（用于给你匹配防晒和补涂强度）？'
+      : 'How long are you usually exposed outdoors in daytime (to tune SPF/reapply intensity)?',
+  ];
+  let primaryQuestion = defaultAsk[0];
+  if (issueIds.includes('moisturizer_stinging_threshold') && !Number.isFinite(stingingDurationSec)) {
+    primaryQuestion =
+      lang === 'CN'
+        ? '你在涂面霜后刺痛一般持续多久（约几秒/几分钟）？'
+        : 'How long does stinging usually last after moisturizer (roughly seconds or minutes)?';
+  } else if (!skinType) {
+    primaryQuestion =
+      lang === 'CN'
+        ? '你目前更偏油、混油、混干还是干？'
+        : 'Which profile fits your skin best now: oily, combo-oily, combo-dry, or dry?';
+  } else if (!goals.length) {
+    primaryQuestion =
+      lang === 'CN'
+        ? '你当前最想优先解决的 1 个目标是什么？'
+        : 'What is the single top-priority goal you want to solve first?';
+  } else if (!amSpf) {
+    primaryQuestion =
+      lang === 'CN'
+        ? '你白天通勤/户外时长大概多久（用于匹配防晒与补涂强度）？'
+        : 'How long are you usually exposed outdoors in daytime (to tune SPF and reapply intensity)?';
+  }
+
+  const conditionalFollowups = [];
+  if (!Number.isFinite(stingingDurationSec)) {
+    conditionalFollowups.push(
+      lang === 'CN'
+        ? '刺痛是洗后立刻出现，还是涂某一步后出现？'
+        : 'Does stinging start right after cleansing or after a specific step?',
+    );
+  }
+  if (!skinType) {
+    conditionalFollowups.push(
+      lang === 'CN'
+        ? '中午更容易出油，还是两颊更容易干紧？'
+        : 'By noon, do you lean oilier overall or tighter/drier on the cheeks?',
+    );
+  }
+  if (!goals.length) {
+    conditionalFollowups.push(
+      lang === 'CN'
+        ? '你希望先解决暗沉、毛孔、痘痘还是抗老？'
+        : 'Would you prioritize dullness, pores, acne, or anti-aging first?',
+    );
+  }
+  if (!amSpf) {
+    conditionalFollowups.push(
+      lang === 'CN'
+        ? '你能接受“通勤易卸型”还是“户外防水型”防晒？'
+        : 'Do you prefer commuter easy-removal SPF or outdoor water-resistant SPF?',
+    );
+  }
+  const followups = [];
+  for (const q of conditionalFollowups) {
+    if (!q || q === primaryQuestion) continue;
+    if (followups.includes(q)) continue;
+    followups.push(q);
+    if (followups.length >= 2) break;
+  }
+  const ask3 = [];
+  for (const q of [primaryQuestion, ...followups, ...defaultAsk]) {
+    if (!q || ask3.includes(q)) continue;
+    ask3.push(q);
+    if (ask3.length >= 3) break;
+  }
+
+  const snapshotSummary = lang === 'CN'
+    ? `当前 routine 共 ${parsed.am_steps.length} 个 AM 步骤、${parsed.pm_steps.length} 个 PM 步骤；检测到 ${activeFamilies.length || 0} 类活性。`
+    : `Current routine has ${parsed.am_steps.length} AM steps and ${parsed.pm_steps.length} PM steps; detected ${activeFamilies.length || 0} active-family signals.`;
+
+  const snapshotRiskFlags = issueIds.map((id) => {
+    const map = {
+      missing_spf: lang === 'CN' ? '缺防晒' : 'missing_spf',
+      over_cleansing: lang === 'CN' ? '清洁过强/过频' : 'over_cleansing',
+      stacked_strong_actives: lang === 'CN' ? '强活性叠加' : 'stacked_strong_actives',
+      barrier_stress_with_actives: lang === 'CN' ? '屏障压力期加活性' : 'barrier_stress_with_actives',
+      goal_mismatch: lang === 'CN' ? '目标错配' : 'goal_mismatch',
+    };
+    return map[id] || id;
+  });
+  const evidenceRefs = buildRoutineEvidenceRefs(issueIds, lang);
+
+  const phasePlan = {
+    phase_1_14d: [
+      issueIds.includes('hard_stop_cleanser')
+        ? (lang === 'CN'
+            ? '第 1-14 天先硬止损：停强清洁/颗粒洁面，改温和洁面，优先把刺痛和紧绷压下去。'
+            : 'Days 1-14 hard stop first: remove strong/scrub cleanser, use gentle cleanser, and suppress stinging/tightness before escalation.')
+        : (lang === 'CN'
+            ? '第 1-14 天先稳定屏障：保持温和清洁 + 保湿，避免新增强活性。'
+            : 'Days 1-14 prioritize barrier stability: gentle cleanse + moisturize, avoid adding strong actives.'),
+      !amSpf
+        ? (lang === 'CN'
+            ? '白天恢复防晒闭环：通勤型 SPF + 晚间温和卸除，不走暴力清洁回洗。'
+            : 'Rebuild daytime SPF loop: commuter-friendly SPF + gentle PM removal, no harsh washback.')
+        : (lang === 'CN'
+            ? '维持防晒连续性，避免“今天用明天停”的波动。'
+            : 'Keep sunscreen adherence consistent and avoid on-off oscillation.'),
+      issueIds.includes('moisturizer_stinging_threshold')
+        ? (lang === 'CN'
+            ? '若涂后刺痛超过 30-60 秒，暂停潜在刺激配方，切纯修护基线。'
+            : 'If post-application stinging exceeds 30-60s, pause potentially irritating formulas and switch to pure-repair baseline.')
+        : (lang === 'CN'
+            ? '若出现连续刺痛/灼热，立即降阶到“洁面+保湿+防晒”。'
+            : 'If stinging/burning persists, immediately de-escalate to cleanser+moisturizer+SPF only.'),
+    ].filter(Boolean).slice(0, 4),
+    phase_2_3_6w: [week2Action, week3Action, week4Action].filter(Boolean).slice(0, 4),
+  };
+
+  return {
+    contract: 'aurora.routine_expert.v1',
+    snapshot: {
+      summary: snapshotSummary,
+      am_steps: parsed.am_steps.map((row) => `${row.step}: ${row.product}`).slice(0, 6),
+      pm_steps: parsed.pm_steps.map((row) => `${row.step}: ${row.product}`).slice(0, 6),
+      active_families: activeFamilies.map((token) => mapFamilyTokenLabel(token, lang)).slice(0, 8),
+      risk_flags: snapshotRiskFlags.slice(0, 8),
+    },
+    key_issues: sortedIssues,
+    why_it_happens: dedupWhy,
+    plan_7d: {
+      am: amPlan.slice(0, 5),
+      pm: pmPlan.slice(0, 5),
+      observe_metrics: observeMetrics.slice(0, 4),
+      stop_conditions: stopConditions.slice(0, 4),
+    },
+    upgrade_path: [
+      {
+        week: lang === 'CN' ? '第 2 周' : 'Week 2',
+        focus: week2Focus,
+        action: week2Action,
+        guardrail: lang === 'CN' ? '若刺痛持续>48小时，降频或暂停。' : 'If stinging lasts >48h, reduce frequency or pause.',
+      },
+      {
+        week: lang === 'CN' ? '第 3 周' : 'Week 3',
+        focus: lang === 'CN' ? '毛孔/质地专项' : 'texture-targeted control',
+        action: week3Action,
+        guardrail: lang === 'CN' ? '不要与强清洁或磨砂同晚叠加。' : 'Do not pair with harsh cleansing or scrubs on the same night.',
+      },
+      {
+        week: lang === 'CN' ? '第 4 周' : 'Week 4',
+        focus: lang === 'CN' ? '稳定后升级' : 'stability-first escalation',
+        action: week4Action,
+        guardrail: lang === 'CN' ? '始终保持防晒连续性，再谈升级。' : 'Keep sunscreen adherence stable before escalation.',
+      },
+    ],
+    primary_question: primaryQuestion,
+    conditional_followups: followups,
+    phase_plan: phasePlan,
+    ...(evidenceRefs.length ? { evidence_refs: evidenceRefs } : {}),
+    ask_3_questions: ask3,
+  };
+}
+
+function attachRoutineExpertToAnalysis({ analysis, routineCandidate, profileSummary, recentLogs, language } = {}) {
+  const base = analysis && typeof analysis === 'object' && !Array.isArray(analysis) ? { ...analysis } : null;
+  if (!base) return analysis;
+  if (!hasNonEmptyRoutineInput(routineCandidate)) return base;
+  const expert = buildRoutineExpertV1({
+    routineCandidate,
+    profileSummary,
+    recentLogs,
+    language,
+  });
+  if (!expert) return base;
+  base.routine_expert = expert;
   return base;
 }
 
@@ -12907,6 +13928,164 @@ function extractProfilePatchFromSession(session) {
   return Object.keys(clean).length ? clean : null;
 }
 
+function parseTravelTimeWindowFromText(message) {
+  const text = String(message || '').trim();
+  if (!text) return null;
+  if (/下周|\bnext\s+week\b/i.test(text)) return 'next_week';
+  if (/这周|\bthis\s+week\b/i.test(text)) return 'this_week';
+  if (/下个月|\bnext\s+month\b/i.test(text)) return 'next_month';
+  if (/这个月|\bthis\s+month\b/i.test(text)) return 'this_month';
+  if (/周末|\bweekend\b/i.test(text)) return 'weekend';
+  if (/明天|\btomorrow\b/i.test(text)) return 'tomorrow';
+  if (/今天|\btoday\b/i.test(text)) return 'today';
+  if (/travel|trip|itinerary|出差|旅行/i.test(text)) return 'unknown';
+  return null;
+}
+
+function extractProfilePatchFromFreeText({ message, canonicalIntent } = {}) {
+  const text = String(message || '').trim();
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  const patch = {};
+
+  if (/怀孕|孕\s*\d+\s*周|\bpregnan(t|cy)\b|\b\d+\s*weeks?\s*pregnant\b/i.test(text)) {
+    patch.pregnancy_status = 'pregnant';
+  } else if (/备孕|准备怀孕|trying to conceive|ttc/i.test(text)) {
+    patch.pregnancy_status = 'trying';
+  } else if (/未怀孕|没怀孕|\bnot\s+pregnant\b/i.test(text)) {
+    patch.pregnancy_status = 'not_pregnant';
+  }
+
+  if (/哺乳|母乳|正在喂奶|breastfeed|breastfeeding|lactat/i.test(text)) {
+    patch.lactation_status = 'lactating';
+  } else if (/不哺乳|未哺乳|not\s+lactating|not\s+breastfeeding/i.test(lower)) {
+    patch.lactation_status = 'not_lactating';
+  }
+
+  const travelEntities = canonicalIntent && canonicalIntent.entities && typeof canonicalIntent.entities === 'object'
+    ? canonicalIntent.entities
+    : {};
+  const looksTravel = canonicalIntent && (canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING || canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV);
+  if (looksTravel || /出差|旅行|飞行|flight|trip|itinerary|weather|climate|天气|气候/i.test(text)) {
+    const baseTravel = {};
+    if (typeof travelEntities.destination === 'string' && travelEntities.destination.trim()) {
+      baseTravel.destination = travelEntities.destination.trim().slice(0, 100);
+    }
+    if (travelEntities.date_range && typeof travelEntities.date_range === 'object') {
+      if (typeof travelEntities.date_range.start === 'string' && travelEntities.date_range.start.trim()) {
+        baseTravel.start_date = travelEntities.date_range.start.trim().slice(0, 20);
+      }
+      if (typeof travelEntities.date_range.end === 'string' && travelEntities.date_range.end.trim()) {
+        baseTravel.end_date = travelEntities.date_range.end.trim().slice(0, 20);
+      }
+    }
+    const inferredWindow =
+      (typeof travelEntities.time_window === 'string' && travelEntities.time_window.trim()) ||
+      parseTravelTimeWindowFromText(text);
+    if (inferredWindow) baseTravel.time_window = String(inferredWindow).trim().slice(0, 20);
+    if (Object.keys(baseTravel).length) patch.travel_plan = baseTravel;
+  }
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
+function hasRoutineSosSignal(message) {
+  const text = String(message || '').toLowerCase();
+  if (!text) return false;
+  return /(burn(ing)?|sting(ing)?|peel(ing)?|flak(e|ing)|paper-thin|redness|灼热|刺痛|脱皮|爆皮|红肿|泛红|屏障受损)/.test(text);
+}
+
+function looksLikeLowRiskSkincareTask(message) {
+  const text = String(message || '').toLowerCase();
+  if (!text) return false;
+  const lowRiskSignal =
+    /(sunscreen|spf|moisturizer|hydrator|barrier cream|cleanser|防晒|保湿|面霜|乳液|洁面|修护)/.test(text);
+  const highRiskSignal =
+    /(prescription|isotretinoin|accutane|tretinoin|adapalene|hydroquinone|抗生素|处方|异维a酸|维a酸|氢醌)/.test(text);
+  return lowRiskSignal && !highRiskSignal;
+}
+
+function buildRulesOnlyRoutineExpertFromContext({ message, profile, recentLogs, language } = {}) {
+  const candidateFromProfile = profile && profile.currentRoutine ? profile.currentRoutine : null;
+  const candidate =
+    hasNonEmptyRoutineInput(candidateFromProfile)
+      ? candidateFromProfile
+      : { notes: String(message || '').slice(0, 800) };
+  const expert = buildRoutineExpertV1({
+    routineCandidate: candidate,
+    profileSummary: profile && typeof profile === 'object' ? profile : {},
+    recentLogs,
+    language,
+  });
+  if (expert) return expert;
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  return {
+    contract: 'aurora.routine_expert.v1',
+    snapshot: {
+      summary: lang === 'CN' ? '已进入保守规则兜底（无完整上游结构化结果）。' : 'Conservative rules-only fallback is active (no complete upstream structured result).',
+      am_steps: [],
+      pm_steps: [],
+      active_families: [],
+      risk_flags: [],
+    },
+    key_issues: [
+      {
+        id: 'fallback_rules_only',
+        severity: 'medium',
+        title: lang === 'CN' ? '先执行低风险基线，避免空转' : 'Apply low-risk baseline first to avoid stalling',
+        evidence: [lang === 'CN' ? '上游结构化内容缺失，已切到规则兜底。' : 'Upstream structured content is missing; switched to rules fallback.'],
+        impact: lang === 'CN' ? '可继续推进，不需要重试才能获得可执行建议。' : 'Progress can continue without requiring retries.',
+      },
+    ],
+    why_it_happens: [
+      lang === 'CN' ? '当上游结构化内容不完整时，规则兜底可保证建议连续性。' : 'When upstream structured content is incomplete, rules fallback keeps advice continuous.',
+    ],
+    plan_7d: {
+      am: [
+        lang === 'CN' ? '早上：温和清洁（或清水）+ 保湿 + 防晒。' : 'AM: gentle cleanse (or water only) + moisturizer + sunscreen.',
+      ],
+      pm: [
+        lang === 'CN' ? '晚上：温和清洁 + 修护保湿，暂停强活性叠加。' : 'PM: gentle cleanse + repair moisturizer, pause strong active stacking.',
+      ],
+      observe_metrics: [
+        lang === 'CN' ? '观察刺痛/泛红是否下降。' : 'Track whether stinging/redness decreases.',
+      ],
+      stop_conditions: [
+        lang === 'CN' ? '若刺痛/灼热持续加重，立即停活性并回到基线。' : 'If stinging/burning worsens, stop actives and revert to baseline.',
+      ],
+    },
+    upgrade_path: [
+      {
+        week: lang === 'CN' ? '第 2 周' : 'Week 2',
+        focus: lang === 'CN' ? '单变量升级' : 'single-variable upgrade',
+        action: lang === 'CN' ? '每次只新增 1 个变量，观察 72 小时。' : 'Add only one variable at a time and observe for 72 hours.',
+        guardrail: lang === 'CN' ? '出现刺激即降频或暂停。' : 'Reduce frequency or pause at first irritation signal.',
+      },
+    ],
+    primary_question:
+      lang === 'CN'
+        ? '你现在最困扰的是刺痛、泛红，还是爆皮？'
+        : 'What is the dominant issue right now: stinging, redness, or peeling?',
+    conditional_followups: [],
+    phase_plan: {
+      phase_1_14d: [
+        lang === 'CN' ? '先稳屏障：温和清洁 + 保湿 + 防晒。' : 'Stabilize barrier first: gentle cleanse + moisturizer + sunscreen.',
+      ],
+      phase_2_3_6w: [
+        lang === 'CN' ? '稳住后再低频引入单一活性。' : 'After stability, reintroduce one active at low frequency.',
+      ],
+    },
+    ask_3_questions: [
+      lang === 'CN' ? '你现在最困扰的是刺痛、泛红，还是爆皮？' : 'What is the dominant issue right now: stinging, redness, or peeling?',
+      lang === 'CN' ? '你白天是否稳定使用防晒？' : 'Are you using sunscreen consistently in daytime?',
+      lang === 'CN' ? '你目前晚间是否仍在叠加强活性？' : 'Are you still stacking strong actives at night?',
+    ],
+  };
+}
+
 function shouldPersistProfilePatch(baseProfile, patch) {
   if (!patch || typeof patch !== 'object') return false;
   const keys = Object.keys(patch);
@@ -13044,6 +14223,9 @@ function summarizeProfileForContext(profile, options = {}) {
         : {}),
       ...(typeof travelPlanRaw.end_date === 'string' && travelPlanRaw.end_date.trim()
         ? { end_date: travelPlanRaw.end_date.trim().slice(0, 20) }
+        : {}),
+      ...(typeof travelPlanRaw.time_window === 'string' && travelPlanRaw.time_window.trim()
+        ? { time_window: travelPlanRaw.time_window.trim().slice(0, 20) }
         : {}),
       ...(Number.isFinite(Number(travelPlanRaw.indoor_outdoor_ratio))
         ? { indoor_outdoor_ratio: Math.max(0, Math.min(1, Number(travelPlanRaw.indoor_outdoor_ratio))) }
@@ -13773,6 +14955,119 @@ function looksLikeGenericStructuredNotice(text) {
     raw.includes('我还没能从上游拿到可结构化') ||
     raw.includes('仅返回了摘要/解析信息')
   );
+}
+
+function looksLikeStallPhrase(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  return (
+    lower.includes('please retry') ||
+    lower.includes('retry shortly') ||
+    lower.includes('upload photos') ||
+    lower.includes('need a diagnosis result first') ||
+    lower.includes('one quick detail before i continue') ||
+    lower.includes('select one direction first') ||
+    raw.includes('请重试') ||
+    raw.includes('稍后重试') ||
+    raw.includes('先上传照片') ||
+    raw.includes('先给目的地') ||
+    raw.includes('先选方向')
+  );
+}
+
+function findRoutineExpertNodeFromEnvelope(envelope) {
+  const cards = Array.isArray(envelope && envelope.cards) ? envelope.cards : [];
+  for (const card of cards) {
+    if (!card || typeof card !== 'object' || Array.isArray(card)) continue;
+    const type = String(card.type || '').trim().toLowerCase();
+    if (type !== 'analysis_summary') continue;
+    const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+    const analysis = payload.analysis && typeof payload.analysis === 'object' && !Array.isArray(payload.analysis) ? payload.analysis : {};
+    const expert = analysis.routine_expert && typeof analysis.routine_expert === 'object' && !Array.isArray(analysis.routine_expert)
+      ? analysis.routine_expert
+      : null;
+    if (expert) return expert;
+  }
+  return null;
+}
+
+function hasRoutineExpertRequiredModules(expert) {
+  if (!expert || typeof expert !== 'object' || Array.isArray(expert)) return false;
+  const hasSnapshot = expert.snapshot && typeof expert.snapshot === 'object' && !Array.isArray(expert.snapshot);
+  const hasIssues = Array.isArray(expert.key_issues) && expert.key_issues.length > 0;
+  const hasPhase = expert.phase_plan && typeof expert.phase_plan === 'object' && !Array.isArray(expert.phase_plan);
+  const hasPlan7d = expert.plan_7d && typeof expert.plan_7d === 'object' && !Array.isArray(expert.plan_7d);
+  const hasPrimaryQuestion = typeof expert.primary_question === 'string' && expert.primary_question.trim().length > 0;
+  return hasSnapshot && hasIssues && hasPhase && hasPlan7d && hasPrimaryQuestion;
+}
+
+function isRoutineContractIntent(intent) {
+  const value = String(intent || '').trim().toLowerCase();
+  return (
+    value === String(INTENT_ENUM.ROUTINE || '').trim().toLowerCase() ||
+    value === String(INTENT_ENUM.INGREDIENT_SCIENCE || '').trim().toLowerCase() ||
+    value === String(INTENT_ENUM.TRAVEL_PLANNING || '').trim().toLowerCase() ||
+    value === String(INTENT_ENUM.WEATHER_ENV || '').trim().toLowerCase() ||
+    value === String(INTENT_ENUM.CONFLICT_CHECK || '').trim().toLowerCase()
+  );
+}
+
+function buildRoutineRulesOnlyFallbackCardsForChat({ ctx, message, profile, recentLogs, language, reason } = {}) {
+  const expert = buildRulesOnlyRoutineExpertFromContext({ message, profile, recentLogs, language });
+  const noticeReason = String(reason || '').trim().toLowerCase() === 'timeout_degraded' ? 'timeout_degraded' : 'default';
+  return [
+    {
+      card_id: `analysis_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_rules`,
+      type: 'analysis_summary',
+      payload: {
+        analysis_source: noticeReason === 'timeout_degraded' ? 'rules_only_timeout_degraded' : 'rules_only_fallback',
+        low_confidence: true,
+        analysis: {
+          routine_expert: expert,
+        },
+      },
+    },
+    {
+      card_id: `conf_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_rules`,
+      type: 'confidence_notice',
+      payload: buildConfidenceNoticeCardPayload({
+        language,
+        reason: noticeReason,
+        confidence: {
+          score: noticeReason === 'timeout_degraded' ? 0.35 : 0.42,
+          level: 'low',
+          rationale: ['rules_only_fallback'],
+        },
+        actions: ['continue_routine_intake', 'retry_routine_generation'],
+        details: ['rules_only_structured_fallback'],
+      }),
+    },
+  ];
+}
+
+function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantText } = {}) {
+  const cards = Array.isArray(envelope && envelope.cards) ? envelope.cards : [];
+  const stallHit = looksLikeStallPhrase(assistantText) && !hasRenderableCards(cards);
+  const critical = [];
+  if (stallHit) critical.push('stall_fail');
+
+  const intent = String(policyMeta && policyMeta.intent_canonical ? policyMeta.intent_canonical : '').trim().toLowerCase();
+  if (isRoutineContractIntent(intent)) {
+    const expert = findRoutineExpertNodeFromEnvelope(envelope);
+    if (!hasRoutineExpertRequiredModules(expert)) critical.push('module_fail');
+  }
+
+  const summaryText = JSON.stringify(cards).toLowerCase();
+  if (/(makeup brush|blush brush|化妆刷|彩妆刷)/.test(summaryText)) {
+    critical.push('catalog_poison_fail');
+  }
+
+  return {
+    contract_pass: critical.length === 0,
+    stall_hit: stallHit,
+    critical_fail_reasons: Array.from(new Set(critical)),
+  };
 }
 
 function getCardPayload(card) {
@@ -18386,7 +19681,12 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
 
   let upstream = null;
   try {
-    upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: RECO_ROUTINE_UPSTREAM_TIMEOUT_MS });
+    upstream = await auroraChat({
+      baseUrl: AURORA_DECISION_BASE_URL,
+      query,
+      timeoutMs: RECO_ROUTINE_UPSTREAM_TIMEOUT_MS,
+      retries: 0,
+    });
   } catch (err) {
     if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
       logger?.warn({ err: err.message }, 'aurora bff: routine upstream failed');
@@ -18989,7 +20289,8 @@ function mountAuroraBffRoutes(app, { logger }) {
     res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
     const visionMetrics = String(renderVisionMetricsPrometheus() || '');
     const recoMetrics = renderRecoPdpFallbackMetricsPrometheus();
-    return res.status(200).send(`${visionMetrics}${recoMetrics}`);
+    const qualityMetrics = renderChatQualityMetricsPrometheus();
+    return res.status(200).send(`${visionMetrics}${recoMetrics}${qualityMetrics}`);
   });
 
   app.get('/v1/ops/pdp-prefetch/state', (req, res) => {
@@ -23426,7 +24727,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             const prompt =
               attempt === 0
                 ? promptBase
-                : `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON only (no markdown/text), exactly the specified keys, and strategy must end with a single direct question.\n`;
+                : `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON only (no markdown/text), exactly the specified keys, and keep strategy executable.\n`;
 
             let upstream = null;
             try {
@@ -23633,6 +24934,13 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : visionPhotoNoticeMessage,
             photoFailureCode,
             photosProvided,
+          });
+          analysis = attachRoutineExpertToAnalysis({
+            analysis,
+            routineCandidate: hasRoutine ? routineCandidate : null,
+            profileSummary,
+            recentLogs: recentLogsSummary,
+            language: ctx.lang,
           });
           geometrySanitizer =
             analysis && analysis.__geometry_sanitizer && typeof analysis.__geometry_sanitizer === 'object'
@@ -24960,6 +26268,7 @@ function mountAuroraBffRoutes(app, { logger }) {
     let profile = null;
     let recentLogs = [];
     let safetyDecision = null;
+    let requestMessage = '';
     let recoContextMetricsEmitted = false;
     const refreshPolicyMetaRollout = () => {
       effectiveChatFlags = rolloutContext.effective_flags || effectiveChatFlags;
@@ -25214,9 +26523,101 @@ function mountAuroraBffRoutes(app, { logger }) {
         logger?.info({ kind: 'metric', name: 'aurora.skin.reco.output_guard_fallback_rate', value: 1 }, 'metric');
         recordAuroraSkinFlowMetric({ stage: 'reco_output_guard_fallback', hit: true });
       }
-      emitAudit(guarded.envelope, templateCtx, { logger });
-      if (statusCode >= 400) return res.status(statusCode).json(guarded.envelope);
-      return res.json(guarded.envelope);
+      const envelopeAfterRoutineFallback = (() => {
+        const baseEnvelope =
+          guarded.envelope && typeof guarded.envelope === 'object' && !Array.isArray(guarded.envelope)
+            ? { ...guarded.envelope }
+            : guarded.envelope;
+        if (!baseEnvelope || typeof baseEnvelope !== 'object' || Array.isArray(baseEnvelope)) return baseEnvelope;
+        if (statusCode >= 400) return baseEnvelope;
+
+        const intentCanonical = String(policyMeta && policyMeta.intent_canonical ? policyMeta.intent_canonical : '')
+          .trim()
+          .toLowerCase();
+        const routineContext =
+          isRoutineContractIntent(intentCanonical) ||
+          hasRoutineSosSignal(requestMessage) ||
+          looksLikeCompatibilityOrConflictQuestion(requestMessage) ||
+          looksLikeWeatherOrEnvironmentQuestion(requestMessage);
+        if (!routineContext) return baseEnvelope;
+
+        const existingExpert = findRoutineExpertNodeFromEnvelope(baseEnvelope);
+        if (hasRoutineExpertRequiredModules(existingExpert)) return baseEnvelope;
+
+        const existingCards = Array.isArray(baseEnvelope.cards) ? baseEnvelope.cards.slice() : [];
+        const existingEvents = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice() : [];
+        const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+          ctx,
+          message: requestMessage,
+          profile,
+          recentLogs,
+          language: ctx.lang,
+          reason: 'default',
+        });
+        const fallbackAnalysisCard = fallbackCards.find((card) => card && card.type === 'analysis_summary');
+        const fallbackConfidenceCard = fallbackCards.find((card) => card && card.type === 'confidence_notice');
+        if (fallbackAnalysisCard) {
+          existingCards.push(fallbackAnalysisCard);
+        }
+        if (
+          fallbackConfidenceCard &&
+          !existingCards.some((card) => card && typeof card === 'object' && String(card.type || '').trim() === 'confidence_notice')
+        ) {
+          existingCards.push(fallbackConfidenceCard);
+        }
+        existingEvents.push(
+          makeEvent(ctx, 'routine_rules_fallback', {
+            reason: 'contract_module_missing',
+            intent_canonical: intentCanonical || null,
+          }),
+        );
+        return {
+          ...baseEnvelope,
+          cards: existingCards,
+          events: existingEvents,
+        };
+      })();
+      const assistantTextForQuality =
+        envelopeAfterRoutineFallback &&
+        envelopeAfterRoutineFallback.assistant_message &&
+        typeof envelopeAfterRoutineFallback.assistant_message === 'object' &&
+        typeof envelopeAfterRoutineFallback.assistant_message.content === 'string'
+          ? envelopeAfterRoutineFallback.assistant_message.content
+          : '';
+      if (looksLikeStallPhrase(assistantTextForQuality)) {
+        recordChatStallPhrase(1);
+      }
+      const envelopeWithContract = (() => {
+        const baseEnvelope =
+          envelopeAfterRoutineFallback && typeof envelopeAfterRoutineFallback === 'object' && !Array.isArray(envelopeAfterRoutineFallback)
+            ? { ...envelopeAfterRoutineFallback }
+            : envelopeAfterRoutineFallback;
+        if (!AURORA_MULTITURN_CONTRACT_GATE_V1_ENABLED) return baseEnvelope;
+        if (!baseEnvelope || typeof baseEnvelope !== 'object' || Array.isArray(baseEnvelope)) return baseEnvelope;
+        const qualityContract = evaluateQualityContractForEnvelope({
+          envelope: baseEnvelope,
+          policyMeta,
+          assistantText: assistantTextForQuality,
+        });
+        if (Array.isArray(qualityContract.critical_fail_reasons)) {
+          for (const reason of qualityContract.critical_fail_reasons) {
+            recordContractFail(reason, 1);
+          }
+        }
+        const topMeta = baseEnvelope.meta && typeof baseEnvelope.meta === 'object' && !Array.isArray(baseEnvelope.meta)
+          ? { ...baseEnvelope.meta }
+          : {};
+        return {
+          ...baseEnvelope,
+          meta: {
+            ...topMeta,
+            quality_contract: qualityContract,
+          },
+        };
+      })();
+      emitAudit(envelopeWithContract, templateCtx, { logger });
+      if (statusCode >= 400) return res.status(statusCode).json(envelopeWithContract);
+      return res.json(envelopeWithContract);
     };
 
     try {
@@ -25324,6 +26725,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionReplyText ||
         actionLabelFromPayload ||
         '';
+      requestMessage = message;
       const actionId =
         (normalizedActionPayload && typeof normalizedActionPayload === 'object'
           ? normalizedActionPayload.action_id
@@ -25371,13 +26773,65 @@ function mountAuroraBffRoutes(app, { logger }) {
           : '';
       const upstreamMessages = Array.isArray(parsed.data.messages) ? parsed.data.messages : null;
 
-      const canonicalIntent = inferCanonicalIntent({
+      let canonicalIntent = inferCanonicalIntent({
         message,
         actionId,
         actionLabel,
       });
+      if (
+        AURORA_ROUTER_DST_PATCH_V1_ENABLED &&
+        hasRoutineSosSignal(message) &&
+        (
+          canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT ||
+          canonicalIntent.intent === INTENT_ENUM.DUPE_COMPARE ||
+          canonicalIntent.intent === INTENT_ENUM.INGREDIENT_SCIENCE
+        )
+      ) {
+        canonicalIntent = {
+          ...canonicalIntent,
+          intent: INTENT_ENUM.ROUTINE,
+          source: 'sos_override',
+          confidence: 0.99,
+        };
+      }
       policyMeta.intent_canonical = canonicalIntent.intent || INTENT_ENUM.UNKNOWN;
       policyMeta.intent_source = canonicalIntent.source || 'none';
+
+      if (AURORA_ROUTER_DST_PATCH_V1_ENABLED) {
+        const textDerivedPatch = extractProfilePatchFromFreeText({ message, canonicalIntent });
+        if (textDerivedPatch) {
+          const profileBeforePatch = profile && typeof profile === 'object' ? profile : null;
+          const normalizedPatch = {
+            ...textDerivedPatch,
+            ...(textDerivedPatch.travel_plan && typeof textDerivedPatch.travel_plan === 'object'
+              ? {
+                travel_plan: {
+                  ...(profileBeforePatch &&
+                  profileBeforePatch.travel_plan &&
+                  typeof profileBeforePatch.travel_plan === 'object' &&
+                  !Array.isArray(profileBeforePatch.travel_plan)
+                    ? profileBeforePatch.travel_plan
+                    : {}),
+                  ...textDerivedPatch.travel_plan,
+                },
+              }
+              : {}),
+          };
+          appliedProfilePatch = {
+            ...(appliedProfilePatch && typeof appliedProfilePatch === 'object' ? appliedProfilePatch : {}),
+            ...normalizedPatch,
+          };
+          profile = { ...(profile || {}), ...normalizedPatch };
+          const shouldPersistTextPatch = shouldPersistProfilePatch(profileBeforePatch, normalizedPatch);
+          if (shouldPersistTextPatch) {
+            try {
+              profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, normalizedPatch);
+            } catch (err) {
+              logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to apply text-derived profile patch');
+            }
+          }
+        }
+      }
 
       if (
         effectiveChatFlags.profile_v2 &&
@@ -25406,9 +26860,17 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : {}),
             }
             : {}),
+          ...(canonicalIntent.entities.time_window
+            ? { time_window: String(canonicalIntent.entities.time_window).trim().slice(0, 20) }
+            : {}),
         };
         if (Object.keys(nextTravel).length) {
-          profile = { ...(profile || {}), travel_plan: nextTravel };
+          const travelPatch = { travel_plan: nextTravel };
+          profile = { ...(profile || {}), ...travelPatch };
+          appliedProfilePatch = {
+            ...(appliedProfilePatch && typeof appliedProfilePatch === 'object' ? appliedProfilePatch : {}),
+            ...travelPatch,
+          };
         }
       }
 
@@ -25421,6 +26883,84 @@ function mountAuroraBffRoutes(app, { logger }) {
         const preambleSeed = `${ctx.request_id || ''}|${ctx.trace_id || ''}|${String(content || '').slice(0, 96)}`;
         const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
         return makeAssistantMessage(text, format);
+      };
+      const buildRoutineTimeoutDegradedEnvelope = ({ detail, upstreamFailureCode } = {}) => {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const detailText =
+          typeof detail === 'string' && detail.trim()
+            ? detail.trim()
+            : lang === 'CN'
+              ? 'routine 生成阶段超时，已切换保守降级路径。'
+              : 'Routine generation timed out, so it was switched to a conservative degraded path.';
+        const detailCodeText =
+          upstreamFailureCode && String(upstreamFailureCode).trim()
+            ? lang === 'CN'
+              ? `上游代码：${String(upstreamFailureCode).trim().slice(0, 64)}`
+              : `Upstream code: ${String(upstreamFailureCode).trim().slice(0, 64)}`
+            : null;
+        const chips = [
+          {
+            chip_id: 'chip.intake.paste_routine',
+            label: lang === 'CN' ? '继续填写 AM/PM' : 'Continue routine intake',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '继续填写我的 AM/PM 护肤流程' : 'Continue filling my AM/PM routine' },
+          },
+          {
+            chip_id: 'chip.start.routine',
+            label: lang === 'CN' ? '重试生成 routine' : 'Retry routine generation',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '重试生成 AM/PM 护肤 routine' : 'Retry generating an AM/PM routine' },
+          },
+        ];
+        const rulesOnlyExpert = buildRulesOnlyRoutineExpertFromContext({
+          message,
+          profile,
+          recentLogs,
+          language: ctx.lang,
+        });
+        return buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            lang === 'CN'
+              ? 'routine 生成暂时超时。我已切到保守降级，不返回空卡；你可以继续补充当前流程，或直接重试。'
+              : 'Routine generation timed out. I switched to a conservative degraded path without returning empty cards; continue intake or retry directly.',
+          ),
+          suggested_chips: chips,
+          cards: [
+            {
+              card_id: `analysis_${ctx.request_id}`,
+              type: 'analysis_summary',
+              payload: {
+                analysis_source: 'rules_only_timeout_degraded',
+                low_confidence: true,
+                analysis: {
+                  routine_expert: rulesOnlyExpert,
+                },
+              },
+            },
+            {
+              card_id: `conf_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: 'timeout_degraded',
+                confidence: { score: 0.38, level: 'low', rationale: ['routine_budget_timeout'] },
+                actions: ['update_current_routine', 'retry_recommendations'],
+                details: [detailText, ...(detailCodeText ? [detailCodeText] : [])],
+              }),
+            },
+          ],
+          session_patch: {},
+          events: [
+            makeEvent(ctx, 'recos_requested', {
+              explicit: true,
+              gated: true,
+              reason: 'timeout_degraded',
+              source: 'upstream_timeout',
+              route: 'routine',
+              ...(detailCodeText ? { upstream_failure_code: String(upstreamFailureCode).trim().slice(0, 64) } : {}),
+            }),
+          ],
+        });
       };
       const safetyConceptMatch = collectConceptMatchesFromText({
         text: message,
@@ -26049,7 +27589,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
       ) {
         const availabilityIntent = detectCatalogAvailabilityIntent(message, ctx.lang);
-        if (availabilityIntent && !shouldBypassAvailabilityShortCircuit) {
+        const allowCatalogShortCircuit = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
+          ? shouldAllowCatalogAvailabilityShortCircuit(message)
+          : true;
+        if (availabilityIntent && !shouldBypassAvailabilityShortCircuit && allowCatalogShortCircuit) {
           recordCatalogAvailabilityShortCircuit({ brandId: availabilityIntent.brand_id, reason: availabilityIntent.reason });
 
           const availabilityQuery =
@@ -26139,6 +27682,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
+          let catalogPoisonBlockedCount = 0;
+          if (AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED && Array.isArray(products) && products.length > 0) {
+            const filteredProducts = products.filter((item) => isSkincareCatalogProduct(item));
+            catalogPoisonBlockedCount = Math.max(0, products.length - filteredProducts.length);
+            products = filteredProducts;
+            if (catalogPoisonBlockedCount > 0) {
+              recordCatalogPoisonBlock(catalogPoisonBlockedCount);
+            }
+          }
+
           const offersItems = (products.length ? products : [brandProduct])
             .slice(0, 8)
             .map((product) => applyOfferItemPdpOpenContract({ product, offer: null }, { timeToPdpMs: 0 }));
@@ -26179,6 +27732,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           const fieldMissing = [];
           if (!hasResults && catalogResult.reason) {
             fieldMissing.push({ field: 'catalog.products', reason: String(catalogResult.reason).slice(0, 60) });
+            if (catalogPoisonBlockedCount > 0) {
+              fieldMissing.push({ field: 'catalog.domain_guard', reason: 'catalog_poison_block' });
+            }
             if (availabilityResolveFallback?.resolve_reason_code) {
               fieldMissing.push({
                 field: 'catalog.resolve',
@@ -26238,6 +27794,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 resolve_reason_code: availabilityResolveFallback?.resolve_reason_code || null,
                 local_resolve_attempted: availabilityLocalResolveAttempted,
                 local_resolve_reason_code: availabilityLocalResolveFallback?.resolve_reason_code || null,
+                catalog_poison_blocked_count: catalogPoisonBlockedCount,
               }),
             ],
           });
@@ -26255,7 +27812,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         ) &&
         plannerDecision.next_step === 'ask' &&
         Array.isArray(plannerDecision.required_fields) &&
-        plannerDecision.required_fields.length > 0
+        plannerDecision.required_fields.length > 0 &&
+        (!AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED || !plannerDecision.can_answer_now)
       ) {
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
         const fields = plannerDecision.required_fields;
@@ -26403,6 +27961,34 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
           if (safetyText) advice = `${safetyText}\n\n${advice}`;
+        }
+
+        if (
+          AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED &&
+          plannerDecision &&
+          Array.isArray(plannerDecision.required_fields) &&
+          plannerDecision.required_fields.length > 0
+        ) {
+          const missing = plannerDecision.required_fields;
+          const asksDestination = missing.includes('travel_plan.destination');
+          const asksDates = missing.includes('travel_plan.start_date') || missing.includes('travel_plan.end_date');
+          const followup =
+            ctx.lang === 'CN'
+              ? asksDestination && asksDates
+                ? '补充一下目的地和出行日期，我可以把策略细化到行程窗口。'
+                : asksDestination
+                  ? '补充一下目的地，我可以把策略细化到当地环境。'
+                  : asksDates
+                    ? '补充一下出行日期，我可以按行程窗口细化策略。'
+                    : '补充一个旅行细节，我可以继续细化。'
+              : asksDestination && asksDates
+                ? 'Share destination + travel dates and I can refine this to your trip window.'
+                : asksDestination
+                  ? 'Share your destination and I can tune this to local conditions.'
+                  : asksDates
+                    ? 'Share travel dates and I can tune this to your trip window.'
+                    : 'Share one extra travel detail and I can refine this further.';
+          advice = `${advice}\n\n${followup}`;
         }
 
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
@@ -26832,15 +28418,49 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
-          const { norm, suggestedChips } = await generateRoutineReco({
-            ctx,
-            profile,
-            recentLogs,
-            focus: 'daily routine',
-            constraints: { simplicity: 'high' },
-            includeAlternatives,
-            logger,
-          });
+          let routineRecoOut = null;
+          try {
+            const routineRecoPromise = generateRoutineReco({
+              ctx,
+              profile,
+              recentLogs,
+              focus: 'daily routine',
+              constraints: { simplicity: 'high' },
+              includeAlternatives,
+              logger,
+            });
+            routineRecoOut = AURORA_BFF_CHAT_ROUTINE_V2_ENABLED
+              ? await withTimeout(
+                routineRecoPromise,
+                AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+                'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT',
+              )
+              : await routineRecoPromise;
+          } catch (err) {
+            if (!AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || !(err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT')) {
+              throw err;
+            }
+            logger?.warn(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+              },
+              'aurora bff: routine generation timeout, degraded to confidence_notice',
+            );
+            logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
+            recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+            return sendChatEnvelope(
+              buildRoutineTimeoutDegradedEnvelope({
+                detail:
+                  ctx.lang === 'CN'
+                    ? '预算分支 routine 生成超时，建议继续补充 AM/PM 后重试。'
+                    : 'Routine generation in budget flow timed out; continue AM/PM intake and retry.',
+              }),
+            );
+          }
+
+          const { norm, suggestedChips } = routineRecoOut;
 
           const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
           const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
@@ -26880,15 +28500,49 @@ function mountAuroraBffRoutes(app, { logger }) {
       ) {
         const budget = normalizeBudgetHint(profile && profile.budgetTier);
 
-        const { norm, suggestedChips } = await generateRoutineReco({
-          ctx,
-          profile,
-          recentLogs,
-          focus: 'daily routine',
-          constraints: { simplicity: 'high' },
-          includeAlternatives,
-          logger,
-        });
+        let routineRecoOut = null;
+        try {
+          const routineRecoPromise = generateRoutineReco({
+            ctx,
+            profile,
+            recentLogs,
+            focus: 'daily routine',
+            constraints: { simplicity: 'high' },
+            includeAlternatives,
+            logger,
+          });
+          routineRecoOut = AURORA_BFF_CHAT_ROUTINE_V2_ENABLED
+            ? await withTimeout(
+              routineRecoPromise,
+              AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+              'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT',
+            )
+            : await routineRecoPromise;
+        } catch (err) {
+          if (!AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || !(err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT')) {
+            throw err;
+          }
+          logger?.warn(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+            },
+            'aurora bff: routine generation timeout, degraded to confidence_notice',
+          );
+          logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
+          recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+          return sendChatEnvelope(
+            buildRoutineTimeoutDegradedEnvelope({
+              detail:
+                ctx.lang === 'CN'
+                  ? 'routine 生成超时，建议继续补充 AM/PM 或直接重试。'
+                  : 'Routine generation timed out; continue AM/PM intake or retry directly.',
+            }),
+          );
+        }
+
+        const { norm, suggestedChips } = routineRecoOut;
 
         const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
@@ -27247,7 +28901,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             : latestArtifact;
 
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
-        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok) {
+        const allowLowRiskNonBlockingArtifactGate =
+          AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
+        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !allowLowRiskNonBlockingArtifactGate) {
           const chips = buildRecoEntryChips(ctx.lang);
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
           const sessionPatch = nextState ? { next_state: nextState } : {};
@@ -27277,6 +28933,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             ],
           });
           return sendChatEnvelope(envelope);
+        }
+        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && allowLowRiskNonBlockingArtifactGate) {
+          recordAuroraSkinFlowMetric({ stage: 'artifact_gate_nonblocking_low_risk', hit: true });
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              reason: artifactGate.reason || 'artifact_missing',
+            },
+            'aurora bff: bypassing artifact gate for low-risk skincare request',
+          );
         }
 
         let mappedIngredientPlan = null;
@@ -28700,6 +30367,49 @@ function mountAuroraBffRoutes(app, { logger }) {
           : []),
       ];
 
+      const routineLikeContext =
+        String(canonicalIntent && canonicalIntent.intent ? canonicalIntent.intent : '').trim().toLowerCase() ===
+          String(INTENT_ENUM.ROUTINE || '').trim().toLowerCase() ||
+        looksLikeRoutineRequest(message, normalizedActionPayload) ||
+        hasRoutineSosSignal(message);
+      let catalogPoisonBlockedByGuard = 0;
+      if (AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED && routineLikeContext) {
+        const filteredCards = [];
+        let blockedCount = 0;
+        for (const card of assembledCards) {
+          if (isSkincareCatalogCard(card)) {
+            filteredCards.push(card);
+            continue;
+          }
+          blockedCount += 1;
+        }
+        if (blockedCount > 0) {
+          catalogPoisonBlockedByGuard = blockedCount;
+          recordCatalogPoisonBlock(blockedCount);
+          assembledCards.length = 0;
+          assembledCards.push(...filteredCards);
+        }
+      }
+      const assembledRenderable = assembledCards.some((card) => isRenderableCardForChatboxUi(card, { debug: uiDebug }));
+      const existingRoutineExpert = findRoutineExpertNodeFromEnvelope({ cards: assembledCards });
+      const needsRoutineFallbackModules = !hasRoutineExpertRequiredModules(existingRoutineExpert);
+      const stallLikeResponse = looksLikeStallPhrase(safeAnswer) || looksLikeGenericStructuredNotice(safeAnswer);
+      if (routineLikeContext && needsRoutineFallbackModules && (!assembledRenderable || stallLikeResponse)) {
+        const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+          ctx,
+          message,
+          profile,
+          recentLogs,
+          language: ctx.lang,
+          reason: stallLikeResponse ? 'default' : 'timeout_degraded',
+        });
+        assembledCards.unshift(...fallbackCards);
+        safeAnswer =
+          ctx.lang === 'CN'
+            ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
+            : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+      }
+
       const pendingForTemplate =
         pendingClarificationPatchOverride !== undefined
           ? pendingClarificationPatchOverride
@@ -28769,6 +30479,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(hasLlmRouteMeta ? [makeEvent(ctx, 'llm_route', llmRouteMeta)] : []),
           ...(allowRecs ? [makeEvent(ctx, 'recos_requested', { explicit: true })] : []),
           ...(heatmapImpressionEvent ? [heatmapImpressionEvent] : []),
+          ...(catalogPoisonBlockedByGuard > 0
+            ? [makeEvent(ctx, 'catalog_poison_block', { blocked_count: catalogPoisonBlockedByGuard })]
+            : []),
         ],
       });
       return sendChatEnvelope(envelope);
@@ -28850,6 +30563,10 @@ const __internal = {
   inferCardGuardReasonFromEvents,
   ensureNonEmptyChatCardsEnvelope,
   shouldApplyRecoOutputGuard,
+  looksLikeStallPhrase,
+  evaluateQualityContractForEnvelope,
+  isSkincareCatalogCard,
+  buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
   isTreatmentLikeRecommendationForLowConfidence,
