@@ -3308,11 +3308,42 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
   };
 }
 
+function buildExternalSeedSupplementQueryText(queryText) {
+  const base = String(queryText || '').trim();
+  if (!base) return '';
+  if (!hasFragranceSearchSignal(base)) return base;
+
+  const normalizedBase = normalizeSearchTextForMatch(base);
+  const fragranceHints = [
+    'perfume',
+    'fragrance',
+    'cologne',
+    'parfum',
+    'eau de parfum',
+    'tom ford',
+    'jo malone',
+    'diptyque',
+    'byredo',
+  ];
+  const merged = [base];
+  for (const hint of fragranceHints) {
+    const normalizedHint = normalizeSearchTextForMatch(hint);
+    if (!normalizedHint || normalizedBase.includes(normalizedHint)) continue;
+    merged.push(hint);
+  }
+  return merged.join(' ');
+}
+
 function isExternalSeedProduct(product) {
   if (!product || typeof product !== 'object') return false;
   const merchantId = String(product.merchant_id || product.merchantId || '').trim();
   const source = String(product.source || '').trim().toLowerCase();
-  return merchantId === 'external_seed' || source === 'external_seed';
+  return (
+    merchantId === 'external_seed' ||
+    merchantId === 'external' ||
+    source === 'external_seed' ||
+    source === 'external'
+  );
 }
 
 function normalizeSearchBrandToken(value) {
@@ -4062,7 +4093,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     options?.fragranceExternalSeedBypass === true &&
     isExternalSeedProduct(product)
   ) {
-    return inferCacheProductDomainKey(product) === 'beauty';
+    return hasFragranceBackfillSignal(candidateText) || inferCacheProductDomainKey(product) === 'beauty';
   }
 
   const meaningfulTokens = ingredientIntent
@@ -4326,11 +4357,12 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     };
   }
 
+  const upstreamQueryText = buildExternalSeedSupplementQueryText(queryText);
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const limit = Math.min(Math.max(requestedCount * 4, 20), 200);
   const upstreamParams = {
     merchant_id: 'external_seed',
-    query: queryText,
+    query: upstreamQueryText,
     ...(query.category ? { category: query.category } : {}),
     ...(query.min_price != null ? { min_price: query.min_price } : {}),
     ...(query.max_price != null ? { max_price: query.max_price } : {}),
@@ -4364,9 +4396,18 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     limit,
     offset: 0,
   });
-  const products = Array.isArray(normalized?.products)
-    ? normalized.products.filter((p) => isExternalSeedProduct(p))
-    : [];
+  const products = (Array.isArray(normalized?.products) ? normalized.products : [])
+    .map((rawProduct) => {
+      if (!rawProduct || typeof rawProduct !== 'object') return null;
+      const product = { ...rawProduct };
+      const merchantId = String(product.merchant_id || product.merchantId || '').trim();
+      const sourceTag = String(product.source || product.source_type || '').trim().toLowerCase();
+      if (!merchantId) product.merchant_id = 'external_seed';
+      if (!sourceTag) product.source = 'external_seed';
+      return product;
+    })
+    .filter(Boolean)
+    .filter((p) => isExternalSeedProduct(p));
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
@@ -4394,6 +4435,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       fetched_count: relevantProducts.length,
       filtered_out_irrelevant_count: filteredOutIrrelevantCount,
       upstream_status: Number(resp.status || 0) || 0,
+      upstream_query: upstreamQueryText,
     },
   };
 }
@@ -7169,6 +7211,15 @@ function hasFragranceCatalogProductSignal(candidateText) {
   return true;
 }
 
+function hasFragranceBackfillSignal(candidateText) {
+  const text = String(candidateText || '');
+  if (!text) return false;
+  if (hasFragranceCatalogProductSignal(text)) return true;
+  return /\b(tom\s*ford|jo\s*malone|diptyque|byredo|le\s*labo|chanel|dior|ysl|yves\s*saint\s*laurent|armani|hermes|gucci|bvlgari|burberry|versace|creed|kilian|amouage)\b/i.test(
+    text,
+  );
+}
+
 function hasStrictPetHarnessCatalogSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
@@ -7326,7 +7377,7 @@ function prioritizeFragranceProducts(products, enabled = false) {
   const others = [];
   for (const product of list) {
     const text = buildFallbackCandidateText(product);
-    if (hasFragranceCatalogProductSignal(text) || isExternalSeedProduct(product)) fragranceOrSeed.push(product);
+    if (hasFragranceBackfillSignal(text) || isExternalSeedProduct(product)) fragranceOrSeed.push(product);
     else others.push(product);
   }
   if (fragranceOrSeed.length === 0) return list;
@@ -7886,6 +7937,30 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   };
 }
 
+function buildFragranceSignalSql(startIndex) {
+  const latin =
+    '(perfume|fragrance|cologne|body\\s*mist|parfum|eau\\s+de\\s+parfum|eau\\s+de\\s+toilette|edp|edt|tom\\s*ford|jo\\s*malone|diptyque|byredo|le\\s*labo|chanel|dior|ysl|yves\\s*saint\\s*laurent|armani|hermes|gucci|bvlgari|burberry|versace|creed|kilian|amouage)';
+  const cjk =
+    '(香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|古龍水|淡香水|濃香水)';
+  const re = `(\\m${latin}\\M|${cjk})`;
+  const fields = [
+    "coalesce(product_data->>'title','')",
+    "coalesce(product_data->>'description','')",
+    "coalesce(product_data->>'product_type','')",
+    "coalesce(product_data->>'tags','')",
+    'coalesce(CAST(product_data AS TEXT),\'\')',
+  ];
+  const ors = fields
+    .map((field, offset) => `${field} ~* $${startIndex + offset}`)
+    .join(' OR ');
+  const params = fields.map(() => re);
+  return {
+    sql: `(${ors})`,
+    params,
+    nextIndex: startIndex + fields.length,
+  };
+}
+
 async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
@@ -8036,7 +8111,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   const fragranceQuery = hasFragranceSearchSignal(q);
   const strictFragranceCount = fragranceQuery
     ? strictRanked.products.filter((product) =>
-        hasFragranceCatalogProductSignal(buildFallbackCandidateText(product)),
+        hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
       ).length
     : 0;
   const strictNeedsFragranceBackfill =
@@ -8100,17 +8175,59 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     });
 
     if (strictNeedsFragranceBackfill) {
-      const relaxedFragrance = relaxedRanked.products.filter((product) =>
-        hasFragranceCatalogProductSignal(buildFallbackCandidateText(product)),
+      let backfillFragrance = relaxedRanked.products.filter((product) =>
+        hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
       );
       retrievalSources.push({
         source: 'lexical_cache_relaxed_fragrance_backfill',
         used: true,
-        count: relaxedFragrance.length,
+        count: backfillFragrance.length,
       });
-      if (relaxedFragrance.length > 0) {
+
+      if (backfillFragrance.length === 0) {
+        const fragranceSignalFilter = buildFragranceSignalSql(1);
+        const fragranceRowsSql = `
+          SELECT pc.merchant_id,
+                 mo.business_name AS merchant_name,
+                 pc.product_data
+          FROM products_cache pc
+          JOIN merchant_onboarding mo
+            ON mo.merchant_id = pc.merchant_id
+          WHERE ${baseWhere}
+            AND ${fragranceSignalFilter.sql}
+          ORDER BY CASE WHEN pc.merchant_id = 'external_seed' THEN 0 ELSE 1 END,
+                   pc.cached_at DESC NULLS LAST,
+                   pc.id DESC
+          OFFSET $${fragranceSignalFilter.nextIndex}
+          LIMIT $${fragranceSignalFilter.nextIndex + 1}
+        `;
+        try {
+          const fragranceRowsRes = await query(
+            fragranceRowsSql,
+            [...fragranceSignalFilter.params, pageOffset, pageFetch],
+          );
+          const fragranceRanked = toRankedUniqueProducts(fragranceRowsRes.rows || []);
+          backfillFragrance = fragranceRanked.products.filter((product) =>
+            hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
+          );
+          retrievalSources.push({
+            source: 'fragrance_signal_browse_fallback',
+            used: true,
+            count: backfillFragrance.length,
+            candidate_count: fragranceRanked.candidateCount,
+          });
+        } catch (fragranceErr) {
+          retrievalSources.push({
+            source: 'fragrance_signal_browse_fallback',
+            used: false,
+            error: String(fragranceErr && fragranceErr.message ? fragranceErr.message : fragranceErr),
+          });
+        }
+      }
+
+      if (backfillFragrance.length > 0) {
         const merged = collapseNearDuplicateSearchProducts(
-          [...relaxedFragrance, ...strictRanked.products, ...relaxedRanked.products],
+          [...backfillFragrance, ...strictRanked.products, ...relaxedRanked.products],
           { perTitleLimit: 2 },
         );
         const fragranceFirst = prioritizeFragranceProducts(merged, true).slice(0, safeLimit);
@@ -14783,7 +14900,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             ? internalProductsAfterAnchor
                 .slice(0, Math.max(3, Math.min(10, safeResultLimit)))
                 .filter((product) =>
-                  hasFragranceCatalogProductSignal(buildFallbackCandidateText(product)),
+                  hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
                 ).length
             : 0;
           const needsFragranceSupplement =
