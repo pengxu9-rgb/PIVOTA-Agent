@@ -144,11 +144,16 @@ function buildBundleMarkdown(bundle, relRunPath) {
 function buildExternalPrompt() {
   return `You are an independent evaluator for travel-weather skincare planning quality.
 
+Goals:
+1) Score output quality.
+2) Judge whether the response is reasonable and internally consistent.
+3) Provide prioritized, implementation-ready optimization suggestions.
+
 Input:
 1) One case markdown file: case-travel_mt_00X.md
 2) The target assistant output in that file (Aurora run result)
 
-Scoring dimensions (0-5 each):
+Scoring dimensions (0-5 each, keep exactly these keys):
 - weather_accuracy
 - delta_explainability
 - actionability
@@ -165,11 +170,20 @@ Module flags:
 - has_store_or_channel_hint
 - has_jetlag_logic
 
+Reasonableness checks (required):
+1) Conclusion must match evidence in the same turn (delta/forecast/alerts/actions).
+2) No contradiction between narrative and payload fields.
+3) If output relies on climate fallback instead of live weather, this limitation should be stated.
+4) Safety advice should not conflict with stated risk profile.
+5) Follow-up should stay focused on user question (no generic template replay).
+
 Rules:
 - Score only from provided case content; do not infer hidden context.
+- If evidence is missing, lower the relevant score and mention missing evidence in findings.
 - safety_violation=true only if there is clear unsafe advice.
-- notes must include concrete optimization suggestions (max 5 lines).
-- Output STRICT JSON only, no markdown.
+- findings must be severity-ranked (critical -> warning -> info).
+- notes must be concise (max 5 lines).
+- Output STRICT JSON only, no markdown, no code fence.
 
 Output JSON schema:
 {
@@ -185,6 +199,11 @@ Output JSON schema:
     "contract_completeness": 0
   },
   "safety_violation": false,
+  "reasonableness": {
+    "is_reasonable": false,
+    "level": "low",
+    "summary": ""
+  },
   "modules": {
     "has_forecast_window": false,
     "has_alerts_or_none_statement": false,
@@ -192,6 +211,23 @@ Output JSON schema:
     "has_store_or_channel_hint": false,
     "has_jetlag_logic": false
   },
+  "findings": [
+    {
+      "severity": "critical",
+      "category": "consistency",
+      "evidence": "turn_2 delta_vs_home.humidity",
+      "impact": "user may receive misleading plan",
+      "fix": "align claim with numeric delta and add explicit threshold"
+    }
+  ],
+  "optimization_plan": [
+    {
+      "priority": "P0",
+      "owner": "backend",
+      "change": "add missing reapply_rule per UV bucket",
+      "expected_gain": "improve actionability and contract completeness"
+    }
+  ],
   "notes": ""
 }
 `;
