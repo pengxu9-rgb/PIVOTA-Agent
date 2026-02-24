@@ -15184,8 +15184,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
           const cacheValidationQueryClass =
             traceQueryClass || effectiveIntent?.query_class || (isLookupQuery ? 'lookup' : null);
+          const cacheQualityProducts = fragranceQuery
+            ? effectiveProducts
+            : withPolicyProducts.length > 0
+              ? withPolicyProducts
+              : effectiveProducts;
           const cacheValidation = evaluateCacheQualityGate({
-            products: withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts,
+            products: cacheQualityProducts,
             queryText: cacheQueryText,
             intent: effectiveIntent,
             queryClass: cacheValidationQueryClass,
