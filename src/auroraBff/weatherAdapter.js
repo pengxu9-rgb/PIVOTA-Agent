@@ -3,6 +3,10 @@ const { recordAuroraKbV0ClimateFallback } = require('./visionMetrics');
 
 const OPEN_METEO_GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+const DEFAULT_FORECAST_DAYS = 5;
+const MAX_FORECAST_DAYS = 7;
+const DEFAULT_FORECAST_SPAN_DAYS = DEFAULT_FORECAST_DAYS - 1;
+const MAX_FORECAST_SPAN_DAYS = MAX_FORECAST_DAYS - 1;
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -21,26 +25,52 @@ function toIsoDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+function toUtcDateStart(dateToken) {
+  const parsed = new Date(`${dateToken}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return parsed;
+}
+
+function shiftIsoDate(dateToken, deltaDays) {
+  const date = toUtcDateStart(dateToken);
+  if (!date) return dateToken;
+  date.setUTCDate(date.getUTCDate() + Math.trunc(deltaDays));
+  return toIsoDate(date);
+}
+
 function clampDateRange(startDate, endDate) {
   const now = new Date();
   const fallbackStart = toIsoDate(now);
-  const fallbackEndDate = new Date(now);
-  fallbackEndDate.setUTCDate(fallbackEndDate.getUTCDate() + 3);
-  const fallbackEnd = toIsoDate(fallbackEndDate);
+  const startToken = normalizeDateToken(startDate);
+  const endToken = normalizeDateToken(endDate);
 
-  const start = normalizeDateToken(startDate) || fallbackStart;
-  const endCandidate = normalizeDateToken(endDate) || start || fallbackEnd;
+  let start = startToken || fallbackStart;
+  let endCandidate = endToken || '';
+
+  if (!startToken && !endToken) {
+    endCandidate = shiftIsoDate(start, DEFAULT_FORECAST_SPAN_DAYS);
+  } else if (startToken && !endToken) {
+    endCandidate = shiftIsoDate(startToken, DEFAULT_FORECAST_SPAN_DAYS);
+  } else if (!startToken && endToken) {
+    start = shiftIsoDate(endToken, -DEFAULT_FORECAST_SPAN_DAYS);
+    endCandidate = endToken;
+  } else {
+    endCandidate = endToken;
+  }
+
+  if (!endCandidate) endCandidate = start;
 
   if (endCandidate < start) {
     return { start, end: start };
   }
 
-  const startObj = new Date(`${start}T00:00:00.000Z`);
-  const endObj = new Date(`${endCandidate}T00:00:00.000Z`);
+  const startObj = toUtcDateStart(start);
+  const endObj = toUtcDateStart(endCandidate);
+  if (!startObj || !endObj) return { start, end: start };
   const diffDays = Math.floor((endObj.getTime() - startObj.getTime()) / 86400000);
-  if (diffDays > 10) {
+  if (diffDays > MAX_FORECAST_SPAN_DAYS) {
     const capped = new Date(startObj);
-    capped.setUTCDate(capped.getUTCDate() + 10);
+    capped.setUTCDate(capped.getUTCDate() + MAX_FORECAST_SPAN_DAYS);
     return { start, end: toIsoDate(capped) };
   }
 
