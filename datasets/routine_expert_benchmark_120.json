@@ -1,0 +1,7664 @@
+{
+  "schema_version": "routine_expert_benchmark.v1",
+  "generated_at": "2026-02-24T09:33:21.702Z",
+  "totals": {
+    "total": 120,
+    "CN": 80,
+    "EN": 40
+  },
+  "rubric_dimensions": [
+    "accuracy",
+    "actionability",
+    "risk_control",
+    "phase_clarity",
+    "personalization",
+    "evidence_traceability"
+  ],
+  "cases": [
+    {
+      "id": "routine_bm_001",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "洗完脸紧绷刺痛，毛孔更明显，最近也更暗沉。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_002",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "换季会刺痛泛红，脸颊容易发热。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_003",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "我把很多活性叠在一起，最近有刺痛和脱皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_004",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "想提亮和淡印，但我白天基本不涂防晒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_005",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "我在备孕/孕期，担心方案安全性。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_006",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "这周从潮湿城市到干冷城市出差，皮肤忽油忽干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_007",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "白天不常涂防晒，晚上会觉得脸发干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_008",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "最近涂完面霜会刺痛超过 40 秒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_009",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "想要继续祛痘但不想爆皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_010",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "最近肤色看起来发灰。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_011",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "希望既控油又别刺激。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_012",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "需要可执行的出差版本。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_013",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "洗完脸紧绷刺痛，毛孔更明显，最近也更暗沉。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_014",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "换季会刺痛泛红，脸颊容易发热。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_015",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "我把很多活性叠在一起，最近有刺痛和脱皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_016",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "想提亮和淡印，但我白天基本不涂防晒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_017",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "我在备孕/孕期，担心方案安全性。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_018",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "这周从潮湿城市到干冷城市出差，皮肤忽油忽干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_019",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "白天不常涂防晒，晚上会觉得脸发干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_020",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "最近涂完面霜会刺痛超过 40 秒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_021",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "想要继续祛痘但不想爆皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_022",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "最近肤色看起来发灰。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_023",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "希望既控油又别刺激。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_024",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "需要可执行的出差版本。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_025",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "洗完脸紧绷刺痛，毛孔更明显，最近也更暗沉。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_026",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "换季会刺痛泛红，脸颊容易发热。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_027",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "我把很多活性叠在一起，最近有刺痛和脱皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_028",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "想提亮和淡印，但我白天基本不涂防晒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_029",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "我在备孕/孕期，担心方案安全性。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_030",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "这周从潮湿城市到干冷城市出差，皮肤忽油忽干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_031",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "白天不常涂防晒，晚上会觉得脸发干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_032",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "最近涂完面霜会刺痛超过 40 秒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_033",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "想要继续祛痘但不想爆皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_034",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "最近肤色看起来发灰。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_035",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "希望既控油又别刺激。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_036",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "需要可执行的出差版本。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_037",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "洗完脸紧绷刺痛，毛孔更明显，最近也更暗沉。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_038",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "换季会刺痛泛红，脸颊容易发热。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_039",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "我把很多活性叠在一起，最近有刺痛和脱皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_040",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "想提亮和淡印，但我白天基本不涂防晒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_041",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "我在备孕/孕期，担心方案安全性。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_042",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "这周从潮湿城市到干冷城市出差，皮肤忽油忽干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_043",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "白天不常涂防晒，晚上会觉得脸发干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_044",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "最近涂完面霜会刺痛超过 40 秒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_045",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "想要继续祛痘但不想爆皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_046",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "最近肤色看起来发灰。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_047",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "希望既控油又别刺激。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_048",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "需要可执行的出差版本。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_049",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "洗完脸紧绷刺痛，毛孔更明显，最近也更暗沉。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_050",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "换季会刺痛泛红，脸颊容易发热。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_051",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "我把很多活性叠在一起，最近有刺痛和脱皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_052",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "想提亮和淡印，但我白天基本不涂防晒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_053",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "我在备孕/孕期，担心方案安全性。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_054",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "这周从潮湿城市到干冷城市出差，皮肤忽油忽干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_055",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "白天不常涂防晒，晚上会觉得脸发干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_056",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "最近涂完面霜会刺痛超过 40 秒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_057",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "想要继续祛痘但不想爆皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_058",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "最近肤色看起来发灰。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_059",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "希望既控油又别刺激。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_060",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "需要可执行的出差版本。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_061",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "洗完脸紧绷刺痛，毛孔更明显，最近也更暗沉。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_062",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "换季会刺痛泛红，脸颊容易发热。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_063",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "我把很多活性叠在一起，最近有刺痛和脱皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_064",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "想提亮和淡印，但我白天基本不涂防晒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_065",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "我在备孕/孕期，担心方案安全性。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_066",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "这周从潮湿城市到干冷城市出差，皮肤忽油忽干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_067",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "白天不常涂防晒，晚上会觉得脸发干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_068",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "最近涂完面霜会刺痛超过 40 秒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_069",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "想要继续祛痘但不想爆皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_070",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "最近肤色看起来发灰。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_071",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "希望既控油又别刺激。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_072",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "需要可执行的出差版本。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_073",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "洗完脸紧绷刺痛，毛孔更明显，最近也更暗沉。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_074",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "换季会刺痛泛红，脸颊容易发热。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_075",
+      "language": "CN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "请给我一个分阶段降风险方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "我把很多活性叠在一起，最近有刺痛和脱皮。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_076",
+      "language": "CN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "请给可执行的提亮闭环。",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "想提亮和淡印，但我白天基本不涂防晒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_077",
+      "language": "CN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "请按安全边界重排方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "我在备孕/孕期，担心方案安全性。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_078",
+      "language": "CN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "请给我环境变化下的分阶段计划。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "这周从潮湿城市到干冷城市出差，皮肤忽油忽干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_079",
+      "language": "CN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "请给我一个先稳住再解决暗沉毛孔的计划。",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "白天不常涂防晒，晚上会觉得脸发干。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_080",
+      "language": "CN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "我需要低翻车率的修复方案。",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "最近涂完面霜会刺痛超过 40 秒。"
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_081",
+      "language": "EN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "Give me a plan that stabilizes first, then targets dullness and pores.",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Face feels tight and stingy after cleansing, pores look more visible and skin looks dull."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_082",
+      "language": "EN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "I need a low-risk recovery-first routine.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "Season changes cause stinging and redness with cheek flushing."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_083",
+      "language": "EN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "Give me a phased de-risking plan.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "I stacked multiple actives and now have stinging and peeling."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_084",
+      "language": "EN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "Provide an executable brightening loop.",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I want brightening and dark-spot improvement but I rarely use SPF."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_085",
+      "language": "EN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "Re-sequence my routine with strict safety boundaries.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I am trying to conceive / pregnant and worried about safety constraints."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_086",
+      "language": "EN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "Provide a phased routine for weather-transition stress.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "I travel from humid to cold-dry climate this week and skin swings between oily and dry."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_087",
+      "language": "EN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "Give me a plan that stabilizes first, then targets dullness and pores.",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I usually skip SPF in daytime and feel dry at night."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_088",
+      "language": "EN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "I need a low-risk recovery-first routine.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Moisturizer stings for over 40 seconds lately."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_089",
+      "language": "EN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "Give me a phased de-risking plan.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "I still want acne control without irritation spikes."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_090",
+      "language": "EN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "Provide an executable brightening loop.",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "Skin tone looks gray and uneven lately."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_091",
+      "language": "EN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "Re-sequence my routine with strict safety boundaries.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Need oil control without triggering irritation."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_092",
+      "language": "EN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "Provide a phased routine for weather-transition stress.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Need a practical travel-safe version."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_093",
+      "language": "EN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "Give me a plan that stabilizes first, then targets dullness and pores.",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "Face feels tight and stingy after cleansing, pores look more visible and skin looks dull."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_094",
+      "language": "EN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "I need a low-risk recovery-first routine.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Season changes cause stinging and redness with cheek flushing."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_095",
+      "language": "EN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "Give me a phased de-risking plan.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I stacked multiple actives and now have stinging and peeling."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_096",
+      "language": "EN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "Provide an executable brightening loop.",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "I want brightening and dark-spot improvement but I rarely use SPF."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_097",
+      "language": "EN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "Re-sequence my routine with strict safety boundaries.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "I am trying to conceive / pregnant and worried about safety constraints."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_098",
+      "language": "EN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "Provide a phased routine for weather-transition stress.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I travel from humid to cold-dry climate this week and skin swings between oily and dry."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_099",
+      "language": "EN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "Give me a plan that stabilizes first, then targets dullness and pores.",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "I usually skip SPF in daytime and feel dry at night."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_100",
+      "language": "EN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "I need a low-risk recovery-first routine.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "Moisturizer stings for over 40 seconds lately."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_101",
+      "language": "EN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "Give me a phased de-risking plan.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I still want acne control without irritation spikes."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_102",
+      "language": "EN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "Provide an executable brightening loop.",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Skin tone looks gray and uneven lately."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_103",
+      "language": "EN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "Re-sequence my routine with strict safety boundaries.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "Need oil control without triggering irritation."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_104",
+      "language": "EN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "Provide a phased routine for weather-transition stress.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "Need a practical travel-safe version."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_105",
+      "language": "EN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "Give me a plan that stabilizes first, then targets dullness and pores.",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Face feels tight and stingy after cleansing, pores look more visible and skin looks dull."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_106",
+      "language": "EN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "I need a low-risk recovery-first routine.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "Season changes cause stinging and redness with cheek flushing."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_107",
+      "language": "EN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "Give me a phased de-risking plan.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "I stacked multiple actives and now have stinging and peeling."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_108",
+      "language": "EN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "Provide an executable brightening loop.",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I want brightening and dark-spot improvement but I rarely use SPF."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_109",
+      "language": "EN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "Re-sequence my routine with strict safety boundaries.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I am trying to conceive / pregnant and worried about safety constraints."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_110",
+      "language": "EN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "Provide a phased routine for weather-transition stress.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "I travel from humid to cold-dry climate this week and skin swings between oily and dry."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_111",
+      "language": "EN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "Give me a plan that stabilizes first, then targets dullness and pores.",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I usually skip SPF in daytime and feel dry at night."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_112",
+      "language": "EN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "I need a low-risk recovery-first routine.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Moisturizer stings for over 40 seconds lately."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_113",
+      "language": "EN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "Give me a phased de-risking plan.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "I still want acne control without irritation spikes."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_114",
+      "language": "EN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "Provide an executable brightening loop.",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "Skin tone looks gray and uneven lately."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_115",
+      "language": "EN",
+      "scenario_key": "high_risk_safety_boundary",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "prompt": "Re-sequence my routine with strict safety boundaries.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "pores"
+        ],
+        "safetyFlags": [
+          "pregnancy"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF50"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Need oil control without triggering irritation."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_116",
+      "language": "EN",
+      "scenario_key": "travel_weather_stress",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "prompt": "Provide a phased routine for weather-transition stress.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "healthy",
+        "goals": [
+          "hydration",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          },
+          {
+            "step": "spf",
+            "product": "SPF30"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Need a practical travel-safe version."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_117",
+      "language": "EN",
+      "scenario_key": "oil_tight_dull_pores",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "prompt": "Give me a plan that stabilizes first, then targets dullness and pores.",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "low",
+        "barrierStatus": "impaired",
+        "goals": [
+          "pores",
+          "dullness"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "notes": "Face feels tight and stingy after cleansing, pores look more visible and skin looks dull."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_118",
+      "language": "EN",
+      "scenario_key": "sensitive_barrier_flare",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "prompt": "I need a low-risk recovery-first routine.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "high",
+        "barrierStatus": "impaired",
+        "goals": [
+          "redness",
+          "hydration"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Gel Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Light Gel Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "AHA serum"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "notes": "Season changes cause stinging and redness with cheek flushing."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_119",
+      "language": "EN",
+      "scenario_key": "active_stacking",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "prompt": "Give me a phased de-risking plan.",
+      "profile": {
+        "skinType": "combination",
+        "sensitivity": "medium",
+        "barrierStatus": "impaired",
+        "goals": [
+          "acne",
+          "texture"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Biotherm Force Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Vitamin C 15%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Aquasource Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Retinol + AHA + BHA toner"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "notes": "I stacked multiple actives and now have stinging and peeling."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    },
+    {
+      "id": "routine_bm_120",
+      "language": "EN",
+      "scenario_key": "missing_spf_brightening_goal",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "prompt": "Provide an executable brightening loop.",
+      "profile": {
+        "skinType": "normal",
+        "sensitivity": "low",
+        "barrierStatus": "healthy",
+        "goals": [
+          "dullness",
+          "dark_spots"
+        ]
+      },
+      "currentRoutine": {
+        "schema_version": "aurora.routine_intake.v1",
+        "am": [
+          {
+            "step": "cleanser",
+            "product": "Deep Clean Foaming Cleanser"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Hydra Barrier Cream"
+          }
+        ],
+        "pm": [
+          {
+            "step": "cleanser",
+            "product": "Foaming Cleanser"
+          },
+          {
+            "step": "treatment",
+            "product": "Niacinamide 5%"
+          },
+          {
+            "step": "moisturizer",
+            "product": "Barrier Lotion"
+          }
+        ],
+        "notes": "I want brightening and dark-spot improvement but I rarely use SPF."
+      },
+      "expected_modules": [
+        "key_issues",
+        "plan_7d",
+        "phase_plan",
+        "primary_question"
+      ],
+      "rubric_dimensions": [
+        "accuracy",
+        "actionability",
+        "risk_control",
+        "phase_clarity",
+        "personalization",
+        "evidence_traceability"
+      ]
+    }
+  ]
+}
