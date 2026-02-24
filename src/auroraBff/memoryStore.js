@@ -26,6 +26,7 @@ const ephemeral = {
   profiles: new Map(),
   logs: new Map(),
   identityLinks: new Map(),
+  budgetEvents: new Map(),
 };
 
 function touchEphemeral(map, key, value) {
@@ -58,6 +59,39 @@ function normalizeUserId(userId) {
   if (!uid) return null;
   if (uid.length > 128) return uid.slice(0, 128);
   return uid;
+}
+
+function normalizeToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function normalizeBudgetTier(value) {
+  const token = normalizeToken(value);
+  if (!token) return null;
+  if (token === 'low' || token === 'budget' || token === 'entry') return 'low';
+  if (token === 'high' || token === 'premium' || token === 'lux' || token === 'luxury') return 'high';
+  if (token === 'mid' || token === 'middle' || token === 'medium') return 'mid';
+  return null;
+}
+
+function inferBudgetTierFromPrice(price) {
+  const n = Number(price);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (n < 20) return 'low';
+  if (n > 60) return 'high';
+  return 'mid';
+}
+
+function identityKeyForBudget({ auroraUid, userId } = {}) {
+  const user = normalizeUserId(userId);
+  if (user) return `account:${user}`;
+  const guest = normalizeAuroraUid(auroraUid);
+  if (guest) return `guest:${guest}`;
+  return null;
 }
 
 function isoDateUTC(d = new Date()) {
@@ -887,6 +921,160 @@ async function upsertProfileForIdentity({ auroraUid, userId }, patch) {
   return await upsertUserProfile(identity.aurora_uid, patch);
 }
 
+function chooseBudgetTierFromEvents(events, { minClicks = 5, minShare = 0.6, minLead = 2 } = {}) {
+  const safeEvents = Array.isArray(events) ? events : [];
+  if (safeEvents.length < minClicks) return null;
+
+  const counts = { low: 0, mid: 0, high: 0 };
+  for (const row of safeEvents) {
+    const tier = normalizeBudgetTier(row && row.tier);
+    if (!tier) continue;
+    counts[tier] += 1;
+  }
+  const total = counts.low + counts.mid + counts.high;
+  if (total < minClicks) return null;
+
+  const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const topTier = ranked[0] && ranked[0][1] > 0 ? ranked[0][0] : null;
+  const topCount = ranked[0] ? ranked[0][1] : 0;
+  const secondCount = ranked[1] ? ranked[1][1] : 0;
+  if (!topTier || topCount <= 0) return null;
+  if ((topCount / total) < minShare) return null;
+  if ((topCount - secondCount) < minLead) return null;
+  return topTier;
+}
+
+async function listRecentBudgetPreferenceEventsForIdentity({ auroraUid, userId }, days = 14) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const identityKey = identityKeyForBudget({ auroraUid: identity.aurora_uid, userId: identity.user_id });
+  if (!identityKey) return [];
+  const windowDays = Math.max(1, Math.min(90, Math.trunc(Number(days) || 14)));
+
+  if (persistenceDisabled()) {
+    const now = Date.now();
+    const list = Array.isArray(ephemeral.budgetEvents.get(identityKey)) ? ephemeral.budgetEvents.get(identityKey) : [];
+    return list.filter((row) => {
+      const createdAt = Number(new Date(row.created_at).getTime());
+      return Number.isFinite(createdAt) && (now - createdAt) <= (windowDays * 24 * 60 * 60 * 1000);
+    });
+  }
+
+  const res = await query(
+    `
+      SELECT tier, price, currency, source_event, product_id, created_at
+      FROM aurora_budget_preference_events
+      WHERE identity_key = $1
+        AND created_at >= now() - (INTERVAL '1 day' * $2::int)
+      ORDER BY created_at DESC
+      LIMIT 200
+    `,
+    [identityKey, windowDays],
+  );
+  return Array.isArray(res.rows) ? res.rows : [];
+}
+
+async function maybeBackfillBudgetTierFromSignals(
+  { auroraUid, userId },
+  { windowDays = 14, minClicks = 5, minShare = 0.6, minLead = 2 } = {},
+) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const profile = await getProfileForIdentity({ auroraUid: identity.aurora_uid, userId: identity.user_id });
+  const existingBudget = normalizeBudgetTier(profile && profile.budgetTier);
+  if (existingBudget) {
+    return { ok: true, updated: false, reason: 'budget_already_set', budgetTier: existingBudget };
+  }
+
+  const recent = await listRecentBudgetPreferenceEventsForIdentity(
+    { auroraUid: identity.aurora_uid, userId: identity.user_id },
+    windowDays,
+  );
+  const inferred = chooseBudgetTierFromEvents(recent, { minClicks, minShare, minLead });
+  if (!inferred) {
+    return { ok: true, updated: false, reason: 'signal_threshold_not_met', budgetTier: null };
+  }
+
+  await upsertProfileForIdentity({ auroraUid: identity.aurora_uid, userId: identity.user_id }, { budgetTier: inferred });
+  return { ok: true, updated: true, reason: 'budget_inferred', budgetTier: inferred };
+}
+
+async function recordBudgetPreferenceEventForIdentity(
+  { auroraUid, userId },
+  { tier, price, currency, sourceEvent, productId, createdAt } = {},
+) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const identityKey = identityKeyForBudget({ auroraUid: identity.aurora_uid, userId: identity.user_id });
+  if (!identityKey) return { ok: false, reason: 'missing_identity' };
+
+  const normalizedTier = normalizeBudgetTier(tier) || inferBudgetTierFromPrice(price);
+  if (!normalizedTier) return { ok: false, reason: 'missing_tier_signal' };
+
+  const normalizedPrice = Number.isFinite(Number(price)) ? Number(price) : null;
+  const normalizedCurrency = String(currency || '').trim().slice(0, 16) || null;
+  const normalizedEvent = String(sourceEvent || '').trim().slice(0, 80) || null;
+  const normalizedProductId = String(productId || '').trim().slice(0, 128) || null;
+  const createdAtIso = (() => {
+    const d = createdAt ? new Date(createdAt) : new Date();
+    const ms = Number(d.getTime());
+    if (!Number.isFinite(ms)) return new Date().toISOString();
+    return new Date(ms).toISOString();
+  })();
+
+  if (persistenceDisabled()) {
+    const existing = Array.isArray(ephemeral.budgetEvents.get(identityKey)) ? ephemeral.budgetEvents.get(identityKey) : [];
+    const next = [
+      ...existing,
+      {
+        tier: normalizedTier,
+        price: normalizedPrice,
+        currency: normalizedCurrency,
+        source_event: normalizedEvent,
+        product_id: normalizedProductId,
+        created_at: createdAtIso,
+      },
+    ];
+    ephemeral.budgetEvents.set(identityKey, next.slice(-300));
+  } else {
+    await query(
+      `
+        INSERT INTO aurora_budget_preference_events (
+          identity_key,
+          aurora_uid,
+          user_id,
+          tier,
+          price,
+          currency,
+          source_event,
+          product_id,
+          created_at
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::timestamptz)
+      `,
+      [
+        identityKey,
+        identity.aurora_uid,
+        identity.user_id,
+        normalizedTier,
+        normalizedPrice,
+        normalizedCurrency,
+        normalizedEvent,
+        normalizedProductId,
+        createdAtIso,
+      ],
+    );
+  }
+
+  const update = await maybeBackfillBudgetTierFromSignals(
+    { auroraUid: identity.aurora_uid, userId: identity.user_id },
+    { windowDays: 14, minClicks: 5, minShare: 0.6, minLead: 2 },
+  );
+
+  return {
+    ok: true,
+    tier: normalizedTier,
+    backfill: update,
+  };
+}
+
 async function getRecentSkinLogsForIdentity({ auroraUid, userId }, days = 7) {
   const identity = identityFromRequest({ auroraUid, userId });
   if (identity.user_id) return await getRecentAccountSkinLogs(identity.user_id, days);
@@ -1029,6 +1217,9 @@ module.exports = {
   upsertProfileForIdentity,
   getRecentSkinLogsForIdentity,
   upsertSkinLogForIdentity,
+  listRecentBudgetPreferenceEventsForIdentity,
+  recordBudgetPreferenceEventForIdentity,
+  maybeBackfillBudgetTierFromSignals,
   saveLastAnalysisForIdentity,
   deleteIdentityData,
   isCheckinDue,
