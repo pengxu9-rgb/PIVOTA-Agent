@@ -36,6 +36,191 @@ function uniqStrings(values, max = 10) {
   return out;
 }
 
+function normalizeForecastWindowRows(rows) {
+  const out = [];
+  const list = Array.isArray(rows) ? rows : [];
+  for (const item of list) {
+    const row = isPlainObject(item) ? item : {};
+    const date = normalizeText(row.date, 24);
+    if (!date) continue;
+    out.push({
+      date,
+      temp_low_c: toNumber(row.temp_low_c),
+      temp_high_c: toNumber(row.temp_high_c),
+      humidity_mean: toNumber(row.humidity_mean),
+      uv_max: toNumber(row.uv_max),
+      precip_mm: toNumber(row.precip_mm),
+      wind_kph: toNumber(row.wind_kph),
+      condition_text: normalizeText(row.condition_text, 120) || null,
+    });
+    if (out.length >= 7) break;
+  }
+  return out;
+}
+
+function normalizeTravelAlerts(alerts, language) {
+  const out = [];
+  const list = Array.isArray(alerts) ? alerts : [];
+  for (const item of list) {
+    const row = isPlainObject(item) ? item : {};
+    const title = normalizeText(row.title, 160);
+    const severity = normalizeText(row.severity, 24);
+    if (!title && !severity) continue;
+    out.push({
+      provider: normalizeText(row.provider, 80) || null,
+      severity: severity || null,
+      title: title || null,
+      summary: normalizeText(row.summary, 260) || null,
+      start_at: normalizeText(row.start_at, 64) || null,
+      end_at: normalizeText(row.end_at, 64) || null,
+      region: normalizeText(row.region, 120) || null,
+      action_hint:
+        normalizeText(row.action_hint, 220) ||
+        t(language, '请持续关注官方天气预警并动态调整行程。', 'Please monitor official alerts and adjust plans dynamically.'),
+    });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+function buildRecoBundle({ language, deltaVsHome, profile } = {}) {
+  const out = [];
+  const delta = isPlainObject(deltaVsHome) ? deltaVsHome : {};
+  const skinType = normalizeText(profile && profile.skinType, 48).toLowerCase();
+  const sensitive = normalizeText(profile && profile.sensitivity, 24).toLowerCase();
+  const barrier = normalizeText(profile && profile.barrierStatus, 48).toLowerCase();
+
+  const uvDestination = toNumber(delta?.uv?.destination);
+  const uvDelta = toNumber(delta?.uv?.delta);
+  if ((uvDestination != null && uvDestination >= 6) || (uvDelta != null && uvDelta >= 1.5)) {
+    out.push({
+      trigger: t(language, 'UV 升高', 'Elevated UV'),
+      action: t(
+        language,
+        '白天使用 SPF50+；户外每 2 小时补涂，出汗或擦拭后立即补涂。',
+        'Use SPF50+ in daytime; reapply every 2 hours outdoors, and immediately after sweat/wipe-off.',
+      ),
+      ingredient_logic: t(language, '优先高 UVA 防护 + 成膜稳定体系。', 'Prioritize high UVA protection and photostable film-formers.'),
+      product_types: [
+        t(language, '防晒乳 SPF50+', 'SPF50+ sunscreen fluid'),
+        t(language, '便携补涂（防晒棒/小支）', 'Portable reapplication format'),
+      ],
+      reapply_rule: t(language, '户外 >90 分钟：2 小时补涂一次。', 'If outdoors >90 minutes: reapply every 2 hours.'),
+    });
+  }
+
+  const humidityDelta = toNumber(delta?.humidity?.delta);
+  const temperatureDelta = toNumber(delta?.temperature?.delta);
+  if ((humidityDelta != null && humidityDelta >= 8) || (temperatureDelta != null && temperatureDelta >= 3)) {
+    out.push({
+      trigger: t(language, '湿热上升', 'Warmer / more humid'),
+      action: t(
+        language,
+        '早上改轻薄保湿，夜间保留修护霜；活性产品避免同晚叠加。',
+        'Switch to lighter AM hydration, keep PM repair cream, and avoid same-night active stacking.',
+      ),
+      ingredient_logic: t(language, '控油同时维持屏障水分平衡。', 'Balance oil control with barrier hydration.'),
+      product_types: [
+        t(language, '轻薄凝胶面霜', 'Light gel-cream moisturizer'),
+        t(language, '补水修护面膜', 'Hydrating recovery mask'),
+      ],
+      reapply_rule: t(language, '飞行/长时空调后当晚优先补水修护一次。', 'After flight or long AC exposure, run one recovery hydration session at night.'),
+    });
+  } else {
+    out.push({
+      trigger: t(language, '温差/干燥', 'Temperature swing / dryness'),
+      action: t(
+        language,
+        '早晚使用中等修护面霜；风大时在鼻翼/颧骨局部加一层封层。',
+        'Use medium barrier cream AM/PM; add a thin occlusive layer on exposed zones when windy.',
+      ),
+      ingredient_logic: t(language, '优先神经酰胺、泛醇、舒缓修护体系。', 'Prioritize ceramides, panthenol, and soothing repair systems.'),
+      product_types: [
+        t(language, '修护面霜', 'Barrier repair cream'),
+        t(language, '舒缓精华', 'Soothing serum'),
+      ],
+      reapply_rule: t(language, '白天按干燥紧绷感补涂保湿。', 'Reapply moisturizer in daytime based on tightness/dryness.'),
+    });
+  }
+
+  out.push({
+    trigger: t(language, '飞行与作息变化', 'Flight and schedule shift'),
+    action: t(
+      language,
+      '落地当晚先做补水修护，不建议叠加高强度酸/维A。',
+      'On arrival night, prioritize hydration and recovery; avoid stacking strong acids/retinoids.',
+    ),
+    ingredient_logic: t(language, '降低刺激阈值风险。', 'Reduce irritation-threshold risk during transition.'),
+    product_types: [
+      t(language, '修护面膜', 'Recovery mask'),
+      t(language, '温和洁面', 'Gentle cleanser'),
+    ],
+    reapply_rule: t(language, '次日晚再恢复常规活性频次。', 'Resume regular active cadence from the second night onward.'),
+  });
+
+  if (sensitive === 'high' || barrier.includes('impaired')) {
+    out.push({
+      trigger: t(language, '敏感/屏障易受损', 'Sensitive / barrier-vulnerable'),
+      action: t(
+        language,
+        '旅行期把主活性降到每晚最多一种，优先稳态。',
+        'During travel, keep at most one main active per night and prioritize stability.',
+      ),
+      ingredient_logic: t(language, '减少刺激叠加，避免屏障波动。', 'Minimize cumulative irritation and barrier instability.'),
+      product_types: [
+        t(language, '低刺激修护乳', 'Low-irritation repair lotion'),
+      ],
+      reapply_rule: t(language, '若出现刺痛/泛红，暂停活性 48 小时。', 'If stinging/redness appears, pause actives for 48 hours.'),
+    });
+  } else if (skinType.includes('oily')) {
+    out.push({
+      trigger: t(language, '油皮易闷痘', 'Oily skin congestion risk'),
+      action: t(
+        language,
+        '优先轻薄防晒与非封闭型保湿，减少高致痘负担配方。',
+        'Prioritize lightweight sunscreen and non-occlusive hydration to reduce congestion load.',
+      ),
+      ingredient_logic: t(language, '维持清爽肤感并控制毛孔负担。', 'Maintain breathable finish and reduce pore burden.'),
+      product_types: [
+        t(language, '控油防晒', 'Oil-control sunscreen'),
+        t(language, '清爽保湿乳', 'Lightweight moisturizer'),
+      ],
+      reapply_rule: t(language, '中午按出油情况吸油后补防晒。', 'At midday, blot excess oil then reapply sunscreen.'),
+    });
+  }
+
+  return out.slice(0, 4);
+}
+
+function buildStoreExamples({ language, destination } = {}) {
+  const city = normalizeText(destination, 120).toLowerCase();
+  if (!city) return [];
+  if (!city.includes('paris')) return [];
+  return [
+    {
+      name: 'Citypharma',
+      type: t(language, '药妆店', 'Pharmacy'),
+      address: '26 Rue du Four, 75006 Paris',
+      district: '6th arrondissement',
+      source: 'curated_reference',
+    },
+    {
+      name: 'Pharmacie Monge',
+      type: t(language, '药妆店', 'Pharmacy'),
+      address: '74 Rue Monge, 75005 Paris',
+      district: '5th arrondissement',
+      source: 'curated_reference',
+    },
+    {
+      name: 'Parapharmacie BHV Marais',
+      type: t(language, '百货药妆', 'Department store beauty'),
+      address: '52 Rue de Rivoli, 75004 Paris',
+      district: '4th arrondissement',
+      source: 'curated_reference',
+    },
+  ];
+}
+
 function t(language, cn, en) {
   return String(language || '').toUpperCase() === 'CN' ? cn : en;
 }
@@ -324,6 +509,7 @@ function buildTravelReadiness({
   endDate,
   destinationWeather,
   homeWeather,
+  travelAlerts = [],
   epiPayload,
   recommendationCandidates = [],
   nowMs = Date.now(),
@@ -336,6 +522,8 @@ function buildTravelReadiness({
     : null;
   const homeSummary = isPlainObject(homeWeather && homeWeather.summary) ? homeWeather.summary : null;
   const hasHomeBaseline = Boolean(homeSummary);
+  const forecastWindow = normalizeForecastWindowRows(destinationWeather && destinationWeather.forecast_window);
+  const alerts = normalizeTravelAlerts(travelAlerts, lang);
 
   const temperature = buildMetricDelta(homeSummary && homeSummary.temperature_max_c, destinationSummary && destinationSummary.temperature_max_c, 'C');
   const humidity = buildMetricDelta(homeSummary && homeSummary.humidity_mean, destinationSummary && destinationSummary.humidity_mean, '%');
@@ -348,6 +536,18 @@ function buildTravelReadiness({
   const personalFocus = buildPersonalFocus({ language: lang, profile, destinationSummary, summaryTags });
   const jetlagSleep = buildJetlagSleep({ language: lang, profile, destinationWeather, homeWeather, nowMs });
   const confidence = buildConfidence({ language: lang, profile, recentLogs, destinationWeather, hasHomeBaseline, destination: destinationText });
+  const recoBundle = buildRecoBundle({
+    language: lang,
+    deltaVsHome: {
+      temperature,
+      humidity,
+      uv,
+      wind,
+      precip,
+    },
+    profile,
+  });
+  const storeExamples = buildStoreExamples({ language: lang, destination: destinationText });
 
   return {
     destination_context: {
@@ -369,9 +569,13 @@ function buildTravelReadiness({
       summary_tags: summaryTags,
       baseline_status: hasHomeBaseline ? 'ok' : 'baseline_unavailable',
     },
+    forecast_window: forecastWindow,
+    alerts,
     adaptive_actions: adaptiveActions,
     personal_focus: personalFocus,
     jetlag_sleep: jetlagSleep,
+    reco_bundle: recoBundle,
+    store_examples: storeExamples,
     shopping_preview: {
       products: normalizePreviewProducts(recommendationCandidates, lang),
       buying_channels: ['beauty_retail', 'pharmacy', 'department_store', 'duty_free', 'ecommerce'],

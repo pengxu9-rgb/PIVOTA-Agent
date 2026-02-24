@@ -94,6 +94,71 @@ function formatMetricPair({ labelCn, labelEn, metric, language }) {
   return '';
 }
 
+function formatForecastLine({ language, row }) {
+  const item = isPlainObject(row) ? row : {};
+  const date = normalizeText(item.date, 24);
+  if (!date) return '';
+  const low = toNumber(item.temp_low_c);
+  const high = toNumber(item.temp_high_c);
+  const condition = normalizeText(item.condition_text, 120);
+  const rain = toNumber(item.precip_mm);
+  const parts = [date];
+  if (low != null || high != null) {
+    const lowText = low == null ? '-' : formatNumber(low, 0);
+    const highText = high == null ? '-' : formatNumber(high, 0);
+    parts.push(
+      t(language, `${lowText}C ~ ${highText}C`, `${lowText}C to ${highText}C`),
+    );
+  }
+  if (condition) parts.push(condition);
+  if (rain != null && rain > 0) parts.push(t(language, `降水 ${formatNumber(rain, 1)}mm`, `precip ${formatNumber(rain, 1)}mm`));
+  return parts.join(' · ');
+}
+
+function buildForecastLines({ language, travelReadiness }) {
+  const rows = Array.isArray(travelReadiness && travelReadiness.forecast_window)
+    ? travelReadiness.forecast_window
+    : [];
+  const out = [];
+  for (const row of rows.slice(0, 5)) {
+    const line = formatForecastLine({ language, row });
+    if (!line) continue;
+    out.push(line);
+  }
+  return out;
+}
+
+function buildAlertsSection({ language, travelReadiness }) {
+  const alerts = Array.isArray(travelReadiness && travelReadiness.alerts)
+    ? travelReadiness.alerts
+    : [];
+  const lines = [];
+  for (const row of alerts.slice(0, 2)) {
+    const severity = normalizeText(row && row.severity, 24);
+    const title = normalizeText(row && row.title, 160);
+    const summary = normalizeText(row && row.summary, 180);
+    const timeWindow = [
+      normalizeText(row && row.start_at, 40),
+      normalizeText(row && row.end_at, 40),
+    ]
+      .filter(Boolean)
+      .join(' -> ');
+    const head = [severity, title].filter(Boolean).join(' | ');
+    const detail = [summary, timeWindow].filter(Boolean).join(' | ');
+    if (!head && !detail) continue;
+    lines.push([head, detail].filter(Boolean).join(' - '));
+  }
+
+  if (!lines.length) {
+    return {
+      lines: [t(language, '当前无官方预警。', 'No official weather alert currently.')],
+      hasOfficialAlerts: false,
+    };
+  }
+
+  return { lines, hasOfficialAlerts: true };
+}
+
 const FOCUS_ENUM = Object.freeze({
   GENERAL: 'general',
   TEMPERATURE: 'temperature',
@@ -421,6 +486,38 @@ function buildProductLines({ language, foci, travelReadiness }) {
     );
   }
 
+  const recoBundle = Array.isArray(travelReadiness && travelReadiness.reco_bundle)
+    ? travelReadiness.reco_bundle
+    : [];
+  for (const row of recoBundle.slice(0, 2)) {
+    const action = normalizeText(row && row.action, 240);
+    const reapply = normalizeText(row && row.reapply_rule, 200);
+    const trigger = normalizeText(row && row.trigger, 120);
+    const parts = [trigger, action, reapply].filter(Boolean);
+    if (!parts.length) continue;
+    lines.push(parts.join(' · '));
+  }
+
+  const storeExamples = Array.isArray(travelReadiness && travelReadiness.store_examples)
+    ? travelReadiness.store_examples
+    : [];
+  if (storeExamples.length) {
+    const stores = storeExamples
+      .slice(0, 3)
+      .map((row) => {
+        const name = normalizeText(row && row.name, 80);
+        const district = normalizeText(row && row.district, 80);
+        if (!name) return '';
+        return district ? `${name} (${district})` : name;
+      })
+      .filter(Boolean);
+    if (stores.length) {
+      lines.push(
+        t(language, `示例门店：${stores.join(' / ')}。`, `Example stores: ${stores.join(' / ')}.`),
+      );
+    }
+  }
+
   return uniqueStrings(lines, 4);
 }
 
@@ -547,10 +644,23 @@ function composeTravelReply({
   const envSourceLine = normalizeText(envSource, 60)
     ? t(lang, `数据来源：${normalizeText(envSource, 60)}。`, `Source: ${normalizeText(envSource, 60)}.`)
     : '';
+  const forecastLines = buildForecastLines({ language: lang, travelReadiness: readiness });
+  const alertsSection = buildAlertsSection({ language: lang, travelReadiness: readiness });
+  const qualitySections = [];
+  if (comparisonLines.length) qualitySections.push('answer_delta');
+  if (actionLines.length) qualitySections.push('actions');
+  if (productLines.length) qualitySections.push('products');
+  if (alertsSection.lines.length) qualitySections.push('alerts');
 
   const text = [
     directAnswer,
     contextLine,
+    forecastLines.length
+      ? [
+        t(lang, '逐日天气：', 'Daily forecast:'),
+        ...forecastLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
     comparisonLines.length
       ? [
         t(lang, '关键差异：', 'Key deltas:'),
@@ -570,6 +680,12 @@ function composeTravelReply({
         ...productLines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
+    alertsSection.lines.length
+      ? [
+        t(lang, '官方预警：', 'Official alerts:'),
+        ...alertsSection.lines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
     envSourceLine,
   ]
     .filter(Boolean)
@@ -584,6 +700,8 @@ function composeTravelReply({
     reply_mode: mode,
     reply_sig: replySig,
     home_baseline_available: homeBaselineAvailable,
+    quality_sections: uniqueStrings(qualitySections, 4),
+    has_official_alerts: alertsSection.hasOfficialAlerts,
   };
 }
 

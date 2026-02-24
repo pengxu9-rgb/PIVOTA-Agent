@@ -51,6 +51,13 @@ function normalizeDailyArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function roundTo(value, digits = 1) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const base = 10 ** digits;
+  return Math.round(n * base) / base;
+}
+
 function meanOf(values) {
   const nums = values
     .map((n) => Number(n))
@@ -65,6 +72,70 @@ function maxOf(values) {
     .filter((n) => Number.isFinite(n));
   if (!nums.length) return null;
   return Math.max(...nums);
+}
+
+function normalizeWeatherCode(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
+function mapWeatherCodeToConditionText(weatherCodeRaw, precipitationMmRaw) {
+  const code = normalizeWeatherCode(weatherCodeRaw);
+  const precipitationMm = Number(precipitationMmRaw);
+  const hasNotablePrecip = Number.isFinite(precipitationMm) && precipitationMm >= 0.5;
+  if (code == null) {
+    return hasNotablePrecip ? 'Chance of rain' : 'Variable conditions';
+  }
+
+  if (code === 0) return 'Clear sky';
+  if (code === 1) return 'Mainly clear';
+  if (code === 2) return 'Partly cloudy';
+  if (code === 3) return 'Overcast';
+  if (code === 45 || code === 48) return 'Fog';
+  if (code === 51 || code === 53 || code === 55) return 'Drizzle';
+  if (code === 56 || code === 57) return 'Freezing drizzle';
+  if (code === 61 || code === 63 || code === 65) return 'Rain';
+  if (code === 66 || code === 67) return 'Freezing rain';
+  if (code === 71 || code === 73 || code === 75) return 'Snow';
+  if (code === 77) return 'Snow grains';
+  if (code === 80 || code === 81 || code === 82) return 'Rain showers';
+  if (code === 85 || code === 86) return 'Snow showers';
+  if (code === 95) return 'Thunderstorm';
+  if (code === 96 || code === 99) return 'Thunderstorm with hail';
+  return hasNotablePrecip ? 'Unsettled with precipitation' : 'Variable conditions';
+}
+
+function buildForecastWindow(daily = {}, maxDays = 7) {
+  const dates = normalizeDailyArray(daily.time);
+  const tempMax = normalizeDailyArray(daily.temperature_2m_max);
+  const tempMin = normalizeDailyArray(daily.temperature_2m_min);
+  const uv = normalizeDailyArray(daily.uv_index_max);
+  const precipitation = normalizeDailyArray(daily.precipitation_sum);
+  const wind = normalizeDailyArray(daily.wind_speed_10m_max);
+  const humidity = normalizeDailyArray(daily.relative_humidity_2m_mean);
+  const weatherCode = normalizeDailyArray(daily.weather_code);
+
+  const rowCount = Math.min(dates.length || 0, maxDays);
+  const rows = [];
+  for (let i = 0; i < rowCount; i += 1) {
+    const dateToken = String(dates[i] || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateToken)) continue;
+
+    const precipMm = roundTo(precipitation[i], 1);
+    rows.push({
+      date: dateToken,
+      temp_low_c: roundTo(tempMin[i], 1),
+      temp_high_c: roundTo(tempMax[i], 1),
+      humidity_mean: roundTo(humidity[i], 1),
+      uv_max: roundTo(uv[i], 1),
+      precip_mm: precipMm,
+      wind_kph: roundTo(wind[i], 1),
+      condition_text: mapWeatherCodeToConditionText(weatherCode[i], precipMm),
+    });
+  }
+
+  return rows;
 }
 
 function buildWeatherSummary(daily = {}) {
@@ -285,6 +356,30 @@ function mapArchetypeTemps(archetypeRaw, monthBucket) {
   return warmMonth ? { max: 30, min: 22 } : coolMonth ? { max: 9, min: 2 } : { max: 22, min: 14 };
 }
 
+function buildSyntheticForecastWindow({ startDate, endDate, summary, maxDays = 7 } = {}) {
+  const { start, end } = clampDateRange(startDate, endDate);
+  const startObj = new Date(`${start}T00:00:00.000Z`);
+  const endObj = new Date(`${end}T00:00:00.000Z`);
+  if (!Number.isFinite(startObj.getTime()) || !Number.isFinite(endObj.getTime())) return [];
+  const rows = [];
+  let cursor = new Date(startObj);
+  while (cursor <= endObj && rows.length < maxDays) {
+    const date = toIsoDate(cursor);
+    rows.push({
+      date,
+      temp_low_c: roundTo(summary && summary.temperature_min_c, 1),
+      temp_high_c: roundTo(summary && summary.temperature_max_c, 1),
+      humidity_mean: roundTo(summary && summary.humidity_mean, 1),
+      uv_max: roundTo(summary && summary.uv_index_max, 1),
+      precip_mm: roundTo(summary && summary.precipitation_mm, 1),
+      wind_kph: roundTo(summary && summary.wind_kph_max, 1),
+      condition_text: 'Climate baseline estimate',
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return rows;
+}
+
 function climateFallback({ destination, startDate, endDate, reason, userLocale } = {}) {
   const name = String(destination || '').trim();
   const { start, end } = clampDateRange(startDate, endDate);
@@ -325,6 +420,11 @@ function climateFallback({ destination, startDate, endDate, reason, userLocale }
       };
     })()
     : defaultSummary;
+  const forecastWindow = buildSyntheticForecastWindow({
+    startDate: start,
+    endDate: end,
+    summary,
+  });
 
   return {
     ok: true,
@@ -334,6 +434,9 @@ function climateFallback({ destination, startDate, endDate, reason, userLocale }
     date_range: { start, end },
     location: { name: name || null, latitude: null, longitude: null, timezone: null },
     summary,
+    forecast_window: forecastWindow,
+    data_freshness_utc: new Date().toISOString(),
+    days_covered: forecastWindow.length,
     raw: {
       climate_profile: selected
         ? {
@@ -401,7 +504,7 @@ async function getTravelWeather({
   }
 
   const forecastUrl = `${OPEN_METEO_FORECAST_URL}?latitude=${lat}&longitude=${lon}` +
-    `&daily=temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean` +
+    `&daily=temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean,weather_code` +
     `&timezone=auto&start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`;
 
   const forecast = await callJson(forecastUrl, fetchImpl, forecastTimeoutMs);
@@ -413,6 +516,7 @@ async function getTravelWeather({
   }
 
   const summary = buildWeatherSummary(forecast.data.daily || {});
+  const forecastWindow = buildForecastWindow(forecast.data.daily || {});
 
   return {
     ok: true,
@@ -426,8 +530,13 @@ async function getTravelWeather({
       longitude: lon,
       timezone: String(forecast.data.timezone || result.timezone || ''),
       country: String(result.country || ''),
+      country_code: String(result.country_code || ''),
+      admin1: String(result.admin1 || ''),
     },
     summary,
+    forecast_window: forecastWindow,
+    data_freshness_utc: new Date().toISOString(),
+    days_covered: forecastWindow.length,
     raw: {
       daily: forecast.data.daily || null,
       generationtime_ms: forecast.data.generationtime_ms || null,
@@ -440,6 +549,9 @@ module.exports = {
   climateFallback,
   __internal: {
     buildWeatherSummary,
+    buildForecastWindow,
     clampDateRange,
+    mapWeatherCodeToConditionText,
+    buildSyntheticForecastWindow,
   },
 };
