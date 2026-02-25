@@ -60,7 +60,7 @@ test('travelAlertsProvider: buildAlertsFromPayload dedupes duplicate windows and
       },
       {
         phenomenon_id: '7',
-        timelaps_items: [{ begin_time: 1700001000, end_time: 1700004600 }],
+        timelaps_items: [{ begin_time: 1700001005, end_time: 1700004605 }],
       },
     ],
     phenomenons_items: [
@@ -86,6 +86,44 @@ test('travelAlertsProvider: buildAlertsFromPayload dedupes duplicate windows and
   assert.equal(alerts[0].severity, 'orange');
   assert.match(String(alerts[0].summary || ''), /Regional alert/i);
   assert.match(String(alerts[0].action_hint || ''), /exact area in Paris/i);
+});
+
+test('travelAlertsProvider: keeps only one non-local alert when multiple windows exist', () => {
+  const warningFull = {
+    comments: { text: ['Crues importantes en cours sur la Charente et la Loire aval.'] },
+    end_validity_time: 1700015000,
+    update_time: 1700000000,
+    timelaps: [
+      {
+        phenomenon_id: '2',
+        timelaps_items: [{ begin_time: 1700001000, end_time: 1700004600 }],
+      },
+      {
+        phenomenon_id: '7',
+        timelaps_items: [{ begin_time: 1700008200, end_time: 1700011800 }],
+      },
+    ],
+    phenomenons_items: [
+      { phenomenon_id: '2', phenomenon_max_color_id: 3 },
+      { phenomenon_id: '7', phenomenon_max_color_id: 2 },
+    ],
+  };
+  const dictionary = {
+    phenomenons: [
+      { id: '2', name: 'Flood' },
+      { id: '7', name: 'Avalanche' },
+    ],
+  };
+  const alerts = __internal.buildAlertsFromPayload({
+    warningFull,
+    dictionary,
+    destinationLabel: 'Paris',
+    language: 'EN',
+  });
+
+  assert.equal(Array.isArray(alerts), true);
+  assert.equal(alerts.length, 1);
+  assert.match(String(alerts[0].summary || ''), /Regional alert/i);
 });
 
 test('travelAlertsProvider: unsupported country returns source=none without fetch', async () => {

@@ -134,6 +134,13 @@ function severityRank(severity) {
   return 0;
 }
 
+function toIsoHourBucket(value) {
+  if (!isNonEmptyString(value)) return '';
+  const ms = Date.parse(String(value));
+  if (!Number.isFinite(ms)) return '';
+  return String(Math.floor(ms / 3600000));
+}
+
 function buildPhenomenonNameMap(dictionaryPayload) {
   const out = new Map();
   const rows = Array.isArray(dictionaryPayload && dictionaryPayload.phenomenons)
@@ -180,12 +187,22 @@ function dedupeAlertsByWindow(alerts) {
   for (const row of Array.isArray(alerts) ? alerts : []) {
     if (!row || typeof row !== 'object') continue;
     const summaryKey = normalizeLooseText(row.summary || row.title || '');
-    const timeKey = `${String(row.start_at || '').trim()}|${String(row.end_at || '').trim()}`;
-    const key = `${timeKey}|${summaryKey}`;
+    const regionKey = normalizeLooseText(row.region || '');
+    const startBucket = toIsoHourBucket(row.start_at);
+    const endBucket = toIsoHourBucket(row.end_at);
+    const timeKey = `${startBucket}|${endBucket}`;
+    const key = `${summaryKey}|${regionKey}|${timeKey}`;
     if (!key.trim()) continue;
 
     const existing = byKey.get(key);
     if (!existing) {
+      byKey.set(key, row);
+      continue;
+    }
+
+    const currentLocal = row.local_match === true ? 1 : 0;
+    const existingLocal = existing.local_match === true ? 1 : 0;
+    if (currentLocal > existingLocal) {
       byKey.set(key, row);
       continue;
     }
@@ -294,12 +311,23 @@ function buildAlertsFromPayload({ warningFull, dictionary, destinationLabel, lan
       end_at: endAt || endValidity,
       region: destinationLabel || null,
       action_hint: actionHint,
+      local_match: localMatch,
     });
   }
 
   const deduped = dedupeAlertsByWindow(alerts);
-  deduped.sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
-  return deduped.slice(0, 4);
+  deduped.sort((a, b) => {
+    const localDiff = Number(b.local_match === true) - Number(a.local_match === true);
+    if (localDiff !== 0) return localDiff;
+    return severityRank(b.severity) - severityRank(a.severity);
+  });
+  const localAlerts = deduped.filter((row) => row.local_match === true);
+  const nonLocalAlerts = deduped.filter((row) => row.local_match !== true);
+  const selected = localAlerts.length > 0 ? localAlerts : nonLocalAlerts.slice(0, 1);
+  return selected.slice(0, 4).map((row) => {
+    const { local_match: _localMatch, ...rest } = row;
+    return rest;
+  });
 }
 
 async function getTravelAlerts({

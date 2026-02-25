@@ -40,6 +40,42 @@ function uniqueStrings(values, maxItems = 8) {
   return out;
 }
 
+function actionSemanticKey(raw) {
+  const text = normalizeText(raw, 320).toLowerCase();
+  if (!text) return '';
+  if ((text.includes('barrier') || text.includes('修护')) && (text.includes('occlusive') || text.includes('封层'))) {
+    return 'barrier_occlusive_night';
+  }
+  if ((text.includes('spf') || text.includes('防晒')) && (text.includes('reapply') || text.includes('补涂'))) {
+    return 'spf_reapply';
+  }
+  if (
+    (text.includes('am') && text.includes('pm') && text.includes('sunscreen')) ||
+    (text.includes('早') && text.includes('晚') && text.includes('防晒'))
+  ) {
+    return 'am_pm_stability';
+  }
+  if (
+    text.includes('avoid') && (text.includes('stack') || text.includes('active')) ||
+    (text.includes('避免') && text.includes('活性'))
+  ) {
+    return 'avoid_active_stacking';
+  }
+  return text
+    .replace(/[^a-z0-9\u4e00-\u9fff\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pushUniqueAction(lines, seenSemantics, line) {
+  const text = normalizeText(line, 320);
+  if (!text) return;
+  const semantic = actionSemanticKey(text);
+  if (!semantic || seenSemantics.has(semantic)) return;
+  seenSemantics.add(semantic);
+  lines.push(text);
+}
+
 function formatSignedNumber(value, digits = 1) {
   const n = roundTo(value, digits);
   if (n == null) return null;
@@ -387,6 +423,7 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
     ? travelReadiness.delta_vs_home
     : {};
   const lines = [];
+  const seenSemantics = new Set();
   const focusHumidity = Array.isArray(foci) && foci.includes(FOCUS_ENUM.HUMIDITY);
   const focusTemperature = Array.isArray(foci) && foci.includes(FOCUS_ENUM.TEMPERATURE);
   const shownDeltaKeys = new Set(
@@ -398,7 +435,9 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
   if (Array.isArray(foci) && foci.includes(FOCUS_ENUM.UV)) {
     const uvDestination = toNumber(delta?.uv?.destination);
     if (uvDestination != null && uvDestination >= 6) {
-      lines.push(
+      pushUniqueAction(
+        lines,
+        seenSemantics,
         t(
           language,
           '白天选 SPF50+，户外每 2 小时补涂一次，出汗后立即补涂。',
@@ -406,7 +445,9 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
         ),
       );
     } else {
-      lines.push(
+      pushUniqueAction(
+        lines,
+        seenSemantics,
         t(
           language,
           '日常可用 SPF30-50，若连续户外超过 90 分钟改为 SPF50 并补涂。',
@@ -420,7 +461,9 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
     const humidityDelta = toNumber(delta?.humidity?.delta);
     const temperatureDelta = toNumber(delta?.temperature?.delta);
     if (shownDeltaKeys.has('humidity') && humidityDelta != null && humidityDelta >= 8) {
-      lines.push(
+      pushUniqueAction(
+        lines,
+        seenSemantics,
         t(
           language,
           '早上改轻薄保湿（凝胶/乳液），晚间用中等修护霜，避免同晚叠加多活性。',
@@ -428,7 +471,9 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
         ),
       );
     } else if (shownDeltaKeys.has('humidity') && humidityDelta != null && humidityDelta <= -8) {
-      lines.push(
+      pushUniqueAction(
+        lines,
+        seenSemantics,
         t(
           language,
           '目的地比常驻地更干时，早晚升级为修护保湿，夜间可在易干部位薄涂封层。',
@@ -436,7 +481,9 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
         ),
       );
     } else if ((focusTemperature || shownDeltaKeys.has('temperature')) && temperatureDelta != null && Math.abs(temperatureDelta) >= 3) {
-      lines.push(
+      pushUniqueAction(
+        lines,
+        seenSemantics,
         t(
           language,
           '温差偏大时，早晚都保留屏障修护霜；夜间可加一层封闭型保湿。',
@@ -444,7 +491,9 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
         ),
       );
     } else if (focusHumidity || shownDeltaKeys.has('humidity')) {
-      lines.push(
+      pushUniqueAction(
+        lines,
+        seenSemantics,
         t(
           language,
           '湿度变化不大时，保持基础保湿与温和清洁，避免临时叠加高刺激活性。',
@@ -455,7 +504,9 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
   }
 
   if (Array.isArray(foci) && foci.includes(FOCUS_ENUM.SLEEP)) {
-    lines.push(
+    pushUniqueAction(
+      lines,
+      seenSemantics,
       t(
         language,
         '飞行当天和落地第一晚优先补水修护面膜 1 次，第二晚按皮肤反应决定是否继续。',
@@ -469,7 +520,7 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
     : [];
   for (const row of adaptive) {
     const text = normalizeText(row && row.what_to_do, 280);
-    if (text) lines.push(text);
+    if (text) pushUniqueAction(lines, seenSemantics, text);
     if (lines.length >= 4) break;
   }
 

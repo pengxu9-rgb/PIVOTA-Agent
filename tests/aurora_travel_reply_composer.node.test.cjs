@@ -190,6 +190,27 @@ test('travelReplyComposer keeps humidity-only answer grounded even when temperat
   assert.match(result.text, /destination humidity is lower than home/i);
 });
 
+test('travelReplyComposer dedupes near-duplicate barrier actions', () => {
+  const readiness = buildReadiness({ baselineStatus: 'ok' });
+  readiness.delta_vs_home.humidity = { home: 78, destination: 58, delta: -20, unit: '%' };
+  readiness.adaptive_actions = [
+    { why: 'Dryness', what_to_do: 'Upgrade to a richer barrier moisturizer and add a thin occlusive layer at night.' },
+    { why: 'Dryness+', what_to_do: 'When destination humidity is lower than home, upgrade to richer AM/PM barrier hydration and add a thin occlusive layer on dry-prone areas at night.' },
+  ];
+
+  const result = composeTravelReply({
+    message: 'Will it be humid there?',
+    language: 'EN',
+    travelReadiness: readiness,
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  const matches = String(result.text).match(/occlusive layer/gi) || [];
+  assert.equal(matches.length, 1);
+});
+
 test('travelReplyComposer avoids same-text replay for repeated same focus in-session', () => {
   const first = composeTravelReply({
     message: 'How humid is it there?',
