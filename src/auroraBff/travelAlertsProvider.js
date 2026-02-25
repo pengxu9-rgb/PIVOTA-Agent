@@ -149,6 +149,54 @@ function buildPhenomenonNameMap(dictionaryPayload) {
   return out;
 }
 
+function normalizeLooseText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u00c0-\u024f\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isDestinationMentionedInSummary(summary, destinationLabel) {
+  const summaryText = normalizeLooseText(summary);
+  const destinationText = normalizeLooseText(destinationLabel);
+  if (!summaryText || !destinationText) return false;
+  if (summaryText.includes(destinationText)) return true;
+
+  const stop = new Set(['city', 'district', 'region', 'area', 'france']);
+  const tokens = destinationText
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4 && !stop.has(token));
+  for (const token of tokens) {
+    if (summaryText.includes(token)) return true;
+  }
+  return false;
+}
+
+function dedupeAlertsByWindow(alerts) {
+  const byKey = new Map();
+  for (const row of Array.isArray(alerts) ? alerts : []) {
+    if (!row || typeof row !== 'object') continue;
+    const summaryKey = normalizeLooseText(row.summary || row.title || '');
+    const timeKey = `${String(row.start_at || '').trim()}|${String(row.end_at || '').trim()}`;
+    const key = `${timeKey}|${summaryKey}`;
+    if (!key.trim()) continue;
+
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, row);
+      continue;
+    }
+
+    const currentRank = severityRank(row.severity);
+    const existingRank = severityRank(existing.severity);
+    if (currentRank > existingRank) byKey.set(key, row);
+  }
+  return Array.from(byKey.values());
+}
+
 function inferFranceDomainId({ destination, preferredDomainId } = {}) {
   const preferred = String(preferredDomainId || '').trim().toUpperCase();
   if (/^\d{2}$/.test(preferred)) return preferred;
@@ -221,15 +269,27 @@ function buildAlertsFromPayload({ warningFull, dictionary, destinationLabel, lan
     const title = language === 'CN'
       ? `官方预警：${phenomenonName}（${severity}）`
       : `Official alert: ${phenomenonName} (${severity})`;
+    const localMatch = isDestinationMentionedInSummary(commentsText, destinationLabel);
+    const summaryText = commentsText
+      ? localMatch
+        ? commentsText
+        : language === 'CN'
+          ? `区域预警（可能并非${destinationLabel || '目的地'}主城区）：${commentsText}`
+          : `Regional alert (may not be central ${destinationLabel || 'destination'}): ${commentsText}`
+      : null;
     const actionHint = language === 'CN'
-      ? '请在出行前和当天复核官方预警并调整户外安排。'
-      : 'Re-check official alerts before outdoor plans and adjust exposure accordingly.';
+      ? localMatch
+        ? '请在出行前和当天复核官方预警并调整户外安排。'
+        : `请先确认该预警是否覆盖${destinationLabel || '目的地'}实际活动区域，再调整行程。`
+      : localMatch
+        ? 'Re-check official alerts before outdoor plans and adjust exposure accordingly.'
+        : `Confirm whether this alert applies to your exact area in ${destinationLabel || 'destination'} before adjusting outdoor plans.`;
 
     alerts.push({
       provider: 'Meteo-France Vigilance',
       severity,
       title,
-      summary: commentsText || null,
+      summary: summaryText,
       start_at: startAt || updateAt,
       end_at: endAt || endValidity,
       region: destinationLabel || null,
@@ -237,8 +297,9 @@ function buildAlertsFromPayload({ warningFull, dictionary, destinationLabel, lan
     });
   }
 
-  alerts.sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
-  return alerts.slice(0, 4);
+  const deduped = dedupeAlertsByWindow(alerts);
+  deduped.sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
+  return deduped.slice(0, 4);
 }
 
 async function getTravelAlerts({
@@ -335,5 +396,7 @@ module.exports = {
     isFranceDestination,
     inferFranceDomainId,
     buildAlertsFromPayload,
+    isDestinationMentionedInSummary,
+    dedupeAlertsByWindow,
   },
 };

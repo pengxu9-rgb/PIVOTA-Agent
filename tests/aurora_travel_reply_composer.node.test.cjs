@@ -66,6 +66,10 @@ function buildReadiness({ baselineStatus = 'ok' } = {}) {
       ],
       buying_channels: ['pharmacy', 'ecommerce'],
     },
+    store_examples: [
+      { name: 'Citypharma', district: '6th arrondissement' },
+      { name: 'Pharmacie Monge', district: '5th arrondissement' },
+    ],
     confidence: {
       level: baselineStatus === 'ok' ? 'high' : 'medium',
       missing_inputs: baselineStatus === 'ok' ? [] : ['home_baseline_weather'],
@@ -242,4 +246,21 @@ test('travelReplyComposer handles mixed humidity + product follow-up in one answ
   assert.equal(result.focus, 'humidity+products');
   assert.match(result.text, /湿度: 56% -> 76% \(变化 \+20%\)/);
   assert.match(result.text, /(面霜|面膜|防晒档位|主推单品)/);
+  assert.match(result.text, /示例门店|Example stores/);
+});
+
+test('travelReplyComposer adds phased plan for multi-day trip window', () => {
+  const result = composeTravelReply({
+    message: 'Please adjust my skincare for Paris weather this week.',
+    language: 'EN',
+    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  assert.match(result.text, /Phased plan:/);
+  assert.match(result.text, /Pre-trip \(T-2 to T-1\)/);
+  assert.match(result.text, /Flight day:/);
+  assert.match(result.text, /On-site days:/);
 });

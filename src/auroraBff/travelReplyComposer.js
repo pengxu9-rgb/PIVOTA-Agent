@@ -115,6 +115,22 @@ function formatForecastLine({ language, row }) {
   return parts.join(' · ');
 }
 
+function parseIsoDateToken(value) {
+  const token = normalizeText(value, 24);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(token)) return null;
+  const date = new Date(`${token}T00:00:00.000Z`);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date;
+}
+
+function getTripDaysInclusive(startDate, endDate) {
+  const start = parseIsoDateToken(startDate);
+  const end = parseIsoDateToken(endDate);
+  if (!start || !end) return null;
+  if (end < start) return null;
+  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
 function buildForecastLines({ language, travelReadiness }) {
   const rows = Array.isArray(travelReadiness && travelReadiness.forecast_window)
     ? travelReadiness.forecast_window
@@ -460,6 +476,52 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
   return uniqueStrings(lines, 3);
 }
 
+function buildPhasedPlanLines({ language, travelReadiness, foci }) {
+  const context = isPlainObject(travelReadiness && travelReadiness.destination_context)
+    ? travelReadiness.destination_context
+    : {};
+  const tripDays = getTripDaysInclusive(context.start_date, context.end_date);
+  if (!Number.isFinite(tripDays) || tripDays < 3) return [];
+
+  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
+    ? travelReadiness.delta_vs_home
+    : {};
+  const uvDestination = toNumber(delta?.uv?.destination);
+  const hasUvStress = uvDestination != null && uvDestination >= 6;
+  const hasSleepFocus = Array.isArray(foci) && foci.includes(FOCUS_ENUM.SLEEP);
+
+  const lines = [
+    t(
+      language,
+      '行前（T-2~T-1）：维持现有护肤，不新增高刺激活性；新产品先做局部耐受测试。',
+      'Pre-trip (T-2 to T-1): keep routine stable, avoid introducing high-irritation actives, and patch-test any new product.',
+    ),
+    t(
+      language,
+      '飞行日：优先补水+屏障修护；落地当晚跳过高强度酸/维A。',
+      'Flight day: prioritize hydration + barrier recovery, and skip strong acids/retinoids on arrival night.',
+    ),
+    hasSleepFocus
+      ? t(
+        language,
+        '在地日程：按时区调整睡眠和进餐，白天按户外时长补防晒，晚间以修护为主后再逐步恢复活性。',
+        'On-site days: align sleep/meals to local time, reapply sunscreen by outdoor exposure, and keep PM recovery-first before reintroducing actives.',
+      )
+      : hasUvStress
+        ? t(
+          language,
+          '在地日程：早上固定 SPF50+，户外每 2 小时补涂；晚间优先修护，活性逐步恢复。',
+          'On-site days: keep SPF50+ every morning and reapply every 2 hours outdoors; prioritize PM recovery and resume actives gradually.',
+        )
+        : t(
+          language,
+          '在地日程：白天按紧绷/出油状态动态补保湿；晚间先修护再按耐受恢复活性。',
+          'On-site days: adjust daytime hydration by tightness/oiliness; run PM recovery-first before restoring actives by tolerance.',
+        ),
+  ];
+  return uniqueStrings(lines, 3);
+}
+
 function buildProductLines({ language, foci, travelReadiness }) {
   const shopping = isPlainObject(travelReadiness && travelReadiness.shopping_preview)
     ? travelReadiness.shopping_preview
@@ -509,6 +571,26 @@ function buildProductLines({ language, foci, travelReadiness }) {
     );
   }
 
+  const storeExamples = Array.isArray(travelReadiness && travelReadiness.store_examples)
+    ? travelReadiness.store_examples
+    : [];
+  if (storeExamples.length) {
+    const stores = storeExamples
+      .slice(0, 2)
+      .map((row) => {
+        const name = normalizeText(row && row.name, 80);
+        const district = normalizeText(row && row.district, 80);
+        if (!name) return '';
+        return district ? `${name} (${district})` : name;
+      })
+      .filter(Boolean);
+    if (stores.length) {
+      lines.push(
+        t(language, `示例门店：${stores.join(' / ')}。`, `Example stores: ${stores.join(' / ')}.`),
+      );
+    }
+  }
+
   const channels = Array.isArray(shopping.buying_channels)
     ? shopping.buying_channels.map((v) => normalizeText(v, 48)).filter(Boolean).slice(0, 5)
     : [];
@@ -541,27 +623,7 @@ function buildProductLines({ language, foci, travelReadiness }) {
     );
   }
 
-  const storeExamples = Array.isArray(travelReadiness && travelReadiness.store_examples)
-    ? travelReadiness.store_examples
-    : [];
-  if (storeExamples.length) {
-    const stores = storeExamples
-      .slice(0, 3)
-      .map((row) => {
-        const name = normalizeText(row && row.name, 80);
-        const district = normalizeText(row && row.district, 80);
-        if (!name) return '';
-        return district ? `${name} (${district})` : name;
-      })
-      .filter(Boolean);
-    if (stores.length) {
-      lines.push(
-        t(language, `示例门店：${stores.join(' / ')}。`, `Example stores: ${stores.join(' / ')}.`),
-      );
-    }
-  }
-
-  return uniqueStrings(lines, 4);
+  return uniqueStrings(lines, 5);
 }
 
 function buildReplySignature({ foci, travelReadiness, homeRegion }) {
@@ -672,6 +734,11 @@ function composeTravelReply({
     travelReadiness: readiness,
     displayedDeltaKeys,
   });
+  const phasedPlanLines = buildPhasedPlanLines({
+    language: lang,
+    travelReadiness: readiness,
+    foci,
+  });
 
   const productLines = buildProductLines({
     language: lang,
@@ -706,6 +773,7 @@ function composeTravelReply({
   const qualitySections = [];
   if (comparisonLines.length) qualitySections.push('answer_delta');
   if (actionLines.length) qualitySections.push('actions');
+  if (phasedPlanLines.length) qualitySections.push('phased_plan');
   if (productLines.length) qualitySections.push('products');
   if (alertsSection.lines.length) qualitySections.push('alerts');
 
@@ -729,6 +797,12 @@ function composeTravelReply({
       ? [
         t(lang, '执行动作：', 'Actions:'),
         ...actionLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
+    phasedPlanLines.length
+      ? [
+        t(lang, '分阶段安排：', 'Phased plan:'),
+        ...phasedPlanLines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
     productLines.length
