@@ -703,4 +703,73 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
       resp.body.metadata?.search_trace?.final_decision,
     );
   });
+
+  test('lingerie strict scope excludes tools and respects requested limit', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 24 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          const lingerieRows = Array.from({ length: 16 }).map((_, idx) => ({
+            merchant_id: 'merch_lingerie',
+            merchant_name: 'Lingerie Shop',
+            product_data: {
+              id: `lingerie_${idx + 1}`,
+              product_id: `lingerie_${idx + 1}`,
+              merchant_id: 'merch_lingerie',
+              title: `Lingerie Set ${idx + 1}`,
+              description: 'lingerie bra and panty set',
+              status: 'published',
+              inventory_quantity: 8,
+              image_urls: ['https://cdn.example.com/lingerie.jpg'],
+            },
+          }));
+          const brushRows = Array.from({ length: 4 }).map((_, idx) => ({
+            merchant_id: 'merch_tools',
+            merchant_name: 'Tool Shop',
+            product_data: {
+              id: `brush_${idx + 1}`,
+              product_id: `brush_${idx + 1}`,
+              merchant_id: 'merch_tools',
+              title: `Contour Brush ${idx + 1}`,
+              description: 'makeup contour brush tool',
+              status: 'published',
+              inventory_quantity: 8,
+            },
+          }));
+          return { rows: [...lingerieRows, ...brushRows] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'lingerie',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBe(10);
+    expect((resp.body.products || []).every((item) => !/\bbrush\b/i.test(String(item?.title || '')))).toBe(
+      true,
+    );
+    expect(resp.body.metadata?.search_trace?.strict_scope).toBe('lingerie');
+    expect(Number(resp.body.metadata?.search_trace?.lingerie_filtered_out || 0)).toBeGreaterThanOrEqual(1);
+  });
 });
