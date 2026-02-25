@@ -1166,6 +1166,9 @@ async function recommend({
   const baseLeaf = getLeafCategory(baseProduct);
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
   const baseProductIsExternal = isExternalProduct(baseProduct);
+  const effectiveExternalFetchTimeoutMs = baseProductIsExternal
+    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 2600)
+    : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
   const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
@@ -1207,7 +1210,7 @@ async function recommend({
 
   const externalCandidates = shouldSkipExternal
     ? []
-    : await withSoftTimeout(
+      : await withSoftTimeout(
         providedExternal
           ? Promise.resolve(providedExternal)
           : fetchExternalCandidates({
@@ -1215,14 +1218,14 @@ async function recommend({
               categoryHint: baseLeaf,
               limit: Math.max(120, safeK * 15),
             }),
-        PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
+        effectiveExternalFetchTimeoutMs,
         [],
         () => {
           externalTimedOut = true;
           logger.warn(
             {
               product_id: baseProductId,
-              timeout_ms: PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
+              timeout_ms: effectiveExternalFetchTimeoutMs,
             },
             'PDP recommendations external candidate fetch timed out',
           );
