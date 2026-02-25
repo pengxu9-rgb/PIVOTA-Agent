@@ -450,6 +450,8 @@ const AURORA_LLM_OPENAI_FALLBACK_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_PRODUCT_INTEL_LLM_PROVIDER = normalizeChatLlmProvider(process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER || '');
+const AURORA_PRODUCT_INTEL_LLM_MODEL = normalizeChatLlmModel(process.env.AURORA_PRODUCT_INTEL_LLM_MODEL || '');
 const AURORA_PRODUCT_RELEVANCE_QA_MODE = (() => {
   const explicitMode = String(process.env.AURORA_LLM_QA_MODE || '')
     .trim()
@@ -15703,6 +15705,28 @@ function normalizeChatLlmModel(value) {
   return model.slice(0, 120);
 }
 
+function resolveProductIntelLlmRoute({ req = null, requestedProvider = null, requestedModel = null } = {}) {
+  const headerProvider =
+    req && typeof req.get === 'function'
+      ? normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'))
+      : null;
+  const headerModel =
+    req && typeof req.get === 'function'
+      ? normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'))
+      : null;
+  const llm_provider =
+    normalizeChatLlmProvider(requestedProvider) ||
+    headerProvider ||
+    AURORA_PRODUCT_INTEL_LLM_PROVIDER ||
+    null;
+  const llm_model =
+    normalizeChatLlmModel(requestedModel) ||
+    headerModel ||
+    AURORA_PRODUCT_INTEL_LLM_MODEL ||
+    null;
+  return { llm_provider, llm_model };
+}
+
 function classifyStorageError(err) {
   const code = err && err.code ? String(err.code) : null;
   const sqlState = code && /^[0-9A-Z]{5}$/.test(code) ? code : null;
@@ -25696,6 +25720,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return res.status(400).json(envelope);
       }
+      const productIntelLlmRoute = resolveProductIntelLlmRoute({
+        req,
+        requestedProvider: parsed.data.llm_provider,
+        requestedModel: parsed.data.llm_model,
+      });
 
       const input = parsed.data.url || parsed.data.text;
       const query = `Task: Parse the user's product input into a normalized product entity.\n` +
@@ -25710,6 +25739,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           baseUrl: AURORA_DECISION_BASE_URL,
           query,
           timeoutMs: AURORA_CHAT_UPSTREAM_TIMEOUT_MS,
+          ...(productIntelLlmRoute.llm_provider ? { llm_provider: productIntelLlmRoute.llm_provider } : {}),
+          ...(productIntelLlmRoute.llm_model ? { llm_model: productIntelLlmRoute.llm_model } : {}),
         });
       } catch (err) {
         // ignore; fall back below
@@ -25898,6 +25929,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return sendProductAnalyzeEnvelope(envelope, 400, 'main_path');
       }
+      const productIntelLlmRoute = resolveProductIntelLlmRoute({
+        req,
+        requestedProvider: parsed.data.llm_provider,
+        requestedModel: parsed.data.llm_model,
+      });
 
       const incomingSession =
         parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
@@ -26253,6 +26289,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             query: parseQuery,
             timeoutMs: AURORA_CHAT_UPSTREAM_TIMEOUT_MS,
             ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
+            ...(productIntelLlmRoute.llm_provider ? { llm_provider: productIntelLlmRoute.llm_provider } : {}),
+            ...(productIntelLlmRoute.llm_model ? { llm_model: productIntelLlmRoute.llm_model } : {}),
           });
 
           const parseStructured = (() => {
@@ -26338,6 +26376,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             timeoutMs,
             ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
             ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
+            ...(productIntelLlmRoute.llm_provider ? { llm_provider: productIntelLlmRoute.llm_provider } : {}),
+            ...(productIntelLlmRoute.llm_model ? { llm_model: productIntelLlmRoute.llm_model } : {}),
           });
         } catch {
           return null;
@@ -34651,6 +34691,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           '';
 
         if (productInput) {
+          const fitCheckLlmRoute = resolveProductIntelLlmRoute({
+            req,
+            requestedProvider: llmProvider,
+            requestedModel: llmModel,
+          });
           const commonMeta = {
             profile: profileSummary,
             recentLogs,
@@ -34684,6 +34729,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 query: parseQuery,
                 timeoutMs: 12000,
                 ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
+                ...(fitCheckLlmRoute.llm_provider ? { llm_provider: fitCheckLlmRoute.llm_provider } : {}),
+                ...(fitCheckLlmRoute.llm_model ? { llm_model: fitCheckLlmRoute.llm_model } : {}),
               });
               const parseStructured =
                 parseUpstream && parseUpstream.structured && typeof parseUpstream.structured === 'object' && !Array.isArray(parseUpstream.structured)
@@ -34720,6 +34767,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 timeoutMs,
                 ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
                 ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
+                ...(fitCheckLlmRoute.llm_provider ? { llm_provider: fitCheckLlmRoute.llm_provider } : {}),
+                ...(fitCheckLlmRoute.llm_model ? { llm_model: fitCheckLlmRoute.llm_model } : {}),
               });
             } catch {
               return null;
