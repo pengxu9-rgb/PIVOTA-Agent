@@ -512,6 +512,18 @@ const AURORA_DISCOVERY_CARD_IN_LIST_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_RECO_GENERATE_GUARDRAIL_V1 = (() => {
+  const raw = String(process.env.AURORA_RECO_GENERATE_GUARDRAIL_V1 || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_DUPE_SUGGEST_SANITIZE_V1 = (() => {
+  const raw = String(process.env.AURORA_DUPE_SUGGEST_SANITIZE_V1 || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES = (() => {
   const n = Number(process.env.AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES || 4);
   const v = Number.isFinite(n) ? Math.trunc(n) : 4;
@@ -528,32 +540,6 @@ const AURORA_PIVOTA_SHOP_BASE_URL = String(
   .trim()
   .replace(/\/+$/, '');
 const AURORA_CHAT_POLICY_VERSION = String(process.env.AURORA_CHAT_POLICY_VERSION || 'aurora_chat_v2_p0').trim();
-const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
-  profile_v2: AURORA_PROFILE_V2_ENABLED,
-  qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
-  safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
-  travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
-  loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
-  chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
-  router_dst_patch_v1: AURORA_ROUTER_DST_PATCH_V1_ENABLED,
-  nonblocking_gate_v1: AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
-  catalog_domain_guard_v1: AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED,
-  multiturn_contract_gate_v1: AURORA_MULTITURN_CONTRACT_GATE_V1_ENABLED,
-  analysis_story_v2: AURORA_ANALYSIS_STORY_V2_ENABLED,
-  routine_soft_gate_delay_reco: AURORA_ROUTINE_SOFT_GATE_DELAY_RECO,
-  product_strict_skincare_filter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
-  product_relevance_dual_llm_qa: AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA,
-  product_relevance_qa_mode: AURORA_PRODUCT_RELEVANCE_QA_MODE,
-  llm_qa_mode: AURORA_LLM_QA_MODE,
-  llm_single_provider: AURORA_LLM_SINGLE_PROVIDER,
-  diag_force_gemini: AURORA_DIAG_FORCE_GEMINI,
-  llm_openai_fallback_enabled: AURORA_LLM_OPENAI_FALLBACK_ENABLED,
-  photo_module_mask_overlay: AURORA_PHOTO_MODULE_MASK_OVERLAY_ENABLED,
-  purchasable_fallback: AURORA_PURCHASABLE_FALLBACK_ENABLED,
-  product_lookup_llm_fallback: AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED,
-  external_seed_supplement: AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED,
-  discovery_card_in_list: AURORA_DISCOVERY_CARD_IN_LIST_ENABLED,
-});
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
@@ -728,6 +714,55 @@ const PRODUCT_INTEL_INCIDECODER_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const PRODUCT_INTEL_URL_ANCHOR_TRUST_GUARD_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_URL_ANCHOR_TRUST_GUARD_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_INTEL_URL_ANCHOR_TRUST_POLICY = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_URL_ANCHOR_TRUST_POLICY || 'soft')
+    .trim()
+    .toLowerCase();
+  return raw === 'hard' ? 'hard' : 'soft';
+})();
+const PRODUCT_INTEL_KB_QUARANTINE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_KB_QUARANTINE_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
+  profile_v2: AURORA_PROFILE_V2_ENABLED,
+  qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
+  safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
+  travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
+  loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
+  chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
+  router_dst_patch_v1: AURORA_ROUTER_DST_PATCH_V1_ENABLED,
+  nonblocking_gate_v1: AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
+  catalog_domain_guard_v1: AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED,
+  multiturn_contract_gate_v1: AURORA_MULTITURN_CONTRACT_GATE_V1_ENABLED,
+  analysis_story_v2: AURORA_ANALYSIS_STORY_V2_ENABLED,
+  routine_soft_gate_delay_reco: AURORA_ROUTINE_SOFT_GATE_DELAY_RECO,
+  product_strict_skincare_filter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+  product_relevance_dual_llm_qa: AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA,
+  product_relevance_qa_mode: AURORA_PRODUCT_RELEVANCE_QA_MODE,
+  llm_qa_mode: AURORA_LLM_QA_MODE,
+  llm_single_provider: AURORA_LLM_SINGLE_PROVIDER,
+  diag_force_gemini: AURORA_DIAG_FORCE_GEMINI,
+  llm_openai_fallback_enabled: AURORA_LLM_OPENAI_FALLBACK_ENABLED,
+  product_intel_url_anchor_trust_guard: PRODUCT_INTEL_URL_ANCHOR_TRUST_GUARD_ENABLED,
+  product_intel_url_anchor_trust_policy: PRODUCT_INTEL_URL_ANCHOR_TRUST_POLICY,
+  product_intel_kb_quarantine: PRODUCT_INTEL_KB_QUARANTINE_ENABLED,
+  photo_module_mask_overlay: AURORA_PHOTO_MODULE_MASK_OVERLAY_ENABLED,
+  purchasable_fallback: AURORA_PURCHASABLE_FALLBACK_ENABLED,
+  product_lookup_llm_fallback: AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED,
+  external_seed_supplement: AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED,
+  discovery_card_in_list: AURORA_DISCOVERY_CARD_IN_LIST_ENABLED,
+  reco_generate_guardrail_v1: AURORA_RECO_GENERATE_GUARDRAIL_V1,
+  dupe_suggest_sanitize_v1: AURORA_DUPE_SUGGEST_SANITIZE_V1,
+});
 const PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS || 3200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 3200;
@@ -3558,14 +3593,22 @@ function buildAvailabilityResolvedProduct({
       ? resolveBody.candidates[0]
       : null;
   const normalizedCandidate = normalizeRecoCatalogProduct(firstCandidate);
+  const queryFallbackName = String(fallbackQuery || '').trim();
+  const safeQueryFallbackName = (() => {
+    const token = normalizeProductCatalogQuery(queryFallbackName);
+    if (!token) return '';
+    if (/^https?:\/\//i.test(queryFallbackName)) return '';
+    if (token.split(/\s+/).length > 8) return '';
+    return queryFallbackName;
+  })();
   const displayName = pickFirstTrimmed(
     normalizedCandidate?.display_name,
     normalizedCandidate?.name,
     firstCandidate?.title,
     firstCandidate?.name,
-    fallbackQuery,
+    safeQueryFallbackName,
   );
-  const name = pickFirstTrimmed(normalizedCandidate?.name, firstCandidate?.title, displayName);
+  const name = pickFirstTrimmed(normalizedCandidate?.name, firstCandidate?.title, safeQueryFallbackName, displayName);
   const brand = pickFirstTrimmed(
     normalizedCandidate?.brand,
     firstCandidate?.vendor,
@@ -4052,6 +4095,235 @@ function buildRealtimeCompetitorQueryPlan({
   return out.slice(0, limit);
 }
 
+function hasAnchorCategorySignals(candidate) {
+  const row = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : {};
+  return [
+    row.category,
+    row.category_name,
+    row.category_path,
+    row.product_type,
+    row.type,
+    row.tags,
+  ]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .some(Boolean);
+}
+
+function evaluateAnchorProductSkincareGuard(candidate, { strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER } = {}) {
+  const normalized =
+    normalizeRecoCatalogProduct(candidate) ||
+    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+  if (!normalized || typeof normalized !== 'object') {
+    return { ok: false, reason: 'invalid_candidate', candidate: null };
+  }
+  if (isBlacklistedCategoryOrTitle(normalized)) {
+    return { ok: false, reason: 'non_skincare_blacklist', candidate: normalized };
+  }
+  const categorySignals = hasAnchorCategorySignals(normalized);
+  if (strictFilter && categorySignals && !isSkincareCategory(normalized) && !isSkincareCatalogProduct(normalized)) {
+    return { ok: false, reason: 'non_skincare_category', candidate: normalized };
+  }
+  return { ok: true, reason: null, candidate: normalized };
+}
+
+function sanitizeAnchorProductForProductIntel(candidate, { strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER } = {}) {
+  const row = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null;
+  if (!row) return { product: null, filtered: false, reason: null };
+  const guard = evaluateAnchorProductSkincareGuard(row, { strictFilter });
+  if (guard.ok) return { product: row, filtered: false, reason: null };
+  if (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category') {
+    return { product: null, filtered: true, reason: guard.reason };
+  }
+  return { product: row, filtered: false, reason: null };
+}
+
+function normalizeAnchorCompareText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeAnchorCompareText(value) {
+  const normalized = normalizeAnchorCompareText(value);
+  if (!normalized) return [];
+  return uniqCaseInsensitiveStrings(
+    normalized
+      .split(/\s+/)
+      .map((item) => String(item || '').trim())
+      .filter((item) => item.length >= 2),
+    32,
+  );
+}
+
+function extractUrlAnchorSignals(inputUrl) {
+  const urlText = String(inputUrl || '').trim();
+  if (!/^https?:\/\//i.test(urlText)) return null;
+  try {
+    const parsed = new URL(urlText);
+    const hostBrand = inferBrandFromHostname(parsed.hostname || '');
+    const pathSegments = String(parsed.pathname || '')
+      .split('/')
+      .map((segment) => decodeUrlTokenSafe(segment).replace(/\.[a-z0-9]{1,5}$/i, '').trim())
+      .filter(Boolean);
+    let pathToken = '';
+    for (let idx = pathSegments.length - 1; idx >= 0; idx -= 1) {
+      const segment = String(pathSegments[idx] || '').trim();
+      if (!segment) continue;
+      if (/^[a-z]{2}(?:-[a-z]{2})?$/i.test(segment)) continue;
+      if (/^(products?|collections?|shop|store|sku|item|p)$/i.test(segment.toLowerCase())) continue;
+      pathToken = segment;
+      break;
+    }
+    const slugName = pathToken
+      ? String(pathToken)
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      : '';
+    return {
+      url: parsed.toString(),
+      host_brand: hostBrand,
+      slug_name: slugName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildAnchorDisplayFromCandidate(candidate, { fallbackName = '', fallbackUrl = '' } = {}) {
+  const row =
+    normalizeRecoCatalogProduct(candidate) ||
+    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+  if (!row || typeof row !== 'object') return null;
+  const brand = pickFirstTrimmed(row.brand, row.brand_name, row.brandName);
+  const name = pickFirstTrimmed(row.name, row.display_name, row.displayName, row.title, fallbackName);
+  const displayName = pickFirstTrimmed(row.display_name, row.displayName, joinBrandAndName(brand, name), name);
+  const directUrl = pickFirstTrimmed(
+    row.url,
+    row.pdp_url,
+    row.pdpUrl,
+    row.product_url,
+    row.productUrl,
+    fallbackUrl,
+  );
+  if (!brand && !name && !displayName && !directUrl) return null;
+  return {
+    ...(pickFirstTrimmed(row.product_id, row.productId) ? { product_id: pickFirstTrimmed(row.product_id, row.productId) } : {}),
+    ...(pickFirstTrimmed(row.sku_id, row.skuId) ? { sku_id: pickFirstTrimmed(row.sku_id, row.skuId) } : {}),
+    ...(brand ? { brand } : {}),
+    ...(name ? { name } : {}),
+    ...(displayName ? { display_name: displayName } : {}),
+    ...(directUrl ? { url: directUrl } : {}),
+    ...(pickFirstTrimmed(row.image_url, row.imageUrl) ? { image_url: pickFirstTrimmed(row.image_url, row.imageUrl) } : {}),
+    ...(pickFirstTrimmed(row.product_group_id, row.productGroupId) ? { product_group_id: pickFirstTrimmed(row.product_group_id, row.productGroupId) } : {}),
+    ...(pickFirstTrimmed(row.merchant_id, row.merchantId) ? { merchant_id: pickFirstTrimmed(row.merchant_id, row.merchantId) } : {}),
+    ...(row.canonical_product_ref ? { canonical_product_ref: row.canonical_product_ref } : {}),
+    category: 'product',
+  };
+}
+
+function evaluateAnchorTrustForProductIntel({
+  candidate = null,
+  inputText = '',
+  inputUrl = '',
+  source = 'unknown',
+  strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+  policy = PRODUCT_INTEL_URL_ANCHOR_TRUST_POLICY,
+} = {}) {
+  const row =
+    normalizeRecoCatalogProduct(candidate) ||
+    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+  if (!row || typeof row !== 'object') {
+    return {
+      trusted_anchor: null,
+      display_anchor: null,
+      usable_for_anchor_id: false,
+      trust_level: 'none',
+      reason_codes: ['anchor_soft_blocked_ambiguous'],
+      source: String(source || 'unknown'),
+      candidate_quality: 'none',
+      url_consistency: null,
+    };
+  }
+
+  const displayAnchor = buildAnchorDisplayFromCandidate(row, {
+    fallbackName: String(inputText || '').trim(),
+    fallbackUrl: String(inputUrl || '').trim(),
+  });
+  const guard = evaluateAnchorProductSkincareGuard(row, { strictFilter });
+  const hasId = Boolean(pickFirstTrimmed(row.product_id, row.productId, row.sku_id, row.skuId));
+  const hasBrand = Boolean(pickFirstTrimmed(row.brand, row.brand_name, row.brandName));
+  const hasName = Boolean(pickFirstTrimmed(row.name, row.display_name, row.displayName, row.title));
+  const hasCategory = hasAnchorCategorySignals(row);
+  const qualityScore = (hasId ? 0.4 : 0) + (hasBrand ? 0.2 : 0) + (hasName ? 0.2 : 0) + (hasCategory ? 0.2 : 0);
+  const candidateQuality = qualityScore >= 0.75 ? 'strong' : qualityScore >= 0.45 ? 'medium' : 'weak';
+
+  const urlSignals = extractUrlAnchorSignals(inputUrl);
+  let urlConsistency = null;
+  if (urlSignals) {
+    const hostBrandToken = normalizeAnchorCompareText(urlSignals.host_brand);
+    const anchorBrandToken = normalizeAnchorCompareText(pickFirstTrimmed(row.brand, row.brand_name, row.brandName));
+    const anchorNameTokens = new Set(
+      tokenizeAnchorCompareText(
+        pickFirstTrimmed(row.name, row.display_name, row.displayName, row.title, String(inputText || '').trim()),
+      ),
+    );
+    const slugTokens = tokenizeAnchorCompareText(urlSignals.slug_name);
+    const slugOverlap = slugTokens.filter((token) => anchorNameTokens.has(token)).length;
+    let score = 0.5;
+    if (hostBrandToken && anchorBrandToken) {
+      score += hostBrandToken === anchorBrandToken ? 0.25 : -0.35;
+    }
+    if (slugTokens.length) {
+      score += slugOverlap > 0 ? 0.25 : -0.25;
+    }
+    urlConsistency = Number(Math.max(0, Math.min(1, score)).toFixed(3));
+  }
+
+  const reasonCodes = [];
+  if (!guard.ok && (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category')) {
+    reasonCodes.push('anchor_soft_blocked_non_skincare');
+  }
+  if (urlConsistency != null && urlConsistency < 0.35) {
+    reasonCodes.push('anchor_soft_blocked_url_mismatch');
+  }
+  if (!hasId || candidateQuality === 'weak') {
+    reasonCodes.push('anchor_soft_blocked_ambiguous');
+  }
+
+  let usableForAnchorId = guard.ok && hasId && reasonCodes.length === 0;
+  if (!PRODUCT_INTEL_URL_ANCHOR_TRUST_GUARD_ENABLED) {
+    usableForAnchorId = guard.ok && hasId;
+  }
+  if (String(policy || '').trim().toLowerCase() === 'hard' && reasonCodes.length) {
+    return {
+      trusted_anchor: null,
+      display_anchor: null,
+      usable_for_anchor_id: false,
+      trust_level: 'none',
+      reason_codes: uniqCaseInsensitiveStrings(reasonCodes, 6),
+      source: String(source || 'unknown'),
+      candidate_quality: candidateQuality,
+      ...(urlConsistency != null ? { url_consistency: urlConsistency } : {}),
+    };
+  }
+
+  return {
+    trusted_anchor: usableForAnchorId ? displayAnchor : null,
+    display_anchor: displayAnchor || null,
+    usable_for_anchor_id: Boolean(usableForAnchorId),
+    trust_level: usableForAnchorId ? 'trusted' : 'soft_blocked',
+    reason_codes: uniqCaseInsensitiveStrings(reasonCodes, 6),
+    source: String(source || 'unknown'),
+    candidate_quality: candidateQuality,
+    ...(urlConsistency != null ? { url_consistency: urlConsistency } : {}),
+  };
+}
+
 function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}) {
   const normalized = normalizeRecoCatalogProduct(rawProduct);
   if (!normalized || typeof normalized !== 'object') return null;
@@ -4110,17 +4382,35 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
   }
 
   const attempts = [];
+  let filteredNonSkincareCount = 0;
 
   for (const query of queries) {
     const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
+    const resolvedHasProduct = Boolean(resolved && resolved.ok && resolved.product);
+    const guard = resolvedHasProduct
+      ? evaluateAnchorProductSkincareGuard(resolved.product, {
+        strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+      })
+      : null;
+    const accepted = Boolean(resolvedHasProduct && guard && guard.ok);
+    if (resolvedHasProduct && guard && !guard.ok) filteredNonSkincareCount += 1;
     attempts.push({
       mode: 'resolve',
       query,
-      ok: Boolean(resolved && resolved.ok && resolved.product),
-      reason: resolved && resolved.resolve_reason_code ? resolved.resolve_reason_code : resolved && resolved.reason ? resolved.reason : null,
+      ok: accepted,
+      reason:
+        accepted
+          ? null
+          : resolvedHasProduct && guard && guard.reason
+            ? `catalog_${String(guard.reason).trim().toLowerCase()}`
+            : resolved && resolved.resolve_reason_code
+              ? resolved.resolve_reason_code
+              : resolved && resolved.reason
+                ? resolved.reason
+                : null,
       latency_ms: Number.isFinite(Number(resolved && resolved.latency_ms)) ? Math.trunc(Number(resolved.latency_ms)) : null,
     });
-    if (resolved && resolved.ok && resolved.product) {
+    if (accepted) {
       return {
         ok: true,
         reason: null,
@@ -4139,14 +4429,34 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
       logger,
       timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
     });
-    const first = Array.isArray(searched && searched.products)
-      ? searched.products.find((p) => p && typeof p === 'object' && String(p.product_id || '').trim())
-      : null;
+    let first = null;
+    if (Array.isArray(searched && searched.products)) {
+      for (const candidate of searched.products) {
+        if (!candidate || typeof candidate !== 'object') continue;
+        if (!String(candidate.product_id || '').trim()) continue;
+        const guard = evaluateAnchorProductSkincareGuard(candidate, {
+          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+        });
+        if (guard.ok) {
+          first = candidate;
+          break;
+        }
+        if (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category') {
+          filteredNonSkincareCount += 1;
+        }
+      }
+    }
     attempts.push({
       mode: 'search',
       query,
       ok: Boolean(first),
-      reason: searched && searched.reason ? String(searched.reason) : null,
+      reason: first
+        ? null
+        : filteredNonSkincareCount > 0
+          ? 'catalog_non_skincare_match'
+          : searched && searched.reason
+            ? String(searched.reason)
+            : null,
       latency_ms: Number.isFinite(Number(searched && searched.latency_ms)) ? Math.trunc(Number(searched.latency_ms)) : null,
     });
     if (first) {
@@ -4163,7 +4473,7 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
 
   return {
     ok: false,
-    reason: 'catalog_no_match',
+    reason: filteredNonSkincareCount > 0 ? 'catalog_non_skincare_match' : 'catalog_no_match',
     source: null,
     query_used: queries[0] || null,
     product: null,
@@ -4185,22 +4495,35 @@ async function resolvePrimaryAnalyzeAnchorForProductInput({ inputText, inputUrl,
   }
 
   const attempts = [];
+  let filteredNonSkincareCount = 0;
   for (const query of queries) {
     const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
+    const resolvedHasProduct = Boolean(resolved && resolved.ok && resolved.product);
+    const guard = resolvedHasProduct
+      ? evaluateAnchorProductSkincareGuard(resolved.product, {
+        strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+      })
+      : null;
+    const accepted = Boolean(resolvedHasProduct && guard && guard.ok);
+    if (resolvedHasProduct && guard && !guard.ok) filteredNonSkincareCount += 1;
     const reasonCode =
-      resolved && resolved.resolve_reason_code
-        ? String(resolved.resolve_reason_code)
-        : resolved && resolved.reason
-          ? String(resolved.reason)
-          : null;
+      accepted
+        ? null
+        : resolvedHasProduct && guard && guard.reason
+          ? `catalog_${String(guard.reason).trim().toLowerCase()}`
+          : resolved && resolved.resolve_reason_code
+            ? String(resolved.resolve_reason_code)
+            : resolved && resolved.reason
+              ? String(resolved.reason)
+              : null;
     attempts.push({
       mode: 'resolve',
       query,
-      ok: Boolean(resolved && resolved.ok && resolved.product),
+      ok: accepted,
       reason: reasonCode,
       latency_ms: Number.isFinite(Number(resolved && resolved.latency_ms)) ? Math.trunc(Number(resolved.latency_ms)) : null,
     });
-    if (resolved && resolved.ok && resolved.product) {
+    if (accepted) {
       return {
         ok: true,
         reason: null,
@@ -4214,7 +4537,12 @@ async function resolvePrimaryAnalyzeAnchorForProductInput({ inputText, inputUrl,
 
   return {
     ok: false,
-    reason: attempts.length ? String(attempts[attempts.length - 1].reason || 'catalog_no_match') : 'catalog_no_match',
+    reason:
+      filteredNonSkincareCount > 0
+        ? 'catalog_non_skincare_match'
+        : attempts.length
+          ? String(attempts[attempts.length - 1].reason || 'catalog_no_match')
+          : 'catalog_no_match',
     source: null,
     query_used: queries[0] || null,
     product: null,
@@ -8585,6 +8913,85 @@ function shouldServeProductIntelKbPayload(payload) {
     return shouldRepairCompetitorCoverage(p, { preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT });
   }
   return true;
+}
+
+function shouldServeProductIntelKbEntry({
+  kbEntry = null,
+  payload = null,
+  productUrl = '',
+  anchorTrustContext = null,
+} = {}) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!p) {
+    return {
+      serve: false,
+      quarantined: false,
+      reason: 'payload_missing',
+      reasons: ['payload_missing'],
+    };
+  }
+  if (!PRODUCT_INTEL_KB_QUARANTINE_ENABLED) {
+    return {
+      serve: true,
+      quarantined: false,
+      reason: null,
+      reasons: [],
+    };
+  }
+
+  const reasons = [];
+  const provenance = p.provenance && typeof p.provenance === 'object' && !Array.isArray(p.provenance) ? p.provenance : {};
+  const sourceChain = Array.isArray(provenance.source_chain) ? provenance.source_chain : [];
+  const sourceTypes = collectProductIntelEvidenceSourceTypes(p);
+  const missingCodes = getProductAnalysisInternalMissingCodes(p).map((item) => String(item || '').trim().toLowerCase());
+  const assessment = p.assessment && typeof p.assessment === 'object' && !Array.isArray(p.assessment) ? p.assessment : null;
+  const verdictToken = String(assessment?.verdict || '').trim().toLowerCase();
+  const isUnknownVerdict = verdictToken === 'unknown' || verdictToken === '未知';
+  const hasDiagnosticCodes = missingCodes.some((token) =>
+    /^(url_fetch_|on_page_fetch_blocked|regulatory_source_used|incidecoder_|catalog_|anchor_soft_blocked_|anchor_id_not_used_due_to_low_trust|version_verification_needed|analysis_limited|evidence_missing|kb_entry_quarantined)/.test(
+      token,
+    ),
+  );
+
+  if (!sourceChain.length) reasons.push('source_chain_missing');
+  if (!sourceTypes.length) reasons.push('evidence_sources_missing');
+  if (isUnknownVerdict && !hasDiagnosticCodes) reasons.push('unknown_without_diagnostic_codes');
+  if (!sourceTypes.length && getProductAnalysisEvidenceCoverageScore(p) < 0.08) reasons.push('coverage_too_low');
+
+  const trust = anchorTrustContext && typeof anchorTrustContext === 'object' && !Array.isArray(anchorTrustContext)
+    ? anchorTrustContext
+    : null;
+  if (
+    /^https?:\/\//i.test(String(productUrl || '').trim()) &&
+    trust &&
+    trust.usable_for_anchor_id === false &&
+    String(trust.level || '').trim().toLowerCase() === 'soft_blocked'
+  ) {
+    reasons.push('anchor_untrusted_for_url');
+  }
+
+  const sourceMeta = kbEntry && kbEntry.source_meta && typeof kbEntry.source_meta === 'object' && !Array.isArray(kbEntry.source_meta)
+    ? kbEntry.source_meta
+    : null;
+  if (sourceMeta && sourceMeta.kb_write && typeof sourceMeta.kb_write === 'object') {
+    const persisted = sourceMeta.kb_write.persisted;
+    if (persisted === false) reasons.push('kb_write_blocked');
+  }
+
+  if (!reasons.length) {
+    return {
+      serve: true,
+      quarantined: false,
+      reason: null,
+      reasons: [],
+    };
+  }
+  return {
+    serve: false,
+    quarantined: true,
+    reason: reasons[0],
+    reasons,
+  };
 }
 
 function scheduleProductIntelCompetitorEnrichBackfill({
@@ -17946,23 +18353,58 @@ async function deepScanRoutineProductCandidate({
   if (!parsedProduct && productUrl) {
     parsedProduct = buildHeuristicProductFromInput({ inputText, inputUrl: productUrl });
   }
-  let anchorId = pickFirstTrimmed(parsedProduct?.sku_id, parsedProduct?.product_id);
+  let anchorId = '';
+  let routineAnchorTrustContext = {
+    level: 'none',
+    usable_for_anchor_id: false,
+    reasons: [],
+    source: 'none',
+    candidate_quality: 'none',
+    url_consistency: null,
+  };
+  const applyRoutineAnchorGuard = (candidate, source, { preferDisplay = false } = {}) => {
+    const trust = evaluateAnchorTrustForProductIntel({
+      candidate,
+      inputText,
+      inputUrl: productUrl,
+      source,
+      strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+    });
+    const trustCodes = Array.isArray(trust.reason_codes) ? trust.reason_codes : [];
+    const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
+    if (trust.display_anchor && !nonSkincareSoftBlocked && (!parsedProduct || preferDisplay || trust.usable_for_anchor_id)) {
+      parsedProduct = trust.display_anchor;
+    }
+    if (trust.usable_for_anchor_id && trust.trusted_anchor) {
+      parsedProduct = trust.trusted_anchor;
+      anchorId = pickFirstTrimmed(trust.trusted_anchor.sku_id, trust.trusted_anchor.product_id) || anchorId;
+    }
+    if (trust.trust_level === 'trusted' || (routineAnchorTrustContext.level !== 'trusted' && trust.trust_level !== 'none')) {
+      routineAnchorTrustContext = {
+        level: String(trust.trust_level || 'none'),
+        usable_for_anchor_id: trust.usable_for_anchor_id === true,
+        reasons: trustCodes.slice(0, 6),
+        source: String(source || 'unknown'),
+        candidate_quality: String(trust.candidate_quality || 'none'),
+        url_consistency: Number.isFinite(Number(trust.url_consistency)) ? Number(trust.url_consistency) : null,
+      };
+    }
+    return trust;
+  };
+  applyRoutineAnchorGuard(parsedProduct, 'routine_candidate_hint', { preferDisplay: true });
 
   let primaryAnchorResolution = null;
   if (!anchorId && inputText) {
     primaryAnchorResolution = await resolvePrimaryAnalyzeAnchorForProductInput({
       inputText,
       inputUrl: productUrl || null,
-      parsedProduct,
+      parsedProduct: routineAnchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
       lang,
       logger,
     });
     if (primaryAnchorResolution && primaryAnchorResolution.ok && primaryAnchorResolution.product) {
       const resolvedAnchor = mapCatalogProductToAnchorProduct(primaryAnchorResolution.product, { fallbackName: inputText });
-      if (resolvedAnchor) {
-        parsedProduct = parsedProduct || resolvedAnchor;
-        anchorId = pickFirstTrimmed(resolvedAnchor.sku_id, resolvedAnchor.product_id);
-      }
+      applyRoutineAnchorGuard(resolvedAnchor, 'routine_catalog_primary_resolve');
     }
   }
 
@@ -17971,20 +18413,18 @@ async function deepScanRoutineProductCandidate({
     catalogFallback = await resolveCatalogProductForProductInput({
       inputText,
       inputUrl: productUrl || null,
-      parsedProduct,
+      parsedProduct: routineAnchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
       lang,
       logger,
     });
     if (catalogFallback && catalogFallback.ok && catalogFallback.product) {
       const fallbackAnchor = mapCatalogProductToAnchorProduct(catalogFallback.product, { fallbackName: inputText });
-      if (fallbackAnchor) {
-        parsedProduct = parsedProduct || fallbackAnchor;
-        anchorId = pickFirstTrimmed(fallbackAnchor.sku_id, fallbackAnchor.product_id);
-      }
+      applyRoutineAnchorGuard(fallbackAnchor, 'routine_catalog_fallback');
     }
   }
 
-  const productDescriptor = buildProductInputText(parsedProduct, productUrl) || inputText || productUrl;
+  const routineDescriptorAnchor = routineAnchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
+  const productDescriptor = buildProductInputText(routineDescriptorAnchor, productUrl) || inputText || productUrl;
   const contextPrefix = buildContextPrefix({
     profile: profileCtx,
     recentLogs: logsCtx,
@@ -18102,7 +18542,7 @@ async function deepScanRoutineProductCandidate({
         productUrl,
         lang,
         profileSummary: profileCtx,
-        parsedProduct,
+        parsedProduct: routineDescriptorAnchor,
         logger,
       });
       if (urlNorm && urlNorm.payload && urlNorm.payload.assessment) {
@@ -18148,7 +18588,7 @@ async function deepScanRoutineProductCandidate({
     payload = buildRoutineProductAnalysisFallbackPayload({
       language: lang,
       candidate: row,
-      parsedProduct,
+      parsedProduct: routineDescriptorAnchor,
       reasonCodes: ['upstream_assessment_missing'],
     });
   }
@@ -18160,11 +18600,44 @@ async function deepScanRoutineProductCandidate({
       reasonCodes: ['upstream_assessment_missing', 'anchor_product_missing'],
     });
   }
-  if (payload && typeof payload === 'object' && parsedProduct) {
+  if (payload && typeof payload === 'object' && routineAnchorTrustContext.usable_for_anchor_id === true && parsedProduct) {
     const assessment = isPlainObject(payload.assessment) ? payload.assessment : null;
     if (assessment && !assessment.anchor_product && !assessment.anchorProduct) {
       payload = { ...payload, assessment: { ...assessment, anchor_product: parsedProduct } };
     }
+  }
+  if (payload && typeof payload === 'object') {
+    const hasDisplayAnchor = Boolean(
+      parsedProduct &&
+      pickFirstTrimmed(parsedProduct.product_id, parsedProduct.sku_id, parsedProduct.display_name, parsedProduct.name, parsedProduct.url),
+    );
+    payload = applyProductAnalysisGapContract({
+      ...payload,
+      missing_info: uniqCaseInsensitiveStrings(
+        [
+          ...(Array.isArray(payload.missing_info) ? payload.missing_info : []),
+          ...(Array.isArray(routineAnchorTrustContext.reasons) ? routineAnchorTrustContext.reasons : []),
+          ...(hasDisplayAnchor && routineAnchorTrustContext.usable_for_anchor_id !== true ? ['anchor_id_not_used_due_to_low_trust'] : []),
+        ],
+        16,
+      ),
+    });
+    payload = {
+      ...payload,
+      provenance: {
+        ...(isPlainObject(payload.provenance) ? payload.provenance : {}),
+        anchor_trust: {
+          level: String(routineAnchorTrustContext.level || 'none'),
+          usable_for_anchor_id: routineAnchorTrustContext.usable_for_anchor_id === true,
+          reasons: Array.isArray(routineAnchorTrustContext.reasons) ? routineAnchorTrustContext.reasons.slice(0, 6) : [],
+          source: String(routineAnchorTrustContext.source || 'unknown'),
+          candidate_quality: String(routineAnchorTrustContext.candidate_quality || 'none'),
+          ...(Number.isFinite(Number(routineAnchorTrustContext.url_consistency))
+            ? { url_consistency: Number(routineAnchorTrustContext.url_consistency) }
+            : {}),
+        },
+      },
+    };
   }
   payload = reconcileProductAnalysisConsistency(payload, { lang });
   payload = finalizeProductAnalysisRecoContract(payload, {
@@ -18196,7 +18669,7 @@ async function deepScanRoutineProductCandidate({
   const kbBackfillAnchor =
     assessmentObj && isPlainObject(assessmentObj.anchor_product)
       ? assessmentObj.anchor_product
-      : parsedProduct;
+      : (routineAnchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null);
   const keyQuality = resolveProductIntelKbKeyQuality({
     productUrl,
     parsedProduct: kbBackfillAnchor,
@@ -27130,6 +27603,65 @@ function mountAuroraBffRoutes(app, { logger }) {
       const norm = normalizeProductParse(mapped);
       let payload = norm.payload;
       let fieldMissing = Array.isArray(norm.field_missing) ? norm.field_missing.slice() : [];
+      const parseInputText = String(parsed.data.text || input || '').trim();
+      const parseInputUrl = String(parsed.data.url || '').trim();
+      let parseAnchorTrust = {
+        trusted_anchor: null,
+        display_anchor: null,
+        usable_for_anchor_id: false,
+        trust_level: 'none',
+        reason_codes: [],
+        source: 'none',
+        candidate_quality: 'none',
+        url_consistency: null,
+      };
+      const applyParseAnchorTrust = ({ source = 'parse_candidate' } = {}) => {
+        const candidate = payload && payload.product && typeof payload.product === 'object' ? payload.product : null;
+        parseAnchorTrust = evaluateAnchorTrustForProductIntel({
+          candidate,
+          inputText: parseInputText,
+          inputUrl: parseInputUrl,
+          source,
+          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+        });
+        const trustCodes = Array.isArray(parseAnchorTrust.reason_codes) ? parseAnchorTrust.reason_codes : [];
+        const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
+        const existingMissing = Array.isArray(payload.missing_info) ? payload.missing_info : [];
+        payload = {
+          ...payload,
+          product: nonSkincareSoftBlocked ? null : parseAnchorTrust.display_anchor || null,
+          missing_info: uniqCaseInsensitiveStrings(
+            [
+              ...existingMissing,
+              ...trustCodes,
+              ...((!nonSkincareSoftBlocked && parseAnchorTrust.display_anchor) && !parseAnchorTrust.usable_for_anchor_id
+                ? ['anchor_id_not_used_due_to_low_trust']
+                : []),
+            ],
+            16,
+          ),
+          anchor_trust: {
+            level: parseAnchorTrust.trust_level || 'none',
+            usable_for_anchor_id: parseAnchorTrust.usable_for_anchor_id === true,
+            reasons: trustCodes.slice(0, 6),
+          },
+          anchor_resolution: {
+            source: String(source || 'unknown'),
+            candidate_quality: String(parseAnchorTrust.candidate_quality || 'none'),
+            ...(Number.isFinite(Number(parseAnchorTrust.url_consistency))
+              ? { url_consistency: Number(parseAnchorTrust.url_consistency) }
+              : {}),
+          },
+        };
+        if (trustCodes.includes('anchor_soft_blocked_non_skincare')) {
+          fieldMissing = fieldMissing.filter((item) => String(item && item.field ? item.field : '').trim() !== 'product');
+          fieldMissing.push({ field: 'product', reason: 'non_skincare_filtered_anchor_soft_blocked_non_skincare' });
+          recoveryPath.push(`${source}_anchor_soft_blocked_non_skincare`);
+        } else if (trustCodes.length) {
+          recoveryPath.push(`${source}_anchor_soft_blocked`);
+        }
+      };
+      applyParseAnchorTrust({ source: 'upstream_parse' });
       if (!payload.product && input) {
         const heuristicProduct = buildHeuristicProductFromInput({
           inputText: parsed.data.text || input,
@@ -27150,13 +27682,30 @@ function mountAuroraBffRoutes(app, { logger }) {
           parseSource = 'heuristic_url';
           fieldMissing = fieldMissing.filter((item) => String(item && item.field ? item.field : '').trim() !== 'product');
           fieldMissing.push({ field: 'parse.fallback', reason: 'heuristic_url' });
+          applyParseAnchorTrust({ source: 'heuristic_url' });
         }
       }
 
-      // Fallback: if parse still misses the product entity OR only has a low-anchor heuristic
-      // (no product_id), reuse catalog resolve/search capability.
-      const parsedProductId = pickFirstTrimmed(payload?.product?.product_id, payload?.product?.sku_id);
-      if ((!payload.product || !parsedProductId) && input) {
+      // URL-first semantics: if we already have a display anchor from URL but trust is soft-blocked,
+      // avoid forcing catalog fallback to manufacture an ID (prevents category drift).
+      const parseInputIsUrl = /^https?:\/\//i.test(parseInputUrl);
+      const parseHasSoftBlockedAnchor =
+        String(parseAnchorTrust.trust_level || '').trim().toLowerCase() === 'soft_blocked' &&
+        Array.isArray(parseAnchorTrust.reason_codes) &&
+        parseAnchorTrust.reason_codes.length > 0;
+      const shouldTryCatalogFallback =
+        (!payload.product && !(parseInputIsUrl && parseHasSoftBlockedAnchor)) ||
+        (
+          parseAnchorTrust.display_anchor &&
+          !parseAnchorTrust.usable_for_anchor_id &&
+          !parseInputIsUrl
+        ) ||
+        (
+          payload.product &&
+          parseAnchorTrust.usable_for_anchor_id &&
+          !pickFirstTrimmed(payload?.product?.product_id, payload?.product?.sku_id)
+        );
+      if (shouldTryCatalogFallback && input) {
         const catalogFallback = await resolveCatalogProductForProductInput({
           inputText: input,
           inputUrl: parsed.data.url || null,
@@ -27187,6 +27736,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             parseSource = catalogFallback.source === 'search' ? 'catalog_search' : 'catalog_resolve';
             recoveryPath.push(parseSource);
             fieldMissing.push({ field: 'parse.fallback', reason: `catalog_${catalogFallback.source || 'resolve'}` });
+            applyParseAnchorTrust({ source: parseSource });
           } else if (fallbackReasonCode) {
             recoveryPath.push(catalogRecoveryToken);
             fieldMissing.push({ field: 'parse.fallback', reason: fallbackReasonCode });
@@ -27206,6 +27756,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             ),
           };
         }
+      }
+      if (!payload?.anchor_trust) {
+        applyParseAnchorTrust({ source: parseSource || 'parse_candidate' });
       }
       if (!payload.product) {
         const existingMissing = Array.isArray(payload.missing_info) ? payload.missing_info : [];
@@ -27340,20 +27893,155 @@ function mountAuroraBffRoutes(app, { logger }) {
       const prefix = buildContextPrefix({ ...commonMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
 
       const input = parsed.data.url || parsed.data.name || JSON.stringify(parsed.data.product || {});
-      let parsedProduct = parsed.data.product || null;
-      let anchorId = parsedProduct && (parsedProduct.sku_id || parsedProduct.product_id);
+      const anchorTrustDiagnostics = [];
+      const collectAnchorTrust = (trustResult) => {
+        if (!trustResult || typeof trustResult !== 'object') return;
+        anchorTrustDiagnostics.push({
+          source: String(trustResult.source || 'unknown'),
+          trust_level: String(trustResult.trust_level || 'none'),
+          usable_for_anchor_id: trustResult.usable_for_anchor_id === true,
+          reason_codes: Array.isArray(trustResult.reason_codes) ? trustResult.reason_codes : [],
+          candidate_quality: String(trustResult.candidate_quality || 'none'),
+          ...(Number.isFinite(Number(trustResult.url_consistency))
+            ? { url_consistency: Number(trustResult.url_consistency) }
+            : {}),
+        });
+      };
+      let parsedProduct = null;
+      let anchorId = '';
+      let anchorTrustContext = {
+        level: 'none',
+        usable_for_anchor_id: false,
+        reasons: [],
+        source: 'none',
+        candidate_quality: 'none',
+        url_consistency: null,
+      };
+      const applyAnchorCandidateGuard = (candidate, source, { preferDisplay = false } = {}) => {
+        const trust = evaluateAnchorTrustForProductIntel({
+          candidate,
+          inputText: String(parsed.data.name || input || '').trim(),
+          inputUrl: String(parsed.data.url || '').trim(),
+          source,
+          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+        });
+        collectAnchorTrust(trust);
+        const trustCodes = Array.isArray(trust.reason_codes) ? trust.reason_codes : [];
+        const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
+        if (trust.display_anchor && !nonSkincareSoftBlocked && (!parsedProduct || preferDisplay || trust.usable_for_anchor_id)) {
+          parsedProduct = trust.display_anchor;
+        }
+        if (trust.usable_for_anchor_id && trust.trusted_anchor) {
+          parsedProduct = trust.trusted_anchor;
+          anchorId = pickFirstTrimmed(trust.trusted_anchor.sku_id, trust.trusted_anchor.product_id) || anchorId;
+        }
+        if (trust.trust_level === 'trusted' || (anchorTrustContext.level !== 'trusted' && trust.trust_level !== 'none')) {
+          anchorTrustContext = {
+            level: trust.trust_level || 'none',
+            usable_for_anchor_id: trust.usable_for_anchor_id === true,
+            reasons: Array.isArray(trust.reason_codes) ? trust.reason_codes.slice(0, 6) : [],
+            source: String(source || 'unknown'),
+            candidate_quality: String(trust.candidate_quality || 'none'),
+            url_consistency: Number.isFinite(Number(trust.url_consistency)) ? Number(trust.url_consistency) : null,
+          };
+        }
+        return trust;
+      };
+      applyAnchorCandidateGuard(parsed.data.product || null, 'client_payload', { preferDisplay: true });
+      const anchorReasonCodes = uniqCaseInsensitiveStrings(
+        anchorTrustDiagnostics.flatMap((item) => {
+          const reasonCodes = Array.isArray(item?.reason_codes) ? item.reason_codes : [];
+          return reasonCodes.map((reason) => String(reason || '').trim()).filter(Boolean);
+        }),
+        12,
+      );
+      const anchorFilterCodes = uniqCaseInsensitiveStrings(
+        anchorTrustDiagnostics.flatMap((item) => {
+          const reasonCodes = Array.isArray(item?.reason_codes) ? item.reason_codes : [];
+          return reasonCodes.map((reason) => `anchor_filtered_${String(item.source || 'unknown').toLowerCase()}_${String(reason || 'unknown').toLowerCase()}`);
+        }),
+        16,
+      );
+      const buildAnalyzeAnchorTrustPayload = () => ({
+        level: String(anchorTrustContext.level || 'none'),
+        usable_for_anchor_id: anchorTrustContext.usable_for_anchor_id === true,
+        reasons: uniqCaseInsensitiveStrings(
+          [
+            ...(Array.isArray(anchorTrustContext.reasons) ? anchorTrustContext.reasons : []),
+            ...anchorReasonCodes,
+          ],
+          8,
+        ),
+        source: String(anchorTrustContext.source || 'unknown'),
+        candidate_quality: String(anchorTrustContext.candidate_quality || 'none'),
+        ...(Number.isFinite(Number(anchorTrustContext.url_consistency))
+          ? { url_consistency: Number(anchorTrustContext.url_consistency) }
+          : {}),
+      });
+      const applyAnalyzeDiagnosticsToPayload = (rawPayload) => {
+        const basePayload = rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload) ? rawPayload : rawPayload;
+        if (!basePayload || typeof basePayload !== 'object' || Array.isArray(basePayload)) return rawPayload;
+        const hasDisplayAnchor = Boolean(
+          parsedProduct && (
+            pickFirstTrimmed(parsedProduct.product_id, parsedProduct.sku_id, parsedProduct.display_name, parsedProduct.name, parsedProduct.url)
+          ),
+        );
+        const missingInfo = uniqCaseInsensitiveStrings(
+          [
+            ...(Array.isArray(basePayload.missing_info) ? basePayload.missing_info : []),
+            ...anchorReasonCodes,
+            ...(hasDisplayAnchor && anchorTrustContext.usable_for_anchor_id !== true ? ['anchor_id_not_used_due_to_low_trust'] : []),
+            ...(kbQuarantineMeta.hit ? ['kb_entry_quarantined'] : []),
+          ],
+          24,
+        );
+        const internalCodes = uniqCaseInsensitiveStrings(
+          [
+            ...getProductAnalysisInternalMissingCodes(basePayload),
+            ...anchorFilterCodes,
+            ...(kbQuarantineMeta.hit ? ['kb_entry_quarantined'] : []),
+          ],
+          32,
+        );
+        const withGap = applyProductAnalysisGapContract({
+          ...basePayload,
+          missing_info: missingInfo,
+          internal_debug_codes: internalCodes,
+        });
+        const provenance = withGap && withGap.provenance && typeof withGap.provenance === 'object' && !Array.isArray(withGap.provenance)
+          ? withGap.provenance
+          : {};
+        return {
+          ...withGap,
+          provenance: {
+            ...provenance,
+            anchor_trust: buildAnalyzeAnchorTrustPayload(),
+            ...(kbQuarantineMeta.hit
+              ? {
+                kb_quarantine: {
+                  hit: true,
+                  reason: String(kbQuarantineMeta.reason || 'quarantined'),
+                  refreshed: kbQuarantineMeta.refreshed === true,
+                },
+              }
+              : {}),
+          },
+        };
+      };
       let primaryAnchorResolution = null;
       let catalogFallback = null;
       let realtimeUrlNormMeta = null;
+      let kbQuarantineMeta = { hit: false, reason: '', refreshed: false };
       const realtimeUrlInput = String(parsed.data.url || '').trim();
       const forceRefresh = parsed.data.force_refresh === true;
       const shouldRunRealtimeUrlFirst = PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && /^https?:\/\//i.test(realtimeUrlInput);
 
       if (shouldRunRealtimeUrlFirst) {
+        const kbAnchorProductHint = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
         const kbKeys = [];
         const primaryKbKey = buildProductIntelKbKey({
           productUrl: realtimeUrlInput,
-          parsedProduct,
+          parsedProduct: kbAnchorProductHint,
           lang: ctx.lang,
         });
         const urlOnlyKbKey = buildProductIntelKbKey({
@@ -27378,7 +28066,22 @@ function mountAuroraBffRoutes(app, { logger }) {
           const kbAnalysisSanitized = sanitizeCompetitorsInPayload(kbAnalysis, {
             max: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
           });
-          if (!kbAnalysisSanitized || !shouldServeProductIntelKbPayload(kbAnalysisSanitized)) continue;
+          if (!kbAnalysisSanitized) continue;
+          const kbServeDecision = shouldServeProductIntelKbEntry({
+            kbEntry,
+            payload: kbAnalysisSanitized,
+            productUrl: realtimeUrlInput,
+            anchorTrustContext,
+          });
+          if (kbServeDecision.quarantined) {
+            kbQuarantineMeta = {
+              hit: true,
+              reason: String(kbServeDecision.reason || 'kb_entry_quarantined'),
+              refreshed: true,
+            };
+            continue;
+          }
+          if (!kbServeDecision.serve || !shouldServeProductIntelKbPayload(kbAnalysisSanitized)) continue;
           let kbPayload = enrichProductAnalysisPayload(kbAnalysisSanitized, { lang: ctx.lang, profileSummary });
           if (kbPayload && typeof kbPayload === 'object' && !Array.isArray(kbPayload)) {
             const internalCodes = getProductAnalysisInternalMissingCodes(kbPayload);
@@ -27402,7 +28105,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             const syncRepair = await maybeSyncRepairLowCoverageCompetitors({
               productUrl: realtimeUrlInput,
               payload: kbPayload,
-              parsedProduct,
+              parsedProduct: kbAnchorProductHint,
               profileSummary,
               lang: ctx.lang,
               logger,
@@ -27417,7 +28120,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const kbBackfillAnchor =
             kbAssessment && typeof kbAssessment.anchor_product === 'object' && !Array.isArray(kbAssessment.anchor_product)
               ? kbAssessment.anchor_product
-              : parsedProduct;
+              : kbAnchorProductHint;
           if (syncCoverageRepairApplied) {
             scheduleProductIntelKbBackfill({
               productUrl: realtimeUrlInput,
@@ -27467,6 +28170,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...llmRouteMeta,
             trigger_reason: 'url_realtime_kb_hit',
           });
+          kbPayload = applyAnalyzeDiagnosticsToPayload(kbPayload);
           kbPayload = reconcileProductAnalysisConsistency(kbPayload, { lang: ctx.lang });
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
@@ -27515,11 +28219,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
 
+        const realtimeUrlAnchorForEvidence = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
         const realtimeNorm = await buildProductAnalysisFromUrlIngredients({
           productUrl: realtimeUrlInput,
           lang: ctx.lang,
           profileSummary,
-          parsedProduct,
+          parsedProduct: realtimeUrlAnchorForEvidence,
           logger,
         });
         if (realtimeNorm && realtimeNorm.payload && realtimeNorm.payload.assessment) {
@@ -27527,22 +28232,32 @@ function mountAuroraBffRoutes(app, { logger }) {
           let realtimePayload = enrichProductAnalysisPayload(realtimeNorm.payload, { lang: ctx.lang, profileSummary });
           if (realtimePayload && typeof realtimePayload === 'object') {
             const internalCodes = getProductAnalysisInternalMissingCodes(realtimePayload);
+            const existingMissingInfo = Array.isArray(realtimePayload.missing_info) ? realtimePayload.missing_info : [];
             realtimePayload = applyProductAnalysisGapContract({
               ...realtimePayload,
-              internal_debug_codes: Array.from(new Set([...internalCodes, 'url_realtime_product_intel_used'])),
+              missing_info: Array.from(
+                new Set([
+                  ...existingMissingInfo,
+                ]),
+              ),
+              internal_debug_codes: Array.from(new Set([
+                ...internalCodes,
+                ...anchorFilterCodes,
+                'url_realtime_product_intel_used',
+              ])),
             });
           }
           const assessment = realtimePayload?.assessment && typeof realtimePayload.assessment === 'object'
             ? realtimePayload.assessment
             : null;
-          if (assessment && !assessment.anchor_product && !assessment.anchorProduct && parsedProduct) {
-            realtimePayload = { ...realtimePayload, assessment: { ...assessment, anchor_product: parsedProduct } };
+          if (assessment && !assessment.anchor_product && !assessment.anchorProduct && realtimeUrlAnchorForEvidence) {
+            realtimePayload = { ...realtimePayload, assessment: { ...assessment, anchor_product: realtimeUrlAnchorForEvidence } };
           }
 
           const kbBackfillAnchor =
             assessment && typeof assessment.anchor_product === 'object' && !Array.isArray(assessment.anchor_product)
               ? assessment.anchor_product
-              : parsedProduct;
+              : realtimeUrlAnchorForEvidence;
           let realtimeSyncRepairApplied = false;
           if (
             shouldRepairCompetitorCoverage(realtimePayload, {
@@ -27606,6 +28321,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...llmRouteMeta,
             trigger_reason: 'url_realtime_main_path',
           });
+          realtimePayload = applyAnalyzeDiagnosticsToPayload(realtimePayload);
           realtimePayload = reconcileProductAnalysisConsistency(realtimePayload, { lang: ctx.lang });
 
           const envelope = buildEnvelope(ctx, {
@@ -27689,11 +28405,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? mapAuroraProductParse(parseStructured)
               : parseStructured;
           const parseNorm = normalizeProductParse(parseMapped);
-          parsedProduct = parseNorm.payload.product || parsedProduct;
-          anchorId =
-            parsedProduct && (parsedProduct.sku_id || parsedProduct.product_id)
-              ? String(parsedProduct.sku_id || parsedProduct.product_id)
-              : anchorId;
+          const parseCandidate = parseNorm.payload.product || null;
+          applyAnchorCandidateGuard(parseCandidate, 'upstream_parse');
         } catch (err) {
           // ignore; continue without anchor id
         }
@@ -27704,7 +28417,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         primaryAnchorResolution = await resolvePrimaryAnalyzeAnchorForProductInput({
           inputText: input,
           inputUrl: parsed.data.url || null,
-          parsedProduct,
+          parsedProduct: anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
           lang: ctx.lang,
           logger,
         });
@@ -27712,13 +28425,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const resolvedAnchor = mapCatalogProductToAnchorProduct(primaryAnchorResolution.product, {
             fallbackName: String(input || ''),
           });
-          if (resolvedAnchor) {
-            parsedProduct = parsedProduct || resolvedAnchor;
-            anchorId =
-              resolvedAnchor && (resolvedAnchor.sku_id || resolvedAnchor.product_id)
-                ? String(resolvedAnchor.sku_id || resolvedAnchor.product_id)
-                : anchorId;
-          }
+          applyAnchorCandidateGuard(resolvedAnchor, 'catalog_primary_resolve');
         }
       }
 
@@ -27727,23 +28434,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         catalogFallback = await resolveCatalogProductForProductInput({
           inputText: input,
           inputUrl: parsed.data.url || null,
-          parsedProduct,
+          parsedProduct: anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
           lang: ctx.lang,
           logger,
         });
         if (catalogFallback.ok && catalogFallback.product) {
           const fallbackAnchor = mapCatalogProductToAnchorProduct(catalogFallback.product, { fallbackName: String(input || '') });
-          if (fallbackAnchor) {
-            parsedProduct = parsedProduct || fallbackAnchor;
-            anchorId =
-              fallbackAnchor && (fallbackAnchor.sku_id || fallbackAnchor.product_id)
-                ? String(fallbackAnchor.sku_id || fallbackAnchor.product_id)
-                : anchorId;
-          }
+          applyAnchorCandidateGuard(fallbackAnchor, 'catalog_fallback');
         }
       }
 
-      const productDescriptor = buildProductInputText(parsedProduct, null) || parsed.data.name || input;
+      const descriptorAnchor = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
+      const productDescriptor = buildProductInputText(descriptorAnchor, null) || parsed.data.name || input;
       const query = `${prefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
         `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
         `Evidence must include science/social_signals/expert_notes.\n` +
@@ -27807,7 +28509,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                     'This product does not have a stable catalog/KB anchor yet; we attempted one no-anchor deep scan, but evidence is still insufficient.',
                     'Please share the full INCI list, or index this product first and then re-run analysis.',
                   ],
-              ...(parsedProduct && typeof parsedProduct === 'object' ? { anchor_product: parsedProduct } : {}),
+              ...(descriptorAnchor && typeof descriptorAnchor === 'object' ? { anchor_product: descriptorAnchor } : {}),
             },
             evidence: {
               science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
@@ -27834,6 +28536,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             ),
             { lang: ctx.lang },
           );
+          const payloadNoAnchorWithDiagnostics = reconcileProductAnalysisConsistency(
+            applyAnalyzeDiagnosticsToPayload(payloadNoAnchorWithRoute),
+            { lang: ctx.lang },
+          );
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
             suggested_chips: [],
@@ -27841,7 +28547,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               {
                 card_id: `analyze_${ctx.request_id}`,
                 type: 'product_analysis',
-                payload: payloadNoAnchorWithRoute,
+                payload: payloadNoAnchorWithDiagnostics,
                 ...(normNoAnchor.field_missing?.length ? { field_missing: normNoAnchor.field_missing.slice(0, 8) } : {}),
               },
             ],
@@ -27934,7 +28640,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           productUrl: parsed.data.url,
           lang: ctx.lang,
           profileSummary,
-          parsedProduct,
+          parsedProduct: anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
           logger,
         });
         if (urlNorm && urlNorm.payload && urlNorm.payload.assessment) {
@@ -27963,6 +28669,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang, profileSummary });
+      payload = applyAnalyzeDiagnosticsToPayload(payload);
       if (catalogFallback && catalogFallback.ok && payload && typeof payload === 'object') {
         const internalCodes = getProductAnalysisInternalMissingCodes(payload);
         payload = applyProductAnalysisGapContract({
@@ -27970,7 +28677,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           internal_debug_codes: Array.from(new Set([...internalCodes, `catalog_anchor_fallback_${catalogFallback.source || 'used'}`])),
         });
       }
-      if (parsedProduct && payload && typeof payload === 'object') {
+      if (anchorTrustContext.usable_for_anchor_id === true && parsedProduct && payload && typeof payload === 'object') {
         const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
         if (a && !a.anchor_product && !a.anchorProduct) {
           payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
@@ -27981,7 +28688,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const kbBackfillAnchor =
           assessment && typeof assessment.anchor_product === 'object' && !Array.isArray(assessment.anchor_product)
             ? assessment.anchor_product
-            : parsedProduct;
+            : (anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null);
         scheduleProductIntelKbBackfill({
           productUrl: parsed.data.url,
           parsedProduct: kbBackfillAnchor,
@@ -28018,6 +28725,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       payload = appendProductIntelSourceChain(payload, ['llm_extraction']);
       payload = attachProductIntelLlmRouteProvenance(payload, llmRouteMeta);
+      payload = applyAnalyzeDiagnosticsToPayload(payload);
       payload = reconcileProductAnalysisConsistency(payload, { lang: ctx.lang });
 
       const envelope = buildEnvelope(ctx, {
@@ -28045,7 +28753,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           typeof socialAnchorAssessment.anchor_product === 'object' &&
           !Array.isArray(socialAnchorAssessment.anchor_product)
             ? socialAnchorAssessment.anchor_product
-            : parsedProduct;
+            : (anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null);
         social_enrich_async({
           logger,
           mode: 'main_path',
@@ -36162,7 +36870,79 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
 
           let parsedProduct = null;
-          let anchorId = anchorProductId || '';
+          let anchorId = anchorProductUrl ? '' : (anchorProductId || '');
+          let fitCheckAnchorTrustContext = {
+            level: 'none',
+            usable_for_anchor_id: false,
+            reasons: [],
+            source: 'none',
+            candidate_quality: 'none',
+            url_consistency: null,
+          };
+          const applyFitCheckAnchorGuard = (candidate, source, { preferDisplay = false } = {}) => {
+            const trust = evaluateAnchorTrustForProductIntel({
+              candidate,
+              inputText: String(productInput || '').trim(),
+              inputUrl: String(anchorProductUrl || '').trim(),
+              source,
+              strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+            });
+            const trustCodes = Array.isArray(trust.reason_codes) ? trust.reason_codes : [];
+            const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
+            if (trust.display_anchor && !nonSkincareSoftBlocked && (!parsedProduct || preferDisplay || trust.usable_for_anchor_id)) {
+              parsedProduct = trust.display_anchor;
+            }
+            if (trust.usable_for_anchor_id && trust.trusted_anchor) {
+              parsedProduct = trust.trusted_anchor;
+              anchorId = pickFirstTrimmed(trust.trusted_anchor.sku_id, trust.trusted_anchor.product_id) || anchorId;
+            }
+            if (trust.trust_level === 'trusted' || (fitCheckAnchorTrustContext.level !== 'trusted' && trust.trust_level !== 'none')) {
+              fitCheckAnchorTrustContext = {
+                level: String(trust.trust_level || 'none'),
+                usable_for_anchor_id: trust.usable_for_anchor_id === true,
+                reasons: trustCodes.slice(0, 6),
+                source: String(source || 'unknown'),
+                candidate_quality: String(trust.candidate_quality || 'none'),
+                url_consistency: Number.isFinite(Number(trust.url_consistency)) ? Number(trust.url_consistency) : null,
+              };
+            }
+            return trust;
+          };
+          const applyFitCheckAnchorDiagnostics = (rawPayload) => {
+            const basePayload = rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload) ? rawPayload : rawPayload;
+            if (!basePayload || typeof basePayload !== 'object' || Array.isArray(basePayload)) return rawPayload;
+            const hasDisplayAnchor = Boolean(
+              parsedProduct &&
+              pickFirstTrimmed(parsedProduct.product_id, parsedProduct.sku_id, parsedProduct.display_name, parsedProduct.name, parsedProduct.url),
+            );
+            const withGap = applyProductAnalysisGapContract({
+              ...basePayload,
+              missing_info: uniqCaseInsensitiveStrings(
+                [
+                  ...(Array.isArray(basePayload.missing_info) ? basePayload.missing_info : []),
+                  ...(Array.isArray(fitCheckAnchorTrustContext.reasons) ? fitCheckAnchorTrustContext.reasons : []),
+                  ...(hasDisplayAnchor && fitCheckAnchorTrustContext.usable_for_anchor_id !== true ? ['anchor_id_not_used_due_to_low_trust'] : []),
+                ],
+                16,
+              ),
+            });
+            return {
+              ...withGap,
+              provenance: {
+                ...(isPlainObject(withGap.provenance) ? withGap.provenance : {}),
+                anchor_trust: {
+                  level: String(fitCheckAnchorTrustContext.level || 'none'),
+                  usable_for_anchor_id: fitCheckAnchorTrustContext.usable_for_anchor_id === true,
+                  reasons: Array.isArray(fitCheckAnchorTrustContext.reasons) ? fitCheckAnchorTrustContext.reasons.slice(0, 6) : [],
+                  source: String(fitCheckAnchorTrustContext.source || 'unknown'),
+                  candidate_quality: String(fitCheckAnchorTrustContext.candidate_quality || 'none'),
+                  ...(Number.isFinite(Number(fitCheckAnchorTrustContext.url_consistency))
+                    ? { url_consistency: Number(fitCheckAnchorTrustContext.url_consistency) }
+                    : {}),
+                },
+              },
+            };
+          };
 
           // Best-effort parse to anchor_product_id to improve KB hit rate.
           if (!anchorId) {
@@ -36190,11 +36970,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ? mapAuroraProductParse(parseStructured)
                   : parseStructured;
               const parseNorm = normalizeProductParse(parseMapped);
-              parsedProduct = parseNorm.payload.product || null;
-              anchorId =
-                parsedProduct && (parsedProduct.sku_id || parsedProduct.product_id)
-                  ? String(parsedProduct.sku_id || parsedProduct.product_id)
-                  : '';
+              const parseCandidate = parseNorm.payload.product || null;
+              applyFitCheckAnchorGuard(parseCandidate, 'chat_fit_check_parse');
             } catch (err) {
               // ignore; continue without anchor id
             }
@@ -36392,7 +37169,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               productUrl: productUrlForFallback,
               lang: ctx.lang,
               profileSummary,
-              parsedProduct,
+              parsedProduct: fitCheckAnchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
               logger,
             });
             if (urlNorm && urlNorm.payload && urlNorm.payload.assessment) {
@@ -36420,12 +37197,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
 
           let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang, profileSummary });
-          if (parsedProduct && payload && typeof payload === 'object') {
+          if (fitCheckAnchorTrustContext.usable_for_anchor_id === true && parsedProduct && payload && typeof payload === 'object') {
             const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
             if (a && !a.anchor_product && !a.anchorProduct) {
               payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
             }
           }
+          payload = applyFitCheckAnchorDiagnostics(payload);
           payload = reconcileProductAnalysisConsistency(payload, { lang: ctx.lang });
           payload = finalizeProductAnalysisRecoContract(payload, {
             logger,
@@ -36434,6 +37212,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
           payload = appendProductIntelSourceChain(payload, ['llm_extraction']);
           payload = attachProductIntelLlmRouteProvenance(payload, fitCheckLlmRouteMeta);
+          payload = applyFitCheckAnchorDiagnostics(payload);
           payload = reconcileProductAnalysisConsistency(payload, { lang: ctx.lang });
 
           if (payload) {
@@ -36745,6 +37524,7 @@ const __internal = {
   extractIncidecoderIngredientsFromHtml,
   scoreIncidecoderMatch,
   shouldPersistProductIntelKb,
+  shouldServeProductIntelKbEntry,
   resolveProductAnalysisSocialState,
   applyProductAnalysisSocialProvenance,
   applyRecoGuardrailToProductAnalysisPayload,
@@ -36753,6 +37533,7 @@ const __internal = {
   buildProductCatalogQueryCandidates,
   buildRealtimeCompetitorQueryPlan,
   mapCatalogProductToAnchorProduct,
+  evaluateAnchorTrustForProductIntel,
   resolveCatalogProductForProductInput,
   extractRoutineProductCandidatesForDeepScan,
   deepScanRoutineProductCandidate,
