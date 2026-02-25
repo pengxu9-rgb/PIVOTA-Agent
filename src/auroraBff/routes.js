@@ -4474,7 +4474,6 @@ function inferBrandFromHostname(hostname) {
     .join(' ')
     .trim();
 }
-
 function buildProductDescriptorFromInput({
   parsedProduct = null,
   productUrl = '',
@@ -26773,7 +26772,6 @@ function sanitizeProductAnalysisEnvelopeForResponse(envelope) {
   });
   return changed ? { ...envelope, cards: nextCards } : envelope;
 }
-
 function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
   const p = isPlainObject(payload) ? { ...payload } : payload;
   if (!isPlainObject(p)) return payload;
@@ -37925,6 +37923,7 @@ const __internal = {
   shouldSkipQaByBudget,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
+  isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
