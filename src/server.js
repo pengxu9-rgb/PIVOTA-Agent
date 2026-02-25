@@ -8815,40 +8815,27 @@ function buildPetFallbackQuery(intent, rawUserQuery) {
   }
 }
 
-function buildStrictLingerieFallbackQuery(rawUserQuery = '', intent = null) {
+function buildStrictLingerieFallbackQueries(rawUserQuery = '', intent = null) {
   const base = String(rawUserQuery || '').trim();
   const language = String(intent?.language || '').trim().toLowerCase();
-  const seedTerms = [
-    'lingerie',
-    'underwear',
-    'bra',
-    'panties',
-    'bralette',
-    'bodysuit',
-    'sleepwear',
-    'nightwear',
-    'chemise',
-    'babydoll',
-    'corset',
-    'shapewear',
+  const baseQueries = [
+    base,
+    'lingerie underwear bra panties',
+    'sleepwear nightwear chemise babydoll',
+    'bralette bodysuit corset shapewear',
   ];
 
   if (language.startsWith('zh')) {
-    seedTerms.push('内衣', '文胸', '胸罩', '塑身衣', '睡衣', '睡裙');
+    baseQueries.push('内衣 文胸 胸罩 塑身衣 睡衣 睡裙');
   } else if (language.startsWith('ja')) {
-    seedTerms.push('ランジェリー', '下着', 'ブラ', 'パンティ', 'ナイトウェア');
+    baseQueries.push('ランジェリー 下着 ブラ パンティ ナイトウェア');
   } else if (language.startsWith('fr')) {
-    seedTerms.push('lingerie', 'sous-vetement', 'soutien-gorge', 'culotte', 'nuisette');
+    baseQueries.push('lingerie sous-vetement soutien-gorge culotte nuisette');
   } else if (language.startsWith('es')) {
-    seedTerms.push('lenceria', 'ropa interior', 'sujetador', 'bragas');
+    baseQueries.push('lenceria ropa interior sujetador bragas');
   }
 
-  const merged = uniqueStrings(
-    [base, ...seedTerms]
-      .map((item) => String(item || '').trim())
-      .filter(Boolean),
-  );
-  return merged.join(' ').trim();
+  return uniqueStrings(baseQueries.map((item) => String(item || '').trim()).filter(Boolean));
 }
 
 async function loadCreatorProductFromCache(creatorId, productId) {
@@ -18031,28 +18018,57 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         currentProductsForBackfill.length < strictLingerieBackfillTarget;
       if (shouldApplyStrictLingerieBackfill) {
         try {
-          const fallbackQuery = buildStrictLingerieFallbackQuery(rawUserQuery, effectiveIntent);
-          const fallbackLimit = Math.min(
+          const fallbackQueries = buildStrictLingerieFallbackQueries(rawUserQuery, effectiveIntent);
+          const fallbackMaxQueries = Math.max(
+            1,
+            Math.min(8, Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_MAX_QUERIES || 5) || 5),
+          );
+          const selectedFallbackQueries = fallbackQueries.slice(0, fallbackMaxQueries);
+          const fallbackLimitPerQuery = Math.min(
             100,
             Math.max(
-              strictLingerieBackfillTarget * 4,
-              Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_FETCH_LIMIT || 60) || 60,
+              strictLingerieBackfillTarget * 3,
+              Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_FETCH_LIMIT_PER_QUERY || 30) || 30,
             ),
           );
-          const fromCache = await searchCrossMerchantFromCache(fallbackQuery, 1, fallbackLimit, {
-            inStockOnly: searchForBackfill.in_stock_only !== false,
-          });
+          const fallbackRawProducts = [];
+          const fallbackQueryResults = [];
+          for (const fallbackQuery of selectedFallbackQueries) {
+            const fromCache = await searchCrossMerchantFromCache(fallbackQuery, 1, fallbackLimitPerQuery, {
+              inStockOnly: searchForBackfill.in_stock_only !== false,
+            });
+            const products = Array.isArray(fromCache?.products) ? fromCache.products : [];
+            fallbackQueryResults.push({
+              query: fallbackQuery,
+              count: products.length,
+              total: Number(fromCache?.total || 0),
+            });
+            fallbackRawProducts.push(...products);
+            if (fallbackRawProducts.length >= strictLingerieBackfillTarget * 6) {
+              break;
+            }
+          }
+          const seenFallbackProductKeys = new Set();
+          const dedupedFallbackRawProducts = [];
+          for (const product of fallbackRawProducts) {
+            const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
+            const productId = String(product?.id || product?.product_id || product?.productId || '').trim();
+            const productTitle = String(product?.title || '').trim();
+            const dedupeKey = `${merchantId}::${productId || productTitle}`;
+            if (!dedupeKey || seenFallbackProductKeys.has(dedupeKey)) continue;
+            seenFallbackProductKeys.add(dedupeKey);
+            dedupedFallbackRawProducts.push(product);
+          }
           const fallbackData = {
-            products: Array.isArray(fromCache?.products) ? fromCache.products : [],
-            total: Number(fromCache?.total || 0),
+            products: dedupedFallbackRawProducts,
+            total: dedupedFallbackRawProducts.length,
             page: 1,
-            page_size: Array.isArray(fromCache?.products) ? fromCache.products.length : 0,
+            page_size: dedupedFallbackRawProducts.length,
             reply: null,
             metadata: {
               query_source: 'cache_cross_merchant_lingerie_backfill',
               fetched_at: new Date().toISOString(),
               merchants_searched: null,
-              ...(fromCache?.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
             },
           };
           const fallbackPolicy = applyFindProductsMultiPolicy({
@@ -18062,80 +18078,96 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               ...effectivePayload,
               search: {
                 ...(effectivePayload.search || {}),
-                query: fallbackQuery,
+                query: selectedFallbackQueries[0] || rawUserQuery,
               },
             },
             metadata: policyMetadata,
             rawUserQuery,
           });
           const fallbackProducts = Array.isArray(fallbackPolicy?.products) ? fallbackPolicy.products : [];
-          const mergedProducts = collapseNearDuplicateSearchProducts(
-            [...currentProductsForBackfill, ...fallbackProducts],
-            { perTitleLimit: 2 },
-          );
+          const seenMergedProductKeys = new Set();
+          const dedupedMergeInput = [];
+          for (const product of [...currentProductsForBackfill, ...fallbackProducts]) {
+            const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
+            const productId = String(product?.id || product?.product_id || product?.productId || '').trim();
+            const productTitle = String(product?.title || '').trim();
+            const dedupeKey = `${merchantId}::${productId || productTitle}`;
+            if (!dedupeKey || seenMergedProductKeys.has(dedupeKey)) continue;
+            seenMergedProductKeys.add(dedupeKey);
+            dedupedMergeInput.push(product);
+          }
+          const mergedProducts = collapseNearDuplicateSearchProducts(dedupedMergeInput, {
+            perTitleLimit: 1,
+          });
           const addedCount = Math.max(0, mergedProducts.length - currentProductsForBackfill.length);
-          if (addedCount > 0) {
-            const existingPolicyMeta =
-              maybePolicy?.metadata &&
-              typeof maybePolicy.metadata === 'object' &&
-              !Array.isArray(maybePolicy.metadata)
-                ? maybePolicy.metadata
-                : {};
-            const existingSearchDecision =
-              existingPolicyMeta.search_decision &&
-              typeof existingPolicyMeta.search_decision === 'object' &&
-              !Array.isArray(existingPolicyMeta.search_decision)
-                ? existingPolicyMeta.search_decision
-                : {};
-            const existingReasonCodes = Array.isArray(existingSearchDecision.reason_codes)
-              ? existingSearchDecision.reason_codes.map((code) => String(code || '').trim()).filter(Boolean)
-              : [];
-            const updatedReasonCodes = Array.from(
-              new Set([...existingReasonCodes, 'STRICT_LINGERIE_BACKFILL_APPLIED']),
-            );
-            const existingRouteDebug =
-              existingPolicyMeta.route_debug &&
-              typeof existingPolicyMeta.route_debug === 'object' &&
-              !Array.isArray(existingPolicyMeta.route_debug)
-                ? existingPolicyMeta.route_debug
-                : {};
-            maybePolicy = {
-              ...maybePolicy,
-              products: mergedProducts,
-              total: Math.max(
-                Number(maybePolicy?.total || 0) || 0,
-                Number(fallbackPolicy?.total || 0) || 0,
-                mergedProducts.length,
-              ),
-              page_size: mergedProducts.length,
-              metadata: {
-                ...existingPolicyMeta,
-                search_decision: {
-                  ...existingSearchDecision,
-                  post_candidates: mergedProducts.length,
-                  lingerie_rescued_count:
-                    Math.max(0, Number(existingSearchDecision.lingerie_rescued_count || 0) || 0) + addedCount,
-                  low_recall_reason:
-                    mergedProducts.length < strictLingerieBackfillTarget
-                      ? 'STRICT_SCOPE_UNDERFILL'
-                      : null,
-                  reason_codes: updatedReasonCodes,
-                },
-                route_debug: {
-                  ...existingRouteDebug,
-                  lingerie_backfill: {
-                    applied: true,
-                    query: fallbackQuery,
-                    fetch_limit: fallbackLimit,
-                    from_cache_count: Array.isArray(fromCache?.products) ? fromCache.products.length : 0,
-                    from_policy_count: fallbackProducts.length,
-                    added_count: addedCount,
-                    target_count: strictLingerieBackfillTarget,
-                  },
+          const existingPolicyMeta =
+            maybePolicy?.metadata &&
+            typeof maybePolicy.metadata === 'object' &&
+            !Array.isArray(maybePolicy.metadata)
+              ? maybePolicy.metadata
+              : {};
+          const existingSearchDecision =
+            existingPolicyMeta.search_decision &&
+            typeof existingPolicyMeta.search_decision === 'object' &&
+            !Array.isArray(existingPolicyMeta.search_decision)
+              ? existingPolicyMeta.search_decision
+              : {};
+          const existingReasonCodes = Array.isArray(existingSearchDecision.reason_codes)
+            ? existingSearchDecision.reason_codes.map((code) => String(code || '').trim()).filter(Boolean)
+            : [];
+          const updatedReasonCodes = Array.from(
+            new Set([...existingReasonCodes, 'STRICT_LINGERIE_BACKFILL_APPLIED']),
+          );
+          const existingRouteDebug =
+            existingPolicyMeta.route_debug &&
+            typeof existingPolicyMeta.route_debug === 'object' &&
+            !Array.isArray(existingPolicyMeta.route_debug)
+              ? existingPolicyMeta.route_debug
+              : {};
+          maybePolicy = {
+            ...maybePolicy,
+            ...(addedCount > 0
+              ? {
+                  products: mergedProducts,
+                  total: Math.max(
+                    Number(maybePolicy?.total || 0) || 0,
+                    Number(fallbackPolicy?.total || 0) || 0,
+                    mergedProducts.length,
+                  ),
+                  page_size: mergedProducts.length,
+                }
+              : {}),
+            metadata: {
+              ...existingPolicyMeta,
+              search_decision: {
+                ...existingSearchDecision,
+                post_candidates:
+                  addedCount > 0
+                    ? mergedProducts.length
+                    : Math.max(0, Number(existingSearchDecision.post_candidates || 0)),
+                lingerie_rescued_count:
+                  Math.max(0, Number(existingSearchDecision.lingerie_rescued_count || 0) || 0) + addedCount,
+                low_recall_reason:
+                  addedCount > 0 && mergedProducts.length >= strictLingerieBackfillTarget
+                    ? null
+                    : existingSearchDecision.low_recall_reason || 'STRICT_SCOPE_UNDERFILL',
+                reason_codes: updatedReasonCodes,
+              },
+              route_debug: {
+                ...existingRouteDebug,
+                lingerie_backfill: {
+                  applied: true,
+                  queries: selectedFallbackQueries,
+                  per_query_limit: fallbackLimitPerQuery,
+                  query_results: fallbackQueryResults,
+                  from_cache_count: dedupedFallbackRawProducts.length,
+                  from_policy_count: fallbackProducts.length,
+                  added_count: addedCount,
+                  target_count: strictLingerieBackfillTarget,
                 },
               },
-            };
-          }
+            },
+          };
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), source: metadata?.source },
