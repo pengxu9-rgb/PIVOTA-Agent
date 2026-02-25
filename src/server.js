@@ -16178,8 +16178,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        const scopeSignals = detectToyOutfitIntentFromQuery(queryTextForScope);
 	        strictLingerieScopeForSearch =
 	          queryClassForScope === 'category' && Boolean(scopeSignals?.lingerie_intent);
+	        const strictLingerieLimitFloor = Math.max(
+	          24,
+	          Number(process.env.SEARCH_STRICT_LINGERIE_EFFECTIVE_LIMIT_FLOOR || 60) || 60,
+	        );
+	        const strictLingerieLimitCap = Math.max(
+	          strictLingerieLimitFloor,
+	          Number(process.env.SEARCH_STRICT_LINGERIE_EFFECTIVE_LIMIT_CAP || 100) || 100,
+	        );
 	        const effectiveLimit = strictLingerieScopeForSearch
-	          ? Math.min(Math.max(requestedLimit, 24), 50)
+	          ? Math.min(Math.max(requestedLimit, strictLingerieLimitFloor), strictLingerieLimitCap)
 	          : requestedLimit;
 	        const offset = (page - 1) * effectiveLimit;
 
