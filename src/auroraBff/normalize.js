@@ -45,7 +45,10 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'alternatives_limited': 'analysis_in_progress',
   'competitor_sync_aurora_fallback_used': 'analysis_in_progress',
   'catalog_product_missing': 'product_not_resolved',
+  'catalog_backend_not_configured': 'product_not_resolved',
+  'pivota_backend_not_configured': 'product_not_resolved',
   'upstream_deep_scan_skipped_anchor_missing': 'product_not_resolved',
+  'anchor_missing_deepscan_degraded': 'product_not_resolved',
   'product_not_resolved': 'product_not_resolved',
   'evidence_missing': 'evidence_limited',
   'evidence_limited': 'evidence_limited',
@@ -55,6 +58,11 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'analysis_limited': 'analysis_limited',
   'upstream_analysis_missing': 'analysis_in_progress',
   'analysis_in_progress': 'analysis_in_progress',
+  'url_fetch_forbidden_403': 'url_fetch_forbidden_403',
+  'url_fetch_recovered_with_fallback': 'url_fetch_recovered_with_fallback',
+  'on_page_fetch_blocked': 'on_page_fetch_blocked',
+  'regulatory_source_used': 'regulatory_source_used',
+  'version_verification_needed': 'version_verification_needed',
   'price_unknown': 'price_temporarily_unavailable',
   'price_missing': 'price_temporarily_unavailable',
   'anchor_price_unknown': 'price_temporarily_unavailable',
@@ -108,6 +116,14 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
   'reco_guardrail_',
 ];
 
+const PRODUCT_ANALYSIS_USER_VISIBLE_EXACT = new Set([
+  'url_fetch_forbidden_403',
+  'url_fetch_recovered_with_fallback',
+  'on_page_fetch_blocked',
+  'regulatory_source_used',
+  'version_verification_needed',
+]);
+
 function mapProductAnalysisGapCode(code) {
   const raw = String(code || '').trim();
   if (!raw) return '';
@@ -120,6 +136,7 @@ function mapProductAnalysisGapCode(code) {
 function isInternalProductAnalysisGapCode(code) {
   const lower = String(code || '').trim().toLowerCase();
   if (!lower) return true;
+  if (PRODUCT_ANALYSIS_USER_VISIBLE_EXACT.has(lower)) return false;
   if (PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT.has(lower)) return true;
   if (PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES.some((prefix) => lower.startsWith(prefix))) return true;
   return false;
@@ -265,6 +282,26 @@ function normalizeEvidence(raw) {
     risk_for_groups: asStringArray(socialRaw?.risk_for_groups ?? socialRaw?.riskForGroups),
   };
 
+  const sources = [];
+  for (const item of Array.isArray(ev.sources) ? ev.sources : []) {
+    const row = asPlainObject(item);
+    if (!row) continue;
+    const type = String(row.type || '').trim().toLowerCase();
+    if (!type) continue;
+    if (type !== 'official_page' && type !== 'regulatory') continue;
+    const url = String(row.url || '').trim();
+    if (!/^https?:\/\//i.test(url)) continue;
+    const label = String(row.label || '').trim();
+    const confidence = asNumberOrNull(row.confidence);
+    sources.push({
+      type,
+      url,
+      ...(label ? { label } : {}),
+      ...(confidence != null ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
+    });
+    if (sources.length >= 8) break;
+  }
+
   const missing_info = uniqueStrings(asStringArray(ev.missing_info ?? ev.missingInfo));
   const confidence = asNumberOrNull(ev.confidence);
 
@@ -275,6 +312,7 @@ function normalizeEvidence(raw) {
       expert_notes,
       confidence,
       missing_info,
+      ...(sources.length ? { sources } : {}),
     },
     field_missing,
   };
