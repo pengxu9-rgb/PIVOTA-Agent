@@ -16102,14 +16102,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             const products = Array.isArray(rec?.items) ? rec.items : [];
 
             // Keep response structure stable for existing clients.
-            const baseResponse = {
-              status: 'success',
-              strategy: 'related_products',
-              products,
-              total: products.length,
-              page: 1,
-              page_size: products.length,
-            };
+	            const baseResponse = {
+	              status: 'success',
+	              strategy: 'related_products',
+	              products,
+	              total: products.length,
+	              page: 1,
+	              page_size: products.length,
+	              ...(rec?.metadata && typeof rec.metadata === 'object'
+	                ? { metadata: rec.metadata }
+	                : {}),
+	            };
 
             return debugEnabled
               ? res.json({

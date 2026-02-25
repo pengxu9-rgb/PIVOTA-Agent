@@ -2,6 +2,11 @@ const crypto = require('node:crypto');
 
 const logger = require('../logger');
 const { query } = require('../db');
+const {
+  inferVerticalFromProduct,
+  computeSemanticSignalStrength,
+  UNKNOWN_VERTICAL,
+} = require('./recoSemanticSignals');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 
@@ -366,6 +371,7 @@ function buildBaseFeatures(baseProduct) {
   const leafCategory = getLeafCategory(baseProduct);
   const parentCategory = getParentCategory(baseProduct);
   const priceAmount = getPriceAmount(baseProduct);
+  const verticalSignal = inferVerticalFromProduct(baseProduct);
   const tokens = tokenize([baseProduct.title, baseProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   return {
     productId: getProductId(baseProduct),
@@ -377,6 +383,9 @@ function buildBaseFeatures(baseProduct) {
     currency: normalizeCurrency(baseProduct, 'USD'),
     tokens,
     isExternal: isExternalProduct(baseProduct),
+    vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
+    verticalInferred: Boolean(verticalSignal.inferred),
+    verticalKeywords: verticalSignal.matched_keywords || [],
   };
 }
 
@@ -386,6 +395,7 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
   const parentCategory = getParentCategory(candidateProduct);
   const priceAmount = getPriceAmount(candidateProduct);
   const currency = normalizeCurrency(candidateProduct, baseCurrency);
+  const verticalSignal = inferVerticalFromProduct(candidateProduct);
   const tokens = tokenize([candidateProduct.title, candidateProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   return {
     productId: getProductId(candidateProduct),
@@ -397,7 +407,82 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     currency,
     tokens,
     isExternal: isExternalProduct(candidateProduct),
+    vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
+    verticalInferred: Boolean(verticalSignal.inferred),
   };
+}
+
+function confidenceRank(level) {
+  if (level === 'high') return 3;
+  if (level === 'medium') return 2;
+  return 1;
+}
+
+function classifyConfidenceLevel(base, candidate, layerId) {
+  const nearPriceTight = candidate.relDiff != null && candidate.relDiff <= 0.25;
+  if (candidate.brandMatch && candidate.leafMatch && nearPriceTight) return 'high';
+  if (candidate.brandMatch && candidate.parentMatch && candidate.relDiff != null && candidate.relDiff <= 0.6) return 'high';
+  if (candidate.leafMatch && nearPriceTight) return 'high';
+
+  if (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical !== UNKNOWN_VERTICAL) {
+    if (base.vertical === candidate.features.vertical && candidate.tokenOverlap >= 0.12) return 'medium';
+    if (base.vertical !== candidate.features.vertical) return 'low';
+  }
+
+  if (layerId === 'L4' && candidate.tokenOverlap >= 0.24) return 'medium';
+  if (layerId === 'L5' && candidate.tokenOverlap >= 0.28) return 'medium';
+  return 'low';
+}
+
+function pickBalancedCandidates(candidates, k, baseIsExternal) {
+  const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
+  const internalQueue = candidates.filter((c) => c.source === 'internal');
+  const externalQueue = candidates.filter((c) => c.source === 'external');
+  if (!internalQueue.length || !externalQueue.length) {
+    return candidates.slice(0, K);
+  }
+
+  const pattern = baseIsExternal ? ['internal', 'external'] : ['internal', 'internal', 'external'];
+  const pointers = { internal: 0, external: 0 };
+  const selected = [];
+  const used = new Set();
+
+  const nextFromSource = (source) => {
+    const queue = source === 'internal' ? internalQueue : externalQueue;
+    while (pointers[source] < queue.length) {
+      const candidate = queue[pointers[source]];
+      pointers[source] += 1;
+      const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      return candidate;
+    }
+    return null;
+  };
+
+  while (selected.length < K) {
+    let progress = false;
+    for (const source of pattern) {
+      if (selected.length >= K) break;
+      const next = nextFromSource(source);
+      if (!next) continue;
+      selected.push(next);
+      progress = true;
+    }
+    if (!progress) break;
+  }
+
+  if (selected.length < K) {
+    for (const candidate of candidates) {
+      if (selected.length >= K) break;
+      const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      selected.push(candidate);
+    }
+  }
+
+  return selected.slice(0, K);
 }
 
 function pickLayeredRecommendations({
@@ -405,9 +490,50 @@ function pickLayeredRecommendations({
   internalCandidates,
   externalCandidates,
   k,
+  baseSemantic = null,
 }) {
   const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
   const base = buildBaseFeatures(baseProduct);
+
+  const nearPriceTight = (relDiff) => relDiff != null && relDiff <= 0.25;
+  const nearPriceLoose = (relDiff) => relDiff != null && relDiff <= 0.6;
+  const layers = [
+    {
+      id: 'L1',
+      name: 'same_brand+leaf_category+near_price',
+      priority: 1,
+      predicate: (c) => c.brandMatch && c.leafMatch && nearPriceTight(c.relDiff),
+    },
+    {
+      id: 'L2',
+      name: 'same_brand+parent_category+loose_price',
+      priority: 2,
+      predicate: (c) => c.brandMatch && c.parentMatch && nearPriceLoose(c.relDiff),
+    },
+    {
+      id: 'L3',
+      name: 'leaf_category+near_price',
+      priority: 3,
+      predicate: (c) => c.leafMatch && nearPriceTight(c.relDiff),
+    },
+    {
+      id: 'L4',
+      name: 'title_token_overlap',
+      priority: 4,
+      predicate: (c) => c.tokenOverlap >= 0.18,
+    },
+    {
+      id: 'L5',
+      name: 'fallback_recent_or_popular',
+      priority: 5,
+      predicate: () => true,
+    },
+  ];
+
+  const layerById = Object.fromEntries(layers.map((layer) => [layer.id, layer]));
+
+  let filteredByVertical = 0;
+  let filteredByConfidence = 0;
 
   const rawCandidates = [
     ...(Array.isArray(internalCandidates) ? internalCandidates : []),
@@ -425,10 +551,32 @@ function pickLayeredRecommendations({
       const features = buildCandidateFeatures(p, base.currency);
       const source = features.isExternal ? 'external' : 'internal';
       const scoreDetail = scoreCandidate(base, features);
+      const matchedLayer = layers.find((layer) => layer.predicate(scoreDetail)) || layers[layers.length - 1];
+
+      if (base.vertical === 'fragrance') {
+        const candidateVertical = features.vertical;
+        const allowByVertical = candidateVertical === 'fragrance';
+        const allowByToken = scoreDetail.tokenOverlap >= 0.18 && candidateVertical !== 'tools';
+        if (!allowByVertical && !allowByToken) {
+          filteredByVertical += 1;
+          return null;
+        }
+      }
+
+      const confidence = classifyConfidenceLevel(base, { ...scoreDetail, features }, matchedLayer.id);
+      if (confidence === 'low') {
+        filteredByConfidence += 1;
+        return null;
+      }
+
       return {
         product: p,
         features,
         source,
+        layerId: matchedLayer.id,
+        layerName: matchedLayer.name,
+        layerPriority: matchedLayer.priority,
+        confidence,
         ...scoreDetail,
       };
     })
@@ -439,154 +587,91 @@ function pickLayeredRecommendations({
 
   // Avoid excessive work.
   const candidates = uniqueCandidates
-    .sort((a, b) => b.score - a.score || a.features.productId.localeCompare(b.features.productId))
+    .sort((a, b) => {
+      if (a.layerPriority !== b.layerPriority) return a.layerPriority - b.layerPriority;
+      if (confidenceRank(a.confidence) !== confidenceRank(b.confidence)) {
+        return confidenceRank(b.confidence) - confidenceRank(a.confidence);
+      }
+      if (a.score !== b.score) return b.score - a.score;
+      return a.features.productId.localeCompare(b.features.productId);
+    })
     .slice(0, 400);
 
-  const nearPriceTight = (relDiff) => relDiff != null && relDiff <= 0.25;
-  const nearPriceLoose = (relDiff) => relDiff != null && relDiff <= 0.6;
-
-  const layers = [
-    {
-      id: 'L1',
-      name: 'same_brand+leaf_category+near_price',
-      predicate: (c) => c.brandMatch && c.leafMatch && nearPriceTight(c.relDiff),
-    },
-    {
-      id: 'L2',
-      name: 'same_brand+parent_category+loose_price',
-      predicate: (c) => c.brandMatch && c.parentMatch && nearPriceLoose(c.relDiff),
-    },
-    {
-      id: 'L3',
-      name: 'leaf_category+near_price',
-      predicate: (c) => c.leafMatch && nearPriceTight(c.relDiff),
-    },
-    {
-      id: 'L4',
-      name: 'title_token_overlap',
-      predicate: (c) => c.tokenOverlap >= 0.18,
-    },
-    {
-      id: 'L5',
-      name: 'fallback_recent_or_popular',
-      predicate: () => true,
-    },
-  ];
-
-  const selected = [];
-  const usedKeys = new Set();
   const layerCounts = {};
-
-  function takeFrom(list, layerId, maxToTake) {
-    let taken = 0;
-    for (const c of list) {
-      if (selected.length >= K) break;
-      const key = `${c.features.merchantId}::${c.features.productId}`;
-      if (usedKeys.has(key)) continue;
-      usedKeys.add(key);
-      const reason = `${layerId}:${c.source}:${layers.find((l) => l.id === layerId)?.name || ''}`;
-      selected.push({
-        ...toCandidate(c.product, {
-          // Additive fields for clients/agents. FE can ignore safely.
-          source: c.source,
-          reason,
-          x_score: Number(c.score.toFixed(4)),
-        }),
-      });
-      taken += 1;
-      if (taken >= maxToTake) break;
-    }
-    layerCounts[layerId] = (layerCounts[layerId] || 0) + taken;
+  for (const candidate of candidates) {
+    layerCounts[candidate.layerId] = (layerCounts[candidate.layerId] || 0) + 1;
   }
 
-  for (const layer of layers) {
-    if (selected.length >= K) break;
-    const layerList = candidates
-      .filter(layer.predicate)
-      .sort((a, b) => b.score - a.score || a.features.productId.localeCompare(b.features.productId));
-    takeFrom(layerList, layer.id, layer.id === 'L5' ? K : 50);
-  }
+  const chosenCandidates = pickBalancedCandidates(candidates, K, base.isExternal);
+  const selected = chosenCandidates.map((candidate) =>
+    toCandidate(candidate.product, {
+      source: candidate.source,
+      reason: `${candidate.layerId}:${candidate.source}:${layerById[candidate.layerId]?.name || ''}`,
+      x_score: Number(candidate.score.toFixed(4)),
+      x_confidence: candidate.confidence,
+    }),
+  );
 
-  // External/internal mix constraint (Top5).
-  const baseBrand = base.brand;
-  if (baseBrand) {
-    const topN = Math.min(5, selected.length);
-    const top = selected.slice(0, topN);
-    const topHasSameBrand = top.some((p) => getBrandName(p) === baseBrand);
-
-    const externalBrandPool = candidates
-      .filter((c) => c.source === 'external' && c.features.brand && c.features.brand === baseBrand)
-      .map((c) =>
-        toCandidate(c.product, {
-          source: c.source,
-          reason: `L1:external:brand_match_backfill`,
-          x_score: Number(c.score.toFixed(4)),
-        }),
-      )
-      .filter(Boolean);
-
-    const internalBrandCount = top.filter((p) => getBrandName(p) === baseBrand && !isExternalProduct(p)).length;
-
-    if (externalBrandPool.length && internalBrandCount < 2) {
-      const required =
-        externalBrandPool.length >= 3 && internalBrandCount === 0 ? 3 : Math.min(2, externalBrandPool.length);
-      const existingExternalInTop = top.filter((p) => getBrandName(p) === baseBrand && isExternalProduct(p)).length;
-      const need = Math.max(0, required - existingExternalInTop);
-      if (need > 0) {
-        const inserts = [];
-        for (const p of externalBrandPool) {
-          if (inserts.length >= need) break;
-          const key = `${getMerchantId(p)}::${getProductId(p)}`;
-          if (!key || usedKeys.has(key)) continue;
-          usedKeys.add(key);
-          inserts.push(p);
-        }
-        if (inserts.length) {
-          // Insert into top5 by replacing weakest items that are not same-brand.
-          const newList = [...selected];
-          const replaceIdx = [];
-          for (let i = 0; i < Math.min(5, newList.length); i += 1) {
-            const p = newList[i];
-            if (getBrandName(p) === baseBrand) continue;
-            replaceIdx.push(i);
-          }
-          for (let i = 0; i < inserts.length && i < replaceIdx.length; i += 1) {
-            newList[replaceIdx[i]] = inserts[i];
-          }
-          // Re-stabilize: keep order, then de-dupe again.
-          const final = uniqueByKey(newList, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, K);
-          selected.length = 0;
-          selected.push(...final);
-        }
-      }
-
-      // Hard constraint: do not allow "brand clear + external brand candidates exist" to yield
-      // top5 with zero same-brand.
-      if (!topHasSameBrand && externalBrandPool.length) {
-        const first = externalBrandPool.find((p) => p);
-        if (first) {
-          const key = `${getMerchantId(first)}::${getProductId(first)}`;
-          if (key && !usedKeys.has(key)) {
-            usedKeys.add(key);
-          }
-          if (selected.length) selected[0] = first;
-          else selected.push(first);
-        }
-      }
-    }
-  }
-
-  const sourceCounts = selected.reduce(
+  const sourceCounts = chosenCandidates.reduce(
     (acc, p) => {
-      const s = isExternalProduct(p) ? 'external' : 'internal';
+      const s = p.source === 'external' ? 'external' : 'internal';
       acc[s] += 1;
       return acc;
     },
     { internal: 0, external: 0 },
   );
 
+  const confidenceCounts = chosenCandidates.reduce(
+    (acc, candidate) => {
+      const level = candidate.confidence || 'low';
+      acc[level] = (acc[level] || 0) + 1;
+      return acc;
+    },
+    { high: 0, medium: 0, low: 0 },
+  );
+
+  const signalStrength =
+    Number(baseSemantic?.signal_strength) ||
+    computeSemanticSignalStrength({
+      brand: base.brand,
+      leafCategory: base.leafCategory,
+      vertical: base.vertical,
+    });
+  const baseSemanticStrong = signalStrength >= 2;
+
+  const similarConfidence =
+    !selected.length
+      ? 'low'
+      : confidenceCounts.high >= Math.max(1, Math.ceil(selected.length * 0.7))
+        ? 'high'
+        : confidenceCounts.high + confidenceCounts.medium >= Math.max(1, Math.ceil(selected.length * 0.8))
+          ? 'medium'
+          : 'low';
+  const lowConfidence = selected.length < K || similarConfidence === 'low';
+
+  const lowConfidenceReasonCodes = [];
+  if (!baseSemanticStrong) lowConfidenceReasonCodes.push('BASE_SEMANTIC_WEAK');
+  if (filteredByVertical > 0) lowConfidenceReasonCodes.push('CATEGORY_MISMATCH_FILTERED');
+  if (selected.length < K) lowConfidenceReasonCodes.push('UNDERFILL_FOR_QUALITY');
+  if (!lowConfidenceReasonCodes.length && lowConfidence) lowConfidenceReasonCodes.push('INSUFFICIENT_HIGH_CONFIDENCE');
+
   return {
     items: selected.slice(0, K),
+    metadata: {
+      similar_confidence: similarConfidence,
+      low_confidence: lowConfidence,
+      low_confidence_reason_codes: lowConfidenceReasonCodes,
+      retrieval_mix: {
+        internal: sourceCounts.internal,
+        external: sourceCounts.external,
+      },
+      base_semantic: {
+        brand: base.brand || null,
+        vertical: base.vertical || UNKNOWN_VERTICAL,
+        inferred: Boolean(baseSemantic?.vertical_inferred ?? base.verticalInferred),
+        signal_strength: signalStrength,
+      },
+    },
     debug: {
       base: {
         product_id: base.productId,
@@ -597,10 +682,16 @@ function pickLayeredRecommendations({
         price_amount: base.priceAmount || null,
         currency: base.currency,
         is_external: base.isExternal,
+        vertical: base.vertical || UNKNOWN_VERTICAL,
       },
       layers: layerCounts,
       candidates_total: candidates.length,
       sources: sourceCounts,
+      confidence: confidenceCounts,
+      filters: {
+        by_vertical: filteredByVertical,
+        by_confidence: filteredByConfidence,
+      },
     },
   };
 }
@@ -886,6 +977,150 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 3);
 }
 
+function collectExternalLookupKeys(baseProduct) {
+  const baseProductId = String(getProductId(baseProduct) || '').trim();
+  const externalSeedId = String(
+    baseProduct?.external_seed_id || baseProduct?.externalSeedId || '',
+  ).trim();
+  const externalProductIds = [
+    String(baseProduct?.external_product_id || baseProduct?.externalProductId || '').trim(),
+    String(baseProduct?.platform_product_id || baseProduct?.platformProductId || '').trim(),
+    baseProductId.startsWith('ext_') ? baseProductId : '',
+  ]
+    .filter(Boolean)
+    .filter((value, index, self) => self.indexOf(value) === index);
+
+  return { externalSeedId, externalProductIds };
+}
+
+async function loadExternalSeedSemanticRecord(baseProduct) {
+  if (!process.env.DATABASE_URL) return null;
+  const { externalSeedId, externalProductIds } = collectExternalLookupKeys(baseProduct);
+  if (!externalSeedId && !externalProductIds.length) return null;
+
+  const clauses = [];
+  const params = [];
+
+  if (externalSeedId) {
+    params.push(externalSeedId);
+    clauses.push(`id::text = $${params.length}`);
+  }
+
+  for (const externalProductId of externalProductIds) {
+    params.push(externalProductId);
+    const bind = `$${params.length}`;
+    clauses.push(
+      `(external_product_id = ${bind} OR seed_data->>'external_product_id' = ${bind} OR seed_data->>'product_id' = ${bind})`,
+    );
+  }
+
+  if (!clauses.length) return null;
+
+  try {
+    const res = await query(
+      `
+        SELECT id, external_product_id, title, seed_data, updated_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND (${clauses.join(' OR ')})
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT 1
+      `,
+      params,
+    );
+    return res.rows?.[0] || null;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (msg.includes('external_product_seeds') && msg.includes('does not exist')) {
+      return null;
+    }
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        product_id: getProductId(baseProduct),
+      },
+      'recommendations external semantic lookup failed',
+    );
+    return null;
+  }
+}
+
+async function enrichExternalBaseProduct(baseProduct) {
+  if (!isExternalProduct(baseProduct)) {
+    const inferred = inferVerticalFromProduct(baseProduct);
+    return {
+      product: baseProduct,
+      semantic: {
+        vertical: inferred.vertical,
+        vertical_inferred: inferred.inferred,
+        signal_strength: computeSemanticSignalStrength({
+          brand: getBrandName(baseProduct),
+          leafCategory: getLeafCategory(baseProduct),
+          vertical: inferred.vertical,
+        }),
+        rescue_applied: false,
+        rescue_fields: [],
+      },
+    };
+  }
+
+  const enriched = { ...baseProduct };
+  const rescueFields = [];
+  const seedRecord = await loadExternalSeedSemanticRecord(baseProduct);
+  const seedData = ensureJsonObject(seedRecord?.seed_data);
+
+  const seedBrand = String(seedData?.brand || seedData?.snapshot?.brand || '').trim();
+  if (!getBrandName(enriched) && seedBrand) {
+    if (!String(enriched.brand || '').trim()) enriched.brand = seedBrand;
+    if (!String(enriched.vendor || '').trim()) enriched.vendor = seedBrand;
+    rescueFields.push('brand');
+  }
+
+  const seedCategory = String(
+    seedData?.category || seedData?.product?.category || seedData?.snapshot?.category || '',
+  ).trim();
+  if (!getLeafCategory(enriched) && seedCategory) {
+    if (!String(enriched.category || '').trim()) enriched.category = seedCategory;
+    if (!String(enriched.product_type || '').trim()) enriched.product_type = seedCategory;
+    rescueFields.push('category');
+  }
+
+  const seedTitle = String(seedData?.title || seedRecord?.title || '').trim();
+  if (!String(enriched.title || '').trim() && seedTitle) {
+    enriched.title = seedTitle;
+    rescueFields.push('title');
+  }
+
+  const seedDescription = String(seedData?.description || seedData?.snapshot?.description || '').trim();
+  if (!String(enriched.description || '').trim() && seedDescription) {
+    enriched.description = seedDescription;
+    rescueFields.push('description');
+  }
+
+  if (!String(enriched.external_seed_id || '').trim() && seedRecord?.id) {
+    enriched.external_seed_id = String(seedRecord.id);
+  }
+  if (!String(enriched.external_product_id || '').trim() && seedRecord?.external_product_id) {
+    enriched.external_product_id = String(seedRecord.external_product_id);
+  }
+
+  const inferred = inferVerticalFromProduct(enriched);
+  return {
+    product: enriched,
+    semantic: {
+      vertical: inferred.vertical,
+      vertical_inferred: inferred.inferred,
+      signal_strength: computeSemanticSignalStrength({
+        brand: getBrandName(enriched),
+        leafCategory: getLeafCategory(enriched),
+        vertical: inferred.vertical,
+      }),
+      rescue_applied: rescueFields.length > 0,
+      rescue_fields: rescueFields,
+    },
+  };
+}
+
 async function recommend({
   pdp_product,
   k = 6,
@@ -893,15 +1128,15 @@ async function recommend({
   currency = null,
   options = {},
 }) {
-  const baseProduct = pdp_product || {};
-  const baseProductId = getProductId(baseProduct);
+  const rawBaseProduct = pdp_product || {};
+  const baseProductId = getProductId(rawBaseProduct);
   if (!baseProductId) {
     return { items: [], debug: { error: 'missing_product_id' } };
   }
-  const baseMerchantId = getMerchantId(baseProduct);
+  const baseMerchantId = getMerchantId(rawBaseProduct);
   const safeK = Math.max(1, Math.min(Number(k || 6) || 6, 30));
 
-  const baseCurrency = currency || normalizeCurrency(baseProduct, 'USD');
+  const baseCurrency = currency || normalizeCurrency(rawBaseProduct, 'USD');
   const cacheKey = JSON.stringify({
     merchant_id: baseMerchantId || null,
     product_id: baseProductId,
@@ -926,8 +1161,10 @@ async function recommend({
   }
 
   const start = Date.now();
+  const { product: baseProduct, semantic: baseSemantic } = await enrichExternalBaseProduct(rawBaseProduct);
   const baseBrand = getBrandName(baseProduct);
   const baseLeaf = getLeafCategory(baseProduct);
+  const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
   const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
@@ -961,7 +1198,7 @@ async function recommend({
     PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
     Math.ceil(safeK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
   );
-  const shouldSkipExternal = !providedExternal && internalCount >= skipExternalMin;
+  const shouldSkipExternal = !providedExternal && internalCount >= skipExternalMin && baseSemanticStrong;
 
   const externalCandidates = shouldSkipExternal
     ? []
@@ -992,11 +1229,16 @@ async function recommend({
     internalCandidates,
     externalCandidates,
     k: safeK,
+    baseSemantic,
   });
 
   const elapsedMs = Date.now() - start;
   const result = {
     items: picked.items,
+    metadata: {
+      ...(picked.metadata || {}),
+      low_confidence: Boolean(picked?.metadata?.low_confidence),
+    },
     debug: {
       ...picked.debug,
       timing_ms: elapsedMs,
@@ -1007,7 +1249,9 @@ async function recommend({
         external_timed_out: externalTimedOut,
         external_skipped: shouldSkipExternal,
         external_skip_min_candidates: skipExternalMin,
+        base_semantic_strong: baseSemanticStrong,
       },
+      base_semantic: baseSemantic || null,
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,
     },
   };
@@ -1026,6 +1270,9 @@ async function recommend({
       candidates_total: picked.debug?.candidates_total,
       layers: picked.debug?.layers,
       sources: picked.debug?.sources,
+      similar_confidence: picked?.metadata?.similar_confidence || null,
+      low_confidence: Boolean(picked?.metadata?.low_confidence),
+      underfill: Math.max(0, safeK - (picked.items?.length || 0)),
     },
     'PDP recommendations generated',
   );

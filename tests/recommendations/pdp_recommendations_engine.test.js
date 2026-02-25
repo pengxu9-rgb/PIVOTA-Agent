@@ -238,4 +238,106 @@ describe('RecommendationEngine (PDP)', () => {
     expect(second.items).toHaveLength(2);
     expect(second.items.map((item) => item.product_id)).toEqual(expect.arrayContaining(['B1', 'B2']));
   });
+
+  test('h) fragrance base blocks obvious tools drift', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tom_ford_noir',
+      title: 'Tom Ford Noir Extreme Eau de Parfum',
+      category: 'Fragrance',
+      price: 180,
+      source: 'external_seed',
+    });
+
+    const internal = [
+      makeProduct({ merchant_id: 'm1', product_id: 'F1', title: 'Noir Fragrance', category: 'Fragrance', price: 170 }),
+      makeProduct({ merchant_id: 'm1', product_id: 'F2', title: 'Amber Eau de Parfum', category: 'Fragrance', price: 175 }),
+      makeProduct({ merchant_id: 'm2', product_id: 'F3', title: 'Spice Cologne', category: 'Fragrance', price: 188 }),
+      makeProduct({ merchant_id: 'm2', product_id: 'F4', title: 'Woody Perfume', category: 'Fragrance', price: 182 }),
+      makeProduct({ merchant_id: 'm3', product_id: 'T1', title: 'Makeup Brush Set', category: 'Tools', price: 25 }),
+      makeProduct({ merchant_id: 'm3', product_id: 'T2', title: 'Foundation Brush', category: 'Tools', price: 22 }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: internal,
+      externalCandidates: [],
+      k: 12,
+    });
+
+    expect(out.items).toHaveLength(4);
+    expect(out.metadata?.low_confidence).toBe(true);
+    expect(out.items.every((item) => !/brush/i.test(item.title))).toBe(true);
+  });
+
+  test('i) weak base semantics must not skip external retrieval', async () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_weak_semantic_base',
+      title: 'Item 123',
+      source: 'external_seed',
+      price: 80,
+    });
+
+    const internal = Array.from({ length: 20 }).map((_, index) =>
+      makeProduct({
+        merchant_id: `m_${index}`,
+        product_id: `int_${index}`,
+        title: `Internal Candidate ${index}`,
+        category: 'Misc',
+        price: 50 + index,
+      }),
+    );
+
+    const result = await recommend({
+      pdp_product: base,
+      k: 6,
+      options: { debug: true, internal_candidates: internal },
+    });
+
+    expect(result?.debug?.fetch_strategy?.external_skipped).toBe(false);
+  });
+
+  test('j) external base uses balanced internal/external mix', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_balance_base',
+      title: 'Date Night Perfume',
+      category: 'Fragrance',
+      source: 'external_seed',
+      price: 120,
+    });
+
+    const internal = Array.from({ length: 6 }).map((_, index) =>
+      makeProduct({
+        merchant_id: `mi_${index}`,
+        product_id: `internal_${index}`,
+        title: `Internal Perfume ${index}`,
+        category: 'Fragrance',
+        price: 110 + index,
+      }),
+    );
+    const external = Array.from({ length: 6 }).map((_, index) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `external_${index}`,
+        title: `External Perfume ${index}`,
+        category: 'Fragrance',
+        price: 112 + index,
+        source: 'external_seed',
+      }),
+    );
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: internal,
+      externalCandidates: external,
+      k: 6,
+    });
+
+    const internalCount = out.items.filter((item) => !_internals.isExternalProduct(item)).length;
+    const externalCount = out.items.filter((item) => _internals.isExternalProduct(item)).length;
+    expect(Math.abs(internalCount - externalCount)).toBeLessThanOrEqual(1);
+    expect(internalCount + externalCount).toBe(out.items.length);
+  });
 });
