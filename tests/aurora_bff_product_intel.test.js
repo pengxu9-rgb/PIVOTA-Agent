@@ -72,6 +72,65 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
   });
 
+  test('/v1/product/parse returns actionable reason when fallback is disabled and upstream parse misses', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product',
+        answer: 'not json payload',
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_diag_disabled_1')
+      .send({ text: 'Unknown product seed' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(card.payload.parse_source).toBe('none');
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('upstream_missing_or_unstructured');
+    expect(card.payload.missing_info).toContain('catalog_fallback_disabled');
+    expect(Array.isArray(card.payload.recovery_path)).toBe(true);
+  });
+
+  test('/v1/product/parse surfaces backend-not-configured reason when fallback is enabled', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product',
+        answer: 'not json payload',
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_diag_backend_missing_1')
+      .send({ text: 'Unknown product seed' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('catalog_backend_not_configured');
+    expect(card.payload.missing_info).toContain('pivota_backend_not_configured');
+  });
+
   test('/v1/product/analyze maps aurora structured.analyze into normalized evidence', async () => {
     const app = require('../src/server');
     const res = await request(app)
@@ -177,6 +236,53 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(candidates.length).toBeGreaterThan(0);
     expect(candidates.some((q) => /theordinary|ordinary/i.test(String(q || '')))).toBe(true);
     expect(candidates.some((q) => /peptide|serum/i.test(String(q || '')))).toBe(true);
+  });
+
+  test('product-intel kb key uses fingerprint fallback for non-anchor routine products', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const key1 = __internal.buildProductIntelKbKey({
+      parsedProduct: {
+        brand: 'Biotherm',
+        name: 'Force Supreme Cleanser',
+      },
+      lang: 'EN',
+    });
+    const key2 = __internal.buildProductIntelKbKey({
+      parsedProduct: {
+        brand: 'Biotherm',
+        name: 'Force Supreme Cleanser',
+      },
+      lang: 'EN',
+    });
+    expect(key1).toMatch(/^fp:[a-f0-9]{64}\|lang:EN$/);
+    expect(key2).toBe(key1);
+    expect(
+      __internal.resolveProductIntelKbKeyQuality({
+        parsedProduct: { brand: 'Biotherm', name: 'Force Supreme Cleanser' },
+        lang: 'EN',
+      }),
+    ).toBe('fingerprint');
+  });
+
+  test('product-intel kb key prefers URL over anchor_id when both are present', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const key = __internal.buildProductIntelKbKey({
+      productUrl: 'https://example.com/products/abc?utm_source=test',
+      parsedProduct: {
+        product_id: 'sku_anchor_123',
+        brand: 'Example',
+        name: 'Example Product',
+      },
+      lang: 'EN',
+    });
+    expect(key).toBe('url:https://example.com/products/abc|lang:EN');
+    expect(
+      __internal.resolveProductIntelKbKeyQuality({
+        productUrl: 'https://example.com/products/abc?utm_source=test',
+        parsedProduct: { product_id: 'sku_anchor_123' },
+        lang: 'EN',
+      }),
+    ).toBe('url');
   });
 
   test('realtime competitor query plan keeps diversified active-intent seed when max queries is low', () => {
@@ -1519,6 +1625,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.product.product_id).toBe('p_catalog_1');
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('catalog_fallback_used');
+    expect(card.payload.parse_source).toBe('catalog_resolve');
+    expect(Array.isArray(card.payload.recovery_path)).toBe(true);
+    expect(card.payload.recovery_path).toContain('catalog_resolve');
   });
 
   test('/v1/product/analyze resolves anchor via catalog resolve fast-path before deep-scan', async () => {
@@ -1667,12 +1776,14 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .send({ url: 'https://example.com/non-catalog-product.html' })
       .expect(200);
 
-    expect(deepScanCalls).toBe(0);
+    expect(deepScanCalls).toBe(1);
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(String(card.payload.assessment?.verdict || '')).toMatch(/Unknown|未知/);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('product_not_resolved');
+    expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
+    expect(card.payload.assessment.reasons.join(' ')).toMatch(/no-anchor deep scan|无锚点 Deep Scan/i);
     expect(card.payload.internal_debug_codes).toBeUndefined();
     expect(card.payload.missing_info_internal).toBeUndefined();
   });
@@ -1801,6 +1912,160 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         kb_key: expect.any(String),
       }),
     );
+  });
+
+  test('/v1/product/analyze retries URL fetch with fallback strategy when default profile is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .get('/product-fallback-ua.html')
+      .matchHeader('User-Agent', (value) => !/curl\/8/i.test(String(value || '')))
+      .reply(403, 'blocked by waf');
+
+    nock('https://brand.example')
+      .get('/product-fallback-ua.html')
+      .matchHeader('User-Agent', /curl\/8/i)
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Defense Lotion SPF 35 | Lab</title></head>
+         <body>
+           <p class="ingredients-flyout-content" data-original-ingredients="Avobenzone 3%, Homosalate 7%, Octisalate 5%, Octocrylene 10%, Oxybenzone 6%, Glycerin, Squalane, Sodium Hyaluronate"></p>
+           <div class="reviews">Hydrating texture and comfortable finish.</div>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'comp_fallback_1',
+            sku_id: 'comp_fallback_1',
+            brand: 'Alt Brand',
+            name: 'Daily Defense SPF Lotion',
+            display_name: 'Alt Brand Daily Defense SPF Lotion',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_fetch_fallback_1')
+      .send({ url: 'https://brand.example/product-fallback-ua.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('url_fetch_recovered_with_fallback');
+    expect(card.payload.provenance?.url_fetch?.final_strategy).toBe('curl_ua');
+    expect(Array.isArray(card.payload.evidence?.sources)).toBe(true);
+    expect(card.payload.evidence.sources.some((x) => String(x?.type || '') === 'official_page')).toBe(true);
+  });
+
+  test('/v1/product/analyze returns diagnosable degraded payload when URL fetch is blocked end-to-end', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .persist()
+      .get('/blocked-all.html')
+      .reply(403, 'blocked');
+    nock('https://www.brand.example')
+      .persist()
+      .get('/blocked-all.html')
+      .reply(403, 'blocked');
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(200, '<html><body>No results</body></html>', { 'Content-Type': 'text/html' });
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { products: [] });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_fetch_blocked_1')
+      .send({ url: 'https://brand.example/blocked-all.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(String(card.payload.assessment?.verdict || '')).toMatch(/Unknown|未知/);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('url_fetch_forbidden_403');
+    expect(card.payload.missing_info).toContain('on_page_fetch_blocked');
+    expect(card.payload.provenance?.url_fetch?.failure_code).toBe('url_fetch_forbidden_403');
+    expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
+    expect(card.payload.assessment.reasons.join(' ')).toMatch(/INCI|official page|官方页面/i);
+  });
+
+  test('/v1/product/analyze uses regulatory source when official page is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .persist()
+      .get('/blocked-with-regulatory.html')
+      .reply(403, 'blocked');
+    nock('https://www.brand.example')
+      .persist()
+      .get('/blocked-with-regulatory.html')
+      .reply(403, 'blocked');
+
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(
+        200,
+        '<html><body><a href="/dailymed/drugInfo.cfm?setid=abc123">LAB SERIES DAY RESCUE</a></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/drugInfo.cfm')
+      .query({ setid: 'abc123' })
+      .reply(
+        200,
+        '<html><body>Active ingredients Avobenzone 3%, Oxybenzone 6%, Octocrylene 10%. Uses Sunscreen.</body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { products: [] });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_regulatory_1')
+      .send({ url: 'https://brand.example/blocked-with-regulatory.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(String(card.payload.assessment?.verdict || '')).not.toMatch(/Unknown|未知/);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('regulatory_source_used');
+    expect(card.payload.missing_info).toContain('version_verification_needed');
+    expect(Array.isArray(card.payload.evidence?.sources)).toBe(true);
+    expect(card.payload.evidence.sources.some((x) => String(x?.type || '') === 'regulatory')).toBe(true);
   });
 
   test('/v1/product/analyze schedules async competitor enrich when first-pass competitor recall fails', async () => {
