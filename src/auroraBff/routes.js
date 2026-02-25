@@ -480,6 +480,8 @@ const AURORA_LLM_OPENAI_FALLBACK_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_PRODUCT_INTEL_LLM_PROVIDER = normalizeChatLlmProvider(process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER || '');
+const AURORA_PRODUCT_INTEL_LLM_MODEL = normalizeChatLlmModel(process.env.AURORA_PRODUCT_INTEL_LLM_MODEL || '');
 const AURORA_PRODUCT_RELEVANCE_QA_MODE = (() => {
   const explicitMode = String(process.env.AURORA_LLM_QA_MODE || '')
     .trim()
@@ -17483,134 +17485,9 @@ function resolveProductIntelLlmRoute({ req = null, requestedProvider = null, req
     headerModel ||
     AURORA_PRODUCT_INTEL_LLM_MODEL ||
     null;
-  if (coerceBoolean(process.env.AURORA_DIAG_FORCE_GEMINI)) {
-    return {
-      llm_provider: 'gemini',
-      llm_model: AURORA_DIAG_FORCE_GEMINI_MODEL,
-    };
-  }
   return { llm_provider, llm_model };
 }
 
-function resolveProductIntelEscalationRoute({ req = null } = {}) {
-  if (coerceBoolean(process.env.AURORA_DIAG_FORCE_GEMINI)) {
-    return {
-      llm_provider: 'gemini',
-      llm_model: AURORA_DIAG_FORCE_GEMINI_MODEL,
-      stage: 'stage_2',
-      trigger_reason: 'diag_force_gemini',
-    };
-  }
-  const headerProvider =
-    req && typeof req.get === 'function'
-      ? normalizeChatLlmProvider(req.get('X-LLM-Escalation-Provider') ?? req.get('X-Aurora-LLM-Escalation-Provider'))
-      : null;
-  const headerModel =
-    req && typeof req.get === 'function'
-      ? normalizeChatLlmModel(req.get('X-LLM-Escalation-Model') ?? req.get('X-Aurora-LLM-Escalation-Model'))
-      : null;
-  const llm_provider = headerProvider || AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER || null;
-  const llm_model = headerModel || AURORA_PRODUCT_INTEL_ESCALATION_MODEL || null;
-  return {
-    llm_provider,
-    llm_model,
-    stage: 'stage_2',
-    trigger_reason: 'unknown_low_evidence',
-  };
-}
-
-function isUnknownProductAnalysisPayload(payload) {
-  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : {};
-  const verdict = String(assessment?.verdict || '').trim().toLowerCase();
-  return !verdict || verdict === 'unknown' || verdict === '未知';
-}
-
-function getProductAnalysisEvidenceCoverageScore(payload) {
-  const p = isPlainObject(payload) ? payload : {};
-  const evidence = isPlainObject(p.evidence) ? p.evidence : {};
-  const science = isPlainObject(evidence.science) ? evidence.science : {};
-  const social = isPlainObject(evidence.social_signals || evidence.socialSignals) ? (evidence.social_signals || evidence.socialSignals) : {};
-  const keyIngredients = Array.isArray(science.key_ingredients || science.keyIngredients) ? (science.key_ingredients || science.keyIngredients) : [];
-  const mechanisms = Array.isArray(science.mechanisms) ? science.mechanisms : [];
-  const fitNotes = Array.isArray(science.fit_notes || science.fitNotes) ? (science.fit_notes || science.fitNotes) : [];
-  const riskNotes = Array.isArray(science.risk_notes || science.riskNotes) ? (science.risk_notes || science.riskNotes) : [];
-  const expertNotes = Array.isArray(evidence.expert_notes || evidence.expertNotes) ? (evidence.expert_notes || evidence.expertNotes) : [];
-  const socialSignals = [
-    ...(Array.isArray(social.typical_positive || social.typicalPositive) ? (social.typical_positive || social.typicalPositive) : []),
-    ...(Array.isArray(social.typical_negative || social.typicalNegative) ? (social.typical_negative || social.typicalNegative) : []),
-    ...(Array.isArray(social.risk_for_groups || social.riskForGroups) ? (social.risk_for_groups || social.riskForGroups) : []),
-  ];
-  const sources = Array.isArray(evidence.sources) ? evidence.sources : [];
-  let score = 0;
-  if (keyIngredients.length) score += 0.35;
-  if (mechanisms.length || fitNotes.length) score += 0.2;
-  if (riskNotes.length) score += 0.15;
-  if (expertNotes.length) score += 0.1;
-  if (socialSignals.length) score += 0.1;
-  if (sources.length) score += 0.1;
-  return Math.max(0, Math.min(1, Number(score.toFixed(3))));
-}
-
-function shouldTriggerProductIntelEscalation(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return true;
-  if (!isUnknownProductAnalysisPayload(payload)) return false;
-  return getProductAnalysisEvidenceCoverageScore(payload) < 0.45;
-}
-
-function isProductIntelPayloadCandidateBetter(nextPayload, currentPayload) {
-  const nextAssessment = isPlainObject(nextPayload?.assessment);
-  const currentAssessment = isPlainObject(currentPayload?.assessment);
-  if (nextAssessment && !currentAssessment) return true;
-  if (!nextAssessment) return false;
-  const nextScore = getProductAnalysisEvidenceCoverageScore(nextPayload);
-  const currentScore = getProductAnalysisEvidenceCoverageScore(currentPayload);
-  if (nextScore > currentScore + 0.08) return true;
-  if (!isUnknownProductAnalysisPayload(nextPayload) && isUnknownProductAnalysisPayload(currentPayload)) return true;
-  return false;
-}
-
-function appendProductIntelSourceChain(payload, chainEntries = []) {
-  const p = isPlainObject(payload) ? payload : {};
-  const provenance = isPlainObject(p.provenance) ? p.provenance : {};
-  const existing = Array.isArray(provenance.source_chain) ? provenance.source_chain : [];
-  const merged = uniqCaseInsensitiveStrings(
-    [
-      ...existing,
-      ...(Array.isArray(chainEntries) ? chainEntries : []),
-    ],
-    10,
-  );
-  return {
-    ...p,
-    provenance: {
-      ...provenance,
-      ...(merged.length ? { source_chain: merged } : {}),
-    },
-  };
-}
-
-function attachProductIntelLlmRouteProvenance(payload, llmRouteMeta = null) {
-  const p = isPlainObject(payload) ? payload : payload;
-  if (!isPlainObject(p)) return payload;
-  const route = isPlainObject(llmRouteMeta) ? llmRouteMeta : {};
-  const provider = String(route.provider || route.llm_provider || '').trim();
-  const model = String(route.model || route.llm_model || '').trim();
-  const stage = String(route.stage || '').trim() || 'stage_1';
-  const triggerReason = String(route.trigger_reason || route.triggerReason || '').trim() || 'primary';
-  const provenance = isPlainObject(p.provenance) ? p.provenance : {};
-  return {
-    ...p,
-    provenance: {
-      ...provenance,
-      llm_route: {
-        stage,
-        provider: provider || null,
-        model: model || null,
-        trigger_reason: triggerReason,
-      },
-    },
-  };
-}
 function classifyStorageError(err) {
   const code = err && err.code ? String(err.code) : null;
   const sqlState = code && /^[0-9A-Z]{5}$/.test(code) ? code : null;
@@ -28063,12 +27940,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestedProvider: parsed.data.llm_provider,
         requestedModel: parsed.data.llm_model,
       });
-      let llmRouteMeta = {
-        stage: 'stage_1',
-        provider: productIntelLlmRoute.llm_provider || null,
-        model: productIntelLlmRoute.llm_model || null,
-        trigger_reason: 'primary',
-      };
 
       const input = parsed.data.url || parsed.data.text;
       const query = `Task: Parse the user's product input into a normalized product entity.\n` +
@@ -28083,6 +27954,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           baseUrl: AURORA_DECISION_BASE_URL,
           query,
           timeoutMs: AURORA_CHAT_UPSTREAM_TIMEOUT_MS,
+          ...(productIntelLlmRoute.llm_provider ? { llm_provider: productIntelLlmRoute.llm_provider } : {}),
+          ...(productIntelLlmRoute.llm_model ? { llm_model: productIntelLlmRoute.llm_model } : {}),
         });
       } catch (err) {
         // ignore; fall back below
@@ -28277,12 +28150,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestedProvider: parsed.data.llm_provider,
         requestedModel: parsed.data.llm_model,
       });
-      let llmRouteMeta = {
-        stage: 'stage_1',
-        provider: productIntelLlmRoute.llm_provider || null,
-        model: productIntelLlmRoute.llm_model || null,
-        trigger_reason: 'primary',
-      };
 
       const incomingSession =
         parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
@@ -28650,6 +28517,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             query: parseQuery,
             timeoutMs: AURORA_CHAT_UPSTREAM_TIMEOUT_MS,
             ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
+            ...(productIntelLlmRoute.llm_provider ? { llm_provider: productIntelLlmRoute.llm_provider } : {}),
+            ...(productIntelLlmRoute.llm_model ? { llm_model: productIntelLlmRoute.llm_model } : {}),
           });
 
           const parseStructured = (() => {
@@ -28739,8 +28608,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             timeoutMs,
             ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
             ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
-            ...(effectiveRoute.llm_provider ? { llm_provider: effectiveRoute.llm_provider } : {}),
-            ...(effectiveRoute.llm_model ? { llm_model: effectiveRoute.llm_model } : {}),
+            ...(productIntelLlmRoute.llm_provider ? { llm_provider: productIntelLlmRoute.llm_provider } : {}),
+            ...(productIntelLlmRoute.llm_model ? { llm_model: productIntelLlmRoute.llm_model } : {}),
           });
         } catch {
           return null;
@@ -37658,12 +37527,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             requestedProvider: llmProvider,
             requestedModel: llmModel,
           });
-          let fitCheckLlmRouteMeta = {
-            stage: 'stage_1',
-            provider: fitCheckLlmRoute.llm_provider || null,
-            model: fitCheckLlmRoute.llm_model || null,
-            trigger_reason: 'primary',
-          };
           const commonMeta = {
             profile: profileSummary,
             recentLogs,
@@ -37697,6 +37560,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 query: parseQuery,
                 timeoutMs: 12000,
                 ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
+                ...(fitCheckLlmRoute.llm_provider ? { llm_provider: fitCheckLlmRoute.llm_provider } : {}),
+                ...(fitCheckLlmRoute.llm_model ? { llm_model: fitCheckLlmRoute.llm_model } : {}),
               });
               const parseStructured =
                 parseUpstream && parseUpstream.structured && typeof parseUpstream.structured === 'object' && !Array.isArray(parseUpstream.structured)
@@ -37737,8 +37602,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 timeoutMs,
                 ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
                 ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
-                ...(effectiveRoute.llm_provider ? { llm_provider: effectiveRoute.llm_provider } : {}),
-                ...(effectiveRoute.llm_model ? { llm_model: effectiveRoute.llm_model } : {}),
+                ...(fitCheckLlmRoute.llm_provider ? { llm_provider: fitCheckLlmRoute.llm_provider } : {}),
+                ...(fitCheckLlmRoute.llm_model ? { llm_model: fitCheckLlmRoute.llm_model } : {}),
               });
             } catch {
               return null;

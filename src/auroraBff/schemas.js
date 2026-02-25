@@ -347,6 +347,8 @@ const ProductParseRequestSchema = z
   .object({
     text: z.string().min(1).optional(),
     url: z.string().url().optional(),
+    llm_provider: z.string().min(1).optional(),
+    llm_model: z.string().min(1).optional(),
   })
   .strict();
 
@@ -356,6 +358,8 @@ const ProductAnalyzeRequestSchema = z
     url: z.string().url().optional(),
     name: z.string().min(1).optional(),
     force_refresh: z.boolean().optional(),
+    llm_provider: z.string().min(1).optional(),
+    llm_model: z.string().min(1).optional(),
   })
   .strict();
 
