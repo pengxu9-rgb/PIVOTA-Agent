@@ -480,6 +480,7 @@ const AURORA_LLM_OPENAI_FALLBACK_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_DIAG_FORCE_GEMINI = coerceBoolean(process.env.AURORA_DIAG_FORCE_GEMINI);
 const AURORA_PRODUCT_INTEL_LLM_PROVIDER = normalizeChatLlmProvider(process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER || '');
 const AURORA_PRODUCT_INTEL_LLM_MODEL = normalizeChatLlmModel(process.env.AURORA_PRODUCT_INTEL_LLM_MODEL || '');
 const AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER = normalizeChatLlmProvider(
@@ -507,6 +508,9 @@ const AURORA_PURCHASABLE_FALLBACK_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED = coerceBoolean(
+  process.env.AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED || 'true',
+);
 const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = (() => {
   const raw = String(process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED || 'true')
     .trim()
@@ -4235,6 +4239,56 @@ function hasAnchorCategorySignals(candidate) {
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
     .map((value) => String(value || '').trim())
     .some(Boolean);
+}
+
+function isSkincareCatalogProduct(product) {
+  const p = product && typeof product === 'object' ? product : {};
+  const joined = [
+    p.category,
+    p.category_name,
+    p.category_path,
+    p.name,
+    p.display_name,
+    p.title,
+    p.product_type,
+    p.type,
+    p.tags,
+  ]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').toLowerCase())
+    .join(' ');
+  if (!joined.trim()) return true;
+  const skincareHit = /(skincare|cleanser|serum|essence|moistur|cream|toner|mask|sunscreen|spf|lotion|barrier|护肤|洁面|精华|面霜|乳液|爽肤水|面膜|防晒|修护)/.test(
+    joined,
+  );
+  const poisonHit = /(brush|blush|foundation brush|makeup brush|eyeshadow|lipstick|mascara|化妆刷|腮红刷|彩妆刷)/.test(
+    joined,
+  );
+  if (poisonHit) return false;
+  return skincareHit;
+}
+
+function isSkincareCatalogCard(card) {
+  if (!card || typeof card !== 'object' || Array.isArray(card)) return true;
+  const type = String(card.type || '')
+    .trim()
+    .toLowerCase();
+  if (type === 'product_parse') {
+    const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+    const product = payload.product && typeof payload.product === 'object' ? payload.product : null;
+    return isSkincareCatalogProduct(product);
+  }
+  if (type === 'offers_resolved') {
+    const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    if (!items.length) return true;
+    return items.every((item) => {
+      const product =
+        item && typeof item === 'object' && item.product && typeof item.product === 'object' ? item.product : null;
+      return isSkincareCatalogProduct(product);
+    });
+  }
+  return true;
 }
 
 function evaluateAnchorProductSkincareGuard(candidate, { strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER } = {}) {
