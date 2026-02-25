@@ -297,6 +297,60 @@ function getTimezoneOffsetHours(timeZone, nowMs) {
   }
 }
 
+function isValidIanaTimezone(timeZoneRaw) {
+  const tz = normalizeText(timeZoneRaw, 80);
+  if (!tz) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date(0));
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+const TIMEZONE_ALIAS_MAP = Object.freeze({
+  'san francisco': 'America/Los_Angeles',
+  'san francisco ca': 'America/Los_Angeles',
+  'los angeles': 'America/Los_Angeles',
+  'new york': 'America/New_York',
+  london: 'Europe/London',
+  paris: 'Europe/Paris',
+  lyon: 'Europe/Paris',
+  tokyo: 'Asia/Tokyo',
+  beijing: 'Asia/Shanghai',
+  shanghai: 'Asia/Shanghai',
+  'hong kong': 'Asia/Hong_Kong',
+  singapore: 'Asia/Singapore',
+  sydney: 'Australia/Sydney',
+});
+
+function normalizeLocationHint(value) {
+  const text = normalizeText(value, 160).toLowerCase();
+  if (!text) return '';
+  return text
+    .replace(/[()]/g, ' ')
+    .replace(/[,/\\_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveTimezoneFromHints(hints, fallback = 'UTC') {
+  for (const raw of Array.isArray(hints) ? hints : []) {
+    const direct = normalizeText(raw, 80);
+    if (isValidIanaTimezone(direct)) return direct;
+
+    const hint = normalizeLocationHint(raw);
+    if (!hint) continue;
+    if (TIMEZONE_ALIAS_MAP[hint]) return TIMEZONE_ALIAS_MAP[hint];
+
+    for (const [token, tz] of Object.entries(TIMEZONE_ALIAS_MAP)) {
+      if (!token) continue;
+      if (hint.includes(token)) return tz;
+    }
+  }
+  return isValidIanaTimezone(fallback) ? fallback : 'UTC';
+}
+
 function normalizePreviewProducts(recommendationCandidates, language) {
   const out = [];
   for (const row of Array.isArray(recommendationCandidates) ? recommendationCandidates : []) {
@@ -453,14 +507,26 @@ function buildPersonalFocus({ language, profile, destinationSummary, summaryTags
   return out.slice(0, 3);
 }
 
-function buildJetlagSleep({ language, profile, destinationWeather, homeWeather, nowMs }) {
-  const tzHome =
-    normalizeText(homeWeather && homeWeather.location && homeWeather.location.timezone, 80) ||
-    normalizeText(profile && profile.region, 80) ||
-    'UTC';
-  const tzDestination =
-    normalizeText(destinationWeather && destinationWeather.location && destinationWeather.location.timezone, 80) ||
-    tzHome;
+function buildJetlagSleep({ language, profile, destinationWeather, homeWeather, destination, nowMs }) {
+  const tzHome = resolveTimezoneFromHints(
+    [
+      homeWeather && homeWeather.location && homeWeather.location.timezone,
+      profile && profile.home_timezone,
+      homeWeather && homeWeather.location && homeWeather.location.name,
+      profile && profile.region,
+    ],
+    'UTC',
+  );
+  const tzDestination = resolveTimezoneFromHints(
+    [
+      destinationWeather && destinationWeather.location && destinationWeather.location.timezone,
+      destinationWeather && destinationWeather.location && destinationWeather.location.name,
+      destination,
+      destinationWeather && destinationWeather.destination,
+      profile && profile.travel_plan && profile.travel_plan.destination,
+    ],
+    tzHome,
+  );
 
   const homeOffset = getTimezoneOffsetHours(tzHome, nowMs);
   const destinationOffset = getTimezoneOffsetHours(tzDestination, nowMs);
@@ -571,7 +637,14 @@ function buildTravelReadiness({
   const summaryTags = buildSummaryTags({ temperature, humidity, uv, wind, precip, hasHomeBaseline });
   const adaptiveActions = buildAdaptiveActions({ language: lang, summaryTags });
   const personalFocus = buildPersonalFocus({ language: lang, profile, destinationSummary, summaryTags });
-  const jetlagSleep = buildJetlagSleep({ language: lang, profile, destinationWeather, homeWeather, nowMs });
+  const jetlagSleep = buildJetlagSleep({
+    language: lang,
+    profile,
+    destinationWeather,
+    homeWeather,
+    destination: destinationText,
+    nowMs,
+  });
   const confidence = buildConfidence({ language: lang, profile, recentLogs, destinationWeather, hasHomeBaseline, destination: destinationText });
   const recoBundle = buildRecoBundle({
     language: lang,
@@ -641,5 +714,6 @@ module.exports = {
     normalizePreviewProducts,
     normalizeFallbackPreviewProductsFromRecoBundle,
     getTimezoneOffsetHours,
+    resolveTimezoneFromHints,
   },
 };

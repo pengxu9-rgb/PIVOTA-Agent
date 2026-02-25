@@ -130,6 +130,27 @@ test('buildJetlagSleep derives high risk for large timezone differences', () => 
   assert.ok(jetlag.mask_tips.length >= 1);
 });
 
+test('buildJetlagSleep resolves timezone names from location labels when IANA tz is unavailable', () => {
+  const jetlag = __internal.buildJetlagSleep({
+    language: 'EN',
+    profile: { region: 'San Francisco, CA' },
+    destination: 'Tokyo',
+    destinationWeather: {
+      location: { name: 'Tokyo', timezone: null },
+    },
+    homeWeather: {
+      location: { name: 'San Francisco, CA', timezone: null },
+    },
+    nowMs: Date.parse('2026-02-23T12:00:00.000Z'),
+  });
+
+  assert.equal(jetlag.tz_home, 'America/Los_Angeles');
+  assert.equal(jetlag.tz_destination, 'Asia/Tokyo');
+  assert.equal(typeof jetlag.hours_diff, 'number');
+  assert.ok(jetlag.hours_diff >= 9);
+  assert.equal(jetlag.risk_level, 'high');
+});
+
 test('buildTravelReadiness backfills shopping preview products from reco_bundle when catalog products are missing', () => {
   const payload = buildTravelReadiness({
     language: 'EN',

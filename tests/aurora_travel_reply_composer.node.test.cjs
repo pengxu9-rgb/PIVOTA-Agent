@@ -166,6 +166,26 @@ test('travelReplyComposer avoids unsupported temperature-swing claim in humidity
   assert.match(result.text, /humidity shift is mild/i);
 });
 
+test('travelReplyComposer keeps humidity-only answer grounded even when temperature delta is large', () => {
+  const readiness = buildReadiness({ baselineStatus: 'ok' });
+  readiness.delta_vs_home.humidity = { home: 78, destination: 58, delta: -20, unit: '%' };
+  readiness.delta_vs_home.temperature = { home: 31, destination: 22, delta: -9, unit: 'C' };
+  readiness.adaptive_actions = [];
+
+  const result = composeTravelReply({
+    message: 'Will it be humid there?',
+    language: 'EN',
+    travelReadiness: readiness,
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  assert.match(result.text, /Humidity: 78% -> 58%/);
+  assert.doesNotMatch(result.text, /temperature swings/i);
+  assert.match(result.text, /destination humidity is lower than home/i);
+});
+
 test('travelReplyComposer avoids same-text replay for repeated same focus in-session', () => {
   const first = composeTravelReply({
     message: 'How humid is it there?',

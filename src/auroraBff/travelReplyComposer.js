@@ -252,6 +252,29 @@ function getMetricByFocus(deltaVsHome, focus) {
   return null;
 }
 
+function getDeltaKeysForDisplay(foci) {
+  const keys = [];
+  const pushKey = (key) => {
+    if (!key || keys.includes(key)) return;
+    keys.push(key);
+  };
+
+  for (const focus of Array.isArray(foci) ? foci : []) {
+    if (focus === FOCUS_ENUM.TEMPERATURE) pushKey('temperature');
+    if (focus === FOCUS_ENUM.HUMIDITY) pushKey('humidity');
+    if (focus === FOCUS_ENUM.UV) pushKey('uv');
+    if (focus === FOCUS_ENUM.WIND) pushKey('wind');
+    if (focus === FOCUS_ENUM.PRECIP) pushKey('precip');
+  }
+
+  if (!keys.length) {
+    pushKey('temperature');
+    pushKey('humidity');
+    pushKey('uv');
+  }
+  return keys.slice(0, 3);
+}
+
 function buildPrimaryAnswer({ language, primaryFocus, travelReadiness, destinationLabel, repeated }) {
   const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
     ? travelReadiness.delta_vs_home
@@ -311,29 +334,13 @@ function buildPrimaryAnswer({ language, primaryFocus, travelReadiness, destinati
   return `${repeatPrefix}${t(language, '我先回答你的重点，再给你下一步该做什么。', 'I will answer your key point first, then give concrete next steps.')}`;
 }
 
-function buildComparisonLines({ language, foci, travelReadiness }) {
+function buildComparisonLines({ language, foci, travelReadiness, displayedDeltaKeys }) {
   const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
     ? travelReadiness.delta_vs_home
     : {};
-  const keys = [];
-  const pushKey = (key) => {
-    if (!key || keys.includes(key)) return;
-    keys.push(key);
-  };
-
-  for (const focus of Array.isArray(foci) ? foci : []) {
-    if (focus === FOCUS_ENUM.TEMPERATURE) pushKey('temperature');
-    if (focus === FOCUS_ENUM.HUMIDITY) pushKey('humidity');
-    if (focus === FOCUS_ENUM.UV) pushKey('uv');
-    if (focus === FOCUS_ENUM.WIND) pushKey('wind');
-    if (focus === FOCUS_ENUM.PRECIP) pushKey('precip');
-  }
-
-  if (!keys.length) {
-    pushKey('temperature');
-    pushKey('humidity');
-    pushKey('uv');
-  }
+  const keys = Array.isArray(displayedDeltaKeys) && displayedDeltaKeys.length
+    ? displayedDeltaKeys.slice(0, 3)
+    : getDeltaKeysForDisplay(foci);
 
   const mapping = {
     temperature: { labelCn: '温度', labelEn: 'Temperature' },
@@ -359,13 +366,18 @@ function buildComparisonLines({ language, foci, travelReadiness }) {
   return lines;
 }
 
-function buildActionLines({ language, foci, travelReadiness }) {
+function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys }) {
   const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
     ? travelReadiness.delta_vs_home
     : {};
   const lines = [];
   const focusHumidity = Array.isArray(foci) && foci.includes(FOCUS_ENUM.HUMIDITY);
   const focusTemperature = Array.isArray(foci) && foci.includes(FOCUS_ENUM.TEMPERATURE);
+  const shownDeltaKeys = new Set(
+    Array.isArray(displayedDeltaKeys) && displayedDeltaKeys.length
+      ? displayedDeltaKeys
+      : getDeltaKeysForDisplay(foci),
+  );
 
   if (Array.isArray(foci) && foci.includes(FOCUS_ENUM.UV)) {
     const uvDestination = toNumber(delta?.uv?.destination);
@@ -391,7 +403,7 @@ function buildActionLines({ language, foci, travelReadiness }) {
   if (focusHumidity || focusTemperature) {
     const humidityDelta = toNumber(delta?.humidity?.delta);
     const temperatureDelta = toNumber(delta?.temperature?.delta);
-    if (humidityDelta != null && humidityDelta >= 8) {
+    if (shownDeltaKeys.has('humidity') && humidityDelta != null && humidityDelta >= 8) {
       lines.push(
         t(
           language,
@@ -399,7 +411,15 @@ function buildActionLines({ language, foci, travelReadiness }) {
           'Switch AM to lighter hydration (gel/lotion), keep a medium repair cream at night, and avoid active stacking.',
         ),
       );
-    } else if (focusTemperature || (temperatureDelta != null && Math.abs(temperatureDelta) >= 3)) {
+    } else if (shownDeltaKeys.has('humidity') && humidityDelta != null && humidityDelta <= -8) {
+      lines.push(
+        t(
+          language,
+          '目的地比常驻地更干时，早晚升级为修护保湿，夜间可在易干部位薄涂封层。',
+          'When destination humidity is lower than home, upgrade to richer AM/PM barrier hydration and add a thin occlusive layer on dry-prone areas at night.',
+        ),
+      );
+    } else if ((focusTemperature || shownDeltaKeys.has('temperature')) && temperatureDelta != null && Math.abs(temperatureDelta) >= 3) {
       lines.push(
         t(
           language,
@@ -407,7 +427,7 @@ function buildActionLines({ language, foci, travelReadiness }) {
           'With larger temperature swings, keep barrier cream AM/PM and add a thin occlusive layer at night if needed.',
         ),
       );
-    } else if (focusHumidity) {
+    } else if (focusHumidity || shownDeltaKeys.has('humidity')) {
       lines.push(
         t(
           language,
@@ -608,6 +628,7 @@ function composeTravelReply({
 
   const foci = detectTravelFoci(message);
   const focusToken = foci.join('+');
+  const displayedDeltaKeys = getDeltaKeysForDisplay(foci);
   const replySig = buildReplySignature({ foci, travelReadiness: readiness, homeRegion: homeRegionText });
   const normalizedPrevFocus = normalizeText(previousFocus, 60).toLowerCase();
   const normalizedPrevSig = normalizeText(previousReplySig, 260).toLowerCase();
@@ -642,12 +663,14 @@ function composeTravelReply({
     language: lang,
     foci,
     travelReadiness: readiness,
+    displayedDeltaKeys,
   });
 
   const actionLines = buildActionLines({
     language: lang,
     foci,
     travelReadiness: readiness,
+    displayedDeltaKeys,
   });
 
   const productLines = buildProductLines({
