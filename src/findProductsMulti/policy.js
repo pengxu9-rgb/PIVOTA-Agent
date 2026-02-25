@@ -13,7 +13,7 @@ const {
 } = require('../auroraBff/visionMetrics');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v41';
+const POLICY_VERSION = 'find_products_multi_policy_v42';
 const STRATEGY_VERSION = 'ambiguity_gate_v2';
 const SEARCH_AMBIGUITY_GATE_ENABLED =
   String(process.env.SEARCH_AMBIGUITY_GATE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -392,6 +392,17 @@ function isLingerieRelaxedCandidate(product) {
   if (isBeautyToolLikeProduct(product)) return false;
   if (hasPetSignalInProduct(product)) return false;
   if (isToyLikeText(text)) return false;
+  return inferProductDomainKey(product) === 'human_apparel';
+}
+
+function isStrictLingerieAllowedCandidate(product) {
+  if (isLingerieLikeProduct(product)) return true;
+  const text = buildProductText(product);
+  if (!text) return false;
+  if (isBeautyToolLikeProduct(product)) return false;
+  if (hasPetSignalInProduct(product)) return false;
+  if (isToyLikeText(text)) return false;
+  if (isLingerieRelaxedCandidate(product)) return true;
   return inferProductDomainKey(product) === 'human_apparel';
 }
 
@@ -2064,15 +2075,12 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
   }
 
   // ---------- Lingerie strict scope guard ----------
-  if (riskLevel !== 'hard_block' && strictLingerieIntent && !isLingerieLikeProduct(product)) {
-    const productText = buildProductText(product);
-    const disallowedCrossVertical =
-      isBeautyToolLikeProduct(product) ||
-      hasPetSignalInProduct(product) ||
-      isToyLikeText(productText);
-    const allowSoftLingerieFallback =
-      !disallowedCrossVertical && inferProductDomainKey(product) === 'human_apparel';
-    if (isLingerieRelaxedCandidate(product) || allowSoftLingerieFallback) {
+  if (
+    riskLevel !== 'hard_block' &&
+    strictLingerieIntent &&
+    !isLingerieLikeProduct(product)
+  ) {
+    if (isStrictLingerieAllowedCandidate(product)) {
       if (riskLevel === 'ok') riskLevel = 'soft_block';
       reasonCodes.add(REASON_CODES.LINGERIE_RELAXED_MATCH);
     } else {
@@ -3628,7 +3636,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       if (evalMeta.reason_codes.includes(REASON_CODES.SAFETY_RISK)) return false;
       if (evalMeta.reason_codes.includes(REASON_CODES.ADULT_UNREQUESTED)) return false;
       if (evalMeta.reason_codes.includes(REASON_CODES.COMPAT_INCOMPATIBLE)) return false;
-      if (strictLingerieIntent && !isLingerieLikeProduct(product)) return false;
+      if (strictLingerieIntent && !isStrictLingerieAllowedCandidate(product)) return false;
       return true;
     });
     const rescued = safeRescuedCandidates.slice(0, Math.max(1, SEARCH_FAIL_OPEN_PRE_NONEMPTY_LIMIT));
@@ -3651,7 +3659,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   let failOpenApplied = false;
   if (canFailOpenPreNonEmpty) {
     const rescuePool = strictLingerieIntent
-      ? preDomainFilterCandidates.filter((product) => isLingerieLikeProduct(product))
+      ? preDomainFilterCandidates.filter((product) => isStrictLingerieAllowedCandidate(product))
       : preDomainFilterCandidates;
     const rescued = rescuePool.slice(0, SEARCH_FAIL_OPEN_PRE_NONEMPTY_LIMIT);
     if (rescued.length > 0) {
@@ -3968,11 +3976,23 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const strictLingerieFilteredOut = strictLingerieIntent
     ? Math.max(
         strictLingerieNonMatchingBefore,
-        preDomainFilterCandidates.filter((product) => !isLingerieLikeProduct(product)).length,
+        preDomainFilterCandidates.filter((product) => !isStrictLingerieAllowedCandidate(product))
+          .length,
       )
     : 0;
+  const requestedLimitRaw = Number(
+    requestPayload?.search?.limit ??
+      requestPayload?.search?.page_size ??
+      requestPayload?.limit ??
+      requestPayload?.page_size ??
+      NaN,
+  );
+  const requestedLimit = Number.isFinite(requestedLimitRaw)
+    ? Math.max(1, Math.floor(requestedLimitRaw))
+    : 0;
+  const strictLingerieRecallReference = requestedLimit > 0 ? requestedLimit : Math.max(1, before);
   const strictLingerieRecallTarget = strictLingerieIntent
-    ? Math.min(Math.max(1, STRICT_LINGERIE_MIN_RECALL_TARGET), Math.max(1, before))
+    ? Math.min(Math.max(1, STRICT_LINGERIE_MIN_RECALL_TARGET), strictLingerieRecallReference)
     : 0;
   const strictLingerieLowRecallReason = strictLingerieIntent
     ? after === 0

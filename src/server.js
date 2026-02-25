@@ -8815,6 +8815,42 @@ function buildPetFallbackQuery(intent, rawUserQuery) {
   }
 }
 
+function buildStrictLingerieFallbackQuery(rawUserQuery = '', intent = null) {
+  const base = String(rawUserQuery || '').trim();
+  const language = String(intent?.language || '').trim().toLowerCase();
+  const seedTerms = [
+    'lingerie',
+    'underwear',
+    'bra',
+    'panties',
+    'bralette',
+    'bodysuit',
+    'sleepwear',
+    'nightwear',
+    'chemise',
+    'babydoll',
+    'corset',
+    'shapewear',
+  ];
+
+  if (language.startsWith('zh')) {
+    seedTerms.push('内衣', '文胸', '胸罩', '塑身衣', '睡衣', '睡裙');
+  } else if (language.startsWith('ja')) {
+    seedTerms.push('ランジェリー', '下着', 'ブラ', 'パンティ', 'ナイトウェア');
+  } else if (language.startsWith('fr')) {
+    seedTerms.push('lingerie', 'sous-vetement', 'soutien-gorge', 'culotte', 'nuisette');
+  } else if (language.startsWith('es')) {
+    seedTerms.push('lenceria', 'ropa interior', 'sujetador', 'bragas');
+  }
+
+  const merged = uniqueStrings(
+    [base, ...seedTerms]
+      .map((item) => String(item || '').trim())
+      .filter(Boolean),
+  );
+  return merged.join(' ').trim();
+}
+
 async function loadCreatorProductFromCache(creatorId, productId) {
   const config = getCreatorConfig(creatorId);
   if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) return null;
@@ -16222,11 +16258,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            ? { search_all_merchants: true }
 	            : {}),
 	          ...(search.query != null ? { query: String(search.query || '') } : {}),
-	          ...(search.category
-	            ? { category: search.category }
-	            : strictLingerieScopeForSearch
-	              ? { category: 'lingerie' }
-	              : {}),
+	          ...(search.category ? { category: search.category } : {}),
 	          ...(priceMin != null ? { min_price: priceMin } : {}),
 	          ...(priceMax != null ? { max_price: priceMax } : {}),
 	          in_stock_only: search.in_stock_only !== false,
@@ -17971,6 +18003,143 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           logger.warn(
             { err: err.message, creatorId, source: metadata?.source },
             'Pet apparel fallback from creator cache failed',
+          );
+        }
+      }
+
+      const searchForBackfill = effectivePayload.search || effectivePayload || {};
+      const requestedLimitForBackfill = Math.min(
+        Math.max(
+          1,
+          Number(searchForBackfill.limit || searchForBackfill.page_size || requestedFindProductsMultiLimit || 20) ||
+            20,
+        ),
+        100,
+      );
+      const strictLingerieBackfillTarget = Math.min(
+        requestedLimitForBackfill,
+        Math.max(
+          2,
+          Number(process.env.SEARCH_STRICT_LINGERIE_MIN_RESULTS_TARGET || 6) || 6,
+        ),
+      );
+      const currentProductsForBackfill = Array.isArray(maybePolicy?.products) ? maybePolicy.products : [];
+      const shouldApplyStrictLingerieBackfill =
+        enforceStrictLingeriePolicy &&
+        process.env.DATABASE_URL &&
+        requestedLimitForBackfill > 0 &&
+        currentProductsForBackfill.length < strictLingerieBackfillTarget;
+      if (shouldApplyStrictLingerieBackfill) {
+        try {
+          const fallbackQuery = buildStrictLingerieFallbackQuery(rawUserQuery, effectiveIntent);
+          const fallbackLimit = Math.min(
+            100,
+            Math.max(
+              strictLingerieBackfillTarget * 4,
+              Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_FETCH_LIMIT || 60) || 60,
+            ),
+          );
+          const fromCache = await searchCrossMerchantFromCache(fallbackQuery, 1, fallbackLimit, {
+            inStockOnly: searchForBackfill.in_stock_only !== false,
+          });
+          const fallbackData = {
+            products: Array.isArray(fromCache?.products) ? fromCache.products : [],
+            total: Number(fromCache?.total || 0),
+            page: 1,
+            page_size: Array.isArray(fromCache?.products) ? fromCache.products.length : 0,
+            reply: null,
+            metadata: {
+              query_source: 'cache_cross_merchant_lingerie_backfill',
+              fetched_at: new Date().toISOString(),
+              merchants_searched: null,
+              ...(fromCache?.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
+            },
+          };
+          const fallbackPolicy = applyFindProductsMultiPolicy({
+            response: fallbackData,
+            intent: effectiveIntent,
+            requestPayload: {
+              ...effectivePayload,
+              search: {
+                ...(effectivePayload.search || {}),
+                query: fallbackQuery,
+              },
+            },
+            metadata: policyMetadata,
+            rawUserQuery,
+          });
+          const fallbackProducts = Array.isArray(fallbackPolicy?.products) ? fallbackPolicy.products : [];
+          const mergedProducts = collapseNearDuplicateSearchProducts(
+            [...currentProductsForBackfill, ...fallbackProducts],
+            { perTitleLimit: 2 },
+          );
+          const addedCount = Math.max(0, mergedProducts.length - currentProductsForBackfill.length);
+          if (addedCount > 0) {
+            const existingPolicyMeta =
+              maybePolicy?.metadata &&
+              typeof maybePolicy.metadata === 'object' &&
+              !Array.isArray(maybePolicy.metadata)
+                ? maybePolicy.metadata
+                : {};
+            const existingSearchDecision =
+              existingPolicyMeta.search_decision &&
+              typeof existingPolicyMeta.search_decision === 'object' &&
+              !Array.isArray(existingPolicyMeta.search_decision)
+                ? existingPolicyMeta.search_decision
+                : {};
+            const existingReasonCodes = Array.isArray(existingSearchDecision.reason_codes)
+              ? existingSearchDecision.reason_codes.map((code) => String(code || '').trim()).filter(Boolean)
+              : [];
+            const updatedReasonCodes = Array.from(
+              new Set([...existingReasonCodes, 'STRICT_LINGERIE_BACKFILL_APPLIED']),
+            );
+            const existingRouteDebug =
+              existingPolicyMeta.route_debug &&
+              typeof existingPolicyMeta.route_debug === 'object' &&
+              !Array.isArray(existingPolicyMeta.route_debug)
+                ? existingPolicyMeta.route_debug
+                : {};
+            maybePolicy = {
+              ...maybePolicy,
+              products: mergedProducts,
+              total: Math.max(
+                Number(maybePolicy?.total || 0) || 0,
+                Number(fallbackPolicy?.total || 0) || 0,
+                mergedProducts.length,
+              ),
+              page_size: mergedProducts.length,
+              metadata: {
+                ...existingPolicyMeta,
+                search_decision: {
+                  ...existingSearchDecision,
+                  post_candidates: mergedProducts.length,
+                  lingerie_rescued_count:
+                    Math.max(0, Number(existingSearchDecision.lingerie_rescued_count || 0) || 0) + addedCount,
+                  low_recall_reason:
+                    mergedProducts.length < strictLingerieBackfillTarget
+                      ? 'STRICT_SCOPE_UNDERFILL'
+                      : null,
+                  reason_codes: updatedReasonCodes,
+                },
+                route_debug: {
+                  ...existingRouteDebug,
+                  lingerie_backfill: {
+                    applied: true,
+                    query: fallbackQuery,
+                    fetch_limit: fallbackLimit,
+                    from_cache_count: Array.isArray(fromCache?.products) ? fromCache.products.length : 0,
+                    from_policy_count: fallbackProducts.length,
+                    added_count: addedCount,
+                    target_count: strictLingerieBackfillTarget,
+                  },
+                },
+              },
+            };
+          }
+        } catch (err) {
+          logger.warn(
+            { err: err?.message || String(err), source: metadata?.source },
+            'Strict lingerie backfill from cross-merchant cache failed',
           );
         }
       }
