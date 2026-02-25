@@ -18033,7 +18033,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             100,
             Math.max(
               strictLingerieBackfillTarget * 3,
-              Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_FETCH_LIMIT_PER_QUERY || 30) || 30,
+              Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_FETCH_LIMIT_PER_QUERY || 80) || 80,
             ),
           );
           const fallbackRawProducts = [];
@@ -18049,9 +18049,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               total: Number(fromCache?.total || 0),
             });
             fallbackRawProducts.push(...products);
-            if (fallbackRawProducts.length >= strictLingerieBackfillTarget * 6) {
-              break;
-            }
           }
           const seenFallbackProductKeys = new Set();
           const dedupedFallbackRawProducts = [];
