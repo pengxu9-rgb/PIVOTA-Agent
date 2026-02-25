@@ -62,10 +62,6 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'url_fetch_recovered_with_fallback': 'url_fetch_recovered_with_fallback',
   'on_page_fetch_blocked': 'on_page_fetch_blocked',
   'regulatory_source_used': 'regulatory_source_used',
-  'incidecoder_source_used': 'incidecoder_source_used',
-  'incidecoder_no_match': 'incidecoder_no_match',
-  'incidecoder_fetch_failed': 'incidecoder_fetch_failed',
-  'incidecoder_unverified_not_persisted': 'incidecoder_unverified_not_persisted',
   'version_verification_needed': 'version_verification_needed',
   'price_unknown': 'price_temporarily_unavailable',
   'price_missing': 'price_temporarily_unavailable',
@@ -125,10 +121,6 @@ const PRODUCT_ANALYSIS_USER_VISIBLE_EXACT = new Set([
   'url_fetch_recovered_with_fallback',
   'on_page_fetch_blocked',
   'regulatory_source_used',
-  'incidecoder_source_used',
-  'incidecoder_no_match',
-  'incidecoder_fetch_failed',
-  'incidecoder_unverified_not_persisted',
   'version_verification_needed',
 ]);
 
@@ -508,16 +500,16 @@ function normalizeEvidence(raw) {
     if (!row) continue;
     const type = String(row.type || '').trim().toLowerCase();
     if (!type) continue;
-    if (type !== 'official_page' && type !== 'regulatory' && type !== 'inci_decoder') continue;
+    if (type !== 'official_page' && type !== 'regulatory') continue;
     const url = String(row.url || '').trim();
     if (!/^https?:\/\//i.test(url)) continue;
     const label = String(row.label || '').trim();
-    const sourceConfidence = asNumberOrNull(row.confidence);
+    const confidence = asNumberOrNull(row.confidence);
     sources.push({
       type,
       url,
       ...(label ? { label } : {}),
-      ...(sourceConfidence != null ? { confidence: Math.max(0, Math.min(1, sourceConfidence)) } : {}),
+      ...(confidence != null ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
     });
     if (sources.length >= 8) break;
   }

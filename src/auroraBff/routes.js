@@ -480,14 +480,6 @@ const AURORA_LLM_OPENAI_FALLBACK_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
-const AURORA_PRODUCT_INTEL_LLM_PROVIDER = normalizeChatLlmProvider(process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER || '');
-const AURORA_PRODUCT_INTEL_LLM_MODEL = normalizeChatLlmModel(process.env.AURORA_PRODUCT_INTEL_LLM_MODEL || '');
-const AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER = normalizeChatLlmProvider(
-  process.env.AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER || '',
-);
-const AURORA_PRODUCT_INTEL_ESCALATION_MODEL = normalizeChatLlmModel(
-  process.env.AURORA_PRODUCT_INTEL_ESCALATION_MODEL || '',
-);
 const AURORA_PRODUCT_RELEVANCE_QA_MODE = (() => {
   const explicitMode = String(process.env.AURORA_LLM_QA_MODE || '')
     .trim()
@@ -1088,7 +1080,6 @@ const ANALYSIS_STORY_MODEL_OPENAI =
 const ANALYSIS_STORY_MODEL_GEMINI =
   String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
   'gemini-2.0-flash';
-const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
   1200,
   Math.min(12000, Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 5000)),
@@ -4456,55 +4447,6 @@ function extractPageTitleFromHtml(html) {
   return stripHtmlToText(m[1]);
 }
 
-function inferBrandFromHostname(hostname) {
-  const host = String(hostname || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^www\./, '');
-  if (!host) return '';
-  const suffixTokens = new Set([
-    'com',
-    'cn',
-    'co',
-    'net',
-    'org',
-    'io',
-    'app',
-    'store',
-    'shop',
-    'beauty',
-    'official',
-    'us',
-    'uk',
-    'de',
-    'fr',
-    'it',
-    'jp',
-    'kr',
-    'au',
-    'ca',
-    'es',
-    'eu',
-  ]);
-  const segments = host.split('.').map((segment) => segment.trim()).filter(Boolean);
-  let candidate = '';
-  for (const segment of segments) {
-    if (!segment || segment.length < 3 || suffixTokens.has(segment) || /^\d+$/.test(segment)) continue;
-    candidate = segment;
-    break;
-  }
-  if (!candidate) return '';
-  return candidate
-    .split('-')
-    .map((token) => {
-      const value = String(token || '').trim();
-      if (!value) return '';
-      return `${value.charAt(0).toUpperCase()}${value.slice(1).toLowerCase()}`;
-    })
-    .filter(Boolean)
-    .join(' ')
-    .trim();
-}
 function buildProductDescriptorFromInput({
   parsedProduct = null,
   productUrl = '',
@@ -4701,301 +4643,6 @@ async function fetchDailyMedRegulatorySupplement({
       url: drugInfoUrl,
       label: 'DailyMed',
       confidence: 0.72,
-    },
-  };
-}
-
-function toIncidecoderSlug(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/['’"]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 160);
-}
-
-function extractIncidecoderProductUrls(searchHtml = '', baseUrl = 'https://incidecoder.com') {
-  const source = String(searchHtml || '');
-  if (!source) return [];
-  const out = [];
-  const seen = new Set();
-  const re = /href=["']([^"']*\/products\/[^"']+)["']/gi;
-  let m = re.exec(source);
-  while (m) {
-    const rawHref = decodeHtmlEntitiesBasic(m[1] || '').trim();
-    if (!rawHref) {
-      m = re.exec(source);
-      continue;
-    }
-    try {
-      const abs = new URL(rawHref, baseUrl);
-      const host = String(abs.hostname || '').trim().toLowerCase();
-      const path = String(abs.pathname || '').trim();
-      if (!host.endsWith('incidecoder.com')) {
-        m = re.exec(source);
-        continue;
-      }
-      if (!/^\/products\/[a-z0-9-]+$/i.test(path)) {
-        m = re.exec(source);
-        continue;
-      }
-      const normalizedUrl = `${abs.origin}${path}`;
-      const key = normalizedUrl.toLowerCase();
-      if (seen.has(key)) {
-        m = re.exec(source);
-        continue;
-      }
-      seen.add(key);
-      out.push(normalizedUrl);
-      if (out.length >= PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES) break;
-    } catch {
-      // ignore malformed links
-    }
-    m = re.exec(source);
-  }
-  return out;
-}
-
-async function fetchIncidecoderSearchCandidates({ query, timeoutMs = PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS, logger } = {}) {
-  const queryText = String(query || '').trim();
-  if (!queryText) {
-    return {
-      ok: false,
-      query: '',
-      search_url: '',
-      product_urls: [],
-      reason: 'incidecoder_query_missing',
-      fetch_meta: null,
-    };
-  }
-  const searchUrl = `https://incidecoder.com/search?query=${encodeURIComponent(queryText)}`;
-  const fetchOut = await fetchProductHtmlWithFallback({
-    productUrl: searchUrl,
-    timeoutMs: Math.max(1200, Math.min(6000, Number(timeoutMs) || PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS)),
-    allowHostVariant: false,
-    logger,
-  });
-  if (!fetchOut.ok || !fetchOut.html) {
-    return {
-      ok: false,
-      query: queryText,
-      search_url: searchUrl,
-      product_urls: [],
-      reason: String(fetchOut?.failure_code || 'incidecoder_search_fetch_failed'),
-      fetch_meta: fetchOut,
-    };
-  }
-  const productUrls = extractIncidecoderProductUrls(fetchOut.html, searchUrl);
-  return {
-    ok: productUrls.length > 0,
-    query: queryText,
-    search_url: searchUrl,
-    product_urls: productUrls,
-    reason: productUrls.length ? null : 'incidecoder_no_match',
-    fetch_meta: fetchOut,
-  };
-}
-
-async function fetchIncidecoderProductPage({ productUrl, timeoutMs = PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS, logger } = {}) {
-  const urlText = String(productUrl || '').trim();
-  if (!/^https?:\/\/(?:www\.)?incidecoder\.com\/products\/[a-z0-9-]+$/i.test(urlText)) {
-    return {
-      ok: false,
-      url: urlText,
-      reason: 'incidecoder_url_invalid',
-      fetch_meta: null,
-      html: '',
-    };
-  }
-  const fetchOut = await fetchProductHtmlWithFallback({
-    productUrl: urlText,
-    timeoutMs: Math.max(1200, Math.min(6000, Number(timeoutMs) || PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS)),
-    allowHostVariant: false,
-    logger,
-  });
-  return {
-    ok: Boolean(fetchOut.ok && fetchOut.html),
-    url: urlText,
-    reason: fetchOut.ok ? null : String(fetchOut.failure_code || 'incidecoder_detail_fetch_failed'),
-    fetch_meta: fetchOut,
-    html: fetchOut.ok ? String(fetchOut.html || '') : '',
-  };
-}
-
-function extractIncidecoderIngredientsFromHtml(html = '') {
-  const source = String(html || '');
-  if (!source) return [];
-
-  const linkedIngredients = [];
-  const linkRe = /\/ingredients\/[a-z0-9-]+["'][^>]*>([^<]{2,120})</gi;
-  let linkMatch = linkRe.exec(source);
-  while (linkMatch) {
-    const token = normalizeInciIngredientName(stripHtmlToText(linkMatch[1] || ''));
-    if (token) linkedIngredients.push(token);
-    if (linkedIngredients.length >= 160) break;
-    linkMatch = linkRe.exec(source);
-  }
-
-  const blockCandidates = [];
-  const blockPatterns = [
-    /Ingredient\s+list[\s\S]{0,1000}?<p[^>]*>([\s\S]{40,12000})<\/p>/i,
-    /Ingredients?[\s\S]{0,1000}?<div[^>]*class=["'][^"']*(?:content|ingredients)[^"']*["'][^>]*>([\s\S]{40,12000})<\/div>/i,
-    /"ingredient_list"\s*:\s*"([^"]{40,12000})"/i,
-    /"ingredients"\s*:\s*\[([^\]]{40,12000})\]/i,
-  ];
-  for (const re of blockPatterns) {
-    const match = source.match(re);
-    if (!match || !match[1]) continue;
-    const rows = splitInciList(match[1]).map((item) => normalizeInciIngredientName(item)).filter(Boolean);
-    blockCandidates.push(...rows);
-    if (blockCandidates.length >= 160) break;
-  }
-
-  const merged = uniqCaseInsensitiveStrings([...linkedIngredients, ...blockCandidates], 180);
-  return merged.slice(0, 140);
-}
-
-function tokenizeIncidecoderComparable(text) {
-  return uniqCaseInsensitiveStrings(
-    String(text || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, ' ')
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 3),
-    80,
-  );
-}
-
-function scoreIncidecoderMatch({ descriptor = null, pageTitle = '', productUrl = '' } = {}) {
-  const d = isPlainObject(descriptor) ? descriptor : {};
-  const queryTokens = tokenizeIncidecoderComparable(
-    `${pickFirstTrimmed(d.brand)} ${pickFirstTrimmed(d.name)} ${pickFirstTrimmed(d.query)}`,
-  );
-  const titleTokens = tokenizeIncidecoderComparable(`${pageTitle} ${productUrl}`);
-  if (!queryTokens.length || !titleTokens.length) return 0.35;
-  const titleSet = new Set(titleTokens);
-  const overlap = queryTokens.filter((token) => titleSet.has(token)).length;
-  const overlapScore = overlap / Math.max(1, queryTokens.length);
-  const brandToken = pickFirstTrimmed(d.brand).toLowerCase();
-  const hasBrand = brandToken && String(pageTitle || '').toLowerCase().includes(brandToken);
-  const nameToken = pickFirstTrimmed(d.name).toLowerCase();
-  const hasName = nameToken && String(pageTitle || '').toLowerCase().includes(nameToken);
-  return Math.max(0, Math.min(1, Number((overlapScore + (hasBrand ? 0.2 : 0) + (hasName ? 0.15 : 0)).toFixed(3))));
-}
-
-async function fetchIncidecoderIngredientSupplement({
-  parsedProduct = null,
-  productUrl = '',
-  timeoutMs = PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS,
-  logger,
-} = {}) {
-  const descriptor = buildProductDescriptorFromInput({ parsedProduct, productUrl });
-  if (!descriptor.query) {
-    return {
-      ok: false,
-      reason: 'incidecoder_query_missing',
-      query: '',
-      attempts: [],
-    };
-  }
-  const maxBudgetMs = Math.max(1200, Math.min(9000, Number(timeoutMs) || PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS));
-  const deadline = Date.now() + maxBudgetMs;
-  const remainingBudget = () => Math.max(800, deadline - Date.now());
-  const queryCandidates = uniqCaseInsensitiveStrings(
-    [
-      descriptor.query,
-      pickFirstTrimmed(`${descriptor.brand || ''} ${descriptor.name || ''}`),
-      descriptor.name,
-    ].filter(Boolean),
-    3,
-  );
-  const attempts = [];
-  const candidateUrls = [];
-  for (const queryText of queryCandidates) {
-    if (Date.now() >= deadline) break;
-    // eslint-disable-next-line no-await-in-loop
-    const searchOut = await fetchIncidecoderSearchCandidates({
-      query: queryText,
-      timeoutMs: remainingBudget(),
-      logger,
-    });
-    attempts.push({
-      stage: 'search',
-      query: queryText,
-      ok: Boolean(searchOut.ok),
-      reason: searchOut.reason || null,
-      status: Number.isFinite(Number(searchOut?.fetch_meta?.status)) ? Number(searchOut.fetch_meta.status) : null,
-    });
-    for (const url of Array.isArray(searchOut.product_urls) ? searchOut.product_urls : []) {
-      if (!candidateUrls.includes(url)) candidateUrls.push(url);
-      if (candidateUrls.length >= PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES) break;
-    }
-    if (candidateUrls.length >= PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES) break;
-  }
-
-  const directSlug = toIncidecoderSlug(descriptor.name || descriptor.query);
-  if (directSlug) {
-    const directUrl = `https://incidecoder.com/products/${directSlug}`;
-    if (!candidateUrls.includes(directUrl)) candidateUrls.unshift(directUrl);
-  }
-
-  let best = null;
-  for (const url of candidateUrls.slice(0, PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES)) {
-    if (Date.now() >= deadline) break;
-    // eslint-disable-next-line no-await-in-loop
-    const pageOut = await fetchIncidecoderProductPage({
-      productUrl: url,
-      timeoutMs: remainingBudget(),
-      logger,
-    });
-    const pageTitle = pageOut.ok ? extractPageTitleFromHtml(pageOut.html) : '';
-    const ingredients = pageOut.ok ? extractIncidecoderIngredientsFromHtml(pageOut.html) : [];
-    const matchScore = pageOut.ok ? scoreIncidecoderMatch({ descriptor, pageTitle, productUrl: url }) : 0;
-    attempts.push({
-      stage: 'detail',
-      url,
-      ok: Boolean(pageOut.ok),
-      reason: pageOut.reason || null,
-      ingredient_count: ingredients.length,
-      match_score: matchScore,
-      status: Number.isFinite(Number(pageOut?.fetch_meta?.status)) ? Number(pageOut.fetch_meta.status) : null,
-    });
-    if (!pageOut.ok || !ingredients.length) continue;
-    if (!best || matchScore > best.match_score || (matchScore === best.match_score && ingredients.length > best.ingredients.length)) {
-      best = {
-        source_url: url,
-        ingredients,
-        match_score: matchScore,
-        page_title: pageTitle,
-      };
-    }
-  }
-
-  if (!best || best.ingredients.length < 4 || best.match_score < PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE) {
-    const hadFetchFailure = attempts.some((item) => String(item?.reason || '').includes('fetch_failed'));
-    return {
-      ok: false,
-      query: descriptor.query,
-      reason: hadFetchFailure ? 'incidecoder_fetch_failed' : 'incidecoder_no_match',
-      attempts: attempts.slice(0, 12),
-    };
-  }
-
-  return {
-    ok: true,
-    query: descriptor.query,
-    source_url: best.source_url,
-    page_title: best.page_title,
-    ingredients: best.ingredients,
-    match_score: best.match_score,
-    attempts: attempts.slice(0, 12),
-    source: {
-      type: 'inci_decoder',
-      url: best.source_url,
-      label: 'INCIDecoder',
-      confidence: Number(Math.max(0.35, Math.min(0.82, best.match_score + 0.18)).toFixed(2)),
     },
   };
 }
@@ -6956,26 +6603,10 @@ function scheduleProductIntelKbBackfill({
   sourceMeta = null,
   logger,
 } = {}) {
-  if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED) {
-    annotateProductIntelKbWriteDecision(payload, {
-      attempted: false,
-      persisted: false,
-      blocked_reason: 'kb_backfill_disabled',
-    });
-    return { attempted: false, persisted: false, blocked_reason: 'kb_backfill_disabled' };
-  }
+  if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED) return;
   const kbKey = buildProductIntelKbKey({ productUrl, parsedProduct, lang, productHint });
-  if (!kbKey) {
-    annotateProductIntelKbWriteDecision(payload, {
-      attempted: false,
-      persisted: false,
-      blocked_reason: 'kb_key_missing',
-    });
-    return { attempted: false, persisted: false, blocked_reason: 'kb_key_missing' };
-  }
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return { attempted: false, persisted: false, blocked_reason: 'payload_missing' };
-  }
+  if (!kbKey) return;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
 
   let analysisSnapshot = null;
   try {
@@ -6993,26 +6624,6 @@ function scheduleProductIntelKbBackfill({
   }
 
   const sourceMetaObj = sourceMeta && typeof sourceMeta === 'object' && !Array.isArray(sourceMeta) ? sourceMeta : null;
-  const persistDecision = shouldPersistProductIntelKb(payload, sourceMetaObj);
-  annotateProductIntelKbWriteDecision(payload, persistDecision);
-  if (!persistDecision.persisted) {
-    logger?.debug?.(
-      {
-        kb_key: kbKey,
-        blocked_reason: persistDecision.blocked_reason || 'kb_write_blocked',
-      },
-      'aurora bff: skipped product-intel kb backfill by strict gate',
-    );
-    return persistDecision;
-  }
-  try {
-    analysisSnapshot = JSON.parse(JSON.stringify(payload));
-  } catch {
-    analysisSnapshot = null;
-  }
-  if (!analysisSnapshot || typeof analysisSnapshot !== 'object' || Array.isArray(analysisSnapshot)) {
-    return { attempted: false, persisted: false, blocked_reason: 'payload_snapshot_failed' };
-  }
   const keyQuality = resolveProductIntelKbKeyQuality({ productUrl, parsedProduct, productHint, lang });
   const mergedSourceMeta = {
     ...(sourceMetaObj || {}),
@@ -9415,7 +9026,6 @@ async function buildProductAnalysisFromUrlIngredients({
   const keyHints = extractKeyIngredientsFromHtml(html);
 
   let regulatorySupplement = null;
-  let incidecoderSupplement = null;
   if (!html || !inciList.length) {
     try {
       regulatorySupplement = await fetchDailyMedRegulatorySupplement({
@@ -9436,56 +9046,16 @@ async function buildProductAnalysisFromUrlIngredients({
     }
   }
 
-  if (PRODUCT_INTEL_INCIDECODER_ENABLED && (!html || !inciList.length)) {
-    try {
-      incidecoderSupplement = await fetchIncidecoderIngredientSupplement({
-        parsedProduct: parsedProductObj,
-        productUrl: parsedUrl.toString(),
-        timeoutMs: PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS,
-        logger,
-      });
-    } catch (err) {
-      logger?.warn?.(
-        {
-          url: parsedUrl.toString(),
-          err: err?.message || String(err),
-        },
-        'aurora bff: inci decoder supplement lookup failed',
-      );
-      incidecoderSupplement = {
-        ok: false,
-        query: '',
-        reason: 'incidecoder_fetch_failed',
-      };
-    }
-  }
-
   const regulatoryActiveInci =
     regulatorySupplement && regulatorySupplement.ok && Array.isArray(regulatorySupplement.active_ingredients)
       ? regulatorySupplement.active_ingredients
       : [];
-  const incidecoderInci =
-    incidecoderSupplement && incidecoderSupplement.ok && Array.isArray(incidecoderSupplement.ingredients)
-      ? incidecoderSupplement.ingredients
-      : [];
   const normalizedInci = uniqCaseInsensitiveStrings(
-    [...inciList, ...regulatoryActiveInci, ...incidecoderInci]
-      .map((item) => normalizeInciIngredientName(item))
-      .filter(Boolean),
-    120,
-  );
-  const officialInciNormalized = uniqCaseInsensitiveStrings(
     [...inciList, ...regulatoryActiveInci]
       .map((item) => normalizeInciIngredientName(item))
       .filter(Boolean),
     120,
   );
-  const incidecoderOverlapCount = incidecoderInci.length
-    ? incidecoderInci
-      .map((item) => normalizeInciIngredientName(item))
-      .filter(Boolean)
-      .filter((item) => officialInciNormalized.includes(item)).length
-    : 0;
   const keyIngredients = deriveKeyIngredientsForAnalysis(
     normalizedInci,
     keyHints.map((item) => normalizeInciIngredientName(item)),
@@ -9581,10 +9151,6 @@ async function buildProductAnalysisFromUrlIngredients({
           ? isCn
             ? `官网成分抓取受限，已改用监管源（DailyMed）补充活性信息（${regulatoryActiveInci.length} 项）。`
             : `Official-page INCI extraction was blocked; a regulatory source (DailyMed) was used as backup (${regulatoryActiveInci.length} active entries).`
-          : incidecoderSupplement && incidecoderSupplement.ok
-            ? isCn
-              ? `官网成分抓取受限，已改用 INCIDecoder 补充成分线索（${incidecoderInci.length} 项，需与包装 INCI 复核）。`
-              : `Official-page INCI extraction was blocked; INCIDecoder was used as a supplemental source (${incidecoderInci.length} entries, package INCI cross-check required).`
           : isCn
             ? '当前未能稳定抓取到官网 INCI 成分表，证据有限。'
             : 'The official product page could not be parsed reliably, so evidence is currently limited.',
@@ -9615,11 +9181,6 @@ async function buildProductAnalysisFromUrlIngredients({
         ? isCn
           ? '监管源可用，但不同地区/批次配方可能不同；建议继续核对实物包装。'
           : 'Regulatory evidence is available, but market/batch formulas can differ; verify against your actual package.'
-        : '',
-      incidecoderSupplement && incidecoderSupplement.ok
-        ? isCn
-          ? 'INCIDecoder 为补充证据源，不作为单一权威来源；建议与官方/监管信息交叉验证。'
-          : 'INCIDecoder is a supplemental source and should be cross-validated with official/regulatory evidence.'
         : '',
     ],
     6,
@@ -9827,13 +9388,6 @@ async function buildProductAnalysisFromUrlIngredients({
   if (regulatorySupplement && regulatorySupplement.ok) {
     evidenceMissingInfo.push('regulatory_source_used', 'version_verification_needed');
   }
-  if (incidecoderSupplement && incidecoderSupplement.ok) {
-    evidenceMissingInfo.push('incidecoder_source_used', 'version_verification_needed');
-  } else if (incidecoderSupplement && incidecoderSupplement.reason) {
-    const reasonToken = String(incidecoderSupplement.reason || '').trim().toLowerCase();
-    if (reasonToken === 'incidecoder_no_match') evidenceMissingInfo.push('incidecoder_no_match');
-    else if (reasonToken.includes('fetch')) evidenceMissingInfo.push('incidecoder_fetch_failed');
-  }
   if (!normalizedInci.length) evidenceMissingInfo.push('evidence_missing');
   if (!concentrationSignals.length) evidenceMissingInfo.push('concentration_unknown');
   if (!anchorPrice) evidenceMissingInfo.push('price_unknown');
@@ -9865,40 +9419,29 @@ async function buildProductAnalysisFromUrlIngredients({
     },
   };
 
-  const evidenceSources = [];
-  if (html) {
-    evidenceSources.push({
+  const evidenceSources = uniqCaseInsensitiveStrings(
+    [
+      html ? parsedUrl.toString() : '',
+      regulatorySupplement && regulatorySupplement.ok ? String(regulatorySupplement.source?.url || '') : '',
+    ],
+    4,
+  ).map((url) => {
+    const lower = String(url || '').trim().toLowerCase();
+    if (lower.includes('dailymed.nlm.nih.gov')) {
+      return {
+        type: 'regulatory',
+        url,
+        label: 'DailyMed',
+        confidence: 0.72,
+      };
+    }
+    return {
       type: 'official_page',
-      url: parsedUrl.toString(),
+      url,
       label: hostName || 'Official page',
       confidence: 0.78,
-    });
-  }
-  if (regulatorySupplement && regulatorySupplement.ok) {
-    evidenceSources.push({
-      type: 'regulatory',
-      url: String(regulatorySupplement.source?.url || regulatorySupplement.source_url || ''),
-      label: 'DailyMed',
-      confidence: 0.72,
-    });
-  }
-  if (incidecoderSupplement && incidecoderSupplement.ok) {
-    evidenceSources.push({
-      type: 'inci_decoder',
-      url: String(incidecoderSupplement.source?.url || incidecoderSupplement.source_url || ''),
-      label: 'INCIDecoder',
-      confidence: Number(incidecoderSupplement.source?.confidence || 0.55),
-    });
-  }
-  const normalizedEvidenceSources = evidenceSources
-    .map((item) => ({
-      type: String(item?.type || '').trim().toLowerCase(),
-      url: String(item?.url || '').trim(),
-      label: String(item?.label || '').trim(),
-      confidence: Number(item?.confidence),
-    }))
-    .filter((item) => /^https?:\/\//i.test(item.url))
-    .slice(0, 4);
+    };
+  });
 
   const urlFetchProvenance = {
     final_strategy: String(fetchOut?.final_strategy || 'none').trim() || 'none',
@@ -9909,15 +9452,6 @@ async function buildProductAnalysisFromUrlIngredients({
     })),
     ...(fetchOut?.failure_code ? { failure_code: String(fetchOut.failure_code).trim().toLowerCase() } : {}),
   };
-  const sourceChain = uniqCaseInsensitiveStrings(
-    [
-      html ? 'official_page' : '',
-      regulatorySupplement && regulatorySupplement.ok ? 'regulatory' : '',
-      incidecoderSupplement && incidecoderSupplement.ok ? 'inci_decoder' : '',
-      'llm_extraction',
-    ],
-    6,
-  );
 
   const raw = {
     assessment: {
@@ -9959,11 +9493,6 @@ async function buildProductAnalysisFromUrlIngredients({
               ? `监管源补充：DailyMed 活性信息已接入（query=${regulatorySupplement.query || 'n/a'}）。`
               : `Regulatory supplement loaded from DailyMed (query=${regulatorySupplement.query || 'n/a'}).`
             : '',
-          incidecoderSupplement && incidecoderSupplement.ok
-            ? isCn
-              ? `INCIDecoder 补充：已解析 ${incidecoderInci.length} 项成分线索（match=${Number(incidecoderSupplement.match_score || 0).toFixed(2)}）。`
-              : `INCIDecoder supplement loaded (${incidecoderInci.length} ingredients, match=${Number(incidecoderSupplement.match_score || 0).toFixed(2)}).`
-            : '',
           anchorPrice
             ? isCn
               ? `页面价格信号：${anchorPrice.currency || 'USD'} ${anchorPrice.amount}（用于同类对比）`
@@ -9998,7 +9527,7 @@ async function buildProductAnalysisFromUrlIngredients({
         ],
         8,
       ),
-      ...(normalizedEvidenceSources.length ? { sources: normalizedEvidenceSources } : {}),
+      ...(evidenceSources.length ? { sources: evidenceSources } : {}),
       confidence,
       missing_info: evidenceMissingInfo,
     },
@@ -10010,25 +9539,12 @@ async function buildProductAnalysisFromUrlIngredients({
       validation_mode: dagProvenancePatch?.validation_mode || 'soft_fail',
       ...(dagProvenancePatch && typeof dagProvenancePatch === 'object' ? dagProvenancePatch : {}),
       url_fetch: urlFetchProvenance,
-      ...(sourceChain.length ? { source_chain: sourceChain } : {}),
       ...(regulatorySupplement && regulatorySupplement.ok
         ? {
           regulatory_source: {
             provider: 'dailymed',
             url: String(regulatorySupplement.source_url || ''),
             query: String(regulatorySupplement.query || ''),
-          },
-        }
-        : {}),
-      ...(incidecoderSupplement && incidecoderSupplement.ok
-        ? {
-          inci_decoder: {
-            provider: 'incidecoder',
-            url: String(incidecoderSupplement.source_url || ''),
-            query: String(incidecoderSupplement.query || ''),
-            match_score: Number(incidecoderSupplement.match_score || 0),
-            ingredient_count: incidecoderInci.length,
-            overlap_count: incidecoderOverlapCount,
           },
         }
         : {}),
@@ -10057,12 +9573,6 @@ async function buildProductAnalysisFromUrlIngredients({
         ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
         ...(urlFetchRecoveredWithFallback ? ['url_fetch_recovered_with_fallback'] : []),
         ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
-        ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
-        ...(
-          incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason
-            ? [String(incidecoderSupplement.reason)]
-            : []
-        ),
         ...(!normalizedInci.length ? ['evidence_missing'] : []),
         ...(!anchorPrice ? ['price_unknown'] : []),
         ...(socialMissing ? ['social_signals_missing'] : []),
@@ -10133,8 +9643,6 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
       ...(urlFetchRecoveredWithFallback ? ['url_fetch_recovered_with_fallback'] : []),
       ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
-      ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
-      ...(incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason ? [String(incidecoderSupplement.reason)] : []),
       ...(!normalizedInci.length ? ['evidence_missing'] : []),
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
@@ -10185,19 +9693,6 @@ async function buildProductAnalysisFromUrlIngredients({
             url: String(regulatorySupplement.source_url || ''),
             query: String(regulatorySupplement.query || ''),
           },
-        }
-        : {}),
-      ...(incidecoderSupplement && incidecoderSupplement.ok
-        ? {
-          incidecoder_source: {
-            provider: 'incidecoder',
-            url: String(incidecoderSupplement.source_url || ''),
-            query: String(incidecoderSupplement.query || ''),
-            match_score: Number(incidecoderSupplement.match_score || 0),
-            overlap_count: incidecoderOverlapCount,
-            ingredient_count: incidecoderInci.length,
-          },
-          inci_decoder_overlap_count: incidecoderOverlapCount,
         }
         : {}),
       competitor_snapshot_meta: competitorSnapshotMeta
@@ -19655,19 +19150,7 @@ async function deepScanRoutineProductCandidate({
     `If product version cannot be confirmed, explicitly mention version verification is required.\n` +
     `Product: ${productDescriptor}`;
 
-  const routinePrimaryLlmRoute = resolveProductIntelLlmRoute({});
-  let routineLlmRouteMeta = {
-    stage: 'stage_1',
-    provider: routinePrimaryLlmRoute.llm_provider || null,
-    model: routinePrimaryLlmRoute.llm_model || null,
-    trigger_reason: 'primary',
-  };
-
-  const runDeepScan = async (queryText, timeoutMs, llmRouteOverride = null) => {
-    const effectiveRoute =
-      llmRouteOverride && typeof llmRouteOverride === 'object' && !Array.isArray(llmRouteOverride)
-        ? llmRouteOverride
-        : routinePrimaryLlmRoute;
+  const runDeepScan = async (queryText, timeoutMs) => {
     try {
       return await auroraChat({
         baseUrl: AURORA_DECISION_BASE_URL,
@@ -19675,8 +19158,6 @@ async function deepScanRoutineProductCandidate({
         timeoutMs,
         ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
         ...(productUrl ? { anchor_product_url: productUrl } : {}),
-        ...(effectiveRoute.llm_provider ? { llm_provider: effectiveRoute.llm_provider } : {}),
-        ...(effectiveRoute.llm_model ? { llm_model: effectiveRoute.llm_model } : {}),
       });
     } catch {
       return null;
@@ -19688,7 +19169,7 @@ async function deepScanRoutineProductCandidate({
   try {
     let upstream = await runDeepScan(deepScanQuery, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS);
     norm = normalizeProductAnalysisFromUpstream(upstream);
-      if (!norm.payload?.assessment) {
+    if (!norm.payload?.assessment) {
       const minimalPrefix = buildContextPrefix({
         lang,
         state: 'S4_ANALYSIS_LOADING',
@@ -19702,50 +19183,12 @@ async function deepScanRoutineProductCandidate({
         `Evidence must include science/social_signals/expert_notes.\n` +
         `If product version cannot be confirmed, explicitly mention version verification is required.\n` +
         `Product: ${productDescriptor}`;
-        const upstreamRetry = await runDeepScan(minimalQuery, Math.max(1200, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS - 600));
-        const retryNorm = normalizeProductAnalysisFromUpstream(upstreamRetry);
-        if (retryNorm.payload?.assessment) norm = retryNorm;
-      }
+      const upstreamRetry = await runDeepScan(minimalQuery, Math.max(1200, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS - 600));
+      const retryNorm = normalizeProductAnalysisFromUpstream(upstreamRetry);
+      if (retryNorm.payload?.assessment) norm = retryNorm;
+    }
 
-      const routineEscalationRoute = resolveProductIntelEscalationRoute({});
-      const routineEscalationAvailable =
-        routineEscalationRoute &&
-        routineEscalationRoute.llm_provider &&
-        routineEscalationRoute.llm_model &&
-        (
-          String(routineEscalationRoute.llm_provider || '').trim().toLowerCase() !==
-            String(routinePrimaryLlmRoute.llm_provider || '').trim().toLowerCase() ||
-          String(routineEscalationRoute.llm_model || '').trim() !== String(routinePrimaryLlmRoute.llm_model || '').trim()
-        );
-      if (routineEscalationAvailable && shouldTriggerProductIntelEscalation(norm.payload)) {
-        const escalatedUpstream = await runDeepScan(
-          deepScanQuery,
-          Math.max(9000, Math.min(18000, AURORA_CHAT_UPSTREAM_TIMEOUT_MS)),
-          routineEscalationRoute,
-        );
-        const escalatedNorm = normalizeProductAnalysisFromUpstream(escalatedUpstream);
-        if (isProductIntelPayloadCandidateBetter(escalatedNorm.payload, norm.payload)) {
-          const escalatedCodes = getProductAnalysisInternalMissingCodes(escalatedNorm.payload);
-          norm = {
-            payload: applyProductAnalysisGapContract({
-              ...escalatedNorm.payload,
-              internal_debug_codes: uniqCaseInsensitiveStrings(
-                [...escalatedCodes, 'llm_escalation_stage2_used'],
-                32,
-              ),
-            }),
-            field_missing: mergeFieldMissing(escalatedNorm.field_missing, norm.field_missing),
-          };
-          routineLlmRouteMeta = {
-            stage: String(routineEscalationRoute.stage || 'stage_2'),
-            provider: routineEscalationRoute.llm_provider || null,
-            model: routineEscalationRoute.llm_model || null,
-            trigger_reason: String(routineEscalationRoute.trigger_reason || 'unknown_low_evidence'),
-          };
-        }
-      }
-
-      const needsUrlIngredientAnalysis = (() => {
+    const needsUrlIngredientAnalysis = (() => {
       const assessment = isPlainObject(norm.payload?.assessment) ? norm.payload.assessment : null;
       if (!assessment) return true;
       const verdict = String(assessment.verdict || '').trim().toLowerCase();
@@ -19820,15 +19263,11 @@ async function deepScanRoutineProductCandidate({
       payload = { ...payload, assessment: { ...assessment, anchor_product: parsedProduct } };
     }
   }
-  payload = reconcileProductAnalysisConsistency(payload, { lang });
   payload = finalizeProductAnalysisRecoContract(payload, {
     logger,
     requestId: ctx && ctx.request_id ? ctx.request_id : 'routine_autoscan',
     mode: 'main_path',
   });
-  payload = appendProductIntelSourceChain(payload, ['llm_extraction']);
-  payload = attachProductIntelLlmRouteProvenance(payload, routineLlmRouteMeta);
-  payload = reconcileProductAnalysisConsistency(payload, { lang });
   if (realtimeUrlNormMeta && productUrl) {
     payload = applyProductAnalysisSocialProvenance(payload, {
       social_fetch_mode: 'async_refresh',
@@ -21449,35 +20888,18 @@ function coerceAnalysisStoryV2(candidate, fallbackPayload) {
   };
 }
 
-function buildRoutinePromptCard({ ctx, language, missingFields, requestId } = {}) {
+function buildRoutinePromptCard({ ctx, language, missingFields }) {
   const isCn = String(language || '').toUpperCase() === 'CN';
-  const resolvedRequestId =
-    (typeof requestId === 'string' && requestId.trim()) ||
-    (ctx && ctx.request_id ? String(ctx.request_id).trim() : '') ||
-    Date.now();
-  const normalizedMissingFields =
-    Array.isArray(missingFields) && missingFields.length ? missingFields : ['currentRoutine.am', 'currentRoutine.pm'];
-  const ctaLabel = isCn ? '补全 AM/PM Routine' : 'Add AM/PM routine';
   return {
-    card_id: `routine_prompt_${resolvedRequestId}`,
+    card_id: `routine_prompt_${ctx && ctx.request_id ? ctx.request_id : Date.now()}`,
     type: 'routine_prompt',
     payload: {
-      schema_version: 'aurora.routine_prompt.v1',
-      title: isCn ? '先补全 routine，再做精准推荐' : 'Complete routine first for precise recommendations',
-      subtitle: isCn
-        ? '你当前分析已经完成。补全 AM/PM 后，我会按你真实在用步骤做冲突规避与精准排序。'
-        : 'Your analysis is ready. Add AM/PM steps so recommendations can be ranked with conflict-aware personalization.',
-      missing_fields: normalizedMissingFields,
+      missing_fields: Array.isArray(missingFields) && missingFields.length ? missingFields : ['currentRoutine.am', 'currentRoutine.pm'],
       why_now: isCn
         ? '补全当前 AM/PM 护肤步骤后，系统会根据你现有产品做冲突规避与个性化排序。'
         : 'Complete AM/PM routine to enable conflict-aware and personalized product ranking.',
-      cta_label: ctaLabel,
-      cta_text: ctaLabel,
+      cta_label: isCn ? '补全 AM/PM Routine' : 'Add AM/PM routine',
       cta_action: 'open_routine_intake',
-      action_id: 'chip.start.routine',
-      reply_text: isCn
-        ? '我来补全 AM/PM routine，再给我个性化产品建议。'
-        : 'Let me complete AM/PM routine, then give me personalized product recommendations.',
     },
   };
 }
@@ -21616,30 +21038,25 @@ async function applyProductIntelGuardrailsToEnvelope({
   if (!isPlainObject(base)) {
     return { envelope: base, dropped: 0, externalized: 0, rejected: [] };
   }
-  const qaRuntimeObj = isPlainObject(qaRuntime) ? qaRuntime : {};
-  const qaBudgetMsRaw = qaRuntimeObj.budget_ms;
-  const qaStartedAtMsRaw = qaRuntimeObj.started_at_ms;
-  const qaMinBudgetMsRaw = qaRuntimeObj.min_budget_ms;
-  const qaAllowOpenAiFallbackRaw = qaRuntimeObj.allow_openai_fallback;
   const qaContext = {
-    budget_ms: Number.isFinite(Number(qaBudgetMsRaw)) ? Math.trunc(Number(qaBudgetMsRaw)) : null,
-    started_at_ms: Number.isFinite(Number(qaStartedAtMsRaw))
-      ? Math.trunc(Number(qaStartedAtMsRaw))
+    budget_ms: Number.isFinite(Number(qaRuntime && qaRuntime.budget_ms)) ? Math.trunc(Number(qaRuntime.budget_ms)) : null,
+    started_at_ms: Number.isFinite(Number(qaRuntime && qaRuntime.started_at_ms))
+      ? Math.trunc(Number(qaRuntime.started_at_ms))
       : null,
-    min_budget_ms: Number.isFinite(Number(qaMinBudgetMsRaw))
-      ? Math.trunc(Number(qaMinBudgetMsRaw))
+    min_budget_ms: Number.isFinite(Number(qaRuntime && qaRuntime.min_budget_ms))
+      ? Math.trunc(Number(qaRuntime.min_budget_ms))
       : AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS,
-    qa_mode: resolveQaMode(pickFirstString(qaRuntimeObj.qa_mode, AURORA_LLM_QA_MODE)),
-    qa_provider: resolveQaSingleProvider(pickFirstString(qaRuntimeObj.qa_provider, AURORA_LLM_SINGLE_PROVIDER)),
+    qa_mode: resolveQaMode(pickFirstString(qaRuntime && qaRuntime.qa_mode, AURORA_LLM_QA_MODE)),
+    qa_provider: resolveQaSingleProvider(pickFirstString(qaRuntime && qaRuntime.qa_provider, AURORA_LLM_SINGLE_PROVIDER)),
     qa_openai_fallback_enabled:
-      qaAllowOpenAiFallbackRaw !== undefined && qaAllowOpenAiFallbackRaw !== null
-        ? Boolean(qaAllowOpenAiFallbackRaw)
+      qaRuntime && qaRuntime.allow_openai_fallback !== undefined && qaRuntime.allow_openai_fallback !== null
+        ? Boolean(qaRuntime.allow_openai_fallback)
         : AURORA_LLM_OPENAI_FALLBACK_ENABLED,
     story_meta: {},
     relevance_meta: {},
   };
   const productQaMode = resolveQaMode(
-    pickFirstString(qaRuntimeObj.product_qa_mode, AURORA_PRODUCT_RELEVANCE_QA_MODE),
+    pickFirstString(qaRuntime && qaRuntime.product_qa_mode, AURORA_PRODUCT_RELEVANCE_QA_MODE),
   );
 
   const rawCards = Array.isArray(base.cards) ? base.cards.slice() : [];
@@ -27568,23 +26985,8 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
   return nextPayload;
 }
 
-function sanitizeProductAnalysisEnvelopeForResponse(envelope) {
-  if (!isPlainObject(envelope)) return envelope;
-  const cards = Array.isArray(envelope.cards) ? envelope.cards : [];
-  if (!cards.length) return envelope;
-  let changed = false;
-  const nextCards = cards.map((card) => {
-    if (!isPlainObject(card)) return card;
-    if (String(card.type || '').trim() !== 'product_analysis') return card;
-    const payload = sanitizeProductAnalysisPayloadForPrelabel(card.payload);
-    changed = true;
-    return { ...card, payload };
-  });
-  return changed ? { ...envelope, cards: nextCards } : envelope;
-}
 function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
-  const base = isPlainObject(payload) ? reconcileProductAnalysisConsistency(payload, { lang }) : payload;
-  const p = isPlainObject(base) ? { ...base } : base;
+  const p = isPlainObject(payload) ? { ...payload } : payload;
   if (!isPlainObject(p)) return payload;
   const assessment = isPlainObject(p.assessment) ? { ...p.assessment } : null;
   const verdictToken = String(assessment?.verdict || '').trim().toLowerCase();
@@ -27618,7 +27020,7 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
     14,
   );
   const hasDiagnosticCode = payloadMissing.some((token) =>
-    /(analysis_|evidence_|product_not_resolved|url_fetch_|on_page_fetch_blocked|regulatory_source_used|incidecoder_)/i.test(String(token || '')),
+    /(analysis_|evidence_|product_not_resolved|url_fetch_|on_page_fetch_blocked|regulatory_source_used)/i.test(String(token || '')),
   );
   if (!payloadMissing.length || !hasDiagnosticCode) payloadMissing.push('analysis_limited');
 
@@ -27629,12 +27031,12 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
   );
   if (!evidenceMissing.length) evidenceMissing.push('evidence_missing');
 
-  return reconcileProductAnalysisConsistency(applyProductAnalysisGapContract({
+  return applyProductAnalysisGapContract({
     ...p,
     ...(assessment ? { assessment: { ...assessment, reasons: reasons.slice(0, 8) } } : {}),
     ...(evidenceObj ? { evidence: { ...evidenceObj, missing_info: evidenceMissing } } : {}),
     missing_info: payloadMissing.slice(0, 12),
-  }), { lang });
+  });
 }
 
 function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}) {
@@ -27645,19 +27047,9 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
     if (!isPlainObject(card)) return card;
     const type = String(card.type || '').trim().toLowerCase();
     if (type !== 'product_analysis') return card;
-    const reconciledPayload = reconcileProductAnalysisConsistency(card.payload, { lang });
-    const contractedPayload = applyProductAnalysisGapContract(reconciledPayload);
-    const qualityPayload = enforceUnknownVerdictQuality(contractedPayload, { lang });
-    const sanitizedPayload = isPlainObject(qualityPayload) ? { ...qualityPayload } : qualityPayload;
-    if (isPlainObject(sanitizedPayload)) {
-      delete sanitizedPayload.internal_debug_codes;
-      delete sanitizedPayload.internalDebugCodes;
-      delete sanitizedPayload.missing_info_internal;
-      delete sanitizedPayload.missingInfoInternal;
-    }
     return {
       ...card,
-      payload: sanitizedPayload,
+      payload: enforceUnknownVerdictQuality(card.payload, { lang }),
     };
   });
   return env;
@@ -29410,16 +28802,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             enrichProductAnalysisPayload(normNoAnchor.payload, { lang: ctx.lang, profileSummary }),
             { logger, requestId: ctx.request_id, mode: 'main_path' },
           );
-          const payloadNoAnchorWithRoute = reconcileProductAnalysisConsistency(
-            attachProductIntelLlmRouteProvenance(
-              appendProductIntelSourceChain(payloadNoAnchor, ['llm_extraction']),
-              {
-                ...llmRouteMeta,
-                trigger_reason: 'anchor_missing_deepscan_degraded',
-              },
-            ),
-            { lang: ctx.lang },
-          );
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
             suggested_chips: [],
@@ -29427,7 +28809,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               {
                 card_id: `analyze_${ctx.request_id}`,
                 type: 'product_analysis',
-                payload: payloadNoAnchorWithRoute,
+                payload: payloadNoAnchor,
                 ...(normNoAnchor.field_missing?.length ? { field_missing: normNoAnchor.field_missing.slice(0, 8) } : {}),
               },
             ],
@@ -38905,6 +38287,7 @@ const __internal = {
   shouldSkipQaByBudget,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
+  isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
