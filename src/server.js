@@ -2783,11 +2783,24 @@ function extractImageUrlsFromCollection(collection) {
       continue;
     }
     if (typeof item === 'object') {
+      const nestedImage =
+        item.image && typeof item.image === 'object'
+          ? item.image
+          : null;
       const normalized =
         toHttpImageUrl(item.url) ||
         toHttpImageUrl(item.image_url) ||
         toHttpImageUrl(item.imageUrl) ||
-        toHttpImageUrl(item.src);
+        toHttpImageUrl(item.src) ||
+        toHttpImageUrl(item.main_image_url) ||
+        toHttpImageUrl(item.thumbnail_url) ||
+        toHttpImageUrl(item.thumbnailUrl) ||
+        toHttpImageUrl(item.preview_image_url) ||
+        toHttpImageUrl(item.previewImageUrl) ||
+        toHttpImageUrl(nestedImage?.url) ||
+        toHttpImageUrl(nestedImage?.image_url) ||
+        toHttpImageUrl(nestedImage?.imageUrl) ||
+        toHttpImageUrl(nestedImage?.src);
       if (normalized) urls.push(normalized);
     }
   }
@@ -7537,10 +7550,10 @@ function hasLingerieSearchSignal(queryText) {
   const q = String(queryText || '');
   if (!q) return false;
   return (
-    /\b(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|bralette|bodysuit|corset|shapewear|intimate)\b/i.test(
+    /\b(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|nightie|bralette|bodysuit|bodystocking|corset|corsetry|shapewear|intimate|chemise|babydoll|teddy|g-?string|garter|negligee|camisole)\b/i.test(
       q,
     ) ||
-    /内衣|文胸|胸罩|丁字裤|蕾丝内衣|蕾絲內衣|塑身衣|下着|ブラ|パンティ|ランジェリー|lencer[ií]a|ropa\s+interior|sujetador|bragas|sous[-\s]?v[eê]tement|soutien[-\s]?gorge/.test(
+    /内衣|文胸|胸罩|丁字裤|丁字褲|蕾丝内衣|蕾絲內衣|塑身衣|情趣内衣|情趣內衣|睡袍|睡衣|下着|ブラ|パンティ|ランジェリー|ベビードール|テディ|lencer[ií]a|ropa\s+interior|sujetador|bragas|sous[-\s]?v[eê]tement|soutien[-\s]?gorge/.test(
       q,
     )
   );
@@ -7550,10 +7563,10 @@ function hasLingerieCatalogProductSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
   return (
-    /\b(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|bralette|bodysuit|corset|shapewear|intimate)\b/i.test(
+    /\b(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|nightie|bralette|bodysuit|bodystocking|corset|corsetry|shapewear|intimate|chemise|babydoll|teddy|g-?string|garter|negligee|camisole)\b/i.test(
       text,
     ) ||
-    /内衣|文胸|胸罩|丁字裤|蕾丝内衣|蕾絲內衣|塑身衣|下着|ブラ|パンティ|ランジェリー|lencer[ií]a|ropa\s+interior|sujetador|bragas|sous[-\s]?v[eê]tement|soutien[-\s]?gorge/.test(
+    /内衣|文胸|胸罩|丁字裤|丁字褲|蕾丝内衣|蕾絲內衣|塑身衣|情趣内衣|情趣內衣|睡袍|睡衣|下着|ブラ|パンティ|ランジェリー|ベビードール|テディ|lencer[ií]a|ropa\s+interior|sujetador|bragas|sous[-\s]?v[eê]tement|soutien[-\s]?gorge/.test(
       text,
     )
   );
@@ -7588,6 +7601,25 @@ function isStrictLingerieCacheCandidate(product) {
   if (hasBeautyToolCatalogSignal(text)) return false;
   if (hasPetCatalogProductSignal(text)) return false;
   return true;
+}
+
+function shouldUseStrictLingerieBackfillInStockOnly() {
+  const raw = String(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_IN_STOCK_ONLY || '').trim().toLowerCase();
+  if (!raw) return false;
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+function resolveStrictLingerieTargetCount(requestedLimit, fallback = 6) {
+  const normalizedRequested = Math.max(1, Math.floor(Number(requestedLimit) || 1));
+  const floor = Math.max(
+    2,
+    Number(process.env.SEARCH_STRICT_LINGERIE_MIN_RESULTS_TARGET || fallback) || fallback,
+  );
+  const cap = Math.max(
+    floor,
+    Number(process.env.SEARCH_STRICT_LINGERIE_TARGET_CAP || 24) || 24,
+  );
+  return Math.min(normalizedRequested, Math.max(floor, Math.min(cap, normalizedRequested)));
 }
 
 function hasFragranceSearchSignal(queryText) {
@@ -17512,10 +17544,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const strictPrimaryProducts = primaryProducts.filter((product) =>
           isStrictLingerieCacheCandidate(product),
         );
-        const strictLingerieTarget = Math.min(
-          requestedLimit,
-          Math.max(4, Number(process.env.SEARCH_STRICT_LINGERIE_MIN_RESULTS_TARGET || 6) || 6),
-        );
+        const strictLingerieTarget = resolveStrictLingerieTargetCount(requestedLimit, 6);
+        const strictLingerieBackfillInStockOnly = shouldUseStrictLingerieBackfillInStockOnly();
         if (strictPrimaryProducts.length < strictLingerieTarget) {
           const fallbackQueries = buildStrictLingerieFallbackQueries(queryText, effectiveIntent);
           const maxFallbackQueries = Math.max(
@@ -17535,7 +17565,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           for (const fallbackQuery of selectedFallbackQueries) {
             try {
               const fromCache = await searchCrossMerchantFromCache(fallbackQuery, 1, fallbackLimitPerQuery, {
-                inStockOnly: queryParams?.in_stock_only !== false,
+                inStockOnly: strictLingerieBackfillInStockOnly,
               });
               const products = Array.isArray(fromCache?.products)
                 ? fromCache.products.filter((product) => isStrictLingerieCacheCandidate(product))
@@ -17558,13 +17588,21 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
           const mergedStrictProducts = collapseNearDuplicateSearchProducts(
             [...strictPrimaryProducts, ...fallbackRecovered],
-            { perTitleLimit: 2 },
+            { perTitleLimit: 1 },
           ).filter((product) => isStrictLingerieCacheCandidate(product));
 
           if (mergedStrictProducts.length > 0) {
-            const finalStrictProducts = mergedStrictProducts.slice(
+            const seenStrictKeys = new Set();
+            const dedupedStrictProducts = [];
+            for (const product of mergedStrictProducts) {
+              const key = buildSearchProductKey(product) || normalizeSearchProductTitleForDedupe(product);
+              if (!key || seenStrictKeys.has(key)) continue;
+              seenStrictKeys.add(key);
+              dedupedStrictProducts.push(product);
+            }
+            const finalStrictProducts = dedupedStrictProducts.slice(
               0,
-              Math.max(requestedLimit, strictLingerieTarget),
+              Math.max(strictLingerieTarget, Math.min(requestedLimit, 24)),
             );
             const normalizedMerged = normalizeAgentProductsListResponse(
               {
@@ -18318,13 +18356,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         ),
         100,
       );
-      const strictLingerieBackfillTarget = Math.min(
-        requestedLimitForBackfill,
-        Math.max(
-          2,
-          Number(process.env.SEARCH_STRICT_LINGERIE_MIN_RESULTS_TARGET || 6) || 6,
-        ),
-      );
+      const strictLingerieBackfillTarget = resolveStrictLingerieTargetCount(requestedLimitForBackfill, 6);
+      const strictLingerieBackfillInStockOnly = shouldUseStrictLingerieBackfillInStockOnly();
       const currentProductsForBackfill = Array.isArray(maybePolicy?.products) ? maybePolicy.products : [];
       const shouldApplyStrictLingerieBackfill =
         enforceStrictLingeriePolicy &&
@@ -18350,7 +18383,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const fallbackQueryResults = [];
           for (const fallbackQuery of selectedFallbackQueries) {
             const fromCache = await searchCrossMerchantFromCache(fallbackQuery, 1, fallbackLimitPerQuery, {
-              inStockOnly: searchForBackfill.in_stock_only !== false,
+              inStockOnly: strictLingerieBackfillInStockOnly,
             });
             const products = Array.isArray(fromCache?.products) ? fromCache.products : [];
             fallbackQueryResults.push({
