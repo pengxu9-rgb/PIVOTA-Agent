@@ -4147,6 +4147,256 @@ function extractPageTitleFromHtml(html) {
   return stripHtmlToText(m[1]);
 }
 
+function inferBrandFromHostname(hostname) {
+  const host = String(hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, '');
+  if (!host) return '';
+  const suffixTokens = new Set([
+    'com',
+    'cn',
+    'co',
+    'net',
+    'org',
+    'io',
+    'app',
+    'store',
+    'shop',
+    'beauty',
+    'official',
+    'us',
+    'uk',
+    'de',
+    'fr',
+    'it',
+    'jp',
+    'kr',
+    'au',
+    'ca',
+    'es',
+    'eu',
+  ]);
+  const segments = host.split('.').map((segment) => segment.trim()).filter(Boolean);
+  let candidate = '';
+  for (const segment of segments) {
+    if (!segment || segment.length < 3 || suffixTokens.has(segment) || /^\d+$/.test(segment)) continue;
+    candidate = segment;
+    break;
+  }
+  if (!candidate) return '';
+  return candidate
+    .split('-')
+    .map((token) => {
+      const value = String(token || '').trim();
+      if (!value) return '';
+      return `${value.charAt(0).toUpperCase()}${value.slice(1).toLowerCase()}`;
+    })
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
+function buildProductDescriptorFromInput({
+  parsedProduct = null,
+  productUrl = '',
+} = {}) {
+  const parsed = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const urlText = String(productUrl || '').trim();
+  let parsedUrl = null;
+  try {
+    parsedUrl = urlText ? new URL(urlText) : null;
+  } catch {
+    parsedUrl = null;
+  }
+  const pathSegments = parsedUrl
+    ? String(parsedUrl.pathname || '')
+      .split('/')
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+    : [];
+  const pathNameCandidate = pathSegments.length ? slugToCandidateProductName(pathSegments[pathSegments.length - 1]) : '';
+  const inferredBrand = parsedUrl ? inferBrandFromHostname(parsedUrl.hostname || '') : '';
+  const brand = pickFirstTrimmed(parsed?.brand, parsed?.brand_name, parsed?.brandName, inferredBrand);
+  const name = pickFirstTrimmed(
+    parsed?.name,
+    parsed?.display_name,
+    parsed?.displayName,
+    parsed?.title,
+    parsed?.product_name,
+    parsed?.productName,
+    pathNameCandidate,
+  );
+  return {
+    brand,
+    name,
+    query: pickFirstTrimmed([brand, name].filter(Boolean).join(' '), name, brand),
+  };
+}
+
+function extractDailyMedDrugInfoUrl(searchHtml = '', searchUrl = '') {
+  const source = String(searchHtml || '');
+  if (!source) return '';
+  const base = String(searchUrl || '').trim() || 'https://dailymed.nlm.nih.gov/dailymed/search.cfm';
+  const re = /href=["']([^"']*\/dailymed\/drugInfo\.cfm\?setid=[^"']+)["']/gi;
+  let m = re.exec(source);
+  while (m) {
+    const href = decodeHtmlEntitiesBasic(m[1] || '').trim();
+    if (!href) {
+      m = re.exec(source);
+      continue;
+    }
+    try {
+      const abs = new URL(href, base);
+      if (String(abs.hostname || '').trim().toLowerCase().includes('dailymed.nlm.nih.gov')) {
+        return abs.toString();
+      }
+    } catch {
+      // ignore invalid links
+    }
+    m = re.exec(source);
+  }
+  return '';
+}
+
+function extractDailyMedActiveIngredientsFromHtml(html = '') {
+  const source = String(html || '');
+  if (!source) return [];
+  const text = stripHtmlToText(source);
+  if (!text) return [];
+  const scope =
+    text.match(/active ingredients?([\s\S]{0,2400})(?:inactive ingredients|purpose|uses|warnings|do not use|stop use)/i)?.[1] ||
+    text.slice(0, 4200);
+  const out = [];
+  const re = /([A-Za-z][A-Za-z0-9()\-\/,\s]{1,80}?)\s+(\d{1,2}(?:\.\d+)?)\s*%/gi;
+  let m = re.exec(scope);
+  while (m) {
+    const ingredientName = normalizeInciIngredientName(String(m[1] || '').trim());
+    const pct = String(m[2] || '').trim();
+    if (!ingredientName || !pct) {
+      m = re.exec(scope);
+      continue;
+    }
+    out.push(`${ingredientName} ${pct}%`);
+    if (out.length >= 12) break;
+    m = re.exec(scope);
+  }
+  return uniqCaseInsensitiveStrings(out, 12);
+}
+
+function buildDailyMedRiskNotes({
+  html = '',
+  activeIngredients = [],
+  lang = 'EN',
+} = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const text = `${stripHtmlToText(html)} | ${Array.isArray(activeIngredients) ? activeIngredients.join(' | ') : ''}`.toLowerCase();
+  const out = [];
+  if (/\boxybenzone\b/.test(text)) {
+    out.push(
+      isCn
+        ? '监管源显示含 Oxybenzone（氧苯酮），敏感肌或眼周更建议先做耐受测试。'
+        : 'Regulatory source indicates Oxybenzone; sensitive users should patch test and avoid close eye area.',
+    );
+  }
+  if (/\boctocrylene\b/.test(text)) {
+    out.push(
+      isCn
+        ? '监管源显示含 Octocrylene，易熏眼人群建议先在眼眶外试用。'
+        : 'Regulatory source indicates Octocrylene; users prone to eye stinging should test away from eye contour.',
+    );
+  }
+  out.push(
+    isCn
+      ? '提醒：不同地区/批次配方可能存在差异，建议再核对你手里实物包装的 INCI。'
+      : 'Reminder: formula can vary by market/batch; verify INCI on your actual package before final decisions.',
+  );
+  return uniqCaseInsensitiveStrings(out, 4);
+}
+
+async function fetchDailyMedRegulatorySupplement({
+  parsedProduct = null,
+  productUrl = '',
+  timeoutMs = 3600,
+  lang = 'EN',
+  logger,
+} = {}) {
+  const descriptor = buildProductDescriptorFromInput({
+    parsedProduct,
+    productUrl,
+  });
+  if (!descriptor.query) return null;
+
+  const searchUrl = `https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=${encodeURIComponent(descriptor.query)}`;
+  const searchFetch = await fetchProductHtmlWithFallback({
+    productUrl: searchUrl,
+    timeoutMs: Math.max(1200, Math.min(5000, Number(timeoutMs) || 3600)),
+    allowHostVariant: false,
+    logger,
+  });
+  if (!searchFetch.ok || !searchFetch.html) {
+    return {
+      ok: false,
+      query: descriptor.query,
+      search_url: searchUrl,
+      reason: String(searchFetch?.failure_code || 'regulatory_search_failed'),
+    };
+  }
+  const drugInfoUrl = extractDailyMedDrugInfoUrl(searchFetch.html, searchUrl);
+  if (!drugInfoUrl) {
+    return {
+      ok: false,
+      query: descriptor.query,
+      search_url: searchUrl,
+      reason: 'regulatory_no_match',
+    };
+  }
+
+  const detailFetch = await fetchProductHtmlWithFallback({
+    productUrl: drugInfoUrl,
+    timeoutMs: Math.max(1200, Math.min(5000, Number(timeoutMs) || 3600)),
+    allowHostVariant: false,
+    logger,
+  });
+  if (!detailFetch.ok || !detailFetch.html) {
+    return {
+      ok: false,
+      query: descriptor.query,
+      search_url: searchUrl,
+      source_url: drugInfoUrl,
+      reason: String(detailFetch?.failure_code || 'regulatory_detail_failed'),
+    };
+  }
+  const activeIngredients = extractDailyMedActiveIngredientsFromHtml(detailFetch.html);
+  if (!activeIngredients.length) {
+    return {
+      ok: false,
+      query: descriptor.query,
+      search_url: searchUrl,
+      source_url: drugInfoUrl,
+      reason: 'regulatory_active_not_found',
+    };
+  }
+  return {
+    ok: true,
+    query: descriptor.query,
+    search_url: searchUrl,
+    source_url: drugInfoUrl,
+    active_ingredients: activeIngredients,
+    risk_notes: buildDailyMedRiskNotes({
+      html: detailFetch.html,
+      activeIngredients,
+      lang,
+    }),
+    source: {
+      type: 'regulatory',
+      url: drugInfoUrl,
+      label: 'DailyMed',
+      confidence: 0.72,
+    },
+  };
+}
+
 const CONCENTRATION_PERCENT_RE = /\b(\d{1,2}(?:\.\d{1,2})?)\s*%/gi;
 const CONCENTRATION_CONTEXT_RE = /\b(acid|retinol|retinal|retinoid|niacinamide|vitamin\s*c|ascorb|peptide|copper|zinc|benzoyl|salicylic|glycolic|lactic|mandelic|serum|solution)\b/i;
 
@@ -7023,33 +7273,188 @@ async function augmentEnvelopeProductAnalysisCardsWithPrelabelSuggestions({
   return env;
 }
 
+const URL_FETCH_RETRYABLE_STATUSES = new Set([403, 406, 429]);
+const URL_FETCH_RETRYABLE_ERROR_CODES = new Set([
+  'network_error',
+  'ecconnaborted',
+  'econnreset',
+  'enotfound',
+  'eai_again',
+  'etimedout',
+  'timeout',
+]);
+
+function buildAlternateHostVariantUrl(rawUrl) {
+  const text = String(rawUrl || '').trim();
+  if (!/^https?:\/\//i.test(text)) return '';
+  try {
+    const parsed = new URL(text);
+    const host = String(parsed.hostname || '').trim();
+    if (!host || /^(localhost|\d+\.\d+\.\d+\.\d+)$/i.test(host)) return '';
+    if (/^www\./i.test(host)) parsed.hostname = host.replace(/^www\./i, '');
+    else parsed.hostname = `www.${host}`;
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+function buildUrlFetchFailureCode(attempts = []) {
+  const rows = Array.isArray(attempts) ? attempts : [];
+  const statuses = rows
+    .map((item) => Number(item?.status))
+    .filter((value) => Number.isFinite(value))
+    .map((value) => Math.trunc(value));
+  const errorCodes = rows
+    .map((item) => String(item?.error_code || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  if (statuses.includes(403)) return 'url_fetch_forbidden_403';
+  if (statuses.includes(429)) return 'url_fetch_rate_limited_429';
+  if (statuses.includes(406)) return 'url_fetch_not_acceptable_406';
+  if (errorCodes.includes('empty_body')) return 'url_fetch_empty_body';
+  if (errorCodes.some((code) => code.includes('timeout') || code === 'ecconnaborted')) return 'url_fetch_timeout';
+  return 'url_fetch_failed';
+}
+
+function shouldRetryUrlFetchAttempt(attempt = null) {
+  if (!attempt || typeof attempt !== 'object') return false;
+  const status = Number(attempt.status);
+  if (Number.isFinite(status) && URL_FETCH_RETRYABLE_STATUSES.has(Math.trunc(status))) return true;
+  const errorCode = String(attempt.error_code || '').trim().toLowerCase();
+  if (!errorCode) return false;
+  return URL_FETCH_RETRYABLE_ERROR_CODES.has(errorCode) || errorCode === 'empty_body';
+}
+
+async function fetchProductHtmlWithFallback({
+  productUrl,
+  timeoutMs = PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
+  allowHostVariant = true,
+  logger,
+} = {}) {
+  const urlText = String(productUrl || '').trim();
+  if (!/^https?:\/\//i.test(urlText)) {
+    return {
+      ok: false,
+      status: null,
+      html: '',
+      attempts: [{ strategy: 'input_validation', error_code: 'invalid_url' }],
+      final_strategy: 'none',
+      failure_code: 'url_invalid',
+    };
+  }
+
+  const timeoutValue = Math.max(120, Number(timeoutMs) || PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS);
+  const attemptsPlan = [
+    {
+      strategy: 'axios_default',
+      url: urlText,
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+      },
+    },
+    {
+      strategy: 'curl_ua',
+      url: urlText,
+      headers: {
+        'User-Agent': 'curl/8.7.1',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+    },
+  ];
+  const hostVariantUrl = allowHostVariant ? buildAlternateHostVariantUrl(urlText) : '';
+  if (hostVariantUrl && hostVariantUrl !== urlText) {
+    attemptsPlan.push({
+      strategy: 'host_variant_default',
+      url: hostVariantUrl,
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+      },
+    });
+  }
+
+  const attempts = [];
+  for (let index = 0; index < attemptsPlan.length; index += 1) {
+    const plan = attemptsPlan[index];
+    if (index > 0 && !shouldRetryUrlFetchAttempt(attempts[attempts.length - 1])) break;
+    try {
+      // Use a permissive status validator so we can diagnose 4xx responses instead of throwing.
+      const resp = await axios.get(plan.url, {
+        timeout: timeoutValue,
+        maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+        maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+        responseType: 'text',
+        headers: plan.headers,
+        validateStatus: (status) => status >= 200 && status < 500,
+      });
+      const status = Number(resp?.status);
+      const body = typeof resp?.data === 'string' ? resp.data : '';
+      if (status >= 200 && status < 400 && body.trim()) {
+        return {
+          ok: true,
+          status,
+          html: body,
+          attempts: [...attempts, { strategy: plan.strategy, status }],
+          final_strategy: plan.strategy,
+          failure_code: null,
+        };
+      }
+      attempts.push({
+        strategy: plan.strategy,
+        ...(Number.isFinite(status) ? { status: Math.trunc(status) } : {}),
+        error_code: body.trim() ? 'http_error' : 'empty_body',
+      });
+    } catch (err) {
+      const status = Number(err?.response?.status);
+      const codeToken = String(err?.code || '').trim().toLowerCase() || 'network_error';
+      attempts.push({
+        strategy: plan.strategy,
+        ...(Number.isFinite(status) ? { status: Math.trunc(status) } : {}),
+        error_code: codeToken,
+      });
+    }
+  }
+
+  const failureCode = buildUrlFetchFailureCode(attempts);
+  logger?.debug?.(
+    { url: urlText, attempts, failure_code: failureCode },
+    'aurora bff: product url fetch fallback failed',
+  );
+  return {
+    ok: false,
+    status: null,
+    html: '',
+    attempts,
+    final_strategy: 'none',
+    failure_code: failureCode,
+  };
+}
+
 async function fetchProductPageHtmlForReco({
   productUrl,
   timeoutMs = AURORA_BFF_RECO_BLOCKS_TIMEOUT_ON_PAGE_RELATED_MS,
   logger,
 } = {}) {
-  const urlText = String(productUrl || '').trim();
-  if (!/^https?:\/\//i.test(urlText)) return '';
-  try {
-    const resp = await axios.get(urlText, {
-      timeout: Math.max(120, Number(timeoutMs) || AURORA_BFF_RECO_BLOCKS_TIMEOUT_ON_PAGE_RELATED_MS),
-      maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
-      maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
-      responseType: 'text',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AuroraBff/1.0; +https://aurora.pivota.cc)',
-        Accept: 'text/html,application/xhtml+xml',
-      },
-      validateStatus: (status) => status >= 200 && status < 400,
-    });
-    return typeof resp?.data === 'string' ? resp.data : '';
-  } catch (err) {
+  const out = await fetchProductHtmlWithFallback({
+    productUrl,
+    timeoutMs,
+    allowHostVariant: true,
+    logger,
+  });
+  if (!out.ok) {
     logger?.debug?.(
-      { err: err?.message || String(err), url: urlText },
+      {
+        url: String(productUrl || ''),
+        failure_code: out.failure_code,
+        attempts: out.attempts,
+      },
       'aurora bff: reco blocks on-page html fetch failed',
     );
-    return '';
   }
+  return {
+    html: out.ok ? String(out.html || '') : '',
+    fetch_meta: out,
+  };
 }
 
 async function runRecoBlocksForUrl({
@@ -7261,14 +7666,38 @@ async function runRecoBlocksForUrl({
     }),
     on_page_related: async ({ timeout_ms: timeoutMs }) => {
       let sourceHtml = typeof html === 'string' ? html : '';
+      let fetchMeta = null;
       if (!sourceHtml) {
-        sourceHtml = await fetchProductPageHtmlForReco({
+        const fetchOut = await fetchProductPageHtmlForReco({
           productUrl: urlText,
           timeoutMs,
           logger,
         });
+        sourceHtml = String(fetchOut?.html || '');
+        fetchMeta =
+          fetchOut && fetchOut.fetch_meta && typeof fetchOut.fetch_meta === 'object' && !Array.isArray(fetchOut.fetch_meta)
+            ? fetchOut.fetch_meta
+            : null;
       }
-      if (!sourceHtml) return { candidates: [] };
+      if (!sourceHtml) {
+        const failureCode = String(fetchMeta?.failure_code || '').trim().toLowerCase();
+        return {
+          candidates: [],
+          reason: 'on_page_fetch_blocked',
+          meta: {
+            query_attempted: 1,
+            reason_counts: {
+              on_page_fetch_blocked: 1,
+              ...(failureCode ? { [failureCode]: 1 } : {}),
+            },
+          },
+        };
+      }
+      const recoveredWithFallback =
+        fetchMeta &&
+        fetchMeta.ok === true &&
+        String(fetchMeta.final_strategy || '').trim().toLowerCase() &&
+        String(fetchMeta.final_strategy || '').trim().toLowerCase() !== 'axios_default';
       return {
         candidates: buildOnPageCompetitorCandidates({
           html: sourceHtml,
@@ -7278,6 +7707,15 @@ async function runRecoBlocksForUrl({
           lang,
           maxCandidates,
         }),
+        ...(recoveredWithFallback
+          ? {
+            meta: {
+              reason_counts: {
+                url_fetch_recovered_with_fallback: 1,
+              },
+            },
+          }
+          : {}),
       };
     },
   };
@@ -8107,37 +8545,87 @@ async function buildProductAnalysisFromUrlIngredients({
     return null;
   }
 
-  let html = '';
-  try {
-    const resp = await axios.get(parsedUrl.toString(), {
-      timeout: PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
-      maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
-      maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
-      responseType: 'text',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AuroraBff/1.0; +https://aurora.pivota.cc)',
-        Accept: 'text/html,application/xhtml+xml',
+  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const fetchOut = await fetchProductHtmlWithFallback({
+    productUrl: parsedUrl.toString(),
+    timeoutMs: PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
+    allowHostVariant: true,
+    logger,
+  });
+  if (!fetchOut.ok) {
+    logger?.warn?.(
+      {
+        url: parsedUrl.toString(),
+        failure_code: fetchOut.failure_code,
+        attempts: fetchOut.attempts,
       },
-      validateStatus: (status) => status >= 200 && status < 400,
-    });
-    html = typeof resp?.data === 'string' ? resp.data : '';
-  } catch (err) {
-    logger?.warn(
-      { url: parsedUrl.toString(), err: err?.message || String(err) },
       'aurora bff: product URL ingredient extraction failed',
     );
-    return null;
   }
+  const html = fetchOut.ok ? String(fetchOut.html || '') : '';
+  const urlFetchRecoveredWithFallback =
+    fetchOut.ok === true &&
+    String(fetchOut.final_strategy || '').trim().toLowerCase() &&
+    String(fetchOut.final_strategy || '').trim().toLowerCase() !== 'axios_default';
 
   const inciList = extractInciListFromHtml(html);
-  if (!inciList.length) return null;
-
   const keyHints = extractKeyIngredientsFromHtml(html);
-  const normalizedInci = uniqCaseInsensitiveStrings(inciList.map((item) => normalizeInciIngredientName(item)).filter(Boolean), 120);
-  const keyIngredients = deriveKeyIngredientsForAnalysis(normalizedInci, keyHints.map((item) => normalizeInciIngredientName(item)));
+
+  let regulatorySupplement = null;
+  if (!html || !inciList.length) {
+    try {
+      regulatorySupplement = await fetchDailyMedRegulatorySupplement({
+        parsedProduct: parsedProductObj,
+        productUrl: parsedUrl.toString(),
+        lang,
+        logger,
+      });
+    } catch (err) {
+      logger?.warn?.(
+        {
+          url: parsedUrl.toString(),
+          err: err?.message || String(err),
+        },
+        'aurora bff: regulatory supplement lookup failed',
+      );
+      regulatorySupplement = null;
+    }
+  }
+
+  const regulatoryActiveInci =
+    regulatorySupplement && regulatorySupplement.ok && Array.isArray(regulatorySupplement.active_ingredients)
+      ? regulatorySupplement.active_ingredients
+      : [];
+  const normalizedInci = uniqCaseInsensitiveStrings(
+    [...inciList, ...regulatoryActiveInci]
+      .map((item) => normalizeInciIngredientName(item))
+      .filter(Boolean),
+    120,
+  );
+  const keyIngredients = deriveKeyIngredientsForAnalysis(
+    normalizedInci,
+    keyHints.map((item) => normalizeInciIngredientName(item)),
+  );
   const mechanisms = deriveIngredientMechanisms(keyIngredients, lang);
-  const riskNotes = deriveIngredientRiskNotes(normalizedInci, profileSummary || {}, lang);
-  const socialSignals = extractRealtimeSocialSignalsFromHtml(html, { lang, riskNotes });
+  const riskNotes = uniqCaseInsensitiveStrings(
+    [
+      ...deriveIngredientRiskNotes(normalizedInci, profileSummary || {}, lang),
+      ...(regulatorySupplement && regulatorySupplement.ok && Array.isArray(regulatorySupplement.risk_notes)
+        ? regulatorySupplement.risk_notes
+        : []),
+    ],
+    6,
+  );
+  const socialSignals = html
+    ? extractRealtimeSocialSignalsFromHtml(html, { lang, riskNotes })
+    : {
+      has_signal: false,
+      platform_scores: {},
+      typical_positive: [],
+      typical_negative: [],
+      risk_for_groups: [],
+      notes: [],
+    };
 
   const isCn = String(lang || '').toUpperCase() === 'CN';
   const skinType = String(profileSummary?.skinType || '').trim().toLowerCase();
@@ -8148,13 +8636,19 @@ async function buildProductAnalysisFromUrlIngredients({
   const lowerInci = normalizedInci.join(' | ').toLowerCase();
   const hasAcidLike = /\b(aha|bha|pha|glycolic|lactic|mandelic|salicylic|retinol|retinal|adapalene|tretinoin)\b/.test(lowerInci);
   const hasFragranceLike = /\b(fragrance|parfum|linalool|limonene|citral|geraniol)\b/.test(lowerInci);
+  const hasCommonSunscreenIrritants = /\b(oxybenzone|octocrylene)\b/.test(lowerInci);
+  const hasAnyIngredientSignals = normalizedInci.length > 0 || keyIngredients.length > 0;
 
   const verdict =
-    highSensitivity && (hasAcidLike || hasFragranceLike)
+    !hasAnyIngredientSignals
+      ? isCn
+        ? '未知'
+        : 'Unknown'
+      : highSensitivity && (hasAcidLike || hasFragranceLike || hasCommonSunscreenIrritants)
       ? isCn
         ? '谨慎'
         : 'Caution'
-      : mediumSensitivity && hasAcidLike
+      : mediumSensitivity && (hasAcidLike || hasCommonSunscreenIrritants)
         ? isCn
           ? '谨慎'
           : 'Caution'
@@ -8173,8 +8667,6 @@ async function buildProductAnalysisFromUrlIngredients({
   const hostName = String(parsedUrl.hostname || '').replace(/^www\./i, '');
   const pageTitle = extractPageTitleFromHtml(html);
   const extractedPrice = extractProductPriceFromHtml(html);
-
-  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
   const anchorBrand = pickFirstTrimmed(
     parsedProductObj?.brand,
     pageTitle.includes('|') ? pageTitle.split('|').slice(-1)[0] : '',
@@ -8197,9 +8689,17 @@ async function buildProductAnalysisFromUrlIngredients({
   });
   const reasons = uniqCaseInsensitiveStrings(
     [
-      isCn
-        ? `已从产品页解析到 INCI 成分表（共 ${normalizedInci.length} 项），用于本次评估。`
-        : `I extracted the INCI list directly from the product page (${normalizedInci.length} entries) for this assessment.`,
+      html && inciList.length
+        ? isCn
+          ? `已从产品页解析到 INCI 成分表（共 ${normalizedInci.length} 项），用于本次评估。`
+          : `I extracted the INCI list directly from the product page (${normalizedInci.length} entries) for this assessment.`
+        : regulatorySupplement && regulatorySupplement.ok
+          ? isCn
+            ? `官网成分抓取受限，已改用监管源（DailyMed）补充活性信息（${regulatoryActiveInci.length} 项）。`
+            : `Official-page INCI extraction was blocked; a regulatory source (DailyMed) was used as backup (${regulatoryActiveInci.length} active entries).`
+          : isCn
+            ? '当前未能稳定抓取到官网 INCI 成分表，证据有限。'
+            : 'The official product page could not be parsed reliably, so evidence is currently limited.',
       keyIngredients.length
         ? isCn
           ? `识别到的关键成分：${keyIngredients.slice(0, 5).join('、')}。`
@@ -8218,8 +8718,18 @@ async function buildProductAnalysisFromUrlIngredients({
         : isCn
           ? '边界说明：成分浓度与批次差异不可见，建议先做局部测试并从低频开始。'
           : 'Boundary: concentration and batch variance are unknown; patch test first and start at low frequency.',
+      !html && !regulatorySupplement?.ok
+        ? isCn
+          ? '请粘贴包装上的完整 INCI，或换一个可公开访问的官方商品页链接后重试。'
+          : 'Please paste the full INCI from your package or share another publicly accessible official page URL and retry.'
+        : '',
+      regulatorySupplement && regulatorySupplement.ok
+        ? isCn
+          ? '监管源可用，但不同地区/批次配方可能不同；建议继续核对实物包装。'
+          : 'Regulatory evidence is available, but market/batch formulas can differ; verify against your actual package.'
+        : '',
     ],
-    5,
+    6,
   );
   const parsedPrice = normalizePriceObject(
     parsedProductObj?.price ??
@@ -8269,6 +8779,7 @@ async function buildProductAnalysisFromUrlIngredients({
   let dagProvenancePatch = null;
   let dagTracking = null;
   let competitorSnapshotMeta = null;
+  const htmlForReco = html || (!fetchOut.ok ? '<!--on_page_fetch_blocked-->' : '');
 
   const dagOut = await runRecoBlocksForUrl({
     productUrl: parsedUrl.toString(),
@@ -8279,7 +8790,7 @@ async function buildProductAnalysisFromUrlIngredients({
     lang,
     mode: 'main_path',
     logger,
-    html,
+    html: htmlForReco,
     budgetMs: AURORA_BFF_RECO_BLOCKS_BUDGET_MS,
     maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   });
@@ -8326,13 +8837,28 @@ async function buildProductAnalysisFromUrlIngredients({
     if (!compPool.length) {
       const fallbackUsed = Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : [];
       const timedOut = Array.isArray(dagDiagnostics?.timed_out_blocks) ? dagDiagnostics.timed_out_blocks : [];
+      const onPageReasonCounts =
+        dagDiagnostics &&
+        dagDiagnostics.blocks &&
+        dagDiagnostics.blocks.on_page_related &&
+        typeof dagDiagnostics.blocks.on_page_related === 'object' &&
+        dagDiagnostics.blocks.on_page_related.reason_counts &&
+        typeof dagDiagnostics.blocks.on_page_related.reason_counts === 'object'
+          ? dagDiagnostics.blocks.on_page_related.reason_counts
+          : {};
+      const onPageFetchBlockedObserved =
+        Number(onPageReasonCounts.on_page_fetch_blocked || 0) > 0 || (!html && !fetchOut.ok);
       if (fallbackUsed.includes('related_on_page_fallback') && relPool.length) {
         competitorSource = 'on_page_related_only';
       }
-      competitorReason =
-        timedOut.length || fallbackUsed.length
-          ? 'dag_timeout_or_empty'
-          : 'dag_empty';
+      if (onPageFetchBlockedObserved) {
+        competitorReason = 'on_page_fetch_blocked';
+      } else {
+        competitorReason =
+          timedOut.length || fallbackUsed.length
+            ? 'dag_timeout_or_empty'
+            : 'dag_empty';
+      }
     }
   } else {
     competitorOut = await buildRealtimeCompetitorCandidates({
@@ -8374,6 +8900,9 @@ async function buildProductAnalysisFromUrlIngredients({
         competitorReason = competitorReason || 'hard_gate_filtered';
       }
     }
+    if (!html && !fetchOut.ok && !competitorReason) {
+      competitorReason = 'on_page_fetch_blocked';
+    }
   }
   const competitorCandidates = routedPools.compPool;
   const relatedCandidates = routedPools.relPool;
@@ -8383,13 +8912,15 @@ async function buildProductAnalysisFromUrlIngredients({
 
   const confidence = Number(
     Math.max(
-      0.35,
+      0.28,
       Math.min(
         0.84,
         0.42 +
           (normalizedInci.length >= 15 ? 0.12 : 0.04) +
           (keyIngredients.length >= 4 ? 0.1 : 0.04) +
           (riskNotes.length ? 0.04 : 0) +
+          (!html ? -0.1 : 0) +
+          (regulatorySupplement && regulatorySupplement.ok ? 0.05 : 0) +
           (socialMissing ? 0 : 0.05) +
           (competitorMissing ? 0 : 0.05),
       ),
@@ -8397,6 +8928,13 @@ async function buildProductAnalysisFromUrlIngredients({
   );
 
   const evidenceMissingInfo = [];
+  if (!html && !fetchOut.ok && fetchOut.failure_code) evidenceMissingInfo.push(String(fetchOut.failure_code));
+  if (!html && !fetchOut.ok) evidenceMissingInfo.push('on_page_fetch_blocked');
+  if (urlFetchRecoveredWithFallback) evidenceMissingInfo.push('url_fetch_recovered_with_fallback');
+  if (regulatorySupplement && regulatorySupplement.ok) {
+    evidenceMissingInfo.push('regulatory_source_used', 'version_verification_needed');
+  }
+  if (!normalizedInci.length) evidenceMissingInfo.push('evidence_missing');
   if (!concentrationSignals.length) evidenceMissingInfo.push('concentration_unknown');
   if (!anchorPrice) evidenceMissingInfo.push('price_unknown');
   if (socialMissing) evidenceMissingInfo.push('social_signals_missing');
@@ -8427,6 +8965,40 @@ async function buildProductAnalysisFromUrlIngredients({
     },
   };
 
+  const evidenceSources = uniqCaseInsensitiveStrings(
+    [
+      html ? parsedUrl.toString() : '',
+      regulatorySupplement && regulatorySupplement.ok ? String(regulatorySupplement.source?.url || '') : '',
+    ],
+    4,
+  ).map((url) => {
+    const lower = String(url || '').trim().toLowerCase();
+    if (lower.includes('dailymed.nlm.nih.gov')) {
+      return {
+        type: 'regulatory',
+        url,
+        label: 'DailyMed',
+        confidence: 0.72,
+      };
+    }
+    return {
+      type: 'official_page',
+      url,
+      label: hostName || 'Official page',
+      confidence: 0.78,
+    };
+  });
+
+  const urlFetchProvenance = {
+    final_strategy: String(fetchOut?.final_strategy || 'none').trim() || 'none',
+    attempts: (Array.isArray(fetchOut?.attempts) ? fetchOut.attempts : []).slice(0, 6).map((item) => ({
+      strategy: String(item?.strategy || '').trim() || 'unknown',
+      ...(Number.isFinite(Number(item?.status)) ? { status: Number(item.status) } : {}),
+      ...(item?.error_code ? { error_code: String(item.error_code).trim().toLowerCase() } : {}),
+    })),
+    ...(fetchOut?.failure_code ? { failure_code: String(fetchOut.failure_code).trim().toLowerCase() } : {}),
+  };
+
   const raw = {
     assessment: {
       verdict,
@@ -8450,9 +9022,23 @@ async function buildProductAnalysisFromUrlIngredients({
       },
       expert_notes: uniqCaseInsensitiveStrings(
         [
-          isCn
-            ? `证据来源：${hostName || 'product page'} 官方产品页成分表抓取。`
-            : `Evidence source: ingredient list parsed from ${hostName || 'product page'}.`,
+          html
+            ? isCn
+              ? `证据来源：${hostName || 'product page'} 官方产品页成分表抓取。`
+              : `Evidence source: ingredient list parsed from ${hostName || 'product page'}.`
+            : isCn
+              ? '官网页面抓取受站点策略限制（403/反爬），本次走了可诊断降级。'
+              : 'Official-page extraction was blocked by site policy (403/anti-bot); a diagnosable degraded path was used.',
+          urlFetchRecoveredWithFallback
+            ? isCn
+              ? 'URL 抓取已通过回退策略恢复（默认请求失败后切换 UA）。'
+              : 'URL extraction recovered via fallback strategy (alternate UA profile).'
+            : '',
+          regulatorySupplement && regulatorySupplement.ok
+            ? isCn
+              ? `监管源补充：DailyMed 活性信息已接入（query=${regulatorySupplement.query || 'n/a'}）。`
+              : `Regulatory supplement loaded from DailyMed (query=${regulatorySupplement.query || 'n/a'}).`
+            : '',
           anchorPrice
             ? isCn
               ? `页面价格信号：${anchorPrice.currency || 'USD'} ${anchorPrice.amount}（用于同类对比）`
@@ -8479,9 +9065,15 @@ async function buildProductAnalysisFromUrlIngredients({
               ? '同页 related products 已分流到 related_products，未进入 competitors（硬约束）。'
               : 'On-page related products were routed to related_products and blocked from competitors by hard gates.'
             : '',
+          !html && !regulatorySupplement?.ok
+            ? isCn
+              ? '下一步：请贴包装 INCI 或换一个可公开访问的官方页面链接，以提升分析信息量。'
+              : 'Next step: paste package INCI or share a publicly accessible official product page to improve evidence quality.'
+            : '',
         ],
-        6,
+        8,
       ),
+      ...(evidenceSources.length ? { sources: evidenceSources } : {}),
       confidence,
       missing_info: evidenceMissingInfo,
     },
@@ -8492,6 +9084,16 @@ async function buildProductAnalysisFromUrlIngredients({
       pipeline: dagProvenancePatch?.pipeline || 'url_realtime_product_intel_v1',
       validation_mode: dagProvenancePatch?.validation_mode || 'soft_fail',
       ...(dagProvenancePatch && typeof dagProvenancePatch === 'object' ? dagProvenancePatch : {}),
+      url_fetch: urlFetchProvenance,
+      ...(regulatorySupplement && regulatorySupplement.ok
+        ? {
+          regulatory_source: {
+            provider: 'dailymed',
+            url: String(regulatorySupplement.source_url || ''),
+            query: String(regulatorySupplement.query || ''),
+          },
+        }
+        : {}),
       ...(competitorSnapshotMeta
         ? {
           competitor_meta: {
@@ -8513,6 +9115,11 @@ async function buildProductAnalysisFromUrlIngredients({
       [
         'url_ingredient_analysis_used',
         'url_realtime_product_intel_used',
+        ...(fetchOut?.failure_code ? [String(fetchOut.failure_code)] : []),
+        ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
+        ...(urlFetchRecoveredWithFallback ? ['url_fetch_recovered_with_fallback'] : []),
+        ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
+        ...(!normalizedInci.length ? ['evidence_missing'] : []),
         ...(!anchorPrice ? ['price_unknown'] : []),
         ...(socialMissing ? ['social_signals_missing'] : []),
         ...(competitorMissing ? ['competitors_missing'] : []),
@@ -8578,6 +9185,11 @@ async function buildProductAnalysisFromUrlIngredients({
       ...payloadInternalCodes,
       'url_ingredient_analysis_used',
       'url_realtime_product_intel_used',
+      ...(fetchOut?.failure_code ? [String(fetchOut.failure_code)] : []),
+      ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
+      ...(urlFetchRecoveredWithFallback ? ['url_fetch_recovered_with_fallback'] : []),
+      ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
+      ...(!normalizedInci.length ? ['evidence_missing'] : []),
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
       ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
@@ -8589,6 +9201,18 @@ async function buildProductAnalysisFromUrlIngredients({
   );
   const nextPayload = applyProductAnalysisGapContract({
     ...(norm.payload && typeof norm.payload === 'object' ? norm.payload : {}),
+    ...(
+      raw.evidence && typeof raw.evidence === 'object' && !Array.isArray(raw.evidence)
+        ? {
+          evidence: {
+            ...(norm.payload && typeof norm.payload.evidence === 'object' && !Array.isArray(norm.payload.evidence)
+              ? norm.payload.evidence
+              : {}),
+            ...(raw.evidence.sources ? { sources: raw.evidence.sources } : {}),
+          },
+        }
+        : {}
+    ),
     ...(raw.confidence_by_block ? { confidence_by_block: raw.confidence_by_block } : {}),
     ...(raw.provenance ? { provenance: raw.provenance } : {}),
     internal_debug_codes: mergedInternalCodes,
@@ -8604,9 +9228,19 @@ async function buildProductAnalysisFromUrlIngredients({
       analyzer: 'url_realtime_product_intel_v1',
       source_url: parsedUrl.toString(),
       source_host: hostName || null,
+      url_fetch: urlFetchProvenance,
       competitor_queries: competitorOut?.queries || [],
       competitor_reason: competitorReason || null,
       competitor_source: competitorSource,
+      ...(regulatorySupplement && regulatorySupplement.ok
+        ? {
+          regulatory_source: {
+            provider: 'dailymed',
+            url: String(regulatorySupplement.source_url || ''),
+            query: String(regulatorySupplement.query || ''),
+          },
+        }
+        : {}),
       competitor_snapshot_meta: competitorSnapshotMeta
         ? {
           source: String(competitorSnapshotMeta.source || 'snapshot'),
@@ -14278,11 +14912,17 @@ async function enrichIngredientExternalCandidateWithRealtimeFetch({
   const fetchHtml = typeof fetchHtmlFn === 'function' ? fetchHtmlFn : fetchProductPageHtmlForReco;
   let html = '';
   try {
-    html = await fetchHtml({
+    const fetched = await fetchHtml({
       productUrl: String(base.pdp_url || '').trim(),
       timeoutMs,
       logger,
     });
+    html =
+      typeof fetched === 'string'
+        ? fetched
+        : fetched && typeof fetched === 'object' && !Array.isArray(fetched)
+          ? String(fetched.html || '')
+          : '';
   } catch {
     html = '';
   }
@@ -22029,6 +22669,76 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
   return nextPayload;
 }
 
+function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
+  const p = isPlainObject(payload) ? { ...payload } : payload;
+  if (!isPlainObject(p)) return payload;
+  const assessment = isPlainObject(p.assessment) ? { ...p.assessment } : null;
+  const verdictToken = String(assessment?.verdict || '').trim().toLowerCase();
+  if (verdictToken !== 'unknown' && verdictToken !== '未知') return p;
+
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const reasons = uniqCaseInsensitiveStrings(
+    Array.isArray(assessment?.reasons) ? assessment.reasons : [],
+    10,
+  );
+  if (reasons.length < 2) {
+    reasons.push(
+      isCn
+        ? '当前证据链不完整（成分/舆情/专家注释存在缺口），暂无法给出高置信结论。'
+        : 'Evidence is incomplete (ingredient/social/expert coverage has gaps), so confidence is limited.',
+    );
+  }
+  const hasActionableReason = reasons.some((line) =>
+    /(please|paste|share|provide|retry|re-run|upload|index|提供|粘贴|贴上|补充|重试|换一个|入库)/i.test(String(line || '')),
+  );
+  if (!hasActionableReason) {
+    reasons.push(
+      isCn
+        ? '下一步：请粘贴完整 INCI 或更换可访问的官方页面后重试。'
+        : 'Next step: paste the full INCI or share an accessible official page and re-run.',
+    );
+  }
+
+  const payloadMissing = uniqCaseInsensitiveStrings(
+    Array.isArray(p.missing_info) ? p.missing_info : [],
+    14,
+  );
+  const hasDiagnosticCode = payloadMissing.some((token) =>
+    /(analysis_|evidence_|product_not_resolved|url_fetch_|on_page_fetch_blocked|regulatory_source_used)/i.test(String(token || '')),
+  );
+  if (!payloadMissing.length || !hasDiagnosticCode) payloadMissing.push('analysis_limited');
+
+  const evidenceObj = isPlainObject(p.evidence) ? { ...p.evidence } : null;
+  const evidenceMissing = uniqCaseInsensitiveStrings(
+    Array.isArray(evidenceObj?.missing_info) ? evidenceObj.missing_info : [],
+    8,
+  );
+  if (!evidenceMissing.length) evidenceMissing.push('evidence_missing');
+
+  return applyProductAnalysisGapContract({
+    ...p,
+    ...(assessment ? { assessment: { ...assessment, reasons: reasons.slice(0, 8) } } : {}),
+    ...(evidenceObj ? { evidence: { ...evidenceObj, missing_info: evidenceMissing } } : {}),
+    missing_info: payloadMissing.slice(0, 12),
+  });
+}
+
+function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}) {
+  const env = isPlainObject(envelope) ? { ...envelope } : envelope;
+  if (!isPlainObject(env)) return envelope;
+  const cards = Array.isArray(env.cards) ? env.cards : [];
+  env.cards = cards.map((card) => {
+    if (!isPlainObject(card)) return card;
+    const type = String(card.type || '').trim().toLowerCase();
+    if (type !== 'product_analysis') return card;
+    return {
+      ...card,
+      payload: enforceUnknownVerdictQuality(card.payload, { lang }),
+    };
+  });
+  return env;
+}
+
 function buildPrelabelKbKey(anchorProductId, lang = 'EN') {
   const anchor = String(anchorProductId || '').trim();
   if (!anchor) return '';
@@ -22082,6 +22792,17 @@ function preflightAuroraKbV0ForStartup({ logger } = {}) {
 function mountAuroraBffRoutes(app, { logger }) {
   preflightAuroraKbV0ForStartup({ logger });
   startPdpHotsetPrewarmLoop({ logger });
+  if (PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !PIVOTA_BACKEND_BASE_URL) {
+    logger?.error?.(
+      {
+        env_flag: 'AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK',
+        env_dependency: 'PIVOTA_BACKEND_BASE_URL',
+        fallback_enabled: PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED,
+        pivota_backend_base_configured: false,
+      },
+      'aurora bff: invalid product-intel fallback configuration (backend base url missing)',
+    );
+  }
 
   app.get('/metrics', (req, res) => {
     res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
@@ -23111,8 +23832,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       ),
     );
     const sendProductAnalyzeEnvelope = async (envelope, statusCode = 200, mode = 'main_path') => {
+      const qualityGated = applyUnknownVerdictQualityGateToEnvelope(envelope, {
+        lang: ctx.lang,
+      });
       let augmented = augmentEnvelopeProductAnalysisCardsForDogfood({
-        envelope,
+        envelope: qualityGated,
         req,
         ctx,
         mode,
