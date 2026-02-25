@@ -3096,6 +3096,17 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   if (diagnostics.fallback_strategy && typeof diagnostics.fallback_strategy === 'object') {
     metadata.fallback_strategy = diagnostics.fallback_strategy;
   }
+  if (diagnostics.resolver_short_circuit_attempted != null) {
+    metadata.resolver_short_circuit_attempted = Boolean(diagnostics.resolver_short_circuit_attempted);
+  }
+  if (diagnostics.resolver_short_circuit_adopted != null) {
+    metadata.resolver_short_circuit_adopted = Boolean(diagnostics.resolver_short_circuit_adopted);
+  }
+  if (diagnostics.resolver_short_circuit_block_reason != null) {
+    metadata.resolver_short_circuit_block_reason = diagnostics.resolver_short_circuit_block_reason
+      ? String(diagnostics.resolver_short_circuit_block_reason)
+      : null;
+  }
 
   return {
     ...body,
@@ -3873,9 +3884,13 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   }
   if (
     /(有货|库存|有没有|哪里买|能买|能买吗|where to buy|in stock|available|availability)/i.test(lower) &&
-    hasStrongLookupEntity
+      hasStrongLookupEntity
   ) {
     return true;
+  }
+  const lingerieCategorySignal = detectToyOutfitIntentFromQuery(raw).lingerie_intent;
+  if (lingerieCategorySignal && !hasStrongLookupEntity) {
+    return false;
   }
   if (hasPetHarnessSearchSignal(raw) || hasBeautyMakeupSearchSignal(raw)) {
     return false;
@@ -4333,6 +4348,17 @@ function computeAnchorRatioTopK(queryText, products, topK = 10) {
   return Math.max(0, Math.min(1, matched / list.length));
 }
 
+function countRelevantSearchMatchesTopK(queryText, products, topK = 10) {
+  const list = Array.isArray(products) ? products.slice(0, topK) : [];
+  if (!list.length) return 0;
+  let matched = 0;
+  for (const product of list) {
+    if (!hasUsableSearchProduct(product)) continue;
+    if (isSupplementCandidateRelevant(product, queryText)) matched += 1;
+  }
+  return matched;
+}
+
 function resolveCacheValidationMinCount(queryClass) {
   const qc = String(queryClass || '').toLowerCase();
   if (qc === 'lookup') return 1;
@@ -4348,8 +4374,10 @@ function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
     list
       .slice(0, 10)
       .some((item) => hasFragranceBackfillSignal(buildFallbackCandidateText(item)));
+  const normalizedQueryClass = String(queryClass || intent?.query_class || '').trim().toLowerCase();
   const minCountBase = resolveCacheValidationMinCount(queryClass);
   const minCount = fragranceQuery ? Math.min(minCountBase, 3) : minCountBase;
+  const relevantCountTopK = countRelevantSearchMatchesTopK(queryText, list, 10);
   const anchorRatio = computeAnchorRatioTopK(queryText, list, 10);
   const domainEntropy = computeDomainEntropyTopK(list, 10);
   const expectedDomain = inferIntentDomainKeyForCacheValidation(intent, queryText);
@@ -4360,7 +4388,11 @@ function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
         topDomains.length
       : null;
   const countOk = list.length >= minCount;
-  const anchorOk = (fragranceQuery && hasFragranceCandidate) || anchorRatio >= SEARCH_CACHE_MIN_ANCHOR;
+  const categoryAnchorBypass = normalizedQueryClass === 'category' && relevantCountTopK >= minCount;
+  const anchorOk =
+    categoryAnchorBypass ||
+    (fragranceQuery && hasFragranceCandidate) ||
+    anchorRatio >= SEARCH_CACHE_MIN_ANCHOR;
   const entropyOk = domainEntropy <= SEARCH_CACHE_MAX_DOMAIN_ENTROPY;
   const crossDomainOk =
     (fragranceQuery && hasFragranceCandidate) ||
@@ -4372,6 +4404,7 @@ function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
     accepted,
     min_count: minCount,
     count: list.length,
+    relevant_count_topk: relevantCountTopK,
     anchor_ratio: anchorRatio,
     min_anchor: SEARCH_CACHE_MIN_ANCHOR,
     domain_entropy_topk: domainEntropy,
@@ -5427,6 +5460,60 @@ function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
   }
 
   return isCatalogSource || isAuroraSource(source);
+}
+
+const RESOLVER_SHORT_CIRCUIT_BLOCKED_QUERY_CLASSES = new Set([
+  'category',
+  'scenario',
+  'mission',
+  'exploratory',
+]);
+const RESOLVER_SHORT_CIRCUIT_STRONG_REASONS = new Set(['stable_alias_match', 'exact_title']);
+
+function normalizeResolverShortCircuitReasonToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function shouldAdoptResolverFirstResult({ result, queryText, queryClass = null }) {
+  const blocked = (reason) => ({
+    adopted: false,
+    block_reason: String(reason || 'unknown_block_reason'),
+  });
+  if (!result || typeof result !== 'object') return blocked('resolver_empty');
+
+  const status = Number(result.status || 0);
+  if (!(status >= 200 && status < 300)) return blocked('resolver_status_not_ok');
+
+  const usableCount = Number(result.usableCount || 0);
+  if (!(usableCount > 0)) return blocked('resolver_no_usable');
+
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  if (RESOLVER_SHORT_CIRCUIT_BLOCKED_QUERY_CLASSES.has(normalizedQueryClass)) {
+    return blocked(`query_class_${normalizedQueryClass}_requires_upstream`);
+  }
+
+  const reasonCode = normalizeResolverShortCircuitReasonToken(
+    result.resolve_reason_code || result?.data?.metadata?.resolve_reason_code,
+  );
+  const reason = normalizeResolverShortCircuitReasonToken(
+    result.resolve_reason || result?.data?.metadata?.resolve_reason,
+  );
+  const strongReason =
+    RESOLVER_SHORT_CIRCUIT_STRONG_REASONS.has(reasonCode) ||
+    RESOLVER_SHORT_CIRCUIT_STRONG_REASONS.has(reason);
+  if (!strongReason) return blocked('weak_resolve_reason');
+
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const strongLookup = isStrongResolverFirstQuery(queryText) || isLookupStyleSearchQuery(queryText, anchorTokens);
+  if (!strongLookup && usableCount < 3) return blocked('insufficient_resolver_candidates');
+
+  return {
+    adopted: true,
+    block_reason: null,
+  };
 }
 
 function normalizeAgentProductDetailResponse(raw) {
@@ -9683,6 +9770,11 @@ async function proxyAgentSearchToBackend(req, res) {
     relevant_count: 0,
     retrieval_sources: [],
   };
+  const resolverShortCircuit = {
+    attempted: false,
+    adopted: false,
+    block_reason: null,
+  };
 
   const respondSearch = (
     status,
@@ -9730,6 +9822,9 @@ async function proxyAgentSearchToBackend(req, res) {
             strict_empty_reason: strictEmptyReason,
           }
         : {}),
+      resolver_short_circuit_attempted: resolverShortCircuit.attempted,
+      resolver_short_circuit_adopted: resolverShortCircuit.adopted,
+      resolver_short_circuit_block_reason: resolverShortCircuit.block_reason,
     });
 
     if (
@@ -9755,6 +9850,7 @@ async function proxyAgentSearchToBackend(req, res) {
   }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
 
   if (shouldAttemptResolverFirst) {
+    resolverShortCircuit.attempted = true;
     resolverStage.called = true;
     const resolverStartedAtMs = Date.now();
     try {
@@ -9770,12 +9866,14 @@ async function proxyAgentSearchToBackend(req, res) {
         'resolver_stage',
       );
       resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
-      if (
-        resolverFirstResult &&
-        resolverFirstResult.status >= 200 &&
-        resolverFirstResult.status < 300 &&
-        resolverFirstResult.usableCount > 0
-      ) {
+      const shortCircuitDecision = shouldAdoptResolverFirstResult({
+        result: resolverFirstResult,
+        queryText,
+        queryClass: null,
+      });
+      resolverShortCircuit.adopted = Boolean(shortCircuitDecision.adopted);
+      resolverShortCircuit.block_reason = shortCircuitDecision.block_reason || null;
+      if (shortCircuitDecision.adopted) {
         resolverStage.hit = true;
         return respondSearch(resolverFirstResult.status, resolverFirstResult.data, {
           finalDecision: 'resolver_returned',
@@ -16575,7 +16673,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       queryText: resolverQueryText,
     });
     let resolverFirstResult = null;
+    let resolverShortCircuitDecision = {
+      attempted: false,
+      adopted: false,
+      block_reason: null,
+    };
     if (shouldAttemptResolverFirst) {
+      resolverShortCircuitDecision.attempted = true;
       try {
         resolverFirstResult = await queryResolveSearchFallback({
           queryParams: resolverQueryParams,
@@ -16584,12 +16688,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           requestSource: metadata?.source,
           timeoutMs: resolverTimeoutMs,
         });
-        if (
-          resolverFirstResult &&
-          resolverFirstResult.status >= 200 &&
-          resolverFirstResult.status < 300 &&
-          resolverFirstResult.usableCount > 0
-        ) {
+        const shortCircuitDecision = shouldAdoptResolverFirstResult({
+          result: resolverFirstResult,
+          queryText: resolverQueryText,
+          queryClass: traceQueryClass,
+        });
+        resolverShortCircuitDecision.adopted = Boolean(shortCircuitDecision.adopted);
+        resolverShortCircuitDecision.block_reason = shortCircuitDecision.block_reason || null;
+        if (shortCircuitDecision.adopted) {
           response = { status: resolverFirstResult.status, data: resolverFirstResult.data };
         }
       } catch (resolverErr) {
@@ -17848,8 +17954,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           };
       const resolverStage = {
         called: Boolean(shouldAttemptResolverFirst),
-        hit: Boolean(resolverFirstResult && Number(resolverFirstResult.usableCount || 0) > 0),
-        miss: Boolean(shouldAttemptResolverFirst && (!resolverFirstResult || Number(resolverFirstResult.usableCount || 0) <= 0)),
+        hit: Boolean(resolverShortCircuitDecision?.adopted),
+        miss: Boolean(shouldAttemptResolverFirst && !resolverShortCircuitDecision?.adopted),
         latency_ms: Number(resolverFirstResult?.resolve_latency_ms || resolverFirstResult?.data?.metadata?.resolve_latency_ms || 0) || null,
       };
       const upstreamStage = {
@@ -17953,6 +18059,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               strict_empty_reason: fallbackReason || 'no_candidates',
             }
           : {}),
+        resolver_short_circuit_attempted: Boolean(resolverShortCircuitDecision?.attempted),
+        resolver_short_circuit_adopted: Boolean(resolverShortCircuitDecision?.adopted),
+        resolver_short_circuit_block_reason: resolverShortCircuitDecision?.block_reason || null,
       });
     }
 
