@@ -62,6 +62,10 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'url_fetch_recovered_with_fallback': 'url_fetch_recovered_with_fallback',
   'on_page_fetch_blocked': 'on_page_fetch_blocked',
   'regulatory_source_used': 'regulatory_source_used',
+  'incidecoder_source_used': 'incidecoder_source_used',
+  'incidecoder_no_match': 'incidecoder_no_match',
+  'incidecoder_fetch_failed': 'incidecoder_fetch_failed',
+  'incidecoder_unverified_not_persisted': 'incidecoder_unverified_not_persisted',
   'version_verification_needed': 'version_verification_needed',
   'price_unknown': 'price_temporarily_unavailable',
   'price_missing': 'price_temporarily_unavailable',
@@ -120,6 +124,10 @@ const PRODUCT_ANALYSIS_USER_VISIBLE_EXACT = new Set([
   'url_fetch_recovered_with_fallback',
   'on_page_fetch_blocked',
   'regulatory_source_used',
+  'incidecoder_source_used',
+  'incidecoder_no_match',
+  'incidecoder_fetch_failed',
+  'incidecoder_unverified_not_persisted',
   'version_verification_needed',
 ]);
 
@@ -225,6 +233,218 @@ function applyProductAnalysisGapContract(payload) {
   };
 }
 
+function collectProductAnalysisGapCodes(payload, fieldMissing = null) {
+  const p = asPlainObject(payload) || {};
+  const evidence = asPlainObject(p.evidence) || {};
+  const fromFieldMissing = Array.isArray(fieldMissing)
+    ? fieldMissing.map((item) => String(item?.reason || '').trim()).filter(Boolean)
+    : [];
+  const payloadFieldMissingReasons = Array.isArray(p.field_missing)
+    ? p.field_missing.map((item) => String(item?.reason || '').trim()).filter(Boolean)
+    : [];
+  return uniqueStrings([
+    ...asStringArray(p.missing_info ?? p.missingInfo),
+    ...asStringArray(p.user_facing_gaps ?? p.userFacingGaps),
+    ...asStringArray(p.internal_debug_codes ?? p.internalDebugCodes),
+    ...asStringArray(p.missing_info_internal ?? p.missingInfoInternal),
+    ...asStringArray(evidence.missing_info ?? evidence.missingInfo),
+    ...fromFieldMissing,
+    ...payloadFieldMissingReasons,
+  ]);
+}
+
+function hasEvidenceSourcesOfType(payload, acceptedTypes = []) {
+  const p = asPlainObject(payload) || {};
+  const evidence = asPlainObject(p.evidence) || {};
+  const accepted = new Set(
+    (Array.isArray(acceptedTypes) ? acceptedTypes : [])
+      .map((item) => String(item || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!accepted.size) return false;
+  return asStringArray(
+    (Array.isArray(evidence.sources) ? evidence.sources : [])
+      .map((item) => (asPlainObject(item) ? String(item.type || '').trim().toLowerCase() : ''))
+      .filter(Boolean),
+  ).some((type) => accepted.has(type));
+}
+
+function hasRenderableEvidenceSignals(payload) {
+  const p = asPlainObject(payload) || {};
+  const evidence = asPlainObject(p.evidence) || {};
+  const science = asPlainObject(evidence.science) || {};
+  const social = asPlainObject(evidence.social_signals ?? evidence.socialSignals) || {};
+  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const mechanisms = asStringArray(science.mechanisms);
+  const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const expertNotes = asStringArray(evidence.expert_notes ?? evidence.expertNotes);
+  const positives = asStringArray(social.typical_positive ?? social.typicalPositive);
+  const negatives = asStringArray(social.typical_negative ?? social.typicalNegative);
+  const riskForGroups = asStringArray(social.risk_for_groups ?? social.riskForGroups);
+  const sources = Array.isArray(evidence.sources) ? evidence.sources.length : 0;
+  return (
+    keyIngredients.length > 0 ||
+    mechanisms.length > 0 ||
+    fitNotes.length > 0 ||
+    riskNotes.length > 0 ||
+    expertNotes.length > 0 ||
+    positives.length > 0 ||
+    negatives.length > 0 ||
+    riskForGroups.length > 0 ||
+    sources > 0
+  );
+}
+
+function buildDiagnosticUnknownReasons(payload, { lang = 'EN', fieldMissing = null } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const p = asPlainObject(payload) || {};
+  const gapCodes = collectProductAnalysisGapCodes(p, fieldMissing).map((item) => String(item || '').toLowerCase());
+  const gapSet = new Set(gapCodes);
+  const provenance = asPlainObject(p.provenance) || {};
+  const urlFetch = asPlainObject(provenance.url_fetch ?? provenance.urlFetch) || {};
+  const urlFailureCode = String(urlFetch.failure_code || '').trim().toLowerCase();
+  const reasons = [];
+
+  if (gapSet.has('url_fetch_forbidden_403') || urlFailureCode === 'url_fetch_forbidden_403') {
+    reasons.push(
+      isCn
+        ? '目标页面被站点策略拦截（403），本次无法稳定抓取完整产品证据。'
+        : 'The target page was blocked by site policy (403), so full product evidence could not be fetched reliably.',
+    );
+  } else if (gapSet.has('on_page_fetch_blocked')) {
+    reasons.push(
+      isCn
+        ? '官网页面抓取受限，本次分析走了降级路径。'
+        : 'Official-page fetching was blocked, so this run used a degraded analysis path.',
+    );
+  }
+
+  if (
+    gapSet.has('anchor_product_missing') ||
+    gapSet.has('product_not_resolved') ||
+    gapSet.has('catalog_product_missing') ||
+    gapSet.has('catalog_no_match')
+  ) {
+    reasons.push(
+      isCn
+        ? '产品锚点解析不稳定（品牌/型号未完全确认），结论可信度受限。'
+        : 'Product anchoring is not stable yet (brand/model not fully resolved), which limits confidence.',
+    );
+  }
+
+  if (gapSet.has('regulatory_source_used')) {
+    reasons.push(
+      isCn
+        ? '已使用监管源补证（如 DailyMed），但不同地区/批次可能存在配方差异。'
+        : 'A regulatory source (for example DailyMed) was used, but formulas can vary by market/batch.',
+    );
+  }
+
+  if (gapSet.has('incidecoder_source_used')) {
+    reasons.push(
+      isCn
+        ? '已使用 INCIDecoder 补充成分线索，建议继续与实物包装 INCI 交叉核对。'
+        : 'INCIDecoder was used as a supplemental ingredient source; cross-check with package INCI is still recommended.',
+    );
+  }
+
+  if (
+    gapSet.has('evidence_missing') ||
+    gapSet.has('analysis_limited') ||
+    gapSet.has('upstream_missing_or_unstructured') ||
+    !hasRenderableEvidenceSignals(p)
+  ) {
+    reasons.push(
+      isCn
+        ? '当前证据链覆盖不足（成分/口碑/专家注释存在缺口），暂不能给出高置信结论。'
+        : 'Current evidence coverage is limited (ingredient/social/expert gaps), so a high-confidence verdict is not available yet.',
+    );
+  }
+
+  if (gapSet.has('version_verification_needed')) {
+    reasons.push(
+      isCn
+        ? '需核对地区与批次版本差异，以实物包装 INCI 为准。'
+        : 'Version/region verification is still required; use your package INCI as final reference.',
+    );
+  }
+
+  reasons.push(
+    isCn
+      ? '下一步：请粘贴完整 INCI，或提供可公开访问的官方产品页后重试。'
+      : 'Next step: paste the full INCI or share a publicly accessible official product page and retry.',
+  );
+
+  return uniqueStrings(reasons).slice(0, 5);
+}
+
+function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissing = null } = {}) {
+  const p = asPlainObject(payload);
+  if (!p) return payload;
+
+  const assessment = asPlainObject(p.assessment);
+  const anchor = asPlainObject(assessment?.anchor_product ?? assessment?.anchorProduct);
+  const hasAnchor =
+    !!anchor &&
+    !!String(
+      anchor.product_id ||
+      anchor.sku_id ||
+      anchor.display_name ||
+      anchor.displayName ||
+      anchor.name ||
+      anchor.url ||
+      '',
+    ).trim();
+
+  const pruneAnchorMissing = (input) =>
+    uniqueStrings(asStringArray(input).filter((code) => String(code || '').trim().toLowerCase() !== 'anchor_product_missing'));
+
+  let next = { ...p };
+  if (hasAnchor) {
+    next = {
+      ...next,
+      missing_info: pruneAnchorMissing(next.missing_info ?? next.missingInfo),
+      user_facing_gaps: pruneAnchorMissing(next.user_facing_gaps ?? next.userFacingGaps),
+      internal_debug_codes: pruneAnchorMissing(next.internal_debug_codes ?? next.internalDebugCodes),
+      missing_info_internal: pruneAnchorMissing(next.missing_info_internal ?? next.missingInfoInternal),
+    };
+    const evidenceObj = asPlainObject(next.evidence) || null;
+    if (evidenceObj) {
+      next.evidence = {
+        ...evidenceObj,
+        missing_info: pruneAnchorMissing(evidenceObj.missing_info ?? evidenceObj.missingInfo),
+      };
+    }
+  }
+
+  const currentAssessment = asPlainObject(next.assessment);
+  if (!currentAssessment) {
+    const fallbackAnchor = hasAnchor ? anchor : asPlainObject(next.product);
+    next.assessment = {
+      verdict: String(lang).toUpperCase() === 'CN' ? '未知' : 'Unknown',
+      reasons: buildDiagnosticUnknownReasons(next, { lang, fieldMissing }),
+      ...(fallbackAnchor ? { anchor_product: fallbackAnchor } : {}),
+    };
+  } else {
+    const verdictToken = String(currentAssessment.verdict || '').trim().toLowerCase();
+    const isUnknownVerdict = verdictToken === 'unknown' || verdictToken === '未知';
+    if (isUnknownVerdict) {
+      const reasons = asStringArray(currentAssessment.reasons);
+      const nonGenericReasons = reasons.filter((line) => !isGenericReason(line, lang));
+      const hasHighQualitySources = hasEvidenceSourcesOfType(next, ['official_page', 'regulatory']);
+      if (!nonGenericReasons.length || hasHighQualitySources) {
+        next.assessment = {
+          ...currentAssessment,
+          reasons: buildDiagnosticUnknownReasons(next, { lang, fieldMissing }),
+        };
+      }
+    }
+  }
+
+  return applyProductAnalysisGapContract(next);
+}
+
 function asRecordOfNumbers(value) {
   const o = asPlainObject(value);
   if (!o) return undefined;
@@ -287,7 +507,7 @@ function normalizeEvidence(raw) {
     if (!row) continue;
     const type = String(row.type || '').trim().toLowerCase();
     if (!type) continue;
-    if (type !== 'official_page' && type !== 'regulatory') continue;
+    if (type !== 'official_page' && type !== 'regulatory' && type !== 'inci_decoder') continue;
     const url = String(row.url || '').trim();
     if (!/^https?:\/\//i.test(url)) continue;
     const label = String(row.label || '').trim();
@@ -1244,6 +1464,22 @@ function buildSkinFitBlock(payload, { profileSummary = null, generatedAt = new D
   const reasons = asStringArray(assessment.reasons);
   const howToUse = asStringArray(assessment.how_to_use ?? assessment.howToUse);
   const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const scienceKeyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const scienceMechanisms = asStringArray(science.mechanisms);
+  const scienceFitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+  const hasScienceEvidence =
+    scienceKeyIngredients.length > 0 ||
+    scienceMechanisms.length > 0 ||
+    scienceFitNotes.length > 0 ||
+    riskNotes.length > 0;
+  const hasOnlyTemplateReasons =
+    reasons.length > 0 &&
+    reasons.every((line) => {
+      const text = String(line || '').trim();
+      if (!text) return true;
+      if (isGenericReason(text, 'EN')) return true;
+      return /(unknown|insufficient evidence|cannot complete|无法|证据不足|证据链|结论暂时为未知)/i.test(text);
+    });
 
   const profileSkinType = typeof profile.skinType === 'string' ? profile.skinType.trim() : '';
   const profileSensitivity = typeof profile.sensitivity === 'string' ? profile.sensitivity.trim().toLowerCase() : '';
@@ -1294,6 +1530,8 @@ function buildSkinFitBlock(payload, { profileSummary = null, generatedAt = new D
 
   const warnings = [];
   if (!profileGoals.length) warnings.push('profile.goals_missing');
+  const evidenceGateApplied = !hasScienceEvidence || hasOnlyTemplateReasons;
+  if (evidenceGateApplied) warnings.push('skin_fit_evidence_gate_applied');
 
   const evidenceItems = [];
   if (reasons.length) {
@@ -1335,14 +1573,36 @@ function buildSkinFitBlock(payload, { profileSummary = null, generatedAt = new D
     );
   }
 
-  const confidence = buildBlockConfidence({
-    coverage: (reasons.length ? 0.4 : 0) + (riskNotes.length ? 0.25 : 0) + (profileSkinType || profileSensitivity || profileBarrier ? 0.35 : 0),
-    source_quality: 0.74,
+  let confidence = buildBlockConfidence({
+    coverage: (() => {
+      const base = (reasons.length ? 0.4 : 0) + (riskNotes.length ? 0.25 : 0) + (profileSkinType || profileSensitivity || profileBarrier ? 0.35 : 0);
+      if (!evidenceGateApplied) return base;
+      return Math.min(base, hasScienceEvidence ? 0.58 : 0.36);
+    })(),
+    source_quality: evidenceGateApplied ? (hasScienceEvidence ? 0.62 : 0.5) : 0.74,
     freshness: 0.92,
-    consistency: hasIrritationRisk && !isCautionVerdict ? 0.62 : 0.72,
-    reasons: ['rules_first=skin_fit'],
+    consistency: evidenceGateApplied
+      ? Math.min(hasIrritationRisk && !isCautionVerdict ? 0.62 : 0.72, hasScienceEvidence ? 0.64 : 0.55)
+      : hasIrritationRisk && !isCautionVerdict
+        ? 0.62
+        : 0.72,
+    reasons: ['rules_first=skin_fit', ...(evidenceGateApplied ? ['evidence_gate=science_sparse'] : [])],
     missing_fields: missingFields,
   });
+  if (evidenceGateApplied) {
+    const ceiling = hasScienceEvidence ? 0.58 : 0.42;
+    if (Number(confidence.score) > ceiling) {
+      confidence = {
+        ...confidence,
+        score: Number(ceiling.toFixed(3)),
+        level: mapConfidenceLevel(ceiling),
+        reasons: uniqueStrings([
+          ...asStringArray(confidence.reasons),
+          hasScienceEvidence ? 'confidence_ceiling=58%' : 'confidence_ceiling=42%',
+        ]).slice(0, 8),
+      };
+    }
+  }
 
   return {
     block: {
@@ -1721,51 +1981,24 @@ function attachProductIntelContract(payload, { lang = 'EN', profileSummary = nul
 }
 
 function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = null } = {}) {
-  const p = asPlainObject(payload);
-  if (!p) return payload;
+  const basePayload = asPlainObject(payload);
+  if (!basePayload) return payload;
+  const p = reconcileProductAnalysisConsistency(basePayload, { lang });
   const assessment = asPlainObject(p.assessment);
   if (!assessment) {
-    const ev = asPlainObject(p.evidence) || {};
-    const science = asPlainObject(ev.science) || {};
-    const social = asPlainObject(ev.social_signals || ev.socialSignals) || {};
-    const evidenceLooksMissing = (() => {
-      const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
-      const mechanisms = asStringArray(science.mechanisms);
-      const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
-      const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
-      const expertNotes = asStringArray(ev.expert_notes ?? ev.expertNotes);
-      const positives = asStringArray(social.typical_positive ?? social.typicalPositive);
-      const negatives = asStringArray(social.typical_negative ?? social.typicalNegative);
-      return (
-        keyIngredients.length === 0 &&
-        mechanisms.length === 0 &&
-        fitNotes.length === 0 &&
-        riskNotes.length === 0 &&
-        expertNotes.length === 0 &&
-        positives.length === 0 &&
-        negatives.length === 0
-      );
-    })();
-
-    const reasons = [];
-    if (String(lang).toUpperCase() === 'CN') {
-      reasons.push('目前无法获取可靠的产品分析结果，因此结论暂时为“未知”。');
-      if (evidenceLooksMissing) reasons.push('证据链缺失（成分/口碑/专家笔记未返回），无法做出有把握的评估。');
-      reasons.push('你可以补充产品链接或完整成分表（INCI），我再做更准确的 Deep Scan。');
-    } else {
-      reasons.push('I couldn’t retrieve a reliable product analysis right now, so the verdict is “Unknown”.');
-      if (evidenceLooksMissing) reasons.push('Evidence is missing (ingredients/social/expert notes were not returned), so confidence is low.');
-      reasons.push('Send the product link or full INCI ingredient list and I’ll re-run a deeper scan.');
-    }
-
+    const fallbackAnchor = asPlainObject(p.product);
     const fallbackPayload = {
       ...p,
       assessment: {
         verdict: String(lang).toUpperCase() === 'CN' ? '未知' : 'Unknown',
-        reasons: uniqueStrings(reasons).slice(0, 5),
+        reasons: buildDiagnosticUnknownReasons(p, { lang }),
+        ...(fallbackAnchor ? { anchor_product: fallbackAnchor } : {}),
       },
     };
-    return attachProductIntelContract(fallbackPayload, { lang, profileSummary });
+    return reconcileProductAnalysisConsistency(
+      attachProductIntelContract(fallbackPayload, { lang, profileSummary }),
+      { lang },
+    );
   }
 
   const verdict =
@@ -1824,11 +2057,18 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
   }
 
   if (!reasons.length) {
-    reasons = [
-      String(lang).toUpperCase() === 'CN'
-        ? '上游未返回可用的解释理由（仅有结论标签）。'
-        : 'Upstream did not return usable reasoning (verdict label only).',
-    ];
+    const isUnknownVerdict = (() => {
+      const verdictToken = String(assessment.verdict || '').trim().toLowerCase();
+      return verdictToken === 'unknown' || verdictToken === '未知';
+    })();
+    if (isUnknownVerdict) reasons = buildDiagnosticUnknownReasons(p, { lang });
+    else {
+      reasons = [
+        String(lang).toUpperCase() === 'CN'
+          ? '上游未返回可用的解释理由（仅有结论标签）。'
+          : 'Upstream did not return usable reasoning (verdict label only).',
+      ];
+    }
   }
 
   const heroExisting = assessment.hero_ingredient ?? assessment.heroIngredient ?? null;
@@ -1858,7 +2098,10 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     ...(hero && typeof hero === 'object' ? { hero_ingredient: hero } : {}),
     reasons: uniqueStrings(reasons).slice(0, maxReasons),
   };
-  return attachProductIntelContract({ ...p, assessment: outAssessment }, { lang, profileSummary });
+  return reconcileProductAnalysisConsistency(
+    attachProductIntelContract({ ...p, assessment: outAssessment }, { lang, profileSummary }),
+    { lang },
+  );
 }
 
 function normalizeDupeCompare(raw) {
@@ -1986,6 +2229,7 @@ module.exports = {
   normalizeProductParse,
   normalizeProductAnalysis,
   applyProductAnalysisGapContract,
+  reconcileProductAnalysisConsistency,
   enrichProductAnalysisPayload,
   normalizeDupeCompare,
   normalizeRecoGenerate,

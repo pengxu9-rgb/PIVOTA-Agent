@@ -192,6 +192,7 @@ const {
   normalizeProductParse,
   normalizeProductAnalysis,
   applyProductAnalysisGapContract,
+  reconcileProductAnalysisConsistency,
   enrichProductAnalysisPayload,
   normalizeDupeCompare,
   normalizeRecoGenerate,
@@ -458,6 +459,12 @@ const AURORA_LLM_OPENAI_FALLBACK_ENABLED = (() => {
 })();
 const AURORA_PRODUCT_INTEL_LLM_PROVIDER = normalizeChatLlmProvider(process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER || '');
 const AURORA_PRODUCT_INTEL_LLM_MODEL = normalizeChatLlmModel(process.env.AURORA_PRODUCT_INTEL_LLM_MODEL || '');
+const AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER = normalizeChatLlmProvider(
+  process.env.AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER || '',
+);
+const AURORA_PRODUCT_INTEL_ESCALATION_MODEL = normalizeChatLlmModel(
+  process.env.AURORA_PRODUCT_INTEL_ESCALATION_MODEL || '',
+);
 const AURORA_PRODUCT_RELEVANCE_QA_MODE = (() => {
   const explicitMode = String(process.env.AURORA_LLM_QA_MODE || '')
     .trim()
@@ -714,6 +721,27 @@ const PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED = (() => {
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_INTEL_INCIDECODER_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS || 3200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3200;
+  return Math.max(1000, Math.min(8000, v));
+})();
+const PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES || 5);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5;
+  return Math.max(1, Math.min(8, v));
+})();
+const PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE || 0.28);
+  const v = Number.isFinite(n) ? n : 0.28;
+  return Math.max(0.05, Math.min(0.9, v));
 })();
 const PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_MAX_BYTES || 900000);
@@ -989,8 +1017,7 @@ const ANALYSIS_STORY_MODEL_OPENAI =
 const ANALYSIS_STORY_MODEL_GEMINI =
   String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
   'gemini-2.0-flash';
-const AURORA_DIAG_FORCE_GEMINI_MODEL =
-  String(process.env.AURORA_DIAG_FORCE_GEMINI_MODEL || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
+const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
   1200,
   Math.min(12000, Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 5000)),
@@ -4504,6 +4531,301 @@ async function fetchDailyMedRegulatorySupplement({
   };
 }
 
+function toIncidecoderSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/['’"]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 160);
+}
+
+function extractIncidecoderProductUrls(searchHtml = '', baseUrl = 'https://incidecoder.com') {
+  const source = String(searchHtml || '');
+  if (!source) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /href=["']([^"']*\/products\/[^"']+)["']/gi;
+  let m = re.exec(source);
+  while (m) {
+    const rawHref = decodeHtmlEntitiesBasic(m[1] || '').trim();
+    if (!rawHref) {
+      m = re.exec(source);
+      continue;
+    }
+    try {
+      const abs = new URL(rawHref, baseUrl);
+      const host = String(abs.hostname || '').trim().toLowerCase();
+      const path = String(abs.pathname || '').trim();
+      if (!host.endsWith('incidecoder.com')) {
+        m = re.exec(source);
+        continue;
+      }
+      if (!/^\/products\/[a-z0-9-]+$/i.test(path)) {
+        m = re.exec(source);
+        continue;
+      }
+      const normalizedUrl = `${abs.origin}${path}`;
+      const key = normalizedUrl.toLowerCase();
+      if (seen.has(key)) {
+        m = re.exec(source);
+        continue;
+      }
+      seen.add(key);
+      out.push(normalizedUrl);
+      if (out.length >= PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES) break;
+    } catch {
+      // ignore malformed links
+    }
+    m = re.exec(source);
+  }
+  return out;
+}
+
+async function fetchIncidecoderSearchCandidates({ query, timeoutMs = PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS, logger } = {}) {
+  const queryText = String(query || '').trim();
+  if (!queryText) {
+    return {
+      ok: false,
+      query: '',
+      search_url: '',
+      product_urls: [],
+      reason: 'incidecoder_query_missing',
+      fetch_meta: null,
+    };
+  }
+  const searchUrl = `https://incidecoder.com/search?query=${encodeURIComponent(queryText)}`;
+  const fetchOut = await fetchProductHtmlWithFallback({
+    productUrl: searchUrl,
+    timeoutMs: Math.max(1200, Math.min(6000, Number(timeoutMs) || PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS)),
+    allowHostVariant: false,
+    logger,
+  });
+  if (!fetchOut.ok || !fetchOut.html) {
+    return {
+      ok: false,
+      query: queryText,
+      search_url: searchUrl,
+      product_urls: [],
+      reason: String(fetchOut?.failure_code || 'incidecoder_search_fetch_failed'),
+      fetch_meta: fetchOut,
+    };
+  }
+  const productUrls = extractIncidecoderProductUrls(fetchOut.html, searchUrl);
+  return {
+    ok: productUrls.length > 0,
+    query: queryText,
+    search_url: searchUrl,
+    product_urls: productUrls,
+    reason: productUrls.length ? null : 'incidecoder_no_match',
+    fetch_meta: fetchOut,
+  };
+}
+
+async function fetchIncidecoderProductPage({ productUrl, timeoutMs = PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS, logger } = {}) {
+  const urlText = String(productUrl || '').trim();
+  if (!/^https?:\/\/(?:www\.)?incidecoder\.com\/products\/[a-z0-9-]+$/i.test(urlText)) {
+    return {
+      ok: false,
+      url: urlText,
+      reason: 'incidecoder_url_invalid',
+      fetch_meta: null,
+      html: '',
+    };
+  }
+  const fetchOut = await fetchProductHtmlWithFallback({
+    productUrl: urlText,
+    timeoutMs: Math.max(1200, Math.min(6000, Number(timeoutMs) || PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS)),
+    allowHostVariant: false,
+    logger,
+  });
+  return {
+    ok: Boolean(fetchOut.ok && fetchOut.html),
+    url: urlText,
+    reason: fetchOut.ok ? null : String(fetchOut.failure_code || 'incidecoder_detail_fetch_failed'),
+    fetch_meta: fetchOut,
+    html: fetchOut.ok ? String(fetchOut.html || '') : '',
+  };
+}
+
+function extractIncidecoderIngredientsFromHtml(html = '') {
+  const source = String(html || '');
+  if (!source) return [];
+
+  const linkedIngredients = [];
+  const linkRe = /\/ingredients\/[a-z0-9-]+["'][^>]*>([^<]{2,120})</gi;
+  let linkMatch = linkRe.exec(source);
+  while (linkMatch) {
+    const token = normalizeInciIngredientName(stripHtmlToText(linkMatch[1] || ''));
+    if (token) linkedIngredients.push(token);
+    if (linkedIngredients.length >= 160) break;
+    linkMatch = linkRe.exec(source);
+  }
+
+  const blockCandidates = [];
+  const blockPatterns = [
+    /Ingredient\s+list[\s\S]{0,1000}?<p[^>]*>([\s\S]{40,12000})<\/p>/i,
+    /Ingredients?[\s\S]{0,1000}?<div[^>]*class=["'][^"']*(?:content|ingredients)[^"']*["'][^>]*>([\s\S]{40,12000})<\/div>/i,
+    /"ingredient_list"\s*:\s*"([^"]{40,12000})"/i,
+    /"ingredients"\s*:\s*\[([^\]]{40,12000})\]/i,
+  ];
+  for (const re of blockPatterns) {
+    const match = source.match(re);
+    if (!match || !match[1]) continue;
+    const rows = splitInciList(match[1]).map((item) => normalizeInciIngredientName(item)).filter(Boolean);
+    blockCandidates.push(...rows);
+    if (blockCandidates.length >= 160) break;
+  }
+
+  const merged = uniqCaseInsensitiveStrings([...linkedIngredients, ...blockCandidates], 180);
+  return merged.slice(0, 140);
+}
+
+function tokenizeIncidecoderComparable(text) {
+  return uniqCaseInsensitiveStrings(
+    String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3),
+    80,
+  );
+}
+
+function scoreIncidecoderMatch({ descriptor = null, pageTitle = '', productUrl = '' } = {}) {
+  const d = isPlainObject(descriptor) ? descriptor : {};
+  const queryTokens = tokenizeIncidecoderComparable(
+    `${pickFirstTrimmed(d.brand)} ${pickFirstTrimmed(d.name)} ${pickFirstTrimmed(d.query)}`,
+  );
+  const titleTokens = tokenizeIncidecoderComparable(`${pageTitle} ${productUrl}`);
+  if (!queryTokens.length || !titleTokens.length) return 0.35;
+  const titleSet = new Set(titleTokens);
+  const overlap = queryTokens.filter((token) => titleSet.has(token)).length;
+  const overlapScore = overlap / Math.max(1, queryTokens.length);
+  const brandToken = pickFirstTrimmed(d.brand).toLowerCase();
+  const hasBrand = brandToken && String(pageTitle || '').toLowerCase().includes(brandToken);
+  const nameToken = pickFirstTrimmed(d.name).toLowerCase();
+  const hasName = nameToken && String(pageTitle || '').toLowerCase().includes(nameToken);
+  return Math.max(0, Math.min(1, Number((overlapScore + (hasBrand ? 0.2 : 0) + (hasName ? 0.15 : 0)).toFixed(3))));
+}
+
+async function fetchIncidecoderIngredientSupplement({
+  parsedProduct = null,
+  productUrl = '',
+  timeoutMs = PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS,
+  logger,
+} = {}) {
+  const descriptor = buildProductDescriptorFromInput({ parsedProduct, productUrl });
+  if (!descriptor.query) {
+    return {
+      ok: false,
+      reason: 'incidecoder_query_missing',
+      query: '',
+      attempts: [],
+    };
+  }
+  const maxBudgetMs = Math.max(1200, Math.min(9000, Number(timeoutMs) || PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS));
+  const deadline = Date.now() + maxBudgetMs;
+  const remainingBudget = () => Math.max(800, deadline - Date.now());
+  const queryCandidates = uniqCaseInsensitiveStrings(
+    [
+      descriptor.query,
+      pickFirstTrimmed(`${descriptor.brand || ''} ${descriptor.name || ''}`),
+      descriptor.name,
+    ].filter(Boolean),
+    3,
+  );
+  const attempts = [];
+  const candidateUrls = [];
+  for (const queryText of queryCandidates) {
+    if (Date.now() >= deadline) break;
+    // eslint-disable-next-line no-await-in-loop
+    const searchOut = await fetchIncidecoderSearchCandidates({
+      query: queryText,
+      timeoutMs: remainingBudget(),
+      logger,
+    });
+    attempts.push({
+      stage: 'search',
+      query: queryText,
+      ok: Boolean(searchOut.ok),
+      reason: searchOut.reason || null,
+      status: Number.isFinite(Number(searchOut?.fetch_meta?.status)) ? Number(searchOut.fetch_meta.status) : null,
+    });
+    for (const url of Array.isArray(searchOut.product_urls) ? searchOut.product_urls : []) {
+      if (!candidateUrls.includes(url)) candidateUrls.push(url);
+      if (candidateUrls.length >= PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES) break;
+    }
+    if (candidateUrls.length >= PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES) break;
+  }
+
+  const directSlug = toIncidecoderSlug(descriptor.name || descriptor.query);
+  if (directSlug) {
+    const directUrl = `https://incidecoder.com/products/${directSlug}`;
+    if (!candidateUrls.includes(directUrl)) candidateUrls.unshift(directUrl);
+  }
+
+  let best = null;
+  for (const url of candidateUrls.slice(0, PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES)) {
+    if (Date.now() >= deadline) break;
+    // eslint-disable-next-line no-await-in-loop
+    const pageOut = await fetchIncidecoderProductPage({
+      productUrl: url,
+      timeoutMs: remainingBudget(),
+      logger,
+    });
+    const pageTitle = pageOut.ok ? extractPageTitleFromHtml(pageOut.html) : '';
+    const ingredients = pageOut.ok ? extractIncidecoderIngredientsFromHtml(pageOut.html) : [];
+    const matchScore = pageOut.ok ? scoreIncidecoderMatch({ descriptor, pageTitle, productUrl: url }) : 0;
+    attempts.push({
+      stage: 'detail',
+      url,
+      ok: Boolean(pageOut.ok),
+      reason: pageOut.reason || null,
+      ingredient_count: ingredients.length,
+      match_score: matchScore,
+      status: Number.isFinite(Number(pageOut?.fetch_meta?.status)) ? Number(pageOut.fetch_meta.status) : null,
+    });
+    if (!pageOut.ok || !ingredients.length) continue;
+    if (!best || matchScore > best.match_score || (matchScore === best.match_score && ingredients.length > best.ingredients.length)) {
+      best = {
+        source_url: url,
+        ingredients,
+        match_score: matchScore,
+        page_title: pageTitle,
+      };
+    }
+  }
+
+  if (!best || best.ingredients.length < 4 || best.match_score < PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE) {
+    const hadFetchFailure = attempts.some((item) => String(item?.reason || '').includes('fetch_failed'));
+    return {
+      ok: false,
+      query: descriptor.query,
+      reason: hadFetchFailure ? 'incidecoder_fetch_failed' : 'incidecoder_no_match',
+      attempts: attempts.slice(0, 12),
+    };
+  }
+
+  return {
+    ok: true,
+    query: descriptor.query,
+    source_url: best.source_url,
+    page_title: best.page_title,
+    ingredients: best.ingredients,
+    match_score: best.match_score,
+    attempts: attempts.slice(0, 12),
+    source: {
+      type: 'inci_decoder',
+      url: best.source_url,
+      label: 'INCIDecoder',
+      confidence: Number(Math.max(0.35, Math.min(0.82, best.match_score + 0.18)).toFixed(2)),
+    },
+  };
+}
+
 const CONCENTRATION_PERCENT_RE = /\b(\d{1,2}(?:\.\d{1,2})?)\s*%/gi;
 const CONCENTRATION_CONTEXT_RE = /\b(acid|retinol|retinal|retinoid|niacinamide|vitamin\s*c|ascorb|peptide|copper|zinc|benzoyl|salicylic|glycolic|lactic|mandelic|serum|solution)\b/i;
 
@@ -6298,6 +6620,109 @@ function shouldRefreshCompetitorSnapshot(payload, sourceMeta = null) {
   return true;
 }
 
+function collectProductIntelEvidenceSourceTypes(payload) {
+  const p = isPlainObject(payload) ? payload : {};
+  const evidence = isPlainObject(p.evidence) ? p.evidence : {};
+  const sources = Array.isArray(evidence.sources) ? evidence.sources : [];
+  return uniqCaseInsensitiveStrings(
+    sources
+      .map((item) => (isPlainObject(item) ? String(item.type || '').trim().toLowerCase() : ''))
+      .filter(Boolean),
+    8,
+  );
+}
+
+function collectProductIntelInciTokens(payload) {
+  const p = isPlainObject(payload) ? payload : {};
+  const evidence = isPlainObject(p.evidence) ? p.evidence : {};
+  const science = isPlainObject(evidence.science) ? evidence.science : {};
+  const ingredientIntel = isPlainObject(p.ingredient_intel) ? p.ingredient_intel : {};
+  const inciNormalized = Array.isArray(ingredientIntel.inci_normalized) ? ingredientIntel.inci_normalized : [];
+  return uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(science.key_ingredients || science.keyIngredients) ? (science.key_ingredients || science.keyIngredients) : []),
+      ...inciNormalized.map((item) => {
+        if (typeof item === 'string') return item;
+        if (isPlainObject(item)) return pickFirstTrimmed(item.name, item.inci, item.value);
+        return '';
+      }),
+    ]
+      .map((item) => normalizeInciIngredientName(item))
+      .filter(Boolean),
+    120,
+  );
+}
+
+function shouldPersistProductIntelKb(payload, sourceMeta = null) {
+  const p = isPlainObject(payload) ? payload : null;
+  if (!p) {
+    return { attempted: false, persisted: false, blocked_reason: 'payload_missing' };
+  }
+  const sourceTypes = collectProductIntelEvidenceSourceTypes(p);
+  const hasInciDecoder = sourceTypes.includes('inci_decoder');
+  const hasAuthoritativeEvidence = sourceTypes.includes('official_page') || sourceTypes.includes('regulatory');
+  if (!hasAuthoritativeEvidence) {
+    return {
+      attempted: true,
+      persisted: false,
+      blocked_reason: hasInciDecoder ? 'incidecoder_unverified_not_persisted' : 'authoritative_source_missing',
+    };
+  }
+  if (hasInciDecoder) {
+    const sourceMetaObj = isPlainObject(sourceMeta) ? sourceMeta : {};
+    const overlapFromMeta = Number(sourceMetaObj?.inci_decoder_overlap_count);
+    const overlapCount = Number.isFinite(overlapFromMeta) ? Math.max(0, Math.trunc(overlapFromMeta)) : 0;
+    if (overlapCount <= 0) {
+      const inciTokens = collectProductIntelInciTokens(p);
+      const hasSufficientInci = inciTokens.length >= 4;
+      if (!hasSufficientInci) {
+        return {
+          attempted: true,
+          persisted: false,
+          blocked_reason: 'incidecoder_unverified_not_persisted',
+        };
+      }
+    }
+  }
+  return { attempted: true, persisted: true, blocked_reason: null };
+}
+
+function annotateProductIntelKbWriteDecision(payload, decision) {
+  const p = isPlainObject(payload) ? payload : null;
+  if (!p) return payload;
+  const d = isPlainObject(decision) ? decision : {};
+  const provenance = isPlainObject(p.provenance) ? p.provenance : {};
+  const missingInfo = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(p.missing_info) ? p.missing_info : []),
+      ...(Array.isArray(p.user_facing_gaps) ? p.user_facing_gaps : []),
+      ...(d.blocked_reason === 'incidecoder_unverified_not_persisted' ? ['incidecoder_unverified_not_persisted'] : []),
+    ],
+    16,
+  );
+  const internalCodes = uniqCaseInsensitiveStrings(
+    [
+      ...getProductAnalysisInternalMissingCodes(p),
+      ...(d.blocked_reason === 'incidecoder_unverified_not_persisted' ? ['incidecoder_unverified_not_persisted'] : []),
+    ],
+    24,
+  );
+  p.provenance = {
+    ...provenance,
+    kb_write: {
+      attempted: d.attempted === true,
+      persisted: d.persisted === true,
+      blocked_reason: d.blocked_reason ? String(d.blocked_reason) : null,
+    },
+  };
+  if (missingInfo.length) p.missing_info = missingInfo;
+  if (internalCodes.length) {
+    p.internal_debug_codes = internalCodes;
+    p.missing_info_internal = internalCodes;
+  }
+  return p;
+}
+
 function scheduleProductIntelKbBackfill({
   productUrl,
   parsedProduct = null,
@@ -6308,10 +6733,26 @@ function scheduleProductIntelKbBackfill({
   sourceMeta = null,
   logger,
 } = {}) {
-  if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED) return;
+  if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED) {
+    annotateProductIntelKbWriteDecision(payload, {
+      attempted: false,
+      persisted: false,
+      blocked_reason: 'kb_backfill_disabled',
+    });
+    return { attempted: false, persisted: false, blocked_reason: 'kb_backfill_disabled' };
+  }
   const kbKey = buildProductIntelKbKey({ productUrl, parsedProduct, lang, productHint });
-  if (!kbKey) return;
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+  if (!kbKey) {
+    annotateProductIntelKbWriteDecision(payload, {
+      attempted: false,
+      persisted: false,
+      blocked_reason: 'kb_key_missing',
+    });
+    return { attempted: false, persisted: false, blocked_reason: 'kb_key_missing' };
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { attempted: false, persisted: false, blocked_reason: 'payload_missing' };
+  }
 
   let analysisSnapshot = null;
   try {
@@ -6319,9 +6760,36 @@ function scheduleProductIntelKbBackfill({
   } catch {
     analysisSnapshot = null;
   }
-  if (!analysisSnapshot || typeof analysisSnapshot !== 'object' || Array.isArray(analysisSnapshot)) return;
+  if (!analysisSnapshot || typeof analysisSnapshot !== 'object' || Array.isArray(analysisSnapshot)) {
+    annotateProductIntelKbWriteDecision(payload, {
+      attempted: false,
+      persisted: false,
+      blocked_reason: 'payload_snapshot_failed',
+    });
+    return { attempted: false, persisted: false, blocked_reason: 'payload_snapshot_failed' };
+  }
 
   const sourceMetaObj = sourceMeta && typeof sourceMeta === 'object' && !Array.isArray(sourceMeta) ? sourceMeta : null;
+  const persistDecision = shouldPersistProductIntelKb(payload, sourceMetaObj);
+  annotateProductIntelKbWriteDecision(payload, persistDecision);
+  if (!persistDecision.persisted) {
+    logger?.debug?.(
+      {
+        kb_key: kbKey,
+        blocked_reason: persistDecision.blocked_reason || 'kb_write_blocked',
+      },
+      'aurora bff: skipped product-intel kb backfill by strict gate',
+    );
+    return persistDecision;
+  }
+  try {
+    analysisSnapshot = JSON.parse(JSON.stringify(payload));
+  } catch {
+    analysisSnapshot = null;
+  }
+  if (!analysisSnapshot || typeof analysisSnapshot !== 'object' || Array.isArray(analysisSnapshot)) {
+    return { attempted: false, persisted: false, blocked_reason: 'payload_snapshot_failed' };
+  }
   const keyQuality = resolveProductIntelKbKeyQuality({ productUrl, parsedProduct, productHint, lang });
   const mergedSourceMeta = {
     ...(sourceMetaObj || {}),
@@ -6345,6 +6813,7 @@ function scheduleProductIntelKbBackfill({
       );
     });
   });
+  return persistDecision;
 }
 
 function isLikelyNoiseCompetitorName(name) {
@@ -8723,6 +9192,7 @@ async function buildProductAnalysisFromUrlIngredients({
   const keyHints = extractKeyIngredientsFromHtml(html);
 
   let regulatorySupplement = null;
+  let incidecoderSupplement = null;
   if (!html || !inciList.length) {
     try {
       regulatorySupplement = await fetchDailyMedRegulatorySupplement({
@@ -8743,16 +9213,56 @@ async function buildProductAnalysisFromUrlIngredients({
     }
   }
 
+  if (PRODUCT_INTEL_INCIDECODER_ENABLED && (!html || !inciList.length)) {
+    try {
+      incidecoderSupplement = await fetchIncidecoderIngredientSupplement({
+        parsedProduct: parsedProductObj,
+        productUrl: parsedUrl.toString(),
+        timeoutMs: PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS,
+        logger,
+      });
+    } catch (err) {
+      logger?.warn?.(
+        {
+          url: parsedUrl.toString(),
+          err: err?.message || String(err),
+        },
+        'aurora bff: inci decoder supplement lookup failed',
+      );
+      incidecoderSupplement = {
+        ok: false,
+        query: '',
+        reason: 'incidecoder_fetch_failed',
+      };
+    }
+  }
+
   const regulatoryActiveInci =
     regulatorySupplement && regulatorySupplement.ok && Array.isArray(regulatorySupplement.active_ingredients)
       ? regulatorySupplement.active_ingredients
       : [];
+  const incidecoderInci =
+    incidecoderSupplement && incidecoderSupplement.ok && Array.isArray(incidecoderSupplement.ingredients)
+      ? incidecoderSupplement.ingredients
+      : [];
   const normalizedInci = uniqCaseInsensitiveStrings(
+    [...inciList, ...regulatoryActiveInci, ...incidecoderInci]
+      .map((item) => normalizeInciIngredientName(item))
+      .filter(Boolean),
+    120,
+  );
+  const officialInciNormalized = uniqCaseInsensitiveStrings(
     [...inciList, ...regulatoryActiveInci]
       .map((item) => normalizeInciIngredientName(item))
       .filter(Boolean),
     120,
   );
+  const incidecoderOverlapCount = incidecoderInci.length
+    ? incidecoderInci
+      .map((item) => normalizeInciIngredientName(item))
+      .filter(Boolean)
+      .filter((item) => officialInciNormalized.includes(item)).length
+    : 0;
   const keyIngredients = deriveKeyIngredientsForAnalysis(
     normalizedInci,
     keyHints.map((item) => normalizeInciIngredientName(item)),
@@ -8848,6 +9358,10 @@ async function buildProductAnalysisFromUrlIngredients({
           ? isCn
             ? `官网成分抓取受限，已改用监管源（DailyMed）补充活性信息（${regulatoryActiveInci.length} 项）。`
             : `Official-page INCI extraction was blocked; a regulatory source (DailyMed) was used as backup (${regulatoryActiveInci.length} active entries).`
+          : incidecoderSupplement && incidecoderSupplement.ok
+            ? isCn
+              ? `官网成分抓取受限，已改用 INCIDecoder 补充成分线索（${incidecoderInci.length} 项，需与包装 INCI 复核）。`
+              : `Official-page INCI extraction was blocked; INCIDecoder was used as a supplemental source (${incidecoderInci.length} entries, package INCI cross-check required).`
           : isCn
             ? '当前未能稳定抓取到官网 INCI 成分表，证据有限。'
             : 'The official product page could not be parsed reliably, so evidence is currently limited.',
@@ -8878,6 +9392,11 @@ async function buildProductAnalysisFromUrlIngredients({
         ? isCn
           ? '监管源可用，但不同地区/批次配方可能不同；建议继续核对实物包装。'
           : 'Regulatory evidence is available, but market/batch formulas can differ; verify against your actual package.'
+        : '',
+      incidecoderSupplement && incidecoderSupplement.ok
+        ? isCn
+          ? 'INCIDecoder 为补充证据源，不作为单一权威来源；建议与官方/监管信息交叉验证。'
+          : 'INCIDecoder is a supplemental source and should be cross-validated with official/regulatory evidence.'
         : '',
     ],
     6,
@@ -9085,6 +9604,13 @@ async function buildProductAnalysisFromUrlIngredients({
   if (regulatorySupplement && regulatorySupplement.ok) {
     evidenceMissingInfo.push('regulatory_source_used', 'version_verification_needed');
   }
+  if (incidecoderSupplement && incidecoderSupplement.ok) {
+    evidenceMissingInfo.push('incidecoder_source_used', 'version_verification_needed');
+  } else if (incidecoderSupplement && incidecoderSupplement.reason) {
+    const reasonToken = String(incidecoderSupplement.reason || '').trim().toLowerCase();
+    if (reasonToken === 'incidecoder_no_match') evidenceMissingInfo.push('incidecoder_no_match');
+    else if (reasonToken.includes('fetch')) evidenceMissingInfo.push('incidecoder_fetch_failed');
+  }
   if (!normalizedInci.length) evidenceMissingInfo.push('evidence_missing');
   if (!concentrationSignals.length) evidenceMissingInfo.push('concentration_unknown');
   if (!anchorPrice) evidenceMissingInfo.push('price_unknown');
@@ -9116,29 +9642,40 @@ async function buildProductAnalysisFromUrlIngredients({
     },
   };
 
-  const evidenceSources = uniqCaseInsensitiveStrings(
-    [
-      html ? parsedUrl.toString() : '',
-      regulatorySupplement && regulatorySupplement.ok ? String(regulatorySupplement.source?.url || '') : '',
-    ],
-    4,
-  ).map((url) => {
-    const lower = String(url || '').trim().toLowerCase();
-    if (lower.includes('dailymed.nlm.nih.gov')) {
-      return {
-        type: 'regulatory',
-        url,
-        label: 'DailyMed',
-        confidence: 0.72,
-      };
-    }
-    return {
+  const evidenceSources = [];
+  if (html) {
+    evidenceSources.push({
       type: 'official_page',
-      url,
+      url: parsedUrl.toString(),
       label: hostName || 'Official page',
       confidence: 0.78,
-    };
-  });
+    });
+  }
+  if (regulatorySupplement && regulatorySupplement.ok) {
+    evidenceSources.push({
+      type: 'regulatory',
+      url: String(regulatorySupplement.source?.url || regulatorySupplement.source_url || ''),
+      label: 'DailyMed',
+      confidence: 0.72,
+    });
+  }
+  if (incidecoderSupplement && incidecoderSupplement.ok) {
+    evidenceSources.push({
+      type: 'inci_decoder',
+      url: String(incidecoderSupplement.source?.url || incidecoderSupplement.source_url || ''),
+      label: 'INCIDecoder',
+      confidence: Number(incidecoderSupplement.source?.confidence || 0.55),
+    });
+  }
+  const normalizedEvidenceSources = evidenceSources
+    .map((item) => ({
+      type: String(item?.type || '').trim().toLowerCase(),
+      url: String(item?.url || '').trim(),
+      label: String(item?.label || '').trim(),
+      confidence: Number(item?.confidence),
+    }))
+    .filter((item) => /^https?:\/\//i.test(item.url))
+    .slice(0, 4);
 
   const urlFetchProvenance = {
     final_strategy: String(fetchOut?.final_strategy || 'none').trim() || 'none',
@@ -9149,6 +9686,15 @@ async function buildProductAnalysisFromUrlIngredients({
     })),
     ...(fetchOut?.failure_code ? { failure_code: String(fetchOut.failure_code).trim().toLowerCase() } : {}),
   };
+  const sourceChain = uniqCaseInsensitiveStrings(
+    [
+      html ? 'official_page' : '',
+      regulatorySupplement && regulatorySupplement.ok ? 'regulatory' : '',
+      incidecoderSupplement && incidecoderSupplement.ok ? 'inci_decoder' : '',
+      'llm_extraction',
+    ],
+    6,
+  );
 
   const raw = {
     assessment: {
@@ -9190,6 +9736,11 @@ async function buildProductAnalysisFromUrlIngredients({
               ? `监管源补充：DailyMed 活性信息已接入（query=${regulatorySupplement.query || 'n/a'}）。`
               : `Regulatory supplement loaded from DailyMed (query=${regulatorySupplement.query || 'n/a'}).`
             : '',
+          incidecoderSupplement && incidecoderSupplement.ok
+            ? isCn
+              ? `INCIDecoder 补充：已解析 ${incidecoderInci.length} 项成分线索（match=${Number(incidecoderSupplement.match_score || 0).toFixed(2)}）。`
+              : `INCIDecoder supplement loaded (${incidecoderInci.length} ingredients, match=${Number(incidecoderSupplement.match_score || 0).toFixed(2)}).`
+            : '',
           anchorPrice
             ? isCn
               ? `页面价格信号：${anchorPrice.currency || 'USD'} ${anchorPrice.amount}（用于同类对比）`
@@ -9224,7 +9775,7 @@ async function buildProductAnalysisFromUrlIngredients({
         ],
         8,
       ),
-      ...(evidenceSources.length ? { sources: evidenceSources } : {}),
+      ...(normalizedEvidenceSources.length ? { sources: normalizedEvidenceSources } : {}),
       confidence,
       missing_info: evidenceMissingInfo,
     },
@@ -9236,12 +9787,25 @@ async function buildProductAnalysisFromUrlIngredients({
       validation_mode: dagProvenancePatch?.validation_mode || 'soft_fail',
       ...(dagProvenancePatch && typeof dagProvenancePatch === 'object' ? dagProvenancePatch : {}),
       url_fetch: urlFetchProvenance,
+      ...(sourceChain.length ? { source_chain: sourceChain } : {}),
       ...(regulatorySupplement && regulatorySupplement.ok
         ? {
           regulatory_source: {
             provider: 'dailymed',
             url: String(regulatorySupplement.source_url || ''),
             query: String(regulatorySupplement.query || ''),
+          },
+        }
+        : {}),
+      ...(incidecoderSupplement && incidecoderSupplement.ok
+        ? {
+          inci_decoder: {
+            provider: 'incidecoder',
+            url: String(incidecoderSupplement.source_url || ''),
+            query: String(incidecoderSupplement.query || ''),
+            match_score: Number(incidecoderSupplement.match_score || 0),
+            ingredient_count: incidecoderInci.length,
+            overlap_count: incidecoderOverlapCount,
           },
         }
         : {}),
@@ -9270,6 +9834,12 @@ async function buildProductAnalysisFromUrlIngredients({
         ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
         ...(urlFetchRecoveredWithFallback ? ['url_fetch_recovered_with_fallback'] : []),
         ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
+        ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
+        ...(
+          incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason
+            ? [String(incidecoderSupplement.reason)]
+            : []
+        ),
         ...(!normalizedInci.length ? ['evidence_missing'] : []),
         ...(!anchorPrice ? ['price_unknown'] : []),
         ...(socialMissing ? ['social_signals_missing'] : []),
@@ -9340,6 +9910,8 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
       ...(urlFetchRecoveredWithFallback ? ['url_fetch_recovered_with_fallback'] : []),
       ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
+      ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
+      ...(incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason ? [String(incidecoderSupplement.reason)] : []),
       ...(!normalizedInci.length ? ['evidence_missing'] : []),
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
@@ -9350,7 +9922,7 @@ async function buildProductAnalysisFromUrlIngredients({
       ...dagTimedOutBlocks.map((item) => `reco_dag_timeout_${String(item || '').trim().toLowerCase()}`),
     ]),
   );
-  const nextPayload = applyProductAnalysisGapContract({
+  const nextPayload = reconcileProductAnalysisConsistency(applyProductAnalysisGapContract({
     ...(norm.payload && typeof norm.payload === 'object' ? norm.payload : {}),
     ...(
       raw.evidence && typeof raw.evidence === 'object' && !Array.isArray(raw.evidence)
@@ -9367,7 +9939,7 @@ async function buildProductAnalysisFromUrlIngredients({
     ...(raw.confidence_by_block ? { confidence_by_block: raw.confidence_by_block } : {}),
     ...(raw.provenance ? { provenance: raw.provenance } : {}),
     internal_debug_codes: mergedInternalCodes,
-  });
+  }), { lang });
   const nextFieldMissing = Array.isArray(norm.field_missing) ? norm.field_missing.filter((item) => {
     const field = String(item?.field || '').trim();
     return field !== 'assessment' && field !== 'evidence';
@@ -9390,6 +9962,19 @@ async function buildProductAnalysisFromUrlIngredients({
             url: String(regulatorySupplement.source_url || ''),
             query: String(regulatorySupplement.query || ''),
           },
+        }
+        : {}),
+      ...(incidecoderSupplement && incidecoderSupplement.ok
+        ? {
+          incidecoder_source: {
+            provider: 'incidecoder',
+            url: String(incidecoderSupplement.source_url || ''),
+            query: String(incidecoderSupplement.query || ''),
+            match_score: Number(incidecoderSupplement.match_score || 0),
+            overlap_count: incidecoderOverlapCount,
+            ingredient_count: incidecoderInci.length,
+          },
+          inci_decoder_overlap_count: incidecoderOverlapCount,
         }
         : {}),
       competitor_snapshot_meta: competitorSnapshotMeta
@@ -15766,12 +16351,19 @@ function normalizeChatLlmProvider(value) {
   return null;
 }
 
+function getDiagForceGeminiModel() {
+  const explicit = String(process.env.AURORA_DIAG_FORCE_GEMINI_MODEL || '').trim();
+  if (explicit) return explicit;
+  const fallback = String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
+  return fallback || 'gemini-2.0-flash';
+}
+
 function normalizeChatLlmModel(value) {
   if (AURORA_DIAG_FORCE_GEMINI) {
     if (typeof value !== 'string') return null;
     const forcedToken = value.trim();
     if (!forcedToken) return null;
-    return AURORA_DIAG_FORCE_GEMINI_MODEL;
+    return getDiagForceGeminiModel();
   }
   if (typeof value !== 'string') return null;
   const model = value.trim();
@@ -15805,6 +16397,126 @@ function resolveProductIntelLlmRoute({ req = null, requestedProvider = null, req
     };
   }
   return { llm_provider, llm_model };
+}
+
+function resolveProductIntelEscalationRoute({ req = null } = {}) {
+  if (AURORA_DIAG_FORCE_GEMINI) {
+    return {
+      llm_provider: 'gemini',
+      llm_model: AURORA_DIAG_FORCE_GEMINI_MODEL,
+      stage: 'stage_2',
+      trigger_reason: 'diag_force_gemini',
+    };
+  }
+  const headerProvider =
+    req && typeof req.get === 'function'
+      ? normalizeChatLlmProvider(req.get('X-LLM-Escalation-Provider') ?? req.get('X-Aurora-LLM-Escalation-Provider'))
+      : null;
+  const headerModel =
+    req && typeof req.get === 'function'
+      ? normalizeChatLlmModel(req.get('X-LLM-Escalation-Model') ?? req.get('X-Aurora-LLM-Escalation-Model'))
+      : null;
+  const llm_provider = headerProvider || AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER || null;
+  const llm_model = headerModel || AURORA_PRODUCT_INTEL_ESCALATION_MODEL || null;
+  return {
+    llm_provider,
+    llm_model,
+    stage: 'stage_2',
+    trigger_reason: 'unknown_low_evidence',
+  };
+}
+
+function isUnknownProductAnalysisPayload(payload) {
+  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : {};
+  const verdict = String(assessment?.verdict || '').trim().toLowerCase();
+  return !verdict || verdict === 'unknown' || verdict === '未知';
+}
+
+function getProductAnalysisEvidenceCoverageScore(payload) {
+  const p = isPlainObject(payload) ? payload : {};
+  const evidence = isPlainObject(p.evidence) ? p.evidence : {};
+  const science = isPlainObject(evidence.science) ? evidence.science : {};
+  const social = isPlainObject(evidence.social_signals || evidence.socialSignals) ? (evidence.social_signals || evidence.socialSignals) : {};
+  const keyIngredients = Array.isArray(science.key_ingredients || science.keyIngredients) ? (science.key_ingredients || science.keyIngredients) : [];
+  const mechanisms = Array.isArray(science.mechanisms) ? science.mechanisms : [];
+  const fitNotes = Array.isArray(science.fit_notes || science.fitNotes) ? (science.fit_notes || science.fitNotes) : [];
+  const riskNotes = Array.isArray(science.risk_notes || science.riskNotes) ? (science.risk_notes || science.riskNotes) : [];
+  const expertNotes = Array.isArray(evidence.expert_notes || evidence.expertNotes) ? (evidence.expert_notes || evidence.expertNotes) : [];
+  const socialSignals = [
+    ...(Array.isArray(social.typical_positive || social.typicalPositive) ? (social.typical_positive || social.typicalPositive) : []),
+    ...(Array.isArray(social.typical_negative || social.typicalNegative) ? (social.typical_negative || social.typicalNegative) : []),
+    ...(Array.isArray(social.risk_for_groups || social.riskForGroups) ? (social.risk_for_groups || social.riskForGroups) : []),
+  ];
+  const sources = Array.isArray(evidence.sources) ? evidence.sources : [];
+  let score = 0;
+  if (keyIngredients.length) score += 0.35;
+  if (mechanisms.length || fitNotes.length) score += 0.2;
+  if (riskNotes.length) score += 0.15;
+  if (expertNotes.length) score += 0.1;
+  if (socialSignals.length) score += 0.1;
+  if (sources.length) score += 0.1;
+  return Math.max(0, Math.min(1, Number(score.toFixed(3))));
+}
+
+function shouldTriggerProductIntelEscalation(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return true;
+  if (!isUnknownProductAnalysisPayload(payload)) return false;
+  return getProductAnalysisEvidenceCoverageScore(payload) < 0.45;
+}
+
+function isProductIntelPayloadCandidateBetter(nextPayload, currentPayload) {
+  const nextAssessment = isPlainObject(nextPayload?.assessment);
+  const currentAssessment = isPlainObject(currentPayload?.assessment);
+  if (nextAssessment && !currentAssessment) return true;
+  if (!nextAssessment) return false;
+  const nextScore = getProductAnalysisEvidenceCoverageScore(nextPayload);
+  const currentScore = getProductAnalysisEvidenceCoverageScore(currentPayload);
+  if (nextScore > currentScore + 0.08) return true;
+  if (!isUnknownProductAnalysisPayload(nextPayload) && isUnknownProductAnalysisPayload(currentPayload)) return true;
+  return false;
+}
+
+function appendProductIntelSourceChain(payload, chainEntries = []) {
+  const p = isPlainObject(payload) ? payload : {};
+  const provenance = isPlainObject(p.provenance) ? p.provenance : {};
+  const existing = Array.isArray(provenance.source_chain) ? provenance.source_chain : [];
+  const merged = uniqCaseInsensitiveStrings(
+    [
+      ...existing,
+      ...(Array.isArray(chainEntries) ? chainEntries : []),
+    ],
+    10,
+  );
+  return {
+    ...p,
+    provenance: {
+      ...provenance,
+      ...(merged.length ? { source_chain: merged } : {}),
+    },
+  };
+}
+
+function attachProductIntelLlmRouteProvenance(payload, llmRouteMeta = null) {
+  const p = isPlainObject(payload) ? payload : payload;
+  if (!isPlainObject(p)) return payload;
+  const route = isPlainObject(llmRouteMeta) ? llmRouteMeta : {};
+  const provider = String(route.provider || route.llm_provider || '').trim();
+  const model = String(route.model || route.llm_model || '').trim();
+  const stage = String(route.stage || '').trim() || 'stage_1';
+  const triggerReason = String(route.trigger_reason || route.triggerReason || '').trim() || 'primary';
+  const provenance = isPlainObject(p.provenance) ? p.provenance : {};
+  return {
+    ...p,
+    provenance: {
+      ...provenance,
+      llm_route: {
+        stage,
+        provider: provider || null,
+        model: model || null,
+        trigger_reason: triggerReason,
+      },
+    },
+  };
 }
 
 function classifyStorageError(err) {
@@ -17289,7 +18001,19 @@ async function deepScanRoutineProductCandidate({
     `If product version cannot be confirmed, explicitly mention version verification is required.\n` +
     `Product: ${productDescriptor}`;
 
-  const runDeepScan = async (queryText, timeoutMs) => {
+  const routinePrimaryLlmRoute = resolveProductIntelLlmRoute({});
+  let routineLlmRouteMeta = {
+    stage: 'stage_1',
+    provider: routinePrimaryLlmRoute.llm_provider || null,
+    model: routinePrimaryLlmRoute.llm_model || null,
+    trigger_reason: 'primary',
+  };
+
+  const runDeepScan = async (queryText, timeoutMs, llmRouteOverride = null) => {
+    const effectiveRoute =
+      llmRouteOverride && typeof llmRouteOverride === 'object' && !Array.isArray(llmRouteOverride)
+        ? llmRouteOverride
+        : routinePrimaryLlmRoute;
     try {
       return await auroraChat({
         baseUrl: AURORA_DECISION_BASE_URL,
@@ -17297,6 +18021,8 @@ async function deepScanRoutineProductCandidate({
         timeoutMs,
         ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
         ...(productUrl ? { anchor_product_url: productUrl } : {}),
+        ...(effectiveRoute.llm_provider ? { llm_provider: effectiveRoute.llm_provider } : {}),
+        ...(effectiveRoute.llm_model ? { llm_model: effectiveRoute.llm_model } : {}),
       });
     } catch {
       return null;
@@ -17308,7 +18034,7 @@ async function deepScanRoutineProductCandidate({
   try {
     let upstream = await runDeepScan(deepScanQuery, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS);
     norm = normalizeProductAnalysisFromUpstream(upstream);
-    if (!norm.payload?.assessment) {
+      if (!norm.payload?.assessment) {
       const minimalPrefix = buildContextPrefix({
         lang,
         state: 'S4_ANALYSIS_LOADING',
@@ -17322,12 +18048,50 @@ async function deepScanRoutineProductCandidate({
         `Evidence must include science/social_signals/expert_notes.\n` +
         `If product version cannot be confirmed, explicitly mention version verification is required.\n` +
         `Product: ${productDescriptor}`;
-      const upstreamRetry = await runDeepScan(minimalQuery, Math.max(1200, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS - 600));
-      const retryNorm = normalizeProductAnalysisFromUpstream(upstreamRetry);
-      if (retryNorm.payload?.assessment) norm = retryNorm;
-    }
+        const upstreamRetry = await runDeepScan(minimalQuery, Math.max(1200, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS - 600));
+        const retryNorm = normalizeProductAnalysisFromUpstream(upstreamRetry);
+        if (retryNorm.payload?.assessment) norm = retryNorm;
+      }
 
-    const needsUrlIngredientAnalysis = (() => {
+      const routineEscalationRoute = resolveProductIntelEscalationRoute({});
+      const routineEscalationAvailable =
+        routineEscalationRoute &&
+        routineEscalationRoute.llm_provider &&
+        routineEscalationRoute.llm_model &&
+        (
+          String(routineEscalationRoute.llm_provider || '').trim().toLowerCase() !==
+            String(routinePrimaryLlmRoute.llm_provider || '').trim().toLowerCase() ||
+          String(routineEscalationRoute.llm_model || '').trim() !== String(routinePrimaryLlmRoute.llm_model || '').trim()
+        );
+      if (routineEscalationAvailable && shouldTriggerProductIntelEscalation(norm.payload)) {
+        const escalatedUpstream = await runDeepScan(
+          deepScanQuery,
+          Math.max(9000, Math.min(18000, AURORA_CHAT_UPSTREAM_TIMEOUT_MS)),
+          routineEscalationRoute,
+        );
+        const escalatedNorm = normalizeProductAnalysisFromUpstream(escalatedUpstream);
+        if (isProductIntelPayloadCandidateBetter(escalatedNorm.payload, norm.payload)) {
+          const escalatedCodes = getProductAnalysisInternalMissingCodes(escalatedNorm.payload);
+          norm = {
+            payload: applyProductAnalysisGapContract({
+              ...escalatedNorm.payload,
+              internal_debug_codes: uniqCaseInsensitiveStrings(
+                [...escalatedCodes, 'llm_escalation_stage2_used'],
+                32,
+              ),
+            }),
+            field_missing: mergeFieldMissing(escalatedNorm.field_missing, norm.field_missing),
+          };
+          routineLlmRouteMeta = {
+            stage: String(routineEscalationRoute.stage || 'stage_2'),
+            provider: routineEscalationRoute.llm_provider || null,
+            model: routineEscalationRoute.llm_model || null,
+            trigger_reason: String(routineEscalationRoute.trigger_reason || 'unknown_low_evidence'),
+          };
+        }
+      }
+
+      const needsUrlIngredientAnalysis = (() => {
       const assessment = isPlainObject(norm.payload?.assessment) ? norm.payload.assessment : null;
       if (!assessment) return true;
       const verdict = String(assessment.verdict || '').trim().toLowerCase();
@@ -17402,11 +18166,15 @@ async function deepScanRoutineProductCandidate({
       payload = { ...payload, assessment: { ...assessment, anchor_product: parsedProduct } };
     }
   }
+  payload = reconcileProductAnalysisConsistency(payload, { lang });
   payload = finalizeProductAnalysisRecoContract(payload, {
     logger,
     requestId: ctx && ctx.request_id ? ctx.request_id : 'routine_autoscan',
     mode: 'main_path',
   });
+  payload = appendProductIntelSourceChain(payload, ['llm_extraction']);
+  payload = attachProductIntelLlmRouteProvenance(payload, routineLlmRouteMeta);
+  payload = reconcileProductAnalysisConsistency(payload, { lang });
   if (realtimeUrlNormMeta && productUrl) {
     payload = applyProductAnalysisSocialProvenance(payload, {
       social_fetch_mode: 'async_refresh',
@@ -19597,25 +20365,30 @@ async function applyProductIntelGuardrailsToEnvelope({
   if (!isPlainObject(base)) {
     return { envelope: base, dropped: 0, externalized: 0, rejected: [] };
   }
+  const qaRuntimeObj = isPlainObject(qaRuntime) ? qaRuntime : {};
+  const qaBudgetMsRaw = qaRuntimeObj.budget_ms;
+  const qaStartedAtMsRaw = qaRuntimeObj.started_at_ms;
+  const qaMinBudgetMsRaw = qaRuntimeObj.min_budget_ms;
+  const qaAllowOpenAiFallbackRaw = qaRuntimeObj.allow_openai_fallback;
   const qaContext = {
-    budget_ms: Number.isFinite(Number(qaRuntime && qaRuntime.budget_ms)) ? Math.trunc(Number(qaRuntime.budget_ms)) : null,
-    started_at_ms: Number.isFinite(Number(qaRuntime && qaRuntime.started_at_ms))
-      ? Math.trunc(Number(qaRuntime.started_at_ms))
+    budget_ms: Number.isFinite(Number(qaBudgetMsRaw)) ? Math.trunc(Number(qaBudgetMsRaw)) : null,
+    started_at_ms: Number.isFinite(Number(qaStartedAtMsRaw))
+      ? Math.trunc(Number(qaStartedAtMsRaw))
       : null,
-    min_budget_ms: Number.isFinite(Number(qaRuntime && qaRuntime.min_budget_ms))
-      ? Math.trunc(Number(qaRuntime.min_budget_ms))
+    min_budget_ms: Number.isFinite(Number(qaMinBudgetMsRaw))
+      ? Math.trunc(Number(qaMinBudgetMsRaw))
       : AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS,
-    qa_mode: resolveQaMode(pickFirstString(qaRuntime && qaRuntime.qa_mode, AURORA_LLM_QA_MODE)),
-    qa_provider: resolveQaSingleProvider(pickFirstString(qaRuntime && qaRuntime.qa_provider, AURORA_LLM_SINGLE_PROVIDER)),
+    qa_mode: resolveQaMode(pickFirstString(qaRuntimeObj.qa_mode, AURORA_LLM_QA_MODE)),
+    qa_provider: resolveQaSingleProvider(pickFirstString(qaRuntimeObj.qa_provider, AURORA_LLM_SINGLE_PROVIDER)),
     qa_openai_fallback_enabled:
-      qaRuntime && qaRuntime.allow_openai_fallback !== undefined && qaRuntime.allow_openai_fallback !== null
-        ? Boolean(qaRuntime.allow_openai_fallback)
+      qaAllowOpenAiFallbackRaw !== undefined && qaAllowOpenAiFallbackRaw !== null
+        ? Boolean(qaAllowOpenAiFallbackRaw)
         : AURORA_LLM_OPENAI_FALLBACK_ENABLED,
     story_meta: {},
     relevance_meta: {},
   };
   const productQaMode = resolveQaMode(
-    pickFirstString(qaRuntime && qaRuntime.product_qa_mode, AURORA_PRODUCT_RELEVANCE_QA_MODE),
+    pickFirstString(qaRuntimeObj.product_qa_mode, AURORA_PRODUCT_RELEVANCE_QA_MODE),
   );
 
   const rawCards = Array.isArray(base.cards) ? base.cards.slice() : [];
@@ -25220,7 +25993,8 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
 }
 
 function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
-  const p = isPlainObject(payload) ? { ...payload } : payload;
+  const base = isPlainObject(payload) ? reconcileProductAnalysisConsistency(payload, { lang }) : payload;
+  const p = isPlainObject(base) ? { ...base } : base;
   if (!isPlainObject(p)) return payload;
   const assessment = isPlainObject(p.assessment) ? { ...p.assessment } : null;
   const verdictToken = String(assessment?.verdict || '').trim().toLowerCase();
@@ -25254,7 +26028,7 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
     14,
   );
   const hasDiagnosticCode = payloadMissing.some((token) =>
-    /(analysis_|evidence_|product_not_resolved|url_fetch_|on_page_fetch_blocked|regulatory_source_used)/i.test(String(token || '')),
+    /(analysis_|evidence_|product_not_resolved|url_fetch_|on_page_fetch_blocked|regulatory_source_used|incidecoder_)/i.test(String(token || '')),
   );
   if (!payloadMissing.length || !hasDiagnosticCode) payloadMissing.push('analysis_limited');
 
@@ -25265,12 +26039,12 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
   );
   if (!evidenceMissing.length) evidenceMissing.push('evidence_missing');
 
-  return applyProductAnalysisGapContract({
+  return reconcileProductAnalysisConsistency(applyProductAnalysisGapContract({
     ...p,
     ...(assessment ? { assessment: { ...assessment, reasons: reasons.slice(0, 8) } } : {}),
     ...(evidenceObj ? { evidence: { ...evidenceObj, missing_info: evidenceMissing } } : {}),
     missing_info: payloadMissing.slice(0, 12),
-  });
+  }), { lang });
 }
 
 function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}) {
@@ -25281,9 +26055,19 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
     if (!isPlainObject(card)) return card;
     const type = String(card.type || '').trim().toLowerCase();
     if (type !== 'product_analysis') return card;
+    const reconciledPayload = reconcileProductAnalysisConsistency(card.payload, { lang });
+    const contractedPayload = applyProductAnalysisGapContract(reconciledPayload);
+    const qualityPayload = enforceUnknownVerdictQuality(contractedPayload, { lang });
+    const sanitizedPayload = isPlainObject(qualityPayload) ? { ...qualityPayload } : qualityPayload;
+    if (isPlainObject(sanitizedPayload)) {
+      delete sanitizedPayload.internal_debug_codes;
+      delete sanitizedPayload.internalDebugCodes;
+      delete sanitizedPayload.missing_info_internal;
+      delete sanitizedPayload.missingInfoInternal;
+    }
     return {
       ...card,
-      payload: enforceUnknownVerdictQuality(card.payload, { lang }),
+      payload: sanitizedPayload,
     };
   });
   return env;
@@ -26298,6 +27082,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestedProvider: parsed.data.llm_provider,
         requestedModel: parsed.data.llm_model,
       });
+      let llmRouteMeta = {
+        stage: 'stage_1',
+        provider: productIntelLlmRoute.llm_provider || null,
+        model: productIntelLlmRoute.llm_model || null,
+        trigger_reason: 'primary',
+      };
 
       const input = parsed.data.url || parsed.data.text;
       const query = `Task: Parse the user's product input into a normalized product entity.\n` +
@@ -26507,6 +27297,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestedProvider: parsed.data.llm_provider,
         requestedModel: parsed.data.llm_model,
       });
+      let llmRouteMeta = {
+        stage: 'stage_1',
+        provider: productIntelLlmRoute.llm_provider || null,
+        model: productIntelLlmRoute.llm_model || null,
+        trigger_reason: 'primary',
+      };
 
       const incomingSession =
         parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
@@ -26666,6 +27462,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(kbSocialState.socialFreshUntil ? { social_fresh_until: kbSocialState.socialFreshUntil } : {}),
             ...(kbSocialState.socialChannels.length ? { social_channels_used: kbSocialState.socialChannels } : {}),
           });
+          kbPayload = appendProductIntelSourceChain(kbPayload, ['llm_extraction']);
+          kbPayload = attachProductIntelLlmRouteProvenance(kbPayload, {
+            ...llmRouteMeta,
+            trigger_reason: 'url_realtime_kb_hit',
+          });
+          kbPayload = reconcileProductAnalysisConsistency(kbPayload, { lang: ctx.lang });
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
             suggested_chips: [],
@@ -26799,6 +27601,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           realtimePayload = applyProductAnalysisSocialProvenance(realtimePayload, {
             social_fetch_mode: 'async_refresh',
           });
+          realtimePayload = appendProductIntelSourceChain(realtimePayload, ['llm_extraction']);
+          realtimePayload = attachProductIntelLlmRouteProvenance(realtimePayload, {
+            ...llmRouteMeta,
+            trigger_reason: 'url_realtime_main_path',
+          });
+          realtimePayload = reconcileProductAnalysisConsistency(realtimePayload, { lang: ctx.lang });
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
@@ -26941,7 +27749,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         `Evidence must include science/social_signals/expert_notes.\n` +
         `Product: ${productDescriptor}`;
 
-      const runDeepScan = async ({ queryText, timeoutMs }) => {
+      const runDeepScan = async ({ queryText, timeoutMs, llmRouteOverride = null }) => {
+        const effectiveRoute =
+          llmRouteOverride && typeof llmRouteOverride === 'object' && !Array.isArray(llmRouteOverride)
+            ? llmRouteOverride
+            : productIntelLlmRoute;
         try {
           return await auroraChat({
             baseUrl: AURORA_DECISION_BASE_URL,
@@ -26949,8 +27761,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             timeoutMs,
             ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
             ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
-            ...(productIntelLlmRoute.llm_provider ? { llm_provider: productIntelLlmRoute.llm_provider } : {}),
-            ...(productIntelLlmRoute.llm_model ? { llm_model: productIntelLlmRoute.llm_model } : {}),
+            ...(effectiveRoute.llm_provider ? { llm_provider: effectiveRoute.llm_provider } : {}),
+            ...(effectiveRoute.llm_model ? { llm_model: effectiveRoute.llm_model } : {}),
           });
         } catch {
           return null;
@@ -27012,6 +27824,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             enrichProductAnalysisPayload(normNoAnchor.payload, { lang: ctx.lang, profileSummary }),
             { logger, requestId: ctx.request_id, mode: 'main_path' },
           );
+          const payloadNoAnchorWithRoute = reconcileProductAnalysisConsistency(
+            attachProductIntelLlmRouteProvenance(
+              appendProductIntelSourceChain(payloadNoAnchor, ['llm_extraction']),
+              {
+                ...llmRouteMeta,
+                trigger_reason: 'anchor_missing_deepscan_degraded',
+              },
+            ),
+            { lang: ctx.lang },
+          );
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
             suggested_chips: [],
@@ -27019,7 +27841,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               {
                 card_id: `analyze_${ctx.request_id}`,
                 type: 'product_analysis',
-                payload: payloadNoAnchor,
+                payload: payloadNoAnchorWithRoute,
                 ...(normNoAnchor.field_missing?.length ? { field_missing: normNoAnchor.field_missing.slice(0, 8) } : {}),
               },
             ],
@@ -27059,6 +27881,44 @@ function mountAuroraBffRoutes(app, { logger }) {
               internal_debug_codes: Array.from(new Set([...internalCodes, 'profile_context_dropped_for_reliability'])),
             }),
             field_missing: norm2.field_missing,
+          };
+        }
+      }
+
+      const escalationRoute = resolveProductIntelEscalationRoute({ req });
+      const escalationRouteAvailable =
+        escalationRoute &&
+        escalationRoute.llm_provider &&
+        escalationRoute.llm_model &&
+        (
+          String(escalationRoute.llm_provider || '').trim().toLowerCase() !==
+            String(productIntelLlmRoute.llm_provider || '').trim().toLowerCase() ||
+          String(escalationRoute.llm_model || '').trim() !== String(productIntelLlmRoute.llm_model || '').trim()
+        );
+      if (escalationRouteAvailable && shouldTriggerProductIntelEscalation(norm.payload)) {
+        const escalatedUpstream = await runDeepScan({
+          queryText: query,
+          timeoutMs: Math.max(9000, Math.min(18000, AURORA_CHAT_UPSTREAM_TIMEOUT_MS)),
+          llmRouteOverride: escalationRoute,
+        });
+        const escalatedNorm = normalizeProductAnalysisFromUpstream(escalatedUpstream);
+        if (isProductIntelPayloadCandidateBetter(escalatedNorm.payload, norm.payload)) {
+          const escalatedInternalCodes = getProductAnalysisInternalMissingCodes(escalatedNorm.payload);
+          norm = {
+            payload: applyProductAnalysisGapContract({
+              ...escalatedNorm.payload,
+              internal_debug_codes: uniqCaseInsensitiveStrings(
+                [...escalatedInternalCodes, 'llm_escalation_stage2_used'],
+                32,
+              ),
+            }),
+            field_missing: mergeFieldMissing(escalatedNorm.field_missing, norm.field_missing),
+          };
+          llmRouteMeta = {
+            stage: String(escalationRoute.stage || 'stage_2'),
+            provider: escalationRoute.llm_provider || null,
+            model: escalationRoute.llm_model || null,
+            trigger_reason: String(escalationRoute.trigger_reason || 'unknown_low_evidence'),
           };
         }
       }
@@ -27156,6 +28016,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           social_fetch_mode: 'async_refresh',
         });
       }
+      payload = appendProductIntelSourceChain(payload, ['llm_extraction']);
+      payload = attachProductIntelLlmRouteProvenance(payload, llmRouteMeta);
+      payload = reconcileProductAnalysisConsistency(payload, { lang: ctx.lang });
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -35231,9 +36094,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       ) {
         const mapped = mapAnchorContextToProductAnalysis(anchorFromContext, { lang: ctx.lang, profileSummary });
         const norm = normalizeProductAnalysis(mapped);
-        const payload = finalizeProductAnalysisRecoContract(
-          enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang }),
-          { logger, requestId: ctx.request_id, mode: 'main_path' },
+        const payload = reconcileProductAnalysisConsistency(
+          finalizeProductAnalysisRecoContract(
+            enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang }),
+            { logger, requestId: ctx.request_id, mode: 'main_path' },
+          ),
+          { lang: ctx.lang },
         );
         derivedCards.push({
           card_id: `analyze_${ctx.request_id}`,
@@ -35271,6 +36137,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             requestedProvider: llmProvider,
             requestedModel: llmModel,
           });
+          let fitCheckLlmRouteMeta = {
+            stage: 'stage_1',
+            provider: fitCheckLlmRoute.llm_provider || null,
+            model: fitCheckLlmRoute.llm_model || null,
+            trigger_reason: 'primary',
+          };
           const commonMeta = {
             profile: profileSummary,
             recentLogs,
@@ -35334,7 +36206,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             `Evidence must include science/social_signals/expert_notes.\n` +
             `Product: ${productInput}`;
 
-          const runDeepScan = async ({ queryText, timeoutMs }) => {
+          const runDeepScan = async ({ queryText, timeoutMs, llmRouteOverride = null }) => {
+            const effectiveRoute =
+              llmRouteOverride && typeof llmRouteOverride === 'object' && !Array.isArray(llmRouteOverride)
+                ? llmRouteOverride
+                : fitCheckLlmRoute;
             try {
               return await auroraChat({
                 baseUrl: AURORA_DECISION_BASE_URL,
@@ -35342,8 +36218,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 timeoutMs,
                 ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
                 ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
-                ...(fitCheckLlmRoute.llm_provider ? { llm_provider: fitCheckLlmRoute.llm_provider } : {}),
-                ...(fitCheckLlmRoute.llm_model ? { llm_model: fitCheckLlmRoute.llm_model } : {}),
+                ...(effectiveRoute.llm_provider ? { llm_provider: effectiveRoute.llm_provider } : {}),
+                ...(effectiveRoute.llm_model ? { llm_model: effectiveRoute.llm_model } : {}),
               });
             } catch {
               return null;
@@ -35464,6 +36340,44 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
+          const fitCheckEscalationRoute = resolveProductIntelEscalationRoute({ req });
+          const fitCheckEscalationAvailable =
+            fitCheckEscalationRoute &&
+            fitCheckEscalationRoute.llm_provider &&
+            fitCheckEscalationRoute.llm_model &&
+            (
+              String(fitCheckEscalationRoute.llm_provider || '').trim().toLowerCase() !==
+                String(fitCheckLlmRoute.llm_provider || '').trim().toLowerCase() ||
+              String(fitCheckEscalationRoute.llm_model || '').trim() !== String(fitCheckLlmRoute.llm_model || '').trim()
+            );
+          if (fitCheckEscalationAvailable && shouldTriggerProductIntelEscalation(norm.payload)) {
+            const escalatedUpstream = await runDeepScan({
+              queryText: deepScanQuery,
+              timeoutMs: Math.max(9000, Math.min(18000, AURORA_CHAT_UPSTREAM_TIMEOUT_MS)),
+              llmRouteOverride: fitCheckEscalationRoute,
+            });
+            const escalatedNorm = normalizeProductAnalysisFromUpstream(escalatedUpstream);
+            if (isProductIntelPayloadCandidateBetter(escalatedNorm.payload, norm.payload)) {
+              const internalCodes = getProductAnalysisInternalMissingCodes(escalatedNorm.payload);
+              norm = {
+                payload: applyProductAnalysisGapContract({
+                  ...escalatedNorm.payload,
+                  internal_debug_codes: uniqCaseInsensitiveStrings(
+                    [...internalCodes, 'llm_escalation_stage2_used'],
+                    32,
+                  ),
+                }),
+                field_missing: mergeFieldMissing(escalatedNorm.field_missing, norm.field_missing),
+              };
+              fitCheckLlmRouteMeta = {
+                stage: String(fitCheckEscalationRoute.stage || 'stage_2'),
+                provider: fitCheckEscalationRoute.llm_provider || null,
+                model: fitCheckEscalationRoute.llm_model || null,
+                trigger_reason: String(fitCheckEscalationRoute.trigger_reason || 'unknown_low_evidence'),
+              };
+            }
+          }
+
           const productUrlForFallback =
             anchorProductUrl ||
             (/^https?:\/\//i.test(String(productInput || '').trim()) ? String(productInput || '').trim() : '');
@@ -35512,11 +36426,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
             }
           }
+          payload = reconcileProductAnalysisConsistency(payload, { lang: ctx.lang });
           payload = finalizeProductAnalysisRecoContract(payload, {
             logger,
             requestId: ctx.request_id,
             mode: 'main_path',
           });
+          payload = appendProductIntelSourceChain(payload, ['llm_extraction']);
+          payload = attachProductIntelLlmRouteProvenance(payload, fitCheckLlmRouteMeta);
+          payload = reconcileProductAnalysisConsistency(payload, { lang: ctx.lang });
 
           if (payload) {
             derivedCards.push({
@@ -35818,6 +36736,15 @@ const __internal = {
   buildLabelQueue,
   runRecoBlocksForUrl,
   buildRealtimeCompetitorCandidates,
+  maybeSyncRepairLowCoverageCompetitors,
+  buildProductAnalysisFromUrlIngredients,
+  fetchProductHtmlWithFallback,
+  fetchIncidecoderSearchCandidates,
+  extractIncidecoderProductUrls,
+  fetchIncidecoderProductPage,
+  extractIncidecoderIngredientsFromHtml,
+  scoreIncidecoderMatch,
+  shouldPersistProductIntelKb,
   resolveProductAnalysisSocialState,
   applyProductAnalysisSocialProvenance,
   applyRecoGuardrailToProductAnalysisPayload,
