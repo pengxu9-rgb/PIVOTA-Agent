@@ -29,6 +29,25 @@ function buildReadiness({ baselineStatus = 'ok' } = {}) {
       { why: 'Higher UV', what_to_do: 'Reapply sunscreen during outdoor hours.' },
       { why: 'Wind swings', what_to_do: 'Prioritize barrier-repair cream at night.' },
     ],
+    forecast_window: [
+      { date: '2026-02-27', temp_low_c: 7, temp_high_c: 13, condition_text: 'Cloudy' },
+      { date: '2026-02-28', temp_low_c: 6, temp_high_c: 14, condition_text: 'Showers' },
+      { date: '2026-03-01', temp_low_c: 7, temp_high_c: 15, condition_text: 'Rain' },
+      { date: '2026-03-02', temp_low_c: 8, temp_high_c: 15, condition_text: 'Cloudy' },
+      { date: '2026-03-03', temp_low_c: 7, temp_high_c: 14, condition_text: 'Cloudy' },
+      { date: '2026-03-04', temp_low_c: 6, temp_high_c: 13, condition_text: 'Rain' },
+    ],
+    alerts: [
+      {
+        provider: 'Meteo-France',
+        severity: 'yellow',
+        title: 'Flood',
+        summary: 'Moderate flooding warning',
+        start_at: '2026-02-24T06:00:00Z',
+        end_at: '2026-02-25T00:00:00Z',
+        action_hint: 'Keep informed and avoid flood-prone routes.',
+      },
+    ],
     personal_focus: [
       { focus: 'Barrier first', why: 'Sensitivity', what_to_do: 'Avoid stacking strong actives nightly.' },
     ],
@@ -85,6 +104,66 @@ test('travelReplyComposer surfaces baseline gap when home weather baseline is un
   assert.match(result.text, /Home region: San Francisco, CA -> Destination: Paris/);
   assert.match(result.text, /Home baseline is unavailable/i);
   assert.equal(result.home_baseline_available, false);
+});
+
+test('travelReplyComposer explicitly states climate fallback limitation and re-check timing', () => {
+  const result = composeTravelReply({
+    message: 'How is weather there next week?',
+    language: 'EN',
+    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'climate_fallback',
+  });
+
+  assert.match(result.text, /Live forecast is unavailable; using a climate baseline/i);
+  assert.match(result.text, /48-72 hours/i);
+});
+
+test('travelReplyComposer renders full forecast window including end-date row', () => {
+  const result = composeTravelReply({
+    message: 'Will it be humid there?',
+    language: 'EN',
+    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  assert.match(result.text, /2026-03-04/);
+});
+
+test('travelReplyComposer surfaces alert action hint when alerts exist', () => {
+  const result = composeTravelReply({
+    message: 'Any weather alerts?',
+    language: 'EN',
+    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  assert.match(result.text, /Official alerts:/i);
+  assert.match(result.text, /Keep informed and avoid flood-prone routes\./i);
+});
+
+test('travelReplyComposer avoids unsupported temperature-swing claim in humidity-only follow-up', () => {
+  const readiness = buildReadiness({ baselineStatus: 'ok' });
+  readiness.delta_vs_home.humidity = { home: 56, destination: 58, delta: 2, unit: '%' };
+  readiness.delta_vs_home.temperature = { home: 18, destination: 18, delta: 0, unit: 'C' };
+  readiness.adaptive_actions = [];
+
+  const result = composeTravelReply({
+    message: 'How humid is it there?',
+    language: 'EN',
+    travelReadiness: readiness,
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  assert.doesNotMatch(result.text, /temperature swings/i);
+  assert.match(result.text, /humidity shift is mild/i);
 });
 
 test('travelReplyComposer avoids same-text replay for repeated same focus in-session', () => {

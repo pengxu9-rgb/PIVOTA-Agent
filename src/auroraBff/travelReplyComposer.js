@@ -120,7 +120,7 @@ function buildForecastLines({ language, travelReadiness }) {
     ? travelReadiness.forecast_window
     : [];
   const out = [];
-  for (const row of rows.slice(0, 5)) {
+  for (const row of rows.slice(0, 7)) {
     const line = formatForecastLine({ language, row });
     if (!line) continue;
     out.push(line);
@@ -137,6 +137,7 @@ function buildAlertsSection({ language, travelReadiness }) {
     const severity = normalizeText(row && row.severity, 24);
     const title = normalizeText(row && row.title, 160);
     const summary = normalizeText(row && row.summary, 180);
+    const actionHint = normalizeText(row && row.action_hint, 200);
     const timeWindow = [
       normalizeText(row && row.start_at, 40),
       normalizeText(row && row.end_at, 40),
@@ -144,7 +145,7 @@ function buildAlertsSection({ language, travelReadiness }) {
       .filter(Boolean)
       .join(' -> ');
     const head = [severity, title].filter(Boolean).join(' | ');
-    const detail = [summary, timeWindow].filter(Boolean).join(' | ');
+    const detail = [summary, actionHint, timeWindow].filter(Boolean).join(' | ');
     if (!head && !detail) continue;
     lines.push([head, detail].filter(Boolean).join(' - '));
   }
@@ -363,6 +364,8 @@ function buildActionLines({ language, foci, travelReadiness }) {
     ? travelReadiness.delta_vs_home
     : {};
   const lines = [];
+  const focusHumidity = Array.isArray(foci) && foci.includes(FOCUS_ENUM.HUMIDITY);
+  const focusTemperature = Array.isArray(foci) && foci.includes(FOCUS_ENUM.TEMPERATURE);
 
   if (Array.isArray(foci) && foci.includes(FOCUS_ENUM.UV)) {
     const uvDestination = toNumber(delta?.uv?.destination);
@@ -385,8 +388,9 @@ function buildActionLines({ language, foci, travelReadiness }) {
     }
   }
 
-  if (Array.isArray(foci) && (foci.includes(FOCUS_ENUM.HUMIDITY) || foci.includes(FOCUS_ENUM.TEMPERATURE))) {
+  if (focusHumidity || focusTemperature) {
     const humidityDelta = toNumber(delta?.humidity?.delta);
+    const temperatureDelta = toNumber(delta?.temperature?.delta);
     if (humidityDelta != null && humidityDelta >= 8) {
       lines.push(
         t(
@@ -395,12 +399,20 @@ function buildActionLines({ language, foci, travelReadiness }) {
           'Switch AM to lighter hydration (gel/lotion), keep a medium repair cream at night, and avoid active stacking.',
         ),
       );
-    } else {
+    } else if (focusTemperature || (temperatureDelta != null && Math.abs(temperatureDelta) >= 3)) {
       lines.push(
         t(
           language,
           '温差偏大时，早晚都保留屏障修护霜；夜间可加一层封闭型保湿。',
           'With larger temperature swings, keep barrier cream AM/PM and add a thin occlusive layer at night if needed.',
+        ),
+      );
+    } else if (focusHumidity) {
+      lines.push(
+        t(
+          language,
+          '湿度变化不大时，保持基础保湿与温和清洁，避免临时叠加高刺激活性。',
+          'When humidity shift is mild, keep baseline hydration and gentle cleansing, and avoid suddenly stacking high-irritation actives.',
         ),
       );
     }
@@ -495,7 +507,18 @@ function buildProductLines({ language, foci, travelReadiness }) {
     const trigger = normalizeText(row && row.trigger, 120);
     const parts = [trigger, action, reapply].filter(Boolean);
     if (!parts.length) continue;
-    lines.push(parts.join(' · '));
+      lines.push(parts.join(' · '));
+  }
+
+  const hasReapplyRule = lines.some((line) => /\b(reapply|re-apply)\b/i.test(String(line || '')) || /补涂/.test(String(line || '')));
+  if (!hasReapplyRule && Array.isArray(foci) && (foci.includes(FOCUS_ENUM.UV) || foci.includes(FOCUS_ENUM.PRODUCTS))) {
+    lines.push(
+      t(
+        language,
+        '补涂规则：户外每 2 小时补涂一次；出汗、擦拭或淋雨后立即补涂。',
+        'Reapply rule: every 2 hours outdoors, and immediately after sweat, wipe-off, or rain exposure.',
+      ),
+    );
   }
 
   const storeExamples = Array.isArray(travelReadiness && travelReadiness.store_examples)
@@ -641,9 +664,20 @@ function composeTravelReply({
     )
     : '';
 
-  const envSourceLine = normalizeText(envSource, 60)
-    ? t(lang, `数据来源：${normalizeText(envSource, 60)}。`, `Source: ${normalizeText(envSource, 60)}.`)
+  const sourceText =
+    normalizeText(envSource, 60) ||
+    normalizeText(destinationContext.env_source, 60);
+  const envSourceLine = sourceText
+    ? t(lang, `数据来源：${sourceText}。`, `Source: ${sourceText}.`)
     : '';
+  const climateFallbackLine =
+    sourceText.toLowerCase() === 'climate_fallback'
+      ? t(
+        lang,
+        '当前为气候基线估计（实时天气不可用）；建议在出发前 48-72 小时复查实时预报。',
+        'Live forecast is unavailable; using a climate baseline. Re-check live weather 48-72 hours before departure.',
+      )
+      : '';
   const forecastLines = buildForecastLines({ language: lang, travelReadiness: readiness });
   const alertsSection = buildAlertsSection({ language: lang, travelReadiness: readiness });
   const qualitySections = [];
@@ -686,6 +720,7 @@ function composeTravelReply({
         ...alertsSection.lines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
+    climateFallbackLine,
     envSourceLine,
   ]
     .filter(Boolean)
