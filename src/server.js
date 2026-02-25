@@ -8282,6 +8282,11 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       `lower(coalesce(${fieldPrefix}product_data->>'title',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'description',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'product_type',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'type',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'category',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'product_category',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'google_product_category',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'tags',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'sku',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'vendor',''))`,
     ];
