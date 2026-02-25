@@ -2793,6 +2793,24 @@ function extractProductImageCandidates(product) {
   pushCandidate(product.image);
   for (const url of extractImageUrlsFromCollection(product.images)) pushCandidate(url);
   for (const url of extractImageUrlsFromCollection(product.image_urls)) pushCandidate(url);
+  for (const url of extractImageUrlsFromCollection(product.variants)) pushCandidate(url);
+  for (const url of extractImageUrlsFromCollection(product.media)) pushCandidate(url);
+  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : null;
+  if (seedData) {
+    pushCandidate(seedData.image_url);
+    pushCandidate(seedData.imageUrl);
+    pushCandidate(seedData.image);
+    for (const url of extractImageUrlsFromCollection(seedData.images)) pushCandidate(url);
+    for (const url of extractImageUrlsFromCollection(seedData.image_urls)) pushCandidate(url);
+    const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : null;
+    if (snapshot) {
+      pushCandidate(snapshot.image_url);
+      pushCandidate(snapshot.imageUrl);
+      pushCandidate(snapshot.image);
+      for (const url of extractImageUrlsFromCollection(snapshot.images)) pushCandidate(url);
+      for (const url of extractImageUrlsFromCollection(snapshot.image_urls)) pushCandidate(url);
+    }
+  }
   return candidates;
 }
 
@@ -2963,6 +2981,10 @@ function buildSearchTrace({
   clarifyReasonBeforeDedup = null,
   clarifyReasonAfterDedup = null,
   flagsSnapshot = null,
+  strictScope = null,
+  strictFilteredOut = null,
+  strictRescuedCount = null,
+  lowRecallReason = null,
 }) {
   return {
     trace_id: String(traceId || ''),
@@ -2996,6 +3018,14 @@ function buildSearchTrace({
       typeof clarifyReasonAfterDedup === 'string' && clarifyReasonAfterDedup.trim()
         ? clarifyReasonAfterDedup.trim()
         : null,
+    strict_scope:
+      typeof strictScope === 'string' && strictScope.trim() ? strictScope.trim() : null,
+    lingerie_filtered_out:
+      Number.isFinite(Number(strictFilteredOut)) ? Math.max(0, Number(strictFilteredOut)) : null,
+    lingerie_rescued_count:
+      Number.isFinite(Number(strictRescuedCount)) ? Math.max(0, Number(strictRescuedCount)) : null,
+    low_recall_reason:
+      typeof lowRecallReason === 'string' && lowRecallReason.trim() ? lowRecallReason.trim() : null,
     slot_state:
       slotState && typeof slotState === 'object' && !Array.isArray(slotState)
         ? slotState
@@ -15451,6 +15481,52 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const withPolicyProducts = Array.isArray(withPolicy?.products)
             ? withPolicy.products
             : [];
+          const withPolicyMetadata =
+            withPolicy &&
+            typeof withPolicy === 'object' &&
+            !Array.isArray(withPolicy) &&
+            withPolicy.metadata &&
+            typeof withPolicy.metadata === 'object' &&
+            !Array.isArray(withPolicy.metadata)
+              ? withPolicy.metadata
+              : {};
+          const cacheSearchDecision =
+            withPolicyMetadata.search_decision &&
+            typeof withPolicyMetadata.search_decision === 'object' &&
+            !Array.isArray(withPolicyMetadata.search_decision)
+              ? withPolicyMetadata.search_decision
+              : null;
+          const cacheStrictScopeFromDecision =
+            typeof cacheSearchDecision?.strict_scope === 'string' &&
+            cacheSearchDecision.strict_scope.trim()
+              ? cacheSearchDecision.strict_scope.trim().toLowerCase()
+              : null;
+          const cacheStrictScope =
+            cacheStrictScopeFromDecision === 'lingerie' ||
+            detectToyOutfitIntentFromQuery(cacheQueryText)?.lingerie_intent
+              ? 'lingerie'
+              : null;
+          const cacheCandidateCountForStrict = Math.max(
+            Number(crossMerchantCacheRouteDebug?.products_count || 0) || 0,
+            Number(
+              Array.isArray(crossMerchantCacheRouteDebug?.retrieval_sources) &&
+                crossMerchantCacheRouteDebug.retrieval_sources.length > 0
+                ? crossMerchantCacheRouteDebug.retrieval_sources
+                    .map((sourceItem) => Number(sourceItem?.candidate_count || 0) || 0)
+                    .reduce((max, value) => Math.max(max, value), 0)
+                : 0,
+            ) || 0,
+          );
+          const cacheStrictFilteredOutRaw = Number.isFinite(Number(cacheSearchDecision?.lingerie_filtered_out))
+            ? Number(cacheSearchDecision?.lingerie_filtered_out)
+            : null;
+          const cacheStrictFilteredOut =
+            cacheStrictScope === 'lingerie'
+              ? Math.max(
+                  cacheStrictFilteredOutRaw == null ? 0 : cacheStrictFilteredOutRaw,
+                  Math.max(0, cacheCandidateCountForStrict - withPolicyProducts.length),
+                )
+              : cacheStrictFilteredOutRaw;
           const cacheFailOpenPool = withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts;
           if (cacheFailOpenPool.length > 0) {
             crossMerchantCacheFailOpenCandidates = cacheFailOpenPool.slice(
@@ -15540,6 +15616,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   miss: false,
                   latency_ms: null,
                 },
+                strictScope: cacheStrictScope,
+                strictFilteredOut: cacheStrictFilteredOut,
+                strictRescuedCount: cacheSearchDecision?.lingerie_rescued_count,
+                lowRecallReason: cacheSearchDecision?.low_recall_reason,
                 finalDecision: cacheClarification ? 'clarify' : 'cache_returned',
               }),
             });
@@ -16038,6 +16118,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	    let url = `${searchInvokeBase}${route.path}`;
 	    let requestBody = {};
 	    let queryParams = {};
+	    let requestedFindProductsMultiLimit = null;
+	    let strictLingerieScopeForSearch = false;
 
     // Handle different parameter types
     switch (operation) {
@@ -16082,12 +16164,24 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         break;
       }
 
-      case 'find_products_multi': {
-        // Cross-merchant search via Agent Search endpoint.
-        const search = effectivePayload.search || effectivePayload || {};
-        const page = Math.max(1, Number(search.page || 1) || 1);
-        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
-        const offset = (page - 1) * limit;
+	      case 'find_products_multi': {
+	        // Cross-merchant search via Agent Search endpoint.
+	        const search = effectivePayload.search || effectivePayload || {};
+	        const page = Math.max(1, Number(search.page || 1) || 1);
+	        const requestedLimit = Math.min(
+	          Math.max(1, Number(search.limit || search.page_size || 20) || 20),
+	          100,
+	        );
+	        requestedFindProductsMultiLimit = requestedLimit;
+	        const queryTextForScope = String(search.query || '').trim();
+	        const queryClassForScope = String(traceQueryClass || '').toLowerCase();
+	        const scopeSignals = detectToyOutfitIntentFromQuery(queryTextForScope);
+	        strictLingerieScopeForSearch =
+	          queryClassForScope === 'category' && Boolean(scopeSignals?.lingerie_intent);
+	        const effectiveLimit = strictLingerieScopeForSearch
+	          ? Math.min(Math.max(requestedLimit, 24), 50)
+	          : requestedLimit;
+	        const offset = (page - 1) * effectiveLimit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
         const merchantIdsRaw = search.merchant_ids || search.merchantIds;
@@ -16122,12 +16216,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ...(search.query != null ? { query: String(search.query || '') } : {}),
           ...(search.category ? { category: search.category } : {}),
           ...(priceMin != null ? { min_price: priceMin } : {}),
-          ...(priceMax != null ? { max_price: priceMax } : {}),
-          in_stock_only: search.in_stock_only !== false,
-          limit,
-          offset,
-        };
-        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
+	          ...(priceMax != null ? { max_price: priceMax } : {}),
+	          in_stock_only: search.in_stock_only !== false,
+	          limit: effectiveLimit,
+	          offset,
+	        };
+	        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
         break;
       }
       
@@ -16629,10 +16723,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     const primarySearchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
     const primarySearchAnchorTokens = extractSearchAnchorTokens(primarySearchQueryText);
     const isLookupPolicyQuery = isLookupStyleSearchQuery(primarySearchQueryText, primarySearchAnchorTokens);
-    const queryClassForBudget = String(traceQueryClass || '').toLowerCase();
-    const shouldUseShortSearchBudget =
-      isLookupPolicyQuery ||
-      ['lookup', 'category', 'attribute'].includes(queryClassForBudget);
+	    const queryClassForBudget = String(traceQueryClass || '').toLowerCase();
+	    const shouldUseShortSearchBudget =
+	      isLookupPolicyQuery ||
+	      ['lookup', 'attribute'].includes(queryClassForBudget);
     const upstreamBudgetMsForSearch = shouldUseShortSearchBudget
       ? FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
@@ -17723,6 +17817,28 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         Array.isArray(upstreamData?.products) &&
         upstreamData.products.length > 0;
       const isAliasLookupQuery = isKnownLookupAliasQuery(policyQueryText);
+      const strictLingerieLookupSignal = Boolean(
+        detectToyOutfitIntentFromQuery(policyQueryText)?.lingerie_intent,
+      );
+      const strictLingerieIntentFromIntent = (() => {
+        const requiredCategories = Array.isArray(effectiveIntent?.category?.required)
+          ? effectiveIntent.category.required
+          : [];
+        const optionalCategories = Array.isArray(effectiveIntent?.category?.optional)
+          ? effectiveIntent.category.optional
+          : [];
+        const categorySignals = [...requiredCategories, ...optionalCategories]
+          .map((value) => String(value || '').toLowerCase())
+          .filter(Boolean);
+        if (
+          categorySignals.some((value) => value.includes('lingerie') || value.includes('underwear'))
+        ) {
+          return true;
+        }
+        const scenario = String(effectiveIntent?.scenario?.name || '').toLowerCase();
+        return scenario.includes('lingerie') || scenario.includes('underwear');
+      })();
+      const enforceStrictLingeriePolicy = strictLingerieLookupSignal || strictLingerieIntentFromIntent;
       const upstreamStatusForPolicy = Number(
         upstreamMetadata.upstream_status ?? fallbackMeta?.upstream_status ?? NaN,
       );
@@ -17737,13 +17853,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         (upstreamStatusForPolicy === 429 || /RATE_LIMIT|QUOTA/.test(upstreamCodeForPolicy)) &&
         SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES.has(queryClassFromIntent);
 	      const skipPolicyForLookupSoftFallback =
-	        (isErrorSoftFallbackSource &&
+	        !enforceStrictLingeriePolicy &&
+	        ((isErrorSoftFallbackSource &&
 	          !errorSoftFallbackHasProducts &&
 	          !shouldApplyUpstreamQuotaClarify) ||
 	        (isResolverLookupSource && isLookupPolicyQuery) ||
 	        (isCacheLookupSource && isLookupPolicyQuery) ||
 	        (querySource === 'agent_products_search' &&
-          (isAliasLookupQuery || fallbackRoute === 'invoke_primary_irrelevant_fail_open'));
+          (isAliasLookupQuery || fallbackRoute === 'invoke_primary_irrelevant_fail_open')));
 
       maybePolicy = skipPolicyForLookupSoftFallback
         ? upstreamData
@@ -17847,8 +17964,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
     }
 
-    if (operation === 'find_products_multi') {
-      try {
+	    if (operation === 'find_products_multi') {
+	      try {
         const search = effectivePayload.search || effectivePayload || {};
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
         const reranked = await maybeRerankFindProductsMultiResponse({
@@ -17878,10 +17995,28 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
       } catch (err) {
         logger.warn({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
-      }
-    }
+	      }
+	    }
 
-    let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
+	    if (
+	      operation === 'find_products_multi' &&
+	      Number.isFinite(Number(requestedFindProductsMultiLimit)) &&
+	      requestedFindProductsMultiLimit > 0 &&
+	      Array.isArray(maybePolicy?.products) &&
+	      maybePolicy.products.length > requestedFindProductsMultiLimit
+	    ) {
+	      const normalizedLimit = Math.max(1, Math.floor(Number(requestedFindProductsMultiLimit)));
+	      maybePolicy = {
+	        ...maybePolicy,
+	        products: maybePolicy.products.slice(0, normalizedLimit),
+	        page_size:
+	          Number.isFinite(Number(maybePolicy?.page_size))
+	            ? Math.min(Math.max(0, Number(maybePolicy.page_size)), normalizedLimit)
+	            : normalizedLimit,
+	      };
+	    }
+
+	    let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
@@ -17916,6 +18051,50 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         typeof existingMeta.search_decision === 'object'
           ? existingMeta.search_decision
           : null;
+      const strictScopeFromDecision =
+        typeof searchDecision?.strict_scope === 'string' && searchDecision.strict_scope.trim()
+          ? searchDecision.strict_scope.trim().toLowerCase()
+          : null;
+      const strictLingerieIntentFromEffectiveIntent = (() => {
+        const requiredCategories = Array.isArray(effectiveIntent?.category?.required)
+          ? effectiveIntent.category.required
+          : [];
+        const optionalCategories = Array.isArray(effectiveIntent?.category?.optional)
+          ? effectiveIntent.category.optional
+          : [];
+        const categorySignals = [...requiredCategories, ...optionalCategories]
+          .map((value) => String(value || '').toLowerCase())
+          .filter(Boolean);
+        if (
+          categorySignals.some((value) => value.includes('lingerie') || value.includes('underwear'))
+        ) {
+          return true;
+        }
+        const scenario = String(effectiveIntent?.scenario?.name || '').toLowerCase();
+        return scenario.includes('lingerie') || scenario.includes('underwear');
+      })();
+      const strictLingerieTraceSignal =
+        strictScopeFromDecision === 'lingerie' ||
+        strictLingerieScopeForSearch ||
+        Boolean(detectToyOutfitIntentFromQuery(queryText)?.lingerie_intent) ||
+        strictLingerieIntentFromEffectiveIntent;
+      const upstreamProductsForTrace =
+        upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+          ? Array.isArray(upstreamData.products)
+            ? upstreamData.products
+            : []
+          : [];
+      const strictFilteredOutFallback = Number.isFinite(Number(searchDecision?.lingerie_filtered_out))
+        ? Number(searchDecision?.lingerie_filtered_out)
+        : strictLingerieTraceSignal
+          ? Math.max(0, upstreamProductsForTrace.length - products.length)
+          : null;
+      const strictLowRecallReasonFallback =
+        typeof searchDecision?.low_recall_reason === 'string' && searchDecision.low_recall_reason.trim()
+          ? searchDecision.low_recall_reason
+          : strictLingerieTraceSignal && products.length === 0
+            ? 'NO_STRICT_LINGERIE_CANDIDATES'
+            : null;
       const isStrictEmpty =
         SEARCH_STRICT_EMPTY_ENABLED &&
         queryText.length > 0 &&
@@ -18041,13 +18220,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             typeof searchDecision?.clarify_reason_before_dedup === 'string'
               ? searchDecision.clarify_reason_before_dedup
               : null,
-          clarifyReasonAfterDedup:
-            typeof searchDecision?.clarify_reason_after_dedup === 'string'
-              ? searchDecision.clarify_reason_after_dedup
-              : null,
-          flagsSnapshot: traceFlagsSnapshot,
-          intent: effectiveIntent,
-          cacheStage,
+	          clarifyReasonAfterDedup:
+	            typeof searchDecision?.clarify_reason_after_dedup === 'string'
+	              ? searchDecision.clarify_reason_after_dedup
+	              : null,
+	          strictScope: strictLingerieTraceSignal ? 'lingerie' : null,
+	          strictFilteredOut: strictFilteredOutFallback,
+	          strictRescuedCount: searchDecision?.lingerie_rescued_count,
+	          lowRecallReason: strictLowRecallReasonFallback,
+	          flagsSnapshot: traceFlagsSnapshot,
+	          intent: effectiveIntent,
+	          cacheStage,
           upstreamStage,
           resolverStage,
           finalDecision,
@@ -18407,6 +18590,8 @@ module.exports._debug = {
   runCreatorCatalogAutoSync,
   isCatalogSyncRetryableError,
   catalogSyncState,
+  extractProductImageCandidates,
+  normalizeProductImages,
 };
 
 if (require.main === module) {

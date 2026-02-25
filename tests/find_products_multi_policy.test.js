@@ -1142,4 +1142,74 @@ describe('find_products_multi intent + filtering', () => {
       }),
     );
   });
+
+  test('strict lingerie scope blocks brush/tools and exposes strict trace metadata', () => {
+    const intent = extractIntentRuleBased('lingerie', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'ling-1',
+            title: 'Lace Lingerie Set',
+            description: 'lingerie bra and panty set',
+          }),
+          makeRawProduct({
+            id: 'tool-1',
+            title: 'Contour Brush Set',
+            description: 'beauty makeup brush tools',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'lingerie' } },
+      metadata: { ambiguity_score_pre: 0.2 },
+      rawUserQuery: 'lingerie',
+    });
+
+    expect(Array.isArray(resp.products)).toBe(true);
+    expect(resp.products).toHaveLength(1);
+    expect(String(resp.products[0]?.title || '').toLowerCase()).toContain('lingerie');
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['STRICT_LINGERIE_SCOPE']));
+    expect(resp.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        strict_scope: 'lingerie',
+        lingerie_filtered_out: expect.any(Number),
+      }),
+    );
+    expect(resp.metadata?.search_decision?.lingerie_filtered_out).toBeGreaterThanOrEqual(1);
+  });
+
+  test('strict lingerie scope reports low recall reason when no lingerie candidates survive', () => {
+    const intent = extractIntentRuleBased('lingerie', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'tool-1',
+            title: 'Contour Brush Set',
+            description: 'beauty makeup brush tools',
+          }),
+          makeRawProduct({
+            id: 'tool-2',
+            title: 'Foundation Brush Pro',
+            description: 'brush tool set',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'lingerie' } },
+      metadata: { ambiguity_score_pre: 0.2 },
+      rawUserQuery: 'lingerie',
+    });
+
+    expect(resp.products).toHaveLength(0);
+    expect(resp.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        strict_scope: 'lingerie',
+        low_recall_reason: 'NO_STRICT_LINGERIE_CANDIDATES',
+      }),
+    );
+  });
 });
