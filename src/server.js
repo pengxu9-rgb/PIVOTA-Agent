@@ -5569,6 +5569,9 @@ function shouldAdoptResolverFirstResult({ result, queryText, queryClass = null }
   if (RESOLVER_SHORT_CIRCUIT_BLOCKED_QUERY_CLASSES.has(normalizedQueryClass)) {
     return blocked(`query_class_${normalizedQueryClass}_requires_upstream`);
   }
+  if (hasLingerieSearchSignal(queryText)) {
+    return blocked('query_lingerie_requires_upstream');
+  }
 
   const reasonCode = normalizeResolverShortCircuitReasonToken(
     result.resolve_reason_code || result?.data?.metadata?.resolve_reason_code,
