@@ -197,5 +197,45 @@ describe('RecommendationEngine (PDP)', () => {
     expect(stats.hits).toBeGreaterThanOrEqual(1);
     expect(stats.sets).toBeGreaterThanOrEqual(1);
   });
-});
 
+  test('g) cache key includes requested limit k', async () => {
+    const base = makeProduct({
+      merchant_id: 'merch_store',
+      product_id: 'BASE_CACHE_K',
+      title: 'Cache K Base',
+      vendor: 'Brand',
+      category_path: ['Cat', 'Leaf'],
+      price: 10,
+    });
+
+    const internalA = [
+      makeProduct({ merchant_id: 'm1', product_id: 'A1', title: 'A1', vendor: 'Brand', category_path: ['Cat', 'Leaf'], price: 10 }),
+    ];
+    const internalB = [
+      makeProduct({ merchant_id: 'm1', product_id: 'B1', title: 'B1', vendor: 'Brand', category_path: ['Cat', 'Leaf'], price: 10 }),
+      makeProduct({ merchant_id: 'm2', product_id: 'B2', title: 'B2', vendor: 'Brand', category_path: ['Cat', 'Leaf'], price: 11 }),
+    ];
+
+    const first = await recommend({
+      pdp_product: base,
+      k: 1,
+      locale: 'en-US',
+      currency: 'USD',
+      options: { debug: true, internal_candidates: internalA, external_candidates: [] },
+    });
+    expect(first.cache).toEqual(expect.objectContaining({ hit: false }));
+    expect(first.items).toHaveLength(1);
+    expect(first.items[0].product_id).toBe('A1');
+
+    const second = await recommend({
+      pdp_product: base,
+      k: 2,
+      locale: 'en-US',
+      currency: 'USD',
+      options: { debug: true, internal_candidates: internalB, external_candidates: [] },
+    });
+    expect(second.cache).toEqual(expect.objectContaining({ hit: false }));
+    expect(second.items).toHaveLength(2);
+    expect(second.items.map((item) => item.product_id)).toEqual(expect.arrayContaining(['B1', 'B2']));
+  });
+});
