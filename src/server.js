@@ -4621,6 +4621,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   const fragranceRetryQuery = hasFragranceSearchSignal(queryText)
     ? 'tom ford perfume jo malone perfume diptyque perfume byredo perfume'
     : null;
+  const strictLingerieQuery = hasLingerieSearchSignal(queryText);
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const limit = Math.min(Math.max(requestedCount * 4, 20), 200);
   const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
@@ -4635,7 +4636,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       ...(query.category ? { category: query.category } : {}),
       ...(query.min_price != null ? { min_price: query.min_price } : {}),
       ...(query.max_price != null ? { max_price: query.max_price } : {}),
-      in_stock_only: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
+      in_stock_only: strictLingerieQuery ? false : parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
       limit,
       offset: 0,
       allow_external_seed: true,
@@ -4676,13 +4677,15 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       })
       .filter(Boolean)
       .filter((p) => isExternalSeedProduct(p));
-    const relevantProducts = products.filter((p) =>
-      isSupplementCandidateRelevant(p, queryText, {
-        normalizedQuery,
-        anchorTokens,
-        queryTokens,
-      }),
-    );
+    const relevantProducts = strictLingerieQuery
+      ? products.filter((p) => isStrictLingerieCacheCandidate(p))
+      : products.filter((p) =>
+          isSupplementCandidateRelevant(p, queryText, {
+            normalizedQuery,
+            anchorTokens,
+            queryTokens,
+          }),
+        );
     return {
       query: searchQueryText,
       status: Number(resp.status || 0) || 0,
