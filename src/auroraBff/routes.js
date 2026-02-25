@@ -1088,10 +1088,6 @@ const ANALYSIS_STORY_MODEL_OPENAI =
 const ANALYSIS_STORY_MODEL_GEMINI =
   String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
   'gemini-2.0-flash';
-const AURORA_DIAG_FORCE_GEMINI = (() => {
-  const raw = String(process.env.AURORA_DIAG_FORCE_GEMINI || '').trim().toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
 const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
   1200,
@@ -17961,7 +17957,7 @@ function getDiagForceGeminiModel() {
 }
 
 function normalizeChatLlmModel(value) {
-  if (AURORA_DIAG_FORCE_GEMINI) {
+  if (coerceBoolean(process.env.AURORA_DIAG_FORCE_GEMINI)) {
     if (typeof value !== 'string') return null;
     const forcedToken = value.trim();
     if (!forcedToken) return null;
@@ -17992,7 +17988,7 @@ function resolveProductIntelLlmRoute({ req = null, requestedProvider = null, req
     headerModel ||
     AURORA_PRODUCT_INTEL_LLM_MODEL ||
     null;
-  if (AURORA_DIAG_FORCE_GEMINI) {
+  if (coerceBoolean(process.env.AURORA_DIAG_FORCE_GEMINI)) {
     return {
       llm_provider: 'gemini',
       llm_model: AURORA_DIAG_FORCE_GEMINI_MODEL,
@@ -18002,7 +17998,7 @@ function resolveProductIntelLlmRoute({ req = null, requestedProvider = null, req
 }
 
 function resolveProductIntelEscalationRoute({ req = null } = {}) {
-  if (AURORA_DIAG_FORCE_GEMINI) {
+  if (coerceBoolean(process.env.AURORA_DIAG_FORCE_GEMINI)) {
     return {
       llm_provider: 'gemini',
       llm_model: AURORA_DIAG_FORCE_GEMINI_MODEL,
