@@ -72,6 +72,65 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
   });
 
+  test('/v1/product/parse returns actionable reason when fallback is disabled and upstream parse misses', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product',
+        answer: 'not json payload',
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_diag_disabled_1')
+      .send({ text: 'Unknown product seed' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(card.payload.parse_source).toBe('none');
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('upstream_missing_or_unstructured');
+    expect(card.payload.missing_info).toContain('catalog_fallback_disabled');
+    expect(Array.isArray(card.payload.recovery_path)).toBe(true);
+  });
+
+  test('/v1/product/parse surfaces backend-not-configured reason when fallback is enabled', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product',
+        answer: 'not json payload',
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_diag_backend_missing_1')
+      .send({ text: 'Unknown product seed' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('catalog_backend_not_configured');
+    expect(card.payload.missing_info).toContain('pivota_backend_not_configured');
+  });
+
   test('/v1/product/analyze maps aurora structured.analyze into normalized evidence', async () => {
     const app = require('../src/server');
     const res = await request(app)
@@ -177,6 +236,53 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(candidates.length).toBeGreaterThan(0);
     expect(candidates.some((q) => /theordinary|ordinary/i.test(String(q || '')))).toBe(true);
     expect(candidates.some((q) => /peptide|serum/i.test(String(q || '')))).toBe(true);
+  });
+
+  test('product-intel kb key uses fingerprint fallback for non-anchor routine products', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const key1 = __internal.buildProductIntelKbKey({
+      parsedProduct: {
+        brand: 'Biotherm',
+        name: 'Force Supreme Cleanser',
+      },
+      lang: 'EN',
+    });
+    const key2 = __internal.buildProductIntelKbKey({
+      parsedProduct: {
+        brand: 'Biotherm',
+        name: 'Force Supreme Cleanser',
+      },
+      lang: 'EN',
+    });
+    expect(key1).toMatch(/^fp:[a-f0-9]{64}\|lang:EN$/);
+    expect(key2).toBe(key1);
+    expect(
+      __internal.resolveProductIntelKbKeyQuality({
+        parsedProduct: { brand: 'Biotherm', name: 'Force Supreme Cleanser' },
+        lang: 'EN',
+      }),
+    ).toBe('fingerprint');
+  });
+
+  test('product-intel kb key prefers URL over anchor_id when both are present', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const key = __internal.buildProductIntelKbKey({
+      productUrl: 'https://example.com/products/abc?utm_source=test',
+      parsedProduct: {
+        product_id: 'sku_anchor_123',
+        brand: 'Example',
+        name: 'Example Product',
+      },
+      lang: 'EN',
+    });
+    expect(key).toBe('url:https://example.com/products/abc|lang:EN');
+    expect(
+      __internal.resolveProductIntelKbKeyQuality({
+        productUrl: 'https://example.com/products/abc?utm_source=test',
+        parsedProduct: { product_id: 'sku_anchor_123' },
+        lang: 'EN',
+      }),
+    ).toBe('url');
   });
 
   test('realtime competitor query plan keeps diversified active-intent seed when max queries is low', () => {
@@ -1519,6 +1625,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.product.product_id).toBe('p_catalog_1');
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('catalog_fallback_used');
+    expect(card.payload.parse_source).toBe('catalog_resolve');
+    expect(Array.isArray(card.payload.recovery_path)).toBe(true);
+    expect(card.payload.recovery_path).toContain('catalog_resolve');
   });
 
   test('/v1/product/analyze resolves anchor via catalog resolve fast-path before deep-scan', async () => {
@@ -1667,12 +1776,14 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .send({ url: 'https://example.com/non-catalog-product.html' })
       .expect(200);
 
-    expect(deepScanCalls).toBe(0);
+    expect(deepScanCalls).toBe(1);
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(String(card.payload.assessment?.verdict || '')).toMatch(/Unknown|未知/);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('product_not_resolved');
+    expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
+    expect(card.payload.assessment.reasons.join(' ')).toMatch(/no-anchor deep scan|无锚点 Deep Scan/i);
     expect(card.payload.internal_debug_codes).toBeUndefined();
     expect(card.payload.missing_info_internal).toBeUndefined();
   });
