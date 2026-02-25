@@ -113,6 +113,7 @@ Configure env vars in `env.example` under `LOOK_REPLICATOR_*`. In production, se
 - [ACP Protocol](docs/acp-spec-bridge.md) - Commerce protocol handling
 - [AP2 Protocol](docs/ap2-spec-bridge.md) - Payment protocol handling
 - [Deployment Guide](docs/deployment.md) - Production deployment
+- [Deploy Policy (GitHub Push Only)](docs/runbooks/deploy_via_github_push_only.md) - Production source-of-truth workflow
 
 ## Project Structure
 
