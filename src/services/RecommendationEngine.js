@@ -898,10 +898,14 @@ async function recommend({
   if (!baseProductId) {
     return { items: [], debug: { error: 'missing_product_id' } };
   }
+  const baseMerchantId = getMerchantId(baseProduct);
+  const safeK = Math.max(1, Math.min(Number(k || 6) || 6, 30));
 
   const baseCurrency = currency || normalizeCurrency(baseProduct, 'USD');
   const cacheKey = JSON.stringify({
+    merchant_id: baseMerchantId || null,
     product_id: baseProductId,
+    k: safeK,
     locale: String(locale || 'en-US'),
     currency: baseCurrency,
   });
@@ -935,7 +939,7 @@ async function recommend({
       ? Promise.resolve(providedInternal)
       : fetchInternalCandidates({
           merchantId: getMerchantId(baseProduct),
-          limit: Math.max(60, Number(k || 6) * 10),
+          limit: Math.max(60, safeK * 10),
           excludeMerchantId: getMerchantId(baseProduct),
         }),
     PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
@@ -955,7 +959,7 @@ async function recommend({
   const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
   const skipExternalMin = Math.max(
     PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
-    Math.ceil(Math.max(1, Number(k || 6)) * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
+    Math.ceil(safeK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
   );
   const shouldSkipExternal = !providedExternal && internalCount >= skipExternalMin;
 
@@ -967,7 +971,7 @@ async function recommend({
           : fetchExternalCandidates({
               brandHint: baseBrand,
               categoryHint: baseLeaf,
-              limit: Math.max(120, Number(k || 6) * 15),
+              limit: Math.max(120, safeK * 15),
             }),
         PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
         [],
@@ -987,7 +991,7 @@ async function recommend({
     baseProduct,
     internalCandidates,
     externalCandidates,
-    k,
+    k: safeK,
   });
 
   const elapsedMs = Date.now() - start;
@@ -1017,7 +1021,7 @@ async function recommend({
     {
       event: 'pdp_recommendations',
       product_id: baseProductId,
-      k: Math.max(1, Math.min(Number(k || 6) || 6, 30)),
+      k: safeK,
       timing_ms: elapsedMs,
       candidates_total: picked.debug?.candidates_total,
       layers: picked.debug?.layers,
