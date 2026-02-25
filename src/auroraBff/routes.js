@@ -28026,6 +28026,21 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
   return nextPayload;
 }
 
+function sanitizeProductAnalysisEnvelopeForResponse(envelope) {
+  if (!isPlainObject(envelope)) return envelope;
+  const cards = Array.isArray(envelope.cards) ? envelope.cards : [];
+  if (!cards.length) return envelope;
+  let changed = false;
+  const nextCards = cards.map((card) => {
+    if (!isPlainObject(card)) return card;
+    if (String(card.type || '').trim() !== 'product_analysis') return card;
+    const payload = sanitizeProductAnalysisPayloadForPrelabel(card.payload);
+    changed = true;
+    return { ...card, payload };
+  });
+  return changed ? { ...envelope, cards: nextCards } : envelope;
+}
+
 function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
   const base = isPlainObject(payload) ? reconcileProductAnalysisConsistency(payload, { lang }) : payload;
   const p = isPlainObject(base) ? { ...base } : base;
@@ -29374,24 +29389,54 @@ function mountAuroraBffRoutes(app, { logger }) {
       ),
     );
     const sendProductAnalyzeEnvelope = async (envelope, statusCode = 200, mode = 'main_path') => {
-      const qualityGated = applyUnknownVerdictQualityGateToEnvelope(envelope, {
-        lang: ctx.lang,
-      });
-      let augmented = augmentEnvelopeProductAnalysisCardsForDogfood({
-        envelope: qualityGated,
-        req,
-        ctx,
-        mode,
-        sessionId: productAnalyzeSessionId,
-        logger,
-      });
-      augmented = await augmentEnvelopeProductAnalysisCardsWithPrelabelSuggestions({
-        envelope: augmented,
-        logger,
-      });
-      const responseEnvelope = sanitizeProductAnalysisEnvelopeForResponse(augmented);
-      if (statusCode >= 400) return res.status(statusCode).json(responseEnvelope);
-      return res.json(responseEnvelope);
+      try {
+        const qualityGated = applyUnknownVerdictQualityGateToEnvelope(envelope, {
+          lang: ctx.lang,
+        });
+        let augmented = augmentEnvelopeProductAnalysisCardsForDogfood({
+          envelope: qualityGated,
+          req,
+          ctx,
+          mode,
+          sessionId: productAnalyzeSessionId,
+          logger,
+        });
+        augmented = await augmentEnvelopeProductAnalysisCardsWithPrelabelSuggestions({
+          envelope: augmented,
+          logger,
+        });
+        const responseEnvelope = sanitizeProductAnalysisEnvelopeForResponse(augmented);
+        if (statusCode >= 400) return res.status(statusCode).json(responseEnvelope);
+        return res.json(responseEnvelope);
+      } catch (error) {
+        logger?.error?.(
+          {
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            path: '/v1/product/analyze',
+            mode,
+            status_code: statusCode,
+            err: error?.message || String(error),
+            stack: error?.stack || null,
+          },
+          'aurora bff: sendProductAnalyzeEnvelope failed',
+        );
+        if (res.headersSent) return undefined;
+        const failureEnvelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Service temporarily unavailable. Please retry shortly.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `err_${ctx.request_id}`,
+              type: 'error',
+              payload: { error: 'AURORA_GATEWAY_UNAVAILABLE', path: '/v1/product/analyze' },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'AURORA_GATEWAY_UNAVAILABLE', path: '/v1/product/analyze' })],
+        });
+        return res.status(503).json(failureEnvelope);
+      }
     };
     try {
       requireAuroraUid(ctx);
@@ -34890,6 +34935,7 @@ function mountAuroraBffRoutes(app, { logger }) {
     let recentLogs = [];
     let safetyDecision = null;
     let recoContextMetricsEmitted = false;
+    let requestMessage = '';
     const refreshPolicyMetaRollout = () => {
       effectiveChatFlags = rolloutContext.effective_flags || effectiveChatFlags;
       shouldAttachPolicyMeta = Boolean(effectiveChatFlags.chat_response_meta);
@@ -35078,122 +35124,123 @@ function mountAuroraBffRoutes(app, { logger }) {
       return out;
     };
     const sendChatEnvelope = async (envelope, statusCode = 200) => {
-      const withLlmMeta = applyLlmMetaToEnvelope(envelope);
-      const withPolicyMeta = (() => {
-        if (!shouldAttachPolicyMeta) return withLlmMeta;
-        if (!withLlmMeta || typeof withLlmMeta !== 'object') return withLlmMeta;
-        const out = { ...withLlmMeta };
-        const baseSessionPatch =
-          out.session_patch && typeof out.session_patch === 'object' && !Array.isArray(out.session_patch)
-            ? { ...out.session_patch }
+      try {
+        const withLlmMeta = applyLlmMetaToEnvelope(envelope);
+        const withPolicyMeta = (() => {
+          if (!shouldAttachPolicyMeta) return withLlmMeta;
+          if (!withLlmMeta || typeof withLlmMeta !== 'object') return withLlmMeta;
+          const out = { ...withLlmMeta };
+          const baseSessionPatch =
+            out.session_patch && typeof out.session_patch === 'object' && !Array.isArray(out.session_patch)
+              ? { ...out.session_patch }
+              : {};
+          const baseMeta = baseSessionPatch.meta && typeof baseSessionPatch.meta === 'object' && !Array.isArray(baseSessionPatch.meta)
+            ? { ...baseSessionPatch.meta }
             : {};
-        const baseMeta = baseSessionPatch.meta && typeof baseSessionPatch.meta === 'object' && !Array.isArray(baseSessionPatch.meta)
-          ? { ...baseSessionPatch.meta }
-          : {};
-        baseSessionPatch.meta = { ...baseMeta, ...policyMeta };
-        if (plannerSessionStatePatch && typeof plannerSessionStatePatch === 'object' && !Array.isArray(plannerSessionStatePatch)) {
-          const baseState = baseSessionPatch.state && typeof baseSessionPatch.state === 'object' && !Array.isArray(baseSessionPatch.state)
-            ? { ...baseSessionPatch.state }
-            : {};
-          baseSessionPatch.state = { ...baseState, ...plannerSessionStatePatch };
+          baseSessionPatch.meta = { ...baseMeta, ...policyMeta };
+          if (plannerSessionStatePatch && typeof plannerSessionStatePatch === 'object' && !Array.isArray(plannerSessionStatePatch)) {
+            const baseState = baseSessionPatch.state && typeof baseSessionPatch.state === 'object' && !Array.isArray(baseSessionPatch.state)
+              ? { ...baseSessionPatch.state }
+              : {};
+            baseSessionPatch.state = { ...baseState, ...plannerSessionStatePatch };
+          }
+          out.session_patch = baseSessionPatch;
+
+          const topMeta = out.meta && typeof out.meta === 'object' && !Array.isArray(out.meta) ? { ...out.meta } : {};
+          out.meta = { ...topMeta, ...policyMeta };
+
+          const events = Array.isArray(out.events) ? out.events.slice() : [];
+          const hasPolicyEvent = events.some((evt) => evt && typeof evt === 'object' && evt.event_name === 'aurora_policy_meta');
+          if (!hasPolicyEvent) {
+            events.push(
+              makeEvent(ctx, 'aurora_policy_meta', {
+                intent_source: policyMeta.intent_source,
+                intent_resolved: policyMeta.intent_canonical,
+                loop_breaker_triggered:
+                  policyMeta.break_applied === 'chips_single_question' ||
+                  policyMeta.break_applied === 'conservative_defaults' ||
+                  policyMeta.break_applied === 'stop_asking',
+                gate_applied: policyMeta.gate_type,
+                clarification_id: latestClarificationId || null,
+              }),
+            );
+          }
+          out.events = events;
+          return out;
+        })();
+        const withRecoMeta = applyRecommendationMetaToEnvelope(withPolicyMeta);
+        const dogfoodAugmented = augmentEnvelopeProductAnalysisCardsForDogfood({
+          envelope: withRecoMeta,
+          req,
+          ctx,
+          mode: 'main_path',
+          sessionId: chatSessionId,
+          logger,
+        });
+        const normalized = applyReplyTemplates({ envelope: dogfoodAugmented, ctx: templateCtx });
+        const setResponseHeader = (name, value) => {
+          if (typeof res.set === 'function') {
+            res.set(name, value);
+            return;
+          }
+          if (typeof res.setHeader === 'function') {
+            res.setHeader(name, value);
+          }
+        };
+        if (rolloutContext && typeof rolloutContext === 'object') {
+          setResponseHeader('x-aurora-bucket', String(Number.isFinite(Number(rolloutContext.bucket)) ? Number(rolloutContext.bucket) : 0));
+          setResponseHeader('x-aurora-variant', String(rolloutContext.variant || 'legacy'));
+          setResponseHeader('x-aurora-policy-version', String(rolloutContext.policy_version || policyMeta.policy_version || 'legacy'));
         }
-        out.session_patch = baseSessionPatch;
-
-        const topMeta = out.meta && typeof out.meta === 'object' && !Array.isArray(out.meta) ? { ...out.meta } : {};
-        out.meta = { ...topMeta, ...policyMeta };
-
-        const events = Array.isArray(out.events) ? out.events.slice() : [];
-        const hasPolicyEvent = events.some((evt) => evt && typeof evt === 'object' && evt.event_name === 'aurora_policy_meta');
-        if (!hasPolicyEvent) {
-          events.push(
-            makeEvent(ctx, 'aurora_policy_meta', {
-              intent_source: policyMeta.intent_source,
-              intent_resolved: policyMeta.intent_canonical,
-              loop_breaker_triggered:
-                policyMeta.break_applied === 'chips_single_question' ||
-                policyMeta.break_applied === 'conservative_defaults' ||
-                policyMeta.break_applied === 'stop_asking',
-              gate_applied: policyMeta.gate_type,
-              clarification_id: latestClarificationId || null,
-            }),
+        const guardEligible = statusCode < 400 && shouldApplyRecoOutputGuard({ envelope: normalized, ctx });
+        const lowMediumFiltered = guardEligible
+          ? applyLowOrMediumRecoGuardToEnvelope({ envelope: normalized, ctx, language: ctx.lang })
+          : { envelope: normalized, applied: false, filteredCount: 0, totalCount: 0, fallbackApplied: false };
+        if (lowMediumFiltered.applied) {
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              filtered_count: lowMediumFiltered.filteredCount,
+              total_count: lowMediumFiltered.totalCount,
+              fallback_applied: lowMediumFiltered.fallbackApplied,
+              safe_reco_fallback_applied: Boolean(lowMediumFiltered.safeRecoFallbackApplied),
+              notice_fallback_applied: Boolean(lowMediumFiltered.noticeFallbackApplied),
+            },
+            'aurora bff: low/medium confidence reco treatment filter applied',
           );
+          logger?.info(
+            {
+              kind: 'metric',
+              name: 'aurora.skin.reco.low_medium_treatment_filtered',
+              value: lowMediumFiltered.filteredCount,
+            },
+            'metric',
+          );
+          recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_treatment_filtered', hit: true });
+          if (lowMediumFiltered.safeRecoFallbackApplied) {
+            recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_safe_product_fallback', hit: true });
+          }
+          if (lowMediumFiltered.noticeFallbackApplied) {
+            recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_notice_fallback', hit: true });
+          }
         }
-        out.events = events;
-        return out;
-      })();
-      const withRecoMeta = applyRecommendationMetaToEnvelope(withPolicyMeta);
-      const dogfoodAugmented = augmentEnvelopeProductAnalysisCardsForDogfood({
-        envelope: withRecoMeta,
-        req,
-        ctx,
-        mode: 'main_path',
-        sessionId: chatSessionId,
-        logger,
-      });
-      const normalized = applyReplyTemplates({ envelope: dogfoodAugmented, ctx: templateCtx });
-      const setResponseHeader = (name, value) => {
-        if (typeof res.set === 'function') {
-          res.set(name, value);
-          return;
+        const guarded = guardEligible
+          ? ensureNonEmptyChatCardsEnvelope({ envelope: lowMediumFiltered.envelope, ctx, language: ctx.lang })
+          : { envelope: lowMediumFiltered.envelope, applied: false, reason: null };
+        if (guarded.applied) {
+          logger?.warn(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              reason: guarded.reason,
+            },
+            'aurora bff: reco output guard applied due to empty/unrenderable cards',
+          );
+          logger?.info({ kind: 'metric', name: 'aurora.skin.reco.output_guard_fallback_rate', value: 1 }, 'metric');
+          recordAuroraSkinFlowMetric({ stage: 'reco_output_guard_fallback', hit: true });
         }
-        if (typeof res.setHeader === 'function') {
-          res.setHeader(name, value);
-        }
-      };
-      if (rolloutContext && typeof rolloutContext === 'object') {
-        setResponseHeader('x-aurora-bucket', String(Number.isFinite(Number(rolloutContext.bucket)) ? Number(rolloutContext.bucket) : 0));
-        setResponseHeader('x-aurora-variant', String(rolloutContext.variant || 'legacy'));
-        setResponseHeader('x-aurora-policy-version', String(rolloutContext.policy_version || policyMeta.policy_version || 'legacy'));
-      }
-      const guardEligible = statusCode < 400 && shouldApplyRecoOutputGuard({ envelope: normalized, ctx });
-      const lowMediumFiltered = guardEligible
-        ? applyLowOrMediumRecoGuardToEnvelope({ envelope: normalized, ctx, language: ctx.lang })
-        : { envelope: normalized, applied: false, filteredCount: 0, totalCount: 0, fallbackApplied: false };
-      if (lowMediumFiltered.applied) {
-        logger?.info(
-          {
-            request_id: ctx.request_id,
-            trace_id: ctx.trace_id,
-            filtered_count: lowMediumFiltered.filteredCount,
-            total_count: lowMediumFiltered.totalCount,
-            fallback_applied: lowMediumFiltered.fallbackApplied,
-            safe_reco_fallback_applied: Boolean(lowMediumFiltered.safeRecoFallbackApplied),
-            notice_fallback_applied: Boolean(lowMediumFiltered.noticeFallbackApplied),
-          },
-          'aurora bff: low/medium confidence reco treatment filter applied',
-        );
-        logger?.info(
-          {
-            kind: 'metric',
-            name: 'aurora.skin.reco.low_medium_treatment_filtered',
-            value: lowMediumFiltered.filteredCount,
-          },
-          'metric',
-        );
-        recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_treatment_filtered', hit: true });
-        if (lowMediumFiltered.safeRecoFallbackApplied) {
-          recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_safe_product_fallback', hit: true });
-        }
-        if (lowMediumFiltered.noticeFallbackApplied) {
-          recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_notice_fallback', hit: true });
-        }
-      }
-      const guarded = guardEligible
-        ? ensureNonEmptyChatCardsEnvelope({ envelope: lowMediumFiltered.envelope, ctx, language: ctx.lang })
-        : { envelope: lowMediumFiltered.envelope, applied: false, reason: null };
-      if (guarded.applied) {
-        logger?.warn(
-          {
-            request_id: ctx.request_id,
-            trace_id: ctx.trace_id,
-            reason: guarded.reason,
-          },
-          'aurora bff: reco output guard applied due to empty/unrenderable cards',
-        );
-        logger?.info({ kind: 'metric', name: 'aurora.skin.reco.output_guard_fallback_rate', value: 1 }, 'metric');
-        recordAuroraSkinFlowMetric({ stage: 'reco_output_guard_fallback', hit: true });
-      }
-      const envelopeAfterRoutineFallback = (() => {
+        const envelopeAfterRoutineFallback = (() => {
         const baseEnvelope =
           guarded.envelope && typeof guarded.envelope === 'object' && !Array.isArray(guarded.envelope)
             ? { ...guarded.envelope }
@@ -35248,15 +35295,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           cards: existingCards,
           events: existingEvents,
         };
-      })();
-      const assistantTextForQuality =
+        })();
+        const assistantTextForQuality =
         envelopeAfterRoutineFallback &&
         envelopeAfterRoutineFallback.assistant_message &&
         typeof envelopeAfterRoutineFallback.assistant_message === 'object' &&
         typeof envelopeAfterRoutineFallback.assistant_message.content === 'string'
           ? envelopeAfterRoutineFallback.assistant_message.content
           : '';
-      const envelopeWithContract = (() => {
+        const envelopeWithContract = (() => {
         const baseEnvelope =
           envelopeAfterRoutineFallback && typeof envelopeAfterRoutineFallback === 'object' && !Array.isArray(envelopeAfterRoutineFallback)
             ? { ...envelopeAfterRoutineFallback }
@@ -35293,44 +35340,72 @@ function mountAuroraBffRoutes(app, { logger }) {
             quality_contract: qualityContract,
           },
         };
-      })();
-      const guardrailResult = await applyProductIntelGuardrailsToEnvelope({
+        })();
+        const guardrailResult = await applyProductIntelGuardrailsToEnvelope({
         envelope: envelopeWithContract,
         ctx,
         profile,
         language: ctx.lang,
-      });
-      if (guardrailResult && Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
-        persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
-      }
+        });
+        if (guardrailResult && Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
+          persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
+        }
 
-      const envelopeWithGuardrails =
-        guardrailResult && guardrailResult.envelope && typeof guardrailResult.envelope === 'object'
-          ? { ...guardrailResult.envelope }
-          : envelopeWithContract;
-      if (guardrailResult && (guardrailResult.dropped > 0 || guardrailResult.externalized > 0)) {
-        const events = Array.isArray(envelopeWithGuardrails.events) ? envelopeWithGuardrails.events.slice(0, 96) : [];
-        events.push(
-          makeEvent(ctx, 'product_intel_guardrail_applied', {
-            dropped_count: Number(guardrailResult.dropped || 0),
-            externalized_count: Number(guardrailResult.externalized || 0),
-          }),
-        );
-        envelopeWithGuardrails.events = events;
-        logger?.info(
+        const envelopeWithGuardrails =
+          guardrailResult && guardrailResult.envelope && typeof guardrailResult.envelope === 'object'
+            ? { ...guardrailResult.envelope }
+            : envelopeWithContract;
+        if (guardrailResult && (guardrailResult.dropped > 0 || guardrailResult.externalized > 0)) {
+          const events = Array.isArray(envelopeWithGuardrails.events) ? envelopeWithGuardrails.events.slice(0, 96) : [];
+          events.push(
+            makeEvent(ctx, 'product_intel_guardrail_applied', {
+              dropped_count: Number(guardrailResult.dropped || 0),
+              externalized_count: Number(guardrailResult.externalized || 0),
+            }),
+          );
+          envelopeWithGuardrails.events = events;
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              dropped_count: Number(guardrailResult.dropped || 0),
+              externalized_count: Number(guardrailResult.externalized || 0),
+            },
+            'aurora bff: product-intel guardrail applied',
+          );
+        }
+
+        emitAudit(envelopeWithGuardrails, templateCtx, { logger });
+        if (statusCode >= 400) return res.status(statusCode).json(envelopeWithGuardrails);
+        return res.json(envelopeWithGuardrails);
+      } catch (error) {
+        logger?.error?.(
           {
             request_id: ctx.request_id,
             trace_id: ctx.trace_id,
-            dropped_count: Number(guardrailResult.dropped || 0),
-            externalized_count: Number(guardrailResult.externalized || 0),
+            path: '/v1/chat',
+            status_code: statusCode,
+            err: error?.message || String(error),
+            stack: error?.stack || null,
           },
-          'aurora bff: product-intel guardrail applied',
+          'aurora bff: sendChatEnvelope failed',
         );
+        if (res.headersSent) return undefined;
+        const failureEnvelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Service temporarily unavailable. Please retry shortly.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `err_${ctx.request_id}`,
+              type: 'error',
+              payload: { error: 'AURORA_GATEWAY_UNAVAILABLE', path: '/v1/chat' },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'AURORA_GATEWAY_UNAVAILABLE', path: '/v1/chat' })],
+        });
+        return res.status(503).json(failureEnvelope);
       }
-
-      emitAudit(envelopeWithGuardrails, templateCtx, { logger });
-      if (statusCode >= 400) return res.status(statusCode).json(envelopeWithGuardrails);
-      return res.json(envelopeWithGuardrails);
     };
 
     try {
@@ -35438,6 +35513,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionReplyText ||
         actionLabelFromPayload ||
         '';
+      requestMessage = message;
       const actionId =
         (normalizedActionPayload && typeof normalizedActionPayload === 'object'
           ? normalizedActionPayload.action_id
