@@ -1,18 +1,18 @@
 {
   "schema_version": "travel_expert_scores.v1",
   "model": "aurora",
-  "updated_at": "2026-02-24T15:57:50.016Z",
+  "updated_at": "2026-02-25T01:07:47.161Z",
   "results": [
     {
       "id": "travel_mt_001",
       "scores": {
-        "weather_accuracy": 2,
+        "weather_accuracy": 3,
         "delta_explainability": 2,
         "actionability": 3,
         "product_closure": 2,
-        "safety_risk_control": 5,
-        "followup_focus": 2,
-        "context_memory": 4,
+        "safety_risk_control": 4,
+        "followup_focus": 4,
+        "context_memory": 5,
         "contract_completeness": 3
       },
       "safety_violation": false,
@@ -23,7 +23,7 @@
         "has_store_or_channel_hint": true,
         "has_jetlag_logic": false
       },
-      "notes": "P0: fix missing final-day forecast line and align all dates.\nState climate-fallback limitation explicitly + prompt re-check near departure.\nBack action claims with displayed deltas (or remove unsupported phrasing).\nAdd explicit reapply rules and selection criteria to close the product loop.\nreasonableness: medium (is_reasonable=true)\ncritical: forecast window missing end_date(2026-03-15)\nP0: include inclusive end_date + climate fallback disclaimer"
+      "notes": "Fix missing end-date forecast line (03-15) and prevent narrative-payload drift.\nShow the deltas that justify each action (esp. temp/wind) or remove unsupported claims.\nMake climate-fallback limitation explicit (live forecast unavailable) + tell user when to re-check.\nSurface alert action hints and include a sunscreen reapply rule in the message.\nreasonableness: medium (is_reasonable=true)\ncritical: narrative missing end_date(2026-03-15) in forecast\nP0: render inclusive forecast window from forecast_window source-of-truth"
     },
     {
       "id": "travel_mt_002",
