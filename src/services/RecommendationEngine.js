@@ -1165,6 +1165,7 @@ async function recommend({
   const baseBrand = getBrandName(baseProduct);
   const baseLeaf = getLeafCategory(baseProduct);
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
+  const baseProductIsExternal = isExternalProduct(baseProduct);
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
   const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
@@ -1198,7 +1199,11 @@ async function recommend({
     PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
     Math.ceil(safeK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
   );
-  const shouldSkipExternal = !providedExternal && internalCount >= skipExternalMin && baseSemanticStrong;
+  const shouldSkipExternal =
+    !providedExternal &&
+    internalCount >= skipExternalMin &&
+    baseSemanticStrong &&
+    !baseProductIsExternal;
 
   const externalCandidates = shouldSkipExternal
     ? []
@@ -1250,6 +1255,7 @@ async function recommend({
         external_skipped: shouldSkipExternal,
         external_skip_min_candidates: skipExternalMin,
         base_semantic_strong: baseSemanticStrong,
+        base_product_is_external: baseProductIsExternal,
       },
       base_semantic: baseSemantic || null,
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,

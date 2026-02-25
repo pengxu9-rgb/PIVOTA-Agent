@@ -340,4 +340,50 @@ describe('RecommendationEngine (PDP)', () => {
     expect(Math.abs(internalCount - externalCount)).toBeLessThanOrEqual(1);
     expect(internalCount + externalCount).toBe(out.items.length);
   });
+
+  test('k) strong semantic external base still fetches external candidates', async () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_strong_semantic_base',
+      title: 'Noir Extreme Eau de Parfum',
+      category: 'Fragrance',
+      vendor: 'Tom Ford',
+      source: 'external_seed',
+      price: 180,
+    });
+
+    const internal = Array.from({ length: 20 }).map((_, index) =>
+      makeProduct({
+        merchant_id: `m_${index}`,
+        product_id: `int_strong_${index}`,
+        title: `Internal Fragrance ${index}`,
+        category: 'Fragrance',
+        price: 100 + index,
+      }),
+    );
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_candidate_1',
+        title: 'External Noir Eau de Parfum',
+        category: 'Fragrance',
+        source: 'external_seed',
+        price: 175,
+      }),
+    ];
+
+    const result = await recommend({
+      pdp_product: base,
+      k: 6,
+      options: {
+        debug: true,
+        internal_candidates: internal,
+        external_candidates: external,
+      },
+    });
+
+    expect(result?.debug?.fetch_strategy?.base_product_is_external).toBe(true);
+    expect(result?.debug?.fetch_strategy?.external_skipped).toBe(false);
+  });
 });
