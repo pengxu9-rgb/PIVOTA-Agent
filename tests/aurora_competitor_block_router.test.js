@@ -132,6 +132,26 @@ describe('competitor block router hard gates', () => {
     expect(trace?.reason_codes || []).toContain('competitor_category_match_below_threshold');
   });
 
+  test('category-unknown candidates are blocked from competitors/dupes by hard gate', () => {
+    const anchor = makeAnchor({ category_taxonomy: [] });
+    const candidate = makeCandidate({
+      product_id: 'cat_unknown_1',
+      category_match: undefined,
+      category: '',
+      category_taxonomy: [],
+      similarity_score: 0.9,
+      price: 80,
+      source: { type: 'catalog_search' },
+    });
+
+    const out = routeCandidates(anchor, [candidate], {});
+
+    expect(out.comp_pool).toHaveLength(0);
+    expect(out.dupe_pool).toHaveLength(0);
+    const trace = out.internal_reason_codes.find((x) => x.candidate_key === 'cat_unknown_1');
+    expect(trace?.reason_codes || []).toContain('competitor_category_unknown_blocked');
+  });
+
   test('dedupes variant family by product_family_id before routing', () => {
     const anchor = makeAnchor({ price: 100 });
     const weaker = makeCandidate({

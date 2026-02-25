@@ -255,6 +255,98 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(candidates.some((q) => /peptide|serum/i.test(String(q || '')))).toBe(true);
   });
 
+  test('route competitor pools filters non-skincare candidates across competitors/related/dupes', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const routed = __internal.routeCompetitorCandidatePools({
+      anchorProduct: {
+        brand: 'Lab Series',
+        category_taxonomy: ['moisturizer', 'face'],
+        price: { amount: 45, currency: 'USD' },
+      },
+      candidates: [
+        {
+          product_id: 'brush_1',
+          brand: 'Unknown',
+          name: 'S05 Moisturizer Brush',
+          category: 'makeup brush',
+          similarity_score: 0.91,
+          price: { amount: 20, currency: 'USD' },
+          source: { type: 'catalog_search' },
+        },
+        {
+          product_id: 'moisturizer_1',
+          brand: 'Brand A',
+          name: 'Hydrating Gel Moisturizer',
+          category: 'moisturizer',
+          category_use_case_match: 0.9,
+          similarity_score: 0.72,
+          price: { amount: 39, currency: 'USD' },
+          source: { type: 'catalog_search' },
+        },
+      ],
+      maxCandidates: 10,
+    });
+
+    expect(Array.isArray(routed.compPool)).toBe(true);
+    expect(routed.compPool.some((item) => String(item?.name || '').toLowerCase().includes('brush'))).toBe(false);
+    expect(routed.relPool.some((item) => String(item?.name || '').toLowerCase().includes('brush'))).toBe(false);
+    expect(routed.dupePool.some((item) => String(item?.name || '').toLowerCase().includes('brush'))).toBe(false);
+    expect(routed.candidateFilterStats).toEqual(
+      expect.objectContaining({
+        competitors_dropped_non_skincare: expect.any(Number),
+        related_dropped_non_skincare: expect.any(Number),
+        dupes_dropped_non_skincare: expect.any(Number),
+      }),
+    );
+  });
+
+  test('route competitor pools drops template/noise candidate names', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const routed = __internal.routeCompetitorCandidatePools({
+      anchorProduct: {
+        brand: 'Lab Series',
+        category_taxonomy: ['moisturizer', 'face'],
+        price: { amount: 45, currency: 'USD' },
+      },
+      candidates: [
+        {
+          product_id: 'tpl_1',
+          brand: 'Unknown',
+          name: '{{{ PROD_RGN_SUBHEADING }}}',
+          category: 'moisturizer',
+          similarity_score: 0.66,
+          source: { type: 'on_page_related' },
+        },
+        {
+          product_id: 'tpl_2',
+          brand: 'Unknown',
+          name: 'BESTSELLERS',
+          category: 'moisturizer',
+          similarity_score: 0.62,
+          source: { type: 'on_page_related' },
+        },
+        {
+          product_id: 'ok_1',
+          brand: 'Brand A',
+          name: 'Hydrating Gel Moisturizer',
+          category: 'moisturizer',
+          category_use_case_match: 0.9,
+          similarity_score: 0.72,
+          source: { type: 'catalog_search' },
+        },
+      ],
+      maxCandidates: 10,
+    });
+
+    const names = [
+      ...routed.compPool.map((item) => String(item?.name || '').toLowerCase()),
+      ...routed.relPool.map((item) => String(item?.name || '').toLowerCase()),
+      ...routed.dupePool.map((item) => String(item?.name || '').toLowerCase()),
+    ];
+    expect(names.some((name) => name.includes('prod_rgn_subheading'))).toBe(false);
+    expect(names.some((name) => name.includes('bestseller'))).toBe(false);
+  });
+
   test('product-intel kb key uses fingerprint fallback for non-anchor routine products', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const key1 = __internal.buildProductIntelKbKey({
