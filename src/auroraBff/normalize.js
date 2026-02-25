@@ -292,12 +292,12 @@ function normalizeEvidence(raw) {
     const url = String(row.url || '').trim();
     if (!/^https?:\/\//i.test(url)) continue;
     const label = String(row.label || '').trim();
-    const confidence = asNumberOrNull(row.confidence);
+    const sourceConfidence = asNumberOrNull(row.confidence);
     sources.push({
       type,
       url,
       ...(label ? { label } : {}),
-      ...(confidence != null ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
+      ...(sourceConfidence != null ? { confidence: Math.max(0, Math.min(1, sourceConfidence)) } : {}),
     });
     if (sources.length >= 8) break;
   }

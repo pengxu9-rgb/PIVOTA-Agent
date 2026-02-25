@@ -4425,6 +4425,56 @@ function extractPageTitleFromHtml(html) {
   return stripHtmlToText(m[1]);
 }
 
+function inferBrandFromHostname(hostname) {
+  const host = String(hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, '');
+  if (!host) return '';
+  const suffixTokens = new Set([
+    'com',
+    'cn',
+    'co',
+    'net',
+    'org',
+    'io',
+    'app',
+    'store',
+    'shop',
+    'beauty',
+    'official',
+    'us',
+    'uk',
+    'de',
+    'fr',
+    'it',
+    'jp',
+    'kr',
+    'au',
+    'ca',
+    'es',
+    'eu',
+  ]);
+  const segments = host.split('.').map((segment) => segment.trim()).filter(Boolean);
+  let candidate = '';
+  for (const segment of segments) {
+    if (!segment || segment.length < 3 || suffixTokens.has(segment) || /^\d+$/.test(segment)) continue;
+    candidate = segment;
+    break;
+  }
+  if (!candidate) return '';
+  return candidate
+    .split('-')
+    .map((token) => {
+      const value = String(token || '').trim();
+      if (!value) return '';
+      return `${value.charAt(0).toUpperCase()}${value.slice(1).toLowerCase()}`;
+    })
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
 function buildProductDescriptorFromInput({
   parsedProduct = null,
   productUrl = '',
@@ -15611,11 +15661,17 @@ async function enrichIngredientExternalCandidateWithRealtimeFetch({
   const fetchHtml = typeof fetchHtmlFn === 'function' ? fetchHtmlFn : fetchProductPageHtmlForReco;
   let html = '';
   try {
-    html = await fetchHtml({
+    const fetched = await fetchHtml({
       productUrl: String(base.pdp_url || '').trim(),
       timeoutMs,
       logger,
     });
+    html =
+      typeof fetched === 'string'
+        ? fetched
+        : fetched && typeof fetched === 'object' && !Array.isArray(fetched)
+          ? String(fetched.html || '')
+          : '';
   } catch {
     html = '';
   }
