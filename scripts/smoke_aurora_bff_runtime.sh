@@ -9,6 +9,7 @@ BRIEF_ID="${BRIEF_ID:-b_$(date +%s)}"
 CURL_RETRY_MAX="${CURL_RETRY_MAX:-30}"
 CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-1}"
 CURL_RETRY_MAX_TIME_SEC="${CURL_RETRY_MAX_TIME_SEC:-240}"
+LAB_SERIES_URL="${LAB_SERIES_URL:-https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one}"
 
 COMMON_HEADERS=(
   -H "X-Aurora-UID: ${AURORA_UID}"
@@ -36,8 +37,27 @@ curl_do() {
   curl --retry "${CURL_RETRY_MAX}" --retry-delay "${CURL_RETRY_DELAY_SEC}" --retry-max-time "${CURL_RETRY_MAX_TIME_SEC}" --retry-all-errors "$@"
 }
 
-printf "BASE=%s\nAURORA_LANG=%s\nAURORA_UID=%s\nTRACE_ID=%s\nBRIEF_ID=%s\nCURL_RETRY_MAX=%s\nCURL_RETRY_DELAY_SEC=%s\nCURL_RETRY_MAX_TIME_SEC=%s\n" \
-  "$BASE" "$AURORA_LANG" "$AURORA_UID" "$TRACE_ID" "$BRIEF_ID" "$CURL_RETRY_MAX" "$CURL_RETRY_DELAY_SEC" "$CURL_RETRY_MAX_TIME_SEC"
+health_started_at() {
+  curl_do -fsS "${BASE}/health" | jq -r '.version.started_at // empty'
+}
+
+assert_started_at_stable() {
+  local label="$1"
+  local before="$2"
+  local after="$3"
+  if [[ -z "$before" || -z "$after" ]]; then
+    printf "[WARN] %s: skipped started_at stability check (missing value)\n" "$label"
+    return
+  fi
+  if [[ "$before" != "$after" ]]; then
+    printf "\n[FAIL] %s restarted service\n  started_at(before)=%s\n  started_at(after)=%s\n" "$label" "$before" "$after" >&2
+    exit 1
+  fi
+  printf "[PASS] %s started_at stable\n" "$label"
+}
+
+printf "BASE=%s\nAURORA_LANG=%s\nAURORA_UID=%s\nTRACE_ID=%s\nBRIEF_ID=%s\nCURL_RETRY_MAX=%s\nCURL_RETRY_DELAY_SEC=%s\nCURL_RETRY_MAX_TIME_SEC=%s\nLAB_SERIES_URL=%s\n" \
+  "$BASE" "$AURORA_LANG" "$AURORA_UID" "$TRACE_ID" "$BRIEF_ID" "$CURL_RETRY_MAX" "$CURL_RETRY_DELAY_SEC" "$CURL_RETRY_MAX_TIME_SEC" "$LAB_SERIES_URL"
 
 say "deployed commit (best-effort)"
 curl_do -sSI "${BASE}/v1/session/bootstrap" | grep -i '^x-service-commit:' || true
@@ -99,14 +119,47 @@ printf "%s\n" "$skin_json" | jq_assert "analysis has 1+ features" '(.cards[]|sel
 printf "%s\n" "$skin_json" | jq_assert "analysis has strategy" '((.cards[]|select(.type=="analysis_summary")|.payload.analysis.strategy)//"") | length > 0'
 
 say "product analyze (Nivea Creme)"
+started_at_before_analyze="$(health_started_at)"
 analyze_json="$(curl_do -fsS -X POST "${BASE}/v1/product/analyze" \
   -H 'Content-Type: application/json' \
   "${COMMON_HEADERS[@]}" \
   --data '{"name":"Nivea Creme"}')"
+started_at_after_analyze="$(health_started_at)"
+assert_started_at_stable "product analyze (Nivea Creme)" "$started_at_before_analyze" "$started_at_after_analyze"
 
 printf "%s\n" "$analyze_json" | jq_assert "product_analysis card exists" '.cards | any(.type=="product_analysis")'
 printf "%s\n" "$analyze_json" | jq_assert "verdict is present" '((.cards[]|select(.type=="product_analysis")|.payload.assessment.verdict)//"") | length > 0'
 printf "%s\n" "$analyze_json" | jq_assert "reasons length >= 1" '(.cards[]|select(.type=="product_analysis")|.payload.assessment.reasons|length) >= 1'
+
+say "product parse/analyze URL path (Lab Series) + anti-drift guard"
+started_at_before_parse_url="$(health_started_at)"
+parse_url_json="$(curl_do -fsS -X POST "${BASE}/v1/product/parse" \
+  -H 'Content-Type: application/json' \
+  "${COMMON_HEADERS[@]}" \
+  --data "{\"text\":\"${LAB_SERIES_URL}\"}")"
+started_at_after_parse_url="$(health_started_at)"
+assert_started_at_stable "product parse (Lab Series URL)" "$started_at_before_parse_url" "$started_at_after_parse_url"
+printf "%s\n" "$parse_url_json" | jq_assert "product_parse card exists for URL" '.cards | any(.type=="product_parse")'
+
+started_at_before_analyze_url="$(health_started_at)"
+analyze_url_json="$(curl_do -fsS -X POST "${BASE}/v1/product/analyze" \
+  -H 'Content-Type: application/json' \
+  "${COMMON_HEADERS[@]}" \
+  --data "{\"url\":\"${LAB_SERIES_URL}\"}")"
+started_at_after_analyze_url="$(health_started_at)"
+assert_started_at_stable "product analyze (Lab Series URL)" "$started_at_before_analyze_url" "$started_at_after_analyze_url"
+printf "%s\n" "$analyze_url_json" | jq_assert "product_analysis card exists for URL" '.cards | any(.type=="product_analysis")'
+printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze alternatives do not contain obvious non-skincare tools" '
+  [
+    (.cards[]|select(.type=="product_analysis")|.payload.competitors.candidates[]?),
+    (.cards[]|select(.type=="product_analysis")|.payload.related_products.candidates[]?),
+    (.cards[]|select(.type=="product_analysis")|.payload.dupes.candidates[]?)
+  ] as $rows |
+  (
+    [$rows[] | (((.name // .display_name // "") + " " + (.category // "") + " " + (.product_type // "")) | ascii_downcase | test("(brush|makeup\\s*brush|applicator|tool\\b|blender)"))]
+    | any
+  ) | not
+'
 
 say "dupe compare (real products -> should have tradeoffs)"
 dupe_json="$(curl_do -fsS -X POST "${BASE}/v1/dupe/compare" \

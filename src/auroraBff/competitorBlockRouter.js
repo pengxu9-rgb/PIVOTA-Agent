@@ -168,7 +168,7 @@ function extractCategoryMatch(candidate, anchorCategoryTokens) {
     row.use_case ??
     row.useCase,
   );
-  if (!anchorCategoryTokens.length || !candidateCategoryTokens.length) return 0.7;
+  if (!anchorCategoryTokens.length || !candidateCategoryTokens.length) return null;
   return clamp01(computeJaccard(anchorCategoryTokens, candidateCategoryTokens));
 }
 
@@ -241,7 +241,8 @@ function candidateQualityScore(candidate, anchorPrice) {
   const onPagePenalty = sourceType === 'on_page_related' ? -0.1 : 0;
   const simTotal = extractSimTotal(candidate);
   const simScore = simTotal == null ? 0 : simTotal;
-  const categoryMatch = extractCategoryMatch(candidate, []);
+  const categoryMatchRaw = extractCategoryMatch(candidate, []);
+  const categoryMatch = categoryMatchRaw == null ? 0 : categoryMatchRaw;
   const price = extractPriceAmount(candidate?.price);
   const priceKnownBoost = price != null && anchorPrice != null ? 0.02 : 0;
   return simScore * 0.8 + categoryMatch * 0.2 + onPagePenalty + priceKnownBoost;
@@ -320,7 +321,9 @@ function routeCandidates(anchor, candidates, ctx = {}) {
     const sourceType = extractSourceType(row);
     const candidateBrandId = extractBrandId(row);
     const sameBrand = Boolean(anchorBrandId && candidateBrandId && anchorBrandId === candidateBrandId);
-    const categoryMatch = extractCategoryMatch(row, anchorCategoryTokens);
+    const categoryMatchRaw = extractCategoryMatch(row, anchorCategoryTokens);
+    const categoryMatchKnown = categoryMatchRaw != null;
+    const categoryMatch = categoryMatchKnown ? categoryMatchRaw : 0;
     const simTotal = extractSimTotal(row);
     const candidatePrice = extractPriceAmount(row?.price);
     const priceRatio = anchorPrice != null && candidatePrice != null && anchorPrice > 0 ? candidatePrice / anchorPrice : null;
@@ -350,7 +353,10 @@ function routeCandidates(anchor, candidates, ctx = {}) {
       competitorEligible = false;
       reasonCodes.push('competitor_same_brand_blocked');
     }
-    if (categoryMatch < config.tau_cat) {
+    if (!categoryMatchKnown) {
+      competitorEligible = false;
+      reasonCodes.push('competitor_category_unknown_blocked');
+    } else if (categoryMatch < config.tau_cat) {
       competitorEligible = false;
       reasonCodes.push('competitor_category_match_below_threshold');
     }
@@ -359,6 +365,10 @@ function routeCandidates(anchor, candidates, ctx = {}) {
     if (!config.allow_same_brand_dupes && sameBrand) {
       dupeEligible = false;
       reasonCodes.push('dupe_same_brand_blocked');
+    }
+    if (!categoryMatchKnown) {
+      dupeEligible = false;
+      reasonCodes.push('dupe_category_unknown_blocked');
     }
     if (simTotal == null || simTotal < config.tau_dupe) {
       dupeEligible = false;

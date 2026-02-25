@@ -7378,13 +7378,63 @@ function isLikelyNoiseCompetitorName(name) {
   const text = String(name || '').trim().toLowerCase();
   if (!text) return true;
   if (text.length < 4) return true;
+  if (/\{\{+|\}\}+/i.test(text)) return true;
+  if (/\bsku_[a-z0-9_]+\b/i.test(text)) return true;
+  if (/\b(prod|product)_rgn_[a-z0-9_]+\b/i.test(text)) return true;
   if (/^skip to\b/i.test(text)) return true;
-  if (/^(contact us|home|menu|search|my account|sign in|footer|header)$/i.test(text)) return true;
+  if (/^(contact us|home|menu|search|my account|sign in|footer|header|bestsellers?|new arrivals?)$/i.test(text)) return true;
   if (/\b(skip to main content|skip to footer content|contact us)\b/i.test(text)) return true;
+  const symbolChars = (text.match(/[^a-z0-9\u4e00-\u9fff\s]/g) || []).length;
+  if (symbolChars / Math.max(1, text.length) > 0.35) return true;
   return false;
 }
 
-function sanitizeCompetitorCandidates(candidates, max = 10) {
+function initCandidateFilterStats(seed = null) {
+  const base = seed && typeof seed === 'object' && !Array.isArray(seed) ? seed : {};
+  return {
+    competitors_dropped_non_skincare: Number.isFinite(Number(base.competitors_dropped_non_skincare))
+      ? Number(base.competitors_dropped_non_skincare)
+      : 0,
+    related_dropped_non_skincare: Number.isFinite(Number(base.related_dropped_non_skincare))
+      ? Number(base.related_dropped_non_skincare)
+      : 0,
+    dupes_dropped_non_skincare: Number.isFinite(Number(base.dupes_dropped_non_skincare))
+      ? Number(base.dupes_dropped_non_skincare)
+      : 0,
+  };
+}
+
+function incrementCandidateFilterStats(stats, pool = 'generic') {
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) return;
+  const token = String(pool || '').trim().toLowerCase();
+  if (token === 'competitors') {
+    stats.competitors_dropped_non_skincare = Number(stats.competitors_dropped_non_skincare || 0) + 1;
+    return;
+  }
+  if (token === 'related_products' || token === 'related') {
+    stats.related_dropped_non_skincare = Number(stats.related_dropped_non_skincare || 0) + 1;
+    return;
+  }
+  if (token === 'dupes' || token === 'dupe') {
+    stats.dupes_dropped_non_skincare = Number(stats.dupes_dropped_non_skincare || 0) + 1;
+  }
+}
+
+function hasCandidateFilterDropStats(stats) {
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) return false;
+  return Number(stats.competitors_dropped_non_skincare || 0) > 0
+    || Number(stats.related_dropped_non_skincare || 0) > 0
+    || Number(stats.dupes_dropped_non_skincare || 0) > 0;
+}
+
+function sanitizeCompetitorCandidates(candidates, max = 10, options = null) {
+  const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+  const enforceSkincare = opts.enforce_skincare == null
+    ? (opts.enforceSkincare == null ? true : Boolean(opts.enforceSkincare))
+    : Boolean(opts.enforce_skincare);
+  const strictFilter = opts.strictFilter == null ? AURORA_PRODUCT_STRICT_SKINCARE_FILTER : Boolean(opts.strictFilter);
+  const stats = opts.stats && typeof opts.stats === 'object' && !Array.isArray(opts.stats) ? opts.stats : null;
+  const pool = String(opts.pool || 'generic').trim().toLowerCase();
   const out = [];
   const seen = new Set();
   for (const item of Array.isArray(candidates) ? candidates : []) {
@@ -7392,6 +7442,13 @@ function sanitizeCompetitorCandidates(candidates, max = 10) {
     if (!row) continue;
     const name = pickFirstTrimmed(row.name, row.display_name);
     if (!name || isLikelyNoiseCompetitorName(name)) continue;
+    if (enforceSkincare) {
+      const guard = evaluateAnchorProductSkincareGuard(row, { strictFilter });
+      if (!guard.ok && (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category')) {
+        incrementCandidateFilterStats(stats, pool);
+        continue;
+      }
+    }
     const brand = pickFirstTrimmed(row.brand);
     const key = `${String(brand || '').toLowerCase()}::${String(name).toLowerCase()}`;
     if (seen.has(key)) continue;
@@ -8094,6 +8151,10 @@ function buildRouterAnchorFromProductLike(anchorProduct) {
 }
 
 function summarizeRouterReasonCodes(routeOut) {
+  return collectRouterReasonCodeTokens(routeOut).map((token) => `router.${token}`).slice(0, 24);
+}
+
+function collectRouterReasonCodeTokens(routeOut) {
   const out = [];
   const seen = new Set();
   for (const row of Array.isArray(routeOut?.internal_reason_codes) ? routeOut.internal_reason_codes : []) {
@@ -8101,11 +8162,11 @@ function summarizeRouterReasonCodes(routeOut) {
     for (const raw of reasons) {
       const token = String(raw || '').trim();
       if (!token) continue;
-      const normalized = `router.${token}`;
-      if (seen.has(normalized)) continue;
-      seen.add(normalized);
-      out.push(normalized);
-      if (out.length >= 24) return out;
+      const key = token.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(token);
+      if (out.length >= 32) return out;
     }
   }
   return out;
@@ -8125,11 +8186,31 @@ function routeCompetitorCandidatePools({
       allow_same_brand_dupes: false,
     },
   );
+  const candidateFilterStats = initCandidateFilterStats();
+  const routeReasonCodesRaw = collectRouterReasonCodeTokens(routed);
   return {
     routed,
-    compPool: filterBlockedCompetitorSourceCandidates(sanitizeCompetitorCandidates(routed?.comp_pool, maxCandidates)),
-    relPool: sanitizeCompetitorCandidates(routed?.rel_pool, maxCandidates),
-    dupePool: filterBlockedCompetitorSourceCandidates(sanitizeCompetitorCandidates(routed?.dupe_pool, maxCandidates)),
+    routeReasonCodesRaw,
+    candidateFilterStats,
+    compPool: filterBlockedCompetitorSourceCandidates(
+      sanitizeCompetitorCandidates(routed?.comp_pool, maxCandidates, {
+        enforceSkincare: true,
+        pool: 'competitors',
+        stats: candidateFilterStats,
+      }),
+    ),
+    relPool: sanitizeCompetitorCandidates(routed?.rel_pool, maxCandidates, {
+      enforceSkincare: true,
+      pool: 'related_products',
+      stats: candidateFilterStats,
+    }),
+    dupePool: filterBlockedCompetitorSourceCandidates(
+      sanitizeCompetitorCandidates(routed?.dupe_pool, maxCandidates, {
+        enforceSkincare: true,
+        pool: 'dupes',
+        stats: candidateFilterStats,
+      }),
+    ),
   };
 }
 
@@ -8978,6 +9059,10 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
   });
   const cleanCandidates = routedPools.compPool;
   const recoveredRelated = routedPools.relPool;
+  const droppedStats = initCandidateFilterStats(routedPools?.candidateFilterStats);
+  const routeReasonCodesRaw = Array.isArray(routedPools?.routeReasonCodesRaw)
+    ? routedPools.routeReasonCodesRaw
+    : collectRouterReasonCodeTokens(routedPools?.routed);
   const rawLen = rawCandidates.length;
   const cleanLen = cleanCandidates.length;
   const existingRelatedObj = p.related_products && typeof p.related_products === 'object' && !Array.isArray(p.related_products)
@@ -8998,6 +9083,26 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
         16,
       )
     : uniqCaseInsensitiveStrings([...missingInfo, 'competitors_missing', 'competitor_candidates_filtered_noise'], 16);
+  if (Number(droppedStats.competitors_dropped_non_skincare || 0) > 0) nextMissingInfo.push('competitors_non_skincare_filtered');
+  if (Number(droppedStats.related_dropped_non_skincare || 0) > 0) nextMissingInfo.push('related_products_non_skincare_filtered');
+  if (Number(droppedStats.dupes_dropped_non_skincare || 0) > 0) nextMissingInfo.push('dupes_non_skincare_filtered');
+  if (routeReasonCodesRaw.some((code) => String(code || '').trim().toLowerCase() === 'competitor_category_unknown_blocked')) {
+    nextMissingInfo.push('competitor_category_unknown_blocked');
+  }
+  const dedupedMissingInfo = uniqCaseInsensitiveStrings(nextMissingInfo, 20);
+  const existingProvenance = p.provenance && typeof p.provenance === 'object' && !Array.isArray(p.provenance)
+    ? p.provenance
+    : {};
+  const existingFilterStats = existingProvenance.candidate_filter_stats
+    && typeof existingProvenance.candidate_filter_stats === 'object'
+    && !Array.isArray(existingProvenance.candidate_filter_stats)
+    ? initCandidateFilterStats(existingProvenance.candidate_filter_stats)
+    : initCandidateFilterStats();
+  const mergedFilterStats = {
+    competitors_dropped_non_skincare: Number(existingFilterStats.competitors_dropped_non_skincare || 0) + Number(droppedStats.competitors_dropped_non_skincare || 0),
+    related_dropped_non_skincare: Number(existingFilterStats.related_dropped_non_skincare || 0) + Number(droppedStats.related_dropped_non_skincare || 0),
+    dupes_dropped_non_skincare: Number(existingFilterStats.dupes_dropped_non_skincare || 0) + Number(droppedStats.dupes_dropped_non_skincare || 0),
+  };
 
   return applyProductAnalysisGapContract({
     ...p,
@@ -9013,8 +9118,13 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
         },
       }
       : {}),
+    missing_info: dedupedMissingInfo,
+    provenance: {
+      ...existingProvenance,
+      ...(hasCandidateFilterDropStats(mergedFilterStats) ? { candidate_filter_stats: mergedFilterStats } : {}),
+    },
     internal_debug_codes: uniqCaseInsensitiveStrings([
-      ...nextMissingInfo,
+      ...dedupedMissingInfo,
       ...summarizeRouterReasonCodes(routedPools.routed),
     ], 32),
   });
@@ -9114,6 +9224,10 @@ function stripCompetitorMissingTokens(items) {
     if (token === 'alternatives_unavailable') continue;
     if (token === 'alternatives_limited') continue;
     if (token === 'competitor_candidates_filtered_noise') continue;
+    if (token === 'competitors_non_skincare_filtered') continue;
+    if (token === 'related_products_non_skincare_filtered') continue;
+    if (token === 'dupes_non_skincare_filtered') continue;
+    if (token === 'competitor_category_unknown_blocked') continue;
     if (token === 'competitor_sync_enrich_used') continue;
     if (token === 'competitor_sync_aurora_fallback_used') continue;
     if (/^competitor_recall_/i.test(token)) continue;
@@ -10086,6 +10200,7 @@ async function buildProductAnalysisFromUrlIngredients({
   let dagProvenancePatch = null;
   let dagTracking = null;
   let competitorSnapshotMeta = null;
+  let candidateFilterStats = initCandidateFilterStats();
   const htmlForReco = html || (!fetchOut.ok ? '<!--on_page_fetch_blocked-->' : '');
 
   const dagOut = await runRecoBlocksForUrl({
@@ -10103,9 +10218,35 @@ async function buildProductAnalysisFromUrlIngredients({
   });
 
   if (dagOut && typeof dagOut === 'object') {
-    const compPool = sanitizeCompetitorCandidates(dagOut?.competitors?.candidates, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
-    const relPool = sanitizeCompetitorCandidates(dagOut?.related_products?.candidates, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
-    const dupePool = sanitizeCompetitorCandidates(dagOut?.dupes?.candidates, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
+    const dagFilterStats = initCandidateFilterStats();
+    const compPool = sanitizeCompetitorCandidates(
+      dagOut?.competitors?.candidates,
+      PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      {
+        enforceSkincare: true,
+        pool: 'competitors',
+        stats: dagFilterStats,
+      },
+    );
+    const relPool = sanitizeCompetitorCandidates(
+      dagOut?.related_products?.candidates,
+      PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      {
+        enforceSkincare: true,
+        pool: 'related_products',
+        stats: dagFilterStats,
+      },
+    );
+    const dupePool = sanitizeCompetitorCandidates(
+      dagOut?.dupes?.candidates,
+      PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      {
+        enforceSkincare: true,
+        pool: 'dupes',
+        stats: dagFilterStats,
+      },
+    );
+    candidateFilterStats = dagFilterStats;
     routedPools = {
       compPool,
       relPool,
@@ -10113,6 +10254,10 @@ async function buildProductAnalysisFromUrlIngredients({
       routed: {
         internal_reason_codes: Array.isArray(dagOut.internal_reason_codes) ? dagOut.internal_reason_codes : [],
       },
+      routeReasonCodesRaw: collectRouterReasonCodeTokens({
+        internal_reason_codes: Array.isArray(dagOut.internal_reason_codes) ? dagOut.internal_reason_codes : [],
+      }),
+      candidateFilterStats: dagFilterStats,
     };
     competitorOut = {
       candidates: compPool,
@@ -10199,6 +10344,7 @@ async function buildProductAnalysisFromUrlIngredients({
       candidates: [...recalledCandidates, ...onPageCandidates],
       maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
     });
+    candidateFilterStats = initCandidateFilterStats(routedPools?.candidateFilterStats);
     if (!routedPools.compPool.length) {
       if (onPageCandidates.length || routedPools.relPool.length) {
         competitorSource = 'on_page_related_only';
@@ -10259,7 +10405,22 @@ async function buildProductAnalysisFromUrlIngredients({
   if (competitorMissing && competitorReason) evidenceMissingInfo.push(`competitor_recall_${String(competitorReason).toLowerCase()}`);
   const dagFallbacksUsed = Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : [];
   const dagTimedOutBlocks = Array.isArray(dagDiagnostics?.timed_out_blocks) ? dagDiagnostics.timed_out_blocks : [];
+  const routeReasonCodesRaw = Array.isArray(routedPools?.routeReasonCodesRaw)
+    ? routedPools.routeReasonCodesRaw
+    : collectRouterReasonCodeTokens(routedPools?.routed);
   const routeReasonCodes = dagReasonCodes.length ? dagReasonCodes : summarizeRouterReasonCodes(routedPools.routed);
+  if (Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0) {
+    evidenceMissingInfo.push('competitors_non_skincare_filtered');
+  }
+  if (Number(candidateFilterStats.related_dropped_non_skincare || 0) > 0) {
+    evidenceMissingInfo.push('related_products_non_skincare_filtered');
+  }
+  if (Number(candidateFilterStats.dupes_dropped_non_skincare || 0) > 0) {
+    evidenceMissingInfo.push('dupes_non_skincare_filtered');
+  }
+  if (routeReasonCodesRaw.some((code) => String(code || '').trim().toLowerCase() === 'competitor_category_unknown_blocked')) {
+    evidenceMissingInfo.push('competitor_category_unknown_blocked');
+  }
 
   const defaultConfidenceByBlock = {
     competitors: {
@@ -10332,6 +10493,26 @@ async function buildProductAnalysisFromUrlIngredients({
     ],
     6,
   );
+  const droppedNonSkincareTotal =
+    Number(candidateFilterStats.competitors_dropped_non_skincare || 0)
+    + Number(candidateFilterStats.related_dropped_non_skincare || 0)
+    + Number(candidateFilterStats.dupes_dropped_non_skincare || 0);
+  const hasStrongSkincareUrlSignal = /(skincare|moisturizer|moisturiser|spf|sunscreen|serum|cream|lotion|cleanser|toner|essence|treatment)/i.test(
+    parsedUrl.toString(),
+  );
+  if (hasStrongSkincareUrlSignal && droppedNonSkincareTotal > 0) {
+    logger?.warn?.(
+      {
+        request_id: context?.request_id || null,
+        trace_id: context?.trace_id || null,
+        product_url: parsedUrl.toString(),
+        competitors_dropped_non_skincare: Number(candidateFilterStats.competitors_dropped_non_skincare || 0),
+        related_dropped_non_skincare: Number(candidateFilterStats.related_dropped_non_skincare || 0),
+        dupes_dropped_non_skincare: Number(candidateFilterStats.dupes_dropped_non_skincare || 0),
+      },
+      'aurora bff: category drift detected in product analyze candidates',
+    );
+  }
 
   const raw = {
     assessment: {
@@ -10425,6 +10606,15 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(dagProvenancePatch && typeof dagProvenancePatch === 'object' ? dagProvenancePatch : {}),
       url_fetch: urlFetchProvenance,
       ...(sourceChain.length ? { source_chain: sourceChain } : {}),
+      ...(hasCandidateFilterDropStats(candidateFilterStats)
+        ? {
+          candidate_filter_stats: {
+            competitors_dropped_non_skincare: Number(candidateFilterStats.competitors_dropped_non_skincare || 0),
+            related_dropped_non_skincare: Number(candidateFilterStats.related_dropped_non_skincare || 0),
+            dupes_dropped_non_skincare: Number(candidateFilterStats.dupes_dropped_non_skincare || 0),
+          },
+        }
+        : {}),
       ...(regulatorySupplement && regulatorySupplement.ok
         ? {
           regulatory_source: {
@@ -10481,6 +10671,12 @@ async function buildProductAnalysisFromUrlIngredients({
         ...(!anchorPrice ? ['price_unknown'] : []),
         ...(socialMissing ? ['social_signals_missing'] : []),
         ...(competitorMissing ? ['competitors_missing'] : []),
+        ...(Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0 ? ['competitors_non_skincare_filtered'] : []),
+        ...(Number(candidateFilterStats.related_dropped_non_skincare || 0) > 0 ? ['related_products_non_skincare_filtered'] : []),
+        ...(Number(candidateFilterStats.dupes_dropped_non_skincare || 0) > 0 ? ['dupes_non_skincare_filtered'] : []),
+        ...(routeReasonCodesRaw.some((code) => String(code || '').trim().toLowerCase() === 'competitor_category_unknown_blocked')
+          ? ['competitor_category_unknown_blocked']
+          : []),
         ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
         competitorMissing && competitorReason ? `competitor_recall_${String(competitorReason).toLowerCase()}` : '',
       ],
@@ -10552,6 +10748,12 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(!normalizedInci.length ? ['evidence_missing'] : []),
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
+      ...(Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0 ? ['competitors_non_skincare_filtered'] : []),
+      ...(Number(candidateFilterStats.related_dropped_non_skincare || 0) > 0 ? ['related_products_non_skincare_filtered'] : []),
+      ...(Number(candidateFilterStats.dupes_dropped_non_skincare || 0) > 0 ? ['dupes_non_skincare_filtered'] : []),
+      ...(routeReasonCodesRaw.some((code) => String(code || '').trim().toLowerCase() === 'competitor_category_unknown_blocked')
+        ? ['competitor_category_unknown_blocked']
+        : []),
       ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
       ...(competitorMissing && competitorReason ? [`competitor_recall_${String(competitorReason).toLowerCase()}`] : []),
       ...routeReasonCodes,
@@ -10633,6 +10835,15 @@ async function buildProductAnalysisFromUrlIngredients({
       related_count: relatedCandidates.length,
       dupe_count: dupeCandidates.length,
       competitor_router_reason_codes: routeReasonCodes,
+      ...(hasCandidateFilterDropStats(candidateFilterStats)
+        ? {
+          candidate_filter_stats: {
+            competitors_dropped_non_skincare: Number(candidateFilterStats.competitors_dropped_non_skincare || 0),
+            related_dropped_non_skincare: Number(candidateFilterStats.related_dropped_non_skincare || 0),
+            dupes_dropped_non_skincare: Number(candidateFilterStats.dupes_dropped_non_skincare || 0),
+          },
+        }
+        : {}),
       reco_blocks_dag: dagDiagnostics
         ? {
           mode: String(dagDiagnostics.mode || 'main_path'),
@@ -39638,6 +39849,8 @@ const __internal = {
   normalizeRecoCatalogProduct,
   scoreRealtimeCompetitorCandidate,
   routeCandidates,
+  routeCompetitorCandidatePools,
+  sanitizeCompetitorCandidates,
   recoBlocks,
   augmentProductAnalysisPayloadForDogfood,
   augmentEnvelopeProductAnalysisCardsForDogfood,
