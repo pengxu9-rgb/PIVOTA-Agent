@@ -708,11 +708,25 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
   const safeFindings = Array.isArray(findings) ? findings : [];
   const regions = [];
   const regionMeta = new Map();
+  const findingMissingReasons = new Map();
   const drops = [];
   const clips = [];
 
-  function drop(reason, regionType) {
+  function addMissingReason(findingId, reason) {
+    const normalizedFindingId = String(findingId || '').trim();
+    const normalizedReason = String(reason || '').trim();
+    if (!normalizedFindingId || !normalizedReason) return;
+    const existing = findingMissingReasons.get(normalizedFindingId);
+    if (!existing) {
+      findingMissingReasons.set(normalizedFindingId, [normalizedReason]);
+      return;
+    }
+    if (!existing.includes(normalizedReason)) existing.push(normalizedReason);
+  }
+
+  function drop(reason, regionType, findingId) {
     drops.push({ reason, region_type: regionType || 'unknown' });
+    addMissingReason(findingId, reason);
   }
 
   function clip(reason, regionType) {
@@ -733,117 +747,138 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
     const confidence = clamp01(Number(finding.confidence));
     const style = computeRegionStyle({ severity0to4: severity, confidence0to1: confidence, issueType });
     const geometry = finding.geometry && typeof finding.geometry === 'object' ? finding.geometry : null;
+    const emittedBefore = regions.length;
     if (!geometry) {
-      drop('geometry_missing', 'unknown');
-      continue;
+      drop('geometry_missing', 'unknown', findingId);
     }
 
-    const rawBBox = geometry.bbox_norm ? toBBoxFromNorm(geometry.bbox_norm) : geometry.bbox;
-    if (rawBBox) {
-      const bbox = sanitizeBBox(rawBBox);
-      if (!bbox.ok || !bbox.bbox) {
-        drop(bbox.reason || 'bbox_invalid', 'bbox');
-      } else {
-        const regionId = `${findingId}_bbox`;
-        const notes = [];
-        if (bbox.clipped) {
-          const clipReason = bbox.clip_reason || 'bbox_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'bbox');
+    if (geometry) {
+      const rawBBox = geometry.bbox_norm ? toBBoxFromNorm(geometry.bbox_norm) : geometry.bbox;
+      if (rawBBox) {
+        const bbox = sanitizeBBox(rawBBox);
+        if (!bbox.ok || !bbox.bbox) {
+          drop(bbox.reason || 'bbox_invalid', 'bbox', findingId);
+        } else {
+          const regionId = `${findingId}_bbox`;
+          const notes = [];
+          if (bbox.clipped) {
+            const clipReason = bbox.clip_reason || 'bbox_clipped';
+            notes.push(clipReason);
+            clip(clipReason, 'bbox');
+          }
+          const region = {
+            region_id: regionId,
+            type: 'bbox',
+            coord_space: FACE_COORD_SPACE,
+            status: 'available',
+            bbox: bbox.bbox,
+            style,
+            ...(notes.length ? { notes } : {}),
+            ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+          };
+          regions.push(region);
+          regionMeta.set(regionId, {
+            issue_type: issueType,
+            severity_0_4: severity,
+            confidence_0_1: confidence,
+            region_type: 'bbox',
+            bbox: bbox.bbox,
+            heatmap: null,
+          });
         }
-        const region = {
-          region_id: regionId,
-          type: 'bbox',
-          coord_space: FACE_COORD_SPACE,
-          bbox: bbox.bbox,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'bbox',
-          bbox: bbox.bbox,
-          heatmap: null,
-        });
+      }
+
+      if (geometry.polygon && typeof geometry.polygon === 'object') {
+        const polygon = sanitizePolygon(geometry.polygon);
+        if (!polygon.ok || !polygon.polygon) {
+          drop(polygon.reason || 'polygon_invalid', 'polygon', findingId);
+        } else {
+          const regionId = `${findingId}_polygon`;
+          const notes = [];
+          if (polygon.clipped) {
+            const clipReason = polygon.clip_reason || 'polygon_clipped';
+            notes.push(clipReason);
+            clip(clipReason, 'polygon');
+          }
+          const region = {
+            region_id: regionId,
+            type: 'polygon',
+            coord_space: FACE_COORD_SPACE,
+            status: 'available',
+            polygon: polygon.polygon,
+            style,
+            ...(notes.length ? { notes } : {}),
+            ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+          };
+          regions.push(region);
+          regionMeta.set(regionId, {
+            issue_type: issueType,
+            severity_0_4: severity,
+            confidence_0_1: confidence,
+            region_type: 'polygon',
+            bbox: polygon.bbox,
+            heatmap: null,
+          });
+        }
+      }
+
+      const maybeHeatmap =
+        geometry &&
+        ((geometry.type === 'grid' && Number.isFinite(Number(geometry.rows)) && Number.isFinite(Number(geometry.cols)) && Array.isArray(geometry.values))
+          ? { grid: { w: Number(geometry.cols), h: Number(geometry.rows) }, values: geometry.values }
+          : geometry.heatmap && typeof geometry.heatmap === 'object'
+            ? geometry.heatmap
+            : null);
+
+      if (maybeHeatmap) {
+        const heatmap = sanitizeHeatmap(maybeHeatmap);
+        if (!heatmap.ok || !heatmap.heatmap) {
+          drop(heatmap.reason || 'heatmap_invalid', 'heatmap', findingId);
+        } else {
+          const regionId = `${findingId}_heatmap`;
+          const notes = [];
+          if (heatmap.clipped) {
+            const clipReason = heatmap.clip_reason || 'heatmap_clipped';
+            notes.push(clipReason);
+            clip(clipReason, 'heatmap');
+          }
+          const region = {
+            region_id: regionId,
+            type: 'heatmap',
+            coord_space: FACE_COORD_SPACE,
+            status: 'available',
+            heatmap: heatmap.heatmap,
+            style,
+            ...(notes.length ? { notes } : {}),
+            ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+          };
+          regions.push(region);
+          regionMeta.set(regionId, {
+            issue_type: issueType,
+            severity_0_4: severity,
+            confidence_0_1: confidence,
+            region_type: 'heatmap',
+            bbox: rawBBox ? sanitizeBBox(rawBBox).bbox : null,
+            heatmap: heatmap.heatmap,
+          });
+        }
       }
     }
 
-    if (geometry.polygon && typeof geometry.polygon === 'object') {
-      const polygon = sanitizePolygon(geometry.polygon);
-      if (!polygon.ok || !polygon.polygon) {
-        drop(polygon.reason || 'polygon_invalid', 'polygon');
-      } else {
-        const regionId = `${findingId}_polygon`;
-        const notes = [];
-        if (polygon.clipped) {
-          const clipReason = polygon.clip_reason || 'polygon_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'polygon');
-        }
-        const region = {
-          region_id: regionId,
-          type: 'polygon',
-          coord_space: FACE_COORD_SPACE,
-          polygon: polygon.polygon,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'polygon',
-          bbox: polygon.bbox,
-          heatmap: null,
-        });
-      }
-    }
-
-    const maybeHeatmap =
-      geometry &&
-      ((geometry.type === 'grid' && Number.isFinite(Number(geometry.rows)) && Number.isFinite(Number(geometry.cols)) && Array.isArray(geometry.values))
-        ? { grid: { w: Number(geometry.cols), h: Number(geometry.rows) }, values: geometry.values }
-        : geometry.heatmap && typeof geometry.heatmap === 'object'
-          ? geometry.heatmap
-          : null);
-
-    if (maybeHeatmap) {
-      const heatmap = sanitizeHeatmap(maybeHeatmap);
-      if (!heatmap.ok || !heatmap.heatmap) {
-        drop(heatmap.reason || 'heatmap_invalid', 'heatmap');
-      } else {
-        const regionId = `${findingId}_heatmap`;
-        const notes = [];
-        if (heatmap.clipped) {
-          const clipReason = heatmap.clip_reason || 'heatmap_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'heatmap');
-        }
-        const region = {
-          region_id: regionId,
-          type: 'heatmap',
-          coord_space: FACE_COORD_SPACE,
-          heatmap: heatmap.heatmap,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'heatmap',
-          bbox: rawBBox ? sanitizeBBox(rawBBox).bbox : null,
-          heatmap: heatmap.heatmap,
-        });
-      }
+    const emittedForFinding = regions.length > emittedBefore;
+    const missingReasons = findingMissingReasons.get(findingId) || [];
+    if (!emittedForFinding || missingReasons.length) {
+      const primaryMissingReason = missingReasons.length ? missingReasons[0] : 'geometry_unresolved';
+      regions.push({
+        region_id: `${findingId}_unavailable`,
+        type: 'missing',
+        coord_space: FACE_COORD_SPACE,
+        status: 'unavailable',
+        missing_reason: primaryMissingReason,
+        missing_reasons: missingReasons.length ? missingReasons.slice(0, 4) : [primaryMissingReason],
+        style,
+        ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+      });
     }
   }
 
@@ -3507,6 +3542,8 @@ function buildPhotoModulesCard({
 
   const sourceSlotId = sourcePhoto && typeof sourcePhoto.slot_id === 'string' ? sourcePhoto.slot_id.trim() : '';
   const sourcePhotoId = sourcePhoto && typeof sourcePhoto.photo_id === 'string' ? sourcePhoto.photo_id.trim() : '';
+  const regionsAvailableCount = regions.filter((region) => String(region && region.status || 'available').toLowerCase() === 'available').length;
+  const regionsUnavailableCount = regions.filter((region) => String(region && region.status || '').toLowerCase() === 'unavailable').length;
 
   const payload = {
     used_photos: true,
@@ -3520,6 +3557,8 @@ function buildPhotoModulesCard({
       ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),
     },
     regions,
+    regions_available_count: regionsAvailableCount,
+    regions_unavailable_count: regionsUnavailableCount,
     modules: moduleMaskBuild.modules,
     ...(Array.isArray(moduleMaskBuild.degraded_reasons) && moduleMaskBuild.degraded_reasons.length
       ? { degraded_reason: moduleMaskBuild.degraded_reasons[0], degraded_reasons: moduleMaskBuild.degraded_reasons }

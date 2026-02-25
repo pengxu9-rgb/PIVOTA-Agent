@@ -209,6 +209,8 @@ test('product rec emits templated why_match with citations when evidence is suff
     assert.ok(result.products.length >= 1);
     const first = result.products[0];
     assert.ok(first.why_match_template_key && first.why_match_template_key.length > 0);
+    assert.equal(first.retrieval_source, 'catalog');
+    assert.equal(first.retrieval_reason, 'catalog_evidence_match');
     assert.equal(first.evidence.evidence_grade === 'A' || first.evidence.evidence_grade === 'B', true);
     assert.ok(Array.isArray(first.evidence.citation_ids) && first.evidence.citation_ids.length >= 1);
     assert.equal(detectBannedClaimTerms(first.why_match).length, 0);

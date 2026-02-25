@@ -142,10 +142,20 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   assert.equal(payload.quality_grade, 'pass');
   assert.equal(payload.face_crop.coord_space, 'orig_px_v1');
   assert.equal(payload.regions.length > 0, true);
+  assert.equal(
+    Number(payload.regions_available_count || 0) + Number(payload.regions_unavailable_count || 0),
+    payload.regions.length,
+  );
+  assert.equal(Number(payload.regions_available_count || 0) > 0, true);
 
   for (const region of payload.regions) {
     assert.equal(region.coord_space, 'face_crop_norm_v1');
     assert.ok(region.style && typeof region.style === 'object');
+    assert.ok(region.status === 'available' || region.status === 'unavailable');
+    if (region.status === 'unavailable') {
+      assert.equal(typeof region.missing_reason, 'string');
+      assert.equal(region.missing_reason.length > 0, true);
+    }
     if (region.bbox) {
       assert.ok(region.bbox.x >= 0 && region.bbox.x <= 1);
       assert.ok(region.bbox.y >= 0 && region.bbox.y <= 1);

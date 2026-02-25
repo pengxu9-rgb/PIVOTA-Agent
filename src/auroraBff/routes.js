@@ -406,7 +406,7 @@ const AURORA_MULTITURN_CONTRACT_GATE_V1_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_ANALYSIS_STORY_V2_ENABLED = (() => {
-  const raw = String(process.env.AURORA_ANALYSIS_STORY_V2_ENABLED || 'false')
+  const raw = String(process.env.AURORA_ANALYSIS_STORY_V2_ENABLED || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -444,6 +444,12 @@ const AURORA_LLM_SINGLE_PROVIDER = (() => {
   if (raw === 'gemini' || raw === 'openai') return raw;
   return 'gemini';
 })();
+const AURORA_DIAG_FORCE_GEMINI = (() => {
+  const raw = String(process.env.AURORA_DIAG_FORCE_GEMINI || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_LLM_OPENAI_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_LLM_OPENAI_FALLBACK_ENABLED || 'false')
     .trim()
@@ -470,6 +476,22 @@ const AURORA_PURCHASABLE_FALLBACK_ENABLED = (() => {
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_TIMEOUT_MS || 3500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3500;
+  return Math.max(800, Math.min(10000, v));
+})();
+const AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_MAX_CANDIDATES = (() => {
+  const n = Number(process.env.AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_MAX_CANDIDATES || 6);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6;
+  return Math.max(1, Math.min(12, v));
 })();
 const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = (() => {
   const raw = String(process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED || 'true')
@@ -517,9 +539,11 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   product_relevance_qa_mode: AURORA_PRODUCT_RELEVANCE_QA_MODE,
   llm_qa_mode: AURORA_LLM_QA_MODE,
   llm_single_provider: AURORA_LLM_SINGLE_PROVIDER,
+  diag_force_gemini: AURORA_DIAG_FORCE_GEMINI,
   llm_openai_fallback_enabled: AURORA_LLM_OPENAI_FALLBACK_ENABLED,
   photo_module_mask_overlay: AURORA_PHOTO_MODULE_MASK_OVERLAY_ENABLED,
   purchasable_fallback: AURORA_PURCHASABLE_FALLBACK_ENABLED,
+  product_lookup_llm_fallback: AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED,
   external_seed_supplement: AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED,
   discovery_card_in_list: AURORA_DISCOVERY_CARD_IN_LIST_ENABLED,
 });
@@ -965,6 +989,8 @@ const ANALYSIS_STORY_MODEL_OPENAI =
 const ANALYSIS_STORY_MODEL_GEMINI =
   String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
   'gemini-2.0-flash';
+const AURORA_DIAG_FORCE_GEMINI_MODEL =
+  String(process.env.AURORA_DIAG_FORCE_GEMINI_MODEL || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
   1200,
   Math.min(12000, Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 5000)),
@@ -1036,7 +1062,7 @@ const PHOTO_BYTES_CACHE_TTL_MS = Math.max(
 );
 const PHOTO_AUTO_ANALYZE_AFTER_CONFIRM =
   String(process.env.AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM || 'false').toLowerCase() === 'true';
-const DIAG_PHOTO_MODULES_CARD = String(process.env.DIAG_PHOTO_MODULES_CARD || '').toLowerCase() === 'true';
+const DIAG_PHOTO_MODULES_CARD = String(process.env.DIAG_PHOTO_MODULES_CARD || 'true').toLowerCase() === 'true';
 const DIAG_VERIFY_ALLOW_GUARD_TEST = String(process.env.ALLOW_GUARD_TEST || '').toLowerCase() === 'true';
 const DIAG_OVERLAY_MODE = (() => {
   const raw = String(process.env.DIAG_OVERLAY_MODE || 'client')
@@ -1045,7 +1071,7 @@ const DIAG_OVERLAY_MODE = (() => {
   return raw === 'client' ? 'client' : 'client';
 })();
 const DIAG_INGREDIENT_REC = String(process.env.DIAG_INGREDIENT_REC || 'true').toLowerCase() !== 'false';
-const DIAG_PRODUCT_REC = String(process.env.DIAG_PRODUCT_REC || '').toLowerCase() === 'true';
+const DIAG_PRODUCT_REC = String(process.env.DIAG_PRODUCT_REC || 'true').toLowerCase() === 'true';
 const DIAG_SKINMASK_ENABLED = String(process.env.DIAG_SKINMASK_ENABLED || '').toLowerCase() === 'true';
 const DIAG_SKINMASK_MODEL_PATH = String(process.env.DIAG_SKINMASK_MODEL_PATH || 'artifacts/skinmask_v2.onnx').trim();
 const DIAG_SKINMASK_TIMEOUT_MS = (() => {
@@ -2025,6 +2051,22 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.source_type === 'string' && base.source_type) ||
     (typeof base.sourceType === 'string' && base.sourceType) ||
     '';
+  const retrievalSourceRaw =
+    (typeof base.retrieval_source === 'string' && base.retrieval_source) ||
+    (typeof base.retrievalSource === 'string' && base.retrievalSource) ||
+    '';
+  const retrievalReasonRaw =
+    (typeof base.retrieval_reason === 'string' && base.retrieval_reason) ||
+    (typeof base.retrievalReason === 'string' && base.retrievalReason) ||
+    '';
+  const normalizedRetrievalSource = (() => {
+    const token = String(retrievalSourceRaw || '').trim().toLowerCase();
+    if (token === 'catalog' || token === 'external_seed' || token === 'llm_fallback') return token;
+    const sourceLower = String(sourceToken || '').trim().toLowerCase();
+    if (sourceLower.includes('external')) return 'external_seed';
+    if (sourceLower.includes('llm')) return 'llm_fallback';
+    return sourceLower ? 'catalog' : '';
+  })();
 
   const directUrlRaw =
     (typeof base.canonical_pdp_url === 'string' && base.canonical_pdp_url) ||
@@ -2068,6 +2110,8 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
     ...(String(category || '').trim() ? { category: String(category).trim() } : {}),
     ...(String(sourceToken || '').trim() ? { source: String(sourceToken).trim() } : {}),
+    ...(normalizedRetrievalSource ? { retrieval_source: normalizedRetrievalSource } : {}),
+    ...(String(retrievalReasonRaw || '').trim() ? { retrieval_reason: String(retrievalReasonRaw).trim() } : {}),
     ...(directUrl ? { url: directUrl, pdp_url: directUrl } : {}),
     ...(purchasePath ? { purchase_path: purchasePath } : {}),
     ...(openContract ? { open_contract: openContract } : {}),
@@ -9617,9 +9661,18 @@ async function buildPurchasableFallbackCandidates({
     if (key === '::') return;
     if (seen.has(key)) return;
     seen.add(key);
+    const sourceToken = pickFirstString(product.source, product.source_type, fallbackSource).toLowerCase() || fallbackSource;
+    const retrievalSource =
+      sourceToken && sourceToken.includes('external')
+        ? 'external_seed'
+        : sourceToken && sourceToken.includes('llm')
+          ? 'llm_fallback'
+          : 'catalog';
     merged.push({
       ...product,
-      source: pickFirstString(product.source, product.source_type, fallbackSource),
+      source: sourceToken,
+      retrieval_source: retrievalSource,
+      retrieval_reason: retrievalSource === 'external_seed' ? 'external_seed_supplement' : 'catalog_search_match',
     });
   };
   for (const product of primaryProducts) pushProduct(product, 'catalog');
@@ -9978,6 +10031,9 @@ function getGeminiClient() {
 }
 
 function resolveVisionProviderSelection() {
+  if (AURORA_DIAG_FORCE_GEMINI) {
+    return { provider: 'gemini', apiKeyConfigured: Boolean(GEMINI_API_KEY), requested: 'forced_gemini' };
+  }
   const requested = SKIN_VISION_PROVIDER;
   if (requested === 'openai') {
     return { provider: 'openai', apiKeyConfigured: Boolean(OPENAI_API_KEY), requested };
@@ -10087,7 +10143,7 @@ async function callGeminiJsonObject({
   try {
     const resp = await withTimeout(
       gemini.client.models.generateContent({
-        model: model || ANALYSIS_STORY_MODEL_GEMINI,
+        model: AURORA_DIAG_FORCE_GEMINI ? AURORA_DIAG_FORCE_GEMINI_MODEL : model || ANALYSIS_STORY_MODEL_GEMINI,
         contents: [
           {
             role: 'user',
@@ -10118,6 +10174,7 @@ async function callGeminiJsonObject({
     };
   }
 }
+let callGeminiJsonObjectImpl = callGeminiJsonObject;
 
 const productDualQaCache = new Map();
 
@@ -10164,6 +10221,7 @@ function resolveQaMode(mode) {
 }
 
 function resolveQaSingleProvider(provider) {
+  if (AURORA_DIAG_FORCE_GEMINI) return 'gemini';
   const token = String(provider || '')
     .trim()
     .toLowerCase();
@@ -10239,6 +10297,9 @@ function pickQaProvidersForMode({
   singleProvider,
   allowOpenAiFallback = false,
 } = {}) {
+  if (AURORA_DIAG_FORCE_GEMINI) {
+    return resolveQaProviderAvailability('gemini') ? ['gemini'] : [];
+  }
   const qaMode = resolveQaMode(mode);
   if (qaMode === 'off') return [];
   if (qaMode === 'dual') {
@@ -10277,7 +10338,7 @@ async function callDualQaProvider({ provider, systemPrompt, userPrompt, timeoutM
       maxTokens: 500,
     });
   }
-  return callGeminiJsonObject({
+  return callGeminiJsonObjectImpl({
     model: ANALYSIS_STORY_MODEL_GEMINI,
     systemPrompt,
     userPrompt,
@@ -11603,6 +11664,7 @@ let runGeminiVisionSkinAnalysisImpl = runGeminiVisionSkinAnalysis;
 let runOpenAIVisionSkinAnalysisImpl = runOpenAIVisionSkinAnalysis;
 
 function shouldAttemptOpenAiFallbackFromGemini({ photoQuality, llmKillSwitch } = {}) {
+  if (AURORA_DIAG_FORCE_GEMINI) return false;
   if (llmKillSwitch) return false;
   const grade = String(photoQuality && photoQuality.grade ? photoQuality.grade : '')
     .trim()
@@ -15692,6 +15754,12 @@ function coerceBoolean(value) {
 }
 
 function normalizeChatLlmProvider(value) {
+  if (AURORA_DIAG_FORCE_GEMINI) {
+    if (typeof value !== 'string') return null;
+    const forcedToken = value.trim();
+    if (!forcedToken) return null;
+    return 'gemini';
+  }
   if (typeof value !== 'string') return null;
   const provider = value.trim().toLowerCase();
   if (provider === 'gemini' || provider === 'openai') return provider;
@@ -15699,6 +15767,12 @@ function normalizeChatLlmProvider(value) {
 }
 
 function normalizeChatLlmModel(value) {
+  if (AURORA_DIAG_FORCE_GEMINI) {
+    if (typeof value !== 'string') return null;
+    const forcedToken = value.trim();
+    if (!forcedToken) return null;
+    return AURORA_DIAG_FORCE_GEMINI_MODEL;
+  }
   if (typeof value !== 'string') return null;
   const model = value.trim();
   if (!model) return null;
@@ -15724,6 +15798,12 @@ function resolveProductIntelLlmRoute({ req = null, requestedProvider = null, req
     headerModel ||
     AURORA_PRODUCT_INTEL_LLM_MODEL ||
     null;
+  if (AURORA_DIAG_FORCE_GEMINI) {
+    return {
+      llm_provider: 'gemini',
+      llm_model: AURORA_DIAG_FORCE_GEMINI_MODEL,
+    };
+  }
   return { llm_provider, llm_model };
 }
 
@@ -16452,6 +16532,7 @@ const CHATBOX_UI_RENDERABLE_CARD_TYPES = new Set([
   'routine_simulation',
   'conflict_heatmap',
   'analysis_summary',
+  'analysis_story_v2',
   'diagnosis_gate',
 ]);
 
@@ -16751,6 +16832,24 @@ const AnalysisStoryV2Schema = z.object({
     })
     .passthrough()
     .default({ first_4_weeks: [], week_8_12_expectation: [] }),
+  ui_card_v1: z
+    .object({
+      headline: z.string().trim().min(1),
+      key_points: z.array(z.string().trim().min(1)).default([]),
+      actions_now: z.array(z.string().trim().min(1)).default([]),
+      avoid_now: z.array(z.string().trim().min(1)).default([]),
+      confidence_label: z.string().trim().min(1),
+      next_checkin: z.string().trim().min(1),
+    })
+    .passthrough()
+    .default({
+      headline: 'Start with barrier-safe, low-irritation progression.',
+      key_points: [],
+      actions_now: [],
+      avoid_now: [],
+      confidence_label: 'low',
+      next_checkin: 'Re-check in 2 weeks.',
+    }),
   safety_notes: z.array(z.string().trim().min(1)).default([]),
   disclaimer_non_medical: z.boolean().default(true),
 }).passthrough();
@@ -17695,13 +17794,13 @@ async function evaluateIngredientCandidateWithQaMode(
     allowOpenAiFallback,
   });
   if ((mode === 'dual' && providers.length < 2) || !providers.length) {
-    const failClosed = false;
-    setProductDualQaCache(scopedCacheKey, failClosed);
+    const fallbackPass = heuristicPass;
+    setProductDualQaCache(scopedCacheKey, fallbackPass);
     markQaContextSkip(qaContext, 'relevance', 'qa_provider_unavailable');
     return {
-      pass: failClosed,
+      pass: fallbackPass,
       qa_mode: mode,
-      reject_reason: mode === 'dual' ? 'dual_llm_relevance_reject' : 'single_llm_relevance_reject',
+      reject_reason: fallbackPass ? null : mode === 'dual' ? 'dual_llm_relevance_reject' : 'single_llm_relevance_reject',
     };
   }
 
@@ -17989,7 +18088,7 @@ async function recoverPurchasableProductsFromQueries({
       const blacklistHit = isBlacklistedCategoryOrTitle(normalized);
       const skincareHit = isSkincareCategory(normalized);
       const relevanceDecision = await evaluateIngredientCandidateWithQaMode(normalized, {
-        qaMode,
+        qaMode: 'off',
         singleProvider,
         allowOpenAiFallback,
         qaContext,
@@ -18058,6 +18157,214 @@ async function recoverPurchasableProductsFromQueries({
   return out;
 }
 
+function buildProductLookupLlmFallbackPrompt({ query, limit = 6 } = {}) {
+  const q = String(query || '').trim();
+  const topN = Math.max(1, Math.min(12, Math.trunc(Number(limit) || 6)));
+  return [
+    'Task: Return purchasable skincare products for the query.',
+    'Hard constraints:',
+    '- Skincare only (cleanser/serum/moisturizer/sunscreen/treatment).',
+    '- Include direct PDP HTTPS URLs only.',
+    '- Do NOT return search URLs (google/bing/amazon search/etc).',
+    '- No makeup tools, apparel, or non-skincare products.',
+    '- Return strict JSON only.',
+    'Output schema:',
+    '{ "products": [ { "name": string, "brand": string, "category": string, "pdp_url": string, "why": string } ] }',
+    `Max products: ${topN}`,
+    `Query: ${q}`,
+  ].join('\n');
+}
+
+function normalizeLlmFallbackCandidate(raw, { query, index } = {}) {
+  const row = isPlainObject(raw) ? raw : {};
+  const name = pickFirstString(row.name, row.title, row.display_name, row.displayName);
+  const url = pickFirstString(row.pdp_url, row.url, row.link, row.product_url, row.purchase_path);
+  if (!name || !url) return null;
+
+  const brand = pickFirstString(row.brand);
+  const category = pickFirstString(row.category, row.type, row.product_type);
+  const why = pickFirstString(row.why, row.reason, row.why_match);
+  const productId = pickFirstString(
+    row.product_id,
+    row.productId,
+    `llm_${crypto
+      .createHash('sha1')
+      .update(`${name}|${brand}|${url}|${String(query || '')}|${Number(index) || 0}`)
+      .digest('hex')
+      .slice(0, 16)}`,
+  );
+
+  return {
+    product_id: String(productId || '').trim(),
+    merchant_id: 'llm_fallback',
+    name: String(name || '').trim(),
+    ...(brand ? { brand: String(brand).trim() } : {}),
+    ...(category ? { category: String(category).trim() } : {}),
+    source: 'llm_fallback',
+    retrieval_source: 'llm_fallback',
+    retrieval_reason: 'catalog_empty_or_filtered',
+    pdp_url: String(url).trim(),
+    url: String(url).trim(),
+    product_url: String(url).trim(),
+    purchase_path: String(url).trim(),
+    ...(why ? { why_match: String(why).trim() } : {}),
+  };
+}
+
+async function recoverProductsWithLlmFallbackFromQueries({
+  queries = [],
+  strictFilter = true,
+  singleProvider = AURORA_LLM_SINGLE_PROVIDER,
+  allowOpenAiFallback = AURORA_LLM_OPENAI_FALLBACK_ENABLED,
+  qaContext = null,
+  logger,
+  guardrailRuleId = 'reco_guardrail',
+  maxProducts = AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS,
+} = {}) {
+  const out = {
+    products: [],
+    rejected: [],
+    external_search_ctas: [],
+    attempted_queries: [],
+    selected_source_counts: {},
+    llm_used: false,
+  };
+  if (!AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) return out;
+
+  const seenProducts = new Set();
+  const targetMax = Math.max(1, Number(maxProducts) || AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS);
+
+  for (const query of Array.isArray(queries) ? queries : []) {
+    const q = String(query || '').trim();
+    if (!q) continue;
+    if (out.products.length >= targetMax) break;
+    out.attempted_queries.push(q);
+
+    let llmResp = null;
+    try {
+      llmResp = await callGeminiJsonObjectImpl({
+        model: AURORA_DIAG_FORCE_GEMINI_MODEL,
+        systemPrompt:
+          'You are a strict skincare product retriever. Output strict JSON only and follow all URL/category constraints.',
+        userPrompt: buildProductLookupLlmFallbackPrompt({
+          query: q,
+          limit: Math.max(2, targetMax - out.products.length),
+        }),
+        timeoutMs: AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_TIMEOUT_MS,
+        temperature: 0,
+      });
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err), query: q }, 'aurora bff: llm fallback query failed');
+      continue;
+    }
+    if (!llmResp || llmResp.ok !== true || !isPlainObject(llmResp.json)) continue;
+
+    const rowsRaw = Array.isArray(llmResp.json.products)
+      ? llmResp.json.products
+      : Array.isArray(llmResp.json.items)
+        ? llmResp.json.items
+        : Array.isArray(llmResp.json.recommendations)
+          ? llmResp.json.recommendations
+          : [];
+    if (!rowsRaw.length) continue;
+
+    out.llm_used = true;
+    out.selected_source_counts.llm_fallback = Number(out.selected_source_counts.llm_fallback || 0) + 1;
+
+    for (let i = 0; i < rowsRaw.length; i += 1) {
+      if (out.products.length >= targetMax) break;
+      const candidate = normalizeLlmFallbackCandidate(rowsRaw[i], { query: q, index: i });
+      const normalized = normalizeRecoCatalogProduct(candidate);
+      if (!isPlainObject(normalized)) continue;
+
+      const dedupeKey = `${String(normalized.product_id || '').trim()}::${String(normalized.merchant_id || '').trim()}::${String(
+        extractCandidateOpenUrl(normalized) || '',
+      )
+        .trim()
+        .toLowerCase()}`;
+      if (seenProducts.has(dedupeKey)) continue;
+
+      const blacklistHit = isBlacklistedCategoryOrTitle(normalized);
+      const skincareHit = isSkincareCategory(normalized);
+      const relevanceDecision = await evaluateIngredientCandidateWithQaMode(normalized, {
+        qaMode: 'off',
+        singleProvider,
+        allowOpenAiFallback,
+        qaContext,
+      });
+      const directUrl = extractCandidateOpenUrl(normalized);
+      const openable = hasOpenableUrl(normalized);
+      const searchLike = isSearchLikeUrl(directUrl);
+      const relevanceRejectReason = blacklistHit
+        ? 'blacklisted_category_or_title'
+        : strictFilter && !skincareHit
+          ? 'non_skincare_category'
+          : !(relevanceDecision && relevanceDecision.pass === true)
+            ? pickFirstString(relevanceDecision && relevanceDecision.reject_reason, 'llm_relevance_reject')
+            : '';
+
+      if (relevanceRejectReason) {
+        out.rejected.push({
+          query: q,
+          candidate_title: pickFirstString(normalized.name, normalized.title, normalized.display_name, normalized.displayName),
+          candidate_url: directUrl || null,
+          candidate_source: 'llm_fallback',
+          reject_reason: relevanceRejectReason,
+          rule_id: guardrailRuleId,
+        });
+        continue;
+      }
+      if (searchLike) {
+        out.external_search_ctas.push(buildExternalSearchCta(normalized, 'search_url_demoted'));
+        continue;
+      }
+      if (!openable) {
+        out.external_search_ctas.push(buildExternalSearchCta(normalized, 'missing_openable_url_search_fallback'));
+        out.rejected.push({
+          query: q,
+          candidate_title: pickFirstString(normalized.name, normalized.title, normalized.display_name, normalized.displayName),
+          candidate_url: directUrl || null,
+          candidate_source: 'llm_fallback',
+          reject_reason: 'product_url_missing',
+          rule_id: guardrailRuleId,
+        });
+        continue;
+      }
+      if (!directUrl) {
+        out.external_search_ctas.push(buildExternalSearchCta(normalized, 'open_contract_only_no_direct_url'));
+        continue;
+      }
+      if (!isHttpsUrl(directUrl)) {
+        out.external_search_ctas.push(buildExternalSearchCta(normalized, 'non_https_pdp_url_demoted'));
+        out.rejected.push({
+          query: q,
+          candidate_title: pickFirstString(normalized.name, normalized.title, normalized.display_name, normalized.displayName),
+          candidate_url: directUrl || null,
+          candidate_source: 'llm_fallback',
+          reject_reason: 'non_https_pdp_url',
+          rule_id: guardrailRuleId,
+        });
+        continue;
+      }
+
+      seenProducts.add(dedupeKey);
+      out.products.push(
+        normalizeCandidateWithDirectUrl(
+          {
+            ...normalized,
+            retrieval_source: 'llm_fallback',
+            retrieval_reason: pickFirstString(normalized.retrieval_reason, 'catalog_empty_or_filtered'),
+          },
+          directUrl,
+        ),
+      );
+    }
+  }
+
+  out.external_search_ctas = dedupeExternalSearchCtas(out.external_search_ctas, 12);
+  return out;
+}
+
 function deriveProductsEmptyReason({
   keptCount = 0,
   externalSearchCount = 0,
@@ -18114,7 +18421,19 @@ async function sanitizeRecoCandidatesForUi(
   } = {},
 ) {
   const list = Array.isArray(cards) ? cards : [];
-  if (!list.length) return { cards: [], rejected: [], dropped: 0, externalized: 0 };
+  if (!list.length) {
+    return {
+      cards: [],
+      rejected: [],
+      dropped: 0,
+      externalized: 0,
+      lookup_meta: {
+        llm_fallback_attempted: 0,
+        llm_fallback_recovered: 0,
+        llm_fallback_used: false,
+      },
+    };
+  }
   const effectiveQaMode = (() => {
     if (qaMode !== undefined && qaMode !== null && String(qaMode).trim()) return resolveQaMode(qaMode);
     if (dualQa === true) return 'dual';
@@ -18130,6 +18449,11 @@ async function sanitizeRecoCandidatesForUi(
   let dropped = 0;
   let externalized = 0;
   const rejected = [];
+  const lookupMeta = {
+    llm_fallback_attempted: 0,
+    llm_fallback_recovered: 0,
+    llm_fallback_used: false,
+  };
   const nextCards = [];
   for (const card of list) {
     if (!isPlainObject(card)) {
@@ -18155,6 +18479,8 @@ async function sanitizeRecoCandidatesForUi(
       let nonHttpsDemotedForCard = 0;
       let recoveryRecoveredForCard = 0;
       let recoveryAttemptedForCard = 0;
+      let llmFallbackRecoveredForCard = 0;
+      let llmFallbackAttemptedForCard = 0;
       for (const rec of recs) {
         const row = isPlainObject(rec) ? { ...rec } : null;
         if (!row) continue;
@@ -18280,6 +18606,42 @@ async function sanitizeRecoCandidatesForUi(
         }
       }
 
+      if (kept.length === 0 && AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) {
+        const llmQueries = collectPurchasableFallbackQueries({
+          payload,
+          recommendationRows: recs,
+          externalSearchCtas,
+          maxQueries: AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES,
+        });
+        if (llmQueries.length) {
+          const llmRecovered = await recoverProductsWithLlmFallbackFromQueries({
+            queries: llmQueries,
+            strictFilter,
+            qaMode: effectiveQaMode,
+            singleProvider: effectiveSingleProvider,
+            allowOpenAiFallback: effectiveOpenAiFallback,
+            qaContext,
+            logger,
+            guardrailRuleId: 'reco_guardrail',
+            maxProducts: AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS,
+          });
+          llmFallbackAttemptedForCard = llmRecovered.attempted_queries.length;
+          llmFallbackRecoveredForCard = llmRecovered.products.length;
+          if (llmRecovered.products.length) {
+            kept.push(...llmRecovered.products.slice(0, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS));
+          }
+          if (llmRecovered.rejected.length) rejected.push(...llmRecovered.rejected);
+          if (llmRecovered.external_search_ctas.length) {
+            externalSearchCtas.push(...llmRecovered.external_search_ctas);
+            externalized += llmRecovered.external_search_ctas.length;
+          }
+        }
+      }
+
+      lookupMeta.llm_fallback_attempted += llmFallbackAttemptedForCard;
+      lookupMeta.llm_fallback_recovered += llmFallbackRecoveredForCard;
+      if (llmFallbackRecoveredForCard > 0) lookupMeta.llm_fallback_used = true;
+
       const mergedFieldMissing = mergeFieldMissing(card.field_missing, [
         ...(droppedForCard > 0 ? [{ field: 'payload.recommendations', reason: 'strict_skincare_filter' }] : []),
         ...(searchDemotedForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'search_url_demoted' }] : []),
@@ -18289,6 +18651,8 @@ async function sanitizeRecoCandidatesForUi(
         ...(nonHttpsDemotedForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'non_https_pdp_url_demoted' }] : []),
         ...(recoveryAttemptedForCard > 0 ? [{ field: 'payload.recommendations', reason: 'purchasable_fallback_attempted' }] : []),
         ...(recoveryRecoveredForCard > 0 ? [{ field: 'payload.recommendations', reason: 'purchasable_fallback_recovered' }] : []),
+        ...(llmFallbackAttemptedForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_fallback_attempted' }] : []),
+        ...(llmFallbackRecoveredForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_fallback_recovered' }] : []),
       ]);
       const finalExternalSearchCtas = AURORA_DISCOVERY_CARD_IN_LIST_ENABLED
         ? dedupeExternalSearchCtas(externalSearchCtas, 8)
@@ -18333,6 +18697,8 @@ async function sanitizeRecoCandidatesForUi(
       let nonHttpsDemotedForCard = 0;
       let recoveryRecoveredForCard = 0;
       let recoveryAttemptedForCard = 0;
+      let llmFallbackRecoveredForCard = 0;
+      let llmFallbackAttemptedForCard = 0;
       const guardrailRuleId = type === 'ingredient_plan_v2' ? 'ingredient_plan_v2_guardrail' : 'ingredient_plan_guardrail';
 
       const sanitizeRows = async (sourceRows) => {
@@ -18491,6 +18857,57 @@ async function sanitizeRecoCandidatesForUi(
         }
       }
 
+      if (keptProductsCount === 0 && AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) {
+        const llmQueries = collectPurchasableFallbackQueries({
+          payload,
+          externalSearchCtas,
+          extraSeeds: nextTargets,
+          maxQueries: AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES,
+        });
+        if (llmQueries.length) {
+          const llmRecovered = await recoverProductsWithLlmFallbackFromQueries({
+            queries: llmQueries,
+            strictFilter,
+            qaMode: effectiveQaMode,
+            singleProvider: effectiveSingleProvider,
+            allowOpenAiFallback: effectiveOpenAiFallback,
+            qaContext,
+            logger,
+            guardrailRuleId,
+            maxProducts: AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS,
+          });
+          llmFallbackAttemptedForCard = llmRecovered.attempted_queries.length;
+          llmFallbackRecoveredForCard = llmRecovered.products.length;
+          if (llmRecovered.rejected.length) rejected.push(...llmRecovered.rejected);
+          if (llmRecovered.external_search_ctas.length) {
+            externalSearchCtas.push(...llmRecovered.external_search_ctas);
+            externalized += llmRecovered.external_search_ctas.length;
+          }
+          if (llmRecovered.products.length) {
+            if (!nextTargets.length) {
+              nextTargets.push({
+                ingredient: 'general_skincare',
+                products: {
+                  competitors: [],
+                  dupes: [],
+                },
+              });
+            }
+            const firstTarget = isPlainObject(nextTargets[0]) ? { ...nextTargets[0] } : {};
+            const productsNode = isPlainObject(firstTarget.products) ? { ...firstTarget.products } : {};
+            const competitors = Array.isArray(productsNode.competitors) ? productsNode.competitors.slice() : [];
+            productsNode.competitors = [...competitors, ...llmRecovered.products].slice(0, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS);
+            firstTarget.products = productsNode;
+            nextTargets[0] = firstTarget;
+          }
+          keptProductsCount = countPurchasableProductsForTargets(nextTargets);
+        }
+      }
+
+      lookupMeta.llm_fallback_attempted += llmFallbackAttemptedForCard;
+      lookupMeta.llm_fallback_recovered += llmFallbackRecoveredForCard;
+      if (llmFallbackRecoveredForCard > 0) lookupMeta.llm_fallback_used = true;
+
       const mergedFieldMissing = mergeFieldMissing(card.field_missing, [
         ...(droppedForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'strict_skincare_filter' }] : []),
         ...(searchDemotedForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'search_url_demoted' }] : []),
@@ -18499,6 +18916,8 @@ async function sanitizeRecoCandidatesForUi(
         ...(nonHttpsDemotedForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'non_https_pdp_url_demoted' }] : []),
         ...(recoveryAttemptedForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'purchasable_fallback_attempted' }] : []),
         ...(recoveryRecoveredForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'purchasable_fallback_recovered' }] : []),
+        ...(llmFallbackAttemptedForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_fallback_attempted' }] : []),
+        ...(llmFallbackRecoveredForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_fallback_recovered' }] : []),
       ]);
       const finalExternalSearchCtas = AURORA_DISCOVERY_CARD_IN_LIST_ENABLED
         ? dedupeExternalSearchCtas(externalSearchCtas, 12)
@@ -18534,7 +18953,7 @@ async function sanitizeRecoCandidatesForUi(
     nextCards.push(card);
   }
 
-  return { cards: nextCards, rejected, dropped, externalized };
+  return { cards: nextCards, rejected, dropped, externalized, lookup_meta: lookupMeta };
 }
 
 function applyPhotoClaimConsistency(cards) {
@@ -18572,6 +18991,9 @@ function applyPhotoClaimConsistency(cards) {
     const qualityReport = isPlainObject(payload.quality_report) ? { ...payload.quality_report } : {};
     const photoQuality = isPlainObject(qualityReport.photo_quality) ? { ...qualityReport.photo_quality } : {};
     const qualityGrade = String(photoQuality.grade || '').trim().toLowerCase();
+    const claimedUsedPhotos = payload.used_photos === true;
+    if (!claimedUsedPhotos) return card;
+
     const forceUnavailable = qualityGrade === 'fail' || !hasPhotoModules;
 
     if (!forceUnavailable) return card;
@@ -18594,6 +19016,64 @@ function applyPhotoClaimConsistency(cards) {
       ...(nextFieldMissing.length ? { field_missing: nextFieldMissing } : {}),
     };
   });
+}
+
+function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const row = isPlainObject(story) ? story : {};
+  const confidence = isPlainObject(row.confidence_overall) ? row.confidence_overall : {};
+  const confidenceLevel = pickFirstString(confidence.level, isCn ? '中' : 'medium');
+  const findingTitles = asStringArray(
+    Array.isArray(row.priority_findings)
+      ? row.priority_findings.map((item) => pickFirstString(item && item.title, item && item.detail))
+      : [],
+    3,
+  );
+  const fallbackEvidence = asStringArray(
+    Array.isArray(evidence && evidence.finding_evidence)
+      ? evidence.finding_evidence.map((item) => pickFirstString(item && item.observation))
+      : [],
+    3,
+  );
+  const keyPoints = findingTitles.length ? findingTitles : fallbackEvidence;
+  const amActions = asStringArray(
+    Array.isArray(row.am_plan) ? row.am_plan.map((step) => pickFirstString(step && step.step)) : [],
+    2,
+  );
+  const pmActions = asStringArray(
+    Array.isArray(row.pm_plan) ? row.pm_plan.map((step) => pickFirstString(step && step.step)) : [],
+    2,
+  );
+  const actionsNow = asStringArray(
+    [
+      ...amActions.map((step) => (isCn ? `早上：${step}` : `AM: ${step}`)),
+      ...pmActions.map((step) => (isCn ? `晚上：${step}` : `PM: ${step}`)),
+    ],
+    4,
+  );
+  const avoidNow = asStringArray(Array.isArray(row.safety_notes) ? row.safety_notes : [], 3);
+  const headline =
+    pickFirstString(
+      Array.isArray(row.target_state) ? row.target_state[0] : '',
+      isCn
+        ? '先稳定，再循序推进亮肤与纹理改善。'
+        : 'Stabilize first, then improve tone and texture step by step.',
+    ) || (isCn ? '先稳后进。' : 'Stability first.');
+  const timeline = isPlainObject(row.timeline) ? row.timeline : {};
+  const nextCheckin = pickFirstString(
+    Array.isArray(timeline.first_4_weeks) ? timeline.first_4_weeks[0] : '',
+    Array.isArray(timeline.week_8_12_expectation) ? timeline.week_8_12_expectation[0] : '',
+    isCn ? '2 周后复查耐受与稳定度。' : 'Re-check tolerance and stability in 2 weeks.',
+  );
+
+  return {
+    headline,
+    key_points: keyPoints,
+    actions_now: actionsNow,
+    avoid_now: avoidNow,
+    confidence_label: confidenceLevel,
+    next_checkin: nextCheckin,
+  };
 }
 
 function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, language } = {}) {
@@ -18669,6 +19149,20 @@ function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, la
         isCn ? '8-12 周观察肤色均匀与稳定度改善。' : 'Expect visible stability and tone improvements in 8-12 weeks.',
       ],
     },
+    ui_card_v1: {
+      headline: isCn ? '先稳定，再循序推进提亮与均匀度。' : 'Stabilize first, then improve tone and texture step by step.',
+      key_points: findings.length
+        ? findings.slice(0, 3).map((row) => row.title)
+        : [isCn ? '当前可见信息有限，先执行低刺激基础方案。' : 'Visible signals are limited, start with a low-irritation baseline.'],
+      actions_now: isCn
+        ? ['早上：温和清洁', '早上：SPF50+ 防晒', '晚上：屏障修护保湿']
+        : ['AM: Gentle cleanse', 'AM: SPF50+ sunscreen', 'PM: Barrier moisturizer'],
+      avoid_now: isCn
+        ? ['避免同一晚叠加多个强活性']
+        : ['Avoid stacking multiple strong actives in the same night'],
+      confidence_label: payload.low_confidence ? (isCn ? '低' : 'low') : (isCn ? '中' : 'medium'),
+      next_checkin: isCn ? '2 周后复查耐受与稳定度。' : 'Re-check tolerance and stability in 2 weeks.',
+    },
     safety_notes: [
       isCn ? '若持续刺痛/泛红/脱屑，请暂停新增活性并回到修护。' : 'If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.',
     ],
@@ -18734,6 +19228,11 @@ function generateAnalysisStoryV2Json({ evidence, fallbackStory } = {}) {
       : [];
     output.priority_findings = inferredFindings.slice(0, 6);
   }
+  output.ui_card_v1 = buildAnalysisStoryUiCardV1({
+    story: output,
+    evidence,
+    language: evidence && evidence.language,
+  });
   return output;
 }
 
@@ -18762,6 +19261,13 @@ function reviewAnalysisStoryV2Json({ story, evidence } = {}) {
     candidate.priority_findings = [];
     issues.push('priority_findings_repaired_to_array');
   }
+  const beforeUiCard = isPlainObject(candidate.ui_card_v1) ? candidate.ui_card_v1 : null;
+  candidate.ui_card_v1 = buildAnalysisStoryUiCardV1({
+    story: candidate,
+    evidence,
+    language: evidence && evidence.language,
+  });
+  if (!beforeUiCard) issues.push('ui_card_v1_repaired');
   return {
     ok: true,
     repaired: candidate,
@@ -18775,9 +19281,12 @@ function buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
   return [
     'Task: Generate a skincare analysis story JSON using ONLY provided evidence.',
     'Rules:',
+    '- Follow this narrative order: conclusion first, evidence second, actions third.',
+    '- Keep language plain and user-facing; avoid dense ingredient-only dumping.',
     '- No medical diagnosis language.',
     '- Keep actionable AM/PM steps.',
     '- If routine is missing, include routine_bridge with why_now and CTA.',
+    '- Must include ui_card_v1 for fast comprehension.',
     '- Return strict JSON only with schema compatible to aurora.analysis_story.v2.',
     '',
     'Evidence JSON:',
@@ -18800,6 +19309,8 @@ function buildAnalysisStoryReviewPrompt({ story, evidence } = {}) {
     'Rules:',
     '- patched_story must stay within evidence boundaries.',
     '- enforce non-medical disclaimer and routine_bridge when routine is missing.',
+    '- enforce concise, readable language (conclusion -> evidence -> actions).',
+    '- enforce ui_card_v1 with headline/key_points/actions_now/avoid_now/confidence_label/next_checkin.',
     '',
     'Evidence JSON:',
     JSON.stringify(safeEvidence, null, 2),
@@ -18923,6 +19434,14 @@ function coerceAnalysisStoryV2(candidate, fallbackPayload) {
     },
     existing_products_optimization: { keep: [], add: [], replace: [], remove: [] },
     timeline: { first_4_weeks: [], week_8_12_expectation: [] },
+    ui_card_v1: {
+      headline: 'Stabilize first, then improve tone and texture step by step.',
+      key_points: [],
+      actions_now: [],
+      avoid_now: [],
+      confidence_label: 'low',
+      next_checkin: 'Re-check tolerance and stability in 2 weeks.',
+    },
     safety_notes: [],
     disclaimer_non_medical: true,
   };
@@ -19131,14 +19650,68 @@ async function applyProductIntelGuardrailsToEnvelope({
     qaContext.relevance_meta && qaContext.relevance_meta.provider,
     qaContext.qa_provider,
   );
-  const nextAnalysisMeta = analysisMetaBase
-    ? {
-        ...analysisMetaBase,
-        qa_mode: qaContext.qa_mode,
-        qa_provider: qaProvider || qaContext.qa_provider,
-        ...(qaSkippedReason ? { qa_skipped_reason: qaSkippedReason } : {}),
-      }
-    : null;
+  const lookupMeta = isPlainObject(sanitized.lookup_meta) ? sanitized.lookup_meta : {};
+  const summaryCard = withStoryAndGate.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_summary');
+  const summaryPayload = summaryCard && isPlainObject(summaryCard.payload) ? summaryCard.payload : {};
+  const photoModulesCard = withStoryAndGate.find(
+    (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'photo_modules_v1',
+  );
+  const storyCard = withStoryAndGate.find(
+    (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2',
+  );
+  const photoRegions = Array.isArray(photoModulesCard && photoModulesCard.payload && photoModulesCard.payload.regions)
+    ? photoModulesCard.payload.regions
+    : [];
+  const regionsUnavailable = photoRegions.filter(
+    (region) => String(region && region.status || '').trim().toLowerCase() === 'unavailable',
+  ).length;
+  const recommendableCards = withStoryAndGate.filter((card) => {
+    const type = String(card && card.type ? card.type : '').trim().toLowerCase();
+    return type === 'recommendations' || type === 'ingredient_plan_v2' || type === 'ingredient_plan';
+  });
+  const recommendableCardsWithEmptyReason = recommendableCards.filter(
+    (card) => isPlainObject(card && card.payload) && String(card.payload.products_empty_reason || '').trim(),
+  ).length;
+  const analysisSource = pickFirstString(summaryPayload.analysis_source, analysisMetaBase && analysisMetaBase.detector_source);
+  const diagProvider = (() => {
+    const token = String(analysisSource || '').trim().toLowerCase();
+    if (token.includes('gemini')) return 'gemini';
+    if (token.includes('openai')) return 'openai';
+    if (token.includes('vision') || token.includes('rules') || token.includes('baseline')) return 'rules';
+    return 'unknown';
+  })();
+  const storyProvider = pickFirstString(qaContext.story_meta && qaContext.story_meta.provider, qaProvider, qaContext.qa_provider);
+  const nextAnalysisMeta = {
+    ...(analysisMetaBase || {}),
+    qa_mode: qaContext.qa_mode,
+    qa_provider: qaProvider || qaContext.qa_provider,
+    diag_provider: diagProvider,
+    diag_model:
+      diagProvider === 'gemini' ? SKIN_VISION_MODEL_GEMINI : diagProvider === 'openai' ? SKIN_VISION_MODEL_OPENAI : null,
+    story_provider: storyProvider || 'gemini',
+    story_model: storyProvider === 'openai' ? ANALYSIS_STORY_MODEL_OPENAI : ANALYSIS_STORY_MODEL_GEMINI,
+    product_lookup_mode: AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED ? 'catalog_then_llm_fallback' : 'catalog_only',
+    product_lookup_fallback_used: lookupMeta.llm_fallback_used === true,
+    product_lookup_fallback_attempted: Math.max(0, Math.trunc(Number(lookupMeta.llm_fallback_attempted || 0))),
+    product_lookup_fallback_recovered: Math.max(0, Math.trunc(Number(lookupMeta.llm_fallback_recovered || 0))),
+    photo_modules_emit_rate: photoModulesCard ? 1 : 0,
+    regions_unavailable_rate: photoRegions.length ? Number((regionsUnavailable / photoRegions.length).toFixed(4)) : 0,
+    analysis_story_ui_card_rate:
+      storyCard && isPlainObject(storyCard.payload) && isPlainObject(storyCard.payload.ui_card_v1) ? 1 : 0,
+    product_llm_fallback_hit_rate:
+      Number(lookupMeta.llm_fallback_attempted || 0) > 0
+        ? Number((Number(lookupMeta.llm_fallback_recovered || 0) / Number(lookupMeta.llm_fallback_attempted || 1)).toFixed(4))
+        : 0,
+    empty_products_rate:
+      recommendableCards.length > 0
+        ? Number((recommendableCardsWithEmptyReason / recommendableCards.length).toFixed(4))
+        : 0,
+    invalid_url_drop_rate:
+      Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0) > 0
+        ? Number((Number(sanitized.externalized || 0) / (Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0))).toFixed(4))
+        : 0,
+    ...(qaSkippedReason ? { qa_skipped_reason: qaSkippedReason } : {}),
+  };
   return {
     envelope: {
       ...base,
@@ -31448,12 +32021,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
       const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
       const debugUpstream = debugFromHeader ?? debugFromBody;
-      const llmProvider =
-        normalizeChatLlmProvider(parsed.data.llm_provider) ||
-        normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'));
-      const llmModel =
-        normalizeChatLlmModel(parsed.data.llm_model) ||
-        normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
+      const llmProvider = AURORA_DIAG_FORCE_GEMINI
+        ? 'gemini'
+        : normalizeChatLlmProvider(parsed.data.llm_provider) ||
+          normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'));
+      const llmModel = AURORA_DIAG_FORCE_GEMINI
+        ? AURORA_DIAG_FORCE_GEMINI_MODEL
+        : normalizeChatLlmModel(parsed.data.llm_model) ||
+          normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
       llmRouteMetaForResponse =
         llmProvider || llmModel
           ? {
@@ -35284,6 +35859,7 @@ const __internal = {
   hasOpenableUrl,
   sanitizeRecoCandidatesForUi,
   buildPurchasableFallbackCandidates,
+  recoverProductsWithLlmFallbackFromQueries,
   deriveProductsEmptyReason,
   countPurchasableProductsForTargets,
   applyPhotoClaimConsistency,
@@ -35355,6 +35931,12 @@ const __internal = {
   },
   __resetCallDualQaProviderForTest() {
     callDualQaProviderImpl = callDualQaProvider;
+  },
+  __setCallGeminiJsonObjectForTest(fn) {
+    callGeminiJsonObjectImpl = typeof fn === 'function' ? fn : callGeminiJsonObject;
+  },
+  __resetCallGeminiJsonObjectForTest() {
+    callGeminiJsonObjectImpl = callGeminiJsonObject;
   },
 };
 
