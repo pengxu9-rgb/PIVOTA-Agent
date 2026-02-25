@@ -18098,9 +18098,64 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             seenMergedProductKeys.add(dedupeKey);
             dedupedMergeInput.push(product);
           }
-          const mergedProducts = collapseNearDuplicateSearchProducts(dedupedMergeInput, {
+          let mergedProducts = collapseNearDuplicateSearchProducts(dedupedMergeInput, {
             perTitleLimit: 1,
           });
+          let externalSeedBackfillMeta = null;
+          if (mergedProducts.length < strictLingerieBackfillTarget) {
+            const neededCount = Math.max(1, strictLingerieBackfillTarget - mergedProducts.length);
+            const externalSeedBackfill = await fetchExternalSeedSupplementFromBackend({
+              queryParams,
+              checkoutToken,
+              neededCount,
+              source: metadata?.source,
+            });
+            externalSeedBackfillMeta =
+              externalSeedBackfill?.metadata && typeof externalSeedBackfill.metadata === 'object'
+                ? externalSeedBackfill.metadata
+                : null;
+            const externalSeedProducts = Array.isArray(externalSeedBackfill?.products)
+              ? externalSeedBackfill.products
+              : [];
+            if (externalSeedProducts.length > 0) {
+              const externalSeedPolicy = applyFindProductsMultiPolicy({
+                response: {
+                  products: externalSeedProducts,
+                  total: externalSeedProducts.length,
+                  page: 1,
+                  page_size: externalSeedProducts.length,
+                  reply: null,
+                  metadata: {
+                    query_source: 'external_seed_strict_lingerie_backfill',
+                    fetched_at: new Date().toISOString(),
+                  },
+                },
+                intent: effectiveIntent,
+                requestPayload: effectivePayload,
+                metadata: policyMetadata,
+                rawUserQuery,
+              });
+              const externalSeedPolicyProducts = Array.isArray(externalSeedPolicy?.products)
+                ? externalSeedPolicy.products
+                : [];
+              if (externalSeedPolicyProducts.length > 0) {
+                const seenPostExternalMergeKeys = new Set();
+                const postExternalMergeInput = [];
+                for (const product of [...mergedProducts, ...externalSeedPolicyProducts]) {
+                  const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
+                  const productId = String(product?.id || product?.product_id || product?.productId || '').trim();
+                  const productTitle = String(product?.title || '').trim();
+                  const dedupeKey = `${merchantId}::${productId || productTitle}`;
+                  if (!dedupeKey || seenPostExternalMergeKeys.has(dedupeKey)) continue;
+                  seenPostExternalMergeKeys.add(dedupeKey);
+                  postExternalMergeInput.push(product);
+                }
+                mergedProducts = collapseNearDuplicateSearchProducts(postExternalMergeInput, {
+                  perTitleLimit: 1,
+                });
+              }
+            }
+          }
           const addedCount = Math.max(0, mergedProducts.length - currentProductsForBackfill.length);
           const existingPolicyMeta =
             maybePolicy?.metadata &&
@@ -18164,6 +18219,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   query_results: fallbackQueryResults,
                   from_cache_count: dedupedFallbackRawProducts.length,
                   from_policy_count: fallbackProducts.length,
+                  external_seed_backfill: externalSeedBackfillMeta,
                   added_count: addedCount,
                   target_count: strictLingerieBackfillTarget,
                 },
