@@ -1803,6 +1803,160 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     );
   });
 
+  test('/v1/product/analyze retries URL fetch with fallback strategy when default profile is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .get('/product-fallback-ua.html')
+      .matchHeader('User-Agent', (value) => !/curl\/8/i.test(String(value || '')))
+      .reply(403, 'blocked by waf');
+
+    nock('https://brand.example')
+      .get('/product-fallback-ua.html')
+      .matchHeader('User-Agent', /curl\/8/i)
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Defense Lotion SPF 35 | Lab</title></head>
+         <body>
+           <p class="ingredients-flyout-content" data-original-ingredients="Avobenzone 3%, Homosalate 7%, Octisalate 5%, Octocrylene 10%, Oxybenzone 6%, Glycerin, Squalane, Sodium Hyaluronate"></p>
+           <div class="reviews">Hydrating texture and comfortable finish.</div>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'comp_fallback_1',
+            sku_id: 'comp_fallback_1',
+            brand: 'Alt Brand',
+            name: 'Daily Defense SPF Lotion',
+            display_name: 'Alt Brand Daily Defense SPF Lotion',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_fetch_fallback_1')
+      .send({ url: 'https://brand.example/product-fallback-ua.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('url_fetch_recovered_with_fallback');
+    expect(card.payload.provenance?.url_fetch?.final_strategy).toBe('curl_ua');
+    expect(Array.isArray(card.payload.evidence?.sources)).toBe(true);
+    expect(card.payload.evidence.sources.some((x) => String(x?.type || '') === 'official_page')).toBe(true);
+  });
+
+  test('/v1/product/analyze returns diagnosable degraded payload when URL fetch is blocked end-to-end', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .persist()
+      .get('/blocked-all.html')
+      .reply(403, 'blocked');
+    nock('https://www.brand.example')
+      .persist()
+      .get('/blocked-all.html')
+      .reply(403, 'blocked');
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(200, '<html><body>No results</body></html>', { 'Content-Type': 'text/html' });
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { products: [] });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_fetch_blocked_1')
+      .send({ url: 'https://brand.example/blocked-all.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(String(card.payload.assessment?.verdict || '')).toMatch(/Unknown|未知/);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('url_fetch_forbidden_403');
+    expect(card.payload.missing_info).toContain('on_page_fetch_blocked');
+    expect(card.payload.provenance?.url_fetch?.failure_code).toBe('url_fetch_forbidden_403');
+    expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
+    expect(card.payload.assessment.reasons.join(' ')).toMatch(/INCI|official page|官方页面/i);
+  });
+
+  test('/v1/product/analyze uses regulatory source when official page is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .persist()
+      .get('/blocked-with-regulatory.html')
+      .reply(403, 'blocked');
+    nock('https://www.brand.example')
+      .persist()
+      .get('/blocked-with-regulatory.html')
+      .reply(403, 'blocked');
+
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(
+        200,
+        '<html><body><a href="/dailymed/drugInfo.cfm?setid=abc123">LAB SERIES DAY RESCUE</a></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/drugInfo.cfm')
+      .query({ setid: 'abc123' })
+      .reply(
+        200,
+        '<html><body>Active ingredients Avobenzone 3%, Oxybenzone 6%, Octocrylene 10%. Uses Sunscreen.</body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { products: [] });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_regulatory_1')
+      .send({ url: 'https://brand.example/blocked-with-regulatory.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(String(card.payload.assessment?.verdict || '')).not.toMatch(/Unknown|未知/);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('regulatory_source_used');
+    expect(card.payload.missing_info).toContain('version_verification_needed');
+    expect(Array.isArray(card.payload.evidence?.sources)).toBe(true);
+    expect(card.payload.evidence.sources.some((x) => String(x?.type || '') === 'regulatory')).toBe(true);
+  });
+
   test('/v1/product/analyze schedules async competitor enrich when first-pass competitor recall fails', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
