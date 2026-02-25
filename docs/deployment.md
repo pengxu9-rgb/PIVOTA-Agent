@@ -7,6 +7,23 @@
 
 This guide covers deploying the Pivota Agent Gateway to production environments, with a focus on Railway deployment and general best practices.
 
+## Production Deploy Policy (Source of Truth)
+
+For this repo, production deploys must use **GitHub push to `main` + Railway auto-deploy**.
+
+- Allowed: merge to `main`, then wait for Railway auto deployment.
+- Not allowed for normal flow: `railway up` to production.
+
+Reason: manual CLI deployment is easy to overwrite by later auto deploy and creates commit drift.
+
+Commit-match verification command:
+
+```bash
+npm run deploy:verify:production
+```
+
+Detailed policy: `docs/runbooks/deploy_via_github_push_only.md`
+
 ## Environment Variables
 
 Create a `.env` file from the template:

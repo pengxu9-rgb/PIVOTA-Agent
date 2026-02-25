@@ -88,7 +88,10 @@
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js",
     "ingredient:ingest": "node scripts/ingest_ingredient_sources.js",
     "ingredient:ingest:dry": "node scripts/ingest_ingredient_sources.js --dry-run --fail-on-audit",
-    "ingredient:audit": "node scripts/ingest_ingredient_sources.js --audit-only --fail-on-audit"
+    "ingredient:audit": "node scripts/ingest_ingredient_sources.js --audit-only --fail-on-audit",
+    "photo:llm-review:batch": "node scripts/batch_photo_llm_review_pack.mjs",
+    "photo:llm-review:baseline": "node scripts/build_product_intel_fallback_baseline.mjs",
+    "deploy:verify:production": "bash scripts/verify_deployed_commit_matches.sh"
   },
   "keywords": [
     "pivota",
