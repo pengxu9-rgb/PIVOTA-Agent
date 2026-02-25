@@ -1180,6 +1180,44 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.metadata?.search_decision?.lingerie_filtered_out).toBeGreaterThanOrEqual(1);
   });
 
+  test('strict lingerie scope keeps intimate-apparel variants while still blocking brushes', () => {
+    const intent = extractIntentRuleBased('lingerie', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'body-1',
+            title: 'Satin Bodysuit Set',
+            description: 'lace bodysuit with soft mesh trim',
+          }),
+          makeRawProduct({
+            id: 'bralette-1',
+            title: 'Everyday Bralette Duo',
+            description: 'wireless bralette and matching briefs',
+          }),
+          makeRawProduct({
+            id: 'tool-1',
+            title: 'Foundation Brush Pro',
+            description: 'makeup contour brush tool',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'lingerie' } },
+      metadata: { ambiguity_score_pre: 0.2 },
+      rawUserQuery: 'lingerie',
+    });
+
+    const titles = (resp.products || []).map((item) => String(item?.title || '').toLowerCase());
+    expect(resp.products.length).toBeGreaterThanOrEqual(2);
+    expect(titles.some((title) => title.includes('bodysuit'))).toBe(true);
+    expect(titles.some((title) => title.includes('bralette'))).toBe(true);
+    expect(titles.some((title) => title.includes('brush'))).toBe(false);
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['STRICT_LINGERIE_SCOPE']));
+    expect(resp.metadata?.search_decision?.strict_scope).toBe('lingerie');
+  });
+
   test('strict lingerie scope reports low recall reason when no lingerie candidates survive', () => {
     const intent = extractIntentRuleBased('lingerie', [], []);
     const resp = applyFindProductsMultiPolicy({

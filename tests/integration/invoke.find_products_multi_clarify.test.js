@@ -772,4 +772,75 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     expect(resp.body.metadata?.search_trace?.strict_scope).toBe('lingerie');
     expect(Number(resp.body.metadata?.search_trace?.lingerie_filtered_out || 0)).toBeGreaterThanOrEqual(1);
   });
+
+  test('lingerie strict scope keeps intimate-apparel variants like bodysuit and blocks tools', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 18 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          const intimateRows = Array.from({ length: 10 }).map((_, idx) => ({
+            merchant_id: 'merch_intimate',
+            merchant_name: 'Intimate Shop',
+            product_data: {
+              id: `body_${idx + 1}`,
+              product_id: `body_${idx + 1}`,
+              merchant_id: 'merch_intimate',
+              title: `Satin Bodysuit ${idx + 1}`,
+              description: 'lace bodysuit with mesh panels',
+              status: 'published',
+              inventory_quantity: 8,
+              image_urls: ['https://cdn.example.com/body.jpg'],
+            },
+          }));
+          const brushRows = Array.from({ length: 8 }).map((_, idx) => ({
+            merchant_id: 'merch_tools',
+            merchant_name: 'Tool Shop',
+            product_data: {
+              id: `brush_${idx + 1}`,
+              product_id: `brush_${idx + 1}`,
+              merchant_id: 'merch_tools',
+              title: `Contour Brush ${idx + 1}`,
+              description: 'makeup contour brush tool',
+              status: 'published',
+              inventory_quantity: 8,
+            },
+          }));
+          return { rows: [...intimateRows, ...brushRows] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'lingerie',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBe(6);
+    expect((resp.body.products || []).every((item) => !/\bbrush\b/i.test(String(item?.title || '')))).toBe(
+      true,
+    );
+    expect((resp.body.products || []).some((item) => /bodysuit/i.test(String(item?.title || '')))).toBe(
+      true,
+    );
+    expect(resp.body.metadata?.search_trace?.strict_scope).toBe('lingerie');
+  });
 });

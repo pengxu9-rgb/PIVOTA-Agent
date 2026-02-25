@@ -13,7 +13,7 @@ const {
 } = require('../auroraBff/visionMetrics');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v40';
+const POLICY_VERSION = 'find_products_multi_policy_v41';
 const STRATEGY_VERSION = 'ambiguity_gate_v2';
 const SEARCH_AMBIGUITY_GATE_ENABLED =
   String(process.env.SEARCH_AMBIGUITY_GATE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -133,6 +133,10 @@ const SEARCH_CLARIFY_MAX_ROUNDS = Math.max(
   0,
   Number(process.env.SEARCH_CLARIFY_MAX_ROUNDS || 1) || 1,
 );
+const STRICT_LINGERIE_MIN_RECALL_TARGET = Math.max(
+  1,
+  Number(process.env.SEARCH_STRICT_LINGERIE_MIN_RECALL_TARGET || 4) || 4,
+);
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -176,6 +180,7 @@ const REASON_CODES = {
   ADULT_UNREQUESTED: 'ADULT_UNREQUESTED',
   ADULT_NEEDS_CONFIRMATION: 'ADULT_NEEDS_CONFIRMATION',
   NOT_LINGERIE_PRODUCT: 'NOT_LINGERIE_PRODUCT',
+  LINGERIE_RELAXED_MATCH: 'LINGERIE_RELAXED_MATCH',
   NOT_TOOL_PRODUCT: 'NOT_TOOL_PRODUCT',
   NOT_EYE_BRUSH_PRODUCT: 'NOT_EYE_BRUSH_PRODUCT',
   COMPAT_INCOMPATIBLE: 'COMPAT_INCOMPATIBLE',
@@ -217,6 +222,15 @@ const LINGERIE_STRICT_QUERY_PATTERNS = [
   /下着|ブラ|パンティ|ランジェリー/,
 ];
 
+const LINGERIE_RELAXED_PRODUCT_PATTERNS = [
+  /\b(bralette|bustier|corset|corsetry|bodysuit|body\s*suit|teddy|chemise|babydoll|garter|garter\s*belt|shapewear|slip|cami|camisole)\b/i,
+  /\b(nightwear|sleepwear|nightdress|nightgown|intimate\s*(wear|set)|lingerie\s*(set|bodysuit|corset|bralette|chemise|teddy|babydoll|slip))\b/i,
+  /\b(ropa\s+interior|lencer[ií]a|cors[eé]|faja|camisola|babydoll)\b/i,
+  /\b(nuisette|gu[eê]pi[eè]re|corset|porte[-\s]?jarretelles|lingerie)\b/i,
+  /吊带|吊帶|塑身|束身|马甲|馬甲|连体衣|連體衣|睡裙|睡衣套装|睡衣套裝|蕾丝内衣|蕾絲內衣/,
+  /ボディスーツ|ブラレット|ビスチェ|コルセット|テディ|キャミ|キャミソール|ベビードール|ガーター|シェイプウェア|スリップ|ナイトウェア/,
+];
+
 const HUMAN_APPAREL_PATTERNS = [
   /\b(women'?s?\s+clothing|women'?s?\s+apparel|clothing|apparel|outfit)\b/i,
   /\b(dress|skirt|blouse|shirt|top|pants|jeans|hoodie|sweater|cardigan|nightwear|sleepwear|pajamas?)\b/i,
@@ -242,7 +256,11 @@ function hasLingerieSignalText(text) {
 }
 
 function hasHumanApparelSignalText(text) {
-  return hasLingerieSignalText(text) || hasPatternHit(text, HUMAN_APPAREL_PATTERNS);
+  return (
+    hasLingerieSignalText(text) ||
+    hasPatternHit(text, HUMAN_APPAREL_PATTERNS) ||
+    hasPatternHit(text, LINGERIE_RELAXED_PRODUCT_PATTERNS)
+  );
 }
 
 function includesAny(haystack, needles) {
@@ -364,6 +382,17 @@ function isLingerieLikeProduct(product) {
   const text = buildProductText(product);
   if (!text) return false;
   return LINGERIE_PATTERNS.some((re) => re.test(text));
+}
+
+function isLingerieRelaxedCandidate(product) {
+  const text = buildProductText(product);
+  if (!text) return false;
+  if (isLingerieLikeProduct(product)) return true;
+  if (!LINGERIE_RELAXED_PRODUCT_PATTERNS.some((re) => re.test(text))) return false;
+  if (isBeautyToolLikeProduct(product)) return false;
+  if (hasPetSignalInProduct(product)) return false;
+  if (isToyLikeText(text)) return false;
+  return inferProductDomainKey(product) === 'human_apparel';
 }
 
 function isStrictLingerieIntent(intent, rawQuery = '') {
@@ -2036,8 +2065,13 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
 
   // ---------- Lingerie strict scope guard ----------
   if (riskLevel !== 'hard_block' && strictLingerieIntent && !isLingerieLikeProduct(product)) {
-    riskLevel = 'hard_block';
-    reasonCodes.add(REASON_CODES.NOT_LINGERIE_PRODUCT);
+    if (isLingerieRelaxedCandidate(product)) {
+      if (riskLevel === 'ok') riskLevel = 'soft_block';
+      reasonCodes.add(REASON_CODES.LINGERIE_RELAXED_MATCH);
+    } else {
+      riskLevel = 'hard_block';
+      reasonCodes.add(REASON_CODES.NOT_LINGERIE_PRODUCT);
+    }
   }
 
   // ---------- Beauty tools guard rails ----------
@@ -3930,10 +3964,13 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
         preDomainFilterCandidates.filter((product) => !isLingerieLikeProduct(product)).length,
       )
     : 0;
+  const strictLingerieRecallTarget = strictLingerieIntent
+    ? Math.min(Math.max(1, STRICT_LINGERIE_MIN_RECALL_TARGET), Math.max(1, before))
+    : 0;
   const strictLingerieLowRecallReason = strictLingerieIntent
     ? after === 0
       ? 'NO_STRICT_LINGERIE_CANDIDATES'
-      : after < Math.min(Math.max(1, effectiveMinRecallCandidates), Math.max(1, preCandidateCount))
+      : after < strictLingerieRecallTarget
         ? 'STRICT_SCOPE_UNDERFILL'
         : null
     : null;
@@ -3955,6 +3992,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     strict_scope: strictLingerieIntent ? 'lingerie' : null,
     lingerie_filtered_out: strictLingerieFilteredOut,
     lingerie_rescued_count: strictLingerieRescuedCount,
+    strict_recall_target: strictLingerieIntent ? strictLingerieRecallTarget : null,
     low_recall_reason: strictLingerieLowRecallReason,
     slot_state: slotStateForTrace,
     reason_codes: Array.from(reasonCodes),
