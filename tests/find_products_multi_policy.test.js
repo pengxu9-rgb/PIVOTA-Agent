@@ -1196,6 +1196,11 @@ describe('find_products_multi intent + filtering', () => {
             description: 'wireless bralette and matching briefs',
           }),
           makeRawProduct({
+            id: 'sleep-1',
+            title: "Women's Sleepwear Set",
+            description: 'soft lounge outfit for nightwear',
+          }),
+          makeRawProduct({
             id: 'tool-1',
             title: 'Foundation Brush Pro',
             description: 'makeup contour brush tool',
@@ -1210,9 +1215,10 @@ describe('find_products_multi intent + filtering', () => {
     });
 
     const titles = (resp.products || []).map((item) => String(item?.title || '').toLowerCase());
-    expect(resp.products.length).toBeGreaterThanOrEqual(2);
+    expect(resp.products.length).toBeGreaterThanOrEqual(3);
     expect(titles.some((title) => title.includes('bodysuit'))).toBe(true);
     expect(titles.some((title) => title.includes('bralette'))).toBe(true);
+    expect(titles.some((title) => title.includes('sleepwear'))).toBe(true);
     expect(titles.some((title) => title.includes('brush'))).toBe(false);
     expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['STRICT_LINGERIE_SCOPE']));
     expect(resp.metadata?.search_decision?.strict_scope).toBe('lingerie');

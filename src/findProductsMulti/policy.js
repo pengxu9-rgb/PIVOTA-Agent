@@ -2065,7 +2065,14 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
 
   // ---------- Lingerie strict scope guard ----------
   if (riskLevel !== 'hard_block' && strictLingerieIntent && !isLingerieLikeProduct(product)) {
-    if (isLingerieRelaxedCandidate(product)) {
+    const productText = buildProductText(product);
+    const disallowedCrossVertical =
+      isBeautyToolLikeProduct(product) ||
+      hasPetSignalInProduct(product) ||
+      isToyLikeText(productText);
+    const allowSoftLingerieFallback =
+      !disallowedCrossVertical && inferProductDomainKey(product) === 'human_apparel';
+    if (isLingerieRelaxedCandidate(product) || allowSoftLingerieFallback) {
       if (riskLevel === 'ok') riskLevel = 'soft_block';
       reasonCodes.add(REASON_CODES.LINGERIE_RELAXED_MATCH);
     } else {
