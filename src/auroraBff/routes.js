@@ -20589,18 +20589,35 @@ function coerceAnalysisStoryV2(candidate, fallbackPayload) {
   };
 }
 
-function buildRoutinePromptCard({ ctx, language, missingFields }) {
+function buildRoutinePromptCard({ ctx, language, missingFields, requestId } = {}) {
   const isCn = String(language || '').toUpperCase() === 'CN';
+  const resolvedRequestId =
+    (typeof requestId === 'string' && requestId.trim()) ||
+    (ctx && ctx.request_id ? String(ctx.request_id).trim() : '') ||
+    Date.now();
+  const normalizedMissingFields =
+    Array.isArray(missingFields) && missingFields.length ? missingFields : ['currentRoutine.am', 'currentRoutine.pm'];
+  const ctaLabel = isCn ? '补全 AM/PM Routine' : 'Add AM/PM routine';
   return {
-    card_id: `routine_prompt_${ctx && ctx.request_id ? ctx.request_id : Date.now()}`,
+    card_id: `routine_prompt_${resolvedRequestId}`,
     type: 'routine_prompt',
     payload: {
-      missing_fields: Array.isArray(missingFields) && missingFields.length ? missingFields : ['currentRoutine.am', 'currentRoutine.pm'],
+      schema_version: 'aurora.routine_prompt.v1',
+      title: isCn ? '先补全 routine，再做精准推荐' : 'Complete routine first for precise recommendations',
+      subtitle: isCn
+        ? '你当前分析已经完成。补全 AM/PM 后，我会按你真实在用步骤做冲突规避与精准排序。'
+        : 'Your analysis is ready. Add AM/PM steps so recommendations can be ranked with conflict-aware personalization.',
+      missing_fields: normalizedMissingFields,
       why_now: isCn
         ? '补全当前 AM/PM 护肤步骤后，系统会根据你现有产品做冲突规避与个性化排序。'
         : 'Complete AM/PM routine to enable conflict-aware and personalized product ranking.',
-      cta_label: isCn ? '补全 AM/PM Routine' : 'Add AM/PM routine',
+      cta_label: ctaLabel,
+      cta_text: ctaLabel,
       cta_action: 'open_routine_intake',
+      action_id: 'chip.start.routine',
+      reply_text: isCn
+        ? '我来补全 AM/PM routine，再给我个性化产品建议。'
+        : 'Let me complete AM/PM routine, then give me personalized product recommendations.',
     },
   };
 }
@@ -26686,6 +26703,21 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
   return nextPayload;
 }
 
+function sanitizeProductAnalysisEnvelopeForResponse(envelope) {
+  if (!isPlainObject(envelope)) return envelope;
+  const cards = Array.isArray(envelope.cards) ? envelope.cards : [];
+  if (!cards.length) return envelope;
+  let changed = false;
+  const nextCards = cards.map((card) => {
+    if (!isPlainObject(card)) return card;
+    if (String(card.type || '').trim() !== 'product_analysis') return card;
+    const payload = sanitizeProductAnalysisPayloadForPrelabel(card.payload);
+    changed = true;
+    return { ...card, payload };
+  });
+  return changed ? { ...envelope, cards: nextCards } : envelope;
+}
+
 function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
   const p = isPlainObject(payload) ? { ...payload } : payload;
   if (!isPlainObject(p)) return payload;
@@ -27945,8 +27977,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         envelope: augmented,
         logger,
       });
-      if (statusCode >= 400) return res.status(statusCode).json(augmented);
-      return res.json(augmented);
+      const responseEnvelope = sanitizeProductAnalysisEnvelopeForResponse(augmented);
+      if (statusCode >= 400) return res.status(statusCode).json(responseEnvelope);
+      return res.json(responseEnvelope);
     };
     try {
       requireAuroraUid(ctx);
@@ -37836,7 +37869,6 @@ const __internal = {
   shouldSkipQaByBudget,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
-  isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
