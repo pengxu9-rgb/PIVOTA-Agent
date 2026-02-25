@@ -2708,6 +2708,20 @@ function buildQueryString(params) {
   return qs ? `?${qs}` : '';
 }
 
+const DEFAULT_PRODUCT_IMAGE_PLACEHOLDER_URL = `data:image/svg+xml;utf8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" fill="none"><rect width="480" height="480" rx="24" fill="#F3F4F6"/><path d="M120 326L198 248L252 302L318 236L360 278V330H120V326Z" fill="#D1D5DB"/><circle cx="178" cy="178" r="30" fill="#D1D5DB"/></svg>',
+)}`;
+
+function resolveProductImagePlaceholderUrl() {
+  const configured = String(process.env.PRODUCT_IMAGE_PLACEHOLDER_URL || '').trim();
+  if (!configured) return DEFAULT_PRODUCT_IMAGE_PLACEHOLDER_URL;
+  if (/^https?:\/\//i.test(configured)) return configured;
+  if (/^data:image\//i.test(configured)) return configured;
+  return DEFAULT_PRODUCT_IMAGE_PLACEHOLDER_URL;
+}
+
+const PRODUCT_IMAGE_PLACEHOLDER_URL = resolveProductImagePlaceholderUrl();
+
 function toHttpImageUrl(value) {
   const url = String(value || '').trim();
   if (!url) return '';
@@ -2825,14 +2839,15 @@ function normalizeProductImages(product) {
     promoteHttpsVariant(product.imageUrl, candidates) ||
     promoteHttpsVariant(product.image, candidates);
   const firstHttpsCandidate = candidates.find((candidate) => isHttpsImageUrl(candidate)) || '';
-  const primaryImageUrl = explicitPrimary || firstHttpsCandidate || candidates[0] || '';
+  const primaryImageUrl =
+    explicitPrimary || firstHttpsCandidate || candidates[0] || PRODUCT_IMAGE_PLACEHOLDER_URL;
 
   const existingImages = Array.isArray(product.images) ? product.images : [];
   const existingRenderableImageUrls = extractImageUrlsFromCollection(existingImages);
   const normalizedImages =
     existingRenderableImageUrls.length > 0
       ? existingImages
-      : (primaryImageUrl ? [primaryImageUrl] : []).concat(
+      : [primaryImageUrl].concat(
           candidates.filter((url) => url !== primaryImageUrl),
         );
 
@@ -4173,6 +4188,14 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
     return false;
   }
 
+  if (hasLingerieSearchSignal(queryText)) {
+    for (const product of products.slice(0, 8)) {
+      if (!hasUsableSearchProduct(product)) continue;
+      if (isStrictLingerieCacheCandidate(product)) return true;
+    }
+    return false;
+  }
+
   if (hasFragranceSearchSignal(queryText)) {
     for (const product of products.slice(0, 8)) {
       if (!hasUsableSearchProduct(product)) continue;
@@ -4236,6 +4259,10 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!product || typeof product !== 'object') return false;
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
+
+  if (hasLingerieSearchSignal(queryText) && !isStrictLingerieCacheCandidate(product)) {
+    return false;
+  }
 
   if (hasPetHarnessSearchSignal(queryText)) {
     if (!hasStrictPetHarnessCatalogSignal(candidateText)) return false;
@@ -4310,6 +4337,17 @@ function inferCacheProductDomainKey(product) {
     return 'pet';
   }
   if (
+    hasLingerieCatalogProductSignal(text) ||
+    /\b(apparel|clothing|sleepwear|nightwear|bodysuit|corset|bralette|dress|skirt|blouse|shirt|top|pants|jeans|hoodie|sweater|cardigan|pajamas?)\b/i.test(
+      text,
+    ) ||
+    /衣服|穿搭|女装|女裝|裙|连衣裙|連衣裙|上衣|裤|睡衣|レディース|ワンピース|スカート|トップス|パジャマ/.test(
+      text,
+    )
+  ) {
+    return 'human_apparel';
+  }
+  if (
     /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
     /化妆|美妆|护肤|精华|口红|粉底|防晒|唇膏|眼影/.test(text) ||
     hasFragranceCatalogProductSignal(text)
@@ -4333,6 +4371,9 @@ function inferIntentDomainKeyForCacheValidation(intent, queryText) {
   const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (target === 'pet' || hasPetSearchSignal(normalizedQuery)) return 'pet';
+  if (primaryDomain === 'human_apparel' || hasLingerieSearchSignal(normalizedQuery)) {
+    return 'human_apparel';
+  }
   if (primaryDomain === 'beauty' || hasBeautyMakeupSearchSignal(normalizedQuery)) return 'beauty';
   if (/travel|trip|business trip|packing|luggage|toiletry|出差|旅行|旅游|差旅/.test(normalizedQuery)) {
     return 'travel';
@@ -5498,7 +5539,11 @@ const RESOLVER_SHORT_CIRCUIT_BLOCKED_QUERY_CLASSES = new Set([
   'mission',
   'exploratory',
 ]);
-const RESOLVER_SHORT_CIRCUIT_STRONG_REASONS = new Set(['stable_alias_match', 'exact_title']);
+const RESOLVER_SHORT_CIRCUIT_STRONG_REASONS = new Set([
+  'stable_alias_match',
+  'stable_alias_ref',
+  'exact_title',
+]);
 
 function normalizeResolverShortCircuitReasonToken(value) {
   return String(value || '')
@@ -7485,6 +7530,63 @@ function hasPetLeashSearchSignal(queryText) {
   );
 }
 
+function hasLingerieSearchSignal(queryText) {
+  const q = String(queryText || '');
+  if (!q) return false;
+  return (
+    /\b(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|bralette|bodysuit|corset|shapewear|intimate)\b/i.test(
+      q,
+    ) ||
+    /内衣|文胸|胸罩|丁字裤|蕾丝内衣|蕾絲內衣|塑身衣|下着|ブラ|パンティ|ランジェリー|lencer[ií]a|ropa\s+interior|sujetador|bragas|sous[-\s]?v[eê]tement|soutien[-\s]?gorge/.test(
+      q,
+    )
+  );
+}
+
+function hasLingerieCatalogProductSignal(candidateText) {
+  const text = String(candidateText || '');
+  if (!text) return false;
+  return (
+    /\b(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|bralette|bodysuit|corset|shapewear|intimate)\b/i.test(
+      text,
+    ) ||
+    /内衣|文胸|胸罩|丁字裤|蕾丝内衣|蕾絲內衣|塑身衣|下着|ブラ|パンティ|ランジェリー|lencer[ií]a|ropa\s+interior|sujetador|bragas|sous[-\s]?v[eê]tement|soutien[-\s]?gorge/.test(
+      text,
+    )
+  );
+}
+
+function hasBeautyToolCatalogSignal(candidateText) {
+  const text = String(candidateText || '');
+  if (!text) return false;
+  return (
+    /\b(brush|brushes|makeup brush|beauty blender|blender|sponge|puff|applicator|curler|tweezer|brush cleaner|cleaning pad|tool|tools)\b/i.test(
+      text,
+    ) ||
+    /化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|睫毛夹|睫毛夾|メイクブラシ|化粧筆|ブラシセット/.test(
+      text,
+    )
+  );
+}
+
+function hasPetCatalogProductSignal(candidateText) {
+  const text = String(candidateText || '');
+  if (!text) return false;
+  return (
+    /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|harness|leash|collar)\b/i.test(text) ||
+    /宠物|寵物|狗|猫|犬|猫服|犬服|狗链|狗鏈|牵引|牽引|背带|背帶|胸背|胴輪|ハーネス|首輪/.test(text)
+  );
+}
+
+function isStrictLingerieCacheCandidate(product) {
+  const text = buildFallbackCandidateText(product);
+  if (!text) return false;
+  if (!hasLingerieCatalogProductSignal(text)) return false;
+  if (hasBeautyToolCatalogSignal(text)) return false;
+  if (hasPetCatalogProductSignal(text)) return false;
+  return true;
+}
+
 function hasFragranceSearchSignal(queryText) {
   const q = String(queryText || '');
   if (!q) return false;
@@ -7558,6 +7660,24 @@ function hasBeautyCatalogProductSignal(candidateText) {
       text,
     );
   return hasBeautyCore || hasFragranceCatalogProductSignal(text);
+}
+
+function buildLingerieSignalSql(startIndex) {
+  const latin =
+    '(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|bralette|bodysuit|corset|shapewear|intimate|lencer[ií]a|ropa\\s+interior|sujetador|bragas|sous[-\\s]?v[eê]tement|soutien[-\\s]?gorge)';
+  const cjk =
+    '(内衣|文胸|胸罩|丁字裤|蕾丝内衣|蕾絲內衣|塑身衣|下着|ブラ|パンティ|ランジェリー)';
+  const re = `(\\m${latin}\\M|${cjk})`;
+  const fields = [
+    "coalesce(product_data->>'title','')",
+    "coalesce(product_data->>'description','')",
+    "coalesce(product_data->>'product_type','')",
+    "coalesce(product_data->>'tags','')",
+    "coalesce(product_data->>'category','')",
+  ];
+  const idx = startIndex;
+  const ors = fields.map((f) => `${f} ~* $${idx}`).join(' OR ');
+  return { sql: `(${ors})`, params: [re], nextIndex: idx + 1 };
 }
 
 function classifyBeautyBucketFromProduct(product) {
@@ -8270,6 +8390,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
+  const strictLingerieQuery = hasLingerieSearchSignal(q);
 
   const terms = tokenizeQueryForCache(q);
   if (terms.length === 0) {
@@ -8367,6 +8488,15 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
   const strictFilter = buildQueryFilter('pc.');
   const queryWhere = strictFilter.queryWhere;
+  let strictLingerieClause = null;
+  let strictLingerieParams = [];
+  let strictOffsetParamIndex = strictFilter.idx;
+  if (strictLingerieQuery) {
+    const built = buildLingerieSignalSql(strictFilter.idx);
+    strictLingerieClause = built.sql;
+    strictLingerieParams = built.params;
+    strictOffsetParamIndex = built.nextIndex;
+  }
   const baseWhere = `
     (pc.expires_at IS NULL OR pc.expires_at > now())
     AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
@@ -8384,6 +8514,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       ON mo.merchant_id = pc.merchant_id
     WHERE ${baseWhere}
       AND ${queryWhere}
+      ${strictLingerieClause ? `AND ${strictLingerieClause}` : ''}
   `;
 
   const rowsSql = `
@@ -8395,25 +8526,33 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       ON mo.merchant_id = pc.merchant_id
     WHERE ${baseWhere}
       AND ${queryWhere}
+      ${strictLingerieClause ? `AND ${strictLingerieClause}` : ''}
     ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
-    OFFSET $${strictFilter.idx}
-    LIMIT $${strictFilter.idx + 1}
+    OFFSET $${strictOffsetParamIndex}
+    LIMIT $${strictOffsetParamIndex + 1}
   `;
 
   const retrievalSources = [];
   const [countRes, rowsRes] = await Promise.all([
-    query(countSql, strictFilter.params),
-    query(rowsSql, [...strictFilter.params, pageOffset, pageFetch]),
+    query(countSql, [...strictFilter.params, ...strictLingerieParams]),
+    query(rowsSql, [...strictFilter.params, ...strictLingerieParams, pageOffset, pageFetch]),
   ]);
 
   const strictTotal = Number(countRes.rows?.[0]?.total || 0);
-  const strictRanked = toRankedUniqueProducts(rowsRes.rows || []);
+  const strictRankedRaw = toRankedUniqueProducts(rowsRes.rows || []);
+  const strictRanked = {
+    ...strictRankedRaw,
+    products: strictLingerieQuery
+      ? strictRankedRaw.products.filter((product) => isStrictLingerieCacheCandidate(product))
+      : strictRankedRaw.products,
+  };
   retrievalSources.push({
     source: 'lexical_cache',
     used: true,
     count: strictRanked.products.length,
     candidate_count: strictRanked.candidateCount,
     total: strictTotal,
+    strict_lingerie_filter_applied: strictLingerieQuery,
   });
 
   const fragranceQuery = hasFragranceSearchSignal(q);
@@ -8446,6 +8585,15 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
   try {
     const relaxedFilter = buildQueryFilter('');
+    let relaxedLingerieClause = null;
+    let relaxedLingerieParams = [];
+    let relaxedOffsetParamIndex = relaxedFilter.idx;
+    if (strictLingerieQuery) {
+      const built = buildLingerieSignalSql(relaxedFilter.idx);
+      relaxedLingerieClause = built.sql;
+      relaxedLingerieParams = built.params;
+      relaxedOffsetParamIndex = built.nextIndex;
+    }
     const relaxedBaseWhere = `
       (expires_at IS NULL OR expires_at > now())
       AND ${buildSellableStatusPredicate("product_data->>'status'")}
@@ -8456,6 +8604,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       FROM products_cache
       WHERE ${relaxedBaseWhere}
         AND ${relaxedFilter.queryWhere}
+        ${relaxedLingerieClause ? `AND ${relaxedLingerieClause}` : ''}
     `;
     const relaxedRowsSql = `
       SELECT merchant_id,
@@ -8464,22 +8613,30 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       FROM products_cache
       WHERE ${relaxedBaseWhere}
         AND ${relaxedFilter.queryWhere}
+        ${relaxedLingerieClause ? `AND ${relaxedLingerieClause}` : ''}
       ORDER BY cached_at DESC NULLS LAST, id DESC
-      OFFSET $${relaxedFilter.idx}
-      LIMIT $${relaxedFilter.idx + 1}
+      OFFSET $${relaxedOffsetParamIndex}
+      LIMIT $${relaxedOffsetParamIndex + 1}
     `;
     const [relaxedCountRes, relaxedRowsRes] = await Promise.all([
-      query(relaxedCountSql, relaxedFilter.params),
-      query(relaxedRowsSql, [...relaxedFilter.params, pageOffset, pageFetch]),
+      query(relaxedCountSql, [...relaxedFilter.params, ...relaxedLingerieParams]),
+      query(relaxedRowsSql, [...relaxedFilter.params, ...relaxedLingerieParams, pageOffset, pageFetch]),
     ]);
     const relaxedTotal = Number(relaxedCountRes.rows?.[0]?.total || 0);
-    const relaxedRanked = toRankedUniqueProducts(relaxedRowsRes.rows || []);
+    const relaxedRankedRaw = toRankedUniqueProducts(relaxedRowsRes.rows || []);
+    const relaxedRanked = {
+      ...relaxedRankedRaw,
+      products: strictLingerieQuery
+        ? relaxedRankedRaw.products.filter((product) => isStrictLingerieCacheCandidate(product))
+        : relaxedRankedRaw.products,
+    };
     retrievalSources.push({
       source: 'lexical_cache_relaxed_no_onboarding',
       used: true,
       count: relaxedRanked.products.length,
       candidate_count: relaxedRanked.candidateCount,
       total: relaxedTotal,
+      strict_lingerie_filter_applied: strictLingerieQuery,
     });
 
     if (strictNeedsFragranceBackfill) {
@@ -10345,7 +10502,9 @@ async function proxyAgentSearchToBackend(req, res) {
         : primaryMonoculture
         ? 'primary_monoculture_no_fallback'
         : 'primary_irrelevant_no_fallback';
-      if (primaryUsableCount > 0) {
+      const lookupAnchors = extractSearchAnchorTokens(queryText);
+      const aliasLookupIntent = isLookupStyleSearchQuery(queryText, lookupAnchors);
+      if (primaryUsableCount > 0 && !aliasLookupIntent) {
         const failOpenBody = withPrimaryIrrelevantFailOpen({
           body: normalized,
           reason,
@@ -17343,6 +17502,153 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
       }
 
+      let strictLingerieSupplementMeta = null;
+      const strictLingerieQuery = hasLingerieSearchSignal(queryText);
+      if (strictLingerieQuery && process.env.DATABASE_URL) {
+        const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+        const strictPrimaryProducts = primaryProducts.filter((product) =>
+          isStrictLingerieCacheCandidate(product),
+        );
+        const strictLingerieTarget = Math.min(
+          requestedLimit,
+          Math.max(4, Number(process.env.SEARCH_STRICT_LINGERIE_MIN_RESULTS_TARGET || 6) || 6),
+        );
+        if (strictPrimaryProducts.length < strictLingerieTarget) {
+          const fallbackQueries = buildStrictLingerieFallbackQueries(queryText, effectiveIntent);
+          const maxFallbackQueries = Math.max(
+            1,
+            Math.min(8, Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_MAX_QUERIES || 5) || 5),
+          );
+          const selectedFallbackQueries = fallbackQueries.slice(0, maxFallbackQueries);
+          const fallbackLimitPerQuery = Math.min(
+            100,
+            Math.max(
+              strictLingerieTarget * 3,
+              Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_FETCH_LIMIT_PER_QUERY || 80) || 80,
+            ),
+          );
+          const fallbackRecovered = [];
+          const fallbackQueryResults = [];
+          for (const fallbackQuery of selectedFallbackQueries) {
+            try {
+              const fromCache = await searchCrossMerchantFromCache(fallbackQuery, 1, fallbackLimitPerQuery, {
+                inStockOnly: queryParams?.in_stock_only !== false,
+              });
+              const products = Array.isArray(fromCache?.products)
+                ? fromCache.products.filter((product) => isStrictLingerieCacheCandidate(product))
+                : [];
+              fallbackRecovered.push(...products);
+              fallbackQueryResults.push({
+                query: fallbackQuery,
+                count: products.length,
+                total: Number(fromCache?.total || 0),
+              });
+            } catch (fallbackErr) {
+              fallbackQueryResults.push({
+                query: fallbackQuery,
+                count: 0,
+                total: 0,
+                error: String(fallbackErr?.message || fallbackErr),
+              });
+            }
+          }
+
+          const mergedStrictProducts = collapseNearDuplicateSearchProducts(
+            [...strictPrimaryProducts, ...fallbackRecovered],
+            { perTitleLimit: 2 },
+          ).filter((product) => isStrictLingerieCacheCandidate(product));
+
+          if (mergedStrictProducts.length > 0) {
+            const finalStrictProducts = mergedStrictProducts.slice(
+              0,
+              Math.max(requestedLimit, strictLingerieTarget),
+            );
+            const normalizedMerged = normalizeAgentProductsListResponse(
+              {
+                ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                  ? upstreamData
+                  : {}),
+                products: finalStrictProducts,
+                total: Math.max(
+                  Number(upstreamData?.total || 0) || 0,
+                  finalStrictProducts.length,
+                ),
+              },
+              {
+                limit: queryParams?.limit,
+                offset: queryParams?.offset,
+              },
+            );
+            const mergedExternalCount = finalStrictProducts.filter((product) =>
+              isExternalSeedProduct(product),
+            ).length;
+            const mergedInternalCount = Math.max(0, finalStrictProducts.length - mergedExternalCount);
+            upstreamData = {
+              ...normalizedMerged,
+              metadata: {
+                ...(normalizedMerged?.metadata &&
+                typeof normalizedMerged.metadata === 'object' &&
+                !Array.isArray(normalizedMerged.metadata)
+                  ? normalizedMerged.metadata
+                  : {}),
+                source_breakdown: {
+                  ...((normalizedMerged?.metadata?.source_breakdown &&
+                  typeof normalizedMerged.metadata.source_breakdown === 'object' &&
+                  !Array.isArray(normalizedMerged.metadata.source_breakdown)
+                    ? normalizedMerged.metadata.source_breakdown
+                    : {})),
+                  internal_count: mergedInternalCount,
+                  external_seed_count: mergedExternalCount,
+                  stale_cache_used: false,
+                  strategy_applied: 'strict_lingerie_cache_backfill',
+                },
+              },
+            };
+            strictLingerieSupplementMeta = {
+              attempted: true,
+              applied: finalStrictProducts.length > strictPrimaryProducts.length,
+              reason:
+                finalStrictProducts.length > strictPrimaryProducts.length
+                  ? 'strict_lingerie_cache_backfilled'
+                  : 'strict_lingerie_filtered_primary',
+              target_count: strictLingerieTarget,
+              primary_strict_count: strictPrimaryProducts.length,
+              final_count: finalStrictProducts.length,
+              fallback_queries: selectedFallbackQueries,
+              query_results: fallbackQueryResults,
+            };
+          }
+        } else if (strictPrimaryProducts.length !== primaryProducts.length) {
+          const normalizedStrictOnly = normalizeAgentProductsListResponse(
+            {
+              ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                ? upstreamData
+                : {}),
+              products: strictPrimaryProducts,
+              total: Math.max(
+                Number(upstreamData?.total || 0) || 0,
+                strictPrimaryProducts.length,
+              ),
+            },
+            {
+              limit: queryParams?.limit,
+              offset: queryParams?.offset,
+            },
+          );
+          upstreamData = normalizedStrictOnly;
+          strictLingerieSupplementMeta = {
+            attempted: true,
+            applied: true,
+            reason: 'strict_lingerie_filtered_primary',
+            target_count: strictLingerieTarget,
+            primary_strict_count: strictPrimaryProducts.length,
+            final_count: strictPrimaryProducts.length,
+            fallback_queries: [],
+            query_results: [],
+          };
+        }
+      }
+
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryProductCount = Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0;
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
@@ -17626,8 +17932,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
 
       if (
-        operation === 'find_products_multi' &&
-        (secondarySupplementMeta || fragranceExternalSupplementMeta) &&
+        (operation === 'find_products' || operation === 'find_products_multi') &&
+        (secondarySupplementMeta || fragranceExternalSupplementMeta || strictLingerieSupplementMeta) &&
         upstreamData &&
         typeof upstreamData === 'object' &&
         !Array.isArray(upstreamData)
@@ -17638,6 +17944,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
             ...(fragranceExternalSupplementMeta ? { pre_policy_fragrance_supplement: fragranceExternalSupplementMeta } : {}),
             ...(secondarySupplementMeta ? { search_stage_b: secondarySupplementMeta } : {}),
+            ...(strictLingerieSupplementMeta ? { strict_lingerie_supplement: strictLingerieSupplementMeta } : {}),
           },
         };
       }
