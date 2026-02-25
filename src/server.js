@@ -16212,18 +16212,22 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           !searchAllMerchantsExplicit &&
           creatorMerchantIds.length > 0;
 
-        queryParams = {
-          ...(merchantId ? { merchant_id: merchantId } : {}),
-          ...(!merchantId && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
-          ...(!merchantId && merchantIds.length === 0 && shouldScopeToCreatorCatalog
-            ? { merchant_ids: creatorMerchantIds }
-            : {}),
-          ...(!merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog
-            ? { search_all_merchants: true }
-            : {}),
-          ...(search.query != null ? { query: String(search.query || '') } : {}),
-          ...(search.category ? { category: search.category } : {}),
-          ...(priceMin != null ? { min_price: priceMin } : {}),
+	        queryParams = {
+	          ...(merchantId ? { merchant_id: merchantId } : {}),
+	          ...(!merchantId && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
+	          ...(!merchantId && merchantIds.length === 0 && shouldScopeToCreatorCatalog
+	            ? { merchant_ids: creatorMerchantIds }
+	            : {}),
+	          ...(!merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog
+	            ? { search_all_merchants: true }
+	            : {}),
+	          ...(search.query != null ? { query: String(search.query || '') } : {}),
+	          ...(search.category
+	            ? { category: search.category }
+	            : strictLingerieScopeForSearch
+	              ? { category: 'lingerie' }
+	              : {}),
+	          ...(priceMin != null ? { min_price: priceMin } : {}),
 	          ...(priceMax != null ? { max_price: priceMax } : {}),
 	          in_stock_only: search.in_stock_only !== false,
 	          limit: effectiveLimit,
