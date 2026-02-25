@@ -9,6 +9,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED = 'true';
   });
 
   afterEach(() => {
@@ -17,6 +18,12 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK;
     delete process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL;
     delete process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE;
+    delete process.env.AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER;
+    delete process.env.AURORA_PRODUCT_INTEL_ESCALATION_MODEL;
     delete process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS;
     delete process.env.AURORA_BFF_RECO_BLOCKS_BUDGET_MS;
     delete process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED;
@@ -2887,5 +2894,230 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       'url_realtime_product_intel_sync_enriched',
       'url_realtime_product_intel_kb_hit_sync_enriched',
     ]).toContain(valueMomentMode);
+  });
+
+  test('reconcileProductAnalysisConsistency clears stale anchor_product_missing once anchor is present', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const out = reconcileProductAnalysisConsistency({
+      assessment: {
+        verdict: 'Unknown',
+        reasons: ['Insufficient evidence.'],
+        anchor_product: {
+          brand: 'Lab Series',
+          name: 'All-In-One Defense Lotion SPF 35',
+          url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+        },
+      },
+      evidence: {
+        science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+        social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+        expert_notes: [],
+        missing_info: ['anchor_product_missing', 'evidence_missing'],
+      },
+      missing_info: ['anchor_product_missing', 'analysis_limited'],
+      user_facing_gaps: ['anchor_product_missing', 'analysis_limited'],
+      internal_debug_codes: ['anchor_product_missing', 'analysis_limited'],
+      missing_info_internal: ['anchor_product_missing', 'analysis_limited'],
+    }, { lang: 'EN' });
+
+    expect(out?.missing_info || []).not.toContain('anchor_product_missing');
+    expect(out?.user_facing_gaps || []).not.toContain('anchor_product_missing');
+    expect(out?.internal_debug_codes || []).not.toContain('anchor_product_missing');
+    expect(out?.missing_info_internal || []).not.toContain('anchor_product_missing');
+    expect(out?.evidence?.missing_info || []).not.toContain('anchor_product_missing');
+  });
+
+  test('reconcileProductAnalysisConsistency generates diagnostic unknown reasons instead of legacy static fallback text', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const out = reconcileProductAnalysisConsistency(
+      {
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          missing_info: ['evidence_missing'],
+        },
+        missing_info: ['url_fetch_forbidden_403', 'analysis_limited'],
+        provenance: {
+          url_fetch: {
+            final_strategy: 'curl_ua',
+            failure_code: 'url_fetch_forbidden_403',
+          },
+        },
+      },
+      {
+        lang: 'EN',
+        fieldMissing: [{ field: 'assessment', reason: 'upstream_missing_or_invalid' }],
+      },
+    );
+
+    const reasons = Array.isArray(out?.assessment?.reasons) ? out.assessment.reasons : [];
+    const joined = reasons.join(' ');
+    expect(String(out?.assessment?.verdict || '')).toMatch(/Unknown|未知/);
+    expect(joined).toMatch(/403|blocked/i);
+    expect(joined).toMatch(/Next step|paste the full INCI|official product page/i);
+    expect(joined).not.toMatch(/retrieve a reliable product analysis right now/i);
+  });
+
+  test('skin_fit confidence is capped when science evidence is sparse', () => {
+    const { enrichProductAnalysisPayload } = require('../src/auroraBff/normalize');
+    const out = enrichProductAnalysisPayload(
+      {
+        assessment: {
+          verdict: 'Unknown',
+          reasons: ['Evidence is incomplete and confidence is limited.'],
+        },
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: null,
+          missing_info: ['evidence_missing'],
+        },
+        missing_info: ['analysis_limited'],
+      },
+      {
+        lang: 'EN',
+        profileSummary: {
+          skinType: 'oily',
+          sensitivity: 'high',
+          barrierStatus: 'impaired',
+          goals: ['acne', 'dark_spots'],
+        },
+      },
+    );
+    const skinFitScore = Number(out?.confidence_by_block?.skin_fit?.score || 0);
+    const skinFitLevel = String(out?.confidence_by_block?.skin_fit?.level || '');
+    expect(skinFitScore).toBeLessThanOrEqual(0.58);
+    expect(skinFitLevel).not.toBe('high');
+  });
+
+  test('shouldPersistProductIntelKb blocks KB write when INCIDecoder is the only evidence source', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldPersistProductIntelKb({
+      assessment: { verdict: 'Likely Suitable' },
+      evidence: {
+        science: {
+          key_ingredients: ['Niacinamide', 'Glycerin', 'Panthenol'],
+        },
+        sources: [
+          { type: 'inci_decoder', url: 'https://incidecoder.com/products/lab-series-all-in-one-defense-lotion' },
+        ],
+      },
+      ingredient_intel: {
+        inci_normalized: ['Niacinamide', 'Glycerin', 'Panthenol'],
+      },
+    });
+    expect(decision).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        persisted: false,
+        blocked_reason: 'incidecoder_unverified_not_persisted',
+      }),
+    );
+  });
+
+  test('shouldPersistProductIntelKb allows KB write when authoritative source exists and INCIDecoder overlaps', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldPersistProductIntelKb(
+      {
+        assessment: { verdict: 'Likely Suitable' },
+        evidence: {
+          science: {
+            key_ingredients: ['Niacinamide', 'Glycerin', 'Octocrylene', 'Avobenzone'],
+          },
+          sources: [
+            { type: 'official_page', url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one' },
+            { type: 'inci_decoder', url: 'https://incidecoder.com/products/lab-series-all-in-one-defense-lotion' },
+          ],
+        },
+        ingredient_intel: {
+          inci_normalized: ['Niacinamide', 'Glycerin', 'Octocrylene', 'Avobenzone'],
+        },
+      },
+      { inci_decoder_overlap_count: 2 },
+    );
+    expect(decision).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        persisted: true,
+        blocked_reason: null,
+      }),
+    );
+  });
+
+  test('URL realtime analysis uses INCIDecoder supplement when official page is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED = 'true';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES = '2';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE = '0.3';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    nock('https://blocked-brand.test')
+      .persist()
+      .get('/product-x')
+      .reply(403, '<html><body>forbidden</body></html>');
+    nock('https://www.blocked-brand.test')
+      .persist()
+      .get('/product-x')
+      .reply(403, '<html><body>forbidden</body></html>');
+
+    nock('https://dailymed.nlm.nih.gov')
+      .persist()
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(200, '<html><body>no matches</body></html>');
+
+    nock('https://incidecoder.com')
+      .persist()
+      .get('/search')
+      .query(true)
+      .reply(200, '<html><body><a href="/products/all-in-one-defense-lotion">match</a></body></html>');
+
+    nock('https://incidecoder.com')
+      .persist()
+      .get(/\/products\/.*/)
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Lab Series All In One Defense Lotion ingredients (Explained)</title></head>
+         <body>
+           <a href="/ingredients/water">Water</a>
+           <a href="/ingredients/glycerin">Glycerin</a>
+           <a href="/ingredients/niacinamide">Niacinamide</a>
+           <a href="/ingredients/octocrylene">Octocrylene</a>
+           <a href="/ingredients/avobenzone">Avobenzone</a>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.buildProductAnalysisFromUrlIngredients({
+      productUrl: 'https://blocked-brand.test/product-x',
+      lang: 'EN',
+      parsedProduct: {
+        brand: 'Lab Series',
+        name: 'All In One Defense Lotion',
+        display_name: 'Lab Series All In One Defense Lotion',
+      },
+      profileSummary: {
+        skinType: 'oily',
+        sensitivity: 'medium',
+        barrierStatus: 'healthy',
+      },
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
+    });
+
+    expect(out).toBeTruthy();
+    const evidenceSources = Array.isArray(out?.payload?.evidence?.sources) ? out.payload.evidence.sources : [];
+    const sourceTypes = evidenceSources.map((item) => String(item?.type || '').toLowerCase());
+    expect(sourceTypes).toContain('inci_decoder');
+    expect(out?.payload?.missing_info || []).toContain('incidecoder_source_used');
+    expect(out?.payload?.provenance?.source_chain || []).toContain('inci_decoder');
+    expect(out?.source_meta?.incidecoder_source).toEqual(
+      expect.objectContaining({
+        provider: 'incidecoder',
+      }),
+    );
   });
 });
