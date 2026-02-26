@@ -154,6 +154,7 @@ describe('aurora realtime competitor recall budget control', () => {
   });
 
   test('main path defaults to a single query fanout when resolve fallback is enabled', async () => {
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_RESOLVE_FALLBACK = 'true';
     const { __internal } = require('../src/auroraBff/routes');
     const searchFn = jest.fn().mockResolvedValueOnce({ ok: true, products: [] });
 

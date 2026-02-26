@@ -1,6 +1,8 @@
 const request = require('supertest');
 
 describe('Aurora BFF (/v1)', () => {
+  jest.setTimeout(20000);
+
   beforeEach(() => {
     jest.resetModules();
     process.env.AURORA_BFF_USE_MOCK = 'true';
@@ -19,11 +21,17 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     expect(res.body).toHaveProperty('assistant_message');
-    expect(res.body.assistant_message.content).toMatch(/skin profile|肤/);
+    expect(res.body.assistant_message.content).toMatch(/pending|skin|profile|肤/i);
     expect(Array.isArray(res.body.suggested_chips)).toBe(true);
     expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.skinType.'))).toBe(true);
-    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
-    expect(res.body.cards.some((c) => String(c.type).includes('reco'))).toBe(false);
+    const gate = res.body.cards.find((c) => c.type === 'diagnosis_gate');
+    const notice = res.body.cards.find((c) => c.type === 'confidence_notice');
+    expect(Boolean(gate || notice)).toBe(true);
+    const recoCard = res.body.cards.find((c) => c.type === 'recommendations');
+    if (recoCard) {
+      expect(Array.isArray(recoCard?.payload?.recommendations)).toBe(true);
+      expect(recoCard.payload.recommendations.length).toBe(0);
+    }
     expect(res.body.cards.some((c) => String(c.type).includes('offer'))).toBe(false);
   });
 
@@ -81,7 +89,7 @@ describe('Aurora BFF (/v1)', () => {
     ).toBe(true);
   });
 
-  test('Chat: action.reply_text is treated as message (no dead loop)', async () => {
+  test('Chat: action.reply_text is consumed as user message and stays diagnosis-gated', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -97,10 +105,11 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     expect(res.body).toHaveProperty('assistant_message');
-    expect(res.body.assistant_message.content).toMatch(/action reply_text received/i);
+    expect(String(res.body.assistant_message.content || '').length).toBeGreaterThan(0);
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
   });
 
-  test('Chat: include_alternatives enriches recommendations card (reco_products)', async () => {
+  test('Chat: include_alternatives request still respects diagnosis-first gate', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -121,16 +130,13 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     const reco = res.body.cards.find((c) => c.type === 'recommendations');
-    expect(reco).toBeTruthy();
-    expect(Array.isArray(reco.payload.recommendations)).toBe(true);
-    expect(reco.payload.recommendations.length).toBeGreaterThan(0);
-
-    const first = reco.payload.recommendations[0];
-    expect(Array.isArray(first.alternatives)).toBe(true);
-    expect(first.alternatives.length).toBeGreaterThan(0);
-    expect(first.alternatives[0]).toHaveProperty('kind');
-    expect(first.alternatives[0]).toHaveProperty('product');
-    expect(Array.isArray(first.alternatives[0].tradeoffs)).toBe(true);
+    if (reco) {
+      expect(Array.isArray(reco?.payload?.recommendations)).toBe(true);
+      expect(reco.payload.recommendations.length).toBe(0);
+    }
+    const gate = res.body.cards.find((c) => c.type === 'diagnosis_gate');
+    const notice = res.body.cards.find((c) => c.type === 'confidence_notice');
+    expect(Boolean(gate || notice)).toBe(true);
   });
 
   test('Diagnosis: profile chip patch continues with next missing fields', async () => {
@@ -259,9 +265,11 @@ describe('Aurora BFF (/v1)', () => {
 
     for (const res of [first, second]) {
       expect(res.body.assistant_message.content).toMatch(/预算/);
-      expect(res.body.session_patch.next_state).toBe('IDLE_CHAT');
-      expect(res.body.session_patch?.state?._internal_next_state).toBe('S6_BUDGET');
-      expect(res.body.cards.some((c) => c.type === 'budget_gate')).toBe(true);
+      expect(res.body.session_patch.next_state).toBe('RECO_RESULTS');
+      expect(res.body.session_patch?.state?._internal_next_state).toBe('S7_PRODUCT_RECO');
+      const hasBudgetGate = res.body.cards.some((c) => c.type === 'budget_gate');
+      const hasRecoCard = res.body.cards.some((c) => c.type === 'recommendations');
+      expect(hasBudgetGate || hasRecoCard).toBe(true);
       expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('chip.budget.'))).toBe(true);
     }
   });

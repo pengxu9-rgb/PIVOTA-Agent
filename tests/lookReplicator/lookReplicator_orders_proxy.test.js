@@ -2,6 +2,7 @@ const request = require('supertest');
 const http = require('http');
 
 jest.mock('axios', () => ({
+  defaults: {},
   get: jest.fn(),
   post: jest.fn(),
 }));
@@ -112,4 +113,3 @@ describe('look replicator orders proxy', () => {
     expect(cfg.params).toMatchObject({ after_id: 0, wait_ms: 0, limit: 50, buyer_ref: 'guest:abc' });
   });
 });
-
