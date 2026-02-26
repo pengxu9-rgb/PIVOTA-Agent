@@ -565,7 +565,8 @@ function buildReviewsPreview(product, options = {}) {
       review_id: String(item.review_id || item.id || idx),
       rating: Number(item.rating || item.score || scale) || scale,
       author_label: item.author_label || item.author || item.user,
-      text_snippet: String(item.text_snippet || item.text || item.body || ''),
+      title: item.title ? String(item.title) : undefined,
+      text_snippet: String(item.text_snippet || item.text || item.body || item.title || ''),
       media: Array.isArray(item.media)
         ? item.media.map((m) => ({
             type: m.type || 'image',

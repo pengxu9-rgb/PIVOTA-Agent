@@ -5,6 +5,7 @@ function buildPreviewItem(index) {
     review_id: `r_${index}`,
     rating: 5,
     author_label: `buyer_${index}`,
+    title: `review title ${index}`,
     text_snippet: `review text ${index}`,
     media: [
       {
@@ -45,6 +46,7 @@ describe('pdpBuilder reviews preview media', () => {
     const previewItems = reviewsModule.data.preview_items || [];
     expect(previewItems).toHaveLength(6);
     expect(previewItems[0].review_id).toBe('r_1');
+    expect(previewItems[0].title).toBe('review title 1');
     expect(previewItems[0].media).toEqual([
       {
         type: 'image',
