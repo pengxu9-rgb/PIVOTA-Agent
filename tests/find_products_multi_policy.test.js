@@ -103,6 +103,31 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
   });
 
+  test('fragrance brand query runs search-first without clarify-only fallback', () => {
+    const intent = extractIntentRuleBased('tom ford', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'tf_1',
+            title: 'Tom Ford Noir Extreme Eau de Parfum',
+            description: 'fragrance perfume for date night',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'tom ford' } },
+      metadata: { ambiguity_score_pre: 0.72 },
+      rawUserQuery: 'tom ford',
+    });
+
+    expect(resp.metadata?.search_decision?.query_class).toBe('lookup');
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+  });
+
   test('direct category signal does not trigger second clarify on empty result', () => {
     const intent = extractIntentRuleBased('香水', [], []);
     const resp = applyFindProductsMultiPolicy({

@@ -957,6 +957,14 @@ function hasDirectCategorySignal(query) {
   );
 }
 
+function hasFragranceBrandSignal(query) {
+  const q = String(query || '').toLowerCase();
+  if (!q) return false;
+  return /\b(tom\s*ford|jo\s*malone|diptyque|byredo|le\s*labo|chanel|dior|ysl|yves\s*saint\s*laurent|armani|hermes|gucci|bvlgari|burberry|versace|creed|kilian|amouage)\b/.test(
+    q,
+  );
+}
+
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   const explicit = normalizeQueryClass(intent?.query_class, { defaultValue: null });
   const query = String(rawQuery || '').toLowerCase();
@@ -994,6 +1002,7 @@ function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   ) {
     return 'lookup';
   }
+  if (hasFragranceBrandSignal(rawQuery)) return 'lookup';
   if (
     hasPriceConstraint ||
     /预算|預算|以内|以内|以上|不超过|under|above|at least|waterproof|windproof|fragrance[-\s]?free/.test(
