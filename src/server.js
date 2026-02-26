@@ -83,10 +83,36 @@ const AURORA_ROUTES_FAIL_CLOSED = (() => {
     .trim()
     .toLowerCase();
   if (!raw) {
-    return String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+    return false;
   }
   return ['1', 'true', 'yes', 'y', 'on'].includes(raw);
 })();
+const AURORA_DEGRADED_PATH_PREFIXES = Object.freeze([
+  '/v1/chat',
+  '/v1/session/',
+  '/v1/profile/',
+  '/v1/tracker/',
+  '/v1/product/',
+  '/v1/dupe/',
+  '/v1/reco/generate',
+  '/v1/reco/employee-feedback',
+  '/v1/reco/interleave/',
+  '/v1/reco/async-updates',
+  '/v1/photos/',
+  '/v1/analysis/skin',
+  '/v1/routine/simulate',
+  '/v1/affiliate/outcome',
+  '/v1/auth/',
+  '/v1/ops/pdp-prefetch/',
+  '/v1/offers/resolve',
+]);
+const isAuroraDegradedPath = (pathname) => {
+  const path = String(pathname || '').trim();
+  if (!path) return false;
+  return AURORA_DEGRADED_PATH_PREFIXES.some((prefix) =>
+    prefix.endsWith('/') ? path.startsWith(prefix) : path === prefix || path.startsWith(`${prefix}/`),
+  );
+};
 try {
   const auroraRoutes = require('./auroraBff/routes');
   mountAuroraBffRoutes =
@@ -8451,6 +8477,56 @@ mountRecommendationRoutes(app);
 // ---------------- Aurora BFF (Lifecycle Skincare Partner) ----------------
 
 mountAuroraBffRoutes(app, { logger });
+if (!auroraRoutesReady) {
+  app.use((req, res, next) => {
+    if (!isAuroraDegradedPath(req.path)) return next();
+    const requestId = String(req.get('x-request-id') || req.get('x-requestid') || randomUUID()).trim();
+    const traceId = String(req.get('x-trace-id') || req.query.trace_id || requestId).trim();
+    logger.error(
+      {
+        request_id: requestId,
+        trace_id: traceId,
+        path: req.path,
+        aurora_routes_error: auroraRoutesLoadError,
+      },
+      'aurora_routes_degraded',
+    );
+    return res.status(503).json({
+      request_id: requestId,
+      trace_id: traceId,
+      assistant_message: null,
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: `err_${requestId}`,
+          type: 'error',
+          payload: {
+            error_code: 'AURORA_ROUTES_UNAVAILABLE',
+            message: 'Aurora service is temporarily unavailable. Please retry shortly.',
+          },
+        },
+      ],
+      session_patch: {
+        meta: {
+          aurora_routes_ready: false,
+          gate_policy_version: 'aurora_gate_policy_answer_first_v1',
+        },
+      },
+      events: [
+        {
+          event_name: 'aurora_routes_degraded',
+          timestamp: Date.now(),
+          request_id: requestId,
+          trace_id: traceId,
+          data: {
+            path: req.path,
+            error: auroraRoutesLoadError || 'routes_unavailable',
+          },
+        },
+      ],
+    });
+  });
+}
 
 // ---------------- Layer 1 (US): Compatibility ----------------
 

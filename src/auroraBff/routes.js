@@ -35561,72 +35561,48 @@ function mountAuroraBffRoutes(app, { logger }) {
         const triggerSource = String(requestedTransition.trigger_source || '').trim();
         const triggerId = String(requestedTransition.trigger_id || '').trim();
         const requestedNextState = normalizeAgentState(requestedTransition.requested_next_state);
+        let transitionRejectedReason = '';
 
         if (triggerSource === 'text_explicit') {
           const inferred = inferTextExplicitTransition(message, ctx.lang);
           if (!inferred || inferred.requested_next_state !== requestedNextState) {
-            const envelope = buildEnvelope(ctx, {
-              assistant_message: makeAssistantMessage(
-                ctx.lang === 'CN'
-                  ? '当前请求的状态跳转不合法（text_explicit 未命中显式短语）。'
-                  : 'Requested state transition rejected (text_explicit did not match allowlist).',
-              ),
-              suggested_chips: [],
-              cards: [
-                {
-                  card_id: `err_${ctx.request_id}`,
-                  type: 'error',
-                  payload: {
-                    error: 'STATE_TRANSITION_REJECTED',
-                    details: { reason: 'TEXT_EXPLICIT_NOT_ALLOWED', requested_next_state: requestedNextState },
-                  },
-                },
-              ],
-              session_patch: {},
-              events: [makeEvent(ctx, 'error', { code: 'STATE_TRANSITION_REJECTED', reason: 'TEXT_EXPLICIT_NOT_ALLOWED' })],
-            });
-            return sendChatEnvelope(envelope, 400);
+            transitionRejectedReason = 'TEXT_EXPLICIT_NOT_ALLOWED';
           }
         }
 
-        const validation = validateRequestedTransition({
-          fromState: clientAgentState,
-          triggerSource,
-          triggerId,
-          requestedNextState,
-        });
-
-        if (!validation.ok) {
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(
-              ctx.lang === 'CN'
-                ? '当前请求的状态跳转不合法（状态机硬规则拒绝）。'
-                : 'Requested state transition rejected (state machine hard rule).',
-            ),
-            suggested_chips: [],
-            cards: [
-              {
-                card_id: `err_${ctx.request_id}`,
-                type: 'error',
-                payload: {
-                  error: 'STATE_TRANSITION_REJECTED',
-                  details: {
-                    reason: validation.reason,
-                    from_state: clientAgentState,
-                    requested_next_state: requestedNextState,
-                    trigger_source: triggerSource,
-                    trigger_id: triggerId,
-                  },
-                },
-              },
-            ],
-            session_patch: {},
-            events: [makeEvent(ctx, 'error', { code: 'STATE_TRANSITION_REJECTED', reason: validation.reason })],
+        let validation = null;
+        if (!transitionRejectedReason) {
+          validation = validateRequestedTransition({
+            fromState: clientAgentState,
+            triggerSource,
+            triggerId,
+            requestedNextState,
           });
-          return sendChatEnvelope(envelope, 400);
+          if (!validation.ok) transitionRejectedReason = String(validation.reason || 'STATE_TRANSITION_REJECTED');
         }
 
-        agentState = validation.next_state;
+        if (transitionRejectedReason) {
+          pushGateDecision('frontend_state_transition_guard', {
+            reason_codes: [String(transitionRejectedReason || '').toLowerCase()],
+          });
+          policyMeta.invalid_transition_fallback = true;
+          policyMeta.invalid_transition_reason = transitionRejectedReason;
+          logger?.warn(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              from_state: clientAgentState,
+              requested_next_state: requestedNextState,
+              trigger_source: triggerSource,
+              trigger_id: triggerId,
+              reason: transitionRejectedReason,
+            },
+            'aurora bff: requested transition rejected, fallback to default state',
+          );
+          agentState = DEFAULT_AGENT_STATE;
+        } else {
+          agentState = validation.next_state;
+        }
       }
 
       const recoInteractionAllowed = recommendationsAllowed({
@@ -35780,6 +35756,29 @@ function mountAuroraBffRoutes(app, { logger }) {
         (canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT || looksLikeProductEvaluationIntentV2(message, actionId)) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !ingredientScienceIntent;
+      const recommendationEntryRequested = Boolean(
+        actionId === 'chip.start.reco_products' ||
+        actionId === 'chip_get_recos' ||
+        actionId === 'chip.action.reco_routine' ||
+        actionId === 'chip.start.routine' ||
+        looksLikeRecommendationRequest(message),
+      );
+      const diagnosisEntryRequested = Boolean(
+        actionId === 'chip.start.diagnosis' ||
+        actionId === 'chip_start_diagnosis' ||
+        (requestedTransition &&
+          typeof requestedTransition === 'object' &&
+          normalizeAgentState(requestedTransition.requested_next_state) === 'DIAG_PROFILE') ||
+        looksLikeDiagnosisStart(message),
+      );
+      const diagnosisFlowContinuationAllowed = Boolean(
+        !diagnosisEntryRequested &&
+        !recommendationEntryRequested &&
+        !evaluateIntent &&
+        !ingredientScienceIntent &&
+        !conflictIntentRequested &&
+        !looksLikeWeatherOrEnvironmentQuestion(message),
+      );
       const anchorCollectionSignal = (() => {
         const text = String(message || '').trim().toLowerCase();
         const aid = String(actionId || '').trim().toLowerCase();
@@ -36605,7 +36604,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
-      if (String(agentState || '') === 'DIAG_PROFILE' || String(agentState || '').startsWith('DIAG_')) {
+      if (
+        (String(agentState || '') === 'DIAG_PROFILE' || String(agentState || '').startsWith('DIAG_')) &&
+        (diagnosisEntryRequested || diagnosisFlowContinuationAllowed)
+      ) {
         const { score, missing } = profileCompleteness(profile);
         const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
         const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
