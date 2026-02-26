@@ -227,7 +227,7 @@ describe('recoScoreExplain', () => {
     expect(out[0].social_raw).toBeUndefined();
   });
 
-  test('does not attach social_summary_user_visible when social signal is low', () => {
+  test('attaches degraded social_summary_user_visible when social signal is low', () => {
     const out = attachExplanations('competitors', makeAnchor(), [makeCandidate({
       social_raw: {
         channels: ['reddit'],
@@ -243,6 +243,12 @@ describe('recoScoreExplain', () => {
         quality: 0.7,
       },
     })], { lang: 'EN' });
-    expect(out[0].social_summary_user_visible).toBeUndefined();
+    expect(out[0].social_summary_user_visible).toEqual(
+      expect.objectContaining({
+        themes: [],
+        volume_bucket: 'low',
+      }),
+    );
+    expect(typeof out[0].social_summary_user_visible.sentiment_hint).toBe('string');
   });
 });

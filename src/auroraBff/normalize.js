@@ -102,6 +102,7 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT = new Set([
   'reco_guardrail_same_brand_filtered',
   'reco_guardrail_on_page_filtered',
   'reco_guardrail_circuit_open',
+  'reco_blocks_schema_invalid',
 ]);
 
 const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
@@ -113,6 +114,7 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
   'competitors.',
   'router.',
   'reco_dag_',
+  'reco_blocks_',
   'url_',
   'upstream_',
   'internal_',

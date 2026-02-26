@@ -71,7 +71,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
       .fn()
       .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 120000ms exceeded' })
       .mockResolvedValueOnce({ data: { summary: { synced: 10 } } });
-    jest.doMock('axios', () => ({ post: axiosPost }));
+    jest.doMock('axios', () => ({ defaults: {}, post: axiosPost }));
 
     const app = require('../src/server');
     await app._debug.runCreatorCatalogAutoSync();
@@ -114,7 +114,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
       })
       .mockResolvedValueOnce({ status: 200, data: { summary: { synced: 5 } } })
       .mockResolvedValueOnce({ status: 200, data: { summary: { synced: 6 } } });
-    jest.doMock('axios', () => ({ post: axiosPost }));
+    jest.doMock('axios', () => ({ defaults: {}, post: axiosPost }));
 
     const app = require('../src/server');
     await app._debug.runCreatorCatalogAutoSync();

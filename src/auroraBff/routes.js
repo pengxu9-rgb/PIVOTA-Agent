@@ -234,6 +234,11 @@ const {
 const { getAuroraKbV0, getAuroraKbFailMode } = require('./kbV0/loader');
 const { resolveQaPlan } = require('./qaPlanner');
 const { BLOCK_LEVEL, evaluateSafety } = require('./safetyEngineV1');
+const {
+  GATE_MODE,
+  GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION,
+  resolveGateDecision,
+} = require('./gatePolicyRegistry');
 const { getTravelWeather } = require('./weatherAdapter');
 const { buildEpiPayload } = require('./epiCalculator');
 const { computeAuroraChatRolloutContext } = require('./rollout');
@@ -394,6 +399,11 @@ const AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const OPTIONAL_SAFETY_PROFILE_FIELDS = Object.freeze([
+  'pregnancy_status',
+  'age_band',
+  'high_risk_medications',
+]);
 const AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED = (() => {
   const raw = String(process.env.AURORA_CATALOG_DOMAIN_GUARD_V1 || 'true')
     .trim()
@@ -624,6 +634,12 @@ const RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED || '').trim().toLowerCase();
   if (raw) return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
   return process.env.NODE_ENV !== 'test';
+})();
+const RECO_CATALOG_SEARCH_AURORA_SELF_PROXY_FIRST = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL = (() => {
   const explicit = String(
@@ -2210,6 +2226,7 @@ function buildRecoCatalogSearchBaseUrlCandidates({
   includeLocalFallback = false,
   preferConfigured = RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS,
   includeSelfProxy = RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED,
+  preferSelfProxyFirst = RECO_CATALOG_SEARCH_AURORA_SELF_PROXY_FIRST,
 } = {}) {
   const out = [];
   const seen = new Set();
@@ -2228,14 +2245,26 @@ function buildRecoCatalogSearchBaseUrlCandidates({
       .filter(Boolean);
     for (const token of tokens) add(token);
   };
-  if (preferConfigured) {
-    addConfigured();
+  const addSelfProxy = () => {
     if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
+  };
+  if (preferSelfProxyFirst) {
+    addSelfProxy();
+    if (preferConfigured) {
+      addConfigured();
+      add(PIVOTA_BACKEND_BASE_URL);
+    } else {
+      add(PIVOTA_BACKEND_BASE_URL);
+      addConfigured();
+    }
+  } else if (preferConfigured) {
+    addConfigured();
+    addSelfProxy();
     add(PIVOTA_BACKEND_BASE_URL);
   } else {
     add(PIVOTA_BACKEND_BASE_URL);
     addConfigured();
-    if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
+    addSelfProxy();
   }
   if (includeLocalFallback) add(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   return out;
@@ -3286,7 +3315,7 @@ function messageHasAvailabilityHint(text) {
 function hasExplicitCatalogPurchaseIntent(text) {
   const raw = String(text || '').trim();
   if (!raw) return false;
-  return /(哪里买|怎么买|购买|下单|有货|现货|库存|链接|旗舰|自营|店铺|where (can i|to) buy|in stock|available|availability|purchase|buy|shop)/i.test(
+  return /(哪里买|怎么买|购买|下单|有货|现货|库存|链接|旗舰|自营|店铺|有没有|有吗|有无|where (can i|to) buy|in stock|available|availability|purchase|buy|shop|do you have|have any)/i.test(
     raw,
   );
 }
@@ -3297,6 +3326,20 @@ function hasLikelyProductEntityMention(text) {
   if (/https?:\/\//i.test(raw)) return true;
   if (/(serum|cleanser|moisturizer|cream|toner|sunscreen|spf|retinol|niacinamide|mask|精华|洁面|面霜|乳液|爽肤水|防晒|面膜)/i.test(raw)) {
     return true;
+  }
+  const lowered = raw.toLowerCase();
+  for (const brand of Object.values(CATALOG_BRANDS || {})) {
+    const aliases = Array.isArray(brand && brand.aliases) ? brand.aliases : [];
+    for (const alias of aliases) {
+      const token = String(alias || '').trim();
+      if (!token) continue;
+      if (/[\u4e00-\u9fff]/.test(token)) {
+        if (raw.includes(token)) return true;
+        continue;
+      }
+      const re = buildLooseAsciiAliasRegex(token);
+      if (re && re.test(lowered)) return true;
+    }
   }
   const tokens = raw
     .replace(/[，。！？!?]/g, ' ')
@@ -3309,8 +3352,16 @@ function hasLikelyProductEntityMention(text) {
   return informative.length >= 2;
 }
 
+function detectCatalogAvailabilityShortCircuitBlockReason(text) {
+  const hasAvailabilityHint = messageHasAvailabilityHint(text);
+  if (!hasAvailabilityHint) return 'availability_hint_missing';
+  const hasEntityMention = hasLikelyProductEntityMention(text);
+  if (!hasEntityMention) return 'product_entity_missing';
+  return '';
+}
+
 function shouldAllowCatalogAvailabilityShortCircuit(text) {
-  return hasExplicitCatalogPurchaseIntent(text) && hasLikelyProductEntityMention(text);
+  return !detectCatalogAvailabilityShortCircuitBlockReason(text);
 }
 
 function stripGenericAvailabilityTokens(value) {
@@ -3539,7 +3590,7 @@ function isSkincareCatalogProduct(product) {
     .map((value) => String(value || '').toLowerCase())
     .join(' ');
   if (!joined.trim()) return true;
-  const skincareHit = /(skincare|cleanser|serum|essence|moistur|cream|toner|mask|sunscreen|spf|lotion|barrier|护肤|洁面|精华|面霜|乳液|爽肤水|面膜|防晒|修护)/.test(
+  const skincareHit = /(skincare|cleanser|serum|essence|moistur|cream|toner|mask|sunscreen|spf|lotion|barrier|niacinamide|retinol|retinoid|vitamin c|azelaic|ceramide|hyaluronic|acne|护肤|洁面|精华|面霜|乳液|爽肤水|面膜|防晒|修护|烟酰胺|视黄醇|壬二酸|神经酰胺|玻尿酸|祛痘)/.test(
     joined,
   );
   const poisonHit = /(brush|blush|foundation brush|makeup brush|eyeshadow|lipstick|mascara|化妆刷|腮红刷|彩妆刷)/.test(joined);
@@ -7148,13 +7199,63 @@ function isLikelyNoiseCompetitorName(name) {
   const text = String(name || '').trim().toLowerCase();
   if (!text) return true;
   if (text.length < 4) return true;
+  if (/\{\{+|\}\}+/i.test(text)) return true;
+  if (/\bsku_[a-z0-9_]+\b/i.test(text)) return true;
+  if (/\b(prod|product)_rgn_[a-z0-9_]+\b/i.test(text)) return true;
   if (/^skip to\b/i.test(text)) return true;
-  if (/^(contact us|home|menu|search|my account|sign in|footer|header)$/i.test(text)) return true;
+  if (/^(contact us|home|menu|search|my account|sign in|footer|header|bestsellers?|new arrivals?)$/i.test(text)) return true;
   if (/\b(skip to main content|skip to footer content|contact us)\b/i.test(text)) return true;
+  const symbolChars = (text.match(/[^a-z0-9\u4e00-\u9fff\s]/g) || []).length;
+  if (symbolChars / Math.max(1, text.length) > 0.35) return true;
   return false;
 }
 
-function sanitizeCompetitorCandidates(candidates, max = 10) {
+function initCandidateFilterStats(seed = null) {
+  const base = seed && typeof seed === 'object' && !Array.isArray(seed) ? seed : {};
+  return {
+    competitors_dropped_non_skincare: Number.isFinite(Number(base.competitors_dropped_non_skincare))
+      ? Number(base.competitors_dropped_non_skincare)
+      : 0,
+    related_dropped_non_skincare: Number.isFinite(Number(base.related_dropped_non_skincare))
+      ? Number(base.related_dropped_non_skincare)
+      : 0,
+    dupes_dropped_non_skincare: Number.isFinite(Number(base.dupes_dropped_non_skincare))
+      ? Number(base.dupes_dropped_non_skincare)
+      : 0,
+  };
+}
+
+function incrementCandidateFilterStats(stats, pool = 'generic') {
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) return;
+  const token = String(pool || '').trim().toLowerCase();
+  if (token === 'competitors') {
+    stats.competitors_dropped_non_skincare = Number(stats.competitors_dropped_non_skincare || 0) + 1;
+    return;
+  }
+  if (token === 'related_products' || token === 'related') {
+    stats.related_dropped_non_skincare = Number(stats.related_dropped_non_skincare || 0) + 1;
+    return;
+  }
+  if (token === 'dupes' || token === 'dupe') {
+    stats.dupes_dropped_non_skincare = Number(stats.dupes_dropped_non_skincare || 0) + 1;
+  }
+}
+
+function hasCandidateFilterDropStats(stats) {
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) return false;
+  return Number(stats.competitors_dropped_non_skincare || 0) > 0
+    || Number(stats.related_dropped_non_skincare || 0) > 0
+    || Number(stats.dupes_dropped_non_skincare || 0) > 0;
+}
+
+function sanitizeCompetitorCandidates(candidates, max = 10, options = null) {
+  const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+  const enforceSkincare = opts.enforce_skincare == null
+    ? (opts.enforceSkincare == null ? true : Boolean(opts.enforceSkincare))
+    : Boolean(opts.enforce_skincare);
+  const strictFilter = opts.strictFilter == null ? AURORA_PRODUCT_STRICT_SKINCARE_FILTER : Boolean(opts.strictFilter);
+  const stats = opts.stats && typeof opts.stats === 'object' && !Array.isArray(opts.stats) ? opts.stats : null;
+  const pool = String(opts.pool || 'generic').trim().toLowerCase();
   const out = [];
   const seen = new Set();
   for (const item of Array.isArray(candidates) ? candidates : []) {
@@ -7162,6 +7263,13 @@ function sanitizeCompetitorCandidates(candidates, max = 10) {
     if (!row) continue;
     const name = pickFirstTrimmed(row.name, row.display_name);
     if (!name || isLikelyNoiseCompetitorName(name)) continue;
+    if (enforceSkincare) {
+      const guard = evaluateAnchorProductSkincareGuard(row, { strictFilter });
+      if (!guard.ok && (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category')) {
+        incrementCandidateFilterStats(stats, pool);
+        continue;
+      }
+    }
     const brand = pickFirstTrimmed(row.brand);
     const key = `${String(brand || '').toLowerCase()}::${String(name).toLowerCase()}`;
     if (seen.has(key)) continue;
@@ -7864,6 +7972,10 @@ function buildRouterAnchorFromProductLike(anchorProduct) {
 }
 
 function summarizeRouterReasonCodes(routeOut) {
+  return collectRouterReasonCodeTokens(routeOut).map((token) => `router.${token}`).slice(0, 24);
+}
+
+function collectRouterReasonCodeTokens(routeOut) {
   const out = [];
   const seen = new Set();
   for (const row of Array.isArray(routeOut?.internal_reason_codes) ? routeOut.internal_reason_codes : []) {
@@ -7871,11 +7983,11 @@ function summarizeRouterReasonCodes(routeOut) {
     for (const raw of reasons) {
       const token = String(raw || '').trim();
       if (!token) continue;
-      const normalized = `router.${token}`;
-      if (seen.has(normalized)) continue;
-      seen.add(normalized);
-      out.push(normalized);
-      if (out.length >= 24) return out;
+      const key = token.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(token);
+      if (out.length >= 32) return out;
     }
   }
   return out;
@@ -7895,11 +8007,31 @@ function routeCompetitorCandidatePools({
       allow_same_brand_dupes: false,
     },
   );
+  const candidateFilterStats = initCandidateFilterStats();
+  const routeReasonCodesRaw = collectRouterReasonCodeTokens(routed);
   return {
     routed,
-    compPool: filterBlockedCompetitorSourceCandidates(sanitizeCompetitorCandidates(routed?.comp_pool, maxCandidates)),
-    relPool: sanitizeCompetitorCandidates(routed?.rel_pool, maxCandidates),
-    dupePool: filterBlockedCompetitorSourceCandidates(sanitizeCompetitorCandidates(routed?.dupe_pool, maxCandidates)),
+    routeReasonCodesRaw,
+    candidateFilterStats,
+    compPool: filterBlockedCompetitorSourceCandidates(
+      sanitizeCompetitorCandidates(routed?.comp_pool, maxCandidates, {
+        enforceSkincare: true,
+        pool: 'competitors',
+        stats: candidateFilterStats,
+      }),
+    ),
+    relPool: sanitizeCompetitorCandidates(routed?.rel_pool, maxCandidates, {
+      enforceSkincare: true,
+      pool: 'related_products',
+      stats: candidateFilterStats,
+    }),
+    dupePool: filterBlockedCompetitorSourceCandidates(
+      sanitizeCompetitorCandidates(routed?.dupe_pool, maxCandidates, {
+        enforceSkincare: true,
+        pool: 'dupes',
+        stats: candidateFilterStats,
+      }),
+    ),
   };
 }
 
@@ -8748,6 +8880,10 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
   });
   const cleanCandidates = routedPools.compPool;
   const recoveredRelated = routedPools.relPool;
+  const droppedStats = initCandidateFilterStats(routedPools?.candidateFilterStats);
+  const routeReasonCodesRaw = Array.isArray(routedPools?.routeReasonCodesRaw)
+    ? routedPools.routeReasonCodesRaw
+    : collectRouterReasonCodeTokens(routedPools?.routed);
   const rawLen = rawCandidates.length;
   const cleanLen = cleanCandidates.length;
   const existingRelatedObj = p.related_products && typeof p.related_products === 'object' && !Array.isArray(p.related_products)
@@ -8761,13 +8897,33 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
   const missingInfo = getProductAnalysisInternalMissingCodes(p);
   const nextMissingInfo = cleanLen
     ? uniqCaseInsensitiveStrings(
-        [
-          ...stripCompetitorMissingTokens(missingInfo),
-          ...(cleanLen < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
-        ],
-        16,
-      )
+      [
+        ...stripCompetitorMissingTokens(missingInfo),
+        ...(cleanLen < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
+      ],
+      16,
+    )
     : uniqCaseInsensitiveStrings([...missingInfo, 'competitors_missing', 'competitor_candidates_filtered_noise'], 16);
+  if (Number(droppedStats.competitors_dropped_non_skincare || 0) > 0) nextMissingInfo.push('competitors_non_skincare_filtered');
+  if (Number(droppedStats.related_dropped_non_skincare || 0) > 0) nextMissingInfo.push('related_products_non_skincare_filtered');
+  if (Number(droppedStats.dupes_dropped_non_skincare || 0) > 0) nextMissingInfo.push('dupes_non_skincare_filtered');
+  if (routeReasonCodesRaw.some((code) => String(code || '').trim().toLowerCase() === 'competitor_category_unknown_blocked')) {
+    nextMissingInfo.push('competitor_category_unknown_blocked');
+  }
+  const dedupedMissingInfo = uniqCaseInsensitiveStrings(nextMissingInfo, 20);
+  const existingProvenance = p.provenance && typeof p.provenance === 'object' && !Array.isArray(p.provenance)
+    ? p.provenance
+    : {};
+  const existingFilterStats = existingProvenance.candidate_filter_stats
+    && typeof existingProvenance.candidate_filter_stats === 'object'
+    && !Array.isArray(existingProvenance.candidate_filter_stats)
+    ? initCandidateFilterStats(existingProvenance.candidate_filter_stats)
+    : initCandidateFilterStats();
+  const mergedFilterStats = {
+    competitors_dropped_non_skincare: Number(existingFilterStats.competitors_dropped_non_skincare || 0) + Number(droppedStats.competitors_dropped_non_skincare || 0),
+    related_dropped_non_skincare: Number(existingFilterStats.related_dropped_non_skincare || 0) + Number(droppedStats.related_dropped_non_skincare || 0),
+    dupes_dropped_non_skincare: Number(existingFilterStats.dupes_dropped_non_skincare || 0) + Number(droppedStats.dupes_dropped_non_skincare || 0),
+  };
 
   return applyProductAnalysisGapContract({
     ...p,
@@ -8783,8 +8939,13 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
         },
       }
       : {}),
+    missing_info: dedupedMissingInfo,
+    provenance: {
+      ...existingProvenance,
+      ...(hasCandidateFilterDropStats(mergedFilterStats) ? { candidate_filter_stats: mergedFilterStats } : {}),
+    },
     internal_debug_codes: uniqCaseInsensitiveStrings([
-      ...nextMissingInfo,
+      ...dedupedMissingInfo,
       ...summarizeRouterReasonCodes(routedPools.routed),
     ], 32),
   });
@@ -8884,6 +9045,10 @@ function stripCompetitorMissingTokens(items) {
     if (token === 'alternatives_unavailable') continue;
     if (token === 'alternatives_limited') continue;
     if (token === 'competitor_candidates_filtered_noise') continue;
+    if (token === 'competitors_non_skincare_filtered') continue;
+    if (token === 'related_products_non_skincare_filtered') continue;
+    if (token === 'dupes_non_skincare_filtered') continue;
+    if (token === 'competitor_category_unknown_blocked') continue;
     if (token === 'competitor_sync_enrich_used') continue;
     if (token === 'competitor_sync_aurora_fallback_used') continue;
     if (/^competitor_recall_/i.test(token)) continue;
@@ -9856,6 +10021,7 @@ async function buildProductAnalysisFromUrlIngredients({
   let dagProvenancePatch = null;
   let dagTracking = null;
   let competitorSnapshotMeta = null;
+  let candidateFilterStats = initCandidateFilterStats();
   const htmlForReco = html || (!fetchOut.ok ? '<!--on_page_fetch_blocked-->' : '');
 
   const dagOut = await runRecoBlocksForUrl({
@@ -9873,9 +10039,35 @@ async function buildProductAnalysisFromUrlIngredients({
   });
 
   if (dagOut && typeof dagOut === 'object') {
-    const compPool = sanitizeCompetitorCandidates(dagOut?.competitors?.candidates, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
-    const relPool = sanitizeCompetitorCandidates(dagOut?.related_products?.candidates, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
-    const dupePool = sanitizeCompetitorCandidates(dagOut?.dupes?.candidates, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
+    const dagFilterStats = initCandidateFilterStats();
+    const compPool = sanitizeCompetitorCandidates(
+      dagOut?.competitors?.candidates,
+      PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      {
+        enforceSkincare: true,
+        pool: 'competitors',
+        stats: dagFilterStats,
+      },
+    );
+    const relPool = sanitizeCompetitorCandidates(
+      dagOut?.related_products?.candidates,
+      PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      {
+        enforceSkincare: true,
+        pool: 'related_products',
+        stats: dagFilterStats,
+      },
+    );
+    const dupePool = sanitizeCompetitorCandidates(
+      dagOut?.dupes?.candidates,
+      PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      {
+        enforceSkincare: true,
+        pool: 'dupes',
+        stats: dagFilterStats,
+      },
+    );
+    candidateFilterStats = dagFilterStats;
     routedPools = {
       compPool,
       relPool,
@@ -9883,6 +10075,10 @@ async function buildProductAnalysisFromUrlIngredients({
       routed: {
         internal_reason_codes: Array.isArray(dagOut.internal_reason_codes) ? dagOut.internal_reason_codes : [],
       },
+      routeReasonCodesRaw: collectRouterReasonCodeTokens({
+        internal_reason_codes: Array.isArray(dagOut.internal_reason_codes) ? dagOut.internal_reason_codes : [],
+      }),
+      candidateFilterStats: dagFilterStats,
     };
     competitorOut = {
       candidates: compPool,
@@ -9950,6 +10146,7 @@ async function buildProductAnalysisFromUrlIngredients({
     const recalledCandidates = sanitizeCompetitorCandidates(
       competitorOut?.candidates,
       PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      { enforceSkincare: true, pool: 'competitors', stats: candidateFilterStats },
     );
     let onPageCandidates = [];
     competitorSource = 'catalog';
@@ -9969,6 +10166,7 @@ async function buildProductAnalysisFromUrlIngredients({
       candidates: [...recalledCandidates, ...onPageCandidates],
       maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
     });
+    candidateFilterStats = initCandidateFilterStats(routedPools?.candidateFilterStats);
     if (!routedPools.compPool.length) {
       if (onPageCandidates.length || routedPools.relPool.length) {
         competitorSource = 'on_page_related_only';
@@ -9984,6 +10182,24 @@ async function buildProductAnalysisFromUrlIngredients({
   const competitorCandidates = routedPools.compPool;
   const relatedCandidates = routedPools.relPool;
   const dupeCandidates = routedPools.dupePool;
+  const routeReasonCodesRaw = Array.isArray(routedPools?.routeReasonCodesRaw)
+    ? routedPools.routeReasonCodesRaw
+    : collectRouterReasonCodeTokens(routedPools?.routed);
+  const hasCategoryUnknownBlocked = routeReasonCodesRaw.some(
+    (code) => String(code || '').trim().toLowerCase() === 'competitor_category_unknown_blocked',
+  );
+  const hasDroppedNonSkincare = hasCandidateFilterDropStats(candidateFilterStats);
+  const urlSkincareSignalStrong = /\b(skincare|moisturizer|moisturiser|serum|cream|lotion|cleanser|toner|essence|sunscreen|spf|face)\b/i
+    .test(`${parsedUrl.hostname} ${parsedUrl.pathname}`);
+  if (hasDroppedNonSkincare && urlSkincareSignalStrong) {
+    logger?.warn?.(
+      {
+        url: parsedUrl.toString(),
+        dropped_stats: candidateFilterStats,
+      },
+      'aurora bff: competitor category drift filtered for skincare URL',
+    );
+  }
   const competitorMissing = !competitorCandidates.length;
   const socialMissing = !socialSignals.has_signal;
 
@@ -10026,6 +10242,16 @@ async function buildProductAnalysisFromUrlIngredients({
   if (!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT) {
     evidenceMissingInfo.push('competitors_low_coverage');
   }
+  if (Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0) {
+    evidenceMissingInfo.push('competitors_non_skincare_filtered');
+  }
+  if (Number(candidateFilterStats.related_dropped_non_skincare || 0) > 0) {
+    evidenceMissingInfo.push('related_products_non_skincare_filtered');
+  }
+  if (Number(candidateFilterStats.dupes_dropped_non_skincare || 0) > 0) {
+    evidenceMissingInfo.push('dupes_non_skincare_filtered');
+  }
+  if (hasCategoryUnknownBlocked) evidenceMissingInfo.push('competitor_category_unknown_blocked');
   if (competitorMissing && competitorReason) evidenceMissingInfo.push(`competitor_recall_${String(competitorReason).toLowerCase()}`);
   const dagFallbacksUsed = Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : [];
   const dagTimedOutBlocks = Array.isArray(dagDiagnostics?.timed_out_blocks) ? dagDiagnostics.timed_out_blocks : [];
@@ -10195,6 +10421,15 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(dagProvenancePatch && typeof dagProvenancePatch === 'object' ? dagProvenancePatch : {}),
       url_fetch: urlFetchProvenance,
       ...(sourceChain.length ? { source_chain: sourceChain } : {}),
+      ...(hasCandidateFilterDropStats(candidateFilterStats)
+        ? {
+          candidate_filter_stats: {
+            competitors_dropped_non_skincare: Number(candidateFilterStats.competitors_dropped_non_skincare || 0),
+            related_dropped_non_skincare: Number(candidateFilterStats.related_dropped_non_skincare || 0),
+            dupes_dropped_non_skincare: Number(candidateFilterStats.dupes_dropped_non_skincare || 0),
+          },
+        }
+        : {}),
       ...(regulatorySupplement && regulatorySupplement.ok
         ? {
           regulatory_source: {
@@ -10252,6 +10487,10 @@ async function buildProductAnalysisFromUrlIngredients({
         ...(socialMissing ? ['social_signals_missing'] : []),
         ...(competitorMissing ? ['competitors_missing'] : []),
         ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
+        ...(Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0 ? ['competitors_non_skincare_filtered'] : []),
+        ...(Number(candidateFilterStats.related_dropped_non_skincare || 0) > 0 ? ['related_products_non_skincare_filtered'] : []),
+        ...(Number(candidateFilterStats.dupes_dropped_non_skincare || 0) > 0 ? ['dupes_non_skincare_filtered'] : []),
+        ...(hasCategoryUnknownBlocked ? ['competitor_category_unknown_blocked'] : []),
         competitorMissing && competitorReason ? `competitor_recall_${String(competitorReason).toLowerCase()}` : '',
       ],
       12,
@@ -10323,6 +10562,10 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
       ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
+      ...(Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0 ? ['competitors_non_skincare_filtered'] : []),
+      ...(Number(candidateFilterStats.related_dropped_non_skincare || 0) > 0 ? ['related_products_non_skincare_filtered'] : []),
+      ...(Number(candidateFilterStats.dupes_dropped_non_skincare || 0) > 0 ? ['dupes_non_skincare_filtered'] : []),
+      ...(hasCategoryUnknownBlocked ? ['competitor_category_unknown_blocked'] : []),
       ...(competitorMissing && competitorReason ? [`competitor_recall_${String(competitorReason).toLowerCase()}`] : []),
       ...routeReasonCodes,
       ...dagFallbacksUsed.map((item) => `reco_dag_fallback_${String(item || '').trim().toLowerCase()}`),
@@ -10403,6 +10646,15 @@ async function buildProductAnalysisFromUrlIngredients({
       related_count: relatedCandidates.length,
       dupe_count: dupeCandidates.length,
       competitor_router_reason_codes: routeReasonCodes,
+      ...(hasCandidateFilterDropStats(candidateFilterStats)
+        ? {
+          candidate_filter_stats: {
+            competitors_dropped_non_skincare: Number(candidateFilterStats.competitors_dropped_non_skincare || 0),
+            related_dropped_non_skincare: Number(candidateFilterStats.related_dropped_non_skincare || 0),
+            dupes_dropped_non_skincare: Number(candidateFilterStats.dupes_dropped_non_skincare || 0),
+          },
+        }
+        : {}),
       reco_blocks_dag: dagDiagnostics
         ? {
           mode: String(dagDiagnostics.mode || 'main_path'),
@@ -10560,6 +10812,18 @@ function buildRecoCatalogTransientFallbackStructured({ ctx } = {}) {
       slot: seed.slot,
       step: seed.step,
       score: 90 - recos.length * 2,
+      product_id: productId,
+      merchant_id: merchantId,
+      brand: seed.brand,
+      name: seed.name,
+      display_name: seed.display_name,
+      category: 'skincare',
+      retrieval_source: 'catalog',
+      retrieval_reason: 'catalog_transient_fallback',
+      canonical_product_ref: {
+        product_id: productId,
+        merchant_id: merchantId,
+      },
       sku: {
         product_id: productId,
         merchant_id: merchantId,
@@ -10618,14 +10882,26 @@ async function buildPurchasableFallbackCandidates({
     fastMode: true,
   });
   const primaryProducts = Array.isArray(primary?.products) ? primary.products : [];
+  const primaryReason = String(primary?.reason || '').trim().toLowerCase();
+  const primaryTransientFailure =
+    primary?.ok !== true &&
+    (
+      primaryReason === 'upstream_timeout' ||
+      primaryReason === 'upstream_error' ||
+      primaryReason === 'rate_limited' ||
+      primaryReason === 'budget_exhausted'
+    );
 
   let supplemental = null;
   if (allowExternalSeed) {
     const strategy = String(externalSeedStrategy || '').trim().toLowerCase();
     const shouldSupplement =
-      primaryProducts.length === 0 ||
-      strategy.includes('supplement') ||
-      strategy.includes('fallback');
+      !primaryTransientFailure &&
+      (
+        primaryProducts.length === 0 ||
+        strategy.includes('supplement') ||
+        strategy.includes('fallback')
+      );
     if (shouldSupplement) {
       supplemental = await runSearch({
         query: q,
@@ -10755,7 +11031,8 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
           logger,
           timeoutMs: searchTimeoutEffectiveMs,
           allowExternalSeed: allowExternalSeedSupplement,
-          externalSeedStrategy: 'supplement_internal_first',
+          // Keep catalog pass single-call when primary search already returned products.
+          externalSeedStrategy: 'on_empty_only',
         })
       : await searchPivotaBackendProducts({
           query: q.query,
@@ -10773,10 +11050,38 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     const picked = products.find((p) => p && p.product_id && !usedProductIds.has(p.product_id));
     if (!picked) continue;
     usedProductIds.add(picked.product_id);
+    const canonicalRef = normalizeCanonicalProductRef(
+      {
+        product_id: pickFirstString(picked.product_id, picked.productId),
+        merchant_id: pickFirstString(picked.merchant_id, picked.merchantId),
+      },
+      { requireMerchant: true, allowOpaqueProductId: false },
+    );
     recos.push({
       slot: r.slot || 'other',
       step: r.step || (ctx && ctx.lang === 'CN' ? '推荐' : 'Recommendation'),
       score: 95,
+      product_id: pickFirstString(picked.product_id, picked.productId),
+      merchant_id: pickFirstString(picked.merchant_id, picked.merchantId),
+      brand: pickFirstString(picked.brand, picked.brand_name, picked.brandName),
+      name: pickFirstString(picked.name, picked.title, picked.display_name, picked.displayName),
+      display_name: pickFirstString(picked.display_name, picked.displayName, picked.name, picked.title),
+      category: pickFirstString(
+        picked.category,
+        picked.category_name,
+        picked.categoryName,
+        picked.product_type,
+        picked.productType,
+        picked.type,
+        r.step,
+        r.slot,
+      ),
+      retrieval_source: pickFirstString(picked.retrieval_source, picked.retrievalSource, 'catalog'),
+      retrieval_reason: pickFirstString(picked.retrieval_reason, picked.retrievalReason, 'catalog_search_match'),
+      ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
+      ...(pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) } : {}),
+      ...(pickFirstString(picked.purchase_path, picked.purchasePath) ? { purchase_path: pickFirstString(picked.purchase_path, picked.purchasePath) } : {}),
+      ...(isPlainObject(picked.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
       sku: picked,
       ...(debug
         ? {
@@ -16217,6 +16522,14 @@ function extractProfilePatchFromSession(session) {
   copyString('age_band', 'age_band', 'ageBand');
   copyString('pregnancy_status', 'pregnancy_status', 'pregnancyStatus');
   copyString('lactation_status', 'lactation_status', 'lactationStatus');
+  const pregnancyDueDateRaw =
+    typeof rawProfile.pregnancy_due_date === 'string'
+      ? rawProfile.pregnancy_due_date
+      : typeof rawProfile.pregnancyDueDate === 'string'
+        ? rawProfile.pregnancyDueDate
+        : '';
+  const pregnancyDueDate = pregnancyDueDateRaw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(pregnancyDueDate)) patch.pregnancy_due_date = pregnancyDueDate;
 
   // Arrays
   if (Array.isArray(rawProfile.goals)) {
@@ -16272,6 +16585,76 @@ function parseTravelTimeWindowFromText(message) {
   return null;
 }
 
+function normalizePregnancyStatusForPolicy(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'unknown';
+  if (raw === 'not_pregnant' || raw === 'pregnant' || raw === 'trying' || raw === 'unknown') return raw;
+  if (/not[_\s-]?pregnant/.test(raw)) return 'not_pregnant';
+  if (/pregnan|怀孕|孕/.test(raw)) return 'pregnant';
+  if (/trying|ttc|备孕|准备怀孕/.test(raw)) return 'trying';
+  return 'unknown';
+}
+
+function normalizePregnancyDueDateForPolicy(value) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  return raw;
+}
+
+function utcTodayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function derivePregnancyPolicyPatch({ profile, message, todayUtc } = {}) {
+  const source = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
+  const text = String(message || '');
+  const nowUtc = normalizePregnancyDueDateForPolicy(todayUtc) || utcTodayIsoDate();
+  let status = normalizePregnancyStatusForPolicy(source.pregnancy_status);
+  let dueDate = normalizePregnancyDueDateForPolicy(source.pregnancy_due_date);
+  const patch = {};
+  const events = [];
+
+  const tryingDetected = /\b(trying(\s+to\s+conceive)?|ttc)\b/i.test(text) || /备孕|准备怀孕/.test(text);
+  if (tryingDetected && status !== 'trying') {
+    status = 'trying';
+    patch.pregnancy_status = 'trying';
+  }
+
+  if (status !== 'pregnant' && dueDate) {
+    dueDate = null;
+    patch.pregnancy_due_date = null;
+  }
+
+  if (status === 'pregnant' && dueDate && dueDate < nowUtc) {
+    status = 'not_pregnant';
+    dueDate = null;
+    patch.pregnancy_status = 'not_pregnant';
+    patch.pregnancy_due_date = null;
+    events.push({
+      event_name: 'pregnancy_status_auto_reset',
+      data: { from: 'pregnant', to: 'not_pregnant', effective_date_utc: nowUtc },
+    });
+  }
+
+  if (status === 'unknown') {
+    status = 'not_pregnant';
+    dueDate = null;
+    patch.pregnancy_status = 'not_pregnant';
+    patch.pregnancy_due_date = null;
+    events.push({
+      event_name: 'pregnancy_status_defaulted',
+      data: { default_status: 'not_pregnant', reason: 'missing_or_unknown', effective_date_utc: nowUtc },
+    });
+  }
+
+  return {
+    patch: Object.keys(patch).length > 0 ? patch : null,
+    events,
+  };
+}
+
 function extractProfilePatchFromFreeText({ message, canonicalIntent } = {}) {
   const text = String(message || '').trim();
   if (!text) return null;
@@ -16320,6 +16703,102 @@ function extractProfilePatchFromFreeText({ message, canonicalIntent } = {}) {
   if (!parsed.success) return null;
   const clean = parsed.data;
   return Object.keys(clean).length ? clean : null;
+}
+
+function normalizeSafetyPromptStateForChat(rawState) {
+  if (!rawState || typeof rawState !== 'object' || Array.isArray(rawState)) {
+    return { asked_once_fields: {}, asked_at_ms: null };
+  }
+  const askedRaw =
+    rawState.asked_once_fields && typeof rawState.asked_once_fields === 'object' && !Array.isArray(rawState.asked_once_fields)
+      ? rawState.asked_once_fields
+      : {};
+  const askedOnce = {};
+  for (const [keyRaw, valueRaw] of Object.entries(askedRaw)) {
+    const key = String(keyRaw || '').trim();
+    if (!key || valueRaw !== true) continue;
+    askedOnce[key] = true;
+  }
+  const askedAtRaw = Number(rawState.asked_at_ms);
+  const askedAt = Number.isFinite(askedAtRaw) ? Math.max(0, Math.trunc(askedAtRaw)) : null;
+  return {
+    asked_once_fields: askedOnce,
+    asked_at_ms: askedAt,
+  };
+}
+
+function profileHasOptionalSafetyFieldValue(profile, field) {
+  const source = profile && typeof profile === 'object' ? profile : {};
+  if (field === 'high_risk_medications') {
+    return Array.isArray(source.high_risk_medications);
+  }
+  if (field === 'pregnancy_status' || field === 'age_band') {
+    const value = typeof source[field] === 'string' ? source[field].trim().toLowerCase() : '';
+    return Boolean(value) && value !== 'unknown';
+  }
+  return false;
+}
+
+function buildSafetyAdvisoryChipsByField({ field, language }) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (field === 'pregnancy_status') {
+    return [
+      {
+        chip_id: 'chip.profile.pregnancy.not_pregnant',
+        label: lang === 'CN' ? '未怀孕' : 'Not pregnant',
+        kind: 'quick_reply',
+        data: { profile_patch: { pregnancy_status: 'not_pregnant' }, reply_text: lang === 'CN' ? '未怀孕' : 'Not pregnant' },
+      },
+      {
+        chip_id: 'chip.profile.pregnancy.pregnant',
+        label: lang === 'CN' ? '怀孕中' : 'Pregnant',
+        kind: 'quick_reply',
+        data: { profile_patch: { pregnancy_status: 'pregnant' }, reply_text: lang === 'CN' ? '怀孕中' : 'Pregnant' },
+      },
+      {
+        chip_id: 'chip.profile.pregnancy.trying',
+        label: lang === 'CN' ? '备孕中' : 'Trying',
+        kind: 'quick_reply',
+        data: { profile_patch: { pregnancy_status: 'trying' }, reply_text: lang === 'CN' ? '备孕中' : 'Trying to conceive' },
+      },
+    ];
+  }
+  if (field === 'age_band') {
+    return [
+      {
+        chip_id: 'chip.profile.age.18_24',
+        label: '18-24',
+        kind: 'quick_reply',
+        data: { profile_patch: { age_band: '18_24' }, reply_text: '18-24' },
+      },
+      {
+        chip_id: 'chip.profile.age.25_34',
+        label: '25-34',
+        kind: 'quick_reply',
+        data: { profile_patch: { age_band: '25_34' }, reply_text: '25-34' },
+      },
+      {
+        chip_id: 'chip.profile.age.35_44',
+        label: '35-44',
+        kind: 'quick_reply',
+        data: { profile_patch: { age_band: '35_44' }, reply_text: '35-44' },
+      },
+    ];
+  }
+  if (field === 'high_risk_medications') {
+    return [
+      {
+        chip_id: 'chip.profile.medications.none',
+        label: lang === 'CN' ? '无高风险药物' : 'No high-risk meds',
+        kind: 'quick_reply',
+        data: {
+          profile_patch: { high_risk_medications: [] },
+          reply_text: lang === 'CN' ? '我目前没有高风险药物' : 'I have no high-risk medications',
+        },
+      },
+    ];
+  }
+  return [];
 }
 
 function hasRoutineSosSignal(message) {
@@ -17022,6 +17501,7 @@ function summarizeProfileForContext(profile, options = {}) {
       ? {
         age_band: profile.age_band || 'unknown',
         pregnancy_status: profile.pregnancy_status || 'unknown',
+        pregnancy_due_date: normalizePregnancyDueDateForPolicy(profile.pregnancy_due_date),
         lactation_status: profile.lactation_status || 'unknown',
         high_risk_medications: highRiskMedications,
         travel_plan: travelPlan,
@@ -17887,9 +18367,9 @@ function asStringArray(value, max = 8) {
 }
 
 const PRODUCT_INTEL_SKINCARE_RE =
-  /(skincare|skin care|sunscreen|sun\s*screen|spf|uv|cleanser|serum|essence|moistur|cream|toner|lotion|mask|barrier|acne|azelaic|niacinamide|retinol|retinoid|vitamin c|ceramide|hyaluronic|护肤|防晒|洁面|精华|乳液|面霜|爽肤水|面膜|屏障|壬二酸|烟酰胺|视黄醇|神经酰胺|玻尿酸)/i;
+  /(skincare|skin care|sunscreen|sun\s*screen|spf|uv|cleanser|serum|essence|moistur|cream|toner|lotion|mask|barrier|acne|azelaic|niacinamide|retinol|retinoid|vitamin c|ceramide|hyaluronic|treatment|ampoule|emulsion|balm|护肤|防晒|洁面|精华|乳液|面霜|爽肤水|面膜|屏障|壬二酸|烟酰胺|视黄醇|神经酰胺|玻尿酸|修护|护理)/i;
 const PRODUCT_INTEL_BLACKLIST_RE =
-  /(brush|makeup brush|blush brush|foundation brush|contour brush|powder brush|beauty tool|lingerie|bra|underwear|袜|内衣|文胸|化妆刷|彩妆刷|刷具|粉扑|睫毛夹)/i;
+  /(\bmakeup brush\b|\bblush brush\b|\bfoundation brush\b|\bcontour brush\b|\bpowder brush\b|\bbeauty tool\b|\bbrush(es)?\b|\blingerie\b|\bunderwear\b|\bbra\b|袜|内衣|文胸|化妆刷|彩妆刷|刷具|粉扑|睫毛夹)/i;
 const PRODUCT_INTEL_SEARCH_URL_RE =
   /(google\.[^/]+\/search\?|reddit\.com\/search\/\?|amazon\.[^/]+\/s\?k=|bing\.com\/search\?|duckduckgo\.com\/\?q=|baidu\.com\/s\?wd=|youtube\.com\/results\?search_query=)/i;
 const PRODUCT_INTEL_HTTP_URL_RE = /^https?:\/\/\S+/i;
@@ -18709,9 +19189,111 @@ async function deepScanRoutineProductCandidate({
   };
 }
 
+function coerceRecoCandidateForGuardrail(candidate) {
+  const base = isPlainObject(candidate) ? { ...candidate } : null;
+  if (!base) return null;
+  const sku = isPlainObject(base.sku) ? base.sku : isPlainObject(base.product) ? base.product : null;
+  if (!sku) return base;
+  const next = { ...base };
+
+  const setIfMissing = (key, ...values) => {
+    if (typeof next[key] === 'string' && String(next[key]).trim()) return;
+    const picked = pickFirstString(...values);
+    if (!picked) return;
+    next[key] = picked;
+  };
+
+  const setArrayIfMissing = (key, values) => {
+    if (Array.isArray(next[key]) && next[key].length > 0) return;
+    if (!Array.isArray(values)) return;
+    const compacted = values
+      .map((item) => (typeof item === 'string' ? item.trim() : item == null ? '' : String(item).trim()))
+      .filter(Boolean);
+    if (!compacted.length) return;
+    next[key] = compacted.slice(0, 12);
+  };
+
+  setIfMissing('product_id', sku.product_id, sku.productId, sku.sku_id, sku.skuId);
+  setIfMissing('merchant_id', sku.merchant_id, sku.merchantId);
+  setIfMissing('name', sku.name, sku.title, sku.display_name, sku.displayName);
+  setIfMissing('title', sku.title, sku.name, sku.display_name, sku.displayName);
+  setIfMissing('display_name', sku.display_name, sku.displayName, sku.name, sku.title);
+  setIfMissing('displayName', sku.displayName, sku.display_name, sku.name, sku.title);
+  setIfMissing('brand', sku.brand, sku.brand_name, sku.brandName);
+  setIfMissing('category', sku.category, sku.category_name, sku.categoryName, sku.product_type, sku.productType, sku.type);
+  setIfMissing('category_name', sku.category_name, sku.categoryName, sku.category);
+  setIfMissing('category_path', sku.category_path, sku.categoryPath);
+  setIfMissing('product_type', sku.product_type, sku.productType);
+  setIfMissing('type', sku.type, sku.product_type, sku.productType, sku.category);
+  setIfMissing('retrieval_source', sku.retrieval_source, sku.retrievalSource);
+  setIfMissing('retrieval_reason', sku.retrieval_reason, sku.retrievalReason);
+  const retrievalSourceNow = String(next.retrieval_source || '').trim().toLowerCase();
+  if (!retrievalSourceNow) {
+    const sourceToken = pickFirstString(next.source, next.source_type, next.sourceType, sku.source, sku.source_type, sku.sourceType);
+    const sourceLower = String(sourceToken || '').trim().toLowerCase();
+    if (sourceLower.includes('external')) next.retrieval_source = 'external_seed';
+    else if (sourceLower.includes('llm')) next.retrieval_source = 'llm_fallback';
+    else next.retrieval_source = 'catalog';
+  }
+  const retrievalReasonNow = String(next.retrieval_reason || '').trim();
+  if (!retrievalReasonNow) {
+    const sourceNormalized = String(next.retrieval_source || '').trim().toLowerCase();
+    if (sourceNormalized === 'external_seed') next.retrieval_reason = 'external_seed_supplement';
+    else if (sourceNormalized === 'llm_fallback') next.retrieval_reason = 'catalog_empty_or_filtered';
+    else next.retrieval_reason = 'catalog_search_match';
+  }
+  setArrayIfMissing('tags', Array.isArray(sku.tags) ? sku.tags : []);
+
+  const directUrl = pickFirstString(
+    next.pdp_url,
+    next.url,
+    next.link,
+    next.product_url,
+    next.purchase_path,
+    sku.canonical_pdp_url,
+    sku.canonicalPdpUrl,
+    sku.pdp_url,
+    sku.pdpUrl,
+    sku.url,
+    sku.product_url,
+    sku.productUrl,
+    sku.purchase_path,
+    sku.purchasePath,
+  );
+  if (directUrl && !PRODUCT_INTEL_HTTP_URL_RE.test(String(next.pdp_url || '').trim())) next.pdp_url = directUrl;
+  if (directUrl && !PRODUCT_INTEL_HTTP_URL_RE.test(String(next.url || '').trim())) next.url = directUrl;
+  if (directUrl && !PRODUCT_INTEL_HTTP_URL_RE.test(String(next.product_url || '').trim())) next.product_url = directUrl;
+  if (directUrl && !PRODUCT_INTEL_HTTP_URL_RE.test(String(next.purchase_path || '').trim())) next.purchase_path = directUrl;
+  if (!isPlainObject(next.pdp_open) && isPlainObject(sku.pdp_open)) next.pdp_open = { ...sku.pdp_open };
+
+  const canonicalRefRaw = isPlainObject(next.canonical_product_ref)
+    ? next.canonical_product_ref
+    : isPlainObject(sku.canonical_product_ref)
+      ? sku.canonical_product_ref
+      : isPlainObject(sku.canonicalProductRef)
+        ? sku.canonicalProductRef
+        : null;
+  const canonicalRef = normalizeCanonicalProductRef(
+    canonicalRefRaw || {
+      product_id: pickFirstString(next.product_id, next.productId, sku.product_id, sku.productId),
+      merchant_id: pickFirstString(next.merchant_id, next.merchantId, sku.merchant_id, sku.merchantId),
+    },
+    { requireMerchant: true, allowOpaqueProductId: false },
+  );
+  if (canonicalRef && !isPlainObject(next.canonical_product_ref)) {
+    next.canonical_product_ref = canonicalRef;
+  }
+
+  return next;
+}
+
 function isSkincareCategory(candidate) {
-  const row = isPlainObject(candidate) ? candidate : {};
+  const row = coerceRecoCandidateForGuardrail(candidate);
+  if (!row) return false;
+  const sku = isPlainObject(row.sku) ? row.sku : isPlainObject(row.product) ? row.product : {};
   const joined = [
+    row.step,
+    row.slot,
     row.category,
     row.category_name,
     row.category_path,
@@ -18725,6 +19307,19 @@ function isSkincareCategory(candidate) {
     row.why_match,
     row.why,
     row.tags,
+    sku.category,
+    sku.category_name,
+    sku.category_path,
+    sku.step,
+    sku.slot,
+    sku.product_type,
+    sku.type,
+    sku.brand,
+    sku.name,
+    sku.title,
+    sku.display_name,
+    sku.displayName,
+    sku.tags,
   ]
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
     .map((value) => String(value || '').trim())
@@ -18735,7 +19330,9 @@ function isSkincareCategory(candidate) {
 }
 
 function isBlacklistedCategoryOrTitle(candidate) {
-  const row = isPlainObject(candidate) ? candidate : {};
+  const row = coerceRecoCandidateForGuardrail(candidate);
+  if (!row) return false;
+  const sku = isPlainObject(row.sku) ? row.sku : isPlainObject(row.product) ? row.product : {};
   const joined = [
     row.category,
     row.category_name,
@@ -18747,6 +19344,16 @@ function isBlacklistedCategoryOrTitle(candidate) {
     row.title,
     row.display_name,
     row.displayName,
+    sku.category,
+    sku.category_name,
+    sku.category_path,
+    sku.product_type,
+    sku.type,
+    sku.brand,
+    sku.name,
+    sku.title,
+    sku.display_name,
+    sku.displayName,
   ]
     .map((value) => String(value || '').trim())
     .filter(Boolean)
@@ -18934,6 +19541,50 @@ function hasOpenableUrl(candidate) {
     return Boolean(String(external.query || '').trim());
   }
   return false;
+}
+
+function isResolverExternalOpenContractRow(candidate) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  const pdpOpen = isPlainObject(row.pdp_open) ? row.pdp_open : {};
+  const metadata = isPlainObject(row.metadata) ? row.metadata : {};
+  const mode = normalizePdpOpenMode(
+    pickFirstString(
+      pdpOpen.path,
+      metadata.pdp_open_mode,
+      metadata.pdp_open_path,
+    ),
+    '',
+  );
+  if (mode !== 'external') return false;
+
+  const reasonCode = normalizeResolveReasonCode(
+    pickFirstString(
+      metadata.resolve_reason_code,
+      metadata.pdp_open_fail_reason,
+      metadata.resolve_fail_reason,
+      pdpOpen.resolve_reason_code,
+    ),
+    '',
+  );
+
+  const external = isPlainObject(pdpOpen.external) ? pdpOpen.external : {};
+  const externalUrl = pickFirstString(external.url);
+  const externalQuery = pickFirstString(external.query);
+  if (!externalUrl && !externalQuery) return false;
+
+  const directTopLevelUrl = pickFirstString(
+    row.pdp_url,
+    row.url,
+    row.link,
+    row.product_url,
+    row.purchase_path,
+    row.purchasePath,
+  );
+  const hasDirectTopLevelUrl = PRODUCT_INTEL_HTTP_URL_RE.test(directTopLevelUrl);
+  if (reasonCode) return true;
+
+  const metadataMode = String(pickFirstString(metadata.pdp_open_mode, metadata.pdp_open_path)).trim().toLowerCase();
+  return !hasDirectTopLevelUrl && (metadataMode === 'external' || metadataMode === 'internal');
 }
 
 function buildProductRelevanceDualQaPrompt(candidate) {
@@ -19217,6 +19868,40 @@ function dedupeExternalSearchCtas(ctas, maxItems = 12) {
   return out;
 }
 
+function normalizeFallbackQueryText(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw
+    .replace(/\s+/g, ' ')
+    .replace(/^[`"'“”'‘’()[\]{}<>|\\,.;:!?~]+/g, '')
+    .replace(/[`"'“”'‘’()[\]{}<>|\\,.;:!?~]+$/g, '')
+    .trim();
+}
+
+function isIngredientIdStyleToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return false;
+  if (/^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(token)) return true;
+  if (/^(ingredient|ing)[-_]?[a-z0-9_]+$/.test(token)) return true;
+  return false;
+}
+
+function isOpaqueFallbackLookupToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return false;
+  if (/^[a-z0-9]{18,}$/.test(token) && !/[aeiou]/.test(token)) return true;
+  return false;
+}
+
+function normalizeHumanReadableFallbackQuery(value) {
+  const normalized = normalizeFallbackQueryText(value);
+  if (!normalized) return '';
+  const token = normalized.toLowerCase();
+  if (isIngredientIdStyleToken(token)) return '';
+  if (isOpaqueFallbackLookupToken(token)) return '';
+  return normalized;
+}
+
 function collectPurchasableFallbackQueries({
   payload,
   recommendationRows = [],
@@ -19227,7 +19912,7 @@ function collectPurchasableFallbackQueries({
   const queries = [];
   const seen = new Set();
   const pushQuery = (value) => {
-    const normalized = String(value || '').trim();
+    const normalized = normalizeHumanReadableFallbackQuery(value);
     if (!normalized) return;
     const key = normalized.toLowerCase();
     if (seen.has(key)) return;
@@ -19253,16 +19938,21 @@ function collectPurchasableFallbackQueries({
 
   for (const value of Array.isArray(extraSeeds) ? extraSeeds : []) {
     if (isPlainObject(value)) {
-      pushQuery(pickFirstString(value.ingredient, value.ingredient_id, value.name, value.title));
+      pushQuery(pickFirstString(value.name, value.title, value.ingredient));
+      const ingredientId = pickFirstString(value.ingredient_id, value.ingredientId);
+      if (ingredientId && !isIngredientIdStyleToken(ingredientId)) {
+        pushQuery(ingredientId);
+      }
       continue;
     }
     pushQuery(value);
   }
 
   for (const ingredient of ingredientSeeds) {
-    const token = String(ingredient || '').trim();
+    const token = normalizeHumanReadableFallbackQuery(ingredient);
     if (!token) continue;
-    pushQuery(`${token} skincare`);
+    const nextSeed = /\bskincare\b|护肤/i.test(token) ? token : `${token} skincare`;
+    pushQuery(nextSeed);
   }
 
   return queries.slice(0, Math.max(1, Number(maxQueries) || 4));
@@ -19452,6 +20142,44 @@ function normalizeLlmFallbackCandidate(raw, { query, index } = {}) {
   };
 }
 
+function initLlmFallbackStageCounts() {
+  return {
+    timeout: 0,
+    error: 0,
+    invalid_json: 0,
+    empty: 0,
+    recovered: 0,
+  };
+}
+
+function mergeLlmFallbackStageCounts(base, patch) {
+  const left = isPlainObject(base) ? base : initLlmFallbackStageCounts();
+  const right = isPlainObject(patch) ? patch : {};
+  return {
+    timeout: Math.max(0, Math.trunc(Number(left.timeout || 0) + Number(right.timeout || 0))),
+    error: Math.max(0, Math.trunc(Number(left.error || 0) + Number(right.error || 0))),
+    invalid_json: Math.max(0, Math.trunc(Number(left.invalid_json || 0) + Number(right.invalid_json || 0))),
+    empty: Math.max(0, Math.trunc(Number(left.empty || 0) + Number(right.empty || 0))),
+    recovered: Math.max(0, Math.trunc(Number(left.recovered || 0) + Number(right.recovered || 0))),
+  };
+}
+
+function classifyLlmFallbackErrorReason(err) {
+  const code = String(err && err.code ? err.code : '').trim().toLowerCase();
+  const message = String(err && err.message ? err.message : err || '').trim().toLowerCase();
+  if (
+    code.includes('timeout') ||
+    code === 'etimedout' ||
+    code === 'econnaborted' ||
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('abort')
+  ) {
+    return 'timeout';
+  }
+  return 'error';
+}
+
 async function recoverProductsWithLlmFallbackFromQueries({
   queries = [],
   strictFilter = true,
@@ -19469,6 +20197,8 @@ async function recoverProductsWithLlmFallbackFromQueries({
     attempted_queries: [],
     selected_source_counts: {},
     llm_used: false,
+    stage_counts: initLlmFallbackStageCounts(),
+    last_reason: null,
   };
   if (!AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) return out;
 
@@ -19496,9 +20226,25 @@ async function recoverProductsWithLlmFallbackFromQueries({
       });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err), query: q }, 'aurora bff: llm fallback query failed');
+      const stageReason = classifyLlmFallbackErrorReason(err);
+      out.stage_counts = mergeLlmFallbackStageCounts(out.stage_counts, {
+        timeout: stageReason === 'timeout' ? 1 : 0,
+        error: stageReason === 'error' ? 1 : 0,
+      });
+      out.last_reason = stageReason === 'timeout' ? 'llm_timeout' : 'llm_error';
       continue;
     }
-    if (!llmResp || llmResp.ok !== true || !isPlainObject(llmResp.json)) continue;
+    if (!llmResp || llmResp.ok !== true || !isPlainObject(llmResp.json)) {
+      const respError = pickFirstString(llmResp && llmResp.error, llmResp && llmResp.reason).toLowerCase();
+      if (respError.includes('timeout')) {
+        out.stage_counts = mergeLlmFallbackStageCounts(out.stage_counts, { timeout: 1 });
+        out.last_reason = 'llm_timeout';
+      } else {
+        out.stage_counts = mergeLlmFallbackStageCounts(out.stage_counts, { invalid_json: 1 });
+        out.last_reason = 'llm_invalid_json';
+      }
+      continue;
+    }
 
     const rowsRaw = Array.isArray(llmResp.json.products)
       ? llmResp.json.products
@@ -19507,10 +20253,15 @@ async function recoverProductsWithLlmFallbackFromQueries({
         : Array.isArray(llmResp.json.recommendations)
           ? llmResp.json.recommendations
           : [];
-    if (!rowsRaw.length) continue;
+    if (!rowsRaw.length) {
+      out.stage_counts = mergeLlmFallbackStageCounts(out.stage_counts, { empty: 1 });
+      out.last_reason = 'llm_empty';
+      continue;
+    }
 
     out.llm_used = true;
     out.selected_source_counts.llm_fallback = Number(out.selected_source_counts.llm_fallback || 0) + 1;
+    let recoveredForQuery = false;
 
     for (let i = 0; i < rowsRaw.length; i += 1) {
       if (out.products.length >= targetMax) break;
@@ -19599,6 +20350,14 @@ async function recoverProductsWithLlmFallbackFromQueries({
           directUrl,
         ),
       );
+      recoveredForQuery = true;
+    }
+    if (recoveredForQuery) {
+      out.stage_counts = mergeLlmFallbackStageCounts(out.stage_counts, { recovered: 1 });
+      out.last_reason = 'llm_recovered';
+    } else {
+      out.stage_counts = mergeLlmFallbackStageCounts(out.stage_counts, { empty: 1 });
+      out.last_reason = 'llm_empty_after_filter';
     }
   }
 
@@ -19615,8 +20374,21 @@ function deriveProductsEmptyReason({
   contractOnlyCount = 0,
   searchDemotedCount = 0,
   nonHttpsCount = 0,
+  llmFallbackAttempted = 0,
+  llmFallbackRecovered = 0,
+  llmFallbackTimeout = 0,
+  llmFallbackInvalidJson = 0,
+  llmFallbackError = 0,
+  llmFallbackEmpty = 0,
 } = {}) {
   if (Number(keptCount) > 0) return null;
+  if (Number(llmFallbackAttempted) > 0 && Number(llmFallbackRecovered) === 0) {
+    if (Number(llmFallbackTimeout) > 0) return 'llm_lookup_timeout';
+    if (Number(llmFallbackInvalidJson) > 0) return 'llm_lookup_invalid_json';
+    if (Number(llmFallbackError) > 0) return 'llm_lookup_error';
+    if (Number(llmFallbackEmpty) > 0) return 'llm_lookup_empty';
+    return 'llm_lookup_fallback_empty';
+  }
   if (Number(strictFallbackCount) > 0 && Number(externalSearchCount) > 0) return 'strict_filter_fallback_only';
   if (Number(nonHttpsCount) > 0) return 'no_pdp_after_filter';
   if ((Number(missingUrlCount) + Number(contractOnlyCount) + Number(searchDemotedCount)) > 0) {
@@ -19658,6 +20430,7 @@ async function sanitizeRecoCandidatesForUi(
     fallbackCandidateBuilder = null,
     allowExternalSeedSupplement = false,
     externalSeedStrategy = 'supplement_internal_first',
+    allowResolverExternalRecommendations = false,
     logger = null,
   } = {},
 ) {
@@ -19672,6 +20445,8 @@ async function sanitizeRecoCandidatesForUi(
         llm_fallback_attempted: 0,
         llm_fallback_recovered: 0,
         llm_fallback_used: false,
+        llm_fallback_stage_counts: initLlmFallbackStageCounts(),
+        llm_fallback_last_reason: null,
       },
     };
   }
@@ -19694,6 +20469,8 @@ async function sanitizeRecoCandidatesForUi(
     llm_fallback_attempted: 0,
     llm_fallback_recovered: 0,
     llm_fallback_used: false,
+    llm_fallback_stage_counts: initLlmFallbackStageCounts(),
+    llm_fallback_last_reason: null,
   };
   const nextCards = [];
   for (const card of list) {
@@ -19722,8 +20499,12 @@ async function sanitizeRecoCandidatesForUi(
       let recoveryAttemptedForCard = 0;
       let llmFallbackRecoveredForCard = 0;
       let llmFallbackAttemptedForCard = 0;
+      let llmFallbackTimeoutForCard = 0;
+      let llmFallbackInvalidJsonForCard = 0;
+      let llmFallbackErrorForCard = 0;
+      let llmFallbackEmptyForCard = 0;
       for (const rec of recs) {
-        const row = isPlainObject(rec) ? { ...rec } : null;
+        const row = coerceRecoCandidateForGuardrail(rec);
         if (!row) continue;
 
         const blacklistHit = isBlacklistedCategoryOrTitle(row);
@@ -19737,6 +20518,7 @@ async function sanitizeRecoCandidatesForUi(
         const directUrl = extractCandidateOpenUrl(row);
         const openable = hasOpenableUrl(row);
         const searchLike = isSearchLikeUrl(directUrl);
+        const resolverExternalBypass = allowResolverExternalRecommendations === true && isResolverExternalOpenContractRow(row);
         const relevanceRejectReason = blacklistHit
           ? 'blacklisted_category_or_title'
           : strictFilter && !skincareHit
@@ -19759,6 +20541,10 @@ async function sanitizeRecoCandidatesForUi(
           continue;
         }
 
+        if (resolverExternalBypass) {
+          kept.push(row);
+          continue;
+        }
         if (searchLike) {
           externalized += 1;
           searchDemotedForCard += 1;
@@ -19868,6 +20654,11 @@ async function sanitizeRecoCandidatesForUi(
           });
           llmFallbackAttemptedForCard = llmRecovered.attempted_queries.length;
           llmFallbackRecoveredForCard = llmRecovered.products.length;
+          const llmStageCounts = isPlainObject(llmRecovered.stage_counts) ? llmRecovered.stage_counts : {};
+          llmFallbackTimeoutForCard = Math.max(0, Math.trunc(Number(llmStageCounts.timeout || 0)));
+          llmFallbackInvalidJsonForCard = Math.max(0, Math.trunc(Number(llmStageCounts.invalid_json || 0)));
+          llmFallbackErrorForCard = Math.max(0, Math.trunc(Number(llmStageCounts.error || 0)));
+          llmFallbackEmptyForCard = Math.max(0, Math.trunc(Number(llmStageCounts.empty || 0)));
           if (llmRecovered.products.length) {
             kept.push(...llmRecovered.products.slice(0, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS));
           }
@@ -19882,6 +20673,21 @@ async function sanitizeRecoCandidatesForUi(
       lookupMeta.llm_fallback_attempted += llmFallbackAttemptedForCard;
       lookupMeta.llm_fallback_recovered += llmFallbackRecoveredForCard;
       if (llmFallbackRecoveredForCard > 0) lookupMeta.llm_fallback_used = true;
+      lookupMeta.llm_fallback_stage_counts = mergeLlmFallbackStageCounts(lookupMeta.llm_fallback_stage_counts, {
+        timeout: llmFallbackTimeoutForCard,
+        invalid_json: llmFallbackInvalidJsonForCard,
+        error: llmFallbackErrorForCard,
+        empty: llmFallbackEmptyForCard,
+        recovered: llmFallbackRecoveredForCard > 0 ? 1 : 0,
+      });
+      const llmLastReason = pickFirstString(
+        llmFallbackRecoveredForCard > 0 ? 'llm_recovered' : '',
+        llmFallbackAttemptedForCard > 0 && llmFallbackTimeoutForCard > 0 ? 'llm_timeout' : '',
+        llmFallbackAttemptedForCard > 0 && llmFallbackInvalidJsonForCard > 0 ? 'llm_invalid_json' : '',
+        llmFallbackAttemptedForCard > 0 && llmFallbackErrorForCard > 0 ? 'llm_error' : '',
+        llmFallbackAttemptedForCard > 0 && llmFallbackEmptyForCard > 0 ? 'llm_empty' : '',
+      );
+      if (llmLastReason) lookupMeta.llm_fallback_last_reason = llmLastReason;
 
       const mergedFieldMissing = mergeFieldMissing(card.field_missing, [
         ...(droppedForCard > 0 ? [{ field: 'payload.recommendations', reason: 'strict_skincare_filter' }] : []),
@@ -19894,6 +20700,10 @@ async function sanitizeRecoCandidatesForUi(
         ...(recoveryRecoveredForCard > 0 ? [{ field: 'payload.recommendations', reason: 'purchasable_fallback_recovered' }] : []),
         ...(llmFallbackAttemptedForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_fallback_attempted' }] : []),
         ...(llmFallbackRecoveredForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_fallback_recovered' }] : []),
+        ...(llmFallbackTimeoutForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_timeout' }] : []),
+        ...(llmFallbackInvalidJsonForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_invalid_json' }] : []),
+        ...(llmFallbackErrorForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_error' }] : []),
+        ...(llmFallbackEmptyForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_empty' }] : []),
       ]);
       const finalExternalSearchCtas = AURORA_DISCOVERY_CARD_IN_LIST_ENABLED
         ? dedupeExternalSearchCtas(externalSearchCtas, 8)
@@ -19907,6 +20717,12 @@ async function sanitizeRecoCandidatesForUi(
         contractOnlyCount: contractDemotedForCard,
         searchDemotedCount: searchDemotedForCard,
         nonHttpsCount: nonHttpsDemotedForCard,
+        llmFallbackAttempted: llmFallbackAttemptedForCard,
+        llmFallbackRecovered: llmFallbackRecoveredForCard,
+        llmFallbackTimeout: llmFallbackTimeoutForCard,
+        llmFallbackInvalidJson: llmFallbackInvalidJsonForCard,
+        llmFallbackError: llmFallbackErrorForCard,
+        llmFallbackEmpty: llmFallbackEmptyForCard,
       });
 
       nextCards.push({
@@ -19940,12 +20756,16 @@ async function sanitizeRecoCandidatesForUi(
       let recoveryAttemptedForCard = 0;
       let llmFallbackRecoveredForCard = 0;
       let llmFallbackAttemptedForCard = 0;
+      let llmFallbackTimeoutForCard = 0;
+      let llmFallbackInvalidJsonForCard = 0;
+      let llmFallbackErrorForCard = 0;
+      let llmFallbackEmptyForCard = 0;
       const guardrailRuleId = type === 'ingredient_plan_v2' ? 'ingredient_plan_v2_guardrail' : 'ingredient_plan_guardrail';
 
       const sanitizeRows = async (sourceRows) => {
         const kept = [];
         for (const product of sourceRows) {
-          const row = isPlainObject(product) ? { ...product } : null;
+          const row = coerceRecoCandidateForGuardrail(product);
           if (!row) continue;
           const blacklistHit = isBlacklistedCategoryOrTitle(row);
           const skincareHit = isSkincareCategory(row);
@@ -19958,6 +20778,7 @@ async function sanitizeRecoCandidatesForUi(
           const directUrl = extractCandidateOpenUrl(row);
           const openable = hasOpenableUrl(row);
           const searchLike = isSearchLikeUrl(directUrl);
+          const resolverExternalBypass = allowResolverExternalRecommendations === true && isResolverExternalOpenContractRow(row);
           const relevanceRejectReason = blacklistHit
             ? 'blacklisted_category_or_title'
             : strictFilter && !skincareHit
@@ -19977,6 +20798,10 @@ async function sanitizeRecoCandidatesForUi(
               reject_reason: relevanceRejectReason,
               rule_id: guardrailRuleId,
             });
+            continue;
+          }
+          if (resolverExternalBypass) {
+            kept.push(row);
             continue;
           }
           if (searchLike) {
@@ -20119,6 +20944,11 @@ async function sanitizeRecoCandidatesForUi(
           });
           llmFallbackAttemptedForCard = llmRecovered.attempted_queries.length;
           llmFallbackRecoveredForCard = llmRecovered.products.length;
+          const llmStageCounts = isPlainObject(llmRecovered.stage_counts) ? llmRecovered.stage_counts : {};
+          llmFallbackTimeoutForCard = Math.max(0, Math.trunc(Number(llmStageCounts.timeout || 0)));
+          llmFallbackInvalidJsonForCard = Math.max(0, Math.trunc(Number(llmStageCounts.invalid_json || 0)));
+          llmFallbackErrorForCard = Math.max(0, Math.trunc(Number(llmStageCounts.error || 0)));
+          llmFallbackEmptyForCard = Math.max(0, Math.trunc(Number(llmStageCounts.empty || 0)));
           if (llmRecovered.rejected.length) rejected.push(...llmRecovered.rejected);
           if (llmRecovered.external_search_ctas.length) {
             externalSearchCtas.push(...llmRecovered.external_search_ctas);
@@ -20148,6 +20978,21 @@ async function sanitizeRecoCandidatesForUi(
       lookupMeta.llm_fallback_attempted += llmFallbackAttemptedForCard;
       lookupMeta.llm_fallback_recovered += llmFallbackRecoveredForCard;
       if (llmFallbackRecoveredForCard > 0) lookupMeta.llm_fallback_used = true;
+      lookupMeta.llm_fallback_stage_counts = mergeLlmFallbackStageCounts(lookupMeta.llm_fallback_stage_counts, {
+        timeout: llmFallbackTimeoutForCard,
+        invalid_json: llmFallbackInvalidJsonForCard,
+        error: llmFallbackErrorForCard,
+        empty: llmFallbackEmptyForCard,
+        recovered: llmFallbackRecoveredForCard > 0 ? 1 : 0,
+      });
+      const llmLastReason = pickFirstString(
+        llmFallbackRecoveredForCard > 0 ? 'llm_recovered' : '',
+        llmFallbackAttemptedForCard > 0 && llmFallbackTimeoutForCard > 0 ? 'llm_timeout' : '',
+        llmFallbackAttemptedForCard > 0 && llmFallbackInvalidJsonForCard > 0 ? 'llm_invalid_json' : '',
+        llmFallbackAttemptedForCard > 0 && llmFallbackErrorForCard > 0 ? 'llm_error' : '',
+        llmFallbackAttemptedForCard > 0 && llmFallbackEmptyForCard > 0 ? 'llm_empty' : '',
+      );
+      if (llmLastReason) lookupMeta.llm_fallback_last_reason = llmLastReason;
 
       const mergedFieldMissing = mergeFieldMissing(card.field_missing, [
         ...(droppedForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'strict_skincare_filter' }] : []),
@@ -20159,6 +21004,10 @@ async function sanitizeRecoCandidatesForUi(
         ...(recoveryRecoveredForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'purchasable_fallback_recovered' }] : []),
         ...(llmFallbackAttemptedForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_fallback_attempted' }] : []),
         ...(llmFallbackRecoveredForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_fallback_recovered' }] : []),
+        ...(llmFallbackTimeoutForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_timeout' }] : []),
+        ...(llmFallbackInvalidJsonForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_invalid_json' }] : []),
+        ...(llmFallbackErrorForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_error' }] : []),
+        ...(llmFallbackEmptyForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_empty' }] : []),
       ]);
       const finalExternalSearchCtas = AURORA_DISCOVERY_CARD_IN_LIST_ENABLED
         ? dedupeExternalSearchCtas(externalSearchCtas, 12)
@@ -20172,6 +21021,12 @@ async function sanitizeRecoCandidatesForUi(
         contractOnlyCount: contractDemotedForCard,
         searchDemotedCount: searchDemotedForCard,
         nonHttpsCount: nonHttpsDemotedForCard,
+        llmFallbackAttempted: llmFallbackAttemptedForCard,
+        llmFallbackRecovered: llmFallbackRecoveredForCard,
+        llmFallbackTimeout: llmFallbackTimeoutForCard,
+        llmFallbackInvalidJson: llmFallbackInvalidJsonForCard,
+        llmFallbackError: llmFallbackErrorForCard,
+        llmFallbackEmpty: llmFallbackEmptyForCard,
       });
 
       nextCards.push({
@@ -20875,6 +21730,7 @@ async function applyProductIntelGuardrailsToEnvelope({
     fallbackCandidateBuilder: AURORA_PURCHASABLE_FALLBACK_ENABLED ? buildPurchasableFallbackCandidates : null,
     allowExternalSeedSupplement: AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true,
     externalSeedStrategy: 'supplement_internal_first',
+    allowResolverExternalRecommendations: true,
     logger,
   });
   const withStoryAndGate = await applyAnalysisStoryAndRoutineSoftGate(sanitized.cards, {
@@ -20897,6 +21753,9 @@ async function applyProductIntelGuardrailsToEnvelope({
     qaContext.qa_provider,
   );
   const lookupMeta = isPlainObject(sanitized.lookup_meta) ? sanitized.lookup_meta : {};
+  const llmFallbackStageCounts = isPlainObject(lookupMeta.llm_fallback_stage_counts)
+    ? lookupMeta.llm_fallback_stage_counts
+    : initLlmFallbackStageCounts();
   const summaryCard = withStoryAndGate.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_summary');
   const summaryPayload = summaryCard && isPlainObject(summaryCard.payload) ? summaryCard.payload : {};
   const photoModulesCard = withStoryAndGate.find(
@@ -20940,6 +21799,10 @@ async function applyProductIntelGuardrailsToEnvelope({
     product_lookup_fallback_used: lookupMeta.llm_fallback_used === true,
     product_lookup_fallback_attempted: Math.max(0, Math.trunc(Number(lookupMeta.llm_fallback_attempted || 0))),
     product_lookup_fallback_recovered: Math.max(0, Math.trunc(Number(lookupMeta.llm_fallback_recovered || 0))),
+    product_lookup_fallback_timeout: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.timeout || 0))),
+    product_lookup_fallback_invalid_json: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.invalid_json || 0))),
+    product_lookup_fallback_error: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.error || 0))),
+    product_lookup_fallback_empty: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.empty || 0))),
     photo_modules_emit_rate: photoModulesCard ? 1 : 0,
     regions_unavailable_rate: photoRegions.length ? Number((regionsUnavailable / photoRegions.length).toFixed(4)) : 0,
     analysis_story_ui_card_rate:
@@ -20947,6 +21810,17 @@ async function applyProductIntelGuardrailsToEnvelope({
     product_llm_fallback_hit_rate:
       Number(lookupMeta.llm_fallback_attempted || 0) > 0
         ? Number((Number(lookupMeta.llm_fallback_recovered || 0) / Number(lookupMeta.llm_fallback_attempted || 1)).toFixed(4))
+        : 0,
+    product_llm_fallback_error_rate:
+      Number(lookupMeta.llm_fallback_attempted || 0) > 0
+        ? Number(
+          (
+            (Number(llmFallbackStageCounts.timeout || 0) +
+              Number(llmFallbackStageCounts.invalid_json || 0) +
+              Number(llmFallbackStageCounts.error || 0)) /
+            Number(lookupMeta.llm_fallback_attempted || 1)
+          ).toFixed(4),
+        )
         : 0,
     empty_products_rate:
       recommendableCards.length > 0
@@ -20956,6 +21830,7 @@ async function applyProductIntelGuardrailsToEnvelope({
       Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0) > 0
         ? Number((Number(sanitized.externalized || 0) / (Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0))).toFixed(4))
         : 0,
+    ...(pickFirstString(lookupMeta.llm_fallback_last_reason) ? { product_lookup_fallback_last_reason: lookupMeta.llm_fallback_last_reason } : {}),
     ...(qaSkippedReason ? { qa_skipped_reason: qaSkippedReason } : {}),
   };
   return {
@@ -20968,6 +21843,244 @@ async function applyProductIntelGuardrailsToEnvelope({
     externalized: sanitized.externalized,
     rejected: sanitized.rejected,
   };
+}
+
+function coerceRecoRowsForGuardrail(rows) {
+  const source = Array.isArray(rows) ? rows : [];
+  const out = [];
+  for (const row of source) {
+    const coerced = coerceRecoCandidateForGuardrail(row);
+    if (coerced) out.push(coerced);
+  }
+  return out;
+}
+
+function coerceIngredientPlanPayloadForGuardrail(payload) {
+  const p = isPlainObject(payload) ? { ...payload } : {};
+  const normalizeTarget = (target) => {
+    const baseTarget = isPlainObject(target) ? { ...target } : {};
+    if (Array.isArray(baseTarget.products)) {
+      baseTarget.products = coerceRecoRowsForGuardrail(baseTarget.products);
+    } else if (isPlainObject(baseTarget.products)) {
+      const products = { ...baseTarget.products };
+      for (const bucketName of Object.keys(products)) {
+        if (!Array.isArray(products[bucketName])) continue;
+        products[bucketName] = coerceRecoRowsForGuardrail(products[bucketName]);
+      }
+      baseTarget.products = products;
+    }
+    if (Array.isArray(baseTarget.candidates)) {
+      baseTarget.candidates = coerceRecoRowsForGuardrail(baseTarget.candidates);
+    }
+    if (Array.isArray(baseTarget.items)) {
+      baseTarget.items = coerceRecoRowsForGuardrail(baseTarget.items);
+    }
+    return baseTarget;
+  };
+
+  if (Array.isArray(p.targets)) {
+    p.targets = p.targets.map((target) => normalizeTarget(target));
+  }
+  if (isPlainObject(p.plan) && Array.isArray(p.plan.targets)) {
+    p.plan = {
+      ...p.plan,
+      targets: p.plan.targets.map((target) => normalizeTarget(target)),
+    };
+  }
+  return p;
+}
+
+function coerceRecommendationCardsForGuardrail(cards) {
+  const source = Array.isArray(cards) ? cards : [];
+  return source.map((card) => {
+    if (!isPlainObject(card)) return card;
+    const type = String(card.type || '').trim().toLowerCase();
+    const payload = isPlainObject(card.payload) ? { ...card.payload } : null;
+    if (!payload) return card;
+
+    if (type === 'recommendations') {
+      return {
+        ...card,
+        payload: {
+          ...payload,
+          recommendations: coerceRecoRowsForGuardrail(payload.recommendations),
+        },
+      };
+    }
+    if (type === 'ingredient_plan_v2' || type === 'ingredient_plan') {
+      return {
+        ...card,
+        payload: coerceIngredientPlanPayloadForGuardrail(payload),
+      };
+    }
+    return card;
+  });
+}
+
+async function applyRecommendationOutputGuardrailsForRoute({
+  envelope,
+  ctx,
+  logger = null,
+  strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+  qaMode = AURORA_PRODUCT_RELEVANCE_QA_MODE,
+  singleProvider = AURORA_LLM_SINGLE_PROVIDER,
+  allowOpenAiFallback = AURORA_LLM_OPENAI_FALLBACK_ENABLED,
+  qaContext = null,
+} = {}) {
+  const base = isPlainObject(envelope) ? { ...envelope } : envelope;
+  if (!isPlainObject(base)) {
+    return { envelope: base, dropped: 0, externalized: 0, rejected: [], lookup_meta: {} };
+  }
+
+  const cards = coerceRecommendationCardsForGuardrail(Array.isArray(base.cards) ? base.cards.slice() : []);
+  const cardsWithPdpOpen = [];
+  for (const card of cards) {
+    if (!isPlainObject(card)) {
+      cardsWithPdpOpen.push(card);
+      continue;
+    }
+    const type = String(card.type || '').trim().toLowerCase();
+    const payload = isPlainObject(card.payload) ? { ...card.payload } : null;
+    if (type !== 'recommendations' || !payload) {
+      cardsWithPdpOpen.push(card);
+      continue;
+    }
+
+    const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
+      recommendations: Array.isArray(payload.recommendations) ? payload.recommendations : [],
+      logger,
+    });
+    cardsWithPdpOpen.push({
+      ...card,
+      payload: {
+        ...payload,
+        recommendations: pdpOpenOut.recommendations,
+        metadata: {
+          ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
+          pdp_open_path_stats: pdpOpenOut.path_stats,
+          resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+          time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+        },
+      },
+    });
+  }
+
+  const sanitized = await sanitizeRecoCandidatesForUi(cardsWithPdpOpen, {
+    strictFilter,
+    qaMode,
+    singleProvider,
+    allowOpenAiFallback,
+    qaContext,
+    fallbackCandidateBuilder: AURORA_PURCHASABLE_FALLBACK_ENABLED ? buildPurchasableFallbackCandidates : null,
+    allowExternalSeedSupplement: AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true,
+    externalSeedStrategy: 'supplement_internal_first',
+    logger,
+  });
+  const lookupMeta = isPlainObject(sanitized.lookup_meta) ? sanitized.lookup_meta : {};
+  const llmFallbackStageCounts = isPlainObject(lookupMeta.llm_fallback_stage_counts)
+    ? lookupMeta.llm_fallback_stage_counts
+    : initLlmFallbackStageCounts();
+  const analysisMetaBase = isPlainObject(base.analysis_meta) ? { ...base.analysis_meta } : {};
+  const nextAnalysisMeta = {
+    ...analysisMetaBase,
+    product_lookup_mode: AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED ? 'catalog_then_llm_fallback' : 'catalog_only',
+    product_lookup_fallback_used: lookupMeta.llm_fallback_used === true,
+    product_lookup_fallback_attempted: Math.max(0, Math.trunc(Number(lookupMeta.llm_fallback_attempted || 0))),
+    product_lookup_fallback_recovered: Math.max(0, Math.trunc(Number(lookupMeta.llm_fallback_recovered || 0))),
+    product_lookup_fallback_timeout: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.timeout || 0))),
+    product_lookup_fallback_invalid_json: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.invalid_json || 0))),
+    product_lookup_fallback_error: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.error || 0))),
+    product_lookup_fallback_empty: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.empty || 0))),
+    ...(pickFirstString(lookupMeta.llm_fallback_last_reason)
+      ? { product_lookup_fallback_last_reason: lookupMeta.llm_fallback_last_reason }
+      : {}),
+  };
+
+  return {
+    envelope: {
+      ...base,
+      cards: sanitized.cards,
+      analysis_meta: nextAnalysisMeta,
+    },
+    dropped: sanitized.dropped,
+    externalized: sanitized.externalized,
+    rejected: sanitized.rejected,
+    lookup_meta: lookupMeta,
+  };
+}
+
+function sanitizeDupeSuggestPayload(payload) {
+  const base = isPlainObject(payload) ? { ...payload } : {};
+  const sanitizeBucket = (rows, field) => {
+    const source = Array.isArray(rows) ? rows : [];
+    const kept = [];
+    const dropped = [];
+    for (const row of source) {
+      if (!isPlainObject(row)) {
+        kept.push(row);
+        continue;
+      }
+      const blacklistHit = isBlacklistedCategoryOrTitle(row);
+      const skincareHit = isSkincareCategory(row);
+      if (blacklistHit || !skincareHit) {
+        dropped.push({
+          field,
+          reason: blacklistHit ? 'blacklisted_category_or_title' : 'non_skincare_category',
+          title: pickFirstString(row.name, row.title, row.display_name, row.displayName),
+        });
+        continue;
+      }
+      kept.push(row);
+    }
+    return { kept, dropped };
+  };
+
+  const dupesOut = sanitizeBucket(base.dupes, 'payload.dupes');
+  const comparablesOut = sanitizeBucket(base.comparables, 'payload.comparables');
+  const dropped = [...dupesOut.dropped, ...comparablesOut.dropped];
+  const nextFieldMissing = mergeFieldMissing(base.field_missing, [
+    ...(dupesOut.dropped.length > 0 ? [{ field: 'payload.dupes', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
+    ...(comparablesOut.dropped.length > 0 ? [{ field: 'payload.comparables', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
+  ]);
+
+  return {
+    payload: {
+      ...base,
+      dupes: dupesOut.kept,
+      comparables: comparablesOut.kept,
+      meta: {
+        ...(isPlainObject(base.meta) ? base.meta : {}),
+        sanitize_v1: {
+          dropped_non_skincare: dropped.length,
+        },
+      },
+    },
+    field_missing: nextFieldMissing,
+    dropped,
+  };
+}
+
+function applyDupeSuggestSanitizeToEnvelope(envelope) {
+  const base = isPlainObject(envelope) ? { ...envelope } : envelope;
+  if (!isPlainObject(base)) return { envelope: base, dropped: [] };
+  const cards = Array.isArray(base.cards) ? base.cards : [];
+  const dropped = [];
+  const nextCards = cards.map((card) => {
+    if (!isPlainObject(card)) return card;
+    const type = String(card.type || '').trim().toLowerCase();
+    if (type !== 'dupe_suggest') return card;
+    const payload = isPlainObject(card.payload) ? card.payload : {};
+    const sanitized = sanitizeDupeSuggestPayload(payload);
+    if (sanitized.dropped.length) dropped.push(...sanitized.dropped);
+    return {
+      ...card,
+      payload: sanitized.payload,
+      ...(sanitized.field_missing.length
+        ? { field_missing: mergeFieldMissing(card.field_missing, sanitized.field_missing) }
+        : {}),
+    };
+  });
+  return { envelope: { ...base, cards: nextCards }, dropped };
 }
 
 function persistRejectedCatalogCandidates(ctx, rejected) {
@@ -28870,16 +29983,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: {},
           events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'kb' })],
         });
-        const guardrailResult = await applyProductIntelGuardrailsToEnvelope({
-          envelope,
-          ctx,
-          profile: null,
-          language: ctx.lang,
-        });
-        if (guardrailResult && Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
-          persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
-        }
-        return res.json(guardrailResult && guardrailResult.envelope ? guardrailResult.envelope : envelope);
+        const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
+          ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
+          : envelope;
+        return res.json(sanitizedEnvelope);
       }
 
       // 2) Best-effort parse (improves kb_key stability and gives the UI a normalized product object)
@@ -28952,7 +30059,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             session_patch: {},
             events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'kb' })],
           });
-          return res.json(envelope);
+          const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
+            ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
+            : envelope;
+          return res.json(sanitizedEnvelope);
         }
       }
 
@@ -29038,7 +30148,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: {},
         events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'llm' })],
       });
-      return res.json(envelope);
+      const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
+        ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
+        : envelope;
+      return res.json(sanitizedEnvelope);
     } catch (err) {
       const status = err.status || 500;
       const envelope = buildEnvelope(ctx, {
@@ -29946,35 +31059,27 @@ function mountAuroraBffRoutes(app, { logger }) {
       const profileSummary = summarizeProfileForContext(profile);
 
       const gate = shouldDiagnosisGate({ message: 'recommend', triggerSource: 'action', profile });
+      let gateAdvisoryCard = null;
+      let gateAdvisoryChips = [];
       if (gate.gated) {
         const prompt = buildDiagnosisPrompt(ctx.lang, gate.missing);
         const chips = buildDiagnosisChips(ctx.lang, gate.missing);
-        const sessionPatch = { next_state: 'S2_DIAGNOSIS' };
-        if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
-          const pendingFromGate =
-            gate.pending_clarification ||
-            buildPendingClarificationForGate({
-              language: ctx.lang,
-              missing: gate.missing,
-              message: 'recommend',
-              wants: 'recommendation',
-            });
-          if (pendingFromGate) emitPendingClarificationPatch(sessionPatch, pendingFromGate);
-        }
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(prompt),
-          suggested_chips: chips,
-          cards: [
-            {
-              card_id: `diag_${ctx.request_id}`,
-              type: 'diagnosis_gate',
-              payload: { reason: gate.reason, missing_fields: gate.missing, wants: 'recommendation', profile: profileSummary, recent_logs: recentLogs },
-            },
-          ],
-          session_patch: sessionPatch,
-          events: [makeEvent({ ...ctx, trigger_source: 'action' }, 'state_entered', { next_state: 'S2_DIAGNOSIS', reason: gate.reason })],
-        });
-        return res.json(envelope);
+        gateAdvisoryCard = {
+          card_id: `diag_advisory_${ctx.request_id}`,
+          type: 'confidence_notice',
+          payload: buildConfidenceNoticeCardPayload({
+            language: ctx.lang,
+            reason: 'diagnosis_first',
+            confidence: { score: 0.45, level: 'low', rationale: ['profile_incomplete_assumptions_used'] },
+            non_blocking: true,
+            details: [
+              ...(Array.isArray(gate.missing) ? gate.missing.map((field) => `missing_${field}`) : []),
+              prompt,
+            ].slice(0, 6),
+            actions: ['refine_profile'],
+          }),
+        };
+        gateAdvisoryChips = chips;
       }
 
       const query = buildAuroraRoutineQuery({
@@ -30024,6 +31129,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
       }
+      if (gateAdvisoryChips.length > 0) {
+        const existing = new Set(suggestedChips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : '').trim()).filter(Boolean));
+        for (const chip of gateAdvisoryChips) {
+          const chipId = String(chip && chip.chip_id ? chip.chip_id : '').trim();
+          if (!chipId || existing.has(chipId)) continue;
+          existing.add(chipId);
+          suggestedChips.push(chip);
+          if (suggestedChips.length >= 12) break;
+        }
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -30035,11 +31150,54 @@ function mountAuroraBffRoutes(app, { logger }) {
             payload,
             ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
           },
+          ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
         ],
         session_patch: payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {},
         events: [makeEvent({ ...ctx, trigger_source: 'action' }, 'recos_requested', { explicit: true })],
       });
-      return res.json(envelope);
+      if (!AURORA_RECO_GENERATE_GUARDRAIL_V1) return res.json(envelope);
+      const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
+        envelope,
+        ctx,
+        logger,
+      });
+      if (Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
+        persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
+      }
+      const guardedEnvelope = isPlainObject(guardrailResult.envelope) ? guardrailResult.envelope : envelope;
+      const guardedCards = Array.isArray(guardedEnvelope.cards) ? guardedEnvelope.cards : [];
+      const guardedRecoCard = guardedCards.find(
+        (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'recommendations',
+      );
+      const guardedRecommendations = Array.isArray(guardedRecoCard && guardedRecoCard.payload && guardedRecoCard.payload.recommendations)
+        ? guardedRecoCard.payload.recommendations
+        : [];
+      const hasGuardedRecommendations = guardedRecommendations.length > 0;
+      const nextSessionPatch = isPlainObject(guardedEnvelope.session_patch) ? { ...guardedEnvelope.session_patch } : {};
+      if (hasGuardedRecommendations) {
+        nextSessionPatch.next_state = 'S7_PRODUCT_RECO';
+      } else {
+        delete nextSessionPatch.next_state;
+        if ((!Array.isArray(guardedEnvelope.suggested_chips) || guardedEnvelope.suggested_chips.length === 0) && nextActions.length) {
+          const fallbackChips = [];
+          for (const act of nextActions.slice(0, 8)) {
+            if (!act || typeof act !== 'object') continue;
+            const label = typeof act.label === 'string' ? act.label.trim() : typeof act.text === 'string' ? act.text.trim() : '';
+            const text = typeof act.text === 'string' ? act.text.trim() : label;
+            const id = typeof act.id === 'string' ? act.id.trim() : '';
+            if (!label) continue;
+            fallbackChips.push({
+              chip_id: `chip.aurora.next_action.${id || label.replace(/\\s+/g, '_')}`.slice(0, 80),
+              label,
+              kind: 'quick_reply',
+              data: { reply_text: text, aurora_action_id: id || null },
+            });
+          }
+          guardedEnvelope.suggested_chips = fallbackChips;
+        }
+      }
+      guardedEnvelope.session_patch = nextSessionPatch;
+      return res.json(guardedEnvelope);
     } catch (err) {
       const status = err.status || 500;
       const envelope = buildEnvelope(ctx, {
@@ -30919,6 +32077,8 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let profile = null;
         let recentLogs = [];
+        let pregnancyPolicyEvents = [];
+        let pregnancyStatusDefaultedForDiagnosis = false;
         profiler.start('quality', { kind: 'memory' });
         try {
           const [profileRes, logsRes] = await Promise.allSettled([
@@ -30943,6 +32103,33 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         } catch (err) {
           logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
+        }
+
+        const pregnancyPolicyForDiagnosis = derivePregnancyPolicyPatch({
+          profile,
+          message: '',
+          todayUtc: utcTodayIsoDate(),
+        });
+        if (pregnancyPolicyForDiagnosis && Array.isArray(pregnancyPolicyForDiagnosis.events)) {
+          pregnancyStatusDefaultedForDiagnosis = pregnancyPolicyForDiagnosis.events.some(
+            (evt) => evt && evt.event_name === 'pregnancy_status_defaulted',
+          );
+          pregnancyPolicyEvents = pregnancyPolicyForDiagnosis.events
+            .filter((evt) => evt && typeof evt === 'object' && evt.event_name)
+            .map((evt) => makeEvent(ctx, evt.event_name, evt.data && typeof evt.data === 'object' ? evt.data : {}));
+        }
+        if (pregnancyPolicyForDiagnosis && pregnancyPolicyForDiagnosis.patch) {
+          profile = { ...(profile || {}), ...pregnancyPolicyForDiagnosis.patch };
+          if (persistLastAnalysis) {
+            try {
+              profile = await upsertProfileForIdentity(
+                { auroraUid: identity.auroraUid, userId: identity.userId },
+                pregnancyPolicyForDiagnosis.patch,
+              );
+            } catch (err) {
+              logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist diagnosis pregnancy policy patch');
+            }
+          }
         }
 
         const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
@@ -32019,6 +33206,23 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
           });
         }
+        if (pregnancyStatusDefaultedForDiagnosis) {
+          extraCards.push({
+            card_id: `pregnancy_optional_${ctx.request_id}`,
+            type: 'confidence_notice',
+            payload: {
+              reason: 'pregnancy_optional_profile',
+              non_blocking: true,
+              severity: 'info',
+              message:
+                ctx.lang === 'CN'
+                  ? '孕期信息在本阶段是可选的；未填写时系统已按未怀孕继续。你可随时在 Profile 更新。'
+                  : 'Pregnancy context is optional at this stage; the system continued with not_pregnant by default. You can update Profile anytime.',
+              actions: ['update_optional_profile'],
+              details: [ctx.lang === 'CN' ? '默认假设：not_pregnant' : 'Default assumption: not_pregnant'],
+            },
+          });
+        }
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
@@ -32037,6 +33241,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: sessionPatch,
           events: [
             ...routineProductEvents,
+            ...pregnancyPolicyEvents,
             makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: renderedAnalysisSource }),
           ],
           analysis_meta: analysisMeta,
@@ -33062,13 +34267,37 @@ function mountAuroraBffRoutes(app, { logger }) {
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       },
+      gate_policy_version: AURORA_GATE_POLICY_META_VERSION,
+      gate_decisions: [],
+      advisory_count: 0,
       degraded: false,
+    };
+    const gateDecisions = [];
+    let advisoryCount = 0;
+    const pushGateDecision = (gateId, input = {}) => {
+      const decision = resolveGateDecision({ source: 'chat' }, gateId, input);
+      if (!decision || decision.mode === GATE_MODE.BYPASS) return decision;
+      if (decision.mode === GATE_MODE.ADVISORY) advisoryCount += 1;
+      gateDecisions.push({
+        gate_id: decision.gate_id,
+        mode: decision.mode,
+        reason_codes: Array.isArray(decision.reason_codes) ? decision.reason_codes.slice(0, 6) : [],
+      });
+      return decision;
+    };
+    const syncGatePolicyMeta = () => {
+      policyMeta.gate_policy_version = AURORA_GATE_POLICY_META_VERSION;
+      policyMeta.gate_decisions = gateDecisions.slice(0, 24);
+      policyMeta.advisory_count = advisoryCount;
     };
     let plannerSessionStatePatch = null;
     let latestClarificationId = null;
     let profile = null;
     let recentLogs = [];
     let safetyDecision = null;
+    let pendingSafetyAdvisory = null;
+    const pendingGateAdvisories = [];
+    let pendingPregnancyPolicyEvents = [];
     let requestMessage = '';
     let recoContextMetricsEmitted = false;
     const refreshPolicyMetaRollout = () => {
@@ -33213,8 +34442,211 @@ function mountAuroraBffRoutes(app, { logger }) {
       out.events = events;
       return out;
     };
+    const applyPendingSafetyAdvisoryToEnvelope = (envelope) => {
+      const base = envelope && typeof envelope === 'object' && !Array.isArray(envelope)
+        ? { ...envelope }
+        : { assistant_message: null, suggested_chips: [], cards: [], session_patch: {}, events: [] };
+      const advisory = pendingSafetyAdvisory && typeof pendingSafetyAdvisory === 'object' ? pendingSafetyAdvisory : null;
+
+      const sessionPatch = isPlainObject(base.session_patch) ? { ...base.session_patch } : {};
+      const sessionMeta =
+        sessionPatch.meta && typeof sessionPatch.meta === 'object' && !Array.isArray(sessionPatch.meta)
+          ? { ...sessionPatch.meta }
+          : {};
+      sessionMeta.safety_gate_mode = 'advisory_only_v1';
+      sessionMeta.safety_advisory_emitted = Boolean(advisory);
+      if (advisory && Array.isArray(advisory.missing_optional_fields) && advisory.missing_optional_fields.length > 0) {
+        sessionMeta.safety_missing_optional_fields = advisory.missing_optional_fields.slice(0, 6);
+      } else if (Object.prototype.hasOwnProperty.call(sessionMeta, 'safety_missing_optional_fields')) {
+        delete sessionMeta.safety_missing_optional_fields;
+      }
+      sessionPatch.meta = sessionMeta;
+      base.session_patch = sessionPatch;
+
+      if (!advisory) return base;
+
+      const existingCards = Array.isArray(base.cards) ? base.cards.slice() : [];
+      const hasExistingAdvisory = existingCards.some((card) => {
+        if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
+        if (String(card.type || '').trim().toLowerCase() !== 'confidence_notice') return false;
+        const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+        return String(payload.reason || '').trim().toLowerCase() === 'safety_optional_profile_missing';
+      });
+      if (!hasExistingAdvisory) {
+        existingCards.push({
+          card_id: `safety_inline_${ctx.request_id}`,
+          type: 'confidence_notice',
+          payload: {
+            reason: 'safety_optional_profile_missing',
+            non_blocking: true,
+            severity: advisory.severity || 'warn',
+            message: advisory.message,
+            details: Array.isArray(advisory.details) ? advisory.details.slice(0, 6) : [],
+            assumptions: Array.isArray(advisory.assumptions) ? advisory.assumptions.slice(0, 4) : [],
+            actions: Array.isArray(advisory.actions) ? advisory.actions.slice(0, 6) : [],
+          },
+        });
+      }
+      base.cards = existingCards;
+
+      const advisoryChips = Array.isArray(advisory.chips) ? advisory.chips : [];
+      if (advisoryChips.length > 0) {
+        const existingChips = Array.isArray(base.suggested_chips) ? base.suggested_chips : [];
+        const seen = new Set(existingChips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : '').trim()).filter(Boolean));
+        const mergedChips = existingChips.slice();
+        for (const chip of advisoryChips) {
+          const chipId = String(chip && chip.chip_id ? chip.chip_id : '').trim();
+          if (chipId && seen.has(chipId)) continue;
+          if (chipId) seen.add(chipId);
+          mergedChips.push(chip);
+        }
+        base.suggested_chips = mergedChips.slice(0, 12);
+      }
+
+      const events = Array.isArray(base.events) ? base.events.slice(0, 96) : [];
+      if (!events.some((evt) => evt && evt.event_name === 'safety_advisory_inline')) {
+        events.push(
+          makeEvent(ctx, 'safety_advisory_inline', {
+            reason: advisory.reason || 'safety_optional_profile_missing',
+            missing_fields: Array.isArray(advisory.missing_optional_fields) ? advisory.missing_optional_fields.slice(0, 6) : [],
+            question: advisory.required_question || null,
+          }),
+        );
+      }
+      base.events = events;
+
+      return base;
+    };
+    const enqueueGateAdvisory = ({ gate_id, message, reason_codes, actions, chips } = {}) => {
+      const gateId = String(gate_id || '').trim();
+      if (!gateId) return;
+      const existing = pendingGateAdvisories.find((item) => item && item.gate_id === gateId);
+      const normalizeList = (values, max = 6) => {
+        const out = [];
+        const seen = new Set();
+        for (const raw of Array.isArray(values) ? values : []) {
+          const value = String(raw || '').trim();
+          if (!value) continue;
+          const key = value.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(value);
+          if (out.length >= max) break;
+        }
+        return out;
+      };
+      const next = {
+        gate_id: gateId,
+        message: String(message || '').trim(),
+        reason_codes: normalizeList(reason_codes, 8),
+        actions: normalizeList(actions, 6),
+        chips: Array.isArray(chips) ? chips.slice(0, 6) : [],
+      };
+      if (!existing) {
+        pendingGateAdvisories.push(next);
+        return;
+      }
+      existing.message = existing.message || next.message;
+      existing.reason_codes = normalizeList([...(existing.reason_codes || []), ...(next.reason_codes || [])], 8);
+      existing.actions = normalizeList([...(existing.actions || []), ...(next.actions || [])], 6);
+      if ((!Array.isArray(existing.chips) || existing.chips.length === 0) && Array.isArray(next.chips) && next.chips.length > 0) {
+        existing.chips = next.chips.slice(0, 6);
+      }
+    };
+    const applyPendingGateAdvisoriesToEnvelope = (envelope) => {
+      if (!Array.isArray(pendingGateAdvisories) || pendingGateAdvisories.length === 0) return envelope;
+      const base = envelope && typeof envelope === 'object' && !Array.isArray(envelope)
+        ? { ...envelope }
+        : { assistant_message: null, suggested_chips: [], cards: [], session_patch: {}, events: [] };
+      const cards = Array.isArray(base.cards) ? base.cards.slice() : [];
+      const existingGateIds = new Set(
+        cards
+          .map((card) => {
+            const payload = card && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : null;
+            return payload ? String(payload.gate_id || '').trim() : '';
+          })
+          .filter(Boolean),
+      );
+      for (const advisory of pendingGateAdvisories.slice(0, 4)) {
+        if (!advisory || typeof advisory !== 'object') continue;
+        if (existingGateIds.has(advisory.gate_id)) continue;
+        cards.push({
+          card_id: `gate_${advisory.gate_id}_${ctx.request_id}`,
+          type: 'confidence_notice',
+          payload: {
+            reason: 'gate_advisory',
+            gate_id: advisory.gate_id,
+            non_blocking: true,
+            severity: 'info',
+            message:
+              advisory.message ||
+              (ctx.lang === 'CN'
+                ? '该信息用于提高准确度，不会阻断当前回答。'
+                : 'This detail improves precision and does not block the current answer.'),
+            details: Array.isArray(advisory.reason_codes) ? advisory.reason_codes.slice(0, 6) : [],
+            actions: Array.isArray(advisory.actions) ? advisory.actions.slice(0, 6) : [],
+          },
+        });
+      }
+      base.cards = cards;
+      const chipMap = new Set((Array.isArray(base.suggested_chips) ? base.suggested_chips : []).map((chip) => String(chip && chip.chip_id ? chip.chip_id : '').trim()).filter(Boolean));
+      const mergedChips = Array.isArray(base.suggested_chips) ? base.suggested_chips.slice() : [];
+      for (const advisory of pendingGateAdvisories) {
+        for (const chip of Array.isArray(advisory && advisory.chips) ? advisory.chips : []) {
+          const chipId = String(chip && chip.chip_id ? chip.chip_id : '').trim();
+          if (!chipId || chipMap.has(chipId)) continue;
+          chipMap.add(chipId);
+          mergedChips.push(chip);
+          if (mergedChips.length >= 12) break;
+        }
+        if (mergedChips.length >= 12) break;
+      }
+      base.suggested_chips = mergedChips;
+      return base;
+    };
+    const applyPendingPregnancyPolicyEventsToEnvelope = (envelope) => {
+      const base = envelope && typeof envelope === 'object' && !Array.isArray(envelope)
+        ? { ...envelope }
+        : { assistant_message: null, suggested_chips: [], cards: [], session_patch: {}, events: [] };
+      if (!Array.isArray(pendingPregnancyPolicyEvents) || pendingPregnancyPolicyEvents.length === 0) return base;
+
+      const events = Array.isArray(base.events) ? base.events.slice(0, 96) : [];
+      const existing = new Set(
+        events
+          .map((evt) => String(evt && evt.event_name ? evt.event_name : '').trim())
+          .filter(Boolean),
+      );
+      let hasDefaulted = false;
+      let hasAutoReset = false;
+      for (const evt of pendingPregnancyPolicyEvents) {
+        if (!evt || typeof evt !== 'object') continue;
+        const name = String(evt.event_name || '').trim();
+        if (!name || existing.has(name)) continue;
+        existing.add(name);
+        events.push(evt);
+        if (name === 'pregnancy_status_defaulted') hasDefaulted = true;
+        if (name === 'pregnancy_status_auto_reset') hasAutoReset = true;
+      }
+      base.events = events.slice(0, 96);
+
+      if (hasDefaulted || hasAutoReset) {
+        const sessionPatch = isPlainObject(base.session_patch) ? { ...base.session_patch } : {};
+        const meta =
+          sessionPatch.meta && typeof sessionPatch.meta === 'object' && !Array.isArray(sessionPatch.meta)
+            ? { ...sessionPatch.meta }
+            : {};
+        if (hasDefaulted) meta.pregnancy_status_defaulted = true;
+        if (hasAutoReset) meta.pregnancy_status_auto_reset = true;
+        sessionPatch.meta = meta;
+        base.session_patch = sessionPatch;
+      }
+      return base;
+    };
     const sendChatEnvelope = async (envelope, statusCode = 200) => {
-      const withLlmMeta = applyLlmMetaToEnvelope(envelope);
+      syncGatePolicyMeta();
+      const withSafetyAdvisory = applyPendingSafetyAdvisoryToEnvelope(envelope);
+      const withGateAdvisory = applyPendingGateAdvisoriesToEnvelope(withSafetyAdvisory);
+      const withLlmMeta = applyLlmMetaToEnvelope(withGateAdvisory);
       const withPolicyMeta = (() => {
         if (!shouldAttachPolicyMeta) return withLlmMeta;
         if (!withLlmMeta || typeof withLlmMeta !== 'object') return withLlmMeta;
@@ -33257,7 +34689,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         out.events = events;
         return out;
       })();
-      const withRecoMeta = applyRecommendationMetaToEnvelope(withPolicyMeta);
+      const withPregnancyPolicyEvents = applyPendingPregnancyPolicyEventsToEnvelope(withPolicyMeta);
+      const withRecoMeta = applyRecommendationMetaToEnvelope(withPregnancyPolicyEvents);
       const dogfoodAugmented = augmentEnvelopeProductAnalysisCardsForDogfood({
         envelope: withRecoMeta,
         req,
@@ -33570,6 +35003,34 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionLabelFromPayload ||
         '';
       requestMessage = message;
+      const pregnancyPolicy = derivePregnancyPolicyPatch({
+        profile,
+        message,
+        todayUtc: utcTodayIsoDate(),
+      });
+      if (pregnancyPolicy && Array.isArray(pregnancyPolicy.events) && pregnancyPolicy.events.length > 0) {
+        pendingPregnancyPolicyEvents = [
+          ...pendingPregnancyPolicyEvents,
+          ...pregnancyPolicy.events.map((evt) =>
+            makeEvent(ctx, evt.event_name, evt && evt.data && typeof evt.data === 'object' ? evt.data : {}),
+          ),
+        ];
+      }
+      if (pregnancyPolicy && pregnancyPolicy.patch) {
+        appliedProfilePatch = {
+          ...(appliedProfilePatch && typeof appliedProfilePatch === 'object' ? appliedProfilePatch : {}),
+          ...pregnancyPolicy.patch,
+        };
+        profile = { ...(profile || {}), ...pregnancyPolicy.patch };
+        try {
+          profile = await upsertProfileForIdentity(
+            { auroraUid: identity.auroraUid, userId: identity.userId },
+            pregnancyPolicy.patch,
+          );
+        } catch (err) {
+          logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist pregnancy policy patch');
+        }
+      }
       const actionId =
         (normalizedActionPayload && typeof normalizedActionPayload === 'object'
           ? normalizedActionPayload.action_id
@@ -33922,6 +35383,156 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         return '';
       };
+      const resolveSafetyGateActionV2 = ({ safety, profileValue, conflictIntent }) => {
+        const s = safety && typeof safety === 'object' ? safety : null;
+        if (!s) return { mode: 'bypass', advisory: null, ask_once_fields: [] };
+        const blockLevel = String(s.block_level || '').trim();
+        if (!blockLevel || blockLevel === BLOCK_LEVEL.INFO) {
+          return { mode: 'bypass', advisory: null, ask_once_fields: [] };
+        }
+
+        const requiredFields = (Array.isArray(s.required_fields) ? s.required_fields : [])
+          .map((field) => String(field || '').trim())
+          .filter(Boolean);
+        const optionalRequiredFields = requiredFields.filter((field) => OPTIONAL_SAFETY_PROFILE_FIELDS.includes(field));
+        const missingOptionalFields = optionalRequiredFields.filter(
+          (field) => !profileHasOptionalSafetyFieldValue(profileValue, field),
+        );
+        const safetyPromptState = normalizeSafetyPromptStateForChat(
+          profileValue && profileValue.safetyPromptState ? profileValue.safetyPromptState : null,
+        );
+        const unaskedOptionalFields = missingOptionalFields.filter(
+          (field) => !Boolean(safetyPromptState.asked_once_fields[field]),
+        );
+
+        const reasonCodes = Array.isArray(s.reason_codes) ? s.reason_codes.slice(0, 6) : [];
+        const policyDecision =
+          blockLevel === BLOCK_LEVEL.BLOCK
+            ? pushGateDecision('safety_hard_block', {
+              is_hard_contraindication: true,
+              reason_codes: reasonCodes,
+            })
+            : pushGateDecision('safety_optional_profile', {
+              is_hard_contraindication: false,
+              reason_codes: reasonCodes,
+            });
+        const policyMode = policyDecision && typeof policyDecision.mode === 'string' ? policyDecision.mode : GATE_MODE.BYPASS;
+        const effectiveMode =
+          conflictIntent && policyMode === GATE_MODE.BLOCK
+            ? GATE_MODE.ADVISORY
+            : policyMode;
+        if (effectiveMode === GATE_MODE.BLOCK) return { mode: 'block', advisory: null, ask_once_fields: [] };
+        if (effectiveMode !== GATE_MODE.ADVISORY) return { mode: 'bypass', advisory: null, ask_once_fields: [] };
+
+        const safetyQuestions = Array.isArray(s.required_questions) ? s.required_questions : [];
+        const firstQuestion = safetyQuestions[0] || (ctx.lang === 'CN' ? '请先补充一个安全信息（可选）。' : 'Please share one optional safety detail.');
+        const noticePrefix = buildSafetyNoticeText(s);
+        const followup =
+          unaskedOptionalFields.length > 0
+            ? firstQuestion
+            : ctx.lang === 'CN'
+              ? '你可以稍后在 Profile 里补充可选安全信息，我会继续给出保守建议。'
+              : 'You can add optional safety details in Profile later; I will continue with conservative assumptions.';
+        const message = [noticePrefix, followup].filter(Boolean).join('\n\n');
+        const chips = unaskedOptionalFields.length > 0
+          ? buildSafetyAdvisoryChipsByField({
+            field: unaskedOptionalFields[0],
+            language: ctx.lang,
+          })
+          : [];
+        const assumptions = missingOptionalFields.map((field) =>
+          field === 'pregnancy_status'
+            ? 'pregnancy_status unknown'
+            : field === 'age_band'
+              ? 'age_band unknown'
+              : 'high_risk_medications unknown',
+        );
+        const advisory = {
+          reason: 'safety_optional_profile_missing',
+          non_blocking: true,
+          severity: blockLevel === BLOCK_LEVEL.BLOCK ? 'block' : 'warn',
+          message,
+          details: Array.isArray(s.reasons) ? s.reasons.slice(0, 4) : [],
+          assumptions: assumptions.slice(0, 3),
+          actions: ['update_optional_profile', 'continue_conservative_mode'],
+          chips,
+          missing_optional_fields: missingOptionalFields,
+          required_question: firstQuestion,
+          reason_codes: Array.isArray(s.reason_codes) ? s.reason_codes.slice(0, 4) : [],
+        };
+        return { mode: 'inline', advisory, ask_once_fields: unaskedOptionalFields };
+      };
+      const dedupeArrayStrings = (values, max = 8) => {
+        const out = [];
+        const seen = new Set();
+        for (const raw of Array.isArray(values) ? values : []) {
+          const value = String(raw || '').trim();
+          if (!value) continue;
+          const key = value.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(value);
+          if (out.length >= max) break;
+        }
+        return out;
+      };
+      const mergePendingSafetyAdvisory = (incoming) => {
+        if (!incoming || typeof incoming !== 'object') return;
+        if (!pendingSafetyAdvisory) {
+          pendingSafetyAdvisory = incoming;
+          return;
+        }
+        const currentMissing = Array.isArray(pendingSafetyAdvisory.missing_optional_fields)
+          ? pendingSafetyAdvisory.missing_optional_fields
+          : [];
+        const incomingMissing = Array.isArray(incoming.missing_optional_fields)
+          ? incoming.missing_optional_fields
+          : [];
+        pendingSafetyAdvisory = {
+          ...pendingSafetyAdvisory,
+          details: dedupeArrayStrings([...(pendingSafetyAdvisory.details || []), ...(incoming.details || [])], 6),
+          assumptions: dedupeArrayStrings([...(pendingSafetyAdvisory.assumptions || []), ...(incoming.assumptions || [])], 4),
+          actions: dedupeArrayStrings([...(pendingSafetyAdvisory.actions || []), ...(incoming.actions || [])], 6),
+          chips:
+            Array.isArray(pendingSafetyAdvisory.chips) && pendingSafetyAdvisory.chips.length > 0
+              ? pendingSafetyAdvisory.chips
+              : incoming.chips,
+          missing_optional_fields: dedupeArrayStrings([...currentMissing, ...incomingMissing], 6),
+          reason_codes: dedupeArrayStrings(
+            [...(pendingSafetyAdvisory.reason_codes || []), ...(incoming.reason_codes || [])],
+            6,
+          ),
+        };
+      };
+      const persistSafetyPromptAskedOnce = async (fields) => {
+        const targets = (Array.isArray(fields) ? fields : [])
+          .map((field) => String(field || '').trim())
+          .filter((field) => OPTIONAL_SAFETY_PROFILE_FIELDS.includes(field));
+        if (!targets.length) return;
+        const current = normalizeSafetyPromptStateForChat(profile && profile.safetyPromptState);
+        const nextAsked = { ...(current.asked_once_fields || {}) };
+        let changed = false;
+        for (const field of targets) {
+          if (nextAsked[field] === true) continue;
+          nextAsked[field] = true;
+          changed = true;
+        }
+        if (!changed) return;
+        const nextState = {
+          asked_once_fields: nextAsked,
+          asked_at_ms: Date.now(),
+        };
+        profile = { ...(profile || {}), safetyPromptState: nextState };
+        try {
+          const saved = await upsertProfileForIdentity(
+            { auroraUid: identity.auroraUid, userId: identity.userId },
+            { safetyPromptState: nextState },
+          );
+          if (saved && typeof saved === 'object') profile = saved;
+        } catch (err) {
+          logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist safety prompt state');
+        }
+      };
 
       const clientAgentState = normalizeAgentState(parsed.data.client_state);
 
@@ -34163,6 +35774,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
       let nextStateOverride = null;
       const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+      const conflictIntentRequested = looksLikeCompatibilityOrConflictQuestion(message);
       const hasFitCheckAnchor = hasPlannerAnchor;
       const evaluateIntent =
         (canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT || looksLikeProductEvaluationIntentV2(message, actionId)) &&
@@ -34219,51 +35831,49 @@ function mountAuroraBffRoutes(app, { logger }) {
         const firstQuestion = lang === 'CN'
           ? '请粘贴产品链接、完整产品名，或成分表（INCI）。'
           : 'Please paste the product link, full product name, or ingredient list (INCI).';
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
-            lang === 'CN'
-              ? '好的，我先做信息收集门控。请粘贴产品链接、完整产品名，或成分表（INCI），我会立即继续评估。'
-              : 'Great. I will run a quick info gate first. Please paste the product link, full product name, or ingredient list (INCI), and I will continue immediately.',
-          ),
-          suggested_chips: prompt.chips,
-          cards: [
-            {
-              card_id: `fit_anchor_req_${ctx.request_id}`,
-              type: 'confidence_notice',
-              payload: buildFitCheckAnchorRequireInfoCardPayload(lang),
-            },
-          ],
-          session_patch: {},
-          events: [
-            makeEvent(ctx, 'anchor_collection_waiting_input', { intent: canonicalIntent.intent }),
-            makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent || INTENT_ENUM.EVALUATE_PRODUCT, question: firstQuestion }),
-          ],
+        const gate = pushGateDecision('fit_check_anchor_gate', {
+          reason_codes: ['anchor_soft_blocked_ambiguous'],
         });
-        return sendChatEnvelope(envelope);
+        if (gate && gate.mode === GATE_MODE.ADVISORY) {
+          enqueueGateAdvisory({
+            gate_id: 'fit_check_anchor_gate',
+            message:
+              lang === 'CN'
+                ? '我会先给出通用可执行分析，再根据你补充的产品信息精确化。'
+                : 'I will provide a usable baseline now and refine it once you share product details.',
+            reason_codes: ['anchor_soft_blocked_ambiguous'],
+            actions: ['provide_anchor_url_or_name'],
+            chips: prompt.chips,
+          });
+          policyMeta.gate_type = 'soft';
+          logger?.info(
+            { request_id: ctx.request_id, trace_id: ctx.trace_id, question: firstQuestion },
+            'aurora bff: fit-check anchor gate downgraded to advisory',
+          );
+        }
       }
       if (evaluateIntent && !hasFitCheckAnchor) {
         const prompt = buildFitCheckAnchorPrompt(ctx.lang);
         const firstQuestion = ctx.lang === 'CN'
           ? '请粘贴产品链接、完整产品名，或成分表（INCI）。'
           : 'Please paste the product link, full product name, or ingredient list (INCI).';
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(prompt.prompt),
-          suggested_chips: prompt.chips,
-          cards: [
-            {
-              card_id: `fit_anchor_req_${ctx.request_id}`,
-              type: 'confidence_notice',
-              payload: buildFitCheckAnchorRequireInfoCardPayload(ctx.lang),
-            },
-          ],
-          session_patch:
-            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-          events: [
-            makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'fit_check_anchor_required' }),
-            makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent || INTENT_ENUM.EVALUATE_PRODUCT, question: firstQuestion }),
-          ],
+        const gate = pushGateDecision('fit_check_anchor_gate', {
+          reason_codes: ['anchor_id_not_used_due_to_low_trust'],
         });
-        return sendChatEnvelope(envelope);
+        if (gate && gate.mode === GATE_MODE.ADVISORY) {
+          enqueueGateAdvisory({
+            gate_id: 'fit_check_anchor_gate',
+            message: prompt.prompt,
+            reason_codes: ['anchor_id_not_used_due_to_low_trust'],
+            actions: ['provide_anchor_url_or_name'],
+            chips: prompt.chips,
+          });
+          policyMeta.gate_type = 'soft';
+          logger?.info(
+            { request_id: ctx.request_id, trace_id: ctx.trace_id, question: firstQuestion },
+            'aurora bff: fit-check anchor required gate changed to advisory',
+          );
+        }
       }
 
       const shouldRunSafetyPreGate = Boolean(
@@ -34271,105 +35881,70 @@ function mountAuroraBffRoutes(app, { logger }) {
           (
             hasSafetySensitiveActiveMention ||
             ingredientScienceIntent ||
+            conflictIntentRequested ||
             canonicalIntent.intent === INTENT_ENUM.RECO_PRODUCTS ||
             canonicalIntent.intent === INTENT_ENUM.ROUTINE ||
             canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
             canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV
           ),
       );
-      if (shouldRunSafetyPreGate && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
-            buildSafetyNoticeText(safetyDecision) ||
-              (ctx.lang === 'CN'
-                ? '这个方向当前存在安全风险，我先给你更安全替代。'
-                : 'There is a safety risk for this path, so I’ll switch to safer alternatives first.'),
-          ),
-          suggested_chips: [
-            {
-              chip_id: 'chip.start.ingredients.safe_alternatives',
-              label: ctx.lang === 'CN' ? '看更安全替代' : 'Show safer alternatives',
-              kind: 'quick_reply',
-              data: {
-                reply_text:
-                  ctx.lang === 'CN'
-                    ? '请给我更安全替代成分（机制+注意事项）'
-                    : 'Show safer alternative ingredients (mechanism + watchouts)',
-              },
-            },
-          ],
-          cards: [
-            {
-              card_id: `safety_${ctx.request_id}`,
-              type: 'confidence_notice',
-              payload: {
-                severity: 'block',
-                message:
-                  ctx.lang === 'CN'
-                    ? '该方向存在安全风险，已切换到更保守建议。'
-                    : 'This path carries safety risk; switched to conservative guidance.',
-                details: [...(Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 3) : []), ...(Array.isArray(safetyDecision.safe_alternatives) ? safetyDecision.safe_alternatives.slice(0, 3) : [])],
-                actions: ['safe_alternatives'],
-              },
-            },
-          ],
-          session_patch: {},
-          events: [makeEvent(ctx, 'safety_gate_block', { intent: canonicalIntent.intent || INTENT_ENUM.UNKNOWN, block_level: safetyDecision.block_level })],
+      if (shouldRunSafetyPreGate) {
+        const safetyGateAction = resolveSafetyGateActionV2({
+          safety: safetyDecision,
+          profileValue: profile,
+          conflictIntent: conflictIntentRequested,
         });
-        return sendChatEnvelope(envelope);
-      }
-      if (shouldRunSafetyPreGate && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO) {
-        const safetyQuestions = Array.isArray(safetyDecision.required_questions) ? safetyDecision.required_questions : [];
-        const firstQuestion = safetyQuestions[0] || (ctx.lang === 'CN' ? '请先补充一个关键安全信息。' : 'Please provide one key safety detail first.');
-        const asksPregnancy = /pregnan|怀孕|备孕/i.test(firstQuestion);
-        const chips = asksPregnancy
-          ? [
-            {
-              chip_id: 'chip.profile.pregnancy.not_pregnant',
-              label: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant',
-              kind: 'quick_reply',
-              data: { profile_patch: { pregnancy_status: 'not_pregnant' }, reply_text: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant' },
-            },
-            {
-              chip_id: 'chip.profile.pregnancy.pregnant',
-              label: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant',
-              kind: 'quick_reply',
-              data: { profile_patch: { pregnancy_status: 'pregnant' }, reply_text: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant' },
-            },
-            {
-              chip_id: 'chip.profile.pregnancy.trying',
-              label: ctx.lang === 'CN' ? '备孕中' : 'Trying',
-              kind: 'quick_reply',
-              data: { profile_patch: { pregnancy_status: 'trying' }, reply_text: ctx.lang === 'CN' ? '备孕中' : 'Trying to conceive' },
-            },
-          ]
-          : [];
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage([buildSafetyNoticeText(safetyDecision), firstQuestion].filter(Boolean).join('\n\n')),
-          suggested_chips: chips,
-          cards: [
-            {
-              card_id: `safety_${ctx.request_id}`,
-              type: 'confidence_notice',
-              payload: {
-                severity: 'warn',
-                message:
-                  ctx.lang === 'CN'
-                    ? '继续前需要一个关键安全信息。'
-                    : 'One key safety detail is required before continuing.',
-                details: Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 4) : [],
-                actions: ['answer_safety_question'],
+        if (safetyGateAction.mode === 'inline' && safetyGateAction.advisory) {
+          mergePendingSafetyAdvisory(safetyGateAction.advisory);
+          await persistSafetyPromptAskedOnce(safetyGateAction.ask_once_fields);
+        }
+        if (safetyGateAction.mode === 'block') {
+          policyMeta.safety_gate_mode = 'advisory_only_v1';
+          policyMeta.safety_advisory_emitted = false;
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(
+              buildSafetyNoticeText(safetyDecision) ||
+                (ctx.lang === 'CN'
+                  ? '这个方向当前存在安全风险，我先给你更安全替代。'
+                  : 'There is a safety risk for this path, so I’ll switch to safer alternatives first.'),
+            ),
+            suggested_chips: [
+              {
+                chip_id: 'chip.start.ingredients.safe_alternatives',
+                label: ctx.lang === 'CN' ? '看更安全替代' : 'Show safer alternatives',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    ctx.lang === 'CN'
+                      ? '请给我更安全替代成分（机制+注意事项）'
+                      : 'Show safer alternative ingredients (mechanism + watchouts)',
+                },
               },
-            },
-          ],
-          session_patch: {},
-          events: [makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent || INTENT_ENUM.UNKNOWN, question: firstQuestion })],
-        });
-        return sendChatEnvelope(envelope);
+            ],
+            cards: [
+              {
+                card_id: `safety_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: {
+                  severity: 'block',
+                  message:
+                    ctx.lang === 'CN'
+                      ? '该方向存在安全风险，已切换到更保守建议。'
+                      : 'This path carries safety risk; switched to conservative guidance.',
+                  details: [...(Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 3) : []), ...(Array.isArray(safetyDecision.safe_alternatives) ? safetyDecision.safe_alternatives.slice(0, 3) : [])],
+                  actions: ['safe_alternatives'],
+                },
+              },
+            ],
+            session_patch: {},
+            events: [makeEvent(ctx, 'safety_gate_block', { intent: canonicalIntent.intent || INTENT_ENUM.UNKNOWN, block_level: safetyDecision.block_level })],
+          });
+          return sendChatEnvelope(envelope);
+        }
       }
-
       if (
         effectiveChatFlags.loop_breaker_v2 &&
+        !conflictIntentRequested &&
         plannerDecision &&
         plannerDecision.next_step === 'ask' &&
         Array.isArray(plannerDecision.required_fields) &&
@@ -34438,6 +36013,19 @@ function mountAuroraBffRoutes(app, { logger }) {
         const allowCatalogShortCircuit = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
           ? shouldAllowCatalogAvailabilityShortCircuit(message)
           : true;
+        const catalogShortCircuitBlockReason = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
+          ? detectCatalogAvailabilityShortCircuitBlockReason(message)
+          : '';
+        if (availabilityIntent && !shouldBypassAvailabilityShortCircuit && !allowCatalogShortCircuit && catalogShortCircuitBlockReason) {
+          logger?.info?.(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              catalog_availability_shortcircuit_block_reason: catalogShortCircuitBlockReason,
+            },
+            'aurora bff: catalog availability short-circuit blocked',
+          );
+        }
         if (availabilityIntent && !shouldBypassAvailabilityShortCircuit && allowCatalogShortCircuit) {
           recordCatalogAvailabilityShortCircuit({ brandId: availabilityIntent.brand_id, reason: availabilityIntent.reason });
 
@@ -34697,14 +36285,27 @@ function mountAuroraBffRoutes(app, { logger }) {
             data: { reply_text: lang === 'CN' ? '按炎热潮湿气候给我方案' : 'Plan for hot and humid climate mode' },
           },
         ];
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(askText),
-          suggested_chips: chips,
-          cards: [],
-          session_patch: {},
-          events: [makeEvent(ctx, 'travel_planning_gate', { missing_fields: fields.slice(0, 4) })],
+        const decision = pushGateDecision('travel_missing_fields_gate', {
+          reason_codes: ['travel_plan_missing_fields'],
         });
-        return sendChatEnvelope(envelope);
+        if (decision && decision.mode === GATE_MODE.ADVISORY) {
+          enqueueGateAdvisory({
+            gate_id: 'travel_missing_fields_gate',
+            message: askText,
+            reason_codes: ['travel_plan_missing_fields'],
+            actions: ['refine_travel_context'],
+            chips,
+          });
+          policyMeta.gate_type = 'soft';
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              missing_fields: fields.slice(0, 4),
+            },
+            'aurora bff: travel missing fields gate downgraded to advisory',
+          );
+        }
       }
 
       if (
@@ -34971,6 +36572,35 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
           return sendChatEnvelope(envelope);
         }
+        const parseFailEnvelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            ctx.lang === 'CN'
+              ? '我没能从这句话里稳定识别出两个可比较的步骤。请用“产品A + 产品B 同晚可以吗？”这种格式再发一次。'
+              : 'I could not reliably parse two comparable steps from this message. Please retry in this format: "Can I use Product A + Product B in the same night?"',
+          ),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `conflict_parse_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: {
+                reason: 'conflict_input_parse_failed',
+                non_blocking: true,
+                severity: 'warn',
+                message:
+                  ctx.lang === 'CN'
+                    ? '冲突模拟输入解析失败，已返回诊断提示。'
+                    : 'Conflict simulation input parse failed; returning a diagnostic hint.',
+                details: ['conflict_input_parse_failed'],
+                actions: ['rephrase_conflict_query'],
+              },
+            },
+          ],
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          events: [makeEvent(ctx, 'conflict_input_parse_failed', { trigger_source: ctx.trigger_source })],
+        });
+        return sendChatEnvelope(parseFailEnvelope);
       }
 
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
@@ -35043,95 +36673,57 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
-            buildSafetyNoticeText(safetyDecision) ||
-              (ctx.lang === 'CN'
-                ? '这个方向当前存在安全风险，我先给你更安全替代。'
-                : 'There is a safety risk for this path, so I’ll switch to safer alternatives first.'),
-          ),
-          suggested_chips: [
-            {
-              chip_id: 'chip.start.ingredients.safe_alternatives',
-              label: ctx.lang === 'CN' ? '看更安全替代' : 'Show safer alternatives',
-              kind: 'quick_reply',
-              data: {
-                reply_text:
-                  ctx.lang === 'CN'
-                    ? '请给我更安全替代成分（机制+注意事项）'
-                    : 'Show safer alternative ingredients (mechanism + watchouts)',
-              },
-            },
-          ],
-          cards: [
-            {
-              card_id: `safety_${ctx.request_id}`,
-              type: 'confidence_notice',
-              payload: {
-                severity: 'block',
-                message:
-                  ctx.lang === 'CN'
-                    ? '该方向存在安全风险，已切换到更保守建议。'
-                    : 'This path carries safety risk; switched to conservative guidance.',
-                details: [...(Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 3) : []), ...(Array.isArray(safetyDecision.safe_alternatives) ? safetyDecision.safe_alternatives.slice(0, 3) : [])],
-                actions: ['safe_alternatives'],
-              },
-            },
-          ],
-          session_patch: {},
-          events: [makeEvent(ctx, 'safety_gate_block', { intent: 'ingredient_science', block_level: safetyDecision.block_level })],
+      if (ingredientScienceIntent && safetyDecision) {
+        const ingredientSafetyGate = resolveSafetyGateActionV2({
+          safety: safetyDecision,
+          profileValue: profile,
+          conflictIntent: false,
         });
-        return sendChatEnvelope(envelope);
-      }
-      if (ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO) {
-        const safetyQuestions = Array.isArray(safetyDecision.required_questions) ? safetyDecision.required_questions : [];
-        const firstQuestion = safetyQuestions[0] || (ctx.lang === 'CN' ? '请先补充一个关键安全信息。' : 'Please provide one key safety detail first.');
-        const asksPregnancy = /pregnan|怀孕|备孕/i.test(firstQuestion);
-        const chips = asksPregnancy
-          ? [
-            {
-              chip_id: 'chip.profile.pregnancy.not_pregnant',
-              label: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant',
-              kind: 'quick_reply',
-              data: { profile_patch: { pregnancy_status: 'not_pregnant' }, reply_text: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant' },
-            },
-            {
-              chip_id: 'chip.profile.pregnancy.pregnant',
-              label: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant',
-              kind: 'quick_reply',
-              data: { profile_patch: { pregnancy_status: 'pregnant' }, reply_text: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant' },
-            },
-            {
-              chip_id: 'chip.profile.pregnancy.trying',
-              label: ctx.lang === 'CN' ? '备孕中' : 'Trying',
-              kind: 'quick_reply',
-              data: { profile_patch: { pregnancy_status: 'trying' }, reply_text: ctx.lang === 'CN' ? '备孕中' : 'Trying to conceive' },
-            },
-          ]
-          : [];
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage([buildSafetyNoticeText(safetyDecision), firstQuestion].filter(Boolean).join('\n\n')),
-          suggested_chips: chips,
-          cards: [
-            {
-              card_id: `safety_${ctx.request_id}`,
-              type: 'confidence_notice',
-              payload: {
-                severity: 'warn',
-                message:
-                  ctx.lang === 'CN'
-                    ? '继续前需要一个关键安全信息。'
-                    : 'One key safety detail is required before continuing.',
-                details: Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 4) : [],
-                actions: ['answer_safety_question'],
+        if (ingredientSafetyGate.mode === 'inline' && ingredientSafetyGate.advisory) {
+          mergePendingSafetyAdvisory(ingredientSafetyGate.advisory);
+          await persistSafetyPromptAskedOnce(ingredientSafetyGate.ask_once_fields);
+        }
+        if (ingredientSafetyGate.mode === 'block') {
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(
+              buildSafetyNoticeText(safetyDecision) ||
+                (ctx.lang === 'CN'
+                  ? '这个方向当前存在安全风险，我先给你更安全替代。'
+                  : 'There is a safety risk for this path, so I’ll switch to safer alternatives first.'),
+            ),
+            suggested_chips: [
+              {
+                chip_id: 'chip.start.ingredients.safe_alternatives',
+                label: ctx.lang === 'CN' ? '看更安全替代' : 'Show safer alternatives',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    ctx.lang === 'CN'
+                      ? '请给我更安全替代成分（机制+注意事项）'
+                      : 'Show safer alternative ingredients (mechanism + watchouts)',
+                },
               },
-            },
-          ],
-          session_patch: {},
-          events: [makeEvent(ctx, 'safety_gate_require_info', { intent: 'ingredient_science', question: firstQuestion })],
-        });
-        return sendChatEnvelope(envelope);
+            ],
+            cards: [
+              {
+                card_id: `safety_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: {
+                  severity: 'block',
+                  message:
+                    ctx.lang === 'CN'
+                      ? '该方向存在安全风险，已切换到更保守建议。'
+                      : 'This path carries safety risk; switched to conservative guidance.',
+                  details: [...(Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 3) : []), ...(Array.isArray(safetyDecision.safe_alternatives) ? safetyDecision.safe_alternatives.slice(0, 3) : [])],
+                  actions: ['safe_alternatives'],
+                },
+              },
+            ],
+            session_patch: {},
+            events: [makeEvent(ctx, 'safety_gate_block', { intent: 'ingredient_science', block_level: safetyDecision.block_level })],
+          });
+          return sendChatEnvelope(envelope);
+        }
       }
       const shouldKickoffIngredientScience =
         ingredientScienceIntent &&
@@ -35223,39 +36815,44 @@ function mountAuroraBffRoutes(app, { logger }) {
                 data: { reply_text: lang === 'CN' ? '生成一套早晚护肤 routine' : 'Build an AM/PM skincare routine' },
               },
             ];
-
-            const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(
-                lang === 'CN'
-                  ? '如需推荐与购买入口，请先点击「获取产品推荐」。'
-                  : 'To see recommendations and purchase links, please tap “Get product recommendations”.',
-              ),
-              suggested_chips: suggestedChips,
-              cards: [],
-              session_patch: {},
-              events: [],
+            const decision = pushGateDecision('budget_gate', {
+              reason_codes: ['budget_gate_nonblocking'],
             });
-            return sendChatEnvelope(envelope);
+            if (decision && decision.mode === GATE_MODE.ADVISORY) {
+              enqueueGateAdvisory({
+                gate_id: 'budget_gate',
+                message:
+                  lang === 'CN'
+                    ? '预算信息是可选项，我先继续给你主结果。'
+                    : 'Budget is optional; I will continue with the primary answer first.',
+                reason_codes: ['budget_gate_nonblocking'],
+                actions: ['provide_budget_optional'],
+                chips: suggestedChips,
+              });
+              if (stateChangeAllowed(ctx.trigger_source)) {
+                nextStateOverride = 'idle';
+              }
+              ctx.state = nextStateOverride || 'idle';
+            }
           }
 
           if (!rawBudget) {
-            const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
-              suggested_chips: buildBudgetGateChips(ctx.lang),
-              cards: [
-                {
-                  card_id: `budget_${ctx.request_id}`,
-                  type: 'budget_gate',
-                  payload: { reason: 'budget_optimization_optional', profile: summarizeChatProfileForContext(profile) },
-                },
-              ],
-              session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
-              events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_optimization_optional' })],
+            const decision = pushGateDecision('budget_gate', {
+              reason_codes: ['budget_optimization_optional'],
             });
-            return sendChatEnvelope(envelope);
+            if (decision && decision.mode === GATE_MODE.ADVISORY) {
+              enqueueGateAdvisory({
+                gate_id: 'budget_gate',
+                message: buildBudgetGatePrompt(ctx.lang),
+                reason_codes: ['budget_optimization_optional'],
+                actions: ['provide_budget_optional'],
+                chips: buildBudgetGateChips(ctx.lang),
+              });
+              policyMeta.gate_type = 'soft';
+            }
           }
 
-          if (!profile || profile.budgetTier !== rawBudget) {
+          if (rawBudget && (!profile || profile.budgetTier !== rawBudget)) {
             profile = { ...(profile || {}), budgetTier: rawBudget };
             try {
               profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, { budgetTier: rawBudget });
@@ -35509,7 +37106,16 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (wantsProductRecommendations) {
         recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
-        if (safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
+        const recoSafetyGate = resolveSafetyGateActionV2({
+          safety: safetyDecision,
+          profileValue: profile,
+          conflictIntent: false,
+        });
+        if (recoSafetyGate.mode === 'inline' && recoSafetyGate.advisory) {
+          mergePendingSafetyAdvisory(recoSafetyGate.advisory);
+          await persistSafetyPromptAskedOnce(recoSafetyGate.ask_once_fields);
+        }
+        if (recoSafetyGate.mode === 'block') {
           const safetyText = buildSafetyNoticeText(safetyDecision);
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(safetyText || (ctx.lang === 'CN' ? '当前存在安全风险，先不输出激进推荐。' : 'Current safety risk detected, so I will not output aggressive recommendations.')),
@@ -35552,83 +37158,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
           return sendChatEnvelope(envelope);
         }
-
-        if (
-          safetyDecision &&
-          safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO &&
-          (!plannerDecision || Number(plannerDecision.question_budget) > 0)
-        ) {
-          const safetyText = buildSafetyNoticeText(safetyDecision);
-          const safetyQuestions = Array.isArray(safetyDecision.required_questions) ? safetyDecision.required_questions : [];
-          const firstQuestion = safetyQuestions[0] || (ctx.lang === 'CN' ? '请先补充一个关键安全信息。' : 'Please provide one key safety detail first.');
-          const asksPregnancy = /pregnan|怀孕|备孕/i.test(firstQuestion);
-          const asksAge = /age|年龄/i.test(firstQuestion);
-          const chips = asksPregnancy
-            ? [
-              {
-                chip_id: 'chip.profile.pregnancy.not_pregnant',
-                label: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant',
-                kind: 'quick_reply',
-                data: { profile_patch: { pregnancy_status: 'not_pregnant' }, reply_text: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant' },
-              },
-              {
-                chip_id: 'chip.profile.pregnancy.pregnant',
-                label: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant',
-                kind: 'quick_reply',
-                data: { profile_patch: { pregnancy_status: 'pregnant' }, reply_text: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant' },
-              },
-              {
-                chip_id: 'chip.profile.pregnancy.trying',
-                label: ctx.lang === 'CN' ? '备孕中' : 'Trying',
-                kind: 'quick_reply',
-                data: { profile_patch: { pregnancy_status: 'trying' }, reply_text: ctx.lang === 'CN' ? '备孕中' : 'Trying to conceive' },
-              },
-            ]
-            : asksAge
-              ? [
-                {
-                  chip_id: 'chip.profile.age.18_24',
-                  label: '18-24',
-                  kind: 'quick_reply',
-                  data: { profile_patch: { age_band: '18_24' }, reply_text: '18-24' },
-                },
-                {
-                  chip_id: 'chip.profile.age.25_34',
-                  label: '25-34',
-                  kind: 'quick_reply',
-                  data: { profile_patch: { age_band: '25_34' }, reply_text: '25-34' },
-                },
-                {
-                  chip_id: 'chip.profile.age.35_44',
-                  label: '35-44',
-                  kind: 'quick_reply',
-                  data: { profile_patch: { age_band: '35_44' }, reply_text: '35-44' },
-                },
-              ]
-              : [];
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage([safetyText, firstQuestion].filter(Boolean).join('\n\n')),
-            suggested_chips: chips,
-            cards: [
-              {
-                card_id: `safety_${ctx.request_id}`,
-                type: 'confidence_notice',
-                payload: {
-                  severity: 'warn',
-                  message:
-                    ctx.lang === 'CN'
-                      ? '继续前需要一个关键安全信息。'
-                      : 'One key safety detail is required before continuing.',
-                  details: Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 4) : [],
-                  actions: ['answer_safety_question'],
-                },
-              },
-            ],
-            session_patch: {},
-            events: [makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent, question: firstQuestion })],
-          });
-          return sendChatEnvelope(envelope);
-        }
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
         const hardRequiredFields = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
         const hardRequiredMissing = hardRequiredFields.filter((field) =>
@@ -35641,41 +37170,42 @@ function mountAuroraBffRoutes(app, { logger }) {
           const required = hardRequiredMissing;
           const prompt = buildDiagnosisPrompt(ctx.lang, required);
           const chips = buildDiagnosisChips(ctx.lang, required);
-          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
-          const sessionPatch = nextState ? { next_state: nextState } : {};
-          if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
-            const pendingFromGate = buildPendingClarificationForGate({
-              language: ctx.lang,
-              missing: required,
-              message,
-              wants: 'recommendation',
-            });
-            if (pendingFromGate) emitPendingClarificationPatch(sessionPatch, pendingFromGate);
-          }
-
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(prompt),
-            suggested_chips: chips,
-            cards: [
-              {
-                card_id: `diag_${ctx.request_id}`,
-                type: 'diagnosis_gate',
-                payload: {
-                  reason: 'diagnosis_first',
-                  missing_fields: required,
-                  wants: 'recommendation',
-                  profile: summarizeChatProfileForContext(profile),
-                  recent_logs: recentLogs,
-                },
-              },
-            ],
-            session_patch: sessionPatch,
-            events: [
-              makeEvent(ctx, 'recos_requested', { explicit: true, gated: true, reason: 'diagnosis_first' }),
-              makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first' }),
-            ],
+          const decision = pushGateDecision('diagnosis_first_profile_gate', {
+            reason_codes: ['diagnosis_first'],
           });
-          return sendChatEnvelope(envelope);
+          if (decision && decision.mode === GATE_MODE.ADVISORY) {
+            enqueueGateAdvisory({
+              gate_id: 'diagnosis_first_profile_gate',
+              message:
+                ctx.lang === 'CN'
+                  ? '我先给你可执行推荐，同时补充画像后可进一步提高精准度。'
+                  : 'I will provide usable recommendations first; adding profile details will improve precision.',
+              reason_codes: ['diagnosis_first', ...required.map((field) => `missing_${field}`)],
+              actions: ['refine_profile'],
+              chips,
+            });
+            logger?.info(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                missing_fields: required,
+              },
+              'aurora bff: diagnosis-first gate downgraded to advisory',
+            );
+            if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
+              const pendingFromGate = buildPendingClarificationForGate({
+                language: ctx.lang,
+                missing: required,
+                message,
+                wants: 'recommendation',
+              });
+              if (pendingFromGate) {
+                const sessionPatch = {};
+                emitPendingClarificationPatch(sessionPatch, pendingFromGate);
+                pendingClarificationPatchOverride = sessionPatch.pending_clarification || pendingClarificationPatchOverride;
+              }
+            }
+          }
         }
 
         const refinementMissing = (Array.isArray(profileMissing) ? profileMissing : []).filter(
@@ -35751,34 +37281,29 @@ function mountAuroraBffRoutes(app, { logger }) {
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
         if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !allowLowRiskNonBlockingArtifactGate) {
           const chips = buildRecoEntryChips(ctx.lang);
-          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
-          const sessionPatch = nextState ? { next_state: nextState } : {};
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
-              ctx.lang === 'CN'
-                ? '我需要先拿到一份诊断结果（可上传 daylight + indoor_white，或先跑低置信度基线）再做个性化推荐。'
-                : 'I need a diagnosis result first (upload daylight + indoor_white photos, or run a low-confidence baseline) before personalized recommendations.',
-            ),
-            suggested_chips: [...refinementChips, ...chips].slice(0, 8),
-            cards: [
-              {
-                card_id: `conf_${ctx.request_id}`,
-                type: 'confidence_notice',
-                payload: buildConfidenceNoticeCardPayload({
-                  language: ctx.lang,
-                  reason: 'artifact_missing',
-                  confidence: { score: 0, level: 'low', rationale: ['artifact_not_found'] },
-                  actions: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
-                  details: artifactLookupError ? [String(artifactLookupError.message || artifactLookupError)] : [],
-                }),
-              },
-            ],
-            session_patch: sessionPatch,
-            events: [
-              makeEvent(ctx, 'recos_requested', { explicit: true, gated: true, reason: 'artifact_missing' }),
-            ],
+          const decision = pushGateDecision('artifact_missing_gate', {
+            reason_codes: ['artifact_missing'],
           });
-          return sendChatEnvelope(envelope);
+          if (decision && decision.mode === GATE_MODE.ADVISORY) {
+            enqueueGateAdvisory({
+              gate_id: 'artifact_missing_gate',
+              message:
+                ctx.lang === 'CN'
+                  ? '我会先给你低置信保守推荐；补充 daylight + indoor_white 可显著提升准确度。'
+                  : 'I will return a low-confidence conservative recommendation first; adding daylight + indoor_white photos will improve precision.',
+              reason_codes: ['artifact_missing'],
+              actions: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
+              chips: [...refinementChips, ...chips].slice(0, 8),
+            });
+            logger?.info(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                artifact_reason: artifactGate.reason || 'artifact_missing',
+              },
+              'aurora bff: artifact gate downgraded to advisory',
+            );
+          }
         }
         if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && allowLowRiskNonBlockingArtifactGate) {
           recordAuroraSkinFlowMetric({ stage: 'artifact_gate_nonblocking_low_risk', hit: true });
@@ -37494,6 +39019,8 @@ const __internal = {
   normalizeRecoCatalogProduct,
   scoreRealtimeCompetitorCandidate,
   routeCandidates,
+  routeCompetitorCandidatePools,
+  sanitizeCompetitorCandidates,
   recoBlocks,
   augmentProductAnalysisPayloadForDogfood,
   augmentEnvelopeProductAnalysisCardsForDogfood,
@@ -37566,8 +39093,11 @@ const __internal = {
   isSearchLikeUrl,
   hasOpenableUrl,
   sanitizeRecoCandidatesForUi,
+  collectPurchasableFallbackQueries,
   buildPurchasableFallbackCandidates,
   recoverProductsWithLlmFallbackFromQueries,
+  initLlmFallbackStageCounts,
+  mergeLlmFallbackStageCounts,
   deriveProductsEmptyReason,
   countPurchasableProductsForTargets,
   applyPhotoClaimConsistency,
@@ -37584,6 +39114,9 @@ const __internal = {
   shouldSkipQaByBudget,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
+  applyRecommendationOutputGuardrailsForRoute,
+  sanitizeDupeSuggestPayload,
+  applyDupeSuggestSanitizeToEnvelope,
   isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
