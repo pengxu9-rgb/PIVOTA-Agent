@@ -839,6 +839,14 @@ const SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = new Set(
 const PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED || 'false').toLowerCase() ===
   'true';
+const FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED =
+  String(process.env.FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED || 'true').toLowerCase() !==
+  'false';
+const CREATOR_CACHE_SHORT_CIRCUIT_ENABLED =
+  String(process.env.CREATOR_CACHE_SHORT_CIRCUIT_ENABLED || 'false').toLowerCase() === 'true';
+const CREATOR_SCOPE_TO_MERCHANT_CATALOG_ENABLED =
+  String(process.env.CREATOR_SCOPE_TO_MERCHANT_CATALOG_ENABLED || 'false').toLowerCase() ===
+  'true';
 const FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 2200),
@@ -3726,7 +3734,11 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
       : (isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true);
   const externalSeedStrategy =
     explicitExternalSeedStrategy ||
-    (isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'supplement_internal_first');
+    (isAurora
+      ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
+      : FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
+        ? 'unified_relevance'
+        : 'supplement_internal_first');
   return {
     ...params,
     allow_external_seed: allowExternalSeed,
@@ -4868,7 +4880,9 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       offset: 0,
       allow_external_seed: true,
       allow_stale_cache: false,
-      external_seed_strategy: 'supplement_internal_first',
+      external_seed_strategy: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
+        ? 'unified_relevance'
+        : 'supplement_internal_first',
       fast_mode: true,
     };
 
@@ -15466,12 +15480,30 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-          if (cacheHit) {
+          if (
+            cacheHit &&
+            CREATOR_CACHE_SHORT_CIRCUIT_ENABLED &&
+            !FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
+          ) {
             return res.json(enriched);
           }
+          if (cacheHit) {
+            crossMerchantCacheProtectedResponse = enriched;
+          }
           logger.info(
-            { creatorId, source, page, limit, inStockOnly },
-            'Creator UI cache cold-start returned empty; falling back to upstream',
+            {
+              creatorId,
+              source,
+              page,
+              limit,
+              inStockOnly,
+              cacheHit,
+              shortCircuitEnabled: CREATOR_CACHE_SHORT_CIRCUIT_ENABLED,
+              unifiedRelevanceEnabled: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED,
+            },
+            cacheHit
+              ? 'Creator UI cache cold-start prepared as fallback candidate; continuing to unified upstream search'
+              : 'Creator UI cache cold-start returned empty; falling back to upstream',
           );
         } catch (err) {
           logger.warn(
@@ -15544,7 +15576,26 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
             const promotions = await getActivePromotions(now, creatorId);
             const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-            return res.json(enriched);
+            if (
+              CREATOR_CACHE_SHORT_CIRCUIT_ENABLED &&
+              !FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
+            ) {
+              return res.json(enriched);
+            }
+            crossMerchantCacheProtectedResponse = enriched;
+            logger.info(
+              {
+                creatorId,
+                source,
+                queryText,
+                page,
+                limit,
+                products: Array.isArray(fromCache.products) ? fromCache.products.length : 0,
+                shortCircuitEnabled: CREATOR_CACHE_SHORT_CIRCUIT_ENABLED,
+                unifiedRelevanceEnabled: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED,
+              },
+              'Creator UI cache search prepared as fallback candidate; continuing to unified upstream search',
+            );
           }
         } catch (err) {
           creatorCacheRouteDebug = {
@@ -15897,7 +15948,29 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             effectiveProducts.length > 0 &&
             (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
           let effectiveCacheHit = effectiveCacheHitBase;
+          const cacheStageSeedStrategyRaw = String(
+            search.external_seed_strategy ||
+              search.externalSeedStrategy ||
+              '',
+          )
+            .trim()
+            .toLowerCase();
+          const cacheStageSeedStrategy =
+            cacheStageSeedStrategyRaw ||
+            (isCatalogGuardSource(source)
+              ? FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
+                ? 'unified_relevance'
+                : 'supplement_internal_first'
+              : 'cache_only');
           const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
+          const shouldBypassCacheForUnifiedNoExternal =
+            FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED &&
+            cacheStageSeedStrategy === 'unified_relevance' &&
+            cacheSearchQueryText.length > 0 &&
+            externalCount === 0;
+          if (shouldBypassCacheForUnifiedNoExternal) {
+            effectiveCacheHit = false;
+          }
           crossMerchantCacheRouteDebug = {
             attempted: true,
             mode: 'search',
@@ -15917,6 +15990,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             external_products_count: externalCount,
             cache_relevant: cacheRelevant,
             cache_relevance_gate_relaxed: relaxCacheRelevanceGate,
+            cache_seed_strategy: cacheStageSeedStrategy,
+            cache_bypassed_for_unified_no_external: shouldBypassCacheForUnifiedNoExternal,
             total: Number(fromCache.total || 0),
             retrieval_sources: fromCache.retrieval_sources || null,
             supplement: supplementMeta,
@@ -15942,7 +16017,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 external_seed_count: externalCount,
                 stale_cache_used: false,
                 strategy_applied: isCatalogGuardSource(source)
-                  ? 'supplement_internal_first'
+                  ? cacheStageSeedStrategy
                   : 'cache_only',
               },
               ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
@@ -16123,6 +16198,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ).toLowerCase();
           const queryClassMissing = queryClassForEarlyDecision.length === 0;
           const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
+          const hasBrandLikeIntentForEarlyDecision =
+            queryClassForEarlyDecision === 'brand' || hasFragranceSearchSignal(cacheQueryText);
           const forceControlledRecallForScenario =
             SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO &&
             (['scenario', 'mission'].includes(queryClassForEarlyDecision) ||
@@ -16143,6 +16220,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const canUseEarlyAmbiguityDecision =
             effectiveIntent &&
             !isStrongLookupForEarlyDecision &&
+            !hasBrandLikeIntentForEarlyDecision &&
             (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
             !forceControlledRecallForScenario;
           if (
@@ -16295,7 +16373,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   search_all_merchants: true,
                   allow_external_seed: true,
                   allow_stale_cache: false,
-                  external_seed_strategy: 'supplement_internal_first',
+                  external_seed_strategy: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
+                    ? 'unified_relevance'
+                    : 'supplement_internal_first',
                   fast_mode: true,
                 },
                 checkoutToken,
@@ -16411,7 +16491,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   external_seed_count: 0,
                   stale_cache_used: false,
                   strategy_applied: isCatalogGuardSource(source)
-                    ? 'supplement_internal_first'
+                    ? cacheStageSeedStrategy
                     : 'cache_only',
                 },
                 proxy_search_fallback: {
@@ -16701,6 +16781,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const priceMax = search.price_max ?? search.max_price;
 
         const shouldScopeToCreatorCatalog =
+          !FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED &&
+          CREATOR_SCOPE_TO_MERCHANT_CATALOG_ENABLED &&
           isCreatorUiSource(metadata?.source) &&
           !merchantId &&
           merchantIds.length === 0 &&
@@ -17781,7 +17863,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     internal_count: mergedInternalCount,
                     external_seed_count: mergedExternalCount,
                     stale_cache_used: false,
-                    strategy_applied: 'supplement_internal_first',
+                    strategy_applied: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
+                      ? 'unified_relevance'
+                      : 'supplement_internal_first',
                   },
                 },
               };
