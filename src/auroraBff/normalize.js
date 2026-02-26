@@ -1184,6 +1184,164 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   return uniqueStrings(out);
 }
 
+function readAssessmentStringArray(assessment, snakeKey, camelKey) {
+  return uniqueStrings(
+    [
+      ...asStringArray(assessment?.[snakeKey]),
+      ...asStringArray(assessment?.[camelKey]),
+    ].map((line) => truncateText(String(line || '').trim(), 220)).filter(Boolean),
+  );
+}
+
+function buildFormulaIntentFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const mechanisms = asStringArray(science.mechanisms);
+  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients)
+    .filter((item) => !/^water$/i.test(String(item || '').trim()));
+  const hero = pickHeroIngredientFromEvidence(ev, { lang });
+  const isCn = String(lang).toUpperCase() === 'CN';
+  const out = [];
+  if (mechanisms.length) out.push(...mechanisms.slice(0, 2));
+  if (hero && hero.name) {
+    out.push(
+      isCn
+        ? `核心驱动成分：${hero.name}${hero.role ? `（${hero.role}）` : ''}，主要目标是 ${hero.why || '提升配方主功效'}。`
+        : `Core driver: ${hero.name}${hero.role ? ` (${hero.role})` : ''}, mainly targeting ${hero.why || 'the primary claimed effect'}.`,
+    );
+  }
+  if (!out.length && keyIngredients.length) {
+    out.push(
+      isCn
+        ? `这支产品主要围绕 ${keyIngredients.slice(0, 3).join('、')} 构建功效路径。`
+        : `This formula mainly builds its efficacy around ${keyIngredients.slice(0, 3).join(', ')}.`,
+    );
+  }
+  return uniqueStrings(out.map((line) => truncateText(String(line || ''), 220)).filter(Boolean)).slice(0, 3);
+}
+
+function buildBestForFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+  if (fitNotes.length) return uniqueStrings(fitNotes.map((line) => truncateText(line, 200))).slice(0, 3);
+  const isCn = String(lang).toUpperCase() === 'CN';
+  return [
+    isCn
+      ? '若目标是稳态保养和低刺激迭代，这类配方通常更好起步。'
+      : 'If your goal is steady maintenance and low-irritation iteration, this profile is usually easier to start with.',
+  ];
+}
+
+function buildNotForFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const human = uniqueStrings(riskNotes.map((line) => humanizeRiskLine(line, lang) || String(line || '').trim()).filter(Boolean));
+  return human.slice(0, 3);
+}
+
+function buildIfNotIdealFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const isCn = String(lang).toUpperCase() === 'CN';
+  const riskLines = buildNotForFromEvidence(evidence, { lang });
+  const out = [];
+  if (riskLines.length) {
+    out.push(
+      isCn
+        ? '如果出现持续刺痛/泛红，先暂停该产品并切回温和清洁 + 修护保湿的基线。'
+        : 'If persistent stinging/redness appears, pause this product and return to a gentle cleanse + barrier-repair baseline.',
+    );
+  }
+  out.push(
+    isCn
+      ? '先从低频开始（每周 2-3 次），连续观察 10-14 天再决定是否加频。'
+      : 'Start low-frequency (2-3x/week) and monitor for 10-14 days before increasing usage.',
+  );
+  return uniqueStrings(out).slice(0, 3);
+}
+
+function buildBetterPairingFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const riskJoined = asStringArray(science.risk_notes ?? science.riskNotes).join(' | ').toLowerCase();
+  const isCn = String(lang).toUpperCase() === 'CN';
+  const out = [];
+  if (/\b(dry|drying|tight|dehydrat|干燥|紧绷)\b/i.test(riskJoined)) {
+    out.push(
+      isCn
+        ? '搭配建议：加一层简单保湿修护（神经酰胺/泛醇/甘油）减少拔干风险。'
+        : 'Pairing idea: add a simple barrier-hydration layer (ceramide/panthenol/glycerin) to reduce dryness risk.',
+    );
+  }
+  if (/\b(acne|comedone|pores?|痘|闭口|毛孔)\b/i.test(riskJoined)) {
+    out.push(
+      isCn
+        ? '若重点是控痘，优先搭配低刺激控油步骤并避免同晚叠加强活性。'
+        : 'If acne control is the priority, pair with low-irritation oil-control steps and avoid same-night strong active stacking.',
+    );
+  }
+  if (!out.length) {
+    out.push(
+      isCn
+        ? '搭配建议：白天坚持防晒，夜间保持单变量迭代，更容易判断是否适配。'
+        : 'Pairing idea: keep consistent daytime SPF and single-variable PM iteration to judge fit reliably.',
+    );
+  }
+  return uniqueStrings(out).slice(0, 3);
+}
+
+function buildFollowUpQuestionFromPayload(payload, { lang = 'EN' } = {}) {
+  const p = asPlainObject(payload) || {};
+  const profilePrompt = asPlainObject(p.profile_prompt ?? p.profilePrompt) || {};
+  const missingFields = uniqueStrings(asStringArray(profilePrompt.missing_fields ?? profilePrompt.missingFields));
+  const isCn = String(lang).toUpperCase() === 'CN';
+  if (missingFields.includes('sensitivity')) {
+    return isCn
+      ? '你目前的敏感度大概是低/中/高哪一档？这会直接影响频率建议。'
+      : 'Would you rate your sensitivity as low/medium/high? This directly changes the usage frequency recommendation.';
+  }
+  if (missingFields.includes('goals')) {
+    return isCn
+      ? '你当前最优先是控痘、提亮还是修护？我可以据此把替代方案收敛到 2-3 个。'
+      : 'What is your top priority now: acne control, brightening, or barrier repair? I can narrow alternatives to 2-3 options.';
+  }
+  return isCn
+    ? '你更在意“更温和”还是“见效更快”？我可以按这个偏好给你下一步选项。'
+    : 'Do you prefer “gentler” or “faster-visible results”? I can tune the next-step options based on that.';
+}
+
+function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const note = String(value || '').trim();
+    if (!note) return null;
+    return { notes: [truncateText(note, 220)] };
+  }
+  const obj = asPlainObject(value);
+  if (!obj) return null;
+  const timing = String(obj.timing || obj.time || '').trim();
+  const frequency = String(obj.frequency || '').trim();
+  const steps = uniqueStrings(asStringArray(obj.steps).map((line) => truncateText(line, 220))).slice(0, 5);
+  const notes = uniqueStrings(asStringArray(obj.notes).map((line) => truncateText(line, 220))).slice(0, 5);
+  const observationWindow = String(obj.observation_window || obj.observationWindow || '').trim();
+  const stopSigns = uniqueStrings(asStringArray(obj.stop_signs || obj.stopSigns).map((line) => truncateText(line, 220))).slice(0, 4);
+  const out = {
+    ...(timing ? { timing } : {}),
+    ...(frequency ? { frequency } : {}),
+    ...(steps.length ? { steps } : {}),
+    ...(notes.length ? { notes } : {}),
+    ...(observationWindow ? { observation_window: observationWindow } : {}),
+    ...(stopSigns.length ? { stop_signs: stopSigns } : {}),
+  };
+  if (!Object.keys(out).length) return null;
+  if (!out.observation_window) {
+    out.observation_window = String(lang).toUpperCase() === 'CN'
+      ? '先观察 10-14 天，再决定是否加频。'
+      : 'Monitor for 10-14 days before increasing frequency.';
+  }
+  return out;
+}
+
 const PRODUCT_INTEL_CONTRACT_VERSION = 'aurora.product_intel.contract.v2';
 const PRODUCT_INTEL_BLOCK_VERSION = 'aurora.product_intel.block.v1';
 
@@ -2084,6 +2242,12 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
 
   const verdict =
     typeof assessment.verdict === 'string' ? assessment.verdict.trim() : String(assessment.verdict || '').trim();
+  const hasTemplateSectionsFromModel =
+    readAssessmentStringArray(assessment, 'formula_intent', 'formulaIntent').length > 0 ||
+    readAssessmentStringArray(assessment, 'best_for', 'bestFor').length > 0 ||
+    readAssessmentStringArray(assessment, 'not_for', 'notFor').length > 0 ||
+    readAssessmentStringArray(assessment, 'if_not_ideal', 'ifNotIdeal').length > 0 ||
+    readAssessmentStringArray(assessment, 'better_pairing', 'betterPairing').length > 0;
 
   const existingReasons = asStringArray(assessment.reasons);
   const keptReasons = existingReasons
@@ -2097,7 +2261,9 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
   let reasons = keptReasons.slice();
 
   // Optional: inject profile-fit explanations when profile context is available (chat/product-analyze flows).
-  const profileReasons = buildProfileFitReasons(profileSummary ?? p.profile_summary ?? p.profileSummary ?? null, p.evidence, { lang });
+  const profileReasons = hasTemplateSectionsFromModel
+    ? []
+    : buildProfileFitReasons(profileSummary ?? p.profile_summary ?? p.profileSummary ?? null, p.evidence, { lang });
   let profileReasonsUsed = 0;
   if (profileReasons.length) {
     // CN users often receive mixed-language upstream reasons; prefer CN-ish reasons when we have them.
@@ -2174,9 +2340,54 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     }
   }
 
+  const summary =
+    truncateText(
+      String(
+        assessment.summary ||
+          assessment.quick_summary ||
+          assessment.quickSummary ||
+          reasons[0] ||
+          '',
+      ).trim(),
+      260,
+    ) || '';
+  const formulaIntentExisting = readAssessmentStringArray(assessment, 'formula_intent', 'formulaIntent');
+  const formulaIntent = formulaIntentExisting.length
+    ? formulaIntentExisting.slice(0, 3)
+    : buildFormulaIntentFromEvidence(p.evidence, { lang });
+  const bestForExisting = readAssessmentStringArray(assessment, 'best_for', 'bestFor');
+  const bestFor = bestForExisting.length
+    ? bestForExisting.slice(0, 3)
+    : buildBestForFromEvidence(p.evidence, { lang }).slice(0, 3);
+  const notForExisting = readAssessmentStringArray(assessment, 'not_for', 'notFor');
+  const notFor = notForExisting.length
+    ? notForExisting.slice(0, 3)
+    : buildNotForFromEvidence(p.evidence, { lang }).slice(0, 3);
+  const ifNotIdealExisting = readAssessmentStringArray(assessment, 'if_not_ideal', 'ifNotIdeal');
+  const ifNotIdeal = ifNotIdealExisting.length
+    ? ifNotIdealExisting.slice(0, 3)
+    : buildIfNotIdealFromEvidence(p.evidence, { lang }).slice(0, 3);
+  const betterPairingExisting = readAssessmentStringArray(assessment, 'better_pairing', 'betterPairing');
+  const betterPairing = betterPairingExisting.length
+    ? betterPairingExisting.slice(0, 3)
+    : buildBetterPairingFromEvidence(p.evidence, { lang }).slice(0, 3);
+  const followUpQuestion = truncateText(
+    String(assessment.follow_up_question || assessment.followUpQuestion || '').trim(),
+    220,
+  ) || buildFollowUpQuestionFromPayload(p, { lang });
+  const howToUseNormalized = normalizeHowToUseShape(assessment.how_to_use ?? assessment.howToUse, { lang });
+
   const outAssessment = {
     ...assessment,
     ...(hero && typeof hero === 'object' ? { hero_ingredient: hero } : {}),
+    ...(summary ? { summary } : {}),
+    ...(formulaIntent.length ? { formula_intent: formulaIntent } : {}),
+    ...(bestFor.length ? { best_for: bestFor } : {}),
+    ...(notFor.length ? { not_for: notFor } : {}),
+    ...(ifNotIdeal.length ? { if_not_ideal: ifNotIdeal } : {}),
+    ...(betterPairing.length ? { better_pairing: betterPairing } : {}),
+    ...(followUpQuestion ? { follow_up_question: followUpQuestion } : {}),
+    ...(howToUseNormalized ? { how_to_use: howToUseNormalized } : {}),
     reasons: uniqueStrings(reasons).slice(0, maxReasons),
   };
   return reconcileProductAnalysisConsistency(

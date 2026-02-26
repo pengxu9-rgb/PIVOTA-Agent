@@ -18414,6 +18414,7 @@ function getProductAnalysisEvidenceCoverageScore(payload) {
 
 function shouldTriggerProductIntelEscalation(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return true;
+  if (!hasValidFormulaIntentInPayload(payload)) return true;
   if (!isUnknownProductAnalysisPayload(payload)) return false;
   return getProductAnalysisEvidenceCoverageScore(payload) < 0.45;
 }
@@ -18638,6 +18639,63 @@ const PRODUCT_ANALYSIS_ANSWER_JSON_KEYS = [
   'expertNotes',
 ];
 
+function buildProductDeepScanPromptV2({
+  prefix = '',
+  productDescriptor = '',
+  strictFormulaIntent = false,
+  includeVersionReminder = false,
+} = {}) {
+  const strictLine = strictFormulaIntent
+    ? 'If formula_intent is missing or profile-only, rewrite once using product efficacy/mechanism details only.'
+    : '';
+  const versionLine = includeVersionReminder
+    ? 'If product version cannot be confirmed, explicitly mention version verification is required.'
+    : '';
+  const descriptor = String(productDescriptor || '').trim();
+  return `${String(prefix || '')}Task: Deep-scan this product for suitability vs the user's profile.\n` +
+    `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+    `assessment must include keys: verdict, summary, formula_intent, best_for, not_for, if_not_ideal, better_pairing, how_to_use, follow_up_question, reasons.\n` +
+    `Field requirements:\n` +
+    `- summary: 1-2 concise sentences.\n` +
+    `- formula_intent: up to 3 bullets explaining product efficacy/mechanism; never repeat user profile text.\n` +
+    `- best_for/not_for: concise fit or mismatch signals.\n` +
+    `- if_not_ideal: immediate next actions when this product is not ideal.\n` +
+    `- better_pairing: practical pairing suggestions (hydration/SPF/acne-focus depending on signals).\n` +
+    `- follow_up_question: one high-value clarifying question.\n` +
+    `Evidence must include science/social_signals/expert_notes.\n` +
+    `${strictLine ? `${strictLine}\n` : ''}` +
+    `${versionLine ? `${versionLine}\n` : ''}` +
+    `Product: ${descriptor}`;
+}
+
+function hasProfileEchoFormulaIntent(lines = []) {
+  if (!Array.isArray(lines) || !lines.length) return false;
+  const profileEchoPattern = /\b(your profile|profile priorities|skinType=|sensitivity=|barrier=|你的情况|你的画像|画像：)\b/i;
+  return lines.some((line) => profileEchoPattern.test(String(line || '').trim()));
+}
+
+function hasValidFormulaIntentInPayload(payload) {
+  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
+  if (!assessment) return false;
+  const formulaIntent = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(assessment.formula_intent) ? assessment.formula_intent : []),
+      ...(Array.isArray(assessment.formulaIntent) ? assessment.formulaIntent : []),
+    ],
+    6,
+  ).map((line) => String(line || '').trim()).filter(Boolean);
+  if (!formulaIntent.length) return false;
+  if (hasProfileEchoFormulaIntent(formulaIntent)) return false;
+  return true;
+}
+
+function shouldRetryForFormulaIntent(payload) {
+  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
+  if (!assessment) return false;
+  if (!isUnknownProductAnalysisPayload(payload) && hasValidFormulaIntentInPayload(payload)) return false;
+  return !hasValidFormulaIntentInPayload(payload);
+}
+
 function getUpstreamStructuredOrJson(upstream, { answerRequiredKeys = null } = {}) {
   if (upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)) {
     return upstream.structured;
@@ -18693,6 +18751,22 @@ function getProductAnalysisStructuredOrJson(upstream) {
 
 function normalizeProductAnalysisFromUpstream(upstream) {
   const structuredOrJson = getProductAnalysisStructuredOrJson(upstream);
+  const direct =
+    structuredOrJson && typeof structuredOrJson === 'object' && !Array.isArray(structuredOrJson)
+      ? structuredOrJson
+      : null;
+  if (direct) {
+    const directPayload =
+      direct.product_analysis && typeof direct.product_analysis === 'object' && !Array.isArray(direct.product_analysis)
+        ? direct.product_analysis
+        : direct;
+    const hasDirectShape =
+      (directPayload.assessment && typeof directPayload.assessment === 'object' && !Array.isArray(directPayload.assessment)) ||
+      (directPayload.evidence && typeof directPayload.evidence === 'object' && !Array.isArray(directPayload.evidence)) ||
+      Array.isArray(directPayload.missing_info) ||
+      Array.isArray(directPayload.missingInfo);
+    if (hasDirectShape) return normalizeProductAnalysis(directPayload);
+  }
   const mapped =
     structuredOrJson && typeof structuredOrJson === 'object' && !Array.isArray(structuredOrJson)
       ? mapAuroraProductAnalysis(structuredOrJson)
@@ -19982,12 +20056,11 @@ async function deepScanRoutineProductCandidate({
     intent: 'routine_product_analyze',
     action_id: 'routine.autoscan.product_analyze',
   });
-  const deepScanQuery =
-    `${contextPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-    `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-    `Evidence must include science/social_signals/expert_notes.\n` +
-    `If product version cannot be confirmed, explicitly mention version verification is required.\n` +
-    `Product: ${productDescriptor}`;
+  const deepScanQuery = buildProductDeepScanPromptV2({
+    prefix: contextPrefix,
+    productDescriptor,
+    includeVersionReminder: true,
+  });
 
   const routinePrimaryLlmRoute = resolveProductIntelLlmRoute({});
   let routineLlmRouteMeta = {
@@ -20030,15 +20103,43 @@ async function deepScanRoutineProductCandidate({
         intent: 'routine_product_analyze_fallback',
         action_id: 'routine.autoscan.product_analyze_fallback',
       });
-      const minimalQuery =
-        `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-        `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-        `Evidence must include science/social_signals/expert_notes.\n` +
-        `If product version cannot be confirmed, explicitly mention version verification is required.\n` +
-        `Product: ${productDescriptor}`;
+      const minimalQuery = buildProductDeepScanPromptV2({
+        prefix: minimalPrefix,
+        productDescriptor,
+        includeVersionReminder: true,
+      });
         const upstreamRetry = await runDeepScan(minimalQuery, Math.max(1200, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS - 600));
         const retryNorm = normalizeProductAnalysisFromUpstream(upstreamRetry);
         if (retryNorm.payload?.assessment) norm = retryNorm;
+      }
+
+      if (shouldRetryForFormulaIntent(norm.payload)) {
+        const formulaRetryQuery = buildProductDeepScanPromptV2({
+          prefix: contextPrefix,
+          productDescriptor,
+          strictFormulaIntent: true,
+          includeVersionReminder: true,
+        });
+        const formulaRetryUpstream = await runDeepScan(
+          formulaRetryQuery,
+          Math.max(9000, Math.min(17000, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS + 1500)),
+        );
+        const formulaRetryNorm = normalizeProductAnalysisFromUpstream(formulaRetryUpstream);
+        if (
+          hasValidFormulaIntentInPayload(formulaRetryNorm.payload) &&
+          (!hasValidFormulaIntentInPayload(norm.payload) || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
+        ) {
+          norm = {
+            payload: applyProductAnalysisGapContract({
+              ...formulaRetryNorm.payload,
+              internal_debug_codes: uniqCaseInsensitiveStrings(
+                [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), 'formula_intent_retry_used'],
+                32,
+              ),
+            }),
+            field_missing: mergeFieldMissing(formulaRetryNorm.field_missing, norm.field_missing),
+          };
+        }
       }
 
       const routineEscalationRoute = resolveProductIntelEscalationRoute({});
@@ -30627,10 +30728,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const descriptorAnchor = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
       const productDescriptor = buildProductInputText(descriptorAnchor, null) || parsed.data.name || input;
-      const query = `${prefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-        `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-        `Evidence must include science/social_signals/expert_notes.\n` +
-        `Product: ${productDescriptor}`;
+      const query = buildProductDeepScanPromptV2({
+        prefix,
+        productDescriptor,
+      });
 
       const runDeepScan = async ({ queryText, timeoutMs, llmRouteOverride = null }) => {
         const effectiveRoute =
@@ -30753,11 +30854,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           intent: 'product_analyze_fallback',
           action_id: 'chip.action.analyze_product_fallback',
         });
-        const minimalQuery =
-          `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-          `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-          `Evidence must include science/social_signals/expert_notes.\n` +
-          `Product: ${input}`;
+        const minimalQuery = buildProductDeepScanPromptV2({
+          prefix: minimalPrefix,
+          productDescriptor: input,
+        });
         const upstream2 = await runDeepScan({ queryText: minimalQuery, timeoutMs: 14000 });
         const norm2 = normalizeProductAnalysisFromUpstream(upstream2);
         if (norm2 && norm2.payload && norm2.payload.assessment) {
@@ -30768,6 +30868,34 @@ function mountAuroraBffRoutes(app, { logger }) {
               internal_debug_codes: Array.from(new Set([...internalCodes, 'profile_context_dropped_for_reliability'])),
             }),
             field_missing: norm2.field_missing,
+          };
+        }
+      }
+
+      if (shouldRetryForFormulaIntent(norm.payload)) {
+        const formulaRetryQuery = buildProductDeepScanPromptV2({
+          prefix,
+          productDescriptor: input,
+          strictFormulaIntent: true,
+        });
+        const formulaRetryUpstream = await runDeepScan({
+          queryText: formulaRetryQuery,
+          timeoutMs: Math.max(9000, Math.min(17000, AURORA_CHAT_UPSTREAM_TIMEOUT_MS)),
+        });
+        const formulaRetryNorm = normalizeProductAnalysisFromUpstream(formulaRetryUpstream);
+        if (
+          hasValidFormulaIntentInPayload(formulaRetryNorm.payload) &&
+          (!hasValidFormulaIntentInPayload(norm.payload) || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
+        ) {
+          norm = {
+            payload: applyProductAnalysisGapContract({
+              ...formulaRetryNorm.payload,
+              internal_debug_codes: uniqCaseInsensitiveStrings(
+                [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), 'formula_intent_retry_used'],
+                32,
+              ),
+            }),
+            field_missing: mergeFieldMissing(formulaRetryNorm.field_missing, norm.field_missing),
           };
         }
       }
@@ -30959,6 +31087,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       return sendProductAnalyzeEnvelope(envelope, 200, 'main_path');
     } catch (err) {
+      logger.error({
+        event: 'aurora_product_analyze_failed',
+        request_id: ctx.request_id,
+        trace_id: ctx.trace_id,
+        path: '/v1/product/analyze',
+        error: err?.message || String(err),
+        stack: err?.stack || null,
+      });
       const status = err.status || 500;
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage('Failed to analyze product.'),
@@ -39580,11 +39716,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
-          const deepScanQuery =
-            `${productAnalyzePrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-            `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-            `Evidence must include science/social_signals/expert_notes.\n` +
-            `Product: ${productInput}`;
+          const deepScanQuery = buildProductDeepScanPromptV2({
+            prefix: productAnalyzePrefix,
+            productDescriptor: productInput,
+          });
 
           const runDeepScan = async ({ queryText, timeoutMs, llmRouteOverride = null }) => {
             const effectiveRoute =
@@ -39671,11 +39806,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               intent: 'product_analyze_fallback',
               action_id: 'chat.fit_check.deep_scan_fallback',
             });
-            const minimalQuery =
-              `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-              `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-              `Evidence must include science/social_signals/expert_notes.\n` +
-              `Product: ${productInput}`;
+            const minimalQuery = buildProductDeepScanPromptV2({
+              prefix: minimalPrefix,
+              productDescriptor: productInput,
+            });
             const deepUpstream2 = await runDeepScan({ queryText: minimalQuery, timeoutMs: 14000 });
             const deepStructured2 =
               deepUpstream2 && deepUpstream2.structured && typeof deepUpstream2.structured === 'object' && !Array.isArray(deepUpstream2.structured)
@@ -39716,6 +39850,34 @@ function mountAuroraBffRoutes(app, { logger }) {
                   internal_debug_codes: Array.from(new Set([...internalCodes, 'profile_context_dropped_for_reliability'])),
                 }),
                 field_missing: norm2.field_missing,
+              };
+            }
+          }
+
+          if (shouldRetryForFormulaIntent(norm.payload)) {
+            const formulaRetryQuery = buildProductDeepScanPromptV2({
+              prefix: productAnalyzePrefix,
+              productDescriptor: productInput,
+              strictFormulaIntent: true,
+            });
+            const formulaRetryUpstream = await runDeepScan({
+              queryText: formulaRetryQuery,
+              timeoutMs: Math.max(9000, Math.min(17000, AURORA_CHAT_UPSTREAM_TIMEOUT_MS)),
+            });
+            const formulaRetryNorm = normalizeProductAnalysisFromUpstream(formulaRetryUpstream);
+            if (
+              hasValidFormulaIntentInPayload(formulaRetryNorm.payload) &&
+              (!hasValidFormulaIntentInPayload(norm.payload) || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
+            ) {
+              norm = {
+                payload: applyProductAnalysisGapContract({
+                  ...formulaRetryNorm.payload,
+                  internal_debug_codes: uniqCaseInsensitiveStrings(
+                    [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), 'formula_intent_retry_used'],
+                    32,
+                  ),
+                }),
+                field_missing: mergeFieldMissing(formulaRetryNorm.field_missing, norm.field_missing),
               };
             }
           }
