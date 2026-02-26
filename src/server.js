@@ -40,8 +40,12 @@ const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
 } = require('./findProductsMulti/policy');
+const {
+  detectBrandEntities,
+  buildBrandQueryVariants,
+  hasExplicitCategoryHint,
+} = require('./findProductsMulti/brandLexicon');
 const { buildClarification } = require('./findProductsMulti/clarification');
-const { resolveSearchProfile } = require('./findProductsMulti/profiles/profileEngine');
 const {
   buildSearchDebugBundle,
   shouldExposeDebugBundle,
@@ -300,20 +304,6 @@ if (AGENT_AXIOS_KEEPALIVE_ENABLED) {
     'enabled axios keep-alive agents',
   );
 }
-const GATEWAY_SERVER_KEEP_ALIVE_ENABLED =
-  String(process.env.GATEWAY_SERVER_KEEP_ALIVE_ENABLED || 'true').toLowerCase() !== 'false';
-const GATEWAY_SERVER_KEEP_ALIVE_TIMEOUT_MS = parsePositiveInt(
-  process.env.GATEWAY_SERVER_KEEP_ALIVE_TIMEOUT_MS,
-  65000,
-  { min: 5000, max: 300000 },
-);
-const GATEWAY_SERVER_HEADERS_TIMEOUT_MS = Math.max(
-  GATEWAY_SERVER_KEEP_ALIVE_TIMEOUT_MS + 1000,
-  parsePositiveInt(process.env.GATEWAY_SERVER_HEADERS_TIMEOUT_MS, 70000, {
-    min: 6000,
-    max: 330000,
-  }),
-);
 
 const CREATOR_CATALOG_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
@@ -355,41 +345,6 @@ const CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS = parsePositiveInt(
   Math.max(240000, CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS * 4),
   { min: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS, max: 20 * 60 * 1000 },
 );
-const CREATOR_CATALOG_AUTO_SYNC_LIMIT_DEFAULT = 5000;
-const CREATOR_CATALOG_AUTO_SYNC_LIMIT_MIN = 500;
-const CREATOR_CATALOG_AUTO_SYNC_LIMIT_MAX = 5000;
-
-function resolveCreatorCatalogAutoSyncLimit(rawValue) {
-  const hasRawValue = rawValue !== undefined && rawValue !== null && String(rawValue).trim() !== '';
-  const parsed = hasRawValue ? Number(rawValue) : NaN;
-  const parsedInt = Number.isFinite(parsed) ? Math.floor(parsed) : null;
-  const fallbackApplied = !Number.isFinite(parsedInt);
-
-  let effective = fallbackApplied ? CREATOR_CATALOG_AUTO_SYNC_LIMIT_DEFAULT : parsedInt;
-  let raisedToMin = false;
-  let clampedToMax = false;
-
-  if (effective < CREATOR_CATALOG_AUTO_SYNC_LIMIT_MIN) {
-    effective = CREATOR_CATALOG_AUTO_SYNC_LIMIT_MIN;
-    raisedToMin = true;
-  }
-  if (effective > CREATOR_CATALOG_AUTO_SYNC_LIMIT_MAX) {
-    effective = CREATOR_CATALOG_AUTO_SYNC_LIMIT_MAX;
-    clampedToMax = true;
-  }
-
-  return {
-    raw: hasRawValue ? String(rawValue) : null,
-    configured: fallbackApplied ? null : parsedInt,
-    effective,
-    fallback_applied: fallbackApplied,
-    raised_to_min: raisedToMin,
-    clamped_to_max: clampedToMax,
-    default_value: CREATOR_CATALOG_AUTO_SYNC_LIMIT_DEFAULT,
-    min_value: CREATOR_CATALOG_AUTO_SYNC_LIMIT_MIN,
-    max_value: CREATOR_CATALOG_AUTO_SYNC_LIMIT_MAX,
-  };
-}
 
 function getCreatorCatalogAutoSyncIntervalConfig() {
   const maxIntervalMinutes = Math.max(
@@ -490,65 +445,6 @@ const UPSTREAM_TIMEOUT_SEARCH_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_SEARCH_RETRY_MS,
   Math.min(UPSTREAM_TIMEOUT_SLOW_MS, Math.max(UPSTREAM_TIMEOUT_SEARCH_MS * 3, 45_000)),
 );
-const DEFAULT_SHARED_UPSTREAM_KEEPALIVE_OPERATIONS = [
-  'find_products',
-  'find_products_multi',
-  'find_similar_products',
-  'get_product_detail',
-  'preview_quote',
-  'create_order',
-  'submit_payment',
-  'get_order_status',
-  'request_after_sales',
-  'track_product_click',
-  'get_review_summary',
-];
-const UPSTREAM_SHARED_KEEPALIVE_ENABLED =
-  String(process.env.UPSTREAM_SHARED_KEEPALIVE_ENABLED || 'false').toLowerCase() === 'true';
-const UPSTREAM_SHARED_KEEPALIVE_MSECS = parsePositiveInt(
-  process.env.UPSTREAM_SHARED_KEEPALIVE_MSECS,
-  30000,
-  { min: 1000, max: 300000 },
-);
-const UPSTREAM_SHARED_MAX_SOCKETS = parsePositiveInt(
-  process.env.UPSTREAM_SHARED_MAX_SOCKETS,
-  128,
-  { min: 8, max: 2048 },
-);
-const UPSTREAM_SHARED_MAX_FREE_SOCKETS = parsePositiveInt(
-  process.env.UPSTREAM_SHARED_MAX_FREE_SOCKETS,
-  32,
-  { min: 1, max: 512 },
-);
-const UPSTREAM_SHARED_KEEPALIVE_OPERATIONS = new Set(
-  String(
-    process.env.UPSTREAM_SHARED_KEEPALIVE_OPERATIONS ||
-      DEFAULT_SHARED_UPSTREAM_KEEPALIVE_OPERATIONS.join(','),
-  )
-    .split(',')
-    .map((value) => String(value || '').trim())
-    .filter(Boolean),
-);
-const UPSTREAM_SHARED_HTTP_AGENT = UPSTREAM_SHARED_KEEPALIVE_ENABLED
-  ? new http.Agent({
-      keepAlive: true,
-      keepAliveMsecs: UPSTREAM_SHARED_KEEPALIVE_MSECS,
-      maxSockets: UPSTREAM_SHARED_MAX_SOCKETS,
-      maxFreeSockets: UPSTREAM_SHARED_MAX_FREE_SOCKETS,
-    })
-  : undefined;
-const UPSTREAM_SHARED_HTTPS_AGENT = UPSTREAM_SHARED_KEEPALIVE_ENABLED
-  ? new https.Agent({
-      keepAlive: true,
-      keepAliveMsecs: UPSTREAM_SHARED_KEEPALIVE_MSECS,
-      maxSockets: UPSTREAM_SHARED_MAX_SOCKETS,
-      maxFreeSockets: UPSTREAM_SHARED_MAX_FREE_SOCKETS,
-    })
-  : undefined;
-const UPSTREAM_SHARED_AXIOS = axios.create({
-  ...(UPSTREAM_SHARED_HTTP_AGENT ? { httpAgent: UPSTREAM_SHARED_HTTP_AGENT } : {}),
-  ...(UPSTREAM_SHARED_HTTPS_AGENT ? { httpsAgent: UPSTREAM_SHARED_HTTPS_AGENT } : {}),
-});
 const PDP_V2_CORE_HOT_CACHE_ENABLED =
   String(process.env.PDP_V2_CORE_HOT_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
 const PDP_V2_CORE_HOT_CACHE_TTL_MS = Math.max(
@@ -591,22 +487,6 @@ function getUpstreamTimeoutMs(operation) {
   if (operation === 'find_products') return UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS;
   if (operation === 'find_products_multi') return UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
   return SLOW_UPSTREAM_OPS.has(operation) ? UPSTREAM_TIMEOUT_SLOW_MS : UPSTREAM_TIMEOUT_SEARCH_MS;
-}
-
-function shouldUseSharedUpstreamKeepalive(operation, axiosConfig) {
-  if (!UPSTREAM_SHARED_KEEPALIVE_ENABLED) return false;
-  if (!operation || !UPSTREAM_SHARED_KEEPALIVE_OPERATIONS.has(operation)) return false;
-  if (!axiosConfig || typeof axiosConfig !== 'object') return false;
-  // Respect per-request socket overrides.
-  if (axiosConfig.httpAgent || axiosConfig.httpsAgent || axiosConfig.socketPath) return false;
-  return true;
-}
-
-function performUpstreamRequest(operation, axiosConfig) {
-  if (shouldUseSharedUpstreamKeepalive(operation, axiosConfig)) {
-    return UPSTREAM_SHARED_AXIOS.request(axiosConfig);
-  }
-  return axios(axiosConfig);
 }
 
 const PROXY_SEARCH_FALLBACK_TIMEOUT_MS = parseTimeoutMs(
@@ -693,7 +573,9 @@ const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
   )
     .trim()
     .toLowerCase();
-  return raw === 'supplement_internal_first' ? raw : 'legacy';
+  return ['legacy', 'supplement_internal_first', 'unified_relevance'].includes(raw)
+    ? raw
+    : 'supplement_internal_first';
 })();
 const PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED =
   String(process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED || 'true')
@@ -705,8 +587,12 @@ const PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY = (() => {
   )
     .trim()
     .toLowerCase();
-  return raw === 'legacy' ? raw : 'supplement_internal_first';
+  return ['legacy', 'supplement_internal_first', 'unified_relevance'].includes(raw)
+    ? raw
+    : 'supplement_internal_first';
 })();
+const CREATOR_CACHE_SHORT_CIRCUIT_ENABLED =
+  String(process.env.CREATOR_CACHE_SHORT_CIRCUIT_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS = Math.max(
   600,
   Math.min(
@@ -737,9 +623,6 @@ const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
   'false';
 const PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
   String(process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY || 'true').toLowerCase() !== 'false';
-const PROXY_SEARCH_CACHE_STRICT_EMPTY_NON_LOOKUP_ENABLED =
-  String(process.env.PROXY_SEARCH_CACHE_STRICT_EMPTY_NON_LOOKUP_ENABLED || 'false').toLowerCase() ===
-  'true';
 const PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT =
   String(process.env.PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT || 'true').toLowerCase() !==
   'false';
@@ -840,14 +723,6 @@ const SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = new Set(
 const PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED || 'false').toLowerCase() ===
   'true';
-const FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED =
-  String(process.env.FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED || 'true').toLowerCase() !==
-  'false';
-const CREATOR_CACHE_SHORT_CIRCUIT_ENABLED =
-  String(process.env.CREATOR_CACHE_SHORT_CIRCUIT_ENABLED || 'false').toLowerCase() === 'true';
-const CREATOR_SCOPE_TO_MERCHANT_CATALOG_ENABLED =
-  String(process.env.CREATOR_SCOPE_TO_MERCHANT_CATALOG_ENABLED || 'false').toLowerCase() ===
-  'true';
 const FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 2200),
@@ -903,44 +778,6 @@ const OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT =
 const OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_NO_CANDIDATES =
   String(process.env.OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_NO_CANDIDATES || 'true').toLowerCase() ===
   'true';
-const OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_ENABLED =
-  String(process.env.OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_ENABLED || 'true').toLowerCase() !==
-  'false';
-const OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_MSECS = parsePositiveInt(
-  process.env.OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_MSECS,
-  30000,
-  { min: 1000, max: 300000 },
-);
-const OFFERS_RESOLVE_UPSTREAM_MAX_SOCKETS = parsePositiveInt(
-  process.env.OFFERS_RESOLVE_UPSTREAM_MAX_SOCKETS,
-  128,
-  { min: 8, max: 2048 },
-);
-const OFFERS_RESOLVE_UPSTREAM_MAX_FREE_SOCKETS = parsePositiveInt(
-  process.env.OFFERS_RESOLVE_UPSTREAM_MAX_FREE_SOCKETS,
-  32,
-  { min: 1, max: 512 },
-);
-const OFFERS_RESOLVE_UPSTREAM_HTTP_AGENT = OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_ENABLED
-  ? new http.Agent({
-      keepAlive: true,
-      keepAliveMsecs: OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_MSECS,
-      maxSockets: OFFERS_RESOLVE_UPSTREAM_MAX_SOCKETS,
-      maxFreeSockets: OFFERS_RESOLVE_UPSTREAM_MAX_FREE_SOCKETS,
-    })
-  : undefined;
-const OFFERS_RESOLVE_UPSTREAM_HTTPS_AGENT = OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_ENABLED
-  ? new https.Agent({
-      keepAlive: true,
-      keepAliveMsecs: OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_MSECS,
-      maxSockets: OFFERS_RESOLVE_UPSTREAM_MAX_SOCKETS,
-      maxFreeSockets: OFFERS_RESOLVE_UPSTREAM_MAX_FREE_SOCKETS,
-    })
-  : undefined;
-const OFFERS_RESOLVE_UPSTREAM_AXIOS = axios.create({
-  ...(OFFERS_RESOLVE_UPSTREAM_HTTP_AGENT ? { httpAgent: OFFERS_RESOLVE_UPSTREAM_HTTP_AGENT } : {}),
-  ...(OFFERS_RESOLVE_UPSTREAM_HTTPS_AGENT ? { httpsAgent: OFFERS_RESOLVE_UPSTREAM_HTTPS_AGENT } : {}),
-});
 const OFFERS_RESOLVE_CIRCUITS = {
   subject_resolve: { failure_count: 0, open_until_ms: 0, last_reason: null },
   cache_search: { failure_count: 0, open_until_ms: 0, last_reason: null },
@@ -2513,17 +2350,8 @@ function getCatalogSyncSuppressionStatus(merchantId, nowMs = Date.now()) {
   };
 }
 
-function summarizeCatalogSyncMerchantState(options = {}) {
-  const scopeSet = Array.isArray(options.merchantIds) && options.merchantIds.length
-    ? new Set(options.merchantIds.map((id) => String(id || '').trim()).filter(Boolean))
-    : null;
-
-  const rows = Object.entries(catalogSyncState.per_merchant || {})
-    .filter(([merchantId]) => {
-      if (!scopeSet) return true;
-      return scopeSet.has(String(merchantId || '').trim());
-    })
-    .map(([merchantId, state]) => ({
+function summarizeCatalogSyncMerchantState() {
+  const rows = Object.entries(catalogSyncState.per_merchant || {}).map(([merchantId, state]) => ({
     merchant_id: merchantId,
     ok: state?.ok === true,
     skipped: state?.skipped === true,
@@ -2534,15 +2362,6 @@ function summarizeCatalogSyncMerchantState(options = {}) {
     last_run_at: state?.last_run_at || null,
     blocked_until: state?.blocked_until || null,
     error: state?.error ? String(state.error) : null,
-    limit_effective: Number.isFinite(Number(state?.limit_effective))
-      ? Number(state.limit_effective)
-      : null,
-    products_fetched: Number.isFinite(Number(state?.products_fetched))
-      ? Number(state.products_fetched)
-      : null,
-    next_page_token_present: state?.next_page_token_present === true,
-    truncated: state?.truncated === true,
-    truncated_reason: state?.truncated_reason ? String(state.truncated_reason) : null,
   }));
   rows.sort((a, b) => {
     const ta = Date.parse(String(a.last_run_at || '')) || 0;
@@ -2552,78 +2371,25 @@ function summarizeCatalogSyncMerchantState(options = {}) {
   return rows.slice(0, 20);
 }
 
-function buildCatalogSyncConfigView(limitOverride) {
-  const autoSyncIntervalConfig = getCreatorCatalogAutoSyncIntervalConfig();
-  const limitConfig = resolveCreatorCatalogAutoSyncLimit(
-    limitOverride !== undefined ? limitOverride : process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT,
-  );
-  return {
-    enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
-    interval_minutes: autoSyncIntervalConfig.intervalMinutes,
-    interval_minutes_max: autoSyncIntervalConfig.maxIntervalMinutes,
-    cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
-    request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
-    request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
-    retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
-    retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
-    non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
-    invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
-    limit_configured: limitConfig.configured,
-    limit_effective: limitConfig.effective,
-    limit_default: limitConfig.default_value,
-    limit_min: limitConfig.min_value,
-    limit_max: limitConfig.max_value,
-    limit_fallback_applied: limitConfig.fallback_applied,
-    limit_raised_to_min: limitConfig.raised_to_min,
-    limit_clamped_to_max: limitConfig.clamped_to_max,
-    target_source: catalogSyncState.target_source,
-    target_count: catalogSyncState.target_count,
-    target_eligible_count: catalogSyncState.target_eligible_count,
-    target_suppressed_count: catalogSyncState.target_suppressed_count,
-    target_sample: catalogSyncState.target_sample,
-    target_suppressed_sample: catalogSyncState.target_suppressed_sample,
-    last_run_at: catalogSyncState.last_run_at,
-    last_success_at: catalogSyncState.last_success_at,
-    last_error: catalogSyncState.last_error,
-    per_merchant: summarizeCatalogSyncMerchantState(),
-  };
-}
-
-async function runCreatorCatalogAutoSync(options = {}) {
-  const runStartedAtMs = Date.now();
+async function runCreatorCatalogAutoSync() {
   const enabled = CREATOR_CATALOG_AUTO_SYNC_ENABLED;
-  if (!enabled) {
-    return { ok: false, reason: 'disabled', duration_ms: 0 };
-  }
-  if (!PIVOTA_API_BASE) {
-    return { ok: false, reason: 'api_base_missing', duration_ms: 0 };
-  }
+  if (!enabled) return;
+  if (!PIVOTA_API_BASE) return;
 
   const adminKey = process.env.CREATOR_CATALOG_SYNC_ADMIN_KEY || ADMIN_API_KEY;
   if (!adminKey) {
     logger.warn('CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no admin key is configured');
-    return { ok: false, reason: 'admin_key_missing', duration_ms: 0 };
+    return;
   }
 
-  const triggerSource = String(options?.trigger_source || options?.triggerSource || 'scheduler');
-  const requestedMerchantIds = uniqueStrings([
-    ...(Array.isArray(options?.merchantIds) ? options.merchantIds : []),
-    options?.merchant_id,
-    options?.merchantId,
-  ]);
-  const ignoreSuppression = options?.ignore_suppression === true || options?.ignoreSuppression === true;
-
-  const merchantTarget = requestedMerchantIds.length
-    ? { merchantIds: requestedMerchantIds, source: triggerSource === 'scheduler' ? 'manual_override' : triggerSource }
-    : await resolveCatalogSyncMerchantIds();
+  const merchantTarget = await resolveCatalogSyncMerchantIds();
   const resolvedMerchantIds = merchantTarget.merchantIds;
   const nowMs = Date.now();
   const merchantIds = [];
   const suppressedMerchants = [];
-
   for (const merchantId of resolvedMerchantIds) {
     const suppression = getCatalogSyncSuppressionStatus(merchantId, nowMs);
-    if (!suppression.suppressed || ignoreSuppression) {
+    if (!suppression.suppressed) {
       merchantIds.push(merchantId);
       continue;
     }
@@ -2642,15 +2408,6 @@ async function runCreatorCatalogAutoSync(options = {}) {
         'Skipped due to temporary cooldown after non-retryable sync error',
       blocked_until_ms: Number(existingState?.blocked_until_ms || 0) || null,
       blocked_until: suppression.blocked_until,
-      limit_effective: Number.isFinite(Number(existingState?.limit_effective))
-        ? Number(existingState.limit_effective)
-        : null,
-      products_fetched: Number.isFinite(Number(existingState?.products_fetched))
-        ? Number(existingState.products_fetched)
-        : null,
-      next_page_token_present: existingState?.next_page_token_present === true,
-      truncated: existingState?.truncated === true,
-      truncated_reason: existingState?.truncated_reason || null,
     };
     suppressedMerchants.push({
       merchant_id: merchantId,
@@ -2659,56 +2416,28 @@ async function runCreatorCatalogAutoSync(options = {}) {
       invalid_merchant: suppression.invalid_merchant,
     });
   }
-
   catalogSyncState.target_source = merchantTarget.source || null;
   catalogSyncState.target_count = resolvedMerchantIds.length;
   catalogSyncState.target_eligible_count = merchantIds.length;
   catalogSyncState.target_suppressed_count = suppressedMerchants.length;
   catalogSyncState.target_sample = resolvedMerchantIds.slice(0, 20);
   catalogSyncState.target_suppressed_sample = suppressedMerchants.slice(0, 20);
-
   if (!merchantIds.length) {
     logger.warn(
       {
         target_source: merchantTarget.source || null,
         target_count: resolvedMerchantIds.length,
         suppressed_count: suppressedMerchants.length,
-        trigger_source: triggerSource,
       },
       'CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no sync target merchants were resolved',
     );
-    return {
-      ok: false,
-      reason: 'no_targets',
-      trigger_source: triggerSource,
-      target_source: merchantTarget.source || null,
-      target_count: resolvedMerchantIds.length,
-      target_eligible_count: merchantIds.length,
-      target_suppressed_count: suppressedMerchants.length,
-      duration_ms: Math.max(0, Date.now() - runStartedAtMs),
-      per_merchant: summarizeCatalogSyncMerchantState({ merchantIds: resolvedMerchantIds }),
-    };
+    return;
   }
 
-  const limitConfig = resolveCreatorCatalogAutoSyncLimit(
-    options?.limit_override ?? options?.limitOverride ?? process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT,
+  const limit = Math.min(
+    Number(process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT || 200) || 200,
+    5000,
   );
-  if (limitConfig.fallback_applied || limitConfig.raised_to_min || limitConfig.clamped_to_max) {
-    logger.warn(
-      {
-        trigger_source: triggerSource,
-        configured_limit: limitConfig.configured,
-        raw_limit: limitConfig.raw,
-        effective_limit: limitConfig.effective,
-        fallback_applied: limitConfig.fallback_applied,
-        raised_to_min: limitConfig.raised_to_min,
-        clamped_to_max: limitConfig.clamped_to_max,
-      },
-      'Creator catalog auto sync limit adjusted by guardrail',
-    );
-  }
-
-  const limit = limitConfig.effective;
   const ttlSeconds = CREATOR_CATALOG_CACHE_TTL_SECONDS;
   const maxAttempts = Math.max(1, Number(CREATOR_CATALOG_AUTO_SYNC_RETRIES || 0) + 1);
 
@@ -2725,7 +2454,6 @@ async function runCreatorCatalogAutoSync(options = {}) {
     let res = null;
     let err = null;
     let timeoutUsedMs = CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS;
-
     for (attempt = 1; attempt <= maxAttempts; attempt += 1) {
       timeoutUsedMs = getCatalogSyncAttemptTimeoutMs({
         merchantState: existingState,
@@ -2758,7 +2486,6 @@ async function runCreatorCatalogAutoSync(options = {}) {
               code: attemptErr?.code || null,
               non_retryable: nonRetryable,
               error: attemptErr?.message || String(attemptErr),
-              trigger_source: triggerSource,
             },
             'Creator catalog auto sync attempt failed; retrying',
           );
@@ -2770,41 +2497,13 @@ async function runCreatorCatalogAutoSync(options = {}) {
     }
 
     if (!err && res) {
-      const summary = res.data && res.data.summary ? res.data.summary : res.data;
-      const productsFetchedRaw =
-        summary?.productsFetched ??
-        summary?.products_fetched ??
-        summary?.product_count ??
-        summary?.productsUpserted ??
-        summary?.products_upserted;
-      const productsFetched = Number.isFinite(Number(productsFetchedRaw))
-        ? Number(productsFetchedRaw)
-        : null;
-      const nextPageTokenRaw = summary?.nextPageToken ?? summary?.next_page_token ?? null;
-      const nextPageTokenPresent =
-        nextPageTokenRaw !== undefined &&
-        nextPageTokenRaw !== null &&
-        String(nextPageTokenRaw).trim() !== '';
-      const upstreamTruncated = summary?.truncated === true;
-      const upstreamTruncatedReason =
-        summary?.truncated_reason || summary?.truncatedReason || null;
-      const limitDerivedTruncated = Boolean(
-        nextPageTokenPresent &&
-          Number.isFinite(Number(productsFetched)) &&
-          Number(productsFetched) >= limit,
-      );
-      const truncated = upstreamTruncated || limitDerivedTruncated;
-      const truncatedReason =
-        upstreamTruncatedReason ||
-        (limitDerivedTruncated ? 'limit_reached_with_next_page' : null);
-
       catalogSyncState.per_merchant[merchantId] = {
         ok: true,
         skipped: false,
         last_run_at: new Date().toISOString(),
         attempts: attempt,
         duration_ms: Math.max(0, Date.now() - startedAtMs),
-        summary,
+        summary: res.data && res.data.summary ? res.data.summary : res.data,
         status: Number.isFinite(Number(res.status)) ? Number(res.status) : 200,
         timeout_ms: timeoutUsedMs,
         timeout_streak: 0,
@@ -2812,11 +2511,6 @@ async function runCreatorCatalogAutoSync(options = {}) {
         error: null,
         blocked_until_ms: null,
         blocked_until: null,
-        limit_effective: limit,
-        products_fetched: productsFetched,
-        next_page_token_present: nextPageTokenPresent,
-        truncated,
-        truncated_reason: truncatedReason,
       };
       catalogSyncState.last_success_at = new Date().toISOString();
       logger.info(
@@ -2827,10 +2521,6 @@ async function runCreatorCatalogAutoSync(options = {}) {
           attempts: attempt,
           duration_ms: Math.max(0, Date.now() - startedAtMs),
           timeout_ms: timeoutUsedMs,
-          products_fetched: productsFetched,
-          next_page_token_present: nextPageTokenPresent,
-          truncated,
-          trigger_source: triggerSource,
         },
         'Creator catalog auto sync succeeded',
       );
@@ -2866,11 +2556,6 @@ async function runCreatorCatalogAutoSync(options = {}) {
         error: message,
         blocked_until_ms: blockedUntilMs,
         blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
-        limit_effective: limit,
-        products_fetched: null,
-        next_page_token_present: false,
-        truncated: false,
-        truncated_reason: null,
       };
       catalogSyncState.last_error = `${merchantId}: ${message}`;
       logger.warn(
@@ -2885,25 +2570,11 @@ async function runCreatorCatalogAutoSync(options = {}) {
           non_retryable: nonRetryable,
           invalid_merchant: invalidMerchant,
           blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
-          trigger_source: triggerSource,
         },
         'Creator catalog auto sync failed',
       );
     }
   }
-
-  return {
-    ok: true,
-    trigger_source: triggerSource,
-    target_source: merchantTarget.source || null,
-    target_count: resolvedMerchantIds.length,
-    target_eligible_count: merchantIds.length,
-    target_suppressed_count: suppressedMerchants.length,
-    limit_effective: limit,
-    limit_config: limitConfig,
-    duration_ms: Math.max(0, Date.now() - runStartedAtMs),
-    per_merchant: summarizeCatalogSyncMerchantState({ merchantIds: resolvedMerchantIds }),
-  };
 }
 
 // API Mode: MOCK (default), HYBRID, or REAL
@@ -2944,165 +2615,6 @@ function buildQueryString(params) {
   return qs ? `?${qs}` : '';
 }
 
-const DEFAULT_PRODUCT_IMAGE_PLACEHOLDER_URL = `data:image/svg+xml;utf8,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" fill="none"><rect width="480" height="480" rx="24" fill="#F3F4F6"/><path d="M120 326L198 248L252 302L318 236L360 278V330H120V326Z" fill="#D1D5DB"/><circle cx="178" cy="178" r="30" fill="#D1D5DB"/></svg>',
-)}`;
-
-function resolveProductImagePlaceholderUrl() {
-  const configured = String(process.env.PRODUCT_IMAGE_PLACEHOLDER_URL || '').trim();
-  if (!configured) return DEFAULT_PRODUCT_IMAGE_PLACEHOLDER_URL;
-  if (/^https?:\/\//i.test(configured)) return configured;
-  if (/^data:image\//i.test(configured)) return configured;
-  return DEFAULT_PRODUCT_IMAGE_PLACEHOLDER_URL;
-}
-
-const PRODUCT_IMAGE_PLACEHOLDER_URL = resolveProductImagePlaceholderUrl();
-
-function toHttpImageUrl(value) {
-  const url = String(value || '').trim();
-  if (!url) return '';
-  return /^https?:\/\//i.test(url) ? url : '';
-}
-
-function imageCanonicalKey(url) {
-  return String(url || '')
-    .trim()
-    .replace(/^https?:\/\//i, '');
-}
-
-function isHttpsImageUrl(url) {
-  return /^https:\/\//i.test(String(url || '').trim());
-}
-
-function dedupeImageUrlsPreferHttps(urls) {
-  const byKey = new Map();
-  for (const rawUrl of Array.isArray(urls) ? urls : []) {
-    const normalized = toHttpImageUrl(rawUrl);
-    if (!normalized) continue;
-    const key = imageCanonicalKey(normalized);
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, normalized);
-      continue;
-    }
-    if (!isHttpsImageUrl(existing) && isHttpsImageUrl(normalized)) {
-      byKey.set(key, normalized);
-    }
-  }
-  return Array.from(byKey.values());
-}
-
-function promoteHttpsVariant(url, candidates) {
-  const normalized = toHttpImageUrl(url);
-  if (!normalized) return '';
-  if (isHttpsImageUrl(normalized)) return normalized;
-  const candidateList = Array.isArray(candidates) ? candidates : [];
-  const key = imageCanonicalKey(normalized);
-  for (const candidate of candidateList) {
-    if (!isHttpsImageUrl(candidate)) continue;
-    if (imageCanonicalKey(candidate) === key) return candidate;
-  }
-  for (const candidate of candidateList) {
-    if (isHttpsImageUrl(candidate)) return candidate;
-  }
-  return normalized;
-}
-
-function extractImageUrlsFromCollection(collection) {
-  if (!Array.isArray(collection)) return [];
-  const urls = [];
-  for (const item of collection) {
-    if (!item) continue;
-    if (typeof item === 'string') {
-      const normalized = toHttpImageUrl(item);
-      if (normalized) urls.push(normalized);
-      continue;
-    }
-    if (typeof item === 'object') {
-      const nestedImage =
-        item.image && typeof item.image === 'object'
-          ? item.image
-          : null;
-      const normalized =
-        toHttpImageUrl(item.url) ||
-        toHttpImageUrl(item.image_url) ||
-        toHttpImageUrl(item.imageUrl) ||
-        toHttpImageUrl(item.src) ||
-        toHttpImageUrl(item.main_image_url) ||
-        toHttpImageUrl(item.thumbnail_url) ||
-        toHttpImageUrl(item.thumbnailUrl) ||
-        toHttpImageUrl(item.preview_image_url) ||
-        toHttpImageUrl(item.previewImageUrl) ||
-        toHttpImageUrl(nestedImage?.url) ||
-        toHttpImageUrl(nestedImage?.image_url) ||
-        toHttpImageUrl(nestedImage?.imageUrl) ||
-        toHttpImageUrl(nestedImage?.src);
-      if (normalized) urls.push(normalized);
-    }
-  }
-  return urls;
-}
-
-function extractProductImageCandidates(product) {
-  if (!product || typeof product !== 'object') return [];
-  const candidates = [];
-  const pushCandidate = (value) => {
-    const normalized = toHttpImageUrl(value);
-    if (!normalized) return;
-    candidates.push(normalized);
-  };
-  pushCandidate(product.image_url);
-  pushCandidate(product.imageUrl);
-  pushCandidate(product.image);
-  for (const url of extractImageUrlsFromCollection(product.images)) pushCandidate(url);
-  for (const url of extractImageUrlsFromCollection(product.image_urls)) pushCandidate(url);
-  for (const url of extractImageUrlsFromCollection(product.variants)) pushCandidate(url);
-  for (const url of extractImageUrlsFromCollection(product.media)) pushCandidate(url);
-  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : null;
-  if (seedData) {
-    pushCandidate(seedData.image_url);
-    pushCandidate(seedData.imageUrl);
-    pushCandidate(seedData.image);
-    for (const url of extractImageUrlsFromCollection(seedData.images)) pushCandidate(url);
-    for (const url of extractImageUrlsFromCollection(seedData.image_urls)) pushCandidate(url);
-    const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : null;
-    if (snapshot) {
-      pushCandidate(snapshot.image_url);
-      pushCandidate(snapshot.imageUrl);
-      pushCandidate(snapshot.image);
-      for (const url of extractImageUrlsFromCollection(snapshot.images)) pushCandidate(url);
-      for (const url of extractImageUrlsFromCollection(snapshot.image_urls)) pushCandidate(url);
-    }
-  }
-  return candidates;
-}
-
-function normalizeProductImages(product) {
-  if (!product || typeof product !== 'object') {
-    return { primaryImageUrl: '', normalizedImages: [] };
-  }
-  const candidates = dedupeImageUrlsPreferHttps(extractProductImageCandidates(product));
-
-  const explicitPrimary =
-    promoteHttpsVariant(product.image_url, candidates) ||
-    promoteHttpsVariant(product.imageUrl, candidates) ||
-    promoteHttpsVariant(product.image, candidates);
-  const firstHttpsCandidate = candidates.find((candidate) => isHttpsImageUrl(candidate)) || '';
-  const primaryImageUrl =
-    explicitPrimary || firstHttpsCandidate || candidates[0] || PRODUCT_IMAGE_PLACEHOLDER_URL;
-
-  const existingImages = Array.isArray(product.images) ? product.images : [];
-  const existingRenderableImageUrls = extractImageUrlsFromCollection(existingImages);
-  const normalizedImages =
-    existingRenderableImageUrls.length > 0
-      ? existingImages
-      : [primaryImageUrl].concat(
-          candidates.filter((url) => url !== primaryImageUrl),
-        );
-
-  return { primaryImageUrl, normalizedImages };
-}
-
 function normalizeAgentProductsListResponse(raw, ctx = {}) {
   if (!raw) return raw;
 
@@ -3124,17 +2636,7 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
   };
 
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-  const products = getProducts(raw).map((item) => {
-    if (!item || typeof item !== 'object') return item;
-    const { primaryImageUrl, normalizedImages } = normalizeProductImages(item);
-    return {
-      ...item,
-      image_url: primaryImageUrl || item.image_url || '',
-      ...(item.images && Array.isArray(item.images) && item.images.length > 0
-        ? {}
-        : { images: normalizedImages }),
-    };
-  });
+  const products = getProducts(raw);
 
   const totalRaw =
     base.total ??
@@ -3175,34 +2677,6 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
   };
 }
 
-function normalizeSourceBreakdownForProducts(metadata, products) {
-  const list = Array.isArray(products) ? products : [];
-  const existingSourceBreakdown =
-    metadata &&
-    typeof metadata === 'object' &&
-    !Array.isArray(metadata) &&
-    metadata.source_breakdown &&
-    typeof metadata.source_breakdown === 'object' &&
-    !Array.isArray(metadata.source_breakdown)
-      ? metadata.source_breakdown
-      : {};
-  const externalSeedCount = list.filter((product) => isExternalSeedProduct(product)).length;
-  const internalCount = Math.max(0, list.length - externalSeedCount);
-  return {
-    ...existingSourceBreakdown,
-    internal_count: internalCount,
-    external_seed_count: externalSeedCount,
-    stale_cache_used: Boolean(existingSourceBreakdown.stale_cache_used),
-    strategy_applied:
-      typeof existingSourceBreakdown.strategy_applied === 'string' &&
-      existingSourceBreakdown.strategy_applied.trim()
-        ? existingSourceBreakdown.strategy_applied
-        : FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
-          ? 'unified_relevance'
-          : 'supplement_internal_first',
-  };
-}
-
 function withProxySearchFallbackMetadata(body, patch) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
   const metadata =
@@ -3218,37 +2692,6 @@ function withProxySearchFallbackMetadata(body, patch) {
     ...patch,
   };
   return { ...body, metadata };
-}
-
-function withSearchProfileMetadata(body, resolvedSearchProfile) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
-  const profile =
-    resolvedSearchProfile &&
-    resolvedSearchProfile.profile &&
-    typeof resolvedSearchProfile.profile === 'object'
-      ? resolvedSearchProfile.profile
-      : null;
-  if (!profile || !profile.id) return body;
-  const metadata =
-    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
-      ? { ...body.metadata }
-      : {};
-  const existingRules = Array.isArray(metadata.rules_applied)
-    ? metadata.rules_applied.map((item) => String(item || '').trim()).filter(Boolean)
-    : [];
-  const profileRules = Array.isArray(resolvedSearchProfile.rulesApplied)
-    ? resolvedSearchProfile.rulesApplied.map((item) => String(item || '').trim()).filter(Boolean)
-    : [];
-  const mergedRules = Array.from(new Set([...existingRules, ...profileRules]));
-  metadata.retrieval_profile = String(profile.id);
-  metadata.profile_confidence = resolvedSearchProfile.confidence
-    ? String(resolvedSearchProfile.confidence)
-    : null;
-  if (mergedRules.length > 0) metadata.rules_applied = mergedRules;
-  return {
-    ...body,
-    metadata,
-  };
 }
 
 function buildSearchRouteHealth({
@@ -3297,17 +2740,7 @@ function buildSearchTrace({
   queryClass = null,
   rewriteGate = null,
   associationPlan = null,
-  slotState = null,
-  rawQueryHasScenarioSignal = null,
-  intentScenarioName = null,
-  associationScenarioKey = null,
-  clarifyReasonBeforeDedup = null,
-  clarifyReasonAfterDedup = null,
   flagsSnapshot = null,
-  strictScope = null,
-  strictFilteredOut = null,
-  strictRescuedCount = null,
-  lowRecallReason = null,
 }) {
   return {
     trace_id: String(traceId || ''),
@@ -3322,36 +2755,6 @@ function buildSearchTrace({
     association_plan:
       associationPlan && typeof associationPlan === 'object' && !Array.isArray(associationPlan)
         ? associationPlan
-        : null,
-    raw_query_has_scenario_signal:
-      typeof rawQueryHasScenarioSignal === 'boolean' ? rawQueryHasScenarioSignal : null,
-    intent_scenario_name:
-      typeof intentScenarioName === 'string' && intentScenarioName.trim()
-        ? intentScenarioName.trim()
-        : null,
-    association_scenario_key:
-      typeof associationScenarioKey === 'string' && associationScenarioKey.trim()
-        ? associationScenarioKey.trim()
-        : null,
-    clarify_reason_before_dedup:
-      typeof clarifyReasonBeforeDedup === 'string' && clarifyReasonBeforeDedup.trim()
-        ? clarifyReasonBeforeDedup.trim()
-        : null,
-    clarify_reason_after_dedup:
-      typeof clarifyReasonAfterDedup === 'string' && clarifyReasonAfterDedup.trim()
-        ? clarifyReasonAfterDedup.trim()
-        : null,
-    strict_scope:
-      typeof strictScope === 'string' && strictScope.trim() ? strictScope.trim() : null,
-    lingerie_filtered_out:
-      Number.isFinite(Number(strictFilteredOut)) ? Math.max(0, Number(strictFilteredOut)) : null,
-    lingerie_rescued_count:
-      Number.isFinite(Number(strictRescuedCount)) ? Math.max(0, Number(strictRescuedCount)) : null,
-    low_recall_reason:
-      typeof lowRecallReason === 'string' && lowRecallReason.trim() ? lowRecallReason.trim() : null,
-    slot_state:
-      slotState && typeof slotState === 'object' && !Array.isArray(slotState)
-        ? slotState
         : null,
     flags_snapshot:
       flagsSnapshot && typeof flagsSnapshot === 'object' && !Array.isArray(flagsSnapshot)
@@ -3449,17 +2852,6 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   if (diagnostics.fallback_strategy && typeof diagnostics.fallback_strategy === 'object') {
     metadata.fallback_strategy = diagnostics.fallback_strategy;
   }
-  if (diagnostics.resolver_short_circuit_attempted != null) {
-    metadata.resolver_short_circuit_attempted = Boolean(diagnostics.resolver_short_circuit_attempted);
-  }
-  if (diagnostics.resolver_short_circuit_adopted != null) {
-    metadata.resolver_short_circuit_adopted = Boolean(diagnostics.resolver_short_circuit_adopted);
-  }
-  if (diagnostics.resolver_short_circuit_block_reason != null) {
-    metadata.resolver_short_circuit_block_reason = diagnostics.resolver_short_circuit_block_reason
-      ? String(diagnostics.resolver_short_circuit_block_reason)
-      : null;
-  }
 
   return {
     ...body,
@@ -3499,76 +2891,6 @@ function withStrictEmptyFallback({
       ? { fallback_strategy: fallbackStrategy }
       : {}),
   });
-}
-
-function withPrimaryIrrelevantFailOpen({
-  body,
-  reason,
-  route = null,
-  upstreamStatus = null,
-}) {
-  const base =
-    body && typeof body === 'object' && !Array.isArray(body)
-      ? body
-      : {
-          status: 'success',
-          success: true,
-          products: [],
-          total: 0,
-          page: 1,
-          page_size: 0,
-          reply: null,
-          metadata: {},
-        };
-  const withFallbackMeta = withProxySearchFallbackMetadata(base, {
-    applied: true,
-    reason: reason || 'primary_irrelevant_fail_open',
-    route: route || 'primary_irrelevant_fail_open',
-    upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
-    upstream_error_code: null,
-    upstream_error_message: null,
-  });
-  const existingMeta =
-    withFallbackMeta.metadata &&
-    typeof withFallbackMeta.metadata === 'object' &&
-    !Array.isArray(withFallbackMeta.metadata)
-      ? { ...withFallbackMeta.metadata }
-      : {};
-  const existingDecision =
-    existingMeta.search_decision &&
-    typeof existingMeta.search_decision === 'object' &&
-    !Array.isArray(existingMeta.search_decision)
-      ? { ...existingMeta.search_decision }
-      : {};
-  const products = Array.isArray(withFallbackMeta.products) ? withFallbackMeta.products : [];
-  const preCandidates = Math.max(countUsableSearchProducts(products), products.length);
-  const normalizedReasonCodes = Array.from(
-    new Set(
-      [ ...(Array.isArray(withFallbackMeta.reason_codes) ? withFallbackMeta.reason_codes : []), 'FAIL_OPEN_PRE_NONEMPTY' ]
-        .map((item) => String(item || '').trim())
-        .filter(Boolean),
-    ),
-  );
-  const metadata = {
-    ...existingMeta,
-    strict_empty: false,
-    search_decision: {
-      ...existingDecision,
-      decision_source: 'primary_irrelevant_fail_open',
-      final_decision: 'products_returned',
-      fail_open: true,
-      fail_open_reason: reason || 'primary_irrelevant_fail_open',
-      pre_candidates: preCandidates,
-      post_candidates: products.length,
-      reason_codes: normalizedReasonCodes,
-    },
-  };
-  delete metadata.strict_empty_reason;
-  return {
-    ...withFallbackMeta,
-    reason_codes: normalizedReasonCodes,
-    metadata,
-  };
 }
 
 function isUpstreamQuotaExhausted({ upstreamStatus = null, upstreamCode = null, upstreamMessage = null }) {
@@ -3623,7 +2945,6 @@ function buildProxySearchSoftFallbackResponse({
         language:
           (intent && typeof intent === 'object' ? intent.language : null) ||
           (typeof queryText === 'string' && /[\u4e00-\u9fff]/.test(queryText) ? 'zh' : 'en'),
-        rawQuery: queryText,
       })
     : null;
   const resolvedReply =
@@ -3716,18 +3037,9 @@ function normalizeAgentSource(source) {
     .replace(/_/g, '-');
 }
 
-const SHOPPING_AGENT_SOURCE_ALIASES = new Set([
-  'shopping-agent',
-  'shopping-agent-ui',
-  'agent-sdk-fixed-delegate',
-  'agent-sdk-delegate',
-  'agent-sdk',
-  'agent-sdk-ui',
-]);
-
 function isShoppingSource(source) {
   const normalized = normalizeAgentSource(source);
-  return SHOPPING_AGENT_SOURCE_ALIASES.has(normalized);
+  return normalized === 'shopping-agent' || normalized === 'shopping-agent-ui';
 }
 
 function isCreatorUiSource(source) {
@@ -3750,12 +3062,7 @@ function isResolverFirstCatalogSource(source) {
 
 function isAuroraSource(source) {
   const normalized = normalizeAgentSource(source);
-  return (
-    normalized === 'aurora-chatbox' ||
-    normalized === 'aurora-bff' ||
-    normalized === 'pivota-aurora-chatbox' ||
-    normalized === 'pivota-aurora-bff'
-  );
+  return normalized === 'aurora-chatbox' || normalized === 'aurora-bff';
 }
 
 function getProxySearchApiBase(source) {
@@ -3774,7 +3081,7 @@ function getAuroraFallbackOverrides(source, operation) {
   };
 }
 
-function applyShoppingCatalogQueryGuards(queryParams, source, resolvedSearchProfile = null) {
+function applyShoppingCatalogQueryGuards(queryParams, source) {
   const params =
     queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
       ? { ...queryParams }
@@ -3792,233 +3099,23 @@ function applyShoppingCatalogQueryGuards(queryParams, source, resolvedSearchProf
     explicitAllowExternalSeed !== undefined
       ? explicitAllowExternalSeed
       : (isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true);
-  const profileSeedStrategy =
-    resolvedSearchProfile &&
-    resolvedSearchProfile.profile &&
-    resolvedSearchProfile.profile.supplementPolicy &&
-    typeof resolvedSearchProfile.profile.supplementPolicy.defaultSeedStrategy === 'string'
-      ? resolvedSearchProfile.profile.supplementPolicy.defaultSeedStrategy.trim().toLowerCase()
-      : '';
   const externalSeedStrategy =
     explicitExternalSeedStrategy ||
-    (isAurora
-      ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
-      : profileSeedStrategy || 'unified_relevance');
-  const profileId =
-    resolvedSearchProfile &&
-    resolvedSearchProfile.profile &&
-    typeof resolvedSearchProfile.profile.id === 'string'
-      ? resolvedSearchProfile.profile.id
-      : null;
-  const guarded = {
+    (isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'unified_relevance');
+  return {
     ...params,
     allow_external_seed: allowExternalSeed,
     allow_stale_cache: false,
     external_seed_strategy: externalSeedStrategy,
     fast_mode: explicitFastMode !== undefined ? explicitFastMode : true,
   };
-  if (profileId && !firstQueryParamValue(guarded.profile_hint || guarded.profileHint)) {
-    guarded.profile_hint = profileId;
-  }
-  return guarded;
-}
-
-const FRAGRANCE_BRAND_ALIASES = [
-  'tom ford',
-  'jo malone',
-  'diptyque',
-  'byredo',
-  'le labo',
-  'chanel',
-  'dior',
-  'ysl',
-  'yves saint laurent',
-  'armani',
-  'hermes',
-  'gucci',
-  'bvlgari',
-  'burberry',
-  'versace',
-  'creed',
-  'kilian',
-  'amouage',
-];
-
-const BRAND_ALIASES = [
-  ...FRAGRANCE_BRAND_ALIASES,
-  'estee lauder',
-  'la mer',
-  'fenty',
-  'rare beauty',
-  'charlotte tilbury',
-  'nars',
-  'clinique',
-  'shiseido',
-  'laneige',
-  'innisfree',
-  'the ordinary',
-  'cerave',
-  'la roche posay',
-  "kiehl's",
-  'tatcha',
-  'drunk elephant',
-  "victoria's secret",
-  'calvin klein',
-  'hugo boss',
-  'prada',
-  'valentino',
-  'givenchy',
-  'chloe',
-  'dolce gabbana',
-];
-
-const NORMALIZED_FRAGRANCE_BRAND_ALIASES = FRAGRANCE_BRAND_ALIASES.map((alias) =>
-  normalizeSearchTextForMatch(alias),
-).filter(Boolean);
-const NORMALIZED_BRAND_ALIASES = BRAND_ALIASES.map((alias) =>
-  normalizeSearchTextForMatch(alias),
-).filter(Boolean);
-
-const FRAGRANCE_INTENT_STOP_TOKENS = new Set([
-  'a',
-  'an',
-  'and',
-  'de',
-  'eau',
-  'for',
-  'la',
-  'le',
-  'of',
-  'the',
-  'to',
-  'with',
-]);
-
-function detectBrandAliases(queryText) {
-  const normalized = normalizeSearchTextForMatch(queryText);
-  if (!normalized) return [];
-  return NORMALIZED_BRAND_ALIASES.filter((alias) => normalized.includes(alias));
-}
-
-function hasBrandLikeSearchSignal(queryText) {
-  return detectBrandAliases(queryText).length > 0;
-}
-
-function detectFragranceBrandAliases(queryText) {
-  const normalized = normalizeSearchTextForMatch(queryText);
-  if (!normalized) return [];
-  return NORMALIZED_FRAGRANCE_BRAND_ALIASES.filter((alias) => normalized.includes(alias));
-}
-
-function hasFragranceBrandSearchSignal(queryText) {
-  return detectFragranceBrandAliases(queryText).length > 0;
-}
-
-function isFragranceIntentQuery(queryText) {
-  return hasFragranceSearchSignal(queryText);
-}
-
-function buildFragranceQueryVariants(queryText) {
-  const base = String(queryText || '').trim();
-  if (!base) return [];
-  const variants = [];
-  const seen = new Set();
-  const addVariant = (value) => {
-    const raw = String(value || '').trim();
-    if (!raw) return;
-    const key = normalizeSearchTextForMatch(raw);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    variants.push(raw);
-  };
-
-  const normalizedBase = normalizeSearchTextForMatch(base);
-  const brandAliases = detectFragranceBrandAliases(base);
-  const hasFragranceKeyword = hasFragranceSearchSignal(base);
-  const hasExplicitFragranceToken =
-    /\b(perfume|fragrance|cologne|parfum|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette)\b/i.test(base) ||
-    /香水|香氛|古龙|古龍|フレグランス|コロン/.test(base);
-
-  addVariant(base);
-  if (!isFragranceIntentQuery(base)) return variants;
-
-  if (brandAliases.length > 0 && !hasExplicitFragranceToken) {
-    addVariant(`${base} perfume`);
-    addVariant(`${base} fragrance`);
-    addVariant(`${base} cologne`);
-    addVariant(`${base} parfum`);
-  } else {
-    const hints = ['perfume', 'fragrance', 'cologne', 'parfum', 'body mist', 'eau de parfum'];
-    for (const hint of hints) {
-      const normalizedHint = normalizeSearchTextForMatch(hint);
-      if (!normalizedHint || normalizedBase.includes(normalizedHint)) continue;
-      addVariant(`${base} ${hint}`);
-    }
-    if (hasFragranceKeyword) {
-      addVariant(base.replace(/\bfragrance\b/gi, 'perfume'));
-      addVariant(base.replace(/\bperfume\b/gi, 'fragrance'));
-    }
-  }
-
-  return variants.slice(0, 6);
-}
-
-function buildBrandQueryVariants(queryText, matchedBrands = []) {
-  const base = String(queryText || '').trim();
-  if (!base) return [];
-  const variants = [];
-  const seen = new Set();
-  const addVariant = (value) => {
-    const raw = String(value || '').trim();
-    if (!raw) return;
-    const key = normalizeSearchTextForMatch(raw);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    variants.push(raw);
-  };
-
-  addVariant(base);
-  const normalizedBase = normalizeSearchTextForMatch(base);
-  const brands = Array.isArray(matchedBrands) && matchedBrands.length > 0
-    ? matchedBrands
-    : detectBrandAliases(base);
-
-  for (const brand of brands) {
-    addVariant(brand);
-    if (normalizedBase && normalizeSearchTextForMatch(brand) === normalizedBase) {
-      addVariant(`${brand} official`);
-      addVariant(`${brand} products`);
-      addVariant(`${brand} beauty`);
-    }
-  }
-
-  return variants.slice(0, 6);
-}
-
-function buildExternalSeedSupplementQueryText(queryText, options = {}) {
-  const fragranceIntent = options?.fragranceIntent === true;
-  const brandLike = options?.brandLike === true;
-  if (fragranceIntent) {
-    const variants = buildFragranceQueryVariants(queryText);
-    return variants[0] || String(queryText || '').trim();
-  }
-  if (brandLike) {
-    const variants = buildBrandQueryVariants(queryText, options?.matchedBrands || []);
-    return variants[0] || String(queryText || '').trim();
-  }
-  return String(queryText || '').trim();
 }
 
 function isExternalSeedProduct(product) {
   if (!product || typeof product !== 'object') return false;
   const merchantId = String(product.merchant_id || product.merchantId || '').trim();
   const source = String(product.source || '').trim().toLowerCase();
-  return (
-    merchantId === 'external_seed' ||
-    merchantId === 'external' ||
-    source === 'external_seed' ||
-    source === 'external'
-  );
+  return merchantId === 'external_seed' || source === 'external_seed';
 }
 
 function normalizeSearchBrandToken(value) {
@@ -4414,13 +3511,9 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   }
   if (
     /(有货|库存|有没有|哪里买|能买|能买吗|where to buy|in stock|available|availability)/i.test(lower) &&
-      hasStrongLookupEntity
+    hasStrongLookupEntity
   ) {
     return true;
-  }
-  const lingerieCategorySignal = detectToyOutfitIntentFromQuery(raw).lingerie_intent;
-  if (lingerieCategorySignal && !hasStrongLookupEntity) {
-    return false;
   }
   if (hasPetHarnessSearchSignal(raw) || hasBeautyMakeupSearchSignal(raw)) {
     return false;
@@ -4435,15 +3528,6 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
 
 function buildFallbackCandidateText(product) {
   if (!product || typeof product !== 'object') return '';
-  const safeStringify = (value) => {
-    if (value == null) return '';
-    if (typeof value === 'string') return value;
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return '';
-    }
-  };
   const parts = [
     product.title,
     product.name,
@@ -4451,11 +3535,6 @@ function buildFallbackCandidateText(product) {
     product.brand,
     product.vendor,
     product.product_name,
-    product.description,
-    safeStringify(product.tags),
-    safeStringify(product.attributes),
-    safeStringify(product.options || product.product_options),
-    safeStringify(product.variants),
   ]
     .map((v) => String(v || '').trim())
     .filter(Boolean);
@@ -4535,61 +3614,16 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   return Array.from(out);
 }
 
-function buildFragranceIntentTokens(queryText, queryTokens = []) {
-  if (!isFragranceIntentQuery(queryText)) return [];
-
-  const out = new Set();
-  const pushToken = (token) => {
-    const value = normalizeSearchTextForMatch(token);
-    if (!value || value.length < 3) return;
-    if (FRAGRANCE_INTENT_STOP_TOKENS.has(value)) return;
-    const splitTokens = value.split(' ').filter(Boolean);
-    if (splitTokens.length > 0 && splitTokens.every((part) => FRAGRANCE_INTENT_STOP_TOKENS.has(part))) return;
-    out.add(value);
-  };
-
-  for (const token of Array.isArray(queryTokens) ? queryTokens : []) {
-    pushToken(token);
-  }
-
-  [
-    'perfume',
-    'fragrance',
-    'cologne',
-    'parfum',
-    'body mist',
-    'eau de parfum',
-    'eau de toilette',
-    '香水',
-    '香氛',
-    '古龙',
-    '古龍',
-    'フレグランス',
-    'コロン',
-  ].forEach(pushToken);
-
-  for (const brandAlias of detectFragranceBrandAliases(queryText)) {
-    pushToken(brandAlias);
-  }
-
-  return Array.from(out);
-}
-
 function buildFallbackOverlapPreview(products, queryText, maxItems = 3) {
   const rows = [];
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const baseTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
-  const fragranceIntent = isFragranceIntentQuery(queryText);
   const meaningfulTokens = ingredientIntent
     ? baseTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : baseTokens;
   const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
-  const fragranceTokens = fragranceIntent ? buildFragranceIntentTokens(queryText, meaningfulTokens) : [];
-  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens, ...fragranceTokens])).slice(
-    0,
-    12,
-  );
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens])).slice(0, 12);
 
   for (const product of Array.isArray(products) ? products : []) {
     if (rows.length >= maxItems) break;
@@ -4680,24 +3714,6 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
     return false;
   }
 
-  if (hasLingerieSearchSignal(queryText)) {
-    for (const product of products.slice(0, 8)) {
-      if (!hasUsableSearchProduct(product)) continue;
-      if (isStrictLingerieCacheCandidate(product)) return true;
-    }
-    return false;
-  }
-
-  if (isFragranceIntentQuery(queryText)) {
-    for (const product of products.slice(0, 8)) {
-      if (!hasUsableSearchProduct(product)) continue;
-      const candidateText = buildFallbackCandidateText(product);
-      if (!candidateText) continue;
-      if (hasFragranceBackfillSignal(candidateText)) return true;
-    }
-    return false;
-  }
-
   if (hasBeautyMakeupSearchSignal(queryText)) {
     for (const product of products.slice(0, 8)) {
       if (!hasUsableSearchProduct(product)) continue;
@@ -4722,13 +3738,11 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
 
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
-  const fragranceIntent = isFragranceIntentQuery(queryText);
   const meaningfulTokens = ingredientIntent
     ? queryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : queryTokens;
   const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
-  const fragranceTokens = fragranceIntent ? buildFragranceIntentTokens(queryText, meaningfulTokens) : [];
-  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens, ...fragranceTokens]));
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens]));
   const longQuery = effectiveTokens.length >= 2;
   const requiredOverlap = ingredientIntent ? 1 : 2;
 
@@ -4751,23 +3765,41 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!product || typeof product !== 'object') return false;
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
-  const fragranceIntent = isFragranceIntentQuery(queryText);
 
-  if (hasLingerieSearchSignal(queryText) && !isStrictLingerieCacheCandidate(product)) {
-    return false;
+  const hasFragranceSearchSignal = /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(
+    String(queryText || ''),
+  );
+  const hasFragranceCandidateSignal =
+    /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette|scent|aroma)\b/i.test(
+      candidateText,
+    ) ||
+    /\b(tom ford|jo malone|byredo|dior|chanel|ysl|guerlain|diptyque|le labo|creed|kilian|armani|versace|prada)\b/i.test(
+      candidateText,
+    );
+  const isBeautyToolLikeCandidate = /\b(brush|brushes|blender|sponge|powder puff|puff|applicator|eyelash curler|tool kit|makeup tool)\b/i.test(
+    candidateText,
+  );
+
+  if (hasFragranceSearchSignal) {
+    if (!hasFragranceCandidateSignal || isBeautyToolLikeCandidate) return false;
+  }
+
+  const brandTerms = Array.isArray(options.brandTerms)
+    ? options.brandTerms
+        .map((term) => normalizeSearchTextForMatch(term))
+        .filter((term) => term && term.length >= 2)
+    : [];
+  if (brandTerms.length > 0) {
+    const brandMatched = brandTerms.some((term) => candidateText.includes(term));
+    if (!brandMatched) return false;
   }
 
   if (hasPetHarnessSearchSignal(queryText)) {
     if (!hasStrictPetHarnessCatalogSignal(candidateText)) return false;
   }
 
-  if (!fragranceIntent && hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
+  if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
     return false;
-  }
-
-  if (fragranceIntent) {
-    if (hasBeautyToolCatalogSignal(candidateText)) return false;
-    if (!hasFragranceBackfillSignal(candidateText)) return false;
   }
 
   const normalizedQuery =
@@ -4789,28 +3821,24 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   const rawQueryTokens = Array.isArray(options.queryTokens)
     ? options.queryTokens
     : Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const usefulQueryTokens = rawQueryTokens.filter((token) => {
+    if (!token) return false;
+    if (token.length < 2) return false;
+    if (/^(de|of|the|for|and|to|a|an)$/i.test(token)) return false;
+    return true;
+  });
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
-
-  if (
-    fragranceIntent &&
-    options?.fragranceExternalSeedBypass === true &&
-    isExternalSeedProduct(product)
-  ) {
-    return hasFragranceBackfillSignal(candidateText);
-  }
-
   const meaningfulTokens = ingredientIntent
-    ? rawQueryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
-    : rawQueryTokens;
+    ? usefulQueryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
+    : usefulQueryTokens;
   const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
-  const fragranceTokens = fragranceIntent ? buildFragranceIntentTokens(queryText, meaningfulTokens) : [];
-  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens, ...fragranceTokens]));
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens]));
   if (!effectiveTokens.length) return true;
   if (effectiveTokens.length === 1) {
     return candidateText.includes(effectiveTokens[0]);
   }
   const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
-  return overlapCount >= (ingredientIntent || fragranceIntent ? 1 : 2);
+  return overlapCount >= (ingredientIntent ? 1 : 2);
 }
 
 function inferCacheProductDomainKey(product) {
@@ -4834,20 +3862,8 @@ function inferCacheProductDomainKey(product) {
     return 'pet';
   }
   if (
-    hasLingerieCatalogProductSignal(text) ||
-    /\b(apparel|clothing|sleepwear|nightwear|bodysuit|corset|bralette|dress|skirt|blouse|shirt|top|pants|jeans|hoodie|sweater|cardigan|pajamas?)\b/i.test(
-      text,
-    ) ||
-    /衣服|穿搭|女装|女裝|裙|连衣裙|連衣裙|上衣|裤|睡衣|レディース|ワンピース|スカート|トップス|パジャマ/.test(
-      text,
-    )
-  ) {
-    return 'human_apparel';
-  }
-  if (
     /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
-    /化妆|美妆|护肤|精华|口红|粉底|防晒|唇膏|眼影/.test(text) ||
-    hasFragranceCatalogProductSignal(text)
+    /化妆|美妆|护肤|精华|口红|粉底|防晒|唇膏|眼影/.test(text)
   ) {
     return 'beauty';
   }
@@ -4868,9 +3884,6 @@ function inferIntentDomainKeyForCacheValidation(intent, queryText) {
   const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (target === 'pet' || hasPetSearchSignal(normalizedQuery)) return 'pet';
-  if (primaryDomain === 'human_apparel' || hasLingerieSearchSignal(normalizedQuery)) {
-    return 'human_apparel';
-  }
   if (primaryDomain === 'beauty' || hasBeautyMakeupSearchSignal(normalizedQuery)) return 'beauty';
   if (/travel|trip|business trip|packing|luggage|toiletry|出差|旅行|旅游|差旅/.test(normalizedQuery)) {
     return 'travel';
@@ -4916,17 +3929,6 @@ function computeAnchorRatioTopK(queryText, products, topK = 10) {
   return Math.max(0, Math.min(1, matched / list.length));
 }
 
-function countRelevantSearchMatchesTopK(queryText, products, topK = 10) {
-  const list = Array.isArray(products) ? products.slice(0, topK) : [];
-  if (!list.length) return 0;
-  let matched = 0;
-  for (const product of list) {
-    if (!hasUsableSearchProduct(product)) continue;
-    if (isSupplementCandidateRelevant(product, queryText)) matched += 1;
-  }
-  return matched;
-}
-
 function resolveCacheValidationMinCount(queryClass) {
   const qc = String(queryClass || '').toLowerCase();
   if (qc === 'lookup') return 1;
@@ -4936,16 +3938,7 @@ function resolveCacheValidationMinCount(queryClass) {
 
 function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
   const list = Array.isArray(products) ? products : [];
-  const fragranceQuery = isFragranceIntentQuery(queryText);
-  const hasFragranceCandidate =
-    fragranceQuery &&
-    list
-      .slice(0, 10)
-      .some((item) => hasFragranceBackfillSignal(buildFallbackCandidateText(item)));
-  const normalizedQueryClass = String(queryClass || intent?.query_class || '').trim().toLowerCase();
-  const minCountBase = resolveCacheValidationMinCount(queryClass);
-  const minCount = fragranceQuery ? Math.min(minCountBase, 3) : minCountBase;
-  const relevantCountTopK = countRelevantSearchMatchesTopK(queryText, list, 10);
+  const minCount = resolveCacheValidationMinCount(queryClass);
   const anchorRatio = computeAnchorRatioTopK(queryText, list, 10);
   const domainEntropy = computeDomainEntropyTopK(list, 10);
   const expectedDomain = inferIntentDomainKeyForCacheValidation(intent, queryText);
@@ -4956,23 +3949,16 @@ function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
         topDomains.length
       : null;
   const countOk = list.length >= minCount;
-  const categoryAnchorBypass = normalizedQueryClass === 'category' && relevantCountTopK >= minCount;
-  const anchorOk =
-    categoryAnchorBypass ||
-    (fragranceQuery && hasFragranceCandidate) ||
-    anchorRatio >= SEARCH_CACHE_MIN_ANCHOR;
+  const anchorOk = anchorRatio >= SEARCH_CACHE_MIN_ANCHOR;
   const entropyOk = domainEntropy <= SEARCH_CACHE_MAX_DOMAIN_ENTROPY;
   const crossDomainOk =
-    (fragranceQuery && hasFragranceCandidate) ||
-    crossDomainRatio == null ||
-    crossDomainRatio <= SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO;
+    crossDomainRatio == null || crossDomainRatio <= SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO;
   const accepted = countOk && anchorOk && entropyOk && crossDomainOk;
   return {
     enabled: SEARCH_CACHE_VALIDATE,
     accepted,
     min_count: minCount,
     count: list.length,
-    relevant_count_topk: relevantCountTopK,
     anchor_ratio: anchorRatio,
     min_anchor: SEARCH_CACHE_MIN_ANCHOR,
     domain_entropy_topk: domainEntropy,
@@ -5101,163 +4087,118 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     };
   }
 
-  const fragranceIntentQuery = isFragranceIntentQuery(queryText);
-  const matchedBrands = detectBrandAliases(queryText);
-  const brandLikeQuery = matchedBrands.length > 0;
-  const brandScopedQuery = brandLikeQuery && !fragranceIntentQuery;
-  const queryVariants = fragranceIntentQuery
-    ? buildFragranceQueryVariants(queryText)
-    : brandScopedQuery
-      ? buildBrandQueryVariants(queryText, matchedBrands)
-      : [];
-  const upstreamQueryText = buildExternalSeedSupplementQueryText(queryText, {
-    fragranceIntent: fragranceIntentQuery,
-    brandLike: brandScopedQuery,
-    matchedBrands,
-  });
-  const attemptQueries = Array.from(new Set([upstreamQueryText, ...queryVariants].filter(Boolean)));
-  const strictLingerieQuery = hasLingerieSearchSignal(queryText);
   const requestedCount = Math.max(1, Number(neededCount || 1));
-  const limit = Math.min(Math.max(requestedCount * 4, 20), 200);
+  const limit = Math.min(Math.max(requestedCount * 6, 48), 320);
+  const brandDetection = detectBrandEntities(queryText, { candidateProducts: [] });
+  const hasExplicitCategory = hasExplicitCategoryHint(queryText, null);
+  const brandTerms = Array.isArray(brandDetection?.brands)
+    ? brandDetection.brands.map((item) => normalizeSearchTextForMatch(item)).filter(Boolean)
+    : [];
+  const baseVariants = buildBrandQueryVariants(queryText, brandTerms);
+  const fragranceVariants =
+    /\b(perfume|fragrance|parfum|cologne)\b/i.test(queryText) || hasExplicitCategory
+      ? ['perfume', 'fragrance', 'parfum', 'cologne', 'body mist', 'eau de parfum']
+      : [];
+  const queryVariants = Array.from(
+    new Set([queryText, ...baseVariants, ...fragranceVariants].map((item) => String(item || '').trim()).filter(Boolean)),
+  ).slice(0, 8);
   const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
-  const normalizedQuery = normalizeSearchTextForMatch(queryText);
-  const anchorTokens = extractSearchAnchorTokens(queryText);
-  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const requestHeaders = {
+    ...(checkoutToken
+      ? { 'X-Checkout-Token': checkoutToken }
+      : {
+          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+        }),
+  };
+  const seenKeys = new Set();
+  const mergedProducts = [];
+  let upstreamStatus = 0;
+  let upstreamCalls = 0;
+  let rawFetchedCount = 0;
 
-  const searchByQuery = async (searchQueryText) => {
+  for (const variant of queryVariants) {
     const upstreamParams = {
-      query: searchQueryText,
+      merchant_id: 'external_seed',
+      external_seed_only: true,
+      query: variant,
       ...(query.category ? { category: query.category } : {}),
       ...(query.min_price != null ? { min_price: query.min_price } : {}),
       ...(query.max_price != null ? { max_price: query.max_price } : {}),
-      in_stock_only: strictLingerieQuery ? false : parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
+      in_stock_only: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
       limit,
       offset: 0,
-      external_seed_only: true,
       allow_external_seed: true,
       allow_stale_cache: false,
-      ...(brandScopedQuery ? { profile_hint: 'brand' } : {}),
-      external_seed_strategy: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
-        ? 'unified_relevance'
-        : 'supplement_internal_first',
-      fast_mode: false,
+      external_seed_strategy: 'unified_relevance',
+      fast_mode: true,
     };
-
     const resp = await axios({
       method: 'GET',
       url,
       params: upstreamParams,
-      headers: {
-        ...(checkoutToken
-          ? { 'X-Checkout-Token': checkoutToken }
-          : {
-              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-            }),
-      },
+      headers: requestHeaders,
       timeout: Math.min(6500, getUpstreamTimeoutMs('find_products_multi')),
       validateStatus: () => true,
     });
+    upstreamCalls += 1;
+    upstreamStatus = Math.max(upstreamStatus, Number(resp.status || 0) || 0);
+    if (!(resp.status >= 200 && resp.status < 300)) continue;
 
     const normalized = normalizeAgentProductsListResponse(resp.data, {
       limit,
       offset: 0,
     });
-    const products = (Array.isArray(normalized?.products) ? normalized.products : [])
-      .map((rawProduct) => {
-        if (!rawProduct || typeof rawProduct !== 'object') return null;
-        const product = { ...rawProduct };
-        const merchantId = String(product.merchant_id || product.merchantId || '').trim();
-        const sourceTag = String(product.source || product.source_type || '').trim().toLowerCase();
-        if (!merchantId) product.merchant_id = 'external_seed';
-        if (!sourceTag) product.source = 'external_seed';
-        return product;
-      })
-      .filter(Boolean)
-      .filter((p) => isExternalSeedProduct(p));
-    let brandVerticalFallbackUsed = false;
-    let relevantProducts = strictLingerieQuery
-      ? products.filter((p) => isStrictLingerieCacheCandidate(p))
-      : products.filter((p) =>
-          isSupplementCandidateRelevant(p, queryText, {
-            normalizedQuery,
-            anchorTokens,
-            queryTokens,
-          }),
-        );
-
-    if (!strictLingerieQuery && brandScopedQuery && relevantProducts.length === 0 && products.length > 0) {
-      const verticalFallback = products.filter((p) => {
-        const text = buildFallbackCandidateText(p);
-        if (!text) return false;
-        if (hasBeautyToolCatalogSignal(text)) return false;
-        return hasFragranceBackfillSignal(text);
-      });
-      if (verticalFallback.length > 0) {
-        relevantProducts = verticalFallback;
-        brandVerticalFallbackUsed = true;
-      }
-    }
-    return {
-      query: searchQueryText,
-      status: Number(resp.status || 0) || 0,
-      products,
-      relevantProducts,
-      filteredOutIrrelevantCount: Math.max(0, products.length - relevantProducts.length),
-      brandVerticalFallbackUsed,
-    };
-  };
-
-  const attempts = [];
-  const mergedRelevantProducts = [];
-  const seen = new Set();
-  for (const attemptQuery of attemptQueries.length > 0 ? attemptQueries : [queryText]) {
-    const attempt = await searchByQuery(attemptQuery);
-    attempts.push(attempt);
-    for (const product of attempt.relevantProducts) {
+    const products = Array.isArray(normalized?.products)
+      ? normalized.products.filter((p) => isExternalSeedProduct(p))
+      : [];
+    rawFetchedCount += products.length;
+    for (const product of products) {
       const key = buildSearchProductKey(product);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      mergedRelevantProducts.push(product);
+      if (!key || seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      mergedProducts.push(product);
     }
-    if (mergedRelevantProducts.length >= requestedCount) break;
+    if (mergedProducts.length >= Math.max(requestedCount * 3, 48)) {
+      break;
+    }
   }
 
-  const fetchedCount = attempts.reduce((sum, attempt) => sum + attempt.products.length, 0);
-  const filteredOutIrrelevantCount = attempts.reduce(
-    (sum, attempt) => sum + attempt.filteredOutIrrelevantCount,
-    0,
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const relevantProducts = mergedProducts.filter((p) =>
+    isSupplementCandidateRelevant(p, queryText, {
+      normalizedQuery,
+      anchorTokens,
+      queryTokens,
+      brandTerms,
+    }),
   );
-  const brandVerticalFallbackUsed = attempts.some((attempt) => attempt.brandVerticalFallbackUsed === true);
-  const firstAttemptStatus = Number(attempts[0]?.status || 0) || 0;
-  const finalStatus = Number(attempts[attempts.length - 1]?.status || firstAttemptStatus || 0) || 0;
+  const filteredOutIrrelevantCount = Math.max(0, mergedProducts.length - relevantProducts.length);
 
   return {
-    products: mergedRelevantProducts,
+    products: relevantProducts,
     metadata: {
       attempted: true,
-      applied: mergedRelevantProducts.length > 0,
+      applied: relevantProducts.length > 0,
       reason:
-        mergedRelevantProducts.length > 0
-          ? brandVerticalFallbackUsed
-            ? 'external_seed_candidates_found_brand_vertical_fallback'
-            : 'external_seed_candidates_found'
+        relevantProducts.length > 0
+          ? 'external_seed_candidates_found'
           : filteredOutIrrelevantCount > 0
             ? 'external_seed_candidates_filtered_irrelevant'
             : 'no_external_seed_candidates',
       requested_count: requestedCount,
-      fetched_count: fetchedCount,
+      fetched_count: relevantProducts.length,
+      fetched_raw_count: rawFetchedCount,
+      fetched_variant_count: queryVariants.length,
+      upstream_calls: upstreamCalls,
+      brand_query_detected: Boolean(brandDetection?.brand_like),
+      brand_entities: brandTerms,
+      brand_scope: hasExplicitCategory ? 'category_scoped' : 'broad',
       filtered_out_irrelevant_count: filteredOutIrrelevantCount,
-      upstream_status: finalStatus,
-      upstream_query: upstreamQueryText,
-      attempt_queries: attempts.map((attempt) => attempt.query),
-      brand_query_detected: brandLikeQuery,
-      brand_entities: matchedBrands,
-      brand_scope: brandScopedQuery ? 'broad' : (brandLikeQuery ? 'category_scoped' : null),
-      brand_vertical_fallback_used: brandVerticalFallbackUsed,
-      fragrance_scope: fragranceIntentQuery ? 'strict_fragrance' : null,
-      fragrance_query_variants: fragranceIntentQuery ? attemptQueries : [],
-      fragrance_filtered_out: filteredOutIrrelevantCount,
+      query_variants: queryVariants,
+      upstream_status: upstreamStatus,
     },
   };
 }
@@ -6067,67 +5008,6 @@ function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
   return isCatalogSource || isAuroraSource(source);
 }
 
-const RESOLVER_SHORT_CIRCUIT_BLOCKED_QUERY_CLASSES = new Set([
-  'category',
-  'scenario',
-  'mission',
-  'exploratory',
-]);
-const RESOLVER_SHORT_CIRCUIT_STRONG_REASONS = new Set([
-  'stable_alias_match',
-  'stable_alias_ref',
-  'exact_title',
-]);
-
-function normalizeResolverShortCircuitReasonToken(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '_');
-}
-
-function shouldAdoptResolverFirstResult({ result, queryText, queryClass = null }) {
-  const blocked = (reason) => ({
-    adopted: false,
-    block_reason: String(reason || 'unknown_block_reason'),
-  });
-  if (!result || typeof result !== 'object') return blocked('resolver_empty');
-
-  const status = Number(result.status || 0);
-  if (!(status >= 200 && status < 300)) return blocked('resolver_status_not_ok');
-
-  const usableCount = Number(result.usableCount || 0);
-  if (!(usableCount > 0)) return blocked('resolver_no_usable');
-
-  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
-  if (RESOLVER_SHORT_CIRCUIT_BLOCKED_QUERY_CLASSES.has(normalizedQueryClass)) {
-    return blocked(`query_class_${normalizedQueryClass}_requires_upstream`);
-  }
-  if (hasLingerieSearchSignal(queryText)) {
-    return blocked('query_lingerie_requires_upstream');
-  }
-
-  const reasonCode = normalizeResolverShortCircuitReasonToken(
-    result.resolve_reason_code || result?.data?.metadata?.resolve_reason_code,
-  );
-  const reason = normalizeResolverShortCircuitReasonToken(
-    result.resolve_reason || result?.data?.metadata?.resolve_reason,
-  );
-  const strongReason =
-    RESOLVER_SHORT_CIRCUIT_STRONG_REASONS.has(reasonCode) ||
-    RESOLVER_SHORT_CIRCUIT_STRONG_REASONS.has(reason);
-  if (!strongReason) return blocked('weak_resolve_reason');
-
-  const anchorTokens = extractSearchAnchorTokens(queryText);
-  const strongLookup = isStrongResolverFirstQuery(queryText) || isLookupStyleSearchQuery(queryText, anchorTokens);
-  if (!strongLookup && usableCount < 3) return blocked('insufficient_resolver_candidates');
-
-  return {
-    adopted: true,
-    block_reason: null,
-  };
-}
-
 function normalizeAgentProductDetailResponse(raw) {
   if (!raw) return raw;
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
@@ -6435,7 +5315,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
   let attempt = 0;
   while (true) {
     try {
-      return await performUpstreamRequest(operation, axiosConfig);
+      return await axios(axiosConfig);
     } catch (err) {
       attempt += 1;
 
@@ -8067,118 +6947,6 @@ function hasPetLeashSearchSignal(queryText) {
   );
 }
 
-function hasLingerieSearchSignal(queryText) {
-  const q = String(queryText || '');
-  if (!q) return false;
-  return (
-    /\b(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|nightie|bralette|bodysuit|bodystocking|corset|corsetry|shapewear|intimate|chemise|babydoll|teddy|g-?string|garter|negligee|camisole)\b/i.test(
-      q,
-    ) ||
-    /内衣|文胸|胸罩|丁字裤|丁字褲|蕾丝内衣|蕾絲內衣|塑身衣|情趣内衣|情趣內衣|睡袍|睡衣|下着|ブラ|パンティ|ランジェリー|ベビードール|テディ|lencer[ií]a|ropa\s+interior|sujetador|bragas|sous[-\s]?v[eê]tement|soutien[-\s]?gorge/.test(
-      q,
-    )
-  );
-}
-
-function hasLingerieCatalogProductSignal(candidateText) {
-  const text = String(candidateText || '');
-  if (!text) return false;
-  return (
-    /\b(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|nightie|bralette|bodysuit|bodystocking|corset|corsetry|shapewear|intimate|chemise|babydoll|teddy|g-?string|garter|negligee|camisole)\b/i.test(
-      text,
-    ) ||
-    /内衣|文胸|胸罩|丁字裤|丁字褲|蕾丝内衣|蕾絲內衣|塑身衣|情趣内衣|情趣內衣|睡袍|睡衣|下着|ブラ|パンティ|ランジェリー|ベビードール|テディ|lencer[ií]a|ropa\s+interior|sujetador|bragas|sous[-\s]?v[eê]tement|soutien[-\s]?gorge/.test(
-      text,
-    )
-  );
-}
-
-function hasBeautyToolCatalogSignal(candidateText) {
-  const text = String(candidateText || '');
-  if (!text) return false;
-  return (
-    /\b(brush|brushes|makeup brush|beauty blender|blender|sponge|puff|applicator|curler|tweezer|brush cleaner|cleaning pad|tool|tools)\b/i.test(
-      text,
-    ) ||
-    /化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|睫毛夹|睫毛夾|メイクブラシ|化粧筆|ブラシセット/.test(
-      text,
-    )
-  );
-}
-
-function hasPetCatalogProductSignal(candidateText) {
-  const text = String(candidateText || '');
-  if (!text) return false;
-  return (
-    /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|harness|leash|collar)\b/i.test(text) ||
-    /宠物|寵物|狗|猫|犬|猫服|犬服|狗链|狗鏈|牵引|牽引|背带|背帶|胸背|胴輪|ハーネス|首輪/.test(text)
-  );
-}
-
-function isStrictLingerieCacheCandidate(product) {
-  const text = buildFallbackCandidateText(product);
-  if (!text) return false;
-  if (!hasLingerieCatalogProductSignal(text)) return false;
-  if (hasBeautyToolCatalogSignal(text)) return false;
-  if (hasPetCatalogProductSignal(text)) return false;
-  return true;
-}
-
-function shouldUseStrictLingerieBackfillInStockOnly() {
-  const raw = String(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_IN_STOCK_ONLY || '').trim().toLowerCase();
-  if (!raw) return false;
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-}
-
-function resolveStrictLingerieTargetCount(requestedLimit, fallback = 6) {
-  const normalizedRequested = Math.max(1, Math.floor(Number(requestedLimit) || 1));
-  const floor = Math.max(
-    2,
-    Number(process.env.SEARCH_STRICT_LINGERIE_MIN_RESULTS_TARGET || fallback) || fallback,
-  );
-  const cap = Math.max(
-    floor,
-    Number(process.env.SEARCH_STRICT_LINGERIE_TARGET_CAP || 24) || 24,
-  );
-  return Math.min(normalizedRequested, Math.max(floor, Math.min(cap, normalizedRequested)));
-}
-
-function hasFragranceSearchSignal(queryText) {
-  const q = String(queryText || '');
-  if (!q) return false;
-  const hasStrongSignal =
-    /\b(perfume|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum)\b/i.test(q) ||
-    /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(q);
-  if (hasStrongSignal) return true;
-
-  const hasGenericFragrance = /\bfragrance\b/i.test(q);
-  if (!hasGenericFragrance) return false;
-  return !/\bfragrance[-\s]*free\b/i.test(q);
-}
-
-function hasFragranceCatalogProductSignal(candidateText) {
-  const text = String(candidateText || '');
-  if (!text) return false;
-  const hasStrongSignal =
-    /\b(perfume|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|parfum|edp|edt|extrait)\b/i.test(
-      text,
-    ) ||
-    /香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|フレグランス|コロン/.test(text);
-  if (hasStrongSignal) return true;
-
-  const hasGenericFragrance = /\bfragrance\b/i.test(text);
-  if (!hasGenericFragrance) return false;
-  if (/\bfragrance[-\s]*free\b/i.test(text) || /无香|無香|无香精|無香精/.test(text)) return false;
-  return true;
-}
-
-function hasFragranceBackfillSignal(candidateText) {
-  const text = String(candidateText || '');
-  if (!text) return false;
-  if (hasFragranceCatalogProductSignal(text)) return true;
-  return hasFragranceBrandSearchSignal(text);
-}
-
 function hasStrictPetHarnessCatalogSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
@@ -8193,54 +6961,32 @@ function hasStrictPetHarnessCatalogSignal(candidateText) {
 function hasBeautyMakeupSearchSignal(queryText) {
   const q = String(queryText || '');
   if (!q) return false;
-  const hasBeautyCore =
+  return (
     /\b(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow)\b/i.test(
       q,
     ) ||
     /化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|约会妆|約會妝/.test(
       q,
-    );
-  return hasBeautyCore || hasFragranceSearchSignal(q);
+    )
+  );
 }
 
 function hasBeautyCatalogProductSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
-  const hasBeautyCore =
+  return (
     /\b(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|fenty|tom ford|winona|ipsa)\b/i.test(
       text,
     ) ||
     /(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水)/.test(
       text,
-    );
-  return hasBeautyCore || hasFragranceCatalogProductSignal(text);
-}
-
-function buildLingerieSignalSql(startIndex) {
-  const latin =
-    '(lingerie|underwear|bras?|pant(y|ies)|thong|briefs|sleepwear|nightwear|nightgown|nightdress|bralette|bodysuit|corset|shapewear|intimate|lencer[ií]a|ropa\\s+interior|sujetador|bragas|sous[-\\s]?v[eê]tement|soutien[-\\s]?gorge)';
-  const cjk =
-    '(内衣|文胸|胸罩|丁字裤|蕾丝内衣|蕾絲內衣|塑身衣|下着|ブラ|パンティ|ランジェリー)';
-  const re = `(\\m${latin}\\M|${cjk})`;
-  const fields = [
-    "coalesce(product_data->>'title','')",
-    "coalesce(product_data->>'description','')",
-    "coalesce(product_data->>'product_type','')",
-    "coalesce(product_data->>'tags','')",
-    "coalesce(product_data->>'category','')",
-  ];
-  const idx = startIndex;
-  const ors = fields.map((f) => `${f} ~* $${idx}`).join(' OR ');
-  return { sql: `(${ors})`, params: [re], nextIndex: idx + 1 };
+    )
+  );
 }
 
 function classifyBeautyBucketFromProduct(product) {
   const text = buildFallbackCandidateText(product);
   if (!text) return 'other';
-
-  if (hasFragranceCatalogProductSignal(text)) {
-    return 'fragrance';
-  }
 
   if (
     /\b(brush|brushes|blender|sponge|puff|applicator|tool|tools|brush\s*set)\b/i.test(text) ||
@@ -8281,7 +7027,6 @@ function computeBeautyBucketMix(products, topN = 10) {
     eye_makeup: 0,
     lip_makeup: 0,
     skincare: 0,
-    fragrance: 0,
     tools: 0,
     other: 0,
   };
@@ -8299,7 +7044,7 @@ function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit) {
   if (scenario === 'beauty_tools' || scenario === 'eye_shadow_brush') return false;
   const topN = Math.max(1, Number(limit || 10));
   const mix = computeBeautyBucketMix(products, topN);
-  const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'fragrance'];
+  const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare'];
   const distinctCore = coreBuckets.filter((bucket) => Number(mix[bucket] || 0) > 0).length;
   const toolsCount = Number(mix.tools || 0);
   return distinctCore < 2 && toolsCount >= Math.ceil(topN * 0.6);
@@ -8307,7 +7052,7 @@ function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit) {
 
 function blendBeautyDiversitySupplement(internalProducts, supplementProducts, limit) {
   const targetLimit = Math.max(1, Number(limit || 10));
-  const priorityBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'fragrance', 'tools', 'other'];
+  const priorityBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'tools', 'other'];
   const seen = new Set();
   const merged = [];
   const internal = Array.isArray(internalProducts) ? internalProducts : [];
@@ -8346,21 +7091,6 @@ function blendBeautyDiversitySupplement(internalProducts, supplementProducts, li
   return output;
 }
 
-function prioritizeFragranceProducts(products, enabled = false) {
-  const list = Array.isArray(products) ? products : [];
-  if (!enabled || list.length <= 1) return list;
-
-  const fragranceOrSeed = [];
-  const others = [];
-  for (const product of list) {
-    const text = buildFallbackCandidateText(product);
-    if (hasFragranceBackfillSignal(text) || isExternalSeedProduct(product)) fragranceOrSeed.push(product);
-    else others.push(product);
-  }
-  if (fragranceOrSeed.length === 0) return list;
-  return fragranceOrSeed.concat(others);
-}
-
 function buildPetHarnessSignalSql(startIndex) {
   const latin = '(harness|leash|collar|lead|no-?pull|dog\\s+harness|dog\\s+leash|pet\\s+harness|pet\\s+leash)';
   const cjk = '(背带|胸背|牵引|牵引绳|遛狗绳|狗链|项圈|胸背带|胴輪|ハーネス)';
@@ -8377,9 +7107,9 @@ function buildPetHarnessSignalSql(startIndex) {
 
 function buildBeautySignalSql(startIndex) {
   const latin =
-    '(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|perfume|fragrance|cologne|body\\s*mist|parfum|eau\\s+de\\s+parfum|eau\\s+de\\s+toilette|fenty|tom\\s*ford|winona|ipsa)';
+    '(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|fenty|tom\\s*ford|winona|ipsa)';
   const cjk =
-    '(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水|香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧)';
+    '(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水)';
   const re = `(\\m${latin}\\M|${cjk})`;
   const fields = [
     "coalesce(product_data->>'title','')",
@@ -8914,37 +7644,12 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   };
 }
 
-function buildFragranceSignalSql(startIndex) {
-  const latin =
-    '(perfume|fragrance|cologne|body\\s*mist|parfum|eau\\s+de\\s+parfum|eau\\s+de\\s+toilette|edp|edt|tom\\s*ford|jo\\s*malone|diptyque|byredo|le\\s*labo|chanel|dior|ysl|yves\\s*saint\\s*laurent|armani|hermes|gucci|bvlgari|burberry|versace|creed|kilian|amouage)';
-  const cjk =
-    '(香水|香氛|古龙|古龍|香氛喷雾|香氛噴霧|古龍水|淡香水|濃香水)';
-  const re = `(\\m${latin}\\M|${cjk})`;
-  const fields = [
-    "coalesce(product_data->>'title','')",
-    "coalesce(product_data->>'description','')",
-    "coalesce(product_data->>'product_type','')",
-    "coalesce(product_data->>'tags','')",
-    'coalesce(CAST(product_data AS TEXT),\'\')',
-  ];
-  const ors = fields
-    .map((field, offset) => `${field} ~* $${startIndex + offset}`)
-    .join(' OR ');
-  const params = fields.map(() => re);
-  return {
-    sql: `(${ors})`,
-    params,
-    nextIndex: startIndex + fields.length,
-  };
-}
-
 async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
-  const strictLingerieQuery = hasLingerieSearchSignal(q);
 
   const terms = tokenizeQueryForCache(q);
   if (terms.length === 0) {
@@ -8957,11 +7662,6 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       `lower(coalesce(${fieldPrefix}product_data->>'title',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'description',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'product_type',''))`,
-      `lower(coalesce(${fieldPrefix}product_data->>'type',''))`,
-      `lower(coalesce(${fieldPrefix}product_data->>'category',''))`,
-      `lower(coalesce(${fieldPrefix}product_data->>'product_category',''))`,
-      `lower(coalesce(${fieldPrefix}product_data->>'google_product_category',''))`,
-      `lower(coalesce(${fieldPrefix}product_data->>'tags',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'sku',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'vendor',''))`,
     ];
@@ -9042,15 +7742,6 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
   const strictFilter = buildQueryFilter('pc.');
   const queryWhere = strictFilter.queryWhere;
-  let strictLingerieClause = null;
-  let strictLingerieParams = [];
-  let strictOffsetParamIndex = strictFilter.idx;
-  if (strictLingerieQuery) {
-    const built = buildLingerieSignalSql(strictFilter.idx);
-    strictLingerieClause = built.sql;
-    strictLingerieParams = built.params;
-    strictOffsetParamIndex = built.nextIndex;
-  }
   const baseWhere = `
     (pc.expires_at IS NULL OR pc.expires_at > now())
     AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
@@ -9068,7 +7759,6 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       ON mo.merchant_id = pc.merchant_id
     WHERE ${baseWhere}
       AND ${queryWhere}
-      ${strictLingerieClause ? `AND ${strictLingerieClause}` : ''}
   `;
 
   const rowsSql = `
@@ -9080,53 +7770,28 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       ON mo.merchant_id = pc.merchant_id
     WHERE ${baseWhere}
       AND ${queryWhere}
-      ${strictLingerieClause ? `AND ${strictLingerieClause}` : ''}
     ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
-    OFFSET $${strictOffsetParamIndex}
-    LIMIT $${strictOffsetParamIndex + 1}
+    OFFSET $${strictFilter.idx}
+    LIMIT $${strictFilter.idx + 1}
   `;
 
   const retrievalSources = [];
   const [countRes, rowsRes] = await Promise.all([
-    query(countSql, [...strictFilter.params, ...strictLingerieParams]),
-    query(rowsSql, [...strictFilter.params, ...strictLingerieParams, pageOffset, pageFetch]),
+    query(countSql, strictFilter.params),
+    query(rowsSql, [...strictFilter.params, pageOffset, pageFetch]),
   ]);
 
   const strictTotal = Number(countRes.rows?.[0]?.total || 0);
-  const strictRankedRaw = toRankedUniqueProducts(rowsRes.rows || []);
-  const strictRanked = {
-    ...strictRankedRaw,
-    products: strictLingerieQuery
-      ? strictRankedRaw.products.filter((product) => isStrictLingerieCacheCandidate(product))
-      : strictRankedRaw.products,
-  };
+  const strictRanked = toRankedUniqueProducts(rowsRes.rows || []);
   retrievalSources.push({
     source: 'lexical_cache',
     used: true,
     count: strictRanked.products.length,
     candidate_count: strictRanked.candidateCount,
     total: strictTotal,
-    strict_lingerie_filter_applied: strictLingerieQuery,
   });
 
-  const fragranceQuery = isFragranceIntentQuery(q);
-  const strictFragranceCount = fragranceQuery
-    ? strictRanked.products.filter((product) =>
-        hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
-      ).length
-    : 0;
-  const strictNeedsFragranceBackfill =
-    fragranceQuery && strictRanked.products.length > 0 && strictFragranceCount === 0;
-  if (strictNeedsFragranceBackfill) {
-    retrievalSources.push({
-      source: 'lexical_cache_strict_missing_fragrance',
-      used: true,
-      count: strictRanked.products.length,
-      fragrance_count: strictFragranceCount,
-    });
-  }
-
-  if (strictRanked.products.length > 0 && !strictNeedsFragranceBackfill) {
+  if (strictRanked.products.length > 0) {
     await applyShopifyCurrencyOverride(strictRanked.products);
     return {
       products: strictRanked.products,
@@ -9139,15 +7804,6 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
   try {
     const relaxedFilter = buildQueryFilter('');
-    let relaxedLingerieClause = null;
-    let relaxedLingerieParams = [];
-    let relaxedOffsetParamIndex = relaxedFilter.idx;
-    if (strictLingerieQuery) {
-      const built = buildLingerieSignalSql(relaxedFilter.idx);
-      relaxedLingerieClause = built.sql;
-      relaxedLingerieParams = built.params;
-      relaxedOffsetParamIndex = built.nextIndex;
-    }
     const relaxedBaseWhere = `
       (expires_at IS NULL OR expires_at > now())
       AND ${buildSellableStatusPredicate("product_data->>'status'")}
@@ -9158,7 +7814,6 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       FROM products_cache
       WHERE ${relaxedBaseWhere}
         AND ${relaxedFilter.queryWhere}
-        ${relaxedLingerieClause ? `AND ${relaxedLingerieClause}` : ''}
     `;
     const relaxedRowsSql = `
       SELECT merchant_id,
@@ -9167,99 +7822,23 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       FROM products_cache
       WHERE ${relaxedBaseWhere}
         AND ${relaxedFilter.queryWhere}
-        ${relaxedLingerieClause ? `AND ${relaxedLingerieClause}` : ''}
       ORDER BY cached_at DESC NULLS LAST, id DESC
-      OFFSET $${relaxedOffsetParamIndex}
-      LIMIT $${relaxedOffsetParamIndex + 1}
+      OFFSET $${relaxedFilter.idx}
+      LIMIT $${relaxedFilter.idx + 1}
     `;
     const [relaxedCountRes, relaxedRowsRes] = await Promise.all([
-      query(relaxedCountSql, [...relaxedFilter.params, ...relaxedLingerieParams]),
-      query(relaxedRowsSql, [...relaxedFilter.params, ...relaxedLingerieParams, pageOffset, pageFetch]),
+      query(relaxedCountSql, relaxedFilter.params),
+      query(relaxedRowsSql, [...relaxedFilter.params, pageOffset, pageFetch]),
     ]);
     const relaxedTotal = Number(relaxedCountRes.rows?.[0]?.total || 0);
-    const relaxedRankedRaw = toRankedUniqueProducts(relaxedRowsRes.rows || []);
-    const relaxedRanked = {
-      ...relaxedRankedRaw,
-      products: strictLingerieQuery
-        ? relaxedRankedRaw.products.filter((product) => isStrictLingerieCacheCandidate(product))
-        : relaxedRankedRaw.products,
-    };
+    const relaxedRanked = toRankedUniqueProducts(relaxedRowsRes.rows || []);
     retrievalSources.push({
       source: 'lexical_cache_relaxed_no_onboarding',
       used: true,
       count: relaxedRanked.products.length,
       candidate_count: relaxedRanked.candidateCount,
       total: relaxedTotal,
-      strict_lingerie_filter_applied: strictLingerieQuery,
     });
-
-    if (strictNeedsFragranceBackfill) {
-      let backfillFragrance = relaxedRanked.products.filter((product) =>
-        hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
-      );
-      retrievalSources.push({
-        source: 'lexical_cache_relaxed_fragrance_backfill',
-        used: true,
-        count: backfillFragrance.length,
-      });
-
-      if (backfillFragrance.length === 0) {
-        const fragranceSignalFilter = buildFragranceSignalSql(1);
-        const fragranceRowsSql = `
-          SELECT pc.merchant_id,
-                 mo.business_name AS merchant_name,
-                 pc.product_data
-          FROM products_cache pc
-          JOIN merchant_onboarding mo
-            ON mo.merchant_id = pc.merchant_id
-          WHERE ${baseWhere}
-            AND ${fragranceSignalFilter.sql}
-          ORDER BY CASE WHEN pc.merchant_id = 'external_seed' THEN 0 ELSE 1 END,
-                   pc.cached_at DESC NULLS LAST,
-                   pc.id DESC
-          OFFSET $${fragranceSignalFilter.nextIndex}
-          LIMIT $${fragranceSignalFilter.nextIndex + 1}
-        `;
-        try {
-          const fragranceRowsRes = await query(
-            fragranceRowsSql,
-            [...fragranceSignalFilter.params, pageOffset, pageFetch],
-          );
-          const fragranceRanked = toRankedUniqueProducts(fragranceRowsRes.rows || []);
-          backfillFragrance = fragranceRanked.products.filter((product) =>
-            hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
-          );
-          retrievalSources.push({
-            source: 'fragrance_signal_browse_fallback',
-            used: true,
-            count: backfillFragrance.length,
-            candidate_count: fragranceRanked.candidateCount,
-          });
-        } catch (fragranceErr) {
-          retrievalSources.push({
-            source: 'fragrance_signal_browse_fallback',
-            used: false,
-            error: String(fragranceErr && fragranceErr.message ? fragranceErr.message : fragranceErr),
-          });
-        }
-      }
-
-      if (backfillFragrance.length > 0) {
-        const merged = collapseNearDuplicateSearchProducts(
-          [...backfillFragrance, ...strictRanked.products, ...relaxedRanked.products],
-          { perTitleLimit: 2 },
-        );
-        const fragranceFirst = prioritizeFragranceProducts(merged, true).slice(0, safeLimit);
-        await applyShopifyCurrencyOverride(fragranceFirst);
-        return {
-          products: fragranceFirst,
-          total: Math.max(strictTotal, relaxedTotal, fragranceFirst.length),
-          page: safePage,
-          page_size: fragranceFirst.length,
-          retrieval_sources: retrievalSources,
-        };
-      }
-    }
 
     if (relaxedRanked.products.length === 0 && hasPetSearchSignal(q)) {
       const preferHarnessResults = hasPetHarnessSearchSignal(q);
@@ -9343,16 +7922,6 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     }
 
     await applyShopifyCurrencyOverride(relaxedRanked.products);
-    if (strictNeedsFragranceBackfill && strictRanked.products.length > 0) {
-      await applyShopifyCurrencyOverride(strictRanked.products);
-      return {
-        products: strictRanked.products,
-        total: Math.max(strictTotal, relaxedTotal, strictRanked.products.length),
-        page: safePage,
-        page_size: strictRanked.products.length,
-        retrieval_sources: retrievalSources,
-      };
-    }
     return {
       products: relaxedRanked.products,
       total: Math.max(strictTotal, relaxedTotal, relaxedRanked.products.length),
@@ -9531,29 +8100,6 @@ function buildPetFallbackQuery(intent, rawUserQuery) {
   }
 }
 
-function buildStrictLingerieFallbackQueries(rawUserQuery = '', intent = null) {
-  const base = String(rawUserQuery || '').trim();
-  const language = String(intent?.language || '').trim().toLowerCase();
-  const baseQueries = [
-    base,
-    'lingerie underwear bra panties',
-    'sleepwear nightwear chemise babydoll',
-    'bralette bodysuit corset shapewear',
-  ];
-
-  if (language.startsWith('zh')) {
-    baseQueries.push('内衣 文胸 胸罩 塑身衣 睡衣 睡裙');
-  } else if (language.startsWith('ja')) {
-    baseQueries.push('ランジェリー 下着 ブラ パンティ ナイトウェア');
-  } else if (language.startsWith('fr')) {
-    baseQueries.push('lingerie sous-vetement soutien-gorge culotte nuisette');
-  } else if (language.startsWith('es')) {
-    baseQueries.push('lenceria ropa interior sujetador bragas');
-  }
-
-  return uniqueStrings(baseQueries.map((item) => String(item || '').trim()).filter(Boolean));
-}
-
 async function loadCreatorProductFromCache(creatorId, productId) {
   const config = getCreatorConfig(creatorId);
   if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) return null;
@@ -9711,41 +8257,6 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   };
 }
 
-const HEALTH_LITE_PATHS = new Set(['/healthz/lite', '/health/lite']);
-
-function buildHealthLiteResponsePayload() {
-  const auroraStartupCritical = AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady;
-  const statusCode = auroraStartupCritical ? 503 : 200;
-  return {
-    statusCode,
-    payload: {
-      ok: !auroraStartupCritical,
-      service: SERVICE_NAME,
-      commit: SERVICE_GIT_SHA_SHORT,
-      build_id: SERVICE_BUILD_ID,
-      branch: SERVICE_GIT_BRANCH || null,
-      deployment_id: SERVICE_DEPLOYMENT_ID || null,
-      started_at: SERVICE_STARTED_AT,
-      aurora_routes_ready: auroraRoutesReady,
-      aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
-    },
-  };
-}
-
-function sendHealthLiteResponse(res) {
-  const { statusCode, payload } = buildHealthLiteResponsePayload();
-  return res.status(statusCode).json(payload);
-}
-
-// Ultra-light fast path for platform probes to reduce first-byte overhead.
-app.use((req, res, next) => {
-  const method = String(req.method || '').toUpperCase();
-  if ((method === 'GET' || method === 'HEAD') && HEALTH_LITE_PATHS.has(req.path)) {
-    return sendHealthLiteResponse(res);
-  }
-  return next();
-});
-
 // CORS configuration - allow UI to call Gateway
 // NOTE: Must run BEFORE body parsing so browser clients still receive CORS headers
 // even when JSON parsing fails (otherwise Aurora Chatbox sees "No Access-Control-Allow-Origin").
@@ -9860,23 +8371,6 @@ app.use((req, res, next) => {
 });
 
 const healthRouteHandler = (req, res) => {
-  const healthCacheTtlMs = HEALTH_RESPONSE_CACHE_TTL_MS;
-  const bypassCacheRaw = String(req.query?.refresh || req.query?.nocache || '')
-    .trim()
-    .toLowerCase();
-  const bypassCache =
-    bypassCacheRaw === '1' ||
-    bypassCacheRaw === 'true' ||
-    bypassCacheRaw === 'yes' ||
-    bypassCacheRaw === 'on';
-  const nowMs = Date.now();
-  if (!bypassCache && healthCacheTtlMs > 0 && healthRouteHandler._cache) {
-    const cached = healthRouteHandler._cache;
-    if (cached.expiresAtMs > nowMs) {
-      return res.status(cached.statusCode).json(cached.payload);
-    }
-  }
-
   const dbConfigured = Boolean(process.env.DATABASE_URL);
   const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
   const minSellable = Math.max(Number(process.env.HEALTHZ_MIN_SELLABLE_PRODUCTS || 20) || 20, 0);
@@ -9898,82 +8392,92 @@ const healthRouteHandler = (req, res) => {
         ? cacheStats.products_cache_sellable_total
         : null;
       const cacheWarning = typeof sellable === 'number' ? sellable < minSellable : null;
-      const statusCode = auroraStartupCritical ? 503 : 200;
-      const payload = {
-        ok: !auroraStartupCritical,
-        use_mock: USE_MOCK,
-        port: PORT,
-        api_mode: API_MODE,
-        aurora_routes_ready: auroraRoutesReady,
-        aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
-        aurora_routes_error: auroraRoutesLoadError,
-        modes: {
-          mock: USE_MOCK,
-          hybrid: USE_HYBRID,
-          real_api_enabled: REAL_API_ENABLED
-        },
-        version: {
-          service: SERVICE_NAME,
-          commit: SERVICE_GIT_SHA_SHORT,
-          build_id: SERVICE_BUILD_ID,
-          branch: SERVICE_GIT_BRANCH || null,
-          deployment_id: SERVICE_DEPLOYMENT_ID || null,
-          started_at: SERVICE_STARTED_AT,
-        },
-        backend: {
-          api_base: PIVOTA_API_BASE,
-          aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
-          api_key_configured: !!PIVOTA_API_KEY,
-          db_configured: dbConfigured,
-          taxonomy_enabled: taxonomyEnabled,
-          taxonomy_view_id: process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION',
-          taxonomy_version: process.env.TAXONOMY_VERSION || null,
-        },
-        resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
-        resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
-        product_detail_cache: snapshotProductDetailCacheStats(),
-        pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
-        pdp_recommendations_cache: getPdpRecsCacheStats(),
-        products_available: true,
-        catalog_cache: includeCacheStats
-          ? {
-              creator_id: creatorIdForStats,
-              merchant_ids: merchantIds,
-              min_sellable_products: minSellable,
-              warning: cacheWarning,
-              stats: cacheStats,
-            }
-          : undefined,
-        catalog_sync: buildCatalogSyncConfigView(),
-        features: {
-          product_search: true,
-          order_creation: true,
-          payment: USE_MOCK || USE_HYBRID ? 'mock' : 'real',
-          tracking: true,
-          layer1_compatibility: true,
-          find_products_multi_vector_enabled:
-            process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true',
-        },
-        startup_guards: {
-          aurora_routes_critical: auroraStartupCritical,
-        },
-        message: `Running in ${API_MODE} mode. ${USE_MOCK ? 'Using internal mock products.' : USE_HYBRID ? 'Real products, mock payment.' : 'Full real API integration.'}`
-      };
 
-      if (healthCacheTtlMs > 0) {
-        healthRouteHandler._cache = {
-          expiresAtMs: Date.now() + healthCacheTtlMs,
-          statusCode,
-          payload,
-        };
-      }
-
-      return res.status(statusCode).json(payload);
+      return res.status(auroraStartupCritical ? 503 : 200).json({
+    ok: !auroraStartupCritical,
+    use_mock: USE_MOCK,
+    port: PORT,
+    api_mode: API_MODE,
+    aurora_routes_ready: auroraRoutesReady,
+    aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+    aurora_routes_error: auroraRoutesLoadError,
+    modes: {
+      mock: USE_MOCK,
+      hybrid: USE_HYBRID,
+      real_api_enabled: REAL_API_ENABLED
+    },
+    version: {
+      service: SERVICE_NAME,
+      commit: SERVICE_GIT_SHA_SHORT,
+      build_id: SERVICE_BUILD_ID,
+      branch: SERVICE_GIT_BRANCH || null,
+      deployment_id: SERVICE_DEPLOYMENT_ID || null,
+      started_at: SERVICE_STARTED_AT,
+    },
+    backend: {
+      api_base: PIVOTA_API_BASE,
+      aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
+      api_key_configured: !!PIVOTA_API_KEY,
+      db_configured: dbConfigured,
+      taxonomy_enabled: taxonomyEnabled,
+      taxonomy_view_id: process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION',
+      taxonomy_version: process.env.TAXONOMY_VERSION || null,
+    },
+    resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
+    resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
+    product_detail_cache: snapshotProductDetailCacheStats(),
+    pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
+    pdp_recommendations_cache: getPdpRecsCacheStats(),
+    products_available: true,
+    catalog_cache: includeCacheStats
+      ? {
+          creator_id: creatorIdForStats,
+          merchant_ids: merchantIds,
+          min_sellable_products: minSellable,
+          warning: cacheWarning,
+          stats: cacheStats,
+        }
+      : undefined,
+    catalog_sync: {
+      enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
+      interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
+      interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
+      cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+      request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+      request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
+      retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+      retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+      non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+      invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
+      target_source: catalogSyncState.target_source,
+      target_count: catalogSyncState.target_count,
+      target_eligible_count: catalogSyncState.target_eligible_count,
+      target_suppressed_count: catalogSyncState.target_suppressed_count,
+      target_sample: catalogSyncState.target_sample,
+      target_suppressed_sample: catalogSyncState.target_suppressed_sample,
+      last_run_at: catalogSyncState.last_run_at,
+      last_success_at: catalogSyncState.last_success_at,
+      last_error: catalogSyncState.last_error,
+      per_merchant: summarizeCatalogSyncMerchantState(),
+    },
+    features: {
+      product_search: true,
+      order_creation: true,
+      payment: USE_MOCK || USE_HYBRID ? 'mock' : 'real',
+      tracking: true,
+      layer1_compatibility: true,
+      find_products_multi_vector_enabled:
+        process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true',
+    },
+    startup_guards: {
+      aurora_routes_critical: auroraStartupCritical,
+    },
+    message: `Running in ${API_MODE} mode. ${USE_MOCK ? 'Using internal mock products.' : USE_HYBRID ? 'Real products, mock payment.' : 'Full real API integration.'}`
+      });
     })
     .catch((err) => {
       logger.warn({ err: err.message }, 'healthz cache stats probe failed');
-      const statusCode = auroraStartupCritical ? 503 : 200;
-      const payload = {
+      return res.status(auroraStartupCritical ? 503 : 200).json({
         ok: !auroraStartupCritical,
         api_mode: API_MODE,
         aurora_routes_ready: auroraRoutesReady,
@@ -10003,31 +8507,10 @@ const healthRouteHandler = (req, res) => {
           aurora_routes_critical: auroraStartupCritical,
         },
         warning: 'healthz_cache_stats_failed',
-      };
-
-      if (healthCacheTtlMs > 0) {
-        healthRouteHandler._cache = {
-          expiresAtMs: Date.now() + healthCacheTtlMs,
-          statusCode,
-          payload,
-        };
-      }
-
-      return res.status(statusCode).json(payload);
+      });
     });
 };
 
-const HEALTH_RESPONSE_CACHE_TTL_MS = Math.max(
-  Number(process.env.HEALTH_RESPONSE_CACHE_TTL_MS || 1000) || 1000,
-  0,
-);
-
-const healthLiteRouteHandler = (req, res) => {
-  return sendHealthLiteResponse(res);
-};
-
-app.get('/healthz/lite', healthLiteRouteHandler);
-app.get('/health/lite', healthLiteRouteHandler);
 app.get('/healthz', healthRouteHandler);
 app.get('/health', healthRouteHandler);
 
@@ -10568,11 +9051,6 @@ async function proxyAgentSearchToBackend(req, res) {
     relevant_count: 0,
     retrieval_sources: [],
   };
-  const resolverShortCircuit = {
-    attempted: false,
-    adopted: false,
-    block_reason: null,
-  };
 
   const respondSearch = (
     status,
@@ -10620,9 +9098,6 @@ async function proxyAgentSearchToBackend(req, res) {
             strict_empty_reason: strictEmptyReason,
           }
         : {}),
-      resolver_short_circuit_attempted: resolverShortCircuit.attempted,
-      resolver_short_circuit_adopted: resolverShortCircuit.adopted,
-      resolver_short_circuit_block_reason: resolverShortCircuit.block_reason,
     });
 
     if (
@@ -10648,7 +9123,6 @@ async function proxyAgentSearchToBackend(req, res) {
   }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
 
   if (shouldAttemptResolverFirst) {
-    resolverShortCircuit.attempted = true;
     resolverStage.called = true;
     const resolverStartedAtMs = Date.now();
     try {
@@ -10664,14 +9138,12 @@ async function proxyAgentSearchToBackend(req, res) {
         'resolver_stage',
       );
       resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
-      const shortCircuitDecision = shouldAdoptResolverFirstResult({
-        result: resolverFirstResult,
-        queryText,
-        queryClass: null,
-      });
-      resolverShortCircuit.adopted = Boolean(shortCircuitDecision.adopted);
-      resolverShortCircuit.block_reason = shortCircuitDecision.block_reason || null;
-      if (shortCircuitDecision.adopted) {
+      if (
+        resolverFirstResult &&
+        resolverFirstResult.status >= 200 &&
+        resolverFirstResult.status < 300 &&
+        resolverFirstResult.usableCount > 0
+      ) {
         resolverStage.hit = true;
         return respondSearch(resolverFirstResult.status, resolverFirstResult.data, {
           finalDecision: 'resolver_returned',
@@ -11085,28 +9557,6 @@ async function proxyAgentSearchToBackend(req, res) {
         : primaryMonoculture
         ? 'primary_monoculture_no_fallback'
         : 'primary_irrelevant_no_fallback';
-      const lookupAnchors = extractSearchAnchorTokens(queryText);
-      const aliasLookupIntent = isLookupStyleSearchQuery(queryText, lookupAnchors);
-      if (primaryUsableCount > 0 && !aliasLookupIntent) {
-        const failOpenBody = withPrimaryIrrelevantFailOpen({
-          body: normalized,
-          reason,
-          route: 'proxy_search_primary_irrelevant_fail_open',
-          upstreamStatus: resp.status,
-        });
-        return respondSearch(
-          200,
-          failOpenBody,
-          {
-            finalDecision: 'products_returned',
-            primaryPathUsed: 'proxy_search_primary',
-            fallbackTriggered: true,
-            fallbackReason: reason,
-            upstreamStage,
-            fallbackStrategy,
-          },
-        );
-      }
       return respondSearch(
         200,
         withStrictEmptyFallback({
@@ -12281,7 +10731,7 @@ async function callOffersResolveSourceWithRetry({
   while (attempts <= safeRetries) {
     attempts += 1;
     try {
-      const resp = await OFFERS_RESOLVE_UPSTREAM_AXIOS.post(url, body, {
+      const resp = await axios.post(url, body, {
         headers,
         timeout: safeTimeoutMs,
         validateStatus: () => true,
@@ -12815,28 +11265,12 @@ app.get('/api/admin/missing-catalog-products', requireAdmin, async (req, res) =>
   const offset = req.query.offset;
   const sort = req.query.sort;
   const since = req.query.since;
-  const until = req.query.until;
-  const ingredient = req.query.ingredient;
-  const source = req.query.source;
-  const status = req.query.status;
-  const captureMode = req.query.capture_mode ?? req.query.captureMode;
-  const dateFrom = req.query.date_from ?? req.query.dateFrom;
-  const dateTo = req.query.date_to ?? req.query.dateTo;
-  const dateRange = req.query.date_range ?? req.query.dateRange;
 
   const out = await listMissingCatalogProducts({
     limit,
     offset,
     sort,
     since,
-    until,
-    ingredient,
-    source,
-    status,
-    capture_mode: captureMode,
-    date_from: dateFrom,
-    date_to: dateTo,
-    date_range: dateRange,
   });
 
   if (!out.ok) {
@@ -12857,7 +11291,7 @@ app.get('/api/admin/missing-catalog-products', requireAdmin, async (req, res) =>
     return res.status(200).send(csv);
   }
 
-  return res.json({ ok: true, rows: out.rows, filters: out.applied_filters || null });
+  return res.json({ ok: true, rows: out.rows });
 });
 
 app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
@@ -12992,7 +11426,28 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
       db_configured: Boolean(process.env.DATABASE_URL),
       catalog_auto_sync_enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
     },
-    catalog_sync: buildCatalogSyncConfigView(),
+    catalog_sync: {
+      enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
+      interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
+      interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
+      cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+      request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+      request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
+      retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+      retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+      non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+      invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
+      target_source: catalogSyncState.target_source,
+      target_count: catalogSyncState.target_count,
+      target_eligible_count: catalogSyncState.target_eligible_count,
+      target_suppressed_count: catalogSyncState.target_suppressed_count,
+      target_sample: catalogSyncState.target_sample,
+      target_suppressed_sample: catalogSyncState.target_suppressed_sample,
+      last_run_at: catalogSyncState.last_run_at,
+      last_success_at: catalogSyncState.last_success_at,
+      last_error: catalogSyncState.last_error,
+      per_merchant: summarizeCatalogSyncMerchantState(),
+    },
     resolver: {
       alias_dependency: aliasDependency,
       with_stable_alias: buildResolverView(resolverWithAlias),
@@ -13000,60 +11455,6 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
     },
     cross_merchant_cache: crossMerchantCache,
   });
-});
-
-app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
-  try {
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const merchantId = String(
-      body.merchant_id ??
-        body.merchantId ??
-        req.query.merchant_id ??
-        req.query.merchantId ??
-        '',
-    )
-      .trim();
-    const limitOverrideRaw =
-      body.limit_override ??
-      body.limitOverride ??
-      req.query.limit_override ??
-      req.query.limitOverride;
-    const limitOverrideParsed =
-      limitOverrideRaw === undefined || limitOverrideRaw === null || String(limitOverrideRaw).trim() === ''
-        ? null
-        : Number(limitOverrideRaw);
-    const limitOverride =
-      limitOverrideParsed !== null && Number.isFinite(limitOverrideParsed)
-        ? Math.trunc(limitOverrideParsed)
-        : undefined;
-    const ignoreSuppression =
-      parseQueryBoolean(body.ignore_suppression ?? body.ignoreSuppression ?? req.query.ignore_suppression) ===
-      true;
-
-    const result = await runCreatorCatalogAutoSync({
-      merchant_id: merchantId || undefined,
-      limit_override: limitOverride,
-      ignore_suppression: ignoreSuppression,
-      trigger_source: 'admin_manual',
-    });
-
-    return res.status(200).json({
-      ok: result?.ok === true,
-      trigger_source: 'admin_manual',
-      requested: {
-        merchant_id: merchantId || null,
-        limit_override: limitOverride !== undefined ? limitOverride : null,
-        ignore_suppression: ignoreSuppression,
-      },
-      result,
-    });
-  } catch (err) {
-    return res.status(500).json({
-      ok: false,
-      error: 'CATALOG_SYNC_TRIGGER_FAILED',
-      message: err?.message || String(err),
-    });
-  }
 });
 
 app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) => {
@@ -13271,7 +11672,28 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
         api_base: PIVOTA_API_BASE,
         catalog_auto_sync_enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
       },
-      catalog_sync: buildCatalogSyncConfigView(),
+      catalog_sync: {
+        enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
+        interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
+        interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
+        cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+        request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+        request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
+        retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+        retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+        non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+        invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
+        target_source: catalogSyncState.target_source,
+        target_count: catalogSyncState.target_count,
+        target_eligible_count: catalogSyncState.target_eligible_count,
+        target_suppressed_count: catalogSyncState.target_suppressed_count,
+        target_sample: catalogSyncState.target_sample,
+        target_suppressed_sample: catalogSyncState.target_suppressed_sample,
+        last_run_at: catalogSyncState.last_run_at,
+        last_success_at: catalogSyncState.last_success_at,
+        last_error: catalogSyncState.last_error,
+        per_merchant: summarizeCatalogSyncMerchantState(),
+      },
       totals: {
         total_rows: parseCount(globalTotalsRow.total_rows),
         not_expired_rows: parseCount(globalTotalsRow.not_expired_rows),
@@ -15680,8 +14102,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     let creatorCacheRouteDebug = null;
     let crossMerchantCacheRouteDebug = null;
     let crossMerchantCacheProtectedResponse = null;
-    let crossMerchantCacheFailOpenCandidates = null;
-    let resolvedSearchProfileContext = null;
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
     let productDetailMerchantId = null;
@@ -15701,6 +14121,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const inStockOnly = search.in_stock_only !== false;
 
       const isCreatorUi = isCreatorUiSource(source);
+      const creatorBrandLikeQuery =
+        isCreatorUi && queryText.length > 0
+          ? Boolean(detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like)
+          : false;
+      const creatorCacheCanShortCircuit =
+        CREATOR_CACHE_SHORT_CIRCUIT_ENABLED && !creatorBrandLikeQuery;
       if (isCreatorUiColdStart && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
@@ -15754,25 +14180,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           // there is no concrete query yet.
           const withPolicy = upstreamData;
 
-	          const promotions = await getActivePromotions(now, creatorId);
-	          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-	          if (cacheHit) {
-	            crossMerchantCacheProtectedResponse = enriched;
-	          }
+          const promotions = await getActivePromotions(now, creatorId);
+          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+          if (cacheHit && creatorCacheCanShortCircuit) {
+            return res.json(enriched);
+          }
           logger.info(
-            {
-              creatorId,
-              source,
-              page,
-              limit,
-              inStockOnly,
-              cacheHit,
-              shortCircuitEnabled: CREATOR_CACHE_SHORT_CIRCUIT_ENABLED,
-              unifiedRelevanceEnabled: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED,
-            },
-            cacheHit
-              ? 'Creator UI cache cold-start prepared as fallback candidate; continuing to unified upstream search'
-              : 'Creator UI cache cold-start returned empty; falling back to upstream',
+            { creatorId, source, page, limit, inStockOnly },
+            'Creator UI cache cold-start returned empty; falling back to upstream',
           );
         } catch (err) {
           logger.warn(
@@ -15813,7 +14228,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             ),
           };
 
-          if (fromCache.products && fromCache.products.length > 0) {
+          if (fromCache.products && fromCache.products.length > 0 && creatorCacheCanShortCircuit) {
             const upstreamData = {
               products: fromCache.products,
               total: fromCache.total,
@@ -15843,22 +14258,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 })
               : upstreamData;
 
-	            const promotions = await getActivePromotions(now, creatorId);
-	            const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-	            crossMerchantCacheProtectedResponse = enriched;
-            logger.info(
-              {
-                creatorId,
-                source,
-                queryText,
-                page,
-                limit,
-                products: Array.isArray(fromCache.products) ? fromCache.products.length : 0,
-                shortCircuitEnabled: CREATOR_CACHE_SHORT_CIRCUIT_ENABLED,
-                unifiedRelevanceEnabled: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED,
-              },
-              'Creator UI cache search prepared as fallback candidate; continuing to unified upstream search',
-            );
+            const promotions = await getActivePromotions(now, creatorId);
+            const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+            return res.json(enriched);
           }
         } catch (err) {
           creatorCacheRouteDebug = {
@@ -15972,9 +14374,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       ).trim();
       const isCrossMerchantQuerySearch =
         !isCreatorUi && cacheSearchQueryText.length > 0 && !hasMerchantScope;
-      const cacheStageBudgetMs = isFragranceIntentQuery(cacheSearchQueryText)
-        ? Math.max(FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 3600)
-        : FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
       if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
         try {
           const cacheStageStartedAt = Date.now();
@@ -15984,7 +14383,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             searchCrossMerchantFromCache(cacheSearchQueryText, page, limit, {
               inStockOnly,
             }),
-            cacheStageBudgetMs,
+            FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
             'cache_stage',
           );
           const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
@@ -16015,23 +14414,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
           const safeResultLimit = Math.max(1, Number(limit || 20));
-          const fragranceQuery = isFragranceIntentQuery(cacheQueryText);
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
           const shouldSkipExternalSupplementForPetHarness =
             hasPetHarnessSearchSignal(cacheQueryText) &&
             internalProductsAfterAnchor.length >= 3;
-          const fragranceInternalCount = fragranceQuery
-            ? internalProductsAfterAnchor
-                .slice(0, Math.max(3, Math.min(10, safeResultLimit)))
-                .filter((product) =>
-                  hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
-                ).length
-            : 0;
-          const needsFragranceSupplement =
-            isCatalogGuardSource(source) &&
-            Number(page) === 1 &&
-            fragranceQuery &&
-            fragranceInternalCount === 0;
           const needsBeautyDiversitySupplement =
             isCatalogGuardSource(source) &&
             Number(page) === 1 &&
@@ -16051,7 +14437,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (
             isCatalogGuardSource(source) &&
             Number(page) === 1 &&
-            (needsPrimaryFillSupplement || needsBeautyDiversitySupplement || needsFragranceSupplement)
+            (needsPrimaryFillSupplement || needsBeautyDiversitySupplement)
           ) {
             const neededCount = needsPrimaryFillSupplement
               ? Math.max(0, safeResultLimit - internalProductsAfterAnchor.length)
@@ -16062,7 +14448,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               const externalFillMinInternal = Math.min(3, safeResultLimit);
               const canApplyExternalFillGate =
                 !SEARCH_EXTERNAL_FILL_GATED ||
-                needsFragranceSupplement ||
                 (internalProductsAfterAnchor.length >= externalFillMinInternal &&
                   (confidenceOverall >= 0.7 || isLookupQuery) &&
                   ambiguityScorePre <= 0.45);
@@ -16099,7 +14484,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   added_count: 0,
                   reason: 'supplement_pending',
                   diversity_targeted: needsBeautyDiversitySupplement,
-                  fragrance_targeted: needsFragranceSupplement,
                 };
                 try {
                   const supplement = await fetchExternalSeedSupplementFromBackend({
@@ -16132,7 +14516,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                         normalizedQuery: normalizedLookupQuery,
                         anchorTokens: lookupAnchorTokens,
                         queryTokens: lookupQueryTokens,
-                        fragranceExternalSeedBypass: needsFragranceSupplement,
                       })
                     ) {
                       continue;
@@ -16159,16 +14542,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     reason: toAppend.length > 0
                       ? needsBeautyDiversitySupplement
                         ? 'supplemented_external_seed_diversity'
-                        : needsFragranceSupplement
-                          ? 'supplemented_external_seed_fragrance'
                         : 'supplemented_external_seed'
                       : needsBeautyDiversitySupplement
                         ? 'no_external_candidates_for_diversity'
-                        : needsFragranceSupplement
-                          ? 'no_external_candidates_for_fragrance'
                         : 'no_external_candidates',
                     diversity_targeted: needsBeautyDiversitySupplement,
-                    fragrance_targeted: needsFragranceSupplement,
                   };
                 } catch (supplementErr) {
                   supplementMeta = {
@@ -16178,7 +14556,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     reason: 'supplement_error',
                     error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
                     diversity_targeted: needsBeautyDiversitySupplement,
-                    fragrance_targeted: needsFragranceSupplement,
                   };
                   logger.warn(
                     { err: supplementErr?.message || String(supplementErr), query: cacheQueryText },
@@ -16193,17 +14570,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             intent: effectiveIntent,
             queryClass: findProductsExpansionMeta?.query_class || effectiveIntent?.query_class || null,
           });
-          let effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
+          const effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
             perTitleLimit: dedupePerTitleLimit,
           });
-          effectiveProducts = prioritizeFragranceProducts(effectiveProducts, fragranceQuery);
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
             : true;
           const relaxCacheRelevanceGate =
             hasPetSearchSignal(cacheQueryText) ||
-            (!fragranceQuery &&
-              hasBeautyMakeupSearchSignal(cacheQueryText) &&
+            (hasBeautyMakeupSearchSignal(cacheQueryText) &&
               effectiveProducts.some((product) =>
                 hasBeautyCatalogProductSignal(buildFallbackCandidateText(product)),
               ));
@@ -16211,29 +14586,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             effectiveProducts.length > 0 &&
             (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
           let effectiveCacheHit = effectiveCacheHitBase;
-          const cacheStageSeedStrategyRaw = String(
-            search.external_seed_strategy ||
-              search.externalSeedStrategy ||
-              '',
+          const normalizedSeedStrategyForCache = String(
+            queryParams?.external_seed_strategy || queryParams?.externalSeedStrategy || 'legacy',
           )
             .trim()
             .toLowerCase();
-          const cacheStageSeedStrategy =
-            cacheStageSeedStrategyRaw ||
-            (isCatalogGuardSource(source)
-              ? FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
-                ? 'unified_relevance'
-                : 'supplement_internal_first'
-              : 'cache_only');
+          const unifiedRelevanceRequested = normalizedSeedStrategyForCache === 'unified_relevance';
           const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
-          const shouldBypassCacheForUnifiedNoExternal =
-            FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED &&
-            cacheStageSeedStrategy === 'unified_relevance' &&
-            cacheSearchQueryText.length > 0 &&
-            externalCount === 0;
-          if (shouldBypassCacheForUnifiedNoExternal) {
-            effectiveCacheHit = false;
-          }
           crossMerchantCacheRouteDebug = {
             attempted: true,
             mode: 'search',
@@ -16253,8 +14612,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             external_products_count: externalCount,
             cache_relevant: cacheRelevant,
             cache_relevance_gate_relaxed: relaxCacheRelevanceGate,
-            cache_seed_strategy: cacheStageSeedStrategy,
-            cache_bypassed_for_unified_no_external: shouldBypassCacheForUnifiedNoExternal,
             total: Number(fromCache.total || 0),
             retrieval_sources: fromCache.retrieval_sources || null,
             supplement: supplementMeta,
@@ -16280,7 +14637,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 external_seed_count: externalCount,
                 stale_cache_used: false,
                 strategy_applied: isCatalogGuardSource(source)
-                  ? cacheStageSeedStrategy
+                  ? normalizedSeedStrategyForCache || 'legacy'
                   : 'cache_only',
               },
               ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
@@ -16312,68 +14669,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const withPolicyProducts = Array.isArray(withPolicy?.products)
             ? withPolicy.products
             : [];
-          const withPolicyMetadata =
-            withPolicy &&
-            typeof withPolicy === 'object' &&
-            !Array.isArray(withPolicy) &&
-            withPolicy.metadata &&
-            typeof withPolicy.metadata === 'object' &&
-            !Array.isArray(withPolicy.metadata)
-              ? withPolicy.metadata
-              : {};
-          const cacheSearchDecision =
-            withPolicyMetadata.search_decision &&
-            typeof withPolicyMetadata.search_decision === 'object' &&
-            !Array.isArray(withPolicyMetadata.search_decision)
-              ? withPolicyMetadata.search_decision
-              : null;
-          const cacheStrictScopeFromDecision =
-            typeof cacheSearchDecision?.strict_scope === 'string' &&
-            cacheSearchDecision.strict_scope.trim()
-              ? cacheSearchDecision.strict_scope.trim().toLowerCase()
-              : null;
-          const cacheStrictScope =
-            cacheStrictScopeFromDecision === 'lingerie' ||
-            detectToyOutfitIntentFromQuery(cacheQueryText)?.lingerie_intent
-              ? 'lingerie'
-              : null;
-          const cacheCandidateCountForStrict = Math.max(
-            Number(crossMerchantCacheRouteDebug?.products_count || 0) || 0,
-            Number(
-              Array.isArray(crossMerchantCacheRouteDebug?.retrieval_sources) &&
-                crossMerchantCacheRouteDebug.retrieval_sources.length > 0
-                ? crossMerchantCacheRouteDebug.retrieval_sources
-                    .map((sourceItem) => Number(sourceItem?.candidate_count || 0) || 0)
-                    .reduce((max, value) => Math.max(max, value), 0)
-                : 0,
-            ) || 0,
-          );
-          const cacheStrictFilteredOutRaw = Number.isFinite(Number(cacheSearchDecision?.lingerie_filtered_out))
-            ? Number(cacheSearchDecision?.lingerie_filtered_out)
-            : null;
-          const cacheStrictFilteredOut =
-            cacheStrictScope === 'lingerie'
-              ? Math.max(
-                  cacheStrictFilteredOutRaw == null ? 0 : cacheStrictFilteredOutRaw,
-                  Math.max(0, cacheCandidateCountForStrict - withPolicyProducts.length),
-                )
-              : cacheStrictFilteredOutRaw;
-          const cacheFailOpenPool = withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts;
-          if (cacheFailOpenPool.length > 0) {
-            crossMerchantCacheFailOpenCandidates = cacheFailOpenPool.slice(
-              0,
-              Math.max(4, Math.min(20, safeResultLimit)),
-            );
-          }
           const cacheValidationQueryClass =
             traceQueryClass || effectiveIntent?.query_class || (isLookupQuery ? 'lookup' : null);
-          const cacheQualityProducts = fragranceQuery
-            ? effectiveProducts
-            : withPolicyProducts.length > 0
-              ? withPolicyProducts
-              : effectiveProducts;
           const cacheValidation = evaluateCacheQualityGate({
-            products: cacheQualityProducts,
+            products: withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts,
             queryText: cacheQueryText,
             intent: effectiveIntent,
             queryClass: cacheValidationQueryClass,
@@ -16382,10 +14681,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (cacheRejectedLowQuality) {
             effectiveCacheHit = false;
           }
+          const cacheMissingExternalForUnified =
+            unifiedRelevanceRequested &&
+            !hasMerchantScope &&
+            Boolean(cacheQueryText) &&
+            externalCount <= 0;
+          if (cacheMissingExternalForUnified) {
+            effectiveCacheHit = false;
+          }
           if (crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object') {
             crossMerchantCacheRouteDebug.cache_hit = effectiveCacheHit;
             crossMerchantCacheRouteDebug.cache_validation = cacheValidation;
             crossMerchantCacheRouteDebug.cache_rejected_low_quality = cacheRejectedLowQuality;
+            crossMerchantCacheRouteDebug.cache_missing_external_for_unified =
+              cacheMissingExternalForUnified;
           }
 
           const promotions = await getActivePromotions(now, creatorId);
@@ -16401,45 +14710,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 : applyDealsToResponse(upstreamData, promotions, now, creatorId);
           }
           if (effectiveCacheHit) {
-            const enrichedProducts = Array.isArray(enriched?.products) ? enriched.products : [];
-            const enrichedMeta =
-              enriched && typeof enriched === 'object' && !Array.isArray(enriched) && enriched.metadata
-                ? enriched.metadata
-                : {};
-            const normalizedSourceBreakdown = normalizeSourceBreakdownForProducts(enrichedMeta, enrichedProducts);
-            const cacheQueryClassForMeta = String(traceQueryClass || effectiveIntent?.query_class || '').toLowerCase();
-            const brandQueryBypassAmbiguity =
-              cacheQueryClassForMeta === 'brand' || hasBrandLikeSearchSignal(cacheQueryText);
-            const cacheBrandEntities = detectBrandAliases(cacheQueryText);
-            const cacheBrandScope = cacheBrandEntities.length > 0
-              ? (isFragranceIntentQuery(cacheQueryText) ? 'category_scoped' : 'broad')
-              : null;
-            const fragranceScope = isFragranceIntentQuery(cacheQueryText) ? 'strict_fragrance' : null;
-	            const cacheEnrichedResponse = withSearchProfileMetadata({
-	              ...enriched,
-	              metadata: {
-	                ...(enrichedMeta && typeof enrichedMeta === 'object' && !Array.isArray(enrichedMeta)
-	                  ? enrichedMeta
-	                  : {}),
-	                source_breakdown: normalizedSourceBreakdown,
-	                external_seed_returned_count: normalizedSourceBreakdown.external_seed_count,
-	                brand_query_bypass_ambiguity: brandQueryBypassAmbiguity,
-                  brand_query_detected: cacheBrandEntities.length > 0,
-                  brand_entities: cacheBrandEntities,
-                  ...(cacheBrandScope ? { brand_scope: cacheBrandScope } : {}),
-	                ...(fragranceScope ? { fragrance_scope: fragranceScope } : {}),
-	              },
-	            }, resolvedSearchProfileContext);
             const cacheClarification =
-              cacheEnrichedResponse &&
-              typeof cacheEnrichedResponse === 'object' &&
-              !Array.isArray(cacheEnrichedResponse) &&
-              cacheEnrichedResponse.clarification &&
-              typeof cacheEnrichedResponse.clarification === 'object' &&
-              cacheEnrichedResponse.clarification.question
-                ? cacheEnrichedResponse.clarification
+              enriched &&
+              typeof enriched === 'object' &&
+              !Array.isArray(enriched) &&
+              enriched.clarification &&
+              typeof enriched.clarification === 'object' &&
+              enriched.clarification.question
+                ? enriched.clarification
                 : null;
-            const diagnosed = withSearchDiagnostics(cacheEnrichedResponse, {
+            const diagnosed = withSearchDiagnostics(enriched, {
               route_health: buildSearchRouteHealth({
                 primaryPathUsed: 'cache_stage',
                 primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -16476,53 +14756,43 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   miss: false,
                   latency_ms: null,
                 },
-                strictScope: cacheStrictScope,
-                strictFilteredOut: cacheStrictFilteredOut,
-                strictRescuedCount: cacheSearchDecision?.lingerie_rescued_count,
-                lowRecallReason: cacheSearchDecision?.low_recall_reason,
                 finalDecision: cacheClarification ? 'clarify' : 'cache_returned',
               }),
             });
-	            return res.json(withSearchProfileMetadata(diagnosed, resolvedSearchProfileContext));
-	          }
+            return res.json(diagnosed);
+          }
           const queryClassForEarlyDecision = String(
             traceQueryClass || effectiveIntent?.query_class || '',
           ).toLowerCase();
+          const earlyDecisionBrandDetection = detectBrandEntities(cacheQueryText, {
+            candidateProducts: effectiveProducts,
+          });
+          const isBrandLikeForEarlyDecision = Boolean(earlyDecisionBrandDetection?.brand_like);
           const queryClassMissing = queryClassForEarlyDecision.length === 0;
           const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
-          const hasBrandLikeIntentForEarlyDecision =
-            queryClassForEarlyDecision === 'brand' ||
-            hasBrandLikeSearchSignal(cacheQueryText);
           const forceControlledRecallForScenario =
             SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO &&
             (['scenario', 'mission'].includes(queryClassForEarlyDecision) ||
               (queryClassMissing && hasAmbiguitySignal));
           const isStrongLookupForEarlyDecision =
             queryClassForEarlyDecision === 'lookup' || isKnownLookupAliasQuery(cacheQueryText);
-	          const hasEarlyDecisionClass = [
-	            'mission',
-	            'scenario',
-	            'gift',
-	            'exploratory',
-	            'non_shopping',
-	          ].includes(queryClassForEarlyDecision);
-	          const profileAmbiguityPolicy = String(
-	            resolvedSearchProfileContext?.profile?.ambiguityPolicy || 'clarify_first',
-	          )
-	            .trim()
-	            .toLowerCase();
-	          const forceSearchFirstByProfile = profileAmbiguityPolicy === 'search_first';
-	          const earlyDecisionCause =
-	            internalProductsAfterAnchor.length === 0
-	              ? 'cache_miss_ambiguity_sensitive'
-	              : 'cache_irrelevant_ambiguity_sensitive';
-	          const canUseEarlyAmbiguityDecision =
-	            effectiveIntent &&
-	            !isStrongLookupForEarlyDecision &&
-	            !hasBrandLikeIntentForEarlyDecision &&
-	            !forceSearchFirstByProfile &&
-	            (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
-	            !forceControlledRecallForScenario;
+          const hasEarlyDecisionClass = [
+            'mission',
+            'scenario',
+            'gift',
+            'exploratory',
+            'non_shopping',
+          ].includes(queryClassForEarlyDecision);
+          const earlyDecisionCause =
+            internalProductsAfterAnchor.length === 0
+              ? 'cache_miss_ambiguity_sensitive'
+              : 'cache_irrelevant_ambiguity_sensitive';
+          const canUseEarlyAmbiguityDecision =
+            effectiveIntent &&
+            !isBrandLikeForEarlyDecision &&
+            !isStrongLookupForEarlyDecision &&
+            (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
+            !forceControlledRecallForScenario;
           if (
             forceControlledRecallForScenario &&
             crossMerchantCacheRouteDebug &&
@@ -16532,6 +14802,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               applied: false,
               reason: 'force_controlled_recall_for_scenario',
               query_class: queryClassForEarlyDecision,
+            };
+          }
+          if (
+            isBrandLikeForEarlyDecision &&
+            crossMerchantCacheRouteDebug &&
+            typeof crossMerchantCacheRouteDebug === 'object'
+          ) {
+            crossMerchantCacheRouteDebug.early_decision = {
+              applied: false,
+              reason: 'brand_like_search_first',
+              query_class: queryClassForEarlyDecision,
+              brand_entities: Array.isArray(earlyDecisionBrandDetection?.brands)
+                ? earlyDecisionBrandDetection.brands
+                : [],
             };
           }
           if (canUseEarlyAmbiguityDecision) {
@@ -16591,8 +14875,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             const earlyDecisionStrictEmpty =
               Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
               (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
-	            const earlyDecisionResponsePayload =
-	              earlyDecisionStrictEmpty &&
+            const earlyDecisionResponsePayload =
+              earlyDecisionStrictEmpty &&
               earlyWithPolicy &&
               typeof earlyWithPolicy === 'object' &&
               !Array.isArray(earlyWithPolicy) &&
@@ -16604,15 +14888,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                         ? earlyWithPolicy.metadata
                         : {}),
                       strict_empty: true,
-	                    },
-	                  }
-	                : earlyWithPolicy;
-	            const earlyDecisionResponseWithProfile = withSearchProfileMetadata(
-	              earlyDecisionResponsePayload,
-	              resolvedSearchProfileContext,
-	            );
-	            if (earlyDecisionClarification || earlyDecisionStrictEmpty) {
-	              const earlyDiagnosed = withSearchDiagnostics(earlyDecisionResponseWithProfile, {
+                    },
+                  }
+                : earlyWithPolicy;
+            if (earlyDecisionClarification || earlyDecisionStrictEmpty) {
+              const earlyDiagnosed = withSearchDiagnostics(earlyDecisionResponsePayload, {
                 route_health: buildSearchRouteHealth({
                   primaryPathUsed: 'cache_stage',
                   primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -16652,10 +14932,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   finalDecision: earlyDecisionClarification ? 'clarify' : 'strict_empty',
                 }),
               });
-	              return res.json(
-	                withSearchProfileMetadata(earlyDiagnosed, resolvedSearchProfileContext),
-	              );
-	            }
+              return res.json(earlyDiagnosed);
+            }
           }
           if (
             PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED &&
@@ -16679,9 +14957,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   search_all_merchants: true,
                   allow_external_seed: true,
                   allow_stale_cache: false,
-                  external_seed_strategy: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
-                    ? 'unified_relevance'
-                    : 'supplement_internal_first',
+                  external_seed_strategy: 'supplement_internal_first',
                   fast_mode: true,
                 },
                 checkoutToken,
@@ -16712,50 +14988,48 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   resolverEnriched.clarification.question
                     ? resolverEnriched.clarification
                     : null;
-	                const resolverDiagnosed = withSearchDiagnostics(resolverEnriched, {
-	                  route_health: buildSearchRouteHealth({
-	                    primaryPathUsed: 'resolver_stage',
-	                    primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
-	                    fallbackTriggered: true,
-	                    fallbackReason: 'resolver_after_cache_miss',
-	                    ambiguityScorePre: traceAmbiguityScorePre,
-	                    clarifyTriggered: Boolean(resolverClarification),
-	                  }),
-	                  search_trace: buildSearchTrace({
-	                    traceId: gatewayRequestId,
-	                    rawQuery: cacheQueryText,
-	                    expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
-	                    expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-	                    queryClass: traceQueryClass,
-	                    rewriteGate: traceRewriteGate,
-	                    associationPlan: traceAssociationPlan,
-	                    flagsSnapshot: traceFlagsSnapshot,
-	                    intent: effectiveIntent,
-	                    cacheStage: {
-	                      hit: false,
-	                      candidate_count: Number(effectiveProducts.length || 0),
-	                      relevant_count: Number(internalProductsAfterAnchor.length || 0),
-	                      retrieval_sources: fromCache.retrieval_sources || [],
-	                    },
-	                    upstreamStage: {
-	                      called: false,
-	                      timeout: false,
-	                      status: null,
-	                      latency_ms: 0,
-	                    },
-	                    resolverStage: {
-	                      called: true,
-	                      hit: true,
-	                      miss: false,
-	                      latency_ms: null,
-	                    },
-	                    finalDecision: resolverClarification ? 'clarify' : 'resolver_returned',
-	                  }),
-	                });
-	                return res.json(
-	                  withSearchProfileMetadata(resolverDiagnosed, resolvedSearchProfileContext),
-	                );
-	              }
+                const resolverDiagnosed = withSearchDiagnostics(resolverEnriched, {
+                  route_health: buildSearchRouteHealth({
+                    primaryPathUsed: 'resolver_stage',
+                    primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+                    fallbackTriggered: true,
+                    fallbackReason: 'resolver_after_cache_miss',
+                    ambiguityScorePre: traceAmbiguityScorePre,
+                    clarifyTriggered: Boolean(resolverClarification),
+                  }),
+                  search_trace: buildSearchTrace({
+                    traceId: gatewayRequestId,
+                    rawQuery: cacheQueryText,
+                    expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
+                    expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                    queryClass: traceQueryClass,
+                    rewriteGate: traceRewriteGate,
+                    associationPlan: traceAssociationPlan,
+                    flagsSnapshot: traceFlagsSnapshot,
+                    intent: effectiveIntent,
+                    cacheStage: {
+                      hit: false,
+                      candidate_count: Number(effectiveProducts.length || 0),
+                      relevant_count: Number(internalProductsAfterAnchor.length || 0),
+                      retrieval_sources: fromCache.retrieval_sources || [],
+                    },
+                    upstreamStage: {
+                      called: false,
+                      timeout: false,
+                      status: null,
+                      latency_ms: 0,
+                    },
+                    resolverStage: {
+                      called: true,
+                      hit: true,
+                      miss: false,
+                      latency_ms: null,
+                    },
+                    finalDecision: resolverClarification ? 'clarify' : 'resolver_returned',
+                  }),
+                });
+                return res.json(resolverDiagnosed);
+              }
             } catch (resolverFallbackErr) {
               logger.warn(
                 {
@@ -16768,15 +15042,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
           const bypassCacheStrictEmpty =
             isAuroraSource(source) && PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
-          const enforceCacheStrictEmptyForNonLookup =
-            PROXY_SEARCH_CACHE_STRICT_EMPTY_NON_LOOKUP_ENABLED && !forceControlledRecallForScenario;
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&
             !isLookupQuery &&
             !bypassCacheStrictEmpty &&
-            enforceCacheStrictEmptyForNonLookup
+            !forceControlledRecallForScenario
           ) {
             const cacheStrictReason =
               effectiveProducts.length > 0
@@ -16799,7 +15071,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   external_seed_count: 0,
                   stale_cache_used: false,
                   strategy_applied: isCatalogGuardSource(source)
-                    ? cacheStageSeedStrategy
+                    ? 'supplement_internal_first'
                     : 'cache_only',
                 },
                 proxy_search_fallback: {
@@ -16840,7 +15112,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               strictEmptyEnriched.clarification.question
                 ? strictEmptyEnriched.clarification
                 : null;
-	            const strictEmptyDiagnosed = withSearchDiagnostics(strictEmptyEnriched, {
+            const strictEmptyDiagnosed = withSearchDiagnostics(strictEmptyEnriched, {
               route_health: buildSearchRouteHealth({
                 primaryPathUsed: 'cache_stage',
                 primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -16886,11 +15158,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     strict_empty: true,
                     strict_empty_reason: cacheStrictReason,
                   }),
-	            });
-	            return res.json(
-	              withSearchProfileMetadata(strictEmptyDiagnosed, resolvedSearchProfileContext),
-	            );
-	          }
+            });
+            return res.json(strictEmptyDiagnosed);
+          }
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
@@ -16918,7 +15188,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             limit: search.limit || search.page_size || 20,
             in_stock_only: inStockOnly,
             cache_hit: false,
-            timeout_budget_ms: cacheStageBudgetMs,
+            timeout_budget_ms: FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
             stage_timeout: String(err?.code || '').toUpperCase() === 'STAGE_TIMEOUT',
             error: String(err && err.message ? err.message : err),
           };
@@ -17001,9 +15271,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	    let url = `${searchInvokeBase}${route.path}`;
 	    let requestBody = {};
 	    let queryParams = {};
-	    let requestedFindProductsMultiLimit = null;
-	    let requestedFindProductsMultiPage = null;
-	    let strictLingerieScopeForSearch = false;
 
     // Handle different parameter types
     switch (operation) {
@@ -17048,39 +15315,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         break;
       }
 
-		      case 'find_products_multi': {
-		        // Cross-merchant search via Agent Search endpoint.
-		        const search = effectivePayload.search || effectivePayload || {};
-		        const page = Math.max(1, Number(search.page || 1) || 1);
-	        requestedFindProductsMultiPage = page;
-	        const requestedLimit = Math.min(
-	          Math.max(1, Number(search.limit || search.page_size || 20) || 20),
-	          100,
-	        );
-	        requestedFindProductsMultiLimit = requestedLimit;
-		        const queryTextForScope = String(search.query || '').trim();
-		        const queryClassForScope = String(traceQueryClass || '').toLowerCase();
-		        resolvedSearchProfileContext = resolveSearchProfile({
-		          hint: firstQueryParamValue(search.profile_hint || search.profileHint),
-		          queryText: queryTextForScope,
-		          queryClass: queryClassForScope || effectiveIntent?.query_class || null,
-		          intent: effectiveIntent,
-		        });
-		        const scopeSignals = detectToyOutfitIntentFromQuery(queryTextForScope);
-		        strictLingerieScopeForSearch =
-		          queryClassForScope === 'category' && Boolean(scopeSignals?.lingerie_intent);
-	        const strictLingerieLimitFloor = Math.max(
-	          24,
-	          Number(process.env.SEARCH_STRICT_LINGERIE_EFFECTIVE_LIMIT_FLOOR || 60) || 60,
-	        );
-	        const strictLingerieLimitCap = Math.max(
-	          strictLingerieLimitFloor,
-	          Number(process.env.SEARCH_STRICT_LINGERIE_EFFECTIVE_LIMIT_CAP || 100) || 100,
-	        );
-	        const effectiveLimit = strictLingerieScopeForSearch
-	          ? Math.min(Math.max(requestedLimit, strictLingerieLimitFloor), strictLingerieLimitCap)
-	          : requestedLimit;
-	        const offset = (page - 1) * effectiveLimit;
+      case 'find_products_multi': {
+        // Cross-merchant search via Agent Search endpoint.
+        const search = effectivePayload.search || effectivePayload || {};
+        const page = Math.max(1, Number(search.page || 1) || 1);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const offset = (page - 1) * limit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
         const merchantIdsRaw = search.merchant_ids || search.merchantIds;
@@ -17097,41 +15337,32 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const priceMax = search.price_max ?? search.max_price;
 
         const shouldScopeToCreatorCatalog =
-          !FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED &&
-          CREATOR_SCOPE_TO_MERCHANT_CATALOG_ENABLED &&
           isCreatorUiSource(metadata?.source) &&
           !merchantId &&
           merchantIds.length === 0 &&
           !searchAllMerchantsExplicit &&
           creatorMerchantIds.length > 0;
 
-	        queryParams = {
-	          ...(merchantId ? { merchant_id: merchantId } : {}),
-	          ...(!merchantId && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
-	          ...(!merchantId && merchantIds.length === 0 && shouldScopeToCreatorCatalog
-	            ? { merchant_ids: creatorMerchantIds }
-	            : {}),
-	          ...(!merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog
-	            ? { search_all_merchants: true }
-	            : {}),
-		          ...(search.query != null ? { query: String(search.query || '') } : {}),
-		          ...(resolvedSearchProfileContext?.profile?.id
-		            ? { profile_hint: resolvedSearchProfileContext.profile.id }
-		            : {}),
-		          ...(search.category ? { category: search.category } : {}),
-		          ...(priceMin != null ? { min_price: priceMin } : {}),
-		          ...(priceMax != null ? { max_price: priceMax } : {}),
-		          in_stock_only: search.in_stock_only !== false,
-		          limit: effectiveLimit,
-		          offset,
-		        };
-		        queryParams = applyShoppingCatalogQueryGuards(
-		          queryParams,
-		          metadata?.source,
-		          resolvedSearchProfileContext,
-		        );
-	        break;
-	      }
+        queryParams = {
+          ...(merchantId ? { merchant_id: merchantId } : {}),
+          ...(!merchantId && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
+          ...(!merchantId && merchantIds.length === 0 && shouldScopeToCreatorCatalog
+            ? { merchant_ids: creatorMerchantIds }
+            : {}),
+          ...(!merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog
+            ? { search_all_merchants: true }
+            : {}),
+          ...(search.query != null ? { query: String(search.query || '') } : {}),
+          ...(search.category ? { category: search.category } : {}),
+          ...(priceMin != null ? { min_price: priceMin } : {}),
+          ...(priceMax != null ? { max_price: priceMax } : {}),
+          in_stock_only: search.in_stock_only !== false,
+          limit,
+          offset,
+        };
+        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
+        break;
+      }
       
       case 'find_similar_products': {
         // Creator UI: prefer cache-based similarity so "Find more" stays consistent
@@ -17202,17 +15433,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             const products = Array.isArray(rec?.items) ? rec.items : [];
 
             // Keep response structure stable for existing clients.
-	            const baseResponse = {
-	              status: 'success',
-	              strategy: 'related_products',
-	              products,
-	              total: products.length,
-	              page: 1,
-	              page_size: products.length,
-	              ...(rec?.metadata && typeof rec.metadata === 'object'
-	                ? { metadata: rec.metadata }
-	                : {}),
-	            };
+            const baseResponse = {
+              status: 'success',
+              strategy: 'related_products',
+              products,
+              total: products.length,
+              page: 1,
+              page_size: products.length,
+            };
 
             return debugEnabled
               ? res.json({
@@ -17631,10 +15859,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     const primarySearchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
     const primarySearchAnchorTokens = extractSearchAnchorTokens(primarySearchQueryText);
     const isLookupPolicyQuery = isLookupStyleSearchQuery(primarySearchQueryText, primarySearchAnchorTokens);
-	    const queryClassForBudget = String(traceQueryClass || '').toLowerCase();
-	    const shouldUseShortSearchBudget =
-	      isLookupPolicyQuery ||
-	      ['lookup', 'attribute'].includes(queryClassForBudget);
+    const queryClassForBudget = String(traceQueryClass || '').toLowerCase();
+    const shouldUseShortSearchBudget =
+      isLookupPolicyQuery ||
+      ['lookup', 'category', 'attribute'].includes(queryClassForBudget);
     const upstreamBudgetMsForSearch = shouldUseShortSearchBudget
       ? FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
@@ -17675,13 +15903,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       queryText: resolverQueryText,
     });
     let resolverFirstResult = null;
-    let resolverShortCircuitDecision = {
-      attempted: false,
-      adopted: false,
-      block_reason: null,
-    };
     if (shouldAttemptResolverFirst) {
-      resolverShortCircuitDecision.attempted = true;
       try {
         resolverFirstResult = await queryResolveSearchFallback({
           queryParams: resolverQueryParams,
@@ -17690,14 +15912,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           requestSource: metadata?.source,
           timeoutMs: resolverTimeoutMs,
         });
-        const shortCircuitDecision = shouldAdoptResolverFirstResult({
-          result: resolverFirstResult,
-          queryText: resolverQueryText,
-          queryClass: traceQueryClass,
-        });
-        resolverShortCircuitDecision.adopted = Boolean(shortCircuitDecision.adopted);
-        resolverShortCircuitDecision.block_reason = shortCircuitDecision.block_reason || null;
-        if (shortCircuitDecision.adopted) {
+        if (
+          resolverFirstResult &&
+          resolverFirstResult.status >= 200 &&
+          resolverFirstResult.status < 300 &&
+          resolverFirstResult.usableCount > 0
+        ) {
           response = { status: resolverFirstResult.status, data: resolverFirstResult.data };
         }
       } catch (resolverErr) {
@@ -18003,41 +16223,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         }
         if (!response) {
-          if (
-            operation === 'find_products_multi' &&
-            Array.isArray(crossMerchantCacheFailOpenCandidates) &&
-            crossMerchantCacheFailOpenCandidates.length > 0
-          ) {
-            const cacheFailOpenBody = normalizeAgentProductsListResponse(
-              {
-                status: 'success',
-                success: true,
-                products: crossMerchantCacheFailOpenCandidates,
-                total: crossMerchantCacheFailOpenCandidates.length,
-                page: Number(queryParams?.page || 1) || 1,
-                page_size: Number(queryParams?.limit || queryParams?.page_size || 20) || 20,
-                reply: null,
-                metadata: {
-                  query_source: 'cache_cross_merchant_search_fail_open',
-                },
-              },
-              {
-                limit: queryParams?.limit,
-                offset: queryParams?.offset,
-              },
-            );
-            response = {
-              status: 200,
-              data: withPrimaryIrrelevantFailOpen({
-                body: cacheFailOpenBody,
-                reason: 'primary_exception_cache_fail_open',
-                route: 'invoke_exception_cache_fail_open',
-                upstreamStatus,
-              }),
-            };
-          }
-        }
-        if (!response) {
           logger.warn(
             {
               operation,
@@ -18095,311 +16280,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
-      const requestedLimit = Math.min(
-        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
-        100,
-      );
-      const requestedPageForSupplement =
-        Number.isFinite(Number(requestedFindProductsMultiPage)) && Number(requestedFindProductsMultiPage) > 0
-          ? Number(requestedFindProductsMultiPage)
-          : Math.max(1, Number(queryParams?.page || 1) || 1);
-      const fragranceIntentQueryForSupplement = isFragranceIntentQuery(queryText);
-      const brandLikeQueryForSupplement = hasBrandLikeSearchSignal(queryText);
-      const shouldRunExternalSeedSupplement =
-        fragranceIntentQueryForSupplement || brandLikeQueryForSupplement;
-      let fragranceExternalSupplementMeta = null;
-
-      if (
-        operation === 'find_products_multi' &&
-        queryText &&
-        shouldRunExternalSeedSupplement &&
-        requestedPageForSupplement <= 1 &&
-        isCatalogGuardSource(metadata?.source)
-      ) {
-        const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
-        const primaryExternalCount = primaryProducts.filter((product) => isExternalSeedProduct(product)).length;
-        const primaryHasFragranceSignal = primaryProducts
-          .slice(0, Math.max(8, Math.min(20, requestedLimit)))
-          .some((product) => hasFragranceBackfillSignal(buildFallbackCandidateText(product)));
-
-        if (!primaryHasFragranceSignal || primaryExternalCount === 0) {
-          const neededCount = Math.max(1, requestedLimit - primaryExternalCount);
-          fragranceExternalSupplementMeta = {
-            attempted: true,
-            applied: false,
-            added_count: 0,
-            reason: 'supplement_pending',
-          };
-          try {
-            const supplement = await fetchExternalSeedSupplementFromBackend({
-              queryParams: {
-                query: queryText,
-                ...(queryParams?.category ? { category: queryParams.category } : {}),
-                ...(queryParams?.min_price != null ? { min_price: queryParams.min_price } : {}),
-                ...(queryParams?.max_price != null ? { max_price: queryParams.max_price } : {}),
-                in_stock_only: queryParams?.in_stock_only !== false,
-              },
-              checkoutToken,
-              neededCount,
-              source: metadata?.source,
-            });
-
-            const supplementProducts = Array.isArray(supplement?.products)
-              ? supplement.products.filter((product) => isExternalSeedProduct(product))
-              : [];
-
-            const seen = new Set(primaryProducts.map((product) => buildSearchProductKey(product)).filter(Boolean));
-            const toPrepend = [];
-            for (const product of supplementProducts) {
-              const key = buildSearchProductKey(product);
-              if (!key || seen.has(key)) continue;
-              seen.add(key);
-              toPrepend.push(product);
-              if (toPrepend.length >= neededCount) break;
-            }
-
-            if (toPrepend.length > 0) {
-              const mergedProducts = prioritizeFragranceProducts(toPrepend.concat(primaryProducts), true).slice(
-                0,
-                Math.max(requestedLimit, primaryProducts.length),
-              );
-              const normalizedMerged = normalizeAgentProductsListResponse(
-                {
-                  ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
-                    ? upstreamData
-                    : {}),
-                  products: mergedProducts,
-                  total: Math.max(Number(upstreamData?.total || 0) || 0, mergedProducts.length),
-                },
-                {
-                  limit: queryParams?.limit,
-                  offset: queryParams?.offset,
-                },
-              );
-              const mergedExternalCount = mergedProducts.filter((product) => isExternalSeedProduct(product)).length;
-              const mergedInternalCount = Math.max(0, mergedProducts.length - mergedExternalCount);
-              upstreamData = {
-                ...normalizedMerged,
-                metadata: {
-                  ...(normalizedMerged?.metadata &&
-                  typeof normalizedMerged.metadata === 'object' &&
-                  !Array.isArray(normalizedMerged.metadata)
-                    ? normalizedMerged.metadata
-                    : {}),
-                  source_breakdown: {
-                    ...((normalizedMerged?.metadata?.source_breakdown &&
-                    typeof normalizedMerged.metadata.source_breakdown === 'object' &&
-                    !Array.isArray(normalizedMerged.metadata.source_breakdown)
-                      ? normalizedMerged.metadata.source_breakdown
-                      : {})),
-                    internal_count: mergedInternalCount,
-                    external_seed_count: mergedExternalCount,
-                    stale_cache_used: false,
-                    strategy_applied: FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
-                      ? 'unified_relevance'
-                      : 'supplement_internal_first',
-                  },
-                },
-              };
-            }
-
-            fragranceExternalSupplementMeta = {
-              ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
-              attempted: true,
-              applied: toPrepend.length > 0,
-              added_count: toPrepend.length,
-              reason:
-                toPrepend.length > 0
-                  ? isFragranceIntentQuery(queryText)
-                    ? 'supplemented_external_seed_fragrance'
-                    : 'supplemented_external_seed_brand'
-                  : 'no_external_candidates',
-            };
-          } catch (supplementErr) {
-            fragranceExternalSupplementMeta = {
-              attempted: true,
-              applied: false,
-              added_count: 0,
-              reason: 'supplement_error',
-              error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
-            };
-            logger.warn(
-              { err: supplementErr?.message || String(supplementErr), query: queryText },
-              `${operation} external seed supplement after upstream failed`,
-            );
-          }
-        }
-      } else if (
-        operation === 'find_products_multi' &&
-        queryText &&
-        shouldRunExternalSeedSupplement &&
-        requestedPageForSupplement > 1 &&
-        isCatalogGuardSource(metadata?.source)
-      ) {
-        fragranceExternalSupplementMeta = {
-          attempted: true,
-          applied: false,
-          added_count: 0,
-          reason: 'disabled_for_page_gt_1',
-          page: Math.max(1, Math.floor(Number(requestedPageForSupplement) || 1)),
-        };
-      }
-
-      let strictLingerieSupplementMeta = null;
-      const strictLingerieQuery = hasLingerieSearchSignal(queryText);
-      if (strictLingerieQuery && process.env.DATABASE_URL) {
-        const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
-        const strictPrimaryProducts = primaryProducts.filter((product) =>
-          isStrictLingerieCacheCandidate(product),
-        );
-        const strictLingerieTarget = resolveStrictLingerieTargetCount(requestedLimit, 6);
-        const strictLingerieBackfillInStockOnly = shouldUseStrictLingerieBackfillInStockOnly();
-        if (strictPrimaryProducts.length < strictLingerieTarget) {
-          const fallbackQueries = buildStrictLingerieFallbackQueries(queryText, effectiveIntent);
-          const maxFallbackQueries = Math.max(
-            1,
-            Math.min(8, Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_MAX_QUERIES || 5) || 5),
-          );
-          const selectedFallbackQueries = fallbackQueries.slice(0, maxFallbackQueries);
-          const fallbackLimitPerQuery = Math.min(
-            100,
-            Math.max(
-              strictLingerieTarget * 3,
-              Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_FETCH_LIMIT_PER_QUERY || 80) || 80,
-            ),
-          );
-          const fallbackRecovered = [];
-          const fallbackQueryResults = [];
-          for (const fallbackQuery of selectedFallbackQueries) {
-            try {
-              const fromCache = await searchCrossMerchantFromCache(fallbackQuery, 1, fallbackLimitPerQuery, {
-                inStockOnly: strictLingerieBackfillInStockOnly,
-              });
-              const products = Array.isArray(fromCache?.products)
-                ? fromCache.products.filter((product) => isStrictLingerieCacheCandidate(product))
-                : [];
-              fallbackRecovered.push(...products);
-              fallbackQueryResults.push({
-                query: fallbackQuery,
-                count: products.length,
-                total: Number(fromCache?.total || 0),
-              });
-            } catch (fallbackErr) {
-              fallbackQueryResults.push({
-                query: fallbackQuery,
-                count: 0,
-                total: 0,
-                error: String(fallbackErr?.message || fallbackErr),
-              });
-            }
-          }
-
-          const mergedStrictProducts = collapseNearDuplicateSearchProducts(
-            [...strictPrimaryProducts, ...fallbackRecovered],
-            { perTitleLimit: 1 },
-          ).filter((product) => isStrictLingerieCacheCandidate(product));
-
-          if (mergedStrictProducts.length > 0) {
-            const seenStrictKeys = new Set();
-            const dedupedStrictProducts = [];
-            for (const product of mergedStrictProducts) {
-              const key = buildSearchProductKey(product) || normalizeSearchProductTitleForDedupe(product);
-              if (!key || seenStrictKeys.has(key)) continue;
-              seenStrictKeys.add(key);
-              dedupedStrictProducts.push(product);
-            }
-            const finalStrictProducts = dedupedStrictProducts.slice(
-              0,
-              Math.max(strictLingerieTarget, Math.min(requestedLimit, 24)),
-            );
-            const normalizedMerged = normalizeAgentProductsListResponse(
-              {
-                ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
-                  ? upstreamData
-                  : {}),
-                products: finalStrictProducts,
-                total: Math.max(
-                  Number(upstreamData?.total || 0) || 0,
-                  finalStrictProducts.length,
-                ),
-              },
-              {
-                limit: queryParams?.limit,
-                offset: queryParams?.offset,
-              },
-            );
-            const mergedExternalCount = finalStrictProducts.filter((product) =>
-              isExternalSeedProduct(product),
-            ).length;
-            const mergedInternalCount = Math.max(0, finalStrictProducts.length - mergedExternalCount);
-            upstreamData = {
-              ...normalizedMerged,
-              metadata: {
-                ...(normalizedMerged?.metadata &&
-                typeof normalizedMerged.metadata === 'object' &&
-                !Array.isArray(normalizedMerged.metadata)
-                  ? normalizedMerged.metadata
-                  : {}),
-                source_breakdown: {
-                  ...((normalizedMerged?.metadata?.source_breakdown &&
-                  typeof normalizedMerged.metadata.source_breakdown === 'object' &&
-                  !Array.isArray(normalizedMerged.metadata.source_breakdown)
-                    ? normalizedMerged.metadata.source_breakdown
-                    : {})),
-                  internal_count: mergedInternalCount,
-                  external_seed_count: mergedExternalCount,
-                  stale_cache_used: false,
-                  strategy_applied: 'strict_lingerie_cache_backfill',
-                },
-              },
-            };
-            strictLingerieSupplementMeta = {
-              attempted: true,
-              applied: finalStrictProducts.length > strictPrimaryProducts.length,
-              reason:
-                finalStrictProducts.length > strictPrimaryProducts.length
-                  ? 'strict_lingerie_cache_backfilled'
-                  : 'strict_lingerie_filtered_primary',
-              target_count: strictLingerieTarget,
-              primary_strict_count: strictPrimaryProducts.length,
-              final_count: finalStrictProducts.length,
-              fallback_queries: selectedFallbackQueries,
-              query_results: fallbackQueryResults,
-            };
-          }
-        } else if (strictPrimaryProducts.length !== primaryProducts.length) {
-          const normalizedStrictOnly = normalizeAgentProductsListResponse(
-            {
-              ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
-                ? upstreamData
-                : {}),
-              products: strictPrimaryProducts,
-              total: Math.max(
-                Number(upstreamData?.total || 0) || 0,
-                strictPrimaryProducts.length,
-              ),
-            },
-            {
-              limit: queryParams?.limit,
-              offset: queryParams?.offset,
-            },
-          );
-          upstreamData = normalizedStrictOnly;
-          strictLingerieSupplementMeta = {
-            attempted: true,
-            applied: true,
-            reason: 'strict_lingerie_filtered_primary',
-            target_count: strictLingerieTarget,
-            primary_strict_count: strictPrimaryProducts.length,
-            final_count: strictPrimaryProducts.length,
-            fallback_queries: [],
-            query_results: [],
-          };
-        }
-      }
-
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
-      const primaryProductCount = Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0;
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
       const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
@@ -18411,6 +16292,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const primaryIrrelevant =
         Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
       const shouldFallback = primaryUnusable || primaryIrrelevant;
+      const requestedLimit = Math.min(
+        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+        100,
+      );
+      const requestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
+      const requestedPageFromPayload = Number(queryParams?.page || 0) || 0;
+      const requestedFindProductsMultiPage =
+        requestedPageFromPayload > 0
+          ? requestedPageFromPayload
+          : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
       const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
         resolverFirstResult,
         queryText,
@@ -18427,16 +16318,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       });
       let secondarySupplementMeta = null;
 
-	      if (
-	        operation === 'find_products_multi' &&
-	        queryText &&
-	        response.status >= 200 &&
-	        response.status < 300 &&
-	        !shouldFallback &&
-	        (requestedFindProductsMultiPage == null || requestedFindProductsMultiPage <= 1) &&
-	        primaryUsableCount < requestedLimit &&
-	        FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
-	      ) {
+      if (
+        operation === 'find_products_multi' &&
+        queryText &&
+        response.status >= 200 &&
+        response.status < 300 &&
+        !shouldFallback &&
+        primaryUsableCount < requestedLimit &&
+        FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
+      ) {
+        if (requestedFindProductsMultiPage > 1) {
+          secondarySupplementMeta = {
+            attempted: true,
+            applied: false,
+            added_count: 0,
+            expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+            reason: 'disabled_for_page_gt_1',
+            page: requestedFindProductsMultiPage,
+          };
+        } else {
         try {
           const secondStageCtx = await buildFindProductsMultiContext({
             payload,
@@ -18530,27 +16430,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             { err: secondaryErr?.message || String(secondaryErr), query: queryText },
             `${operation} second-stage conservative->aggressive supplement failed`,
           );
-	        }
-	      }
-	      if (
-	        operation === 'find_products_multi' &&
-	        queryText &&
-	        FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off' &&
-	        !secondarySupplementMeta &&
-	        Number.isFinite(Number(requestedFindProductsMultiPage)) &&
-	        Number(requestedFindProductsMultiPage) > 1
-	      ) {
-	        secondarySupplementMeta = {
-	          attempted: true,
-	          applied: false,
-	          added_count: 0,
-	          expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
-	          reason: 'disabled_for_page_gt_1',
-	          page: Math.max(1, Math.floor(Number(requestedFindProductsMultiPage))),
-	        };
-	      }
+        }
+        }
+      }
 
-	      if (shouldFallback) {
+      if (shouldFallback) {
         let replacedByFallback = false;
 
         if (allowResolverFallback && !skipSecondaryFallback) {
@@ -18617,79 +16501,24 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         }
 
-	        if (!replacedByFallback) {
-	          if (primaryIrrelevant) {
-	            const failOpenReason = skipSecondaryFallback
-	              ? primaryMonoculture
-	                ? 'primary_monoculture_skip_secondary'
-                : 'primary_irrelevant_skip_secondary'
-              : primaryMonoculture
-              ? 'primary_monoculture_no_fallback'
-              : 'primary_irrelevant_no_fallback';
-            const cacheFailOpenPool = Array.isArray(crossMerchantCacheFailOpenCandidates)
-              ? crossMerchantCacheFailOpenCandidates
-              : [];
-            const canFailOpenFromPrimary =
-              operation === 'find_products_multi' &&
-              (primaryUsableCount > 0 || primaryProductCount > 0);
-            const canFailOpenFromCache =
-              operation === 'find_products_multi' &&
-              !canFailOpenFromPrimary &&
-              cacheFailOpenPool.length > 0;
-            if (canFailOpenFromPrimary || canFailOpenFromCache) {
-              const failOpenBody = canFailOpenFromCache
-                ? normalizeAgentProductsListResponse(
-                    {
-                      ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
-                        ? upstreamData
-                        : {}),
-                      products: cacheFailOpenPool,
-                      total: Math.max(
-                        Number(
-                          upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
-                            ? upstreamData.total
-                            : 0,
-                        ) || 0,
-                        cacheFailOpenPool.length,
-                      ),
-                      metadata: {
-                        ...(upstreamData &&
-                        typeof upstreamData === 'object' &&
-                        !Array.isArray(upstreamData) &&
-                        upstreamData.metadata &&
-                        typeof upstreamData.metadata === 'object' &&
-                        !Array.isArray(upstreamData.metadata)
-                          ? upstreamData.metadata
-                          : {}),
-                        query_source: 'cache_cross_merchant_search_fail_open',
-                      },
-                    },
-                    {
-                      limit: queryParams?.limit,
-                      offset: queryParams?.offset,
-                    },
-                  )
-                : upstreamData;
-              upstreamData = withPrimaryIrrelevantFailOpen({
-                body: failOpenBody,
-                reason: failOpenReason,
-                route: canFailOpenFromCache
-                  ? 'invoke_primary_irrelevant_fail_open_cache'
-                  : 'invoke_primary_irrelevant_fail_open',
-                upstreamStatus: response.status,
-              });
-            } else {
-	              upstreamData = buildProxySearchSoftFallbackResponse({
-	                queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-	                reason: failOpenReason,
-	                upstreamStatus: response.status,
-	                route: 'invoke_primary_irrelevant',
-	                intent: effectiveIntent,
-	                queryClass: traceQueryClass,
-	                queryText,
-	              });
-	            }
-	          } else {
+        if (!replacedByFallback) {
+          if (primaryIrrelevant) {
+            upstreamData = buildProxySearchSoftFallbackResponse({
+              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
+              reason: skipSecondaryFallback
+                ? primaryMonoculture
+                  ? 'primary_monoculture_skip_secondary'
+                  : 'primary_irrelevant_skip_secondary'
+                : primaryMonoculture
+                ? 'primary_monoculture_no_fallback'
+                : 'primary_irrelevant_no_fallback',
+              upstreamStatus: response.status,
+              route: 'invoke_primary_irrelevant',
+              intent: effectiveIntent,
+              queryClass: traceQueryClass,
+              queryText,
+            });
+          } else {
             upstreamData = withProxySearchFallbackMetadata(upstreamData, {
               applied: false,
               reason: skipSecondaryFallback ? 'resolver_miss_skip_secondary' : 'fallback_not_better',
@@ -18699,8 +16528,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
 
       if (
-        (operation === 'find_products' || operation === 'find_products_multi') &&
-        (secondarySupplementMeta || fragranceExternalSupplementMeta || strictLingerieSupplementMeta) &&
+        operation === 'find_products_multi' &&
+        secondarySupplementMeta &&
         upstreamData &&
         typeof upstreamData === 'object' &&
         !Array.isArray(upstreamData)
@@ -18709,9 +16538,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ...upstreamData,
           metadata: {
             ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
-            ...(fragranceExternalSupplementMeta ? { pre_policy_fragrance_supplement: fragranceExternalSupplementMeta } : {}),
-            ...(secondarySupplementMeta ? { search_stage_b: secondarySupplementMeta } : {}),
-            ...(strictLingerieSupplementMeta ? { strict_lingerie_supplement: strictLingerieSupplementMeta } : {}),
+            search_stage_b: secondarySupplementMeta,
           },
         };
       }
@@ -18906,15 +16733,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         policyQueryText,
         extractSearchAnchorTokens(policyQueryText),
       );
-      const queryClassFromIntent = String(effectiveIntent?.query_class || '').trim().toLowerCase();
       const querySource = String(upstreamMetadata.query_source || '').trim();
-      const fallbackMeta =
-        upstreamMetadata.proxy_search_fallback &&
-        typeof upstreamMetadata.proxy_search_fallback === 'object' &&
-        !Array.isArray(upstreamMetadata.proxy_search_fallback)
-          ? upstreamMetadata.proxy_search_fallback
-          : null;
-      const fallbackRoute = String(fallbackMeta?.route || '').trim();
       const isResolverLookupSource =
         querySource === 'agent_products_resolver_ref_fallback' ||
         querySource === 'agent_products_resolver_fallback';
@@ -18922,55 +16741,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         querySource === 'cache_cross_merchant_search' ||
         querySource === 'cache_cross_merchant_search_supplemented';
       const isErrorSoftFallbackSource = querySource === 'agent_products_error_fallback';
-      const errorSoftFallbackHasProducts =
-        isErrorSoftFallbackSource &&
-        Array.isArray(upstreamData?.products) &&
-        upstreamData.products.length > 0;
       const isAliasLookupQuery = isKnownLookupAliasQuery(policyQueryText);
-      const strictLingerieLookupSignal = Boolean(
-        detectToyOutfitIntentFromQuery(policyQueryText)?.lingerie_intent,
-      );
-      const strictLingerieIntentFromIntent = (() => {
-        const requiredCategories = Array.isArray(effectiveIntent?.category?.required)
-          ? effectiveIntent.category.required
-          : [];
-        const optionalCategories = Array.isArray(effectiveIntent?.category?.optional)
-          ? effectiveIntent.category.optional
-          : [];
-        const categorySignals = [...requiredCategories, ...optionalCategories]
-          .map((value) => String(value || '').toLowerCase())
-          .filter(Boolean);
-        if (
-          categorySignals.some((value) => value.includes('lingerie') || value.includes('underwear'))
-        ) {
-          return true;
-        }
-        const scenario = String(effectiveIntent?.scenario?.name || '').toLowerCase();
-        return scenario.includes('lingerie') || scenario.includes('underwear');
-      })();
-      const enforceStrictLingeriePolicy = strictLingerieLookupSignal || strictLingerieIntentFromIntent;
-      const upstreamStatusForPolicy = Number(
-        upstreamMetadata.upstream_status ?? fallbackMeta?.upstream_status ?? NaN,
-      );
-      const upstreamCodeForPolicy = String(
-        upstreamMetadata.upstream_error_code || fallbackMeta?.upstream_error_code || '',
-      )
-        .trim()
-        .toUpperCase();
-      const shouldApplyUpstreamQuotaClarify =
-        SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED &&
-        isErrorSoftFallbackSource &&
-        (upstreamStatusForPolicy === 429 || /RATE_LIMIT|QUOTA/.test(upstreamCodeForPolicy)) &&
-        SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES.has(queryClassFromIntent);
-	      const skipPolicyForLookupSoftFallback =
-	        !enforceStrictLingeriePolicy &&
-	        ((isErrorSoftFallbackSource &&
-	          !errorSoftFallbackHasProducts &&
-	          !shouldApplyUpstreamQuotaClarify) ||
-	        (isResolverLookupSource && isLookupPolicyQuery) ||
-	        (isCacheLookupSource && isLookupPolicyQuery) ||
-	        (querySource === 'agent_products_search' &&
-          (isAliasLookupQuery || fallbackRoute === 'invoke_primary_irrelevant_fail_open')));
+      const skipPolicyForLookupSoftFallback =
+        isErrorSoftFallbackSource ||
+        (isResolverLookupSource && isLookupPolicyQuery) ||
+        (isCacheLookupSource && isLookupPolicyQuery) ||
+        (querySource === 'agent_products_search' && isAliasLookupQuery);
 
       maybePolicy = skipPolicyForLookupSoftFallback
         ? upstreamData
@@ -18981,32 +16757,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             metadata: policyMetadata,
             rawUserQuery,
           });
-
-      if (
-        shouldApplyUpstreamQuotaClarify &&
-        maybePolicy &&
-        typeof maybePolicy === 'object' &&
-        !Array.isArray(maybePolicy)
-      ) {
-        const existingReasonCodes = Array.isArray(maybePolicy.reason_codes)
-          ? maybePolicy.reason_codes.map((code) => String(code || '').trim()).filter(Boolean)
-          : [];
-        const reasonCodes = existingReasonCodes.includes('UPSTREAM_QUOTA_EXHAUSTED')
-          ? existingReasonCodes
-          : [...existingReasonCodes, 'UPSTREAM_QUOTA_EXHAUSTED'];
-        maybePolicy = {
-          ...maybePolicy,
-          ...(reasonCodes.length ? { reason_codes: reasonCodes } : {}),
-          metadata: {
-            ...(maybePolicy.metadata &&
-            typeof maybePolicy.metadata === 'object' &&
-            !Array.isArray(maybePolicy.metadata)
-              ? maybePolicy.metadata
-              : {}),
-            upstream_quota_guarded: true,
-          },
-        };
-      }
 
       const effTarget = effectiveIntent?.target_object?.type || 'unknown';
       const productsAfterPolicy = Array.isArray(maybePolicy.products) ? maybePolicy.products : [];
@@ -19072,240 +16822,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           );
         }
       }
-
-      const searchForBackfill = effectivePayload.search || effectivePayload || {};
-      const requestedLimitForBackfill = Math.min(
-        Math.max(
-          1,
-          Number(searchForBackfill.limit || searchForBackfill.page_size || requestedFindProductsMultiLimit || 20) ||
-            20,
-        ),
-        100,
-      );
-      const strictLingerieBackfillTarget = resolveStrictLingerieTargetCount(requestedLimitForBackfill, 6);
-      const strictLingerieBackfillInStockOnly = shouldUseStrictLingerieBackfillInStockOnly();
-      const currentProductsForBackfill = Array.isArray(maybePolicy?.products) ? maybePolicy.products : [];
-      const shouldApplyStrictLingerieBackfill =
-        enforceStrictLingeriePolicy &&
-        process.env.DATABASE_URL &&
-        requestedLimitForBackfill > 0 &&
-        currentProductsForBackfill.length < strictLingerieBackfillTarget;
-      if (shouldApplyStrictLingerieBackfill) {
-        try {
-          const fallbackQueries = buildStrictLingerieFallbackQueries(rawUserQuery, effectiveIntent);
-          const fallbackMaxQueries = Math.max(
-            1,
-            Math.min(8, Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_MAX_QUERIES || 5) || 5),
-          );
-          const selectedFallbackQueries = fallbackQueries.slice(0, fallbackMaxQueries);
-          const fallbackLimitPerQuery = Math.min(
-            100,
-            Math.max(
-              strictLingerieBackfillTarget * 3,
-              Number(process.env.SEARCH_STRICT_LINGERIE_BACKFILL_FETCH_LIMIT_PER_QUERY || 80) || 80,
-            ),
-          );
-          const fallbackRawProducts = [];
-          const fallbackQueryResults = [];
-          for (const fallbackQuery of selectedFallbackQueries) {
-            const fromCache = await searchCrossMerchantFromCache(fallbackQuery, 1, fallbackLimitPerQuery, {
-              inStockOnly: strictLingerieBackfillInStockOnly,
-            });
-            const products = Array.isArray(fromCache?.products) ? fromCache.products : [];
-            fallbackQueryResults.push({
-              query: fallbackQuery,
-              count: products.length,
-              total: Number(fromCache?.total || 0),
-            });
-            fallbackRawProducts.push(...products);
-          }
-          const seenFallbackProductKeys = new Set();
-          const dedupedFallbackRawProducts = [];
-          for (const product of fallbackRawProducts) {
-            const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
-            const productId = String(product?.id || product?.product_id || product?.productId || '').trim();
-            const productTitle = String(product?.title || '').trim();
-            const dedupeKey = `${merchantId}::${productId || productTitle}`;
-            if (!dedupeKey || seenFallbackProductKeys.has(dedupeKey)) continue;
-            seenFallbackProductKeys.add(dedupeKey);
-            dedupedFallbackRawProducts.push(product);
-          }
-          const fallbackData = {
-            products: dedupedFallbackRawProducts,
-            total: dedupedFallbackRawProducts.length,
-            page: 1,
-            page_size: dedupedFallbackRawProducts.length,
-            reply: null,
-            metadata: {
-              query_source: 'cache_cross_merchant_lingerie_backfill',
-              fetched_at: new Date().toISOString(),
-              merchants_searched: null,
-            },
-          };
-          const fallbackPolicy = applyFindProductsMultiPolicy({
-            response: fallbackData,
-            intent: effectiveIntent,
-            requestPayload: {
-              ...effectivePayload,
-              search: {
-                ...(effectivePayload.search || {}),
-                query: selectedFallbackQueries[0] || rawUserQuery,
-              },
-            },
-            metadata: policyMetadata,
-            rawUserQuery,
-          });
-          const fallbackProducts = Array.isArray(fallbackPolicy?.products) ? fallbackPolicy.products : [];
-          const seenMergedProductKeys = new Set();
-          const dedupedMergeInput = [];
-          for (const product of [...currentProductsForBackfill, ...fallbackProducts]) {
-            const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
-            const productId = String(product?.id || product?.product_id || product?.productId || '').trim();
-            const productTitle = String(product?.title || '').trim();
-            const dedupeKey = `${merchantId}::${productId || productTitle}`;
-            if (!dedupeKey || seenMergedProductKeys.has(dedupeKey)) continue;
-            seenMergedProductKeys.add(dedupeKey);
-            dedupedMergeInput.push(product);
-          }
-          let mergedProducts = collapseNearDuplicateSearchProducts(dedupedMergeInput, {
-            perTitleLimit: 1,
-          });
-          let externalSeedBackfillMeta = null;
-          if (mergedProducts.length < strictLingerieBackfillTarget) {
-            const neededCount = Math.max(1, strictLingerieBackfillTarget - mergedProducts.length);
-            const externalSeedBackfill = await fetchExternalSeedSupplementFromBackend({
-              queryParams,
-              checkoutToken,
-              neededCount,
-              source: metadata?.source,
-            });
-            externalSeedBackfillMeta =
-              externalSeedBackfill?.metadata && typeof externalSeedBackfill.metadata === 'object'
-                ? externalSeedBackfill.metadata
-                : null;
-            const externalSeedProducts = Array.isArray(externalSeedBackfill?.products)
-              ? externalSeedBackfill.products
-              : [];
-            if (externalSeedProducts.length > 0) {
-              const externalSeedPolicy = applyFindProductsMultiPolicy({
-                response: {
-                  products: externalSeedProducts,
-                  total: externalSeedProducts.length,
-                  page: 1,
-                  page_size: externalSeedProducts.length,
-                  reply: null,
-                  metadata: {
-                    query_source: 'external_seed_strict_lingerie_backfill',
-                    fetched_at: new Date().toISOString(),
-                  },
-                },
-                intent: effectiveIntent,
-                requestPayload: effectivePayload,
-                metadata: policyMetadata,
-                rawUserQuery,
-              });
-              const externalSeedPolicyProducts = Array.isArray(externalSeedPolicy?.products)
-                ? externalSeedPolicy.products
-                : [];
-              if (externalSeedPolicyProducts.length > 0) {
-                const seenPostExternalMergeKeys = new Set();
-                const postExternalMergeInput = [];
-                for (const product of [...mergedProducts, ...externalSeedPolicyProducts]) {
-                  const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
-                  const productId = String(product?.id || product?.product_id || product?.productId || '').trim();
-                  const productTitle = String(product?.title || '').trim();
-                  const dedupeKey = `${merchantId}::${productId || productTitle}`;
-                  if (!dedupeKey || seenPostExternalMergeKeys.has(dedupeKey)) continue;
-                  seenPostExternalMergeKeys.add(dedupeKey);
-                  postExternalMergeInput.push(product);
-                }
-                mergedProducts = collapseNearDuplicateSearchProducts(postExternalMergeInput, {
-                  perTitleLimit: 1,
-                });
-              }
-            }
-          }
-          const addedCount = Math.max(0, mergedProducts.length - currentProductsForBackfill.length);
-          const existingPolicyMeta =
-            maybePolicy?.metadata &&
-            typeof maybePolicy.metadata === 'object' &&
-            !Array.isArray(maybePolicy.metadata)
-              ? maybePolicy.metadata
-              : {};
-          const existingSearchDecision =
-            existingPolicyMeta.search_decision &&
-            typeof existingPolicyMeta.search_decision === 'object' &&
-            !Array.isArray(existingPolicyMeta.search_decision)
-              ? existingPolicyMeta.search_decision
-              : {};
-          const existingReasonCodes = Array.isArray(existingSearchDecision.reason_codes)
-            ? existingSearchDecision.reason_codes.map((code) => String(code || '').trim()).filter(Boolean)
-            : [];
-          const updatedReasonCodes = Array.from(
-            new Set([...existingReasonCodes, 'STRICT_LINGERIE_BACKFILL_APPLIED']),
-          );
-          const existingRouteDebug =
-            existingPolicyMeta.route_debug &&
-            typeof existingPolicyMeta.route_debug === 'object' &&
-            !Array.isArray(existingPolicyMeta.route_debug)
-              ? existingPolicyMeta.route_debug
-              : {};
-          maybePolicy = {
-            ...maybePolicy,
-            ...(addedCount > 0
-              ? {
-                  products: mergedProducts,
-                  total: Math.max(
-                    Number(maybePolicy?.total || 0) || 0,
-                    Number(fallbackPolicy?.total || 0) || 0,
-                    mergedProducts.length,
-                  ),
-                  page_size: mergedProducts.length,
-                }
-              : {}),
-            metadata: {
-              ...existingPolicyMeta,
-              search_decision: {
-                ...existingSearchDecision,
-                post_candidates:
-                  addedCount > 0
-                    ? mergedProducts.length
-                    : Math.max(0, Number(existingSearchDecision.post_candidates || 0)),
-                lingerie_rescued_count:
-                  Math.max(0, Number(existingSearchDecision.lingerie_rescued_count || 0) || 0) + addedCount,
-                low_recall_reason:
-                  addedCount > 0 && mergedProducts.length >= strictLingerieBackfillTarget
-                    ? null
-                    : existingSearchDecision.low_recall_reason || 'STRICT_SCOPE_UNDERFILL',
-                reason_codes: updatedReasonCodes,
-              },
-              route_debug: {
-                ...existingRouteDebug,
-                lingerie_backfill: {
-                  applied: true,
-                  queries: selectedFallbackQueries,
-                  per_query_limit: fallbackLimitPerQuery,
-                  query_results: fallbackQueryResults,
-                  from_cache_count: dedupedFallbackRawProducts.length,
-                  from_policy_count: fallbackProducts.length,
-                  external_seed_backfill: externalSeedBackfillMeta,
-                  added_count: addedCount,
-                  target_count: strictLingerieBackfillTarget,
-                },
-              },
-            },
-          };
-        } catch (err) {
-          logger.warn(
-            { err: err?.message || String(err), source: metadata?.source },
-            'Strict lingerie backfill from cross-merchant cache failed',
-          );
-        }
-      }
     }
 
-	    if (operation === 'find_products_multi') {
-	      try {
+    if (operation === 'find_products_multi') {
+      try {
         const search = effectivePayload.search || effectivePayload || {};
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
         const reranked = await maybeRerankFindProductsMultiResponse({
@@ -19335,41 +16855,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
       } catch (err) {
         logger.warn({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
-	      }
-	    }
+      }
+    }
 
-	    if (
-	      operation === 'find_products_multi' &&
-	      Number.isFinite(Number(requestedFindProductsMultiLimit)) &&
-	      requestedFindProductsMultiLimit > 0 &&
-	      Array.isArray(maybePolicy?.products) &&
-	      maybePolicy.products.length > requestedFindProductsMultiLimit
-	    ) {
-	      const normalizedLimit = Math.max(1, Math.floor(Number(requestedFindProductsMultiLimit)));
-	      const normalizedPage = Math.max(
-	        1,
-	        Math.floor(
-	          Number.isFinite(Number(requestedFindProductsMultiPage)) && Number(requestedFindProductsMultiPage) > 0
-	            ? Number(requestedFindProductsMultiPage)
-	            : 1,
-	        ),
-	      );
-	      const paginationOffset = Math.max(0, (normalizedPage - 1) * normalizedLimit);
-	      const pagedProducts =
-	        normalizedPage > 1
-	          ? maybePolicy.products.slice(paginationOffset, paginationOffset + normalizedLimit)
-	          : maybePolicy.products.slice(0, normalizedLimit);
-	      maybePolicy = {
-	        ...maybePolicy,
-	        products: pagedProducts,
-	        page_size:
-	          Number.isFinite(Number(maybePolicy?.page_size))
-	            ? Math.min(Math.max(0, Number(maybePolicy.page_size)), normalizedLimit, pagedProducts.length)
-	            : pagedProducts.length,
-	      };
-	    }
-
-	    let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
+    let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
@@ -19404,50 +16893,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         typeof existingMeta.search_decision === 'object'
           ? existingMeta.search_decision
           : null;
-      const strictScopeFromDecision =
-        typeof searchDecision?.strict_scope === 'string' && searchDecision.strict_scope.trim()
-          ? searchDecision.strict_scope.trim().toLowerCase()
-          : null;
-      const strictLingerieIntentFromEffectiveIntent = (() => {
-        const requiredCategories = Array.isArray(effectiveIntent?.category?.required)
-          ? effectiveIntent.category.required
-          : [];
-        const optionalCategories = Array.isArray(effectiveIntent?.category?.optional)
-          ? effectiveIntent.category.optional
-          : [];
-        const categorySignals = [...requiredCategories, ...optionalCategories]
-          .map((value) => String(value || '').toLowerCase())
-          .filter(Boolean);
-        if (
-          categorySignals.some((value) => value.includes('lingerie') || value.includes('underwear'))
-        ) {
-          return true;
-        }
-        const scenario = String(effectiveIntent?.scenario?.name || '').toLowerCase();
-        return scenario.includes('lingerie') || scenario.includes('underwear');
-      })();
-      const strictLingerieTraceSignal =
-        strictScopeFromDecision === 'lingerie' ||
-        strictLingerieScopeForSearch ||
-        Boolean(detectToyOutfitIntentFromQuery(queryText)?.lingerie_intent) ||
-        strictLingerieIntentFromEffectiveIntent;
-      const upstreamProductsForTrace =
-        upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
-          ? Array.isArray(upstreamData.products)
-            ? upstreamData.products
-            : []
-          : [];
-      const strictFilteredOutFallback = Number.isFinite(Number(searchDecision?.lingerie_filtered_out))
-        ? Number(searchDecision?.lingerie_filtered_out)
-        : strictLingerieTraceSignal
-          ? Math.max(0, upstreamProductsForTrace.length - products.length)
-          : null;
-      const strictLowRecallReasonFallback =
-        typeof searchDecision?.low_recall_reason === 'string' && searchDecision.low_recall_reason.trim()
-          ? searchDecision.low_recall_reason
-          : strictLingerieTraceSignal && products.length === 0
-            ? 'NO_STRICT_LINGERIE_CANDIDATES'
-            : null;
       const isStrictEmpty =
         SEARCH_STRICT_EMPTY_ENABLED &&
         queryText.length > 0 &&
@@ -19486,8 +16931,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           };
       const resolverStage = {
         called: Boolean(shouldAttemptResolverFirst),
-        hit: Boolean(resolverShortCircuitDecision?.adopted),
-        miss: Boolean(shouldAttemptResolverFirst && !resolverShortCircuitDecision?.adopted),
+        hit: Boolean(resolverFirstResult && Number(resolverFirstResult.usableCount || 0) > 0),
+        miss: Boolean(shouldAttemptResolverFirst && (!resolverFirstResult || Number(resolverFirstResult.usableCount || 0) <= 0)),
         latency_ms: Number(resolverFirstResult?.resolve_latency_ms || resolverFirstResult?.data?.metadata?.resolve_latency_ms || 0) || null,
       };
       const upstreamStage = {
@@ -19533,64 +16978,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         searchDecision?.degrade_flags && typeof searchDecision.degrade_flags === 'object'
           ? searchDecision.degrade_flags
           : { vector_skipped: false, behavior_skipped: false, nlu_degraded: false };
-      const queryClassForMeta = String(searchDecision?.query_class || traceQueryClass || '').trim().toLowerCase();
-      const prePolicyFragranceSupplement =
-        existingMeta &&
-        typeof existingMeta === 'object' &&
-        !Array.isArray(existingMeta) &&
-        existingMeta.pre_policy_fragrance_supplement &&
-        typeof existingMeta.pre_policy_fragrance_supplement === 'object' &&
-        !Array.isArray(existingMeta.pre_policy_fragrance_supplement)
-          ? existingMeta.pre_policy_fragrance_supplement
-          : null;
-      const normalizedSourceBreakdown = normalizeSourceBreakdownForProducts(existingMeta, products);
-      const brandQueryBypassAmbiguity =
-        queryClassForMeta === 'brand' || hasBrandLikeSearchSignal(queryText);
-      const brandEntities = detectBrandAliases(queryText);
-      const brandScope = brandEntities.length > 0
-        ? (isFragranceIntentQuery(queryText) ? 'category_scoped' : 'broad')
-        : null;
-      const fragranceScope = isFragranceIntentQuery(queryText) ? 'strict_fragrance' : null;
-	      const mergedMetadataForResponse = {
-	        ...(existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta) ? existingMeta : {}),
-	        source_breakdown: normalizedSourceBreakdown,
-	        external_seed_returned_count: normalizedSourceBreakdown.external_seed_count,
-	        brand_query_bypass_ambiguity: brandQueryBypassAmbiguity,
-          brand_query_detected: brandEntities.length > 0,
-          brand_entities: brandEntities,
-          ...(brandScope ? { brand_scope: brandScope } : {}),
-	        ...(resolvedSearchProfileContext?.profile?.id
-	          ? { retrieval_profile: resolvedSearchProfileContext.profile.id }
-	          : {}),
-	        ...(resolvedSearchProfileContext?.confidence
-	          ? { profile_confidence: resolvedSearchProfileContext.confidence }
-	          : {}),
-	        ...(Array.isArray(resolvedSearchProfileContext?.rulesApplied) &&
-	        resolvedSearchProfileContext.rulesApplied.length > 0
-	          ? {
-	              rules_applied: Array.from(
-	                new Set([
-	                  ...(Array.isArray(existingMeta?.rules_applied) ? existingMeta.rules_applied : []),
-	                  ...resolvedSearchProfileContext.rulesApplied,
-	                ]),
-	              ),
-	            }
-	          : {}),
-	        ...(fragranceScope ? { fragrance_scope: fragranceScope } : {}),
-        ...(prePolicyFragranceSupplement &&
-        Array.isArray(prePolicyFragranceSupplement.fragrance_query_variants) &&
-        prePolicyFragranceSupplement.fragrance_query_variants.length > 0
-          ? { fragrance_query_variants: prePolicyFragranceSupplement.fragrance_query_variants }
-          : {}),
-        ...(prePolicyFragranceSupplement &&
-        Number.isFinite(Number(prePolicyFragranceSupplement.fragrance_filtered_out))
-          ? { fragrance_filtered_out: Number(prePolicyFragranceSupplement.fragrance_filtered_out) }
-          : {}),
-      };
-      enriched = {
-        ...enriched,
-        metadata: mergedMetadataForResponse,
-      };
 
       enriched = withSearchDiagnostics(enriched, {
         route_health: buildSearchRouteHealth({
@@ -19614,34 +17001,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           queryClass: searchDecision?.query_class || traceQueryClass,
           rewriteGate: traceRewriteGate,
           associationPlan: traceAssociationPlan,
-          slotState: searchDecision?.slot_state || null,
-          rawQueryHasScenarioSignal:
-            typeof searchDecision?.raw_query_has_scenario_signal === 'boolean'
-              ? searchDecision.raw_query_has_scenario_signal
-              : null,
-          intentScenarioName:
-            typeof searchDecision?.intent_scenario_name === 'string'
-              ? searchDecision.intent_scenario_name
-              : null,
-          associationScenarioKey:
-            typeof searchDecision?.association_scenario_key === 'string'
-              ? searchDecision.association_scenario_key
-              : null,
-          clarifyReasonBeforeDedup:
-            typeof searchDecision?.clarify_reason_before_dedup === 'string'
-              ? searchDecision.clarify_reason_before_dedup
-              : null,
-	          clarifyReasonAfterDedup:
-	            typeof searchDecision?.clarify_reason_after_dedup === 'string'
-	              ? searchDecision.clarify_reason_after_dedup
-	              : null,
-	          strictScope: strictLingerieTraceSignal ? 'lingerie' : null,
-	          strictFilteredOut: strictFilteredOutFallback,
-	          strictRescuedCount: searchDecision?.lingerie_rescued_count,
-	          lowRecallReason: strictLowRecallReasonFallback,
-	          flagsSnapshot: traceFlagsSnapshot,
-	          intent: effectiveIntent,
-	          cacheStage,
+          flagsSnapshot: traceFlagsSnapshot,
+          intent: effectiveIntent,
+          cacheStage,
           upstreamStage,
           resolverStage,
           finalDecision,
@@ -19653,15 +17015,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               strict_empty_reason: fallbackReason || 'no_candidates',
             }
           : {}),
-        resolver_short_circuit_attempted: Boolean(resolverShortCircuitDecision?.attempted),
-        resolver_short_circuit_adopted: Boolean(resolverShortCircuitDecision?.adopted),
-        resolver_short_circuit_block_reason: resolverShortCircuitDecision?.block_reason || null,
       });
     }
 
-	    return res
-	      .status(response.status)
-	      .json(withSearchProfileMetadata(enriched, resolvedSearchProfileContext));
+    return res.status(response.status).json(enriched);
 
 	  } catch (err) {
 	    if (operation === 'find_products' || operation === 'find_products_multi') {
@@ -19724,9 +17081,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             }),
           },
         );
-	        return res
-	          .status(200)
-	          .json(withSearchProfileMetadata(cacheGuardDiagnosed, resolvedSearchProfileContext));
+        return res.status(200).json(cacheGuardDiagnosed);
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
 	      const upstreamStatus =
@@ -19799,9 +17154,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           strict_empty: !strictEmptyHasClarification,
 	        ...(strictEmptyHasClarification ? {} : { strict_empty_reason: reason }),
 	      });
-		      return res
-		        .status(200)
-		        .json(withSearchProfileMetadata(diagnosed, resolvedSearchProfileContext));
+	      return res.status(200).json(diagnosed);
 	    }
 	    if (err.response) {
 	      const upstreamStatus = err.response.status || 502;
@@ -20007,8 +17360,6 @@ module.exports._debug = {
   runCreatorCatalogAutoSync,
   isCatalogSyncRetryableError,
   catalogSyncState,
-  extractProductImageCandidates,
-  normalizeProductImages,
 };
 
 if (require.main === module) {
@@ -20086,24 +17437,6 @@ if (require.main === module) {
         }
       }
     });
-
-    if (GATEWAY_SERVER_KEEP_ALIVE_ENABLED) {
-      server.keepAliveTimeout = GATEWAY_SERVER_KEEP_ALIVE_TIMEOUT_MS;
-    }
-    server.headersTimeout = Math.max(
-      Number(server.keepAliveTimeout || 0) + 1000,
-      GATEWAY_SERVER_HEADERS_TIMEOUT_MS,
-    );
-    logger.info(
-      {
-        keep_alive_enabled: GATEWAY_SERVER_KEEP_ALIVE_ENABLED,
-        keep_alive_timeout_ms: Number(server.keepAliveTimeout || 0),
-        headers_timeout_ms: Number(server.headersTimeout || 0),
-        upstream_shared_keepalive_enabled: UPSTREAM_SHARED_KEEPALIVE_ENABLED,
-        upstream_shared_keepalive_ops: Array.from(UPSTREAM_SHARED_KEEPALIVE_OPERATIONS),
-      },
-      'Gateway connection reuse settings',
-    );
 
     server.on('error', (err) => {
       logger.error({ err: err?.message || String(err), port: PORT }, 'Gateway failed to bind');
@@ -20187,19 +17520,10 @@ const UI_CHAT_SCENARIO_OPTIONS = [
 const UI_CHAT_SHOPPING_INTENT_RE =
   /(推荐|商品|买|购买|清单|套装|口红|粉底|化妆|刷|护肤|品牌|预算|travel|hiking|leash|products?|recommend|buy|shopping|gift|skincare|makeup)/i;
 
-const UI_CHAT_CLARIFY_SLOT_BY_REASON = {
-  CLARIFY_SCENARIO: 'scenario',
-  CLARIFY_CATEGORY_SCOPE: 'category',
-  CLARIFY_BEAUTY_CATEGORY: 'category',
-  CLARIFY_PET_CATEGORY: 'category',
-  CLARIFY_AMBIGUOUS_QUERY: 'category',
-  CLARIFY_SHOPPING_INTENT: 'category',
-  CLARIFY_GIFT_SCOPE: 'category',
-  CLARIFY_ATTRIBUTE: 'budget',
-  CLARIFY_BUDGET: 'budget',
-  CLARIFY_BRAND: 'brand',
-};
-const UI_CHAT_SCENARIO_CLARIFY_REASON_CODES = new Set(['CLARIFY_SCENARIO']);
+const UI_CHAT_SCENARIO_CLARIFY_REASON_CODES = new Set([
+  'CLARIFY_SCENARIO',
+  'CLARIFY_AMBIGUOUS_QUERY',
+]);
 
 function uiChatNormalizeText(input) {
   return String(input || '')
@@ -20219,55 +17543,6 @@ function uiChatExtractText(message) {
       .trim();
   }
   return '';
-}
-
-function uiChatNormalizeSlot(slot) {
-  const normalized = String(slot || '')
-    .trim()
-    .toLowerCase();
-  return ['scenario', 'category', 'budget', 'brand'].includes(normalized) ? normalized : '';
-}
-
-function uiChatSlotFromReasonCode(reasonCode) {
-  const reason = String(reasonCode || '').trim();
-  return uiChatNormalizeSlot(UI_CHAT_CLARIFY_SLOT_BY_REASON[reason] || '');
-}
-
-function uiChatSafeParseJson(value) {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  try {
-    return JSON.parse(value);
-  } catch (_) {
-    return null;
-  }
-}
-
-function uiChatGetClarificationSlot(result) {
-  const explicit = uiChatNormalizeSlot(result?.clarification?.slot);
-  if (explicit) return explicit;
-  const fromReason = uiChatSlotFromReasonCode(result?.clarification?.reason_code);
-  if (fromReason) return fromReason;
-  const traceReasonCodes = result?.metadata?.search_trace?.reason_codes;
-  if (Array.isArray(traceReasonCodes)) {
-    for (const code of traceReasonCodes) {
-      const slot = uiChatSlotFromReasonCode(code);
-      if (slot) return slot;
-    }
-  }
-  return '';
-}
-
-function uiChatCollectAskedSlots(messages) {
-  const slots = new Set();
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index];
-    if (!message || message.role !== 'tool' || message.name !== 'pivota_shopping_tool') continue;
-    const parsed = uiChatSafeParseJson(uiChatExtractText(message) || message.content);
-    if (!parsed || typeof parsed !== 'object') continue;
-    const slot = uiChatGetClarificationSlot(parsed);
-    if (slot) slots.add(slot);
-  }
-  return Array.from(slots);
 }
 
 function uiChatParseScenarioSelection(text) {
@@ -20293,89 +17568,6 @@ function uiChatFindLatestScenarioSelection(messages) {
     const option = uiChatParseScenarioSelection(text);
     if (option) return { option, index, text };
   }
-  return null;
-}
-
-function uiChatFindLatestUserMessage(messages) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role !== 'user') continue;
-    const text = uiChatExtractText(message);
-    if (!text) continue;
-    return { text, index };
-  }
-  return null;
-}
-
-function uiChatSelectClarificationOptionByText(text, options) {
-  const message = String(text || '').trim();
-  if (!message || !Array.isArray(options) || options.length === 0) return null;
-  const idxMatch = message.match(/^([1-9])(?:[\).\s、]|$)/);
-  if (idxMatch) {
-    const idx = Number(idxMatch[1]) - 1;
-    if (idx >= 0 && idx < options.length) return String(options[idx]);
-  }
-  const normalizedMessage = uiChatNormalizeText(message);
-  for (const option of options) {
-    const candidate = String(option || '').trim();
-    if (!candidate) continue;
-    const normalizedOption = uiChatNormalizeText(candidate);
-    if (!normalizedOption) continue;
-    if (
-      normalizedMessage === normalizedOption ||
-      normalizedMessage.includes(normalizedOption) ||
-      normalizedOption.includes(normalizedMessage)
-    ) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function uiChatResolveClarificationSelection(toolResult, messages) {
-  const slot = uiChatGetClarificationSlot(toolResult);
-  if (!slot) return null;
-  const latestUser = uiChatFindLatestUserMessage(messages);
-  if (!latestUser?.text) return null;
-  const options = Array.isArray(toolResult?.clarification?.options)
-    ? toolResult.clarification.options
-    : [];
-  const optionSelection = uiChatSelectClarificationOptionByText(latestUser.text, options);
-
-  if (slot === 'scenario') {
-    const scenarioOption =
-      uiChatParseScenarioSelection(latestUser.text) ||
-      uiChatParseScenarioSelection(optionSelection || '');
-    if (!scenarioOption) return null;
-    return {
-      slot,
-      value: scenarioOption.key || scenarioOption.zh || scenarioOption.en,
-      option: scenarioOption,
-      source_text: latestUser.text,
-    };
-  }
-
-  if (optionSelection) {
-    return {
-      slot,
-      value: optionSelection,
-      source_text: latestUser.text,
-    };
-  }
-
-  if (slot === 'budget') {
-    const budgetLike =
-      latestUser.text.match(/(\$|¥|€|£)?\s*\d+\s*([\-~到至–—]|to)\s*(\$|¥|€|£)?\s*\d+/i) ||
-      latestUser.text.match(/(\$|¥|€|£)\s*\d+/i);
-    if (budgetLike) {
-      return {
-        slot,
-        value: budgetLike[0].trim(),
-        source_text: latestUser.text,
-      };
-    }
-  }
-
   return null;
 }
 
@@ -20413,7 +17605,7 @@ function uiChatGetClarificationReason(result) {
   if (typeof reason === 'string' && reason.trim()) return reason.trim();
   const reasonCodes = result?.metadata?.search_trace?.reason_codes;
   if (Array.isArray(reasonCodes)) {
-    const hit = reasonCodes.find((code) => uiChatSlotFromReasonCode(code));
+    const hit = reasonCodes.find((code) => UI_CHAT_SCENARIO_CLARIFY_REASON_CODES.has(String(code || '')));
     if (hit) return String(hit);
   }
   return '';
@@ -20422,97 +17614,11 @@ function uiChatGetClarificationReason(result) {
 function uiChatIsScenarioClarification(result) {
   const finalDecision = uiChatGetFinalDecision(result);
   if (finalDecision !== 'clarify') return false;
-  const slot = uiChatGetClarificationSlot(result);
-  if (slot === 'scenario') return true;
   const reason = uiChatGetClarificationReason(result);
   if (UI_CHAT_SCENARIO_CLARIFY_REASON_CODES.has(reason)) return true;
   const question = String(result?.clarification?.question || '').trim();
   if (!question) return false;
   return /场景|scenario|prioritize|哪一类|which/i.test(question);
-}
-
-function uiChatBuildFindProductsContext(args, messages) {
-  if (!uiChatIsFindProductsMultiOperation(args)) return null;
-  const askedSlots = uiChatCollectAskedSlots(messages);
-  const latestScenarioSelection = uiChatFindLatestScenarioSelection(messages);
-  const queryText = uiChatGetFindProductsQuery(args);
-  const queryScenarioSelection = uiChatParseScenarioSelection(queryText);
-  const scenarioSelection = latestScenarioSelection?.option || queryScenarioSelection;
-  const resolvedSlots = {
-    ...(scenarioSelection
-      ? {
-          scenario: scenarioSelection.key || scenarioSelection.zh || scenarioSelection.en,
-        }
-      : {}),
-  };
-  return {
-    resolved_slots: resolvedSlots,
-    asked_slots: askedSlots,
-    clarify_budget: {
-      max_rounds: 1,
-      used_rounds: askedSlots.length,
-    },
-  };
-}
-
-function uiChatMergeFindProductsContext(existingContext, computedContext) {
-  const source =
-    existingContext && typeof existingContext === 'object' && !Array.isArray(existingContext)
-      ? existingContext
-      : {};
-  const resolvedSource =
-    source.resolved_slots && typeof source.resolved_slots === 'object' && !Array.isArray(source.resolved_slots)
-      ? source.resolved_slots
-      : {};
-  const askedSource = Array.isArray(source.asked_slots) ? source.asked_slots : [];
-  const resolvedComputed =
-    computedContext?.resolved_slots &&
-    typeof computedContext.resolved_slots === 'object' &&
-    !Array.isArray(computedContext.resolved_slots)
-      ? computedContext.resolved_slots
-      : {};
-  const askedComputed = Array.isArray(computedContext?.asked_slots) ? computedContext.asked_slots : [];
-
-  const mergedAskedSlots = Array.from(
-    new Set(
-      [...askedSource, ...askedComputed]
-        .map((slot) => uiChatNormalizeSlot(slot))
-        .filter(Boolean),
-    ),
-  );
-
-  const maxRounds = Number.isFinite(Number(source?.clarify_budget?.max_rounds))
-    ? Math.max(0, Number(source.clarify_budget.max_rounds))
-    : Number(computedContext?.clarify_budget?.max_rounds || 1);
-  const usedRoundsSource = Number.isFinite(Number(source?.clarify_budget?.used_rounds))
-    ? Math.max(0, Number(source.clarify_budget.used_rounds))
-    : 0;
-  const usedRoundsComputed = Number.isFinite(Number(computedContext?.clarify_budget?.used_rounds))
-    ? Math.max(0, Number(computedContext.clarify_budget.used_rounds))
-    : mergedAskedSlots.length;
-
-  return {
-    ...source,
-    resolved_slots: {
-      ...resolvedComputed,
-      ...resolvedSource,
-    },
-    asked_slots: mergedAskedSlots,
-    clarify_budget: {
-      max_rounds: maxRounds,
-      used_rounds: Math.max(usedRoundsSource, usedRoundsComputed),
-    },
-  };
-}
-
-function uiChatApplyFindProductsContext(args, messages) {
-  if (!uiChatIsFindProductsMultiOperation(args)) return args;
-  const nextArgs = JSON.parse(JSON.stringify(args || {}));
-  if (!nextArgs.payload || typeof nextArgs.payload !== 'object') nextArgs.payload = {};
-  const computed = uiChatBuildFindProductsContext(nextArgs, messages);
-  if (!computed) return nextArgs;
-  nextArgs.payload.context = uiChatMergeFindProductsContext(nextArgs.payload.context, computed);
-  return nextArgs;
 }
 
 function uiChatBuildLoopBreakQuery({ shoppingText, scenarioOption }) {
@@ -20532,55 +17638,32 @@ function uiChatBuildLoopBreakQuery({ shoppingText, scenarioOption }) {
 
 function uiChatBuildLoopBreakRetryArgs(args, messages, toolResult) {
   if (!uiChatIsFindProductsMultiOperation(args)) return null;
-  if (uiChatGetFinalDecision(toolResult) !== 'clarify') return null;
-  const slot = uiChatGetClarificationSlot(toolResult);
-  if (!slot) return null;
-  const selection = uiChatResolveClarificationSelection(toolResult, messages);
-  if (!selection?.value) return null;
-
-  const currentQuery = uiChatGetFindProductsQuery(args);
+  if (!uiChatIsScenarioClarification(toolResult)) return null;
+  const scenarioSelection = uiChatFindLatestScenarioSelection(messages);
+  if (!scenarioSelection) return null;
   const shoppingIntent = uiChatFindLatestShoppingIntent(messages);
-  let nextQuery = currentQuery;
-  let scenarioKey = null;
-  if (slot === 'scenario') {
-    scenarioKey = selection.option?.key || null;
-    const baseShoppingText = shoppingIntent?.text || currentQuery;
-    const builtQuery = uiChatBuildLoopBreakQuery({
-      shoppingText: baseShoppingText,
-      scenarioOption: selection.option,
-    });
-    if (builtQuery) nextQuery = builtQuery;
-  }
-
+  if (!shoppingIntent) return null;
+  const currentQuery = uiChatGetFindProductsQuery(args);
+  const nextQuery = uiChatBuildLoopBreakQuery({
+    shoppingText: shoppingIntent.text,
+    scenarioOption: scenarioSelection.option,
+  });
+  if (!nextQuery) return null;
+  if (uiChatNormalizeText(nextQuery) === uiChatNormalizeText(currentQuery)) return null;
   const nextArgs = JSON.parse(JSON.stringify(args || {}));
   if (!nextArgs.payload || typeof nextArgs.payload !== 'object') nextArgs.payload = {};
   if (!nextArgs.payload.search || typeof nextArgs.payload.search !== 'object') nextArgs.payload.search = {};
-  if (nextQuery) nextArgs.payload.search.query = nextQuery;
-  if (!nextArgs.payload.context || typeof nextArgs.payload.context !== 'object') {
-    nextArgs.payload.context = {};
-  }
-  const resolvedSlotValue =
-    slot === 'scenario'
-      ? selection.option?.key || selection.option?.zh || selection.option?.en || selection.value
-      : selection.value;
-  nextArgs.payload.context = uiChatMergeFindProductsContext(nextArgs.payload.context, {
-    resolved_slots: { [slot]: resolvedSlotValue },
-    asked_slots: slot ? [slot] : [],
-    clarify_budget: { max_rounds: 1, used_rounds: slot ? 1 : 0 },
-  });
+  nextArgs.payload.search.query = nextQuery;
   nextArgs.metadata = {
     ...(nextArgs.metadata && typeof nextArgs.metadata === 'object' ? nextArgs.metadata : {}),
-    ui_chat_loop_break: 'slot_selection_retry',
-    ui_chat_loop_break_slot: slot,
-    ...(scenarioKey ? { ui_chat_loop_break_scenario: scenarioKey } : {}),
+    ui_chat_loop_break: 'scenario_selection_retry',
+    ui_chat_loop_break_scenario: scenarioSelection.option.key,
   };
   return {
     nextArgs,
     nextQuery,
-    slot,
-    scenario: scenarioKey,
-    selectedValue: resolvedSlotValue,
-    baseQuery: shoppingIntent?.text || currentQuery || selection.source_text,
+    scenario: scenarioSelection.option.key,
+    baseQuery: shoppingIntent.text,
   };
 }
 
@@ -20676,8 +17759,6 @@ async function runAgentWithTools(messages) {
           throw e;
         }
 
-        args = uiChatApplyFindProductsContext(args, messages);
-
         logger.info({ tool: name, args }, 'Calling Pivota tool via gateway');
 
          // Loop detection: same tool + args repeated too many times.
@@ -20706,17 +17787,14 @@ async function runAgentWithTools(messages) {
         if (loopBreakRetry) {
           logger.info(
             {
-              slot: loopBreakRetry.slot,
               scenario: loopBreakRetry.scenario,
-              selectedValue: loopBreakRetry.selectedValue,
               baseQuery: loopBreakRetry.baseQuery,
               nextQuery: loopBreakRetry.nextQuery,
             },
             'Applying UI chat clarify loop-break retry'
           );
           try {
-            const retryArgsWithContext = uiChatApplyFindProductsContext(loopBreakRetry.nextArgs, messages);
-            const retried = await callPivotaToolViaGateway(retryArgsWithContext);
+            const retried = await callPivotaToolViaGateway(loopBreakRetry.nextArgs);
             if (uiChatShouldUseRetryResult(toolResult, retried)) {
               toolResult = retried;
               if (toolResult && typeof toolResult === 'object') {
@@ -20726,9 +17804,7 @@ async function runAgentWithTools(messages) {
                     : {}),
                   ui_chat_loop_break: {
                     applied: true,
-                    slot: loopBreakRetry.slot,
                     scenario: loopBreakRetry.scenario,
-                    selected_value: loopBreakRetry.selectedValue,
                     base_query: loopBreakRetry.baseQuery,
                     enriched_query: loopBreakRetry.nextQuery,
                   },
@@ -20739,7 +17815,6 @@ async function runAgentWithTools(messages) {
             logger.warn(
               {
                 err: retryError?.message || String(retryError),
-                slot: loopBreakRetry.slot,
                 scenario: loopBreakRetry.scenario,
                 nextQuery: loopBreakRetry.nextQuery,
               },

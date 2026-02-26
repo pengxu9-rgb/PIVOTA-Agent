@@ -2,18 +2,16 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
-const { buildClarification, hasAnyScenarioSignal, hasSpecificScenario } = require('./clarification');
+const { buildClarification } = require('./clarification');
 const { buildScenarioAssociationPlan } = require('./scenarioAssociation');
-const { composeReplyWithContext } = require('./replyComposer');
 const {
-  recordFpmClarifyReason,
-  recordFpmRepeatedSlotClarify,
-  recordFpmContextFailOpen,
-  recordFpmProductsAfterClarify,
-} = require('../auroraBff/visionMetrics');
+  detectBrandEntities,
+  buildBrandQueryVariants,
+  hasExplicitCategoryHint,
+} = require('./brandLexicon');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v42';
+const POLICY_VERSION = 'find_products_multi_policy_v39';
 const STRATEGY_VERSION = 'ambiguity_gate_v2';
 const SEARCH_AMBIGUITY_GATE_ENABLED =
   String(process.env.SEARCH_AMBIGUITY_GATE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -75,10 +73,6 @@ const SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY = Math.max(
 );
 const SEARCH_DOMAIN_CONDENSER_ENABLED =
   String(process.env.SEARCH_DOMAIN_CONDENSER_ENABLED || 'false').toLowerCase() === 'true';
-const SEARCH_DOMAIN_CONDENSER_PRECHECK =
-  String(process.env.SEARCH_DOMAIN_CONDENSER_PRECHECK || 'true').toLowerCase() !== 'false';
-const SEARCH_DOMAIN_CONDENSER_RAW_FALLBACK =
-  String(process.env.SEARCH_DOMAIN_CONDENSER_RAW_FALLBACK || 'true').toLowerCase() !== 'false';
 const SEARCH_DOMAIN_CONDENSER_ENTROPY_TH = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_DOMAIN_CONDENSER_ENTROPY_TH || 0.8)),
@@ -117,26 +111,6 @@ const BEAUTY_DIVERSITY_TOOLS_MAX_RATIO = Math.max(
 const BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE =
   String(process.env.FIND_PRODUCTS_MULTI_BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE || 'true').toLowerCase() !==
   'false';
-const SEARCH_FAIL_OPEN_PRE_NONEMPTY_ENABLED =
-  String(process.env.SEARCH_FAIL_OPEN_PRE_NONEMPTY_ENABLED || 'true').toLowerCase() !== 'false';
-const SEARCH_FAIL_OPEN_PRE_NONEMPTY_MIN = Math.max(
-  1,
-  Number(process.env.SEARCH_FAIL_OPEN_PRE_NONEMPTY_MIN || 3) || 3,
-);
-const SEARCH_FAIL_OPEN_PRE_NONEMPTY_LIMIT = Math.max(
-  1,
-  Number(process.env.SEARCH_FAIL_OPEN_PRE_NONEMPTY_LIMIT || 8) || 8,
-);
-const SEARCH_CONTEXT_FAIL_OPEN_ENABLED =
-  String(process.env.SEARCH_CONTEXT_FAIL_OPEN_ENABLED || 'true').toLowerCase() !== 'false';
-const SEARCH_CLARIFY_MAX_ROUNDS = Math.max(
-  0,
-  Number(process.env.SEARCH_CLARIFY_MAX_ROUNDS || 1) || 1,
-);
-const STRICT_LINGERIE_MIN_RECALL_TARGET = Math.max(
-  1,
-  Number(process.env.SEARCH_STRICT_LINGERIE_MIN_RECALL_TARGET || 4) || 4,
-);
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -179,8 +153,6 @@ const REASON_CODES = {
 
   ADULT_UNREQUESTED: 'ADULT_UNREQUESTED',
   ADULT_NEEDS_CONFIRMATION: 'ADULT_NEEDS_CONFIRMATION',
-  NOT_LINGERIE_PRODUCT: 'NOT_LINGERIE_PRODUCT',
-  LINGERIE_RELAXED_MATCH: 'LINGERIE_RELAXED_MATCH',
   NOT_TOOL_PRODUCT: 'NOT_TOOL_PRODUCT',
   NOT_EYE_BRUSH_PRODUCT: 'NOT_EYE_BRUSH_PRODUCT',
   COMPAT_INCOMPATIBLE: 'COMPAT_INCOMPATIBLE',
@@ -212,141 +184,10 @@ const LINGERIE_PATTERNS = [
   /下着|ブラ|パンティ|ランジェリー/,
 ];
 
-const LINGERIE_STRICT_QUERY_PATTERNS = [
-  /\b(lingerie|underwear)\b/i,
-  /\b(bra|bras)\b/i,
-  /\b(panty|panties|thong|briefs)\b/i,
-  /\b(lencer[ií]a|ropa\s+interior|sujetador|bragas|tanga)\b/i,
-  /\b(sous[-\s]?v[eê]tement|soutien[-\s]?gorge|culotte|string)\b/i,
-  /内衣|文胸|胸罩|丁字裤/,
-  /下着|ブラ|パンティ|ランジェリー/,
-];
-
-const LINGERIE_RELAXED_PRODUCT_PATTERNS = [
-  /\b(bralette|bustier|corset|corsetry|bodysuit|body\s*suit|teddy|chemise|babydoll|garter|garter\s*belt|shapewear|slip|cami|camisole)\b/i,
-  /\b(nightwear|sleepwear|nightdress|nightgown|intimate\s*(wear|set)|lingerie\s*(set|bodysuit|corset|bralette|chemise|teddy|babydoll|slip))\b/i,
-  /\b(ropa\s+interior|lencer[ií]a|cors[eé]|faja|camisola|babydoll)\b/i,
-  /\b(nuisette|gu[eê]pi[eè]re|corset|porte[-\s]?jarretelles|lingerie)\b/i,
-  /吊带|吊帶|塑身|束身|马甲|馬甲|连体衣|連體衣|睡裙|睡衣套装|睡衣套裝|蕾丝内衣|蕾絲內衣/,
-  /ボディスーツ|ブラレット|ビスチェ|コルセット|テディ|キャミ|キャミソール|ベビードール|ガーター|シェイプウェア|スリップ|ナイトウェア/,
-];
-
-const HUMAN_APPAREL_PATTERNS = [
-  /\b(women'?s?\s+clothing|women'?s?\s+apparel|clothing|apparel|outfit)\b/i,
-  /\b(dress|skirt|blouse|shirt|top|pants|jeans|hoodie|sweater|cardigan|nightwear|sleepwear|pajamas?)\b/i,
-  /\b(ropa|vestido|falda|blusa|camisa|pantalones?|pijama)\b/i,
-  /\b(v[eê]tement|robe|jupe|chemise|pantalon|pyjama)\b/i,
-  /衣服|穿搭|女装|女裝|裙|连衣裙|連衣裙|上衣|裤|睡衣/,
-  /レディース|服|ワンピース|スカート|トップス|パジャマ/,
-];
-
-function hasPatternHit(text, patterns) {
-  const value = String(text || '').trim();
-  if (!value) return false;
-  const list = Array.isArray(patterns) ? patterns : [];
-  return list.some((pattern) => {
-    if (!pattern) return false;
-    if (pattern instanceof RegExp) return pattern.test(value);
-    return value.toLowerCase().includes(String(pattern).toLowerCase());
-  });
-}
-
-function hasLingerieSignalText(text) {
-  return hasPatternHit(text, LINGERIE_STRICT_QUERY_PATTERNS);
-}
-
-function hasHumanApparelSignalText(text) {
-  return (
-    hasLingerieSignalText(text) ||
-    hasPatternHit(text, HUMAN_APPAREL_PATTERNS) ||
-    hasPatternHit(text, LINGERIE_RELAXED_PRODUCT_PATTERNS)
-  );
-}
-
 function includesAny(haystack, needles) {
   if (!haystack) return false;
   const lowered = String(haystack).toLowerCase();
   return needles.some((k) => lowered.includes(String(k).toLowerCase()));
-}
-
-const CLARIFICATION_REASON_TO_SLOT = {
-  CLARIFY_SCENARIO: 'scenario',
-  CLARIFY_CATEGORY_SCOPE: 'category',
-  CLARIFY_BEAUTY_CATEGORY: 'category',
-  CLARIFY_PET_CATEGORY: 'category',
-  CLARIFY_AMBIGUOUS_QUERY: 'category',
-  CLARIFY_SHOPPING_INTENT: 'category',
-  CLARIFY_GIFT_SCOPE: 'category',
-  CLARIFY_ATTRIBUTE: 'budget',
-  CLARIFY_BUDGET: 'budget',
-  CLARIFY_BRAND: 'brand',
-};
-
-const VALID_CLARIFY_SLOTS = new Set(['scenario', 'category', 'budget', 'brand']);
-
-function normalizeClarifySlot(value) {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase();
-  return VALID_CLARIFY_SLOTS.has(normalized) ? normalized : '';
-}
-
-function slotFromReasonCode(reasonCode) {
-  const key = String(reasonCode || '').trim();
-  return normalizeClarifySlot(CLARIFICATION_REASON_TO_SLOT[key] || '');
-}
-
-function normalizeSlotStateFromPayload(payload, intent, rawQuery = '', associationPlan = null) {
-  const rawContext =
-    payload?.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
-      ? payload.context
-      : {};
-  const rawResolved =
-    rawContext.resolved_slots &&
-    typeof rawContext.resolved_slots === 'object' &&
-    !Array.isArray(rawContext.resolved_slots)
-      ? rawContext.resolved_slots
-      : {};
-
-  const resolvedSlots = {
-    scenario:
-      String(rawResolved.scenario || '').trim() ||
-      (hasSpecificScenario({ intent, rawQuery, associationPlan }) ? String(intent?.scenario?.name || 'scenario') : ''),
-    category: String(rawResolved.category || '').trim(),
-    budget: String(rawResolved.budget || '').trim(),
-    brand: String(rawResolved.brand || '').trim(),
-  };
-
-  const askedSlotsRaw = Array.isArray(rawContext.asked_slots) ? rawContext.asked_slots : [];
-  const askedSlots = Array.from(
-    new Set(
-      askedSlotsRaw
-        .map((slot) => normalizeClarifySlot(slot))
-        .filter(Boolean),
-    ),
-  );
-
-  const clarifyBudgetRaw =
-    rawContext.clarify_budget &&
-    typeof rawContext.clarify_budget === 'object' &&
-    !Array.isArray(rawContext.clarify_budget)
-      ? rawContext.clarify_budget
-      : {};
-  const maxRounds = Number.isFinite(Number(clarifyBudgetRaw.max_rounds))
-    ? Math.max(0, Number(clarifyBudgetRaw.max_rounds))
-    : SEARCH_CLARIFY_MAX_ROUNDS;
-  const usedRounds = Number.isFinite(Number(clarifyBudgetRaw.used_rounds))
-    ? Math.max(0, Number(clarifyBudgetRaw.used_rounds))
-    : askedSlots.length;
-
-  return {
-    resolved_slots: resolvedSlots,
-    asked_slots: askedSlots,
-    clarify_budget: {
-      max_rounds: maxRounds,
-      used_rounds: usedRounds,
-    },
-  };
 }
 
 function detectAdultIntentStrength(rawQuery) {
@@ -382,42 +223,6 @@ function isLingerieLikeProduct(product) {
   const text = buildProductText(product);
   if (!text) return false;
   return LINGERIE_PATTERNS.some((re) => re.test(text));
-}
-
-function isLingerieRelaxedCandidate(product) {
-  const text = buildProductText(product);
-  if (!text) return false;
-  if (isLingerieLikeProduct(product)) return true;
-  if (!LINGERIE_RELAXED_PRODUCT_PATTERNS.some((re) => re.test(text))) return false;
-  if (isBeautyToolLikeProduct(product)) return false;
-  if (hasPetSignalInProduct(product)) return false;
-  if (isToyLikeText(text)) return false;
-  return inferProductDomainKey(product) === 'human_apparel';
-}
-
-function isStrictLingerieAllowedCandidate(product) {
-  if (isLingerieLikeProduct(product)) return true;
-  const text = buildProductText(product);
-  if (!text) return false;
-  if (isBeautyToolLikeProduct(product)) return false;
-  if (hasPetSignalInProduct(product)) return false;
-  if (isToyLikeText(text)) return false;
-  if (isLingerieRelaxedCandidate(product)) return true;
-  return inferProductDomainKey(product) === 'human_apparel';
-}
-
-function isStrictLingerieIntent(intent, rawQuery = '') {
-  const requiredCategories = Array.isArray(intent?.category?.required) ? intent.category.required : [];
-  const optionalCategories = Array.isArray(intent?.category?.optional) ? intent.category.optional : [];
-  const categorySignals = [...requiredCategories, ...optionalCategories]
-    .map((item) => String(item || '').toLowerCase())
-    .filter(Boolean);
-  if (categorySignals.some((item) => item.includes('lingerie') || item.includes('underwear'))) {
-    return true;
-  }
-  const scenario = String(intent?.scenario?.name || '').toLowerCase();
-  if (scenario.includes('lingerie') || scenario.includes('underwear')) return true;
-  return hasLingerieSignalText(rawQuery);
 }
 
 function isBeautyToolLikeProduct(product) {
@@ -568,9 +373,6 @@ function buildAnchorAliasTerms(rawQuery, intent, queryClass) {
 
   if (detectLeashSignal(q)) {
     terms.push('dog leash', 'pet leash', 'dog collar', 'dog harness', 'lead');
-  }
-  if (/香水|香氛|古龙|古龍|perfume|fragrance|cologne|body mist|eau de parfum|eau de toilette/i.test(q)) {
-    terms.push('perfume', 'fragrance', 'cologne', 'body mist', 'parfum');
   }
   if (/\b(makeup brush|foundation brush|powder brush|brush set)\b/i.test(q) || /化妆刷|化妝刷|刷具|粉底刷|散粉刷/.test(q)) {
     terms.push('makeup brush', 'foundation brush', 'powder brush', 'brush set');
@@ -905,12 +707,11 @@ function clamp01(n) {
   return Math.max(0, Math.min(1, n));
 }
 
-function canonicalizeQueryClass(value) {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, '_');
-  if (!normalized) return null;
+function normalizeQueryClass(value, options = {}) {
+  const defaultValue = Object.prototype.hasOwnProperty.call(options, 'defaultValue')
+    ? options.defaultValue
+    : 'exploratory';
+  const normalized = String(value || '').trim().toLowerCase();
   if (
     [
       'lookup',
@@ -921,62 +722,41 @@ function canonicalizeQueryClass(value) {
       'gift',
       'exploratory',
       'non_shopping',
-      'nonshopping',
     ].includes(normalized)
   ) {
-    return normalized === 'nonshopping' ? 'non_shopping' : normalized;
+    return normalized;
   }
-  if (normalized.startsWith('category')) return 'category';
-  if (normalized.startsWith('scenario')) return 'scenario';
-  if (normalized.startsWith('mission')) return 'mission';
-  if (normalized.startsWith('attr')) return 'attribute';
-  if (normalized.startsWith('gift')) return 'gift';
-  if (normalized.startsWith('explor')) return 'exploratory';
-  if (normalized.startsWith('non_shop')) return 'non_shopping';
-  if (normalized.includes('lookup') || normalized === 'brand' || normalized === 'sku') return 'lookup';
-  return null;
-}
-
-function normalizeQueryClass(value, options = {}) {
-  const defaultValue = Object.prototype.hasOwnProperty.call(options, 'defaultValue')
-    ? options.defaultValue
-    : 'exploratory';
-  const normalized = canonicalizeQueryClass(value);
-  if (normalized) return normalized;
   if (defaultValue == null) return null;
-  const normalizedDefault = canonicalizeQueryClass(defaultValue);
-  if (normalizedDefault) return normalizedDefault;
+  const normalizedDefault = String(defaultValue || '').trim().toLowerCase();
+  if (
+    [
+      'lookup',
+      'category',
+      'attribute',
+      'mission',
+      'scenario',
+      'gift',
+      'exploratory',
+      'non_shopping',
+    ].includes(normalizedDefault)
+  ) {
+    return normalizedDefault;
+  }
   return 'exploratory';
-}
-
-function hasDirectCategorySignal(query) {
-  const q = String(query || '').toLowerCase();
-  if (!q) return false;
-  return /香水|香氛|古龙|古龍|香氛喷雾|perfume|fragrance|cologne|body\s*mist|parfum|eau de parfum|eau de toilette|fragancia|colonia|フレグランス|コロン/.test(
-    q,
-  );
-}
-
-function hasFragranceBrandSignal(query) {
-  const q = String(query || '').toLowerCase();
-  if (!q) return false;
-  return /\b(tom\s*ford|jo\s*malone|diptyque|byredo|le\s*labo|chanel|dior|ysl|yves\s*saint\s*laurent|armani|hermes|gucci|bvlgari|burberry|versace|creed|kilian|amouage)\b/.test(
-    q,
-  );
 }
 
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   const explicit = normalizeQueryClass(intent?.query_class, { defaultValue: null });
-  const query = String(rawQuery || '').toLowerCase();
-  const hasPriceConstraint =
-    intent?.hard_constraints?.price &&
-    (intent.hard_constraints.price.min != null || intent.hard_constraints.price.max != null);
-  if (explicit && explicit !== 'exploratory') return explicit;
+  if (explicit) return explicit;
 
   const scenarioName = String(intent?.scenario?.name || '').toLowerCase();
   const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
   const targetType = String(intent?.target_object?.type || '').toLowerCase();
   const categoryRequired = Array.isArray(intent?.category?.required) ? intent.category.required : [];
+  const query = String(rawQuery || '').toLowerCase();
+  const hasPriceConstraint =
+    intent?.hard_constraints?.price &&
+    (intent.hard_constraints.price.min != null || intent.hard_constraints.price.max != null);
 
   if (
     /how to|tutorial|guide|return policy|refund policy|after sales|怎么用|教程|退货|售后/.test(query)
@@ -995,6 +775,12 @@ function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
     return 'scenario';
   }
   if (
+    detectBrandEntities(rawQuery, { candidateProducts: [] }).brand_like &&
+    !hasExplicitCategoryHint(rawQuery, intent)
+  ) {
+    return 'lookup';
+  }
+  if (
     /\bsku\b|\bmodel\b|型号|型號/.test(query) ||
     /\b[a-z]{1,6}\d{2,}\b/i.test(query) ||
     (/^(ipsa|茵芙莎|winona|薇诺娜|the ordinary|sk[\s-]?ii)$/i.test(String(rawQuery || '').trim()) &&
@@ -1002,20 +788,12 @@ function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   ) {
     return 'lookup';
   }
-  if (hasFragranceBrandSignal(rawQuery)) return 'lookup';
-  if (
-    hasPriceConstraint ||
-    /预算|預算|以内|以内|以上|不超过|under|above|at least|waterproof|windproof|fragrance[-\s]?free/.test(
-      query,
-    )
-  ) {
+  if (scenarioName === 'discovery' || scenarioName === 'browse') return 'exploratory';
+  if (hasPriceConstraint || /预算|預算|以内|以内|以上|不超过|under|above|at least|waterproof|windproof|fragrance/.test(query)) {
     return 'attribute';
   }
-  if (hasDirectCategorySignal(query)) return 'category';
   if (categoryRequired.length > 0) return 'category';
-  if (scenarioName === 'discovery' || scenarioName === 'browse') return 'exploratory';
   if (scenarioName && scenarioName !== 'general') return 'scenario';
-  if (explicit) return explicit;
   if ((primaryDomain === 'other' && targetType === 'unknown') || !rawQuery) return 'exploratory';
   return 'category';
 }
@@ -1122,13 +900,7 @@ function inferSearchDomainKey(intent, rawQuery) {
   const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
   const query = String(rawQuery || '').toLowerCase();
   if (target === 'pet') return 'pet';
-  if (primaryDomain === 'human_apparel') return 'human_apparel';
-  if (hasLingerieSignalText(query)) return 'human_apparel';
-  if (target === 'human' && hasHumanApparelSignalText(query)) return 'human_apparel';
   if (primaryDomain === 'beauty') return 'beauty';
-  if (/香水|香氛|古龙|古龍|perfume|fragrance|cologne|body\s*mist|eau de parfum|eau de toilette/.test(query)) {
-    return 'beauty';
-  }
   if (
     /travel|trip|business trip|packing|luggage|toiletry|出差|旅行|旅游|差旅/.test(query)
   ) {
@@ -1141,34 +913,15 @@ function inferSearchDomainKey(intent, rawQuery) {
   return 'general';
 }
 
-function readPivotaTagValue(value) {
-  if (value == null) return '';
-  if (typeof value === 'string') return value.toLowerCase();
-  if (typeof value === 'object' && !Array.isArray(value)) {
-    if (typeof value.value === 'string') return value.value.toLowerCase();
-    if (typeof value.name === 'string') return value.name.toLowerCase();
-  }
-  return '';
-}
-
 function inferProductDomainKey(product) {
-  const pivotaDomain = readPivotaTagValue(
-    product?.attributes?.pivota?.domain || product?.attributes?.pivota?.category_domain,
-  );
+  const pivotaDomain = String(product?.attributes?.pivota?.domain || '').toLowerCase();
   if (pivotaDomain) {
-    if (pivotaDomain === 'human_apparel' || pivotaDomain === 'apparel' || pivotaDomain === 'fashion' || pivotaDomain === 'clothing') {
-      return 'human_apparel';
-    }
     if (pivotaDomain === 'beauty') return 'beauty';
     if (pivotaDomain === 'pet' || pivotaDomain === 'pet_supplies') return 'pet';
     if (pivotaDomain === 'travel') return 'travel';
     if (pivotaDomain === 'hiking' || pivotaDomain === 'outdoor') return 'hiking';
     if (pivotaDomain === 'sports_outdoor') {
-      const target = readPivotaTagValue(
-        product?.attributes?.pivota?.target_object ||
-          product?.attributes?.pivota?.target ||
-          product?.attributes?.pivota?.target_object_type,
-      );
+      const target = String(product?.attributes?.pivota?.target_object || '').toLowerCase();
       if (target === 'pet') return 'pet';
       const text = buildProductText(product);
       if (
@@ -1195,14 +948,9 @@ function inferProductDomainKey(product) {
   ) {
     return 'pet';
   }
-  if (hasHumanApparelSignalText(text)) {
-    return 'human_apparel';
-  }
   if (
-    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic|perfume|fragrance|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(
-      text,
-    ) ||
-    /化妆|美妆|护肤|精华|口红|粉底|防晒|香水|香氛|古龙|古龍/.test(text)
+    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
+    /化妆|美妆|护肤|精华|口红|粉底|防晒/.test(text)
   ) {
     return 'beauty';
   }
@@ -1262,7 +1010,6 @@ function inferSuperDomainKey(domainKey) {
   const key = String(domainKey || '').toLowerCase();
   if (key === 'beauty') return 'beauty';
   if (key === 'pet') return 'pet';
-  if (key === 'human_apparel') return 'apparel';
   if (key === 'hiking') return 'outdoor';
   if (key === 'travel') return 'travel';
   return 'general';
@@ -1272,9 +1019,7 @@ function inferSuperDomainFromToken(token) {
   const t = String(token || '').toLowerCase();
   if (!t) return null;
   if (
-    /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|perfume|fragrance|cologne|body\s*mist|parfum|eau|化妆|美妆|护肤|口红|粉底|眼影|睫毛|香水|香氛|古龙|古龍)/.test(
-      t,
-    )
+    /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|化妆|美妆|护肤|口红|粉底|眼影|睫毛)/.test(t)
   ) {
     return 'beauty';
   }
@@ -1320,42 +1065,6 @@ function resolveDomainCondenserTargetSuperDomain({ intent, rawQuery, anchorToken
   const inferredDomain = inferSearchDomainKey(intent, rawQuery);
   const inferredSuper = inferSuperDomainKey(inferredDomain);
   if (inferredSuper !== 'general') return inferredSuper;
-  if (SEARCH_DOMAIN_CONDENSER_RAW_FALLBACK) {
-    const normalizedQuery = String(rawQuery || '').toLowerCase();
-    if (
-      /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|perfume|fragrance|cologne|body\s*mist|parfum|eau|化妆|化妝|美妆|美妝|护肤|護膚|口红|口紅|粉底|眼影|约会|約會|妆|妝|香水|香氛|古龙|古龍)/.test(
-        normalizedQuery,
-      )
-    ) {
-      return 'beauty';
-    }
-    if (
-      /(travel|trip|business|packing|luggage|toiletry|adapter|carryon|carry-on|出差|旅行|差旅|行李|分装|分裝|登机|登機)/.test(
-        normalizedQuery,
-      )
-    ) {
-      return 'travel';
-    }
-    if (
-      /(hiking|outdoor|camping|trekking|trail|backpack|hydration|pole|徒步|登山|露营|露營|户外|戶外)/.test(
-        normalizedQuery,
-      )
-    ) {
-      return 'outdoor';
-    }
-    if (
-      /(dog|cat|pet|leash|harness|collar|puppy|kitten|宠物|寵物|狗链|狗鏈|牵引|牽引|背带|背帶|项圈|項圈|遛狗)/.test(
-        normalizedQuery,
-      )
-    ) {
-      return 'pet';
-    }
-    const scenarioName = String(intent?.scenario?.name || '').toLowerCase();
-    if (/date|beauty|makeup|party|wedding|interview/.test(scenarioName)) return 'beauty';
-    if (/trip|travel|business/.test(scenarioName)) return 'travel';
-    if (/hiking|outdoor|camping|trail|trek/.test(scenarioName)) return 'outdoor';
-    if (/pet|dog|cat/.test(scenarioName)) return 'pet';
-  }
   const primary = inferSuperDomainKey(intent?.primary_domain);
   return primary === 'general' ? null : primary;
 }
@@ -1374,42 +1083,31 @@ function applyScenarioDomainCondenser({
   const normalizedClass = normalizeQueryClass(queryClass ?? intent?.query_class, {
     defaultValue: null,
   });
-  const sourceCandidates = Number.isFinite(Number(sourceCandidateCount))
-    ? Number(sourceCandidateCount)
-    : Math.max(list.length, fallbackList.length);
-  const triggerPool = SEARCH_DOMAIN_CONDENSER_PRECHECK
-    ? (list.length > 0 ? list : fallbackList)
-    : list;
-  const entropyPre = computeDomainEntropy(triggerPool);
   const debug = {
     enabled: SEARCH_DOMAIN_CONDENSER_ENABLED,
     applied: false,
     query_class: normalizedClass,
-    source_candidates: sourceCandidates,
-    source_candidates_hint: Number.isFinite(Number(sourceCandidateCount))
+    source_candidates: Number.isFinite(Number(sourceCandidateCount))
       ? Number(sourceCandidateCount)
-      : null,
+      : Math.max(list.length, fallbackList.length),
     candidates_before: list.length,
-    cands_before: list.length,
-    entropy_before: entropyPre,
-    domain_entropy_pre: entropyPre,
+    entropy_before: computeDomainEntropy(list),
     min_candidates_before: SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE,
     min_candidates_after: SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER,
     entropy_threshold: SEARCH_DOMAIN_CONDENSER_ENTROPY_TH,
-    precheck_enabled: SEARCH_DOMAIN_CONDENSER_PRECHECK,
   };
   if (!SEARCH_DOMAIN_CONDENSER_ENABLED) {
     return { products: list, debug: { ...debug, reason: 'disabled' } };
   }
-  if (!['scenario', 'mission', 'category'].includes(String(normalizedClass || ''))) {
+  if (!['scenario', 'mission'].includes(String(normalizedClass || ''))) {
     return { products: list, debug: { ...debug, reason: 'query_class_not_supported' } };
   }
   const effectiveSourceCount = debug.source_candidates;
-  const triggerByEmpty = list.length === 0 && effectiveSourceCount > 0;
+  const triggerByEmpty = list.length === 0 && effectiveSourceCount >= SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE;
   const triggerByEntropy =
-    triggerPool.length > 0 &&
+    list.length > 0 &&
     effectiveSourceCount >= SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE &&
-    entropyPre >= SEARCH_DOMAIN_CONDENSER_ENTROPY_TH;
+    debug.entropy_before >= SEARCH_DOMAIN_CONDENSER_ENTROPY_TH;
   if (!triggerByEmpty && !triggerByEntropy) {
     return {
       products: list,
@@ -1441,15 +1139,15 @@ function applyScenarioDomainCondenser({
     ],
     40,
   );
-  const useTaxonomyGuard = allowTokens.length > 0;
+  if (!allowTokens.length) {
+    return { products: list, debug: { ...debug, reason: 'allow_tokens_empty', target_super_domain: targetSuperDomain } };
+  }
   const condensed = [];
   for (const product of pool) {
     const productDomain = inferProductDomainKey(product);
     const productSuperDomain = inferSuperDomainKey(productDomain);
-    const taxonomyDistance = useTaxonomyGuard
-      ? computeTaxonomyDistanceToAllowSet(product, allowTokens)
-      : null;
-    const nearTaxonomy = useTaxonomyGuard ? taxonomyDistance <= 1 : true;
+    const taxonomyDistance = computeTaxonomyDistanceToAllowSet(product, allowTokens);
+    const nearTaxonomy = taxonomyDistance <= 1;
     const superDomainMatch =
       productSuperDomain === targetSuperDomain ||
       (productSuperDomain === 'general' && nearTaxonomy);
@@ -1464,9 +1162,7 @@ function applyScenarioDomainCondenser({
         reason: 'insufficient_condensed_candidates',
         target_super_domain: targetSuperDomain,
         candidates_after: condensed.length,
-        cands_after: condensed.length,
         entropy_after: computeDomainEntropy(condensed),
-        allow_tokens_count: allowTokens.length,
       },
     };
   }
@@ -1478,13 +1174,9 @@ function applyScenarioDomainCondenser({
       reason: triggerByEmpty ? 'applied_on_empty_candidates' : 'applied_on_high_entropy',
       target_super_domain: targetSuperDomain,
       candidates_after: condensed.length,
-      cands_after: condensed.length,
       entropy_after: computeDomainEntropy(condensed),
-      domain_entropy_post: computeDomainEntropy(condensed),
       trigger_by_empty: triggerByEmpty,
       trigger_by_entropy: triggerByEntropy,
-      allow_tokens_count: allowTokens.length,
-      fallback_pool_used: list.length === 0 && fallbackList.length > 0,
     },
   };
 }
@@ -1653,7 +1345,6 @@ function matchesDomainAllowlist(product, domainKey, options = {}) {
   let strictMatch = false;
   if (domainKey === 'pet') strictMatch = productDomain === 'pet';
   else if (domainKey === 'beauty') strictMatch = productDomain === 'beauty';
-  else if (domainKey === 'human_apparel') strictMatch = productDomain === 'human_apparel';
   else if (domainKey === 'travel') strictMatch = productDomain === 'travel';
   else if (domainKey === 'hiking') strictMatch = productDomain === 'hiking';
   else strictMatch = true;
@@ -1813,6 +1504,24 @@ function setResponseProductList(response, key, list) {
   if (key === 'data.products') return { ...response, data: { ...(response.data || {}), products: list } };
   if (key === 'output.products') return { ...response, output: { ...(response.output || {}), products: list } };
   return response;
+}
+
+function syncResponsePaginationCounts(response, listCount) {
+  if (!response || typeof response !== 'object') return response;
+  const count = Math.max(0, Number(listCount || 0) || 0);
+  const next = { ...response };
+
+  if (typeof next.total === 'number') next.total = count;
+  if (typeof next.page_size === 'number') next.page_size = count;
+
+  if (next.pagination && typeof next.pagination === 'object' && !Array.isArray(next.pagination)) {
+    next.pagination = {
+      ...next.pagination,
+      ...(typeof next.pagination.total_count === 'number' ? { total_count: count } : {}),
+    };
+  }
+
+  return next;
 }
 
 function productHasCategorySignal(product, requiredCategories) {
@@ -2029,7 +1738,6 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
   const target = intent?.target_object?.type || 'unknown';
   const targetConf = Number(intent?.confidence?.target_object ?? 0.5);
   const scenario = String(intent?.scenario?.name || '');
-  const strictLingerieIntent = isStrictLingerieIntent(intent, rawQuery);
 
   const productObject = getProductObject(product);
   const adultIntent = getAdultIntent(intent, rawQuery);
@@ -2080,21 +1788,6 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
         riskLevel = 'hard_block';
         reasonCodes.add(REASON_CODES.ADULT_UNREQUESTED);
       }
-    }
-  }
-
-  // ---------- Lingerie strict scope guard ----------
-  if (
-    riskLevel !== 'hard_block' &&
-    strictLingerieIntent &&
-    !isLingerieLikeProduct(product)
-  ) {
-    if (isStrictLingerieAllowedCandidate(product)) {
-      if (riskLevel === 'ok') riskLevel = 'soft_block';
-      reasonCodes.add(REASON_CODES.LINGERIE_RELAXED_MATCH);
-    } else {
-      riskLevel = 'hard_block';
-      reasonCodes.add(REASON_CODES.NOT_LINGERIE_PRODUCT);
     }
   }
 
@@ -2927,6 +2620,19 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 
   const intent = await extractIntent(latestUserQuery, recentQueries, recentMessages);
   const pruned = pruneRecentQueries(latestUserQuery, recentQueries, intent);
+  const brandDetection = detectBrandEntities(latestUserQuery, { candidateProducts: [] });
+  const brandQueryDetected = Boolean(brandDetection?.brand_like);
+  const brandEntities = Array.isArray(brandDetection?.brands) ? brandDetection.brands : [];
+  const explicitCategoryHint = hasExplicitCategoryHint(latestUserQuery, intent);
+  const brandQueryWithoutCategory = brandQueryDetected && !explicitCategoryHint;
+  const brandScope = brandQueryDetected
+    ? brandQueryWithoutCategory
+      ? 'broad'
+      : 'category_scoped'
+    : null;
+  const brandQueryVariants = brandQueryWithoutCategory
+    ? buildBrandQueryVariants(latestUserQuery, brandEntities)
+    : [];
 
   const normalizeExpansionMode = (value) => {
     const raw = String(value || '').trim().toLowerCase();
@@ -2941,7 +2647,13 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       payload?.expansion_mode ||
       payload?.expansionMode,
   );
-  const queryClass = inferQueryClassFromIntentAndQuery(intent, latestUserQuery);
+  let queryClass = inferQueryClassFromIntentAndQuery(intent, latestUserQuery);
+  if (
+    brandQueryWithoutCategory &&
+    !['mission', 'scenario', 'gift', 'non_shopping'].includes(String(queryClass || ''))
+  ) {
+    queryClass = 'lookup';
+  }
   const ambiguityScorePre = computeAmbiguityScorePre(intent, queryClass);
   const associationPlan = SEARCH_SCENARIO_ASSOCIATION_ENABLED
     ? buildScenarioAssociationPlan({
@@ -2959,12 +2671,6 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   const associationTerms = Array.isArray(associationPlan?.category_keywords)
     ? associationPlan.category_keywords
     : [];
-  const normalizedSlotState = normalizeSlotStateFromPayload(
-    payload,
-    intent,
-    latestUserQuery,
-    associationPlan,
-  );
   const rewriteDriftRisk = estimateRewriteDriftRisk(latestUserQuery, associationTerms);
   const aggressiveGatePassed = shouldUseAggressiveRewrite({
     expansionMode: requestedExpansionMode,
@@ -3173,22 +2879,14 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	        if (lang === 'fr') extra.push('pinceaux');
 	        if (lang === 'ja') extra.push('メイクブラシ');
 	      }
-	    } else if (intent?.primary_domain === 'beauty') {
-	      const wantsFragrance =
-	        /香水|香氛|古龙|古龍|perfume|fragrance|cologne|body mist|eau de parfum|eau de toilette/i.test(
-	          q,
-	        );
+      } else if (intent?.primary_domain === 'beauty') {
 	      const wantsSkincare =
 	        /护肤|護膚|skincare|skin\s*care|serum|toner|essence|moisturizer|cleanser|sunscreen|cream/i.test(
 	          q,
 	        );
 	      const wantsDateLook = /约会|約會|\bdate\b|\bnight\s*out\b/i.test(q);
-	      if (wantsFragrance) {
-	        extra.push('perfume', 'fragrance', 'cologne', 'body mist', 'eau de parfum');
-	        if (lang === 'zh') extra.push('香水', '香氛', '古龙');
-	        if (lang === 'es') extra.push('perfume', 'fragancia', 'colonia');
-	        if (lang === 'fr') extra.push('parfum', 'fragrance', 'eau de toilette');
-	        if (lang === 'ja') extra.push('香水', 'フレグランス', 'コロン');
+	      if (brandQueryWithoutCategory) {
+	        extra.push(...brandQueryVariants);
 	      } else if (wantsSkincare) {
 	        extra.push('skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
 	        if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
@@ -3230,14 +2928,6 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...(payload?.user || {}),
       ...(pruned ? { recent_queries: pruned } : {}),
     },
-    context: {
-      ...(payload?.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
-        ? payload.context
-        : {}),
-      resolved_slots: normalizedSlotState.resolved_slots,
-      asked_slots: normalizedSlotState.asked_slots,
-      clarify_budget: normalizedSlotState.clarify_budget,
-    },
     search: {
       ...topLevelSearchCompat,
       ...(payload?.search || {}),
@@ -3255,6 +2945,12 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     rewrite_gate: rewriteGate,
     association_plan: associationPlan,
     ambiguity_score_pre: ambiguityScorePre,
+    brand_query_detected: brandQueryDetected,
+    brand_entities: brandEntities,
+    brand_detection_mode: brandDetection?.detection_mode || null,
+    brand_query_without_category: brandQueryWithoutCategory,
+    brand_scope: brandScope,
+    brand_query_variants: brandQueryVariants,
     external_fill_gated: SEARCH_EXTERNAL_FILL_GATED,
     flags_snapshot: {
       search_domain_hard_filter_mode: SEARCH_DOMAIN_HARD_FILTER_MODE,
@@ -3266,63 +2962,14 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       search_scenario_derived_min_anchor_ratio: SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO,
       search_scenario_derived_max_domain_entropy: SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY,
       search_domain_condenser_enabled: SEARCH_DOMAIN_CONDENSER_ENABLED,
-      search_domain_condenser_precheck: SEARCH_DOMAIN_CONDENSER_PRECHECK,
-      search_domain_condenser_raw_fallback: SEARCH_DOMAIN_CONDENSER_RAW_FALLBACK,
       search_domain_condenser_entropy_th: SEARCH_DOMAIN_CONDENSER_ENTROPY_TH,
       search_domain_condenser_min_cands_before: SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE,
       search_domain_condenser_min_cands_after: SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER,
-      search_fail_open_pre_nonempty_enabled: SEARCH_FAIL_OPEN_PRE_NONEMPTY_ENABLED,
-      search_fail_open_pre_nonempty_min: SEARCH_FAIL_OPEN_PRE_NONEMPTY_MIN,
-      search_fail_open_pre_nonempty_limit: SEARCH_FAIL_OPEN_PRE_NONEMPTY_LIMIT,
-      search_context_fail_open_enabled: SEARCH_CONTEXT_FAIL_OPEN_ENABLED,
-      search_clarify_max_rounds: SEARCH_CLARIFY_MAX_ROUNDS,
       search_anchor_alias_v2: SEARCH_ANCHOR_ALIAS_V2,
     },
   };
 
-  return {
-    intent,
-    adjustedPayload,
-    rawUserQuery: latestUserQuery,
-    expansion_meta: expansionMeta,
-    slot_state: normalizedSlotState,
-  };
-}
-
-function classifyBeautyMixBucketFromProduct(product) {
-  const text = String(buildProductText(product) || '');
-  if (!text) return 'other';
-  if (
-    /\b(foundation|concealer|primer|powder|cushion|bb cream|cc cream)\b/i.test(text) ||
-    /(粉底|遮瑕|妆前|妝前|定妆|定妝|气垫|氣墊)/.test(text)
-  ) {
-    return 'base_makeup';
-  }
-  if (
-    /\b(eyeshadow|eye shadow|eyeliner|mascara|brow|eyebrow)\b/i.test(text) ||
-    /(眼影|眼线|眼線|睫毛膏|眉笔|眉筆|眉粉)/.test(text)
-  ) {
-    return 'eye_makeup';
-  }
-  if (
-    /\b(lipstick|lip gloss|lip tint|lip balm|lip liner)\b/i.test(text) ||
-    /(口红|口紅|唇釉|唇膏|唇蜜|唇线|唇線)/.test(text)
-  ) {
-    return 'lip_makeup';
-  }
-  if (
-    /\b(brush|brush set|puff|sponge|applicator|curler|tweezer|tool|tools)\b/i.test(text) ||
-    /(化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|睫毛夹|睫毛夾|工具)/.test(text)
-  ) {
-    return 'tools';
-  }
-  if (
-    /\b(toner|serum|essence|lotion|moisturizer|sunscreen|cleanser|cream)\b/i.test(text) ||
-    /(化妆水|化妝水|精华|精華|乳液|面霜|防晒|防曬|洁面|潔面|面膜)/.test(text)
-  ) {
-    return 'skincare';
-  }
-  return 'other';
+  return { intent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
 }
 
 function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata, rawUserQuery }) {
@@ -3332,23 +2979,31 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     String(rawUserQuery || '').trim() ||
     String(requestPayload?.search?.query || '').trim() ||
     '';
-  const strictLingerieIntent = isStrictLingerieIntent(intent, rawQuery);
-  const strictLingerieNonMatchingBefore = strictLingerieIntent
-    ? list.filter((product) => !isLingerieLikeProduct(product)).length
-    : 0;
-  const associationPlanFromMeta =
-    metadata?.association_plan && typeof metadata.association_plan === 'object'
-      ? metadata.association_plan
-      : null;
-  const rawQueryHasScenarioSignal = hasAnyScenarioSignal(rawQuery);
-  const slotState = normalizeSlotStateFromPayload(
-    requestPayload,
-    intent,
-    rawQuery,
-    associationPlanFromMeta,
+  const metadataBrandEntities = Array.isArray(metadata?.brand_entities)
+    ? metadata.brand_entities.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  const metadataBrandDetected = Boolean(metadata?.brand_query_detected);
+  const metadataBrandWithoutCategory = Boolean(metadata?.brand_query_without_category);
+  const categoryHintDetected = hasExplicitCategoryHint(rawQuery, intent);
+  const detectedBrandEntities = detectBrandEntities(rawQuery, {
+    candidateProducts: Array.isArray(list) ? list : [],
+  });
+  const brandQueryDetected = Boolean(
+    metadataBrandDetected || metadataBrandWithoutCategory || detectedBrandEntities?.brand_like,
   );
-  const intentScenarioName = String(intent?.scenario?.name || '').trim();
-  const associationScenarioKey = String(associationPlanFromMeta?.scenario_key || '').trim();
+  const brandEntities = Array.from(
+    new Set(
+      [
+        ...metadataBrandEntities,
+        ...(Array.isArray(detectedBrandEntities?.brands) ? detectedBrandEntities.brands : []),
+      ]
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  const brandScope = brandQueryDetected
+    ? metadata?.brand_scope || (categoryHintDetected ? 'category_scoped' : 'broad')
+    : null;
 
   const filteredResult = filterProductsByIntent(list, intent, { rawQuery });
   let { filtered, reason_codes: filterReasonCodes } = filteredResult;
@@ -3403,7 +3058,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const domainFilterResult = applyDomainHardFilter(filtered, intent, rawQuery);
   filtered = Array.isArray(domainFilterResult.products) ? domainFilterResult.products : [];
   let diversityDebug = null;
-  if (shouldApplyBeautyDiversity(intent, rawQuery)) {
+  if (shouldApplyBeautyDiversity(intent, rawQuery) && !brandQueryDetected) {
     const diversityResult = applyBeautyDiversityPolicy(filtered, {
       topN: BEAUTY_DIVERSITY_TOPN,
       minBuckets: BEAUTY_DIVERSITY_MIN_BUCKETS,
@@ -3425,38 +3080,40 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
         (bucket) => Number(mix[bucket] || 0) > 0,
       ).length;
       if (nonToolDistinctBuckets < 2) {
-        const seenIds = new Set(
-          filtered
-            .map((item) => String(item?.id || item?.product_id || item?.productId || ''))
-            .filter(Boolean),
-        );
-        let rescuedNonTool = 0;
-        for (const candidate of preDomainFilterCandidates) {
-          const bucket = classifyBeautyMixBucketFromProduct(candidate);
-          if (bucket === 'tools' || bucket === 'other') continue;
-          const productId = String(candidate?.id || candidate?.product_id || candidate?.productId || '');
-          if (productId && seenIds.has(productId)) continue;
-          filtered.push(candidate);
-          if (productId) seenIds.add(productId);
-          rescuedNonTool += 1;
-          break;
-        }
+        filtered = [];
         diversityDebug = {
           ...diversityDebug,
           reason: 'beauty_non_tool_min_not_met',
-          strict_empty: false,
+          strict_empty: true,
           requirement_unmet: true,
-          preserve_primary_on_failure: true,
+          preserve_primary_on_failure: false,
           required_non_tool_buckets: 2,
           non_tool_distinct_buckets: nonToolDistinctBuckets,
-          rescued_non_tool_added: rescuedNonTool,
         };
       }
     }
   }
   let after = filtered.length;
 
-  const queryClass = inferQueryClassFromIntentAndQuery(intent, rawQuery);
+  const metadataQueryClass = normalizeQueryClass(
+    metadata?.query_class ??
+      metadata?.queryClass ??
+      metadata?.search_decision?.query_class ??
+      metadata?.searchDecision?.queryClass,
+    { defaultValue: null },
+  );
+  let queryClass = metadataQueryClass || inferQueryClassFromIntentAndQuery(intent, rawQuery);
+  if (
+    brandQueryDetected &&
+    !categoryHintDetected &&
+    !['mission', 'scenario', 'gift', 'non_shopping'].includes(String(queryClass || ''))
+  ) {
+    queryClass = 'lookup';
+  }
+  const associationPlanFromMeta =
+    metadata?.association_plan && typeof metadata.association_plan === 'object'
+      ? metadata.association_plan
+      : null;
   const postAnchorBasis = resolvePostAnchorBasis({
     rawQuery,
     intent,
@@ -3470,8 +3127,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     rawQuery,
     queryClass,
     anchorTokens: postAnchorBasis?.tokens,
-    sourceCandidateCount:
-      preDomainFilterCandidates.length > 0 ? preDomainFilterCandidates.length : before,
+    sourceCandidateCount: before,
   });
   filtered = Array.isArray(domainCondenserResult.products) ? domainCondenserResult.products : filtered;
   const scenarioDerivedAnchorActive =
@@ -3520,6 +3176,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES,
     );
   }
+  if (brandQueryDetected) {
+    effectiveMinRecallCandidates = Math.min(effectiveMinRecallCandidates, 2);
+  }
   const effectiveMinAnchorRatio = !intentNeedsClarification && hasStructuredHint
     ? 0
     : scenarioDerivedAnchorActive
@@ -3528,10 +3187,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const effectiveMaxDomainEntropy = scenarioDerivedAnchorActive
     ? SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY
     : SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY;
-  const preCandidateCount = Array.isArray(preDomainFilterCandidates)
-    ? preDomainFilterCandidates.length
-    : 0;
-  const postCandidateCountForGate = Array.isArray(filtered) ? filtered.length : 0;
+  const postCandidateCount = Array.isArray(filtered) ? filtered.length : 0;
   const anchorRatioPost =
     postAnchorBasis.mode === 'off'
       ? 1
@@ -3540,9 +3196,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
         });
   const domainEntropyPost = computeDomainEntropy(filtered);
   const postQuality = {
-    pre_candidates: preCandidateCount,
-    candidates_before_filter: preCandidateCount,
-    candidates: postCandidateCountForGate,
+    candidates: postCandidateCount,
     anchor_ratio: anchorRatioPost,
     domain_entropy: domainEntropyPost,
     min_recall_candidates: effectiveMinRecallCandidates,
@@ -3551,7 +3205,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     anchor_mode: postAnchorBasis.mode,
     anchor_source: postAnchorBasis.source,
     anchor_basis_size: Array.isArray(postAnchorBasis.tokens) ? postAnchorBasis.tokens.length : 0,
-    candidates_ok: postCandidateCountForGate >= effectiveMinRecallCandidates,
+    candidates_ok: postCandidateCount >= effectiveMinRecallCandidates,
     anchor_ok:
       anchorRatioPost >= effectiveMinAnchorRatio ||
       (clamp01(intent?.confidence?.domain) >= 0.75 && domainEntropyPost <= effectiveMaxDomainEntropy),
@@ -3560,124 +3214,39 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const postQualityOk =
     postQuality.candidates_ok && postQuality.anchor_ok && postQuality.entropy_ok;
   const postQualityTriggered = enforcePostQualityGate && !postQualityOk;
-  const strictEmptyByAmbiguity =
+  const strictEmptyByAmbiguityBase =
     SEARCH_AMBIGUITY_GATE_ENABLED &&
     ambiguitySensitiveClass &&
     ambiguityScorePre > AMBIGUITY_THRESHOLD_STRICT_EMPTY &&
     ambiguityScorePost > AMBIGUITY_THRESHOLD_STRICT_EMPTY &&
     (!baselineStats.has_good_match || filtered.length === 0);
-  const forceResultsFirstCategory = hasDirectCategorySignal(rawQuery);
-  const clarifyByAmbiguityRaw =
+  const clarifyByAmbiguityBase =
     clarifyEligible &&
     clarifyIntentGate &&
-    !forceResultsFirstCategory &&
-    !strictEmptyByAmbiguity &&
+    !strictEmptyByAmbiguityBase &&
     (postQualityTriggered ||
-      postCandidateCountForGate === 0 ||
+      postCandidateCount === 0 ||
       (ambiguitySignalOnly && ambiguityScorePost > AMBIGUITY_THRESHOLD_CLARIFY));
-  const scenarioResolvedForSlot = hasSpecificScenario({
-    intent,
-    rawQuery,
-    associationPlan: associationPlanFromMeta,
-    slotState,
-  });
-  const clarifyBudgetExceeded =
-    clarifyByAmbiguityRaw &&
-    slotState.clarify_budget.used_rounds >= slotState.clarify_budget.max_rounds;
-  const clarifyByAmbiguity = clarifyByAmbiguityRaw && !clarifyBudgetExceeded;
+  const brandQueryBypassAmbiguity =
+    brandQueryDetected &&
+    postCandidateCount > 0 &&
+    (strictEmptyByAmbiguityBase || clarifyByAmbiguityBase);
+  const strictEmptyByAmbiguity = strictEmptyByAmbiguityBase && !brandQueryBypassAmbiguity;
+  const clarifyByAmbiguity = clarifyByAmbiguityBase && !brandQueryBypassAmbiguity;
 
   let clarification = null;
   let finalDecision = 'products_returned';
-  let clarifyReasonBeforeDedup = '';
-  let clarifyReasonAfterDedup = '';
-  let repeatedSlotBlocked = false;
-  let contextFailOpenApplied = false;
-  let strictLingerieRescuedCount = 0;
   if (strictEmptyByAmbiguity) {
     filtered = [];
     finalDecision = 'strict_empty';
   } else if (clarifyByAmbiguity) {
-    const clarifyHints = {
-      post_candidates: postCandidateCountForGate,
-      match_tier: baselineStats.match_tier,
-    };
     clarification = buildClarification({
       queryClass,
       intent,
       language: intent?.language,
-      rawQuery,
-      associationPlan: associationPlanFromMeta,
-      slotState,
-      hints: clarifyHints,
     });
-    clarifyReasonBeforeDedup = String(clarification?.reason_code || '');
-    if (clarifyReasonBeforeDedup === 'CLARIFY_SCENARIO' && scenarioResolvedForSlot) {
-      repeatedSlotBlocked = true;
-      const dedupSlotState = {
-        ...slotState,
-        asked_slots: Array.from(new Set([...(slotState.asked_slots || []), 'scenario'])),
-      };
-      clarification = buildClarification({
-        queryClass,
-        intent,
-        language: intent?.language,
-        rawQuery,
-        associationPlan: associationPlanFromMeta,
-        slotState: dedupSlotState,
-        hints: clarifyHints,
-      });
-    }
-    clarifyReasonAfterDedup = String(clarification?.reason_code || '');
     filtered = [];
     finalDecision = 'clarify';
-  }
-
-  const canContextFailOpen =
-    SEARCH_CONTEXT_FAIL_OPEN_ENABLED &&
-    finalDecision === 'clarify' &&
-    postCandidateCountForGate === 0 &&
-    preCandidateCount > 0 &&
-    scenarioResolvedForSlot;
-  if (canContextFailOpen) {
-    const safeRescuedCandidates = preDomainFilterCandidates.filter((product) => {
-      const evalMeta = evaluateProductForIntent(product, intent, { rawQuery });
-      if (!evalMeta || !Array.isArray(evalMeta.reason_codes)) return true;
-      if (evalMeta.reason_codes.includes(REASON_CODES.SAFETY_RISK)) return false;
-      if (evalMeta.reason_codes.includes(REASON_CODES.ADULT_UNREQUESTED)) return false;
-      if (evalMeta.reason_codes.includes(REASON_CODES.COMPAT_INCOMPATIBLE)) return false;
-      if (strictLingerieIntent && !isStrictLingerieAllowedCandidate(product)) return false;
-      return true;
-    });
-    const rescued = safeRescuedCandidates.slice(0, Math.max(1, SEARCH_FAIL_OPEN_PRE_NONEMPTY_LIMIT));
-    if (rescued.length > 0) {
-      filtered = rescued;
-      if (strictLingerieIntent) strictLingerieRescuedCount += rescued.length;
-      contextFailOpenApplied = true;
-      finalDecision = 'products_returned';
-      clarification = null;
-    }
-  }
-
-  const canFailOpenPreNonEmpty =
-    SEARCH_FAIL_OPEN_PRE_NONEMPTY_ENABLED &&
-    finalDecision !== 'clarify' &&
-    filtered.length === 0 &&
-    preCandidateCount >= SEARCH_FAIL_OPEN_PRE_NONEMPTY_MIN &&
-    !(filterReasonCodes || []).includes(REASON_CODES.ALL_HARD_BLOCKED) &&
-    !(filterReasonCodes || []).includes(REASON_CODES.SAFETY_RISK);
-  let failOpenApplied = false;
-  if (canFailOpenPreNonEmpty) {
-    const rescuePool = strictLingerieIntent
-      ? preDomainFilterCandidates.filter((product) => isStrictLingerieAllowedCandidate(product))
-      : preDomainFilterCandidates;
-    const rescued = rescuePool.slice(0, SEARCH_FAIL_OPEN_PRE_NONEMPTY_LIMIT);
-    if (rescued.length > 0) {
-      filtered = rescued;
-      if (strictLingerieIntent) strictLingerieRescuedCount += rescued.length;
-      failOpenApplied = true;
-      finalDecision = 'products_returned';
-      clarification = null;
-    }
   }
   after = filtered.length;
 
@@ -3712,31 +3281,12 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (diversityDebug?.reason === 'beauty_non_tool_min_not_met') {
     reasonCodes.add('BEAUTY_NON_TOOL_MIN_NOT_MET');
   }
-  if (strictEmptyByAmbiguity && finalDecision === 'strict_empty') reasonCodes.add('AMBIGUITY_STRICT_EMPTY');
+  if (strictEmptyByAmbiguity) reasonCodes.add('AMBIGUITY_STRICT_EMPTY');
   if (clarifyByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY');
   if (clarifyByAmbiguity && postQualityTriggered) reasonCodes.add('LOW_CONF_POST');
-  if (clarifyBudgetExceeded) reasonCodes.add('CLARIFY_BUDGET_EXHAUSTED');
-  if (repeatedSlotBlocked) reasonCodes.add('REPEATED_SLOT_BLOCKED');
+  if (brandQueryBypassAmbiguity) reasonCodes.add('BRAND_QUERY_BYPASS_AMBIGUITY');
   if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
   if (domainCondenserResult?.debug?.applied) reasonCodes.add('DOMAIN_CONDENSED');
-  if (failOpenApplied) reasonCodes.add('FAIL_OPEN_PRE_NONEMPTY');
-  if (contextFailOpenApplied) reasonCodes.add('CONTEXT_FAIL_OPEN');
-  if (strictLingerieIntent) reasonCodes.add('STRICT_LINGERIE_SCOPE');
-
-  if (clarification?.reason_code) {
-    recordFpmClarifyReason({ reasonCode: clarification.reason_code });
-  }
-  if (repeatedSlotBlocked) {
-    recordFpmRepeatedSlotClarify({
-      slot: clarification?.slot || slotFromReasonCode(clarification?.reason_code) || 'scenario',
-    });
-  }
-  if (contextFailOpenApplied) {
-    recordFpmContextFailOpen();
-  }
-  if (Array.isArray(slotState?.asked_slots) && slotState.asked_slots.length > 0) {
-    recordFpmProductsAfterClarify({ hasProducts: after > 0 });
-  }
 
   const augmented = setResponseProductList(response, key, filtered);
   const filtersApplied = buildFiltersApplied(intent);
@@ -3758,12 +3308,15 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               ...(existingRouteDebug?.policy || {}),
               ...(policyDebug ? { filter_debug: policyDebug } : {}),
               ...(diversityDebug ? { diversity: diversityDebug } : {}),
-              ...(domainCondenserResult?.debug ? { domain_condenser: domainCondenserResult.debug } : {}),
               ambiguity: {
                 score_pre: ambiguityScorePre,
                 score_post: ambiguityScorePost,
                 clarify_triggered: Boolean(clarification),
                 strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
+                brand_query_detected: Boolean(brandQueryDetected),
+                brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
+                brand_entities: brandEntities,
+                brand_scope: brandScope,
                 query_class: queryClass,
                 domain_filter_dropped: Number(domainFilterResult?.dropped || 0),
                 domain_filter_key: domainFilterResult?.domain_key || null,
@@ -3932,7 +3485,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     return [header, ...kitLines, ...qLines].join('\n');
   })();
 
-  const rawReply = toolFirstReply
+  const reply = toolFirstReply
     ? toolFirstReply
     : clarification
       ? `${clarification.question}\n${(clarification.options || []).map((option, index) => `${index + 1}) ${option}`).join('\n')}`
@@ -3943,36 +3496,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
           rawUserQuery: rawQuery,
         })
       : augmented.reply;
-  const reply = composeReplyWithContext({
-    baseReply: rawReply,
-    language: intent?.language,
-    intent,
-    clarification,
-    slotState,
-    queryClass,
-    reasonCodes: Array.from(reasonCodes),
-    productCount: after,
-  });
-
-  const slotStateForTrace = {
-    resolved_slots: {
-      ...(slotState?.resolved_slots || {}),
-    },
-    asked_slots: Array.from(
-      new Set([
-        ...((slotState && Array.isArray(slotState.asked_slots) ? slotState.asked_slots : []).map(
-          (slot) => normalizeClarifySlot(slot),
-        )),
-        ...(clarification?.slot ? [normalizeClarifySlot(clarification.slot)] : []),
-      ].filter(Boolean)),
-    ),
-    clarify_budget: {
-      max_rounds: Number(slotState?.clarify_budget?.max_rounds || SEARCH_CLARIFY_MAX_ROUNDS),
-      used_rounds:
-        Number(slotState?.clarify_budget?.used_rounds || 0) +
-        (clarification?.slot ? 1 : 0),
-    },
-  };
 
   const debugStats = DEBUG_STATS_ENABLED
     ? {
@@ -3982,80 +3505,48 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
         distractor_ratio_top20: stats.distractor_ratio_top20,
       }
     : undefined;
-  const strictLingerieFilteredOut = strictLingerieIntent
-    ? Math.max(
-        strictLingerieNonMatchingBefore,
-        preDomainFilterCandidates.filter((product) => !isStrictLingerieAllowedCandidate(product))
-          .length,
-      )
-    : 0;
-  const requestedLimitRaw = Number(
-    requestPayload?.search?.limit ??
-      requestPayload?.search?.page_size ??
-      requestPayload?.limit ??
-      requestPayload?.page_size ??
-      NaN,
-  );
-  const requestedLimit = Number.isFinite(requestedLimitRaw)
-    ? Math.max(1, Math.floor(requestedLimitRaw))
-    : 0;
-  const strictLingerieRecallReference = requestedLimit > 0 ? requestedLimit : Math.max(1, before);
-  const strictLingerieRecallTarget = strictLingerieIntent
-    ? Math.min(Math.max(1, STRICT_LINGERIE_MIN_RECALL_TARGET), strictLingerieRecallReference)
-    : 0;
-  const strictLingerieLowRecallReason = strictLingerieIntent
-    ? after === 0
-      ? 'NO_STRICT_LINGERIE_CANDIDATES'
-      : after < strictLingerieRecallTarget
-        ? 'STRICT_SCOPE_UNDERFILL'
-        : null
-    : null;
-  const searchDecisionMeta = {
-    decision_source: 'policy_canonical',
-    query_class: queryClass,
-    ambiguity_score_pre: ambiguityScorePre,
-    ambiguity_score_post: ambiguityScorePost,
-    clarify_triggered: Boolean(clarification),
-    strict_empty_triggered: Boolean(strictEmptyByAmbiguity && finalDecision === 'strict_empty'),
-    final_decision: finalDecision,
-    pre_candidates: preCandidateCount,
-    post_candidates: after,
-    raw_query_has_scenario_signal: rawQueryHasScenarioSignal,
-    intent_scenario_name: intentScenarioName || null,
-    association_scenario_key: associationScenarioKey || null,
-    clarify_reason_before_dedup: clarifyReasonBeforeDedup || null,
-    clarify_reason_after_dedup: clarifyReasonAfterDedup || null,
-    strict_scope: strictLingerieIntent ? 'lingerie' : null,
-    lingerie_filtered_out: strictLingerieFilteredOut,
-    lingerie_rescued_count: strictLingerieRescuedCount,
-    strict_recall_target: strictLingerieIntent ? strictLingerieRecallTarget : null,
-    low_recall_reason: strictLingerieLowRecallReason,
-    slot_state: slotStateForTrace,
-    reason_codes: Array.from(reasonCodes),
-    domain_condenser: domainCondenserResult?.debug || null,
-    post_quality: {
-      ...postQuality,
-      post_candidates: after,
-      fail_open_applied: failOpenApplied,
-      context_fail_open_applied: contextFailOpenApplied,
-    },
-  };
 
-  return {
+  const responsePayload = {
     ...augmented,
     ...(mergedMetadata !== existingMeta
       ? {
           metadata: {
             ...mergedMetadata,
             strategy_version: STRATEGY_VERSION,
-            search_decision: searchDecisionMeta,
+            search_decision: {
+              query_class: queryClass,
+              brand_query_detected: Boolean(brandQueryDetected),
+              brand_entities: brandEntities,
+              brand_scope: brandScope,
+              brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
+              ambiguity_score_pre: ambiguityScorePre,
+              ambiguity_score_post: ambiguityScorePost,
+              clarify_triggered: Boolean(clarification),
+              strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
+              final_decision: finalDecision,
+              domain_condenser: domainCondenserResult?.debug || null,
+              post_quality: postQuality,
+            },
           },
         }
       : {
           metadata: {
             ...(augmented?.metadata && typeof augmented.metadata === 'object' ? augmented.metadata : {}),
             strategy_version: STRATEGY_VERSION,
-            search_decision: searchDecisionMeta,
+            search_decision: {
+              query_class: queryClass,
+              brand_query_detected: Boolean(brandQueryDetected),
+              brand_entities: brandEntities,
+              brand_scope: brandScope,
+              brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
+              ambiguity_score_pre: ambiguityScorePre,
+              ambiguity_score_post: ambiguityScorePost,
+              clarify_triggered: Boolean(clarification),
+              strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
+              final_decision: finalDecision,
+              domain_condenser: domainCondenserResult?.debug || null,
+              post_quality: postQuality,
+            },
           },
         }),
     policy_version: POLICY_VERSION,
@@ -4072,8 +3563,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             question: clarification.question,
             options: clarification.options,
             reason_code: clarification.reason_code,
-            slot: clarification.slot || slotFromReasonCode(clarification.reason_code),
-            dedup_key: clarification.dedup_key || null,
           },
         }
       : {}),
@@ -4082,6 +3571,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     ...(toolRec?.follow_up_questions ? { follow_up_questions: toolRec.follow_up_questions } : {}),
     ...(debugStats ? { debug_stats: debugStats } : {}),
   };
+
+  return syncResponsePaginationCounts(
+    responsePayload,
+    Array.isArray(filtered) ? filtered.length : 0,
+  );
 }
 
 module.exports = {
