@@ -151,6 +151,11 @@ analyze_url_json="$(curl_do -fsS -X POST "${BASE}/v1/product/analyze" \
 started_at_after_analyze_url="$(health_started_at)"
 assert_started_at_stable "product analyze (Lab Series URL)" "$started_at_before_analyze_url" "$started_at_after_analyze_url"
 printf "%s\n" "$analyze_url_json" | jq_assert "product_analysis card exists for URL" '.cards | any(.type=="product_analysis")'
+printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze provenance.url_fetch has provider-aware attempts" '
+  (.cards[]|select(.type=="product_analysis")|.payload.provenance.url_fetch.attempts) as $atts |
+  (($atts|type)=="array") and
+  (if ($atts|length)==0 then true else ($atts | all(((.strategy // "")|length>0) and ((.provider // "")|length>0)) ) end)
+'
 printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze alternatives do not contain obvious non-skincare tools" '
   [
     (.cards[]|select(.type=="product_analysis")|.payload.competitors.candidates[]?),

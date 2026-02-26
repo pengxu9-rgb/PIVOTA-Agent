@@ -59,9 +59,15 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'upstream_analysis_missing': 'analysis_in_progress',
   'analysis_in_progress': 'analysis_in_progress',
   'url_fetch_forbidden_403': 'url_fetch_forbidden_403',
+  'url_fetch_challenge_cloudflare': 'url_fetch_challenge_cloudflare',
+  'url_fetch_access_denied': 'url_fetch_access_denied',
+  'url_fetch_vendor_unblock_used': 'url_fetch_vendor_unblock_used',
+  'url_fetch_vendor_unblock_failed': 'url_fetch_vendor_unblock_failed',
   'url_fetch_recovered_with_fallback': 'url_fetch_recovered_with_fallback',
   'on_page_fetch_blocked': 'on_page_fetch_blocked',
   'regulatory_source_used': 'regulatory_source_used',
+  'retail_source_used': 'retail_source_used',
+  'retail_source_no_match': 'retail_source_no_match',
   'incidecoder_source_used': 'incidecoder_source_used',
   'incidecoder_no_match': 'incidecoder_no_match',
   'incidecoder_fetch_failed': 'incidecoder_fetch_failed',
@@ -123,9 +129,15 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
 
 const PRODUCT_ANALYSIS_USER_VISIBLE_EXACT = new Set([
   'url_fetch_forbidden_403',
+  'url_fetch_challenge_cloudflare',
+  'url_fetch_access_denied',
+  'url_fetch_vendor_unblock_used',
+  'url_fetch_vendor_unblock_failed',
   'url_fetch_recovered_with_fallback',
   'on_page_fetch_blocked',
   'regulatory_source_used',
+  'retail_source_used',
+  'retail_source_no_match',
   'incidecoder_source_used',
   'incidecoder_no_match',
   'incidecoder_fetch_failed',
@@ -308,7 +320,19 @@ function buildDiagnosticUnknownReasons(payload, { lang = 'EN', fieldMissing = nu
   const urlFailureCode = String(urlFetch.failure_code || '').trim().toLowerCase();
   const reasons = [];
 
-  if (gapSet.has('url_fetch_forbidden_403') || urlFailureCode === 'url_fetch_forbidden_403') {
+  if (gapSet.has('url_fetch_challenge_cloudflare') || urlFailureCode === 'url_fetch_challenge_cloudflare') {
+    reasons.push(
+      isCn
+        ? '目标页面命中了 Cloudflare 反爬挑战页，无法直接提取商品正文。'
+        : 'The target page hit a Cloudflare anti-bot challenge, so product-page content could not be extracted directly.',
+    );
+  } else if (gapSet.has('url_fetch_access_denied') || urlFailureCode === 'url_fetch_access_denied') {
+    reasons.push(
+      isCn
+        ? '目标页面返回 Access Denied，当前网络路径无法稳定读取商品正文。'
+        : 'The target page returned Access Denied, so the current network path could not read product-page content reliably.',
+    );
+  } else if (gapSet.has('url_fetch_forbidden_403') || urlFailureCode === 'url_fetch_forbidden_403') {
     reasons.push(
       isCn
         ? '目标页面被站点策略拦截（403），本次无法稳定抓取完整产品证据。'
@@ -343,11 +367,27 @@ function buildDiagnosticUnknownReasons(payload, { lang = 'EN', fieldMissing = nu
     );
   }
 
+  if (gapSet.has('retail_source_used')) {
+    reasons.push(
+      isCn
+        ? '已使用主流零售页面补充证据，建议与官方/监管信息和实物包装 INCI 交叉核对。'
+        : 'A mainstream retail PDP was used as supplemental evidence; cross-check with official/regulatory data and package INCI.',
+    );
+  }
+
   if (gapSet.has('incidecoder_source_used')) {
     reasons.push(
       isCn
         ? '已使用 INCIDecoder 补充成分线索，建议继续与实物包装 INCI 交叉核对。'
         : 'INCIDecoder was used as a supplemental ingredient source; cross-check with package INCI is still recommended.',
+    );
+  }
+
+  if (gapSet.has('url_fetch_vendor_unblock_failed')) {
+    reasons.push(
+      isCn
+        ? '已尝试解封抓取链路但仍失败，建议改用可访问的零售 PDP 或直接贴 INCI。'
+        : 'An unblock-fetch fallback was attempted but still failed; use an accessible retail PDP or paste the INCI directly.',
     );
   }
 
@@ -509,7 +549,7 @@ function normalizeEvidence(raw) {
     if (!row) continue;
     const type = String(row.type || '').trim().toLowerCase();
     if (!type) continue;
-    if (type !== 'official_page' && type !== 'regulatory' && type !== 'inci_decoder') continue;
+    if (type !== 'official_page' && type !== 'regulatory' && type !== 'retail_page' && type !== 'inci_decoder') continue;
     const url = String(row.url || '').trim();
     if (!/^https?:\/\//i.test(url)) continue;
     const label = String(row.label || '').trim();

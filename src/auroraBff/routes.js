@@ -794,6 +794,45 @@ const PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE = (() => {
   const v = Number.isFinite(n) ? n : 0.28;
   return Math.max(0.05, Math.min(0.9, v));
 })();
+const URL_UNBLOCK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_URL_UNBLOCK_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const URL_UNBLOCK_PROVIDER = String(process.env.AURORA_BFF_URL_UNBLOCK_PROVIDER || 'zenrows')
+  .trim()
+  .toLowerCase();
+const URL_UNBLOCK_ZENROWS_API_KEY = String(
+  process.env.AURORA_BFF_URL_UNBLOCK_ZENROWS_API_KEY || process.env.ZENROWS_API_KEY || '',
+).trim();
+const URL_UNBLOCK_ONLY_ON_BLOCKED = (() => {
+  const raw = String(process.env.AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const URL_UNBLOCK_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_URL_UNBLOCK_TIMEOUT_MS || 4500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4500;
+  return Math.max(1200, Math.min(9000, v));
+})();
+const URL_FETCH_TOTAL_BUDGET_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_URL_FETCH_TOTAL_BUDGET_MS || 10500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10500;
+  return Math.max(3000, Math.min(20000, v));
+})();
+const PRODUCT_INTEL_RETAIL_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_RETAIL_FALLBACK_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_INTEL_RETAIL_MAX_CANDIDATES = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_RETAIL_MAX_CANDIDATES || 4);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4;
+  return Math.max(1, Math.min(8, v));
+})();
 const PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_MAX_BYTES || 900000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 900000;
@@ -5205,6 +5244,308 @@ async function fetchIncidecoderIngredientSupplement({
   };
 }
 
+const RETAIL_SOURCE_CONFIG = [
+  {
+    host: 'sephora.com',
+    label: 'Sephora',
+    searchUrlBuilder: (query) => `https://www.sephora.com/search?keyword=${encodeURIComponent(query)}`,
+    productPathRe: /^\/product\/[a-z0-9-]+/i,
+  },
+  {
+    host: 'ulta.com',
+    label: 'Ulta',
+    searchUrlBuilder: (query) => `https://www.ulta.com/discover/search?Ntt=${encodeURIComponent(query)}`,
+    productPathRe: /^\/p\/[a-z0-9-]+/i,
+  },
+  {
+    host: 'target.com',
+    label: 'Target',
+    searchUrlBuilder: (query) => `https://www.target.com/s?searchTerm=${encodeURIComponent(query)}`,
+    productPathRe: /^\/p\/[a-z0-9-]+/i,
+  },
+  {
+    host: 'walmart.com',
+    label: 'Walmart',
+    searchUrlBuilder: (query) => `https://www.walmart.com/search?q=${encodeURIComponent(query)}`,
+    productPathRe: /^\/ip\/[a-z0-9-]+/i,
+  },
+];
+
+function extractRetailProductUrls(searchHtml = '', baseUrl = '', sourceConfig = null) {
+  const source = String(searchHtml || '');
+  if (!source || !sourceConfig || typeof sourceConfig !== 'object') return [];
+  const out = [];
+  const seen = new Set();
+  const expectedHost = String(sourceConfig.host || '').toLowerCase();
+  const productPathRe = sourceConfig.productPathRe instanceof RegExp ? sourceConfig.productPathRe : null;
+  const re = /href=["']([^"']{4,600})["']/gi;
+  let m = re.exec(source);
+  while (m) {
+    const rawHref = decodeHtmlEntitiesBasic(m[1] || '').trim();
+    if (!rawHref || rawHref.startsWith('javascript:') || rawHref.startsWith('#')) {
+      m = re.exec(source);
+      continue;
+    }
+    try {
+      const abs = new URL(rawHref, baseUrl || `https://www.${expectedHost}`);
+      const host = String(abs.hostname || '').trim().toLowerCase().replace(/^www\./, '');
+      if (!host || host !== expectedHost.replace(/^www\./, '')) {
+        m = re.exec(source);
+        continue;
+      }
+      const path = String(abs.pathname || '').trim();
+      if (!path || !productPathRe || !productPathRe.test(path)) {
+        m = re.exec(source);
+        continue;
+      }
+      const normalized = `${abs.origin}${path}`;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) {
+        m = re.exec(source);
+        continue;
+      }
+      seen.add(key);
+      out.push(normalized);
+      if (out.length >= PRODUCT_INTEL_RETAIL_MAX_CANDIDATES) break;
+    } catch {
+      // ignore malformed retail href
+    }
+    m = re.exec(source);
+  }
+  return out;
+}
+
+function extractRetailIngredientsFromHtml(html = '') {
+  const source = String(html || '');
+  if (!source) return [];
+  const patterns = [
+    /(?:ingredients?|ingredient list|full ingredients?)\s*[:：]\s*([^<]{40,12000})/i,
+    /"ingredients"\s*:\s*"([^"]{40,12000})"/i,
+    /"activeIngredients"\s*:\s*"([^"]{20,12000})"/i,
+    /class=["'][^"']*ingredient[^"']*["'][^>]*>([\s\S]{40,12000}?)<\/(?:div|p|section)>/i,
+  ];
+  for (const re of patterns) {
+    const m = source.match(re);
+    const list = splitInciList(m && m[1] ? m[1] : '');
+    if (list.length >= 4) return list;
+  }
+  return [];
+}
+
+function scoreRetailMatch({ descriptor = null, pageTitle = '', productUrl = '' } = {}) {
+  const d = isPlainObject(descriptor) ? descriptor : {};
+  const queryTokens = tokenizeIncidecoderComparable(
+    `${pickFirstTrimmed(d.brand)} ${pickFirstTrimmed(d.name)} ${pickFirstTrimmed(d.query)}`,
+  );
+  const titleTokens = tokenizeIncidecoderComparable(`${pageTitle} ${productUrl}`);
+  if (!queryTokens.length || !titleTokens.length) return 0.26;
+  const titleSet = new Set(titleTokens);
+  const overlap = queryTokens.filter((token) => titleSet.has(token)).length;
+  const overlapScore = overlap / Math.max(1, queryTokens.length);
+  const brandToken = pickFirstTrimmed(d.brand).toLowerCase();
+  const hasBrand = brandToken && String(pageTitle || '').toLowerCase().includes(brandToken);
+  const nameToken = pickFirstTrimmed(d.name).toLowerCase();
+  const hasName = nameToken && String(pageTitle || '').toLowerCase().includes(nameToken);
+  return Math.max(0, Math.min(1, Number((overlapScore + (hasBrand ? 0.18 : 0) + (hasName ? 0.12 : 0)).toFixed(3))));
+}
+
+async function fetchRetailSearchCandidates({
+  sourceConfig = null,
+  query = '',
+  timeoutMs = 3600,
+  logger,
+} = {}) {
+  const cfg = sourceConfig && typeof sourceConfig === 'object' ? sourceConfig : null;
+  const queryText = String(query || '').trim();
+  if (!cfg || !queryText) {
+    return {
+      ok: false,
+      reason: 'retail_source_no_match',
+      product_urls: [],
+      fetch_meta: null,
+    };
+  }
+  const searchUrl = typeof cfg.searchUrlBuilder === 'function' ? cfg.searchUrlBuilder(queryText) : '';
+  if (!searchUrl) {
+    return {
+      ok: false,
+      reason: 'retail_source_no_match',
+      product_urls: [],
+      fetch_meta: null,
+    };
+  }
+  const fetchOut = await fetchProductHtmlWithUnblockChain({
+    productUrl: searchUrl,
+    timeoutMs: Math.max(1200, Math.min(6000, Number(timeoutMs) || 3600)),
+    allowHostVariant: false,
+    logger,
+  });
+  if (!fetchOut.ok || !fetchOut.html) {
+    return {
+      ok: false,
+      reason: String(fetchOut.failure_code || 'retail_source_no_match'),
+      search_url: searchUrl,
+      product_urls: [],
+      fetch_meta: fetchOut,
+    };
+  }
+  const productUrls = extractRetailProductUrls(fetchOut.html, searchUrl, cfg);
+  return {
+    ok: productUrls.length > 0,
+    reason: productUrls.length ? null : 'retail_source_no_match',
+    search_url: searchUrl,
+    product_urls: productUrls,
+    fetch_meta: fetchOut,
+  };
+}
+
+async function fetchRetailProductPage({
+  productUrl = '',
+  timeoutMs = 3600,
+  logger,
+} = {}) {
+  const urlText = String(productUrl || '').trim();
+  if (!/^https?:\/\//i.test(urlText)) {
+    return {
+      ok: false,
+      reason: 'retail_source_no_match',
+      html: '',
+      fetch_meta: null,
+      url: urlText,
+    };
+  }
+  const fetchOut = await fetchProductHtmlWithUnblockChain({
+    productUrl: urlText,
+    timeoutMs: Math.max(1200, Math.min(7000, Number(timeoutMs) || 3600)),
+    allowHostVariant: false,
+    logger,
+  });
+  return {
+    ok: Boolean(fetchOut.ok && fetchOut.html),
+    reason: fetchOut.ok ? null : String(fetchOut.failure_code || 'retail_source_no_match'),
+    html: fetchOut.ok ? String(fetchOut.html || '') : '',
+    fetch_meta: fetchOut,
+    url: urlText,
+  };
+}
+
+async function fetchRetailIngredientSupplement({
+  parsedProduct = null,
+  productUrl = '',
+  timeoutMs = 5200,
+  logger,
+} = {}) {
+  const descriptor = buildProductDescriptorFromInput({ parsedProduct, productUrl });
+  if (!descriptor.query) {
+    return {
+      ok: false,
+      reason: 'retail_source_no_match',
+      attempts: [],
+      query: '',
+    };
+  }
+
+  const maxBudgetMs = Math.max(1600, Math.min(12000, Number(timeoutMs) || 5200));
+  const deadline = Date.now() + maxBudgetMs;
+  const remainingBudget = () => Math.max(900, deadline - Date.now());
+  const queryCandidates = uniqCaseInsensitiveStrings(
+    [descriptor.query, pickFirstTrimmed(`${descriptor.brand || ''} ${descriptor.name || ''}`), descriptor.name].filter(Boolean),
+    3,
+  );
+  const attempts = [];
+  let best = null;
+  let hadFetchFailure = false;
+
+  for (const cfg of RETAIL_SOURCE_CONFIG) {
+    if (Date.now() >= deadline) break;
+    for (const queryText of queryCandidates) {
+      if (Date.now() >= deadline) break;
+      // eslint-disable-next-line no-await-in-loop
+      const searchOut = await fetchRetailSearchCandidates({
+        sourceConfig: cfg,
+        query: queryText,
+        timeoutMs: remainingBudget(),
+        logger,
+      });
+      attempts.push({
+        stage: 'search',
+        host: cfg.host,
+        query: queryText,
+        ok: Boolean(searchOut.ok),
+        reason: searchOut.reason || null,
+      });
+      if (!searchOut.ok) {
+        if (String(searchOut.reason || '').includes('fetch') || String(searchOut.reason || '').startsWith('url_fetch_')) {
+          hadFetchFailure = true;
+        }
+        continue;
+      }
+      for (const candidateUrl of (Array.isArray(searchOut.product_urls) ? searchOut.product_urls : []).slice(0, PRODUCT_INTEL_RETAIL_MAX_CANDIDATES)) {
+        if (Date.now() >= deadline) break;
+        // eslint-disable-next-line no-await-in-loop
+        const pageOut = await fetchRetailProductPage({
+          productUrl: candidateUrl,
+          timeoutMs: remainingBudget(),
+          logger,
+        });
+        const pageTitle = pageOut.ok ? extractPageTitleFromHtml(pageOut.html) : '';
+        const ingredients = pageOut.ok ? extractRetailIngredientsFromHtml(pageOut.html) : [];
+        const matchScore = pageOut.ok ? scoreRetailMatch({ descriptor, pageTitle, productUrl: candidateUrl }) : 0;
+        attempts.push({
+          stage: 'detail',
+          host: cfg.host,
+          url: candidateUrl,
+          ok: Boolean(pageOut.ok),
+          reason: pageOut.reason || null,
+          ingredient_count: ingredients.length,
+          match_score: matchScore,
+        });
+        if (!pageOut.ok || !ingredients.length) {
+          if (String(pageOut.reason || '').includes('fetch') || String(pageOut.reason || '').startsWith('url_fetch_')) {
+            hadFetchFailure = true;
+          }
+          continue;
+        }
+        if (!best || matchScore > best.match_score || (matchScore === best.match_score && ingredients.length > best.ingredients.length)) {
+          best = {
+            source_url: candidateUrl,
+            ingredients,
+            match_score: matchScore,
+            page_title: pageTitle,
+            source_host: cfg.host,
+            source_label: cfg.label,
+          };
+        }
+      }
+    }
+  }
+
+  if (!best || best.ingredients.length < 4 || best.match_score < 0.24) {
+    return {
+      ok: false,
+      query: descriptor.query,
+      reason: hadFetchFailure ? 'retail_source_no_match' : 'retail_source_no_match',
+      attempts: attempts.slice(0, 20),
+    };
+  }
+
+  return {
+    ok: true,
+    query: descriptor.query,
+    source_url: best.source_url,
+    page_title: best.page_title,
+    ingredients: best.ingredients,
+    match_score: best.match_score,
+    attempts: attempts.slice(0, 20),
+    source: {
+      type: 'retail_page',
+      url: best.source_url,
+      label: best.source_label || best.source_host || 'Retail PDP',
+      confidence: Number(Math.max(0.28, Math.min(0.74, best.match_score + 0.16)).toFixed(2)),
+    },
+  };
+}
+
 const CONCENTRATION_PERCENT_RE = /\b(\d{1,2}(?:\.\d{1,2})?)\s*%/gi;
 const CONCENTRATION_CONTEXT_RE = /\b(acid|retinol|retinal|retinoid|niacinamide|vitamin\s*c|ascorb|peptide|copper|zinc|benzoyl|salicylic|glycolic|lactic|mandelic|serum|solution)\b/i;
 
@@ -8364,6 +8705,8 @@ const URL_FETCH_RETRYABLE_ERROR_CODES = new Set([
   'timeout',
 ]);
 
+const URL_FETCH_BLOCKED_STATUSES = new Set([403, 406, 429]);
+
 function buildAlternateHostVariantUrl(rawUrl) {
   const text = String(rawUrl || '').trim();
   if (!/^https?:\/\//i.test(text)) return '';
@@ -8379,8 +8722,47 @@ function buildAlternateHostVariantUrl(rawUrl) {
   }
 }
 
+function detectBotChallengePage(html, status, headers = {}) {
+  const text = String(html || '');
+  const lowered = text.toLowerCase();
+  const statusCode = Number(status);
+  const headersObj = headers && typeof headers === 'object' ? headers : {};
+  const serverHeader = String(headersObj.server || headersObj.Server || '').toLowerCase();
+  const hasCloudflareSignal =
+    lowered.includes('just a moment') ||
+    lowered.includes('cf-ray') ||
+    lowered.includes('challenge-platform') ||
+    lowered.includes('cloudflare');
+  if (hasCloudflareSignal || serverHeader.includes('cloudflare')) {
+    return {
+      is_challenge: true,
+      challenge_type: 'cloudflare_challenge',
+    };
+  }
+  const accessDeniedSignal =
+    lowered.includes('access denied') ||
+    lowered.includes("you don't have permission to access") ||
+    lowered.includes('request blocked');
+  if (accessDeniedSignal && (statusCode >= 400 || text.length < 3000)) {
+    return {
+      is_challenge: true,
+      challenge_type: 'access_denied_page',
+    };
+  }
+  if (lowered.includes('datadome') || lowered.includes('captcha-delivery.com')) {
+    return {
+      is_challenge: true,
+      challenge_type: 'datadome_challenge',
+    };
+  }
+  return { is_challenge: false, challenge_type: '' };
+}
+
 function buildUrlFetchFailureCode(attempts = []) {
   const rows = Array.isArray(attempts) ? attempts : [];
+  const challengeTypes = rows
+    .map((item) => String(item?.challenge_type || '').trim().toLowerCase())
+    .filter(Boolean);
   const statuses = rows
     .map((item) => Number(item?.status))
     .filter((value) => Number.isFinite(value))
@@ -8389,6 +8771,8 @@ function buildUrlFetchFailureCode(attempts = []) {
     .map((item) => String(item?.error_code || '').trim().toLowerCase())
     .filter(Boolean);
 
+  if (challengeTypes.includes('cloudflare_challenge')) return 'url_fetch_challenge_cloudflare';
+  if (challengeTypes.includes('access_denied_page')) return 'url_fetch_access_denied';
   if (statuses.includes(403)) return 'url_fetch_forbidden_403';
   if (statuses.includes(429)) return 'url_fetch_rate_limited_429';
   if (statuses.includes(406)) return 'url_fetch_not_acceptable_406';
@@ -8399,6 +8783,7 @@ function buildUrlFetchFailureCode(attempts = []) {
 
 function shouldRetryUrlFetchAttempt(attempt = null) {
   if (!attempt || typeof attempt !== 'object') return false;
+  if (String(attempt.challenge_type || '').trim()) return true;
   const status = Number(attempt.status);
   if (Number.isFinite(status) && URL_FETCH_RETRYABLE_STATUSES.has(Math.trunc(status))) return true;
   const errorCode = String(attempt.error_code || '').trim().toLowerCase();
@@ -8406,7 +8791,164 @@ function shouldRetryUrlFetchAttempt(attempt = null) {
   return URL_FETCH_RETRYABLE_ERROR_CODES.has(errorCode) || errorCode === 'empty_body';
 }
 
-async function fetchProductHtmlWithFallback({
+function shouldTryUnblockVendor(attempts = []) {
+  const rows = Array.isArray(attempts) ? attempts : [];
+  if (!rows.length) return false;
+  return rows.some((attempt) => {
+    if (!attempt || typeof attempt !== 'object') return false;
+    if (String(attempt.challenge_type || '').trim()) return true;
+    const status = Number(attempt.status);
+    if (Number.isFinite(status) && URL_FETCH_BLOCKED_STATUSES.has(Math.trunc(status))) return true;
+    return false;
+  });
+}
+
+async function fetchViaZenRows({
+  productUrl,
+  timeoutMs,
+  jsRender = false,
+} = {}) {
+  if (!URL_UNBLOCK_ZENROWS_API_KEY) {
+    return {
+      ok: false,
+      status: null,
+      html: '',
+      error_code: 'vendor_not_configured',
+      headers: {},
+    };
+  }
+  const requestTimeout = Math.max(800, Math.min(9000, Number(timeoutMs) || URL_UNBLOCK_TIMEOUT_MS));
+  try {
+    const resp = await axios.get('https://api.zenrows.com/v1/', {
+      timeout: requestTimeout,
+      maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+      maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+      responseType: 'text',
+      params: {
+        apikey: URL_UNBLOCK_ZENROWS_API_KEY,
+        url: String(productUrl || ''),
+        js_render: jsRender ? 'true' : 'false',
+        premium_proxy: 'true',
+      },
+      validateStatus: (status) => status >= 200 && status < 500,
+    });
+    const status = Number(resp?.status);
+    const body = typeof resp?.data === 'string' ? resp.data : '';
+    return {
+      ok: status >= 200 && status < 400 && body.trim().length > 0,
+      status: Number.isFinite(status) ? Math.trunc(status) : null,
+      html: body,
+      headers: resp?.headers && typeof resp.headers === 'object' ? resp.headers : {},
+      error_code: '',
+    };
+  } catch (err) {
+    const status = Number(err?.response?.status);
+    return {
+      ok: false,
+      status: Number.isFinite(status) ? Math.trunc(status) : null,
+      html: '',
+      headers: {},
+      error_code: String(err?.code || '').trim().toLowerCase() || 'network_error',
+    };
+  }
+}
+
+async function runSingleUrlFetchAttempt({
+  strategy,
+  provider = 'native',
+  productUrl,
+  timeoutMs,
+  headers = {},
+  jsRender = false,
+} = {}) {
+  if (provider === 'zenrows') {
+    const out = await fetchViaZenRows({
+      productUrl,
+      timeoutMs,
+      jsRender,
+    });
+    const challenge = detectBotChallengePage(out.html, out.status, out.headers);
+    const hasBody = String(out.html || '').trim().length > 0;
+    if (out.ok && !challenge.is_challenge) {
+      return {
+        ok: true,
+        html: String(out.html || ''),
+        status: out.status,
+        attempt: {
+          strategy,
+          provider,
+          ...(Number.isFinite(Number(out.status)) ? { status: Number(out.status) } : {}),
+        },
+      };
+    }
+    return {
+      ok: false,
+      html: '',
+      status: out.status,
+      attempt: {
+        strategy,
+        provider,
+        ...(Number.isFinite(Number(out.status)) ? { status: Number(out.status) } : {}),
+        ...(challenge.is_challenge ? { challenge_type: String(challenge.challenge_type || '').trim() } : {}),
+        error_code: out.error_code || (hasBody ? 'http_error' : 'empty_body'),
+      },
+    };
+  }
+
+  try {
+    const resp = await axios.get(productUrl, {
+      timeout: timeoutMs,
+      maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+      maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+      responseType: 'text',
+      headers,
+      validateStatus: (status) => status >= 200 && status < 500,
+    });
+    const status = Number(resp?.status);
+    const body = typeof resp?.data === 'string' ? resp.data : '';
+    const challenge = detectBotChallengePage(body, status, resp?.headers);
+    if (status >= 200 && status < 400 && body.trim() && !challenge.is_challenge) {
+      return {
+        ok: true,
+        html: body,
+        status,
+        attempt: {
+          strategy,
+          provider,
+          status: Math.trunc(status),
+        },
+      };
+    }
+    return {
+      ok: false,
+      html: '',
+      status,
+      attempt: {
+        strategy,
+        provider,
+        ...(Number.isFinite(status) ? { status: Math.trunc(status) } : {}),
+        ...(challenge.is_challenge ? { challenge_type: String(challenge.challenge_type || '').trim() } : {}),
+        error_code: body.trim() ? 'http_error' : 'empty_body',
+      },
+    };
+  } catch (err) {
+    const status = Number(err?.response?.status);
+    const codeToken = String(err?.code || '').trim().toLowerCase() || 'network_error';
+    return {
+      ok: false,
+      html: '',
+      status,
+      attempt: {
+        strategy,
+        provider,
+        ...(Number.isFinite(status) ? { status: Math.trunc(status) } : {}),
+        error_code: codeToken,
+      },
+    };
+  }
+}
+
+async function fetchProductHtmlWithUnblockChain({
   productUrl,
   timeoutMs = PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
   allowHostVariant = true,
@@ -8418,16 +8960,25 @@ async function fetchProductHtmlWithFallback({
       ok: false,
       status: null,
       html: '',
-      attempts: [{ strategy: 'input_validation', error_code: 'invalid_url' }],
+      attempts: [{ strategy: 'input_validation', provider: 'native', error_code: 'invalid_url' }],
       final_strategy: 'none',
       failure_code: 'url_invalid',
+      unblock_attempted: false,
+      unblock_failed: false,
+      used_unblock_vendor: false,
     };
   }
 
-  const timeoutValue = Math.max(120, Number(timeoutMs) || PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS);
-  const attemptsPlan = [
+  const attemptTimeoutMs = Math.max(
+    700,
+    Math.min(URL_UNBLOCK_TIMEOUT_MS, Number(timeoutMs) || PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS),
+  );
+  const totalDeadline = Date.now() + Math.max(attemptTimeoutMs, URL_FETCH_TOTAL_BUDGET_MS);
+
+  const directAttemptsPlan = [
     {
       strategy: 'axios_default',
+      provider: 'native',
       url: urlText,
       headers: {
         Accept: 'text/html,application/xhtml+xml',
@@ -8435,6 +8986,7 @@ async function fetchProductHtmlWithFallback({
     },
     {
       strategy: 'curl_ua',
+      provider: 'native',
       url: urlText,
       headers: {
         'User-Agent': 'curl/8.7.1',
@@ -8444,8 +8996,9 @@ async function fetchProductHtmlWithFallback({
   ];
   const hostVariantUrl = allowHostVariant ? buildAlternateHostVariantUrl(urlText) : '';
   if (hostVariantUrl && hostVariantUrl !== urlText) {
-    attemptsPlan.push({
+    directAttemptsPlan.push({
       strategy: 'host_variant_default',
+      provider: 'native',
       url: hostVariantUrl,
       headers: {
         Accept: 'text/html,application/xhtml+xml',
@@ -8454,44 +9007,71 @@ async function fetchProductHtmlWithFallback({
   }
 
   const attempts = [];
-  for (let index = 0; index < attemptsPlan.length; index += 1) {
-    const plan = attemptsPlan[index];
+  let unblockAttempted = false;
+  for (let index = 0; index < directAttemptsPlan.length; index += 1) {
+    if (Date.now() >= totalDeadline) break;
+    const plan = directAttemptsPlan[index];
     if (index > 0 && !shouldRetryUrlFetchAttempt(attempts[attempts.length - 1])) break;
-    try {
-      // Use a permissive status validator so we can diagnose 4xx responses instead of throwing.
-      const resp = await axios.get(plan.url, {
-        timeout: timeoutValue,
-        maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
-        maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
-        responseType: 'text',
-        headers: plan.headers,
-        validateStatus: (status) => status >= 200 && status < 500,
+    // eslint-disable-next-line no-await-in-loop
+    const out = await runSingleUrlFetchAttempt({
+      strategy: plan.strategy,
+      provider: plan.provider,
+      productUrl: plan.url,
+      timeoutMs: Math.max(700, Math.min(attemptTimeoutMs, totalDeadline - Date.now())),
+      headers: plan.headers,
+    });
+    if (out.ok) {
+      return {
+        ok: true,
+        status: Number.isFinite(Number(out.status)) ? Number(out.status) : null,
+        html: String(out.html || ''),
+        attempts: [...attempts, out.attempt],
+        final_strategy: plan.strategy,
+        failure_code: null,
+        unblock_attempted: false,
+        unblock_failed: false,
+        used_unblock_vendor: false,
+      };
+    }
+    attempts.push(out.attempt);
+  }
+
+  const shouldRunVendor =
+    URL_UNBLOCK_ENABLED &&
+    URL_UNBLOCK_PROVIDER === 'zenrows' &&
+    (!URL_UNBLOCK_ONLY_ON_BLOCKED || shouldTryUnblockVendor(attempts));
+
+  if (shouldRunVendor && Date.now() < totalDeadline) {
+    const vendorPlans = [
+      { strategy: 'zenrows_http', provider: 'zenrows', jsRender: false },
+      { strategy: 'zenrows_js_render', provider: 'zenrows', jsRender: true },
+    ];
+    for (let idx = 0; idx < vendorPlans.length; idx += 1) {
+      if (Date.now() >= totalDeadline) break;
+      const plan = vendorPlans[idx];
+      unblockAttempted = true;
+      // eslint-disable-next-line no-await-in-loop
+      const out = await runSingleUrlFetchAttempt({
+        strategy: plan.strategy,
+        provider: plan.provider,
+        productUrl: urlText,
+        timeoutMs: Math.max(700, Math.min(URL_UNBLOCK_TIMEOUT_MS, totalDeadline - Date.now())),
+        jsRender: plan.jsRender,
       });
-      const status = Number(resp?.status);
-      const body = typeof resp?.data === 'string' ? resp.data : '';
-      if (status >= 200 && status < 400 && body.trim()) {
+      if (out.ok) {
         return {
           ok: true,
-          status,
-          html: body,
-          attempts: [...attempts, { strategy: plan.strategy, status }],
+          status: Number.isFinite(Number(out.status)) ? Number(out.status) : null,
+          html: String(out.html || ''),
+          attempts: [...attempts, out.attempt],
           final_strategy: plan.strategy,
           failure_code: null,
+          unblock_attempted: true,
+          unblock_failed: false,
+          used_unblock_vendor: true,
         };
       }
-      attempts.push({
-        strategy: plan.strategy,
-        ...(Number.isFinite(status) ? { status: Math.trunc(status) } : {}),
-        error_code: body.trim() ? 'http_error' : 'empty_body',
-      });
-    } catch (err) {
-      const status = Number(err?.response?.status);
-      const codeToken = String(err?.code || '').trim().toLowerCase() || 'network_error';
-      attempts.push({
-        strategy: plan.strategy,
-        ...(Number.isFinite(status) ? { status: Math.trunc(status) } : {}),
-        error_code: codeToken,
-      });
+      attempts.push(out.attempt);
     }
   }
 
@@ -8507,7 +9087,24 @@ async function fetchProductHtmlWithFallback({
     attempts,
     final_strategy: 'none',
     failure_code: failureCode,
+    unblock_attempted: unblockAttempted,
+    unblock_failed: unblockAttempted,
+    used_unblock_vendor: false,
   };
+}
+
+async function fetchProductHtmlWithFallback({
+  productUrl,
+  timeoutMs = PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
+  allowHostVariant = true,
+  logger,
+} = {}) {
+  return fetchProductHtmlWithUnblockChain({
+    productUrl,
+    timeoutMs,
+    allowHostVariant,
+    logger,
+  });
 }
 
 async function fetchProductPageHtmlForReco({
@@ -9113,7 +9710,7 @@ function shouldServeProductIntelKbEntry({
   const verdictToken = String(assessment?.verdict || '').trim().toLowerCase();
   const isUnknownVerdict = verdictToken === 'unknown' || verdictToken === '未知';
   const hasDiagnosticCodes = missingCodes.some((token) =>
-    /^(url_fetch_|on_page_fetch_blocked|regulatory_source_used|incidecoder_|catalog_|anchor_soft_blocked_|anchor_id_not_used_due_to_low_trust|version_verification_needed|analysis_limited|evidence_missing|kb_entry_quarantined)/.test(
+    /^(url_fetch_|on_page_fetch_blocked|regulatory_source_used|retail_source_|incidecoder_|catalog_|anchor_soft_blocked_|anchor_id_not_used_due_to_low_trust|version_verification_needed|analysis_limited|evidence_missing|kb_entry_quarantined)/.test(
       token,
     ),
   );
@@ -9759,12 +10356,16 @@ async function buildProductAnalysisFromUrlIngredients({
     fetchOut.ok === true &&
     String(fetchOut.final_strategy || '').trim().toLowerCase() &&
     String(fetchOut.final_strategy || '').trim().toLowerCase() !== 'axios_default';
+  const urlFetchFailureCode = String(fetchOut?.failure_code || '').trim().toLowerCase();
+  const urlFetchChallengeBlocked =
+    urlFetchFailureCode === 'url_fetch_challenge_cloudflare' || urlFetchFailureCode === 'url_fetch_access_denied';
 
   const inciList = extractInciListFromHtml(html);
   const keyHints = extractKeyIngredientsFromHtml(html);
 
   let regulatorySupplement = null;
   let incidecoderSupplement = null;
+  let retailSupplement = null;
   if (!html || !inciList.length) {
     try {
       regulatorySupplement = await fetchDailyMedRegulatorySupplement({
@@ -9808,17 +10409,44 @@ async function buildProductAnalysisFromUrlIngredients({
       };
     }
   }
+  if (PRODUCT_INTEL_RETAIL_FALLBACK_ENABLED && (!html || !inciList.length)) {
+    try {
+      retailSupplement = await fetchRetailIngredientSupplement({
+        parsedProduct: parsedProductObj,
+        productUrl: parsedUrl.toString(),
+        timeoutMs: Math.max(2200, Math.min(8000, PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS + 2800)),
+        logger,
+      });
+    } catch (err) {
+      logger?.warn?.(
+        {
+          url: parsedUrl.toString(),
+          err: err?.message || String(err),
+        },
+        'aurora bff: retail supplement lookup failed',
+      );
+      retailSupplement = {
+        ok: false,
+        query: '',
+        reason: 'retail_source_no_match',
+      };
+    }
+  }
 
   const regulatoryActiveInci =
     regulatorySupplement && regulatorySupplement.ok && Array.isArray(regulatorySupplement.active_ingredients)
       ? regulatorySupplement.active_ingredients
+      : [];
+  const retailInci =
+    retailSupplement && retailSupplement.ok && Array.isArray(retailSupplement.ingredients)
+      ? retailSupplement.ingredients
       : [];
   const incidecoderInci =
     incidecoderSupplement && incidecoderSupplement.ok && Array.isArray(incidecoderSupplement.ingredients)
       ? incidecoderSupplement.ingredients
       : [];
   const normalizedInci = uniqCaseInsensitiveStrings(
-    [...inciList, ...regulatoryActiveInci, ...incidecoderInci]
+    [...inciList, ...regulatoryActiveInci, ...retailInci, ...incidecoderInci]
       .map((item) => normalizeInciIngredientName(item))
       .filter(Boolean),
     120,
@@ -9930,6 +10558,10 @@ async function buildProductAnalysisFromUrlIngredients({
           ? isCn
             ? `官网成分抓取受限，已改用监管源（DailyMed）补充活性信息（${regulatoryActiveInci.length} 项）。`
             : `Official-page INCI extraction was blocked; a regulatory source (DailyMed) was used as backup (${regulatoryActiveInci.length} active entries).`
+          : retailSupplement && retailSupplement.ok
+            ? isCn
+              ? `官网成分抓取受限，已改用主流零售页补充成分线索（${retailInci.length} 项，需与包装 INCI 复核）。`
+              : `Official-page INCI extraction was blocked; a retail PDP was used as supplemental evidence (${retailInci.length} entries, package INCI cross-check required).`
           : incidecoderSupplement && incidecoderSupplement.ok
             ? isCn
               ? `官网成分抓取受限，已改用 INCIDecoder 补充成分线索（${incidecoderInci.length} 项，需与包装 INCI 复核）。`
@@ -9955,15 +10587,24 @@ async function buildProductAnalysisFromUrlIngredients({
         : isCn
           ? '边界说明：成分浓度与批次差异不可见，建议先做局部测试并从低频开始。'
           : 'Boundary: concentration and batch variance are unknown; patch test first and start at low frequency.',
-      !html && !regulatorySupplement?.ok
+      !html && !regulatorySupplement?.ok && !retailSupplement?.ok
         ? isCn
-          ? '请粘贴包装上的完整 INCI，或换一个可公开访问的官方商品页链接后重试。'
-          : 'Please paste the full INCI from your package or share another publicly accessible official page URL and retry.'
+          ? urlFetchChallengeBlocked
+            ? '目标站点启用了反爬挑战页。请上传包装 INCI 图、粘贴成分表，或提供可访问的零售 PDP 链接后重试。'
+            : '请粘贴包装上的完整 INCI，或换一个可公开访问的官方商品页链接后重试。'
+          : urlFetchChallengeBlocked
+            ? 'The target site is blocked by anti-bot challenge. Upload package INCI, paste ingredients, or share an accessible retail PDP URL to retry.'
+            : 'Please paste the full INCI from your package or share another publicly accessible official page URL and retry.'
         : '',
       regulatorySupplement && regulatorySupplement.ok
         ? isCn
           ? '监管源可用，但不同地区/批次配方可能不同；建议继续核对实物包装。'
           : 'Regulatory evidence is available, but market/batch formulas can differ; verify against your actual package.'
+        : '',
+      retailSupplement && retailSupplement.ok
+        ? isCn
+          ? '零售页成分仅作补充证据，请继续以官方/监管信息与实物包装 INCI 交叉验证。'
+          : 'Retail PDP ingredients are supplemental evidence only; cross-check with official/regulatory info and package INCI.'
         : '',
       incidecoderSupplement && incidecoderSupplement.ok
         ? isCn
@@ -10203,7 +10844,7 @@ async function buildProductAnalysisFromUrlIngredients({
   const competitorMissing = !competitorCandidates.length;
   const socialMissing = !socialSignals.has_signal;
 
-  const confidence = Number(
+  let confidence = Number(
     Math.max(
       0.28,
       Math.min(
@@ -10214,18 +10855,33 @@ async function buildProductAnalysisFromUrlIngredients({
           (riskNotes.length ? 0.04 : 0) +
           (!html ? -0.1 : 0) +
           (regulatorySupplement && regulatorySupplement.ok ? 0.05 : 0) +
+          (retailSupplement && retailSupplement.ok ? 0.03 : 0) +
           (socialMissing ? 0 : 0.05) +
           (competitorMissing ? 0 : 0.05),
       ),
     ).toFixed(3),
   );
+  const hasAuthoritativeSource = Boolean(html || (regulatorySupplement && regulatorySupplement.ok));
+  if (!hasAuthoritativeSource && retailSupplement && retailSupplement.ok && incidecoderSupplement && incidecoderSupplement.ok) {
+    confidence = Number(Math.min(confidence, 0.62).toFixed(3));
+  }
 
   const evidenceMissingInfo = [];
   if (!html && !fetchOut.ok && fetchOut.failure_code) evidenceMissingInfo.push(String(fetchOut.failure_code));
   if (!html && !fetchOut.ok) evidenceMissingInfo.push('on_page_fetch_blocked');
   if (urlFetchRecoveredWithFallback) evidenceMissingInfo.push('url_fetch_recovered_with_fallback');
+  if (fetchOut?.used_unblock_vendor) evidenceMissingInfo.push('url_fetch_vendor_unblock_used');
+  if (!fetchOut?.ok && fetchOut?.unblock_attempted && fetchOut?.unblock_failed) {
+    evidenceMissingInfo.push('url_fetch_vendor_unblock_failed');
+  }
   if (regulatorySupplement && regulatorySupplement.ok) {
     evidenceMissingInfo.push('regulatory_source_used', 'version_verification_needed');
+  }
+  if (retailSupplement && retailSupplement.ok) {
+    evidenceMissingInfo.push('retail_source_used', 'version_verification_needed');
+  } else if (retailSupplement && retailSupplement.reason) {
+    const retailReason = String(retailSupplement.reason || '').trim().toLowerCase();
+    if (retailReason.includes('no_match') || retailReason.includes('retail')) evidenceMissingInfo.push('retail_source_no_match');
   }
   if (incidecoderSupplement && incidecoderSupplement.ok) {
     evidenceMissingInfo.push('incidecoder_source_used', 'version_verification_needed');
@@ -10292,6 +10948,14 @@ async function buildProductAnalysisFromUrlIngredients({
       confidence: 0.72,
     });
   }
+  if (retailSupplement && retailSupplement.ok) {
+    evidenceSources.push({
+      type: 'retail_page',
+      url: String(retailSupplement.source?.url || retailSupplement.source_url || ''),
+      label: String(retailSupplement.source?.label || 'Retail PDP'),
+      confidence: Number(retailSupplement.source?.confidence || 0.58),
+    });
+  }
   if (incidecoderSupplement && incidecoderSupplement.ok) {
     evidenceSources.push({
       type: 'inci_decoder',
@@ -10314,15 +10978,29 @@ async function buildProductAnalysisFromUrlIngredients({
     final_strategy: String(fetchOut?.final_strategy || 'none').trim() || 'none',
     attempts: (Array.isArray(fetchOut?.attempts) ? fetchOut.attempts : []).slice(0, 6).map((item) => ({
       strategy: String(item?.strategy || '').trim() || 'unknown',
+      provider: String(item?.provider || 'native').trim().toLowerCase() || 'native',
       ...(Number.isFinite(Number(item?.status)) ? { status: Number(item.status) } : {}),
       ...(item?.error_code ? { error_code: String(item.error_code).trim().toLowerCase() } : {}),
+      ...(item?.challenge_type ? { challenge_type: String(item.challenge_type).trim().toLowerCase() } : {}),
     })),
     ...(fetchOut?.failure_code ? { failure_code: String(fetchOut.failure_code).trim().toLowerCase() } : {}),
+    ...(fetchOut?.used_unblock_vendor ? { vendor_unblock_used: true } : {}),
+    ...(fetchOut?.unblock_attempted ? { vendor_unblock_attempted: true } : {}),
+    ...(fetchOut?.unblock_failed ? { vendor_unblock_failed: true } : {}),
+    ...(urlFetchChallengeBlocked
+      ? {
+        failure_detail: {
+          challenge_type: urlFetchFailureCode === 'url_fetch_access_denied' ? 'access_denied_page' : 'cloudflare_challenge',
+          next_step: 'provide_inci_or_accessible_retail_pdp',
+        },
+      }
+      : {}),
   };
   const sourceChain = uniqCaseInsensitiveStrings(
     [
       html ? 'official_page' : '',
       regulatorySupplement && regulatorySupplement.ok ? 'regulatory' : '',
+      retailSupplement && retailSupplement.ok ? 'retail_page' : '',
       incidecoderSupplement && incidecoderSupplement.ok ? 'inci_decoder' : '',
       'llm_extraction',
     ],
@@ -10364,10 +11042,20 @@ async function buildProductAnalysisFromUrlIngredients({
               ? 'URL 抓取已通过回退策略恢复（默认请求失败后切换 UA）。'
               : 'URL extraction recovered via fallback strategy (alternate UA profile).'
             : '',
+          fetchOut?.used_unblock_vendor
+            ? isCn
+              ? 'URL 抓取已使用第三方解封服务恢复（ZenRows）。'
+              : 'URL extraction recovered via vendor unblock service (ZenRows).'
+            : '',
           regulatorySupplement && regulatorySupplement.ok
             ? isCn
               ? `监管源补充：DailyMed 活性信息已接入（query=${regulatorySupplement.query || 'n/a'}）。`
               : `Regulatory supplement loaded from DailyMed (query=${regulatorySupplement.query || 'n/a'}).`
+            : '',
+          retailSupplement && retailSupplement.ok
+            ? isCn
+              ? `零售页补充：${String(retailSupplement.source?.label || 'Retail PDP')} 已解析 ${retailInci.length} 项成分线索（match=${Number(retailSupplement.match_score || 0).toFixed(2)}）。`
+              : `Retail PDP supplement loaded from ${String(retailSupplement.source?.label || 'Retail PDP')} (${retailInci.length} ingredients, match=${Number(retailSupplement.match_score || 0).toFixed(2)}).`
             : '',
           incidecoderSupplement && incidecoderSupplement.ok
             ? isCn
@@ -10400,10 +11088,14 @@ async function buildProductAnalysisFromUrlIngredients({
               ? '同页 related products 已分流到 related_products，未进入 competitors（硬约束）。'
               : 'On-page related products were routed to related_products and blocked from competitors by hard gates.'
             : '',
-          !html && !regulatorySupplement?.ok
+          !html && !regulatorySupplement?.ok && !retailSupplement?.ok
             ? isCn
-              ? '下一步：请贴包装 INCI 或换一个可公开访问的官方页面链接，以提升分析信息量。'
-              : 'Next step: paste package INCI or share a publicly accessible official product page to improve evidence quality.'
+              ? urlFetchChallengeBlocked
+                ? '下一步：请上传包装 INCI 图、粘贴成分表，或改用可访问的零售 PDP 链接继续。'
+                : '下一步：请贴包装 INCI 或换一个可公开访问的官方页面链接，以提升分析信息量。'
+              : urlFetchChallengeBlocked
+                ? 'Next step: upload package INCI, paste ingredient list, or use an accessible retail PDP URL.'
+                : 'Next step: paste package INCI or share a publicly accessible official product page to improve evidence quality.'
             : '',
         ],
         8,
@@ -10436,6 +11128,17 @@ async function buildProductAnalysisFromUrlIngredients({
             provider: 'dailymed',
             url: String(regulatorySupplement.source_url || ''),
             query: String(regulatorySupplement.query || ''),
+          },
+        }
+        : {}),
+      ...(retailSupplement && retailSupplement.ok
+        ? {
+          retail_source: {
+            provider: String(retailSupplement.source?.label || 'retail_pdp').trim().toLowerCase(),
+            url: String(retailSupplement.source_url || ''),
+            query: String(retailSupplement.query || ''),
+            match_score: Number(retailSupplement.match_score || 0),
+            ingredient_count: retailInci.length,
           },
         }
         : {}),
@@ -10475,7 +11178,11 @@ async function buildProductAnalysisFromUrlIngredients({
         ...(fetchOut?.failure_code ? [String(fetchOut.failure_code)] : []),
         ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
         ...(urlFetchRecoveredWithFallback ? ['url_fetch_recovered_with_fallback'] : []),
+        ...(fetchOut?.used_unblock_vendor ? ['url_fetch_vendor_unblock_used'] : []),
+        ...(!fetchOut?.ok && fetchOut?.unblock_attempted && fetchOut?.unblock_failed ? ['url_fetch_vendor_unblock_failed'] : []),
         ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
+        ...(retailSupplement && retailSupplement.ok ? ['retail_source_used', 'version_verification_needed'] : []),
+        ...(retailSupplement && !retailSupplement.ok && retailSupplement.reason ? ['retail_source_no_match'] : []),
         ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
         ...(
           incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason
@@ -10555,7 +11262,11 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(fetchOut?.failure_code ? [String(fetchOut.failure_code)] : []),
       ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
       ...(urlFetchRecoveredWithFallback ? ['url_fetch_recovered_with_fallback'] : []),
+      ...(fetchOut?.used_unblock_vendor ? ['url_fetch_vendor_unblock_used'] : []),
+      ...(!fetchOut?.ok && fetchOut?.unblock_attempted && fetchOut?.unblock_failed ? ['url_fetch_vendor_unblock_failed'] : []),
       ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
+      ...(retailSupplement && retailSupplement.ok ? ['retail_source_used', 'version_verification_needed'] : []),
+      ...(retailSupplement && !retailSupplement.ok && retailSupplement.reason ? ['retail_source_no_match'] : []),
       ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
       ...(incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason ? [String(incidecoderSupplement.reason)] : []),
       ...(!normalizedInci.length ? ['evidence_missing'] : []),
@@ -10611,6 +11322,17 @@ async function buildProductAnalysisFromUrlIngredients({
             provider: 'dailymed',
             url: String(regulatorySupplement.source_url || ''),
             query: String(regulatorySupplement.query || ''),
+          },
+        }
+        : {}),
+      ...(retailSupplement && retailSupplement.ok
+        ? {
+          retail_source: {
+            provider: String(retailSupplement.source?.label || 'retail_pdp').trim().toLowerCase(),
+            url: String(retailSupplement.source_url || ''),
+            query: String(retailSupplement.query || ''),
+            match_score: Number(retailSupplement.match_score || 0),
+            ingredient_count: retailInci.length,
           },
         }
         : {}),
@@ -39046,12 +39768,19 @@ const __internal = {
   buildRealtimeCompetitorCandidates,
   maybeSyncRepairLowCoverageCompetitors,
   buildProductAnalysisFromUrlIngredients,
+  detectBotChallengePage,
+  fetchProductHtmlWithUnblockChain,
   fetchProductHtmlWithFallback,
   fetchIncidecoderSearchCandidates,
   extractIncidecoderProductUrls,
   fetchIncidecoderProductPage,
   extractIncidecoderIngredientsFromHtml,
   scoreIncidecoderMatch,
+  fetchRetailSearchCandidates,
+  fetchRetailProductPage,
+  extractRetailIngredientsFromHtml,
+  scoreRetailMatch,
+  fetchRetailIngredientSupplement,
   shouldPersistProductIntelKb,
   shouldServeProductIntelKbEntry,
   resolveProductAnalysisSocialState,

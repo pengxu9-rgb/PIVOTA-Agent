@@ -24,6 +24,13 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_ENABLED;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_PROVIDER;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_ZENROWS_API_KEY;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_TIMEOUT_MS;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_RETAIL_FALLBACK_ENABLED;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_RETAIL_MAX_CANDIDATES;
     delete process.env.AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER;
     delete process.env.AURORA_PRODUCT_INTEL_ESCALATION_MODEL;
     delete process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS;
@@ -171,6 +178,146 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(ev.social_signals.typical_positive)).toBe(true);
     expect(ev.social_signals.typical_positive).toContain('soothing');
     expect(Array.isArray(ev.expert_notes)).toBe(true);
+  });
+
+  test('URL fetch challenge detector identifies cloudflare and access denied signatures', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const cloudflare = __internal.detectBotChallengePage(
+      '<html><title>Just a moment...</title><div>cf-ray</div></html>',
+      403,
+      { server: 'cloudflare' },
+    );
+    expect(cloudflare).toEqual(
+      expect.objectContaining({
+        is_challenge: true,
+        challenge_type: 'cloudflare_challenge',
+      }),
+    );
+
+    const denied = __internal.detectBotChallengePage(
+      "<html><title>Access Denied</title><body>You don't have permission to access</body></html>",
+      403,
+      {},
+    );
+    expect(denied).toEqual(
+      expect.objectContaining({
+        is_challenge: true,
+        challenge_type: 'access_denied_page',
+      }),
+    );
+  });
+
+  test('URL fetch chain escalates to zenrows when native attempts are blocked', async () => {
+    process.env.AURORA_BFF_URL_UNBLOCK_ENABLED = 'true';
+    process.env.AURORA_BFF_URL_UNBLOCK_PROVIDER = 'zenrows';
+    process.env.AURORA_BFF_URL_UNBLOCK_ZENROWS_API_KEY = 'z_test_key';
+    process.env.AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED = 'true';
+    jest.resetModules();
+
+    nock('https://blocked.example')
+      .get('/product')
+      .times(2)
+      .reply(403, '<html><title>Just a moment...</title><div>cf-ray</div></html>');
+
+    nock('https://api.zenrows.com')
+      .get('/v1/')
+      .query((q) => String(q.url || '') === 'https://blocked.example/product' && String(q.js_render || '') === 'false')
+      .reply(200, '<html><body>Ingredients: Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate</body></html>');
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.fetchProductHtmlWithFallback({
+      productUrl: 'https://blocked.example/product',
+      timeoutMs: 3200,
+      allowHostVariant: false,
+      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.final_strategy).toBe('zenrows_http');
+    expect(out.used_unblock_vendor).toBe(true);
+    expect(Array.isArray(out.attempts)).toBe(true);
+    expect(out.attempts.some((item) => item.provider === 'zenrows')).toBe(true);
+  });
+
+  test('URL fetch chain keeps provider metadata on native success attempts', async () => {
+    process.env.AURORA_BFF_URL_UNBLOCK_ENABLED = 'true';
+    jest.resetModules();
+
+    nock('https://native-ok.example')
+      .get('/product')
+      .reply(200, '<html><body>Ingredients: Water, Glycerin</body></html>');
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.fetchProductHtmlWithFallback({
+      productUrl: 'https://native-ok.example/product',
+      timeoutMs: 2400,
+      allowHostVariant: false,
+      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    });
+
+    expect(out.ok).toBe(true);
+    expect(Array.isArray(out.attempts)).toBe(true);
+    expect(out.attempts.length).toBeGreaterThan(0);
+    expect(out.attempts[0]).toEqual(expect.objectContaining({ strategy: 'axios_default', provider: 'native' }));
+  });
+
+  test('retail supplement returns retail_page source when search and PDP extraction match', async () => {
+    jest.resetModules();
+
+    nock('https://www.sephora.com')
+      .get('/search')
+      .query(true)
+      .reply(
+        200,
+        '<html><body><a href="/product/brand-peptide-serum">Brand Peptide Serum</a></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+    nock('https://www.sephora.com')
+      .get('/product/brand-peptide-serum')
+      .reply(
+        200,
+        '<html><head><title>Brand Peptide Serum | Sephora</title></head><body><p>Ingredients: Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate.</p></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.fetchRetailIngredientSupplement({
+      parsedProduct: { brand: 'Brand', name: 'Peptide Serum' },
+      productUrl: '',
+      timeoutMs: 4200,
+      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    });
+
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+    expect(Array.isArray(out.ingredients)).toBe(true);
+    expect(out.ingredients.length).toBeGreaterThanOrEqual(4);
+    expect(out.source).toEqual(
+      expect.objectContaining({
+        type: 'retail_page',
+      }),
+    );
+  });
+
+  test('retail ingredient extractor and matcher produce usable supplemental signals', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const ingredients = __internal.extractRetailIngredientsFromHtml(
+      '<section><h3>Ingredients</h3><p>Ingredients: Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate.</p></section>',
+    );
+    expect(Array.isArray(ingredients)).toBe(true);
+    expect(ingredients.length).toBeGreaterThanOrEqual(4);
+    expect(ingredients.join(' ').toLowerCase()).toContain('niacinamide');
+
+    const highScore = __internal.scoreRetailMatch({
+      descriptor: { brand: 'CeraVe', name: 'Moisturizing Cream', query: 'CeraVe Moisturizing Cream' },
+      pageTitle: 'CeraVe Moisturizing Cream | Sephora',
+      productUrl: 'https://www.sephora.com/product/cerave-moisturizing-cream',
+    });
+    const lowScore = __internal.scoreRetailMatch({
+      descriptor: { brand: 'CeraVe', name: 'Moisturizing Cream', query: 'CeraVe Moisturizing Cream' },
+      pageTitle: 'Matte Makeup Brush | Tools',
+      productUrl: 'https://www.sephora.com/product/makeup-brush',
+    });
+    expect(highScore).toBeGreaterThan(lowScore);
   });
 
   test('/v1/dupe/compare uses structured.alternatives for tradeoffs/evidence', async () => {
