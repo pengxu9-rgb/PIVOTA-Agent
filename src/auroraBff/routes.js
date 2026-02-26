@@ -114,6 +114,7 @@ const {
 const { applyReplyTemplates } = require('./replyTemplates');
 const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
+const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
@@ -13015,6 +13016,295 @@ function maybeBuildPhotoModulesCardForAnalysis({
   return built.card;
 }
 
+function derivePhotoModulesMarket({ profileSummary, language } = {}) {
+  const profileMarket = pickFirstString(profileSummary && profileSummary.region).toUpperCase();
+  if (profileMarket) return profileMarket;
+  return String(language || '').trim().toUpperCase() === 'CN' ? 'CN' : 'US';
+}
+
+function derivePhotoModulesRiskTier(profileSummary) {
+  const pregnancyStatus = pickFirstString(
+    profileSummary && profileSummary.pregnancy_status,
+    profileSummary && profileSummary.pregnancyStatus,
+  )
+    .trim()
+    .toLowerCase();
+  if (pregnancyStatus === 'pregnant' || pregnancyStatus === 'trying') return 'pregnancy_unknown';
+
+  const contraindications = Array.isArray(profileSummary && profileSummary.contraindications)
+    ? profileSummary.contraindications
+    : [];
+  const contraindicationText = contraindications
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (/(pregnan|pregnancy|breastfeed|哺乳|妊娠|授乳)/i.test(contraindicationText)) return 'pregnancy_unknown';
+
+  const barrier = pickFirstString(profileSummary && profileSummary.barrierStatus).toLowerCase();
+  if (barrier === 'impaired' || barrier === 'damaged' || barrier === 'fragile') return 'barrier_irritated';
+
+  const sensitivity = pickFirstString(profileSummary && profileSummary.sensitivity).toLowerCase();
+  if (sensitivity === 'high' || sensitivity === 'reactive' || sensitivity === 'sensitive') return 'sensitive';
+  return 'low';
+}
+
+function pickActionIssueType(action, moduleIssues) {
+  const actionIssueType = pickFirstString(
+    Array.isArray(action && action.evidence_issue_types) ? action.evidence_issue_types[0] : '',
+  )
+    .trim()
+    .toLowerCase();
+  if (actionIssueType) return actionIssueType;
+  const moduleIssueType = pickFirstString(
+    moduleIssues && moduleIssues[0] && moduleIssues[0].issue_type,
+  )
+    .trim()
+    .toLowerCase();
+  return moduleIssueType || 'redness';
+}
+
+function buildPhotoModuleRecoCacheKey({
+  moduleId,
+  ingredientId,
+  issueType,
+  market,
+  lang,
+  riskTier,
+  qualityGrade,
+} = {}) {
+  return [
+    String(moduleId || '').trim().toLowerCase(),
+    String(ingredientId || '').trim().toLowerCase(),
+    String(issueType || '').trim().toLowerCase(),
+    String(market || '').trim().toLowerCase(),
+    String(lang || '').trim().toLowerCase(),
+    String(riskTier || '').trim().toLowerCase(),
+    String(qualityGrade || '').trim().toLowerCase(),
+  ].join('::');
+}
+
+async function enrichPhotoModulesCardWithIngredientProducts({
+  photoModulesCard,
+  profileSummary,
+  language,
+  logger,
+} = {}) {
+  if (!isPlainObject(photoModulesCard)) return photoModulesCard;
+  if (String(photoModulesCard.type || '').trim().toLowerCase() !== 'photo_modules_v1') return photoModulesCard;
+
+  const payload = isPlainObject(photoModulesCard.payload) ? { ...photoModulesCard.payload } : null;
+  if (!payload || !Array.isArray(payload.modules) || payload.modules.length === 0) return photoModulesCard;
+
+  const qualityGrade = pickFirstString(payload.quality_grade).toLowerCase() || 'unknown';
+  const lang = String(language || '').trim().toUpperCase() === 'CN' ? 'zh' : 'en';
+  const market = derivePhotoModulesMarket({ profileSummary, language });
+  const riskTier = derivePhotoModulesRiskTier(profileSummary);
+  const recCache = new Map();
+
+  const fallbackCandidateBuilder =
+    AURORA_PURCHASABLE_FALLBACK_ENABLED === true
+      ? async ({ query, limit = 6, allowExternalSeed = true } = {}) =>
+          buildPurchasableFallbackCandidates({
+            query,
+            logger,
+            timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+            limit: Math.max(1, Math.min(12, Number(limit) || 6)),
+            allowExternalSeed: Boolean(allowExternalSeed) && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true,
+            externalSeedStrategy: 'supplement_internal_first',
+          })
+      : null;
+
+  const llmFallbackRecoverFn =
+    AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED === true
+      ? async ({ queries = [], maxProducts = 6 } = {}) =>
+          recoverProductsWithLlmFallbackFromQueries({
+            queries,
+            strictFilter: true,
+            singleProvider: AURORA_LLM_SINGLE_PROVIDER,
+            allowOpenAiFallback: AURORA_LLM_OPENAI_FALLBACK_ENABLED,
+            logger,
+            guardrailRuleId: 'photo_modules_reco_guardrail',
+            maxProducts: Math.max(1, Math.min(12, Number(maxProducts) || 6)),
+          })
+      : null;
+
+  const nextModules = await Promise.all(
+    payload.modules.map(async (moduleRowRaw, moduleIndex) => {
+      const moduleRow = isPlainObject(moduleRowRaw) ? moduleRowRaw : {};
+      const moduleId = pickFirstString(moduleRow.module_id, `module_${moduleIndex + 1}`);
+      const moduleIssues = Array.isArray(moduleRow.issues) ? moduleRow.issues : [];
+      const moduleActions = Array.isArray(moduleRow.actions) ? moduleRow.actions : [];
+      if (!moduleActions.length) return moduleRowRaw;
+
+      const nextActions = await Promise.all(
+        moduleActions.map(async (actionRaw) => {
+          const action = isPlainObject(actionRaw) ? actionRaw : {};
+          const issueType = pickActionIssueType(action, moduleIssues);
+          const ingredientId = pickFirstString(action.ingredient_id).trim().toLowerCase();
+          const ingredientName = pickFirstString(action.ingredient_name, action.ingredient);
+
+          if (!ingredientId) {
+            const fallbackQuery = ingredientName || issueType || moduleId || 'skincare ingredient';
+            const fallbackCtas = dedupeExternalSearchCtas(
+              [buildExternalSearchCta({ name: fallbackQuery }, 'ingredient_id_missing')],
+              3,
+            );
+            const nextAction = {
+              ...action,
+              products: [],
+              products_empty_reason: 'ingredient_id_missing',
+              ...(fallbackCtas.length ? { external_search_ctas: fallbackCtas } : {}),
+            };
+            if (!fallbackCtas.length && Object.prototype.hasOwnProperty.call(nextAction, 'external_search_ctas')) {
+              delete nextAction.external_search_ctas;
+            }
+            return nextAction;
+          }
+
+          const cacheKey = buildPhotoModuleRecoCacheKey({
+            moduleId,
+            ingredientId,
+            issueType,
+            market,
+            lang,
+            riskTier,
+            qualityGrade,
+          });
+          if (!recCache.has(cacheKey)) {
+            recCache.set(
+              cacheKey,
+              buildIngredientProductRecommendationsNeutral({
+                moduleId,
+                ingredientId,
+                ingredientName,
+                issueType,
+                market,
+                lang,
+                riskTier,
+                qualityGrade,
+                minCitations: DIAG_PRODUCT_REC_MIN_CITATIONS,
+                minEvidenceGrade: DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE,
+                repairOnlyWhenDegraded: DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED,
+                internalTestMode: INTERNAL_TEST_MODE,
+                artifactPath: DIAG_INGREDIENT_KB_V2_PATH,
+                catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                maxProducts: 3,
+                fallbackCandidateBuilder,
+                llmFallbackRecoverFn,
+                externalSearchCtaBuilder: buildExternalSearchCta,
+                dedupeExternalSearchCtas,
+              }).catch((error) => {
+                logger?.warn?.(
+                  {
+                    err: error && error.message ? error.message : String(error),
+                    module_id: moduleId,
+                    ingredient_id: ingredientId,
+                    issue_type: issueType,
+                  },
+                  'aurora bff: photo module ingredient neutral reco failed',
+                );
+                return {
+                  products: [],
+                  products_empty_reason: 'lookup_error',
+                  external_search_ctas: [],
+                  suppressed_reason: 'NO_MATCH',
+                  debug: {
+                    module_id: moduleId,
+                    ingredient_id: ingredientId,
+                    issue_type: issueType,
+                    reason: 'lookup_error',
+                  },
+                };
+              }),
+            );
+          }
+
+          const recResult = await recCache.get(cacheKey);
+          const products = Array.isArray(recResult && recResult.products) ? recResult.products.slice(0, 3) : [];
+          const actionCtas = dedupeExternalSearchCtas(
+            Array.isArray(recResult && recResult.external_search_ctas) ? recResult.external_search_ctas : [],
+            6,
+          );
+          const nextAction = {
+            ...action,
+            products,
+            ...(pickFirstString(recResult && recResult.products_empty_reason)
+              ? { products_empty_reason: pickFirstString(recResult && recResult.products_empty_reason) }
+              : {}),
+            ...(actionCtas.length ? { external_search_ctas: actionCtas } : {}),
+          };
+          if (!pickFirstString(recResult && recResult.products_empty_reason) && Object.prototype.hasOwnProperty.call(nextAction, 'products_empty_reason')) {
+            delete nextAction.products_empty_reason;
+          }
+          if (!actionCtas.length && Object.prototype.hasOwnProperty.call(nextAction, 'external_search_ctas')) {
+            delete nextAction.external_search_ctas;
+          }
+          return nextAction;
+        }),
+      );
+
+      const moduleProducts = [];
+      const seenModuleProduct = new Set();
+      const moduleEmptyReasons = [];
+      const moduleSearchCtas = [];
+
+      for (const action of nextActions) {
+        const rows = Array.isArray(action && action.products) ? action.products : [];
+        for (const row of rows) {
+          const productId = pickFirstString(row && row.product_id, row && row.productId);
+          const merchantId = pickFirstString(row && row.merchant_id, row && row.merchantId);
+          const directUrl = pickFirstString(
+            row && row.pdp_url,
+            row && row.url,
+            row && row.product_url,
+            row && row.purchase_path,
+          ).toLowerCase();
+          const key = `${productId.toLowerCase()}::${merchantId.toLowerCase()}::${directUrl}`;
+          if (seenModuleProduct.has(key)) continue;
+          seenModuleProduct.add(key);
+          moduleProducts.push(row);
+        }
+        const emptyReason = pickFirstString(action && action.products_empty_reason);
+        if (emptyReason) moduleEmptyReasons.push(emptyReason);
+        const ctas = Array.isArray(action && action.external_search_ctas) ? action.external_search_ctas : [];
+        for (const cta of ctas) moduleSearchCtas.push(cta);
+      }
+
+      moduleProducts.sort((left, right) => {
+        const leftScore = Number(left && left.suitability_score || 0);
+        const rightScore = Number(right && right.suitability_score || 0);
+        if (rightScore !== leftScore) return rightScore - leftScore;
+        return String(left && left.name || '').localeCompare(String(right && right.name || ''));
+      });
+
+      const dedupedModuleCtas = dedupeExternalSearchCtas(moduleSearchCtas, 8);
+      const topModuleProducts = moduleProducts.slice(0, 6);
+      const nextModule = {
+        ...moduleRow,
+        actions: nextActions,
+        products: topModuleProducts,
+        ...(topModuleProducts.length === 0 && moduleEmptyReasons.length
+          ? { products_empty_reason: moduleEmptyReasons[0] }
+          : {}),
+        ...(dedupedModuleCtas.length ? { external_search_ctas: dedupedModuleCtas } : {}),
+      };
+      if (topModuleProducts.length > 0 && Object.prototype.hasOwnProperty.call(nextModule, 'products_empty_reason')) {
+        delete nextModule.products_empty_reason;
+      }
+      if (!dedupedModuleCtas.length && Object.prototype.hasOwnProperty.call(nextModule, 'external_search_ctas')) {
+        delete nextModule.external_search_ctas;
+      }
+      return nextModule;
+    }),
+  );
+
+  payload.modules = nextModules;
+  return {
+    ...photoModulesCard,
+    payload,
+  };
+}
+
 async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInternal, logger, requestId } = {}) {
   if (!DIAG_SKINMASK_ENABLED) return null;
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) return null;
@@ -13317,7 +13607,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     requestId: ctx.request_id,
   });
 
-  const photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
+  let photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
     requestId: ctx.request_id,
     analysis,
     usedPhotos,
@@ -13329,6 +13619,14 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     language,
     skinMask: photoModulesSkinMask,
   });
+  if (photoModulesCard) {
+    photoModulesCard = await enrichPhotoModulesCardWithIngredientProducts({
+      photoModulesCard,
+      profileSummary,
+      language,
+      logger,
+    });
+  }
 
   const cards = [
     {
@@ -33617,7 +33915,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           return normalizeSourcePhoto(bestEffort);
         })();
 
-        const photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
+        let photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
           requestId: ctx.request_id,
           analysis,
           usedPhotos,
@@ -33679,6 +33977,14 @@ function mountAuroraBffRoutes(app, { logger }) {
               }
             }
           }
+        }
+        if (photoModulesCard) {
+          photoModulesCard = await enrichPhotoModulesCardWithIngredientProducts({
+            photoModulesCard,
+            profileSummary,
+            language: ctx.lang,
+            logger,
+          });
         }
 
         if (analysis && persistLastAnalysis) {
@@ -39852,6 +40158,7 @@ const __internal = {
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
+  enrichPhotoModulesCardWithIngredientProducts,
   isTreatmentLikeRecommendationForLowConfidence,
   applyLowConfidenceRecoGuard,
   envelopeRequiresConservativeRecoGuard,
