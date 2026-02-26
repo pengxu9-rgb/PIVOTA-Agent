@@ -998,7 +998,19 @@ function moduleContribution({ moduleBox, region, meta } = {}) {
   if (meta.region_type === 'heatmap' && region.heatmap) {
     const stats = heatmapStatsInModule(region.heatmap, moduleBox);
     const overlap = Math.max(stats.mean, stats.p90);
-    if (overlap <= 0.02) return null;
+    if (overlap <= 0.02) {
+      const regionBox = meta.bbox;
+      if (!regionBox) return null;
+      const boxOverlap = computeBoxOverlapRatio(moduleBox, regionBox);
+      if (boxOverlap <= 0.03) return null;
+      const fallbackSignal = clamp01(Math.max(stats.mean, stats.p90, 0.08));
+      return {
+        overlap: boxOverlap,
+        signalScore: fallbackSignal,
+        severityScore: clamp01(normalizeSeverity0to4(meta.severity_0_4) / 4),
+        confidence: clamp01(meta.confidence_0_1),
+      };
+    }
     return {
       overlap,
       signalScore: clamp01(Math.max(stats.mean, stats.p90)),

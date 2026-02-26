@@ -243,6 +243,50 @@ test('photo modules card: only emits for used_photos=true and quality pass/degra
   assert.equal(disabledByQuality, null);
 });
 
+test('photo modules card: keeps heatmap evidence when bbox overlaps but heatmap intensity is weak', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_heatmap_weak_overlap',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_heatmap_weak',
+          issue_type: 'shine',
+          severity: 2,
+          confidence: 0.72,
+          geometry: {
+            bbox: { x: 0.42, y: 0.3, w: 0.24, h: 0.28 },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: new Array(8 * 8).fill(0),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'degraded', reasons: ['glare'] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  const regions = Array.isArray(built.card.payload.regions) ? built.card.payload.regions : [];
+  assert.equal(regions.some((region) => region.region_id === 'pf_heatmap_weak_heatmap'), true);
+
+  const modules = Array.isArray(built.card.payload.modules) ? built.card.payload.modules : [];
+  const shineIssues = modules
+    .flatMap((moduleRow) => (Array.isArray(moduleRow.issues) ? moduleRow.issues : []))
+    .filter((issue) => issue.issue_type === 'shine');
+  assert.equal(shineIssues.length > 0, true);
+  for (const issue of shineIssues) {
+    const evidenceIds = Array.isArray(issue.evidence_region_ids) ? issue.evidence_region_ids : [];
+    assert.equal(evidenceIds.length > 0, true);
+    assert.equal(evidenceIds.every((id) => String(id).includes('heatmap')), true);
+  }
+});
+
 test('photo modules card: prefers polygon from finding geometry over bbox/heatmap for same finding', () => {
   const built = buildPhotoModulesCard({
     requestId: 'req_photo_modules_polygon_priority',
