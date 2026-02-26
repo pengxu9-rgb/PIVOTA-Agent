@@ -132,6 +132,29 @@ test('purchasable fallback: merges catalog + external and de-duplicates by produ
   assert.equal(out.products.some((row) => row.product_id === 'prod_2'), true);
 });
 
+test('purchasable fallback: can retain id-less external candidates when explicitly enabled', async () => {
+  const out = await __internal.buildPurchasableFallbackCandidates({
+    query: 'tranexamic acid serum',
+    allowExternalSeed: false,
+    allowIdlessProducts: true,
+    searchFn: async () => ({
+      ok: true,
+      products: [
+        {
+          name: 'External Listing Without Canonical Id',
+          pdp_url: 'https://example.com/pdp/txa-no-id',
+          source: 'external_seed',
+        },
+      ],
+    }),
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.products.length, 1);
+  assert.equal(out.products[0].name, 'External Listing Without Canonical Id');
+  assert.equal(out.products[0].retrieval_source, 'external_seed');
+});
+
 test('purchasable fallback: llm fallback returns strict https skincare products only', async () => {
   __internal.__setCallGeminiJsonObjectForTest(async () => ({
     ok: true,

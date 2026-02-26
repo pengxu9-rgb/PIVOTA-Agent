@@ -565,8 +565,9 @@ const PHOTO_MODULES_ACTION_RECO_SEARCH_TIMEOUT_MS = (() => {
   return Math.max(250, Math.min(4000, v));
 })();
 const PHOTO_MODULES_ACTION_RECO_NETWORK_MAX_ACTIONS = (() => {
-  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_NETWORK_MAX_ACTIONS || 3);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  // Let more unique ingredient actions use network fallback before quota is hit.
+  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_NETWORK_MAX_ACTIONS || 8);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8;
   return Math.max(0, Math.min(24, v));
 })();
 const PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS = (() => {
@@ -11603,6 +11604,7 @@ async function buildPurchasableFallbackCandidates({
   deadlineMs = 0,
   limit = 6,
   allowExternalSeed = false,
+  allowIdlessProducts = false,
   externalSeedStrategy = 'supplement_internal_first',
   searchFn,
 } = {}) {
@@ -11663,8 +11665,12 @@ async function buildPurchasableFallbackCandidates({
     if (!isPlainObject(product)) return;
     const productId = pickFirstString(product.product_id, product.productId);
     const merchantId = pickFirstString(product.merchant_id, product.merchantId);
-    const key = `${String(productId || '').trim()}::${String(merchantId || '').trim()}`;
-    if (key === '::') return;
+    const directUrl = pickFirstString(product.pdp_url, product.url, product.product_url, product.purchase_path);
+    const displayName = pickFirstString(product.name, product.title, product.display_name, product.displayName);
+    const canonicalKey = `${String(productId || '').trim()}::${String(merchantId || '').trim()}`;
+    const idlessKey = `${String(directUrl || '').trim().toLowerCase()}::${String(displayName || '').trim().toLowerCase()}`;
+    const key = canonicalKey === '::' ? idlessKey : canonicalKey;
+    if (canonicalKey === '::' && (!allowIdlessProducts || idlessKey === '::')) return;
     if (seen.has(key)) return;
     seen.add(key);
     const sourceToken = pickFirstString(product.source, product.source_type, fallbackSource).toLowerCase() || fallbackSource;
@@ -13124,6 +13130,8 @@ async function enrichPhotoModulesCardWithIngredientProducts({
             timeoutMs: PHOTO_MODULES_ACTION_RECO_SEARCH_TIMEOUT_MS,
             limit: Math.max(1, Math.min(12, Number(limit) || 6)),
             allowExternalSeed: Boolean(allowExternalSeed) && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true,
+            // Action-level rec can consume id-less candidates because productRecV1 can synthesize stable ids from url/name.
+            allowIdlessProducts: true,
             // Avoid two-step catalog+external search per action to keep analysis latency bounded.
             externalSeedStrategy: 'on_empty_only',
           })
