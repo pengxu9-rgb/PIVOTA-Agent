@@ -1217,11 +1217,11 @@ const DIAG_PRODUCT_REC_MIN_CITATIONS = Math.max(
   Math.min(5, Math.trunc(Number(process.env.DIAG_PRODUCT_REC_MIN_CITATIONS || 1) || 1)),
 );
 const DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE = (() => {
-  const token = String(process.env.DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE || 'B')
+  const token = String(process.env.DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE || 'C')
     .trim()
     .toUpperCase();
   if (token === 'A' || token === 'B' || token === 'C') return token;
-  return 'B';
+  return 'C';
 })();
 const DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED =
   String(process.env.DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED || '').toLowerCase() === 'true';
