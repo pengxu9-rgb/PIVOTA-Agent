@@ -18443,12 +18443,15 @@ function buildRulesOnlyRoutineExpertFromContext({ message, profile, recentLogs, 
     hasNonEmptyRoutineInput(candidateFromProfile)
       ? candidateFromProfile
       : { notes: String(message || '').slice(0, 800) };
-  const expert = buildRoutineExpertV1({
-    routineCandidate: candidate,
-    profileSummary: profile && typeof profile === 'object' ? profile : {},
-    recentLogs,
-    language,
-  });
+  const expert =
+    typeof buildRoutineExpertV1 === 'function'
+      ? buildRoutineExpertV1({
+        routineCandidate: candidate,
+        profileSummary: profile && typeof profile === 'object' ? profile : {},
+        recentLogs,
+        language,
+      })
+      : null;
   if (expert) return enrichRoutineExpertWithMessageSignals({ expert, message, language });
   const lang = language === 'CN' ? 'CN' : 'EN';
   const fallbackExpert = {
