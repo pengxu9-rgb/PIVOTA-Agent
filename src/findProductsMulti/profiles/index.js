@@ -1,5 +1,6 @@
 const SEARCH_PROFILE_IDS = Object.freeze({
   FRAGRANCE_STRICT: 'fragrance_strict',
+  BRAND_BROAD: 'brand_broad',
   LINGERIE_STRICT: 'lingerie_strict',
   PET_SUPPLIES: 'pet_supplies',
   BEAUTY_GENERAL: 'beauty_general',
@@ -28,6 +29,31 @@ const SEARCH_PROFILE_MAP = Object.freeze({
     }),
     budgetPolicy: Object.freeze({
       cacheStageBudgetMs: 2600,
+      externalSeedTimeoutSeconds: 0.8,
+      secondaryStageEnabled: true,
+    }),
+  }),
+  [SEARCH_PROFILE_IDS.BRAND_BROAD]: Object.freeze({
+    id: SEARCH_PROFILE_IDS.BRAND_BROAD,
+    intentSignals: ['brand_query'],
+    ambiguityPolicy: 'search_first',
+    supplementPolicy: Object.freeze({
+      externalParticipation: 'always',
+      queryVariants: 'brand_variants',
+      allowBrandExpansion: 'query_contains_brand_only',
+      defaultSeedStrategy: 'unified_relevance',
+    }),
+    filterPolicy: Object.freeze({
+      mode: 'balanced',
+      allowVerticals: ['all'],
+      blockedVerticals: ['beauty_tools', 'makeup_tools'],
+    }),
+    rankingPolicy: Object.freeze({
+      boost: ['brand_match', 'semantic_relevance'],
+      penalty: ['tool_signal'],
+    }),
+    budgetPolicy: Object.freeze({
+      cacheStageBudgetMs: 2400,
       externalSeedTimeoutSeconds: 0.8,
       secondaryStageEnabled: true,
     }),
