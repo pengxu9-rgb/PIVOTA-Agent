@@ -7,8 +7,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies
-RUN npm ci --only=production
+# Install production dependencies.
+# Using npm install here avoids hard failure when lockfile is missing in build context.
+RUN npm install --omit=dev
 
 # Copy application files
 COPY . .
