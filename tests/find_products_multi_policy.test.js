@@ -85,6 +85,42 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
   });
 
+  test('brand query keeps candidates instead of clarify-empty', () => {
+    const intent = extractIntentRuleBased('kylie cosmetics', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'brand-1',
+            title: 'Kylie Cosmetics Matte Lip Kit',
+            description: 'Official lipstick kit',
+            brand: 'Kylie Cosmetics',
+          }),
+        ],
+        total: 1,
+        page_size: 1,
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'kylie cosmetics' } },
+      metadata: {
+        ambiguity_score_pre: 0.55,
+        brand_query_detected: true,
+        brand_query_without_category: true,
+        brand_scope: 'broad',
+        brand_entities: ['kylie cosmetics'],
+      },
+      rawUserQuery: 'kylie cosmetics',
+    });
+
+    expect(Array.isArray(resp.products)).toBe(true);
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.metadata?.search_decision?.brand_query_detected).toBe(true);
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+    expect(resp.total).toBe(resp.products.length);
+  });
+
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {
     withPolicyEnv(
       {
