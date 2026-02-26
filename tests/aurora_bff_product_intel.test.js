@@ -392,6 +392,44 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(reasonText).toMatch(/barrier repair|barrier support|barrier/i);
   });
 
+  test('reconcileProductAnalysisConsistency backfills provider on legacy provenance.url_fetch attempts', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const payload = {
+      assessment: {
+        verdict: 'Likely Suitable',
+        reasons: ['Has evidence'],
+        anchor_product: { name: 'Legacy Product Anchor' },
+      },
+      evidence: {
+        science: {
+          key_ingredients: ['Water'],
+          mechanisms: [],
+          fit_notes: [],
+          risk_notes: [],
+        },
+        social_signals: {
+          typical_positive: [],
+          typical_negative: [],
+          risk_for_groups: [],
+        },
+        expert_notes: [],
+        confidence: 0.61,
+        missing_info: [],
+      },
+      confidence: 0.61,
+      missing_info: [],
+      provenance: {
+        url_fetch: {
+          final_strategy: 'axios_default',
+          attempts: [{ strategy: 'axios_default', status: 200 }],
+        },
+      },
+    };
+
+    const out = reconcileProductAnalysisConsistency(payload, { lang: 'EN' });
+    expect(out?.provenance?.url_fetch?.attempts?.[0]?.provider).toBe('native');
+  });
+
   test('catalog fallback query builder extracts useful candidates from product URL', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const candidates = __internal.buildProductCatalogQueryCandidates({

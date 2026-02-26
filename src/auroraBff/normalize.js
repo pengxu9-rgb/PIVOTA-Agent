@@ -422,6 +422,41 @@ function buildDiagnosticUnknownReasons(payload, { lang = 'EN', fieldMissing = nu
   return uniqueStrings(reasons).slice(0, 5);
 }
 
+function backfillUrlFetchAttemptProviders(provenanceInput) {
+  const provenance = asPlainObject(provenanceInput);
+  if (!provenance) return provenanceInput;
+  const hasSnake = provenance.url_fetch != null;
+  const urlFetch = asPlainObject(hasSnake ? provenance.url_fetch : provenance.urlFetch);
+  if (!urlFetch) return provenanceInput;
+  const attempts = Array.isArray(urlFetch.attempts) ? urlFetch.attempts : null;
+  if (!attempts || !attempts.length) return provenanceInput;
+
+  const normalizedAttempts = attempts.map((entry) => {
+    const item = asPlainObject(entry);
+    if (!item) return entry;
+    const provider = String(item.provider || 'native').trim().toLowerCase() || 'native';
+    return {
+      ...item,
+      provider,
+    };
+  });
+
+  const nextUrlFetch = {
+    ...urlFetch,
+    attempts: normalizedAttempts,
+  };
+
+  return hasSnake
+    ? {
+      ...provenance,
+      url_fetch: nextUrlFetch,
+    }
+    : {
+      ...provenance,
+      urlFetch: nextUrlFetch,
+    };
+}
+
 function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissing = null } = {}) {
   const p = asPlainObject(payload);
   if (!p) return payload;
@@ -444,6 +479,10 @@ function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissin
     uniqueStrings(asStringArray(input).filter((code) => String(code || '').trim().toLowerCase() !== 'anchor_product_missing'));
 
   let next = { ...p };
+  const nextProvenance = backfillUrlFetchAttemptProviders(next.provenance);
+  if (asPlainObject(nextProvenance)) {
+    next.provenance = nextProvenance;
+  }
   if (hasAnchor) {
     next = {
       ...next,
