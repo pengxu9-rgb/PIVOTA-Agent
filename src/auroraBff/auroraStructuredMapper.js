@@ -457,7 +457,9 @@ function mapAuroraProductAnalysis(upstreamStructured) {
     ...(betterPairing.length ? { better_pairing: betterPairing } : {}),
     ...(followUpQuestion ? { follow_up_question: followUpQuestion } : {}),
     ...(anchor ? { anchor_product: anchor } : {}),
-    ...(analyze && analyze.how_to_use != null ? { how_to_use: analyze.how_to_use } : {}),
+    ...(analyze && (analyze.how_to_use != null || analyze.howToUse != null)
+      ? { how_to_use: analyze.how_to_use != null ? analyze.how_to_use : analyze.howToUse }
+      : {}),
   };
 
   const evidenceOut = mapAuroraAnalyzeToEvidence(analyze, { missingFields, kbNotes });
