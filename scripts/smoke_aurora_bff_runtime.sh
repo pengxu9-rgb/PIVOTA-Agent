@@ -203,6 +203,51 @@ printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell" '(.cards[]|se
 printf "%s\n" "$chat_json" | jq_assert "chat optional safety advisory (if present) is non-blocking" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="safety_optional_profile_missing") | .payload.non_blocking] | if length==0 then true else all(. == true) end)'
 printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '(.events | any(.event_name=="safety_gate_require_info")) | not'
 
+say "chat follow-up alternatives (goal+anchor should stay anchored)"
+followup_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
+  -H 'Content-Type: application/json' \
+  "${COMMON_HEADERS[@]}" \
+  --data "{
+    \"message\":\"Find acne-focused alternatives and give me a clear pick recommendation.\",
+    \"action\":{
+      \"action_id\":\"chat.followup.alternatives\",
+      \"kind\":\"action\",
+      \"data\":{
+        \"goal\":\"acne_focus\",
+        \"prompt\":\"Find acne-focused alternatives and give me a clear pick recommendation.\",
+        \"anchor\":{
+          \"brand\":\"Lab Series\",
+          \"name\":\"All-In-One Defense Lotion\",
+          \"url\":\"${LAB_SERIES_URL}\"
+        }
+      }
+    }
+  }")"
+
+printf "%s\n" "$followup_json" | jq_assert "follow-up returns product_analysis card" '.cards | any(.type=="product_analysis")'
+printf "%s\n" "$followup_json" | jq_assert "follow-up provenance has goal" '((.cards[]|select(.type=="product_analysis")|.payload.provenance.followup_goal)//"") == "acne_focus"'
+printf "%s\n" "$followup_json" | jq_assert "follow-up provenance has anchor_used" '
+  (.cards[]|select(.type=="product_analysis")|.payload.provenance.anchor_used) as $a |
+  (($a.anchor_product_id // $a.anchor_product_url // "") | tostring | length) > 0
+'
+printf "%s\n" "$followup_json" | jq_assert "follow-up not missing anchor code" '
+  (
+    [(.cards[]|select(.type=="product_analysis")|.payload.missing_info[]? | tostring | ascii_downcase)]
+    | any(. == "followup_anchor_missing")
+  ) | not
+'
+printf "%s\n" "$followup_json" | jq_assert "follow-up alternatives contain no obvious non-skincare tools" '
+  [
+    (.cards[]|select(.type=="product_analysis")|.payload.competitors.candidates[]?),
+    (.cards[]|select(.type=="product_analysis")|.payload.related_products.candidates[]?),
+    (.cards[]|select(.type=="product_analysis")|.payload.dupes.candidates[]?)
+  ] as $rows |
+  (
+    [$rows[] | (((.name // .display_name // "") + " " + (.category // "") + " " + (.product_type // "")) | ascii_downcase | test("(brush|makeup\\s*brush|applicator|tool\\b|blender)"))]
+    | any
+  ) | not
+'
+
 say "chat reco (recommendations OR confidence_notice under artifact gate)"
 reco_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \

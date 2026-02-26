@@ -180,6 +180,126 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(ev.expert_notes)).toBe(true);
   });
 
+  test('/v1/chat follow-up alternatives returns advisory when anchor is missing', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_followup_anchor_missing_1')
+      .send({
+        message: 'Find acne-focused alternatives',
+        action: {
+          action_id: 'chat.followup.alternatives',
+          kind: 'action',
+          data: {
+            goal: 'acne_focus',
+            prompt: 'Find acne-focused alternatives and give me a clear pick recommendation.',
+          },
+        },
+      })
+      .expect(200);
+
+    const confCard = res.body.cards.find((c) => c.type === 'confidence_notice');
+    expect(confCard).toBeTruthy();
+    const details = Array.isArray(confCard.payload?.details) ? confCard.payload.details.join(' ') : '';
+    expect(String(details)).toMatch(/anchor|锚点/i);
+  });
+
+  test('/v1/chat follow-up alternatives stays anchored and carries goal/provenance', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'dupe_compare',
+        structured: {
+          alternatives: [
+            {
+              kind: 'dupe',
+              product: {
+                product_id: 'alt_dupe_1',
+                brand: 'The Ordinary',
+                name: 'Niacinamide 10% + Zinc 1%',
+              },
+              similarity_score: 0.91,
+              reasons: ['Better oil-control orientation for acne-prone skin.'],
+              tradeoffs: {
+                added_benefits: ['niacinamide', 'zinc pca'],
+                texture_finish_differences: ['may feel slightly tackier'],
+              },
+            },
+            {
+              kind: 'premium',
+              product: {
+                product_id: 'alt_pair_1',
+                brand: 'Lab Series',
+                name: 'Hydrating Rescue Gel',
+              },
+              similarity_score: 0.79,
+              reasons: ['Pairs well to reduce dryness risk while keeping acne control routine.'],
+              tradeoffs: {
+                added_benefits: ['panthenol'],
+              },
+            },
+          ],
+        },
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_followup_anchor_ok_1')
+      .send({
+        message: 'Find acne-focused alternatives and give me a clear pick recommendation.',
+        action: {
+          action_id: 'chat.followup.alternatives',
+          kind: 'action',
+          data: {
+            goal: 'acne_focus',
+            prompt: 'Find acne-focused alternatives and give me a clear pick recommendation.',
+            anchor: {
+              brand: 'Lab Series',
+              name: 'All-In-One Defense Lotion',
+              url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+            },
+          },
+        },
+      })
+      .expect(200);
+
+    const productCard = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(productCard).toBeTruthy();
+    expect(productCard.payload?.provenance?.followup_goal).toBe('acne_focus');
+    expect(productCard.payload?.provenance?.anchor_used).toEqual(
+      expect.objectContaining({
+        anchor_product_url: expect.stringContaining('labseries.com'),
+      }),
+    );
+
+    const dupes = Array.isArray(productCard.payload?.dupes?.candidates) ? productCard.payload.dupes.candidates : [];
+    const competitors = Array.isArray(productCard.payload?.competitors?.candidates)
+      ? productCard.payload.competitors.candidates
+      : [];
+
+    const related = Array.isArray(productCard.payload?.related_products?.candidates)
+      ? productCard.payload.related_products.candidates
+      : [];
+    const allCandidates = [...dupes, ...competitors, ...related];
+    if (allCandidates.length) {
+      expect(allCandidates.some((candidate) => typeof candidate?.recommendation_intent === 'string')).toBe(true);
+      const replaceCandidates = allCandidates.filter((candidate) => candidate?.recommendation_intent === 'replace');
+      expect(replaceCandidates.length).toBeGreaterThan(0);
+      if (related.length) {
+        expect(related[0].recommendation_intent).toBe('pair');
+      }
+    } else {
+      const missingInfo = Array.isArray(productCard.payload?.missing_info) ? productCard.payload.missing_info : [];
+      expect(missingInfo).not.toContain('followup_anchor_missing');
+      expect(missingInfo).not.toContain('followup_goal_not_resolved');
+    }
+  });
+
   test('URL fetch challenge detector identifies cloudflare and access denied signatures', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const cloudflare = __internal.detectBotChallengePage(

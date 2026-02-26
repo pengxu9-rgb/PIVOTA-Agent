@@ -7764,9 +7764,62 @@ function normalizeRecoScoreBreakdown(raw, similarityHint = null) {
   return out;
 }
 
-function normalizeRecoCandidateForContract(item) {
+function normalizeRecommendationIntentToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'replace' || token === 'pair') return token;
+  return '';
+}
+
+function normalizeRecommendationReasonType(value, { block = 'competitors' } = {}) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token) return token;
+  if (block === 'dupes') return 'dupe_similarity';
+  if (block === 'related_products') return 'pairing_context';
+  return 'competitor_similarity';
+}
+
+function buildRecoCandidateTradeoffNotes(row) {
+  const out = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(row.tradeoff_notes) ? row.tradeoff_notes : []),
+      ...(Array.isArray(row.tradeoffNotes) ? row.tradeoffNotes : []),
+      ...(Array.isArray(row.compare_highlights) ? row.compare_highlights : []),
+      ...(Array.isArray(row.compareHighlights) ? row.compareHighlights : []),
+    ],
+    4,
+  );
+  return out;
+}
+
+function inferRecommendationExpectedOutcome(row, { block = 'competitors', lang = 'EN' } = {}) {
+  const text = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(row?.why_candidate?.reasons_user_visible) ? row.why_candidate.reasons_user_visible : []),
+      ...(Array.isArray(row?.whyCandidate?.reasons_user_visible) ? row.whyCandidate.reasons_user_visible : []),
+      ...(Array.isArray(row?.compare_highlights) ? row.compare_highlights : []),
+    ],
+    5,
+  )
+    .join(' ')
+    .toLowerCase();
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  if (/(acne|breakout|comedone|控痘|粉刺|痘)/i.test(text)) {
+    return isCn ? '更偏向控痘与减少堵塞。' : 'More oriented to acne/comedone control.';
+  }
+  if (/(dry|drying|hydrate|tight|barrier|干燥|紧绷|补水|屏障)/i.test(text)) {
+    return isCn ? '更偏向提升保湿与舒适度。' : 'More oriented to hydration and comfort.';
+  }
+  if (block === 'related_products') {
+    return isCn ? '更适合作为搭配补位，而非直接替换。' : 'Best used as a pairing add-on, not a direct replacement.';
+  }
+  return isCn ? '在相近使用场景下提供替代路径。' : 'Provides an alternative path for a similar use case.';
+}
+
+function normalizeRecoCandidateForContract(item, { block = 'competitors', anchorBrandId = '', semanticsStats = null } = {}) {
   const row = isPlainObject(item) ? item : null;
   if (!row) return null;
+  const tokenBlock = String(block || '').trim().toLowerCase();
+  const anchorBrand = normalizeRecoGuardBrandId(anchorBrandId);
   const similarityRaw = normalizeMaybePercentScore(row.similarity_score ?? row.similarityScore);
   const whyCandidate = normalizeWhyCandidateObject(row.why_candidate ?? row.whyCandidate, {
     lang: 'EN',
@@ -7777,6 +7830,42 @@ function normalizeRecoCandidateForContract(item) {
   const socialSummary = normalizeRecoSocialSummaryUserVisible(
     row.social_summary_user_visible ?? row.socialSummaryUserVisible,
   );
+  const similarityScore = similarityRaw == null ? null : similarityRaw;
+  const rawIntent = normalizeRecommendationIntentToken(
+    row.recommendation_intent ?? row.recommendationIntent,
+  );
+  const candidateBrand = normalizeRecoGuardBrandId(
+    pickFirstTrimmed(row.brand_id, row.brandId, row.brand, row.brand_name, row.brandName),
+  );
+  const sameBrand = Boolean(anchorBrand && candidateBrand && anchorBrand === candidateBrand);
+  const defaultIntent = tokenBlock === 'related_products' ? 'pair' : 'replace';
+  let recommendationIntent = rawIntent || defaultIntent;
+  let semanticsReclassified = false;
+  if (tokenBlock === 'related_products') {
+    const canBeReplace = !sameBrand && similarityScore != null && similarityScore >= 0.9;
+    if (!canBeReplace && recommendationIntent === 'replace') {
+      recommendationIntent = 'pair';
+      semanticsReclassified = true;
+    }
+    if (!rawIntent && !canBeReplace) {
+      recommendationIntent = 'pair';
+    }
+  }
+  if (tokenBlock !== 'related_products' && !rawIntent) {
+    recommendationIntent = 'replace';
+  }
+  if (semanticsReclassified && semanticsStats && typeof semanticsStats === 'object') {
+    semanticsStats.reclassified = Number(semanticsStats.reclassified || 0) + 1;
+  }
+  const recommendationReasonType = normalizeRecommendationReasonType(
+    row.recommendation_reason_type ?? row.recommendationReasonType,
+    { block: tokenBlock },
+  );
+  const tradeoffNotes = buildRecoCandidateTradeoffNotes(row);
+  const expectedOutcome = pickFirstTrimmed(
+    row.expected_outcome,
+    row.expectedOutcome,
+  ) || inferRecommendationExpectedOutcome(row, { block: tokenBlock, lang: 'EN' });
   const next = {
     ...row,
     ...(similarityRaw != null ? { similarity_score: similarityRaw } : {}),
@@ -7785,6 +7874,11 @@ function normalizeRecoCandidateForContract(item) {
     source,
     evidence_refs: evidenceRefs,
     price_band: priceBand,
+    recommendation_intent: recommendationIntent,
+    recommendation_reason_type: recommendationReasonType,
+    expected_outcome: expectedOutcome,
+    tradeoff_notes: tradeoffNotes,
+    ...(semanticsReclassified ? { semantics_reclassified: true } : {}),
     ...(socialSummary ? { social_summary_user_visible: socialSummary } : {}),
   };
   delete next.social_raw;
@@ -7792,16 +7886,17 @@ function normalizeRecoCandidateForContract(item) {
   delete next.__dag_source;
   delete next.__social_channels_used;
   if (!socialSummary) delete next.social_summary_user_visible;
+  if (!tradeoffNotes.length) delete next.tradeoff_notes;
   return next;
 }
 
-function normalizeRecoBlockForContract(rawBlock, { max = 10 } = {}) {
-  const block = isPlainObject(rawBlock) ? rawBlock : {};
-  const candidates = sanitizeCompetitorCandidates(block.candidates, max)
-    .map((item) => normalizeRecoCandidateForContract(item))
+function normalizeRecoBlockForContract(rawBlock, { max = 10, block = 'competitors', anchorBrandId = '', semanticsStats = null } = {}) {
+  const blockObj = isPlainObject(rawBlock) ? rawBlock : {};
+  const candidates = sanitizeCompetitorCandidates(blockObj.candidates, max)
+    .map((item) => normalizeRecoCandidateForContract(item, { block, anchorBrandId, semanticsStats }))
     .filter(Boolean);
   return {
-    ...block,
+    ...blockObj,
     candidates,
   };
 }
@@ -8266,6 +8361,8 @@ function applyRecoGuardrailToProductAnalysisPayload(
 
 function finalizeProductAnalysisRecoContract(payload, { logger, requestId = 'unknown', mode = 'main_path' } = {}) {
   const p = isPlainObject(payload) ? payload : {};
+  const anchorBrandId = getRecoGuardAnchorBrandId(p);
+  const semanticsStats = { reclassified: 0 };
   const internalCodes = uniqCaseInsensitiveStrings(
     [
       ...getProductAnalysisInternalMissingCodes(p),
@@ -8274,13 +8371,30 @@ function finalizeProductAnalysisRecoContract(payload, { logger, requestId = 'unk
     ],
     32,
   );
+  const missingInfo = uniqCaseInsensitiveStrings(Array.isArray(p.missing_info) ? p.missing_info : [], 16);
   const normalized = applyProductAnalysisGapContract({
     ...p,
-    competitors: normalizeRecoBlockForContract(p.competitors),
-    related_products: normalizeRecoBlockForContract(p.related_products),
-    dupes: normalizeRecoBlockForContract(p.dupes),
+    competitors: normalizeRecoBlockForContract(p.competitors, {
+      block: 'competitors',
+      anchorBrandId,
+      semanticsStats,
+    }),
+    related_products: normalizeRecoBlockForContract(p.related_products, {
+      block: 'related_products',
+      anchorBrandId,
+      semanticsStats,
+    }),
+    dupes: normalizeRecoBlockForContract(p.dupes, {
+      block: 'dupes',
+      anchorBrandId,
+      semanticsStats,
+    }),
     confidence_by_block: normalizeRecoConfidenceByBlock(p.confidence_by_block),
     provenance: normalizeRecoProvenance(p.provenance, p),
+    missing_info:
+      semanticsStats.reclassified > 0
+        ? uniqCaseInsensitiveStrings([...missingInfo, 'related_semantics_reclassified'], 16)
+        : missingInfo,
     missing_info_internal: internalCodes,
     internal_debug_codes: internalCodes,
   });
@@ -18560,6 +18674,182 @@ function extractIncludeAlternativesFromAction(action) {
   const data = action.data && typeof action.data === 'object' ? action.data : null;
   if (!data) return false;
   return coerceBoolean(data.include_alternatives ?? data.includeAlternatives);
+}
+
+const FOLLOWUP_ALTERNATIVE_GOALS = new Set(['acne_focus', 'less_drying', 'pros_cons']);
+
+function inferFollowupGoalFromText(raw) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return '';
+  if (/(acne|breakout|blemish|comedone|控痘|痘痘|痘印|粉刺)/i.test(text)) return 'acne_focus';
+  if (/(dry|drying|dehydrat|tight|barrier|less[\s-]?dry|拔干|干燥|紧绷|保湿|屏障)/i.test(text)) return 'less_drying';
+  if (/(pros|cons|tradeoff|优点|缺点|利弊|取舍|反馈)/i.test(text)) return 'pros_cons';
+  return '';
+}
+
+function normalizeFollowupGoal(raw, { fallbackText = '' } = {}) {
+  const text = String(raw || '').trim().toLowerCase();
+  const mapped = (() => {
+    if (!text) return '';
+    if (FOLLOWUP_ALTERNATIVE_GOALS.has(text)) return text;
+    if (text === 'acne' || text === 'acne-focused' || text === 'acne_focused') return 'acne_focus';
+    if (text === 'lessdry' || text === 'less_dry' || text === 'hydration') return 'less_drying';
+    if (text === 'pros_cons' || text === 'proscons' || text === 'tradeoffs' || text === 'feedback') return 'pros_cons';
+    return '';
+  })();
+  if (mapped) return mapped;
+  const inferred = inferFollowupGoalFromText(fallbackText);
+  if (inferred) return inferred;
+  return '';
+}
+
+function extractFollowupActionData(action) {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return null;
+  const data = action.data && typeof action.data === 'object' && !Array.isArray(action.data) ? action.data : null;
+  return data;
+}
+
+function normalizeFollowupAnchor(rawAnchor) {
+  if (typeof rawAnchor === 'string') {
+    const text = rawAnchor.trim();
+    if (!text) return null;
+    if (/^https?:\/\//i.test(text)) {
+      return { url: text };
+    }
+    return { name: text };
+  }
+  if (!rawAnchor || typeof rawAnchor !== 'object' || Array.isArray(rawAnchor)) return null;
+  const anchor = rawAnchor;
+  const normalized = {
+    product_id: pickFirstTrimmed(anchor.product_id, anchor.productId, anchor.id),
+    sku_id: pickFirstTrimmed(anchor.sku_id, anchor.skuId),
+    brand: pickFirstTrimmed(anchor.brand, anchor.brand_name, anchor.brandName),
+    name: pickFirstTrimmed(anchor.name, anchor.display_name, anchor.displayName, anchor.title),
+    display_name: pickFirstTrimmed(anchor.display_name, anchor.displayName),
+    url: pickFirstTrimmed(anchor.url, anchor.product_url, anchor.productUrl),
+  };
+  if (!normalized.product_id && !normalized.sku_id && !normalized.brand && !normalized.name && !normalized.display_name && !normalized.url) {
+    return null;
+  }
+  return normalized;
+}
+
+function resolveFollowupAnchorHint({
+  actionData = null,
+  fallbackAnchorId = '',
+  fallbackAnchorUrl = '',
+  fallbackMessage = '',
+} = {}) {
+  const data = actionData && typeof actionData === 'object' && !Array.isArray(actionData) ? actionData : {};
+  const anchorRaw =
+    data.anchor ||
+    data.anchor_product ||
+    data.anchorProduct ||
+    null;
+  const normalizedAnchor = normalizeFollowupAnchor(anchorRaw);
+  const anchorId = pickFirstTrimmed(
+    normalizedAnchor?.product_id,
+    normalizedAnchor?.sku_id,
+    fallbackAnchorId,
+  );
+  const anchorUrl = pickFirstTrimmed(
+    normalizedAnchor?.url,
+    fallbackAnchorUrl,
+  );
+  const anchorProduct = {
+    ...(normalizedAnchor?.product_id ? { product_id: normalizedAnchor.product_id } : {}),
+    ...(normalizedAnchor?.sku_id ? { sku_id: normalizedAnchor.sku_id } : {}),
+    ...(normalizedAnchor?.brand ? { brand: normalizedAnchor.brand } : {}),
+    ...(normalizedAnchor?.name ? { name: normalizedAnchor.name } : {}),
+    ...(normalizedAnchor?.display_name ? { display_name: normalizedAnchor.display_name } : {}),
+    ...(anchorUrl ? { url: anchorUrl } : {}),
+  };
+  const productInput = buildProductInputText(anchorProduct, anchorUrl)
+    || pickFirstTrimmed(normalizedAnchor?.name, normalizedAnchor?.display_name)
+    || (anchorUrl ? anchorUrl : '')
+    || '';
+  return {
+    anchor_id: anchorId || '',
+    anchor_url: anchorUrl || '',
+    anchor_product: anchorProduct,
+    product_input: productInput || '',
+    has_anchor: Boolean(anchorId || anchorUrl || pickFirstTrimmed(normalizedAnchor?.name, normalizedAnchor?.display_name)),
+    fallback_message_used: !normalizedAnchor && !fallbackAnchorId && !fallbackAnchorUrl && Boolean(fallbackMessage),
+  };
+}
+
+function buildFollowupGoalLabel(goal, lang = 'EN') {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  if (goal === 'acne_focus') return isCn ? '更聚焦控痘' : 'acne-focused alternatives';
+  if (goal === 'less_drying') return isCn ? '更不易拔干' : 'less-drying alternatives';
+  if (goal === 'pros_cons') return isCn ? '用户反馈利弊' : 'pros/cons-focused alternatives';
+  return isCn ? '锚定替代建议' : 'anchored alternatives';
+}
+
+function mapFollowupAlternativeToCandidate(rawAlt, { goal = '', lang = 'EN' } = {}) {
+  const alt = rawAlt && typeof rawAlt === 'object' && !Array.isArray(rawAlt) ? rawAlt : null;
+  if (!alt) return null;
+  const product = alt.product && typeof alt.product === 'object' && !Array.isArray(alt.product) ? alt.product : null;
+  if (!product) return null;
+  const name = pickFirstTrimmed(product.display_name, product.displayName, product.name);
+  if (!name) return null;
+  const brand = pickFirstTrimmed(product.brand);
+  const similarityRaw = normalizeMaybePercentScore(alt.similarity_score ?? alt.similarity ?? alt.similarityScore);
+  const similarity = similarityRaw == null ? null : Math.max(0, Math.min(1, similarityRaw));
+  const reasons = uniqCaseInsensitiveStrings(Array.isArray(alt.reasons) ? alt.reasons : [], 4);
+  const tradeoffs = uniqCaseInsensitiveStrings(Array.isArray(alt.tradeoffs) ? alt.tradeoffs : [], 4);
+  const kind = String(alt.kind || '').trim().toLowerCase();
+
+  const block = kind === 'dupe'
+    ? 'dupes'
+    : kind === 'similar'
+      ? 'competitors'
+      : 'related_products';
+
+  const recommendationIntent = block === 'related_products' ? 'pair' : 'replace';
+  const recommendationReasonType = goal || 'anchored_alternative';
+  const expectedOutcome = (() => {
+    if (goal === 'acne_focus') {
+      return lang === 'CN'
+        ? '优先提升控痘/闭口管理，同时兼顾耐受。'
+        : 'Prioritize acne/comedone control while preserving tolerance.';
+    }
+    if (goal === 'less_drying') {
+      return lang === 'CN'
+        ? '优先降低干燥紧绷感，提升保湿与屏障舒适度。'
+        : 'Prioritize lower dryness/tightness with better hydration comfort.';
+    }
+    return lang === 'CN'
+      ? '优先给出清晰利弊与可执行取舍。'
+      : 'Prioritize clear tradeoffs and actionable selection guidance.';
+  })();
+
+  const summary = reasons[0] || (
+    lang === 'CN'
+      ? `${name} 基于当前锚点给出替代建议。`
+      : `${name} is selected as an anchored alternative candidate.`
+  );
+
+  return {
+    ...(pickFirstTrimmed(product.product_id, product.productId) ? { product_id: pickFirstTrimmed(product.product_id, product.productId) } : {}),
+    ...(pickFirstTrimmed(product.sku_id, product.skuId) ? { sku_id: pickFirstTrimmed(product.sku_id, product.skuId) } : {}),
+    ...(brand ? { brand } : {}),
+    name,
+    source: { type: 'chat_followup_alternatives' },
+    source_type: 'chat_followup_alternatives',
+    ...(similarity != null ? { similarity_score: similarity } : {}),
+    why_candidate: {
+      summary,
+      reasons_user_visible: reasons.length ? reasons : [summary],
+    },
+    compare_highlights: tradeoffs,
+    recommendation_intent: recommendationIntent,
+    recommendation_reason_type: recommendationReasonType,
+    expected_outcome: expectedOutcome,
+    tradeoff_notes: tradeoffs,
+    ...(block === 'dupes' ? { dupe_match: 'high' } : {}),
+    _followup_block: block,
+  };
 }
 
 function summarizeProfileForContext(profile, options = {}) {
@@ -38345,6 +38635,253 @@ function mountAuroraBffRoutes(app, { logger }) {
           ],
           session_patch: {},
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'stale_budget_chip_ignored' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      const followupActionData = extractFollowupActionData(normalizedActionPayload);
+      const actionIdToken = String(actionId || '').trim().toLowerCase();
+      const followupPromptText = pickFirstTrimmed(
+        followupActionData && typeof followupActionData.prompt === 'string' ? followupActionData.prompt : '',
+        message,
+      );
+      const followupGoal = normalizeFollowupGoal(
+        followupActionData
+          ? (
+            followupActionData.goal ||
+            followupActionData.followup_goal ||
+            followupActionData.followupGoal
+          )
+          : '',
+        { fallbackText: followupPromptText },
+      );
+      const isFollowupAlternativesAction =
+        !forceUpstreamAfterPendingAbandon &&
+        (actionIdToken === 'chat.followup.alternatives' || actionIdToken === 'analysis_followup_prompt');
+
+      if (isFollowupAlternativesAction) {
+        const goalResolved = Boolean(followupGoal);
+        const resolvedGoal = followupGoal || 'pros_cons';
+        const followupMissingInfo = [];
+        if (!goalResolved) followupMissingInfo.push('followup_goal_not_resolved');
+
+        const anchorHint = resolveFollowupAnchorHint({
+          actionData: followupActionData,
+          fallbackAnchorId: anchorProductId,
+          fallbackAnchorUrl: anchorProductUrl,
+          fallbackMessage: message,
+        });
+
+        if (!anchorHint.has_anchor || (!anchorHint.product_input && !anchorHint.anchor_id)) {
+          followupMissingInfo.push('followup_anchor_missing');
+          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(
+              lang === 'CN'
+                ? `我可以继续给你${buildFollowupGoalLabel(resolvedGoal, ctx.lang)}，但需要先锚定目标产品（URL / 产品名 / 产品图任一即可）。`
+                : `I can continue with ${buildFollowupGoalLabel(resolvedGoal, ctx.lang)}, but I need a product anchor first (URL / product name / product photo).`,
+            ),
+            suggested_chips: [
+              {
+                chip_id: 'chip.action.analyze_product',
+                label: lang === 'CN' ? '补产品 URL' : 'Add product URL',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    lang === 'CN'
+                      ? '这是产品链接：<粘贴URL>'
+                      : 'Here is the product link: <paste URL>',
+                },
+              },
+              {
+                chip_id: 'chip.action.analyze_product_name',
+                label: lang === 'CN' ? '补产品名' : 'Add product name',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    lang === 'CN'
+                      ? '产品名是：<品牌 + 名称>'
+                      : 'Product name is: <brand + name>',
+                },
+              },
+              {
+                chip_id: 'chip.action.upload_product_photo',
+                label: lang === 'CN' ? '上传产品图' : 'Upload product photo',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    lang === 'CN'
+                      ? '我来上传产品图（正面+成分表）'
+                      : 'I will upload product photos (front + INCI).',
+                },
+              },
+            ],
+            cards: [
+              {
+                card_id: `conf_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: 'followup_anchor_missing',
+                  non_blocking: true,
+                  assumptions: [buildFollowupGoalLabel(resolvedGoal, ctx.lang)],
+                  details:
+                    lang === 'CN'
+                      ? ['缺少 follow-up 锚点，已进入先答后补的引导模式。']
+                      : ['Follow-up anchor is missing; switched to answer-first guidance mode.'],
+                  actions: ['provide_anchor'],
+                }),
+              },
+            ],
+            session_patch: {},
+            events: [
+              makeEvent(ctx, 'followup_alternatives_missing_anchor', {
+                goal: resolvedGoal,
+              }),
+            ],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        const profileSummary = summarizeProfileForContext(profile);
+        const alternativesOut = await fetchRecoAlternativesForProduct({
+          ctx,
+          profileSummary,
+          recentLogs,
+          productInput: anchorHint.product_input,
+          productObj: anchorHint.anchor_product,
+          anchorId: anchorHint.anchor_id,
+          maxTotal: 6,
+          debug: debugUpstream,
+          logger,
+        });
+
+        const mappedCandidates = (Array.isArray(alternativesOut?.alternatives) ? alternativesOut.alternatives : [])
+          .map((row) => mapFollowupAlternativeToCandidate(row, { goal: resolvedGoal, lang: ctx.lang }))
+          .filter(Boolean);
+        const byBlock = {
+          competitors: [],
+          related_products: [],
+          dupes: [],
+        };
+        for (const row of mappedCandidates) {
+          const block = String(row._followup_block || '').trim().toLowerCase();
+          if (block === 'dupes') byBlock.dupes.push({ ...row, _followup_block: undefined });
+          else if (block === 'competitors') byBlock.competitors.push({ ...row, _followup_block: undefined });
+          else byBlock.related_products.push({ ...row, _followup_block: undefined });
+        }
+        const stripInternalKey = (rows) =>
+          rows.map((row) => {
+            const next = { ...row };
+            delete next._followup_block;
+            return next;
+          });
+        const competitors = stripInternalKey(byBlock.competitors).slice(0, 4);
+        const relatedProducts = stripInternalKey(byBlock.related_products).slice(0, 4);
+        const dupes = stripInternalKey(byBlock.dupes).slice(0, 4);
+
+        const anchorProduct = {
+          ...(anchorHint.anchor_id ? { product_id: anchorHint.anchor_id } : {}),
+          ...(anchorHint.anchor_product?.brand ? { brand: String(anchorHint.anchor_product.brand).trim() } : {}),
+          ...(anchorHint.anchor_product?.name ? { name: String(anchorHint.anchor_product.name).trim() } : {}),
+          ...(anchorHint.anchor_product?.display_name ? { display_name: String(anchorHint.anchor_product.display_name).trim() } : {}),
+          ...(anchorHint.anchor_url ? { url: anchorHint.anchor_url } : {}),
+        };
+        if (!anchorProduct.name && anchorHint.product_input) {
+          anchorProduct.name = String(anchorHint.product_input).trim().slice(0, 140);
+        }
+
+        const fieldMissingReasons = (Array.isArray(alternativesOut?.field_missing) ? alternativesOut.field_missing : [])
+          .map((item) => (item && typeof item === 'object' ? String(item.reason || '').trim() : ''))
+          .filter(Boolean);
+
+        const payloadMissingInfo = uniqCaseInsensitiveStrings(
+          [
+            ...followupMissingInfo,
+            ...fieldMissingReasons,
+            ...(!mappedCandidates.length ? ['analysis_limited'] : []),
+          ],
+          16,
+        );
+
+        const payload = finalizeProductAnalysisRecoContract({
+          assessment: {
+            verdict: mappedCandidates.length
+              ? (ctx.lang === 'CN' ? '可参考' : 'Guided')
+              : (ctx.lang === 'CN' ? '未知' : 'Unknown'),
+            reasons: uniqCaseInsensitiveStrings(
+              [
+                ctx.lang === 'CN'
+                  ? `已按锚点生成${buildFollowupGoalLabel(resolvedGoal, ctx.lang)}。`
+                  : `Generated ${buildFollowupGoalLabel(resolvedGoal, ctx.lang)} based on the current anchor.`,
+                ...(!mappedCandidates.length
+                  ? [
+                    ctx.lang === 'CN'
+                      ? '当前候选不足，建议补充更明确产品 URL 或完整名称后重试。'
+                      : 'Current candidate recall is limited; retry with a clearer URL or full product name.',
+                  ]
+                  : []),
+              ],
+              4,
+            ),
+            anchor_product: anchorProduct,
+          },
+          evidence: {
+            science: {
+              key_ingredients: [],
+              mechanisms: [],
+              fit_notes: [],
+              risk_notes: [],
+            },
+            social_signals: {
+              typical_positive: [],
+              typical_negative: [],
+              risk_for_groups: [],
+            },
+            expert_notes: [],
+            confidence: mappedCandidates.length ? 0.62 : 0.34,
+            missing_info: [],
+          },
+          confidence: mappedCandidates.length ? 0.62 : 0.34,
+          missing_info: payloadMissingInfo,
+          competitors: { candidates: competitors },
+          related_products: { candidates: relatedProducts },
+          dupes: { candidates: dupes },
+          provenance: {
+            generated_at: new Date().toISOString(),
+            source: 'aurora_bff_chat_followup',
+            pipeline: 'chat_followup_alternatives',
+            followup_goal: resolvedGoal,
+            anchor_used: {
+              anchor_product_id: anchorHint.anchor_id || null,
+              anchor_product_url: anchorHint.anchor_url || null,
+              product_input: anchorHint.product_input ? String(anchorHint.product_input).slice(0, 200) : null,
+            },
+          },
+        }, {
+          logger,
+          requestId: ctx.request_id,
+          mode: 'chat_followup',
+        });
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            ctx.lang === 'CN'
+              ? `这是基于当前产品的${buildFollowupGoalLabel(resolvedGoal, ctx.lang)}，我已给出可替代与可搭配两类候选。`
+              : `Here are ${buildFollowupGoalLabel(resolvedGoal, ctx.lang)} based on your current product, split into replace and pairing paths.`,
+          ),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `followup_${ctx.request_id}`,
+              type: 'product_analysis',
+              payload,
+            },
+          ],
+          session_patch: {},
+          events: [
+            makeEvent(ctx, 'value_moment', { kind: 'product_followup_alternatives', goal: resolvedGoal }),
+          ],
         });
         return sendChatEnvelope(envelope);
       }
