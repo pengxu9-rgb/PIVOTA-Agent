@@ -33,6 +33,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_INTEL_RETAIL_MAX_CANDIDATES;
     delete process.env.AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER;
     delete process.env.AURORA_PRODUCT_INTEL_ESCALATION_MODEL;
+    delete process.env.AURORA_PRODUCT_INTEL_PROMPT_VERSION;
+    delete process.env.AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_ENABLED;
+    delete process.env.AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_MAX;
     delete process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS;
     delete process.env.AURORA_BFF_RECO_BLOCKS_BUDGET_MS;
     delete process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED;
@@ -3692,5 +3695,89 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         provider: 'incidecoder',
       }),
     );
+  });
+
+  test('Prompt V3 enforces summary anti-profile-echo and structured how_to_use requirements', () => {
+    process.env.AURORA_PRODUCT_INTEL_PROMPT_VERSION = 'v3';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const prompt = __internal.buildProductDeepScanPrompt({
+      prefix: '',
+      productDescriptor: 'Lab Series All In One Defense Lotion SPF 35',
+      strictNarrative: true,
+      includeVersionReminder: true,
+    });
+    expect(prompt).toMatch(/Disallowed summary phrases/i);
+    expect(prompt).toMatch(/how_to_use must be an object/i);
+    expect(prompt).toMatch(/Product: Lab Series All In One Defense Lotion SPF 35/i);
+  });
+
+  test('narrative quality gate triggers retry for profile-echo summary and invalid how_to_use', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const beforePayload = {
+      assessment: {
+        summary: 'Your profile: oily / sensitivity=medium / barrier=healthy.',
+        formula_intent: ['Helps control sebum with niacinamide support.'],
+        how_to_use: {},
+      },
+    };
+    const afterPayload = {
+      assessment: {
+        summary: 'Targets daily UV defense with lightweight hydration, but dryness watchouts remain.',
+        formula_intent: ['Uses UV filters for broad-spectrum day defense.'],
+        how_to_use: {
+          timing: 'AM',
+          frequency: 'Daily',
+          steps: ['Apply after moisturizer and before sun exposure.'],
+          observation_window: 'Observe for 10-14 days.',
+          stop_signs: ['Persistent stinging beyond 60 seconds'],
+        },
+      },
+    };
+    expect(__internal.hasProfileEchoSummary(beforePayload)).toBe(true);
+    expect(__internal.hasValidSummary(beforePayload)).toBe(false);
+    expect(__internal.hasStructuredHowToUse(beforePayload)).toBe(false);
+    expect(__internal.shouldRetryForNarrativeQuality(beforePayload)).toBe(true);
+    expect(__internal.collectNarrativeRetryCodes(beforePayload, afterPayload)).toEqual(
+      expect.arrayContaining(['summary_quality_retry_used', 'how_to_use_retry_used']),
+    );
+  });
+
+  test('enrichProductAnalysisPayload sanitizes profile-echo summary and builds structured how_to_use fallback', () => {
+    const { enrichProductAnalysisPayload } = require('../src/auroraBff/normalize');
+    const out = enrichProductAnalysisPayload(
+      {
+        assessment: {
+          verdict: 'Caution',
+          summary: 'Your profile: oily / sensitivity=medium / barrier=healthy.',
+          formula_intent: ['Provides broad-spectrum UV defense and lightweight hydration.'],
+          reasons: [
+            'Your profile: oily / sensitivity=medium / barrier=healthy.',
+            'May feel drying when barrier is reactive.',
+          ],
+          how_to_use: {},
+        },
+        evidence: {
+          science: {
+            mechanisms: ['Provide daily UV defense with hydration support.'],
+            risk_notes: ['drying risk for reactive users'],
+          },
+          social_signals: {},
+          expert_notes: [],
+        },
+        missing_info: ['analysis_limited'],
+      },
+      { lang: 'EN' },
+    );
+    expect(String(out?.assessment?.summary || '').toLowerCase()).not.toContain('your profile');
+    expect(out?.assessment?.summary).toMatch(/uv|hydrat|dry/i);
+    expect(out?.assessment?.how_to_use).toEqual(
+      expect.objectContaining({
+        observation_window: expect.any(String),
+      }),
+    );
+    expect(Array.isArray(out?.assessment?.how_to_use?.stop_signs)).toBe(true);
+    expect(out?.assessment?.how_to_use?.stop_signs?.length).toBeGreaterThan(0);
+    expect(out?.internal_debug_codes || []).toContain('summary_profile_echo_sanitized');
   });
 });
