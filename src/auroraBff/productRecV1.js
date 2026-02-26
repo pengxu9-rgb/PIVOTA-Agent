@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const { resolveIngredientRecommendation, normalizeMarket } = require('./ingredientKbV2/resolve');
 const { renderAllowedTemplate } = require('./claimsTemplates/render');
@@ -53,6 +54,169 @@ function normalizeEvidenceGrade(value, fallback = 'B') {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function pickFirstString(...values) {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function clamp01(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (n <= 0) return 0;
+  if (n >= 1) return 1;
+  return n;
+}
+
+function round3(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 1000) / 1000;
+}
+
+function normalizeRetrievalSource(value, fallback = 'catalog') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'catalog' || raw === 'external_seed' || raw === 'llm_fallback') return raw;
+  if (raw.includes('external')) return 'external_seed';
+  if (raw.includes('llm')) return 'llm_fallback';
+  return fallback;
+}
+
+function normalizeRetrievalReason(value, retrievalSource) {
+  const direct = pickFirstString(value);
+  if (direct) return direct;
+  const source = normalizeRetrievalSource(retrievalSource, 'catalog');
+  if (source === 'external_seed') return 'external_seed_supplement';
+  if (source === 'llm_fallback') return 'catalog_empty_or_filtered';
+  return 'catalog_search_match';
+}
+
+function extractDirectUrl(candidate) {
+  return pickFirstString(
+    candidate && candidate.pdp_url,
+    candidate && candidate.url,
+    candidate && candidate.product_url,
+    candidate && candidate.purchase_path,
+  );
+}
+
+function buildCandidateStableKey(candidate) {
+  const productId = pickFirstString(candidate && candidate.product_id, candidate && candidate.productId);
+  const merchantId = pickFirstString(candidate && candidate.merchant_id, candidate && candidate.merchantId);
+  const url = extractDirectUrl(candidate).toLowerCase();
+  return `${productId.toLowerCase()}::${merchantId.toLowerCase()}::${url}`;
+}
+
+function createSyntheticProductId({ name, url, brand } = {}) {
+  const seed = `${String(name || '').trim()}|${String(url || '').trim()}|${String(brand || '').trim()}`;
+  return `neutral_${crypto.createHash('sha1').update(seed).digest('hex').slice(0, 16)}`;
+}
+
+function normalizeNeutralCandidate(raw, { fallbackSource = 'catalog', fallbackReason = '' } = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const name = pickFirstString(raw.name, raw.title, raw.display_name, raw.displayName);
+  const brand = pickFirstString(raw.brand, raw.brand_name, raw.brandName);
+  const directUrl = extractDirectUrl(raw);
+  const productId =
+    pickFirstString(raw.product_id, raw.productId) ||
+    createSyntheticProductId({ name, url: directUrl, brand });
+  if (!productId || (!name && !directUrl)) return null;
+
+  const retrievalSource = normalizeRetrievalSource(
+    pickFirstString(raw.retrieval_source, raw.retrievalSource, raw.source, raw.source_type, fallbackSource),
+    fallbackSource,
+  );
+  const retrievalReason = normalizeRetrievalReason(
+    pickFirstString(raw.retrieval_reason, raw.retrievalReason, fallbackReason),
+    retrievalSource,
+  );
+
+  return {
+    product_id: productId,
+    merchant_id: pickFirstString(raw.merchant_id, raw.merchantId),
+    name: name || productId,
+    brand: brand || null,
+    category: pickFirstString(raw.category, raw.category_name, raw.categoryName, raw.product_type, raw.productType),
+    ingredient_ids: asArray(raw.ingredient_ids).map((item) => String(item || '').trim().toLowerCase()).filter(Boolean),
+    risk_tags: asArray(raw.risk_tags).map((item) => String(item || '').trim().toLowerCase()).filter(Boolean),
+    usage_note_en: pickFirstString(raw.usage_note_en),
+    usage_note_zh: pickFirstString(raw.usage_note_zh),
+    cautions_en: asArray(raw.cautions_en).map((item) => String(item || '').trim()).filter(Boolean),
+    cautions_zh: asArray(raw.cautions_zh).map((item) => String(item || '').trim()).filter(Boolean),
+    retrieval_source: retrievalSource,
+    retrieval_reason: retrievalReason,
+    why_match: pickFirstString(raw.why_match, raw.why, raw.reason),
+    direct_url: directUrl,
+  };
+}
+
+function defaultBuildExternalSearchCta(query, reason = 'strict_filter_all_dropped_fallback') {
+  const title = String(query || '').trim() || 'skincare';
+  return {
+    title,
+    url: `https://www.google.com/search?q=${encodeURIComponent(title)}`,
+    source: 'fallback',
+    reason,
+  };
+}
+
+function defaultDedupeExternalSearchCtas(ctas, maxItems = 6) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of asArray(ctas)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const title = pickFirstString(raw.title, raw.name, raw.query);
+    const url = pickFirstString(raw.url);
+    if (!title && !url) continue;
+    const key = `${title.toLowerCase()}::${url.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      ...(title ? { title } : {}),
+      ...(url ? { url } : {}),
+      ...(pickFirstString(raw.source) ? { source: pickFirstString(raw.source).toLowerCase() } : {}),
+      ...(pickFirstString(raw.reason) ? { reason: pickFirstString(raw.reason) } : {}),
+    });
+    if (out.length >= Math.max(1, Math.trunc(Number(maxItems) || 6))) break;
+  }
+  return out;
+}
+
+function normalizeSearchQueries({ ingredientId, ingredientName, issueType, lang }) {
+  const queries = [];
+  const seen = new Set();
+  const push = (value) => {
+    const q = String(value || '').trim();
+    if (!q) return;
+    const key = q.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    queries.push(q);
+  };
+  push(ingredientName);
+  push(ingredientId);
+  if (ingredientName && issueType) push(`${ingredientName} ${issueType} skincare`);
+  if (ingredientId && issueType) push(`${ingredientId} ${issueType} skincare`);
+  if (queries.length === 0) push(normalizeLang(lang) === 'zh' ? '护肤 成分 推荐' : 'skincare ingredient recommendation');
+  return queries.slice(0, 4);
+}
+
+function computeSuitabilityScore({
+  overlapCount = 0,
+  evidenceGrade = 'C',
+  citationsCount = 0,
+  hasDirectUrl = false,
+} = {}) {
+  const overlapSignal = overlapCount > 0 ? 1 : 0.58;
+  const evidenceSignal = (EVIDENCE_RANK[normalizeEvidenceGrade(evidenceGrade, 'C')] || 1) / 3;
+  const citationSignal = clamp01(Number(citationsCount || 0) / 3);
+  const urlSignal = hasDirectUrl ? 1 : 0.75;
+  return round3((overlapSignal * 0.46) + (evidenceSignal * 0.28) + (citationSignal * 0.16) + (urlSignal * 0.1));
 }
 
 function parseCatalogProduct(raw) {
@@ -252,6 +416,74 @@ function buildProductOutput({
   return out;
 }
 
+function buildNeutralProductOutput({
+  candidate,
+  issueType,
+  ingredientId,
+  ingredientName,
+  evidence,
+  market,
+  lang,
+  internalTestMode,
+  fallbackToGeneric,
+  overlapCount = 0,
+} = {}) {
+  const directUrl = extractDirectUrl(candidate);
+  const base = buildProductOutput({
+    product: {
+      product_id: candidate.product_id,
+      name: candidate.name,
+      brand: candidate.brand,
+      usage_note_en: candidate.usage_note_en,
+      usage_note_zh: candidate.usage_note_zh,
+      cautions_en: candidate.cautions_en,
+      cautions_zh: candidate.cautions_zh,
+    },
+    issueType,
+    ingredientId: ingredientId || ingredientName,
+    evidence,
+    market,
+    lang,
+    internalTestMode,
+    fallbackToGeneric,
+  });
+
+  const retrievalSource = normalizeRetrievalSource(
+    pickFirstString(candidate.retrieval_source, candidate.source),
+    'catalog',
+  );
+  const retrievalReason = normalizeRetrievalReason(candidate.retrieval_reason, retrievalSource);
+  const suitabilityScore = computeSuitabilityScore({
+    overlapCount,
+    evidenceGrade: evidence && evidence.evidence_grade ? evidence.evidence_grade : 'C',
+    citationsCount: evidence && evidence.citations_count ? evidence.citations_count : 0,
+    hasDirectUrl: Boolean(directUrl),
+  });
+
+  const out = {
+    ...base,
+    retrieval_source: retrievalSource,
+    retrieval_reason: retrievalReason,
+    suitability_score: suitabilityScore,
+    ...(candidate && candidate.merchant_id ? { merchant_id: candidate.merchant_id } : {}),
+    ...(candidate && candidate.category ? { category: candidate.category } : {}),
+    ...(directUrl ? { pdp_url: directUrl, url: directUrl, product_url: directUrl, purchase_path: directUrl } : {}),
+  };
+
+  if (internalTestMode) {
+    out.internal_debug = {
+      ...(out.internal_debug || {}),
+      overlap_count: Math.max(0, Math.trunc(Number(overlapCount) || 0)),
+      has_direct_url: Boolean(directUrl),
+      retrieval_source: retrievalSource,
+      retrieval_reason: retrievalReason,
+      suitability_score: suitabilityScore,
+    };
+  }
+
+  return out;
+}
+
 function buildProductRecommendations({
   moduleId,
   issues,
@@ -430,10 +662,228 @@ function buildProductRecommendations({
   };
 }
 
+async function buildIngredientProductRecommendationsNeutral({
+  moduleId,
+  ingredientId,
+  ingredientName,
+  issueType,
+  market,
+  lang,
+  riskTier,
+  qualityGrade,
+  minCitations,
+  minEvidenceGrade,
+  repairOnlyWhenDegraded,
+  internalTestMode,
+  artifactPath,
+  catalogPath,
+  maxProducts = 3,
+  fallbackCandidateBuilder = null,
+  llmFallbackRecoverFn = null,
+  externalSearchCtaBuilder = null,
+  dedupeExternalSearchCtas = null,
+} = {}) {
+  const normalizedIngredientId = String(ingredientId || '').trim().toLowerCase();
+  if (!normalizedIngredientId) {
+    return {
+      products: [],
+      suppressed_reason: 'NO_MATCH',
+      products_empty_reason: 'ingredient_id_missing',
+      external_search_ctas: [],
+      debug: { module_id: moduleId || null, reason: 'ingredient_id_missing' },
+    };
+  }
+
+  const normalizedIssueType = String(issueType || '').trim().toLowerCase() || 'redness';
+  const normalizedMarket = normalizeMarket(market);
+  const normalizedLang = normalizeLang(lang);
+  const normalizedRiskTier = normalizeRiskTier(riskTier);
+  const minCitationsN = Number.isFinite(Number(minCitations)) ? Math.max(0, Math.trunc(Number(minCitations))) : 1;
+  const minEvidence = normalizeEvidenceGrade(minEvidenceGrade, 'B');
+  const maxProductsN = Math.max(1, Math.min(6, Math.trunc(Number(maxProducts) || 3)));
+  const buildCta = typeof externalSearchCtaBuilder === 'function' ? externalSearchCtaBuilder : defaultBuildExternalSearchCta;
+  const dedupeCtas = typeof dedupeExternalSearchCtas === 'function' ? dedupeExternalSearchCtas : defaultDedupeExternalSearchCtas;
+
+  const evidenceMap = buildEvidenceByIngredient({
+    ingredientIds: [normalizedIngredientId],
+    market: normalizedMarket,
+    riskTier: normalizedRiskTier,
+    minCitations: minCitationsN,
+    minEvidenceGrade: minEvidence,
+    artifactPath,
+  });
+  const evidence = evidenceMap.get(normalizedIngredientId) || {
+    ingredient_id: normalizedIngredientId,
+    evidence_grade: 'C',
+    citations: [],
+    citations_count: 0,
+    pass: false,
+    do_not_mix: [],
+    safety_flags: [],
+  };
+
+  const internalReco = buildProductRecommendations({
+    moduleId: moduleId || `ingredient_${normalizedIngredientId}`,
+    issues: [{ issue_type: normalizedIssueType, severity_0_4: 2 }],
+    actions: [{ ingredient_id: normalizedIngredientId }],
+    market: normalizedMarket,
+    lang: normalizedLang,
+    riskTier: normalizedRiskTier,
+    qualityGrade,
+    minCitations: minCitationsN,
+    minEvidenceGrade: minEvidence,
+    repairOnlyWhenDegraded,
+    internalTestMode,
+    artifactPath,
+    catalogPath,
+  });
+
+  const pool = [];
+  const seen = new Set();
+  const externalSearchCtas = [];
+  const mergeCandidate = (candidate, { defaultSource = 'catalog', defaultReason = '' } = {}) => {
+    const normalized = normalizeNeutralCandidate(candidate, {
+      fallbackSource: defaultSource,
+      fallbackReason: defaultReason,
+    });
+    if (!normalized) return;
+    if (shouldFilterByRisk(normalized, normalizedRiskTier)) return;
+    const key = buildCandidateStableKey(normalized);
+    if (seen.has(key)) return;
+    seen.add(key);
+    pool.push(normalized);
+  };
+
+  for (const product of asArray(internalReco && internalReco.products)) {
+    mergeCandidate(product, { defaultSource: 'catalog', defaultReason: 'catalog_evidence_match' });
+  }
+
+  const lookupQueries = normalizeSearchQueries({
+    ingredientId: normalizedIngredientId,
+    ingredientName,
+    issueType: normalizedIssueType,
+    lang: normalizedLang,
+  });
+
+  if (typeof fallbackCandidateBuilder === 'function') {
+    for (const query of lookupQueries) {
+      try {
+        const fallbackOut = await fallbackCandidateBuilder({
+          query,
+          limit: maxProductsN * 2,
+          allowExternalSeed: true,
+        });
+        for (const row of asArray(fallbackOut && fallbackOut.products)) {
+          mergeCandidate(row, { defaultSource: 'catalog', defaultReason: 'catalog_search_match' });
+        }
+        for (const cta of asArray(fallbackOut && fallbackOut.external_search_ctas)) {
+          externalSearchCtas.push(cta);
+        }
+      } catch {
+        // Non-blocking fallback path by design.
+      }
+    }
+  }
+
+  if (!pool.length && typeof llmFallbackRecoverFn === 'function') {
+    try {
+      const recovered = await llmFallbackRecoverFn({
+        queries: lookupQueries,
+        maxProducts: maxProductsN * 2,
+      });
+      for (const row of asArray(recovered && recovered.products)) {
+        mergeCandidate(row, { defaultSource: 'llm_fallback', defaultReason: 'catalog_empty_or_filtered' });
+      }
+      for (const cta of asArray(recovered && recovered.external_search_ctas)) {
+        externalSearchCtas.push(cta);
+      }
+    } catch {
+      // Non-blocking fallback path by design.
+    }
+  }
+
+  const fallbackToGeneric = String(qualityGrade || '').trim().toLowerCase() === 'degraded' && repairOnlyWhenDegraded === true;
+  const outputs = pool
+    .map((candidate) => {
+      const overlapCount = asArray(candidate.ingredient_ids).filter((id) => id === normalizedIngredientId).length;
+      return buildNeutralProductOutput({
+        candidate,
+        issueType: normalizedIssueType,
+        ingredientId: normalizedIngredientId,
+        ingredientName,
+        evidence,
+        market: normalizedMarket,
+        lang: normalizedLang,
+        internalTestMode,
+        fallbackToGeneric,
+        overlapCount,
+      });
+    })
+    .sort((a, b) => {
+      const scoreDiff = Number(b && b.suitability_score || 0) - Number(a && a.suitability_score || 0);
+      if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+      const gradeDiff =
+        (EVIDENCE_RANK[normalizeEvidenceGrade(b && b.evidence && b.evidence.evidence_grade, 'C')] || 0) -
+        (EVIDENCE_RANK[normalizeEvidenceGrade(a && a.evidence && a.evidence.evidence_grade, 'C')] || 0);
+      if (gradeDiff !== 0) return gradeDiff;
+      const citationDiff =
+        asArray(b && b.evidence && b.evidence.citation_ids).length -
+        asArray(a && a.evidence && a.evidence.citation_ids).length;
+      if (citationDiff !== 0) return citationDiff;
+      return String(a && a.name || '').localeCompare(String(b && b.name || ''));
+    })
+    .slice(0, maxProductsN);
+
+  let dedupedCtas = dedupeCtas(externalSearchCtas, 6);
+  if (!outputs.length && !dedupedCtas.length) {
+    dedupedCtas = dedupeCtas(
+      [
+        buildCta(
+          lookupQueries[0] || ingredientName || normalizedIngredientId,
+          'strict_filter_all_dropped_fallback',
+        ),
+      ],
+      6,
+    );
+  }
+
+  const suppressedReason = outputs.length
+    ? null
+    : evidence.pass
+      ? 'NO_MATCH'
+      : 'LOW_EVIDENCE';
+  const productsEmptyReason = outputs.length
+    ? null
+    : dedupedCtas.length
+      ? 'strict_filter_fallback_only'
+      : suppressedReason || 'no_candidate';
+
+  return {
+    products: outputs,
+    suppressed_reason: suppressedReason,
+    products_empty_reason: productsEmptyReason,
+    external_search_ctas: dedupedCtas,
+    debug: {
+      module_id: moduleId || null,
+      ingredient_id: normalizedIngredientId,
+      issue_type: normalizedIssueType,
+      candidate_count: pool.length,
+      products_count: outputs.length,
+      lookup_queries: lookupQueries,
+      retrieval_source_counts: outputs.reduce((acc, item) => {
+        const key = normalizeRetrievalSource(item && item.retrieval_source, 'catalog');
+        acc[key] = Number(acc[key] || 0) + 1;
+        return acc;
+      }, {}),
+    },
+  };
+}
+
 module.exports = {
   DEFAULT_CATALOG_PATH,
   normalizeRiskTier,
   normalizeEvidenceGrade,
   loadCatalog,
   buildProductRecommendations,
+  buildIngredientProductRecommendationsNeutral,
 };
