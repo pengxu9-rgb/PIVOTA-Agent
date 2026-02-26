@@ -18208,7 +18208,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               attempted: true,
               applied: toPrepend.length > 0,
               added_count: toPrepend.length,
-              reason: toPrepend.length > 0 ? 'supplemented_external_seed_fragrance' : 'no_external_candidates',
+              reason:
+                toPrepend.length > 0
+                  ? isFragranceIntentQuery(queryText)
+                    ? 'supplemented_external_seed_fragrance'
+                    : 'supplemented_external_seed_brand'
+                  : 'no_external_candidates',
             };
           } catch (supplementErr) {
             fragranceExternalSupplementMeta = {
@@ -18220,7 +18225,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             };
             logger.warn(
               { err: supplementErr?.message || String(supplementErr), query: queryText },
-              `${operation} fragrance supplement after upstream failed`,
+              `${operation} external seed supplement after upstream failed`,
             );
           }
         }
