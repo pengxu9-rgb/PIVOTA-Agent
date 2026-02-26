@@ -176,16 +176,38 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
     }
   }
 
+  const shineProxyHeatmap = payload.regions.find((region) => region.region_id === 'pf_shine_heatmap_proxy');
+  assert.ok(shineProxyHeatmap, 'expected bbox-only shine finding to emit synthetic heatmap proxy');
+  assert.equal(shineProxyHeatmap.type, 'heatmap');
+
   const regionIds = new Set(payload.regions.map((region) => region.region_id));
   for (const module of payload.modules) {
     for (const issue of module.issues || []) {
       const evidenceIds = Array.isArray(issue.evidence_region_ids) ? issue.evidence_region_ids : [];
       assert.ok(evidenceIds.length >= 1);
+      if (issue.issue_type === 'shine') {
+        assert.equal(
+          evidenceIds.every((regionId) => String(regionId).includes('heatmap')),
+          true,
+          'shine issue evidence should prioritize heatmap regions when available',
+        );
+      }
       for (const evidenceId of evidenceIds) {
         assert.equal(regionIds.has(evidenceId), true);
       }
     }
   }
+
+  assert.ok(payload.module_overlay_debug && typeof payload.module_overlay_debug === 'object');
+  assert.equal(typeof payload.module_overlay_debug.module_box_dynamic_applied, 'boolean');
+  assert.ok(
+    payload.module_overlay_debug.module_box_dynamic_reason == null
+      || typeof payload.module_overlay_debug.module_box_dynamic_reason === 'string',
+  );
+  assert.ok(
+    payload.module_overlay_debug.module_box_dynamic_score == null
+      || Number.isFinite(Number(payload.module_overlay_debug.module_box_dynamic_score)),
+  );
 
   const serialized = JSON.stringify(payload).toLowerCase();
   assert.equal(serialized.includes('overlay_url'), false);

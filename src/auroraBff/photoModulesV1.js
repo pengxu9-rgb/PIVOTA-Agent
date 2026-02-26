@@ -151,6 +151,14 @@ const MODULE_BOX_DYNAMIC_MIN_SCORE = Math.max(
   0,
   Math.min(1, Number(process.env.DIAG_MODULE_BOX_DYNAMIC_MIN_SCORE || 0.6)),
 );
+const MODULE_DYNAMIC_MIN_BOXES = Math.max(
+  3,
+  Math.min(7, Math.trunc(Number(process.env.DIAG_MODULE_DYNAMIC_MIN_BOXES || 4) || 4)),
+);
+const MODULE_DYNAMIC_MIN_DIRECT_BOXES = Math.max(
+  2,
+  Math.min(7, Math.trunc(Number(process.env.DIAG_MODULE_DYNAMIC_MIN_DIRECT_BOXES || 3) || 3)),
+);
 const MODULE_SUPPORT_REFINEMENT_ENABLED = parseEnvBoolean(
   process.env.DIAG_MODULE_SUPPORT_REFINEMENT_ENABLED,
   true,
@@ -519,6 +527,55 @@ function sanitizeHeatmap(rawHeatmap) {
   };
 }
 
+function buildSyntheticHeatmapFromBBox(bbox, { severity0to4, confidence0to1 } = {}) {
+  if (!bbox || typeof bbox !== 'object') return null;
+  const x = Number(bbox.x);
+  const y = Number(bbox.y);
+  const w = Number(bbox.w);
+  const h = Number(bbox.h);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h)) return null;
+  if (w <= 0.001 || h <= 0.001) return null;
+
+  const gridW = HEATMAP_GRID_DEFAULT.w;
+  const gridH = HEATMAP_GRID_DEFAULT.h;
+  const cx = x + (w / 2);
+  const cy = y + (h / 2);
+  const halfW = Math.max(0.01, w / 2);
+  const halfH = Math.max(0.01, h / 2);
+  const severityFactor = clamp01(normalizeSeverity0to4(severity0to4) / 4);
+  const confidenceFactor = clamp01(confidence0to1);
+  const amplitude = clamp01(0.42 + (severityFactor * 0.38) + (confidenceFactor * 0.2));
+  const values = new Array(gridW * gridH).fill(0);
+
+  for (let gy = 0; gy < gridH; gy += 1) {
+    const py = (gy + 0.5) / gridH;
+    for (let gx = 0; gx < gridW; gx += 1) {
+      const px = (gx + 0.5) / gridW;
+      const nx = (px - cx) / halfW;
+      const ny = (py - cy) / halfH;
+      const radius = Math.sqrt((nx * nx) + (ny * ny));
+
+      let value = 0;
+      if (radius <= 1) {
+        value = 1 - radius;
+      } else if (radius <= 1.3) {
+        value = ((1.3 - radius) / 0.3) * 0.22;
+      }
+
+      values[(gy * gridW) + gx] = round3(clamp01(value * amplitude));
+    }
+  }
+
+  return {
+    coord_space: FACE_COORD_SPACE,
+    grid: { w: gridW, h: gridH },
+    values,
+    value_range: { min: 0, max: 1 },
+    smoothing_hint: 'bilinear',
+    generated_from: 'bbox_proxy_v1',
+  };
+}
+
 function computeBoxOverlapRatio(moduleBox, regionBox) {
   const x0 = Math.max(moduleBox.x, regionBox.x);
   const y0 = Math.max(moduleBox.y, regionBox.y);
@@ -711,6 +768,12 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
   const findingMissingReasons = new Map();
   const drops = [];
   const clips = [];
+  const HEATMAP_RECOVERABLE_MISSING_REASONS = new Set([
+    'heatmap_missing',
+    'heatmap_invalid_grid',
+    'heatmap_values_length_mismatch',
+    'heatmap_invalid',
+  ]);
 
   function addMissingReason(findingId, reason) {
     const normalizedFindingId = String(findingId || '').trim();
@@ -748,17 +811,20 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
     const style = computeRegionStyle({ severity0to4: severity, confidence0to1: confidence, issueType });
     const geometry = finding.geometry && typeof finding.geometry === 'object' ? finding.geometry : null;
     const emittedBefore = regions.length;
+    let emittedHeatmap = false;
     if (!geometry) {
       drop('geometry_missing', 'unknown', findingId);
     }
 
     if (geometry) {
       const rawBBox = geometry.bbox_norm ? toBBoxFromNorm(geometry.bbox_norm) : geometry.bbox;
+      let sanitizedBBoxForHeatmap = null;
       if (rawBBox) {
         const bbox = sanitizeBBox(rawBBox);
         if (!bbox.ok || !bbox.bbox) {
           drop(bbox.reason || 'bbox_invalid', 'bbox', findingId);
         } else {
+          sanitizedBBoxForHeatmap = bbox.bbox;
           const regionId = `${findingId}_bbox`;
           const notes = [];
           if (bbox.clipped) {
@@ -835,6 +901,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
         if (!heatmap.ok || !heatmap.heatmap) {
           drop(heatmap.reason || 'heatmap_invalid', 'heatmap', findingId);
         } else {
+          emittedHeatmap = true;
           const regionId = `${findingId}_heatmap`;
           const notes = [];
           if (heatmap.clipped) {
@@ -863,10 +930,47 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
           });
         }
       }
+
+      if (!emittedHeatmap && sanitizedBBoxForHeatmap) {
+        const syntheticHeatmap = buildSyntheticHeatmapFromBBox(sanitizedBBoxForHeatmap, {
+          severity0to4: severity,
+          confidence0to1: confidence,
+        });
+        if (syntheticHeatmap) {
+          emittedHeatmap = true;
+          const regionId = `${findingId}_heatmap_proxy`;
+          const notes = ['heatmap_from_bbox_proxy'];
+          const region = {
+            region_id: regionId,
+            type: 'heatmap',
+            coord_space: FACE_COORD_SPACE,
+            status: 'available',
+            heatmap: syntheticHeatmap,
+            style,
+            notes,
+            ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+          };
+          regions.push(region);
+          regionMeta.set(regionId, {
+            issue_type: issueType,
+            severity_0_4: severity,
+            confidence_0_1: confidence,
+            region_type: 'heatmap',
+            bbox: sanitizedBBoxForHeatmap,
+            heatmap: syntheticHeatmap,
+          });
+        }
+      }
     }
 
     const emittedForFinding = regions.length > emittedBefore;
-    const missingReasons = findingMissingReasons.get(findingId) || [];
+    let missingReasons = findingMissingReasons.get(findingId) || [];
+    if (emittedHeatmap && missingReasons.length) {
+      missingReasons = missingReasons.filter((reason) => {
+        const token = String(reason || '').trim().toLowerCase();
+        return !HEATMAP_RECOVERABLE_MISSING_REASONS.has(token);
+      });
+    }
     if (!emittedForFinding || missingReasons.length) {
       const primaryMissingReason = missingReasons.length ? missingReasons[0] : 'geometry_unresolved';
       regions.push({
@@ -959,6 +1063,13 @@ function buildModuleIssues({
   const templateFallbackRows = [];
   const claimsViolationRows = [];
   const qualityFactor = qualityFactorForModule(qualityGrade);
+  const evidenceRegionTypeRank = (regionType) => {
+    const token = String(regionType || '').trim().toLowerCase();
+    if (token === 'heatmap') return 3;
+    if (token === 'polygon') return 2;
+    if (token === 'bbox') return 1;
+    return 0;
+  };
 
   for (const [issueType, list] of issueBucket.entries()) {
     if (!list.length) continue;
@@ -973,9 +1084,27 @@ function buildModuleIssues({
 
     const confidenceRaw = Math.max(...list.map((item) => item.confidence));
     const confidence0to1 = round3(clamp01(confidenceRaw * qualityFactor));
-    const evidenceRegionIds = list
+    const evidenceRows = list
       .slice()
-      .sort((a, b) => b.overlap - a.overlap)
+      .sort((a, b) => {
+        const overlapDiff = b.overlap - a.overlap;
+        if (Math.abs(overlapDiff) > 1e-6) return overlapDiff;
+        const rankDiff =
+          evidenceRegionTypeRank(regionMeta.get(b.region_id) && regionMeta.get(b.region_id).region_type) -
+          evidenceRegionTypeRank(regionMeta.get(a.region_id) && regionMeta.get(a.region_id).region_type);
+        if (rankDiff !== 0) return rankDiff;
+        return b.signalScore - a.signalScore;
+      });
+    const preferredEvidenceRows = evidenceRows.some((item) => {
+      const meta = regionMeta.get(item.region_id);
+      return meta && meta.region_type === 'heatmap';
+    })
+      ? evidenceRows.filter((item) => {
+          const meta = regionMeta.get(item.region_id);
+          return meta && meta.region_type === 'heatmap';
+        })
+      : evidenceRows;
+    const evidenceRegionIds = preferredEvidenceRows
       .slice(0, 3)
       .map((item) => item.region_id);
     const explanation = buildIssueExplanation({ moduleId, issueType, evidenceRegionIds, language, market });
@@ -2386,13 +2515,14 @@ function deriveModuleBoxesFromSkinMask({ skinMask, gridSize } = {}) {
     ? Math.min(0.08, (sideImbalance - 0.45) * 0.18)
     : 0;
   const adjustedScore = round3(clamp01(baseScore - farFacePenalty - sideImbalancePenalty));
-  const hasRequiredDynamic = Object.keys(dynamicBoxes).length >= 5;
-  const hasLowDirectCoverage = directModuleIds.size < 5;
+  const dynamicBoxCount = Object.keys(dynamicBoxes).length;
+  const hasRequiredDynamic = dynamicBoxCount >= MODULE_DYNAMIC_MIN_BOXES;
+  const hasLowDirectCoverage = directModuleIds.size < MODULE_DYNAMIC_MIN_DIRECT_BOXES;
   const ratioReason = ratioInRange ? null : 'skinmask_positive_ratio_out_of_range';
   const finalReason = hasRequiredDynamic
     ? (
       hasLowDirectCoverage
-        ? 'dynamic_boxes_partial_direct'
+        ? 'dynamic_boxes_low_direct_coverage'
         : (ratioReason
           || (pairAdjustmentDebug.length ? 'dynamic_boxes_side_adjusted' : null)
           || (farFacePenalty > 0.02 ? 'dynamic_boxes_far_face' : null))
@@ -2417,9 +2547,13 @@ function deriveModuleBoxesFromSkinMask({ skinMask, gridSize } = {}) {
     strict_adjustments: strictAdjustmentDebug,
     post_validator_enabled: MODULE_POST_VALIDATOR_ENABLED,
     post_adjustments: postAdjustmentDebug,
+    dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
+    dynamic_min_direct_boxes: MODULE_DYNAMIC_MIN_DIRECT_BOXES,
+    dynamic_boxes_count: dynamicBoxCount,
+    direct_boxes_count: directModuleIds.size,
     derived_modules_count: directModuleIds.size,
     fallback_modules_count: fallbackModuleIds.size,
-    total_modules_count: Object.keys(dynamicBoxes).length,
+    total_modules_count: dynamicBoxCount,
     anchors: {
       forehead_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.2), targetGrid),
       eye_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.4), targetGrid),
@@ -2444,7 +2578,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
     derived.module_boxes && typeof derived.module_boxes === 'object'
       ? Object.keys(derived.module_boxes).length
       : 0;
-  const hasDerivedBoxes = boxCount >= 5;
+  const hasDerivedBoxes = boxCount >= MODULE_DYNAMIC_MIN_BOXES;
   const meetsScore = hasDerivedBoxes && score >= MODULE_BOX_DYNAMIC_MIN_SCORE;
 
   if (MODULE_BOX_MODE === 'static') {
@@ -2453,6 +2587,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
       module_box_dynamic_applied: false,
       module_box_dynamic_reason: 'mode_static',
       module_box_dynamic_score: round3(score),
+      module_box_dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
     };
   }
   if (MODULE_BOX_MODE === 'auto' && !meetsScore) {
@@ -2462,6 +2597,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
       module_box_dynamic_reason: derived.reason || (hasDerivedBoxes ? 'auto_fallback_low_score' : 'auto_fallback_dynamic_unavailable'),
       module_box_dynamic_score: round3(score),
       module_box_dynamic_boxes_count: boxCount,
+      module_box_dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
     };
   }
   if (MODULE_BOX_MODE === 'auto' && meetsScore) {
@@ -2471,6 +2607,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
       module_box_dynamic_reason: derived.reason || null,
       module_box_dynamic_score: round3(score),
       module_box_dynamic_boxes_count: boxCount,
+      module_box_dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
     };
   }
 
@@ -2484,6 +2621,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
     module_box_dynamic_reason: reason,
     module_box_dynamic_score: round3(score),
     module_box_dynamic_boxes_count: boxCount,
+    module_box_dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
   };
 }
 
@@ -3547,6 +3685,13 @@ function buildPhotoModulesCard({
   const moduleOverlayDebug = {
     module_box_mode: moduleBoxDynamicDebug.module_box_mode,
     module_box_dynamic_applied: Boolean(moduleBoxDynamicDebug.module_box_dynamic_applied),
+    module_box_dynamic_reason: moduleBoxDynamicDebug.module_box_dynamic_reason || null,
+    module_box_dynamic_score: Number.isFinite(Number(moduleBoxDynamicDebug.module_box_dynamic_score))
+      ? Number(moduleBoxDynamicDebug.module_box_dynamic_score)
+      : null,
+    module_box_dynamic_boxes_count: Number.isFinite(Number(moduleBoxDynamicDebug.module_box_dynamic_boxes_count))
+      ? Math.max(0, Math.trunc(Number(moduleBoxDynamicDebug.module_box_dynamic_boxes_count)))
+      : 0,
     skinmask_reliable: Boolean(moduleMaskBuild.skinmask_reliable),
     degraded_reasons: Array.isArray(moduleMaskBuild.degraded_reasons) ? moduleMaskBuild.degraded_reasons.slice(0, 8) : [],
   };
