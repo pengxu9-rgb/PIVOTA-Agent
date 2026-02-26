@@ -476,6 +476,23 @@ const AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER = normalizeChatLlmProvider(
 const AURORA_PRODUCT_INTEL_ESCALATION_MODEL = normalizeChatLlmModel(
   process.env.AURORA_PRODUCT_INTEL_ESCALATION_MODEL || '',
 );
+const AURORA_PRODUCT_INTEL_PROMPT_VERSION = (() => {
+  const raw = String(process.env.AURORA_PRODUCT_INTEL_PROMPT_VERSION || 'v3')
+    .trim()
+    .toLowerCase();
+  return raw === 'v2' ? 'v2' : 'v3';
+})();
+const AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_ENABLED = (() => {
+  const raw = String(process.env.AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_MAX = (() => {
+  const n = Number(process.env.AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_MAX || 1);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  return Math.max(0, Math.min(1, v));
+})();
 const AURORA_PRODUCT_RELEVANCE_QA_MODE = (() => {
   const explicitMode = String(process.env.AURORA_LLM_QA_MODE || '')
     .trim()
@@ -18668,10 +18685,83 @@ function buildProductDeepScanPromptV2({
     `Product: ${descriptor}`;
 }
 
+function buildProductDeepScanPromptV3({
+  prefix = '',
+  productDescriptor = '',
+  strictFormulaIntent = false,
+  strictNarrative = false,
+  includeVersionReminder = false,
+} = {}) {
+  const strictFormulaLine = strictFormulaIntent || strictNarrative
+    ? 'If formula_intent is missing or profile-only, rewrite once using product efficacy/mechanism details only.'
+    : '';
+  const strictNarrativeLines = strictNarrative
+    ? [
+      'Narrative quality gate (must pass):',
+      '- summary must stay product-level (efficacy/risk/use-case), never user-profile recap.',
+      '- Disallowed summary phrases: "Your profile", "Profile priorities", "你的情况", "匹配点".',
+      '- how_to_use must be an object with keys: timing, frequency, steps (array), observation_window, stop_signs (array).',
+      '- Do NOT return empty how_to_use objects or move follow_up_question into how_to_use.',
+    ]
+    : [];
+  const versionLine = includeVersionReminder
+    ? 'If product version cannot be confirmed, explicitly mention version verification is required.'
+    : '';
+  const descriptor = String(productDescriptor || '').trim();
+  return `${String(prefix || '')}Task: Deep-scan this product for suitability vs the user's profile.\n` +
+    `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+    `assessment must include keys: verdict, summary, formula_intent, best_for, not_for, if_not_ideal, better_pairing, how_to_use, follow_up_question, reasons.\n` +
+    `Field requirements:\n` +
+    `- summary: 1-2 concise sentences focused on product efficacy/risk; never start with user profile labels.\n` +
+    `- formula_intent: up to 3 bullets explaining product efficacy/mechanism; never repeat user profile text.\n` +
+    `- best_for/not_for: concise fit or mismatch signals.\n` +
+    `- if_not_ideal: immediate next actions when this product is not ideal.\n` +
+    `- better_pairing: practical pairing suggestions (hydration/SPF/acne-focus depending on signals).\n` +
+    `- how_to_use: object with timing, frequency, steps[], observation_window, stop_signs[].\n` +
+    `- follow_up_question: one high-value clarifying question.\n` +
+    `Evidence must include science/social_signals/expert_notes.\n` +
+    `${strictFormulaLine ? `${strictFormulaLine}\n` : ''}` +
+    `${strictNarrativeLines.length ? `${strictNarrativeLines.join('\n')}\n` : ''}` +
+    `${versionLine ? `${versionLine}\n` : ''}` +
+    `Product: ${descriptor}`;
+}
+
+function buildProductDeepScanPrompt({
+  prefix = '',
+  productDescriptor = '',
+  strictFormulaIntent = false,
+  strictNarrative = false,
+  includeVersionReminder = false,
+} = {}) {
+  if (AURORA_PRODUCT_INTEL_PROMPT_VERSION === 'v2') {
+    return buildProductDeepScanPromptV2({
+      prefix,
+      productDescriptor,
+      strictFormulaIntent,
+      includeVersionReminder,
+    });
+  }
+  return buildProductDeepScanPromptV3({
+    prefix,
+    productDescriptor,
+    strictFormulaIntent,
+    strictNarrative,
+    includeVersionReminder,
+  });
+}
+
 function hasProfileEchoFormulaIntent(lines = []) {
   if (!Array.isArray(lines) || !lines.length) return false;
   const profileEchoPattern = /\b(your profile|profile priorities|skinType=|sensitivity=|barrier=|你的情况|你的画像|画像：)\b/i;
   return lines.some((line) => profileEchoPattern.test(String(line || '').trim()));
+}
+
+function hasProfileEchoSummary(payload) {
+  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
+  if (!assessment) return false;
+  const summary = String(assessment.summary ?? assessment.quick_summary ?? assessment.quickSummary ?? '').trim();
+  if (!summary) return false;
+  return /\b(your profile|profile priorities|你的情况|你的画像|匹配点)\b/i.test(summary);
 }
 
 function hasValidFormulaIntentInPayload(payload) {
@@ -18689,11 +18779,58 @@ function hasValidFormulaIntentInPayload(payload) {
   return true;
 }
 
-function shouldRetryForFormulaIntent(payload) {
+function hasValidSummary(payload) {
   const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
   if (!assessment) return false;
-  if (!isUnknownProductAnalysisPayload(payload) && hasValidFormulaIntentInPayload(payload)) return false;
-  return !hasValidFormulaIntentInPayload(payload);
+  const summary = String(assessment.summary ?? assessment.quick_summary ?? assessment.quickSummary ?? '').trim();
+  if (!summary) return false;
+  if (hasProfileEchoSummary(payload)) return false;
+  if (summary.length < 16) return false;
+  if (/^(unknown|未知|insufficient evidence|analysis limited|i couldn['’]t retrieve)/i.test(summary)) return false;
+  const productSignalRe =
+    /(ingredient|formula|efficacy|mechanis|filter|spf|uva|uvb|retino|acid|niacinamide|ceramide|peptide|sunscreen|cleanser|moisturizer|serum|irritat|dry|hydrat|barrier|acne|comedone|香精|防晒|保湿|修护|刺激|干燥|控痘|屏障|去角质)/i;
+  return productSignalRe.test(summary);
+}
+
+function hasStructuredHowToUse(payload) {
+  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
+  if (!assessment) return false;
+  const howToUse = isPlainObject(assessment.how_to_use ?? assessment.howToUse)
+    ? (assessment.how_to_use ?? assessment.howToUse)
+    : null;
+  if (!howToUse) return false;
+  const timing = String(howToUse.timing || howToUse.time || '').trim();
+  const frequency = String(howToUse.frequency || '').trim();
+  const steps = asStringArray(howToUse.steps);
+  const observationWindow = String(howToUse.observation_window || howToUse.observationWindow || '').trim();
+  const stopSigns = asStringArray(howToUse.stop_signs || howToUse.stopSigns);
+  return !!(timing && frequency && steps.length && observationWindow && stopSigns.length);
+}
+
+function hasValidNarrativeQuality(payload) {
+  return hasValidFormulaIntentInPayload(payload) && hasValidSummary(payload) && hasStructuredHowToUse(payload);
+}
+
+function shouldRetryForNarrativeQuality(payload) {
+  if (!AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_ENABLED) return false;
+  if (AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_MAX < 1) return false;
+  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
+  if (!assessment) return false;
+  return !hasValidNarrativeQuality(payload);
+}
+
+function collectNarrativeRetryCodes(beforePayload, afterPayload) {
+  const out = [];
+  if (hasValidFormulaIntentInPayload(afterPayload) && !hasValidFormulaIntentInPayload(beforePayload)) {
+    out.push('formula_intent_retry_used');
+  }
+  if (hasValidSummary(afterPayload) && !hasValidSummary(beforePayload)) {
+    out.push('summary_quality_retry_used');
+  }
+  if (hasStructuredHowToUse(afterPayload) && !hasStructuredHowToUse(beforePayload)) {
+    out.push('how_to_use_retry_used');
+  }
+  return out;
 }
 
 function getUpstreamStructuredOrJson(upstream, { answerRequiredKeys = null } = {}) {
@@ -20056,7 +20193,7 @@ async function deepScanRoutineProductCandidate({
     intent: 'routine_product_analyze',
     action_id: 'routine.autoscan.product_analyze',
   });
-  const deepScanQuery = buildProductDeepScanPromptV2({
+  const deepScanQuery = buildProductDeepScanPrompt({
     prefix: contextPrefix,
     productDescriptor,
     includeVersionReminder: true,
@@ -20103,7 +20240,7 @@ async function deepScanRoutineProductCandidate({
         intent: 'routine_product_analyze_fallback',
         action_id: 'routine.autoscan.product_analyze_fallback',
       });
-      const minimalQuery = buildProductDeepScanPromptV2({
+      const minimalQuery = buildProductDeepScanPrompt({
         prefix: minimalPrefix,
         productDescriptor,
         includeVersionReminder: true,
@@ -20113,11 +20250,11 @@ async function deepScanRoutineProductCandidate({
         if (retryNorm.payload?.assessment) norm = retryNorm;
       }
 
-      if (shouldRetryForFormulaIntent(norm.payload)) {
-        const formulaRetryQuery = buildProductDeepScanPromptV2({
+      if (shouldRetryForNarrativeQuality(norm.payload)) {
+        const formulaRetryQuery = buildProductDeepScanPrompt({
           prefix: contextPrefix,
           productDescriptor,
-          strictFormulaIntent: true,
+          strictNarrative: true,
           includeVersionReminder: true,
         });
         const formulaRetryUpstream = await runDeepScan(
@@ -20125,15 +20262,16 @@ async function deepScanRoutineProductCandidate({
           Math.max(9000, Math.min(17000, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS + 1500)),
         );
         const formulaRetryNorm = normalizeProductAnalysisFromUpstream(formulaRetryUpstream);
+        const retryCodes = collectNarrativeRetryCodes(norm.payload, formulaRetryNorm.payload);
         if (
-          hasValidFormulaIntentInPayload(formulaRetryNorm.payload) &&
-          (!hasValidFormulaIntentInPayload(norm.payload) || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
+          hasValidNarrativeQuality(formulaRetryNorm.payload) &&
+          (retryCodes.length || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
         ) {
           norm = {
             payload: applyProductAnalysisGapContract({
               ...formulaRetryNorm.payload,
               internal_debug_codes: uniqCaseInsensitiveStrings(
-                [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), 'formula_intent_retry_used'],
+                [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), ...retryCodes],
                 32,
               ),
             }),
@@ -30728,7 +30866,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const descriptorAnchor = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
       const productDescriptor = buildProductInputText(descriptorAnchor, null) || parsed.data.name || input;
-      const query = buildProductDeepScanPromptV2({
+      const query = buildProductDeepScanPrompt({
         prefix,
         productDescriptor,
       });
@@ -30854,7 +30992,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           intent: 'product_analyze_fallback',
           action_id: 'chip.action.analyze_product_fallback',
         });
-        const minimalQuery = buildProductDeepScanPromptV2({
+        const minimalQuery = buildProductDeepScanPrompt({
           prefix: minimalPrefix,
           productDescriptor: input,
         });
@@ -30872,26 +31010,27 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      if (shouldRetryForFormulaIntent(norm.payload)) {
-        const formulaRetryQuery = buildProductDeepScanPromptV2({
+      if (shouldRetryForNarrativeQuality(norm.payload)) {
+        const formulaRetryQuery = buildProductDeepScanPrompt({
           prefix,
           productDescriptor: input,
-          strictFormulaIntent: true,
+          strictNarrative: true,
         });
         const formulaRetryUpstream = await runDeepScan({
           queryText: formulaRetryQuery,
           timeoutMs: Math.max(9000, Math.min(17000, AURORA_CHAT_UPSTREAM_TIMEOUT_MS)),
         });
         const formulaRetryNorm = normalizeProductAnalysisFromUpstream(formulaRetryUpstream);
+        const retryCodes = collectNarrativeRetryCodes(norm.payload, formulaRetryNorm.payload);
         if (
-          hasValidFormulaIntentInPayload(formulaRetryNorm.payload) &&
-          (!hasValidFormulaIntentInPayload(norm.payload) || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
+          hasValidNarrativeQuality(formulaRetryNorm.payload) &&
+          (retryCodes.length || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
         ) {
           norm = {
             payload: applyProductAnalysisGapContract({
               ...formulaRetryNorm.payload,
               internal_debug_codes: uniqCaseInsensitiveStrings(
-                [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), 'formula_intent_retry_used'],
+                [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), ...retryCodes],
                 32,
               ),
             }),
@@ -33595,28 +33734,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
-        const forceReportOnPhotoUpload = Boolean(
-            !rollout.llmKillSwitch &&
-            userRequestedPhoto &&
-            photosProvided &&
-            hasLlmPrimaryInput &&
-            reportAvailable &&
-            !forceReportOnPhotoFetchFailure &&
-            reportDecision.decision !== 'call',
-        );
-        if (forceReportOnPhotoUpload) {
-          reportDecision = {
-            decision: 'call',
-            reasons: ['photo_upload_force_report'],
-            downgrade_confidence: reportDecision.downgrade_confidence === true,
-          };
-          if (ctx.lang === 'CN') {
-            qualityReportReasons.push('检测到用户上传照片：本次将强制调用报告模型做汇总解释。');
-          } else {
-            qualityReportReasons.push('Photo upload detected: forcing report model for a consolidated explanation.');
-          }
-        }
-
         let analysis = null;
         let retakeFallbackAnalysis = null;
         if (hasPhotoPrimaryInput && !hasPrimaryInput) {
@@ -39716,7 +39833,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
-          const deepScanQuery = buildProductDeepScanPromptV2({
+          const deepScanQuery = buildProductDeepScanPrompt({
             prefix: productAnalyzePrefix,
             productDescriptor: productInput,
           });
@@ -39806,7 +39923,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               intent: 'product_analyze_fallback',
               action_id: 'chat.fit_check.deep_scan_fallback',
             });
-            const minimalQuery = buildProductDeepScanPromptV2({
+            const minimalQuery = buildProductDeepScanPrompt({
               prefix: minimalPrefix,
               productDescriptor: productInput,
             });
@@ -39854,26 +39971,27 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
-          if (shouldRetryForFormulaIntent(norm.payload)) {
-            const formulaRetryQuery = buildProductDeepScanPromptV2({
+          if (shouldRetryForNarrativeQuality(norm.payload)) {
+            const formulaRetryQuery = buildProductDeepScanPrompt({
               prefix: productAnalyzePrefix,
               productDescriptor: productInput,
-              strictFormulaIntent: true,
+              strictNarrative: true,
             });
             const formulaRetryUpstream = await runDeepScan({
               queryText: formulaRetryQuery,
               timeoutMs: Math.max(9000, Math.min(17000, AURORA_CHAT_UPSTREAM_TIMEOUT_MS)),
             });
             const formulaRetryNorm = normalizeProductAnalysisFromUpstream(formulaRetryUpstream);
+            const retryCodes = collectNarrativeRetryCodes(norm.payload, formulaRetryNorm.payload);
             if (
-              hasValidFormulaIntentInPayload(formulaRetryNorm.payload) &&
-              (!hasValidFormulaIntentInPayload(norm.payload) || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
+              hasValidNarrativeQuality(formulaRetryNorm.payload) &&
+              (retryCodes.length || isProductIntelPayloadCandidateBetter(formulaRetryNorm.payload, norm.payload))
             ) {
               norm = {
                 payload: applyProductAnalysisGapContract({
                   ...formulaRetryNorm.payload,
                   internal_debug_codes: uniqCaseInsensitiveStrings(
-                    [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), 'formula_intent_retry_used'],
+                    [...getProductAnalysisInternalMissingCodes(formulaRetryNorm.payload), ...retryCodes],
                     32,
                   ),
                 }),
@@ -40297,6 +40415,14 @@ const __internal = {
   extractRetailIngredientsFromHtml,
   scoreRetailMatch,
   fetchRetailIngredientSupplement,
+  buildProductDeepScanPromptV2,
+  buildProductDeepScanPromptV3,
+  buildProductDeepScanPrompt,
+  hasProfileEchoSummary,
+  hasValidSummary,
+  hasStructuredHowToUse,
+  shouldRetryForNarrativeQuality,
+  collectNarrativeRetryCodes,
   shouldPersistProductIntelKb,
   shouldServeProductIntelKbEntry,
   resolveProductAnalysisSocialState,
