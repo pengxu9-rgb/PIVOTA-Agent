@@ -7,6 +7,23 @@
 
 This guide covers deploying the Pivota Agent Gateway to production environments, with a focus on Railway deployment and general best practices.
 
+## Production Deploy Policy (Source of Truth)
+
+For this repo, production deploys must use **GitHub push to `main` + Railway auto-deploy**.
+
+- Allowed: merge to `main`, then wait for Railway auto deployment.
+- Not allowed for normal flow: `railway up` to production.
+
+Reason: manual CLI deployment is easy to overwrite by later auto deploy and creates commit drift.
+
+Commit-match verification command:
+
+```bash
+npm run deploy:verify:production
+```
+
+Detailed policy: `docs/runbooks/deploy_via_github_push_only.md`
+
 ## Environment Variables
 
 Create a `.env` file from the template:
@@ -127,7 +144,7 @@ For share persistence across restarts, configure `DATABASE_URL` (Postgres). With
 
 4. **Configure Health Check**
    - Settings → Health Check
-   - Path: `/healthz`
+   - Path: `/healthz/lite`
    - Method: `GET`
    - Timeout: 30s
 
@@ -145,7 +162,7 @@ For share persistence across restarts, configure `DATABASE_URL` (Postgres). With
   },
   "deploy": {
     "startCommand": "npm start",
-    "healthcheckPath": "/healthz",
+    "healthcheckPath": "/healthz/lite",
     "healthcheckTimeout": 30
   }
 }
@@ -180,7 +197,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MODE=production
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz/lite"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -222,7 +239,7 @@ spec:
               key: api-key
         livenessProbe:
           httpGet:
-            path: /healthz
+            path: /healthz/lite
             port: 3000
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -309,11 +326,29 @@ const logger = pino({
 ### 4. Health Check Endpoint
 ```bash
 # Basic health check
-curl https://your-gateway.com/healthz
+curl https://your-gateway.com/healthz/lite
 
 # Expected response
 {"ok":true}
 ```
+
+### 5. TLS Budget Gate (Before/After Optimization)
+```bash
+# 1) Baseline (allow non-zero exit to capture current bottlenecks)
+ROUNDS=8 OUTPUT_JSON=/tmp/tls_before.json ./scripts/eval_tls_budget.sh || true
+
+# 2) After infra/TLS optimization, compare against baseline
+ROUNDS=8 BASELINE_JSON=/tmp/tls_before.json OUTPUT_JSON=/tmp/tls_after.json ./scripts/eval_tls_budget.sh
+```
+
+`eval_tls_budget.sh` will:
+- output p50/p90/p95 for first-request and warmed-request latency
+- output derived `first_app_time` (`first_ttfb - first_tls`) for bottleneck attribution
+- fail fast when configured latency budgets are exceeded
+- optionally fail on regression vs a saved baseline JSON
+
+For infra-side tuning order and rollback rules, see:
+`docs/runbooks/tls_infra_optimization_runbook.md`
 
 ## Performance Optimization
 
@@ -339,7 +374,7 @@ Consider adding Redis for:
 After deployment, run basic tests:
 ```bash
 # Health check
-curl https://your-gateway.com/healthz
+curl https://your-gateway.com/healthz/lite
 
 # Test with mock operation (if enabled)
 curl -X POST https://your-gateway.com/agent/shop/v1/invoke \
@@ -368,7 +403,7 @@ export let options = {
 };
 
 export default function() {
-  let response = http.get('https://your-gateway.com/healthz');
+  let response = http.get('https://your-gateway.com/healthz/lite');
   check(response, {
     'status is 200': (r) => r.status === 200,
   });

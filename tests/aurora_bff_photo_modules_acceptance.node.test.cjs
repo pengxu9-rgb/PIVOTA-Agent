@@ -311,6 +311,23 @@ test('/v1/analysis/skin acceptance: emits valid photo_modules_v1 payload without
 
         const payload = modulesCard.payload || {};
         assert.equal(payload.used_photos, true);
+        const faceCrop = payload.face_crop && typeof payload.face_crop === 'object' ? payload.face_crop : {};
+        const renderUrlCandidates = [
+          faceCrop.crop_image_url,
+          faceCrop.original_image_url,
+          faceCrop.face_crop_url,
+          faceCrop.source_image_url,
+          faceCrop.image_url,
+          faceCrop.src,
+        ];
+        const renderUrl = renderUrlCandidates.find((value) => typeof value === 'string' && value.trim());
+        assert.ok(renderUrl, 'Expected a renderable face_crop URL after backend fallback');
+        assert.equal(/^(https?:\/\/|data:image\/|blob:)/i.test(String(renderUrl || '')), true);
+
+        const renderFallback = payload.render_fallback && typeof payload.render_fallback === 'object' ? payload.render_fallback : {};
+        assert.equal(Boolean(renderFallback.attempted), true);
+        assert.equal(['existing', 'signed_url', 'inline_preview'].includes(String(renderFallback.source || '')), true);
+        assert.equal(/^ok_/.test(String(renderFallback.reason_code || '')), true);
 
         const regions = Array.isArray(payload.regions) ? payload.regions : [];
         assert.ok(regions.length > 0, 'photo_modules_v1.regions should not be empty');
@@ -338,6 +355,27 @@ test('/v1/analysis/skin acceptance: emits valid photo_modules_v1 payload without
         }
 
         const modules = Array.isArray(payload.modules) ? payload.modules : [];
+        assert.ok(modules.length > 0, 'photo_modules_v1.modules should not be empty');
+        const modulesWithMask = modules.filter(
+          (moduleEntry) =>
+            moduleEntry &&
+            typeof moduleEntry.mask_rle_norm === 'string' &&
+            moduleEntry.mask_rle_norm.trim().length > 0,
+        );
+        const modulesWithBox = modules.filter(
+          (moduleEntry) =>
+            moduleEntry &&
+            moduleEntry.box &&
+            Number.isFinite(Number(moduleEntry.box.x)) &&
+            Number.isFinite(Number(moduleEntry.box.y)) &&
+            Number.isFinite(Number(moduleEntry.box.w)) &&
+            Number.isFinite(Number(moduleEntry.box.h)),
+        );
+        assert.ok(modulesWithBox.length > 0, 'expected at least one module to include normalized box');
+        for (const moduleEntry of modulesWithMask) {
+          assert.ok(Number(moduleEntry.mask_grid) > 0, 'module mask_grid should be positive when mask exists');
+        }
+
         for (const moduleEntry of modules) {
           const issues = Array.isArray(moduleEntry?.issues) ? moduleEntry.issues : [];
           for (const issue of issues) {

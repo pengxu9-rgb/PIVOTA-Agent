@@ -1,0 +1,95 @@
+{
+  "schema_version": "travel_expert_scores.v1",
+  "model": "aurora",
+  "updated_at": "1970-01-01T00:00:00.000Z",
+  "results": [
+    {
+      "id": "travel_mt_001",
+      "scores": {
+        "weather_accuracy": 0,
+        "delta_explainability": 0,
+        "actionability": 0,
+        "product_closure": 0,
+        "safety_risk_control": 0,
+        "followup_focus": 0,
+        "context_memory": 0,
+        "contract_completeness": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "has_forecast_window": false,
+        "has_alerts_or_none_statement": false,
+        "has_reapply_rules": false,
+        "has_store_or_channel_hint": false,
+        "has_jetlag_logic": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "travel_mt_002",
+      "scores": {
+        "weather_accuracy": 0,
+        "delta_explainability": 0,
+        "actionability": 0,
+        "product_closure": 0,
+        "safety_risk_control": 0,
+        "followup_focus": 0,
+        "context_memory": 0,
+        "contract_completeness": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "has_forecast_window": false,
+        "has_alerts_or_none_statement": false,
+        "has_reapply_rules": false,
+        "has_store_or_channel_hint": false,
+        "has_jetlag_logic": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "travel_mt_003",
+      "scores": {
+        "weather_accuracy": 0,
+        "delta_explainability": 0,
+        "actionability": 0,
+        "product_closure": 0,
+        "safety_risk_control": 0,
+        "followup_focus": 0,
+        "context_memory": 0,
+        "contract_completeness": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "has_forecast_window": false,
+        "has_alerts_or_none_statement": false,
+        "has_reapply_rules": false,
+        "has_store_or_channel_hint": false,
+        "has_jetlag_logic": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "travel_mt_004",
+      "scores": {
+        "weather_accuracy": 0,
+        "delta_explainability": 0,
+        "actionability": 0,
+        "product_closure": 0,
+        "safety_risk_control": 0,
+        "followup_focus": 0,
+        "context_memory": 0,
+        "contract_completeness": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "has_forecast_window": false,
+        "has_alerts_or_none_statement": false,
+        "has_reapply_rules": false,
+        "has_store_or_channel_hint": false,
+        "has_jetlag_logic": false
+      },
+      "notes": ""
+    }
+  ]
+}

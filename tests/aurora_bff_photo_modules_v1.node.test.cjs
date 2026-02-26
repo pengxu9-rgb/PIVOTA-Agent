@@ -221,6 +221,124 @@ test('photo modules card: only emits for used_photos=true and quality pass/degra
   assert.equal(disabledByQuality, null);
 });
 
+test('photo modules card: prefers polygon from finding geometry over bbox/heatmap for same finding', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_polygon_priority',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_poly_first',
+          issue_type: 'redness',
+          severity: 3,
+          confidence: 0.91,
+          geometry: {
+            bbox: { x: 0.12, y: 0.18, w: 0.42, h: 0.36 },
+            polygon: {
+              points: [
+                { x: 0.16, y: 0.2 },
+                { x: 0.5, y: 0.2 },
+                { x: 0.54, y: 0.46 },
+                { x: 0.22, y: 0.52 },
+              ],
+            },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: makeHeatmapValues(8, 8),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  const regions = Array.isArray(built.card.payload.regions) ? built.card.payload.regions : [];
+  const findingRegions = regions.filter((region) => String(region.region_id || '').startsWith('pf_poly_first_'));
+  assert.equal(findingRegions.length >= 1, true);
+  assert.equal(findingRegions.some((region) => region.type === 'polygon'), true);
+  assert.equal(findingRegions.some((region) => region.type === 'bbox'), false);
+});
+
+test('photo modules card: heatmap contour fallback emits polygon with fallback notes when polygon is missing', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_contour_fallback',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_contour',
+          issue_type: 'shine',
+          severity: 2,
+          confidence: 0.72,
+          geometry: {
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: makeHeatmapValues(8, 8),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'degraded', reasons: ['glare'] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  const contourRegion = (built.card.payload.regions || []).find((region) => String(region.region_id || '').startsWith('pf_contour_'));
+  assert.ok(contourRegion);
+  assert.equal(contourRegion.type, 'polygon');
+  assert.equal(Array.isArray(contourRegion.notes), true);
+  const notesText = (contourRegion.notes || []).join('|');
+  assert.equal(notesText.includes('fallback:no_polygon'), true);
+  assert.equal(notesText.includes('fallback:contour_from_heatmap'), true);
+  assert.equal(notesText.includes('contour_t='), true);
+});
+
+test('photo modules card: bbox fallback emits fallback_reason when contour extraction fails', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_bbox_fallback',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_bbox_fallback',
+          issue_type: 'texture',
+          severity: 2,
+          confidence: 0.7,
+          geometry: {
+            bbox: { x: 0.2, y: 0.2, w: 0.35, h: 0.3 },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: new Array(8 * 8).fill(0),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  const bboxRegion = (built.card.payload.regions || []).find((region) => String(region.region_id || '').startsWith('pf_bbox_fallback_'));
+  assert.ok(bboxRegion);
+  assert.equal(bboxRegion.type, 'bbox');
+  const notesText = Array.isArray(bboxRegion.notes) ? bboxRegion.notes.join('|') : '';
+  assert.equal(notesText.includes('fallback:bbox_only'), true);
+});
+
 test('routes helper: flag off does not emit card, flag on emits and records metrics', () =>
   withEnv(
     {
@@ -271,10 +389,10 @@ test('routes helper: flag off does not emit card, flag on emits and records metr
 
           const metrics = renderVisionMetricsPrometheus();
           assert.match(metrics, /photo_modules_card_emitted_total\{quality_grade="degraded"\} 1/);
-          assert.match(metrics, /regions_emitted_total\{region_type="bbox",issue_type="redness"\}/);
+          assert.match(metrics, /regions_emitted_total\{region_type="polygon",issue_type="redness"\}/);
           assert.match(metrics, /modules_issue_count_histogram\{module_id="[^"]+",issue_type="redness"\}/);
           assert.match(metrics, /ingredient_actions_emitted_total\{module_id="[^"]+",issue_type="redness"\}/);
-          assert.match(metrics, /geometry_sanitizer_drop_total\{reason="[^"]+",region_type="bbox"\}/);
+          assert.match(metrics, /geometry_sanitizer_drop_total\{reason="[^"]+",region_type="polygon"\}/);
         },
       );
     },

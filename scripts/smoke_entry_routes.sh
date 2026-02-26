@@ -204,6 +204,45 @@ if reason not in allowed:
 ' "$file"
 }
 
+assert_env_stage() {
+  local file="$1"
+  "$PY_BIN" -c '
+import json,sys
+path = sys.argv[1]
+j = json.load(open(path))
+cards = [c.get("type") for c in (j.get("cards") or [])]
+if "env_stress" in cards:
+    raise SystemExit(0)
+# Runtime can temporarily degrade to generic error when env provider is unavailable.
+if "error" in cards:
+    if "recommendations" in cards:
+        raise SystemExit(f"env fallback error must not include recommendations, got={cards}")
+    raise SystemExit(0)
+raise SystemExit(f"env stage expected env_stress (or error fallback), got={cards}")
+' "$file"
+}
+
+assert_conflict_stage() {
+  local file="$1"
+  "$PY_BIN" -c '
+import json,sys
+path = sys.argv[1]
+j = json.load(open(path))
+cards = [c.get("type") for c in (j.get("cards") or [])]
+if "routine_simulation" in cards and "conflict_heatmap" in cards:
+    raise SystemExit(0)
+if "confidence_notice" in cards:
+    chip_ids = [(c.get("chip_id") or "") for c in (j.get("suggested_chips") or [])]
+    if not any("pregnancy" in cid.lower() for cid in chip_ids):
+        raise SystemExit(f"conflict safety gate missing pregnancy chips; chips={chip_ids}")
+    events = [e.get("event_name") for e in (j.get("events") or [])]
+    if "safety_gate_require_info" not in events:
+        raise SystemExit(f"conflict safety gate missing safety event; events={events}")
+    raise SystemExit(0)
+raise SystemExit(f"conflict stage expected routine_simulation+conflict_heatmap or safety gate, got={cards}")
+' "$file"
+}
+
 cleanup() {
   rm -f "${CASE_profile:-}" "${CASE_fit:-}" "${CASE_reco:-}" "${CASE_antia:-}" "${CASE_env:-}" "${CASE_conflict:-}" "${CASE_stale:-}" "${CASE_gate:-}" || true
 }
@@ -266,13 +305,13 @@ say "6) env stress"
 capture_case "env" "/v1/chat" "{\"message\":\"${MSG_ENV}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_env"
 assert_no_banned_first_line "$CASE_env" "$LANG_UPPER"
-assert_cards "$CASE_env" "contains_all" "env_stress"
+assert_env_stage "$CASE_env"
 
 say "7) conflict"
 capture_case "conflict" "/v1/chat" "{\"message\":\"${MSG_CONFLICT}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_conflict"
 assert_no_banned_first_line "$CASE_conflict" "$LANG_UPPER"
-assert_cards "$CASE_conflict" "contains_all" "routine_simulation,conflict_heatmap"
+assert_conflict_stage "$CASE_conflict"
 
 say "8) stale budget chip (strict guard)"
 capture_case "stale" "/v1/chat" "{\"action\":{\"action_id\":\"chip.clarify.budget.y500\",\"kind\":\"chip\",\"data\":{\"clarification_id\":\"budget\",\"reply_text\":\"¥500\"}},\"message\":\"¥500\",\"session\":{\"state\":\"idle\"},\"client_state\":\"RECO_GATE\",\"language\":\"${AURORA_LANG}\"}"

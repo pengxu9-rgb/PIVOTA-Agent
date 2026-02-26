@@ -31,6 +31,11 @@
     "gate:aurora:travel20": "node scripts/aurora_travel_gate.js",
     "gate:aurora:safety20": "node scripts/aurora_travel_gate.js --cases tests/golden/aurora_safety_20.jsonl --report-prefix aurora_safety_gate",
     "gate:aurora:anchor20": "node scripts/aurora_travel_gate.js --cases tests/golden/aurora_anchor_eval_20.jsonl --report-prefix aurora_anchor_eval_gate",
+    "benchmark:travel:efgh:staging": "node scripts/aurora_travel_gate.js --mode staging-live --cases tests/golden/aurora_travel_efgh_4.jsonl --expected-count 4 --report-prefix aurora_travel_efgh_gate",
+    "benchmark:travel:efgh:prod": "node scripts/aurora_travel_gate.js --mode staging-live --base https://pivota-agent-production.up.railway.app --cases tests/golden/aurora_travel_efgh_4.jsonl --expected-count 4 --report-prefix aurora_travel_efgh_gate",
+    "benchmark:travel:multiturn:run": "node scripts/run_travel_multiturn_seed_cases.cjs",
+    "benchmark:travel:multiturn:export": "node scripts/export_travel_multiturn_scoring_packets.cjs",
+    "benchmark:travel:multiturn:eval": "node scripts/eval_travel_expert_benchmark.cjs",
     "gate:aurora:pr-lite": "node scripts/aurora_chat_v2_pr_lite_gate.js",
     "benchmark:routine:dataset": "node scripts/build_routine_expert_benchmark_120.cjs",
     "benchmark:routine:init-templates": "node scripts/init_routine_expert_score_templates.cjs",
@@ -91,7 +96,10 @@
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js",
     "ingredient:ingest": "node scripts/ingest_ingredient_sources.js",
     "ingredient:ingest:dry": "node scripts/ingest_ingredient_sources.js --dry-run --fail-on-audit",
-    "ingredient:audit": "node scripts/ingest_ingredient_sources.js --audit-only --fail-on-audit"
+    "ingredient:audit": "node scripts/ingest_ingredient_sources.js --audit-only --fail-on-audit",
+    "photo:llm-review:batch": "node scripts/batch_photo_llm_review_pack.mjs",
+    "photo:llm-review:baseline": "node scripts/build_product_intel_fallback_baseline.mjs",
+    "deploy:verify:production": "bash scripts/verify_deployed_commit_matches.sh"
   },
   "keywords": [
     "pivota",

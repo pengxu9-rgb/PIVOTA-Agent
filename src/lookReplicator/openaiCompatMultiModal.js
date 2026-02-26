@@ -3,6 +3,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const axios = require("axios");
+const { getAxiosKeepAliveConfig } = require("../http/axiosKeepAlive");
 
 const { preprocessImageForGemini } = require("../layer1/llm/geminiImagePreprocess");
 const { computeSimilarity, isTooSimilar, isSuspectFaceSwap } = require("./imageSimilarity");
@@ -184,6 +185,7 @@ async function postChatCompletions({ model, messages, timeoutMs, temperature, ma
     timeout,
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     validateStatus: () => true,
+    ...getAxiosKeepAliveConfig(),
   });
 
   let last = null;
@@ -252,6 +254,7 @@ async function postGeminiGenerateContent({ model, contents, systemInstruction, t
     timeout,
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     validateStatus: () => true,
+    ...getAxiosKeepAliveConfig(),
   });
 
   const paths = [

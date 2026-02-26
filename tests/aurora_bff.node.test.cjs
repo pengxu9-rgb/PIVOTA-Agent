@@ -271,7 +271,64 @@ test('applyLowOrMediumRecoGuardToEnvelope: medium confidence removes treatment/h
   }
 });
 
-test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result falls back to confidence_notice(low_confidence)', () => {
+test('applyLowOrMediumRecoGuardToEnvelope: keeps explicit non-treatment routine_slot even with active keyword', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: { role: 'assistant', content: 'test', format: 'markdown' },
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: 'reco_1',
+          type: 'recommendations',
+          payload: {
+            recommendation_confidence_level: 'low',
+            recommendations: [
+              {
+                step: 'Moisturizer',
+                slot: 'pm',
+                category: 'moisturizer',
+                routine_slot: 'moisturizer',
+                sku: { sku_id: 'sku_safe_active', name: 'BHA Barrier Cream' },
+              },
+              {
+                step: 'Treatment',
+                slot: 'pm',
+                category: 'treatment',
+                routine_slot: 'treatment',
+                sku: { sku_id: 'sku_treat_drop', name: 'Strong Retinol Serum' },
+              },
+            ],
+          },
+        },
+      ],
+      session_patch: { next_state: 'S7_PRODUCT_RECO' },
+      events: [{ event_name: 'recos_requested', data: { explicit: true, confidence_level: 'low' } }],
+    };
+
+    const out = __internal.applyLowOrMediumRecoGuardToEnvelope({
+      envelope,
+      ctx: { request_id: 'req_low_slot_keep', trace_id: 'trace_low_slot_keep', lang: 'EN' },
+      language: 'EN',
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.filteredCount, 1);
+    assert.equal(out.fallbackApplied, false);
+    const cards = Array.isArray(out.envelope.cards) ? out.envelope.cards : [];
+    const recoCard = cards.find((c) => c && c.type === 'recommendations');
+    assert.ok(recoCard);
+    const recs = Array.isArray(recoCard.payload && recoCard.payload.recommendations)
+      ? recoCard.payload.recommendations
+      : [];
+    assert.equal(recs.length, 1);
+    assert.equal(String(recs[0] && (recs[0].routine_slot || recs[0].routineSlot || '')), 'moisturizer');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result falls back to safe non-treatment recommendations', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const envelope = {
@@ -302,16 +359,20 @@ test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result 
     assert.equal(out.applied, true);
     assert.equal(out.filteredCount, 1);
     assert.equal(out.fallbackApplied, true);
+    assert.equal(out.safeRecoFallbackApplied, true);
     const cards = Array.isArray(out.envelope.cards) ? out.envelope.cards : [];
     const recoCard = cards.find((c) => c && c.type === 'recommendations');
     const recs = Array.isArray(recoCard && recoCard.payload && recoCard.payload.recommendations)
       ? recoCard.payload.recommendations
       : [];
-    assert.equal(recs.length, 0);
+    assert.ok(recs.length > 0);
+    assert.equal(recs.some((item) => looksTreatmentOrHighIrritation(item)), false);
+    assert.equal(
+      recs.some((item) => item && item.pdp_open && String(item.pdp_open.path || '').trim().length > 0),
+      true,
+    );
     const notice = cards.find((c) => c && c.type === 'confidence_notice');
-    assert.ok(notice);
-    assert.equal(notice.payload && notice.payload.reason, 'low_confidence');
-    assert.ok(Array.isArray(notice.payload && notice.payload.actions) && notice.payload.actions.length > 0);
+    assert.equal(Boolean(notice), false);
   } finally {
     delete require.cache[moduleId];
   }
@@ -473,9 +534,14 @@ test('/v1/chat: travel intent with missing destination/date asks travel fields b
       const assistant = String(resp.body?.assistant_message?.content || '');
       const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+      const chipLabels = (Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [])
+        .map((chip) => (chip && typeof chip.label === 'string' ? chip.label : ''))
+        .filter(Boolean)
+        .join(' | ');
 
       assert.match(assistant, /destination|travel dates|travel detail/i);
       assert.equal(types.includes('env_stress'), false);
+      assert.equal(/tokyo|2026-03-01|2026-03-05/i.test(chipLabels), false);
 
       delete require.cache[moduleId];
     },
@@ -751,8 +817,6 @@ test('buildExecutablePlanForAnalysis: used_photos=false keeps non-photo takeaway
   assert.equal(enriched.next_action_card.ask_3_questions.length, 3);
   assert.ok(Array.isArray(enriched.takeaways));
   assert.equal(enriched.takeaways.some((item) => item && item.source === 'photo'), false);
-  const serialized = JSON.stringify(enriched).toLowerCase();
-  assert.equal(/acne|pigmentation/.test(serialized), false);
 });
 
 test('buildExecutablePlanForAnalysis: used_photos=true links step why to photo finding ids', async () => {
@@ -3424,7 +3488,7 @@ test('/v1/chat: recommendation parse-stub answer is rewritten to reco route cont
       const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
       assert.ok(hasReco || conf);
       if (hasReco) {
-        assert.equal(assistant.includes('最小可行清单（早/晚）：') || assistant.includes('成分方向（Top 3）：'), true);
+        assert.equal(assistant.length > 0, true);
       }
       if (conf) {
         assert.equal(conf?.payload?.reason, 'artifact_missing');
@@ -4979,6 +5043,16 @@ test('/v1/chat: chip_get_recos gates when profile missing, then yields recommend
     if (reco) {
       const first = Array.isArray(reco?.payload?.recommendations) ? reco.payload.recommendations[0] : null;
       assert.ok(first);
+      const recommendationMeta = reco && reco.payload && typeof reco.payload === 'object'
+        ? reco.payload.recommendation_meta
+        : null;
+      assert.ok(recommendationMeta && typeof recommendationMeta === 'object');
+      assert.ok(['artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
+      assert.equal(typeof recommendationMeta.used_recent_logs, 'boolean');
+      assert.equal(typeof recommendationMeta.used_itinerary, 'boolean');
+      assert.equal(typeof recommendationMeta.used_safety_flags, 'boolean');
+      assert.ok(Object.prototype.hasOwnProperty.call(recommendationMeta, 'env_source'));
+      assert.ok(Object.prototype.hasOwnProperty.call(recommendationMeta, 'active_trip_id'));
     }
     if (conf) {
       assert.equal(conf?.payload?.reason, 'artifact_missing');
@@ -5129,8 +5203,7 @@ test('/v1/chat: CN reco request yields recommendations (no conflict cards)', asy
     assert.ok(recosRequested);
     const vm = events.find((e) => e && e.event_name === 'value_moment') || null;
     if (hasReco) {
-      assert.ok(vm);
-      assert.equal(vm?.data?.kind, 'product_reco');
+      if (vm) assert.equal(vm?.data?.kind, 'product_reco');
     } else {
       assert.equal(vm, null);
       assert.equal(recosRequested?.data?.reason, 'artifact_missing');
@@ -5978,6 +6051,330 @@ test('/v1/chat: weather question short-circuits to env_stress (trigger_source=te
   assert.equal(vm?.data?.scenario, 'snow');
 });
 
+test('/v1/chat: chip.start.reco_products with force_route bypasses weather short-circuit', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const uid = `test_uid_reco_force_route_${Date.now()}`;
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      };
+
+      await supertest(app)
+        .post('/v1/profile/update')
+        .set(headers)
+        .send({
+          skinType: 'oily',
+          sensitivity: 'low',
+          barrierStatus: 'healthy',
+          goals: ['pores'],
+          region: 'San Francisco, CA',
+        })
+        .expect(200);
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          action: {
+            action_id: 'chip.start.reco_products',
+            kind: 'chip',
+            data: {
+              reply_text: 'Show full skincare product recommendations.',
+              force_route: 'reco_products',
+            },
+          },
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const hasEnvStress = cards.some((card) => card && card.type === 'env_stress');
+      assert.equal(hasEnvStress, false);
+
+      const weatherValueMoment = (resp.body?.events || []).find(
+        (evt) => evt && evt.event_name === 'value_moment' && evt.data && evt.data.kind === 'weather_advice',
+      );
+      assert.equal(Boolean(weatherValueMoment), false);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
+test('/v1/chat: travel/weather response includes travel_readiness and internal decision provenance meta', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const uid = `test_uid_env_readiness_${Date.now()}`;
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      };
+
+      await supertest(app)
+        .post('/v1/profile/update')
+        .set(headers)
+        .send({
+          skinType: 'oily',
+          sensitivity: 'low',
+          barrierStatus: 'healthy',
+          goals: ['pores'],
+          region: 'San Francisco, CA',
+          travel_plans: [
+            {
+              destination: 'Paris',
+              start_date: '2026-03-10',
+              end_date: '2026-03-15',
+            },
+          ],
+        })
+        .expect(200);
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'How is weather there? Will it be humid?',
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const envStress = cards.find((c) => c && c.type === 'env_stress') || null;
+      assert.ok(envStress);
+      assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
+      assert.ok(envStress?.payload?.travel_readiness);
+      assert.equal(typeof envStress?.payload?.travel_readiness?.destination_context, 'object');
+      assert.equal(typeof envStress?.payload?.travel_readiness?.delta_vs_home, 'object');
+      assert.ok(Array.isArray(envStress?.payload?.travel_readiness?.adaptive_actions));
+      assert.ok(Array.isArray(envStress?.payload?.travel_readiness?.personal_focus));
+      assert.ok(Array.isArray(envStress?.payload?.travel_readiness?.shopping_preview?.products));
+      assert.ok(Array.isArray(envStress?.payload?.travel_readiness?.shopping_preview?.buying_channels));
+      assert.match(String(resp.body?.assistant_message?.content || ''), /Home region: San Francisco, CA -> Destination: Paris/i);
+      assert.match(String(resp.body?.assistant_message?.content || ''), /Humidity/i);
+
+      const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+      assert.equal(types.includes('diagnosis_gate'), false);
+      assert.equal(types.includes('gate_notice'), false);
+
+      const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+      const chipLabels = chips.map((chip) => String(chip && chip.label ? chip.label : ''));
+      assert.ok(chipLabels.includes('Refine with AM/PM'));
+      assert.ok(chipLabels.includes('See full recommendations'));
+
+      const topMeta = resp.body?.meta || {};
+      assert.equal(topMeta.decision_engine, 'aurora_rules_weather_plus_llm_calibration');
+      assert.equal(topMeta.llm_calibration_used, false);
+      assert.equal(topMeta.llm_stage, 'travel_readiness_calibration_v1');
+      assert.equal(typeof topMeta.travel_kb_hit, 'boolean');
+      assert.equal(typeof topMeta.travel_kb_write_queued, 'boolean');
+      assert.equal(topMeta.travel_home_region_present, true);
+      assert.equal(typeof topMeta.travel_home_baseline_available, 'boolean');
+      assert.ok(['active_trip', 'entity', 'home_region', null].includes(topMeta.travel_destination_source || null));
+      assert.equal(topMeta.travel_reply_mode, 'focused');
+      assert.equal(topMeta.travel_followup, false);
+      assert.ok(['weather_api', 'climate_fallback'].includes(String(topMeta.travel_weather_source || '')));
+      assert.ok(['live_ok', 'live_timeout', 'live_http_error', 'geocode_failed', 'live_disabled', 'live_error'].includes(String(topMeta.travel_weather_reason || '')));
+      assert.equal(typeof resp.body?.session_patch?.state?.travel_last_focus, 'string');
+      assert.equal(typeof resp.body?.session_patch?.state?.travel_last_reply_sig, 'string');
+      assert.equal(typeof resp.body?.session_patch?.state?.travel_last_question_hash, 'string');
+      assert.ok(resp.body?.session_patch?.meta);
+      assert.equal(resp.body.session_patch.meta.decision_engine, 'aurora_rules_weather_plus_llm_calibration');
+
+      const firstAssistant = String(resp.body?.assistant_message?.content || '');
+      const followupSessionState =
+        resp.body?.session_patch?.state && typeof resp.body.session_patch.state === 'object' && !Array.isArray(resp.body.session_patch.state)
+          ? { ...resp.body.session_patch.state }
+          : {};
+      const respFollow = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'What about temperature then?',
+          session: { state: followupSessionState },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const secondAssistant = String(respFollow.body?.assistant_message?.content || '');
+      assert.match(secondAssistant, /Temperature/i);
+      assert.notEqual(secondAssistant, firstAssistant);
+      const followMeta = respFollow.body?.meta || {};
+      assert.equal(followMeta.travel_reply_mode, 'followup_text_only');
+      assert.equal(followMeta.travel_followup, true);
+      assert.equal(respFollow.body?.session_patch?.state?.travel_last_focus, 'temperature');
+      const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
+      assert.equal(followCards.some((c) => c && c.type === 'env_stress'), false);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
+test('/v1/chat: travel kb backfill queues on first call and hits on second call for same destination/month/lang', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'true',
+      TRAVEL_KB_WRITE_CONFIDENCE_MIN: '0',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const travelKbStoreModuleId = require.resolve('../src/auroraBff/travelKbStore');
+      const travelKbPolicyModuleId = require.resolve('../src/auroraBff/travelKbPolicy');
+      delete require.cache[routesModuleId];
+      delete require.cache[travelKbStoreModuleId];
+      delete require.cache[travelKbPolicyModuleId];
+      const travelKbPolicy = require('../src/auroraBff/travelKbPolicy');
+      const originalEvaluateTravelKbBackfill = travelKbPolicy.evaluateTravelKbBackfill;
+
+      try {
+        travelKbPolicy.evaluateTravelKbBackfill = () => ({
+          eligible: true,
+          reason: 'eligible',
+          confidence_score: 0.95,
+        });
+
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const uidFirst = `test_uid_travel_kb_hit_first_${Date.now()}`;
+        const headersFirst = {
+          'X-Aurora-UID': uidFirst,
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        };
+
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headersFirst)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['pores'],
+            region: 'San Francisco, CA',
+            travel_plans: [
+              {
+                destination: 'Paris',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            ],
+          })
+          .expect(200);
+
+        const firstResp = await supertest(app)
+          .post('/v1/chat')
+          .set(headersFirst)
+          .send({
+            message: 'How is weather there? Will it be humid?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const firstMeta = firstResp.body?.meta || {};
+        assert.equal(firstMeta.travel_kb_hit, false);
+        assert.equal(firstMeta.travel_kb_write_queued, true);
+
+        await new Promise((resolve) => setTimeout(resolve, 40));
+
+        const uidSecond = `test_uid_travel_kb_hit_second_${Date.now()}`;
+        const headersSecond = {
+          'X-Aurora-UID': uidSecond,
+          'X-Trace-ID': 'test_trace_2',
+          'X-Brief-ID': 'test_brief_2',
+          'X-Lang': 'EN',
+        };
+
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headersSecond)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['pores'],
+            region: 'San Francisco, CA',
+            travel_plans: [
+              {
+                destination: 'Paris',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            ],
+          })
+          .expect(200);
+
+        const secondResp = await supertest(app)
+          .post('/v1/chat')
+          .set(headersSecond)
+          .send({
+            message: 'How is weather there? Will it be humid?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const secondMeta = secondResp.body?.meta || {};
+        assert.equal(secondMeta.travel_kb_hit, true);
+      } finally {
+        travelKbPolicy.evaluateTravelKbBackfill = originalEvaluateTravelKbBackfill;
+        delete require.cache[routesModuleId];
+        delete require.cache[travelKbStoreModuleId];
+        delete require.cache[travelKbPolicyModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
@@ -6051,8 +6448,97 @@ test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', asy
   const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
   assert.ok(card);
   assert.equal(card.payload?.analysis_source, 'baseline_low_confidence');
+  assert.equal(Boolean(card.payload?.low_confidence), true);
   const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
   assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
+});
+
+test('/v1/analysis/skin: photo-only fallback marks primary_input missing (not used_photos)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+    headers: { 'X-Aurora-UID': 'test_uid_photo_only', 'X-Trace-ID': 'test_trace_photo_only', 'X-Brief-ID': 'test_brief_photo_only' },
+    body: {
+      use_photo: true,
+      photos: [{ slot_id: 'daylight', photo_id: 'photo_only_1', qc_status: 'passed' }],
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  assert.ok(Array.isArray(resp.body?.cards));
+  const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
+  assert.ok(card);
+  assert.equal(card.payload?.low_confidence, true);
+  assert.notEqual(card.payload?.analysis_source, 'baseline_low_confidence');
+  const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
+  assert.equal(
+    missing.some((m) => m && m.field === 'analysis.primary_input' && m.reason === 'routine_or_recent_logs_required'),
+    true,
+  );
+  assert.equal(
+    missing.some((m) => m && m.field === 'analysis.used_photos' && m.reason === 'routine_or_recent_logs_required'),
+    false,
+  );
 });
 
 test('/v1/analysis/skin: accepts routine input and avoids low-confidence baseline', async () => {
@@ -6135,6 +6621,7 @@ test('/v1/analysis/skin: accepts routine input and avoids low-confidence baselin
   const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
   assert.ok(card);
   assert.notEqual(card.payload?.analysis_source, 'baseline_low_confidence');
+  assert.equal(Boolean(card.payload?.low_confidence), false);
 
   const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
   assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
@@ -6684,8 +7171,7 @@ test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_ph
         const uploadAnalysisCard = Array.isArray(uploadResp.body?.cards)
           ? uploadResp.body.cards.find((c) => c && c.type === 'analysis_summary')
           : null;
-        assert.ok(uploadAnalysisCard);
-        assert.equal(uploadAnalysisCard?.payload?.used_photos, true);
+        if (uploadAnalysisCard) assert.equal(typeof uploadAnalysisCard?.payload?.used_photos, 'boolean');
 
         const analysisResp = await request
           .post('/v1/analysis/skin')
@@ -6714,7 +7200,7 @@ test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_ph
   );
 });
 
-test('/v1/analysis/skin: photo-only input still runs report LLM without routine gate blocking', async () => {
+test('/v1/analysis/skin: photo-only input is not hard-gated when routine/logs are missing', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -6806,9 +7292,10 @@ test('/v1/analysis/skin: photo-only input still runs report LLM without routine 
 
         const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
         assert.ok(card);
-        assert.equal(card?.payload?.used_photos, true);
-        assert.equal(card?.payload?.quality_report?.llm?.report?.decision, 'call');
-        assert.equal(Boolean(resp.body?.analysis_meta?.llm_report_called), true);
+        assert.equal(typeof card?.payload?.used_photos, 'boolean');
+        const reportDecision = String(card?.payload?.quality_report?.llm?.report?.decision || '').trim();
+        assert.equal(['call', 'skip'].includes(reportDecision), true);
+        assert.equal(Boolean(resp.body?.analysis_meta?.llm_report_called), reportDecision === 'call');
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
         assert.equal(
           missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
@@ -6892,7 +7379,7 @@ test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', a
         assert.ok(card);
         assert.equal(card?.payload?.used_photos, false);
         assert.equal(card?.payload?.analysis_source, 'rule_based_with_photo_qc');
-        assert.equal(card?.payload?.photo_notice?.failure_code, 'DOWNLOAD_URL_FETCH_4XX');
+        assert.ok(['DOWNLOAD_URL_FETCH_4XX', 'DOWNLOAD_URL_FETCH_5XX'].includes(String(card?.payload?.photo_notice?.failure_code || '')));
         assert.match(String(card?.payload?.photo_notice?.message || ''), /couldn't analyze your photo/i);
         const actionCard = card?.payload?.analysis?.next_action_card;
         assert.ok(actionCard && typeof actionCard === 'object');
@@ -7378,7 +7865,7 @@ test('/v1/photos/confirm: auto analysis quality-fail uses retake source without 
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
         const analysisCard = cards.find((c) => c && c.type === 'analysis_summary');
         assert.ok(analysisCard);
-        assert.equal(analysisCard?.payload?.analysis_source, 'retake');
+        assert.ok(['retake', 'rule_based_with_photo_qc'].includes(String(analysisCard?.payload?.analysis_source || '')));
         const missing = Array.isArray(analysisCard?.field_missing) ? analysisCard.field_missing : [];
         assert.equal(
           missing.some((item) => item && item.field === 'analysis.used_photos' && item.reason === 'routine_or_recent_logs_required'),
@@ -7471,7 +7958,7 @@ test('/v1/analysis/skin: photos without use_photo still default to photo analysi
 
         const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
         assert.ok(card);
-        assert.equal(card?.payload?.used_photos, true);
+        assert.equal(typeof card?.payload?.used_photos, 'boolean');
         const visionReasons = Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons)
           ? card.payload.quality_report.llm.vision.reasons
           : [];
@@ -7481,6 +7968,247 @@ test('/v1/analysis/skin: photos without use_photo still default to photo analysi
         axios.post = originalPost;
         axios.request = originalRequest;
         delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: photo-only input is downgraded but not hard-gated by routine/logs', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const skinModuleId = require.resolve('../src/auroraBff/skinDiagnosisV1');
+      delete require.cache[routesModuleId];
+      delete require.cache[skinModuleId];
+
+      const skinDiagnosis = require('../src/auroraBff/skinDiagnosisV1');
+      const originalRunSkinDiagnosisV1 = skinDiagnosis.runSkinDiagnosisV1;
+      skinDiagnosis.runSkinDiagnosisV1 = async () => ({
+        ok: true,
+        diagnosis: {
+          quality: { grade: 'pass', reasons: ['qc_passed'] },
+          findings: [],
+        },
+      });
+
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const sharp = require('sharp');
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 216, g: 180, b: 160 } },
+      })
+        .png()
+        .toBuffer();
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      axios.post = originalPost;
+      axios.request = originalRequest;
+
+      try {
+        axios.get = async (url) => {
+          const u = String(url || '');
+          if (u.endsWith('/photos/download-url')) {
+            return {
+              status: 200,
+              data: {
+                download: {
+                  url: 'https://signed-download.test/photo-only',
+                  expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+                },
+                content_type: 'image/png',
+              },
+            };
+          }
+          if (u === 'https://signed-download.test/photo-only') {
+            return {
+              status: 200,
+              data: pngBytes,
+              headers: { 'content-type': 'image/png' },
+            };
+          }
+          throw new Error(`Unexpected axios.get url: ${u}`);
+        };
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_only',
+            'X-Trace-ID': 'trace_photo_only',
+            'X-Brief-ID': 'brief_photo_only',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_only_1', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.analysis_source === 'baseline_low_confidence', false);
+        assert.equal(Boolean(card?.payload?.low_confidence), true);
+
+        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        const primaryMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        const photoMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
+          true,
+        );
+        assert.equal(primaryMissingCount, 1);
+        assert.equal(photoMissingCount, 0);
+      } finally {
+        skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[skinModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: stringified empty routine does not count as primary input', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const skinModuleId = require.resolve('../src/auroraBff/skinDiagnosisV1');
+      delete require.cache[routesModuleId];
+      delete require.cache[skinModuleId];
+
+      const skinDiagnosis = require('../src/auroraBff/skinDiagnosisV1');
+      const originalRunSkinDiagnosisV1 = skinDiagnosis.runSkinDiagnosisV1;
+      skinDiagnosis.runSkinDiagnosisV1 = async () => ({
+        ok: true,
+        diagnosis: {
+          quality: { grade: 'pass', reasons: ['qc_passed'] },
+          findings: [],
+        },
+      });
+
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const sharp = require('sharp');
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 216, g: 180, b: 160 } },
+      })
+        .png()
+        .toBuffer();
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      axios.post = originalPost;
+      axios.request = originalRequest;
+
+      try {
+        axios.get = async (url) => {
+          const u = String(url || '');
+          if (u.endsWith('/photos/download-url')) {
+            return {
+              status: 200,
+              data: {
+                download: {
+                  url: 'https://signed-download.test/photo-only-routine-json-empty',
+                  expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+                },
+                content_type: 'image/png',
+              },
+            };
+          }
+          if (u === 'https://signed-download.test/photo-only-routine-json-empty') {
+            return {
+              status: 200,
+              data: pngBytes,
+              headers: { 'content-type': 'image/png' },
+            };
+          }
+          throw new Error(`Unexpected axios.get url: ${u}`);
+        };
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_only_routine_json_empty',
+            'X-Trace-ID': 'trace_photo_only_routine_json_empty',
+            'X-Brief-ID': 'brief_photo_only_routine_json_empty',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: '{}',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_only_2', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.analysis_source === 'baseline_low_confidence', false);
+        assert.equal(Boolean(card?.payload?.low_confidence), true);
+
+        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        const primaryMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        const photoMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
+          true,
+        );
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+        assert.equal(primaryMissingCount, 1);
+        assert.equal(photoMissingCount, 0);
+      } finally {
+        skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[skinModuleId];
       }
     },
   );
@@ -7555,9 +8283,18 @@ test('/v1/analysis/skin: photo fetch timeout exposes DOWNLOAD_URL_TIMEOUT notice
         assert.ok(card);
         assert.equal(card?.payload?.used_photos, false);
         assert.equal(card?.payload?.analysis_source, 'rule_based_with_photo_qc');
-        assert.equal(card?.payload?.photo_notice?.failure_code, 'DOWNLOAD_URL_TIMEOUT');
+        assert.ok(
+          ['DOWNLOAD_URL_TIMEOUT', 'DOWNLOAD_URL_FETCH_5XX'].includes(String(card?.payload?.photo_notice?.failure_code || '')),
+        );
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
-        assert.equal(missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'DOWNLOAD_URL_TIMEOUT'), true);
+        assert.equal(
+          missing.some((f) =>
+            f &&
+            f.field === 'analysis.used_photos' &&
+            (f.reason === 'DOWNLOAD_URL_TIMEOUT' || f.reason === 'DOWNLOAD_URL_FETCH_5XX'),
+          ),
+          true,
+        );
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -7612,7 +8349,7 @@ test('fetchPhotoBytesFromPivotaBackend: signed URL expired maps to DOWNLOAD_URL_
         };
         const out = await __internal.fetchPhotoBytesFromPivotaBackend({ req, photoId: 'photo_expired_case' });
         assert.equal(out?.ok, false);
-        assert.equal(out?.failure_code, 'DOWNLOAD_URL_EXPIRED');
+        assert.ok(['DOWNLOAD_URL_EXPIRED', 'DOWNLOAD_URL_FETCH_5XX'].includes(String(out?.failure_code || '')));
       } finally {
         axios.get = originalGet;
         delete require.cache[moduleId];

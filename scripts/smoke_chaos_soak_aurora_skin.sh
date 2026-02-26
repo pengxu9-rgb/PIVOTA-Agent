@@ -195,7 +195,7 @@ log_line() {
 }
 
 wait_for_startup_health() {
-  local health_url="${BASE%/}/healthz"
+  local health_url="${BASE%/}/healthz/lite"
   local started_ts
   started_ts="$(date +%s)"
   local deadline_ts=$(( started_ts + STARTUP_HEALTH_MAX_WAIT_SEC ))

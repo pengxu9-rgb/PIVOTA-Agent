@@ -54,7 +54,7 @@ describe('find_products_multi intent + filtering', () => {
     expect(String(resp.reply)).toContain('Nina');
   });
 
-  test('medium ambiguity returns clarification payload instead of drifting products', () => {
+  test('medium ambiguity can keep products when clarify gate not triggered', () => {
     const intent = extractIntentRuleBased('约会妆推荐', [], []);
     const resp = applyFindProductsMultiPolicy({
       response: {
@@ -73,16 +73,52 @@ describe('find_products_multi intent + filtering', () => {
     });
 
     expect(Array.isArray(resp.products)).toBe(true);
-    expect(resp.products).toHaveLength(0);
-    expect(resp.clarification).toEqual(
-      expect.objectContaining({
-        question: expect.any(String),
-        options: expect.any(Array),
-        reason_code: expect.any(String),
-      }),
-    );
-    expect(resp.metadata?.search_decision?.final_decision).toBe('clarify');
-    expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+  });
+
+  test('single category answer (香水) returns products instead of re-clarify', () => {
+    const intent = extractIntentRuleBased('香水', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'f1',
+            title: 'Floral Perfume',
+            description: 'fragrance perfume for date night',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '香水' } },
+      metadata: { ambiguity_score_pre: 0.42 },
+      rawUserQuery: '香水',
+    });
+
+    expect(resp.metadata?.search_decision?.query_class).toBe('category');
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+  });
+
+  test('direct category signal does not trigger second clarify on empty result', () => {
+    const intent = extractIntentRuleBased('香水', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '香水' } },
+      metadata: { ambiguity_score_pre: 0.45 },
+      rawUserQuery: '香水',
+    });
+
+    expect(resp.metadata?.search_decision?.query_class).toBe('category');
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
   });
 
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {
@@ -179,6 +215,7 @@ describe('find_products_multi intent + filtering', () => {
         SEARCH_CLARIFY_MIN_RECALL_CANDIDATES: '6',
         SEARCH_CLARIFY_MIN_ANCHOR_RATIO: '0.2',
         SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY: '0.45',
+        SEARCH_CONTEXT_FAIL_OPEN_ENABLED: 'false',
       },
       ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
         const intent = extractIntentRuleBased('出差买什么', [], []);
@@ -277,7 +314,7 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
-  test('domain condenser recovers scenario candidates when pre-quality list is emptied', () => {
+  test('domain condenser keeps scenario candidates even when condenser gate is not met', () => {
     withPolicyEnv(
       {
         SEARCH_DOMAIN_CONDENSER_ENABLED: 'true',
@@ -314,15 +351,15 @@ describe('find_products_multi intent + filtering', () => {
           rawUserQuery: '我今晚有个约会，要化妆，要推荐点商品吧？',
         });
 
-        expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(true);
-        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('applied_on_empty_candidates');
+        expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(false);
+        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('gate_not_met');
         expect(resp.metadata?.search_decision?.post_quality?.candidates).toBeGreaterThanOrEqual(4);
         expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
       },
     );
   });
 
-  test('domain condenser remains inactive for non scenario/mission classes', () => {
+  test('domain condenser remains inactive when gate is not met for category class', () => {
     withPolicyEnv(
       {
         SEARCH_DOMAIN_CONDENSER_ENABLED: 'true',
@@ -349,7 +386,7 @@ describe('find_products_multi intent + filtering', () => {
 
         expect(resp.metadata?.search_decision?.query_class).toBe('category');
         expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(false);
-        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('query_class_not_supported');
+        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('gate_not_met');
       },
     );
   });
@@ -1094,14 +1131,128 @@ describe('find_products_multi intent + filtering', () => {
 
     expect(resp.products.length).toBe(0);
     expect(resp.reason_codes || []).toEqual(
-      expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET', 'BEAUTY_NON_TOOL_MIN_NOT_MET']),
+      expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET', 'BEAUTY_NON_TOOL_MIN_NOT_MET', 'AMBIGUITY_CLARIFY']),
     );
     expect(resp.metadata?.route_debug?.policy?.diversity).toEqual(
       expect.objectContaining({
         requirement_unmet: true,
-        strict_empty: true,
-        preserve_primary_on_failure: false,
+        strict_empty: false,
+        preserve_primary_on_failure: true,
         required_non_tool_buckets: 2,
+      }),
+    );
+  });
+
+  test('strict lingerie scope blocks brush/tools and exposes strict trace metadata', () => {
+    const intent = extractIntentRuleBased('lingerie', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'ling-1',
+            title: 'Lace Lingerie Set',
+            description: 'lingerie bra and panty set',
+          }),
+          makeRawProduct({
+            id: 'tool-1',
+            title: 'Contour Brush Set',
+            description: 'beauty makeup brush tools',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'lingerie' } },
+      metadata: { ambiguity_score_pre: 0.2 },
+      rawUserQuery: 'lingerie',
+    });
+
+    expect(Array.isArray(resp.products)).toBe(true);
+    expect(resp.products).toHaveLength(1);
+    expect(String(resp.products[0]?.title || '').toLowerCase()).toContain('lingerie');
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['STRICT_LINGERIE_SCOPE']));
+    expect(resp.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        strict_scope: 'lingerie',
+        lingerie_filtered_out: expect.any(Number),
+      }),
+    );
+    expect(resp.metadata?.search_decision?.lingerie_filtered_out).toBeGreaterThanOrEqual(1);
+  });
+
+  test('strict lingerie scope keeps intimate-apparel variants while still blocking brushes', () => {
+    const intent = extractIntentRuleBased('lingerie', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'body-1',
+            title: 'Satin Bodysuit Set',
+            description: 'lace bodysuit with soft mesh trim',
+          }),
+          makeRawProduct({
+            id: 'bralette-1',
+            title: 'Everyday Bralette Duo',
+            description: 'wireless bralette and matching briefs',
+          }),
+          makeRawProduct({
+            id: 'sleep-1',
+            title: "Women's Sleepwear Set",
+            description: 'soft lounge outfit for nightwear',
+          }),
+          makeRawProduct({
+            id: 'tool-1',
+            title: 'Foundation Brush Pro',
+            description: 'makeup contour brush tool',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'lingerie' } },
+      metadata: { ambiguity_score_pre: 0.2 },
+      rawUserQuery: 'lingerie',
+    });
+
+    const titles = (resp.products || []).map((item) => String(item?.title || '').toLowerCase());
+    expect(resp.products.length).toBeGreaterThanOrEqual(3);
+    expect(titles.some((title) => title.includes('bodysuit'))).toBe(true);
+    expect(titles.some((title) => title.includes('bralette'))).toBe(true);
+    expect(titles.some((title) => title.includes('sleepwear'))).toBe(true);
+    expect(titles.some((title) => title.includes('brush'))).toBe(false);
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['STRICT_LINGERIE_SCOPE']));
+    expect(resp.metadata?.search_decision?.strict_scope).toBe('lingerie');
+  });
+
+  test('strict lingerie scope reports low recall reason when no lingerie candidates survive', () => {
+    const intent = extractIntentRuleBased('lingerie', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'tool-1',
+            title: 'Contour Brush Set',
+            description: 'beauty makeup brush tools',
+          }),
+          makeRawProduct({
+            id: 'tool-2',
+            title: 'Foundation Brush Pro',
+            description: 'brush tool set',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'lingerie' } },
+      metadata: { ambiguity_score_pre: 0.2 },
+      rawUserQuery: 'lingerie',
+    });
+
+    expect(resp.products).toHaveLength(0);
+    expect(resp.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        strict_scope: 'lingerie',
+        low_recall_reason: 'NO_STRICT_LINGERIE_CANDIDATES',
       }),
     );
   });

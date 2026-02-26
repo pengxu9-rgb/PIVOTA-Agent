@@ -125,6 +125,9 @@ const RecommendationMetaSchema = z
     used_recent_logs: z.boolean(),
     used_itinerary: z.boolean(),
     used_safety_flags: z.boolean(),
+    env_source: z.string().min(1).nullable().optional(),
+    epi: z.number().finite().nullable().optional(),
+    active_trip_id: z.string().min(1).nullable().optional(),
   })
   .strict();
 
@@ -199,6 +202,62 @@ const V1ChatRequestSchema = z
   })
   .strict();
 
+const TravelPlanItemPatchSchema = z
+  .object({
+    trip_id: z.string().min(1).max(80).optional(),
+    destination: z.string().min(1).max(100),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+    itinerary: z.string().min(1).max(1200).optional(),
+    is_archived: z.boolean().optional(),
+    archived_at_ms: z.number().int().positive().optional(),
+    created_at_ms: z.number().int().positive().optional(),
+    updated_at_ms: z.number().int().positive().optional(),
+  })
+  .strict();
+
+const TravelPlanCreateSchema = z
+  .object({
+    destination: z.string().min(1).max(100),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+    itinerary: z.string().min(1).max(1200).optional(),
+  })
+  .strict();
+
+const TravelPlanUpdateSchema = z
+  .object({
+    destination: z.string().min(1).max(100).optional(),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+    itinerary: z.string().max(1200).optional(),
+    is_archived: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'At least one field is required',
+  });
+
+const TravelPlanListQuerySchema = z
+  .object({
+    include_archived: z
+      .preprocess((value) => {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value === 1;
+        if (typeof value === 'string') {
+          const token = value.trim().toLowerCase();
+          if (token === 'true' || token === '1' || token === 'yes' || token === 'y' || token === 'on') return true;
+          if (token === 'false' || token === '0' || token === 'no' || token === 'n' || token === 'off' || token === '') return false;
+        }
+        return value;
+      }, z.boolean())
+      .default(false),
+  })
+  .strict();
+
 const UserProfilePatchSchema = z
   .object({
     skinType: z.string().min(1).optional(),
@@ -225,9 +284,14 @@ const UserProfilePatchSchema = z
           .enum(['today', 'tomorrow', 'this_week', 'next_week', 'this_month', 'next_month', 'weekend', 'unknown'])
           .optional(),
         indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+        itinerary: z.string().min(1).max(1200).optional(),
+        trip_id: z.string().min(1).max(80).optional(),
+        created_at_ms: z.number().int().positive().optional(),
+        updated_at_ms: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),
+    travel_plans: z.array(TravelPlanItemPatchSchema).max(50).optional(),
     lang_pref: LanguageSchema.optional(),
   })
   .strict();
@@ -587,6 +651,10 @@ module.exports = {
   SessionPatchSchema,
   V1ResponseEnvelopeSchema,
   V1ChatRequestSchema,
+  TravelPlanItemPatchSchema,
+  TravelPlanCreateSchema,
+  TravelPlanUpdateSchema,
+  TravelPlanListQuerySchema,
   UserProfilePatchSchema,
   TrackerLogSchema,
   RoutineSimulateRequestSchema,

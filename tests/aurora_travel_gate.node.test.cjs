@@ -7,6 +7,7 @@ const { __internal } = require('../scripts/aurora_travel_gate');
 const CASES_PATH = path.join(__dirname, 'golden', 'aurora_travel_weather_20.jsonl');
 const SAFETY_CASES_PATH = path.join(__dirname, 'golden', 'aurora_safety_20.jsonl');
 const ANCHOR_CASES_PATH = path.join(__dirname, 'golden', 'aurora_anchor_eval_20.jsonl');
+const EFGH_CASES_PATH = path.join(__dirname, 'golden', 'aurora_travel_efgh_4.jsonl');
 
 test('travel gate dataset has fixed 20-case distribution', () => {
   const cases = __internal.loadJsonlCases(CASES_PATH);
@@ -73,6 +74,13 @@ test('anchor20 dataset has fixed 20-case distribution', () => {
   assert.equal(byLanguage.CN, 10);
 });
 
+test('travel EFGH dataset has fixed 4-case ids', () => {
+  const cases = __internal.loadJsonlCases(EFGH_CASES_PATH);
+  assert.equal(cases.length, 4);
+  const ids = cases.map((row) => String(row.case_id || '')).sort();
+  assert.deepEqual(ids, ['travel_mt_001', 'travel_mt_002', 'travel_mt_003', 'travel_mt_004']);
+});
+
 test('normalizeCaseTurns returns turn list for both single-turn and multi-turn cases', () => {
   const single = __internal.normalizeCaseTurns({
     case_id: 'single_turn',
@@ -99,6 +107,110 @@ test('normalizeCaseTurns returns turn list for both single-turn and multi-turn c
   assert.equal(multi[0].language, 'EN');
   assert.equal(multi[1].turn_id, 'b');
   assert.equal(multi[1].language, 'CN');
+});
+
+test('normalizeCaseTurns keeps wait_after_ms for multi-turn pacing', () => {
+  const turns = __internal.normalizeCaseTurns({
+    case_id: 'wait_case',
+    language: 'EN',
+    turns: [
+      { turn_id: 't1', message: 'first', wait_after_ms: 150 },
+      { turn_id: 't2', message: 'second' },
+    ],
+  });
+  assert.equal(turns.length, 2);
+  assert.equal(turns[0].wait_after_ms, 150);
+  assert.equal(turns[1].wait_after_ms, 0);
+});
+
+test('evaluateCase supports travel_assertions for destination, actions, shopping, jetlag and meta booleans', () => {
+  const caseDef = {
+    case_id: 'travel_assertions_unit_case',
+    category: 'complete_fields',
+    language: 'EN',
+    expected: {
+      gate_type: 'none',
+      must_have_card_types: ['env_stress'],
+      travel_assertions: {
+        destination_equals: 'Paris',
+        summary_tags_min: 1,
+        adaptive_actions_min: 2,
+        forecast_window_min: 2,
+        shopping_has_products_or_brands: true,
+        buying_channels_min: 1,
+        missing_inputs_any: ['current_routine'],
+        jetlag_fields_all: ['tz_home', 'tz_destination', 'hours_diff', 'risk_level'],
+        jetlag_risk_rule: true,
+        sleep_tips_min: 1,
+        mask_tips_min: 1,
+        meta_bool: {
+          travel_kb_hit: false,
+          travel_kb_write_queued: true,
+        },
+      },
+    },
+  };
+
+  const body = {
+    cards: [
+      {
+        type: 'env_stress',
+        payload: {
+          travel_readiness: {
+            destination_context: { destination: 'Paris' },
+            delta_vs_home: { summary_tags: ['more_humid'] },
+            adaptive_actions: [{ action: 'Use SPF 50+' }, { action: 'Reapply every 2h' }],
+            forecast_window: [{ date: '2026-03-01' }, { date: '2026-03-02' }],
+            confidence: { missing_inputs: ['current_routine'] },
+            shopping_preview: {
+              products: [{ name: 'UV Shield', brand: 'BrandA' }],
+              brand_candidates: [],
+              buying_channels: ['ecommerce'],
+            },
+            jetlag_sleep: {
+              tz_home: 'America/Los_Angeles',
+              tz_destination: 'Europe/Paris',
+              hours_diff: 9,
+              risk_level: 'high',
+              sleep_tips: ['Shift bedtime'],
+              mask_tips: ['Hydrating mask'],
+            },
+          },
+        },
+      },
+    ],
+    assistant_message: { content: 'Travel plan prepared.' },
+    events: [],
+  };
+
+  const headers = {
+    'x-aurora-variant': 'v2_core',
+    'x-aurora-bucket': '3',
+    'x-aurora-policy-version': 'aurora_chat_v2_p0',
+  };
+  const meta = {
+    gate_type: 'none',
+    env_source: 'weather_api',
+    degraded: false,
+    travel_kb_hit: false,
+    travel_kb_write_queued: true,
+    rollout_variant: 'v2_core',
+    rollout_bucket: 3,
+    policy_version: 'aurora_chat_v2_p0',
+  };
+
+  const out = __internal.evaluateCase({
+    caseDef,
+    mode: 'local-mock',
+    status: 200,
+    body,
+    headers,
+    meta,
+    strictMeta: true,
+    fetchCalls: 2,
+  });
+  assert.equal(out.passed, true);
+  assert.equal(out.errors.length, 0);
 });
 
 test('evaluateCase passes for a valid missing-fields response', () => {
