@@ -7311,6 +7311,161 @@ test('/v1/analysis/skin: photo-only input is not hard-gated when routine/logs ar
   );
 });
 
+test('/v1/analysis/skin: photo upload does not force report LLM when detector is confident', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const skinDiagnosisModuleId = require.resolve('../src/auroraBff/skinDiagnosisV1');
+      delete require.cache[routesModuleId];
+      delete require.cache[skinDiagnosisModuleId];
+
+      const skinDiagnosis = require('../src/auroraBff/skinDiagnosisV1');
+      const originalRunSkinDiagnosisV1 = skinDiagnosis.runSkinDiagnosisV1;
+      skinDiagnosis.runSkinDiagnosisV1 = async () => ({
+        ok: true,
+        diagnosis: {
+          issues: [
+            {
+              issue_type: 'redness',
+              severity: 'mild',
+              severity_level: 3,
+              severity_score: 0.82,
+              confidence: 0.95,
+              confidence_label: 'pretty_sure',
+              summary: 'Mild redness, high confidence from deterministic detector.',
+            },
+          ],
+          quality: { grade: 'pass', reasons: ['qc_passed'] },
+          photo_findings: [
+            {
+              finding_id: 'finding_redness_confident',
+              issue_type: 'redness',
+              confidence: 0.95,
+              evidence: 'From photo: mild redness on cheek.',
+            },
+          ],
+          takeaways: [
+            {
+              takeaway_id: 'takeaway_redness_confident',
+              source: 'photo',
+              issue_type: 'redness',
+              text: 'From photo: mild redness on cheek.',
+              confidence: 0.95,
+              linked_finding_ids: ['finding_redness_confident'],
+            },
+          ],
+        },
+        internal: { orig_size_px: { w: 64, h: 64 } },
+      });
+
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      const pngBytes = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAsSAAALEgHS3X78AAAA' +
+          'B3RJTUUH5AICDgYk4fYQPgAAAB1pVFh0Q29tbWVudAAAAAAAvK6ymQAAAHVJREFUWMPtzsENwCAQ' +
+          'BEG9/5f2QxA6i1xAikQW2L8z8V8YfM+K7QwAAAAAAAAAAAAAAAB4t6x3K2W3fQn2eZ5n4J1wV2k8vT' +
+          '3uQv2bB0hQ7m9t9h9m9M6r8f3A2f0A8Qf8Sg8x9I3hM8AAAAASUVORK5CYII=',
+        'base64',
+      );
+      let reportModelCallCount = 0;
+
+      axios.get = async (url) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          return {
+            status: 200,
+            data: {
+              download: {
+                url: 'https://signed-download.test/object-confidence-skip',
+                expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+              },
+              content_type: 'image/png',
+            },
+          };
+        }
+        if (u === 'https://signed-download.test/object-confidence-skip') {
+          return {
+            status: 200,
+            data: pngBytes,
+            headers: { 'content-type': 'image/png' },
+          };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+
+      axios.post = async (url) => {
+        const u = String(url || '');
+        if (u === 'https://aurora-decision.test/agent/query') {
+          reportModelCallCount += 1;
+          return {
+            status: 200,
+            data: {
+              answer: JSON.stringify({
+                features: [{ observation: 'unexpected report call', confidence: 'somewhat_sure' }],
+                strategy: 'unexpected report call',
+                needs_risk_check: false,
+              }),
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post url: ${u}`);
+      };
+
+      axios.request = originalRequest;
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_confident_skip',
+            'X-Trace-ID': 'trace_photo_confident_skip',
+            'X-Brief-ID': 'brief_photo_confident_skip',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'AM gentle cleanser + SPF; PM retinol + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_confident_1', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.used_photos, true);
+        assert.equal(card?.payload?.quality_report?.llm?.report?.decision, 'skip');
+        assert.equal(Boolean(resp.body?.analysis_meta?.llm_report_called), false);
+        assert.equal(reportModelCallCount, 0);
+      } finally {
+        skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[skinDiagnosisModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', async () => {
   await withEnv(
     {

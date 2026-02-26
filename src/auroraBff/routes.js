@@ -33595,28 +33595,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
-        const forceReportOnPhotoUpload = Boolean(
-            !rollout.llmKillSwitch &&
-            userRequestedPhoto &&
-            photosProvided &&
-            hasLlmPrimaryInput &&
-            reportAvailable &&
-            !forceReportOnPhotoFetchFailure &&
-            reportDecision.decision !== 'call',
-        );
-        if (forceReportOnPhotoUpload) {
-          reportDecision = {
-            decision: 'call',
-            reasons: ['photo_upload_force_report'],
-            downgrade_confidence: reportDecision.downgrade_confidence === true,
-          };
-          if (ctx.lang === 'CN') {
-            qualityReportReasons.push('检测到用户上传照片：本次将强制调用报告模型做汇总解释。');
-          } else {
-            qualityReportReasons.push('Photo upload detected: forcing report model for a consolidated explanation.');
-          }
-        }
-
         let analysis = null;
         let retakeFallbackAnalysis = null;
         if (hasPhotoPrimaryInput && !hasPrimaryInput) {

@@ -127,6 +127,13 @@ function extractBudgetSignal({ eventName, props }) {
 }
 
 function mountUiEventRoutes(app, { logger } = {}) {
+  const PRODUCT_OPEN_EVENT_SET = new Set([
+    'ingredient_product_open_attempt',
+    'ingredient_product_open_result',
+    'discovery_link_open_attempt',
+    'discovery_link_open_result',
+  ]);
+
   app.post('/v1/events', async (req, res) => {
     const parsed = UiEventIngestV0Schema.safeParse(req.body);
     if (!parsed.success) {
@@ -145,6 +152,11 @@ function mountUiEventRoutes(app, { logger } = {}) {
         for (const evt of parsed.data.events) {
           recordUiBehaviorEvent({ eventName: evt.event_name });
           const props = { ...(evt.data || {}) };
+          if (PRODUCT_OPEN_EVENT_SET.has(String(evt.event_name || '').trim())) {
+            props.result = safeString(props.result) || null;
+            props.blocked_reason = safeString(props.blocked_reason) || null;
+            props.url = safeString(props.url) || null;
+          }
           const auroraUid = props.aurora_uid ?? props.auroraUid ?? null;
           const userId = props.user_id ?? props.userId ?? null;
           const sessionId = props.session_id ?? props.sessionId ?? null;
@@ -209,6 +221,7 @@ function mountUiEventRoutes(app, { logger } = {}) {
       }
     });
 
+    res.setHeader('X-Event-Ingest-Status', 'accepted');
     return res.status(204).send();
   });
 }

@@ -3544,6 +3544,12 @@ function buildPhotoModulesCard({
   const sourcePhotoId = sourcePhoto && typeof sourcePhoto.photo_id === 'string' ? sourcePhoto.photo_id.trim() : '';
   const regionsAvailableCount = regions.filter((region) => String(region && region.status || 'available').toLowerCase() === 'available').length;
   const regionsUnavailableCount = regions.filter((region) => String(region && region.status || '').toLowerCase() === 'unavailable').length;
+  const moduleOverlayDebug = {
+    module_box_mode: moduleBoxDynamicDebug.module_box_mode,
+    module_box_dynamic_applied: Boolean(moduleBoxDynamicDebug.module_box_dynamic_applied),
+    skinmask_reliable: Boolean(moduleMaskBuild.skinmask_reliable),
+    degraded_reasons: Array.isArray(moduleMaskBuild.degraded_reasons) ? moduleMaskBuild.degraded_reasons.slice(0, 8) : [],
+  };
 
   const payload = {
     used_photos: true,
@@ -3560,6 +3566,7 @@ function buildPhotoModulesCard({
     regions_available_count: regionsAvailableCount,
     regions_unavailable_count: regionsUnavailableCount,
     modules: moduleMaskBuild.modules,
+    module_overlay_debug: moduleOverlayDebug,
     ...(Array.isArray(moduleMaskBuild.degraded_reasons) && moduleMaskBuild.degraded_reasons.length
       ? { degraded_reason: moduleMaskBuild.degraded_reasons[0], degraded_reasons: moduleMaskBuild.degraded_reasons }
       : {}),
