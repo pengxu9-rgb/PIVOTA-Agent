@@ -765,8 +765,9 @@ async function buildIngredientProductRecommendationsNeutral({
     lang: normalizedLang,
   });
 
-  if (typeof fallbackCandidateBuilder === 'function') {
-    for (const query of lookupQueries) {
+  const fallbackQueries = !pool.length ? lookupQueries.slice(0, 1) : [];
+  if (typeof fallbackCandidateBuilder === 'function' && fallbackQueries.length > 0) {
+    for (const query of fallbackQueries) {
       try {
         const fallbackOut = await fallbackCandidateBuilder({
           query,
@@ -788,7 +789,7 @@ async function buildIngredientProductRecommendationsNeutral({
   if (!pool.length && typeof llmFallbackRecoverFn === 'function') {
     try {
       const recovered = await llmFallbackRecoverFn({
-        queries: lookupQueries,
+        queries: fallbackQueries.length > 0 ? fallbackQueries : lookupQueries.slice(0, 1),
         maxProducts: maxProductsN * 2,
       });
       for (const row of asArray(recovered && recovered.products)) {

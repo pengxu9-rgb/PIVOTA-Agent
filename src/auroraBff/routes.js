@@ -559,6 +559,21 @@ const RECO_CATALOG_SEARCH_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
   return Math.max(400, Math.min(12000, v));
 })();
+const PHOTO_MODULES_ACTION_RECO_SEARCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_SEARCH_TIMEOUT_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  return Math.max(250, Math.min(4000, v));
+})();
+const PHOTO_MODULES_ACTION_RECO_NETWORK_MAX_ACTIONS = (() => {
+  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_NETWORK_MAX_ACTIONS || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(0, Math.min(24, v));
+})();
+const PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS || 2500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2500;
+  return Math.max(300, Math.min(10000, v));
+})();
 const RECO_CATALOG_SEARCH_CONCURRENCY = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_CONCURRENCY || 3);
   const v = Number.isFinite(n) ? Math.trunc(n) : 3;
@@ -13064,7 +13079,6 @@ function pickActionIssueType(action, moduleIssues) {
 }
 
 function buildPhotoModuleRecoCacheKey({
-  moduleId,
   ingredientId,
   issueType,
   market,
@@ -13073,7 +13087,6 @@ function buildPhotoModuleRecoCacheKey({
   qualityGrade,
 } = {}) {
   return [
-    String(moduleId || '').trim().toLowerCase(),
     String(ingredientId || '').trim().toLowerCase(),
     String(issueType || '').trim().toLowerCase(),
     String(market || '').trim().toLowerCase(),
@@ -13100,6 +13113,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
   const market = derivePhotoModulesMarket({ profileSummary, language });
   const riskTier = derivePhotoModulesRiskTier(profileSummary);
   const recCache = new Map();
+  let networkFallbackActionsUsed = 0;
 
   const fallbackCandidateBuilder =
     AURORA_PURCHASABLE_FALLBACK_ENABLED === true
@@ -13107,10 +13121,11 @@ async function enrichPhotoModulesCardWithIngredientProducts({
           buildPurchasableFallbackCandidates({
             query,
             logger,
-            timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+            timeoutMs: PHOTO_MODULES_ACTION_RECO_SEARCH_TIMEOUT_MS,
             limit: Math.max(1, Math.min(12, Number(limit) || 6)),
             allowExternalSeed: Boolean(allowExternalSeed) && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true,
-            externalSeedStrategy: 'supplement_internal_first',
+            // Avoid two-step catalog+external search per action to keep analysis latency bounded.
+            externalSeedStrategy: 'on_empty_only',
           })
       : null;
 
@@ -13162,7 +13177,6 @@ async function enrichPhotoModulesCardWithIngredientProducts({
           }
 
           const cacheKey = buildPhotoModuleRecoCacheKey({
-            moduleId,
             ingredientId,
             issueType,
             market,
@@ -13171,6 +13185,9 @@ async function enrichPhotoModulesCardWithIngredientProducts({
             qualityGrade,
           });
           if (!recCache.has(cacheKey)) {
+            const allowNetworkFallbackForAction =
+              networkFallbackActionsUsed < PHOTO_MODULES_ACTION_RECO_NETWORK_MAX_ACTIONS;
+            if (allowNetworkFallbackForAction) networkFallbackActionsUsed += 1;
             recCache.set(
               cacheKey,
               buildIngredientProductRecommendationsNeutral({
@@ -13189,8 +13206,8 @@ async function enrichPhotoModulesCardWithIngredientProducts({
                 artifactPath: DIAG_INGREDIENT_KB_V2_PATH,
                 catalogPath: DIAG_PRODUCT_CATALOG_PATH,
                 maxProducts: 3,
-                fallbackCandidateBuilder,
-                llmFallbackRecoverFn,
+                fallbackCandidateBuilder: allowNetworkFallbackForAction ? fallbackCandidateBuilder : null,
+                llmFallbackRecoverFn: allowNetworkFallbackForAction ? llmFallbackRecoverFn : null,
                 externalSearchCtaBuilder: buildExternalSearchCta,
                 dedupeExternalSearchCtas,
               }).catch((error) => {
@@ -13303,6 +13320,37 @@ async function enrichPhotoModulesCardWithIngredientProducts({
     ...photoModulesCard,
     payload,
   };
+}
+
+async function enrichPhotoModulesCardWithIngredientProductsBounded({
+  photoModulesCard,
+  profileSummary,
+  language,
+  logger,
+} = {}) {
+  if (!photoModulesCard) return photoModulesCard;
+  try {
+    return await withTimeout(
+      enrichPhotoModulesCardWithIngredientProducts({
+        photoModulesCard,
+        profileSummary,
+        language,
+        logger,
+      }),
+      PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS,
+      'PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT',
+    );
+  } catch (error) {
+    logger?.warn?.(
+      {
+        err: error && error.message ? error.message : String(error),
+        code: error && error.code ? String(error.code) : null,
+        timeout_ms: PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS,
+      },
+      'aurora bff: photo modules action-level reco enrich skipped',
+    );
+    return photoModulesCard;
+  }
 }
 
 async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInternal, logger, requestId } = {}) {
@@ -13620,7 +13668,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     skinMask: photoModulesSkinMask,
   });
   if (photoModulesCard) {
-    photoModulesCard = await enrichPhotoModulesCardWithIngredientProducts({
+    photoModulesCard = await enrichPhotoModulesCardWithIngredientProductsBounded({
       photoModulesCard,
       profileSummary,
       language,
@@ -33979,7 +34027,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
         if (photoModulesCard) {
-          photoModulesCard = await enrichPhotoModulesCardWithIngredientProducts({
+          photoModulesCard = await enrichPhotoModulesCardWithIngredientProductsBounded({
             photoModulesCard,
             profileSummary,
             language: ctx.lang,
