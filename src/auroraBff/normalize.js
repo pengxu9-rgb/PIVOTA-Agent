@@ -72,6 +72,8 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'incidecoder_no_match': 'incidecoder_no_match',
   'incidecoder_fetch_failed': 'incidecoder_fetch_failed',
   'incidecoder_unverified_not_persisted': 'incidecoder_unverified_not_persisted',
+  'ingredient_source_conflict': 'ingredient_source_conflict',
+  'related_semantics_reclassified': 'related_semantics_reclassified',
   'version_verification_needed': 'version_verification_needed',
   'price_unknown': 'price_temporarily_unavailable',
   'price_missing': 'price_temporarily_unavailable',
@@ -143,6 +145,8 @@ const PRODUCT_ANALYSIS_USER_VISIBLE_EXACT = new Set([
   'incidecoder_no_match',
   'incidecoder_fetch_failed',
   'incidecoder_unverified_not_persisted',
+  'ingredient_source_conflict',
+  'related_semantics_reclassified',
   'version_verification_needed',
 ]);
 
@@ -837,6 +841,28 @@ function humanizeRiskLine(line, lang) {
   return out.length ? truncateText(out.join('；'), 200) : '';
 }
 
+function isProfileEchoNarrativeLine(line) {
+  const text = String(line || '').trim();
+  if (!text) return false;
+  return /^(your profile|profile priorities|你的情况|你的画像|画像信息|匹配点)[:：]/i.test(text);
+}
+
+function sanitizeAssessmentNarrativeLines(lines, { max = 6, allowProfileEcho = false } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(lines) ? lines : []) {
+    const text = String(raw || '').trim();
+    if (!text) continue;
+    if (!allowProfileEcho && isProfileEchoNarrativeLine(text)) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(truncateText(text, 220));
+    if (out.length >= Math.max(1, Number(max) || 6)) break;
+  }
+  return out;
+}
+
 function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) {
   const p = asPlainObject(profileSummary);
   if (!p) return [];
@@ -904,16 +930,13 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
     if (goals.includes('brightening')) priorityTargets.push('keep brightening/pigment goals on track');
   }
 
-  // Keep profile summary as the first CN line for stable, user-facing ordering.
-  if (tags.length) {
-    out.push(cn ? `你的情况：${truncateText(tags.join(' / '), 80)}。` : `Your profile: ${truncateText(tags.join(' / '), 120)}.`);
-  }
-
-  if (priorityTargets.length) {
+  // Keep fit hints product-centric; do not emit profile recap lines here.
+  const compactPriority = uniqueStrings(priorityTargets).slice(0, 3);
+  if (compactPriority.length) {
     out.push(
       cn
-        ? `匹配点：${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('；'), 120)}。`
-        : `Profile priorities: ${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('; '), 180)}.`,
+        ? `匹配点：${truncateText(compactPriority.join('；'), 120)}。`
+        : `Fit signal: ${truncateText(compactPriority.join('; '), 180)}.`,
     );
   }
 
@@ -950,7 +973,7 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
     );
   }
 
-  return uniqueStrings(out.map((x) => truncateText(x, 220)).filter(Boolean)).slice(0, 3);
+  return sanitizeAssessmentNarrativeLines(out, { max: 3, allowProfileEcho: false });
 }
 
 function pickHeroIngredientFromEvidence(evidence, { lang = 'EN' } = {}) {
@@ -1313,10 +1336,31 @@ function buildFollowUpQuestionFromPayload(payload, { lang = 'EN' } = {}) {
 
 function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
   if (!value) return null;
+  if (Array.isArray(value)) {
+    const steps = uniqueStrings(asStringArray(value).map((line) => truncateText(line, 220))).slice(0, 5);
+    if (!steps.length) return null;
+    return {
+      steps,
+      observation_window: String(lang).toUpperCase() === 'CN'
+        ? '先观察 10-14 天，再决定是否加频。'
+        : 'Monitor for 10-14 days before increasing frequency.',
+      stop_signs: String(lang).toUpperCase() === 'CN'
+        ? ['若持续刺痛/泛红/起皮，请暂停并回到温和修护。']
+        : ['Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs.'],
+    };
+  }
   if (typeof value === 'string') {
     const note = String(value || '').trim();
     if (!note) return null;
-    return { notes: [truncateText(note, 220)] };
+    return {
+      notes: [truncateText(note, 220)],
+      observation_window: String(lang).toUpperCase() === 'CN'
+        ? '先观察 10-14 天，再决定是否加频。'
+        : 'Monitor for 10-14 days before increasing frequency.',
+      stop_signs: String(lang).toUpperCase() === 'CN'
+        ? ['若持续刺痛/泛红/起皮，请暂停并回到温和修护。']
+        : ['Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs.'],
+    };
   }
   const obj = asPlainObject(value);
   if (!obj) return null;
@@ -1340,7 +1384,38 @@ function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
       ? '先观察 10-14 天，再决定是否加频。'
       : 'Monitor for 10-14 days before increasing frequency.';
   }
+  if (!Array.isArray(out.stop_signs) || !out.stop_signs.length) {
+    out.stop_signs = String(lang).toUpperCase() === 'CN'
+      ? ['若持续刺痛/泛红/起皮，请暂停并回到温和修护。']
+      : ['Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs.'];
+  }
   return out;
+}
+
+function buildHowToUseFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const isCn = String(lang).toUpperCase() === 'CN';
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const hasDryingSignal = riskNotes.some((line) => /\b(dry|drying|tight|flake|dehydrat|干燥|紧绷|起皮)\b/i.test(String(line || '')));
+  return {
+    timing: isCn ? '早晚均可，优先从夜间开始。' : 'AM/PM compatible; start with PM first.',
+    frequency: hasDryingSignal
+      ? (isCn ? '每周 2-3 次起步，耐受后再加频。' : 'Start at 2-3x/week and increase only if tolerated.')
+      : (isCn ? '先低频起步，稳定后可逐步加频。' : 'Start low-frequency and increase gradually once stable.'),
+    steps: isCn
+      ? ['先做温和清洁。', '薄涂本产品，避免叠加强活性。', '后续补保湿；白天务必防晒。']
+      : ['Cleanse gently first.', 'Apply a thin layer and avoid stacking strong actives.', 'Follow with moisturizer and daytime SPF.'],
+    observation_window: isCn
+      ? '先观察 10-14 天，再决定是否加频。'
+      : 'Monitor for 10-14 days before increasing frequency.',
+    stop_signs: isCn
+      ? ['若持续刺痛/泛红/起皮，请暂停并回到温和修护。']
+      : ['Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs.'],
+    notes: isCn
+      ? ['新产品建议先做局部测试。']
+      : ['Patch test is recommended for new products.'],
+  };
 }
 
 const PRODUCT_INTEL_CONTRACT_VERSION = 'aurora.product_intel.contract.v2';
@@ -2250,7 +2325,10 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     readAssessmentStringArray(assessment, 'if_not_ideal', 'ifNotIdeal').length > 0 ||
     readAssessmentStringArray(assessment, 'better_pairing', 'betterPairing').length > 0;
 
-  const existingReasons = asStringArray(assessment.reasons);
+  const existingReasons = sanitizeAssessmentNarrativeLines(asStringArray(assessment.reasons), {
+    max: 10,
+    allowProfileEcho: false,
+  });
   const keptReasons = existingReasons
     .filter((r) => !isGenericReason(r, lang))
     .map((r) => truncateText(r, 200))
@@ -2293,6 +2371,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
         return true;
       }),
   ).slice(0, maxReasons);
+  reasons = sanitizeAssessmentNarrativeLines(reasons, { max: maxReasons, allowProfileEcho: false });
 
   if (reasons.length < minReasons) {
     const derived = buildReasonsFromEvidence(p.evidence, { lang, verdict });
@@ -2341,25 +2420,27 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     }
   }
 
+  const summaryCandidates = sanitizeAssessmentNarrativeLines([
+    assessment.summary,
+    assessment.quick_summary,
+    assessment.quickSummary,
+    ...readAssessmentStringArray(assessment, 'formula_intent', 'formulaIntent'),
+    ...asStringArray(asPlainObject(p.evidence)?.science?.mechanisms),
+    ...reasons,
+  ], { max: 12, allowProfileEcho: false });
   const summary =
-    truncateText(
-      String(
-        assessment.summary ||
-          assessment.quick_summary ||
-          assessment.quickSummary ||
-          reasons[0] ||
-          '',
-      ).trim(),
-      260,
-    ) || '';
+    truncateText(String(summaryCandidates[0] || '').trim(), 260) ||
+    (String(lang).toUpperCase() === 'CN'
+      ? '当前基于产品证据给出保守评估，建议按低频起步并观察耐受。'
+      : 'This is a conservative product-level assessment based on current evidence; start low-frequency and monitor tolerance.');
   const formulaIntentExisting = readAssessmentStringArray(assessment, 'formula_intent', 'formulaIntent');
   const formulaIntent = formulaIntentExisting.length
     ? formulaIntentExisting.slice(0, 3)
     : buildFormulaIntentFromEvidence(p.evidence, { lang });
   const bestForExisting = readAssessmentStringArray(assessment, 'best_for', 'bestFor');
-  const bestFor = bestForExisting.length
+  const bestFor = sanitizeAssessmentNarrativeLines(bestForExisting.length
     ? bestForExisting.slice(0, 3)
-    : buildBestForFromEvidence(p.evidence, { lang }).slice(0, 3);
+    : buildBestForFromEvidence(p.evidence, { lang }).slice(0, 3), { max: 3, allowProfileEcho: false });
   const notForExisting = readAssessmentStringArray(assessment, 'not_for', 'notFor');
   const notFor = notForExisting.length
     ? notForExisting.slice(0, 3)
@@ -2376,7 +2457,9 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     String(assessment.follow_up_question || assessment.followUpQuestion || '').trim(),
     220,
   ) || buildFollowUpQuestionFromPayload(p, { lang });
-  const howToUseNormalized = normalizeHowToUseShape(assessment.how_to_use ?? assessment.howToUse, { lang });
+  const howToUseNormalized =
+    normalizeHowToUseShape(assessment.how_to_use ?? assessment.howToUse, { lang }) ||
+    buildHowToUseFromEvidence(p.evidence, { lang });
 
   const outAssessment = {
     ...assessment,
