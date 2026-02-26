@@ -3915,7 +3915,7 @@ function hasFragranceBrandSearchSignal(queryText) {
 }
 
 function isFragranceIntentQuery(queryText) {
-  return hasFragranceSearchSignal(queryText) || hasFragranceBrandSearchSignal(queryText);
+  return hasFragranceSearchSignal(queryText);
 }
 
 function buildFragranceQueryVariants(queryText) {
@@ -5175,7 +5175,8 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       })
       .filter(Boolean)
       .filter((p) => isExternalSeedProduct(p));
-    const relevantProducts = strictLingerieQuery
+    let brandVerticalFallbackUsed = false;
+    let relevantProducts = strictLingerieQuery
       ? products.filter((p) => isStrictLingerieCacheCandidate(p))
       : products.filter((p) =>
           isSupplementCandidateRelevant(p, queryText, {
@@ -5184,12 +5185,26 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
             queryTokens,
           }),
         );
+
+    if (!strictLingerieQuery && brandScopedQuery && relevantProducts.length === 0 && products.length > 0) {
+      const verticalFallback = products.filter((p) => {
+        const text = buildFallbackCandidateText(p);
+        if (!text) return false;
+        if (hasBeautyToolCatalogSignal(text)) return false;
+        return hasFragranceBackfillSignal(text);
+      });
+      if (verticalFallback.length > 0) {
+        relevantProducts = verticalFallback;
+        brandVerticalFallbackUsed = true;
+      }
+    }
     return {
       query: searchQueryText,
       status: Number(resp.status || 0) || 0,
       products,
       relevantProducts,
       filteredOutIrrelevantCount: Math.max(0, products.length - relevantProducts.length),
+      brandVerticalFallbackUsed,
     };
   };
 
@@ -5213,6 +5228,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     (sum, attempt) => sum + attempt.filteredOutIrrelevantCount,
     0,
   );
+  const brandVerticalFallbackUsed = attempts.some((attempt) => attempt.brandVerticalFallbackUsed === true);
   const firstAttemptStatus = Number(attempts[0]?.status || 0) || 0;
   const finalStatus = Number(attempts[attempts.length - 1]?.status || firstAttemptStatus || 0) || 0;
 
@@ -5223,7 +5239,9 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       applied: mergedRelevantProducts.length > 0,
       reason:
         mergedRelevantProducts.length > 0
-          ? 'external_seed_candidates_found'
+          ? brandVerticalFallbackUsed
+            ? 'external_seed_candidates_found_brand_vertical_fallback'
+            : 'external_seed_candidates_found'
           : filteredOutIrrelevantCount > 0
             ? 'external_seed_candidates_filtered_irrelevant'
             : 'no_external_seed_candidates',
@@ -5236,6 +5254,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       brand_query_detected: brandLikeQuery,
       brand_entities: matchedBrands,
       brand_scope: brandScopedQuery ? 'broad' : (brandLikeQuery ? 'category_scoped' : null),
+      brand_vertical_fallback_used: brandVerticalFallbackUsed,
       fragrance_scope: fragranceIntentQuery ? 'strict_fragrance' : null,
       fragrance_query_variants: fragranceIntentQuery ? attemptQueries : [],
       fragrance_filtered_out: filteredOutIrrelevantCount,
@@ -18084,12 +18103,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         Number.isFinite(Number(requestedFindProductsMultiPage)) && Number(requestedFindProductsMultiPage) > 0
           ? Number(requestedFindProductsMultiPage)
           : Math.max(1, Number(queryParams?.page || 1) || 1);
+      const fragranceIntentQueryForSupplement = isFragranceIntentQuery(queryText);
+      const brandLikeQueryForSupplement = hasBrandLikeSearchSignal(queryText);
+      const shouldRunExternalSeedSupplement =
+        fragranceIntentQueryForSupplement || brandLikeQueryForSupplement;
       let fragranceExternalSupplementMeta = null;
 
       if (
         operation === 'find_products_multi' &&
         queryText &&
-        isFragranceIntentQuery(queryText) &&
+        shouldRunExternalSeedSupplement &&
         requestedPageForSupplement <= 1 &&
         isCatalogGuardSource(metadata?.source)
       ) {
@@ -18204,7 +18227,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       } else if (
         operation === 'find_products_multi' &&
         queryText &&
-        isFragranceIntentQuery(queryText) &&
+        shouldRunExternalSeedSupplement &&
         requestedPageForSupplement > 1 &&
         isCatalogGuardSource(metadata?.source)
       ) {
