@@ -25,6 +25,29 @@ const REPAIR_INGREDIENT_IDS = Object.freeze(['ceramide_np', 'panthenol']);
 
 const FRAGILE_RISK_TAGS = new Set(['acid', 'retinoid', 'high_alcohol', 'fragrance', 'strong']);
 const PREGNANCY_RISK_TAGS = new Set(['retinoid', 'strong']);
+const INGREDIENT_CANONICAL_ALIASES = Object.freeze({
+  ceramides: 'ceramide_np',
+  niacinamide_low_pct: 'niacinamide',
+  bha_gentle: 'salicylic_acid',
+  bha_lha: 'salicylic_acid',
+  bha: 'salicylic_acid',
+  retinoid_later: 'retinol',
+  vitamin_c_gentle: 'ascorbic_acid',
+  benzoyl_peroxide_spot: 'benzoyl_peroxide',
+});
+
+function parseBooleanEnv(name, fallback = true) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') return true;
+  if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
+  return fallback;
+}
+
+const PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED = parseBooleanEnv(
+  'AURORA_PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED',
+  true,
+);
 
 const catalogCache = {
   path: '',
@@ -44,6 +67,15 @@ function normalizeRiskTier(riskTier) {
     return token;
   }
   return 'low';
+}
+
+function normalizeIngredientCanonicalId(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return '';
+  if (Object.prototype.hasOwnProperty.call(INGREDIENT_CANONICAL_ALIASES, token)) {
+    return INGREDIENT_CANONICAL_ALIASES[token];
+  }
+  return token;
 }
 
 function normalizeEvidenceGrade(value, fallback = 'B') {
@@ -117,6 +149,45 @@ function createSyntheticProductId({ name, url, brand } = {}) {
   return `neutral_${crypto.createHash('sha1').update(seed).digest('hex').slice(0, 16)}`;
 }
 
+function toFiniteNumberOrNull(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+function normalizePriceInfo(raw) {
+  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!node) return { amount: null, currency: '', priceLabel: '' };
+
+  const amount =
+    toFiniteNumberOrNull(node.amount) ??
+    toFiniteNumberOrNull(node.value) ??
+    toFiniteNumberOrNull(node.price) ??
+    toFiniteNumberOrNull(node.usd) ??
+    toFiniteNumberOrNull(node.cny);
+  const currency = pickFirstString(node.currency, node.currency_code, node.currencyCode, node.code).toUpperCase();
+  const label = pickFirstString(node.label, node.display, node.display_value);
+  return {
+    amount,
+    currency,
+    priceLabel: label,
+  };
+}
+
+function normalizeSocialProof(raw) {
+  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!node) return null;
+  const rating = toFiniteNumberOrNull(node.rating ?? node.rating_value ?? node.score);
+  const reviews = toFiniteNumberOrNull(node.review_count ?? node.reviews ?? node.mention_count);
+  const summary = pickFirstString(node.summary, node.sentiment, node.label, node.note);
+  if (rating == null && reviews == null && !summary) return null;
+  return {
+    ...(rating != null ? { rating: round3(rating) } : {}),
+    ...(reviews != null ? { review_count: Math.max(0, Math.trunc(reviews)) } : {}),
+    ...(summary ? { summary } : {}),
+  };
+}
+
 function normalizeNeutralCandidate(raw, { fallbackSource = 'catalog', fallbackReason = '' } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const name = pickFirstString(raw.name, raw.title, raw.display_name, raw.displayName);
@@ -135,19 +206,69 @@ function normalizeNeutralCandidate(raw, { fallbackSource = 'catalog', fallbackRe
     pickFirstString(raw.retrieval_reason, raw.retrievalReason, fallbackReason),
     retrievalSource,
   );
+  const parsedPrice = normalizePriceInfo(raw.price);
+  const amount =
+    parsedPrice.amount ??
+    toFiniteNumberOrNull(raw.price_amount) ??
+    toFiniteNumberOrNull(raw.priceAmount) ??
+    toFiniteNumberOrNull(raw.price_value) ??
+    toFiniteNumberOrNull(raw.priceValue) ??
+    toFiniteNumberOrNull(raw.price);
+  const currency = pickFirstString(
+    raw.currency,
+    raw.currency_code,
+    raw.currencyCode,
+    parsedPrice.currency,
+  ).toUpperCase();
+  const priceLabel = pickFirstString(raw.price_label, raw.priceLabel, parsedPrice.priceLabel);
+  const socialProof = normalizeSocialProof(
+    raw.social_proof ||
+      raw.socialProof ||
+      {
+        rating: raw.rating_value,
+        review_count: raw.review_count,
+        summary: pickFirstString(raw.social_summary, raw.socialSummary),
+      },
+  );
+  const benefitTags = asArray(raw.benefit_tags || raw.benefitTags)
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  const ingredientIds = asArray(raw.ingredient_ids)
+    .map((item) => normalizeIngredientCanonicalId(item))
+    .filter(Boolean);
+  const canonicalRefRaw = (raw.canonical_product_ref && typeof raw.canonical_product_ref === 'object' && !Array.isArray(raw.canonical_product_ref))
+    ? raw.canonical_product_ref
+    : (raw.canonicalProductRef && typeof raw.canonicalProductRef === 'object' && !Array.isArray(raw.canonicalProductRef))
+      ? raw.canonicalProductRef
+      : null;
+  const canonicalRef = canonicalRefRaw
+    ? {
+        product_id: pickFirstString(canonicalRefRaw.product_id, canonicalRefRaw.productId),
+        merchant_id: pickFirstString(canonicalRefRaw.merchant_id, canonicalRefRaw.merchantId),
+      }
+    : null;
 
   return {
     product_id: productId,
     merchant_id: pickFirstString(raw.merchant_id, raw.merchantId),
     name: name || productId,
     brand: brand || null,
+    image_url: pickFirstString(raw.image_url, raw.imageUrl, raw.thumbnail_url, raw.thumbnailUrl),
     category: pickFirstString(raw.category, raw.category_name, raw.categoryName, raw.product_type, raw.productType),
-    ingredient_ids: asArray(raw.ingredient_ids).map((item) => String(item || '').trim().toLowerCase()).filter(Boolean),
+    ingredient_ids: ingredientIds,
     risk_tags: asArray(raw.risk_tags).map((item) => String(item || '').trim().toLowerCase()).filter(Boolean),
+    benefit_tags: benefitTags,
     usage_note_en: pickFirstString(raw.usage_note_en),
     usage_note_zh: pickFirstString(raw.usage_note_zh),
     cautions_en: asArray(raw.cautions_en).map((item) => String(item || '').trim()).filter(Boolean),
     cautions_zh: asArray(raw.cautions_zh).map((item) => String(item || '').trim()).filter(Boolean),
+    ...(amount != null ? { price: round3(amount) } : {}),
+    ...(currency ? { currency } : {}),
+    ...(priceLabel ? { price_label: priceLabel } : {}),
+    ...(socialProof ? { social_proof: socialProof } : {}),
+    ...(canonicalRef && canonicalRef.product_id ? { canonical_product_ref: canonicalRef } : {}),
+    ...(pickFirstString(raw.product_group_id, raw.productGroupId) ? { product_group_id: pickFirstString(raw.product_group_id, raw.productGroupId) } : {}),
     retrieval_source: retrievalSource,
     retrieval_reason: retrievalReason,
     why_match: pickFirstString(raw.why_match, raw.why, raw.reason),
@@ -230,7 +351,7 @@ function parseCatalogProduct(raw) {
     name,
     brand: String(raw.brand || '').trim() || null,
     market_scope: marketScope.length ? marketScope : ['EU', 'US'],
-    ingredient_ids: asArray(raw.ingredient_ids).map((item) => String(item || '').trim().toLowerCase()).filter(Boolean),
+    ingredient_ids: asArray(raw.ingredient_ids).map((item) => normalizeIngredientCanonicalId(item)).filter(Boolean),
     risk_tags: asArray(raw.risk_tags).map((item) => String(item || '').trim().toLowerCase()).filter(Boolean),
     usage_note_en: String(raw.usage_note_en || '').trim(),
     usage_note_zh: String(raw.usage_note_zh || '').trim(),
@@ -276,7 +397,16 @@ function getActionIngredientIds(actions) {
   return Array.from(
     new Set(
       asArray(actions)
-        .map((item) => String(item && item.ingredient_id ? item.ingredient_id : '').trim().toLowerCase())
+        .map((item) =>
+          normalizeIngredientCanonicalId(
+            pickFirstString(
+              item && item.ingredient_canonical_id,
+              item && item.ingredientCanonicalId,
+              item && item.ingredient_id,
+              item && item.ingredientId,
+            ),
+          ),
+        )
         .filter(Boolean),
     ),
   );
@@ -310,10 +440,13 @@ function buildEvidenceByIngredient({
   minCitations,
   minEvidenceGrade,
   artifactPath,
+  softEvidenceGateEnabled = PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED,
 } = {}) {
   const out = new Map();
+  const minCitationsN = Number.isFinite(Number(minCitations)) ? Math.max(0, Math.trunc(Number(minCitations))) : 1;
+  const minEvidence = normalizeEvidenceGrade(minEvidenceGrade, 'B');
   for (const ingredientId of asArray(ingredientIds)) {
-    const normalizedId = String(ingredientId || '').trim().toLowerCase();
+    const normalizedId = normalizeIngredientCanonicalId(ingredientId);
     if (!normalizedId) continue;
     const evidence = resolveIngredientRecommendation({
       ingredientId: normalizedId,
@@ -324,13 +457,19 @@ function buildEvidenceByIngredient({
     const citations = asArray(evidence.citations);
     const citationsCount = citations.length;
     const evidenceGrade = normalizeEvidenceGrade(evidence.evidence_grade, 'C');
-    const pass = citationsCount >= minCitations && gradeMeets(evidenceGrade, minEvidenceGrade) && evidenceGrade !== 'C';
+    const evidenceGradeScore = (EVIDENCE_RANK[evidenceGrade] || 1) / 3;
+    const citationScore = minCitationsN > 0 ? clamp01(citationsCount / Math.max(1, minCitationsN)) : clamp01(citationsCount / 2);
+    const minGradeScore = (EVIDENCE_RANK[minEvidence] || 2) / 3;
+    const confidencePenalty = evidenceGradeScore >= minGradeScore ? 0 : Math.max(0, minGradeScore - evidenceGradeScore) * 0.2;
+    const evidenceScore = round3(Math.max(0, Math.min(1, evidenceGradeScore * 0.65 + citationScore * 0.35 - confidencePenalty)));
+    const hardPass = citationsCount >= minCitationsN && gradeMeets(evidenceGrade, minEvidence) && evidenceGrade !== 'C';
     out.set(normalizedId, {
       ingredient_id: normalizedId,
       evidence_grade: evidenceGrade,
       citations,
       citations_count: citationsCount,
-      pass,
+      pass: softEvidenceGateEnabled ? true : hardPass,
+      evidence_score: evidenceScore,
       do_not_mix: asArray(evidence.do_not_mix),
       safety_flags: asArray(evidence.safety_flags),
     });
@@ -345,11 +484,12 @@ function toCitationIds(citations) {
     .slice(0, 6);
 }
 
-function scoreCandidate({ overlapCount, evidenceGrade, citationsCount }) {
+function scoreCandidate({ overlapCount, evidenceGrade, citationsCount, evidenceScore = null }) {
   const overlapScore = Number(overlapCount || 0) * 10;
-  const evidenceScore = (EVIDENCE_RANK[normalizeEvidenceGrade(evidenceGrade, 'C')] || 0) * 20;
-  const citationScore = Math.min(10, Number(citationsCount || 0));
-  return overlapScore + evidenceScore + citationScore;
+  const evidenceRankScore = (EVIDENCE_RANK[normalizeEvidenceGrade(evidenceGrade, 'C')] || 0) * 20;
+  const citationScore = Math.min(12, Number(citationsCount || 0) * 1.5);
+  const evidenceSoftBonus = Number.isFinite(Number(evidenceScore)) ? clamp01(Number(evidenceScore)) * 12 : 0;
+  return overlapScore + evidenceRankScore + citationScore + evidenceSoftBonus;
 }
 
 function buildProductOutput({
@@ -467,6 +607,16 @@ function buildNeutralProductOutput({
     suitability_score: suitabilityScore,
     ...(candidate && candidate.merchant_id ? { merchant_id: candidate.merchant_id } : {}),
     ...(candidate && candidate.category ? { category: candidate.category } : {}),
+    ...(candidate && candidate.image_url ? { image_url: candidate.image_url } : {}),
+    ...(Array.isArray(candidate && candidate.benefit_tags) && candidate.benefit_tags.length ? { benefit_tags: candidate.benefit_tags.slice(0, 8) } : {}),
+    ...(Number.isFinite(Number(candidate && candidate.price)) ? { price: round3(Number(candidate.price)) } : {}),
+    ...(pickFirstString(candidate && candidate.currency) ? { currency: pickFirstString(candidate.currency).toUpperCase() } : {}),
+    ...(pickFirstString(candidate && candidate.price_label) ? { price_label: pickFirstString(candidate.price_label) } : {}),
+    ...(candidate && candidate.social_proof && typeof candidate.social_proof === 'object' ? { social_proof: candidate.social_proof } : {}),
+    ...(candidate && candidate.product_group_id ? { product_group_id: candidate.product_group_id } : {}),
+    ...(candidate && candidate.canonical_product_ref && typeof candidate.canonical_product_ref === 'object'
+      ? { canonical_product_ref: candidate.canonical_product_ref }
+      : {}),
     ...(directUrl ? { pdp_url: directUrl, url: directUrl, product_url: directUrl, purchase_path: directUrl } : {}),
   };
 
@@ -498,6 +648,7 @@ function buildProductRecommendations({
   internalTestMode,
   artifactPath,
   catalogPath,
+  softEvidenceGateEnabled = PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED,
 } = {}) {
   const normalizedMarket = normalizeMarket(market);
   const normalizedLang = normalizeLang(lang);
@@ -519,6 +670,7 @@ function buildProductRecommendations({
     minCitations: minCitationsN,
     minEvidenceGrade: minEvidence,
     artifactPath,
+    softEvidenceGateEnabled,
   });
 
   const shouldForceRepairOnly = Boolean(repairOnlyWhenDegraded) && String(qualityGrade || '').trim().toLowerCase() === 'degraded';
@@ -529,22 +681,24 @@ function buildProductRecommendations({
     ? buildEvidenceByIngredient({
         ingredientIds: evidenceIngredientIds,
         market: normalizedMarket,
-        riskTier: normalizedRiskTier,
-        minCitations: minCitationsN,
-        minEvidenceGrade: minEvidence,
-        artifactPath,
-      })
+      riskTier: normalizedRiskTier,
+      minCitations: minCitationsN,
+      minEvidenceGrade: minEvidence,
+      artifactPath,
+      softEvidenceGateEnabled,
+    })
     : evidenceMapBase;
   const eligibleEvidence = Array.from(evidenceMap.values()).filter((item) => item.pass);
   const useRepairFallback = shouldForceRepairOnly;
   const repairEligibleIngredientIds = useRepairFallback
     ? REPAIR_INGREDIENT_IDS.filter((ingredientId) => {
         const evidence = evidenceMap.get(ingredientId);
-        return Boolean(evidence && evidence.pass);
+        if (!evidence) return false;
+        return softEvidenceGateEnabled ? true : Boolean(evidence.pass);
       })
     : [];
 
-  if (useRepairFallback && !repairEligibleIngredientIds.length) {
+  if (!softEvidenceGateEnabled && useRepairFallback && !repairEligibleIngredientIds.length) {
     return {
       products: [],
       suppressed_reason: 'LOW_EVIDENCE',
@@ -556,11 +710,12 @@ function buildProductRecommendations({
         ingredient_ids: actionIngredientIds,
         repair_fallback: true,
         repair_eligible_ingredients: [],
+        soft_evidence_gate_enabled: false,
       },
     };
   }
 
-  if (!eligibleEvidence.length && !useRepairFallback) {
+  if (!softEvidenceGateEnabled && !eligibleEvidence.length && !useRepairFallback) {
     return {
       products: [],
       suppressed_reason: 'LOW_EVIDENCE',
@@ -570,6 +725,7 @@ function buildProductRecommendations({
         risk_tier: normalizedRiskTier,
         issue_type: issueType,
         ingredient_ids: actionIngredientIds,
+        soft_evidence_gate_enabled: false,
       },
     };
   }
@@ -591,7 +747,7 @@ function buildProductRecommendations({
     const productIngredients = asArray(product.ingredient_ids);
     const overlap = useRepairFallback
       ? productIngredients.filter((id) => repairEligibleIngredientIds.includes(id))
-      : productIngredients.filter((id) => evidenceMap.has(id) && evidenceMap.get(id).pass);
+      : productIngredients.filter((id) => evidenceMap.has(id) && (softEvidenceGateEnabled || evidenceMap.get(id).pass));
     if (!overlap.length) {
       filteredByNoOverlap += 1;
       continue;
@@ -621,6 +777,7 @@ function buildProductRecommendations({
         overlapCount: overlap.length,
         evidenceGrade: primaryEvidence.evidence_grade,
         citationsCount: primaryEvidence.citations_count,
+        evidenceScore: primaryEvidence.evidence_score,
       }),
     });
   }
@@ -643,6 +800,7 @@ function buildProductRecommendations({
         filtered_by_risk: filteredByRisk,
         filtered_by_no_overlap: filteredByNoOverlap,
         repair_fallback: useRepairFallback,
+        soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
       },
     };
   }
@@ -658,6 +816,7 @@ function buildProductRecommendations({
       issue_type: issueType,
       candidate_count: candidates.length,
       repair_fallback: useRepairFallback,
+      soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
     },
   };
 }
@@ -682,8 +841,9 @@ async function buildIngredientProductRecommendationsNeutral({
   llmFallbackRecoverFn = null,
   externalSearchCtaBuilder = null,
   dedupeExternalSearchCtas = null,
+  softEvidenceGateEnabled = PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED,
 } = {}) {
-  const normalizedIngredientId = String(ingredientId || '').trim().toLowerCase();
+  const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
   if (!normalizedIngredientId) {
     return {
       products: [],
@@ -711,6 +871,7 @@ async function buildIngredientProductRecommendationsNeutral({
     minCitations: minCitationsN,
     minEvidenceGrade: minEvidence,
     artifactPath,
+    softEvidenceGateEnabled,
   });
   const evidence = evidenceMap.get(normalizedIngredientId) || {
     ingredient_id: normalizedIngredientId,
@@ -736,22 +897,73 @@ async function buildIngredientProductRecommendationsNeutral({
     internalTestMode,
     artifactPath,
     catalogPath,
+    softEvidenceGateEnabled,
   });
+
+  if (!softEvidenceGateEnabled && !evidence.pass) {
+    return {
+      products: [],
+      suppressed_reason: 'LOW_EVIDENCE',
+      products_empty_reason: 'low_evidence',
+      external_search_ctas: [],
+      debug: {
+        module_id: moduleId || null,
+        ingredient_id: normalizedIngredientId,
+        issue_type: normalizedIssueType,
+        candidate_count: 0,
+        candidate_count_internal: 0,
+        candidate_count_external: 0,
+        filtered_by_safety: 0,
+        filtered_by_url: 0,
+        evidence_score: Number(evidence && evidence.evidence_score || 0),
+        evidence_pass: false,
+        fallback_stage: 'hard_evidence_gate',
+        products_count: 0,
+        lookup_queries: normalizeSearchQueries({
+          ingredientId: normalizedIngredientId,
+          ingredientName,
+          issueType: normalizedIssueType,
+          lang: normalizedLang,
+        }),
+        retrieval_source_counts: {},
+        soft_evidence_gate_enabled: false,
+      },
+    };
+  }
 
   const pool = [];
   const seen = new Set();
   const externalSearchCtas = [];
+  const sourceCounter = { catalog: 0, external_seed: 0, llm_fallback: 0 };
+  let filteredBySafety = 0;
+  let filteredByUrl = 0;
+  let fallbackStage = 'internal_external_pool';
+  const isSearchLikeUrl = (value) => {
+    const token = String(value || '').trim().toLowerCase();
+    return token.includes('google.com/search') || token.includes('/search?');
+  };
   const mergeCandidate = (candidate, { defaultSource = 'catalog', defaultReason = '' } = {}) => {
     const normalized = normalizeNeutralCandidate(candidate, {
       fallbackSource: defaultSource,
       fallbackReason: defaultReason,
     });
     if (!normalized) return;
-    if (shouldFilterByRisk(normalized, normalizedRiskTier)) return;
+    if (shouldFilterByRisk(normalized, normalizedRiskTier)) {
+      filteredBySafety += 1;
+      return;
+    }
+    const directUrl = extractDirectUrl(normalized);
+    const hasInvalidUrl = Boolean(directUrl) && (!String(directUrl).trim().toLowerCase().startsWith('https://') || isSearchLikeUrl(directUrl));
+    if (hasInvalidUrl) {
+      filteredByUrl += 1;
+      return;
+    }
     const key = buildCandidateStableKey(normalized);
     if (seen.has(key)) return;
     seen.add(key);
     pool.push(normalized);
+    const sourceKey = normalizeRetrievalSource(normalized.retrieval_source, 'catalog');
+    sourceCounter[sourceKey] = Number(sourceCounter[sourceKey] || 0) + 1;
   };
 
   for (const product of asArray(internalReco && internalReco.products)) {
@@ -765,13 +977,14 @@ async function buildIngredientProductRecommendationsNeutral({
     lang: normalizedLang,
   });
 
-  const fallbackQueries = !pool.length ? lookupQueries.slice(0, 1) : [];
-  if (typeof fallbackCandidateBuilder === 'function' && fallbackQueries.length > 0) {
+  const fallbackQueries = lookupQueries.slice(0, 1);
+  if (typeof fallbackCandidateBuilder === 'function') {
+    fallbackStage = 'internal_external_pool';
     for (const query of fallbackQueries) {
       try {
         const fallbackOut = await fallbackCandidateBuilder({
           query,
-          limit: maxProductsN * 2,
+          limit: maxProductsN * 3,
           allowExternalSeed: true,
         });
         for (const row of asArray(fallbackOut && fallbackOut.products)) {
@@ -787,6 +1000,7 @@ async function buildIngredientProductRecommendationsNeutral({
   }
 
   if (!pool.length && typeof llmFallbackRecoverFn === 'function') {
+    fallbackStage = 'llm_fallback';
     try {
       const recovered = await llmFallbackRecoverFn({
         queries: fallbackQueries.length > 0 ? fallbackQueries : lookupQueries.slice(0, 1),
@@ -837,6 +1051,7 @@ async function buildIngredientProductRecommendationsNeutral({
 
   let dedupedCtas = dedupeCtas(externalSearchCtas, 6);
   if (!outputs.length && !dedupedCtas.length) {
+    fallbackStage = fallbackStage === 'llm_fallback' ? 'google_cta_after_llm' : 'google_cta';
     dedupedCtas = dedupeCtas(
       [
         buildCta(
@@ -848,11 +1063,7 @@ async function buildIngredientProductRecommendationsNeutral({
     );
   }
 
-  const suppressedReason = outputs.length
-    ? null
-    : evidence.pass
-      ? 'NO_MATCH'
-      : 'LOW_EVIDENCE';
+  const suppressedReason = outputs.length ? null : 'NO_MATCH';
   const productsEmptyReason = outputs.length
     ? null
     : dedupedCtas.length
@@ -869,6 +1080,12 @@ async function buildIngredientProductRecommendationsNeutral({
       ingredient_id: normalizedIngredientId,
       issue_type: normalizedIssueType,
       candidate_count: pool.length,
+      candidate_count_internal: Number(sourceCounter.catalog || 0),
+      candidate_count_external: Number(sourceCounter.external_seed || 0),
+      filtered_by_safety: filteredBySafety,
+      filtered_by_url: filteredByUrl,
+      evidence_score: Number(evidence && evidence.evidence_score || 0),
+      fallback_stage: fallbackStage,
       products_count: outputs.length,
       lookup_queries: lookupQueries,
       retrieval_source_counts: outputs.reduce((acc, item) => {
@@ -876,6 +1093,7 @@ async function buildIngredientProductRecommendationsNeutral({
         acc[key] = Number(acc[key] || 0) + 1;
         return acc;
       }, {}),
+      soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
     },
   };
 }

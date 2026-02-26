@@ -362,6 +362,11 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
             const ctas = Array.isArray(action && action.external_search_ctas) ? action.external_search_ctas : [];
             const emptyReason = String(action && action.products_empty_reason || '').trim();
             assert.equal(products.length > 0 || (emptyReason.length > 0 && ctas.length > 0), true);
+            assert.equal(typeof String(action && (action.ingredient_canonical_id || action.ingredient_id) || '').trim(), 'string');
+            assert.equal(
+              !action || !action.rec_debug || typeof action.rec_debug === 'object',
+              true,
+            );
 
             for (const row of products) {
               assert.equal(typeof row.retrieval_source, 'string');

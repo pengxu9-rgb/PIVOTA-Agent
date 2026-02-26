@@ -46,6 +46,7 @@ function toAction({ issueType, ingredient, evidenceRegionIds, language, isFragil
   return {
     action_type: 'ingredient',
     ingredient_id: ingredient.id,
+    ingredient_canonical_id: resolveIngredientId(ingredient.id),
     ingredient_name: ingredientName,
     why: whyRendered.text,
     why_template_key: whyRendered.template_key,
