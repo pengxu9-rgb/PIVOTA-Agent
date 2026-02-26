@@ -328,6 +328,41 @@ const CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS = parsePositiveInt(
   Math.max(240000, CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS * 4),
   { min: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS, max: 20 * 60 * 1000 },
 );
+const CREATOR_CATALOG_AUTO_SYNC_LIMIT_DEFAULT = 5000;
+const CREATOR_CATALOG_AUTO_SYNC_LIMIT_MIN = 500;
+const CREATOR_CATALOG_AUTO_SYNC_LIMIT_MAX = 5000;
+
+function resolveCreatorCatalogAutoSyncLimit(rawValue) {
+  const hasRawValue = rawValue !== undefined && rawValue !== null && String(rawValue).trim() !== '';
+  const parsed = hasRawValue ? Number(rawValue) : NaN;
+  const parsedInt = Number.isFinite(parsed) ? Math.floor(parsed) : null;
+  const fallbackApplied = !Number.isFinite(parsedInt);
+
+  let effective = fallbackApplied ? CREATOR_CATALOG_AUTO_SYNC_LIMIT_DEFAULT : parsedInt;
+  let raisedToMin = false;
+  let clampedToMax = false;
+
+  if (effective < CREATOR_CATALOG_AUTO_SYNC_LIMIT_MIN) {
+    effective = CREATOR_CATALOG_AUTO_SYNC_LIMIT_MIN;
+    raisedToMin = true;
+  }
+  if (effective > CREATOR_CATALOG_AUTO_SYNC_LIMIT_MAX) {
+    effective = CREATOR_CATALOG_AUTO_SYNC_LIMIT_MAX;
+    clampedToMax = true;
+  }
+
+  return {
+    raw: hasRawValue ? String(rawValue) : null,
+    configured: fallbackApplied ? null : parsedInt,
+    effective,
+    fallback_applied: fallbackApplied,
+    raised_to_min: raisedToMin,
+    clamped_to_max: clampedToMax,
+    default_value: CREATOR_CATALOG_AUTO_SYNC_LIMIT_DEFAULT,
+    min_value: CREATOR_CATALOG_AUTO_SYNC_LIMIT_MIN,
+    max_value: CREATOR_CATALOG_AUTO_SYNC_LIMIT_MAX,
+  };
+}
 
 function getCreatorCatalogAutoSyncIntervalConfig() {
   const maxIntervalMinutes = Math.max(
@@ -2443,8 +2478,17 @@ function getCatalogSyncSuppressionStatus(merchantId, nowMs = Date.now()) {
   };
 }
 
-function summarizeCatalogSyncMerchantState() {
-  const rows = Object.entries(catalogSyncState.per_merchant || {}).map(([merchantId, state]) => ({
+function summarizeCatalogSyncMerchantState(options = {}) {
+  const scopeSet = Array.isArray(options.merchantIds) && options.merchantIds.length
+    ? new Set(options.merchantIds.map((id) => String(id || '').trim()).filter(Boolean))
+    : null;
+
+  const rows = Object.entries(catalogSyncState.per_merchant || {})
+    .filter(([merchantId]) => {
+      if (!scopeSet) return true;
+      return scopeSet.has(String(merchantId || '').trim());
+    })
+    .map(([merchantId, state]) => ({
     merchant_id: merchantId,
     ok: state?.ok === true,
     skipped: state?.skipped === true,
@@ -2455,6 +2499,15 @@ function summarizeCatalogSyncMerchantState() {
     last_run_at: state?.last_run_at || null,
     blocked_until: state?.blocked_until || null,
     error: state?.error ? String(state.error) : null,
+    limit_effective: Number.isFinite(Number(state?.limit_effective))
+      ? Number(state.limit_effective)
+      : null,
+    products_fetched: Number.isFinite(Number(state?.products_fetched))
+      ? Number(state.products_fetched)
+      : null,
+    next_page_token_present: state?.next_page_token_present === true,
+    truncated: state?.truncated === true,
+    truncated_reason: state?.truncated_reason ? String(state.truncated_reason) : null,
   }));
   rows.sort((a, b) => {
     const ta = Date.parse(String(a.last_run_at || '')) || 0;
@@ -2464,25 +2517,78 @@ function summarizeCatalogSyncMerchantState() {
   return rows.slice(0, 20);
 }
 
-async function runCreatorCatalogAutoSync() {
+function buildCatalogSyncConfigView(limitOverride) {
+  const autoSyncIntervalConfig = getCreatorCatalogAutoSyncIntervalConfig();
+  const limitConfig = resolveCreatorCatalogAutoSyncLimit(
+    limitOverride !== undefined ? limitOverride : process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT,
+  );
+  return {
+    enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
+    interval_minutes: autoSyncIntervalConfig.intervalMinutes,
+    interval_minutes_max: autoSyncIntervalConfig.maxIntervalMinutes,
+    cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+    request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+    request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
+    retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+    retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+    non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+    invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
+    limit_configured: limitConfig.configured,
+    limit_effective: limitConfig.effective,
+    limit_default: limitConfig.default_value,
+    limit_min: limitConfig.min_value,
+    limit_max: limitConfig.max_value,
+    limit_fallback_applied: limitConfig.fallback_applied,
+    limit_raised_to_min: limitConfig.raised_to_min,
+    limit_clamped_to_max: limitConfig.clamped_to_max,
+    target_source: catalogSyncState.target_source,
+    target_count: catalogSyncState.target_count,
+    target_eligible_count: catalogSyncState.target_eligible_count,
+    target_suppressed_count: catalogSyncState.target_suppressed_count,
+    target_sample: catalogSyncState.target_sample,
+    target_suppressed_sample: catalogSyncState.target_suppressed_sample,
+    last_run_at: catalogSyncState.last_run_at,
+    last_success_at: catalogSyncState.last_success_at,
+    last_error: catalogSyncState.last_error,
+    per_merchant: summarizeCatalogSyncMerchantState(),
+  };
+}
+
+async function runCreatorCatalogAutoSync(options = {}) {
+  const runStartedAtMs = Date.now();
   const enabled = CREATOR_CATALOG_AUTO_SYNC_ENABLED;
-  if (!enabled) return;
-  if (!PIVOTA_API_BASE) return;
+  if (!enabled) {
+    return { ok: false, reason: 'disabled', duration_ms: 0 };
+  }
+  if (!PIVOTA_API_BASE) {
+    return { ok: false, reason: 'api_base_missing', duration_ms: 0 };
+  }
 
   const adminKey = process.env.CREATOR_CATALOG_SYNC_ADMIN_KEY || ADMIN_API_KEY;
   if (!adminKey) {
     logger.warn('CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no admin key is configured');
-    return;
+    return { ok: false, reason: 'admin_key_missing', duration_ms: 0 };
   }
 
-  const merchantTarget = await resolveCatalogSyncMerchantIds();
+  const triggerSource = String(options?.trigger_source || options?.triggerSource || 'scheduler');
+  const requestedMerchantIds = uniqueStrings([
+    ...(Array.isArray(options?.merchantIds) ? options.merchantIds : []),
+    options?.merchant_id,
+    options?.merchantId,
+  ]);
+  const ignoreSuppression = options?.ignore_suppression === true || options?.ignoreSuppression === true;
+
+  const merchantTarget = requestedMerchantIds.length
+    ? { merchantIds: requestedMerchantIds, source: triggerSource === 'scheduler' ? 'manual_override' : triggerSource }
+    : await resolveCatalogSyncMerchantIds();
   const resolvedMerchantIds = merchantTarget.merchantIds;
   const nowMs = Date.now();
   const merchantIds = [];
   const suppressedMerchants = [];
+
   for (const merchantId of resolvedMerchantIds) {
     const suppression = getCatalogSyncSuppressionStatus(merchantId, nowMs);
-    if (!suppression.suppressed) {
+    if (!suppression.suppressed || ignoreSuppression) {
       merchantIds.push(merchantId);
       continue;
     }
@@ -2501,6 +2607,15 @@ async function runCreatorCatalogAutoSync() {
         'Skipped due to temporary cooldown after non-retryable sync error',
       blocked_until_ms: Number(existingState?.blocked_until_ms || 0) || null,
       blocked_until: suppression.blocked_until,
+      limit_effective: Number.isFinite(Number(existingState?.limit_effective))
+        ? Number(existingState.limit_effective)
+        : null,
+      products_fetched: Number.isFinite(Number(existingState?.products_fetched))
+        ? Number(existingState.products_fetched)
+        : null,
+      next_page_token_present: existingState?.next_page_token_present === true,
+      truncated: existingState?.truncated === true,
+      truncated_reason: existingState?.truncated_reason || null,
     };
     suppressedMerchants.push({
       merchant_id: merchantId,
@@ -2509,28 +2624,56 @@ async function runCreatorCatalogAutoSync() {
       invalid_merchant: suppression.invalid_merchant,
     });
   }
+
   catalogSyncState.target_source = merchantTarget.source || null;
   catalogSyncState.target_count = resolvedMerchantIds.length;
   catalogSyncState.target_eligible_count = merchantIds.length;
   catalogSyncState.target_suppressed_count = suppressedMerchants.length;
   catalogSyncState.target_sample = resolvedMerchantIds.slice(0, 20);
   catalogSyncState.target_suppressed_sample = suppressedMerchants.slice(0, 20);
+
   if (!merchantIds.length) {
     logger.warn(
       {
         target_source: merchantTarget.source || null,
         target_count: resolvedMerchantIds.length,
         suppressed_count: suppressedMerchants.length,
+        trigger_source: triggerSource,
       },
       'CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no sync target merchants were resolved',
     );
-    return;
+    return {
+      ok: false,
+      reason: 'no_targets',
+      trigger_source: triggerSource,
+      target_source: merchantTarget.source || null,
+      target_count: resolvedMerchantIds.length,
+      target_eligible_count: merchantIds.length,
+      target_suppressed_count: suppressedMerchants.length,
+      duration_ms: Math.max(0, Date.now() - runStartedAtMs),
+      per_merchant: summarizeCatalogSyncMerchantState({ merchantIds: resolvedMerchantIds }),
+    };
   }
 
-  const limit = Math.min(
-    Number(process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT || 200) || 200,
-    5000,
+  const limitConfig = resolveCreatorCatalogAutoSyncLimit(
+    options?.limit_override ?? options?.limitOverride ?? process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT,
   );
+  if (limitConfig.fallback_applied || limitConfig.raised_to_min || limitConfig.clamped_to_max) {
+    logger.warn(
+      {
+        trigger_source: triggerSource,
+        configured_limit: limitConfig.configured,
+        raw_limit: limitConfig.raw,
+        effective_limit: limitConfig.effective,
+        fallback_applied: limitConfig.fallback_applied,
+        raised_to_min: limitConfig.raised_to_min,
+        clamped_to_max: limitConfig.clamped_to_max,
+      },
+      'Creator catalog auto sync limit adjusted by guardrail',
+    );
+  }
+
+  const limit = limitConfig.effective;
   const ttlSeconds = CREATOR_CATALOG_CACHE_TTL_SECONDS;
   const maxAttempts = Math.max(1, Number(CREATOR_CATALOG_AUTO_SYNC_RETRIES || 0) + 1);
 
@@ -2547,6 +2690,7 @@ async function runCreatorCatalogAutoSync() {
     let res = null;
     let err = null;
     let timeoutUsedMs = CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS;
+
     for (attempt = 1; attempt <= maxAttempts; attempt += 1) {
       timeoutUsedMs = getCatalogSyncAttemptTimeoutMs({
         merchantState: existingState,
@@ -2579,6 +2723,7 @@ async function runCreatorCatalogAutoSync() {
               code: attemptErr?.code || null,
               non_retryable: nonRetryable,
               error: attemptErr?.message || String(attemptErr),
+              trigger_source: triggerSource,
             },
             'Creator catalog auto sync attempt failed; retrying',
           );
@@ -2590,13 +2735,41 @@ async function runCreatorCatalogAutoSync() {
     }
 
     if (!err && res) {
+      const summary = res.data && res.data.summary ? res.data.summary : res.data;
+      const productsFetchedRaw =
+        summary?.productsFetched ??
+        summary?.products_fetched ??
+        summary?.product_count ??
+        summary?.productsUpserted ??
+        summary?.products_upserted;
+      const productsFetched = Number.isFinite(Number(productsFetchedRaw))
+        ? Number(productsFetchedRaw)
+        : null;
+      const nextPageTokenRaw = summary?.nextPageToken ?? summary?.next_page_token ?? null;
+      const nextPageTokenPresent =
+        nextPageTokenRaw !== undefined &&
+        nextPageTokenRaw !== null &&
+        String(nextPageTokenRaw).trim() !== '';
+      const upstreamTruncated = summary?.truncated === true;
+      const upstreamTruncatedReason =
+        summary?.truncated_reason || summary?.truncatedReason || null;
+      const limitDerivedTruncated = Boolean(
+        nextPageTokenPresent &&
+          Number.isFinite(Number(productsFetched)) &&
+          Number(productsFetched) >= limit,
+      );
+      const truncated = upstreamTruncated || limitDerivedTruncated;
+      const truncatedReason =
+        upstreamTruncatedReason ||
+        (limitDerivedTruncated ? 'limit_reached_with_next_page' : null);
+
       catalogSyncState.per_merchant[merchantId] = {
         ok: true,
         skipped: false,
         last_run_at: new Date().toISOString(),
         attempts: attempt,
         duration_ms: Math.max(0, Date.now() - startedAtMs),
-        summary: res.data && res.data.summary ? res.data.summary : res.data,
+        summary,
         status: Number.isFinite(Number(res.status)) ? Number(res.status) : 200,
         timeout_ms: timeoutUsedMs,
         timeout_streak: 0,
@@ -2604,6 +2777,11 @@ async function runCreatorCatalogAutoSync() {
         error: null,
         blocked_until_ms: null,
         blocked_until: null,
+        limit_effective: limit,
+        products_fetched: productsFetched,
+        next_page_token_present: nextPageTokenPresent,
+        truncated,
+        truncated_reason: truncatedReason,
       };
       catalogSyncState.last_success_at = new Date().toISOString();
       logger.info(
@@ -2614,6 +2792,10 @@ async function runCreatorCatalogAutoSync() {
           attempts: attempt,
           duration_ms: Math.max(0, Date.now() - startedAtMs),
           timeout_ms: timeoutUsedMs,
+          products_fetched: productsFetched,
+          next_page_token_present: nextPageTokenPresent,
+          truncated,
+          trigger_source: triggerSource,
         },
         'Creator catalog auto sync succeeded',
       );
@@ -2649,6 +2831,11 @@ async function runCreatorCatalogAutoSync() {
         error: message,
         blocked_until_ms: blockedUntilMs,
         blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
+        limit_effective: limit,
+        products_fetched: null,
+        next_page_token_present: false,
+        truncated: false,
+        truncated_reason: null,
       };
       catalogSyncState.last_error = `${merchantId}: ${message}`;
       logger.warn(
@@ -2663,11 +2850,25 @@ async function runCreatorCatalogAutoSync() {
           non_retryable: nonRetryable,
           invalid_merchant: invalidMerchant,
           blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
+          trigger_source: triggerSource,
         },
         'Creator catalog auto sync failed',
       );
     }
   }
+
+  return {
+    ok: true,
+    trigger_source: triggerSource,
+    target_source: merchantTarget.source || null,
+    target_count: resolvedMerchantIds.length,
+    target_eligible_count: merchantIds.length,
+    target_suppressed_count: suppressedMerchants.length,
+    limit_effective: limit,
+    limit_config: limitConfig,
+    duration_ms: Math.max(0, Date.now() - runStartedAtMs),
+    per_merchant: summarizeCatalogSyncMerchantState({ merchantIds: resolvedMerchantIds }),
+  };
 }
 
 // API Mode: MOCK (default), HYBRID, or REAL
@@ -9428,28 +9629,7 @@ const healthRouteHandler = (req, res) => {
               stats: cacheStats,
             }
           : undefined,
-        catalog_sync: {
-          enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
-          interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
-          interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
-          cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
-          request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
-          request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
-          retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
-          retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
-          non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
-          invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
-          target_source: catalogSyncState.target_source,
-          target_count: catalogSyncState.target_count,
-          target_eligible_count: catalogSyncState.target_eligible_count,
-          target_suppressed_count: catalogSyncState.target_suppressed_count,
-          target_sample: catalogSyncState.target_sample,
-          target_suppressed_sample: catalogSyncState.target_suppressed_sample,
-          last_run_at: catalogSyncState.last_run_at,
-          last_success_at: catalogSyncState.last_success_at,
-          last_error: catalogSyncState.last_error,
-          per_merchant: summarizeCatalogSyncMerchantState(),
-        },
+        catalog_sync: buildCatalogSyncConfigView(),
         features: {
           product_search: true,
           order_creation: true,
@@ -12447,28 +12627,7 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
       db_configured: Boolean(process.env.DATABASE_URL),
       catalog_auto_sync_enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
     },
-    catalog_sync: {
-      enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
-      interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
-      interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
-      cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
-      request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
-      request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
-      retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
-      retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
-      non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
-      invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
-      target_source: catalogSyncState.target_source,
-      target_count: catalogSyncState.target_count,
-      target_eligible_count: catalogSyncState.target_eligible_count,
-      target_suppressed_count: catalogSyncState.target_suppressed_count,
-      target_sample: catalogSyncState.target_sample,
-      target_suppressed_sample: catalogSyncState.target_suppressed_sample,
-      last_run_at: catalogSyncState.last_run_at,
-      last_success_at: catalogSyncState.last_success_at,
-      last_error: catalogSyncState.last_error,
-      per_merchant: summarizeCatalogSyncMerchantState(),
-    },
+    catalog_sync: buildCatalogSyncConfigView(),
     resolver: {
       alias_dependency: aliasDependency,
       with_stable_alias: buildResolverView(resolverWithAlias),
@@ -12476,6 +12635,60 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
     },
     cross_merchant_cache: crossMerchantCache,
   });
+});
+
+app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const merchantId = String(
+      body.merchant_id ??
+        body.merchantId ??
+        req.query.merchant_id ??
+        req.query.merchantId ??
+        '',
+    )
+      .trim();
+    const limitOverrideRaw =
+      body.limit_override ??
+      body.limitOverride ??
+      req.query.limit_override ??
+      req.query.limitOverride;
+    const limitOverrideParsed =
+      limitOverrideRaw === undefined || limitOverrideRaw === null || String(limitOverrideRaw).trim() === ''
+        ? null
+        : Number(limitOverrideRaw);
+    const limitOverride =
+      limitOverrideParsed !== null && Number.isFinite(limitOverrideParsed)
+        ? Math.trunc(limitOverrideParsed)
+        : undefined;
+    const ignoreSuppression =
+      parseQueryBoolean(body.ignore_suppression ?? body.ignoreSuppression ?? req.query.ignore_suppression) ===
+      true;
+
+    const result = await runCreatorCatalogAutoSync({
+      merchant_id: merchantId || undefined,
+      limit_override: limitOverride,
+      ignore_suppression: ignoreSuppression,
+      trigger_source: 'admin_manual',
+    });
+
+    return res.status(200).json({
+      ok: result?.ok === true,
+      trigger_source: 'admin_manual',
+      requested: {
+        merchant_id: merchantId || null,
+        limit_override: limitOverride !== undefined ? limitOverride : null,
+        ignore_suppression: ignoreSuppression,
+      },
+      result,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: 'CATALOG_SYNC_TRIGGER_FAILED',
+      message: err?.message || String(err),
+    });
+  }
 });
 
 app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) => {
@@ -12693,28 +12906,7 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
         api_base: PIVOTA_API_BASE,
         catalog_auto_sync_enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
       },
-      catalog_sync: {
-        enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
-        interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
-        interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
-        cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
-        request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
-        request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
-        retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
-        retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
-        non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
-        invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
-        target_source: catalogSyncState.target_source,
-        target_count: catalogSyncState.target_count,
-        target_eligible_count: catalogSyncState.target_eligible_count,
-        target_suppressed_count: catalogSyncState.target_suppressed_count,
-        target_sample: catalogSyncState.target_sample,
-        target_suppressed_sample: catalogSyncState.target_suppressed_sample,
-        last_run_at: catalogSyncState.last_run_at,
-        last_success_at: catalogSyncState.last_success_at,
-        last_error: catalogSyncState.last_error,
-        per_merchant: summarizeCatalogSyncMerchantState(),
-      },
+      catalog_sync: buildCatalogSyncConfigView(),
       totals: {
         total_rows: parseCount(globalTotalsRow.total_rows),
         not_expired_rows: parseCount(globalTotalsRow.not_expired_rows),
