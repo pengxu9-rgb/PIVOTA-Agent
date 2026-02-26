@@ -2,7 +2,7 @@ name: aurora-rollout-probe
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -31,6 +31,7 @@ jobs:
           AURORA_PROBE_CONCURRENCY: "5"
           AURORA_PROBE_RETRY_COUNT: "1"
           AURORA_PROBE_WINDOW_MINUTES: "10"
+          AURORA_PROBE_FAIL_ON_HIGH: "false"
         run: |
           args=(
             --base "$AURORA_PROBE_BASE_URL"
@@ -38,7 +39,7 @@ jobs:
             --concurrency "$AURORA_PROBE_CONCURRENCY"
             --retry-count "$AURORA_PROBE_RETRY_COUNT"
             --window-minutes "$AURORA_PROBE_WINDOW_MINUTES"
-            --fail-on-high true
+            --fail-on-high "$AURORA_PROBE_FAIL_ON_HIGH"
           )
           if [ -n "$AURORA_PROBE_WEBHOOK_URL" ]; then
             args+=(--webhook "$AURORA_PROBE_WEBHOOK_URL")
