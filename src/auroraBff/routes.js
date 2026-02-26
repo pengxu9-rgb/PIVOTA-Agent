@@ -570,8 +570,8 @@ const PHOTO_MODULES_ACTION_RECO_NETWORK_MAX_ACTIONS = (() => {
   return Math.max(0, Math.min(24, v));
 })();
 const PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS || 2500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2500;
+  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
   return Math.max(300, Math.min(10000, v));
 })();
 const RECO_CATALOG_SEARCH_CONCURRENCY = (() => {
@@ -13322,6 +13322,62 @@ async function enrichPhotoModulesCardWithIngredientProducts({
   };
 }
 
+function applyPhotoModulesRecoFallback({
+  photoModulesCard,
+  reason = 'lookup_timeout',
+} = {}) {
+  if (!isPlainObject(photoModulesCard)) return photoModulesCard;
+  if (String(photoModulesCard.type || '').trim().toLowerCase() !== 'photo_modules_v1') return photoModulesCard;
+
+  const payload = isPlainObject(photoModulesCard.payload) ? { ...photoModulesCard.payload } : null;
+  if (!payload || !Array.isArray(payload.modules) || payload.modules.length === 0) return photoModulesCard;
+
+  const nextModules = payload.modules.map((moduleRowRaw, moduleIndex) => {
+    const moduleRow = isPlainObject(moduleRowRaw) ? { ...moduleRowRaw } : {};
+    const moduleId = pickFirstString(moduleRow.module_id, `module_${moduleIndex + 1}`);
+    const moduleActions = Array.isArray(moduleRow.actions) ? moduleRow.actions : [];
+    if (!moduleActions.length) return moduleRowRaw;
+
+    const nextActions = moduleActions.map((actionRaw) => {
+      const action = isPlainObject(actionRaw) ? { ...actionRaw } : {};
+      const products = Array.isArray(action.products) ? action.products : [];
+      const hasProducts = products.length > 0;
+      const existingReason = pickFirstString(action.products_empty_reason);
+      const existingCtas = Array.isArray(action.external_search_ctas) ? action.external_search_ctas : [];
+      if (hasProducts || (existingReason && existingCtas.length > 0)) return actionRaw;
+
+      const fallbackQuery = pickFirstString(action.ingredient_name, action.ingredient_id, moduleId, 'skincare ingredient');
+      const fallbackCtas = dedupeExternalSearchCtas(
+        [buildExternalSearchCta({ name: fallbackQuery }, reason)],
+        3,
+      );
+      const nextAction = {
+        ...action,
+        products: products.slice(0, 3),
+        products_empty_reason: existingReason || reason,
+        ...(fallbackCtas.length ? { external_search_ctas: fallbackCtas } : {}),
+      };
+      if (!fallbackCtas.length && Object.prototype.hasOwnProperty.call(nextAction, 'external_search_ctas')) {
+        delete nextAction.external_search_ctas;
+      }
+      return nextAction;
+    });
+
+    return {
+      ...moduleRow,
+      actions: nextActions,
+    };
+  });
+
+  return {
+    ...photoModulesCard,
+    payload: {
+      ...payload,
+      modules: nextModules,
+    },
+  };
+}
+
 async function enrichPhotoModulesCardWithIngredientProductsBounded({
   photoModulesCard,
   profileSummary,
@@ -13349,7 +13405,13 @@ async function enrichPhotoModulesCardWithIngredientProductsBounded({
       },
       'aurora bff: photo modules action-level reco enrich skipped',
     );
-    return photoModulesCard;
+    const reasonCode = String(error && error.code ? error.code : '').trim() === 'PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT'
+      ? 'lookup_timeout'
+      : 'lookup_error';
+    return applyPhotoModulesRecoFallback({
+      photoModulesCard,
+      reason: reasonCode,
+    });
   }
 }
 
