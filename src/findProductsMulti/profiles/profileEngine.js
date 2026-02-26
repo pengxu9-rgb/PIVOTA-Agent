@@ -1,7 +1,9 @@
 const { SEARCH_PROFILE_IDS, SEARCH_PROFILE_MAP } = require('./index');
 
 const FRAGRANCE_HINT_REGEX =
-  /\b(perfume|fragrance|parfum|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette|tom ford|jo malone|diptyque|byredo|le labo|chanel|dior|ysl|yves saint laurent|armani|hermes|gucci|creed|kilian|amouage)\b|香水|香氛|古龙|古龍|フレグランス|コロン/i;
+  /\b(perfume|fragrance|parfum|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette)\b|香水|香氛|古龙|古龍|フレグランス|コロン/i;
+const BRAND_HINT_REGEX =
+  /\b(tom ford|jo malone|diptyque|byredo|le labo|chanel|dior|ysl|yves saint laurent|armani|hermes|gucci|creed|kilian|amouage|estee lauder|la mer|fenty|rare beauty|charlotte tilbury|nars|clinique|shiseido|laneige|innisfree|the ordinary|cerave|la roche posay|kiehl's|tatcha|drunk elephant|victoria's secret|calvin klein|hugo boss|prada|valentino|givenchy|chloe|dolce gabbana)\b/i;
 const LINGERIE_HINT_REGEX =
   /\b(lingerie|underwear|under wear|bra|bras|panties|panty|brief|briefs|thong|bralette|intimates|sleepwear)\b|内衣|內衣|文胸|胸罩|ブラ|ランジェリー/i;
 const PET_HINT_REGEX = /\b(pet|dog|cat|puppy|kitten|harness|leash|litter|pet food)\b|宠物|寵物|犬|猫|貓/i;
@@ -15,6 +17,7 @@ function normalizeHintId(value) {
   const aliasMap = {
     fragrance: SEARCH_PROFILE_IDS.FRAGRANCE_STRICT,
     perfume: SEARCH_PROFILE_IDS.FRAGRANCE_STRICT,
+    brand: SEARCH_PROFILE_IDS.BRAND_BROAD,
     lingerie: SEARCH_PROFILE_IDS.LINGERIE_STRICT,
     underwear: SEARCH_PROFILE_IDS.LINGERIE_STRICT,
     pet: SEARCH_PROFILE_IDS.PET_SUPPLIES,
@@ -40,14 +43,22 @@ function inferProfileIdFromSignals({
   const targetType = String(intent?.target_object?.type || '')
     .trim()
     .toLowerCase();
+  const hasFragranceIntent = FRAGRANCE_HINT_REGEX.test(query);
+  const hasBrandHint = BRAND_HINT_REGEX.test(query) || normalizedClass === 'brand';
 
-  if (FRAGRANCE_HINT_REGEX.test(query) || normalizedClass === 'brand') {
+  if (hasBrandHint && !hasFragranceIntent) {
+    return {
+      profileId: SEARCH_PROFILE_IDS.BRAND_BROAD,
+      confidence: normalizedClass === 'brand' ? 'high' : 'medium',
+      reason: normalizedClass === 'brand' ? 'brand_query_class' : 'brand_keyword_match',
+    };
+  }
+
+  if (hasFragranceIntent) {
     return {
       profileId: SEARCH_PROFILE_IDS.FRAGRANCE_STRICT,
-      confidence: FRAGRANCE_HINT_REGEX.test(query) ? 'high' : 'medium',
-      reason: FRAGRANCE_HINT_REGEX.test(query)
-        ? 'fragrance_keyword_match'
-        : 'brand_query_class',
+      confidence: 'high',
+      reason: 'fragrance_keyword_match',
     };
   }
 
