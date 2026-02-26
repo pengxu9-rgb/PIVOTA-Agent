@@ -18911,13 +18911,26 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	      maybePolicy.products.length > requestedFindProductsMultiLimit
 	    ) {
 	      const normalizedLimit = Math.max(1, Math.floor(Number(requestedFindProductsMultiLimit)));
+	      const normalizedPage = Math.max(
+	        1,
+	        Math.floor(
+	          Number.isFinite(Number(requestedFindProductsMultiPage)) && Number(requestedFindProductsMultiPage) > 0
+	            ? Number(requestedFindProductsMultiPage)
+	            : 1,
+	        ),
+	      );
+	      const paginationOffset = Math.max(0, (normalizedPage - 1) * normalizedLimit);
+	      const pagedProducts =
+	        normalizedPage > 1
+	          ? maybePolicy.products.slice(paginationOffset, paginationOffset + normalizedLimit)
+	          : maybePolicy.products.slice(0, normalizedLimit);
 	      maybePolicy = {
 	        ...maybePolicy,
-	        products: maybePolicy.products.slice(0, normalizedLimit),
+	        products: pagedProducts,
 	        page_size:
 	          Number.isFinite(Number(maybePolicy?.page_size))
-	            ? Math.min(Math.max(0, Number(maybePolicy.page_size)), normalizedLimit)
-	            : normalizedLimit,
+	            ? Math.min(Math.max(0, Number(maybePolicy.page_size)), normalizedLimit, pagedProducts.length)
+	            : pagedProducts.length,
 	      };
 	    }
 
