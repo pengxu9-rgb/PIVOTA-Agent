@@ -16612,6 +16612,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	    let requestBody = {};
 	    let queryParams = {};
 	    let requestedFindProductsMultiLimit = null;
+	    let requestedFindProductsMultiPage = null;
 	    let strictLingerieScopeForSearch = false;
 
     // Handle different parameter types
@@ -16661,6 +16662,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        // Cross-merchant search via Agent Search endpoint.
 	        const search = effectivePayload.search || effectivePayload || {};
 	        const page = Math.max(1, Number(search.page || 1) || 1);
+	        requestedFindProductsMultiPage = page;
 	        const requestedLimit = Math.min(
 	          Math.max(1, Number(search.limit || search.page_size || 20) || 20),
 	          100,
@@ -17990,15 +17992,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       });
       let secondarySupplementMeta = null;
 
-      if (
-        operation === 'find_products_multi' &&
-        queryText &&
-        response.status >= 200 &&
-        response.status < 300 &&
-        !shouldFallback &&
-        primaryUsableCount < requestedLimit &&
-        FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
-      ) {
+	      if (
+	        operation === 'find_products_multi' &&
+	        queryText &&
+	        response.status >= 200 &&
+	        response.status < 300 &&
+	        !shouldFallback &&
+	        (requestedFindProductsMultiPage == null || requestedFindProductsMultiPage <= 1) &&
+	        primaryUsableCount < requestedLimit &&
+	        FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
+	      ) {
         try {
           const secondStageCtx = await buildFindProductsMultiContext({
             payload,
@@ -18092,10 +18095,27 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             { err: secondaryErr?.message || String(secondaryErr), query: queryText },
             `${operation} second-stage conservative->aggressive supplement failed`,
           );
-        }
-      }
+	        }
+	      }
+	      if (
+	        operation === 'find_products_multi' &&
+	        queryText &&
+	        FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off' &&
+	        !secondarySupplementMeta &&
+	        Number.isFinite(Number(requestedFindProductsMultiPage)) &&
+	        Number(requestedFindProductsMultiPage) > 1
+	      ) {
+	        secondarySupplementMeta = {
+	          attempted: true,
+	          applied: false,
+	          added_count: 0,
+	          expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+	          reason: 'disabled_for_page_gt_1',
+	          page: Math.max(1, Math.floor(Number(requestedFindProductsMultiPage))),
+	        };
+	      }
 
-      if (shouldFallback) {
+	      if (shouldFallback) {
         let replacedByFallback = false;
 
         if (allowResolverFallback && !skipSecondaryFallback) {
