@@ -95,6 +95,90 @@ function buildNiacinamideDataset() {
 
 test('neutral rec: higher suitability can outrank across sources and no 1:1 source quota', async () => {
   const dataset = buildNiacinamideDataset();
+  const catalog = [];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    let fallbackCalls = 0;
+    const result = await buildIngredientProductRecommendationsNeutral({
+      moduleId: 'left_cheek',
+      ingredientId: 'niacinamide',
+      ingredientName: 'Niacinamide',
+      issueType: 'tone',
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'pass',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: false,
+      artifactPath,
+      catalogPath,
+      maxProducts: 3,
+      fallbackCandidateBuilder: async () => {
+        fallbackCalls += 1;
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'prod_catalog_1',
+              merchant_id: 'int_shop_a',
+              name: 'Catalog Niacinamide Basic',
+              brand: 'Internal A',
+              ingredient_ids: [],
+              retrieval_source: 'catalog',
+              retrieval_reason: 'catalog_search_match',
+            },
+            {
+              product_id: 'prod_external_1',
+              merchant_id: 'ext_shop_a',
+              name: 'External Niacinamide 10',
+              brand: 'External A',
+              ingredient_ids: ['niacinamide'],
+              retrieval_source: 'external_seed',
+              retrieval_reason: 'external_seed_supplement',
+              pdp_url: 'https://external-a.example.com/p/niacinamide-10',
+            },
+            {
+              product_id: 'prod_external_2',
+              merchant_id: 'ext_shop_b',
+              name: 'External Niacinamide Barrier',
+              brand: 'External B',
+              ingredient_ids: ['niacinamide'],
+              retrieval_source: 'external_seed',
+              retrieval_reason: 'external_seed_supplement',
+              pdp_url: 'https://external-b.example.com/p/niacinamide-barrier',
+            },
+          ],
+          external_search_ctas: [],
+        };
+      },
+      llmFallbackRecoverFn: null,
+    });
+
+    assert.equal(Array.isArray(result.products), true);
+    assert.equal(result.products.length, 3);
+    assert.equal(result.products[0].retrieval_source, 'external_seed');
+    assert.equal(fallbackCalls, 1);
+
+    const sourceCounts = result.products.reduce((acc, row) => {
+      const key = String(row && row.retrieval_source || 'unknown');
+      acc[key] = Number(acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    assert.equal(Number(sourceCounts.external_seed || 0) >= 2, true);
+    assert.equal(Number(sourceCounts.catalog || 0) >= 1, true);
+
+    for (const row of result.products) {
+      assert.equal(typeof row.retrieval_source, 'string');
+      assert.equal(row.retrieval_source.length > 0, true);
+      assert.equal(typeof row.retrieval_reason, 'string');
+      assert.equal(row.retrieval_reason.length > 0, true);
+    }
+  });
+});
+
+test('neutral rec: skips network fallback when internal pool already has matches', async () => {
+  const dataset = buildNiacinamideDataset();
   const catalog = [
     {
       product_id: 'prod_internal_1',
@@ -111,6 +195,7 @@ test('neutral rec: higher suitability can outrank across sources and no 1:1 sour
   ];
 
   await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    let fallbackCalls = 0;
     const result = await buildIngredientProductRecommendationsNeutral({
       moduleId: 'left_cheek',
       ingredientId: 'niacinamide',
@@ -126,53 +211,17 @@ test('neutral rec: higher suitability can outrank across sources and no 1:1 sour
       artifactPath,
       catalogPath,
       maxProducts: 3,
-      fallbackCandidateBuilder: async () => ({
-        ok: true,
-        products: [
-          {
-            product_id: 'prod_external_1',
-            merchant_id: 'ext_shop_a',
-            name: 'External Niacinamide 10',
-            brand: 'External A',
-            ingredient_ids: ['niacinamide'],
-            retrieval_source: 'external_seed',
-            retrieval_reason: 'external_seed_supplement',
-            pdp_url: 'https://external-a.example.com/p/niacinamide-10',
-          },
-          {
-            product_id: 'prod_external_2',
-            merchant_id: 'ext_shop_b',
-            name: 'External Niacinamide Barrier',
-            brand: 'External B',
-            ingredient_ids: ['niacinamide'],
-            retrieval_source: 'external_seed',
-            retrieval_reason: 'external_seed_supplement',
-            pdp_url: 'https://external-b.example.com/p/niacinamide-barrier',
-          },
-        ],
-        external_search_ctas: [],
-      }),
+      fallbackCandidateBuilder: async () => {
+        fallbackCalls += 1;
+        return { ok: true, products: [], external_search_ctas: [] };
+      },
       llmFallbackRecoverFn: null,
     });
 
     assert.equal(Array.isArray(result.products), true);
-    assert.equal(result.products.length, 3);
-    assert.equal(result.products[0].retrieval_source, 'external_seed');
-
-    const sourceCounts = result.products.reduce((acc, row) => {
-      const key = String(row && row.retrieval_source || 'unknown');
-      acc[key] = Number(acc[key] || 0) + 1;
-      return acc;
-    }, {});
-    assert.equal(Number(sourceCounts.external_seed || 0) >= 2, true);
-    assert.equal(Number(sourceCounts.catalog || 0) >= 1, true);
-
-    for (const row of result.products) {
-      assert.equal(typeof row.retrieval_source, 'string');
-      assert.equal(row.retrieval_source.length > 0, true);
-      assert.equal(typeof row.retrieval_reason, 'string');
-      assert.equal(row.retrieval_reason.length > 0, true);
-    }
+    assert.equal(result.products.length >= 1, true);
+    assert.equal(result.products[0].retrieval_source, 'catalog');
+    assert.equal(fallbackCalls, 0);
   });
 });
 
