@@ -41,6 +41,7 @@ const {
   applyFindProductsMultiPolicy,
 } = require('./findProductsMulti/policy');
 const { buildClarification } = require('./findProductsMulti/clarification');
+const { resolveSearchProfile } = require('./findProductsMulti/profiles/profileEngine');
 const {
   buildSearchDebugBundle,
   shouldExposeDebugBundle,
@@ -3174,6 +3175,34 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
   };
 }
 
+function normalizeSourceBreakdownForProducts(metadata, products) {
+  const list = Array.isArray(products) ? products : [];
+  const existingSourceBreakdown =
+    metadata &&
+    typeof metadata === 'object' &&
+    !Array.isArray(metadata) &&
+    metadata.source_breakdown &&
+    typeof metadata.source_breakdown === 'object' &&
+    !Array.isArray(metadata.source_breakdown)
+      ? metadata.source_breakdown
+      : {};
+  const externalSeedCount = list.filter((product) => isExternalSeedProduct(product)).length;
+  const internalCount = Math.max(0, list.length - externalSeedCount);
+  return {
+    ...existingSourceBreakdown,
+    internal_count: internalCount,
+    external_seed_count: externalSeedCount,
+    stale_cache_used: Boolean(existingSourceBreakdown.stale_cache_used),
+    strategy_applied:
+      typeof existingSourceBreakdown.strategy_applied === 'string' &&
+      existingSourceBreakdown.strategy_applied.trim()
+        ? existingSourceBreakdown.strategy_applied
+        : FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
+          ? 'unified_relevance'
+          : 'supplement_internal_first',
+  };
+}
+
 function withProxySearchFallbackMetadata(body, patch) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
   const metadata =
@@ -3189,6 +3218,37 @@ function withProxySearchFallbackMetadata(body, patch) {
     ...patch,
   };
   return { ...body, metadata };
+}
+
+function withSearchProfileMetadata(body, resolvedSearchProfile) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const profile =
+    resolvedSearchProfile &&
+    resolvedSearchProfile.profile &&
+    typeof resolvedSearchProfile.profile === 'object'
+      ? resolvedSearchProfile.profile
+      : null;
+  if (!profile || !profile.id) return body;
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? { ...body.metadata }
+      : {};
+  const existingRules = Array.isArray(metadata.rules_applied)
+    ? metadata.rules_applied.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  const profileRules = Array.isArray(resolvedSearchProfile.rulesApplied)
+    ? resolvedSearchProfile.rulesApplied.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  const mergedRules = Array.from(new Set([...existingRules, ...profileRules]));
+  metadata.retrieval_profile = String(profile.id);
+  metadata.profile_confidence = resolvedSearchProfile.confidence
+    ? String(resolvedSearchProfile.confidence)
+    : null;
+  if (mergedRules.length > 0) metadata.rules_applied = mergedRules;
+  return {
+    ...body,
+    metadata,
+  };
 }
 
 function buildSearchRouteHealth({
@@ -3714,7 +3774,7 @@ function getAuroraFallbackOverrides(source, operation) {
   };
 }
 
-function applyShoppingCatalogQueryGuards(queryParams, source) {
+function applyShoppingCatalogQueryGuards(queryParams, source, resolvedSearchProfile = null) {
   const params =
     queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
       ? { ...queryParams }
@@ -3732,48 +3792,139 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
     explicitAllowExternalSeed !== undefined
       ? explicitAllowExternalSeed
       : (isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true);
+  const profileSeedStrategy =
+    resolvedSearchProfile &&
+    resolvedSearchProfile.profile &&
+    resolvedSearchProfile.profile.supplementPolicy &&
+    typeof resolvedSearchProfile.profile.supplementPolicy.defaultSeedStrategy === 'string'
+      ? resolvedSearchProfile.profile.supplementPolicy.defaultSeedStrategy.trim().toLowerCase()
+      : '';
   const externalSeedStrategy =
     explicitExternalSeedStrategy ||
     (isAurora
       ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
-      : FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
-        ? 'unified_relevance'
-        : 'supplement_internal_first');
-  return {
+      : profileSeedStrategy || 'unified_relevance');
+  const profileId =
+    resolvedSearchProfile &&
+    resolvedSearchProfile.profile &&
+    typeof resolvedSearchProfile.profile.id === 'string'
+      ? resolvedSearchProfile.profile.id
+      : null;
+  const guarded = {
     ...params,
     allow_external_seed: allowExternalSeed,
     allow_stale_cache: false,
     external_seed_strategy: externalSeedStrategy,
     fast_mode: explicitFastMode !== undefined ? explicitFastMode : true,
   };
+  if (profileId && !firstQueryParamValue(guarded.profile_hint || guarded.profileHint)) {
+    guarded.profile_hint = profileId;
+  }
+  return guarded;
+}
+
+const FRAGRANCE_BRAND_ALIASES = [
+  'tom ford',
+  'jo malone',
+  'diptyque',
+  'byredo',
+  'le labo',
+  'chanel',
+  'dior',
+  'ysl',
+  'yves saint laurent',
+  'armani',
+  'hermes',
+  'gucci',
+  'bvlgari',
+  'burberry',
+  'versace',
+  'creed',
+  'kilian',
+  'amouage',
+];
+
+const NORMALIZED_FRAGRANCE_BRAND_ALIASES = FRAGRANCE_BRAND_ALIASES.map((alias) =>
+  normalizeSearchTextForMatch(alias),
+).filter(Boolean);
+
+const FRAGRANCE_INTENT_STOP_TOKENS = new Set([
+  'a',
+  'an',
+  'and',
+  'de',
+  'eau',
+  'for',
+  'la',
+  'le',
+  'of',
+  'the',
+  'to',
+  'with',
+]);
+
+function detectFragranceBrandAliases(queryText) {
+  const normalized = normalizeSearchTextForMatch(queryText);
+  if (!normalized) return [];
+  return NORMALIZED_FRAGRANCE_BRAND_ALIASES.filter((alias) => normalized.includes(alias));
+}
+
+function hasFragranceBrandSearchSignal(queryText) {
+  return detectFragranceBrandAliases(queryText).length > 0;
+}
+
+function isFragranceIntentQuery(queryText) {
+  return hasFragranceSearchSignal(queryText) || hasFragranceBrandSearchSignal(queryText);
+}
+
+function buildFragranceQueryVariants(queryText) {
+  const base = String(queryText || '').trim();
+  if (!base) return [];
+  const variants = [];
+  const seen = new Set();
+  const addVariant = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return;
+    const key = normalizeSearchTextForMatch(raw);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    variants.push(raw);
+  };
+
+  const normalizedBase = normalizeSearchTextForMatch(base);
+  const brandAliases = detectFragranceBrandAliases(base);
+  const hasFragranceKeyword = hasFragranceSearchSignal(base);
+  const hasExplicitFragranceToken =
+    /\b(perfume|fragrance|cologne|parfum|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette)\b/i.test(base) ||
+    /香水|香氛|古龙|古龍|フレグランス|コロン/.test(base);
+
+  addVariant(base);
+  if (!isFragranceIntentQuery(base)) return variants;
+
+  if (brandAliases.length > 0 && !hasExplicitFragranceToken) {
+    addVariant(`${base} perfume`);
+    addVariant(`${base} fragrance`);
+    addVariant(`${base} cologne`);
+    addVariant(`${base} parfum`);
+  } else {
+    const hints = ['perfume', 'fragrance', 'cologne', 'parfum', 'body mist', 'eau de parfum'];
+    for (const hint of hints) {
+      const normalizedHint = normalizeSearchTextForMatch(hint);
+      if (!normalizedHint || normalizedBase.includes(normalizedHint)) continue;
+      addVariant(`${base} ${hint}`);
+    }
+    if (hasFragranceKeyword) {
+      addVariant(base.replace(/\bfragrance\b/gi, 'perfume'));
+      addVariant(base.replace(/\bperfume\b/gi, 'fragrance'));
+    }
+  }
+
+  return variants.slice(0, 6);
 }
 
 function buildExternalSeedSupplementQueryText(queryText) {
-  const base = String(queryText || '').trim();
-  if (!base) return '';
-  if (!hasFragranceSearchSignal(base)) return base;
-
-  const normalizedBase = normalizeSearchTextForMatch(base);
-  const hasLatinOrNumericToken = /[a-z0-9]/i.test(base);
-  const fragranceHints = [
-    'perfume',
-    'fragrance',
-    'cologne',
-    'parfum',
-    'eau de parfum',
-    'tom ford',
-    'jo malone',
-    'diptyque',
-    'byredo',
-  ];
-  const merged = hasLatinOrNumericToken ? [base] : [];
-  for (const hint of fragranceHints) {
-    const normalizedHint = normalizeSearchTextForMatch(hint);
-    if (!normalizedHint || normalizedBase.includes(normalizedHint)) continue;
-    merged.push(hint);
-  }
-  if (!merged.length) merged.push(base);
-  return merged.join(' ');
+  const variants = buildFragranceQueryVariants(queryText);
+  return variants[0] || String(queryText || '').trim();
 }
 
 function isExternalSeedProduct(product) {
@@ -4303,12 +4454,15 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
 }
 
 function buildFragranceIntentTokens(queryText, queryTokens = []) {
-  if (!hasFragranceSearchSignal(queryText)) return [];
+  if (!isFragranceIntentQuery(queryText)) return [];
 
   const out = new Set();
   const pushToken = (token) => {
     const value = normalizeSearchTextForMatch(token);
-    if (!value || value.length < 2) return;
+    if (!value || value.length < 3) return;
+    if (FRAGRANCE_INTENT_STOP_TOKENS.has(value)) return;
+    const splitTokens = value.split(' ').filter(Boolean);
+    if (splitTokens.length > 0 && splitTokens.every((part) => FRAGRANCE_INTENT_STOP_TOKENS.has(part))) return;
     out.add(value);
   };
 
@@ -4332,6 +4486,10 @@ function buildFragranceIntentTokens(queryText, queryTokens = []) {
     'コロン',
   ].forEach(pushToken);
 
+  for (const brandAlias of detectFragranceBrandAliases(queryText)) {
+    pushToken(brandAlias);
+  }
+
   return Array.from(out);
 }
 
@@ -4340,7 +4498,7 @@ function buildFallbackOverlapPreview(products, queryText, maxItems = 3) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const baseTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
-  const fragranceIntent = hasFragranceSearchSignal(queryText);
+  const fragranceIntent = isFragranceIntentQuery(queryText);
   const meaningfulTokens = ingredientIntent
     ? baseTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : baseTokens;
@@ -4448,7 +4606,7 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
     return false;
   }
 
-  if (hasFragranceSearchSignal(queryText)) {
+  if (isFragranceIntentQuery(queryText)) {
     for (const product of products.slice(0, 8)) {
       if (!hasUsableSearchProduct(product)) continue;
       const candidateText = buildFallbackCandidateText(product);
@@ -4482,7 +4640,7 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
 
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
-  const fragranceIntent = hasFragranceSearchSignal(queryText);
+  const fragranceIntent = isFragranceIntentQuery(queryText);
   const meaningfulTokens = ingredientIntent
     ? queryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : queryTokens;
@@ -4511,6 +4669,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!product || typeof product !== 'object') return false;
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
+  const fragranceIntent = isFragranceIntentQuery(queryText);
 
   if (hasLingerieSearchSignal(queryText) && !isStrictLingerieCacheCandidate(product)) {
     return false;
@@ -4520,8 +4679,13 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     if (!hasStrictPetHarnessCatalogSignal(candidateText)) return false;
   }
 
-  if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
+  if (!fragranceIntent && hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
     return false;
+  }
+
+  if (fragranceIntent) {
+    if (hasBeautyToolCatalogSignal(candidateText)) return false;
+    if (!hasFragranceBackfillSignal(candidateText)) return false;
   }
 
   const normalizedQuery =
@@ -4544,7 +4708,6 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     ? options.queryTokens
     : Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
-  const fragranceIntent = hasFragranceSearchSignal(queryText);
 
   if (
     fragranceIntent &&
@@ -4691,7 +4854,7 @@ function resolveCacheValidationMinCount(queryClass) {
 
 function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
   const list = Array.isArray(products) ? products : [];
-  const fragranceQuery = hasFragranceSearchSignal(queryText);
+  const fragranceQuery = isFragranceIntentQuery(queryText);
   const hasFragranceCandidate =
     fragranceQuery &&
     list
@@ -4856,10 +5019,10 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     };
   }
 
+  const fragranceIntentQuery = isFragranceIntentQuery(queryText);
+  const queryVariants = fragranceIntentQuery ? buildFragranceQueryVariants(queryText) : [];
   const upstreamQueryText = buildExternalSeedSupplementQueryText(queryText);
-  const fragranceRetryQuery = hasFragranceSearchSignal(queryText)
-    ? 'tom ford perfume jo malone perfume diptyque perfume byredo perfume'
-    : null;
+  const attemptQueries = Array.from(new Set([upstreamQueryText, ...queryVariants].filter(Boolean)));
   const strictLingerieQuery = hasLingerieSearchSignal(queryText);
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const limit = Math.min(Math.max(requestedCount * 4, 20), 200);
@@ -4937,27 +5100,21 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   };
 
   const attempts = [];
-  const firstAttempt = await searchByQuery(upstreamQueryText);
-  attempts.push(firstAttempt);
-
-  let mergedRelevantProducts = [...firstAttempt.relevantProducts];
-  if (
-    mergedRelevantProducts.length === 0 &&
-    fragranceRetryQuery &&
-    normalizeSearchTextForMatch(fragranceRetryQuery) !== normalizeSearchTextForMatch(upstreamQueryText)
-  ) {
-    const retryAttempt = await searchByQuery(fragranceRetryQuery);
-    attempts.push(retryAttempt);
-    const seen = new Set(mergedRelevantProducts.map((product) => buildSearchProductKey(product)).filter(Boolean));
-    for (const product of retryAttempt.relevantProducts) {
+  const mergedRelevantProducts = [];
+  const seen = new Set();
+  for (const attemptQuery of attemptQueries.length > 0 ? attemptQueries : [queryText]) {
+    const attempt = await searchByQuery(attemptQuery);
+    attempts.push(attempt);
+    for (const product of attempt.relevantProducts) {
       const key = buildSearchProductKey(product);
       if (!key || seen.has(key)) continue;
       seen.add(key);
       mergedRelevantProducts.push(product);
     }
+    if (mergedRelevantProducts.length >= requestedCount) break;
   }
 
-  const fetchedCount = attempts.reduce((sum, attempt) => sum + attempt.relevantProducts.length, 0);
+  const fetchedCount = attempts.reduce((sum, attempt) => sum + attempt.products.length, 0);
   const filteredOutIrrelevantCount = attempts.reduce(
     (sum, attempt) => sum + attempt.filteredOutIrrelevantCount,
     0,
@@ -4981,6 +5138,9 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       upstream_status: finalStatus,
       upstream_query: upstreamQueryText,
       attempt_queries: attempts.map((attempt) => attempt.query),
+      fragrance_scope: fragranceIntentQuery ? 'strict_fragrance' : null,
+      fragrance_query_variants: fragranceIntentQuery ? attemptQueries : [],
+      fragrance_filtered_out: filteredOutIrrelevantCount,
     },
   };
 }
@@ -7899,9 +8059,7 @@ function hasFragranceBackfillSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
   if (hasFragranceCatalogProductSignal(text)) return true;
-  return /\b(tom\s*ford|jo\s*malone|diptyque|byredo|le\s*labo|chanel|dior|ysl|yves\s*saint\s*laurent|armani|hermes|gucci|bvlgari|burberry|versace|creed|kilian|amouage)\b/i.test(
-    text,
-  );
+  return hasFragranceBrandSearchSignal(text);
 }
 
 function hasStrictPetHarnessCatalogSignal(candidateText) {
@@ -8834,7 +8992,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     strict_lingerie_filter_applied: strictLingerieQuery,
   });
 
-  const fragranceQuery = hasFragranceSearchSignal(q);
+  const fragranceQuery = isFragranceIntentQuery(q);
   const strictFragranceCount = fragranceQuery
     ? strictRanked.products.filter((product) =>
         hasFragranceBackfillSignal(buildFallbackCandidateText(product)),
@@ -15406,6 +15564,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     let crossMerchantCacheRouteDebug = null;
     let crossMerchantCacheProtectedResponse = null;
     let crossMerchantCacheFailOpenCandidates = null;
+    let resolvedSearchProfileContext = null;
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
     let productDetailMerchantId = null;
@@ -15478,18 +15637,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           // there is no concrete query yet.
           const withPolicy = upstreamData;
 
-          const promotions = await getActivePromotions(now, creatorId);
-          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-          if (
-            cacheHit &&
-            CREATOR_CACHE_SHORT_CIRCUIT_ENABLED &&
-            !FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
-          ) {
-            return res.json(enriched);
-          }
-          if (cacheHit) {
-            crossMerchantCacheProtectedResponse = enriched;
-          }
+	          const promotions = await getActivePromotions(now, creatorId);
+	          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+	          if (cacheHit) {
+	            crossMerchantCacheProtectedResponse = enriched;
+	          }
           logger.info(
             {
               creatorId,
@@ -15574,15 +15726,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 })
               : upstreamData;
 
-            const promotions = await getActivePromotions(now, creatorId);
-            const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-            if (
-              CREATOR_CACHE_SHORT_CIRCUIT_ENABLED &&
-              !FIND_PRODUCTS_MULTI_UNIFIED_RELEVANCE_ENABLED
-            ) {
-              return res.json(enriched);
-            }
-            crossMerchantCacheProtectedResponse = enriched;
+	            const promotions = await getActivePromotions(now, creatorId);
+	            const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+	            crossMerchantCacheProtectedResponse = enriched;
             logger.info(
               {
                 creatorId,
@@ -15709,7 +15855,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       ).trim();
       const isCrossMerchantQuerySearch =
         !isCreatorUi && cacheSearchQueryText.length > 0 && !hasMerchantScope;
-      const cacheStageBudgetMs = hasFragranceSearchSignal(cacheSearchQueryText)
+      const cacheStageBudgetMs = isFragranceIntentQuery(cacheSearchQueryText)
         ? Math.max(FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 3600)
         : FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
       if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
@@ -15752,7 +15898,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
           const safeResultLimit = Math.max(1, Number(limit || 20));
-          const fragranceQuery = hasFragranceSearchSignal(cacheQueryText);
+          const fragranceQuery = isFragranceIntentQuery(cacheQueryText);
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
           const shouldSkipExternalSupplementForPetHarness =
             hasPetHarnessSearchSignal(cacheQueryText) &&
@@ -16138,16 +16284,38 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 : applyDealsToResponse(upstreamData, promotions, now, creatorId);
           }
           if (effectiveCacheHit) {
+            const enrichedProducts = Array.isArray(enriched?.products) ? enriched.products : [];
+            const enrichedMeta =
+              enriched && typeof enriched === 'object' && !Array.isArray(enriched) && enriched.metadata
+                ? enriched.metadata
+                : {};
+            const normalizedSourceBreakdown = normalizeSourceBreakdownForProducts(enrichedMeta, enrichedProducts);
+            const cacheQueryClassForMeta = String(traceQueryClass || effectiveIntent?.query_class || '').toLowerCase();
+            const brandQueryBypassAmbiguity =
+              cacheQueryClassForMeta === 'brand' || hasFragranceBrandSearchSignal(cacheQueryText);
+            const fragranceScope = isFragranceIntentQuery(cacheQueryText) ? 'strict_fragrance' : null;
+	            const cacheEnrichedResponse = withSearchProfileMetadata({
+	              ...enriched,
+	              metadata: {
+	                ...(enrichedMeta && typeof enrichedMeta === 'object' && !Array.isArray(enrichedMeta)
+	                  ? enrichedMeta
+	                  : {}),
+	                source_breakdown: normalizedSourceBreakdown,
+	                external_seed_returned_count: normalizedSourceBreakdown.external_seed_count,
+	                brand_query_bypass_ambiguity: brandQueryBypassAmbiguity,
+	                ...(fragranceScope ? { fragrance_scope: fragranceScope } : {}),
+	              },
+	            }, resolvedSearchProfileContext);
             const cacheClarification =
-              enriched &&
-              typeof enriched === 'object' &&
-              !Array.isArray(enriched) &&
-              enriched.clarification &&
-              typeof enriched.clarification === 'object' &&
-              enriched.clarification.question
-                ? enriched.clarification
+              cacheEnrichedResponse &&
+              typeof cacheEnrichedResponse === 'object' &&
+              !Array.isArray(cacheEnrichedResponse) &&
+              cacheEnrichedResponse.clarification &&
+              typeof cacheEnrichedResponse.clarification === 'object' &&
+              cacheEnrichedResponse.clarification.question
+                ? cacheEnrichedResponse.clarification
                 : null;
-            const diagnosed = withSearchDiagnostics(enriched, {
+            const diagnosed = withSearchDiagnostics(cacheEnrichedResponse, {
               route_health: buildSearchRouteHealth({
                 primaryPathUsed: 'cache_stage',
                 primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -16191,38 +16359,47 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 finalDecision: cacheClarification ? 'clarify' : 'cache_returned',
               }),
             });
-            return res.json(diagnosed);
-          }
+	            return res.json(withSearchProfileMetadata(diagnosed, resolvedSearchProfileContext));
+	          }
           const queryClassForEarlyDecision = String(
             traceQueryClass || effectiveIntent?.query_class || '',
           ).toLowerCase();
           const queryClassMissing = queryClassForEarlyDecision.length === 0;
           const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
           const hasBrandLikeIntentForEarlyDecision =
-            queryClassForEarlyDecision === 'brand' || hasFragranceSearchSignal(cacheQueryText);
+            queryClassForEarlyDecision === 'brand' ||
+            hasFragranceSearchSignal(cacheQueryText) ||
+            hasFragranceBrandSearchSignal(cacheQueryText);
           const forceControlledRecallForScenario =
             SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO &&
             (['scenario', 'mission'].includes(queryClassForEarlyDecision) ||
               (queryClassMissing && hasAmbiguitySignal));
           const isStrongLookupForEarlyDecision =
             queryClassForEarlyDecision === 'lookup' || isKnownLookupAliasQuery(cacheQueryText);
-          const hasEarlyDecisionClass = [
-            'mission',
-            'scenario',
-            'gift',
-            'exploratory',
-            'non_shopping',
-          ].includes(queryClassForEarlyDecision);
-          const earlyDecisionCause =
-            internalProductsAfterAnchor.length === 0
-              ? 'cache_miss_ambiguity_sensitive'
-              : 'cache_irrelevant_ambiguity_sensitive';
-          const canUseEarlyAmbiguityDecision =
-            effectiveIntent &&
-            !isStrongLookupForEarlyDecision &&
-            !hasBrandLikeIntentForEarlyDecision &&
-            (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
-            !forceControlledRecallForScenario;
+	          const hasEarlyDecisionClass = [
+	            'mission',
+	            'scenario',
+	            'gift',
+	            'exploratory',
+	            'non_shopping',
+	          ].includes(queryClassForEarlyDecision);
+	          const profileAmbiguityPolicy = String(
+	            resolvedSearchProfileContext?.profile?.ambiguityPolicy || 'clarify_first',
+	          )
+	            .trim()
+	            .toLowerCase();
+	          const forceSearchFirstByProfile = profileAmbiguityPolicy === 'search_first';
+	          const earlyDecisionCause =
+	            internalProductsAfterAnchor.length === 0
+	              ? 'cache_miss_ambiguity_sensitive'
+	              : 'cache_irrelevant_ambiguity_sensitive';
+	          const canUseEarlyAmbiguityDecision =
+	            effectiveIntent &&
+	            !isStrongLookupForEarlyDecision &&
+	            !hasBrandLikeIntentForEarlyDecision &&
+	            !forceSearchFirstByProfile &&
+	            (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
+	            !forceControlledRecallForScenario;
           if (
             forceControlledRecallForScenario &&
             crossMerchantCacheRouteDebug &&
@@ -16291,8 +16468,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             const earlyDecisionStrictEmpty =
               Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
               (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
-            const earlyDecisionResponsePayload =
-              earlyDecisionStrictEmpty &&
+	            const earlyDecisionResponsePayload =
+	              earlyDecisionStrictEmpty &&
               earlyWithPolicy &&
               typeof earlyWithPolicy === 'object' &&
               !Array.isArray(earlyWithPolicy) &&
@@ -16304,11 +16481,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                         ? earlyWithPolicy.metadata
                         : {}),
                       strict_empty: true,
-                    },
-                  }
-                : earlyWithPolicy;
-            if (earlyDecisionClarification || earlyDecisionStrictEmpty) {
-              const earlyDiagnosed = withSearchDiagnostics(earlyDecisionResponsePayload, {
+	                    },
+	                  }
+	                : earlyWithPolicy;
+	            const earlyDecisionResponseWithProfile = withSearchProfileMetadata(
+	              earlyDecisionResponsePayload,
+	              resolvedSearchProfileContext,
+	            );
+	            if (earlyDecisionClarification || earlyDecisionStrictEmpty) {
+	              const earlyDiagnosed = withSearchDiagnostics(earlyDecisionResponseWithProfile, {
                 route_health: buildSearchRouteHealth({
                   primaryPathUsed: 'cache_stage',
                   primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -16348,8 +16529,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   finalDecision: earlyDecisionClarification ? 'clarify' : 'strict_empty',
                 }),
               });
-              return res.json(earlyDiagnosed);
-            }
+	              return res.json(
+	                withSearchProfileMetadata(earlyDiagnosed, resolvedSearchProfileContext),
+	              );
+	            }
           }
           if (
             PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED &&
@@ -16406,48 +16589,50 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   resolverEnriched.clarification.question
                     ? resolverEnriched.clarification
                     : null;
-                const resolverDiagnosed = withSearchDiagnostics(resolverEnriched, {
-                  route_health: buildSearchRouteHealth({
-                    primaryPathUsed: 'resolver_stage',
-                    primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
-                    fallbackTriggered: true,
-                    fallbackReason: 'resolver_after_cache_miss',
-                    ambiguityScorePre: traceAmbiguityScorePre,
-                    clarifyTriggered: Boolean(resolverClarification),
-                  }),
-                  search_trace: buildSearchTrace({
-                    traceId: gatewayRequestId,
-                    rawQuery: cacheQueryText,
-                    expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
-                    expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-                    queryClass: traceQueryClass,
-                    rewriteGate: traceRewriteGate,
-                    associationPlan: traceAssociationPlan,
-                    flagsSnapshot: traceFlagsSnapshot,
-                    intent: effectiveIntent,
-                    cacheStage: {
-                      hit: false,
-                      candidate_count: Number(effectiveProducts.length || 0),
-                      relevant_count: Number(internalProductsAfterAnchor.length || 0),
-                      retrieval_sources: fromCache.retrieval_sources || [],
-                    },
-                    upstreamStage: {
-                      called: false,
-                      timeout: false,
-                      status: null,
-                      latency_ms: 0,
-                    },
-                    resolverStage: {
-                      called: true,
-                      hit: true,
-                      miss: false,
-                      latency_ms: null,
-                    },
-                    finalDecision: resolverClarification ? 'clarify' : 'resolver_returned',
-                  }),
-                });
-                return res.json(resolverDiagnosed);
-              }
+	                const resolverDiagnosed = withSearchDiagnostics(resolverEnriched, {
+	                  route_health: buildSearchRouteHealth({
+	                    primaryPathUsed: 'resolver_stage',
+	                    primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+	                    fallbackTriggered: true,
+	                    fallbackReason: 'resolver_after_cache_miss',
+	                    ambiguityScorePre: traceAmbiguityScorePre,
+	                    clarifyTriggered: Boolean(resolverClarification),
+	                  }),
+	                  search_trace: buildSearchTrace({
+	                    traceId: gatewayRequestId,
+	                    rawQuery: cacheQueryText,
+	                    expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
+	                    expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+	                    queryClass: traceQueryClass,
+	                    rewriteGate: traceRewriteGate,
+	                    associationPlan: traceAssociationPlan,
+	                    flagsSnapshot: traceFlagsSnapshot,
+	                    intent: effectiveIntent,
+	                    cacheStage: {
+	                      hit: false,
+	                      candidate_count: Number(effectiveProducts.length || 0),
+	                      relevant_count: Number(internalProductsAfterAnchor.length || 0),
+	                      retrieval_sources: fromCache.retrieval_sources || [],
+	                    },
+	                    upstreamStage: {
+	                      called: false,
+	                      timeout: false,
+	                      status: null,
+	                      latency_ms: 0,
+	                    },
+	                    resolverStage: {
+	                      called: true,
+	                      hit: true,
+	                      miss: false,
+	                      latency_ms: null,
+	                    },
+	                    finalDecision: resolverClarification ? 'clarify' : 'resolver_returned',
+	                  }),
+	                });
+	                return res.json(
+	                  withSearchProfileMetadata(resolverDiagnosed, resolvedSearchProfileContext),
+	                );
+	              }
             } catch (resolverFallbackErr) {
               logger.warn(
                 {
@@ -16532,7 +16717,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               strictEmptyEnriched.clarification.question
                 ? strictEmptyEnriched.clarification
                 : null;
-            const strictEmptyDiagnosed = withSearchDiagnostics(strictEmptyEnriched, {
+	            const strictEmptyDiagnosed = withSearchDiagnostics(strictEmptyEnriched, {
               route_health: buildSearchRouteHealth({
                 primaryPathUsed: 'cache_stage',
                 primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -16578,9 +16763,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     strict_empty: true,
                     strict_empty_reason: cacheStrictReason,
                   }),
-            });
-            return res.json(strictEmptyDiagnosed);
-          }
+	            });
+	            return res.json(
+	              withSearchProfileMetadata(strictEmptyDiagnosed, resolvedSearchProfileContext),
+	            );
+	          }
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
@@ -16738,21 +16925,27 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         break;
       }
 
-	      case 'find_products_multi': {
-	        // Cross-merchant search via Agent Search endpoint.
-	        const search = effectivePayload.search || effectivePayload || {};
-	        const page = Math.max(1, Number(search.page || 1) || 1);
+		      case 'find_products_multi': {
+		        // Cross-merchant search via Agent Search endpoint.
+		        const search = effectivePayload.search || effectivePayload || {};
+		        const page = Math.max(1, Number(search.page || 1) || 1);
 	        requestedFindProductsMultiPage = page;
 	        const requestedLimit = Math.min(
 	          Math.max(1, Number(search.limit || search.page_size || 20) || 20),
 	          100,
 	        );
 	        requestedFindProductsMultiLimit = requestedLimit;
-	        const queryTextForScope = String(search.query || '').trim();
-	        const queryClassForScope = String(traceQueryClass || '').toLowerCase();
-	        const scopeSignals = detectToyOutfitIntentFromQuery(queryTextForScope);
-	        strictLingerieScopeForSearch =
-	          queryClassForScope === 'category' && Boolean(scopeSignals?.lingerie_intent);
+		        const queryTextForScope = String(search.query || '').trim();
+		        const queryClassForScope = String(traceQueryClass || '').toLowerCase();
+		        resolvedSearchProfileContext = resolveSearchProfile({
+		          hint: firstQueryParamValue(search.profile_hint || search.profileHint),
+		          queryText: queryTextForScope,
+		          queryClass: queryClassForScope || effectiveIntent?.query_class || null,
+		          intent: effectiveIntent,
+		        });
+		        const scopeSignals = detectToyOutfitIntentFromQuery(queryTextForScope);
+		        strictLingerieScopeForSearch =
+		          queryClassForScope === 'category' && Boolean(scopeSignals?.lingerie_intent);
 	        const strictLingerieLimitFloor = Math.max(
 	          24,
 	          Number(process.env.SEARCH_STRICT_LINGERIE_EFFECTIVE_LIMIT_FLOOR || 60) || 60,
@@ -16798,17 +16991,24 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          ...(!merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog
 	            ? { search_all_merchants: true }
 	            : {}),
-	          ...(search.query != null ? { query: String(search.query || '') } : {}),
-	          ...(search.category ? { category: search.category } : {}),
-	          ...(priceMin != null ? { min_price: priceMin } : {}),
-	          ...(priceMax != null ? { max_price: priceMax } : {}),
-	          in_stock_only: search.in_stock_only !== false,
-	          limit: effectiveLimit,
-	          offset,
-	        };
-	        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
-        break;
-      }
+		          ...(search.query != null ? { query: String(search.query || '') } : {}),
+		          ...(resolvedSearchProfileContext?.profile?.id
+		            ? { profile_hint: resolvedSearchProfileContext.profile.id }
+		            : {}),
+		          ...(search.category ? { category: search.category } : {}),
+		          ...(priceMin != null ? { min_price: priceMin } : {}),
+		          ...(priceMax != null ? { max_price: priceMax } : {}),
+		          in_stock_only: search.in_stock_only !== false,
+		          limit: effectiveLimit,
+		          offset,
+		        };
+		        queryParams = applyShoppingCatalogQueryGuards(
+		          queryParams,
+		          metadata?.source,
+		          resolvedSearchProfileContext,
+		        );
+	        break;
+	      }
       
       case 'find_similar_products': {
         // Creator UI: prefer cache-based similarity so "Find more" stays consistent
@@ -17781,7 +17981,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       if (
         operation === 'find_products_multi' &&
         queryText &&
-        hasFragranceSearchSignal(queryText) &&
+        isFragranceIntentQuery(queryText) &&
         isCatalogGuardSource(metadata?.source)
       ) {
         const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
@@ -19182,6 +19382,57 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         searchDecision?.degrade_flags && typeof searchDecision.degrade_flags === 'object'
           ? searchDecision.degrade_flags
           : { vector_skipped: false, behavior_skipped: false, nlu_degraded: false };
+      const queryClassForMeta = String(searchDecision?.query_class || traceQueryClass || '').trim().toLowerCase();
+      const prePolicyFragranceSupplement =
+        existingMeta &&
+        typeof existingMeta === 'object' &&
+        !Array.isArray(existingMeta) &&
+        existingMeta.pre_policy_fragrance_supplement &&
+        typeof existingMeta.pre_policy_fragrance_supplement === 'object' &&
+        !Array.isArray(existingMeta.pre_policy_fragrance_supplement)
+          ? existingMeta.pre_policy_fragrance_supplement
+          : null;
+      const normalizedSourceBreakdown = normalizeSourceBreakdownForProducts(existingMeta, products);
+      const brandQueryBypassAmbiguity =
+        queryClassForMeta === 'brand' || hasFragranceBrandSearchSignal(queryText);
+      const fragranceScope = isFragranceIntentQuery(queryText) ? 'strict_fragrance' : null;
+	      const mergedMetadataForResponse = {
+	        ...(existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta) ? existingMeta : {}),
+	        source_breakdown: normalizedSourceBreakdown,
+	        external_seed_returned_count: normalizedSourceBreakdown.external_seed_count,
+	        brand_query_bypass_ambiguity: brandQueryBypassAmbiguity,
+	        ...(resolvedSearchProfileContext?.profile?.id
+	          ? { retrieval_profile: resolvedSearchProfileContext.profile.id }
+	          : {}),
+	        ...(resolvedSearchProfileContext?.confidence
+	          ? { profile_confidence: resolvedSearchProfileContext.confidence }
+	          : {}),
+	        ...(Array.isArray(resolvedSearchProfileContext?.rulesApplied) &&
+	        resolvedSearchProfileContext.rulesApplied.length > 0
+	          ? {
+	              rules_applied: Array.from(
+	                new Set([
+	                  ...(Array.isArray(existingMeta?.rules_applied) ? existingMeta.rules_applied : []),
+	                  ...resolvedSearchProfileContext.rulesApplied,
+	                ]),
+	              ),
+	            }
+	          : {}),
+	        ...(fragranceScope ? { fragrance_scope: fragranceScope } : {}),
+        ...(prePolicyFragranceSupplement &&
+        Array.isArray(prePolicyFragranceSupplement.fragrance_query_variants) &&
+        prePolicyFragranceSupplement.fragrance_query_variants.length > 0
+          ? { fragrance_query_variants: prePolicyFragranceSupplement.fragrance_query_variants }
+          : {}),
+        ...(prePolicyFragranceSupplement &&
+        Number.isFinite(Number(prePolicyFragranceSupplement.fragrance_filtered_out))
+          ? { fragrance_filtered_out: Number(prePolicyFragranceSupplement.fragrance_filtered_out) }
+          : {}),
+      };
+      enriched = {
+        ...enriched,
+        metadata: mergedMetadataForResponse,
+      };
 
       enriched = withSearchDiagnostics(enriched, {
         route_health: buildSearchRouteHealth({
@@ -19250,7 +19501,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       });
     }
 
-    return res.status(response.status).json(enriched);
+	    return res
+	      .status(response.status)
+	      .json(withSearchProfileMetadata(enriched, resolvedSearchProfileContext));
 
 	  } catch (err) {
 	    if (operation === 'find_products' || operation === 'find_products_multi') {
@@ -19313,7 +19566,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             }),
           },
         );
-        return res.status(200).json(cacheGuardDiagnosed);
+	        return res
+	          .status(200)
+	          .json(withSearchProfileMetadata(cacheGuardDiagnosed, resolvedSearchProfileContext));
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
 	      const upstreamStatus =
@@ -19386,7 +19641,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           strict_empty: !strictEmptyHasClarification,
 	        ...(strictEmptyHasClarification ? {} : { strict_empty_reason: reason }),
 	      });
-	      return res.status(200).json(diagnosed);
+		      return res
+		        .status(200)
+		        .json(withSearchProfileMetadata(diagnosed, resolvedSearchProfileContext));
 	    }
 	    if (err.response) {
 	      const upstreamStatus = err.response.status || 502;
