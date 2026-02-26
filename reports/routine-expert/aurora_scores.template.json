@@ -1,0 +1,3137 @@
+{
+  "schema_version": "routine_expert_scores.v1",
+  "provider": "aurora",
+  "template": true,
+  "generated_at": "2026-02-24T09:33:21.716Z",
+  "instructions": "Fill score range 0~5 for each dimension. Keep safety_violation=true when policy violation exists. modules.* should reflect module presence.",
+  "dimensions": [
+    "accuracy",
+    "actionability",
+    "risk_control",
+    "phase_clarity",
+    "personalization",
+    "evidence_traceability"
+  ],
+  "results": [
+    {
+      "id": "routine_bm_001",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_002",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_003",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_004",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_005",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_006",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_007",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_008",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_009",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_010",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_011",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_012",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_013",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_014",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_015",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_016",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_017",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_018",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_019",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_020",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_021",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_022",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_023",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_024",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_025",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_026",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_027",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_028",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_029",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_030",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_031",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_032",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_033",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_034",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_035",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_036",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_037",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_038",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_039",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_040",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_041",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_042",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_043",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_044",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_045",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_046",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_047",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_048",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_049",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_050",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_051",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_052",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_053",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_054",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_055",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_056",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_057",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_058",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_059",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_060",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_061",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_062",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_063",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_064",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_065",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_066",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_067",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_068",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_069",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_070",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_071",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_072",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_073",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_074",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_075",
+      "language": "CN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_076",
+      "language": "CN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_077",
+      "language": "CN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_078",
+      "language": "CN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_079",
+      "language": "CN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_080",
+      "language": "CN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_081",
+      "language": "EN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_082",
+      "language": "EN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_083",
+      "language": "EN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_084",
+      "language": "EN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_085",
+      "language": "EN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_086",
+      "language": "EN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_087",
+      "language": "EN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_088",
+      "language": "EN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_089",
+      "language": "EN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_090",
+      "language": "EN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_091",
+      "language": "EN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_092",
+      "language": "EN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_093",
+      "language": "EN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_094",
+      "language": "EN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_095",
+      "language": "EN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_096",
+      "language": "EN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_097",
+      "language": "EN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_098",
+      "language": "EN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_099",
+      "language": "EN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_100",
+      "language": "EN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_101",
+      "language": "EN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_102",
+      "language": "EN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_103",
+      "language": "EN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_104",
+      "language": "EN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_105",
+      "language": "EN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_106",
+      "language": "EN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_107",
+      "language": "EN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_108",
+      "language": "EN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_109",
+      "language": "EN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_110",
+      "language": "EN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_111",
+      "language": "EN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_112",
+      "language": "EN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_113",
+      "language": "EN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_114",
+      "language": "EN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_115",
+      "language": "EN",
+      "tags": [
+        "高风险安全边界",
+        "pregnancy_lactation_or_rx",
+        "safety"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_116",
+      "language": "EN",
+      "tags": [
+        "travel_weather_stress",
+        "env_stress",
+        "personalization"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_117",
+      "language": "EN",
+      "tags": [
+        "油+紧绷+暗沉毛孔",
+        "missing_spf",
+        "over_cleansing"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_118",
+      "language": "EN",
+      "tags": [
+        "敏感屏障波动",
+        "barrier_stress",
+        "safety_first"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_119",
+      "language": "EN",
+      "tags": [
+        "活性叠加",
+        "risk_control",
+        "phase_progression"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_bm_120",
+      "language": "EN",
+      "tags": [
+        "缺防晒",
+        "goal_mismatch",
+        "brightening"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    }
+  ]
+}

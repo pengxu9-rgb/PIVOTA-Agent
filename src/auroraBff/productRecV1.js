@@ -222,6 +222,8 @@ function buildProductOutput({
     product_id: product.product_id,
     name: product.name,
     ...(product.brand ? { brand: product.brand } : {}),
+    retrieval_source: 'catalog',
+    retrieval_reason: 'catalog_evidence_match',
     why_match: whyRendered.text,
     why_match_template_key: whyRendered.template_key,
     why_match_template_fallback: Boolean(whyRendered.fallback),

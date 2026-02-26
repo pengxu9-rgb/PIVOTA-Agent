@@ -1,14 +1,4 @@
 describe('creator catalog auto-sync retry on long timeout', () => {
-  const buildAxiosMock = (postImpl) => {
-    const axiosFn = jest.fn(async () => ({ data: {} }));
-    axiosFn.post = postImpl;
-    axiosFn.defaults = {};
-    axiosFn.create = jest.fn(() => ({
-      request: jest.fn(async () => ({ data: {} })),
-    }));
-    return axiosFn;
-  };
-
   let prevEnv;
 
   beforeEach(() => {
@@ -21,7 +11,6 @@ describe('creator catalog auto-sync retry on long timeout', () => {
       CATALOG_SYNC_MERCHANT_IDS: process.env.CATALOG_SYNC_MERCHANT_IDS,
       CREATOR_CATALOG_AUTO_SYNC_ENABLED: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED,
       CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS: process.env.CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
-      CREATOR_CATALOG_AUTO_SYNC_LIMIT: process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT,
       CREATOR_CATALOG_AUTO_SYNC_RETRIES: process.env.CREATOR_CATALOG_AUTO_SYNC_RETRIES,
       CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS:
         process.env.CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
@@ -40,7 +29,6 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     process.env.CATALOG_SYNC_MERCHANT_IDS = 'merch_timeout_case';
     process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED = 'true';
     process.env.CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS = '120000';
-    process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT = '5000';
     process.env.CREATOR_CATALOG_AUTO_SYNC_RETRIES = '1';
     process.env.CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS = '1';
     process.env.CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS = '600';
@@ -68,7 +56,6 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     restore('CATALOG_SYNC_MERCHANT_IDS');
     restore('CREATOR_CATALOG_AUTO_SYNC_ENABLED');
     restore('CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS');
-    restore('CREATOR_CATALOG_AUTO_SYNC_LIMIT');
     restore('CREATOR_CATALOG_AUTO_SYNC_RETRIES');
     restore('CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS');
     restore('CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS');
@@ -84,7 +71,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
       .fn()
       .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 120000ms exceeded' })
       .mockResolvedValueOnce({ data: { summary: { synced: 10 } } });
-    jest.doMock('axios', () => buildAxiosMock(axiosPost));
+    jest.doMock('axios', () => ({ defaults: {}, post: axiosPost }));
 
     const app = require('../src/server');
     await app._debug.runCreatorCatalogAutoSync();
@@ -107,68 +94,6 @@ describe('creator catalog auto-sync retry on long timeout', () => {
         ok: true,
         attempts: 2,
         timeout_streak: 0,
-        limit_effective: 5000,
-        truncated: false,
-      }),
-    );
-  });
-
-  test('marks sync as truncated when upstream reports next page at effective limit', async () => {
-    process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT = '5000';
-    const axiosPost = jest.fn().mockResolvedValue({
-      status: 200,
-      data: {
-        summary: {
-          productsFetched: 5000,
-          nextPageToken: 'next_page_token_1',
-        },
-      },
-    });
-    jest.doMock('axios', () => buildAxiosMock(axiosPost));
-
-    const app = require('../src/server');
-    const result = await app._debug.runCreatorCatalogAutoSync();
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        ok: true,
-        limit_effective: 5000,
-      }),
-    );
-    expect(app._debug.catalogSyncState.per_merchant.merch_timeout_case).toEqual(
-      expect.objectContaining({
-        ok: true,
-        products_fetched: 5000,
-        next_page_token_present: true,
-        truncated: true,
-        truncated_reason: 'limit_reached_with_next_page',
-      }),
-    );
-  });
-
-  test('keeps upstream truncation reason when next page token is unavailable', async () => {
-    const axiosPost = jest.fn().mockResolvedValue({
-      status: 200,
-      data: {
-        summary: {
-          productsFetched: 480,
-          truncated: true,
-          truncatedReason: 'next_page_token_unparseable',
-        },
-      },
-    });
-    jest.doMock('axios', () => buildAxiosMock(axiosPost));
-
-    const app = require('../src/server');
-    await app._debug.runCreatorCatalogAutoSync();
-
-    expect(app._debug.catalogSyncState.per_merchant.merch_timeout_case).toEqual(
-      expect.objectContaining({
-        ok: true,
-        products_fetched: 480,
-        next_page_token_present: false,
-        truncated: true,
-        truncated_reason: 'next_page_token_unparseable',
       }),
     );
   });
@@ -189,7 +114,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
       })
       .mockResolvedValueOnce({ status: 200, data: { summary: { synced: 5 } } })
       .mockResolvedValueOnce({ status: 200, data: { summary: { synced: 6 } } });
-    jest.doMock('axios', () => buildAxiosMock(axiosPost));
+    jest.doMock('axios', () => ({ defaults: {}, post: axiosPost }));
 
     const app = require('../src/server');
     await app._debug.runCreatorCatalogAutoSync();

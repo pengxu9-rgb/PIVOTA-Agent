@@ -1,0 +1,95 @@
+name: Routine Expert Benchmark Gate
+
+on:
+  pull_request:
+    paths:
+      - "scripts/build_routine_expert_benchmark_120.cjs"
+      - "scripts/init_routine_expert_score_templates.cjs"
+      - "scripts/eval_routine_expert_benchmark.cjs"
+      - "scripts/gate_routine_expert_benchmark.sh"
+      - "datasets/routine_expert_benchmark_120.json"
+      - "reports/routine-expert/**"
+      - ".github/workflows/routine-expert-benchmark-gate.yml"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+    inputs:
+      dataset_path:
+        description: "Dataset path"
+        required: false
+        default: "datasets/routine_expert_benchmark_120.json"
+      aurora_scores_path:
+        description: "Aurora scores path"
+        required: false
+        default: "reports/routine-expert/aurora_scores.json"
+      gemini_scores_path:
+        description: "Gemini scores path"
+        required: false
+        default: "reports/routine-expert/gemini_scores.json"
+
+concurrency:
+  group: routine-expert-benchmark-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate benchmark dataset and score templates
+        run: |
+          npm run benchmark:routine:dataset
+          npm run benchmark:routine:init-templates -- --force true
+
+      - name: Check score file presence (PR)
+        if: github.event_name == 'pull_request'
+        id: score_check_pr
+        shell: bash
+        run: |
+          set -euo pipefail
+          has_aurora="false"
+          has_gemini="false"
+          [[ -f "reports/routine-expert/aurora_scores.json" ]] && has_aurora="true"
+          [[ -f "reports/routine-expert/gemini_scores.json" ]] && has_gemini="true"
+          echo "has_aurora=${has_aurora}" >> "$GITHUB_OUTPUT"
+          echo "has_gemini=${has_gemini}" >> "$GITHUB_OUTPUT"
+          if [[ "${has_aurora}" != "true" || "${has_gemini}" != "true" ]]; then
+            echo "PR gate skipped: score files not found at reports/routine-expert/{aurora_scores.json,gemini_scores.json}."
+          fi
+
+      - name: Run benchmark gate (PR when files exist)
+        if: github.event_name == 'pull_request' && steps.score_check_pr.outputs.has_aurora == 'true' && steps.score_check_pr.outputs.has_gemini == 'true'
+        run: npm run gate:routine-expert:benchmark
+
+      - name: Run benchmark gate (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ROUTINE_EXPERT_DATASET_PATH: ${{ github.event.inputs.dataset_path }}
+          ROUTINE_EXPERT_AURORA_SCORES_PATH: ${{ github.event.inputs.aurora_scores_path }}
+          ROUTINE_EXPERT_GEMINI_SCORES_PATH: ${{ github.event.inputs.gemini_scores_path }}
+        run: npm run gate:routine-expert:benchmark
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: routine-expert-benchmark-reports
+          path: |
+            datasets/routine_expert_benchmark_120.json
+            reports/routine-expert/aurora_scores.template.json
+            reports/routine-expert/gemini_scores.template.json
+            reports/routine-expert-benchmark-*.json
+            reports/routine-expert-benchmark-*.md
+          retention-days: 14

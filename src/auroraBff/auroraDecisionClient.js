@@ -1072,6 +1072,7 @@ async function auroraChat({
   baseUrl,
   query,
   timeoutMs,
+  retries,
   llm_provider,
   llm_model,
   anchor_product_id,
@@ -1100,7 +1101,8 @@ async function auroraChat({
   if (Array.isArray(messages) && messages.length) payload.messages = messages;
   if (typeof debug === 'boolean') payload.debug = debug;
   if (typeof allow_recommendations === 'boolean') payload.allow_recommendations = allow_recommendations;
-  const resp = await postWithRetry(url, payload, { timeoutMs, retries: 1, retryDelayMs: 250 });
+  const normalizedRetries = Number.isFinite(Number(retries)) ? Math.max(0, Math.trunc(Number(retries))) : 1;
+  const resp = await postWithRetry(url, payload, { timeoutMs, retries: normalizedRetries, retryDelayMs: 250 });
   const data = resp && resp.data;
   return data && typeof data === 'object' ? data : { raw: data };
 }

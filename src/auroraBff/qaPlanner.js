@@ -1,7 +1,11 @@
 const { INTENT_ENUM } = require('./intentCanonical');
-const { resolveTravelPlansState } = require('./travelPlans');
 
 const QA_LOOP_STATE_KEY = 'qa_planner_v2';
+const OPTIONAL_SAFETY_FIELDS = new Set([
+  'pregnancy_status',
+  'age_band',
+  'high_risk_medications',
+]);
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -24,13 +28,18 @@ function getCoreProfileMissing(profile) {
 }
 
 function getTravelMissing(profile) {
-  const state = resolveTravelPlansState(profile || {});
-  const activeTrip = state.active_trip && typeof state.active_trip === 'object' ? state.active_trip : null;
-  const homeRegion = isNonEmptyString(state.home_region) ? state.home_region.trim() : '';
-  if (activeTrip) return [];
-  // No active trip: allow fallback to home-region weather/climate instead of forcing travel date collection.
-  if (homeRegion) return [];
-  return ['travel_plan.destination', 'travel_plan.start_date', 'travel_plan.end_date'];
+  const travel = profile && typeof profile === 'object' ? profile.travel_plan : null;
+  const travelObj = travel && typeof travel === 'object' && !Array.isArray(travel) ? travel : {};
+  const missing = [];
+  if (!isNonEmptyString(travelObj.destination)) missing.push('travel_plan.destination');
+  const hasConcreteDates = isNonEmptyString(travelObj.start_date) && isNonEmptyString(travelObj.end_date);
+  const hasTimeWindow = isNonEmptyString(travelObj.time_window);
+  // Non-blocking travel policy: destination + time_window is enough for a safe generic strategy.
+  if (!hasConcreteDates && !hasTimeWindow) {
+    missing.push('travel_plan.start_date');
+    missing.push('travel_plan.end_date');
+  }
+  return missing;
 }
 
 function hasStrongActiveMention(message) {
@@ -41,17 +50,19 @@ function hasStrongActiveMention(message) {
   );
 }
 
+function getOptionalSafetyFieldsFromDecision(safetyDecision) {
+  const decision = safetyDecision && typeof safetyDecision === 'object' ? safetyDecision : null;
+  if (!decision) return [];
+  if (String(decision.block_level || '').toUpperCase() !== 'REQUIRE_INFO') return [];
+  return (Array.isArray(decision.required_fields) ? decision.required_fields : [])
+    .map((field) => String(field || '').trim())
+    .filter((field) => OPTIONAL_SAFETY_FIELDS.has(field));
+}
+
 function buildRequiredFields({ intent, profile, hasAnchor, message, safetyDecision }) {
-  if (
-    safetyDecision &&
-    typeof safetyDecision === 'object' &&
-    String(safetyDecision.block_level || '').toUpperCase() === 'REQUIRE_INFO'
-  ) {
-    const safetyRequiredFields = Array.isArray(safetyDecision.required_fields)
-      ? safetyDecision.required_fields.map((field) => String(field || '').trim()).filter(Boolean)
-      : [];
-    if (safetyRequiredFields.length) return safetyRequiredFields;
-    return ['pregnancy_status'];
+  const optionalSafetyFields = getOptionalSafetyFieldsFromDecision(safetyDecision);
+  if (optionalSafetyFields.length) {
+    return optionalSafetyFields.filter((field) => !profileHasValue(profile, field));
   }
 
   if (intent === INTENT_ENUM.RECO_PRODUCTS || intent === INTENT_ENUM.ROUTINE) {
@@ -82,19 +93,21 @@ function buildRequiredFields({ intent, profile, hasAnchor, message, safetyDecisi
 
 function computeGateType(intent, requiredFields, safetyDecision) {
   const missing = Array.isArray(requiredFields) ? requiredFields : [];
+  const optionalSafetyFields = getOptionalSafetyFieldsFromDecision(safetyDecision);
   if (
     safetyDecision &&
     typeof safetyDecision === 'object' &&
     String(safetyDecision.block_level || '').toUpperCase() === 'REQUIRE_INFO' &&
-    missing.length > 0
+    missing.length > 0 &&
+    optionalSafetyFields.length > 0
   ) {
-    return 'hard';
+    return 'soft';
   }
   if (!missing.length) return 'none';
 
-  if (intent === INTENT_ENUM.RECO_PRODUCTS || intent === INTENT_ENUM.ROUTINE) return 'hard';
+  if (intent === INTENT_ENUM.RECO_PRODUCTS || intent === INTENT_ENUM.ROUTINE) return 'soft';
   if (intent === INTENT_ENUM.EVALUATE_PRODUCT || intent === INTENT_ENUM.DUPE_COMPARE) {
-    if (missing.includes('anchor')) return 'hard';
+    if (missing.includes('anchor')) return 'soft';
     return 'soft';
   }
   if (intent === INTENT_ENUM.TRAVEL_PLANNING || intent === INTENT_ENUM.WEATHER_ENV) return 'soft';
@@ -180,13 +193,17 @@ function computeLoopControl({ session, signature, profileDelta, anchorDelta }) {
   };
 }
 
-function computeNextStep({ intent, gateType, requiredFields }) {
-  if (gateType === 'hard' && requiredFields.length > 0) return 'ask';
+function computeNextStep({ intent, gateType, requiredFields, safetyRequireInfoOptional = false }) {
+  if (safetyRequireInfoOptional) return 'upstream';
+  if (gateType === 'hard' && requiredFields.length > 0) return 'upstream';
   if (intent === INTENT_ENUM.TRAVEL_PLANNING || intent === INTENT_ENUM.WEATHER_ENV) {
-    if (requiredFields.length) return 'ask';
+    if (requiredFields.length <= 2 && requiredFields.every((field) => String(field || '').startsWith('travel_plan.'))) {
+      return 'tool_call';
+    }
+    if (requiredFields.length) return 'upstream';
     return 'tool_call';
   }
-  if (gateType === 'soft' && requiredFields.length > 0) return 'ask';
+  if (gateType === 'soft' && requiredFields.length > 0) return 'upstream';
   return 'upstream';
 }
 
@@ -220,25 +237,23 @@ function resolveQaPlan({
   });
   const loop = computeLoopControl({ session, signature: loopSignature, profileDelta, anchorDelta });
   const questionBudget = resolveQuestionBudget(gateType, loop.break_applied);
-  const nextStep = computeNextStep({ intent: safeIntent, gateType, requiredFields });
+  const optionalSafetyFields = getOptionalSafetyFieldsFromDecision(safetyDecision);
+  const safetyRequireInfoOptional = optionalSafetyFields.length > 0 && requiredFields.length > 0;
+  const nextStep = computeNextStep({ intent: safeIntent, gateType, requiredFields, safetyRequireInfoOptional });
   const safetyRequireInfo =
     safetyDecision &&
     typeof safetyDecision === 'object' &&
     String(safetyDecision.block_level || '').toUpperCase() === 'REQUIRE_INFO';
+  const safetyRequireInfoHard = Boolean(safetyRequireInfo && !safetyRequireInfoOptional);
 
-  const canAnswerNow =
-    !safetyRequireInfo &&
-    (
-      loop.break_applied === 'stop_asking' ||
-      loop.break_applied === 'conservative_defaults' ||
-      gateType === 'none' ||
-      (gateType === 'soft' && requiredFields.length <= 1)
-    );
+  const canAnswerNow = !safetyRequireInfoHard;
 
   return {
     gate_type: gateType,
     question_budget: questionBudget,
     required_fields: requiredFields,
+    optional_safety_fields: optionalSafetyFields,
+    safety_require_info_optional: safetyRequireInfoOptional,
     can_answer_now: canAnswerNow,
     next_step: nextStep,
     loop_signature: loopSignature,

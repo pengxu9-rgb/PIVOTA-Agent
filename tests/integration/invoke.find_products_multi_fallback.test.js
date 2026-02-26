@@ -473,12 +473,9 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         options: expect.any(Array),
       }),
     );
-    expect(resp.body.reason_codes || []).toContain('UPSTREAM_QUOTA_EXHAUSTED');
-    expect(
-      ['AMBIGUITY_CLARIFY', 'FILTERED_TO_EMPTY'].some((code) =>
-        (resp.body.reason_codes || []).includes(code),
-      ),
-    ).toBe(true);
+    expect(resp.body.reason_codes).toEqual(
+      expect.arrayContaining(['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY']),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_error_fallback',
@@ -488,7 +485,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
   });
 
-  test('pet harness query fail-opens primary result instead of strict empty', async () => {
+  test('pet harness query rejects dog-apparel-only matches as strict empty', async () => {
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
 
@@ -531,22 +528,11 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(1);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'DOG_JACKET_001',
-        merchant_id: 'merch_efbc46b4619cfbdf',
-      }),
-    );
+    expect(resp.body.products).toHaveLength(0);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_search',
-        strict_empty: false,
-        proxy_search_fallback: expect.objectContaining({
-          applied: true,
-          reason: 'primary_irrelevant_no_fallback',
-          route: 'invoke_primary_irrelevant_fail_open',
-        }),
+        query_source: 'agent_products_error_fallback',
+        strict_empty: true,
       }),
     );
   });
@@ -1179,9 +1165,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
           body.payload.search.fast_mode === true &&
           body.payload.search.allow_stale_cache === false &&
           body.payload.search.allow_external_seed === true &&
-          ['legacy', 'supplement_internal_first'].includes(
-            String(body.payload.search.external_seed_strategy || ''),
-          ) &&
+          String(body.payload.search.external_seed_strategy || '') === 'supplement_internal_first' &&
           String(body.metadata?.source || '') === 'aurora-bff'
         );
       })
@@ -1574,7 +1558,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('returns fail-open primary result when invoke fallback is disabled and resolver misses', async () => {
+  test('returns empty soft fallback when invoke lookup stays irrelevant and resolver misses', async () => {
     const queryText = 'IPSA related products';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
@@ -1629,21 +1613,13 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(1);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: '9859801710920',
-        merchant_id: 'merch_efbc46b4619cfbdf',
-      }),
-    );
+    expect(resp.body.products).toHaveLength(0);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_search',
-        strict_empty: false,
+        query_source: 'agent_products_error_fallback',
         proxy_search_fallback: expect.objectContaining({
           applied: true,
           reason: 'primary_irrelevant_no_fallback',
-          route: 'invoke_primary_irrelevant_fail_open',
         }),
       }),
     );
@@ -1806,52 +1782,6 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       );
     }
     expect(resp.body.metadata.search_trace).toHaveProperty('intent_scenario');
-  });
-
-  test('does not re-ask scenario when query already includes explicit scenario', async () => {
-    const queryText = '今晚要出去约会，有什么推荐用的';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
-    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
-
-    nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '').includes('约会'))
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [],
-        total: 0,
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: queryText,
-            limit: 10,
-            in_stock_only: false,
-          },
-        },
-        metadata: {
-          source: 'agent_sdk_fixed_delegate',
-        },
-      });
-
-    expect(resp.status).toBe(200);
-    expect(resp.body.metadata?.search_trace?.query_class).toBe('scenario');
-    expect(resp.body.metadata?.search_trace?.association_plan?.scenario_key).toBe('date');
-    expect(resp.body.clarification).toEqual(
-      expect.objectContaining({
-        question: expect.any(String),
-        options: expect.any(Array),
-      }),
-    );
-    expect(resp.body.clarification?.reason_code).toBe('CLARIFY_CATEGORY_SCOPE');
-    expect(resp.body.clarification?.reason_code).not.toBe('CLARIFY_SCENARIO');
-    expect(String(resp.body.clarification?.question || '')).toMatch(/哪一类|category/i);
   });
 
   test('emits relevance_debug when SEARCH_RELEVANCE_DEBUG is enabled', async () => {

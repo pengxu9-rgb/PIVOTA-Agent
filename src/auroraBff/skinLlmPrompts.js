@@ -109,9 +109,9 @@ function buildSkinVisionPrompt({ language, photoQuality, diagnosisPolicy, diagno
       `context=${JSON.stringify(context)}\n` +
       `Task: Use the photo ONLY for visible cosmetic skin signals. Focus on face skin only; ignore hair/eyes/lips/background. If unclear (blur/lighting), be conservative and use "not_sure".\n` +
       `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-      `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check.\n` +
+      `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
       `- features: 3–5 items; observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}.\n` +
-      `- strategy: <=700 chars, actionable, ends with ONE direct clarifying question.\n` +
+      `- strategy: <=900 chars, actionable and executable.\n` +
       `- no brand/product recommendations.\n` +
       `Language: ${replyLanguage}. ${replyInstruction}\n`
     );
@@ -122,9 +122,9 @@ function buildSkinVisionPrompt({ language, photoQuality, diagnosisPolicy, diagno
     `context=${JSON.stringify(context)}\n` +
     `Task: Use the photo ONLY for visible cosmetic skin signals (redness, acne-like bumps, shine, dryness/flaking, uneven tone, texture). Focus on face skin only; ignore hair/eyes/lips/background. If unclear (blur/lighting), be conservative and use "not_sure".\n` +
     `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-    `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check.\n` +
+    `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
     `- features: 4–6 items; each {"observation": string<=200 chars, "confidence": "pretty_sure"|"somewhat_sure"|"not_sure"}; no numbers/percent.\n` +
-    `- strategy: <=900 chars, actionable, ends with ONE direct clarifying question.\n` +
+    `- strategy: <=1000 chars, actionable and executable.\n` +
     `- no brand/product recommendations.\n` +
     `Language: ${replyLanguage}. ${replyInstruction}\n`
   );
@@ -169,9 +169,9 @@ function buildSkinReportPrompt({
       `Task: Provide a cautious skin assessment using ONLY the context. Do NOT claim you can see the user's skin in a photo.\n` +
       `If routine_actives suggests irritation risk, suggest minimal safe adjustments (no new brands).\n` +
       `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-      `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check.\n` +
+      `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
       `- features: 3–5 items; observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}.\n` +
-      `- strategy: <=700 chars, actionable, ends with ONE direct clarifying question.\n` +
+      `- strategy: <=900 chars, actionable and executable.\n` +
       `- no brand/product recommendations.\n` +
       `Language: ${replyLanguage}. ${replyInstruction}\n`
     );
@@ -183,9 +183,9 @@ function buildSkinReportPrompt({
     `Task: Provide a cautious skin assessment using ONLY the context. Do NOT claim you can see the user's skin in a photo.\n` +
     `If routine_actives suggests irritation risk, suggest minimal safe adjustments (no new brands).\n` +
     `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-    `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check.\n` +
+    `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
     `- features: 4–6 items; each observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}; no numbers/percent.\n` +
-    `- strategy: <=900 chars, actionable, ends with ONE direct clarifying question.\n` +
+    `- strategy: <=1000 chars, actionable and executable.\n` +
     `- no brand/product recommendations.\n` +
     `Language: ${replyLanguage}. ${replyInstruction}\n`
   );

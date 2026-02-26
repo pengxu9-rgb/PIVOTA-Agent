@@ -67,7 +67,7 @@ bootstrap_json="$(curl_do -fsS "${BASE}/v1/session/bootstrap" "${COMMON_HEADERS[
 printf "%s\n" "$bootstrap_json" | jq_assert "bootstrap envelope has cards" '.cards | type=="array" and (length >= 1)'
 printf "%s\n" "$bootstrap_json" | jq -r '.cards[0].type' >/dev/null || true
 
-say "reco gate (missing profile -> diagnosis_gate, no recommendations)"
+say "reco entry (missing profile -> answer-first with advisory/low-confidence allowed)"
 gate_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \
   "${COMMON_HEADERS[@]}" \
@@ -79,8 +79,9 @@ gate_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     },
     "session":{"state":"S7_PRODUCT_RECO"}
   }')"
-printf "%s\n" "$gate_json" | jq_assert "diagnosis_gate card exists" '.cards | any(.type=="diagnosis_gate")'
-printf "%s\n" "$gate_json" | jq_assert "recommendations card absent" '(.cards | any(.type=="recommendations")) | not'
+printf "%s\n" "$gate_json" | jq_assert "chat returns cards array" '.cards | type=="array" and (length >= 1)'
+printf "%s\n" "$gate_json" | jq_assert "answer-first output exists (recommendations or confidence_notice)" '.cards | any(.type=="recommendations") or any(.type=="confidence_notice")'
+printf "%s\n" "$gate_json" | jq_assert "no safety require-info hard gate event on reco entry" '(.events | any(.event_name=="safety_gate_require_info")) | not'
 
 say "profile update (core + itinerary)"
 profile_json="$(curl_do -fsS -X POST "${BASE}/v1/profile/update" \
@@ -114,6 +115,7 @@ skin_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
   --data '{}')"
 
 printf "%s\n" "$skin_json" | jq_assert "analysis_summary card exists" '.cards | any(.type=="analysis_summary")'
+printf "%s\n" "$skin_json" | jq_assert "analysis_story_v2 has ui_card_v1" '.cards | any(.type=="analysis_story_v2" and ((.payload.ui_card_v1|type)=="object") and ((.payload.ui_card_v1.headline//"")|length>0))'
 printf "%s\n" "$skin_json" | jq_assert "analysis field_missing is array" '((.cards[]|select(.type=="analysis_summary")|.field_missing)|type) == "array"'
 printf "%s\n" "$skin_json" | jq_assert "analysis has 1+ features" '(.cards[]|select(.type=="analysis_summary")|.payload.analysis.features|length) >= 1'
 printf "%s\n" "$skin_json" | jq_assert "analysis has strategy" '((.cards[]|select(.type=="analysis_summary")|.payload.analysis.strategy)//"") | length > 0'
@@ -183,24 +185,18 @@ printf "%s\n" "$routine_json" | jq_assert "heatmap has 2+ steps" '(.cards[]|sele
 printf "%s\n" "$routine_json" | jq_assert "heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
 printf "%s\n" "$routine_json" | jq_assert "first cell has headline/why/recommendations" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items[0]) | ((.headline_i18n.en//"")|length>0) and ((.why_i18n.en//"")|length>0) and ((.recommendations|length) >= 1)'
 
-say "chat conflict question (allow safety gate or simulation cards)"
+say "chat conflict question (should include routine_simulation + conflict_heatmap)"
 chat_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \
   "${COMMON_HEADERS[@]}" \
   --data '{"message":"My PM treatment is retinol. Can I add a glycolic acid toner? Check conflicts.","session":{"state":"S7_PRODUCT_RECO"}}')"
 
 printf "%s\n" "$chat_json" | jq_assert "/v1/chat returns cards array" '.cards | type=="array"'
-if printf "%s\n" "$chat_json" | jq -e '(.cards | any(.type=="routine_simulation")) and (.cards | any(.type=="conflict_heatmap"))' >/dev/null; then
-  printf "[PASS] chat includes routine_simulation + conflict_heatmap\n"
-  printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
-else
-  printf "%s\n" "$chat_json" | jq_assert "chat conflict can gate with confidence_notice" '.cards | any(.type=="confidence_notice")'
-  printf "%s\n" "$chat_json" | jq_assert "chat conflict gate asks pregnancy clarification chips" '
-    ((.suggested_chips // []) | map(.chip_id // "")) as $ids |
-    ($ids | any(test("pregnancy"; "i")))
-  '
-  printf "%s\n" "$chat_json" | jq_assert "chat conflict gate emits safety event" '.events | any(.event_name=="safety_gate_require_info")'
-fi
+printf "%s\n" "$chat_json" | jq_assert "chat includes routine_simulation" '.cards | any(.type=="routine_simulation")'
+printf "%s\n" "$chat_json" | jq_assert "chat includes conflict_heatmap" '.cards | any(.type=="conflict_heatmap")'
+printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
+printf "%s\n" "$chat_json" | jq_assert "chat optional safety advisory (if present) is non-blocking" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="safety_optional_profile_missing") | .payload.non_blocking] | if length==0 then true else all(. == true) end)'
+printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '(.events | any(.event_name=="safety_gate_require_info")) | not'
 
 say "chat reco (recommendations OR confidence_notice under artifact gate)"
 reco_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
@@ -229,6 +225,10 @@ printf "%s\n" "$reco_json" | jq_assert "chat reco returns recommendations or con
 
 if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >/dev/null; then
   printf "%s\n" "$reco_json" | jq_assert "recommendations length >= 1" '(.cards[]|select(.type=="recommendations")|.payload.recommendations|length) >= 1'
+  printf "%s\n" "$reco_json" | jq_assert "first recommendation has retrieval provenance fields" '
+    (.cards[]|select(.type=="recommendations")|.payload.recommendations[0]) as $r |
+    ((( $r.retrieval_source // "" ) | length) > 0) and ((( $r.retrieval_reason // "" ) | length) > 0)
+  '
   printf "%s\n" "$reco_json" | jq_assert "recommendations have no duplicate products" '
     (.cards[]|select(.type=="recommendations")|.payload.recommendations) as $recs |
     (($recs | map(
@@ -266,6 +266,27 @@ else
   printf "%s\n" "$reco_json" | jq_assert "recommendations absent when confidence_notice path" '(.cards | any(.type=="recommendations")) | not'
   printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes gate reason" '.events | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing" or .data.reason=="artifact_low_confidence" or .data.reason=="safety_block" or .data.reason=="timeout_degraded"))'
 fi
+
+say "pregnancy due-date auto reset (non-blocking policy)"
+preg_reset_uid="${AURORA_UID}_preg_reset"
+preg_reset_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
+  -H 'Content-Type: application/json' \
+  -H "X-Aurora-UID: ${preg_reset_uid}" \
+  -H "X-Lang: ${AURORA_LANG}" \
+  -H "X-Trace-ID: ${TRACE_ID}_preg_reset" \
+  -H "X-Brief-ID: ${BRIEF_ID}_preg_reset" \
+  --data '{
+    "action":{
+      "action_id":"chip.profile.seed.pregnancy",
+      "kind":"chip",
+      "data":{
+        "reply_text":"seed pregnancy profile",
+        "profile_patch":{"pregnancy_status":"pregnant","pregnancy_due_date":"2020-01-01"}
+      }
+    },
+    "session":{"state":"S7_PRODUCT_RECO"}
+  }')"
+printf "%s\n" "$preg_reset_json" | jq_assert "pregnancy_status_auto_reset event emitted" '.events | any(.event_name=="pregnancy_status_auto_reset")'
 
 say "ui events ingest (POST /v1/events should return 204)"
 events_code="$(curl_do -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/v1/events" \

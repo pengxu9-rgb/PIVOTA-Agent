@@ -273,6 +273,7 @@ const UserProfilePatchSchema = z
       .enum(['unknown', 'under_13', '13_17', '18_24', '25_34', '35_44', '45_54', '55_plus'])
       .optional(),
     pregnancy_status: z.enum(['unknown', 'not_pregnant', 'pregnant', 'trying']).optional(),
+    pregnancy_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     lactation_status: z.enum(['unknown', 'not_lactating', 'lactating']).optional(),
     high_risk_medications: z.array(z.string().min(1)).max(30).optional(),
     travel_plan: z
@@ -280,6 +281,9 @@ const UserProfilePatchSchema = z
         destination: z.string().min(1).optional(),
         start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        time_window: z
+          .enum(['today', 'tomorrow', 'this_week', 'next_week', 'this_month', 'next_month', 'weekend', 'unknown'])
+          .optional(),
         indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
         itinerary: z.string().min(1).max(1200).optional(),
         trip_id: z.string().min(1).max(80).optional(),
