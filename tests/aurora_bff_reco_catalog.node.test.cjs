@@ -1835,6 +1835,7 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'true',
@@ -1846,13 +1847,13 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
       let localCalls = 0;
       axios.get = async (url) => {
         const target = String(url || '');
-        if (target === 'https://pivota-backend.test/agent/v1/products/search') {
+        if (target.startsWith('https://pivota-backend.test') && isProductsSearchUrl(target)) {
           primaryCalls += 1;
           const timeoutErr = new Error('primary timeout');
           timeoutErr.code = 'ECONNABORTED';
           throw timeoutErr;
         }
-        if (target === 'http://127.0.0.1:3000/agent/v1/products/search') {
+        if (target.startsWith('http://127.0.0.1:3000') && isProductsSearchUrl(target)) {
           localCalls += 1;
           return {
             status: 200,
@@ -1877,6 +1878,7 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
         const out = await __internal.searchPivotaBackendProducts({
           query: 'winona soothing repair serum',
           limit: 6,
+          timeoutMs: 2600,
           logger: null,
         });
 
@@ -3197,6 +3199,7 @@ test('Catalog search transient failure invokes local search fallback when local 
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'true',
@@ -3208,13 +3211,13 @@ test('Catalog search transient failure invokes local search fallback when local 
       let localCalls = 0;
       axios.get = async (url) => {
         const target = String(url || '');
-        if (target === 'https://pivota-backend.test/agent/v1/products/search') {
+        if (target.startsWith('https://pivota-backend.test') && isProductsSearchUrl(target)) {
           primaryCalls += 1;
           const err = new Error('upstream timeout');
           err.code = 'ECONNABORTED';
           throw err;
         }
-        if (target === 'http://127.0.0.1:3000/agent/v1/products/search') {
+        if (target.startsWith('http://127.0.0.1:3000') && isProductsSearchUrl(target)) {
           localCalls += 1;
           return { status: 200, data: { products: [{ product_id: 'prod_local', merchant_id: 'mid_local' }] } };
         }
@@ -3225,7 +3228,7 @@ test('Catalog search transient failure invokes local search fallback when local 
         const { __internal } = loadRoutesFresh();
         const out = await __internal.searchPivotaBackendProducts({
           query: 'winona',
-          timeoutMs: 1200,
+          timeoutMs: 2600,
           logger: null,
         });
 
