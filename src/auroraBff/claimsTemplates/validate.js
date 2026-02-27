@@ -50,12 +50,21 @@ function allowedTemplateKeys() {
 }
 
 const ALLOWED_TEMPLATE_KEYS = allowedTemplateKeys();
+const DERIVED_ALLOWED_TEMPLATE_KEY_PATTERNS = [
+  /^ingredient_why_(redness|shine|texture|tone|acne)_(en|zh)_v1__(limited|conservative|limited_conservative)$/i,
+  /^product_why_(redness|shine|texture|tone|acne)_(en|zh)_v1__(limited|conservative|limited_conservative)$/i,
+];
+
+function isDerivedAllowedTemplateKey(key) {
+  if (!key) return false;
+  return DERIVED_ALLOWED_TEMPLATE_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
 
 function validateRenderedText({ text, templateKey } = {}) {
   const value = String(text || '').trim();
   const key = String(templateKey || '').trim();
   if (!value) return { ok: false, reason: 'empty_text', violations: [] };
-  if (!key || !ALLOWED_TEMPLATE_KEYS.has(key)) {
+  if (!key || (!ALLOWED_TEMPLATE_KEYS.has(key) && !isDerivedAllowedTemplateKey(key))) {
     return { ok: false, reason: 'template_key_not_allowlisted', violations: [] };
   }
   const violations = detectBannedClaimTerms(value);

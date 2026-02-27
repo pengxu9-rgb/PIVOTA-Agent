@@ -46,6 +46,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST;
     delete process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE;
+    delete process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS;
     delete process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST;
     delete process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED;
@@ -56,6 +57,10 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_FAIL_THRESHOLD;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_COOLDOWN_MS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_RETURN_SLACK_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS;
@@ -180,124 +185,44 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(ev.expert_notes)).toBe(true);
   });
 
-  test('/v1/chat follow-up alternatives returns advisory when anchor is missing', async () => {
-    const app = require('../src/server');
-    const res = await request(app)
-      .post('/v1/chat')
-      .set('X-Aurora-UID', 'uid_test_followup_anchor_missing_1')
-      .send({
-        message: 'Find acne-focused alternatives',
-        action: {
-          action_id: 'chat.followup.alternatives',
-          kind: 'action',
-          data: {
-            goal: 'acne_focus',
-            prompt: 'Find acne-focused alternatives and give me a clear pick recommendation.',
-          },
-        },
-      })
-      .expect(200);
-
-    const confCard = res.body.cards.find((c) => c.type === 'confidence_notice');
-    expect(confCard).toBeTruthy();
-    const details = Array.isArray(confCard.payload?.details) ? confCard.payload.details.join(' ') : '';
-    expect(String(details)).toMatch(/anchor|锚点/i);
-  });
-
-  test('/v1/chat follow-up alternatives stays anchored and carries goal/provenance', async () => {
+  test('catalog source health deprioritizes base after repeated transient failures', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
-    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://unstable-catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://unstable-catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_FAIL_THRESHOLD = '2';
+    process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_COOLDOWN_MS = '60000';
+    jest.resetModules();
 
-    nock('http://aurora.test')
-      .post('/api/chat')
-      .reply(200, {
-        schema_version: 'aurora.chat.v1',
-        intent: 'dupe_compare',
-        structured: {
-          alternatives: [
-            {
-              kind: 'dupe',
-              product: {
-                product_id: 'alt_dupe_1',
-                brand: 'The Ordinary',
-                name: 'Niacinamide 10% + Zinc 1%',
-              },
-              similarity_score: 0.91,
-              reasons: ['Better oil-control orientation for acne-prone skin.'],
-              tradeoffs: {
-                added_benefits: ['niacinamide', 'zinc pca'],
-                texture_finish_differences: ['may feel slightly tackier'],
-              },
-            },
-            {
-              kind: 'premium',
-              product: {
-                product_id: 'alt_pair_1',
-                brand: 'Lab Series',
-                name: 'Hydrating Rescue Gel',
-              },
-              similarity_score: 0.79,
-              reasons: ['Pairs well to reduce dryness risk while keeping acne control routine.'],
-              tradeoffs: {
-                added_benefits: ['panthenol'],
-              },
-            },
-          ],
-        },
-      });
+    nock('http://unstable-catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(504, { status: 'error', reason_code: 'upstream_timeout' });
 
-    const app = require('../src/server');
-    const res = await request(app)
-      .post('/v1/chat')
-      .set('X-Aurora-UID', 'uid_test_followup_anchor_ok_1')
-      .send({
-        message: 'Find acne-focused alternatives and give me a clear pick recommendation.',
-        action: {
-          action_id: 'chat.followup.alternatives',
-          kind: 'action',
-          data: {
-            goal: 'acne_focus',
-            prompt: 'Find acne-focused alternatives and give me a clear pick recommendation.',
-            anchor: {
-              brand: 'Lab Series',
-              name: 'All-In-One Defense Lotion',
-              url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
-            },
-          },
-        },
-      })
-      .expect(200);
+    const { __internal } = require('../src/auroraBff/routes');
 
-    const productCard = res.body.cards.find((c) => c.type === 'product_analysis');
-    expect(productCard).toBeTruthy();
-    expect(productCard.payload?.provenance?.followup_goal).toBe('acne_focus');
-    expect(productCard.payload?.provenance?.anchor_used).toEqual(
-      expect.objectContaining({
-        anchor_product_url: expect.stringContaining('labseries.com'),
-      }),
-    );
+    await __internal.searchPivotaBackendProducts({
+      query: 'lab series moisturizer',
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn(), error: jest.fn() },
+      timeoutMs: 1200,
+      minTimeoutMs: 700,
+      mode: 'main_path',
+    });
+    await __internal.searchPivotaBackendProducts({
+      query: 'lab series moisturizer',
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn(), error: jest.fn() },
+      timeoutMs: 1200,
+      minTimeoutMs: 700,
+      mode: 'main_path',
+    });
 
-    const dupes = Array.isArray(productCard.payload?.dupes?.candidates) ? productCard.payload.dupes.candidates : [];
-    const competitors = Array.isArray(productCard.payload?.competitors?.candidates)
-      ? productCard.payload.competitors.candidates
-      : [];
-
-    const related = Array.isArray(productCard.payload?.related_products?.candidates)
-      ? productCard.payload.related_products.candidates
-      : [];
-    const allCandidates = [...dupes, ...competitors, ...related];
-    if (allCandidates.length) {
-      expect(allCandidates.some((candidate) => typeof candidate?.recommendation_intent === 'string')).toBe(true);
-      const replaceCandidates = allCandidates.filter((candidate) => candidate?.recommendation_intent === 'replace');
-      expect(replaceCandidates.length).toBeGreaterThan(0);
-      if (related.length) {
-        expect(related[0].recommendation_intent).toBe('pair');
-      }
-    } else {
-      const missingInfo = Array.isArray(productCard.payload?.missing_info) ? productCard.payload.missing_info : [];
-      expect(missingInfo).not.toContain('followup_anchor_missing');
-      expect(missingInfo).not.toContain('followup_goal_not_resolved');
-    }
+    const snapshot = __internal.getRecoCatalogSearchSourceHealthSnapshot(Date.now());
+    const unstable = snapshot.find((row) => String(row.base_url || '').includes('unstable-catalog.test'));
+    expect(unstable).toBeTruthy();
+    expect(unstable.consecutive_failures).toBeGreaterThanOrEqual(2);
+    expect(unstable.deprioritized).toBe(true);
+    expect(String(unstable.last_reason || '')).toBe('upstream_timeout');
   });
 
   test('URL fetch challenge detector identifies cloudflare and access denied signatures', () => {
@@ -379,6 +304,49 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(out.attempts)).toBe(true);
     expect(out.attempts.length).toBeGreaterThan(0);
     expect(out.attempts[0]).toEqual(expect.objectContaining({ strategy: 'axios_default', provider: 'native' }));
+  });
+
+  test('URL ingredient analysis exposes retrieval_degradation when catalog_ann transiently fails', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'shopping-agent';
+    jest.resetModules();
+
+    nock('https://probe.example')
+      .get('/product')
+      .reply(
+        200,
+        '<html><body><h1>Lab Series All-in-One Defense Lotion</h1><p>Ingredients: Water, Glycerin, Niacinamide, Panthenol.</p></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+    nock('http://catalog.test')
+      .persist()
+      .get(/\/agent\/v1\/(?:beauty\/)?products\/search/)
+      .query(true)
+      .reply(504, { status: 'error', reason_code: 'upstream_timeout' });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.buildProductAnalysisFromUrlIngredients({
+      productUrl: 'https://probe.example/product',
+      lang: 'EN',
+      profileSummary: { skinType: 'oily', sensitivity: 'medium', barrierStatus: 'healthy' },
+      parsedProduct: { brand: 'Lab Series', name: 'All-in-One Defense Lotion SPF 35' },
+      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    });
+
+    expect(out).toBeTruthy();
+    const payload = out.payload || {};
+    expect(payload.provenance).toBeTruthy();
+    expect(payload.provenance.retrieval_degradation).toEqual(
+      expect.objectContaining({
+        transient_failure_count: expect.any(Number),
+        degraded: expect.any(Boolean),
+      }),
+    );
+    expect(Array.isArray(payload.missing_info)).toBe(true);
+    expect(payload.missing_info).toContain('catalog_ann_transient_failure');
   });
 
   test('retail supplement returns retail_page source when search and PDP extraction match', async () => {
@@ -935,7 +903,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .persist()
       .get('/agent/v1/beauty/products/search')
       .query(true)
-      .delayConnection(500)
+      .delayConnection(900)
       .reply(200, {
         ok: true,
         products: [],

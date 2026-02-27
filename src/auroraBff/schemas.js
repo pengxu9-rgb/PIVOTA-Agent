@@ -117,7 +117,7 @@ const AnalysisMetaSchema = z
     artifact_usable: z.boolean(),
     degrade_reason: z.string().min(1).nullable().optional(),
   })
-  .strict();
+  .passthrough();
 
 const RecommendationMetaSchema = z
   .object({

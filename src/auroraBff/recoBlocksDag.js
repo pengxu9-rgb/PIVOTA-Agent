@@ -30,6 +30,11 @@ const DEFAULT_TIMEOUTS_MS = {
   dupe_pipeline: 350,
   on_page_related: 220,
 };
+const CATALOG_ANN_TIMEOUT_FLOOR_BY_MODE_MS = {
+  main_path: 1200,
+  sync_repair: 1800,
+  async_backfill: 2500,
+};
 const RECO_BLOCKED_COMPETITOR_SOURCE_TYPES = new Set(['on_page_related', 'aurora_alternatives']);
 const SOURCE_TIMEOUT_GRACE_MS = {
   // Catalog ANN often needs extra time after upstream search returns to normalize and route candidates.
@@ -169,6 +174,13 @@ function createEmptyStat() {
     attempts: 0,
     query_attempted: 0,
     reason_counts: {},
+    transient_failure_count: 0,
+    attempted_sources: [],
+    attempted_endpoints: [],
+    resolver_first_applied: false,
+    resolver_first_skipped_for_aurora: false,
+    source_temporarily_deprioritized: false,
+    budget_profile: null,
   };
 }
 
@@ -507,6 +519,10 @@ async function executeSource({
       if (Number.isFinite(queryAttempted) && queryAttempted > 0) {
         stat.query_attempted += Math.max(0, Math.trunc(queryAttempted));
       }
+      const transientFailureCount = Number(out.meta.transient_failure_count || 0);
+      if (Number.isFinite(transientFailureCount) && transientFailureCount > 0) {
+        stat.transient_failure_count += Math.max(0, Math.trunc(transientFailureCount));
+      }
       const reasonCounts = out.meta.reason_counts && typeof out.meta.reason_counts === 'object'
         ? out.meta.reason_counts
         : null;
@@ -520,6 +536,26 @@ async function executeSource({
           merged[key] = Number(merged[key] || 0) + Math.max(1, Math.trunc(count));
         }
         stat.reason_counts = merged;
+      }
+      const mergeList = (target, nextRows, max = 12) => {
+        const seen = new Set(Array.isArray(target) ? target.map((item) => String(item || '').trim()) : []);
+        const outList = Array.isArray(target) ? target.slice(0, max) : [];
+        for (const rawValue of Array.isArray(nextRows) ? nextRows : []) {
+          const value = String(rawValue || '').trim();
+          if (!value || seen.has(value)) continue;
+          seen.add(value);
+          outList.push(value);
+          if (outList.length >= max) break;
+        }
+        return outList;
+      };
+      stat.attempted_sources = mergeList(stat.attempted_sources, out.meta.attempted_sources, 8);
+      stat.attempted_endpoints = mergeList(stat.attempted_endpoints, out.meta.attempted_endpoints, 12);
+      if (out.meta.resolver_first_applied === true) stat.resolver_first_applied = true;
+      if (out.meta.resolver_first_skipped_for_aurora === true) stat.resolver_first_skipped_for_aurora = true;
+      if (out.meta.source_temporarily_deprioritized === true) stat.source_temporarily_deprioritized = true;
+      if (!stat.budget_profile && isPlainObject(out.meta.budget_profile)) {
+        stat.budget_profile = out.meta.budget_profile;
       }
     }
     stat.duration_ms += Date.now() - startedAt;
@@ -640,16 +676,17 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     dupe_pipeline: 'dupe_pipeline',
     on_page_related: 'on_page_related',
   };
-  const catalogTimeoutForStageA =
-    mode === 'main_path' && totalBudgetMs >= 900
-      ? Math.max(
-        260,
-        Math.min(
-          timeouts.catalog_ann,
-          Math.max(260, totalBudgetMs - Math.max(200, timeouts.on_page_related) - 80),
-        ),
-      )
-      : timeouts.catalog_ann;
+  const catalogTimeoutFloorMs = CATALOG_ANN_TIMEOUT_FLOOR_BY_MODE_MS[mode] || CATALOG_ANN_TIMEOUT_FLOOR_BY_MODE_MS.main_path;
+  const catalogTimeoutBudgetCapMs =
+    mode === 'main_path'
+      ? Math.max(260, totalBudgetMs - Math.max(220, timeouts.on_page_related) - 80)
+      : mode === 'sync_repair'
+        ? Math.max(320, totalBudgetMs - Math.max(180, timeouts.on_page_related) - 80)
+        : Math.max(420, totalBudgetMs - Math.max(120, timeouts.on_page_related) - 60);
+  const catalogTimeoutForStageA = Math.max(
+    catalogTimeoutFloorMs,
+    Math.min(timeouts.catalog_ann, catalogTimeoutBudgetCapMs),
+  );
 
   const stageA = await Promise.all([
     executeSource({
@@ -978,6 +1015,17 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
           timeout: value.timeout === true,
           duration_ms: Number(value.duration_ms || 0),
           query_attempted: Number(value.query_attempted || 0),
+          transient_failure_count: Number(value.transient_failure_count || 0),
+          resolver_first_applied: value.resolver_first_applied === true,
+          resolver_first_skipped_for_aurora: value.resolver_first_skipped_for_aurora === true,
+          source_temporarily_deprioritized: value.source_temporarily_deprioritized === true,
+          ...(Array.isArray(value.attempted_sources) && value.attempted_sources.length
+            ? { attempted_sources: value.attempted_sources.slice(0, 8) }
+            : {}),
+          ...(Array.isArray(value.attempted_endpoints) && value.attempted_endpoints.length
+            ? { attempted_endpoints: value.attempted_endpoints.slice(0, 12) }
+            : {}),
+          ...(isPlainObject(value.budget_profile) ? { budget_profile: value.budget_profile } : {}),
           ...(value.reason_counts && typeof value.reason_counts === 'object' && Object.keys(value.reason_counts).length
             ? {
                 reason_counts: Object.fromEntries(

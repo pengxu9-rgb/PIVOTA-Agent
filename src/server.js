@@ -547,6 +547,10 @@ const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = (() => {
       .toLowerCase() === 'true'
   );
 })();
+const PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA = (() => {
+  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA || defaultValue).toLowerCase() === 'true';
+})();
 const PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
@@ -5079,16 +5083,18 @@ function shouldUseResolverFirstSearch({ operation, metadata, queryText, remainin
 
   const source = normalizeAgentSource(metadata?.source);
   if (isCreatorUiSource(source)) return false;
+  const auroraSource = isAuroraSource(source);
+  if (auroraSource && PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA) return false;
   if (!source) return true;
   const isCatalogSource = isResolverFirstCatalogSource(source);
-  if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && isCatalogSource) {
+  if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && (isCatalogSource || auroraSource)) {
     return (
       strongResolverQuery ||
       lookupStyle
     );
   }
 
-  return isCatalogSource || isAuroraSource(source);
+  return isCatalogSource || auroraSource;
 }
 
 function normalizeAgentProductDetailResponse(raw) {
@@ -11531,6 +11537,7 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
     config: {
       resolver_first_enabled: PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       resolver_first_strong_only: PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
+      resolver_first_disable_aurora: PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA,
       resolver_first_would_apply: resolverFirstWouldApply,
       resolver_query_is_strong: strongResolverQuery,
       resolver_timeout_ms: PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
