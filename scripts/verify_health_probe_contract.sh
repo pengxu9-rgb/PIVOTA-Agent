@@ -14,9 +14,15 @@ for path in Dockerfile monitor-pivota.sh scripts src tests docs .github monitori
   fi
 done
 
-MATCH_LINES="$(
-  rg -n --no-heading --color=never --no-messages --glob '!scripts/verify_health_probe_contract.sh' "healthz/lite|health/lite" "${TARGETS[@]}" || true
-)"
+if command -v rg >/dev/null 2>&1; then
+  MATCH_LINES="$(
+    rg -n --no-heading --color=never --no-messages --glob '!scripts/verify_health_probe_contract.sh' "healthz/lite|health/lite" "${TARGETS[@]}" || true
+  )"
+else
+  MATCH_LINES="$(
+    grep -R -n -E --exclude='verify_health_probe_contract.sh' "healthz/lite|health/lite" "${TARGETS[@]}" 2>/dev/null || true
+  )"
+fi
 
 if [[ -z "$MATCH_LINES" ]]; then
   echo "[health-probe-contract] expected deprecation assertions are missing." >&2
