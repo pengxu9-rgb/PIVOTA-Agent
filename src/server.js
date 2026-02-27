@@ -722,6 +722,10 @@ const SEARCH_STRICT_EMPTY_ENABLED =
   String(process.env.SEARCH_STRICT_EMPTY_ENABLED || 'true').toLowerCase() !== 'false';
 const SEARCH_EXTERNAL_FILL_GATED =
   String(process.env.SEARCH_EXTERNAL_FILL_GATED || 'true').toLowerCase() !== 'false';
+const SEARCH_LIMIT_MAX = parsePositiveInt(process.env.SEARCH_LIMIT_MAX, 200, {
+  min: 1,
+  max: 200,
+});
 const SEARCH_CACHE_VALIDATE =
   String(process.env.SEARCH_CACHE_VALIDATE || 'false').toLowerCase() === 'true';
 const SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO =
@@ -2934,6 +2938,9 @@ function withStrictEmptyFallback({
     intent,
     queryClass,
     queryText,
+    querySource: hasFragranceQuerySignal(queryText)
+      ? 'agent_products_semantic_retry_exhausted'
+      : 'agent_products_error_fallback',
   });
   const hasClarification = Boolean(emptyBody?.clarification?.question);
   return withSearchDiagnostics(emptyBody, {
@@ -2987,6 +2994,10 @@ function buildProxySearchSoftFallbackResponse({
   intent = null,
   queryClass = null,
   queryText = '',
+  querySource = 'agent_products_error_fallback',
+  semanticRetryApplied = false,
+  semanticRetryQuery = null,
+  semanticRetryHits = 0,
 }) {
   const quotaExhausted = isUpstreamQuotaExhausted({ upstreamStatus, upstreamCode, upstreamMessage });
   const shouldClarify = quotaExhausted && shouldClarifyOnQuota({ queryClass, intent });
@@ -3023,11 +3034,14 @@ function buildProxySearchSoftFallbackResponse({
         ? { reason_codes: ['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY'] }
         : {}),
       metadata: {
-        query_source: 'agent_products_error_fallback',
+        query_source: String(querySource || 'agent_products_error_fallback'),
         upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
         upstream_error_code: upstreamCode ? String(upstreamCode) : null,
         upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
         fallback_route: route || null,
+        semantic_retry_applied: Boolean(semanticRetryApplied),
+        semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+        semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
         ...(shouldClarify ? { upstream_quota_guarded: true } : {}),
       },
     },
@@ -3584,6 +3598,34 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   return false;
 }
 
+const FRAGRANCE_SEMANTIC_TERMS = [
+  'fragrance',
+  'perfume',
+  'parfum',
+  'cologne',
+  'eau de parfum',
+  'eau de toilette',
+  'body mist',
+];
+const FRAGRANCE_QUERY_REGEX =
+  /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i;
+
+function hasFragranceQuerySignal(queryText = '') {
+  return FRAGRANCE_QUERY_REGEX.test(String(queryText || ''));
+}
+
+function buildFragranceSemanticRetryQuery(queryText = '') {
+  const raw = String(queryText || '').trim();
+  if (!raw) return '';
+  const lower = raw.toLowerCase();
+  const terms = [raw];
+  for (const item of FRAGRANCE_SEMANTIC_TERMS) {
+    if (!lower.includes(item)) terms.push(item);
+  }
+  const joined = terms.join(' ').replace(/\s+/g, ' ').trim();
+  return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+}
+
 function buildFallbackCandidateText(product) {
   if (!product || typeof product !== 'object') return '';
   const parts = [
@@ -3851,9 +3893,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
 
-  const hasFragranceSearchSignal = /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(
-    String(queryText || ''),
-  );
+  const hasFragranceSearchSignal = hasFragranceQuerySignal(queryText);
   const hasFragranceCandidateSignal =
     /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette|scent|aroma)\b/i.test(
       candidateText,
@@ -4091,14 +4131,15 @@ function getFallbackAdoptUsableThreshold({
   return baseThreshold;
 }
 
-function buildFindProductsMultiPayloadFromQuery(rawQuery) {
+function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const search = {};
   const metadata = {};
+  const allowEmptyQuery = options && typeof options === 'object' && options.allowEmptyQuery === true;
 
   const textQuery = extractSearchQueryText(query);
-  if (!textQuery) return null;
-  search.query = textQuery;
+  if (!textQuery && !allowEmptyQuery) return null;
+  search.query = textQuery || '';
 
   const merchantId = String(firstQueryParamValue(query.merchant_id || query.merchantId) || '').trim();
   if (merchantId) search.merchant_id = merchantId;
@@ -4142,7 +4183,7 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   if (externalSeedStrategy) search.external_seed_strategy = externalSeedStrategy;
 
   const limit = parseQueryNumber(query.limit ?? query.page_size);
-  if (limit !== undefined) search.limit = Math.max(1, Math.min(100, Math.floor(limit)));
+  if (limit !== undefined) search.limit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(limit)));
 
   const offset = parseQueryNumber(query.offset);
   if (offset !== undefined) {
@@ -4186,7 +4227,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     : [];
   const baseVariants = buildBrandQueryVariants(queryText, brandTerms);
   const fragranceVariants =
-    /\b(perfume|fragrance|parfum|cologne)\b/i.test(queryText) || hasExplicitCategory
+    hasFragranceQuerySignal(queryText) || hasExplicitCategory
       ? ['perfume', 'fragrance', 'parfum', 'cologne', 'body mist', 'eau de parfum']
       : [];
   const queryVariants = Array.from(
@@ -4454,10 +4495,25 @@ async function queryFindProductsMultiFallback({
     PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED &&
     isAuroraSource(normalizedRequestSource) &&
     (String(reason || '').trim() === 'primary_irrelevant' || isAuroraMonocultureRetry);
-  const semanticRetryQueries = isAuroraSemanticRetry
-    ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)
-    : [];
-  const candidateQueries = [baseQueryText, ...semanticRetryQueries].filter(Boolean);
+  const fragranceSemanticRetryQuery = hasFragranceQuerySignal(baseQueryText)
+    ? buildFragranceSemanticRetryQuery(baseQueryText)
+    : '';
+  const auroraSemanticRetryQuery = isAuroraSemanticRetry
+    ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)[0] || ''
+    : '';
+  const semanticRetryQueries = [];
+  if (
+    fragranceSemanticRetryQuery &&
+    normalizeSearchTextForMatch(fragranceSemanticRetryQuery) !== normalizeSearchTextForMatch(baseQueryText)
+  ) {
+    semanticRetryQueries.push(fragranceSemanticRetryQuery);
+  } else if (
+    auroraSemanticRetryQuery &&
+    normalizeSearchTextForMatch(auroraSemanticRetryQuery) !== normalizeSearchTextForMatch(baseQueryText)
+  ) {
+    semanticRetryQueries.push(auroraSemanticRetryQuery);
+  }
+  const candidateQueries = Array.from(new Set([baseQueryText, ...semanticRetryQueries].filter(Boolean))).slice(0, 2);
   const configuredFallbackTimeoutMs = isAuroraSource(normalizedRequestSource)
     ? Math.min(PROXY_SEARCH_FALLBACK_TIMEOUT_MS, PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS)
     : PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
@@ -4486,7 +4542,7 @@ async function queryFindProductsMultiFallback({
               query: queryText,
             },
           };
-    const useSearchEndpoint = isAuroraSemanticRetry && i > 0;
+    const useSearchEndpoint = i > 0;
     const attempt = await invokeFindProductsMultiFallbackOnce({
       url,
       searchUrl,
@@ -4533,11 +4589,17 @@ async function queryFindProductsMultiFallback({
   }
 
   if (!selectedAttempt) return null;
+  const semanticRetryApplied =
+    normalizeSearchTextForMatch(String(selectedAttempt.queryUsed || '')) !==
+    normalizeSearchTextForMatch(String(baseQueryText || ''));
   return {
     status: selectedAttempt.status,
     usableCount: selectedAttempt.usableCount,
     relevanceMatched: selectedAttempt.relevanceMatched,
     selectedQuery: selectedAttempt.queryUsed,
+    semanticRetryApplied,
+    semanticRetryQuery: semanticRetryApplied ? selectedAttempt.queryUsed : null,
+    semanticRetryHits: semanticRetryApplied ? Number(selectedAttempt.usableCount || 0) : 0,
     attempts,
     data: selectedAttempt.data,
   };
@@ -5019,6 +5081,7 @@ function getSecondaryFallbackSkipReason(
   if (disableSkipAfterResolverMiss) return null;
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return null;
   if (hasPetSearchSignal(queryText)) return null;
+  if (hasFragranceQuerySignal(queryText)) return null;
   if (!shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText)) return null;
   if (brandLike) return null;
 
@@ -7139,7 +7202,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20, opt
   }
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const fetchLimit = Math.max(safeLimit * Math.max(safePage, 1) * 2, 20);
   const inStockOnly = options?.inStockOnly !== false;
 
@@ -7544,7 +7607,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   }
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
@@ -8059,7 +8122,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
 
 async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
@@ -8360,7 +8423,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
 async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const inStockOnly = options?.inStockOnly !== false;
 
   // Oversample so JS-level filtering (in-stock-only, de-dupe) can still fill the page.
@@ -8432,7 +8495,7 @@ async function loadMerchantBrowseFromCache(merchantId, page = 1, limit = 20, opt
   if (!mid) return { products: [], total: 0, page: 1, page_size: 0 };
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const inStockOnly = options?.inStockOnly !== false;
 
   // Oversample so JS-level filtering (in-stock-only, de-dupe) can still fill the page.
@@ -10333,7 +10396,31 @@ async function proxyAgentSearchToBackend(req, res) {
   }
 }
 
-app.get('/agent/v1/products/search', proxyAgentSearchToBackend);
+async function handleAgentProductsSearchViaInvoke(req, res) {
+  const payload = buildFindProductsMultiPayloadFromQuery(req.query, { allowEmptyQuery: true });
+  if (!payload) {
+    return res.status(400).json({
+      error: 'INVALID_QUERY',
+      message: 'query payload is invalid',
+    });
+  }
+
+  req.body = {
+    operation: 'find_products_multi',
+    payload,
+    metadata:
+      payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+        ? payload.metadata
+        : {},
+  };
+
+  return handleInvokeRequest(req, res, {
+    client_channel: 'search',
+    orchestrator_path: 'search_route_adapter',
+  });
+}
+
+app.get('/agent/v1/products/search', handleAgentProductsSearchViaInvoke);
 app.get('/agent/v1/beauty/products/search', (req, res) => {
   const mergedQuery =
     req.query && typeof req.query === 'object' && !Array.isArray(req.query)
@@ -12279,6 +12366,78 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           err: debugErr?.message || String(debugErr),
         },
         'failed to build/emit debug bundle',
+      );
+    }
+    try {
+      const operation = String(debugRuntime.operation || req?.body?.operation || '')
+        .trim()
+        .toLowerCase();
+      if (
+        operation === 'find_products_multi' &&
+        finalBody &&
+        typeof finalBody === 'object' &&
+        !Array.isArray(finalBody)
+      ) {
+        const existingMeta =
+          finalBody.metadata &&
+          typeof finalBody.metadata === 'object' &&
+          !Array.isArray(finalBody.metadata)
+            ? finalBody.metadata
+            : {};
+        const existingSearchDecision =
+          existingMeta.search_decision &&
+          typeof existingMeta.search_decision === 'object' &&
+          !Array.isArray(existingMeta.search_decision)
+            ? existingMeta.search_decision
+            : {};
+        const existingRouteDebugPolicy =
+          existingMeta.route_debug &&
+          typeof existingMeta.route_debug === 'object' &&
+          !Array.isArray(existingMeta.route_debug) &&
+          existingMeta.route_debug.policy &&
+          typeof existingMeta.route_debug.policy === 'object' &&
+          !Array.isArray(existingMeta.route_debug.policy)
+            ? existingMeta.route_debug.policy
+            : {};
+        const defaultExternalFillGateReason =
+          String(existingMeta.external_fill_gate_reason || '').trim() ||
+          String(existingMeta.external_seed_skip_reason || '').trim() ||
+          String(existingMeta.route_health?.external_seed_skip_reason || '').trim() ||
+          null;
+        const domainFilterDroppedExternal =
+          Number(
+            existingMeta.domain_filter_dropped_external ??
+              existingSearchDecision.domain_filter_dropped_external ??
+              existingRouteDebugPolicy?.ambiguity?.domain_filter_dropped_external ??
+              0,
+          ) || 0;
+        finalBody = {
+          ...finalBody,
+          metadata: {
+            ...existingMeta,
+            orchestrator_version: String(
+              process.env.SEARCH_ORCHESTRATOR_VERSION || 'search_orchestrator_unified_v1',
+            ),
+            orchestrator_path:
+              String(routeContext?.orchestrator_path || '').trim() ||
+              (String(req?.path || '').trim() === '/agent/v1/products/search'
+                ? 'search_route_adapter'
+                : 'invoke_route'),
+            semantic_retry_applied: Boolean(existingMeta.semantic_retry_applied),
+            semantic_retry_query: existingMeta.semantic_retry_query || null,
+            semantic_retry_hits: Math.max(0, Number(existingMeta.semantic_retry_hits || 0) || 0),
+            domain_filter_dropped_external: Math.max(0, domainFilterDroppedExternal),
+            external_fill_gate_reason: defaultExternalFillGateReason,
+          },
+        };
+      }
+    } catch (metadataErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: metadataErr?.message || String(metadataErr),
+        },
+        'failed to normalize find_products_multi metadata',
       );
     }
     return originalJson(finalBody);
@@ -15759,7 +15918,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      if (isBrowse && merchantId) {
 	        try {
 	          const page = Math.max(1, Number(search.page || 1) || 1);
-	          const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 100);
+	          const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), SEARCH_LIMIT_MAX);
 	          const fromCache = await loadMerchantBrowseFromCache(merchantId, page, limit, { inStockOnly });
 	          const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
 
@@ -15826,7 +15985,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // Single-merchant product search (Agent Search endpoint).
         const search = effectivePayload.search || effectivePayload || {};
         const page = Math.max(1, Number(search.page || 1) || 1);
-        const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), SEARCH_LIMIT_MAX);
         const offset = (page - 1) * limit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
@@ -15867,7 +16026,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // Cross-merchant search via Agent Search endpoint.
         const search = effectivePayload.search || effectivePayload || {};
         const page = Math.max(1, Number(search.page || 1) || 1);
-        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
         const offset = (page - 1) * limit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
@@ -16855,6 +17014,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
+              querySource: hasFragranceQuerySignal(queryText)
+                ? 'agent_products_semantic_retry_exhausted'
+                : 'agent_products_error_fallback',
             }),
           };
         }
@@ -16904,7 +17066,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const shouldFallback = primaryUnusable || primaryIrrelevant;
       const requestedLimit = Math.min(
         Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
-        100,
+        SEARCH_LIMIT_MAX,
       );
       const requestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
       const requestedPageFromPayload = Number(queryParams?.page || 0) || 0;
@@ -16941,6 +17103,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
       });
       let secondarySupplementMeta = null;
+      let semanticRetryApplied = false;
+      let semanticRetryQuery = null;
+      let semanticRetryHits = 0;
 
       if (
         operation === 'find_products_multi' &&
@@ -17164,6 +17329,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : 'primary_irrelevant',
               requestSource: metadata?.source,
             });
+            if (fallback && fallback.semanticRetryApplied) {
+              semanticRetryApplied = true;
+              semanticRetryQuery = fallback.semanticRetryQuery || fallback.selectedQuery || null;
+              semanticRetryHits = Math.max(0, Number(fallback.semanticRetryHits || fallback.usableCount || 0) || 0);
+            }
             const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
               operation,
               source: metadata?.source,
@@ -17190,6 +17360,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
         if (!replacedByFallback) {
           if (primaryIrrelevant) {
+            const fragranceSemanticExhausted = hasFragranceQuerySignal(queryText);
             upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               reason: skipSecondaryFallback
@@ -17204,6 +17375,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
+              querySource: fragranceSemanticExhausted
+                ? 'agent_products_semantic_retry_exhausted'
+                : 'agent_products_error_fallback',
+              semanticRetryApplied,
+              semanticRetryQuery,
+              semanticRetryHits,
             });
           } else {
             upstreamData = withProxySearchFallbackMetadata(upstreamData, {
@@ -17226,6 +17403,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           metadata: {
             ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
             search_stage_b: secondarySupplementMeta,
+            semantic_retry_applied: Boolean(semanticRetryApplied),
+            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+          },
+        };
+      } else if (
+        (operation === 'find_products' || operation === 'find_products_multi') &&
+        upstreamData &&
+        typeof upstreamData === 'object' &&
+        !Array.isArray(upstreamData)
+      ) {
+        upstreamData = {
+          ...upstreamData,
+          metadata: {
+            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
+            semantic_retry_applied: Boolean(semanticRetryApplied),
+            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
           },
         };
       }
@@ -17558,7 +17753,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (operation === 'find_products_multi') {
       try {
         const search = effectivePayload.search || effectivePayload || {};
-        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
         const reranked = await maybeRerankFindProductsMultiResponse({
           response: maybePolicy,
           userQuery: rawUserQuery,
@@ -18042,6 +18237,7 @@ function registerExternalInvokeRoute(path, clientChannel) {
       () =>
         handleInvokeRequest(req, res, {
           client_channel: clientChannel,
+          orchestrator_path: 'external_invoke_route',
           key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
           agent_id: req?.invokeAuth?.agent_id || null,
           auth_mode: req?.invokeAuth?.auth_mode || null,

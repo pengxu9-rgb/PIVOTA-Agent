@@ -153,6 +153,47 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
+  test('brand query fail-opens when strict domain filter would drop all brand external products', () => {
+    withPolicyEnv(
+      {
+        SEARCH_DOMAIN_HARD_FILTER_MODE: 'strict',
+        SEARCH_DOMAIN_BEAUTY_FAIL_OPEN: 'false',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('fenty beauty', [], []);
+        const resp = applyWithEnv({
+          response: {
+            products: [
+              makeRawProduct({
+                id: 'ext-fenty-1',
+                product_id: 'ext-fenty-1',
+                merchant_id: 'external_seed',
+                source: 'external_seed',
+                title: 'Fenty Beauty Eau de Parfum',
+                description: 'signature fragrance perfume',
+              }),
+            ],
+            total: 1,
+            page_size: 1,
+            reply: null,
+          },
+          intent,
+          requestPayload: { search: { query: 'fenty beauty' } },
+          metadata: {
+            brand_query_detected: true,
+            brand_query_without_category: true,
+            brand_entities: ['fenty beauty'],
+            brand_scope: 'broad',
+          },
+          rawUserQuery: 'fenty beauty',
+        });
+
+        expect(resp.products.length).toBeGreaterThan(0);
+        expect(resp.metadata?.search_decision?.domain_filter_dropped_external).toBe(0);
+      },
+    );
+  });
+
   test('scenario query returns products when post-quality thresholds are met', () => {
     withPolicyEnv(
       {

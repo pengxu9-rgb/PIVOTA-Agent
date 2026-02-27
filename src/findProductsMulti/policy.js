@@ -190,6 +190,58 @@ const LINGERIE_PATTERNS = [
   /下着|ブラ|パンティ|ランジェリー/,
 ];
 
+const FRAGRANCE_QUERY_REGEX =
+  /\b(perfume|fragrance|parfum|cologne|eau de parfum|eau de toilette|body mist)\b/i;
+const BRAND_TERM_SUFFIXES = new Set([
+  'beauty',
+  'cosmetic',
+  'cosmetics',
+  'fragrance',
+  'perfume',
+  'parfum',
+  'makeup',
+]);
+
+function hasFragranceQuerySignal(rawQuery) {
+  return FRAGRANCE_QUERY_REGEX.test(String(rawQuery || ''));
+}
+
+function isExternalSeedProduct(product) {
+  if (!product || typeof product !== 'object') return false;
+  const merchantId = String(product.merchant_id || product.merchantId || '').trim().toLowerCase();
+  const source = String(product.source || '').trim().toLowerCase();
+  return merchantId === 'external_seed' || source === 'external_seed';
+}
+
+function normalizeBrandTerms(terms) {
+  if (!Array.isArray(terms)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const term of terms) {
+    const normalized = normalizeWordTokens(term).join(' ').trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function hasBrandTermMatchInText(text, term) {
+  const normalizedText = String(text || '').toLowerCase();
+  const normalizedTerm = String(term || '').toLowerCase().trim();
+  if (!normalizedText || !normalizedTerm) return false;
+  if (normalizedText.includes(normalizedTerm)) return true;
+
+  const compactText = normalizedText.replace(/\s+/g, '');
+  const compactTerm = normalizedTerm.replace(/\s+/g, '');
+  if (compactTerm && compactText.includes(compactTerm)) return true;
+
+  const tokens = normalizeWordTokens(normalizedTerm).filter((token) => !BRAND_TERM_SUFFIXES.has(token));
+  if (!tokens.length) return false;
+  if (tokens.length === 1) return normalizedText.includes(tokens[0]);
+  return tokens.every((token) => normalizedText.includes(token));
+}
+
 function includesAny(haystack, needles) {
   if (!haystack) return false;
   const lowered = String(haystack).toLowerCase();
@@ -907,6 +959,7 @@ function inferSearchDomainKey(intent, rawQuery) {
   const query = String(rawQuery || '').toLowerCase();
   if (target === 'pet') return 'pet';
   if (primaryDomain === 'beauty') return 'beauty';
+  if (hasFragranceQuerySignal(query)) return 'beauty';
   if (
     /travel|trip|business trip|packing|luggage|toiletry|出差|旅行|旅游|差旅/.test(query)
   ) {
@@ -955,8 +1008,8 @@ function inferProductDomainKey(product) {
     return 'pet';
   }
   if (
-    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
-    /化妆|美妆|护肤|精华|口红|粉底|防晒/.test(text)
+    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic|fragrance|perfume|parfum|cologne|eau de parfum|eau de toilette|body mist|scent|aroma)\b/i.test(text) ||
+    /化妆|美妆|护肤|精华|口红|粉底|防晒|香水|香氛/.test(text)
   ) {
     return 'beauty';
   }
@@ -1366,17 +1419,90 @@ function matchesDomainAllowlist(product, domainKey, options = {}) {
   return false;
 }
 
-function applyDomainHardFilter(products, intent, rawQuery) {
-  if (!SEARCH_DOMAIN_HARD_FILTER_ENABLED) return { products: Array.isArray(products) ? products : [], dropped: 0 };
+function applyDomainHardFilter(products, intent, rawQuery, options = {}) {
   const list = Array.isArray(products) ? products : [];
+  const externalBefore = list.filter((product) => isExternalSeedProduct(product)).length;
+  if (!SEARCH_DOMAIN_HARD_FILTER_ENABLED) {
+    return {
+      products: list,
+      dropped: 0,
+      dropped_external: 0,
+      domain_key: inferSearchDomainKey(intent, rawQuery),
+      mode_used: 'disabled',
+      pass2_triggered: false,
+    };
+  }
   const domainKey = inferSearchDomainKey(intent, rawQuery);
-  if (domainKey === 'general') return { products: list, dropped: 0 };
+  if (domainKey === 'general') {
+    return {
+      products: list,
+      dropped: 0,
+      dropped_external: 0,
+      domain_key: domainKey,
+      mode_used: 'strict',
+      pass2_triggered: false,
+    };
+  }
   const allowTokens = extractCategoryTokensFromIntent(intent, rawQuery);
   const strictFiltered = list.filter((product) =>
     matchesDomainAllowlist(product, domainKey, { mode: 'strict', allowTokens }),
   );
   const strictDropped = Math.max(0, list.length - strictFiltered.length);
   const strictDropRatio = list.length > 0 ? strictDropped / list.length : 0;
+  const strictExternalCount = strictFiltered.filter((product) => isExternalSeedProduct(product)).length;
+  const strictDroppedExternal = Math.max(0, externalBefore - strictExternalCount);
+  const brandQueryDetected = Boolean(options?.brandQueryDetected);
+  const brandTerms = normalizeBrandTerms(options?.brandTerms || []);
+  const countExternalBrandRelevant = (items) => {
+    if (!brandTerms.length) return 0;
+    let count = 0;
+    for (const product of Array.isArray(items) ? items : []) {
+      if (!isExternalSeedProduct(product)) continue;
+      const text = buildProductText(product);
+      if (!text) continue;
+      if (brandTerms.some((term) => hasBrandTermMatchInText(text, term))) count += 1;
+    }
+    return count;
+  };
+
+  const sourceExternalBrandRelevant =
+    brandQueryDetected && brandTerms.length ? countExternalBrandRelevant(list) : 0;
+  const strictExternalBrandRelevant =
+    brandQueryDetected && brandTerms.length ? countExternalBrandRelevant(strictFiltered) : 0;
+
+  if (brandQueryDetected && sourceExternalBrandRelevant > 0 && strictExternalBrandRelevant === 0) {
+    const balancedFiltered = list.filter((product) =>
+      matchesDomainAllowlist(product, domainKey, { mode: 'balanced', allowTokens }),
+    );
+    const balancedExternalBrandRelevant = countExternalBrandRelevant(balancedFiltered);
+    if (balancedFiltered.length > 0 && balancedExternalBrandRelevant > 0) {
+      const balancedExternal = balancedFiltered.filter((product) => isExternalSeedProduct(product)).length;
+      return {
+        products: balancedFiltered,
+        dropped: Math.max(0, list.length - balancedFiltered.length),
+        dropped_external: Math.max(0, externalBefore - balancedExternal),
+        domain_key: domainKey,
+        mode_used: 'balanced',
+        pass2_triggered: true,
+        strict_kept: strictFiltered.length,
+        strict_dropped: strictDropped,
+        fail_open: true,
+        fail_open_reason: 'brand_external_fail_open_balanced',
+      };
+    }
+    return {
+      products: list,
+      dropped: 0,
+      dropped_external: 0,
+      domain_key: domainKey,
+      mode_used: 'strict',
+      pass2_triggered: true,
+      strict_kept: strictFiltered.length,
+      strict_dropped: strictDropped,
+      fail_open: true,
+      fail_open_reason: 'brand_external_fail_open_all',
+    };
+  }
 
   if (
     SEARCH_DOMAIN_HARD_FILTER_MODE === 'balanced' &&
@@ -1387,9 +1513,11 @@ function applyDomainHardFilter(products, intent, rawQuery) {
       matchesDomainAllowlist(product, domainKey, { mode: 'balanced', allowTokens }),
     );
     if (balancedFiltered.length >= strictFiltered.length) {
+      const balancedExternal = balancedFiltered.filter((product) => isExternalSeedProduct(product)).length;
       return {
         products: balancedFiltered,
         dropped: Math.max(0, list.length - balancedFiltered.length),
+        dropped_external: Math.max(0, externalBefore - balancedExternal),
         domain_key: domainKey,
         mode_used: 'balanced',
         pass2_triggered: true,
@@ -1416,13 +1544,14 @@ function applyDomainHardFilter(products, intent, rawQuery) {
           category.includes('makeup') ||
           category.includes('skin'),
       ) ||
-      /化妆|化妝|美妆|美妝|彩妆|彩妝|护肤|護膚|粉底|口红|口紅|眼影|睫毛膏|刷|brush|makeup|beauty|cosmetic|skincare|foundation|lipstick|eyeshadow/.test(
+      /化妆|化妝|美妆|美妝|彩妆|彩妝|护肤|護膚|粉底|口红|口紅|眼影|睫毛膏|刷|brush|makeup|beauty|cosmetic|skincare|foundation|lipstick|eyeshadow|fragrance|perfume|parfum|cologne|香水|香氛/.test(
         query,
       );
     if (isBeautyIntent) {
       return {
         products: list,
         dropped: 0,
+        dropped_external: 0,
         domain_key: domainKey,
         mode_used: 'strict',
         fail_open: true,
@@ -1433,6 +1562,7 @@ function applyDomainHardFilter(products, intent, rawQuery) {
   return {
     products: strictFiltered,
     dropped: strictDropped,
+    dropped_external: strictDroppedExternal,
     domain_key: domainKey,
     mode_used: 'strict',
     pass2_triggered: false,
@@ -2915,12 +3045,27 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	        if (lang === 'ja') extra.push('メイクブラシ');
 	      }
       } else if (intent?.primary_domain === 'beauty') {
+        const fragranceQueryDetected = hasFragranceQuerySignal(q);
 	      const wantsSkincare =
 	        /护肤|護膚|skincare|skin\s*care|serum|toner|essence|moisturizer|cleanser|sunscreen|cream/i.test(
 	          q,
 	        );
 	      const wantsDateLook = /约会|約會|\bdate\b|\bnight\s*out\b/i.test(q);
-      if (!brandQueryWithoutCategory && wantsSkincare) {
+      if (fragranceQueryDetected) {
+        extra.push(
+          'fragrance',
+          'perfume',
+          'parfum',
+          'cologne',
+          'eau de parfum',
+          'eau de toilette',
+          'body mist',
+        );
+        if (lang === 'zh') extra.push('香水', '香氛');
+        if (lang === 'es') extra.push('fragancia', 'perfume');
+        if (lang === 'fr') extra.push('parfum', 'fragrance');
+        if (lang === 'ja') extra.push('香水', 'フレグランス');
+      } else if (!brandQueryWithoutCategory && wantsSkincare) {
         extra.push('skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
         if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
         if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'tónico', 'hidratante');
@@ -2968,6 +3113,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     },
   };
 
+  const querySemanticClass = hasFragranceQuerySignal(latestUserQuery) ? 'fragrance' : null;
   const expansionMeta = {
     mode: rewriteGate.mode,
     strategy_version: STRATEGY_VERSION,
@@ -2978,6 +3124,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     rewrite_gate: rewriteGate,
     association_plan: associationPlan,
     ambiguity_score_pre: ambiguityScorePre,
+    query_semantic_class: querySemanticClass,
     brand_query_detected: brandQueryDetected,
     brand_entities: brandEntities,
     brand_detection_mode: brandDetection?.detection_mode || null,
@@ -3092,6 +3239,17 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     filtered = [];
   }
 
+  const metadataSemanticClass = String(
+    metadata?.query_semantic_class ??
+      metadata?.querySemanticClass ??
+      metadata?.search_decision?.query_semantic_class ??
+      metadata?.searchDecision?.querySemanticClass ??
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  const querySemanticClass = metadataSemanticClass || (hasFragranceQuerySignal(rawQuery) ? 'fragrance' : null);
+
   const skipConstraintReorder =
     intent?.primary_domain === 'beauty' &&
     (intent?.scenario?.name === 'beauty_tools' || intent?.scenario?.name === 'eye_shadow_brush');
@@ -3099,7 +3257,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     filtered = reorderProductsForConstraints(filtered, intent, rawQuery);
   }
   const preDomainFilterCandidates = Array.isArray(filtered) ? filtered.slice() : [];
-  const domainFilterResult = applyDomainHardFilter(filtered, intent, rawQuery);
+  const domainFilterResult = applyDomainHardFilter(filtered, intent, rawQuery, {
+    brandQueryDetected,
+    brandTerms: brandEntities,
+    querySemanticClass,
+  });
   filtered = Array.isArray(domainFilterResult.products) ? domainFilterResult.products : [];
   pushGateTrace(
     'domain_hard_filter',
@@ -3418,7 +3580,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
                 brand_entities: brandEntities,
                 brand_scope: brandScope,
                 query_class: queryClass,
+                query_semantic_class: querySemanticClass,
                 domain_filter_dropped: Number(domainFilterResult?.dropped || 0),
+                domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
                 domain_filter_key: domainFilterResult?.domain_key || null,
                 domain_filter_mode: domainFilterResult?.mode_used || null,
                 domain_filter_pass2: Boolean(domainFilterResult?.pass2_triggered),
@@ -3615,6 +3779,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             strategy_version: STRATEGY_VERSION,
             search_decision: {
               query_class: queryClass,
+              query_semantic_class: querySemanticClass,
               brand_query_detected: Boolean(brandQueryDetected),
               brand_entities: brandEntities,
               brand_scope: brandScope,
@@ -3628,7 +3793,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               post_quality: postQuality,
               low_confidence: lowConfidenceReasons.length > 0,
               low_confidence_reasons: lowConfidenceReasons,
+              domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
             },
+            domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
             gate_trace: gateTrace,
             gate_summary: {
               applied_count: gateTrace.filter((item) => item.applied).length,
@@ -3646,6 +3813,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             strategy_version: STRATEGY_VERSION,
             search_decision: {
               query_class: queryClass,
+              query_semantic_class: querySemanticClass,
               brand_query_detected: Boolean(brandQueryDetected),
               brand_entities: brandEntities,
               brand_scope: brandScope,
@@ -3659,7 +3827,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               post_quality: postQuality,
               low_confidence: lowConfidenceReasons.length > 0,
               low_confidence_reasons: lowConfidenceReasons,
+              domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
             },
+            domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
             gate_trace: gateTrace,
             gate_summary: {
               applied_count: gateTrace.filter((item) => item.applied).length,
