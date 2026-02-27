@@ -18030,43 +18030,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   }
 }
 
-app.post('/agent/shop/v1/invoke', requireExternalInvokeAuth, async (req, res) => {
-  return INVOKE_AUTH_CONTEXT.run(
-    {
-      api_key: req?.invokeAuth?.raw_token || null,
-      agent_id: req?.invokeAuth?.agent_id || null,
-      auth_mode: req?.invokeAuth?.auth_mode || null,
-      auth_source: req?.invokeAuth?.auth_source || null,
-    },
-    () =>
-      handleInvokeRequest(req, res, {
-        client_channel: 'shop',
-        key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
+function registerExternalInvokeRoute(path, clientChannel) {
+  app.post(path, requireExternalInvokeAuth, async (req, res) => {
+    return INVOKE_AUTH_CONTEXT.run(
+      {
+        api_key: req?.invokeAuth?.raw_token || null,
         agent_id: req?.invokeAuth?.agent_id || null,
         auth_mode: req?.invokeAuth?.auth_mode || null,
         auth_source: req?.invokeAuth?.auth_source || null,
-      }),
-  );
-});
+      },
+      () =>
+        handleInvokeRequest(req, res, {
+          client_channel: clientChannel,
+          key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
+          agent_id: req?.invokeAuth?.agent_id || null,
+          auth_mode: req?.invokeAuth?.auth_mode || null,
+          auth_source: req?.invokeAuth?.auth_source || null,
+        }),
+    );
+  });
+}
 
-app.post('/agent/creator/v1/invoke', requireExternalInvokeAuth, async (req, res) => {
-  return INVOKE_AUTH_CONTEXT.run(
-    {
-      api_key: req?.invokeAuth?.raw_token || null,
-      agent_id: req?.invokeAuth?.agent_id || null,
-      auth_mode: req?.invokeAuth?.auth_mode || null,
-      auth_source: req?.invokeAuth?.auth_source || null,
-    },
-    () =>
-      handleInvokeRequest(req, res, {
-        client_channel: 'creator',
-        key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
-        agent_id: req?.invokeAuth?.agent_id || null,
-        auth_mode: req?.invokeAuth?.auth_mode || null,
-        auth_source: req?.invokeAuth?.auth_source || null,
-      }),
-  );
-});
+registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
+// Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
+registerExternalInvokeRoute('/agent/creator/v1/invoke', 'creator');
 
 // Global error handler - prevent crashes and avoid double sends
 app.use((err, req, res, next) => {
