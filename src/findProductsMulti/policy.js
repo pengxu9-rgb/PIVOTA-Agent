@@ -778,7 +778,7 @@ function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
     detectBrandEntities(rawQuery, { candidateProducts: [] }).brand_like &&
     !hasExplicitCategoryHint(rawQuery, intent)
   ) {
-    return 'lookup';
+    return 'exploratory';
   }
   if (
     /\bsku\b|\bmodel\b|型号|型號/.test(query) ||
@@ -2914,15 +2914,13 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	          q,
 	        );
 	      const wantsDateLook = /约会|約會|\bdate\b|\bnight\s*out\b/i.test(q);
-	      if (brandQueryWithoutCategory) {
-	        extra.push(...brandQueryVariants);
-	      } else if (wantsSkincare) {
-	        extra.push('skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
-	        if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
-	        if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'tónico', 'hidratante');
-	        if (lang === 'fr') extra.push('soin de la peau', 'sérum', 'tonique', 'hydratant');
-	        if (lang === 'ja') extra.push('スキンケア', '美容液', '化粧水', '乳液');
-	      } else {
+      if (!brandQueryWithoutCategory && wantsSkincare) {
+        extra.push('skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
+        if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
+        if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'tónico', 'hidratante');
+        if (lang === 'fr') extra.push('soin de la peau', 'sérum', 'tonique', 'hydratant');
+        if (lang === 'ja') extra.push('スキンケア', '美容液', '化粧水', '乳液');
+	      } else if (!brandQueryWithoutCategory) {
 	        extra.push('makeup', 'foundation', 'concealer', 'mascara', 'lipstick');
 	        if (wantsDateLook) extra.push('date makeup', 'longwear', 'natural glow');
 	        if (lang === 'zh') extra.push('彩妆', '底妆', '眼妆', '唇妆');
@@ -3137,7 +3135,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     !categoryHintDetected &&
     !['mission', 'scenario', 'gift', 'non_shopping'].includes(String(queryClass || ''))
   ) {
-    queryClass = 'lookup';
+    queryClass = 'exploratory';
   }
   const associationPlanFromMeta =
     metadata?.association_plan && typeof metadata.association_plan === 'object'
