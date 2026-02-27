@@ -844,7 +844,29 @@ function humanizeRiskLine(line, lang) {
 function isProfileEchoNarrativeLine(line) {
   const text = String(line || '').trim();
   if (!text) return false;
-  return /^(your profile|profile priorities|你的情况|你的画像|画像信息|匹配点)[:：]/i.test(text);
+  if (/^(your profile|profile priorities|你的情况|你的画像|画像信息)[:：]/i.test(text)) return true;
+  if (/^(fit signal|匹配点)[:：]/i.test(text)) {
+    if (
+      /\b(skintype\s*=|sensitivity\s*=|barrier\s*=)\b/i.test(text) ||
+      /profile|画像|肤质|敏感|屏障|油皮|干皮|混合皮|低敏|中敏|高敏/i.test(text)
+    ) {
+      return true;
+    }
+  }
+  if (/\b(skintype\s*=|sensitivity\s*=|barrier\s*=)\b/i.test(text)) return true;
+
+  const normalized = text.toLowerCase();
+  const profileTokenCount = [
+    /\b(oily|dry|combo|combination|normal)\b/.test(normalized),
+    /\b(sensitivity|sensitive|low|medium|high)\b/.test(normalized),
+    /\b(barrier|healthy|impaired)\b/.test(normalized),
+    /肤质|敏感|屏障|油皮|干皮|混合皮|低敏|中敏|高敏/.test(text),
+  ].filter(Boolean).length;
+  const productSignal = /\b(ingredient|formula|efficacy|mechanis|retino|acid|niacinamide|ceramide|peptide|spf|sunscreen|cleanser|moisturizer|serum|防晒|保湿|修护|控痘|去角质)\b/i
+    .test(text);
+  if (!productSignal && profileTokenCount >= 2 && text.length <= 120) return true;
+
+  return false;
 }
 
 function sanitizeAssessmentNarrativeLines(lines, { max = 6, allowProfileEcho = false } = {}) {
