@@ -7,6 +7,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# onnxruntime-node needs glibc compatibility on Alpine.
+RUN apk add --no-cache libc6-compat gcompat libstdc++
+
 # Install production dependencies
 RUN npm ci --only=production
 
