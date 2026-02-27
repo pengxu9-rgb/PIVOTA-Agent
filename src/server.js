@@ -220,6 +220,13 @@ const REVIEWS_API_BASE = (
 ).replace(/\/$/, '');
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
+const CREATOR_INVOKE_API_KEY = String(process.env.CREATOR_INVOKE_API_KEY || '').trim();
+const CREATOR_INVOKE_REQUIRE_KEY = (() => {
+  const raw = String(process.env.CREATOR_INVOKE_REQUIRE_KEY || '').trim().toLowerCase();
+  if (raw) return ['1', 'true', 'yes', 'y', 'on'].includes(raw);
+  const env = String(process.env.NODE_ENV || process.env.APP_ENV || '').trim().toLowerCase();
+  return env === 'production' || env === 'prod';
+})();
 
 // Agent budgeting & loop protection (per /ui/chat turn)
 const MAX_AGENT_STEPS_PER_TURN = Number(process.env.AGENT_MAX_STEPS_PER_TURN || 8);
@@ -6156,6 +6163,97 @@ function requireAdmin(req, res, next) {
   return next();
 }
 
+function parseBearerToken(rawHeader) {
+  const raw = String(rawHeader || '').trim();
+  if (!raw) return null;
+  const match = raw.match(/^Bearer\s+(.+)$/i);
+  return match && match[1] ? String(match[1]).trim() : null;
+}
+
+function fingerprintSecret(rawSecret) {
+  const secret = String(rawSecret || '').trim();
+  if (!secret) return null;
+  return createHash('sha256').update(secret).digest('hex').slice(0, 16);
+}
+
+function extractInvokeAuthToken(req) {
+  const xAgent = String(
+    req?.header('X-Agent-API-Key') ||
+      req?.header('x-agent-api-key') ||
+      '',
+  ).trim();
+  if (xAgent) return xAgent;
+  const bearer = parseBearerToken(req?.header('Authorization') || req?.header('authorization') || '');
+  return bearer || null;
+}
+
+function requireCreatorInvokeKey(req, res, next) {
+  if (!CREATOR_INVOKE_API_KEY) {
+    if (CREATOR_INVOKE_REQUIRE_KEY) {
+      logger.error(
+        { path: req?.path || null },
+        'CREATOR_INVOKE_API_KEY is required but not configured',
+      );
+      return res.status(500).json({
+        error: 'CREATOR_INVOKE_KEY_NOT_CONFIGURED',
+        message: 'CREATOR_INVOKE_API_KEY is required for /agent/creator/v1/invoke',
+      });
+    }
+    req.invokeAuth = {
+      key_fingerprint: null,
+      auth_source: null,
+      creator_key_matched: false,
+    };
+    return next();
+  }
+
+  const provided = extractInvokeAuthToken(req);
+  const keyFingerprint = fingerprintSecret(provided);
+  if (!provided || provided !== CREATOR_INVOKE_API_KEY) {
+    logger.warn(
+      {
+        path: req?.path || null,
+        client_channel: 'creator',
+        key_fingerprint: keyFingerprint,
+      },
+      'creator invoke auth rejected',
+    );
+    return res.status(401).json({
+      error: 'UNAUTHORIZED',
+      message: 'Missing or invalid creator invoke key',
+    });
+  }
+
+  req.invokeAuth = {
+    key_fingerprint: keyFingerprint || fingerprintSecret(CREATOR_INVOKE_API_KEY),
+    auth_source: String(req?.header('X-Agent-API-Key') || req?.header('x-agent-api-key') || '').trim()
+      ? 'x-agent-api-key'
+      : 'authorization_bearer',
+    creator_key_matched: true,
+  };
+  return next();
+}
+
+function rejectCreatorKeyOnShopInvoke(req, res, next) {
+  if (!CREATOR_INVOKE_API_KEY) return next();
+  const provided = extractInvokeAuthToken(req);
+  if (!provided) return next();
+  if (provided !== CREATOR_INVOKE_API_KEY) return next();
+
+  logger.warn(
+    {
+      path: req?.path || null,
+      client_channel: 'shop',
+      key_fingerprint: fingerprintSecret(provided),
+    },
+    'creator key attempted on shop invoke route',
+  );
+  return res.status(403).json({
+    error: 'FORBIDDEN',
+    message: 'creator invoke key must use /agent/creator/v1/invoke',
+  });
+}
+
 function isPromoActive(promo, nowTs) {
   const start = new Date(promo.startAt).getTime();
   const end = new Date(promo.endAt).getTime();
@@ -11967,7 +12065,10 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
 
 // ---------------- Main invoke endpoint ----------------
 
-app.post('/agent/shop/v1/invoke', async (req, res) => {
+async function handleInvokeRequest(req, res, routeContext = {}) {
+  const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
+  const routeKeyFingerprint =
+    routeContext.key_fingerprint || req?.invokeAuth?.key_fingerprint || null;
   const gatewayRequestId = randomUUID();
   const invokeStartedAtMs = Date.now();
   const debugRuntime = {
@@ -11981,6 +12082,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     intent: null,
     expansionMode: null,
   };
+  res.on('finish', () => {
+    logger.info(
+      {
+        gateway_request_id: gatewayRequestId,
+        client_channel: clientChannel,
+        key_fingerprint: routeKeyFingerprint,
+        operation: debugRuntime.operation,
+        status: res.statusCode,
+        latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
+      },
+      'invoke request complete',
+    );
+  });
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     let finalBody = body;
@@ -17796,6 +17910,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       gateway_request_id: gatewayRequestId,
     });
   }
+}
+
+app.post('/agent/shop/v1/invoke', rejectCreatorKeyOnShopInvoke, async (req, res) => {
+  return handleInvokeRequest(req, res, {
+    client_channel: 'shop',
+    key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
+  });
+});
+
+app.post('/agent/creator/v1/invoke', requireCreatorInvokeKey, async (req, res) => {
+  return handleInvokeRequest(req, res, {
+    client_channel: 'creator',
+    key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
+  });
 });
 
 // Global error handler - prevent crashes and avoid double sends
