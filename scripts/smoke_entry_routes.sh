@@ -195,8 +195,11 @@ if "product_verdict" in types:
     raise SystemExit(0)
 if "skin_status" in types or "routine" in types:
     raise SystemExit(0)
+if "nudge" in types:
+    # Passive advisory path can return nudge-only in current chatcards contract.
+    raise SystemExit(0)
 if "confidence_notice" not in types:
-    raise SystemExit(f"reco stage expected recommendations/product_verdict/skin_status/routine/confidence_notice, got={types}")
+    raise SystemExit(f"reco stage expected recommendations/product_verdict/skin_status/routine/nudge/confidence_notice, got={types}")
 reason = None
 for c in cards:
     if c.get("type") == "confidence_notice":
