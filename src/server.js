@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
 const { createHash, randomUUID } = require('crypto');
+const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
@@ -220,13 +221,33 @@ const REVIEWS_API_BASE = (
 ).replace(/\/$/, '');
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
-const CREATOR_INVOKE_API_KEY = String(process.env.CREATOR_INVOKE_API_KEY || '').trim();
-const CREATOR_INVOKE_REQUIRE_KEY = (() => {
-  const raw = String(process.env.CREATOR_INVOKE_REQUIRE_KEY || '').trim().toLowerCase();
-  if (raw) return ['1', 'true', 'yes', 'y', 'on'].includes(raw);
-  const env = String(process.env.NODE_ENV || process.env.APP_ENV || '').trim().toLowerCase();
-  return env === 'production' || env === 'prod';
-})();
+const AGENT_AUTH_INTROSPECT_URL = String(
+  process.env.AGENT_AUTH_INTROSPECT_URL ||
+    `${PIVOTA_API_BASE}/agent/internal/auth/introspect`,
+).trim();
+const AGENT_AUTH_INTROSPECT_INTERNAL_KEY = String(
+  process.env.AGENT_AUTH_INTROSPECT_INTERNAL_KEY || '',
+).trim();
+const AGENT_AUTH_INTROSPECT_TIMEOUT_MS = parseTimeoutMs(
+  process.env.AGENT_AUTH_INTROSPECT_TIMEOUT_MS,
+  2_500,
+);
+const AGENT_AUTH_CACHE_POSITIVE_TTL_MS = parsePositiveInt(
+  process.env.AGENT_AUTH_CACHE_POSITIVE_TTL_MS,
+  60_000,
+  { min: 1_000, max: 10 * 60_000 },
+);
+const AGENT_AUTH_CACHE_NEGATIVE_TTL_MS = parsePositiveInt(
+  process.env.AGENT_AUTH_CACHE_NEGATIVE_TTL_MS,
+  15_000,
+  { min: 1_000, max: 5 * 60_000 },
+);
+const AGENT_AUTH_CACHE_MAX_ENTRIES = parsePositiveInt(
+  process.env.AGENT_AUTH_CACHE_MAX_ENTRIES,
+  20_000,
+  { min: 100, max: 200_000 },
+);
+const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 
 // Agent budgeting & loop protection (per /ui/chat turn)
 const MAX_AGENT_STEPS_PER_TURN = Number(process.env.AGENT_MAX_STEPS_PER_TURN || 8);
@@ -4173,12 +4194,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   ).slice(0, 4);
   const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
   const requestHeaders = {
-    ...(checkoutToken
-      ? { 'X-Checkout-Token': checkoutToken }
-      : {
-          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-        }),
+    ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
   };
   const seenKeys = new Set();
   const mergedProducts = [];
@@ -4345,12 +4361,7 @@ async function invokeFindProductsMultiFallbackOnce({
     ? normalizedRequestSource
     : fallbackSource || 'agent_search_proxy_fallback';
   const requestHeaders = {
-    ...(checkoutToken
-      ? { 'X-Checkout-Token': checkoutToken }
-      : {
-          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-        }),
+    ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
   };
   const searchPayload = payload?.search && typeof payload.search === 'object' ? payload.search : {};
   const requestTimeoutMs = Math.max(
@@ -5585,12 +5596,7 @@ async function fetchProductDetailFromUpstream(args) {
     url,
     headers: {
       'Content-Type': 'application/json',
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: timeoutMs,
     data,
@@ -5610,12 +5616,7 @@ async function fetchLegacyProductDetailFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('get_product_detail'),
   };
@@ -5632,12 +5633,7 @@ async function fetchVariantDetailFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('get_product_detail'),
   };
@@ -5652,12 +5648,7 @@ async function fetchProductGroupMembersFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -5677,12 +5668,7 @@ async function resolveProductGroupFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -5701,12 +5687,7 @@ async function resolveProductGroupByProductIdFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -5929,12 +5910,7 @@ async function fetchSimilarProductsFromUpstream(args) {
     url,
     headers: {
       'Content-Type': 'application/json',
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
       ? Number(timeoutMs)
@@ -6176,6 +6152,12 @@ function fingerprintSecret(rawSecret) {
   return createHash('sha256').update(secret).digest('hex').slice(0, 16);
 }
 
+function hashSecretForCache(rawSecret) {
+  const secret = String(rawSecret || '').trim();
+  if (!secret) return null;
+  return createHash('sha256').update(secret).digest('hex');
+}
+
 function extractInvokeAuthToken(req) {
   const xAgent = String(
     req?.header('X-Agent-API-Key') ||
@@ -6187,71 +6169,239 @@ function extractInvokeAuthToken(req) {
   return bearer || null;
 }
 
-function requireCreatorInvokeKey(req, res, next) {
-  if (!CREATOR_INVOKE_API_KEY) {
-    if (CREATOR_INVOKE_REQUIRE_KEY) {
-      logger.error(
-        { path: req?.path || null },
-        'CREATOR_INVOKE_API_KEY is required but not configured',
-      );
-      return res.status(500).json({
-        error: 'CREATOR_INVOKE_KEY_NOT_CONFIGURED',
-        message: 'CREATOR_INVOKE_API_KEY is required for /agent/creator/v1/invoke',
-      });
+const INVOKE_EXTERNAL_API_KEY_PATTERN = /^ak_(live_)?[0-9a-f]{64}$/;
+const invokeAuthCache = new Map();
+
+function getInvokeAuthSource(req) {
+  const fromHeader = String(req?.header('X-Agent-API-Key') || req?.header('x-agent-api-key') || '').trim();
+  return fromHeader ? 'x-agent-api-key' : 'authorization_bearer';
+}
+
+function pruneInvokeAuthCache(nowMs = Date.now()) {
+  for (const [cacheKey, entry] of invokeAuthCache.entries()) {
+    if (!entry || typeof entry !== 'object') {
+      invokeAuthCache.delete(cacheKey);
+      continue;
     }
+    if (Number(entry.expires_at_ms || 0) <= nowMs) {
+      invokeAuthCache.delete(cacheKey);
+    }
+  }
+  while (invokeAuthCache.size > AGENT_AUTH_CACHE_MAX_ENTRIES) {
+    const oldest = invokeAuthCache.keys().next();
+    if (!oldest || oldest.done) break;
+    invokeAuthCache.delete(oldest.value);
+  }
+}
+
+function getCachedInvokeAuthResult(apiKey) {
+  const cacheKey = hashSecretForCache(apiKey);
+  if (!cacheKey) return null;
+  const nowMs = Date.now();
+  const entry = invokeAuthCache.get(cacheKey);
+  if (!entry || typeof entry !== 'object') return null;
+  if (Number(entry.expires_at_ms || 0) <= nowMs) {
+    invokeAuthCache.delete(cacheKey);
+    return null;
+  }
+  invokeAuthCache.delete(cacheKey);
+  invokeAuthCache.set(cacheKey, entry);
+  return { ...entry.result, cache_hit: true };
+}
+
+function putCachedInvokeAuthResult(apiKey, result) {
+  const cacheKey = hashSecretForCache(apiKey);
+  if (!cacheKey || !result || typeof result !== 'object') return;
+  const valid = result.valid === true;
+  const ttlMs = valid ? AGENT_AUTH_CACHE_POSITIVE_TTL_MS : AGENT_AUTH_CACHE_NEGATIVE_TTL_MS;
+  invokeAuthCache.set(cacheKey, {
+    expires_at_ms: Date.now() + ttlMs,
+    result: {
+      valid,
+      agent_id: result.agent_id || null,
+      is_active: result.is_active === false ? false : true,
+      auth_source: result.auth_source || null,
+    },
+  });
+  pruneInvokeAuthCache();
+}
+
+async function introspectInvokeApiKey(apiKey) {
+  const cached = getCachedInvokeAuthResult(apiKey);
+  if (cached) return cached;
+
+  if (!AGENT_AUTH_INTROSPECT_URL || !AGENT_AUTH_INTROSPECT_INTERNAL_KEY) {
+    const err = new Error('agent auth introspect is not configured');
+    err.code = 'AUTH_INTROSPECT_NOT_CONFIGURED';
+    throw err;
+  }
+
+  let response;
+  try {
+    response = await axios.post(
+      AGENT_AUTH_INTROSPECT_URL,
+      { api_key: apiKey },
+      {
+        timeout: AGENT_AUTH_INTROSPECT_TIMEOUT_MS,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Key': AGENT_AUTH_INTROSPECT_INTERNAL_KEY,
+        },
+        validateStatus: () => true,
+      },
+    );
+  } catch (err) {
+    const e = new Error(err?.message || 'introspect request failed');
+    e.code = 'AUTH_INTROSPECT_UNAVAILABLE';
+    throw e;
+  }
+
+  if (response.status >= 500) {
+    const err = new Error(`introspect upstream status=${response.status}`);
+    err.code = 'AUTH_INTROSPECT_UNAVAILABLE';
+    throw err;
+  }
+
+  if (response.status < 200 || response.status >= 300) {
+    const err = new Error(`introspect rejected status=${response.status}`);
+    err.code = 'AUTH_INTROSPECT_REJECTED';
+    throw err;
+  }
+
+  const data = response?.data && typeof response.data === 'object' ? response.data : {};
+  const result = {
+    valid: data.valid === true,
+    agent_id: String(data.agent_id || '').trim() || null,
+    is_active: data.is_active === false ? false : true,
+    auth_source: String(data.auth_source || '').trim() || null,
+    cache_hit: false,
+  };
+  putCachedInvokeAuthResult(apiKey, result);
+  return result;
+}
+
+async function requireExternalInvokeAuth(req, res, next) {
+  const checkoutToken = String(
+    req?.header('X-Checkout-Token') || req?.header('x-checkout-token') || '',
+  ).trim();
+  if (checkoutToken) {
     req.invokeAuth = {
       key_fingerprint: null,
-      auth_source: null,
-      creator_key_matched: false,
+      auth_source: 'x-checkout-token',
+      auth_mode: 'checkout_token',
+      agent_id: null,
+      raw_token: null,
+      cache_hit: false,
     };
     return next();
   }
 
   const provided = extractInvokeAuthToken(req);
   const keyFingerprint = fingerprintSecret(provided);
-  if (!provided || provided !== CREATOR_INVOKE_API_KEY) {
+  if (!provided) {
+    return res.status(401).json({
+      error: 'UNAUTHORIZED',
+      message: 'Missing or invalid API key',
+    });
+  }
+
+  if (!INVOKE_EXTERNAL_API_KEY_PATTERN.test(provided)) {
     logger.warn(
       {
         path: req?.path || null,
-        client_channel: 'creator',
         key_fingerprint: keyFingerprint,
       },
-      'creator invoke auth rejected',
+      'invoke auth rejected: invalid api key format',
     );
     return res.status(401).json({
       error: 'UNAUTHORIZED',
-      message: 'Missing or invalid creator invoke key',
+      message: 'Missing or invalid API key',
+    });
+  }
+
+  let introspection;
+  try {
+    introspection = await introspectInvokeApiKey(provided);
+  } catch (err) {
+    logger.error(
+      {
+        path: req?.path || null,
+        key_fingerprint: keyFingerprint,
+        code: err?.code || null,
+        err: err?.message || String(err),
+      },
+      'invoke auth introspection unavailable',
+    );
+    return res.status(503).json({
+      error: 'AUTH_INTROSPECT_UNAVAILABLE',
+      message: 'Authentication service unavailable',
+    });
+  }
+
+  if (!introspection || introspection.valid !== true) {
+    logger.warn(
+      {
+        path: req?.path || null,
+        key_fingerprint: keyFingerprint,
+      },
+      'invoke auth rejected: key not found',
+    );
+    return res.status(401).json({
+      error: 'UNAUTHORIZED',
+      message: 'Missing or invalid API key',
+    });
+  }
+
+  if (introspection.is_active === false) {
+    return res.status(403).json({
+      error: 'FORBIDDEN',
+      message: 'Agent is deactivated',
     });
   }
 
   req.invokeAuth = {
-    key_fingerprint: keyFingerprint || fingerprintSecret(CREATOR_INVOKE_API_KEY),
-    auth_source: String(req?.header('X-Agent-API-Key') || req?.header('x-agent-api-key') || '').trim()
-      ? 'x-agent-api-key'
-      : 'authorization_bearer',
-    creator_key_matched: true,
+    key_fingerprint: keyFingerprint,
+    auth_source: getInvokeAuthSource(req),
+    auth_mode: 'api_key',
+    agent_id: introspection.agent_id || null,
+    raw_token: provided,
+    cache_hit: introspection.cache_hit === true,
+    introspect_auth_source: introspection.auth_source || null,
   };
   return next();
 }
 
-function rejectCreatorKeyOnShopInvoke(req, res, next) {
-  if (!CREATOR_INVOKE_API_KEY) return next();
-  const provided = extractInvokeAuthToken(req);
-  if (!provided) return next();
-  if (provided !== CREATOR_INVOKE_API_KEY) return next();
+function getInvokeAuthContext() {
+  return INVOKE_AUTH_CONTEXT.getStore() || null;
+}
 
-  logger.warn(
-    {
-      path: req?.path || null,
-      client_channel: 'shop',
-      key_fingerprint: fingerprintSecret(provided),
-    },
-    'creator key attempted on shop invoke route',
-  );
-  return res.status(403).json({
-    error: 'FORBIDDEN',
-    message: 'creator invoke key must use /agent/creator/v1/invoke',
-  });
+function getInvokeAuthApiKey() {
+  const store = getInvokeAuthContext();
+  const key = String(store?.api_key || '').trim();
+  return key || null;
+}
+
+function buildInvokeUpstreamAuthHeaders({ checkoutToken, allowInternalFallback = true } = {}) {
+  const normalizedCheckoutToken = String(checkoutToken || '').trim();
+  if (normalizedCheckoutToken) {
+    return { 'X-Checkout-Token': normalizedCheckoutToken };
+  }
+
+  const callerApiKey = getInvokeAuthApiKey();
+  if (callerApiKey) {
+    return {
+      'X-API-Key': callerApiKey,
+      Authorization: `Bearer ${callerApiKey}`,
+    };
+  }
+
+  if (allowInternalFallback && PIVOTA_API_KEY) {
+    return {
+      'X-API-Key': PIVOTA_API_KEY,
+      Authorization: `Bearer ${PIVOTA_API_KEY}`,
+    };
+  }
+  return {};
 }
 
 function isPromoActive(promo, nowTs) {
@@ -9250,12 +9400,7 @@ async function proxyPhotosToBackend(req, res) {
         ...(method !== 'GET' && method !== 'HEAD' && method !== 'DELETE'
           ? { 'Content-Type': 'application/json' }
           : {}),
-        ...(checkoutToken
-          ? { 'X-Checkout-Token': checkoutToken }
-          : {
-              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-            }),
+        ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
       },
       timeout: UPSTREAM_TIMEOUT_ADMIN_MS,
       ...(method === 'GET' || method === 'DELETE' ? { params: req.query } : { data: req.body }),
@@ -9544,12 +9689,7 @@ async function proxyAgentSearchToBackend(req, res) {
         url,
         params,
         headers: {
-          ...(checkoutToken
-            ? { 'X-Checkout-Token': checkoutToken }
-            : {
-                ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-                ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-              }),
+          ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
         },
         timeout: timeoutMs,
         validateStatus: () => true,
@@ -11026,12 +11166,7 @@ async function callOffersResolveSourceWithRetry({
   const safeBackoffMs = Math.max(25, Number(retryBackoffMs) || 100);
   const headers = {
     'Content-Type': 'application/json',
-    ...(checkoutToken
-      ? { 'X-Checkout-Token': checkoutToken }
-      : {
-          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-        }),
+    ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
   };
 
   let attempts = 0;
@@ -14096,12 +14231,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         method: 'GET',
         url: `${searchUrl}${queryString}`,
         headers: {
-          ...(checkoutToken
-            ? { 'X-Checkout-Token': checkoutToken }
-            : {
-                ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-                ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-              }),
+          ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
         },
         timeout: getUpstreamTimeoutMs('find_products_multi'),
       };
@@ -16291,14 +16421,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       url: `${url}${queryString}`,
       headers: {
         ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
-        ...(checkoutToken
-          ? { 'X-Checkout-Token': checkoutToken }
-          : {
-              // Pivota backend Agent API expects `X-API-Key` (some deployments used
-              // `Authorization: Bearer ...` historically). Send both for compatibility.
-              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-            }),
+        ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
       },
       // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
       timeout:
@@ -16542,12 +16665,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               url: quoteUrl,
               headers: {
                 'Content-Type': 'application/json',
-                ...(checkoutToken
-                  ? { 'X-Checkout-Token': checkoutToken }
-                  : {
-                      ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-                      ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-                    }),
+                ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
               },
               timeout: getUpstreamTimeoutMs('preview_quote'),
               data: quoteBody,
@@ -17912,18 +18030,42 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   }
 }
 
-app.post('/agent/shop/v1/invoke', rejectCreatorKeyOnShopInvoke, async (req, res) => {
-  return handleInvokeRequest(req, res, {
-    client_channel: 'shop',
-    key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
-  });
+app.post('/agent/shop/v1/invoke', requireExternalInvokeAuth, async (req, res) => {
+  return INVOKE_AUTH_CONTEXT.run(
+    {
+      api_key: req?.invokeAuth?.raw_token || null,
+      agent_id: req?.invokeAuth?.agent_id || null,
+      auth_mode: req?.invokeAuth?.auth_mode || null,
+      auth_source: req?.invokeAuth?.auth_source || null,
+    },
+    () =>
+      handleInvokeRequest(req, res, {
+        client_channel: 'shop',
+        key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
+        agent_id: req?.invokeAuth?.agent_id || null,
+        auth_mode: req?.invokeAuth?.auth_mode || null,
+        auth_source: req?.invokeAuth?.auth_source || null,
+      }),
+  );
 });
 
-app.post('/agent/creator/v1/invoke', requireCreatorInvokeKey, async (req, res) => {
-  return handleInvokeRequest(req, res, {
-    client_channel: 'creator',
-    key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
-  });
+app.post('/agent/creator/v1/invoke', requireExternalInvokeAuth, async (req, res) => {
+  return INVOKE_AUTH_CONTEXT.run(
+    {
+      api_key: req?.invokeAuth?.raw_token || null,
+      agent_id: req?.invokeAuth?.agent_id || null,
+      auth_mode: req?.invokeAuth?.auth_mode || null,
+      auth_source: req?.invokeAuth?.auth_source || null,
+    },
+    () =>
+      handleInvokeRequest(req, res, {
+        client_channel: 'creator',
+        key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
+        agent_id: req?.invokeAuth?.agent_id || null,
+        auth_mode: req?.invokeAuth?.auth_mode || null,
+        auth_source: req?.invokeAuth?.auth_source || null,
+      }),
+  );
 });
 
 // Global error handler - prevent crashes and avoid double sends
