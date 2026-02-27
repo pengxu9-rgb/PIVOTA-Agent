@@ -11,7 +11,9 @@ Shadow results do **not** alter the user-facing diagnosis payload.
 
 Set environment variables:
 
-- `DIAG_GEMINI_VERIFY=true`
+- `DIAG_VERIFY_SHADOW_ENABLED=true` (preferred)
+- `DIAG_GEMINI_VERIFY=true` (legacy-compatible alias)
+- `DIAG_VERIFY_SHADOW_SAMPLE_RATE=1` (`1` = full shadow; use smaller values for canary)
 - `DIAG_GEMINI_VERIFY_MODEL=gemini-2.0-flash` (optional)
 - `DIAG_VERIFY_TIMEOUT_MS=12000` (preferred)
 - `DIAG_GEMINI_VERIFY_TIMEOUT_MS=12000` (legacy fallback)
@@ -21,6 +23,11 @@ Set environment variables:
 - `DIAG_GEMINI_VERIFY_HARD_CASE_PATH=tmp/diag_verify/hard_cases.ndjson` (optional)
 - `DIAG_VERIFY_MAX_CALLS_PER_MIN=0` (optional; `0` = unlimited)
 - `DIAG_VERIFY_MAX_CALLS_PER_DAY=0` (optional; `0` = unlimited)
+
+If production mainline is forced to Gemini, keep this paired setting:
+
+- `AURORA_DIAG_FORCE_GEMINI=true`
+- `ALLOW_GUARD_TEST=false`
 
 Required for verifier call:
 

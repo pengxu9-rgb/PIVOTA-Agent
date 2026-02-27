@@ -100,6 +100,8 @@ Current release strategy is **full rollout directly** (no gray/canary split). Be
 
 - `AURORA_BFF_USE_MOCK=false`
 - `AURORA_SKIN_VISION_ENABLED=true`
+- `AURORA_DIAG_FORCE_GEMINI=true`
+- `AURORA_CHATCARDS_RESPONSE_CONTRACT=dual`
 - `AURORA_PROFILE_V2_ENABLED=true`
 - `AURORA_QA_PLANNER_V1_ENABLED=true`
 - `AURORA_SAFETY_ENGINE_V1_ENABLED=true`
@@ -109,6 +111,14 @@ Current release strategy is **full rollout directly** (no gray/canary split). Be
 - keep rollout non-canary:
   - `DIAG_CANARY_PERCENT=0`
   - `AURORA_ROLLOUT_ENABLED=false` (preferred for full rollout), or set `AURORA_ROLLOUT_V2_WEATHER_PCT + AURORA_ROLLOUT_V2_SAFETY_PCT + AURORA_ROLLOUT_V2_CORE_PCT = 100`
+- if shadow verify is enabled in production:
+  - `DIAG_VERIFY_SHADOW_ENABLED=true`
+  - `DIAG_VERIFY_SHADOW_SAMPLE_RATE=1` (full shadow compare)
+  - `DIAG_VERIFY_MAX_CALLS_PER_MIN` and `DIAG_VERIFY_MAX_CALLS_PER_DAY` set to quota-safe caps
+  - `DIAG_GEMINI_VERIFY_HARD_CASE_PATH` points to persistent storage
+  - `ALLOW_GUARD_TEST=false`
+- UI event durability (no PostHog dependency):
+  - `AURORA_EVENTS_JSONL_SINK_DIR=/var/log/aurora-ui-events`
 
 Pre-release hard gate commands:
 
@@ -117,6 +127,18 @@ make runtime-smoke
 bash scripts/smoke_aurora_skin_reco_gates.sh
 make photo-modules-prod-smoke
 make synthetic-matrix-prod MATRIX_CASES=120 MATRIX_CONCURRENCY=4
+```
+
+Pre-run sanity checks (to avoid local false failures):
+
+```bash
+# 1) Ensure required test deps are present.
+node -e "require.resolve('supertest'); console.log('supertest:ok')"
+
+# 2) Ensure key JS files are not cloud-placeholder/dataless.
+for f in src/auroraBff/routes.js src/auroraBff/photoModulesV1.js src/auroraBff/skinDiagnosisV1.js; do
+  xattr -p com.apple.fileprovider.dataless "$f" >/dev/null 2>&1 && { echo "dataless:$f"; exit 1; } || true
+done
 ```
 
 Hard pass criteria:
@@ -417,10 +439,7 @@ The BFF supports these sinks (priority order):
 1) JSONL sink (recommended)
    - `AURORA_EVENTS_JSONL_SINK_DIR=/var/log/aurora-ui-events`
    - writes `aurora-ui-events-YYYY-MM-DD.jsonl`
-2) Optional PostHog compatibility
-   - `POSTHOG_API_KEY`
-   - `POSTHOG_HOST` (or `POSTHOG_URL`)
-3) Fallback: server logs (no persistence)
+2) Fallback: server logs (no persistence)
 
 If neither sink is configured, `/v1/events` still returns `204` but emits a warning that events are not durable.
 

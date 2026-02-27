@@ -460,9 +460,15 @@ test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN 
         const vision = card?.payload?.quality_report?.llm?.vision || {};
         const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
         assert.equal(vision.decision, 'skip');
-        assert.ok(reasons.length >= 0);
         assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_UNKNOWN), false);
-        assert.equal(typeof card?.payload?.analysis?.photo_notice, 'string');
+        assert.equal(
+          reasons.includes('photo_quality_fail_retake') || reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
+          true,
+        );
+        const hasTemporaryUnavailableNotice = String(card?.payload?.analysis?.photo_notice || '')
+          .toLowerCase()
+          .includes('temporarily unavailable');
+        assert.equal(hasTemporaryUnavailableNotice, reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY));
       } finally {
         delete require.cache[moduleId];
       }
