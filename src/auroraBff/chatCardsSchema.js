@@ -88,6 +88,10 @@ const ChatCardsResponseSchema = z
         intent: z.string().min(1),
         intent_confidence: z.number().min(0).max(1),
         entities: z.array(z.record(z.string(), z.any())).max(16),
+        ui_language: z.enum(['CN', 'EN']),
+        matching_language: z.enum(['CN', 'EN']),
+        language_mismatch: z.boolean(),
+        language_resolution_source: z.enum(['header', 'body', 'text_detected', 'mixed_override']),
       })
       .strict(),
   })

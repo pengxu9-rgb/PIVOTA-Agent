@@ -147,6 +147,40 @@ test('safety engine blocks retinoid when pregnancy context is explicit in messag
   assert.ok(result.reasons.length > 0);
 });
 
+test('safety engine blocks CN pregnancy + retinoid wording consistently', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: '怀孕期间可以用A醇吗？',
+    profile: {},
+    language: 'CN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.ok(result.reasons.length > 0);
+});
+
+test('safety engine blocks CN pregnancy + hydroquinone wording consistently', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: '孕期可以用氢醌淡斑吗？',
+    profile: {},
+    language: 'CN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.ok(result.reasons.length > 0);
+});
+
+test('hard block allowlist keeps kb_v0 block level without downgrade', () => {
+  const out = safetyEngineInternal.applyHardBlockAllowlist({
+    id: 'kb_v0:TEST_BLOCK_RULE',
+    level: BLOCK_LEVEL.BLOCK,
+    reason: 'test',
+    reason_codes: ['test'],
+  });
+  assert.equal(out.level, BLOCK_LEVEL.BLOCK);
+});
+
 test('safety engine requires info when pregnancy unknown + retinoid', () => {
   const result = evaluateSafety({
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,

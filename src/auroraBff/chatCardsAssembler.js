@@ -14,6 +14,19 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeLanguageToken(value, fallback = 'EN') {
+  const token = asString(value).toUpperCase();
+  if (token === 'CN' || token === 'ZH' || token === 'ZH-CN' || token === 'ZH_HANS') return 'CN';
+  if (token === 'EN') return 'EN';
+  return fallback === 'CN' ? 'CN' : 'EN';
+}
+
+function normalizeLanguageResolutionSource(value, fallback = 'text_detected') {
+  const token = asString(value).toLowerCase();
+  if (token === 'header' || token === 'body' || token === 'text_detected' || token === 'mixed_override') return token;
+  return fallback;
+}
+
 function normalizeBlockLevelToRisk(value) {
   const token = asString(value).toUpperCase();
   if (token === 'BLOCK') return 'high';
@@ -342,23 +355,29 @@ function buildChatCardsResponse({
   const base = isPlainObject(envelope) ? envelope : {};
   const requestId = asString(base.request_id) || asString(ctx && ctx.request_id) || `req_${Date.now()}`;
   const traceId = asString(base.trace_id) || asString(ctx && ctx.trace_id) || `trace_${Date.now()}`;
-  const language = asString(ctx && ctx.lang).toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const uiLanguage = normalizeLanguageToken(ctx && (ctx.ui_lang || ctx.lang), 'EN');
+  const matchingLanguage = normalizeLanguageToken(ctx && ctx.match_lang, uiLanguage);
+  const languageMismatch = Boolean((ctx && ctx.language_mismatch) === true || uiLanguage !== matchingLanguage);
+  const languageResolutionSource = normalizeLanguageResolutionSource(
+    ctx && ctx.language_resolution_source,
+    languageMismatch ? 'mixed_override' : 'text_detected',
+  );
 
   const assistantText =
     asString(base?.assistant_message?.content) ||
-    (language === 'CN'
+    (uiLanguage === 'CN'
       ? '我先给你一个低风险可执行建议，再按你的补充逐步细化。'
       : 'I will start with a low-risk actionable suggestion, then refine with your context.');
-  const cards = normalizeCards({ envelope: base, requestId, language });
+  const cards = normalizeCards({ envelope: base, requestId, language: uiLanguage });
   const { quickReplies, followUpQuestions } = normalizeFollowUpAndQuickReplies({
     envelope: base,
-    language,
+    language: uiLanguage,
     intent,
   });
 
   const riskLevel = normalizeRiskLevel({ safetyDecision, envelope: base });
   const redFlags = normalizeSafetyRedFlags({ safetyDecision, envelope: base });
-  const disclaimer = buildSafetyDisclaimer({ riskLevel, language });
+  const disclaimer = buildSafetyDisclaimer({ riskLevel, language: uiLanguage });
 
   const ops = normalizeOps({ envelope: base, threadOps });
 
@@ -389,6 +408,10 @@ function buildChatCardsResponse({
         })
         .filter(Boolean)
         .slice(0, 16),
+      ui_language: uiLanguage,
+      matching_language: matchingLanguage,
+      language_mismatch: languageMismatch,
+      language_resolution_source: languageResolutionSource,
     },
   };
 
@@ -418,7 +441,7 @@ function buildChatCardsResponse({
     request_id: requestId,
     trace_id: traceId,
     assistant_text:
-      language === 'CN'
+      uiLanguage === 'CN'
         ? '系统暂时无法生成完整结构化回复，我先给你保守建议。'
         : 'Failed to generate a full structured response, returning a conservative fallback.',
     cards: [],
@@ -439,6 +462,10 @@ function buildChatCardsResponse({
       intent: 'unknown',
       intent_confidence: 0,
       entities: [],
+      ui_language: uiLanguage,
+      matching_language: matchingLanguage,
+      language_mismatch: languageMismatch,
+      language_resolution_source: languageResolutionSource,
     },
   };
 }
