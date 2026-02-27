@@ -169,7 +169,7 @@ For share persistence across restarts, configure `DATABASE_URL` (Postgres). With
 
 4. **Configure Health Check**
    - Settings → Health Check
-   - Path: `/healthz/lite`
+   - Path: `/healthz`
    - Method: `GET`
    - Timeout: 30s
 
@@ -187,7 +187,7 @@ For share persistence across restarts, configure `DATABASE_URL` (Postgres). With
   },
   "deploy": {
     "startCommand": "npm start",
-    "healthcheckPath": "/healthz/lite",
+    "healthcheckPath": "/healthz",
     "healthcheckTimeout": 30
   }
 }
@@ -222,7 +222,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MODE=production
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz/lite"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -264,7 +264,7 @@ spec:
               key: api-key
         livenessProbe:
           httpGet:
-            path: /healthz/lite
+            path: /healthz
             port: 3000
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -351,7 +351,7 @@ const logger = pino({
 ### 4. Health Check Endpoint
 ```bash
 # Basic health check
-curl https://your-gateway.com/healthz/lite
+curl https://your-gateway.com/healthz
 
 # Expected response
 {"ok":true}
@@ -399,7 +399,7 @@ Consider adding Redis for:
 After deployment, run basic tests:
 ```bash
 # Health check
-curl https://your-gateway.com/healthz/lite
+curl https://your-gateway.com/healthz
 
 # Test with mock operation (if enabled)
 curl -X POST https://your-gateway.com/agent/shop/v1/invoke \
@@ -428,7 +428,7 @@ export let options = {
 };
 
 export default function() {
-  let response = http.get('https://your-gateway.com/healthz/lite');
+  let response = http.get('https://your-gateway.com/healthz');
   check(response, {
     'status is 200': (r) => r.status === 200,
   });

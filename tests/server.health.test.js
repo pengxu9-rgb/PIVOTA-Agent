@@ -20,18 +20,12 @@ describe('health endpoints', () => {
     expect(health.body.version?.commit).toBe(healthz.body.version?.commit);
   });
 
-  it('serves /health/lite as an alias of /healthz/lite', async () => {
+  it('returns 404 for deprecated lite health endpoints', async () => {
     const app = require('../src/server');
 
-    const [healthzLite, healthLite] = await Promise.all([
-      request(app).get('/healthz/lite').expect(200),
-      request(app).get('/health/lite').expect(200),
+    await Promise.all([
+      request(app).get('/healthz/lite').expect(404),
+      request(app).get('/health/lite').expect(404),
     ]);
-
-    expect(healthzLite.body.ok).toBe(true);
-    expect(healthLite.body.ok).toBe(true);
-    expect(healthLite.body.service).toBe(healthzLite.body.service);
-    expect(healthLite.body.commit).toBe(healthzLite.body.commit);
-    expect(healthLite.body).not.toHaveProperty('catalog_sync');
   });
 });

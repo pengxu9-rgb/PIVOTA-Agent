@@ -1,7 +1,7 @@
 # TLS Infra Optimization Runbook
 
 ## Scope
-This runbook targets high first-request latency on production health probes (`/healthz/lite`) where:
+This runbook targets high first-request latency on production health probes (`/healthz`) where:
 
 - `first_tls.p90` is above budget
 - `first_ttfb.p90` and `first_total.p90` remain above budget after app-side optimizations
@@ -110,4 +110,3 @@ Example:
 ```text
 2026-02-23T17:10Z | domain edge route switch | before=/tmp/tls_before_12.json after=/tmp/tls_after_12.json | keep
 ```
-

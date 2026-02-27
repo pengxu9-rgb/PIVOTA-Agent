@@ -47,7 +47,7 @@ float_gt() {
 
 # 监控函数
 monitor_health() {
-    RESPONSE=$(curl -s -w "\n__META__ %{http_code} %{time_appconnect} %{time_starttransfer} %{time_total}" "$GATEWAY/healthz/lite" 2>/dev/null)
+    RESPONSE=$(curl -s -w "\n__META__ %{http_code} %{time_appconnect} %{time_starttransfer} %{time_total}" "$GATEWAY/healthz" 2>/dev/null)
     META=$(echo "$RESPONSE" | tail -n1)
     BODY=$(echo "$RESPONSE" | sed '$d')
     HTTP_CODE=$(echo "$META" | awk '{print $2}')
