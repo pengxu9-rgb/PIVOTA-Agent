@@ -461,6 +461,27 @@ function backfillUrlFetchAttemptProviders(provenanceInput) {
     };
 }
 
+function normalizeRetrievalDegradationContract(input) {
+  const raw = asPlainObject(input) || {};
+  const transientFailureCount = Math.max(0, Math.trunc(Number(raw.transient_failure_count ?? raw.transientFailureCount) || 0));
+  const attemptedSources = uniqueStrings(asStringArray(raw.attempted_sources ?? raw.attemptedSources)).slice(0, 8);
+  const resolverFirstApplied = raw.resolver_first_applied === true;
+  const resolverFirstSkippedForAurora = raw.resolver_first_skipped_for_aurora === true;
+  const sourceTemporarilyDeprioritized = raw.source_temporarily_deprioritized === true;
+  const degraded = raw.degraded === true || transientFailureCount > 0 || sourceTemporarilyDeprioritized;
+  const budgetProfile = asPlainObject(raw.budget_profile ?? raw.budgetProfile);
+  return {
+    ...raw,
+    transient_failure_count: transientFailureCount,
+    attempted_sources: attemptedSources,
+    resolver_first_applied: resolverFirstApplied,
+    resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+    source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
+    degraded,
+    ...(budgetProfile ? { budget_profile: budgetProfile } : {}),
+  };
+}
+
 function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissing = null } = {}) {
   const p = asPlainObject(payload);
   if (!p) return payload;
@@ -485,7 +506,13 @@ function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissin
   let next = { ...p };
   const nextProvenance = backfillUrlFetchAttemptProviders(next.provenance);
   if (asPlainObject(nextProvenance)) {
-    next.provenance = nextProvenance;
+    const provenanceObj = asPlainObject(nextProvenance) || {};
+    next.provenance = {
+      ...provenanceObj,
+      retrieval_degradation: normalizeRetrievalDegradationContract(
+        provenanceObj.retrieval_degradation ?? provenanceObj.retrievalDegradation,
+      ),
+    };
   }
   if (hasAnchor) {
     next = {

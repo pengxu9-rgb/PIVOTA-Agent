@@ -349,6 +349,44 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(payload.missing_info).toContain('catalog_ann_transient_failure');
   });
 
+  test('reconcileProductAnalysisConsistency backfills retrieval_degradation contract when it is null', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const out = reconcileProductAnalysisConsistency({
+      assessment: {
+        verdict: 'Unknown',
+        reasons: ['Evidence is limited.'],
+      },
+      evidence: {
+        science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+        social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+        expert_notes: [],
+        confidence: null,
+        missing_info: [],
+      },
+      confidence: null,
+      missing_info: [],
+      provenance: {
+        source: 'url_realtime_product_intel',
+        url_fetch: {
+          attempts: [{ strategy: 'axios_default', provider: 'native', status: 200 }],
+        },
+        retrieval_degradation: null,
+      },
+    });
+
+    expect(out.provenance).toBeTruthy();
+    expect(out.provenance.retrieval_degradation).toEqual(
+      expect.objectContaining({
+        transient_failure_count: 0,
+        attempted_sources: [],
+        resolver_first_applied: false,
+        resolver_first_skipped_for_aurora: false,
+        source_temporarily_deprioritized: false,
+        degraded: false,
+      }),
+    );
+  });
+
   test('retail supplement returns retail_page source when search and PDP extraction match', async () => {
     jest.resetModules();
 
