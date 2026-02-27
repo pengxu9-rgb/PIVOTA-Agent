@@ -134,10 +134,30 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
       .post('/v1/chat')
       .set('X-Aurora-UID', `uid_chatcards_v1_safety_${Date.now()}`)
       .set('X-Lang', 'EN')
+      .set('x-aurora-force-variant', 'v2_weather')
       .send({ message: 'Can I use retinol during pregnancy?' })
       .expect(200);
 
     expect(res.body.version).toBe('1.0');
+    expect(res.body.safety).toBeTruthy();
+    expect(res.body.safety.risk_level).toBe('high');
+    expect(Array.isArray(res.body.safety.red_flags)).toBe(true);
+  });
+
+  test('CN pregnancy + retinoid keeps high safety risk on v1 response', async () => {
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', `uid_chatcards_v1_safety_cn_${Date.now()}`)
+      .set('X-Lang', 'EN')
+      .set('x-aurora-force-variant', 'v2_weather')
+      .send({ message: '孕期可以用A醇吗？' })
+      .expect(200);
+
+    expect(res.body.version).toBe('1.0');
+    expect(res.body.telemetry.ui_language).toBe('EN');
+    expect(res.body.telemetry.matching_language).toBe('CN');
     expect(res.body.safety).toBeTruthy();
     expect(res.body.safety.risk_level).toBe('high');
     expect(Array.isArray(res.body.safety.red_flags)).toBe(true);

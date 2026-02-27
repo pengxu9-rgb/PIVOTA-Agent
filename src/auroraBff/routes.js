@@ -18099,7 +18099,7 @@ function extractProfilePatchFromFreeText({ message, canonicalIntent } = {}) {
   const lower = text.toLowerCase();
   const patch = {};
 
-  if (/怀孕|孕\s*\d+\s*周|\bpregnan(t|cy)\b|\b\d+\s*weeks?\s*pregnant\b/i.test(text)) {
+  if (/(怀孕|孕期|孕妇|妊娠|孕\s*\d+\s*周|\bpregnan(t|cy)\b|\b\d+\s*weeks?\s*pregnant\b)/i.test(text)) {
     patch.pregnancy_status = 'pregnant';
   } else if (/备孕|准备怀孕|trying to conceive|ttc/i.test(text)) {
     patch.pregnancy_status = 'trying';
