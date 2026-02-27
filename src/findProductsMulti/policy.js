@@ -1521,6 +1521,35 @@ function syncResponsePaginationCounts(response, listCount) {
     };
   }
 
+  const sourceList = (() => {
+    const { list } = getResponseProductList(next);
+    return Array.isArray(list) ? list : [];
+  })();
+  const externalCount = sourceList.filter((product) => {
+    if (!product || typeof product !== 'object') return false;
+    const merchantId = String(product.merchant_id || product.merchantId || '').trim();
+    const source = String(product.source || '').trim().toLowerCase();
+    return merchantId === 'external_seed' || source === 'external_seed';
+  }).length;
+  const metadata =
+    next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata)
+      ? { ...next.metadata }
+      : null;
+  if (metadata) {
+    const existingBreakdown =
+      metadata.source_breakdown &&
+      typeof metadata.source_breakdown === 'object' &&
+      !Array.isArray(metadata.source_breakdown)
+        ? metadata.source_breakdown
+        : {};
+    metadata.source_breakdown = {
+      ...existingBreakdown,
+      internal_count: Math.max(0, count - externalCount),
+      external_seed_count: externalCount,
+    };
+    next.metadata = metadata;
+  }
+
   return next;
 }
 
