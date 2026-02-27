@@ -4961,11 +4961,13 @@ function shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText = '') {
 function shouldSkipSecondaryFallbackAfterResolverMiss(
   result,
   queryText = '',
-  { disableSkipAfterResolverMiss = false } = {},
+  { disableSkipAfterResolverMiss = false, queryClass = null, brandLike = false } = {},
 ) {
   return Boolean(
     getSecondaryFallbackSkipReason(result, queryText, {
       disableSkipAfterResolverMiss,
+      queryClass,
+      brandLike,
     }),
   );
 }
@@ -4973,15 +4975,40 @@ function shouldSkipSecondaryFallbackAfterResolverMiss(
 function getSecondaryFallbackSkipReason(
   result,
   queryText = '',
-  { disableSkipAfterResolverMiss = false } = {},
+  { disableSkipAfterResolverMiss = false, queryClass = null, brandLike = false } = {},
 ) {
   if (disableSkipAfterResolverMiss) return null;
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return null;
   if (hasPetSearchSignal(queryText)) return null;
   if (!shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText)) return null;
+  if (brandLike) return null;
+
+  const normalizedQueryClass = String(queryClass || '')
+    .trim()
+    .toLowerCase();
+  const lookupOnlyClasses = new Set(['lookup', 'attribute']);
+  const forceSearchFirstClasses = new Set([
+    'category',
+    'exploratory',
+    'scenario',
+    'mission',
+    'gift',
+    'non_shopping',
+  ]);
+  if (normalizedQueryClass && forceSearchFirstClasses.has(normalizedQueryClass)) {
+    return null;
+  }
+
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
-  if (FPM_GATE_SIMPLIFY_V1 && FPM_LOOKUP_ONLY_RESOLVER && !lookupStyle) return null;
+  if (
+    FPM_GATE_SIMPLIFY_V1 &&
+    FPM_LOOKUP_ONLY_RESOLVER &&
+    ((!normalizedQueryClass && !lookupStyle) ||
+      (normalizedQueryClass && !lookupOnlyClasses.has(normalizedQueryClass)))
+  ) {
+    return null;
+  }
   if (isKnownLookupAliasQuery(queryText)) return 'resolver_miss_lookup_alias';
   if (isUuidLikeSearchQuery(queryText)) return 'resolver_miss_uuid_like';
   if (isStrongResolverFirstQuery(queryText)) return 'resolver_miss_strong_resolver_query';
@@ -5063,10 +5090,18 @@ function isStrongResolverFirstQuery(queryText) {
   return false;
 }
 
-function shouldUseResolverFirstSearch({ operation, metadata, queryText, remainingBudgetMs = null }) {
+function shouldUseResolverFirstSearch({
+  operation,
+  metadata,
+  queryText,
+  remainingBudgetMs = null,
+  queryClass = null,
+  brandLike = false,
+}) {
   if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
   if (!String(queryText || '').trim()) return false;
+  if (brandLike) return false;
   if (
     Number.isFinite(Number(remainingBudgetMs)) &&
     Number(remainingBudgetMs) < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
@@ -5074,10 +5109,30 @@ function shouldUseResolverFirstSearch({ operation, metadata, queryText, remainin
     return false;
   }
 
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  const forceSearchFirstClasses = new Set([
+    'category',
+    'exploratory',
+    'scenario',
+    'mission',
+    'gift',
+    'non_shopping',
+  ]);
+  if (FPM_GATE_SIMPLIFY_V1 && normalizedQueryClass && forceSearchFirstClasses.has(normalizedQueryClass)) {
+    return false;
+  }
+
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
   const strongResolverQuery = isStrongResolverFirstQuery(queryText);
-  if (FPM_GATE_SIMPLIFY_V1 && FPM_LOOKUP_ONLY_RESOLVER && !lookupStyle && !strongResolverQuery) {
+  const lookupOnlyClasses = new Set(['lookup', 'attribute']);
+  if (
+    FPM_GATE_SIMPLIFY_V1 &&
+    FPM_LOOKUP_ONLY_RESOLVER &&
+    !strongResolverQuery &&
+    ((!normalizedQueryClass && !lookupStyle) ||
+      (normalizedQueryClass && !lookupOnlyClasses.has(normalizedQueryClass)))
+  ) {
     return false;
   }
 
@@ -9229,10 +9284,15 @@ async function proxyAgentSearchToBackend(req, res) {
   };
 
   let resolverFirstResult = null;
+  const resolverFirstBrandLike = Boolean(
+    detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+  );
   const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation: 'find_products_multi',
       metadata: resolverFirstMetadata,
       queryText,
+      queryClass: traceQueryClass,
+      brandLike: resolverFirstBrandLike,
   }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
 
   if (shouldAttemptResolverFirst) {
@@ -9296,11 +9356,16 @@ async function proxyAgentSearchToBackend(req, res) {
         : basePrimaryTimeoutMs;
     const totalBudgetMs = Math.max(primaryTimeoutMs, PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS);
     requestDeadlineMs = Date.now() + totalBudgetMs;
+    const secondarySkipBrandLike = Boolean(
+      detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+    );
     const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
       resolverFirstResult,
       queryText,
       {
         disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
+        queryClass: traceQueryClass,
+        brandLike: secondarySkipBrandLike,
       },
     );
     const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
@@ -9770,11 +9835,16 @@ async function proxyAgentSearchToBackend(req, res) {
     );
   } catch (err) {
     const primaryTimedOut = String(err?.code || '').toUpperCase() === 'ECONNABORTED';
+    const secondarySkipBrandLike = Boolean(
+      detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+    );
     const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
       resolverFirstResult,
       queryText,
       {
         disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
+        queryClass: traceQueryClass,
+        brandLike: secondarySkipBrandLike,
       },
     );
     const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
@@ -14797,8 +14867,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             },
           };
 
+          const cacheBrandDetection = detectBrandEntities(cacheQueryText, {
+            candidateProducts: effectiveProducts,
+          });
+          const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
+          const cachePolicyQueryClass = String(traceQueryClass || effectiveIntent?.query_class || '').toLowerCase();
+          const cacheLookupClass = cachePolicyQueryClass === 'lookup' || cachePolicyQueryClass === 'attribute';
           const shouldSkipLookupPolicyForCacheHit =
+            !FPM_GATE_SIMPLIFY_V1 &&
             isLookupQuery &&
+            cacheLookupClass &&
+            !cacheBrandLikeQuery &&
             String(upstreamData?.metadata?.query_source || '').startsWith(
               'cache_cross_merchant_search',
             );
@@ -14816,7 +14895,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             ? withPolicy.products
             : [];
           const cacheValidationQueryClass =
-            traceQueryClass || effectiveIntent?.query_class || (isLookupQuery ? 'lookup' : null);
+            traceQueryClass ||
+            effectiveIntent?.query_class ||
+            (isLookupQuery && !cacheBrandLikeQuery ? 'lookup' : null);
           const cacheValidation = evaluateCacheQualityGate({
             products: withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts,
             queryText: cacheQueryText,
@@ -14836,10 +14917,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (cacheMissingExternalForUnified) {
             effectiveCacheHit = false;
           }
-          const cacheBrandDetection = detectBrandEntities(cacheQueryText, {
-            candidateProducts: effectiveProducts,
-          });
-          const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
           const cacheStrictEmptyBypassReason =
             cacheMissingExternalForUnified
               ? 'missing_external_for_unified'
@@ -16099,11 +16176,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
       : PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
     const resolverRemainingBudgetMs = getFpmRemainingBudgetMs();
+    const resolverBrandLike = Boolean(
+      detectBrandEntities(resolverQueryText, { candidateProducts: [] })?.brand_like,
+    );
     let shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation,
       metadata,
       queryText: resolverQueryText,
       remainingBudgetMs: resolverRemainingBudgetMs,
+      queryClass: traceQueryClass,
+      brandLike: resolverBrandLike,
     });
     if (
       operation === 'find_products_multi' &&
@@ -16361,11 +16443,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const queryText = resolverQueryText || searchQueryText;
         const upstreamStatus = err?.response?.status || null;
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
+        const secondarySkipBrandLike = Boolean(
+          detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+        );
         const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
           resolverFirstResult,
           queryText,
           {
             disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
+            queryClass: traceQueryClass,
+            brandLike: secondarySkipBrandLike,
           },
         );
         const allowResolverFallback = shouldAllowResolverFallback(operation);
@@ -16566,11 +16653,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         requestedPageFromPayload > 0
           ? requestedPageFromPayload
           : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
+      const secondarySkipBrandLike = Boolean(
+        detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+      );
       const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
         resolverFirstResult,
         queryText,
         {
           disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
+          queryClass: traceQueryClass,
+          brandLike: secondarySkipBrandLike,
         },
       );
       const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
