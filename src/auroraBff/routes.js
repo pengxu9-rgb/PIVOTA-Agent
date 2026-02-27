@@ -6201,8 +6201,9 @@ function deriveKeyIngredientsForAnalysis(inciList, keyHints) {
   const seen = new Set();
 
   const add = (v) => {
-    const s = String(v || '').trim();
+    const s = normalizeInciIngredientName(v);
     if (!s) return;
+    if (isLikelyInvalidInciToken(s)) return;
     const key = s.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
@@ -19001,7 +19002,18 @@ function hasProfileEchoSummary(payload) {
   if (!assessment) return false;
   const summary = String(assessment.summary ?? assessment.quick_summary ?? assessment.quickSummary ?? '').trim();
   if (!summary) return false;
-  return /\b(your profile|profile priorities|你的情况|你的画像|匹配点)\b/i.test(summary);
+  if (/\b(your profile|profile priorities|你的情况|你的画像|匹配点)\b/i.test(summary)) return true;
+  if (/\b(skintype\s*=|sensitivity\s*=|barrier\s*=)\b/i.test(summary)) return true;
+  const normalized = summary.toLowerCase();
+  const profileTokenCount = [
+    /\b(oily|dry|combo|combination|normal)\b/.test(normalized),
+    /\b(sensitivity|sensitive|low|medium|high)\b/.test(normalized),
+    /\b(barrier|healthy|impaired)\b/.test(normalized),
+    /肤质|敏感|屏障|油皮|干皮|混合皮|低敏|中敏|高敏/.test(summary),
+  ].filter(Boolean).length;
+  const productSignal = /\b(ingredient|formula|efficacy|mechanis|retino|acid|niacinamide|ceramide|peptide|spf|sunscreen|cleanser|moisturizer|serum|防晒|保湿|修护|控痘|去角质)\b/i
+    .test(summary);
+  return !productSignal && profileTokenCount >= 2 && summary.length <= 140;
 }
 
 function hasValidFormulaIntentInPayload(payload) {
@@ -36750,6 +36762,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
+      const profileSummaryForFollowup = summarizeChatProfileForContext(profile);
       const hasPlannerAnchor = hasMeaningfulFitCheckAnchor({
         message,
         anchorProductId,
@@ -36868,39 +36881,219 @@ function mountAuroraBffRoutes(app, { logger }) {
             ]
         ).slice(0, 3);
 
-        const basePayload = applyProductAnalysisGapContract({
-          assessment: {
-            verdict: 'Unknown',
-            reasons: followupReasons,
-            anchor_product: anchorForPayload,
-          },
-          evidence: {
-            science: {
-              key_ingredients: [],
-              mechanisms: [],
-              fit_notes: [],
-              risk_notes: [],
+        const asCandidateArray = (value) => (Array.isArray(value) ? value : []);
+        const hasAnyAlternatives = (rawPayload) => {
+          const payloadObj = isPlainObject(rawPayload) ? rawPayload : null;
+          if (!payloadObj) return false;
+          const comp = asCandidateArray(payloadObj?.competitors?.candidates);
+          const rel = asCandidateArray(payloadObj?.related_products?.candidates ?? payloadObj?.relatedProducts?.candidates);
+          const dupes = asCandidateArray(payloadObj?.dupes?.candidates);
+          return comp.length + rel.length + dupes.length > 0;
+        };
+
+        let followupPayloadSeed = null;
+        if (anchorProductUrlUsed && PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED) {
+          try {
+            const urlNorm = await buildProductAnalysisFromUrlIngredients({
+              productUrl: anchorProductUrlUsed,
+              lang: ctx.lang,
+              profileSummary: profileSummaryForFollowup,
+              parsedProduct: anchorForPayload,
+              logger,
+            });
+            if (urlNorm && isPlainObject(urlNorm.payload)) {
+              followupPayloadSeed = applyProductAnalysisGapContract({
+                ...urlNorm.payload,
+                assessment: {
+                  ...(isPlainObject(urlNorm.payload.assessment) ? urlNorm.payload.assessment : {}),
+                  ...(anchorForPayload ? { anchor_product: anchorForPayload } : {}),
+                },
+              });
+            }
+          } catch (err) {
+            logger?.warn?.(
+              { err: err?.message || String(err), request_id: ctx.request_id },
+              'aurora bff: follow-up url analysis failed',
+            );
+          }
+        }
+
+        if (!hasAnyAlternatives(followupPayloadSeed)) {
+          const fallbackFilterStats = initCandidateFilterStats();
+          const fallbackRecall = await buildRealtimeCompetitorCandidates({
+            productUrl: anchorProductUrlUsed || '',
+            parsedProduct: anchorForPayload,
+            anchorProduct: anchorForPayload,
+            keyIngredients: [],
+            profileSummary: profileSummaryForFollowup,
+            lang: ctx.lang,
+            mode: 'main_path',
+            timeoutMs: Math.max(2400, Math.min(6800, PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS)),
+            maxQueries: Math.min(4, PRODUCT_URL_REALTIME_COMPETITOR_MAX_QUERIES),
+            maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+            logger,
+          });
+          const fallbackCandidates = sanitizeCompetitorCandidates(
+            fallbackRecall?.candidates,
+            PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+            { enforceSkincare: true, pool: 'competitors', stats: fallbackFilterStats },
+          );
+          const routed = routeCompetitorCandidatePools({
+            anchorProduct: anchorForPayload,
+            candidates: fallbackCandidates,
+            maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+          });
+
+          followupPayloadSeed = applyProductAnalysisGapContract({
+            assessment: {
+              verdict: 'Unknown',
+              reasons: followupReasons,
+              anchor_product: anchorForPayload,
             },
-            social_signals: {
-              typical_positive: [],
-              typical_negative: [],
-              risk_for_groups: [],
+            evidence: {
+              science: {
+                key_ingredients: [],
+                mechanisms: [],
+                fit_notes: [],
+                risk_notes: [],
+              },
+              social_signals: {
+                typical_positive: [],
+                typical_negative: [],
+                risk_for_groups: [],
+              },
+              expert_notes: [],
+              confidence: null,
+              missing_info: [],
             },
-            expert_notes: [],
             confidence: null,
-            missing_info: [],
+            missing_info: uniqCaseInsensitiveStrings(
+              [
+                ...(followupGoal ? [] : ['followup_goal_not_resolved']),
+                ...(fallbackRecall?.reason ? [`followup_recall_${String(fallbackRecall.reason).toLowerCase()}`] : []),
+              ],
+              16,
+            ),
+            competitors: { candidates: routed.compPool || [] },
+            related_products: { candidates: routed.relPool || [] },
+            dupes: { candidates: routed.dupePool || [] },
+          });
+        }
+
+        const goalToken = String(followupGoal || '').trim().toLowerCase();
+        const extractCandidateText = (candidate) => {
+          const c = isPlainObject(candidate) ? candidate : {};
+          const why = uniqCaseInsensitiveStrings([
+            ...asStringArray(c.why_candidate),
+            ...asStringArray(c.compare_highlights),
+            ...asStringArray(c.tradeoff_notes),
+            ...asStringArray(c.expected_outcome),
+            ...asStringArray(c.best_use),
+          ], 12);
+          return `${pickFirstTrimmed(c.brand, c.name, c.display_name, c.displayName)} ${why.join(' | ')}`.toLowerCase();
+        };
+        const scoreCandidateForGoal = (candidate) => {
+          if (!goalToken) return 1;
+          const text = extractCandidateText(candidate);
+          let score = 0;
+          if (goalToken === 'acne_focus') {
+            if (/\b(acne|blemish|comedone|pores?|oil|sebum|salicylic|benzoyl|niacinamide|azelaic|retino|adapalene|tretinoin|zinc)\b|痘|控油|毛孔|闭口|水杨酸/.test(text)) score += 3;
+            if (/\b(dry|drying|tight|stinging|irritat|peel|flake)\b|干燥|刺激|刺痛|起皮/.test(text)) score -= 1;
+            return score;
+          }
+          if (goalToken === 'less_drying') {
+            if (/\b(hydrat|moistur|barrier|ceramide|panthenol|glycerin|hyaluron|soothing|repair)\b|保湿|修护|屏障|神经酰胺|泛醇|舒缓/.test(text)) score += 3;
+            if (/\b(dry|drying|tight|stinging|irritat|peel|flake|acid|retino|fragrance)\b|干燥|刺激|刺痛|起皮|酸|香精/.test(text)) score -= 2;
+            return score;
+          }
+          if (goalToken === 'pros_cons') return 1;
+          return 0;
+        };
+        const rankByGoal = (rows) => {
+          const list = Array.isArray(rows) ? rows : [];
+          const scored = list.map((candidate) => ({
+            candidate,
+            score: scoreCandidateForGoal(candidate),
+            similarity: Number(candidate?.similarity_score || 0),
+          }));
+          scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return b.similarity - a.similarity;
+          });
+          if (goalToken === 'acne_focus' || goalToken === 'less_drying') {
+            const positive = scored.filter((row) => row.score > 0).map((row) => row.candidate);
+            return positive.length ? positive : scored.map((row) => row.candidate);
+          }
+          return scored.map((row) => row.candidate);
+        };
+
+        const seedComp = asCandidateArray(followupPayloadSeed?.competitors?.candidates);
+        const seedRel = asCandidateArray(followupPayloadSeed?.related_products?.candidates);
+        const seedDupes = asCandidateArray(followupPayloadSeed?.dupes?.candidates);
+        const filteredComp = rankByGoal(seedComp).slice(0, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
+        const filteredRel = rankByGoal(seedRel).slice(0, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
+        const filteredDupes = rankByGoal(seedDupes).slice(0, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
+        const firstPick = [...filteredComp, ...filteredDupes, ...filteredRel]
+          .map((candidate) => ({
+            candidate,
+            score: scoreCandidateForGoal(candidate),
+            similarity: Number(candidate?.similarity_score || 0),
+          }))
+          .sort((a, b) => (b.score - a.score) || (b.similarity - a.similarity))[0];
+        const firstPickName = firstPick
+          ? joinBrandAndName(
+            pickFirstTrimmed(firstPick.candidate?.brand),
+            pickFirstTrimmed(firstPick.candidate?.name, firstPick.candidate?.display_name, firstPick.candidate?.displayName),
+          )
+          : '';
+        const goalReason = (() => {
+          if (!firstPickName) return '';
+          if (goalToken === 'acne_focus') {
+            return lang === 'CN'
+              ? `清晰推荐：优先看 ${firstPickName}（更偏控痘/油脂管理路线）。`
+              : `Clear pick: start with ${firstPickName} (more acne/oil-control aligned).`;
+          }
+          if (goalToken === 'less_drying') {
+            return lang === 'CN'
+              ? `清晰推荐：优先看 ${firstPickName}（更偏保湿修护、降低拔干风险）。`
+              : `Clear pick: start with ${firstPickName} (more hydration-barrier focused with lower drying risk).`;
+          }
+          if (goalToken === 'pros_cons') {
+            return lang === 'CN'
+              ? `优先比较：${firstPickName}（先看 tradeoff 再决定是否替换）。`
+              : `Start comparing with ${firstPickName} first (review tradeoffs before replacing).`;
+          }
+          return '';
+        })();
+
+        const seedAssessment = isPlainObject(followupPayloadSeed?.assessment) ? followupPayloadSeed.assessment : {};
+        const seedMissingInfo = asStringArray(followupPayloadSeed?.missing_info);
+        const followupBasePayload = applyProductAnalysisGapContract({
+          ...followupPayloadSeed,
+          assessment: {
+            ...seedAssessment,
+            ...(anchorForPayload ? { anchor_product: anchorForPayload } : {}),
+            reasons: uniqCaseInsensitiveStrings(
+              [
+                ...asStringArray(seedAssessment?.reasons),
+                ...followupReasons,
+                ...(goalReason ? [goalReason] : []),
+              ],
+              6,
+            ),
           },
-          confidence: null,
           missing_info: uniqCaseInsensitiveStrings(
             [
+              ...seedMissingInfo,
               ...(followupGoal ? [] : ['followup_goal_not_resolved']),
             ],
-            12,
+            16,
           ),
-          competitors: { candidates: [] },
-          related_products: { candidates: [] },
-          dupes: { candidates: [] },
+          competitors: { candidates: filteredComp },
+          related_products: { candidates: filteredRel },
+          dupes: { candidates: filteredDupes },
           provenance: {
+            ...(isPlainObject(followupPayloadSeed?.provenance) ? followupPayloadSeed.provenance : {}),
             followup_goal: followupGoal || null,
             anchor_used: {
               ...(anchorProductIdUsed ? { anchor_product_id: anchorProductIdUsed } : {}),
@@ -36911,10 +37104,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           },
         });
-        const followupNorm = normalizeProductAnalysis(basePayload);
+        const followupNorm = normalizeProductAnalysis(followupBasePayload);
         const followupPayload = reconcileProductAnalysisConsistency(
           finalizeProductAnalysisRecoContract(
-            enrichProductAnalysisPayload(followupNorm.payload, { lang: ctx.lang }),
+            enrichProductAnalysisPayload(followupNorm.payload, { lang: ctx.lang, profileSummary: profileSummaryForFollowup }),
             { logger, requestId: ctx.request_id, mode: 'main_path' },
           ),
           { lang: ctx.lang },
