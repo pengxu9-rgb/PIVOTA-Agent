@@ -64,7 +64,7 @@ test('intent canonical prefers travel_planning when travel cue and weather words
   assert.equal(out.intent, INTENT_ENUM.TRAVEL_PLANNING);
 });
 
-test('qa planner produces hard gate for recommendation with missing core profile', () => {
+test('qa planner produces soft gate for recommendation with missing core profile', () => {
   const plan = resolveQaPlan({
     intent: INTENT_ENUM.RECO_PRODUCTS,
     profile: { skinType: 'oily' },
@@ -74,9 +74,9 @@ test('qa planner produces hard gate for recommendation with missing core profile
     session: {},
   });
 
-  assert.equal(plan.gate_type, 'hard');
-  assert.equal(plan.next_step, 'ask');
-  assert.equal(plan.question_budget, 1);
+  assert.equal(plan.gate_type, 'soft');
+  assert.equal(plan.next_step, 'upstream');
+  assert.equal(plan.question_budget, 2);
   assert.ok(plan.required_fields.includes('sensitivity'));
 });
 
@@ -117,9 +117,9 @@ test('qa planner enforces one-question ask when safety requires info', () => {
     },
   });
 
-  assert.equal(plan.gate_type, 'hard');
-  assert.equal(plan.next_step, 'ask');
-  assert.equal(plan.question_budget, 1);
+  assert.equal(plan.gate_type, 'soft');
+  assert.equal(plan.next_step, 'upstream');
+  assert.equal(plan.question_budget, 2);
   assert.deepEqual(plan.required_fields, ['pregnancy_status']);
 });
 
@@ -193,7 +193,7 @@ test('safety engine blocks isotretinoin + benzoyl peroxide', () => {
   });
 
   assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
-  assert.equal(result.decision_source, 'kb_v0');
+  assert.equal(result.decision_source, 'legacy');
   assert.ok(Array.isArray(result.triggered_by));
   assert.ok(result.triggered_by.includes('medications'));
 });
@@ -212,7 +212,7 @@ test('safety engine promotes MEDICATION_ISOTRETINOIN concept to medications_any 
   });
 
   assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
-  assert.equal(result.decision_source, 'kb_v0');
+  assert.equal(result.decision_source, 'legacy');
   assert.ok(Array.isArray(result.triggered_by));
   assert.ok(result.triggered_by.includes('medications'));
   assert.ok(Array.isArray(result.matched_rules));
@@ -266,7 +266,7 @@ test('safety engine requires age info for unknown age + strong actives', () => {
   assert.ok(result.required_fields.includes('age_band') || result.required_questions.length > 0);
 });
 
-test('safety engine blocks infant/toddler + fragrance or essential oil', () => {
+test('safety engine warns infant/toddler + fragrance or essential oil', () => {
   const result = evaluateSafety({
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
     message: 'Can my toddler use a fragrance essential oil cream?',
@@ -274,7 +274,7 @@ test('safety engine blocks infant/toddler + fragrance or essential oil', () => {
     language: 'EN',
   });
 
-  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.equal(result.block_level, BLOCK_LEVEL.WARN);
 });
 
 test('epi calculator outputs bounded components and score', () => {

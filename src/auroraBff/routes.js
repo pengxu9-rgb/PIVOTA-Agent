@@ -573,6 +573,10 @@ const AURORA_PIVOTA_SHOP_BASE_URL = String(
   .trim()
   .replace(/\/+$/, '');
 const AURORA_CHAT_POLICY_VERSION = String(process.env.AURORA_CHAT_POLICY_VERSION || 'aurora_chat_v2_p0').trim();
+const AURORA_CHAT_RESPONSE_FORMAT = String(process.env.AURORA_CHAT_RESPONSE_FORMAT || 'chatcards')
+  .trim()
+  .toLowerCase();
+const AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE = AURORA_CHAT_RESPONSE_FORMAT === 'legacy';
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
@@ -37585,8 +37589,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       emitAudit(envelopeWithGuardrails, templateCtx, { logger });
-      if (statusCode >= 400) return res.status(statusCode).json(chatCardsResponse);
-      return res.json(chatCardsResponse);
+      const responsePayload = AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE
+        ? envelopeWithGuardrails
+        : chatCardsResponse;
+      if (statusCode >= 400) return res.status(statusCode).json(responsePayload);
+      return res.json(responsePayload);
     };
 
     try {
