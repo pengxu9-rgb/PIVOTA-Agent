@@ -14764,16 +14764,34 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             unifiedRelevanceRequested &&
             !hasMerchantScope &&
             Boolean(cacheQueryText) &&
-            externalCount <= 0;
+            externalCount <= 0 &&
+            !isLookupQuery;
           if (cacheMissingExternalForUnified) {
             effectiveCacheHit = false;
           }
+          const cacheBrandDetection = detectBrandEntities(cacheQueryText, {
+            candidateProducts: effectiveProducts,
+          });
+          const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
+          const cacheStrictEmptyBypassReason =
+            cacheMissingExternalForUnified
+              ? 'missing_external_for_unified'
+              : cacheRejectedLowQuality
+                ? 'cache_rejected_low_quality'
+                : cacheBrandLikeQuery
+                  ? 'brand_query_search_first'
+                  : null;
+          const bypassCacheStrictEmptyForUnified =
+            Boolean(cacheStrictEmptyBypassReason) &&
+            (unifiedRelevanceRequested || cacheBrandLikeQuery);
           if (crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object') {
             crossMerchantCacheRouteDebug.cache_hit = effectiveCacheHit;
             crossMerchantCacheRouteDebug.cache_validation = cacheValidation;
             crossMerchantCacheRouteDebug.cache_rejected_low_quality = cacheRejectedLowQuality;
             crossMerchantCacheRouteDebug.cache_missing_external_for_unified =
               cacheMissingExternalForUnified;
+            crossMerchantCacheRouteDebug.cache_strict_empty_bypassed = bypassCacheStrictEmptyForUnified;
+            crossMerchantCacheRouteDebug.cache_strict_empty_bypass_reason = cacheStrictEmptyBypassReason;
           }
 
           const promotions = await getActivePromotions(now, creatorId);
@@ -15127,6 +15145,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             !effectiveCacheHit &&
             !isLookupQuery &&
             !bypassCacheStrictEmpty &&
+            !bypassCacheStrictEmptyForUnified &&
             !forceControlledRecallForScenario
           ) {
             const cacheStrictReason =
@@ -15245,11 +15264,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&
             !isLookupQuery &&
-            bypassCacheStrictEmpty
+            (bypassCacheStrictEmpty || bypassCacheStrictEmptyForUnified)
           ) {
             logger.info(
-              { source, query: cacheQueryText },
-              'Catalog cache miss strict-empty bypassed for aurora source; continuing to upstream search',
+              {
+                source,
+                query: cacheQueryText,
+                reason: bypassCacheStrictEmptyForUnified
+                  ? cacheStrictEmptyBypassReason || 'unified_relevance'
+                  : 'aurora_override',
+              },
+              'Catalog cache miss strict-empty bypassed; continuing to upstream search',
             );
           }
           logger.info(
