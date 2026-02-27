@@ -41,6 +41,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Health probe contract guard (fail-fast)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/verify_health_probe_contract.sh
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
