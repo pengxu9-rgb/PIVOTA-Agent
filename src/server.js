@@ -3039,7 +3039,12 @@ function normalizeAgentSource(source) {
 
 function isShoppingSource(source) {
   const normalized = normalizeAgentSource(source);
-  return normalized === 'shopping-agent' || normalized === 'shopping-agent-ui';
+  return (
+    normalized === 'shopping-agent' ||
+    normalized === 'shopping-agent-ui' ||
+    normalized === 'shopping-agent-web' ||
+    normalized === 'shopping-web'
+  );
 }
 
 function isCreatorUiSource(source) {
@@ -4906,12 +4911,26 @@ function shouldSkipSecondaryFallbackAfterResolverMiss(
   queryText = '',
   { disableSkipAfterResolverMiss = false } = {},
 ) {
-  if (disableSkipAfterResolverMiss) return false;
-  if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return false;
-  if (isKnownLookupAliasQuery(queryText)) return false;
-  if (isStrongResolverFirstQuery(queryText)) return false;
-  if (hasPetSearchSignal(queryText)) return false;
-  return shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText);
+  return Boolean(
+    getSecondaryFallbackSkipReason(result, queryText, {
+      disableSkipAfterResolverMiss,
+    }),
+  );
+}
+
+function getSecondaryFallbackSkipReason(
+  result,
+  queryText = '',
+  { disableSkipAfterResolverMiss = false } = {},
+) {
+  if (disableSkipAfterResolverMiss) return null;
+  if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return null;
+  if (hasPetSearchSignal(queryText)) return null;
+  if (!shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText)) return null;
+  if (isKnownLookupAliasQuery(queryText)) return 'resolver_miss_lookup_alias';
+  if (isUuidLikeSearchQuery(queryText)) return 'resolver_miss_uuid_like';
+  if (isStrongResolverFirstQuery(queryText)) return 'resolver_miss_strong_resolver_query';
+  return null;
 }
 
 function shouldAllowSecondaryFallback(operation, { forceSecondaryFallback = false } = {}) {
@@ -9099,6 +9118,30 @@ async function proxyAgentSearchToBackend(req, res) {
           }
         : {}),
     });
+    if (out && typeof out === 'object' && !Array.isArray(out)) {
+      out = {
+        ...out,
+        metadata: {
+          ...(out.metadata && typeof out.metadata === 'object' && !Array.isArray(out.metadata)
+            ? out.metadata
+            : {}),
+          guard_source_normalized: normalizeAgentSource(source) || null,
+          secondary_fallback_skipped: Boolean(
+            fallbackStrategy &&
+              typeof fallbackStrategy === 'object' &&
+              fallbackStrategy.skip_secondary_after_resolver_miss === true,
+          ),
+          secondary_fallback_skip_reason:
+            fallbackStrategy &&
+            typeof fallbackStrategy === 'object' &&
+            fallbackStrategy.skip_secondary_after_resolver_miss === true
+              ? String(
+                  fallbackStrategy.secondary_skipped_reason || 'resolver_miss_skip_secondary',
+                )
+              : null,
+        },
+      };
+    }
 
     if (
       SEARCH_STRICT_EMPTY_ENABLED &&
@@ -9183,13 +9226,14 @@ async function proxyAgentSearchToBackend(req, res) {
         : basePrimaryTimeoutMs;
     const totalBudgetMs = Math.max(primaryTimeoutMs, PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS);
     requestDeadlineMs = Date.now() + totalBudgetMs;
-    const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
+    const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
       resolverFirstResult,
       queryText,
       {
         disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
       },
     );
+    const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
     const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi', {
       forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
     });
@@ -9204,7 +9248,7 @@ async function proxyAgentSearchToBackend(req, res) {
       pass2_attempted: false,
       pass2_selected: false,
       pass2_skipped_reason: null,
-      secondary_skipped_reason: null,
+      secondary_skipped_reason: secondaryFallbackSkipReason,
       fallback_skipped_due_budget: false,
       fallback_after_primary_timeout_attempted: false,
       total_budget_ms: totalBudgetMs,
@@ -9544,7 +9588,8 @@ async function proxyAgentSearchToBackend(req, res) {
       } else if (!allowInvokeFallback) {
         fallbackStrategy.secondary_skipped_reason = 'invoke_fallback_disabled';
       } else if (skipSecondaryFallback) {
-        fallbackStrategy.secondary_skipped_reason = 'resolver_miss_skip_secondary';
+        fallbackStrategy.secondary_skipped_reason =
+          fallbackStrategy.secondary_skipped_reason || 'resolver_miss_skip_secondary';
       }
     }
     fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
@@ -9655,13 +9700,14 @@ async function proxyAgentSearchToBackend(req, res) {
     );
   } catch (err) {
     const primaryTimedOut = String(err?.code || '').toUpperCase() === 'ECONNABORTED';
-    const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
+    const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
       resolverFirstResult,
       queryText,
       {
         disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
       },
     );
+    const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
     const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi', {
       forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
     });
@@ -9683,7 +9729,7 @@ async function proxyAgentSearchToBackend(req, res) {
       pass2_attempted: false,
       pass2_selected: false,
       pass2_skipped_reason: 'primary_exception',
-      secondary_skipped_reason: null,
+      secondary_skipped_reason: secondaryFallbackSkipReason,
       fallback_skipped_due_budget: false,
       fallback_after_primary_timeout_attempted: false,
       total_budget_ms: Math.max(0, requestDeadlineMs - startedAtMs),
@@ -9836,7 +9882,8 @@ async function proxyAgentSearchToBackend(req, res) {
       } else if (!allowInvokeFallback) {
         fallbackStrategy.secondary_skipped_reason = 'invoke_fallback_disabled';
       } else if (skipSecondaryFallback && !bypassSkipSecondaryFallback) {
-        fallbackStrategy.secondary_skipped_reason = 'resolver_miss_skip_secondary';
+        fallbackStrategy.secondary_skipped_reason =
+          fallbackStrategy.secondary_skipped_reason || 'resolver_miss_skip_secondary';
       }
       fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
     }
@@ -14587,7 +14634,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
           let effectiveCacheHit = effectiveCacheHitBase;
           const normalizedSeedStrategyForCache = String(
-            queryParams?.external_seed_strategy || queryParams?.externalSeedStrategy || 'legacy',
+            queryParams?.external_seed_strategy ||
+              queryParams?.externalSeedStrategy ||
+              (isCatalogGuardSource(source) ? 'unified_relevance' : 'legacy'),
           )
             .trim()
             .toLowerCase();
@@ -14957,7 +15006,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   search_all_merchants: true,
                   allow_external_seed: true,
                   allow_stale_cache: false,
-                  external_seed_strategy: 'supplement_internal_first',
+                  external_seed_strategy: normalizedSeedStrategyForCache || 'unified_relevance',
                   fast_mode: true,
                 },
                 checkoutToken,
@@ -15071,7 +15120,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   external_seed_count: 0,
                   stale_cache_used: false,
                   strategy_applied: isCatalogGuardSource(source)
-                    ? 'supplement_internal_first'
+                    ? normalizedSeedStrategyForCache || 'unified_relevance'
                     : 'cache_only',
                 },
                 proxy_search_fallback: {
@@ -16302,13 +16351,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         requestedPageFromPayload > 0
           ? requestedPageFromPayload
           : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
-      const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
+      const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
         resolverFirstResult,
         queryText,
         {
           disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
         },
       );
+      const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
       const allowResolverFallback = shouldAllowResolverFallback(operation);
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
         forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
@@ -16539,6 +16589,28 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           metadata: {
             ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
             search_stage_b: secondarySupplementMeta,
+          },
+        };
+      }
+
+      if (
+        (operation === 'find_products' || operation === 'find_products_multi') &&
+        upstreamData &&
+        typeof upstreamData === 'object' &&
+        !Array.isArray(upstreamData)
+      ) {
+        const normalizedGuardSource = normalizeAgentSource(metadata?.source);
+        upstreamData = {
+          ...upstreamData,
+          metadata: {
+            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object'
+              ? upstreamData.metadata
+              : {}),
+            guard_source_normalized: normalizedGuardSource || null,
+            secondary_fallback_skipped: skipSecondaryFallback,
+            secondary_fallback_skip_reason: skipSecondaryFallback
+              ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
+              : null,
           },
         };
       }
