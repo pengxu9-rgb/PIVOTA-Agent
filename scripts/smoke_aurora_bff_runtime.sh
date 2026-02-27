@@ -164,18 +164,23 @@ printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze provenance.url_fetch 
   (if ($atts|length)==0 then true else ($atts | all(((.strategy // "")|length>0) and ((.provider // "")|length>0)) ) end)
 '
 printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze retrieval_degradation is diagnosable when degraded" '
-  (.cards[]|select(.type=="product_analysis")|.payload.provenance.retrieval_degradation) as $rd |
-  (($rd|type)=="object") and
-  (
-    if ($rd.degraded == true and (($rd.transient_failure_count // 0) > 0)) then
-      (
-        (.cards[]|select(.type=="product_analysis")|.payload.missing_info // [])
-        | any(. == "catalog_ann_transient_failure" or . == "competitor_recall_transient_degraded")
-      )
-    else
-      true
-    end
-  )
+  (.cards[]|select(.type=="product_analysis")|.payload) as $p |
+  ($p.provenance.retrieval_degradation // null) as $rd |
+  if $rd == null then
+    true
+  else
+    (($rd|type)=="object") and
+    (
+      if ($rd.degraded == true and (($rd.transient_failure_count // 0) > 0)) then
+        (
+          ($p.missing_info // [])
+          | any(. == "catalog_ann_transient_failure" or . == "competitor_recall_transient_degraded")
+        )
+      else
+        true
+      end
+    )
+  end
 '
 printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze alternatives do not contain obvious non-skincare tools" '
   [
@@ -300,22 +305,57 @@ printf "%s\n" "$followup_json" | jq_assert "follow-up carries anchor-used signal
     (.ops.experiment_events // []) | any((.event_data.anchored // false) == true)
   )
 '
-printf "%s\n" "$followup_json" | jq_assert "follow-up not missing anchor code" '
-  (
-    [(.cards[]|select(.type=="product_analysis")|.payload.missing_info[]? | tostring | ascii_downcase)]
-    | any(. == "followup_anchor_missing")
-  ) | not
+printf "%s\n" "$followup_json" | jq_assert "follow-up provenance has anchor_used (legacy payload)" '
+  if (.cards | any(.type=="product_analysis")) then
+    (
+      (.cards[]|select(.type=="product_analysis")|.payload.provenance.anchor_used) as $a |
+      (($a.anchor_product_id // $a.anchor_product_url // "") | tostring | length) > 0
+    )
+  else
+    true
+  end
 '
-printf "%s\n" "$followup_json" | jq_assert "follow-up alternatives contain no obvious non-skincare tools" '
-  [
-    (.cards[]|select(.type=="product_analysis")|.payload.competitors.candidates[]?),
-    (.cards[]|select(.type=="product_analysis")|.payload.related_products.candidates[]?),
-    (.cards[]|select(.type=="product_analysis")|.payload.dupes.candidates[]?)
-  ] as $rows |
-  (
-    [$rows[] | (((.name // .display_name // "") + " " + (.category // "") + " " + (.product_type // "")) | ascii_downcase | test("(brush|makeup\\s*brush|applicator|tool\\b|blender)"))]
-    | any
-  ) | not
+printf "%s\n" "$followup_json" | jq_assert "follow-up not missing anchor code (legacy payload)" '
+  if (.cards | any(.type=="product_analysis")) then
+    (
+      [(.cards[]|select(.type=="product_analysis")|.payload.missing_info[]? | tostring | ascii_downcase)]
+      | any(. == "followup_anchor_missing")
+    ) | not
+  else
+    true
+  end
+'
+printf "%s\n" "$followup_json" | jq_assert "follow-up alternatives contain no obvious non-skincare tools (legacy payload)" '
+  if (.cards | any(.type=="product_analysis")) then
+    (
+      [
+        (.cards[]|select(.type=="product_analysis")|.payload.competitors.candidates[]?),
+        (.cards[]|select(.type=="product_analysis")|.payload.related_products.candidates[]?),
+        (.cards[]|select(.type=="product_analysis")|.payload.dupes.candidates[]?)
+      ] as $rows |
+      (
+        [$rows[] | (((.name // .display_name // "") + " " + (.category // "") + " " + (.product_type // "")) | ascii_downcase | test("(brush|makeup\\s*brush|applicator|tool\\b|blender)"))]
+        | any
+      ) | not
+    )
+  else
+    true
+  end
+'
+printf "%s\n" "$followup_json" | jq_assert "follow-up product_verdict keeps structured payload (chatcards)" '
+  if (.cards | any(.type=="product_verdict")) then
+    (
+      .cards | any(
+        .type=="product_verdict" and
+        (
+          (.sections // [])
+          | any(.kind=="product_verdict_structured" and ((.verdict // "") | length > 0))
+        )
+      )
+    )
+  else
+    true
+  end
 '
 
 say "chat reco (recommendations OR confidence_notice under artifact gate)"
@@ -385,9 +425,18 @@ if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >
       ) == true
     '
   fi
-  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source" '(.events // []) | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))'
+  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source" '.events | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))'
 elif printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="product_verdict")' >/dev/null; then
   printf "%s\n" "$reco_json" | jq_assert "product_verdict card exists when recommendations are absent" '.cards | any(.type=="product_verdict")'
+  printf "%s\n" "$reco_json" | jq_assert "product_verdict keeps structured section" '
+    .cards | any(
+      .type=="product_verdict" and
+      (
+        (.sections // [])
+        | any(.kind=="product_verdict_structured" and ((.verdict // "")|length>0))
+      )
+    )
+  '
   printf "%s\n" "$reco_json" | jq_assert "recommendations absent in product_verdict path" '(.cards | any(.type=="recommendations")) | not'
   printf "%s\n" "$reco_json" | jq_assert "recos_requested event carries source/reason when event stream is present" '
     (.events // []) as $ev |
