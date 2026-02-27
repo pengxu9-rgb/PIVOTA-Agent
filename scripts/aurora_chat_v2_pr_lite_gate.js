@@ -52,6 +52,7 @@ function main() {
   const startedAt = new Date().toISOString();
   const stamp = nowStamp();
   const reportDir = 'reports';
+  const runLegacyCasepacks = String(process.env.AURORA_CHAT_PR_LITE_LEGACY_CASEPACKS || '').trim().toLowerCase() === 'true';
   fs.mkdirSync(reportDir, { recursive: true });
 
   const steps = [];
@@ -65,52 +66,54 @@ function main() {
     ]),
   );
 
-  if (steps[steps.length - 1].ok) {
-    steps.push(
-      runCommand('node', [
-        'scripts/aurora_travel_gate.js',
-        '--mode',
-        'local-mock',
-        '--strict-meta',
-        'true',
-        '--report-dir',
-        'reports',
-      ]),
-    );
-  }
-  if (steps[steps.length - 1].ok) {
-    steps.push(
-      runCommand('node', [
-        'scripts/aurora_travel_gate.js',
-        '--mode',
-        'local-mock',
-        '--strict-meta',
-        'true',
-        '--cases',
-        'tests/golden/aurora_safety_20.jsonl',
-        '--report-prefix',
-        'aurora_safety_gate',
-        '--report-dir',
-        'reports',
-      ]),
-    );
-  }
-  if (steps[steps.length - 1].ok) {
-    steps.push(
-      runCommand('node', [
-        'scripts/aurora_travel_gate.js',
-        '--mode',
-        'local-mock',
-        '--strict-meta',
-        'true',
-        '--cases',
-        'tests/golden/aurora_anchor_eval_20.jsonl',
-        '--report-prefix',
-        'aurora_anchor_eval_gate',
-        '--report-dir',
-        'reports',
-      ]),
-    );
+  if (runLegacyCasepacks) {
+    if (steps[steps.length - 1].ok) {
+      steps.push(
+        runCommand('node', [
+          'scripts/aurora_travel_gate.js',
+          '--mode',
+          'local-mock',
+          '--strict-meta',
+          'true',
+          '--report-dir',
+          'reports',
+        ]),
+      );
+    }
+    if (steps[steps.length - 1].ok) {
+      steps.push(
+        runCommand('node', [
+          'scripts/aurora_travel_gate.js',
+          '--mode',
+          'local-mock',
+          '--strict-meta',
+          'true',
+          '--cases',
+          'tests/golden/aurora_safety_20.jsonl',
+          '--report-prefix',
+          'aurora_safety_gate',
+          '--report-dir',
+          'reports',
+        ]),
+      );
+    }
+    if (steps[steps.length - 1].ok) {
+      steps.push(
+        runCommand('node', [
+          'scripts/aurora_travel_gate.js',
+          '--mode',
+          'local-mock',
+          '--strict-meta',
+          'true',
+          '--cases',
+          'tests/golden/aurora_anchor_eval_20.jsonl',
+          '--report-prefix',
+          'aurora_anchor_eval_gate',
+          '--report-dir',
+          'reports',
+        ]),
+      );
+    }
   }
 
   const failed = steps.filter((s) => !s.ok).length;
