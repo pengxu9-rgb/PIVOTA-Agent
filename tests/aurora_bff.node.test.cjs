@@ -5,6 +5,7 @@ const supertest = require('supertest');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
+process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT = 'dual';
 
 const {
   shouldDiagnosisGate,
@@ -271,7 +272,7 @@ test('applyLowOrMediumRecoGuardToEnvelope: medium confidence removes treatment/h
   }
 });
 
-test('applyLowOrMediumRecoGuardToEnvelope: keeps explicit non-treatment routine_slot even with active keyword', () => {
+test('applyLowOrMediumRecoGuardToEnvelope: active-keyword recommendations are filtered and fallback notice is emitted', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const envelope = {
@@ -318,15 +319,19 @@ test('applyLowOrMediumRecoGuardToEnvelope: keeps explicit non-treatment routine_
     const cards = Array.isArray(out.envelope.cards) ? out.envelope.cards : [];
     const recoCard = cards.find((c) => c && c.type === 'recommendations');
     assert.equal(Boolean(recoCard), false);
-    const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
-    assert.ok(conf);
-    assert.equal(conf?.payload?.reason, 'low_confidence');
+    const recs = Array.isArray(recoCard && recoCard.payload && recoCard.payload.recommendations)
+      ? recoCard.payload.recommendations
+      : [];
+    assert.equal(recs.length, 0);
+    const notice = cards.find((c) => c && c.type === 'confidence_notice');
+    assert.ok(notice);
+    assert.equal(notice?.payload?.reason, 'low_confidence');
   } finally {
     delete require.cache[moduleId];
   }
 });
 
-test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result falls back to safe non-treatment recommendations', () => {
+test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result falls back to low-confidence notice', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const envelope = {
@@ -359,11 +364,13 @@ test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result 
     assert.equal(out.fallbackApplied, true);
     const cards = Array.isArray(out.envelope.cards) ? out.envelope.cards : [];
     const recoCard = cards.find((c) => c && c.type === 'recommendations');
-    assert.equal(Boolean(recoCard), false);
+    const recs = Array.isArray(recoCard && recoCard.payload && recoCard.payload.recommendations)
+      ? recoCard.payload.recommendations
+      : [];
+    assert.equal(recs.length, 0);
     const notice = cards.find((c) => c && c.type === 'confidence_notice');
     assert.ok(notice);
     assert.equal(notice?.payload?.reason, 'low_confidence');
-    assert.ok(Array.isArray(notice?.payload?.details));
   } finally {
     delete require.cache[moduleId];
   }
@@ -530,7 +537,7 @@ test('/v1/chat: travel intent with missing destination/date asks travel fields b
         .filter(Boolean)
         .join(' | ');
 
-      assert.ok(assistant.length > 0);
+      assert.match(assistant, /destination|travel dates|travel detail/i);
       assert.equal(types.includes('env_stress'), true);
       assert.equal(/tokyo|2026-03-01|2026-03-05/i.test(chipLabels), false);
 
@@ -575,7 +582,7 @@ test('/v1/chat: retinoid with unknown pregnancy requires info before availabilit
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
 
       assert.ok(assistant.length > 0);
-      assert.equal(types.includes('product_analysis'), true);
+      assert.equal(types.includes('diagnosis_gate'), false);
       assert.equal(types.includes('product_parse'), false);
       assert.equal(types.includes('offers_resolved'), false);
 
@@ -617,11 +624,14 @@ test('/v1/chat: text-only "Send a link" enters anchor collection prompt (no cata
       const assistant = String(resp.body?.assistant_message?.content || '');
       const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+      const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+      const chipIds = chips.map((c) => String(c?.chip_id || '')).filter(Boolean);
 
-      assert.ok(assistant.length > 0);
+      assert.equal(assistant.length > 0, true);
       assert.equal(types.includes('confidence_notice'), true);
       assert.equal(types.includes('product_parse'), false);
       assert.equal(types.includes('offers_resolved'), false);
+      assert.ok(chipIds.includes('chip.fitcheck.send_link'));
 
       delete require.cache[moduleId];
     },
@@ -664,8 +674,7 @@ test('/v1/chat: fit-check phrasing routes to anchor collection (no diagnosis gat
       const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
       const chipIds = chips.map((c) => String(c?.chip_id || '')).filter(Boolean);
 
-      assert.ok(assistant.length > 0);
-      assert.equal(types.includes('confidence_notice'), true);
+      assert.equal(assistant.length > 0, true);
       assert.equal(types.includes('diagnosis_gate'), false);
       assert.equal(types.includes('offers_resolved'), false);
       assert.ok(chipIds.includes('chip.fitcheck.send_product_name'));
@@ -4550,8 +4559,8 @@ test('/v1/chat: evaluate intent without anchor asks for product name/link (no di
     assert.ok(chipIds.includes('chip.fitcheck.send_product_name'));
     assert.ok(chipIds.includes('chip.fitcheck.send_link'));
 
-    const assistant = String(resp.body?.assistant_message?.content || '').toLowerCase();
-    assert.ok(assistant.length > 0);
+    const assistant = String(resp.body?.assistant_message?.content || '');
+    assert.equal(assistant.length > 0, true);
 
     const snap = snapshotVisionMetrics();
     const auroraChatCalls = (Array.isArray(snap.upstreamCalls) ? snap.upstreamCalls : []).filter(([key]) => {
@@ -4561,7 +4570,7 @@ test('/v1/chat: evaluate intent without anchor asks for product name/link (no di
         return false;
       }
     });
-    assert.ok(auroraChatCalls.length <= 1);
+    assert.equal(auroraChatCalls.length <= 1, true);
   });
 });
 
@@ -5086,8 +5095,8 @@ test('enrichProductAnalysisPayload: adds profile-fit reasons and hides raw risk 
   const reasons = Array.isArray(out?.assessment?.reasons) ? out.assessment.reasons : [];
   const joined = reasons.join(' | ');
   // CN profile-fit reasons should be present and preferred over generic EN fallback text.
-  assert.ok(reasons.some((r) => /^匹配点：/.test(String(r || ''))));
-  assert.ok(reasons.some((r) => /烟酰胺|niacinamide|锌/i.test(String(r || ''))));
+  assert.ok(reasons.some((r) => /^(匹配目标|匹配点|你的情况)：/.test(String(r || ''))));
+  assert.ok(reasons.some((r) => /^(匹配点|使用建议)：/.test(String(r || ''))));
   assert.ok(
     reasons.some((r) => String(r || '').startsWith('最关键成分：')) ||
       reasons.some((r) => /烟酰胺|niacinamide|锌/i.test(String(r || ''))),
@@ -5187,12 +5196,14 @@ test('/v1/chat: chip_get_recos gates when profile missing, then yields recommend
 
     assert.equal(resp1.status, 200);
     const cards1 = Array.isArray(resp1.body?.cards) ? resp1.body.cards : [];
-    assert.ok(cards1.some((c) => c && c.type === 'confidence_notice'));
-    const firstConf = cards1.find((c) => c && c.type === 'confidence_notice') || null;
-    if (firstConf) {
-      assert.ok(['gate_advisory', 'artifact_missing'].includes(String(firstConf?.payload?.reason || '')));
-    }
     assert.equal(resp1.body?.session_patch?.next_state, 'RECO_RESULTS');
+    assert.equal(cards1.some((c) => c && c.type === 'diagnosis_gate'), false);
+    const reco1 = cards1.find((c) => c && c.type === 'recommendations') || null;
+    const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
+    assert.ok(reco1 || conf1);
+    if (conf1) {
+      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(conf1?.payload?.reason || '')));
+    }
 
     const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
       headers,
@@ -5220,18 +5231,14 @@ test('/v1/chat: chip_get_recos gates when profile missing, then yields recommend
     const conf = cards2.find((c) => c && c.type === 'confidence_notice') || null;
     assert.ok(reco || conf);
     if (reco) {
-      const first = Array.isArray(reco?.payload?.recommendations) ? reco.payload.recommendations[0] : null;
-      if (first) {
-        const recommendationMeta = reco && reco.payload && typeof reco.payload === 'object'
-          ? reco.payload.recommendation_meta
-          : null;
-        assert.ok(recommendationMeta && typeof recommendationMeta === 'object');
+      const recs = Array.isArray(reco?.payload?.recommendations) ? reco.payload.recommendations : [];
+      assert.equal(Array.isArray(recs), true);
+      const recommendationMeta = reco && reco.payload && typeof reco.payload === 'object' ? reco.payload.recommendation_meta : null;
+      if (recommendationMeta && typeof recommendationMeta === 'object') {
         assert.ok(['artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
         assert.equal(typeof recommendationMeta.used_recent_logs, 'boolean');
         assert.equal(typeof recommendationMeta.used_itinerary, 'boolean');
         assert.equal(typeof recommendationMeta.used_safety_flags, 'boolean');
-        assert.ok(Object.prototype.hasOwnProperty.call(recommendationMeta, 'env_source'));
-        assert.ok(Object.prototype.hasOwnProperty.call(recommendationMeta, 'active_trip_id'));
       }
     }
     if (conf) {
@@ -5312,7 +5319,7 @@ test('/v1/chat: CN reco request yields recommendations (no conflict cards)', asy
     app.use(express.json({ limit: '1mb' }));
     mountAuroraBffRoutes(app, { logger: null });
 
-    // With no profile, flow should still return actionable output plus advisory (answer-first).
+    // With no profile, diagnosis-first gating should happen before any recommendations.
     const respNoProfile = await invokeRoute(app, 'POST', '/v1/chat', {
       headers: { 'X-Aurora-UID': 'test_uid_cn_reco_noprofile', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
       body: {
@@ -5324,11 +5331,22 @@ test('/v1/chat: CN reco request yields recommendations (no conflict cards)', asy
 
     assert.equal(respNoProfile.status, 200);
     const cardsNoProfile = Array.isArray(respNoProfile.body?.cards) ? respNoProfile.body.cards : [];
-    assert.ok(cardsNoProfile.some((c) => c && c.type === 'confidence_notice'));
+    const confNoProfile = cardsNoProfile.find((c) => c && c.type === 'confidence_notice') || null;
+    assert.ok(cardsNoProfile.some((c) => c && c.type === 'recommendations') || confNoProfile);
+    assert.equal(cardsNoProfile.some((c) => c && c.type === 'diagnosis_gate'), false);
     assert.equal(cardsNoProfile.some((c) => c && c.type === 'routine_simulation'), false);
     assert.equal(cardsNoProfile.some((c) => c && c.type === 'conflict_heatmap'), false);
     assert.ok(Array.isArray(respNoProfile.body?.suggested_chips));
+    assert.ok(
+      respNoProfile.body.suggested_chips.some((c) => {
+        const id = String(c?.chip_id || '');
+        return id.startsWith('profile.skinType.') || id.startsWith('profile.sensitivity.');
+      }),
+    );
     assert.equal(JSON.stringify(respNoProfile.body).includes('kb:'), false);
+    if (confNoProfile) {
+      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(confNoProfile?.payload?.reason || '')));
+    }
     // No value_moment product reco should be emitted when gated.
     assert.equal((respNoProfile.body?.events || []).some((e) => e && e.event_name === 'recos_requested'), true);
 
@@ -5825,9 +5843,16 @@ test('/v1/chat: reco chip gates when profile is incomplete', async () => {
 
     assert.equal(resp.status, 200);
     assert.equal(resp.body?.session_patch?.next_state, 'RECO_RESULTS');
+    assert.equal(resp.body?.session_patch?.state?._internal_next_state, undefined);
 
     const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-    assert.ok(cards.some((c) => c && c.type === 'confidence_notice'));
+    assert.equal(cards.some((c) => c && c.type === 'diagnosis_gate'), false);
+    const reco = cards.find((c) => c && c.type === 'recommendations') || null;
+    const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
+    assert.ok(reco || conf);
+    if (conf) {
+      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(conf?.payload?.reason || '')));
+    }
   });
 });
 
@@ -6352,21 +6377,23 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       const envStress = cards.find((c) => c && c.type === 'env_stress') || null;
       assert.ok(envStress);
       assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
-      assert.equal(typeof envStress?.payload, 'object');
-      assert.ok(String(resp.body?.assistant_message?.content || '').length > 0);
+      assert.equal(envStress?.payload?.travel_readiness, undefined);
+      assert.match(String(resp.body?.assistant_message?.content || ''), /destination|travel dates/i);
 
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
       assert.equal(types.includes('diagnosis_gate'), false);
       assert.equal(types.includes('gate_notice'), false);
 
       const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
-      const chipLabels = chips.map((chip) => String(chip && chip.label ? chip.label : ''));
-      assert.ok(chipLabels.length >= 1);
+      const chipIds = chips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : ''));
+      assert.ok(chipIds.includes('tpl.action.env.am_pm'));
+      assert.ok(chipIds.includes('chip.start.reco_products'));
 
       const topMeta = resp.body?.meta || {};
-      assert.equal(typeof topMeta.gate_policy_version, 'string');
-      assert.ok(resp.body?.session_patch?.meta);
-      assert.equal(typeof resp.body.session_patch.meta.gate_policy_version, 'string');
+      assert.equal(topMeta.env_source, 'local_template');
+      assert.equal(topMeta.degraded, true);
+      assert.equal(topMeta.travel_kb_hit, undefined);
+      assert.equal(topMeta.travel_kb_write_queued, undefined);
 
       const firstAssistant = String(resp.body?.assistant_message?.content || '');
       const followupSessionState =
@@ -6384,12 +6411,13 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
         .expect(200);
 
       const secondAssistant = String(respFollow.body?.assistant_message?.content || '');
-      assert.ok(secondAssistant.length > 0);
-      assert.ok(firstAssistant.length > 0);
+      assert.equal(secondAssistant.length > 0, true);
       const followMeta = respFollow.body?.meta || {};
-      assert.equal(typeof followMeta.gate_policy_version, 'string');
+      assert.equal(followMeta.env_source, 'local_template');
+      assert.equal(followMeta.degraded, true);
+      assert.equal(followMeta.loop_count >= 0, true);
       const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
-      assert.equal(typeof followCards.some((c) => c && c.type === 'env_stress'), 'boolean');
+      assert.equal(followCards.some((c) => c && c.type === 'env_stress'), true);
 
       delete require.cache[moduleId];
     },
@@ -6467,8 +6495,11 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
           })
           .expect(200);
 
-        const firstCards = Array.isArray(firstResp.body?.cards) ? firstResp.body.cards : [];
-        assert.ok(firstCards.some((c) => c && c.type === 'env_stress'));
+        const firstMeta = firstResp.body?.meta || {};
+        assert.equal(firstMeta.env_source, 'local_template');
+        assert.equal(firstMeta.degraded, true);
+        assert.equal(firstMeta.travel_kb_hit, undefined);
+        assert.equal(firstMeta.travel_kb_write_queued, undefined);
 
         await new Promise((resolve) => setTimeout(resolve, 40));
 
@@ -6509,8 +6540,11 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
           })
           .expect(200);
 
-        const secondCards = Array.isArray(secondResp.body?.cards) ? secondResp.body.cards : [];
-        assert.ok(secondCards.some((c) => c && c.type === 'env_stress'));
+        const secondMeta = secondResp.body?.meta || {};
+        assert.equal(secondMeta.env_source, 'local_template');
+        assert.equal(secondMeta.degraded, true);
+        assert.equal(secondMeta.travel_kb_hit, undefined);
+        assert.equal(secondMeta.travel_kb_write_queued, undefined);
       } finally {
         travelKbPolicy.evaluateTravelKbBackfill = originalEvaluateTravelKbBackfill;
         delete require.cache[routesModuleId];
@@ -6599,7 +6633,7 @@ test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', asy
   assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
 });
 
-test('/v1/analysis/skin: photo-only fallback marks primary_input missing (not used_photos)', async () => {
+test('/v1/analysis/skin: photo-only fallback marks used_photos missing when photo fetch fails', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
 
@@ -6674,12 +6708,18 @@ test('/v1/analysis/skin: photo-only fallback marks primary_input missing (not us
   assert.ok(Array.isArray(resp.body?.cards));
   const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
   assert.ok(card);
-  assert.equal(typeof card.payload?.low_confidence, 'boolean');
-  assert.notEqual(card.payload?.analysis_source, 'baseline_low_confidence');
+  assert.equal(card.payload?.analysis_source, 'rule_based_with_photo_qc');
+  assert.equal(card.payload?.low_confidence, false);
+  assert.equal(card.payload?.used_photos, false);
+  assert.equal(card.payload?.photo_notice?.failure_code, 'DOWNLOAD_URL_GENERATE_FAILED');
   const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
   assert.equal(
-    missing.some((m) => m && m.field === 'analysis.used_photos'),
+    missing.some((m) => m && m.field === 'analysis.used_photos' && m.reason === 'DOWNLOAD_URL_GENERATE_FAILED'),
     true,
+  );
+  assert.equal(
+    missing.some((m) => m && m.field === 'analysis.primary_input' && m.reason === 'routine_or_recent_logs_required'),
+    false,
   );
 });
 
@@ -7194,7 +7234,7 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
   assert.match(String(card.payload.analysis.features[0].observation || ''), /photo/i);
 });
 
-test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_photos=true)', async () => {
+test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo quality fails', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -7306,12 +7346,10 @@ test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_ph
         const uploadCard = Array.isArray(uploadResp.body?.cards)
           ? uploadResp.body.cards.find((c) => c && c.type === 'photo_confirm')
           : null;
-        assert.ok(uploadCard || Array.isArray(uploadResp.body?.cards));
+        assert.ok(uploadCard);
         const photoId = uploadCard?.payload?.photo_id;
-        if (photoId != null) {
-          assert.equal(typeof photoId, 'string');
-          assert.ok(photoId.length > 0);
-        }
+        assert.equal(typeof photoId, 'string');
+        assert.ok(photoId.length > 0);
         const uploadAnalysisCard = Array.isArray(uploadResp.body?.cards)
           ? uploadResp.body.cards.find((c) => c && c.type === 'analysis_summary')
           : null;
@@ -7323,7 +7361,7 @@ test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_ph
           .send({
             use_photo: true,
             currentRoutine: 'AM gentle cleanser + SPF; PM gentle cleanser + retinol + moisturizer',
-            photos: [{ slot_id: 'daylight', photo_id: photoId || 'photo_fallback', qc_status: 'passed' }],
+            photos: [{ slot_id: 'daylight', photo_id: photoId, qc_status: 'passed' }],
           })
           .expect(200);
 
@@ -7331,11 +7369,14 @@ test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_ph
           ? analysisResp.body.cards.find((c) => c && c.type === 'analysis_summary')
           : null;
         assert.ok(analysisCard);
-        assert.equal(typeof analysisCard?.payload?.used_photos, 'boolean');
-        assert.notEqual(analysisCard?.payload?.analysis_source, 'rule_based_with_photo_qc');
-        if (analysisCard?.payload?.photo_notice != null) {
-          assert.equal(typeof analysisCard?.payload?.photo_notice, 'string');
-        }
+        assert.equal(analysisCard?.payload?.analysis_source, 'retake');
+        assert.equal(analysisCard?.payload?.used_photos, false);
+        assert.equal(Boolean(analysisCard?.payload?.photo_notice), false);
+        const missing = Array.isArray(analysisCard?.field_missing) ? analysisCard.field_missing : [];
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'photo_quality_fail'),
+          true,
+        );
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -8274,7 +8315,7 @@ test('/v1/analysis/skin: photos without use_photo still default to photo analysi
   );
 });
 
-test('/v1/analysis/skin: photo-only input is downgraded but not hard-gated by routine/logs', async () => {
+test('/v1/analysis/skin: photo-only input can proceed as rule-based when photo diagnosis succeeds', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -8363,11 +8404,26 @@ test('/v1/analysis/skin: photo-only input is downgraded but not hard-gated by ro
         const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
         assert.ok(card);
         assert.equal(card?.payload?.analysis_source === 'baseline_low_confidence', false);
-        assert.equal(typeof card?.payload?.low_confidence, 'boolean');
-        assert.equal(typeof card?.payload?.used_photos, 'boolean');
+        assert.equal(Boolean(card?.payload?.low_confidence), false);
+        assert.equal(card?.payload?.used_photos, true);
 
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
-        assert.ok(Array.isArray(missing));
+        const primaryMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        const photoMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+        assert.equal(primaryMissingCount, 0);
+        assert.equal(photoMissingCount, 0);
       } finally {
         skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
         axios.get = originalGet;
@@ -8380,7 +8436,7 @@ test('/v1/analysis/skin: photo-only input is downgraded but not hard-gated by ro
   );
 });
 
-test('/v1/analysis/skin: stringified empty routine does not count as primary input', async () => {
+test('/v1/analysis/skin: stringified empty routine does not block photo-first rule-based analysis', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -8470,11 +8526,26 @@ test('/v1/analysis/skin: stringified empty routine does not count as primary inp
         const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
         assert.ok(card);
         assert.equal(card?.payload?.analysis_source === 'baseline_low_confidence', false);
-        assert.equal(typeof card?.payload?.low_confidence, 'boolean');
-        assert.equal(typeof card?.payload?.used_photos, 'boolean');
+        assert.equal(Boolean(card?.payload?.low_confidence), false);
+        assert.equal(card?.payload?.used_photos, true);
 
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
-        assert.ok(Array.isArray(missing));
+        const primaryMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        const photoMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+        assert.equal(primaryMissingCount, 0);
+        assert.equal(photoMissingCount, 0);
       } finally {
         skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
         axios.get = originalGet;

@@ -304,6 +304,32 @@ function normalizeCards({ envelope, requestId, language }) {
   return compact.slice(0, 3);
 }
 
+function resolveResponseContractMode() {
+  const raw = asString(process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT).toLowerCase();
+  if (raw === 'legacy' || raw === 'dual') return raw;
+  return 'chatcards';
+}
+
+function buildLegacyEnvelopeView({ envelope, assistantText }) {
+  const base = isPlainObject(envelope) ? envelope : {};
+  const assistantMessage =
+    isPlainObject(base.assistant_message) && asString(base.assistant_message.content)
+      ? base.assistant_message
+      : {
+          role: 'assistant',
+          content: asString(assistantText),
+          format: 'markdown',
+        };
+  return {
+    assistant_message: assistantMessage,
+    suggested_chips: asArray(base.suggested_chips),
+    cards: asArray(base.cards),
+    session_patch: isPlainObject(base.session_patch) ? base.session_patch : {},
+    events: asArray(base.events),
+    ...(isPlainObject(base.meta) ? { meta: base.meta } : {}),
+  };
+}
+
 function buildChatCardsResponse({
   envelope,
   ctx,
@@ -367,7 +393,25 @@ function buildChatCardsResponse({
   };
 
   const parsed = ChatCardsResponseSchema.safeParse(response);
-  if (parsed.success) return parsed.data;
+  if (parsed.success) {
+    const mode = resolveResponseContractMode();
+    if (mode === 'chatcards') return parsed.data;
+
+    const legacy = buildLegacyEnvelopeView({ envelope: base, assistantText });
+    if (mode === 'legacy') {
+      return {
+        request_id: requestId,
+        trace_id: traceId,
+        ...legacy,
+      };
+    }
+
+    return {
+      ...parsed.data,
+      cards_chatcards: parsed.data.cards,
+      ...legacy,
+    };
+  }
 
   return {
     version: '1.0',
