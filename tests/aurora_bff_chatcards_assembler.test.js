@@ -34,6 +34,10 @@ describe('chatCardsAssembler safety mapping', () => {
 
     expect(out.safety.risk_level).toBe('high');
     expect(out.safety.red_flags).toContain('rule_block_1');
+    expect(out.telemetry.ui_language).toBe('EN');
+    expect(out.telemetry.matching_language).toBe('EN');
+    expect(out.telemetry.language_mismatch).toBe(false);
+    expect(out.telemetry.language_resolution_source).toBe('text_detected');
   });
 
   test('infers safety risk from safety_gate_block event when safetyDecision is null', () => {

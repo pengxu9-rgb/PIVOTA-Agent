@@ -1,4 +1,9 @@
 const spec = require('./specs/agent_state_machine.json');
+const {
+  isDiagnosisStartLikeText,
+  isRecommendationLikeText,
+  isRoutineReviewLikeText,
+} = require('./languageIntentLexicon');
 
 const DEFAULT_AGENT_STATE = (spec && spec.default_state) || 'IDLE_CHAT';
 
@@ -56,43 +61,21 @@ function validateRequestedTransition({ fromState, triggerSource, triggerId, requ
 }
 
 function looksLikeExplicitDiagnosisStart(raw) {
-  const text = String(raw || '').trim();
-  if (!text) return false;
-  const lower = text.toLowerCase();
-
-  // EN-first: keep an explicit allowlist so we don't accidentally enter diagnosis.
-  const wantsDiagnosisEN =
-    /\b(start|begin|run)\b.{0,40}\b(skin\s*)?(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b/.test(lower) ||
-    /\b(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b.{0,40}\bmy\s*(skin|face)\b/.test(lower) ||
-    /\b(skin|face)\b.{0,40}\b(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b/.test(lower) ||
-    /\bskin\s*profile\b/.test(lower);
-  if (wantsDiagnosisEN) return true;
-
-  // CN-second: require both a skin subject + an explicit diagnosis/analysis verb.
-  // Avoid matching generic "诊断" in non-skin contexts.
-  const hasSkinCN = /(皮肤|肤质|肤况|面部|脸部|脸)/.test(text);
-  const hasDiagnosisCN = /(诊断|分析|检测|评估|测一测|测试)/.test(text);
-  return hasSkinCN && hasDiagnosisCN;
+  return isDiagnosisStartLikeText(raw);
 }
 
 function inferTextExplicitTransition(message, language) {
   const raw = String(message || '').trim();
   if (!raw) return null;
-  const text = raw.toLowerCase();
-  const lang = language === 'CN' ? 'CN' : 'EN';
+  void language;
 
   const wantsDiagnosis = looksLikeExplicitDiagnosisStart(raw);
   if (wantsDiagnosis) return { requested_next_state: 'DIAG_PROFILE', trigger_id: raw.slice(0, 120) };
 
-  const wantsRoutineReview = lang === 'CN' ? /评估我现在用的/.test(raw) : /review my routine/i.test(raw);
+  const wantsRoutineReview = isRoutineReviewLikeText(raw);
   if (wantsRoutineReview) return { requested_next_state: 'ROUTINE_INTAKE', trigger_id: raw.slice(0, 120) };
 
-  const wantsRecs = lang === 'CN'
-    ? /产品推荐/.test(raw) ||
-      /推荐/.test(raw) ||
-      /给我方案/.test(raw) ||
-      /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/.test(raw)
-    : /\brecommend\b/i.test(text) || /product recommendations?/i.test(text) || /build me a routine/i.test(text);
+  const wantsRecs = isRecommendationLikeText(raw);
   if (wantsRecs) return { requested_next_state: 'RECO_GATE', trigger_id: raw.slice(0, 120) };
 
   return null;

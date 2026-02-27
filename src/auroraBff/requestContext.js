@@ -1,4 +1,9 @@
 const { randomUUID } = require('crypto');
+const {
+  detectLanguageFromText,
+  looksLikeChineseText,
+  isExplicitTextTrigger,
+} = require('./languageIntentLexicon');
 
 function normalizeLang(raw) {
   const v = String(raw || '').trim().toUpperCase();
@@ -11,47 +16,49 @@ function getHeader(req, name) {
   return v == null ? null : String(v);
 }
 
-function looksLikeChineseText(text) {
-  const t = String(text || '');
-  if (!t) return false;
-  // Rough heuristic: presence of CJK unified ideographs.
-  return /[\u4e00-\u9fff]/.test(t);
+function detectTextExplicit(message) {
+  return isExplicitTextTrigger(message);
 }
 
-function detectTextExplicit(message) {
-  const text = String(message || '').trim().toLowerCase();
-  if (!text) return false;
+function resolveMatchingLanguage({
+  message = '',
+  uiLang = 'EN',
+  hasExplicitLanguage = false,
+  explicitSource = 'header',
+} = {}) {
+  const ui = normalizeLang(uiLang);
+  const text = String(message || '').trim();
 
-  // MVP explicit allowlist (conservative): only these phrases count as "text_explicit".
-  const patterns = [
-    // EN
-    /\brecommend\b/,
-    /product recommendations?/,
-    /build me a routine/,
-    /diagnose my skin/,
-    /review my routine/,
-    // EN: explicit fit-check
-    /\bis (this|it).{0,40}\b(okay|safe|suitable|good)\b/,
-    /\bcan i use\b/,
-    // CN
-    /推荐/,
-    /产品推荐/,
-    /给我方案/,
-    // CN/EN concern-led explicit asks should count as text_explicit recommendation intent.
-    /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|暗沉|色沉)/,
-    /\banti[-\s]?aging\b/,
-    /\bwrinkles?\b/,
-    /\bfine\s+lines?\b/,
-    // CN: "想要/要/求" + product-type (avoid matching weather like "要下雪")
-    /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/,
-    /诊断/,
-    /评估我现在用的/,
-    // CN: explicit fit-check (keep narrow)
-    /(适合吗|适不适合|能用吗|可以用吗)/,
-    // CN: explicit compatibility / layering questions (avoid matching weather like "要下雪")
-    /(冲突|相克|兼容|叠加|同晚|一起用|能不能一起|还能和|搭配|同用)/,
-  ];
-  return patterns.some((re) => re.test(text));
+  if (!text) {
+    return {
+      match_lang: ui,
+      language_mismatch: false,
+      language_resolution_source: hasExplicitLanguage ? (explicitSource === 'body' ? 'body' : 'header') : 'text_detected',
+    };
+  }
+
+  const detected = detectLanguageFromText(text);
+  if (!hasExplicitLanguage) {
+    return {
+      match_lang: detected,
+      language_mismatch: detected !== ui,
+      language_resolution_source: 'text_detected',
+    };
+  }
+
+  if (detected !== ui) {
+    return {
+      match_lang: detected,
+      language_mismatch: true,
+      language_resolution_source: 'mixed_override',
+    };
+  }
+
+  return {
+    match_lang: detected,
+    language_mismatch: false,
+    language_resolution_source: explicitSource === 'body' ? 'body' : 'header',
+  };
 }
 
 function inferTriggerSource(body) {
@@ -85,12 +92,21 @@ function buildRequestContext(req, body) {
   const auroraUid = getHeader(req, 'X-Aurora-UID');
   const briefId = getHeader(req, 'X-Brief-ID') || (body && body.session && body.session.brief_id) || null;
   const traceId = getHeader(req, 'X-Trace-ID') || (body && body.session && body.session.trace_id) || randomUUID();
-  const explicitLang = getHeader(req, 'X-Lang') || (body && body.language) || null;
+  const headerLang = getHeader(req, 'X-Lang');
+  const bodyLang = body && body.language ? String(body.language) : null;
+  const explicitLang = headerLang || bodyLang || null;
+  const explicitSource = headerLang ? 'header' : bodyLang ? 'body' : 'text_detected';
   const fallbackText =
     (body && typeof body.message === 'string' && body.message) ||
     (body && typeof body.query === 'string' && body.query) ||
     '';
-  const lang = explicitLang ? normalizeLang(explicitLang) : looksLikeChineseText(fallbackText) ? 'CN' : 'EN';
+  const uiLang = explicitLang ? normalizeLang(explicitLang) : detectLanguageFromText(fallbackText);
+  const languageResolved = resolveMatchingLanguage({
+    message: fallbackText,
+    uiLang,
+    hasExplicitLanguage: Boolean(explicitLang),
+    explicitSource,
+  });
   const requestId = getHeader(req, 'X-Request-ID') || randomUUID();
   const triggerSource = inferTriggerSource(body || {});
   const state = (body && body.session && body.session.state) || null;
@@ -100,7 +116,11 @@ function buildRequestContext(req, body) {
     trace_id: String(traceId || '').trim() || randomUUID(),
     aurora_uid: auroraUid ? String(auroraUid).trim() : null,
     brief_id: briefId ? String(briefId).trim() : null,
-    lang,
+    lang: uiLang,
+    ui_lang: uiLang,
+    match_lang: languageResolved.match_lang,
+    language_mismatch: languageResolved.language_mismatch,
+    language_resolution_source: languageResolved.language_resolution_source,
     trigger_source: triggerSource,
     state,
   };
@@ -108,7 +128,9 @@ function buildRequestContext(req, body) {
 
 module.exports = {
   normalizeLang,
+  looksLikeChineseText,
   detectTextExplicit,
+  resolveMatchingLanguage,
   inferTriggerSource,
   buildRequestContext,
 };

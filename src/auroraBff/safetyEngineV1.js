@@ -214,8 +214,9 @@ function buildCtx({
 
   const mentions = {
     oralIsotretinoin: hasExplicitOralIsotretinoinSignal(text),
-    retinoid: hasAny(lower, [/\b(retinoid|retinol|retinal|tretinoin|adapalene|tazarotene|维a|a醇|维甲酸|阿达帕林)\b/i]),
-    hydroquinone: hasAny(lower, [/\b(hydroquinone|氢醌)\b/i]),
+    // Use language-aware tokenization: CN tokens should not depend on \b boundaries.
+    retinoid: hasAny(lower, [/\b(retinoid|retinol|retinal|tretinoin|adapalene|tazarotene)\b/i, /(维a|a醇|维甲酸|阿达帕林)/i]),
+    hydroquinone: hasAny(lower, [/\bhydroquinone\b/i, /氢醌/i]),
     strongSalicylic: hasAny(lower, [/(salicylic\s*acid\s*(30|20|high|strong)|高浓度水杨酸|水杨酸焕肤|bha\s*peel)/i]),
     aggressivePeel: hasAny(lower, [/(chemical\s*peel|peel\s*kit|焕肤|刷酸换肤|剥脱)/i]),
     prescription: hasAny(lower, [/(prescription|rx|处方|医生开|药膏)/i]),
@@ -597,6 +598,11 @@ function toRuleKeyFromId(ruleId) {
 function applyHardBlockAllowlist(rule) {
   const currentLevel = normalizeBlockLevel(rule && rule.level);
   if (currentLevel !== BLOCK_LEVEL.BLOCK) return { ...rule, level: currentLevel };
+
+  const ruleId = normalizeText(rule && rule.id);
+  if (/^kb_v0:/i.test(ruleId)) {
+    return { ...rule, level: BLOCK_LEVEL.BLOCK };
+  }
 
   const key = toRuleKeyFromId(rule && rule.id);
   if (HARD_BLOCK_RULE_ALLOWLIST.has(key)) {
@@ -1050,5 +1056,6 @@ module.exports = {
     SAFETY_RULES,
     buildCtx,
     HARD_BLOCK_RULE_ALLOWLIST,
+    applyHardBlockAllowlist,
   },
 };

@@ -1,3 +1,8 @@
+const {
+  isRecommendationLikeText,
+  isSuitabilityLikeText,
+} = require('./languageIntentLexicon');
+
 function profileCompleteness(profile) {
   const p = profile || {};
   const dims = {
@@ -14,54 +19,15 @@ function profileCompleteness(profile) {
 }
 
 function looksLikeRecommendationRequest(message) {
-  const text = String(message || '').trim().toLowerCase();
+  const text = String(message || '').trim();
   if (!text) return false;
-  const scienceOnlyIntent =
-    /\b(ingredient|ingredients|active|actives)\b.{0,24}\b(science|evidence|mechanism|clinical|study|paper)\b/.test(text) ||
-    /\b(science|evidence|mechanism|clinical|study|paper)\b.{0,24}\b(ingredient|ingredients|active|actives)\b/.test(text) ||
-    /(成分(机理|机制|科学|证据|原理)|证据链|循证|临床证据|论文证据)/.test(text);
-  const stillAskingProducts =
-    /\brecommend\b/.test(text) ||
-    /\brecommendation\b/.test(text) ||
-    /\bproducts?\b/.test(text) ||
-    /\bwhat should i (buy|use)\b/.test(text) ||
-    /\bbuy\b/.test(text) ||
-    /推荐/.test(text) ||
-    /(产品|清单|购买|下单|链接|护肤方案|早晚)/.test(text);
-  if (scienceOnlyIntent && !stillAskingProducts) return false;
-  return (
-    /\brecommend\b/.test(text) ||
-    /\brecommendation\b/.test(text) ||
-    /\bsuggest\b/.test(text) ||
-    /\bwhat should i (buy|use)\b/.test(text) ||
-    /\broutine\b/.test(text) ||
-    /\bproducts?\b/.test(text) ||
-    /推荐/.test(text) ||
-    /给我.*(产品|清单)/.test(text) ||
-    /(护肤方案|早晚)/.test(text) ||
-    // EN/CN concern-led shopping intent (no explicit "recommend" required).
-    /\b(anti[-\s]?aging|anti[-\s]?age|wrinkles?|fine lines?|firming|dark spots?|hyperpigmentation|acne|pores?|redness)\b/.test(text) ||
-    /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|痘痘|闭口|毛孔|泛红|暗沉|色沉|痘印|色斑)/.test(text) ||
-    /\bam\b/.test(text) ||
-    /\bpm\b/.test(text) ||
-    /(怎么买|购买|下单|链接)/.test(text)
-    // CN: "想要/要/求" + product-type (avoid matching weather like "要下雪")
-    || /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/.test(text)
-  );
+  return isRecommendationLikeText(text);
 }
 
 function looksLikeSuitabilityRequest(message) {
-  const text = String(message || '').trim().toLowerCase();
+  const text = String(message || '').trim();
   if (!text) return false;
-  return (
-    /\bis (this|it) (good|okay|safe|suitable)\b/.test(text) ||
-    /\bcan i use\b/.test(text) ||
-    /\bwill it (irritate|break me out)\b/.test(text) ||
-    /\bsuitable\b/.test(text) ||
-    /(适合吗|适不适合|适合我吗|是否适合|适合不适合|合适吗|适配吗|能用吗|可以用吗|刺激吗|爆痘吗)/.test(text) ||
-    // CN: common fit-check phrasing without explicitly saying "适合吗" (e.g. "请评估：<product>")
-    /(评估|测评|评价)\s*[:：]\s*[^\\s]{3,}/.test(text)
-  );
+  return isSuitabilityLikeText(text);
 }
 
 function looksLikeDiagnosisStart(message) {

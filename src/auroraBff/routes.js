@@ -7328,6 +7328,7 @@ function extractProductIntelInciFingerprint(parsedProductObj) {
 }
 
 function buildProductIntelFingerprintSeed({ parsedProductObj, productHint = '', langCode = 'EN' } = {}) {
+  void langCode;
   const parsed = parsedProductObj && typeof parsedProductObj === 'object' && !Array.isArray(parsedProductObj) ? parsedProductObj : null;
   const brandRaw = pickFirstTrimmed(parsed?.brand, parsed?.brand_name, parsed?.brandName);
   const nameRaw = pickFirstTrimmed(
@@ -7347,7 +7348,7 @@ function buildProductIntelFingerprintSeed({ parsedProductObj, productHint = '', 
   const hint = normalizeProductIntelFingerprintToken(hintRaw, { maxLen: 220 });
 
   if (!brand && !name && !inci && !hint) return '';
-  return [brand, name, inci, hint, String(langCode || 'EN').toUpperCase()].join('|');
+  return [brand, name, inci, hint].join('|');
 }
 
 function buildProductIntelKbKeyParts({ productUrl, parsedProduct, productHint = '', lang = 'EN' } = {}) {
@@ -7379,6 +7380,21 @@ function buildProductIntelKbKey({ productUrl, parsedProduct, lang = 'EN', produc
     ? crypto.createHash('sha256').update(parts.fingerprintSeed).digest('hex')
     : '';
   const keyRaw = parts.normalizedUrl
+    ? `url:${parts.normalizedUrl}`
+    : parts.anchorId
+      ? `product:${parts.anchorId}`
+      : fingerprintHash
+        ? `fp:${fingerprintHash}`
+        : '';
+  return normalizeProductIntelKbKey(keyRaw);
+}
+
+function buildLegacyProductIntelKbKey({ productUrl, parsedProduct, lang = 'EN', productHint = '' } = {}) {
+  const parts = buildProductIntelKbKeyParts({ productUrl, parsedProduct, productHint, lang });
+  const fingerprintHash = parts.fingerprintSeed
+    ? crypto.createHash('sha256').update(parts.fingerprintSeed).digest('hex')
+    : '';
+  const keyRaw = parts.normalizedUrl
     ? `url:${parts.normalizedUrl}|lang:${parts.langCode}`
     : parts.anchorId
       ? `product:${parts.anchorId}|lang:${parts.langCode}`
@@ -7386,6 +7402,23 @@ function buildProductIntelKbKey({ productUrl, parsedProduct, lang = 'EN', produc
         ? `fp:${fingerprintHash}|lang:${parts.langCode}`
         : '';
   return normalizeProductIntelKbKey(keyRaw);
+}
+
+function buildProductIntelKbReadCandidates({ productUrl, parsedProduct, lang = 'EN', productHint = '' } = {}) {
+  const out = [];
+  const push = (rawKey) => {
+    const key = String(rawKey || '').trim();
+    if (!key) return;
+    if (out.includes(key)) return;
+    out.push(key);
+  };
+
+  push(buildProductIntelKbKey({ productUrl, parsedProduct, lang, productHint }));
+  push(buildLegacyProductIntelKbKey({ productUrl, parsedProduct, lang, productHint }));
+  push(buildLegacyProductIntelKbKey({ productUrl, parsedProduct, lang: 'EN', productHint }));
+  push(buildLegacyProductIntelKbKey({ productUrl, parsedProduct, lang: 'CN', productHint }));
+
+  return out;
 }
 
 function parseTimestampMs(raw) {
@@ -29105,7 +29138,7 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
 async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger }) {
   const profileSummary = summarizeProfileForContext(profile);
   const analysisSummary =
-    profile && profile.lastAnalysis && (!profile.lastAnalysisLang || profile.lastAnalysisLang === ctx.lang) ? profile.lastAnalysis : null;
+    profile && profile.lastAnalysis ? profile.lastAnalysis : null;
   const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
@@ -29659,10 +29692,32 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
 }
 
 function buildPrelabelKbKey(anchorProductId, lang = 'EN') {
+  void lang;
+  const anchor = String(anchorProductId || '').trim();
+  if (!anchor) return '';
+  return normalizeProductIntelKbKey(`product:${anchor}`);
+}
+
+function buildLegacyPrelabelKbKey(anchorProductId, lang = 'EN') {
   const anchor = String(anchorProductId || '').trim();
   if (!anchor) return '';
   const langCode = String(lang || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
   return normalizeProductIntelKbKey(`product:${anchor}|lang:${langCode}`);
+}
+
+function buildPrelabelKbReadCandidates(anchorProductId, lang = 'EN') {
+  const out = [];
+  const push = (rawKey) => {
+    const key = String(rawKey || '').trim();
+    if (!key) return;
+    if (out.includes(key)) return;
+    out.push(key);
+  };
+  push(buildPrelabelKbKey(anchorProductId, lang));
+  push(buildLegacyPrelabelKbKey(anchorProductId, lang));
+  push(buildLegacyPrelabelKbKey(anchorProductId, 'EN'));
+  push(buildLegacyPrelabelKbKey(anchorProductId, 'CN'));
+  return out;
 }
 
 function mapSuggestionForResponse(row) {
@@ -29847,11 +29902,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         block: parsed.data.block || '',
         limit,
       });
-      const kbKey = buildPrelabelKbKey(parsed.data.anchor_product_id, ctx.lang);
       let payload = null;
-      if (kbKey) {
-        const kbEntry = await getProductIntelKbEntry(kbKey);
-        if (isPlainObject(kbEntry?.analysis)) payload = kbEntry.analysis;
+      const kbReadCandidates = buildPrelabelKbReadCandidates(parsed.data.anchor_product_id, ctx.match_lang || ctx.lang);
+      if (kbReadCandidates.length > 0) {
+        for (const kbKey of kbReadCandidates) {
+          // eslint-disable-next-line no-await-in-loop
+          const kbEntry = await getProductIntelKbEntry(kbKey);
+          if (!isPlainObject(kbEntry?.analysis)) continue;
+          payload = kbEntry.analysis;
+          break;
+        }
       }
       const payloadWithSuggestions = payload
         ? sanitizeProductAnalysisPayloadForPrelabel(attachPrelabelSuggestionsToPayload(payload, suggestions))
@@ -31155,17 +31215,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (shouldRunRealtimeUrlFirst) {
         const kbAnchorProductHint = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
         const kbKeys = [];
-        const primaryKbKey = buildProductIntelKbKey({
+        const primaryKbKeys = buildProductIntelKbReadCandidates({
           productUrl: realtimeUrlInput,
           parsedProduct: kbAnchorProductHint,
-          lang: ctx.lang,
+          lang: ctx.match_lang || ctx.lang,
         });
-        const urlOnlyKbKey = buildProductIntelKbKey({
+        const urlOnlyKbKeys = buildProductIntelKbReadCandidates({
           productUrl: realtimeUrlInput,
           parsedProduct: null,
-          lang: ctx.lang,
+          lang: ctx.match_lang || ctx.lang,
         });
-        for (const key of [primaryKbKey, urlOnlyKbKey]) {
+        for (const key of [...primaryKbKeys, ...urlOnlyKbKeys]) {
           const kbKey = String(key || '').trim();
           if (!kbKey) continue;
           if (kbKeys.includes(kbKey)) continue;
@@ -37413,6 +37473,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         message,
         actionId,
         actionLabel,
+        language: ctx.match_lang || ctx.lang,
       });
       if (
         AURORA_ROUTER_DST_PATCH_V1_ENABLED &&
@@ -37992,7 +38053,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
       const safetyConceptMatch = collectConceptMatchesFromText({
         text: message,
-        language: ctx.lang,
+        language: ctx.match_lang || ctx.lang,
         max: 96,
         includeSubstring: true,
         includeDebug: Boolean(debugUpstream),
@@ -38005,7 +38066,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         : [];
       const safetyOntologyHits = matchIngredientOntology({
         text: message,
-        language: ctx.lang,
+        language: ctx.match_lang || ctx.lang,
         max: 32,
       });
       const safetyContraTags = (() => {
@@ -38028,7 +38089,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             intent: canonicalIntent.intent,
             message,
             profile,
-            language: ctx.lang,
+            language: ctx.match_lang || ctx.lang,
             matched_concepts: safetyConceptIds,
             matched_concepts_debug: safetyConceptsDebug,
             ingredient_ontology_hits: safetyOntologyHits,
@@ -38042,7 +38103,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             intent: canonicalIntent.intent,
             profile,
             message,
-            language: ctx.lang,
+            language: ctx.match_lang || ctx.lang,
             hasAnchor: hasPlannerAnchor,
             session: parsed.data.session,
             safetyDecision,
@@ -38268,7 +38329,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         : null;
 
       const derivedTransitionFromText = !requestedTransitionFromBody && !derivedTransitionFromAction && message
-        ? inferTextExplicitTransition(message, ctx.lang)
+        ? inferTextExplicitTransition(message, ctx.match_lang || ctx.lang)
         : null;
 
       const requestedTransition =
@@ -38286,7 +38347,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let transitionRejectedReason = '';
 
         if (triggerSource === 'text_explicit') {
-          const inferred = inferTextExplicitTransition(message, ctx.lang);
+          const inferred = inferTextExplicitTransition(message, ctx.match_lang || ctx.lang);
           if (!inferred || inferred.requested_next_state !== requestedNextState) {
             transitionRejectedReason = 'TEXT_EXPLICIT_NOT_ALLOWED';
           }
@@ -38853,7 +38914,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         message &&
         (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
       ) {
-        const availabilityIntent = detectCatalogAvailabilityIntent(message, ctx.lang);
+        const availabilityIntent = detectCatalogAvailabilityIntent(message, ctx.match_lang || ctx.lang);
         const allowCatalogShortCircuit = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
           ? shouldAllowCatalogAvailabilityShortCircuit(message)
           : true;

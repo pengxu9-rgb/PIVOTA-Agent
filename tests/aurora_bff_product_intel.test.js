@@ -672,7 +672,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       },
       lang: 'EN',
     });
-    expect(key1).toMatch(/^fp:[a-f0-9]{64}\|lang:EN$/);
+    expect(key1).toMatch(/^fp:[a-f0-9]{64}$/);
     expect(key2).toBe(key1);
     expect(
       __internal.resolveProductIntelKbKeyQuality({
@@ -693,7 +693,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       },
       lang: 'EN',
     });
-    expect(key).toBe('url:https://example.com/products/abc|lang:EN');
+    expect(key).toBe('url:https://example.com/products/abc');
     expect(
       __internal.resolveProductIntelKbKeyQuality({
         productUrl: 'https://example.com/products/abc?utm_source=test',

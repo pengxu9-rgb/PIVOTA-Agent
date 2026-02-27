@@ -1,4 +1,9 @@
 const { matchConcepts } = require('./kbV0/conceptMatcher');
+const {
+  detectLanguageFromText,
+  isIngredientScienceLikeText,
+  isRecommendationLikeText,
+} = require('./languageIntentLexicon');
 
 const INTENT_ENUM = Object.freeze({
   RECO_PRODUCTS: 'reco_products',
@@ -62,7 +67,7 @@ const KNOWN_OPTION_TEXT = [
     intent: INTENT_ENUM.DUPE_COMPARE,
   },
   {
-    re: /(ingredient science|ask ingredient science|成分机理|成分科学|证据链|机制|机理)/i,
+    re: /(ingredient science|ask ingredient science|ingredient (mechanism|evidence|clinical|study|paper|research)|mechanism of ingredients|evidence for ingredients|成分机理|成分科学|证据链|机制|机理)/i,
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
   },
   {
@@ -89,7 +94,7 @@ const HEURISTICS = [
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
   },
   {
-    re: /(analy[sz]e ingredient|ingredient analysis|成分分析|watchouts?|benefits?|证据|机制|机理)/i,
+    re: /(analy[sz]e ingredient|ingredient analysis|ingredient (mechanism|evidence|clinical|study|paper|research)|mechanism of|evidence for|成分分析|watchouts?|benefits?|证据|机制|机理)/i,
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
   },
   {
@@ -204,7 +209,7 @@ function extractTravelEntities(message) {
   return entities;
 }
 
-function inferCanonicalIntent({ message, actionId, actionLabel } = {}) {
+function inferCanonicalIntent({ message, actionId, actionLabel, language } = {}) {
   const text = String(message || '').trim();
   const optionText = String(actionLabel || '').trim() || text;
 
@@ -250,16 +255,25 @@ function inferCanonicalIntent({ message, actionId, actionLabel } = {}) {
   }
 
   if (text) {
-    const language = /[\u4e00-\u9fff]/.test(text) ? 'CN' : 'EN';
+    const inferredLang = String(language || '').toUpperCase() === 'CN'
+      ? 'CN'
+      : String(language || '').toUpperCase() === 'EN'
+        ? 'EN'
+        : detectLanguageFromText(text);
     const conceptMatches = matchConcepts({
       text,
-      language,
+      language: inferredLang,
       max: 24,
       includeSubstring: true,
     });
     const hasIngredientConcept = conceptMatches.some((row) => isIngredientScienceConceptId(row && row.concept_id));
-    const hasRecoCue = /(recommend|products?|shop|buy|购物|购买|推荐|产品|精华|面霜|防晒|乳液|routine|护肤流程)/i.test(text);
-    const hasScienceCue = /(ingredient science|evidence|mechanism|clinical|citation|成分(科学|机理|机制|证据)|循证|证据链)/i.test(text);
+    const hasRecoCue =
+      isRecommendationLikeText(text) ||
+      /\b(shop|buy)\b/i.test(text) ||
+      /(购物|购买|产品|精华|面霜|防晒|乳液|护肤流程)/.test(text);
+    const hasScienceCue =
+      isIngredientScienceLikeText(text) ||
+      /\b(citation|citations|journal|journals)\b/i.test(text);
     if (hasIngredientConcept && (!hasRecoCue || hasScienceCue)) {
       return {
         intent: INTENT_ENUM.INGREDIENT_SCIENCE,

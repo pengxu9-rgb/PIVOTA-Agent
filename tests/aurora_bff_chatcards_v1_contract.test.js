@@ -50,6 +50,12 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
     expect(typeof res.body.telemetry.intent).toBe('string');
     expect(typeof res.body.telemetry.intent_confidence).toBe('number');
     expect(Array.isArray(res.body.telemetry.entities)).toBe(true);
+    expect(['CN', 'EN']).toContain(res.body.telemetry.ui_language);
+    expect(['CN', 'EN']).toContain(res.body.telemetry.matching_language);
+    expect(typeof res.body.telemetry.language_mismatch).toBe('boolean');
+    expect(['header', 'body', 'text_detected', 'mixed_override']).toContain(
+      res.body.telemetry.language_resolution_source,
+    );
 
     expect(res.body).not.toHaveProperty('assistant_message');
     expect(res.body).not.toHaveProperty('suggested_chips');
@@ -135,5 +141,22 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
     expect(res.body.safety).toBeTruthy();
     expect(res.body.safety.risk_level).toBe('high');
     expect(Array.isArray(res.body.safety.red_flags)).toBe(true);
+  });
+
+  test('language mismatch telemetry follows text-detected matching language', async () => {
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', `uid_chatcards_v1_lang_${Date.now()}`)
+      .set('X-Lang', 'EN')
+      .send({ message: '我想买防晒，给我一个方案' })
+      .expect(200);
+
+    expect(res.body.version).toBe('1.0');
+    expect(res.body.telemetry.ui_language).toBe('EN');
+    expect(res.body.telemetry.matching_language).toBe('CN');
+    expect(res.body.telemetry.language_mismatch).toBe(true);
+    expect(res.body.telemetry.language_resolution_source).toBe('mixed_override');
   });
 });
