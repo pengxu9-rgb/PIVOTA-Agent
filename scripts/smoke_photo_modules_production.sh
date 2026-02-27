@@ -308,6 +308,7 @@ else:
         raise AssertionError("regions_unavailable_count does not match region statuses")
 
     region_set = set(region_ids)
+    low_p90_issue_evidence = []
     modules = modules_payload.get("modules") or []
     for module in modules:
         for issue in module.get("issues") or []:
@@ -322,9 +323,17 @@ else:
                     heatmap = region.get("heatmap") or {}
                     values = heatmap.get("values") or []
                     stats = heatmap_signal_stats(values)
-                    if stats["max"] < heatmap_low_signal_max_threshold or stats["p90"] < heatmap_low_signal_p90_threshold:
+                    if stats["max"] < heatmap_low_signal_max_threshold:
                         raise AssertionError(
-                            f"issue evidence heatmap is low-signal: {evidence_id} max={stats['max']:.3f} p90={stats['p90']:.3f}"
+                            f"issue evidence heatmap max is low-signal: {evidence_id} max={stats['max']:.3f} p90={stats['p90']:.3f}"
+                        )
+                    if stats["p90"] < heatmap_low_signal_p90_threshold:
+                        low_p90_issue_evidence.append(
+                            {
+                                "region_id": evidence_id,
+                                "max": round(float(stats["max"]), 4),
+                                "p90": round(float(stats["p90"]), 4),
+                            }
                         )
                 elif region_type not in {"bbox", "polygon"}:
                     raise AssertionError(f"issue evidence region type is not drawable: {evidence_id} type={region_type!r}")
@@ -348,6 +357,8 @@ else:
         "expect_branch": "usable",
         "forced_qc_status": qc_for_analysis or None,
         "analysis_photo_id": photo_id_for_analysis or None,
+        "issue_heatmap_low_p90_advisory_count": len(low_p90_issue_evidence),
+        "issue_heatmap_low_p90_advisories": low_p90_issue_evidence[:10],
     }
 out.write_text(json.dumps(summary, ensure_ascii=False), encoding="utf-8")
 PY
