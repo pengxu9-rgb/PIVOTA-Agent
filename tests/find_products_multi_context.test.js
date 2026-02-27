@@ -210,7 +210,7 @@ describe('find_products_multi context building', () => {
     expect(intent.scenario.name).not.toBe('eye_shadow_brush');
   });
 
-  test('brand query stays lookup and avoids generic makeup expansion', async () => {
+  test('brand query uses exploratory class and avoids generic makeup expansion', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
         search: { query: 'kylie cosmetics' },
@@ -221,7 +221,7 @@ describe('find_products_multi context building', () => {
     });
 
     const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
-    expect(expansion_meta?.query_class).toBe('lookup');
+    expect(expansion_meta?.query_class).toBe('exploratory');
     expect(expansion_meta?.brand_query_detected).toBe(true);
     expect(expansion_meta?.brand_scope).toBe('broad');
     expect(expanded).toContain('kylie cosmetics');
