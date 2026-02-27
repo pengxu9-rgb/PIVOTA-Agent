@@ -9,7 +9,7 @@ set -euo pipefail
 #   BASELINE_JSON=/tmp/tls_eval_before.json MAX_REGRESSION_PCT=5 ./scripts/eval_tls_budget.sh
 
 BASE_URL="${BASE_URL:-https://pivota-agent-production.up.railway.app}"
-ENDPOINT_A="${ENDPOINT_A:-/healthz/lite}"
+ENDPOINT_A="${ENDPOINT_A:-/healthz}"
 ENDPOINT_B="${ENDPOINT_B:-/healthz}"
 ROUNDS="${ROUNDS:-8}"
 CONNECT_TIMEOUT_SEC="${CONNECT_TIMEOUT_SEC:-10}"

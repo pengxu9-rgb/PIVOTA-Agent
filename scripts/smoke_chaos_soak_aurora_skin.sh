@@ -195,38 +195,27 @@ log_line() {
 }
 
 wait_for_startup_health() {
-  local health_urls=("${BASE%/}/healthz/lite" "${BASE%/}/healthz")
+  local health_url="${BASE%/}/healthz"
   local started_ts
   started_ts="$(date +%s)"
   local deadline_ts=$(( started_ts + STARTUP_HEALTH_MAX_WAIT_SEC ))
-  local last_url="${health_urls[0]}"
   local last_code="000"
   local attempt=0
-  local fallback_notice_emitted=0
   while (( $(date +%s) <= deadline_ts )); do
     attempt=$(( attempt + 1 ))
-    local idx=0
-    for health_url in "${health_urls[@]}"; do
-      local code
-      code="$(
-        curl -sS -m 5 -o /dev/null -w "%{http_code}" "$health_url" || true
-      )"
-      code="${code:-000}"
-      last_url="$health_url"
-      last_code="$code"
-      if [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
-        log_line "startup health preflight passed url=${health_url} code=${code} attempts=${attempt}"
-        return 0
-      fi
-      if (( idx == 0 )) && (( fallback_notice_emitted == 0 )); then
-        log_line "startup health preflight primary probe unavailable url=${health_url} code=${code} fallback=${health_urls[1]}"
-        fallback_notice_emitted=1
-      fi
-      idx=$(( idx + 1 ))
-    done
+    local code
+    code="$(
+      curl -sS -m 5 -o /dev/null -w "%{http_code}" "$health_url" || true
+    )"
+    code="${code:-000}"
+    last_code="$code"
+    if [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
+      log_line "startup health preflight passed url=${health_url} code=${code} attempts=${attempt}"
+      return 0
+    fi
     sleep "$STARTUP_HEALTH_POLL_SEC"
   done
-  log_line "startup health preflight failed url=${last_url} last_code=${last_code} wait_sec=${STARTUP_HEALTH_MAX_WAIT_SEC}"
+  log_line "startup health preflight failed url=${health_url} last_code=${last_code} wait_sec=${STARTUP_HEALTH_MAX_WAIT_SEC}"
   exit 2
 }
 

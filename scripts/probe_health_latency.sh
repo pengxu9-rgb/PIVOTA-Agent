@@ -6,7 +6,7 @@ set -euo pipefail
 #   BASE_URL=https://pivota-agent-production.up.railway.app ./scripts/probe_health_latency.sh
 
 BASE_URL="${BASE_URL:-https://pivota-agent-production.up.railway.app}"
-ENDPOINT_A="${ENDPOINT_A:-/healthz/lite}"
+ENDPOINT_A="${ENDPOINT_A:-/healthz}"
 ENDPOINT_B="${ENDPOINT_B:-/healthz}"
 ROUNDS="${ROUNDS:-5}"
 
@@ -31,4 +31,3 @@ for ((i = 1; i <= ROUNDS; i++)); do
     -w "second code=%{http_code} tls=%{time_appconnect}s ttfb=%{time_starttransfer}s total=%{time_total}s\n" \
     "${BASE_URL}${ENDPOINT_B}"
 done
-

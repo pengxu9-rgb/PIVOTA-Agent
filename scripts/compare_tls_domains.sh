@@ -5,11 +5,11 @@ set -euo pipefail
 # Usage:
 #   HOSTS="pivota-agent-production.up.railway.app,api.pivota.cc" ./scripts/compare_tls_domains.sh
 # Optional:
-#   PATH_SUFFIX=/healthz/lite ROUNDS=8 MODES=default,http1.1,http2 ./scripts/compare_tls_domains.sh
+#   PATH_SUFFIX=/healthz ROUNDS=8 MODES=default,http1.1,http2 ./scripts/compare_tls_domains.sh
 #   OUTPUT_JSON=/tmp/tls_domains.json ./scripts/compare_tls_domains.sh
 
 HOSTS_RAW="${HOSTS:-pivota-agent-production.up.railway.app}"
-PATH_SUFFIX="${PATH_SUFFIX:-/healthz/lite}"
+PATH_SUFFIX="${PATH_SUFFIX:-/healthz}"
 ROUNDS="${ROUNDS:-8}"
 MODES="${MODES:-default,http1.1,http2}"
 CONNECT_TIMEOUT_SEC="${CONNECT_TIMEOUT_SEC:-10}"
@@ -199,4 +199,3 @@ for i, item in enumerate(summary_rows, start=1):
     )
 print(f"\nresult_json={out}")
 PY
-

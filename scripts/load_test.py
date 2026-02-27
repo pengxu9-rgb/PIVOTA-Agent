@@ -225,7 +225,7 @@ async def _wait_ready(base_url: str, *, timeout_s: float = 20.0) -> None:
     async with httpx.AsyncClient(timeout=2.0) as client:
         while time.monotonic() < deadline:
             try:
-                r = await client.get(f"{base_url}/healthz/lite")
+                r = await client.get(f"{base_url}/healthz")
                 if r.status_code == 200 and (r.json() or {}).get("ok") is True:
                     return
             except Exception:
