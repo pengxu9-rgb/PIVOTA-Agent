@@ -112,6 +112,9 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT = new Set([
   'reco_guardrail_on_page_filtered',
   'reco_guardrail_circuit_open',
   'reco_blocks_schema_invalid',
+  'summary_quality_retry_used',
+  'how_to_use_retry_used',
+  'summary_profile_echo_sanitized',
 ]);
 
 const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
@@ -1383,10 +1386,69 @@ function buildFollowUpQuestionFromPayload(payload, { lang = 'EN' } = {}) {
     : 'Do you prefer “gentler” or “faster-visible results”? I can tune the next-step options based on that.';
 }
 
+function isProfileEchoSummaryText(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  return /\b(your profile|profile priorities|你的情况|你的画像|匹配点)\b/i.test(text);
+}
+
+function buildConservativeProductSummary(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const mechanisms = asStringArray(science.mechanisms);
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const isCn = String(lang).toUpperCase() === 'CN';
+  if (mechanisms.length) {
+    return isCn
+      ? `该产品主要目标是：${truncateText(mechanisms[0], 140)}。`
+      : `This formula mainly aims to: ${truncateText(mechanisms[0], 180)}.`;
+  }
+  if (riskNotes.length) {
+    const risk = humanizeRiskLine(riskNotes[0], lang) || riskNotes[0];
+    return isCn
+      ? `该产品可用，但需关注：${truncateText(risk, 140)}。`
+      : `This product can be usable, but watch for: ${truncateText(risk, 180)}.`;
+  }
+  return isCn
+    ? '该产品可作为基础方案尝试，建议先低频并观察皮肤耐受。'
+    : 'This product can be tried as a baseline option; start low-frequency and monitor tolerance.';
+}
+
+function pickAssessmentSummary({
+  assessment,
+  formulaIntent = [],
+  evidence = null,
+  reasons = [],
+  lang = 'EN',
+} = {}) {
+  const candidates = [];
+  const addCandidate = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    if (isProfileEchoSummaryText(text)) return;
+    candidates.push(text);
+  };
+  if (asPlainObject(assessment)) {
+    addCandidate(assessment.summary);
+    addCandidate(assessment.quick_summary);
+    addCandidate(assessment.quickSummary);
+  }
+  if (formulaIntent.length) addCandidate(formulaIntent[0]);
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const mechanisms = asStringArray(science.mechanisms);
+  if (mechanisms.length) addCandidate(mechanisms[0]);
+  for (const reason of Array.isArray(reasons) ? reasons : []) addCandidate(reason);
+  if (!candidates.length) {
+    return buildConservativeProductSummary(evidence, { lang });
+  }
+  return candidates[0];
+}
+
 function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
   if (!value) return null;
   if (Array.isArray(value)) {
-    const steps = uniqueStrings(asStringArray(value).map((line) => truncateText(line, 220))).slice(0, 5);
+    const steps = uniqueStrings(asStringArray(value).map((line) => truncateText(line, 220))).slice(0, 6);
     if (!steps.length) return null;
     return {
       steps,
@@ -1402,7 +1464,7 @@ function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
     const note = String(value || '').trim();
     if (!note) return null;
     return {
-      notes: [truncateText(note, 220)],
+      steps: [truncateText(note, 220)],
       observation_window: String(lang).toUpperCase() === 'CN'
         ? '先观察 10-14 天，再决定是否加频。'
         : 'Monitor for 10-14 days before increasing frequency.',
@@ -1417,13 +1479,13 @@ function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
   const frequency = String(obj.frequency || '').trim();
   const steps = uniqueStrings(asStringArray(obj.steps).map((line) => truncateText(line, 220))).slice(0, 5);
   const notes = uniqueStrings(asStringArray(obj.notes).map((line) => truncateText(line, 220))).slice(0, 5);
+  const mergedSteps = uniqueStrings([...steps, ...notes]).slice(0, 6);
   const observationWindow = String(obj.observation_window || obj.observationWindow || '').trim();
   const stopSigns = uniqueStrings(asStringArray(obj.stop_signs || obj.stopSigns).map((line) => truncateText(line, 220))).slice(0, 4);
   const out = {
     ...(timing ? { timing } : {}),
     ...(frequency ? { frequency } : {}),
-    ...(steps.length ? { steps } : {}),
-    ...(notes.length ? { notes } : {}),
+    ...(mergedSteps.length ? { steps: mergedSteps } : {}),
     ...(observationWindow ? { observation_window: observationWindow } : {}),
     ...(stopSigns.length ? { stop_signs: stopSigns } : {}),
   };
@@ -1445,25 +1507,29 @@ function buildHowToUseFromEvidence(evidence, { lang = 'EN' } = {}) {
   const isCn = String(lang).toUpperCase() === 'CN';
   const ev = asPlainObject(evidence) || {};
   const science = asPlainObject(ev.science) || {};
-  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
-  const hasDryingSignal = riskNotes.some((line) => /\b(dry|drying|tight|flake|dehydrat|干燥|紧绷|起皮)\b/i.test(String(line || '')));
+  const riskJoined = asStringArray(science.risk_notes ?? science.riskNotes).join(' | ').toLowerCase();
+  const hasDrynessRisk = /\b(dry|drying|tight|dehydrat|干燥|紧绷)\b/i.test(riskJoined);
+  const hasIrritationRisk = /\b(irrit|sting|burn|redness|刺激|刺痛|泛红)\b/i.test(riskJoined);
+  const steps = [];
+  if (isCn) {
+    steps.push('按由薄到厚叠加，先保湿再封层。');
+    steps.push('白天作为最后一步前请补足防晒。');
+    if (hasDrynessRisk) steps.push('若出现拔干，先叠加简单保湿修护层再上该产品。');
+    if (hasIrritationRisk) steps.push('先每周 2-3 次，耐受稳定后再加频。');
+  } else {
+    steps.push('Layer from thinnest to thickest; keep hydration before occlusive steps.');
+    steps.push('Use daytime SPF as the final AM step.');
+    if (hasDrynessRisk) steps.push('If dryness appears, add a simple barrier-hydration layer before this product.');
+    if (hasIrritationRisk) steps.push('Start at 2-3x/week and increase only after stable tolerance.');
+  }
   return {
-    timing: isCn ? '早晚均可，优先从夜间开始。' : 'AM/PM compatible; start with PM first.',
-    frequency: hasDryingSignal
-      ? (isCn ? '每周 2-3 次起步，耐受后再加频。' : 'Start at 2-3x/week and increase only if tolerated.')
-      : (isCn ? '先低频起步，稳定后可逐步加频。' : 'Start low-frequency and increase gradually once stable.'),
-    steps: isCn
-      ? ['先做温和清洁。', '薄涂本产品，避免叠加强活性。', '后续补保湿；白天务必防晒。']
-      : ['Cleanse gently first.', 'Apply a thin layer and avoid stacking strong actives.', 'Follow with moisturizer and daytime SPF.'],
-    observation_window: isCn
-      ? '先观察 10-14 天，再决定是否加频。'
-      : 'Monitor for 10-14 days before increasing frequency.',
+    timing: isCn ? '早晚均可；敏感期优先夜间。' : 'AM/PM; prefer PM first during reactive phases.',
+    frequency: isCn ? '先每周 2-3 次，10-14 天稳定后再决定是否加频。' : 'Start 2-3x/week; only increase after 10-14 days of stable tolerance.',
+    steps: uniqueStrings(steps).slice(0, 6),
+    observation_window: isCn ? '观察 10-14 天，重点看刺痛、泛红、紧绷是否下降。' : 'Observe for 10-14 days and track stinging, redness, and tightness.',
     stop_signs: isCn
-      ? ['若持续刺痛/泛红/起皮，请暂停并回到温和修护。']
-      : ['Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs.'],
-    notes: isCn
-      ? ['新产品建议先做局部测试。']
-      : ['Patch test is recommended for new products.'],
+      ? ['持续刺痛 >30-60 秒', '泛红/干痒持续加重', '出现明显爆痘或屏障不稳迹象']
+      : ['Persistent stinging beyond 30-60 seconds', 'Worsening redness/dry itch', 'Noticeable breakout or barrier instability signals'],
   };
 }
 
@@ -2348,6 +2414,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
   const basePayload = asPlainObject(payload);
   if (!basePayload) return payload;
   const p = reconcileProductAnalysisConsistency(basePayload, { lang });
+  const internalDebugCodes = uniqueStrings(asStringArray(p.internal_debug_codes ?? p.internalDebugCodes));
   const assessment = asPlainObject(p.assessment);
   if (!assessment) {
     const fallbackAnchor = asPlainObject(p.product);
@@ -2469,23 +2536,23 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     }
   }
 
-  const summaryCandidates = sanitizeAssessmentNarrativeLines([
-    assessment.summary,
-    assessment.quick_summary,
-    assessment.quickSummary,
-    ...readAssessmentStringArray(assessment, 'formula_intent', 'formulaIntent'),
-    ...asStringArray(asPlainObject(p.evidence)?.science?.mechanisms),
-    ...reasons,
-  ], { max: 12, allowProfileEcho: false });
-  const summary =
-    truncateText(String(summaryCandidates[0] || '').trim(), 260) ||
-    (String(lang).toUpperCase() === 'CN'
-      ? '当前基于产品证据给出保守评估，建议按低频起步并观察耐受。'
-      : 'This is a conservative product-level assessment based on current evidence; start low-frequency and monitor tolerance.');
   const formulaIntentExisting = readAssessmentStringArray(assessment, 'formula_intent', 'formulaIntent');
   const formulaIntent = formulaIntentExisting.length
     ? formulaIntentExisting.slice(0, 3)
     : buildFormulaIntentFromEvidence(p.evidence, { lang });
+  const summaryRaw = pickAssessmentSummary({
+    assessment,
+    formulaIntent,
+    evidence: p.evidence,
+    reasons,
+    lang,
+  });
+  const summary = truncateText(String(summaryRaw || '').trim(), 260) || '';
+  const summarySanitized =
+    summary &&
+    isProfileEchoSummaryText(String(assessment.summary ?? assessment.quick_summary ?? assessment.quickSummary ?? '')) &&
+    !isProfileEchoSummaryText(summary);
+  if (summarySanitized) internalDebugCodes.push('summary_profile_echo_sanitized');
   const bestForExisting = readAssessmentStringArray(assessment, 'best_for', 'bestFor');
   const bestFor = sanitizeAssessmentNarrativeLines(bestForExisting.length
     ? bestForExisting.slice(0, 3)
@@ -2524,7 +2591,14 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     reasons: uniqueStrings(reasons).slice(0, maxReasons),
   };
   return reconcileProductAnalysisConsistency(
-    attachProductIntelContract({ ...p, assessment: outAssessment }, { lang, profileSummary }),
+    attachProductIntelContract(
+      {
+        ...p,
+        assessment: outAssessment,
+        ...(internalDebugCodes.length ? { internal_debug_codes: uniqueStrings(internalDebugCodes) } : {}),
+      },
+      { lang, profileSummary },
+    ),
     { lang },
   );
 }
