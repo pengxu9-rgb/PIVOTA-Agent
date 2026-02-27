@@ -741,6 +741,24 @@ const FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = Math.max(
   1800,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS, 4500),
 );
+const FPM_GATE_SIMPLIFY_V1 =
+  String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
+const FPM_LOOKUP_ONLY_RESOLVER =
+  String(process.env.FPM_LOOKUP_ONLY_RESOLVER || 'true').toLowerCase() !== 'false';
+const FPM_CLARIFY_NEVER_EMPTY =
+  String(process.env.FPM_CLARIFY_NEVER_EMPTY || 'true').toLowerCase() !== 'false';
+const FPM_GATEWAY_TOTAL_BUDGET_MS = Math.max(
+  1200,
+  parseTimeoutMs(process.env.FPM_GATEWAY_TOTAL_BUDGET_MS, 2500),
+);
+const FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS = Math.max(
+  300,
+  parseTimeoutMs(process.env.FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS, 550),
+);
+const FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS = Math.max(
+  350,
+  parseTimeoutMs(process.env.FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS, 700),
+);
 
 const OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS = parseTimeoutMs(
   process.env.OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
@@ -4957,9 +4975,13 @@ function getSecondaryFallbackSkipReason(
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return null;
   if (hasPetSearchSignal(queryText)) return null;
   if (!shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText)) return null;
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
+  if (FPM_GATE_SIMPLIFY_V1 && FPM_LOOKUP_ONLY_RESOLVER && !lookupStyle) return null;
   if (isKnownLookupAliasQuery(queryText)) return 'resolver_miss_lookup_alias';
   if (isUuidLikeSearchQuery(queryText)) return 'resolver_miss_uuid_like';
   if (isStrongResolverFirstQuery(queryText)) return 'resolver_miss_strong_resolver_query';
+  if (lookupStyle) return 'resolver_miss_lookup_style';
   return null;
 }
 
@@ -5037,20 +5059,32 @@ function isStrongResolverFirstQuery(queryText) {
   return false;
 }
 
-function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
+function shouldUseResolverFirstSearch({ operation, metadata, queryText, remainingBudgetMs = null }) {
   if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
   if (!String(queryText || '').trim()) return false;
+  if (
+    Number.isFinite(Number(remainingBudgetMs)) &&
+    Number(remainingBudgetMs) < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
+  ) {
+    return false;
+  }
+
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
+  const strongResolverQuery = isStrongResolverFirstQuery(queryText);
+  if (FPM_GATE_SIMPLIFY_V1 && FPM_LOOKUP_ONLY_RESOLVER && !lookupStyle && !strongResolverQuery) {
+    return false;
+  }
 
   const source = normalizeAgentSource(metadata?.source);
   if (isCreatorUiSource(source)) return false;
   if (!source) return true;
   const isCatalogSource = isResolverFirstCatalogSource(source);
   if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && isCatalogSource) {
-    const anchorTokens = extractSearchAnchorTokens(queryText);
     return (
-      isStrongResolverFirstQuery(queryText) ||
-      isLookupStyleSearchQuery(queryText, anchorTokens)
+      strongResolverQuery ||
+      lookupStyle
     );
   }
 
@@ -11995,6 +12029,29 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     )
       ? Number(findProductsExpansionMeta.ambiguity_score_pre)
       : null;
+    const fpmGateTrace = [];
+    const fpmSkippedGatesDueToBudget = [];
+    let fpmLatencyGuardApplied = false;
+    const addFpmGateTrace = ({
+      gateId,
+      applied = false,
+      decision = 'pass',
+      reason = null,
+      costMsEstimate = 0,
+      queryClass = null,
+    }) => {
+      fpmGateTrace.push({
+        gate_id: String(gateId || 'unknown'),
+        applied: Boolean(applied),
+        decision: String(decision || 'pass'),
+        reason: reason ? String(reason) : null,
+        cost_ms_estimate: Math.max(0, Number(costMsEstimate || 0) || 0),
+        query_class: queryClass ? String(queryClass) : null,
+      });
+    };
+    const getFpmElapsedMs = () => Math.max(0, Date.now() - invokeStartedAtMs);
+    const getFpmRemainingBudgetMs = () =>
+      Math.max(0, Number(FPM_GATEWAY_TOTAL_BUDGET_MS || 0) - getFpmElapsedMs());
 
   // Redundant allowlist check for semantics clarity.
   if (!OperationEnum.options.includes(operation)) {
@@ -14883,6 +14940,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             'exploratory',
             'non_shopping',
           ].includes(queryClassForEarlyDecision);
+          const forceSearchFirstForClass = ['category', 'exploratory'].includes(
+            queryClassForEarlyDecision,
+          );
           const earlyDecisionCause =
             internalProductsAfterAnchor.length === 0
               ? 'cache_miss_ambiguity_sensitive'
@@ -14891,8 +14951,34 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             effectiveIntent &&
             !isBrandLikeForEarlyDecision &&
             !isStrongLookupForEarlyDecision &&
+            !forceSearchFirstForClass &&
             (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
             !forceControlledRecallForScenario;
+          addFpmGateTrace({
+            gateId: 'early_ambiguity_decision',
+            applied: Boolean(effectiveIntent),
+            decision: canUseEarlyAmbiguityDecision ? 'clarify_only_early' : 'pass',
+            reason: canUseEarlyAmbiguityDecision
+              ? earlyDecisionCause
+              : isBrandLikeForEarlyDecision
+                ? 'brand_like_search_first'
+                : forceSearchFirstForClass
+                  ? 'search_first_query_class'
+                  : null,
+            costMsEstimate: 110,
+            queryClass: queryClassForEarlyDecision || traceQueryClass,
+          });
+          if (
+            forceSearchFirstForClass &&
+            crossMerchantCacheRouteDebug &&
+            typeof crossMerchantCacheRouteDebug === 'object'
+          ) {
+            crossMerchantCacheRouteDebug.early_decision = {
+              applied: false,
+              reason: 'search_first_query_class',
+              query_class: queryClassForEarlyDecision,
+            };
+          }
           if (
             forceControlledRecallForScenario &&
             crossMerchantCacheRouteDebug &&
@@ -16005,13 +16091,51 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     const resolverTimeoutMs = auroraFallbackOverrides.active
       ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
       : PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
-    const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
+    const resolverRemainingBudgetMs = getFpmRemainingBudgetMs();
+    let shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation,
       metadata,
       queryText: resolverQueryText,
+      remainingBudgetMs: resolverRemainingBudgetMs,
     });
+    if (
+      operation === 'find_products_multi' &&
+      FPM_GATE_SIMPLIFY_V1 &&
+      shouldAttemptResolverFirst &&
+      resolverRemainingBudgetMs < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
+    ) {
+      shouldAttemptResolverFirst = false;
+      fpmLatencyGuardApplied = true;
+      fpmSkippedGatesDueToBudget.push('resolver_first');
+      addFpmGateTrace({
+        gateId: 'resolver_first',
+        applied: false,
+        decision: 'skipped',
+        reason: 'budget_guard',
+        costMsEstimate: 220,
+        queryClass: traceQueryClass,
+      });
+    }
+    if (!shouldAttemptResolverFirst) {
+      addFpmGateTrace({
+        gateId: 'resolver_first',
+        applied: false,
+        decision: 'pass',
+        reason: 'disabled_or_not_lookup',
+        costMsEstimate: 0,
+        queryClass: traceQueryClass,
+      });
+    }
     let resolverFirstResult = null;
     if (shouldAttemptResolverFirst) {
+      addFpmGateTrace({
+        gateId: 'resolver_first',
+        applied: true,
+        decision: 'attempted',
+        reason: 'lookup_first',
+        costMsEstimate: 220,
+        queryClass: traceQueryClass,
+      });
       try {
         resolverFirstResult = await queryResolveSearchFallback({
           queryParams: resolverQueryParams,
@@ -16027,8 +16151,33 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           resolverFirstResult.usableCount > 0
         ) {
           response = { status: resolverFirstResult.status, data: resolverFirstResult.data };
+          addFpmGateTrace({
+            gateId: 'resolver_first_result',
+            applied: true,
+            decision: 'adopted',
+            reason: 'resolver_hit',
+            costMsEstimate: 15,
+            queryClass: traceQueryClass,
+          });
+        } else {
+          addFpmGateTrace({
+            gateId: 'resolver_first_result',
+            applied: true,
+            decision: 'miss',
+            reason: 'resolver_no_usable',
+            costMsEstimate: 15,
+            queryClass: traceQueryClass,
+          });
         }
       } catch (resolverErr) {
+        addFpmGateTrace({
+          gateId: 'resolver_first_result',
+          applied: true,
+          decision: 'error',
+          reason: 'resolver_exception',
+          costMsEstimate: 15,
+          queryClass: traceQueryClass,
+        });
         logger.warn(
           { err: resolverErr?.message || String(resolverErr), operation },
           `${operation} resolver-first failed; falling back to upstream`,
@@ -16418,6 +16567,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         },
       );
       const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
+      addFpmGateTrace({
+        gateId: 'secondary_fallback_skip_check',
+        applied: true,
+        decision: skipSecondaryFallback ? 'skipped' : 'pass',
+        reason: skipSecondaryFallback ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary' : null,
+        costMsEstimate: 25,
+        queryClass: traceQueryClass,
+      });
       const allowResolverFallback = shouldAllowResolverFallback(operation);
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
         forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
@@ -16436,7 +16593,38 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         primaryUsableCount < requestedLimit &&
         FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
       ) {
-        if (requestedFindProductsMultiPage > 1) {
+        const remainingBudgetForSecondStage = getFpmRemainingBudgetMs();
+        const shouldSkipSecondStageByBudget =
+          FPM_GATE_SIMPLIFY_V1 &&
+          remainingBudgetForSecondStage < FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS;
+        if (shouldSkipSecondStageByBudget) {
+          fpmLatencyGuardApplied = true;
+          fpmSkippedGatesDueToBudget.push('second_stage_expansion');
+          addFpmGateTrace({
+            gateId: 'second_stage_expansion',
+            applied: false,
+            decision: 'skipped',
+            reason: 'budget_guard',
+            costMsEstimate: 260,
+            queryClass: traceQueryClass,
+          });
+          secondarySupplementMeta = {
+            attempted: true,
+            applied: false,
+            added_count: 0,
+            expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+            reason: 'disabled_for_budget_guard',
+            page: requestedFindProductsMultiPage,
+          };
+        } else if (requestedFindProductsMultiPage > 1) {
+          addFpmGateTrace({
+            gateId: 'second_stage_expansion',
+            applied: false,
+            decision: 'skipped',
+            reason: 'disabled_for_page_gt_1',
+            costMsEstimate: 0,
+            queryClass: traceQueryClass,
+          });
           secondarySupplementMeta = {
             attempted: true,
             applied: false,
@@ -16446,6 +16634,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             page: requestedFindProductsMultiPage,
           };
         } else {
+        addFpmGateTrace({
+          gateId: 'second_stage_expansion',
+          applied: true,
+          decision: 'attempted',
+          reason: 'under_limit_first_page',
+          costMsEstimate: 260,
+          queryClass: traceQueryClass,
+        });
         try {
           const secondStageCtx = await buildFindProductsMultiContext({
             payload,
@@ -16515,6 +16711,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 expanded_query: expandedSecondaryQuery,
                 reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
               };
+              addFpmGateTrace({
+                gateId: 'second_stage_expansion_result',
+                applied: true,
+                decision: toAppend.length > 0 ? 'applied' : 'no_change',
+                reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
+                costMsEstimate: 25,
+                queryClass: traceQueryClass,
+              });
             } else {
               secondarySupplementMeta = {
                 attempted: true,
@@ -16524,6 +16728,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 expanded_query: expandedSecondaryQuery,
                 reason: 'second_stage_unavailable',
               };
+              addFpmGateTrace({
+                gateId: 'second_stage_expansion_result',
+                applied: true,
+                decision: 'no_change',
+                reason: 'second_stage_unavailable',
+                costMsEstimate: 25,
+                queryClass: traceQueryClass,
+              });
             }
           }
         } catch (secondaryErr) {
@@ -16535,6 +16747,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             reason: 'second_stage_error',
             error: String(secondaryErr?.message || secondaryErr),
           };
+          addFpmGateTrace({
+            gateId: 'second_stage_expansion_result',
+            applied: true,
+            decision: 'error',
+            reason: 'second_stage_error',
+            costMsEstimate: 25,
+            queryClass: traceQueryClass,
+          });
           logger.warn(
             { err: secondaryErr?.message || String(secondaryErr), query: queryText },
             `${operation} second-stage conservative->aggressive supplement failed`,
@@ -16670,6 +16890,28 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             secondary_fallback_skip_reason: skipSecondaryFallback
               ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
               : null,
+            latency_guard_applied: Boolean(fpmLatencyGuardApplied),
+            skipped_gates_due_to_budget: Array.from(
+              new Set(
+                fpmSkippedGatesDueToBudget
+                  .map((gateId) => String(gateId || '').trim())
+                  .filter(Boolean),
+              ),
+            ),
+            gate_trace: fpmGateTrace,
+            gate_summary: {
+              applied_count: fpmGateTrace.filter((item) => item && item.applied).length,
+              blocked_count: fpmGateTrace.filter(
+                (item) =>
+                  item &&
+                  (String(item.decision || '') === 'strict_empty' ||
+                    String(item.decision || '') === 'clarify_only_early'),
+              ).length,
+              total_cost_ms_estimate: fpmGateTrace.reduce(
+                (sum, item) => sum + Math.max(0, Number(item?.cost_ms_estimate || 0) || 0),
+                0,
+              ),
+            },
           },
         };
       }
@@ -17076,10 +17318,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       };
       const finalDecision = isStrictEmpty
         ? 'strict_empty'
-        : hasClarification
+        : hasClarification && (!FPM_CLARIFY_NEVER_EMPTY || products.length === 0)
           ? 'clarify'
           : searchDecision?.final_decision
             ? String(searchDecision.final_decision)
+            : hasClarification
+              ? 'products_returned_with_clarification'
             : querySource.startsWith('cache_')
               ? 'cache_returned'
               : querySource.includes('resolver')
@@ -17147,6 +17391,63 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             }
           : {}),
       });
+      if (enriched && typeof enriched === 'object' && !Array.isArray(enriched)) {
+        const existingMetaForGates =
+          enriched.metadata && typeof enriched.metadata === 'object' && !Array.isArray(enriched.metadata)
+            ? enriched.metadata
+            : {};
+        const existingGateTrace = Array.isArray(existingMetaForGates.gate_trace)
+          ? existingMetaForGates.gate_trace
+          : [];
+        const combinedGateTrace = existingGateTrace.concat(fpmGateTrace);
+        const dedupSkippedGates = Array.from(
+          new Set(
+            fpmSkippedGatesDueToBudget
+              .map((gateId) => String(gateId || '').trim())
+              .filter(Boolean),
+          ),
+        );
+        const existingLowConfidenceReasons = Array.isArray(existingMetaForGates.low_confidence_reasons)
+          ? existingMetaForGates.low_confidence_reasons
+          : Array.isArray(searchDecision?.low_confidence_reasons)
+            ? searchDecision.low_confidence_reasons
+            : [];
+        const normalizedLowConfidenceReasons = Array.from(
+          new Set(
+            existingLowConfidenceReasons
+              .map((item) => String(item || '').trim())
+              .filter(Boolean),
+          ),
+        );
+        const lowConfidenceFlag =
+          Boolean(existingMetaForGates.low_confidence) ||
+          Boolean(searchDecision?.low_confidence) ||
+          normalizedLowConfidenceReasons.length > 0;
+        enriched = {
+          ...enriched,
+          metadata: {
+            ...existingMetaForGates,
+            gate_trace: combinedGateTrace,
+            gate_summary: {
+              applied_count: combinedGateTrace.filter((item) => item && item.applied).length,
+              blocked_count: combinedGateTrace.filter(
+                (item) =>
+                  item &&
+                  (String(item.decision || '') === 'strict_empty' ||
+                    String(item.decision || '') === 'clarify_only_early'),
+              ).length,
+              total_cost_ms_estimate: combinedGateTrace.reduce(
+                (sum, item) => sum + Math.max(0, Number(item?.cost_ms_estimate || 0) || 0),
+                0,
+              ),
+            },
+            latency_guard_applied: Boolean(fpmLatencyGuardApplied),
+            skipped_gates_due_to_budget: dedupSkippedGates,
+            low_confidence: lowConfidenceFlag,
+            low_confidence_reasons: normalizedLowConfidenceReasons,
+          },
+        };
+      }
     }
 
     return res.status(response.status).json(enriched);

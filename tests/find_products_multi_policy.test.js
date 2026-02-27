@@ -390,7 +390,7 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
-  test('high ambiguity enforces strict empty', () => {
+  test('high ambiguity keeps candidates and attaches clarification', () => {
     const intent = extractIntentRuleBased('你好', [], []);
     const resp = applyFindProductsMultiPolicy({
       response: {
@@ -404,10 +404,10 @@ describe('find_products_multi intent + filtering', () => {
       metadata: { ambiguity_score_pre: 0.8 },
     });
 
-    expect(resp.products).toHaveLength(0);
-    expect(resp.metadata?.search_decision?.final_decision).toBe('strict_empty');
-    expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_STRICT_EMPTY']));
-    expect(resp.clarification).toBeUndefined();
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned_with_clarification');
+    expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
+    expect(resp.clarification?.question).toBeTruthy();
   });
 
   test('discovery intent: English greeting routes to discovery', () => {
