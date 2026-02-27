@@ -23,6 +23,24 @@ test('intent canonical detects ingredient science from bilingual patterns', () =
   assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
 });
 
+test('intent canonical maps ingredient entry action to ingredient science', () => {
+  const out = inferCanonicalIntent({
+    message: '',
+    actionId: 'chip.start.ingredients.entry',
+  });
+  assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
+  assert.equal(out.source, 'action_id');
+});
+
+test('intent canonical maps ingredient diagnosis opt-in action to diagnosis_start', () => {
+  const out = inferCanonicalIntent({
+    message: '',
+    actionId: 'ingredient.optin_diagnosis',
+  });
+  assert.equal(out.intent, INTENT_ENUM.DIAGNOSIS_START);
+  assert.equal(out.source, 'action_id');
+});
+
 test('intent canonical maps "Send a link" to evaluate intent (anchor collect)', () => {
   const out = inferCanonicalIntent({
     message: 'Send a link',

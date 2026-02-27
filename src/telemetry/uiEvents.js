@@ -3,8 +3,18 @@ const fs = require('fs');
 const path = require('path');
 
 const { UiEventIngestV0Schema } = require('./schemas/uiEventIngestV0');
-const { recordUiBehaviorEvent } = require('../auroraBff/visionMetrics');
+const {
+  recordUiBehaviorEvent,
+  observeAuroraIngredientsFirstAnswerLatency,
+} = require('../auroraBff/visionMetrics');
 const { recordBudgetPreferenceEventForIdentity } = require('../auroraBff/memoryStore');
+
+const INGREDIENT_FIRST_ANSWER_MAX_GAP_MS = 30 * 60 * 1000;
+const INGREDIENT_FIRST_ANSWER_ENTRY_CACHE_MAX = 10000;
+const INGREDIENT_FIRST_ANSWER_CLEANUP_INTERVAL_MS = 60 * 1000;
+const ingredientEntryOpenedAtByFlow = new Map();
+let ingredientEntryLastCleanupAtMs = 0;
+let uiEventsSinkMissingWarned = false;
 
 function isoDateKey(d = new Date()) {
   const yyyy = String(d.getUTCFullYear());
@@ -126,6 +136,57 @@ function extractBudgetSignal({ eventName, props }) {
   };
 }
 
+function buildIngredientFlowKey({ event, props } = {}) {
+  const traceId = safeString(event && event.trace_id) || safeString(props && (props.trace_id || props.bff_trace_id));
+  if (traceId) return `trace:${traceId}`;
+  const briefId = safeString(event && event.brief_id) || safeString(props && props.brief_id);
+  if (briefId) return `brief:${briefId}`;
+  const sessionId = safeString(props && props.session_id);
+  if (sessionId) return `session:${sessionId}`;
+  return null;
+}
+
+function cleanupIngredientLatencyCache(nowMs = Date.now()) {
+  if (
+    ingredientEntryOpenedAtByFlow.size < INGREDIENT_FIRST_ANSWER_ENTRY_CACHE_MAX &&
+    nowMs - ingredientEntryLastCleanupAtMs < INGREDIENT_FIRST_ANSWER_CLEANUP_INTERVAL_MS
+  ) {
+    return;
+  }
+  ingredientEntryLastCleanupAtMs = nowMs;
+  for (const [key, startedAt] of ingredientEntryOpenedAtByFlow.entries()) {
+    const age = nowMs - Number(startedAt || 0);
+    if (!Number.isFinite(age) || age < 0 || age > INGREDIENT_FIRST_ANSWER_MAX_GAP_MS) {
+      ingredientEntryOpenedAtByFlow.delete(key);
+    }
+  }
+}
+
+function captureIngredientFirstAnswerLatency({ event, props }) {
+  const name = String(event && event.event_name ? event.event_name : '').trim().toLowerCase();
+  if (!name) return;
+  if (name !== 'ingredients_entry_opened' && name !== 'ingredients_answer_served') return;
+
+  const key = buildIngredientFlowKey({ event, props });
+  if (!key) return;
+  const nowMs = Date.now();
+  const eventTs = toFiniteNumber(event && event.timestamp) ?? nowMs;
+  cleanupIngredientLatencyCache(nowMs);
+
+  if (name === 'ingredients_entry_opened') {
+    ingredientEntryOpenedAtByFlow.set(key, eventTs);
+    return;
+  }
+
+  const startedAt = ingredientEntryOpenedAtByFlow.get(key);
+  if (!Number.isFinite(Number(startedAt))) return;
+  const latencyMs = Math.max(0, eventTs - Number(startedAt));
+  if (latencyMs <= INGREDIENT_FIRST_ANSWER_MAX_GAP_MS) {
+    observeAuroraIngredientsFirstAnswerLatency({ latencyMs });
+  }
+  ingredientEntryOpenedAtByFlow.delete(key);
+}
+
 function mountUiEventRoutes(app, { logger } = {}) {
   const PRODUCT_OPEN_EVENT_SET = new Set([
     'ingredient_product_open_attempt',
@@ -157,6 +218,7 @@ function mountUiEventRoutes(app, { logger } = {}) {
             props.blocked_reason = safeString(props.blocked_reason) || null;
             props.url = safeString(props.url) || null;
           }
+          captureIngredientFirstAnswerLatency({ event: evt, props });
           const auroraUid = props.aurora_uid ?? props.auroraUid ?? null;
           const userId = props.user_id ?? props.userId ?? null;
           const sessionId = props.session_id ?? props.sessionId ?? null;
@@ -213,6 +275,15 @@ function mountUiEventRoutes(app, { logger } = {}) {
               logger?.warn?.({ err: err?.message || String(err) }, 'ui event jsonl sink failed');
             }
           } else {
+            if (!uiEventsSinkMissingWarned) {
+              uiEventsSinkMissingWarned = true;
+              logger?.warn?.(
+                {
+                  hint: 'set AURORA_EVENTS_JSONL_SINK_DIR to persist /v1/events payloads',
+                },
+                'ui event sink is not configured; /v1/events currently has no durable sink',
+              );
+            }
             logger?.info?.({ event_name: evt.event_name, source: parsed.data.source }, 'ui event received');
           }
         }

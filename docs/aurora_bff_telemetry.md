@@ -1,6 +1,9 @@
 # Aurora BFF Telemetry (UI analytics)
 
-This document covers **frontend → BFF** UI analytics ingestion and how to use it in PostHog.
+This document covers **frontend -> BFF** UI analytics ingestion for the default production path:
+
+- `/v1/events -> JSONL sink -> existing log collector/search`
+- Prometheus metrics for realtime alerting
 
 ## Endpoint
 
@@ -10,14 +13,17 @@ This document covers **frontend → BFF** UI analytics ingestion and how to use 
 
 ## Sinks (server-side)
 
-The BFF supports **one** sink (in priority order):
+The BFF supports these sinks (priority order):
 
-1) PostHog (recommended)
+1) JSONL sink (recommended in production)
+   - `AURORA_EVENTS_JSONL_SINK_DIR=/var/log/aurora-ui-events`
+   - Output file pattern: `aurora-ui-events-YYYY-MM-DD.jsonl`
+2) Optional PostHog compatibility
    - `POSTHOG_API_KEY`
    - `POSTHOG_HOST` (or `POSTHOG_URL`)
-2) JSONL sink (debug / ad-hoc)
-   - `AURORA_EVENTS_JSONL_SINK_DIR=/tmp/...`
 3) Fallback: logs only (no persistence)
+
+If neither sink is configured, the service emits a warning log because `/v1/events` cannot be replayed reliably.
 
 ## Event conventions
 
@@ -77,7 +83,53 @@ Recommended `data` fields (current implementation; best-effort):
 - `match_quality` (`strict|weak|none`; nullable)
 - `num_steps`
 
-## Suggested PostHog dashboards
+## Ingredients-specific signals (query-first)
+
+Frontend emits:
+
+- `ingredients_entry_opened`
+- `ingredients_mode_selected`
+- `ingredients_answer_served`
+- `ingredients_optin_diagnosis`
+
+Backend Prometheus exports:
+
+- `ingredients_unwanted_diagnosis_rate`
+- `ingredients_first_answer_latency_ms` (histogram)
+- `ingredients_to_reco_optin_rate`
+
+## ChatCards v1 events (current frontend contract)
+
+Core events:
+
+- `intent_detected`
+- `aurora_tool_called`
+- `card_impression`
+- `card_action_click`
+- `thread_push`
+- `thread_pop`
+- `thread_update`
+- `memory_written`
+
+Triage/Nudge fine-grained events:
+
+- `triage_stage_shown`
+  - `risk_level`: `none|low|medium|high`
+  - `recovery_window_hours`: nullable number
+  - `red_flag_count`: number
+  - `action_point_count`: number
+- `triage_action_tap`
+  - `action_type`: string
+  - `action_label`: nullable string
+  - `risk_level`: `none|low|medium|high`
+  - `recovery_window_hours`: nullable number
+- `nudge_action_tap`
+  - `action_type`: string
+  - `action_label`: nullable string
+  - `cadence_days`: nullable number
+  - `hint_count`: number
+
+## Suggested dashboards / log queries
 
 ### 1) Adoption / usage
 
@@ -97,6 +149,32 @@ Recommended `data` fields (current implementation; best-effort):
 - % of impressions where `num_unmapped_conflicts > 0`
 - % where `num_cells_nonzero == 0` but state suggests conflicts (should be near 0)
 
+### 4) Ingredients query-first health
+
+- unwanted diagnosis rate:
+  - `ingredients_unwanted_diagnosis_rate`
+- first answer latency p95:
+  - `histogram_quantile(0.95, sum(rate(ingredients_first_answer_latency_ms_bucket[15m])) by (le))`
+- ingredient-to-reco opt-in rate:
+  - `ingredients_to_reco_optin_rate`
+
+## Replay template (incident review)
+
+For a given `request_id` / `trace_id`, use `/v1/chat` structured logs and output:
+
+`入口 -> action -> intent -> gate -> card_types -> next_state`
+
+Required fields in log search:
+
+- `action_id`
+- `trigger_source`
+- `intent_canonical`
+- `gate`
+- `card_types`
+- `next_state`
+- `client_state`
+- `agent_state`
+
 ## Quick verify (production)
 
 ```bash
@@ -109,4 +187,3 @@ curl -sS -o /dev/null -w 'code=%{http_code}\n' \
 ```
 
 Expected: `code=204`.
-

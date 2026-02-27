@@ -1,14 +1,11 @@
 # Aurora BFF Card Protocol (UI Render Contract)
 
-This document describes the **stable card types** returned by `pivota-agent` Aurora BFF (`/v1/*`) for `aurora.pivota.cc`.
+This document describes the **stable card payload types** returned by `pivota-agent` Aurora BFF (`/v1/*`) for `aurora.pivota.cc`.
 
-All endpoints return the same envelope:
+Contract note:
 
-- `assistant_message` (nullable)
-- `suggested_chips` (array)
-- `cards` (array of cards)
-- `session_patch` (object)
-- `events` (array)
+- `POST /v1/chat` uses **ChatCards Response Schema v1** top-level fields (`version`, `assistant_text`, `cards`, `follow_up_questions`, `suggested_quick_replies`, `ops`, `safety`, `telemetry`, `request_id`, `trace_id`).
+- Non-chat endpoints in `/v1/*` may still use the legacy envelope (`assistant_message`, `suggested_chips`, `cards`, `session_patch`, `events`) where documented.
 
 Each card has:
 

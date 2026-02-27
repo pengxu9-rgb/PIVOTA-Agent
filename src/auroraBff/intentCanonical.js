@@ -26,6 +26,12 @@ const ACTION_MAP = Object.freeze({
   'chip.start.dupes': INTENT_ENUM.DUPE_COMPARE,
   'chip.start.ingredients': INTENT_ENUM.INGREDIENT_SCIENCE,
   'chip_start_ingredients': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'chip.start.ingredients.entry': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'chip_start_ingredients_entry': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'ingredient.lookup': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'ingredient.by_goal': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'ingredient.optin_diagnosis': INTENT_ENUM.DIAGNOSIS_START,
+  'ingredient_optin_diagnosis': INTENT_ENUM.DIAGNOSIS_START,
   'chip.start.diagnosis': INTENT_ENUM.DIAGNOSIS_START,
 });
 
@@ -128,6 +134,7 @@ function inferFromActionId(actionId) {
 
   if (norm.includes('dupe')) return INTENT_ENUM.DUPE_COMPARE;
   if (norm.includes('routine')) return INTENT_ENUM.ROUTINE;
+  if (norm.includes('diagnosis') || norm.includes('diag')) return INTENT_ENUM.DIAGNOSIS_START;
   if (norm.includes('ingredient') || norm.includes('science')) return INTENT_ENUM.INGREDIENT_SCIENCE;
   if (norm.includes('evaluate') || norm.includes('fit_check') || norm.includes('fit-check') || norm.includes('analyze_product')) {
     return INTENT_ENUM.EVALUATE_PRODUCT;
@@ -135,7 +142,6 @@ function inferFromActionId(actionId) {
   if (norm.includes('reco') || norm.includes('recommend')) return INTENT_ENUM.RECO_PRODUCTS;
   if (norm.includes('travel') || norm.includes('weather') || norm.includes('env')) return INTENT_ENUM.TRAVEL_PLANNING;
   if (norm.includes('conflict') || norm.includes('compat')) return INTENT_ENUM.CONFLICT_CHECK;
-  if (norm.includes('diagnosis') || norm.includes('diag')) return INTENT_ENUM.DIAGNOSIS_START;
   return null;
 }
 

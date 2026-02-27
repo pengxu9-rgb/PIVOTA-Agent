@@ -4,8 +4,11 @@ This document covers deploying and operating the Aurora BFF/Orchestrator inside 
 
 ## What it is
 
-- A stable `/v1/*` API surface for `aurora.pivota.cc` that returns a unified envelope:
-  - `assistant_message` + `suggested_chips` + `cards` + `session_patch` + `events`
+- A stable `/v1/*` API surface for `aurora.pivota.cc`:
+  - `POST /v1/chat` returns `ChatCards Response Schema v1`:
+    - `version` + `assistant_text` + `cards` + `follow_up_questions` + `suggested_quick_replies` + `ops` + `safety` + `telemetry`
+    - plus tracing fields `request_id` + `trace_id`
+  - Other `/v1/*` endpoints in this runbook continue to use the legacy envelope where documented.
 - Strong server-side gates:
   - **Diagnosis-first (Phase 0)**: blocks recommendations/offers when minimal profile is missing
   - **Recommendations gate**: blocks recommendation/offer/checkout cards unless explicitly triggered
@@ -133,12 +136,18 @@ Hard pass criteria:
 - `artifact_usable`
 - `degrade_reason`
 
-`/v1/chat` may include top-level `recommendation_meta`:
+`/v1/chat` now returns ChatCards v1 top-level objects:
 
-- `source_mode` (`artifact_matcher|upstream_fallback|rules_only`)
-- `used_recent_logs`
-- `used_itinerary`
-- `used_safety_flags`
+- `ops` (`thread_ops/profile_patch/routine_patch/experiment_events`)
+- `safety` (`risk_level/red_flags/disclaimer`)
+- `telemetry` (`intent/intent_confidence/entities`)
+
+Legacy `/v1/chat` envelope fields are deprecated and no longer part of contract:
+
+- `assistant_message`
+- `suggested_chips`
+- `session_patch`
+- `events`
 
 `/v1/tracker/log` may include top-level `reco_refresh_hint`:
 
@@ -391,7 +400,7 @@ curl -sS -X POST "$BASE_URL/v1/chat" \
   -d '{"message":"Recommend a moisturizer"}' | jq .
 ```
 
-Expected: diagnosis-first response with chips, and **no** recommendation/offer cards.
+Expected: diagnosis-first response with follow-up/quick-reply guidance, and **no** recommendation/offer cards.
 
 ## UI telemetry (`/v1/events`)
 
@@ -403,14 +412,54 @@ The Aurora chat frontend can send **UI analytics** events to the BFF:
 
 ### Configuration (Railway env vars)
 
-The BFF supports **one** of these sinks (in priority order):
+The BFF supports these sinks (priority order):
 
-1) PostHog (recommended)
+1) JSONL sink (recommended)
+   - `AURORA_EVENTS_JSONL_SINK_DIR=/var/log/aurora-ui-events`
+   - writes `aurora-ui-events-YYYY-MM-DD.jsonl`
+2) Optional PostHog compatibility
    - `POSTHOG_API_KEY`
    - `POSTHOG_HOST` (or `POSTHOG_URL`)
-2) JSONL sink (for debugging)
-   - `AURORA_EVENTS_JSONL_SINK_DIR=/tmp/...` (writes `aurora-ui-events-YYYY-MM-DD.jsonl`)
 3) Fallback: server logs (no persistence)
+
+If neither sink is configured, `/v1/events` still returns `204` but emits a warning that events are not durable.
+
+### ChatCards v1 关键事件（前端上报）
+
+主链路基础事件：
+
+- `intent_detected`
+- `aurora_tool_called`
+- `card_impression`
+- `card_action_click`
+- `thread_push` / `thread_pop` / `thread_update`
+- `memory_written`
+
+Triage / Nudge 细粒度事件：
+
+- `triage_stage_shown`
+  - 关键字段：`card_id`, `card_position`, `risk_level`, `recovery_window_hours`, `red_flag_count`, `action_point_count`
+- `triage_action_tap`
+  - 关键字段：`card_id`, `action_type`, `action_label`, `risk_level`, `recovery_window_hours`
+- `nudge_action_tap`
+  - 关键字段：`card_id`, `action_type`, `action_label`, `cadence_days`, `hint_count`
+
+### Ingredients incident replay template
+
+For a target `trace_id` / `request_id`, pull `/v1/chat` logs and summarize in one line:
+
+`入口 -> action -> intent -> gate -> card_types -> next_state`
+
+Fields to include in the query:
+
+- `action_id`
+- `trigger_source`
+- `intent_canonical`
+- `gate`
+- `card_types`
+- `next_state`
+- `client_state`
+- `agent_state`
 
 ### Quick verify (production)
 

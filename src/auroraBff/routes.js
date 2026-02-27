@@ -72,6 +72,7 @@ const {
   recordClaimsTemplateFallback,
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
+  recordAuroraIngredientsFlowMetric,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoContextUsed,
@@ -151,6 +152,9 @@ const {
   upsertProfileForIdentity,
   upsertSkinLogForIdentity,
   getRecentSkinLogsForIdentity,
+  getChatContextForIdentity,
+  upsertChatContextForIdentity,
+  appendExperimentEventForIdentity,
   saveLastAnalysisForIdentity,
   deleteIdentityData,
   isCheckinDue,
@@ -158,6 +162,7 @@ const {
   upsertIdentityLink,
   migrateGuestDataToUser,
 } = require('./memoryStore');
+const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const {
   createOtpChallenge,
   verifyOtpChallenge,
@@ -27974,13 +27979,308 @@ function looksLikeIngredientScienceIntent(message, action) {
         : '';
   const idText = String(id || '').trim().toLowerCase();
 
-  if (idText === 'chip.start.ingredients' || idText === 'chip_start_ingredients') return true;
+  if (
+    idText === 'chip.start.ingredients' ||
+    idText === 'chip_start_ingredients' ||
+    idText === 'chip.start.ingredients.entry' ||
+    idText === 'chip_start_ingredients_entry' ||
+    idText === 'ingredient.lookup' ||
+    idText === 'ingredient.by_goal'
+  ) {
+    return true;
+  }
 
   const en =
     /\b(ingredient|ingredients|active|actives)\b.{0,28}\b(science|evidence|mechanism|clinical|study|paper|citation|citations)\b/i.test(raw) ||
     /\b(science|evidence|mechanism|clinical|study|paper|citation|citations)\b.{0,28}\b(ingredient|ingredients|active|actives)\b/i.test(raw);
   const cn = /(成分(机理|机制|科学|证据|原理)|证据链|循证|临床证据|论文证据|问成分)/.test(raw);
   return en || cn;
+}
+
+function normalizeIngredientActionId(actionId) {
+  return String(actionId || '').trim().toLowerCase();
+}
+
+function isIngredientEntryAction(actionId) {
+  const id = normalizeIngredientActionId(actionId);
+  return (
+    id === 'chip.start.ingredients.entry' ||
+    id === 'chip_start_ingredients_entry' ||
+    id === 'chip.start.ingredients' ||
+    id === 'chip_start_ingredients'
+  );
+}
+
+function isIngredientLookupAction(actionId) {
+  return normalizeIngredientActionId(actionId) === 'ingredient.lookup';
+}
+
+function isIngredientByGoalAction(actionId) {
+  return normalizeIngredientActionId(actionId) === 'ingredient.by_goal';
+}
+
+function isIngredientDiagnosisOptInAction(actionId) {
+  return normalizeIngredientActionId(actionId) === 'ingredient.optin_diagnosis';
+}
+
+function isIngredientRecoOptInAction(actionId, action) {
+  const id = normalizeIngredientActionId(actionId);
+  if (id !== 'chip.start.reco_products' && id !== 'chip_start_reco_products') return false;
+  const data = extractActionDataObject(action);
+  if (!data) return false;
+  const source = String(data.entry_source || data.trigger_source || '').trim().toLowerCase();
+  if (source.includes('ingredient')) return true;
+  const replyText = String(data.reply_text || '').trim().toLowerCase();
+  return /ingredient|ingredients|成分/.test(replyText);
+}
+
+function extractActionDataObject(action) {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return null;
+  return action.data && typeof action.data === 'object' && !Array.isArray(action.data)
+    ? action.data
+    : null;
+}
+
+function extractIngredientLookupQuery(action) {
+  const data = extractActionDataObject(action);
+  if (!data) return '';
+  const raw =
+    (typeof data.ingredient_query === 'string' && data.ingredient_query) ||
+    (typeof data.query === 'string' && data.query) ||
+    (typeof data.inci === 'string' && data.inci) ||
+    (typeof data.ingredient_name === 'string' && data.ingredient_name) ||
+    '';
+  return String(raw || '').trim().slice(0, 120);
+}
+
+function buildIngredientLookupUpstreamPrompt({ query, language } = {}) {
+  const target = String(query || '').trim();
+  if (!target) return '';
+  if (language === 'CN') {
+    return `请做成分查询：${target}。请给我 1-minute ingredient report（功效、证据等级、使用注意、人群风险）。`;
+  }
+  return `Ingredient lookup: ${target}. Give me a 1-minute ingredient report (benefits, evidence grade, watchouts, and risk by skin profile).`;
+}
+
+function normalizeIngredientGoalToken(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return '';
+  if (/(acne|breakout|pore|oil|控痘|痘|闭口|粉刺|毛孔|出油)/.test(token)) return 'acne';
+  if (/(bright|dark|spot|tone|pigment|提亮|淡斑|暗沉|色沉|美白)/.test(token)) return 'brightening';
+  if (/(barrier|repair|sensitive|redness|敏感|泛红|修护|屏障)/.test(token)) return 'barrier';
+  if (/(anti|aging|wrinkle|firm|line|抗老|抗衰|细纹|紧致|提拉)/.test(token)) return 'antiaging';
+  if (/(hydrate|dry|dehydr|保湿|补水|干燥)/.test(token)) return 'hydration';
+  return '';
+}
+
+function normalizeIngredientSensitivityToken(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return 'unknown';
+  if (/(low|mild|轻|低|不敏感)/.test(token)) return 'low';
+  if (/(high|severe|reactive|高|重|敏感)/.test(token)) return 'high';
+  if (/(medium|mid|moderate|中)/.test(token)) return 'medium';
+  return 'unknown';
+}
+
+function extractIngredientGoalRequest(action) {
+  const data = extractActionDataObject(action);
+  if (!data) return { goal: '', sensitivity: 'unknown' };
+  const goalRaw =
+    (typeof data.goal === 'string' && data.goal) ||
+    (typeof data.target_goal === 'string' && data.target_goal) ||
+    (typeof data.effect_goal === 'string' && data.effect_goal) ||
+    '';
+  const sensitivityRaw =
+    (typeof data.sensitivity === 'string' && data.sensitivity) ||
+    (typeof data.skin_sensitivity === 'string' && data.skin_sensitivity) ||
+    '';
+  return {
+    goal: normalizeIngredientGoalToken(goalRaw),
+    sensitivity: normalizeIngredientSensitivityToken(sensitivityRaw),
+  };
+}
+
+function buildIngredientHubCardPayload({ language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (lang === 'CN') {
+    return {
+      mode: 'query_first',
+      title: '成分查询入口',
+      subtitle: '先查成分/按功效找成分，再决定要不要做诊断。',
+      ctas: {
+        lookup: {
+          action_id: 'ingredient.lookup',
+          label: '查具体成分',
+          hint: '输入 INCI / 常见别名',
+        },
+        by_goal: {
+          action_id: 'ingredient.by_goal',
+          label: '按功效找成分',
+          hint: '先选目标与敏感度',
+        },
+        optin_diagnosis: {
+          action_id: 'ingredient.optin_diagnosis',
+          label: '提高准确度（可选）',
+        },
+      },
+      suggested_ingredients: ['Niacinamide', 'Retinol', 'Azelaic Acid', 'Vitamin C'],
+      suggested_goals: ['祛痘', '提亮', '修护', '抗老'],
+    };
+  }
+  return {
+    mode: 'query_first',
+    title: 'Ingredient Hub',
+    subtitle: 'Start with ingredient lookup or goal-based matching. Diagnosis is optional.',
+    ctas: {
+      lookup: {
+        action_id: 'ingredient.lookup',
+        label: 'Lookup ingredient',
+        hint: 'INCI or common alias',
+      },
+      by_goal: {
+        action_id: 'ingredient.by_goal',
+        label: 'Find by goal',
+        hint: 'Pick goal + sensitivity',
+      },
+      optin_diagnosis: {
+        action_id: 'ingredient.optin_diagnosis',
+        label: 'Improve accuracy (optional)',
+      },
+    },
+    suggested_ingredients: ['Niacinamide', 'Retinol', 'Azelaic Acid', 'Vitamin C'],
+    suggested_goals: ['Acne', 'Brightening', 'Barrier repair', 'Anti-aging'],
+  };
+}
+
+function buildIngredientGoalMatchPayload({ language, goal, sensitivity } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const key = String(goal || '').trim().toLowerCase();
+  const sensitivityToken = normalizeIngredientSensitivityToken(sensitivity);
+  const map = {
+    acne: {
+      label: lang === 'CN' ? '痘痘/闭口' : 'Acne / texture',
+      candidates:
+        lang === 'CN'
+          ? [
+            { ingredient: '壬二酸', reason: '抗炎 + 角化调节，敏感肌可从低频起步。', evidence_grade: 'A' },
+            { ingredient: '水杨酸', reason: '疏通毛孔更直接，油痘肌常见有效。', evidence_grade: 'A' },
+            { ingredient: '烟酰胺', reason: '油脂与屏障双向支持，刺激风险相对低。', evidence_grade: 'A' },
+          ]
+          : [
+            { ingredient: 'Azelaic Acid', reason: 'Anti-inflammatory with keratin control; often friendlier for sensitive skin.', evidence_grade: 'A' },
+            { ingredient: 'Salicylic Acid', reason: 'Direct pore decongestion for oil/acne concerns.', evidence_grade: 'A' },
+            { ingredient: 'Niacinamide', reason: 'Supports oil balance and barrier with lower irritation risk.', evidence_grade: 'A' },
+          ],
+      avoid_pairs:
+        lang === 'CN'
+          ? ['同晚叠加多酸 + 维A类', '高频去角质 + 屏障不稳']
+          : ['Stacking multiple acids + retinoids in the same night', 'High-frequency exfoliation with impaired barrier'],
+    },
+    brightening: {
+      label: lang === 'CN' ? '提亮/淡斑' : 'Brightening / dark spots',
+      candidates:
+        lang === 'CN'
+          ? [
+            { ingredient: '维C（L-ascorbic acid）', reason: '抗氧化 + 提亮证据较强。', evidence_grade: 'A' },
+            { ingredient: '传明酸', reason: '色沉管理常用，耐受性通常较好。', evidence_grade: 'A' },
+            { ingredient: '烟酰胺', reason: '提亮与屏障兼顾，搭配灵活。', evidence_grade: 'A' },
+          ]
+          : [
+            { ingredient: 'Vitamin C (L-ascorbic acid)', reason: 'Strong antioxidant and brightening evidence.', evidence_grade: 'A' },
+            { ingredient: 'Tranexamic Acid', reason: 'Commonly used for hyperpigmentation support with good tolerance.', evidence_grade: 'A' },
+            { ingredient: 'Niacinamide', reason: 'Brightening plus barrier support with flexible pairing.', evidence_grade: 'A' },
+          ],
+      avoid_pairs:
+        lang === 'CN'
+          ? ['高浓度酸 + 屏障受损期强行提亮', '白天不防晒仍追求淡斑']
+          : ['Aggressive acids during barrier-repair phase', 'Expecting spot-fading progress without daytime sunscreen'],
+    },
+    barrier: {
+      label: lang === 'CN' ? '修护屏障/敏感' : 'Barrier repair / sensitivity',
+      candidates:
+        lang === 'CN'
+          ? [
+            { ingredient: '神经酰胺', reason: '屏障脂质补充核心成分。', evidence_grade: 'A' },
+            { ingredient: '泛醇（维B5）', reason: '舒缓保湿，降低刺激感。', evidence_grade: 'A' },
+            { ingredient: '烟酰胺（低浓度）', reason: '兼顾修护与泛红管理。', evidence_grade: 'B' },
+          ]
+          : [
+            { ingredient: 'Ceramides', reason: 'Core barrier lipid replenishment.', evidence_grade: 'A' },
+            { ingredient: 'Panthenol (B5)', reason: 'Soothing hydration that can reduce irritation feel.', evidence_grade: 'A' },
+            { ingredient: 'Niacinamide (lower strength)', reason: 'Supports barrier and redness control.', evidence_grade: 'B' },
+          ],
+      avoid_pairs:
+        lang === 'CN'
+          ? ['屏障不稳时高频刷酸', '同晚多活性叠加']
+          : ['Frequent exfoliation during impaired barrier phase', 'Stacking many strong actives in one routine'],
+    },
+    antiaging: {
+      label: lang === 'CN' ? '抗老/细纹' : 'Anti-aging / wrinkles',
+      candidates:
+        lang === 'CN'
+          ? [
+            { ingredient: '维A类（低频起步）', reason: '抗老证据最强，但需循序渐进。', evidence_grade: 'A' },
+            { ingredient: '多肽', reason: '可作为温和支持，提升耐受。', evidence_grade: 'B' },
+            { ingredient: '烟酰胺', reason: '与抗老主线兼容度高。', evidence_grade: 'A' },
+          ]
+          : [
+            { ingredient: 'Retinoids (start low frequency)', reason: 'Strongest anti-aging evidence with careful ramp-up.', evidence_grade: 'A' },
+            { ingredient: 'Peptides', reason: 'Gentler support layer with favorable tolerance.', evidence_grade: 'B' },
+            { ingredient: 'Niacinamide', reason: 'Highly compatible with anti-aging routines.', evidence_grade: 'A' },
+          ],
+      avoid_pairs:
+        lang === 'CN'
+          ? ['维A起步期同时叠加强酸', '不做频率管理直接每天上强活性']
+          : ['Pairing new retinoid with strong acids immediately', 'Daily aggressive-active use without frequency control'],
+    },
+    hydration: {
+      label: lang === 'CN' ? '保湿/干燥' : 'Hydration / dryness',
+      candidates:
+        lang === 'CN'
+          ? [
+            { ingredient: '透明质酸', reason: '经典保湿补水，搭配空间大。', evidence_grade: 'A' },
+            { ingredient: '甘油', reason: '高性价比保湿基底。', evidence_grade: 'A' },
+            { ingredient: '神经酰胺', reason: '减少水分流失，提升长期稳定度。', evidence_grade: 'A' },
+          ]
+          : [
+            { ingredient: 'Hyaluronic Acid', reason: 'Core hydration layer with broad compatibility.', evidence_grade: 'A' },
+            { ingredient: 'Glycerin', reason: 'Reliable, high-value humectant base.', evidence_grade: 'A' },
+            { ingredient: 'Ceramides', reason: 'Reduces TEWL and improves long-term stability.', evidence_grade: 'A' },
+          ],
+      avoid_pairs:
+        lang === 'CN'
+          ? ['只补水不封层', '干燥期过度去角质']
+          : ['Hydration-only without sealing moisturizer layer', 'Over-exfoliation in already dry phases'],
+    },
+  };
+
+  const selected = map[key] || map.barrier;
+  const sensitivityLabel =
+    lang === 'CN'
+      ? sensitivityToken === 'high'
+        ? '高敏'
+        : sensitivityToken === 'medium'
+          ? '中敏'
+          : sensitivityToken === 'low'
+            ? '低敏'
+            : '未知'
+      : sensitivityToken === 'high'
+        ? 'High'
+        : sensitivityToken === 'medium'
+          ? 'Medium'
+          : sensitivityToken === 'low'
+            ? 'Low'
+            : 'Unknown';
+
+  return {
+    mode: 'goal_match',
+    goal: key || 'barrier',
+    goal_label: selected.label,
+    sensitivity: sensitivityToken,
+    sensitivity_label: sensitivityLabel,
+    candidate_ingredients: selected.candidates,
+    avoid_pairs: selected.avoid_pairs,
+  };
 }
 
 function messageContainsSpecificIngredientScienceTarget(message) {
@@ -30101,6 +30401,10 @@ function mountAuroraBffRoutes(app, { logger }) {
     try {
       requireAuroraUid(ctx);
       const identity = await resolveIdentity(req, ctx);
+      resolvedIdentity = {
+        auroraUid: identity.auroraUid || null,
+        userId: identity.userId || null,
+      };
       if (!identity.userId) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(ctx.lang === 'CN' ? '请先登录。' : 'Please sign in first.'),
@@ -35949,12 +36253,60 @@ function mountAuroraBffRoutes(app, { logger }) {
     let latestClarificationId = null;
     let profile = null;
     let recentLogs = [];
+    let chatContext = null;
+    let resolvedIdentity = { auroraUid: null, userId: null };
+    let canonicalIntentForResponse = { intent: INTENT_ENUM.UNKNOWN, confidence: 0, entities: {} };
     let safetyDecision = null;
     let pendingSafetyAdvisory = null;
     const pendingGateAdvisories = [];
     let pendingPregnancyPolicyEvents = [];
     let requestMessage = '';
     let recoContextMetricsEmitted = false;
+    let actionIdForReplay = null;
+    let clientStateForReplay = DEFAULT_AGENT_STATE;
+    let agentStateForReplay = DEFAULT_AGENT_STATE;
+    let ingredientReplayContext = {
+      intent_requested: false,
+      starter_action: false,
+      diagnosis_optin: false,
+      reco_optin: false,
+      entry: null,
+    };
+    const collectLegacyCardTypes = (envelope) => {
+      const cards = envelope && Array.isArray(envelope.cards) ? envelope.cards : [];
+      return Array.from(
+        new Set(
+          cards
+            .map((card) => String(card && card.type ? card.type : '').trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      );
+    };
+    const inferGateFromLegacyCardTypes = (cardTypes) => {
+      const types = Array.isArray(cardTypes) ? cardTypes : [];
+      if (types.includes('diagnosis_gate')) return 'diagnosis_gate';
+      if (types.includes('budget_gate')) return 'budget_gate';
+      if (types.includes('gate_notice')) return 'gate_notice';
+      return 'none';
+    };
+    const extractNextStateFromEnvelope = (envelope) => {
+      const sessionPatch =
+        envelope &&
+        envelope.session_patch &&
+        typeof envelope.session_patch === 'object' &&
+        !Array.isArray(envelope.session_patch)
+          ? envelope.session_patch
+          : null;
+      if (!sessionPatch) return null;
+      const next = String(sessionPatch.next_state || '').trim();
+      return next || null;
+    };
+    const isIngredientAnswerCardType = (type) =>
+      type === 'ingredient_hub' ||
+      type === 'ingredient_goal_match' ||
+      type === 'ingredient_plan' ||
+      type === 'ingredient_plan_v2' ||
+      type === 'aurora_ingredient_report';
     const refreshPolicyMetaRollout = () => {
       effectiveChatFlags = rolloutContext.effective_flags || effectiveChatFlags;
       shouldAttachPolicyMeta = Boolean(effectiveChatFlags.chat_response_meta);
@@ -36297,6 +36649,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       return base;
     };
+    let skipRoutineRulesFallback = false;
     const sendChatEnvelope = async (envelope, statusCode = 200) => {
       syncGatePolicyMeta();
       const withSafetyAdvisory = applyPendingSafetyAdvisoryToEnvelope(envelope);
@@ -36419,6 +36772,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             : guarded.envelope;
         if (!baseEnvelope || typeof baseEnvelope !== 'object' || Array.isArray(baseEnvelope)) return baseEnvelope;
         if (statusCode >= 400) return baseEnvelope;
+        if (skipRoutineRulesFallback) return baseEnvelope;
+        const currentCards = Array.isArray(baseEnvelope.cards) ? baseEnvelope.cards : [];
+        const hasIngredientEntryCards = currentCards.some((card) => {
+          const type = String(card && card.type ? card.type : '').trim().toLowerCase();
+          return type === 'ingredient_hub' || type === 'ingredient_goal_match';
+        });
+        if (hasIngredientEntryCards) return baseEnvelope;
 
         const intentCanonical = String(policyMeta && policyMeta.intent_canonical ? policyMeta.intent_canonical : '')
           .trim()
@@ -36547,9 +36907,242 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
       }
 
+      const threadOps = (() => {
+        const topicFromIntent = String(policyMeta.intent_canonical || canonicalIntentForResponse.intent || INTENT_ENUM.UNKNOWN)
+          .trim()
+          .toLowerCase();
+        const requestedTopicId = topicFromIntent || 'unknown';
+        const nowMs = Date.now();
+        const baseContext =
+          chatContext && typeof chatContext === 'object' && !Array.isArray(chatContext)
+            ? { ...chatContext }
+            : {};
+        const stack = Array.isArray(baseContext.thread_stack)
+          ? baseContext.thread_stack.filter((row) => row && typeof row === 'object')
+          : [];
+        const activeThread =
+          baseContext.active_thread && typeof baseContext.active_thread === 'object' && !Array.isArray(baseContext.active_thread)
+            ? { ...baseContext.active_thread }
+            : null;
+        const assistantSummary =
+          envelopeWithGuardrails &&
+          envelopeWithGuardrails.assistant_message &&
+          typeof envelopeWithGuardrails.assistant_message.content === 'string'
+            ? String(envelopeWithGuardrails.assistant_message.content).trim().slice(0, 220)
+            : '';
+        const userText = String(requestMessage || '').trim();
+        const returnToPrevious = /回到|刚才|之前的话题|继续刚才|back to|previous topic|return to/i.test(userText);
+        const ops = [];
+        let nextActive = activeThread;
+        let nextStack = stack.slice(0, 8);
+
+        if (returnToPrevious && nextStack.length > 0) {
+          const restored = nextStack.pop();
+          const restoredTopicId = String(restored && restored.topic_id ? restored.topic_id : '').trim();
+          if (restoredTopicId) {
+            nextActive = {
+              ...restored,
+              topic_id: restoredTopicId,
+              summary: assistantSummary || String(restored.summary || '').trim().slice(0, 220),
+              updated_at_ms: nowMs,
+            };
+            ops.push({
+              op: 'thread_pop',
+              topic_id: restoredTopicId.slice(0, 120),
+              summary: String(nextActive.summary || '').slice(0, 220),
+              timestamp_ms: nowMs,
+            });
+          }
+        } else if (requestedTopicId && requestedTopicId !== 'unknown') {
+          const activeTopicId = String(nextActive && nextActive.topic_id ? nextActive.topic_id : '').trim().toLowerCase();
+          if (!activeTopicId) {
+            nextActive = {
+              topic_id: requestedTopicId,
+              summary: assistantSummary,
+              updated_at_ms: nowMs,
+            };
+            ops.push({
+              op: 'thread_push',
+              topic_id: requestedTopicId.slice(0, 120),
+              summary: assistantSummary,
+              timestamp_ms: nowMs,
+            });
+          } else if (activeTopicId !== requestedTopicId) {
+            nextStack.push({
+              topic_id: activeTopicId,
+              summary: String(nextActive.summary || '').slice(0, 220),
+              updated_at_ms: Number.isFinite(Number(nextActive.updated_at_ms))
+                ? Math.max(0, Math.trunc(Number(nextActive.updated_at_ms)))
+                : nowMs,
+            });
+            nextStack = nextStack.slice(-8);
+            nextActive = {
+              topic_id: requestedTopicId,
+              summary: assistantSummary,
+              updated_at_ms: nowMs,
+            };
+            ops.push({
+              op: 'thread_push',
+              topic_id: requestedTopicId.slice(0, 120),
+              summary: assistantSummary,
+              timestamp_ms: nowMs,
+            });
+          } else {
+            nextActive = {
+              ...nextActive,
+              summary: assistantSummary || String(nextActive.summary || '').slice(0, 220),
+              updated_at_ms: nowMs,
+            };
+            ops.push({
+              op: 'thread_update',
+              topic_id: requestedTopicId.slice(0, 120),
+              summary: String(nextActive.summary || '').slice(0, 220),
+              timestamp_ms: nowMs,
+            });
+          }
+        }
+
+        const sessionPatch =
+          envelopeWithGuardrails &&
+          envelopeWithGuardrails.session_patch &&
+          typeof envelopeWithGuardrails.session_patch === 'object' &&
+          !Array.isArray(envelopeWithGuardrails.session_patch)
+            ? envelopeWithGuardrails.session_patch
+            : {};
+        const pendingClarification = Object.prototype.hasOwnProperty.call(sessionPatch, 'pending_clarification')
+          ? sessionPatch.pending_clarification
+          : baseContext.pending_clarification || null;
+
+        chatContext = {
+          ...baseContext,
+          active_thread: nextActive,
+          active_thread_summary: nextActive && nextActive.summary ? String(nextActive.summary).slice(0, 220) : null,
+          thread_stack: nextStack,
+          pending_clarification: pendingClarification,
+          updated_at_ms: nowMs,
+        };
+        return ops.slice(0, 4);
+      })();
+
+      if (
+        resolvedIdentity &&
+        (resolvedIdentity.auroraUid || resolvedIdentity.userId) &&
+        chatContext &&
+        typeof chatContext === 'object'
+      ) {
+        try {
+          await upsertChatContextForIdentity(
+            { auroraUid: resolvedIdentity.auroraUid, userId: resolvedIdentity.userId },
+            chatContext,
+          );
+        } catch (err) {
+          logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist chat context');
+        }
+      }
+
+      const telemetryEntities = (() => {
+        const entitiesRaw =
+          canonicalIntentForResponse &&
+          canonicalIntentForResponse.entities &&
+          typeof canonicalIntentForResponse.entities === 'object' &&
+          !Array.isArray(canonicalIntentForResponse.entities)
+            ? canonicalIntentForResponse.entities
+            : {};
+        const out = [];
+        for (const [key, value] of Object.entries(entitiesRaw)) {
+          if (Array.isArray(value)) {
+            for (const row of value.slice(0, 4)) {
+              out.push({ key, value: row });
+            }
+            continue;
+          }
+          out.push({ key, value });
+        }
+        return out.slice(0, 16);
+      })();
+
+      const chatCardsResponse = buildChatCardsResponse({
+        envelope: envelopeWithGuardrails,
+        ctx,
+        intent: policyMeta.intent_canonical || canonicalIntentForResponse.intent || INTENT_ENUM.UNKNOWN,
+        intentConfidence:
+          Number.isFinite(Number(canonicalIntentForResponse.confidence))
+            ? Number(canonicalIntentForResponse.confidence)
+            : 0,
+        entities: telemetryEntities,
+        safetyDecision,
+        threadOps,
+      });
+
+      const legacyCardTypes = collectLegacyCardTypes(envelopeWithGuardrails);
+      const gateType = inferGateFromLegacyCardTypes(legacyCardTypes);
+      const nextState = extractNextStateFromEnvelope(envelopeWithGuardrails);
+      const hasIngredientAnswerCard = legacyCardTypes.some((type) => isIngredientAnswerCardType(type));
+      const ingredientReplayRelevant = Boolean(
+        ingredientReplayContext.intent_requested ||
+          ingredientReplayContext.starter_action ||
+          ingredientReplayContext.reco_optin ||
+          hasIngredientAnswerCard,
+      );
+      if (ingredientReplayRelevant && hasIngredientAnswerCard) {
+        recordAuroraIngredientsFlowMetric({ stage: 'answer_served', hit: true });
+      }
+      const unwantedDiagnosis = Boolean(
+        ingredientReplayRelevant &&
+          gateType === 'diagnosis_gate' &&
+          !ingredientReplayContext.diagnosis_optin,
+      );
+      if (unwantedDiagnosis) {
+        recordAuroraIngredientsFlowMetric({ stage: 'unwanted_diagnosis', hit: true });
+      }
+      const ingredientReplayLogNeeded = Boolean(
+        ingredientReplayRelevant ||
+          gateType === 'diagnosis_gate' ||
+          gateType === 'budget_gate' ||
+          String(actionIdForReplay || '').toLowerCase().includes('ingredient'),
+      );
+      if (ingredientReplayLogNeeded) {
+        logger?.info?.(
+          {
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            entry: ingredientReplayContext.entry || null,
+            action_id: actionIdForReplay,
+            trigger_source: ctx.trigger_source || null,
+            intent_canonical: policyMeta.intent_canonical || canonicalIntentForResponse.intent || INTENT_ENUM.UNKNOWN,
+            gate: gateType,
+            card_types: legacyCardTypes.slice(0, 12),
+            next_state: nextState,
+            client_state: clientStateForReplay || null,
+            agent_state: agentStateForReplay || null,
+          },
+          'aurora bff: ingredient replay route',
+        );
+      }
+
+      if (
+        resolvedIdentity &&
+        (resolvedIdentity.auroraUid || resolvedIdentity.userId) &&
+        chatCardsResponse &&
+        chatCardsResponse.ops &&
+        Array.isArray(chatCardsResponse.ops.experiment_events)
+      ) {
+        for (const evt of chatCardsResponse.ops.experiment_events.slice(0, 8)) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            await appendExperimentEventForIdentity(
+              { auroraUid: resolvedIdentity.auroraUid, userId: resolvedIdentity.userId },
+              evt,
+            );
+          } catch (err) {
+            logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to append experiment event');
+          }
+        }
+      }
+
       emitAudit(envelopeWithGuardrails, templateCtx, { logger });
-      if (statusCode >= 400) return res.status(statusCode).json(envelopeWithGuardrails);
-      return res.json(envelopeWithGuardrails);
+      if (statusCode >= 400) return res.status(statusCode).json(chatCardsResponse);
+      return res.json(chatCardsResponse);
     };
 
     try {
@@ -36593,6 +37186,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
+        chatContext = await getChatContextForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
       } catch (err) {
         storageContextLoadFailed = true;
         logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
@@ -36609,6 +37203,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       if (profilePatchFromSession) {
         profile = { ...(profile || {}), ...profilePatchFromSession };
+      }
+      if (!chatContext && profile && typeof profile === 'object' && profile.chatContext && typeof profile.chatContext === 'object') {
+        chatContext = profile.chatContext;
       }
 
       const normalizedActionPayload = (() => {
@@ -36694,6 +37291,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null) ||
         parsed.data.action_id ||
         null;
+      actionIdForReplay = String(actionId || '').trim() || null;
       const actionLabel = actionLabelFromPayload;
       const clarificationId =
         normalizedActionPayload &&
@@ -36758,6 +37356,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       policyMeta.intent_canonical = canonicalIntent.intent || INTENT_ENUM.UNKNOWN;
       policyMeta.intent_source = canonicalIntent.source || 'none';
+      canonicalIntentForResponse = {
+        intent: canonicalIntent.intent || INTENT_ENUM.UNKNOWN,
+        confidence: Number.isFinite(Number(canonicalIntent.confidence)) ? Number(canonicalIntent.confidence) : 0,
+        entities:
+          canonicalIntent && canonicalIntent.entities && typeof canonicalIntent.entities === 'object'
+            ? canonicalIntent.entities
+            : {},
+      };
 
       if (AURORA_ROUTER_DST_PATCH_V1_ENABLED) {
         const textDerivedPatch = extractProfilePatchFromFreeText({ message, canonicalIntent });
@@ -37574,6 +38180,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
 
       const clientAgentState = normalizeAgentState(parsed.data.client_state);
+      clientStateForReplay = clientAgentState;
 
       const requestedTransitionFromBody =
         parsed.data.requested_transition && typeof parsed.data.requested_transition === 'object'
@@ -37643,6 +38250,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           agentState = validation.next_state;
         }
       }
+      agentStateForReplay = agentState;
 
       const recoInteractionAllowed = recommendationsAllowed({
         triggerSource: ctx.trigger_source,
@@ -37789,6 +38397,49 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
       let nextStateOverride = null;
       const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+      const ingredientEntryRequested = isIngredientEntryAction(actionId);
+      const ingredientLookupRequested = isIngredientLookupAction(actionId);
+      const ingredientByGoalRequested = isIngredientByGoalAction(actionId);
+      const ingredientDiagnosisOptInRequested = isIngredientDiagnosisOptInAction(actionId);
+      const ingredientRecoOptInRequested = isIngredientRecoOptInAction(actionId, normalizedActionPayload);
+      const ingredientLookupQuery = ingredientLookupRequested
+        ? extractIngredientLookupQuery(normalizedActionPayload)
+        : '';
+      const ingredientGoalRequest = ingredientByGoalRequested
+        ? extractIngredientGoalRequest(normalizedActionPayload)
+        : { goal: '', sensitivity: 'unknown' };
+      const ingredientActionData = extractActionDataObject(normalizedActionPayload);
+      ingredientReplayContext = {
+        intent_requested: Boolean(ingredientScienceIntent),
+        starter_action: Boolean(ingredientEntryRequested || ingredientLookupRequested || ingredientByGoalRequested),
+        diagnosis_optin: Boolean(
+          ingredientDiagnosisOptInRequested ||
+            normalizeIngredientActionId(actionId) === 'chip.start.diagnosis' ||
+            normalizeIngredientActionId(actionId) === 'chip_start_diagnosis',
+        ),
+        reco_optin: Boolean(ingredientRecoOptInRequested),
+        entry:
+          pickFirstTrimmed(ingredientActionData && ingredientActionData.entry_source, ingredientActionData && ingredientActionData.trigger_source) ||
+          (ingredientEntryRequested ? 'ingredients_entry' : ingredientScienceIntent ? 'ingredient_intent' : null),
+      };
+      if (ingredientEntryRequested) {
+        recordAuroraIngredientsFlowMetric({ stage: 'entry_opened', hit: true });
+      }
+      if (ingredientLookupRequested || ingredientByGoalRequested) {
+        recordAuroraIngredientsFlowMetric({ stage: 'mode_selected', hit: true });
+      }
+      if (ingredientDiagnosisOptInRequested) {
+        recordAuroraIngredientsFlowMetric({ stage: 'optin_diagnosis', hit: true });
+      }
+      if (ingredientRecoOptInRequested) {
+        recordAuroraIngredientsFlowMetric({ stage: 'reco_optin', hit: true });
+      }
+      if (ingredientEntryRequested || ingredientByGoalRequested || ingredientLookupRequested) {
+        skipRoutineRulesFallback = true;
+      }
+      if (ingredientLookupRequested && !message && ingredientLookupQuery) {
+        upstreamMessage = buildIngredientLookupUpstreamPrompt({ query: ingredientLookupQuery, language: ctx.lang });
+      }
       const conflictIntentRequested = looksLikeCompatibilityOrConflictQuestion(message);
       const hasFitCheckAnchor = hasPlannerAnchor;
       const evaluateIntent =
@@ -37805,6 +38456,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const diagnosisEntryRequested = Boolean(
         actionId === 'chip.start.diagnosis' ||
         actionId === 'chip_start_diagnosis' ||
+        ingredientDiagnosisOptInRequested ||
         (requestedTransition &&
           typeof requestedTransition === 'object' &&
           normalizeAgentState(requestedTransition.requested_next_state) === 'DIAG_PROFILE') ||
@@ -37980,6 +38632,84 @@ function mountAuroraBffRoutes(app, { logger }) {
           return sendChatEnvelope(envelope);
         }
       }
+
+      if (ingredientEntryRequested) {
+        const hubPayload = buildIngredientHubCardPayload({ language: ctx.lang });
+        const assistantText =
+          ctx.lang === 'CN'
+            ? '成分入口已切到“查询优先”。你可以先查具体成分，或按功效找成分；诊断是可选项。'
+            : 'Ingredients now starts in query-first mode. You can lookup a specific ingredient or find by goal first; diagnosis is optional.';
+        requestMessage = 'ingredient_hub_entry';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `ingredient_hub_${ctx.request_id}`,
+              type: 'ingredient_hub',
+              payload: hubPayload,
+            },
+          ],
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_hub_entry' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      if (ingredientByGoalRequested) {
+        const requestedGoal = ingredientGoalRequest.goal || 'barrier';
+        const goalPayload = buildIngredientGoalMatchPayload({
+          language: ctx.lang,
+          goal: requestedGoal,
+          sensitivity: ingredientGoalRequest.sensitivity,
+        });
+        const assistantText =
+          ctx.lang === 'CN'
+            ? `已按“${goalPayload.goal_label}”给你整理候选成分与避坑组合。`
+            : `I mapped candidate ingredients and avoid-pairs for “${goalPayload.goal_label}”.`;
+        requestMessage = 'ingredient_goal_match';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `ingredient_goal_match_${ctx.request_id}`,
+              type: 'ingredient_goal_match',
+              payload: goalPayload,
+            },
+          ],
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      if (ingredientLookupRequested && !message && !ingredientLookupQuery) {
+        const hubPayload = buildIngredientHubCardPayload({ language: ctx.lang });
+        const assistantText =
+          ctx.lang === 'CN'
+            ? '你想查哪个成分？输入 INCI 或常见别名即可。'
+            : 'Which ingredient should I look up? Enter an INCI name or common alias.';
+        requestMessage = 'ingredient_lookup_missing_query';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `ingredient_hub_${ctx.request_id}`,
+              type: 'ingredient_hub',
+              payload: hubPayload,
+            },
+          ],
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_missing_query' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
       if (
         effectiveChatFlags.loop_breaker_v2 &&
         !conflictIntentRequested &&
@@ -38643,9 +39373,12 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
+      const inDiagnosisState =
+        String(agentState || '') === 'DIAG_PROFILE' ||
+        String(agentState || '').startsWith('DIAG_');
       if (
-        (String(agentState || '') === 'DIAG_PROFILE' || String(agentState || '').startsWith('DIAG_')) &&
-        (diagnosisEntryRequested || diagnosisFlowContinuationAllowed)
+        (diagnosisEntryRequested || (inDiagnosisState && diagnosisFlowContinuationAllowed)) &&
+        !(ingredientScienceIntent && ingredientEntryRequested)
       ) {
         const { score, missing } = profileCompleteness(profile);
         const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
@@ -38766,13 +39499,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           return sendChatEnvelope(envelope);
         }
       }
+      const ingredientLookupTargetProvided =
+        Boolean(ingredientLookupQuery) ||
+        messageContainsSpecificIngredientScienceTarget(message);
       const shouldKickoffIngredientScience =
         ingredientScienceIntent &&
+        !ingredientEntryRequested &&
+        !ingredientByGoalRequested &&
+        !ingredientLookupRequested &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         !looksLikeCompatibilityOrConflictQuestion(message) &&
         !looksLikeWeatherOrEnvironmentQuestion(message) &&
-        !messageContainsSpecificIngredientScienceTarget(message);
+        !ingredientLookupTargetProvided;
 
       if (shouldKickoffIngredientScience) {
         const kickoff = buildIngredientScienceKickoff({ language: ctx.lang });
@@ -39733,7 +40472,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	          recordSessionPatchProfileEmitted({ changed: true });
 	        }
 
-	        if (inDiagnosisFlow && missingCore.length) {
+	        if (inDiagnosisFlow && missingCore.length && !(ingredientScienceIntent && ingredientEntryRequested)) {
 	          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
 	          const chips = buildDiagnosisChips(ctx.lang, missingCore);
 	          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;

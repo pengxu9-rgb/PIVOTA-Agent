@@ -151,6 +151,12 @@ let actionClickCount = 0;
 let actionCopyCount = 0;
 let retakeAfterModulesCount = 0;
 const auroraSkinFlowCounter = new Map();
+const auroraIngredientsFlowCounter = new Map();
+const auroraIngredientsFirstAnswerLatency = {
+  count: 0,
+  sum: 0,
+  buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
+};
 const auroraSkinAnalysisRealModelCounter = new Map();
 const auroraSkinLlmCallCounter = new Map();
 const auroraRecoContextUsedCounter = new Map();
@@ -515,6 +521,27 @@ function normalizeAuroraSkinFlowStage(stage) {
 }
 
 function normalizeAuroraSkinFlowOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'hit');
+  if (token === 'hit' || token === 'miss') return token;
+  return 'hit';
+}
+
+function normalizeAuroraIngredientsFlowStage(stage) {
+  const token = cleanMetricToken(stage, 'unknown');
+  if (
+    token === 'entry_opened' ||
+    token === 'mode_selected' ||
+    token === 'answer_served' ||
+    token === 'optin_diagnosis' ||
+    token === 'reco_optin' ||
+    token === 'unwanted_diagnosis'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeAuroraIngredientsFlowOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'hit');
   if (token === 'hit' || token === 'miss') return token;
   return 'hit';
@@ -1868,6 +1895,38 @@ function recordAuroraSkinFlowMetric({ stage, outcome, hit, delta } = {}) {
   );
 }
 
+function recordAuroraIngredientsFlowMetric({ stage, outcome, hit, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  const normalizedOutcome =
+    typeof outcome === 'string'
+      ? normalizeAuroraIngredientsFlowOutcome(outcome)
+      : normalizeAuroraIngredientsFlowOutcome(hit === false ? 'miss' : 'hit');
+  incCounter(
+    auroraIngredientsFlowCounter,
+    {
+      stage: normalizeAuroraIngredientsFlowStage(stage),
+      outcome: normalizedOutcome,
+    },
+    amount,
+  );
+}
+
+function observeAuroraIngredientsFirstAnswerLatency({ latencyMs } = {}) {
+  const latency = Number(latencyMs);
+  if (!Number.isFinite(latency) || latency < 0) return;
+  auroraIngredientsFirstAnswerLatency.count += 1;
+  auroraIngredientsFirstAnswerLatency.sum += latency;
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    if (latency <= bucket) {
+      auroraIngredientsFirstAnswerLatency.buckets.set(
+        bucket,
+        (auroraIngredientsFirstAnswerLatency.buckets.get(bucket) || 0) + 1,
+      );
+    }
+  }
+}
+
 function recordAuroraSkinAnalysisRealModel({ source, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -2606,6 +2665,20 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_flow_total counter');
   renderCounter(lines, 'aurora_skin_flow_total', auroraSkinFlowCounter);
 
+  lines.push('# HELP aurora_ingredients_flow_total Aurora ingredients query-first flow counters by stage and outcome.');
+  lines.push('# TYPE aurora_ingredients_flow_total counter');
+  renderCounter(lines, 'aurora_ingredients_flow_total', auroraIngredientsFlowCounter);
+
+  lines.push('# HELP ingredients_first_answer_latency_ms Ingredient first-answer latency measured from ui events.');
+  lines.push('# TYPE ingredients_first_answer_latency_ms histogram');
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    const le = bucket === Infinity ? '+Inf' : String(bucket);
+    const value = auroraIngredientsFirstAnswerLatency.buckets.get(bucket) || 0;
+    lines.push(`ingredients_first_answer_latency_ms_bucket{le="${le}"} ${value}`);
+  }
+  lines.push(`ingredients_first_answer_latency_ms_sum ${auroraIngredientsFirstAnswerLatency.sum}`);
+  lines.push(`ingredients_first_answer_latency_ms_count ${auroraIngredientsFirstAnswerLatency.count}`);
+
   lines.push('# HELP aurora_skin_analysis_real_model_total Total completed skin analyses grouped by detector/model source.');
   lines.push('# TYPE aurora_skin_analysis_real_model_total counter');
   renderCounter(lines, 'aurora_skin_analysis_real_model_total', auroraSkinAnalysisRealModelCounter);
@@ -2668,6 +2741,9 @@ function renderVisionMetricsPrometheus() {
   const artifactCreated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'artifact_created', outcome: 'hit' });
   const ingredientPlans = counterValueByLabels(auroraSkinFlowCounter, { stage: 'ingredient_plan', outcome: 'hit' });
   const analysisTimeoutDegraded = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_timeout_degraded', outcome: 'hit' });
+  const ingredientEntries = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'entry_opened', outcome: 'hit' });
+  const ingredientRecoOptin = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'reco_optin', outcome: 'hit' });
+  const ingredientUnwantedDiagnosis = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'unwanted_diagnosis', outcome: 'hit' });
 
   lines.push('# HELP aurora_skin_reco_generated_rate reco_generated / reco_request.');
   lines.push('# TYPE aurora_skin_reco_generated_rate gauge');
@@ -2700,6 +2776,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP aurora_skin_analysis_timeout_degraded_rate analysis_timeout_degraded / analysis_request.');
   lines.push('# TYPE aurora_skin_analysis_timeout_degraded_rate gauge');
   lines.push(`aurora_skin_analysis_timeout_degraded_rate ${analysisRequests > 0 ? analysisTimeoutDegraded / analysisRequests : 0}`);
+
+  lines.push('# HELP ingredients_unwanted_diagnosis_rate unwanted diagnosis gate responses / ingredients entries.');
+  lines.push('# TYPE ingredients_unwanted_diagnosis_rate gauge');
+  lines.push(`ingredients_unwanted_diagnosis_rate ${ingredientEntries > 0 ? ingredientUnwantedDiagnosis / ingredientEntries : 0}`);
+
+  lines.push('# HELP ingredients_to_reco_optin_rate ingredient-path reco opt-ins / ingredients entries.');
+  lines.push('# TYPE ingredients_to_reco_optin_rate gauge');
+  lines.push(`ingredients_to_reco_optin_rate ${ingredientEntries > 0 ? ingredientRecoOptin / ingredientEntries : 0}`);
 
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
@@ -2848,6 +2932,12 @@ function resetVisionMetrics() {
   actionCopyCount = 0;
   retakeAfterModulesCount = 0;
   auroraSkinFlowCounter.clear();
+  auroraIngredientsFlowCounter.clear();
+  auroraIngredientsFirstAnswerLatency.count = 0;
+  auroraIngredientsFirstAnswerLatency.sum = 0;
+  for (const key of auroraIngredientsFirstAnswerLatency.buckets.keys()) {
+    auroraIngredientsFirstAnswerLatency.buckets.set(key, 0);
+  }
   auroraSkinAnalysisRealModelCounter.clear();
   auroraSkinLlmCallCounter.clear();
   auroraRecoContextUsedCounter.clear();
@@ -2997,6 +3087,12 @@ function snapshotVisionMetrics() {
     actionCopyCount,
     retakeAfterModulesCount,
     auroraSkinFlow: Array.from(auroraSkinFlowCounter.entries()),
+    auroraIngredientsFlow: Array.from(auroraIngredientsFlowCounter.entries()),
+    auroraIngredientsFirstAnswerLatency: {
+      count: auroraIngredientsFirstAnswerLatency.count,
+      sum: auroraIngredientsFirstAnswerLatency.sum,
+      buckets: Array.from(auroraIngredientsFirstAnswerLatency.buckets.entries()),
+    },
     auroraSkinAnalysisRealModel: Array.from(auroraSkinAnalysisRealModelCounter.entries()),
     auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
     auroraRecoContextUsed: Array.from(auroraRecoContextUsedCounter.entries()),
@@ -3111,6 +3207,8 @@ module.exports = {
   recordClaimsTemplateFallback,
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
+  recordAuroraIngredientsFlowMetric,
+  observeAuroraIngredientsFirstAnswerLatency,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoContextUsed,

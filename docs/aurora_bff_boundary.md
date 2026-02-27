@@ -4,8 +4,11 @@ This document states what **pivota-agent** (Aurora BFF/Orchestrator) is responsi
 
 ## pivota-agent (must own)
 
-- **Stable external contract**: all `/v1/*` endpoints return the same envelope:
-  - `assistant_message` + `suggested_chips` + `cards` + `session_patch` + `events`
+- **Stable external contract**:
+  - `POST /v1/chat` returns ChatCards Response Schema v1:
+    - `version` + `assistant_text` + `cards` + `follow_up_questions` + `suggested_quick_replies` + `ops` + `safety` + `telemetry`
+    - plus `request_id` + `trace_id`
+  - Other `/v1/*` endpoints keep their documented response contracts (legacy envelope where applicable).
 - **Strong gates** (server-side safety net):
   - Phase 0 **Diagnosis-first**: no recommendations/offers before minimal profile
   - **Recommendation gate**: no recommendation/offer/checkout cards unless explicit trigger
@@ -18,7 +21,9 @@ This document states what **pivota-agent** (Aurora BFF/Orchestrator) is responsi
 - **Aggregation + fault tolerance**:
   - timeouts, retries, degradations, `request_id`/`trace_id`
 - **Observability**:
-  - emit `events` with: `request_id`, `trace_id`, `aurora_uid`, `brief_id`, `lang`, `trigger_source`, `state`
+  - ingest UI telemetry via `POST /v1/events`
+  - event payload carries: `request_id`, `trace_id`, `aurora_uid`, `brief_id`, `lang`, `trigger_source`, `state`
+  - includes ChatCards v1 actionability events (for example `card_impression`, `card_action_click`, `triage_stage_shown`, `triage_action_tap`, `nudge_action_tap`)
 
 ## Aurora decision system (must reuse; do NOT rewrite)
 

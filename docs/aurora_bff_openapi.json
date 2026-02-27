@@ -3,7 +3,7 @@
   "info": {
     "title": "Pivota Agent Aurora BFF",
     "version": "0.1.0",
-    "description": "BFF/Orchestrator for aurora.pivota.cc chat. All /v1 endpoints return a stable envelope: assistant_message + suggested_chips + cards + session_patch + events."
+    "description": "BFF/Orchestrator for aurora.pivota.cc chat. `POST /v1/chat` returns ChatCards Response Schema v1. Other /v1 endpoints in this document still return the legacy envelope."
   },
   "servers": [
     {
@@ -95,12 +95,140 @@
           }
         }
       },
+      "ChatCardV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "priority", "title", "tags", "sections", "actions"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["product_verdict", "compatibility", "routine", "triage", "skin_status", "effect_review", "travel", "nudge"]
+          },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "title": { "type": "string" },
+          "subtitle": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "sections": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "label"],
+              "properties": {
+                "type": { "type": "string" },
+                "label": { "type": "string" },
+                "payload": { "type": "object", "additionalProperties": true }
+              }
+            }
+          }
+        }
+      },
+      "QuickReplyV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "value": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "FollowUpQuestionV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "options", "required"],
+        "properties": {
+          "id": { "type": "string" },
+          "question": { "type": "string" },
+          "options": { "type": "array", "items": { "$ref": "#/components/schemas/QuickReplyV1" } },
+          "required": { "type": "boolean" }
+        }
+      },
+      "ThreadOpV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["op", "topic_id"],
+        "properties": {
+          "op": { "type": "string", "enum": ["thread_push", "thread_pop", "thread_update"] },
+          "topic_id": { "type": "string" },
+          "summary": { "type": "string" },
+          "timestamp_ms": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ChatCardsOpsV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["thread_ops", "profile_patch", "routine_patch", "experiment_events"],
+        "properties": {
+          "thread_ops": { "type": "array", "items": { "$ref": "#/components/schemas/ThreadOpV1" } },
+          "profile_patch": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "routine_patch": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "experiment_events": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        }
+      },
+      "ChatCardsSafetyV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["risk_level", "red_flags", "disclaimer"],
+        "properties": {
+          "risk_level": { "type": "string", "enum": ["none", "low", "medium", "high"] },
+          "red_flags": { "type": "array", "items": { "type": "string" } },
+          "disclaimer": { "type": "string" }
+        }
+      },
+      "ChatCardsTelemetryV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["intent", "intent_confidence", "entities"],
+        "properties": {
+          "intent": { "type": "string" },
+          "intent_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "entities": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        }
+      },
+      "ChatCardsResponseV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "request_id",
+          "trace_id",
+          "assistant_text",
+          "cards",
+          "follow_up_questions",
+          "suggested_quick_replies",
+          "ops",
+          "safety",
+          "telemetry"
+        ],
+        "properties": {
+          "version": { "const": "1.0" },
+          "request_id": { "type": "string" },
+          "trace_id": { "type": "string" },
+          "assistant_text": { "type": "string" },
+          "cards": { "type": "array", "maxItems": 3, "items": { "$ref": "#/components/schemas/ChatCardV1" } },
+          "follow_up_questions": { "type": "array", "maxItems": 3, "items": { "$ref": "#/components/schemas/FollowUpQuestionV1" } },
+          "suggested_quick_replies": { "type": "array", "maxItems": 8, "items": { "$ref": "#/components/schemas/QuickReplyV1" } },
+          "ops": { "$ref": "#/components/schemas/ChatCardsOpsV1" },
+          "safety": { "$ref": "#/components/schemas/ChatCardsSafetyV1" },
+          "telemetry": { "$ref": "#/components/schemas/ChatCardsTelemetryV1" }
+        }
+      },
       "UiEventV0": {
         "type": "object",
         "additionalProperties": false,
         "required": ["event_name", "brief_id", "trace_id", "timestamp"],
         "properties": {
-          "event_name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "event_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "UI event name. Common names: intent_detected, card_impression, card_action_click, triage_stage_shown, triage_action_tap, nudge_action_tap.",
+            "examples": ["card_impression", "triage_stage_shown", "nudge_action_tap"]
+          },
           "brief_id": { "type": "string", "minLength": 1, "maxLength": 120 },
           "trace_id": { "type": "string", "minLength": 1, "maxLength": 120 },
           "timestamp": { "type": "number", "minimum": 0 },
@@ -195,7 +323,7 @@
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+                "schema": { "$ref": "#/components/schemas/ChatCardsResponseV1" }
               }
             }
           }
@@ -383,7 +511,58 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/UiEventIngestV0" }
+              "schema": { "$ref": "#/components/schemas/UiEventIngestV0" },
+              "examples": {
+                "triageStageShown": {
+                  "summary": "Triage stage impression",
+                  "value": {
+                    "source": "pivota-aurora-chatbox",
+                    "events": [
+                      {
+                        "event_name": "triage_stage_shown",
+                        "brief_id": "b",
+                        "trace_id": "t",
+                        "timestamp": 1700000000000,
+                        "data": {
+                          "aurora_uid": "uid_test",
+                          "lang": "EN",
+                          "state": "IDLE_CHAT",
+                          "card_id": "triage_1",
+                          "card_position": 0,
+                          "risk_level": "high",
+                          "recovery_window_hours": 48,
+                          "red_flag_count": 2,
+                          "action_point_count": 3
+                        }
+                      }
+                    ]
+                  }
+                },
+                "nudgeActionTap": {
+                  "summary": "Nudge action click",
+                  "value": {
+                    "source": "pivota-aurora-chatbox",
+                    "events": [
+                      {
+                        "event_name": "nudge_action_tap",
+                        "brief_id": "b",
+                        "trace_id": "t",
+                        "timestamp": 1700000000001,
+                        "data": {
+                          "aurora_uid": "uid_test",
+                          "lang": "EN",
+                          "state": "IDLE_CHAT",
+                          "card_id": "nudge_1",
+                          "action_type": "save_tip",
+                          "action_label": "Save tip",
+                          "cadence_days": 7,
+                          "hint_count": 1
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
             }
           }
         },
