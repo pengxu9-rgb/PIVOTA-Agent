@@ -227,6 +227,22 @@ const MODULE_POST_VALIDATOR_YAW_BIAS_RATIO = Math.max(
   0,
   Math.min(0.18, Number(process.env.DIAG_MODULE_POST_VALIDATOR_YAW_BIAS_RATIO || 0.04)),
 );
+const DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED = parseEnvBoolean(
+  process.env.DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED,
+  true,
+);
+const DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD = parseEnvNumber(
+  process.env.DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD,
+  0.2,
+  0.01,
+  0.6,
+);
+const DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD = parseEnvNumber(
+  process.env.DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD,
+  0.12,
+  0.005,
+  0.4,
+);
 
 function clamp01(value) {
   const number = Number(value);
@@ -250,6 +266,17 @@ function normalizeQualityGrade(qualityGrade) {
   const token = String(qualityGrade || '').trim().toLowerCase();
   if (token === 'pass' || token === 'degraded' || token === 'fail') return token;
   return 'unknown';
+}
+
+function normalizeSkinmaskSource(source) {
+  const token = String(source || '').trim().toLowerCase();
+  if (token === 'onnx' || token === 'diagnosis_bbox' || token === 'none') return token;
+  return 'none';
+}
+
+function normalizeSkinmaskFallbackReason(reason) {
+  const token = String(reason || '').trim().toUpperCase();
+  return token || null;
 }
 
 function normalizeSeverity0to4(value) {
@@ -574,6 +601,35 @@ function buildSyntheticHeatmapFromBBox(bbox, { severity0to4, confidence0to1 } = 
     smoothing_hint: 'bilinear',
     generated_from: 'bbox_proxy_v1',
   };
+}
+
+function summarizeHeatmapSignal(heatmap) {
+  if (!heatmap || !heatmap.grid || !Array.isArray(heatmap.values)) {
+    return { ok: false, max: 0, p90: 0 };
+  }
+  const width = Math.max(1, Math.trunc(Number(heatmap.grid.w || 0)));
+  const height = Math.max(1, Math.trunc(Number(heatmap.grid.h || 0)));
+  const expected = width * height;
+  if (heatmap.values.length < expected) return { ok: false, max: 0, p90: 0 };
+  const values = [];
+  for (let index = 0; index < expected; index += 1) {
+    values.push(clamp01(Number(heatmap.values[index] || 0)));
+  }
+  values.sort((a, b) => a - b);
+  const max = values.length ? values[values.length - 1] : 0;
+  const p90 = values.length ? values[Math.min(values.length - 1, Math.floor(0.9 * (values.length - 1)))] : 0;
+  return {
+    ok: true,
+    max: clamp01(max),
+    p90: clamp01(p90),
+  };
+}
+
+function isLowSignalHeatmap(heatmap) {
+  if (!DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED) return false;
+  const stats = summarizeHeatmapSignal(heatmap);
+  if (!stats.ok) return false;
+  return stats.max < DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD || stats.p90 < DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD;
 }
 
 function computeBoxOverlapRatio(moduleBox, regionBox) {
@@ -901,33 +957,66 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
         if (!heatmap.ok || !heatmap.heatmap) {
           drop(heatmap.reason || 'heatmap_invalid', 'heatmap', findingId);
         } else {
-          emittedHeatmap = true;
-          const regionId = `${findingId}_heatmap`;
-          const notes = [];
-          if (heatmap.clipped) {
-            const clipReason = heatmap.clip_reason || 'heatmap_clipped';
-            notes.push(clipReason);
-            clip(clipReason, 'heatmap');
+          const lowSignalHeatmap = isLowSignalHeatmap(heatmap.heatmap);
+          if (lowSignalHeatmap && sanitizedBBoxForHeatmap) {
+            const proxyHeatmap = buildSyntheticHeatmapFromBBox(sanitizedBBoxForHeatmap, {
+              severity0to4: severity,
+              confidence0to1: confidence,
+            });
+            if (proxyHeatmap) {
+              emittedHeatmap = true;
+              const regionId = `${findingId}_heatmap_proxy`;
+              const notes = ['heatmap_from_bbox_proxy', 'heatmap_low_signal_replaced'];
+              const region = {
+                region_id: regionId,
+                type: 'heatmap',
+                coord_space: FACE_COORD_SPACE,
+                status: 'available',
+                heatmap: proxyHeatmap,
+                style,
+                notes,
+                ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+              };
+              regions.push(region);
+              regionMeta.set(regionId, {
+                issue_type: issueType,
+                severity_0_4: severity,
+                confidence_0_1: confidence,
+                region_type: 'heatmap',
+                bbox: sanitizedBBoxForHeatmap,
+                heatmap: proxyHeatmap,
+              });
+            }
           }
-          const region = {
-            region_id: regionId,
-            type: 'heatmap',
-            coord_space: FACE_COORD_SPACE,
-            status: 'available',
-            heatmap: heatmap.heatmap,
-            style,
-            ...(notes.length ? { notes } : {}),
-            ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-          };
-          regions.push(region);
-          regionMeta.set(regionId, {
-            issue_type: issueType,
-            severity_0_4: severity,
-            confidence_0_1: confidence,
-            region_type: 'heatmap',
-            bbox: rawBBox ? sanitizeBBox(rawBBox).bbox : null,
-            heatmap: heatmap.heatmap,
-          });
+          if (!emittedHeatmap) {
+            emittedHeatmap = true;
+            const regionId = `${findingId}_heatmap`;
+            const notes = [];
+            if (heatmap.clipped) {
+              const clipReason = heatmap.clip_reason || 'heatmap_clipped';
+              notes.push(clipReason);
+              clip(clipReason, 'heatmap');
+            }
+            const region = {
+              region_id: regionId,
+              type: 'heatmap',
+              coord_space: FACE_COORD_SPACE,
+              status: 'available',
+              heatmap: heatmap.heatmap,
+              style,
+              ...(notes.length ? { notes } : {}),
+              ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+            };
+            regions.push(region);
+            regionMeta.set(regionId, {
+              issue_type: issueType,
+              severity_0_4: severity,
+              confidence_0_1: confidence,
+              region_type: 'heatmap',
+              bbox: sanitizedBBoxForHeatmap,
+              heatmap: heatmap.heatmap,
+            });
+          }
         }
       }
 
@@ -3694,6 +3783,12 @@ function buildPhotoModulesCard({
   const sourcePhotoId = sourcePhoto && typeof sourcePhoto.photo_id === 'string' ? sourcePhoto.photo_id.trim() : '';
   const regionsAvailableCount = regions.filter((region) => String(region && region.status || 'available').toLowerCase() === 'available').length;
   const regionsUnavailableCount = regions.filter((region) => String(region && region.status || '').toLowerCase() === 'unavailable').length;
+  const skinmaskSource = normalizeSkinmaskSource(
+    skinMask && typeof skinMask === 'object' ? (skinMask.skinmask_source || skinMask.source) : null,
+  );
+  const skinmaskFallbackReason = normalizeSkinmaskFallbackReason(
+    skinMask && typeof skinMask === 'object' ? skinMask.skinmask_fallback_reason : null,
+  );
   const moduleOverlayDebug = {
     module_box_mode: moduleBoxDynamicDebug.module_box_mode,
     module_box_dynamic_applied: Boolean(moduleBoxDynamicDebug.module_box_dynamic_applied),
@@ -3704,6 +3799,8 @@ function buildPhotoModulesCard({
     module_box_dynamic_boxes_count: Number.isFinite(Number(moduleBoxDynamicDebug.module_box_dynamic_boxes_count))
       ? Math.max(0, Math.trunc(Number(moduleBoxDynamicDebug.module_box_dynamic_boxes_count)))
       : 0,
+    skinmask_source: skinmaskSource,
+    skinmask_fallback_reason: skinmaskFallbackReason,
     skinmask_reliable: Boolean(moduleMaskBuild.skinmask_reliable),
     degraded_reasons: Array.isArray(moduleMaskBuild.degraded_reasons) ? moduleMaskBuild.degraded_reasons.slice(0, 8) : [],
   };
@@ -3749,6 +3846,8 @@ function buildPhotoModulesCard({
       skinmask_grid: moduleMaskBuild.skinmask_grid,
       skinmask_reliable: moduleMaskBuild.skinmask_reliable,
       skinmask_positive_ratio: moduleMaskBuild.skinmask_positive_ratio,
+      skinmask_source: skinmaskSource,
+      skinmask_fallback_reason: skinmaskFallbackReason,
       face_oval_clip_enabled: moduleMaskBuild.face_oval_clip_enabled,
       face_oval_mask_source: moduleMaskBuild.face_oval_mask_source,
       face_oval_clip_fallback_modules: moduleMaskBuild.face_oval_clip_fallback_modules,

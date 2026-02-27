@@ -179,6 +179,8 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   const shineProxyHeatmap = payload.regions.find((region) => region.region_id === 'pf_shine_heatmap_proxy');
   assert.ok(shineProxyHeatmap, 'expected bbox-only shine finding to emit synthetic heatmap proxy');
   assert.equal(shineProxyHeatmap.type, 'heatmap');
+  assert.equal(Array.isArray(shineProxyHeatmap.notes), true);
+  assert.equal(shineProxyHeatmap.notes.includes('heatmap_from_bbox_proxy'), true);
 
   const regionIds = new Set(payload.regions.map((region) => region.region_id));
   for (const module of payload.modules) {
@@ -199,6 +201,8 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   }
 
   assert.ok(payload.module_overlay_debug && typeof payload.module_overlay_debug === 'object');
+  assert.ok(['onnx', 'diagnosis_bbox', 'none'].includes(String(payload.module_overlay_debug.skinmask_source || 'none')));
+  assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'skinmask_fallback_reason'));
   assert.equal(typeof payload.module_overlay_debug.module_box_dynamic_applied, 'boolean');
   assert.ok(
     payload.module_overlay_debug.module_box_dynamic_reason == null

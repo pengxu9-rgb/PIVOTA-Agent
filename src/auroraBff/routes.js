@@ -1238,6 +1238,12 @@ const DIAG_SKINMASK_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
   return Math.max(100, Math.min(15000, v));
 })();
+const DIAG_SKINMASK_BBOX_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.DIAG_SKINMASK_BBOX_FALLBACK_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const DIAG_PRODUCT_REC_MIN_CITATIONS = Math.max(
   0,
   Math.min(5, Math.trunc(Number(process.env.DIAG_PRODUCT_REC_MIN_CITATIONS || 1) || 1)),
@@ -13078,8 +13084,10 @@ function withTimeout(promise, timeoutMs, timeoutCode) {
 function normalizeSkinmaskFallbackReason(rawReason, detail) {
   const reason = String(rawReason || '').trim().toUpperCase();
   const info = String(detail || '').trim().toUpperCase();
+  if (reason === 'DISABLED') return 'DISABLED';
   if (reason.includes('TIMEOUT') || info.includes('TIMEOUT')) return 'TIMEOUT';
   if (
+    reason === 'MODEL_MISSING' ||
     reason === 'MODEL_PATH_MISSING' ||
     reason === 'ONNXRUNTIME_MISSING' ||
     reason === 'SESSION_UNAVAILABLE' ||
@@ -13090,6 +13098,37 @@ function normalizeSkinmaskFallbackReason(rawReason, detail) {
     return 'MODEL_MISSING';
   }
   return 'ONNX_FAIL';
+}
+
+function normalizeSkinmaskSource(rawSource) {
+  const token = String(rawSource || '').trim().toLowerCase();
+  if (token === 'onnx' || token === 'diagnosis_bbox' || token === 'none') return token;
+  return 'none';
+}
+
+function buildSkinMaskFromDiagnosisBBox({ diagnosisInternal, fallbackReason } = {}) {
+  if (!DIAG_SKINMASK_BBOX_FALLBACK_ENABLED) return null;
+  const internal = diagnosisInternal && typeof diagnosisInternal === 'object' ? diagnosisInternal : null;
+  const normalized = sanitizeBBoxNorm(internal && internal.skin_bbox_norm);
+  if (!normalized.ok || !normalized.bbox) return null;
+  const bboxNorm = normalized.bbox;
+  const width = clamp01Score(Number(bboxNorm.x1) - Number(bboxNorm.x0));
+  const height = clamp01Score(Number(bboxNorm.y1) - Number(bboxNorm.y0));
+  if (width <= 0.001 || height <= 0.001) return null;
+  const reason = String(fallbackReason || 'ONNX_FAIL').trim().toUpperCase() || 'ONNX_FAIL';
+  const positiveRatio = clamp01Score(width * height);
+  return {
+    ok: true,
+    skinmask_source: 'diagnosis_bbox',
+    skinmask_fallback_reason: reason,
+    bbox: {
+      x: clamp01Score(bboxNorm.x0),
+      y: clamp01Score(bboxNorm.y0),
+      w: width,
+      h: height,
+    },
+    positive_ratio: Math.round(positiveRatio * 1000) / 1000,
+  };
 }
 
 function maybeBuildPhotoModulesCardForAnalysis({
@@ -13612,19 +13651,57 @@ async function enrichPhotoModulesCardWithIngredientProductsBounded({
 }
 
 async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInternal, logger, requestId } = {}) {
-  if (!DIAG_SKINMASK_ENABLED) return null;
-  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) return null;
-  recordSkinmaskEnabled();
-  if (!DIAG_SKINMASK_MODEL_PATH) {
-    recordSkinmaskFallback({ reason: 'MODEL_MISSING' });
+  const maybeBuildFallback = ({ fallbackReason, reason, detail, message } = {}) => {
+    const normalizedReason = normalizeSkinmaskFallbackReason(fallbackReason || reason, detail);
+    const fallbackMask = buildSkinMaskFromDiagnosisBBox({
+      diagnosisInternal,
+      fallbackReason: normalizedReason,
+    });
+    if (fallbackMask) {
+      logger?.warn(
+        {
+          request_id: requestId || null,
+          fallback_reason: normalizedReason,
+          reason: reason || normalizedReason,
+          detail: detail || null,
+          skinmask_source: 'diagnosis_bbox',
+        },
+        'aurora bff: skinmask fallback using diagnosis bbox',
+      );
+      return fallbackMask;
+    }
     logger?.warn(
       {
         request_id: requestId || null,
-        reason: 'MODEL_MISSING',
+        fallback_reason: normalizedReason,
+        reason: reason || normalizedReason,
+        detail: detail || null,
+        skinmask_source: 'none',
       },
-      'aurora bff: skinmask onnx inference skipped',
+      message || 'aurora bff: skinmask unavailable',
     );
     return null;
+  };
+
+  if (!DIAG_SKINMASK_ENABLED) {
+    recordSkinmaskFallback({ reason: 'DISABLED' });
+    return maybeBuildFallback({
+      fallbackReason: 'DISABLED',
+      reason: 'DISABLED',
+      message: 'aurora bff: skinmask onnx inference disabled',
+    });
+  }
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
+    return null;
+  }
+  recordSkinmaskEnabled();
+  if (!DIAG_SKINMASK_MODEL_PATH) {
+    recordSkinmaskFallback({ reason: 'MODEL_MISSING' });
+    return maybeBuildFallback({
+      fallbackReason: 'MODEL_MISSING',
+      reason: 'MODEL_MISSING',
+      message: 'aurora bff: skinmask onnx inference skipped',
+    });
   }
 
   const inferStartedAt = process.hrtime.bigint();
@@ -13644,32 +13721,29 @@ async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInterna
     if (!inferred || !inferred.ok) {
       const fallbackReason = normalizeSkinmaskFallbackReason(inferred && inferred.reason, inferred && inferred.detail);
       recordSkinmaskFallback({ reason: fallbackReason });
-      logger?.warn(
-        {
-          request_id: requestId || null,
-          fallback_reason: fallbackReason,
-          reason: inferred && inferred.reason ? inferred.reason : 'unknown',
-          detail: inferred && inferred.detail ? inferred.detail : null,
-        },
-        'aurora bff: skinmask onnx inference skipped',
-      );
-      return null;
+      return maybeBuildFallback({
+        fallbackReason,
+        reason: inferred && inferred.reason ? inferred.reason : 'unknown',
+        detail: inferred && inferred.detail ? inferred.detail : null,
+        message: 'aurora bff: skinmask onnx inference skipped',
+      });
     }
-    return inferred;
+    const normalizedSource = normalizeSkinmaskSource(inferred && inferred.skinmask_source);
+    return {
+      ...inferred,
+      skinmask_source: normalizedSource === 'none' ? 'onnx' : normalizedSource,
+      skinmask_fallback_reason: null,
+    };
   } catch (error) {
     observeSkinmaskInferLatency({ latencyMs: computeElapsedMs(inferStartedAt) });
     const fallbackReason = normalizeSkinmaskFallbackReason(error && error.code ? error.code : null, error && error.message);
     recordSkinmaskFallback({ reason: fallbackReason });
-    logger?.warn(
-      {
-        request_id: requestId || null,
-        fallback_reason: fallbackReason,
-        reason: error && error.code ? String(error.code) : 'unknown',
-        err: error && error.message ? error.message : String(error),
-      },
-      'aurora bff: skinmask onnx inference failed',
-    );
-    return null;
+    return maybeBuildFallback({
+      fallbackReason,
+      reason: error && error.code ? String(error.code) : 'unknown',
+      detail: error && error.message ? error.message : String(error),
+      message: 'aurora bff: skinmask onnx inference failed',
+    });
   }
 }
 

@@ -240,7 +240,7 @@ function normalizeSuppressedReason(reason) {
 
 function normalizeSkinmaskFallbackReason(reason) {
   const token = cleanMetricToken(reason, 'onnx_fail').toUpperCase();
-  if (token === 'MODEL_MISSING' || token === 'TIMEOUT' || token === 'ONNX_FAIL') return token;
+  if (token === 'DISABLED' || token === 'MODEL_MISSING' || token === 'TIMEOUT' || token === 'ONNX_FAIL') return token;
   return 'ONNX_FAIL';
 }
 

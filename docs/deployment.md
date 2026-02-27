@@ -75,6 +75,35 @@ AURORA_KB_V0_DISABLE=1
 AURORA_KB_FAIL_MODE=open
 ```
 
+### Aurora Photo skinmask rollout defaults
+
+For `photo_modules_v1` circle-selection stability, use these defaults in production:
+
+```bash
+# Keep ONNX rollout decoupled from release gates.
+DIAG_SKINMASK_ENABLED=false
+
+# Always enable diagnosis bbox fallback (recommended).
+DIAG_SKINMASK_BBOX_FALLBACK_ENABLED=true
+
+# Replace low-signal issue heatmaps with bbox proxy heatmaps.
+DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED=true
+DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD=0.20
+DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD=0.12
+```
+
+When ONNX model artifact is ready in container runtime:
+
+```bash
+DIAG_SKINMASK_ENABLED=true
+DIAG_SKINMASK_MODEL_PATH=artifacts/skinmask_v2.onnx
+DIAG_SKINMASK_TIMEOUT_MS=1200
+```
+
+Post-enable verification:
+- `skinmask_enabled_total` should increase.
+- `photo_modules_v1.payload.module_overlay_debug.skinmask_source` should show `onnx` or `diagnosis_bbox`, not long-term `none`.
+
 ### Look Replicator (optional)
 
 If you are deploying this gateway to support the `pengxu9-rgb/look-replicate-share` app (large image uploads + job polling), also set:
