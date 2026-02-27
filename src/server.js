@@ -4146,6 +4146,11 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
 
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const limit = Math.min(Math.max(requestedCount * 6, 48), 320);
+  const hardBudgetMs = Math.max(
+    800,
+    Number(process.env.PROXY_SEARCH_EXTERNAL_SEED_SUPPLEMENT_BUDGET_MS || 2200),
+  );
+  const startedAtMs = Date.now();
   const brandDetection = detectBrandEntities(queryText, { candidateProducts: [] });
   const hasExplicitCategory = hasExplicitCategoryHint(queryText, null);
   const brandTerms = Array.isArray(brandDetection?.brands)
@@ -4158,7 +4163,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       : [];
   const queryVariants = Array.from(
     new Set([queryText, ...baseVariants, ...fragranceVariants].map((item) => String(item || '').trim()).filter(Boolean)),
-  ).slice(0, 8);
+  ).slice(0, 4);
   const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
   const requestHeaders = {
     ...(checkoutToken
@@ -4173,8 +4178,15 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   let upstreamStatus = 0;
   let upstreamCalls = 0;
   let rawFetchedCount = 0;
+  let budgetExhausted = false;
 
   for (const variant of queryVariants) {
+    const elapsedMs = Date.now() - startedAtMs;
+    const remainingBudgetMs = hardBudgetMs - elapsedMs;
+    if (remainingBudgetMs <= 0) {
+      budgetExhausted = true;
+      break;
+    }
     const upstreamParams = {
       merchant_id: 'external_seed',
       external_seed_only: true,
@@ -4195,7 +4207,14 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       url,
       params: upstreamParams,
       headers: requestHeaders,
-      timeout: Math.min(6500, getUpstreamTimeoutMs('find_products_multi')),
+      timeout: Math.max(
+        500,
+        Math.min(
+          remainingBudgetMs,
+          2500,
+          getUpstreamTimeoutMs('find_products_multi'),
+        ),
+      ),
       validateStatus: () => true,
     });
     upstreamCalls += 1;
@@ -4216,7 +4235,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       seenKeys.add(key);
       mergedProducts.push(product);
     }
-    if (mergedProducts.length >= Math.max(requestedCount * 3, 48)) {
+    if (mergedProducts.length >= requestedCount) {
       break;
     }
   }
@@ -4256,6 +4275,8 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       filtered_out_irrelevant_count: filteredOutIrrelevantCount,
       query_variants: queryVariants,
       upstream_status: upstreamStatus,
+      supplement_budget_ms: hardBudgetMs,
+      supplement_budget_exhausted: budgetExhausted,
     },
   };
 }
