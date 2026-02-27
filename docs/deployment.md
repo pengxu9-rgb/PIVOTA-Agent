@@ -85,6 +85,16 @@ DIAG_SKINMASK_ENABLED=true
 DIAG_SKINMASK_MODEL_PATH=artifacts/skinmask_v2.onnx
 DIAG_SKINMASK_TIMEOUT_MS=1200
 
+# If model file is not bundled, runtime can fetch it once and cache locally.
+DIAG_SKINMASK_MODEL_URL=https://github.com/yakhyo/face-parsing/releases/download/v0.0.1/resnet18.onnx
+# Optional; default resolves to DIAG_SKINMASK_MODEL_PATH (or /tmp if model path is URL)
+DIAG_SKINMASK_MODEL_CACHE_PATH=artifacts/skinmask_v2.onnx
+DIAG_SKINMASK_MODEL_DOWNLOAD_TIMEOUT_MS=8000
+DIAG_SKINMASK_MODEL_MAX_BYTES=134217728
+
+# Face-parsing class index for skin (background is class 0 in this model).
+DIAG_SKINMASK_CLASS_ID=1
+
 # Always enable diagnosis bbox fallback (recommended).
 DIAG_SKINMASK_BBOX_FALLBACK_ENABLED=true
 

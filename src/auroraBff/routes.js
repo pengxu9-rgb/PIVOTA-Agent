@@ -2,6 +2,8 @@ const axios = require('axios');
 const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
+const path = require('path');
 const { z } = require('zod');
 const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
@@ -1268,10 +1270,22 @@ const DIAG_INGREDIENT_REC = String(process.env.DIAG_INGREDIENT_REC || 'true').to
 const DIAG_PRODUCT_REC = String(process.env.DIAG_PRODUCT_REC || 'true').toLowerCase() === 'true';
 const DIAG_SKINMASK_ENABLED = String(process.env.DIAG_SKINMASK_ENABLED || 'true').toLowerCase() === 'true';
 const DIAG_SKINMASK_MODEL_PATH = String(process.env.DIAG_SKINMASK_MODEL_PATH || 'artifacts/skinmask_v2.onnx').trim();
+const DIAG_SKINMASK_MODEL_URL = String(process.env.DIAG_SKINMASK_MODEL_URL || '').trim();
+const DIAG_SKINMASK_MODEL_CACHE_PATH = String(process.env.DIAG_SKINMASK_MODEL_CACHE_PATH || '').trim();
 const DIAG_SKINMASK_TIMEOUT_MS = (() => {
   const n = Number(process.env.DIAG_SKINMASK_TIMEOUT_MS || 1200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
   return Math.max(100, Math.min(15000, v));
+})();
+const DIAG_SKINMASK_MODEL_DOWNLOAD_TIMEOUT_MS = (() => {
+  const n = Number(process.env.DIAG_SKINMASK_MODEL_DOWNLOAD_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  return Math.max(500, Math.min(60000, v));
+})();
+const DIAG_SKINMASK_MODEL_MAX_BYTES = (() => {
+  const n = Number(process.env.DIAG_SKINMASK_MODEL_MAX_BYTES || 134217728);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 134217728;
+  return Math.max(1024 * 1024, Math.min(1024 * 1024 * 512, v));
 })();
 const DIAG_SKINMASK_BBOX_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.DIAG_SKINMASK_BBOX_FALLBACK_ENABLED || 'true')
@@ -13367,6 +13381,163 @@ function buildPhotoAutoNoticeMessage({ language, failureCode }) {
   return `We couldn't analyze your photo this time (reason: ${code}). Results below are based on your answers/history only. Please re-upload and retry.`;
 }
 
+function isHttpUrlToken(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (_error) {
+    return false;
+  }
+}
+
+function resolveSkinmaskModelDownloadUrl() {
+  if (isHttpUrlToken(DIAG_SKINMASK_MODEL_URL)) return DIAG_SKINMASK_MODEL_URL;
+  if (isHttpUrlToken(DIAG_SKINMASK_MODEL_PATH)) return DIAG_SKINMASK_MODEL_PATH;
+  return null;
+}
+
+function resolveLocalSkinmaskModelPath(downloadUrl) {
+  if (DIAG_SKINMASK_MODEL_CACHE_PATH) return path.resolve(DIAG_SKINMASK_MODEL_CACHE_PATH);
+  if (DIAG_SKINMASK_MODEL_PATH && !isHttpUrlToken(DIAG_SKINMASK_MODEL_PATH)) {
+    return path.resolve(DIAG_SKINMASK_MODEL_PATH);
+  }
+  let fileName = 'skinmask_v2.onnx';
+  if (downloadUrl) {
+    try {
+      const parsed = new URL(downloadUrl);
+      const token = path.basename(parsed.pathname || '').trim();
+      if (token) fileName = token;
+    } catch (_error) {
+      // ignore parse failure and keep fallback filename
+    }
+  }
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_') || 'skinmask_v2.onnx';
+  return path.join(os.tmpdir(), 'aurora_skinmask', safeName);
+}
+
+function isExistingFile(filePath) {
+  if (!filePath) return false;
+  try {
+    const stat = fs.statSync(filePath);
+    return stat.isFile() && stat.size > 0;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function fetchSkinmaskModelBytes({ url, timeoutMs } = {}) {
+  const modelUrl = String(url || '').trim();
+  if (!modelUrl) {
+    const error = new Error('skinmask_model_url_missing');
+    error.code = 'MODEL_URL_MISSING';
+    throw error;
+  }
+  const response = await axios.get(modelUrl, {
+    responseType: 'arraybuffer',
+    timeout: timeoutMs,
+    maxContentLength: DIAG_SKINMASK_MODEL_MAX_BYTES,
+    maxBodyLength: DIAG_SKINMASK_MODEL_MAX_BYTES,
+    validateStatus(status) {
+      return Number(status) >= 200 && Number(status) < 300;
+    },
+  });
+  const bytes = Buffer.isBuffer(response && response.data) ? response.data : Buffer.from((response && response.data) || []);
+  if (!bytes.length) {
+    const error = new Error('skinmask_model_download_empty');
+    error.code = 'MODEL_DOWNLOAD_EMPTY';
+    throw error;
+  }
+  if (bytes.length > DIAG_SKINMASK_MODEL_MAX_BYTES) {
+    const error = new Error('skinmask_model_too_large');
+    error.code = 'MODEL_TOO_LARGE';
+    throw error;
+  }
+  return bytes;
+}
+
+let fetchSkinmaskModelBytesImpl = fetchSkinmaskModelBytes;
+let ensureSkinmaskModelPathPromise = null;
+let ensuredSkinmaskModelPath = null;
+
+async function ensureSkinmaskModelPathForInference({ logger, requestId } = {}) {
+  const downloadUrl = resolveSkinmaskModelDownloadUrl();
+  const localModelPath = resolveLocalSkinmaskModelPath(downloadUrl);
+  if (ensuredSkinmaskModelPath && ensuredSkinmaskModelPath === localModelPath && isExistingFile(localModelPath)) {
+    return { ok: true, modelPath: localModelPath, downloaded: false };
+  }
+  if (isExistingFile(localModelPath)) {
+    ensuredSkinmaskModelPath = localModelPath;
+    return { ok: true, modelPath: localModelPath, downloaded: false };
+  }
+  if (!downloadUrl) {
+    return {
+      ok: false,
+      reason: 'MODEL_MISSING',
+      detail: 'skinmask_model_not_found_and_model_url_not_configured',
+    };
+  }
+  if (ensureSkinmaskModelPathPromise) return ensureSkinmaskModelPathPromise;
+
+  ensureSkinmaskModelPathPromise = (async () => {
+    try {
+      const bytes = await fetchSkinmaskModelBytesImpl({
+        url: downloadUrl,
+        timeoutMs: DIAG_SKINMASK_MODEL_DOWNLOAD_TIMEOUT_MS,
+      });
+      if (!bytes || !bytes.length) {
+        return {
+          ok: false,
+          reason: 'MODEL_MISSING',
+          detail: 'skinmask_model_download_empty',
+        };
+      }
+      await fs.promises.mkdir(path.dirname(localModelPath), { recursive: true });
+      const tmpPath = `${localModelPath}.tmp-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+      try {
+        await fs.promises.writeFile(tmpPath, bytes);
+        await fs.promises.rename(tmpPath, localModelPath);
+      } finally {
+        try {
+          if (isExistingFile(tmpPath)) await fs.promises.unlink(tmpPath);
+        } catch (_error) {
+          // no-op cleanup best effort
+        }
+      }
+      ensuredSkinmaskModelPath = localModelPath;
+      logger?.info?.(
+        {
+          request_id: requestId || null,
+          model_path: localModelPath,
+          model_bytes: bytes.length,
+        },
+        'aurora bff: skinmask model downloaded for inference',
+      );
+      return { ok: true, modelPath: localModelPath, downloaded: true };
+    } catch (error) {
+      logger?.warn?.(
+        {
+          request_id: requestId || null,
+          model_path: localModelPath,
+          model_url: downloadUrl,
+          err: error && error.message ? error.message : String(error),
+          code: error && error.code ? String(error.code) : null,
+        },
+        'aurora bff: skinmask model download failed',
+      );
+      return {
+        ok: false,
+        reason: 'MODEL_MISSING',
+        detail: error && error.message ? String(error.message) : 'skinmask_model_download_failed',
+      };
+    } finally {
+      ensureSkinmaskModelPathPromise = null;
+    }
+  })();
+  return ensureSkinmaskModelPathPromise;
+}
+
 let inferSkinMaskOnFaceCropImpl = inferSkinMaskOnFaceCrop;
 
 function computeElapsedMs(startHrTime) {
@@ -14069,15 +14240,18 @@ async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInterna
     return null;
   }
   recordSkinmaskEnabled();
-  if (!DIAG_SKINMASK_MODEL_PATH) {
+  const resolvedModel = await ensureSkinmaskModelPathForInference({ logger, requestId });
+  if (!resolvedModel || !resolvedModel.ok || !resolvedModel.modelPath) {
     recordSkinmaskFallback({ reason: 'MODEL_MISSING' });
     return maybeBuildFallback({
       fallbackReason: 'MODEL_MISSING',
       reason: 'MODEL_MISSING',
+      detail: resolvedModel && resolvedModel.detail ? resolvedModel.detail : null,
       message: 'aurora bff: skinmask onnx inference skipped',
       skinmaskModelLoaded: false,
     });
   }
+  const inferenceModelPath = String(resolvedModel.modelPath || '').trim();
 
   const inferStartedAt = process.hrtime.bigint();
   try {
@@ -14086,7 +14260,7 @@ async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInterna
         inferSkinMaskOnFaceCropImpl({
           imageBuffer,
           diagnosisInternal,
-          modelPath: DIAG_SKINMASK_MODEL_PATH,
+          modelPath: inferenceModelPath,
         }),
       ),
       DIAG_SKINMASK_TIMEOUT_MS,
@@ -42541,6 +42715,7 @@ const __internal = {
   runPdpHotsetPrewarmBatch,
   resolveRecoPdpByStableIds,
   maybeInferSkinMaskForPhotoModules,
+  ensureSkinmaskModelPathForInference,
   __setResolveProductRefForTest(fn) {
     resolveProductRefDirectImpl = typeof fn === 'function' ? fn : null;
   },
@@ -42562,6 +42737,16 @@ const __internal = {
   },
   __resetInferSkinMaskOnFaceCropForTest() {
     inferSkinMaskOnFaceCropImpl = inferSkinMaskOnFaceCrop;
+  },
+  __setFetchSkinmaskModelBytesForTest(fn) {
+    fetchSkinmaskModelBytesImpl = typeof fn === 'function' ? fn : fetchSkinmaskModelBytes;
+  },
+  __resetFetchSkinmaskModelBytesForTest() {
+    fetchSkinmaskModelBytesImpl = fetchSkinmaskModelBytes;
+  },
+  __resetSkinmaskModelBootstrapForTest() {
+    ensureSkinmaskModelPathPromise = null;
+    ensuredSkinmaskModelPath = null;
   },
   __setCallDualQaProviderForTest(fn) {
     callDualQaProviderImpl = typeof fn === 'function' ? fn : callDualQaProvider;
