@@ -16,6 +16,8 @@ CURL_MAX_TIME_SEC="${CURL_MAX_TIME_SEC:-45}"
 SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg}"
 HEATMAP_LOW_SIGNAL_MAX_THRESHOLD="${HEATMAP_LOW_SIGNAL_MAX_THRESHOLD:-0.20}"
 HEATMAP_LOW_SIGNAL_P90_THRESHOLD="${HEATMAP_LOW_SIGNAL_P90_THRESHOLD:-0.12}"
+HEATMAP_PROXY_VISIBILITY_MAX_FLOOR="${HEATMAP_PROXY_VISIBILITY_MAX_FLOOR:-0.55}"
+HEATMAP_PROXY_VISIBILITY_P90_FLOOR="${HEATMAP_PROXY_VISIBILITY_P90_FLOOR:-0.18}"
 
 for required_bin in curl jq python3; do
   if ! command -v "$required_bin" >/dev/null 2>&1; then
@@ -196,6 +198,8 @@ qc_for_analysis = str(sys.argv[4] if len(sys.argv) > 4 else "").strip()
 photo_id_for_analysis = str(sys.argv[5] if len(sys.argv) > 5 else "").strip()
 heatmap_low_signal_max_threshold = float(os.environ.get("HEATMAP_LOW_SIGNAL_MAX_THRESHOLD", "0.20"))
 heatmap_low_signal_p90_threshold = float(os.environ.get("HEATMAP_LOW_SIGNAL_P90_THRESHOLD", "0.12"))
+heatmap_proxy_visibility_max_floor = float(os.environ.get("HEATMAP_PROXY_VISIBILITY_MAX_FLOOR", "0.55"))
+heatmap_proxy_visibility_p90_floor = float(os.environ.get("HEATMAP_PROXY_VISIBILITY_P90_FLOOR", "0.18"))
 data = json.loads(src.read_text(encoding="utf-8"))
 cards = data.get("cards") or []
 if any(
@@ -261,6 +265,9 @@ else:
         "skinmask_source",
         "skinmask_fallback_reason",
         "skinmask_reliable",
+        "onnx_infer_ms",
+        "skinmask_model_loaded",
+        "source_confidence_bucket",
     )
     for key in required_overlay_keys:
         if key not in module_overlay_debug:
@@ -268,8 +275,11 @@ else:
     overlay_source = str(module_overlay_debug.get("skinmask_source") or "").strip().lower() or "none"
     if overlay_source not in {"onnx", "diagnosis_bbox", "none"}:
         raise AssertionError(f"invalid module_overlay_debug.skinmask_source: {overlay_source!r}")
-    if overlay_source == "none" and bool(module_overlay_debug.get("module_box_dynamic_applied")) is False:
-        raise AssertionError("module overlay still unavailable: skinmask_source=none and module_box_dynamic_applied=false")
+    if overlay_source == "none":
+        raise AssertionError("module overlay unavailable: skinmask_source must not be none")
+    source_confidence_bucket = str(module_overlay_debug.get("source_confidence_bucket") or "").strip().lower()
+    if source_confidence_bucket not in {"low", "medium", "high"}:
+        raise AssertionError(f"invalid module_overlay_debug.source_confidence_bucket: {source_confidence_bucket!r}")
 
     def heatmap_signal_stats(values):
         if not values:
@@ -308,6 +318,15 @@ else:
             for value in values:
                 if not (0.0 <= float(value) <= 1.0):
                     raise AssertionError("heatmap values must be in [0,1]")
+            signal_stats = region.get("signal_stats")
+            if signal_stats:
+                signal_max = float(signal_stats.get("max") or 0.0)
+                signal_p90 = float(signal_stats.get("p90") or 0.0)
+                signal_source = str(signal_stats.get("source") or "").strip().lower()
+                if signal_source not in {"raw", "proxy"}:
+                    raise AssertionError(f"signal_stats.source must be raw/proxy, got {signal_source!r}")
+                if signal_max < 0 or signal_max > 1 or signal_p90 < 0 or signal_p90 > 1:
+                    raise AssertionError(f"signal_stats out of range: max={signal_max} p90={signal_p90}")
     if available_calculated != regions_available_count:
         raise AssertionError("regions_available_count does not match region statuses")
     if unavailable_calculated != regions_unavailable_count:
@@ -329,16 +348,27 @@ else:
                     heatmap = region.get("heatmap") or {}
                     values = heatmap.get("values") or []
                     stats = heatmap_signal_stats(values)
-                    if stats["max"] < heatmap_low_signal_max_threshold:
-                        raise AssertionError(
-                            f"issue evidence heatmap max is low-signal: {evidence_id} max={stats['max']:.3f} p90={stats['p90']:.3f}"
-                        )
-                    if stats["p90"] < heatmap_low_signal_p90_threshold:
+                    signal_stats = region.get("signal_stats") or {}
+                    signal_source = str(signal_stats.get("source") or "").strip().lower() or "raw"
+                    signal_max = float(signal_stats.get("max") or stats["max"])
+                    signal_p90 = float(signal_stats.get("p90") or stats["p90"])
+                    if signal_source == "proxy":
+                        if signal_max < heatmap_proxy_visibility_max_floor or signal_p90 < heatmap_proxy_visibility_p90_floor:
+                            raise AssertionError(
+                                f"proxy evidence heatmap below visibility floor: {evidence_id} max={signal_max:.3f} p90={signal_p90:.3f}"
+                            )
+                    else:
+                        if signal_max < heatmap_low_signal_max_threshold or signal_p90 < heatmap_low_signal_p90_threshold:
+                            raise AssertionError(
+                                f"raw evidence heatmap is low-signal and should be replaced: {evidence_id} max={signal_max:.3f} p90={signal_p90:.3f}"
+                            )
+                    if signal_p90 < heatmap_low_signal_p90_threshold:
                         low_p90_issue_evidence.append(
                             {
                                 "region_id": evidence_id,
-                                "max": round(float(stats["max"]), 4),
-                                "p90": round(float(stats["p90"]), 4),
+                                "source": signal_source,
+                                "max": round(float(signal_max), 4),
+                                "p90": round(float(signal_p90), 4),
                             }
                         )
                 elif region_type not in {"bbox", "polygon"}:

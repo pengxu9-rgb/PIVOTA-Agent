@@ -243,6 +243,18 @@ const DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD = parseEnvNumber(
   0.005,
   0.4,
 );
+const DIAG_HEATMAP_PROXY_VISIBILITY_MAX_FLOOR = parseEnvNumber(
+  process.env.DIAG_HEATMAP_PROXY_VISIBILITY_MAX_FLOOR,
+  0.55,
+  0.2,
+  0.95,
+);
+const DIAG_HEATMAP_PROXY_VISIBILITY_P90_FLOOR = parseEnvNumber(
+  process.env.DIAG_HEATMAP_PROXY_VISIBILITY_P90_FLOOR,
+  0.18,
+  0.05,
+  0.7,
+);
 const PHOTO_MODULES_TOP_ACTIONS_LIMIT = Math.max(
   1,
   Math.min(6, Math.trunc(Number(process.env.PHOTO_MODULES_TOP_ACTIONS_LIMIT || 3) || 3)),
@@ -306,6 +318,15 @@ function confidenceBucketFromValue(confidence0to1) {
   if (confidence < PHOTO_MODULES_CONFIDENCE_LOW_THRESHOLD) return 'low';
   if (confidence < PHOTO_MODULES_CONFIDENCE_MEDIUM_THRESHOLD) return 'medium';
   return 'high';
+}
+
+function resolveSkinmaskSourceConfidenceBucket({ skinmaskSource, skinmaskReliable, skinmaskFallbackReason } = {}) {
+  const source = normalizeSkinmaskSource(skinmaskSource);
+  if (source === 'onnx') return skinmaskReliable ? 'high' : 'medium';
+  if (source === 'diagnosis_bbox') return skinmaskReliable ? 'medium' : 'low';
+  const fallbackReason = String(skinmaskFallbackReason || '').trim().toUpperCase();
+  if (fallbackReason === 'MODEL_MISSING' || fallbackReason === 'DISABLED') return 'low';
+  return 'low';
 }
 
 function normalizeStringList(values, max = 6) {
@@ -858,14 +879,14 @@ function buildSyntheticHeatmapFromBBox(bbox, { severity0to4, confidence0to1 } = 
     }
   }
 
-  return {
+  return enforceProxyHeatmapVisibilityFloor({
     coord_space: FACE_COORD_SPACE,
     grid: { w: gridW, h: gridH },
     values,
     value_range: { min: 0, max: 1 },
     smoothing_hint: 'bilinear',
     generated_from: 'bbox_proxy_v1',
-  };
+  });
 }
 
 function summarizeHeatmapSignal(heatmap) {
@@ -887,6 +908,67 @@ function summarizeHeatmapSignal(heatmap) {
     ok: true,
     max: clamp01(max),
     p90: clamp01(p90),
+  };
+}
+
+function buildRegionSignalStats(heatmap, source) {
+  const stats = summarizeHeatmapSignal(heatmap);
+  if (!stats.ok) return null;
+  const normalizedSource = String(source || '').trim().toLowerCase() === 'proxy' ? 'proxy' : 'raw';
+  return {
+    max: round3(stats.max),
+    p90: round3(stats.p90),
+    source: normalizedSource,
+  };
+}
+
+function enforceProxyHeatmapVisibilityFloor(heatmap) {
+  if (!heatmap || !heatmap.grid || !Array.isArray(heatmap.values)) return heatmap;
+  const targetMax = clamp01(DIAG_HEATMAP_PROXY_VISIBILITY_MAX_FLOOR);
+  const targetP90 = clamp01(Math.min(targetMax, DIAG_HEATMAP_PROXY_VISIBILITY_P90_FLOOR));
+  const values = heatmap.values.map((value) => clamp01(Number(value)));
+  if (!values.length) return heatmap;
+
+  const buildHeatmap = (nextValues) => ({
+    ...heatmap,
+    values: nextValues,
+  });
+
+  let nextValues = values.slice();
+  let stats = summarizeHeatmapSignal(buildHeatmap(nextValues));
+  let changed = false;
+
+  if (stats.ok && stats.max > 0 && stats.max < targetMax) {
+    const scale = targetMax / Math.max(0.001, stats.max);
+    nextValues = nextValues.map((value) => clamp01(value * scale));
+    stats = summarizeHeatmapSignal(buildHeatmap(nextValues));
+    changed = true;
+  }
+
+  if (stats.ok && stats.p90 < targetP90) {
+    const sortedIndexes = nextValues
+      .map((value, index) => ({ value, index }))
+      .sort((left, right) => left.value - right.value);
+    const start = Math.max(0, Math.floor(0.9 * (sortedIndexes.length - 1)));
+    for (let i = start; i < sortedIndexes.length; i += 1) {
+      const idx = sortedIndexes[i].index;
+      if (nextValues[idx] < targetP90) nextValues[idx] = targetP90;
+    }
+    stats = summarizeHeatmapSignal(buildHeatmap(nextValues));
+    changed = true;
+  }
+
+  if (stats.ok && stats.max > 0 && stats.max < targetMax) {
+    const scale = targetMax / Math.max(0.001, stats.max);
+    nextValues = nextValues.map((value) => clamp01(value * scale));
+    changed = true;
+  }
+
+  if (!changed) return heatmap;
+  return {
+    ...heatmap,
+    values: nextValues.map((value) => round3(clamp01(value))),
+    visibility_floor_applied: true,
   };
 }
 
@@ -1229,6 +1311,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
               confidence0to1: confidence,
             });
             if (proxyHeatmap) {
+              const signalStats = buildRegionSignalStats(proxyHeatmap, 'proxy');
               emittedHeatmap = true;
               const regionId = `${findingId}_heatmap_proxy`;
               const notes = ['heatmap_from_bbox_proxy', 'heatmap_low_signal_replaced'];
@@ -1240,6 +1323,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
                 heatmap: proxyHeatmap,
                 style,
                 notes,
+                ...(signalStats ? { signal_stats: signalStats } : {}),
                 ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
               };
               regions.push(region);
@@ -1250,10 +1334,12 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
                 region_type: 'heatmap',
                 bbox: sanitizedBBoxForHeatmap,
                 heatmap: proxyHeatmap,
+                signal_stats: signalStats,
               });
             }
           }
           if (!emittedHeatmap) {
+            const signalStats = buildRegionSignalStats(heatmap.heatmap, 'raw');
             emittedHeatmap = true;
             const regionId = `${findingId}_heatmap`;
             const notes = [];
@@ -1269,6 +1355,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
               status: 'available',
               heatmap: heatmap.heatmap,
               style,
+              ...(signalStats ? { signal_stats: signalStats } : {}),
               ...(notes.length ? { notes } : {}),
               ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
             };
@@ -1280,6 +1367,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
               region_type: 'heatmap',
               bbox: sanitizedBBoxForHeatmap,
               heatmap: heatmap.heatmap,
+              signal_stats: signalStats,
             });
           }
         }
@@ -1291,6 +1379,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
           confidence0to1: confidence,
         });
         if (syntheticHeatmap) {
+          const signalStats = buildRegionSignalStats(syntheticHeatmap, 'proxy');
           emittedHeatmap = true;
           const regionId = `${findingId}_heatmap_proxy`;
           const notes = ['heatmap_from_bbox_proxy'];
@@ -1302,6 +1391,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
             heatmap: syntheticHeatmap,
             style,
             notes,
+            ...(signalStats ? { signal_stats: signalStats } : {}),
             ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
           };
           regions.push(region);
@@ -1312,6 +1402,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
             region_type: 'heatmap',
             bbox: sanitizedBBoxForHeatmap,
             heatmap: syntheticHeatmap,
+            signal_stats: signalStats,
           });
         }
       }
@@ -1385,6 +1476,19 @@ function moduleContribution({ moduleBox, region, meta } = {}) {
   };
 }
 
+function regionVisibilityScoreFromMeta(meta) {
+  if (!meta || typeof meta !== 'object') return 0;
+  const stats = meta.signal_stats && typeof meta.signal_stats === 'object' ? meta.signal_stats : null;
+  if (stats) {
+    const max = clamp01(Number(stats.max));
+    const p90 = clamp01(Number(stats.p90));
+    const source = String(stats.source || '').trim().toLowerCase();
+    const proxyBoost = source === 'proxy' ? 0.02 : 0;
+    return clamp01(max * 0.58 + p90 * 0.42 + proxyBoost);
+  }
+  return clamp01(normalizeSeverity0to4(meta.severity_0_4) / 4);
+}
+
 function buildModuleIssues({
   moduleId,
   moduleBox,
@@ -1453,6 +1557,10 @@ function buildModuleIssues({
     const evidenceRows = list
       .slice()
       .sort((a, b) => {
+        const visibilityDiff =
+          regionVisibilityScoreFromMeta(regionMeta.get(b.region_id)) -
+          regionVisibilityScoreFromMeta(regionMeta.get(a.region_id));
+        if (Math.abs(visibilityDiff) > 1e-6) return visibilityDiff;
         const overlapDiff = b.overlap - a.overlap;
         if (Math.abs(overlapDiff) > 1e-6) return overlapDiff;
         const rankDiff =
@@ -4086,6 +4194,17 @@ function buildPhotoModulesCard({
   const skinmaskFallbackReason = normalizeSkinmaskFallbackReason(
     skinMask && typeof skinMask === 'object' ? skinMask.skinmask_fallback_reason : null,
   );
+  const onnxInferMs = Number.isFinite(Number(skinMask && skinMask.onnx_infer_ms))
+    ? Number(skinMask.onnx_infer_ms)
+    : null;
+  const skinmaskModelLoaded = typeof (skinMask && skinMask.skinmask_model_loaded) === 'boolean'
+    ? Boolean(skinMask.skinmask_model_loaded)
+    : null;
+  const sourceConfidenceBucket = resolveSkinmaskSourceConfidenceBucket({
+    skinmaskSource,
+    skinmaskReliable: moduleMaskBuild.skinmask_reliable,
+    skinmaskFallbackReason,
+  });
   const moduleOverlayDebug = {
     module_box_mode: moduleBoxDynamicDebug.module_box_mode,
     module_box_dynamic_applied: Boolean(moduleBoxDynamicDebug.module_box_dynamic_applied),
@@ -4099,6 +4218,9 @@ function buildPhotoModulesCard({
     skinmask_source: skinmaskSource,
     skinmask_fallback_reason: skinmaskFallbackReason,
     skinmask_reliable: Boolean(moduleMaskBuild.skinmask_reliable),
+    onnx_infer_ms: onnxInferMs,
+    skinmask_model_loaded: skinmaskModelLoaded,
+    source_confidence_bucket: sourceConfidenceBucket,
     degraded_reasons: Array.isArray(moduleMaskBuild.degraded_reasons) ? moduleMaskBuild.degraded_reasons.slice(0, 8) : [],
   };
   const summaryV1 = buildSummaryV1(moduleMaskBuild.modules);
@@ -4147,6 +4269,9 @@ function buildPhotoModulesCard({
       skinmask_positive_ratio: moduleMaskBuild.skinmask_positive_ratio,
       skinmask_source: skinmaskSource,
       skinmask_fallback_reason: skinmaskFallbackReason,
+      onnx_infer_ms: onnxInferMs,
+      skinmask_model_loaded: skinmaskModelLoaded,
+      source_confidence_bucket: sourceConfidenceBucket,
       face_oval_clip_enabled: moduleMaskBuild.face_oval_clip_enabled,
       face_oval_mask_source: moduleMaskBuild.face_oval_mask_source,
       face_oval_clip_fallback_modules: moduleMaskBuild.face_oval_clip_fallback_modules,

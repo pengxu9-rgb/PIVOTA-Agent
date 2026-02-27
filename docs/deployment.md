@@ -80,8 +80,10 @@ AURORA_KB_FAIL_MODE=open
 For `photo_modules_v1` circle-selection stability, use these defaults in production:
 
 ```bash
-# Keep ONNX rollout decoupled from release gates.
-DIAG_SKINMASK_ENABLED=false
+# ONNX first-path for skinmask in production.
+DIAG_SKINMASK_ENABLED=true
+DIAG_SKINMASK_MODEL_PATH=artifacts/skinmask_v2.onnx
+DIAG_SKINMASK_TIMEOUT_MS=1200
 
 # Always enable diagnosis bbox fallback (recommended).
 DIAG_SKINMASK_BBOX_FALLBACK_ENABLED=true
@@ -90,14 +92,8 @@ DIAG_SKINMASK_BBOX_FALLBACK_ENABLED=true
 DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED=true
 DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD=0.20
 DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD=0.12
-```
-
-When ONNX model artifact is ready in container runtime:
-
-```bash
-DIAG_SKINMASK_ENABLED=true
-DIAG_SKINMASK_MODEL_PATH=artifacts/skinmask_v2.onnx
-DIAG_SKINMASK_TIMEOUT_MS=1200
+DIAG_HEATMAP_PROXY_VISIBILITY_MAX_FLOOR=0.55
+DIAG_HEATMAP_PROXY_VISIBILITY_P90_FLOOR=0.18
 ```
 
 Post-enable verification:

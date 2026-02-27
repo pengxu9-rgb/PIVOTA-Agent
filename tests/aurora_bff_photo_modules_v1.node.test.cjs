@@ -63,6 +63,19 @@ function makeHeatmapValues(w, h) {
   return values;
 }
 
+function summarizeHeatmap(values) {
+  const normalized = Array.isArray(values)
+    ? values.map((value) => Math.max(0, Math.min(1, Number(value) || 0)))
+    : [];
+  if (!normalized.length) return { max: 0, p90: 0 };
+  normalized.sort((a, b) => a - b);
+  const p90Index = Math.min(normalized.length - 1, Math.floor(0.9 * (normalized.length - 1)));
+  return {
+    max: normalized[normalized.length - 1],
+    p90: normalized[p90Index],
+  };
+}
+
 function makeAnalysisFixture() {
   return {
     photo_findings: [
@@ -181,6 +194,10 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   assert.equal(shineProxyHeatmap.type, 'heatmap');
   assert.equal(Array.isArray(shineProxyHeatmap.notes), true);
   assert.equal(shineProxyHeatmap.notes.includes('heatmap_from_bbox_proxy'), true);
+  assert.ok(shineProxyHeatmap.signal_stats && typeof shineProxyHeatmap.signal_stats === 'object');
+  assert.equal(String(shineProxyHeatmap.signal_stats.source), 'proxy');
+  assert.ok(Number(shineProxyHeatmap.signal_stats.max) >= 0.55);
+  assert.ok(Number(shineProxyHeatmap.signal_stats.p90) >= 0.18);
 
   const regionIds = new Set(payload.regions.map((region) => region.region_id));
   for (const module of payload.modules) {
@@ -223,6 +240,9 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   assert.ok(payload.module_overlay_debug && typeof payload.module_overlay_debug === 'object');
   assert.ok(['onnx', 'diagnosis_bbox', 'none'].includes(String(payload.module_overlay_debug.skinmask_source || 'none')));
   assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'skinmask_fallback_reason'));
+  assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'onnx_infer_ms'));
+  assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'skinmask_model_loaded'));
+  assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'source_confidence_bucket'));
   assert.equal(typeof payload.module_overlay_debug.module_box_dynamic_applied, 'boolean');
   assert.ok(
     payload.module_overlay_debug.module_box_dynamic_reason == null
@@ -232,6 +252,15 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
     payload.module_overlay_debug.module_box_dynamic_score == null
       || Number.isFinite(Number(payload.module_overlay_debug.module_box_dynamic_score)),
   );
+  assert.ok(
+    payload.module_overlay_debug.onnx_infer_ms == null
+      || Number.isFinite(Number(payload.module_overlay_debug.onnx_infer_ms)),
+  );
+  assert.ok(
+    payload.module_overlay_debug.skinmask_model_loaded == null
+      || typeof payload.module_overlay_debug.skinmask_model_loaded === 'boolean',
+  );
+  assert.ok(['low', 'medium', 'high'].includes(String(payload.module_overlay_debug.source_confidence_bucket || '')));
 
   const serialized = JSON.stringify(payload).toLowerCase();
   assert.equal(serialized.includes('overlay_url'), false);
@@ -297,7 +326,14 @@ test('photo modules card: keeps heatmap evidence when bbox overlaps but heatmap 
 
   assert.ok(built && built.card && built.card.payload);
   const regions = Array.isArray(built.card.payload.regions) ? built.card.payload.regions : [];
-  assert.equal(regions.some((region) => region.region_id === 'pf_heatmap_weak_heatmap'), true);
+  const weakProxy = regions.find((region) => region.region_id === 'pf_heatmap_weak_heatmap_proxy');
+  assert.ok(weakProxy, 'weak heatmap should be replaced by proxy');
+  assert.ok(Array.isArray(weakProxy.notes) && weakProxy.notes.includes('heatmap_low_signal_replaced'));
+  assert.ok(weakProxy.signal_stats && typeof weakProxy.signal_stats === 'object');
+  assert.equal(String(weakProxy.signal_stats.source || ''), 'proxy');
+  const weakProxyStats = summarizeHeatmap(weakProxy.heatmap && weakProxy.heatmap.values);
+  assert.ok(weakProxyStats.max >= 0.55);
+  assert.ok(weakProxyStats.p90 >= 0.18);
 
   const modules = Array.isArray(built.card.payload.modules) ? built.card.payload.modules : [];
   const shineIssues = modules
@@ -352,10 +388,19 @@ test('photo modules card: prefers polygon from finding geometry over bbox/heatma
   const findingRegions = regions.filter((region) => String(region.region_id || '').startsWith('pf_poly_first_'));
   assert.equal(findingRegions.length >= 1, true);
   assert.equal(findingRegions.some((region) => region.type === 'polygon'), true);
-  assert.equal(findingRegions.some((region) => region.type === 'bbox'), false);
+  assert.equal(findingRegions.some((region) => region.type === 'heatmap'), true);
+  const relatedIssue = (built.card.payload.modules || [])
+    .flatMap((moduleRow) => (Array.isArray(moduleRow.issues) ? moduleRow.issues : []))
+    .find((issue) => issue.issue_type === 'redness');
+  assert.ok(relatedIssue && Array.isArray(relatedIssue.evidence_region_ids));
+  assert.equal(
+    relatedIssue.evidence_region_ids.some((regionId) => String(regionId).includes('_bbox')),
+    false,
+    'evidence should prioritize visible heatmap/polygon over bbox fallback',
+  );
 });
 
-test('photo modules card: heatmap contour fallback emits polygon with fallback notes when polygon is missing', () => {
+test('photo modules card: heatmap-only finding emits raw heatmap with signal stats when polygon is missing', () => {
   const built = buildPhotoModulesCard({
     requestId: 'req_photo_modules_contour_fallback',
     analysis: {
@@ -385,15 +430,12 @@ test('photo modules card: heatmap contour fallback emits polygon with fallback n
   assert.ok(built && built.card && built.card.payload);
   const contourRegion = (built.card.payload.regions || []).find((region) => String(region.region_id || '').startsWith('pf_contour_'));
   assert.ok(contourRegion);
-  assert.equal(contourRegion.type, 'polygon');
-  assert.equal(Array.isArray(contourRegion.notes), true);
-  const notesText = (contourRegion.notes || []).join('|');
-  assert.equal(notesText.includes('fallback:no_polygon'), true);
-  assert.equal(notesText.includes('fallback:contour_from_heatmap'), true);
-  assert.equal(notesText.includes('contour_t='), true);
+  assert.equal(contourRegion.type, 'heatmap');
+  assert.ok(contourRegion.signal_stats && typeof contourRegion.signal_stats === 'object');
+  assert.equal(String(contourRegion.signal_stats.source || ''), 'raw');
 });
 
-test('photo modules card: bbox fallback emits fallback_reason when contour extraction fails', () => {
+test('photo modules card: low-signal heatmap + bbox emits proxy heatmap replacement notes', () => {
   const built = buildPhotoModulesCard({
     requestId: 'req_photo_modules_bbox_fallback',
     analysis: {
@@ -422,11 +464,12 @@ test('photo modules card: bbox fallback emits fallback_reason when contour extra
   });
 
   assert.ok(built && built.card && built.card.payload);
-  const bboxRegion = (built.card.payload.regions || []).find((region) => String(region.region_id || '').startsWith('pf_bbox_fallback_'));
-  assert.ok(bboxRegion);
-  assert.equal(bboxRegion.type, 'bbox');
-  const notesText = Array.isArray(bboxRegion.notes) ? bboxRegion.notes.join('|') : '';
-  assert.equal(notesText.includes('fallback:bbox_only'), true);
+  const proxyRegion = (built.card.payload.regions || []).find((region) => String(region.region_id || '') === 'pf_bbox_fallback_heatmap_proxy');
+  assert.ok(proxyRegion);
+  assert.equal(proxyRegion.type, 'heatmap');
+  const notesText = Array.isArray(proxyRegion.notes) ? proxyRegion.notes.join('|') : '';
+  assert.equal(notesText.includes('heatmap_from_bbox_proxy'), true);
+  assert.equal(notesText.includes('heatmap_low_signal_replaced'), true);
 });
 
 test('routes helper: flag off does not emit card, flag on emits and records metrics', () =>
