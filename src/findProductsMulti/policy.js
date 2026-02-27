@@ -2679,9 +2679,9 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   let queryClass = inferQueryClassFromIntentAndQuery(intent, latestUserQuery);
   if (
     brandQueryWithoutCategory &&
-    !['mission', 'scenario', 'gift', 'non_shopping'].includes(String(queryClass || ''))
+    (!queryClass || ['lookup', 'attribute'].includes(String(queryClass || '')))
   ) {
-    queryClass = 'lookup';
+    queryClass = 'exploratory';
   }
   const ambiguityScorePre = computeAmbiguityScorePre(intent, queryClass);
   const associationPlan = SEARCH_SCENARIO_ASSOCIATION_ENABLED

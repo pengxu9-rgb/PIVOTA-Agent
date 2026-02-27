@@ -3540,10 +3540,37 @@ function buildFallbackCandidateText(product) {
     product.brand,
     product.vendor,
     product.product_name,
+    product.description,
+    product.product_type,
+    product.category,
+    product.external_domain,
+    product.external_url,
+    product.canonical_url,
+    product.destination_url,
   ]
     .map((v) => String(v || '').trim())
     .filter(Boolean);
   return normalizeSearchTextForMatch(parts.join(' '));
+}
+
+function hasBrandTermMatch(candidateText, brandTerm) {
+  const normalizedCandidate = normalizeSearchTextForMatch(candidateText);
+  const normalizedTerm = normalizeSearchTextForMatch(brandTerm);
+  if (!normalizedCandidate || !normalizedTerm) return false;
+  if (normalizedCandidate.includes(normalizedTerm)) return true;
+  const compactTerm = normalizedTerm.replace(/\s+/g, '');
+  const compactCandidate = normalizedCandidate.replace(/\s+/g, '');
+  if (compactTerm && compactCandidate.includes(compactTerm)) return true;
+  const rawTokens = tokenizeSearchTextForMatch(normalizedTerm);
+  const coreTokens = rawTokens.filter(
+    (token) =>
+      token &&
+      !['beauty', 'cosmetics', 'cosmetic', 'fragrance', 'perfume', 'parfum', 'makeup'].includes(token),
+  );
+  const tokens = coreTokens.length > 0 ? coreTokens : rawTokens;
+  if (!tokens.length) return false;
+  if (tokens.length === 1) return normalizedCandidate.includes(tokens[0]);
+  return tokens.every((token) => normalizedCandidate.includes(token));
 }
 
 const LOOKUP_EQUIVALENCE_FAMILIES = [
@@ -3795,7 +3822,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
         .filter((term) => term && term.length >= 2)
     : [];
   if (brandTerms.length > 0) {
-    const brandMatched = brandTerms.some((term) => candidateText.includes(term));
+    const brandMatched = brandTerms.some((term) => hasBrandTermMatch(candidateText, term));
     if (!brandMatched) return false;
   }
 
@@ -14634,9 +14661,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
           let effectiveCacheHit = effectiveCacheHitBase;
           const normalizedSeedStrategyForCache = String(
-            queryParams?.external_seed_strategy ||
-              queryParams?.externalSeedStrategy ||
-              (isCatalogGuardSource(source) ? 'unified_relevance' : 'legacy'),
+            firstQueryParamValue(
+              search?.external_seed_strategy ||
+                search?.externalSeedStrategy ||
+                payload?.search?.external_seed_strategy ||
+                payload?.search?.externalSeedStrategy,
+            ) || (isCatalogGuardSource(source) ? 'unified_relevance' : 'legacy'),
           )
             .trim()
             .toLowerCase();
