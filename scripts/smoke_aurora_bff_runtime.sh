@@ -124,6 +124,7 @@ printf "%s\n" "$skin_json" | jq_assert "analysis_story_v2 has ui_card_v1" '.card
 printf "%s\n" "$skin_json" | jq_assert "analysis field_missing is array" '((.cards[]|select(.type=="analysis_summary")|.field_missing)|type) == "array"'
 printf "%s\n" "$skin_json" | jq_assert "analysis has 1+ features" '(.cards[]|select(.type=="analysis_summary")|.payload.analysis.features|length) >= 1'
 printf "%s\n" "$skin_json" | jq_assert "analysis has strategy" '((.cards[]|select(.type=="analysis_summary")|.payload.analysis.strategy)//"") | length > 0'
+printf "%s\n" "$skin_json" | jq_assert "analysis suppresses passive pregnancy confidence card" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="pregnancy_optional_profile")] | length) == 0'
 
 say "product analyze (Nivea Creme)"
 started_at_before_analyze="$(health_started_at)"
@@ -260,7 +261,23 @@ printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell (direct or com
     // 0
   ) >= 1
 '
-printf "%s\n" "$chat_json" | jq_assert "chat optional safety advisory (if present) is non-blocking" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="safety_optional_profile_missing") | .payload.non_blocking] | if length==0 then true else all(. == true) end)'
+printf "%s\n" "$chat_json" | jq_assert "chat passive advisory cards are suppressed" '
+  ([.cards[]? | select(.type=="confidence_notice" and (.payload.reason=="safety_optional_profile_missing" or .payload.reason=="gate_advisory" or .payload.reason=="pregnancy_optional_profile"))] | length) == 0
+'
+printf "%s\n" "$chat_json" | jq_assert "chat passive-gate meta is present when advisory events exist" '
+  if ((.events // []) | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
+    ((.session_patch.meta.passive_gate_suppressed // false) == true)
+  else
+    true
+  end
+'
+printf "%s\n" "$chat_json" | jq_assert "chat suppressed_gate_ids is present when advisory events exist" '
+  if ((.events // []) | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
+    ((.session_patch.meta.suppressed_gate_ids // []) | type=="array") and ((.session_patch.meta.suppressed_gate_ids // []) | length >= 1)
+  else
+    true
+  end
+'
 printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '((.events // []) | any(.event_name=="safety_gate_require_info")) | not'
 
 say "chat follow-up alternatives (goal+anchor should stay anchored)"

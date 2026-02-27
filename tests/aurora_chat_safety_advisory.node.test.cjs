@@ -130,8 +130,11 @@ test('/v1/chat conflict: missing pregnancy defaults to not_pregnant without bloc
         const safetyNotice = cards.find(
           (c) => c && c.type === 'confidence_notice' && c.payload && c.payload.reason === 'safety_optional_profile_missing',
         );
-        if (safetyNotice) assert.equal(safetyNotice?.payload?.non_blocking, true);
+        assert.equal(Boolean(safetyNotice), false);
         assert.equal(resp.body?.session_patch?.meta?.safety_gate_mode, 'advisory_only_v1');
+        assert.equal(resp.body?.session_patch?.meta?.passive_gate_suppressed, true);
+        assert.equal(Array.isArray(resp.body?.session_patch?.meta?.suppressed_gate_ids), true);
+        assert.equal(resp.body?.session_patch?.meta?.suppressed_gate_ids?.includes('safety_optional_profile_missing'), true);
       } finally {
         delete require.cache[moduleId];
       }

@@ -198,6 +198,12 @@ heatmap_low_signal_max_threshold = float(os.environ.get("HEATMAP_LOW_SIGNAL_MAX_
 heatmap_low_signal_p90_threshold = float(os.environ.get("HEATMAP_LOW_SIGNAL_P90_THRESHOLD", "0.12"))
 data = json.loads(src.read_text(encoding="utf-8"))
 cards = data.get("cards") or []
+if any(
+    (card or {}).get("type") == "confidence_notice"
+    and str(((card or {}).get("payload") or {}).get("reason") or "").strip().lower() == "pregnancy_optional_profile"
+    for card in cards
+):
+    raise AssertionError("passive pregnancy_optional_profile card should be suppressed")
 
 analysis_card = next((card for card in cards if card.get("type") == "analysis_summary"), None)
 if analysis_card is None:

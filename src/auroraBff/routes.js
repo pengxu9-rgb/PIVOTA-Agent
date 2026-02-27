@@ -18232,6 +18232,15 @@ function extractProfilePatchFromSession(session) {
   copyString('age_band', 'age_band', 'ageBand');
   copyString('pregnancy_status', 'pregnancy_status', 'pregnancyStatus');
   copyString('lactation_status', 'lactation_status', 'lactationStatus');
+  const dropUnknownOptionalSafetyField = (key) => {
+    const raw = patch[key];
+    if (typeof raw !== 'string') return;
+    if (raw.trim().toLowerCase() !== 'unknown') return;
+    delete patch[key];
+  };
+  dropUnknownOptionalSafetyField('age_band');
+  dropUnknownOptionalSafetyField('pregnancy_status');
+  dropUnknownOptionalSafetyField('lactation_status');
   const pregnancyDueDateRaw =
     typeof rawProfile.pregnancy_due_date === 'string'
       ? rawProfile.pregnancy_due_date
@@ -34549,7 +34558,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         let profile = null;
         let recentLogs = [];
         let pregnancyPolicyEvents = [];
-        let pregnancyStatusDefaultedForDiagnosis = false;
         profiler.start('quality', { kind: 'memory' });
         try {
           const [profileRes, logsRes] = await Promise.allSettled([
@@ -34582,9 +34590,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           todayUtc: utcTodayIsoDate(),
         });
         if (pregnancyPolicyForDiagnosis && Array.isArray(pregnancyPolicyForDiagnosis.events)) {
-          pregnancyStatusDefaultedForDiagnosis = pregnancyPolicyForDiagnosis.events.some(
-            (evt) => evt && evt.event_name === 'pregnancy_status_defaulted',
-          );
           pregnancyPolicyEvents = pregnancyPolicyForDiagnosis.events
             .filter((evt) => evt && typeof evt === 'object' && evt.event_name)
             .map((evt) => makeEvent(ctx, evt.event_name, evt.data && typeof evt.data === 'object' ? evt.data : {}));
@@ -35663,24 +35668,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
           });
         }
-        if (pregnancyStatusDefaultedForDiagnosis) {
-          extraCards.push({
-            card_id: `pregnancy_optional_${ctx.request_id}`,
-            type: 'confidence_notice',
-            payload: {
-              reason: 'pregnancy_optional_profile',
-              non_blocking: true,
-              severity: 'info',
-              message:
-                ctx.lang === 'CN'
-                  ? '孕期信息在本阶段是可选的；未填写时系统已按未怀孕继续。你可随时在 Profile 更新。'
-                  : 'Pregnancy context is optional at this stage; the system continued with not_pregnant by default. You can update Profile anytime.',
-              actions: ['update_optional_profile'],
-              details: [ctx.lang === 'CN' ? '默认假设：not_pregnant' : 'Default assumption: not_pregnant'],
-            },
-          });
-        }
-
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
           suggested_chips: [],
@@ -36952,6 +36939,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? { ...envelope }
         : { assistant_message: null, suggested_chips: [], cards: [], session_patch: {}, events: [] };
       const advisory = pendingSafetyAdvisory && typeof pendingSafetyAdvisory === 'object' ? pendingSafetyAdvisory : null;
+      const normalizeSuppressedGateIds = (values, max = 12) => {
+        const out = [];
+        const seen = new Set();
+        for (const raw of Array.isArray(values) ? values : []) {
+          const token = String(raw || '').trim();
+          if (!token) continue;
+          const key = token.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(token);
+          if (out.length >= max) break;
+        }
+        return out;
+      };
 
       const sessionPatch = isPlainObject(base.session_patch) ? { ...base.session_patch } : {};
       const sessionMeta =
@@ -36965,48 +36966,21 @@ function mountAuroraBffRoutes(app, { logger }) {
       } else if (Object.prototype.hasOwnProperty.call(sessionMeta, 'safety_missing_optional_fields')) {
         delete sessionMeta.safety_missing_optional_fields;
       }
+      if (advisory) {
+        const suppressed = normalizeSuppressedGateIds(
+          [
+            ...(Array.isArray(sessionMeta.suppressed_gate_ids) ? sessionMeta.suppressed_gate_ids : []),
+            advisory.reason || 'safety_optional_profile_missing',
+          ],
+          16,
+        );
+        sessionMeta.passive_gate_suppressed = true;
+        sessionMeta.suppressed_gate_ids = suppressed;
+      }
       sessionPatch.meta = sessionMeta;
       base.session_patch = sessionPatch;
 
       if (!advisory) return base;
-
-      const existingCards = Array.isArray(base.cards) ? base.cards.slice() : [];
-      const hasExistingAdvisory = existingCards.some((card) => {
-        if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
-        if (String(card.type || '').trim().toLowerCase() !== 'confidence_notice') return false;
-        const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
-        return String(payload.reason || '').trim().toLowerCase() === 'safety_optional_profile_missing';
-      });
-      if (!hasExistingAdvisory) {
-        existingCards.push({
-          card_id: `safety_inline_${ctx.request_id}`,
-          type: 'confidence_notice',
-          payload: {
-            reason: 'safety_optional_profile_missing',
-            non_blocking: true,
-            severity: advisory.severity || 'warn',
-            message: advisory.message,
-            details: Array.isArray(advisory.details) ? advisory.details.slice(0, 6) : [],
-            assumptions: Array.isArray(advisory.assumptions) ? advisory.assumptions.slice(0, 4) : [],
-            actions: Array.isArray(advisory.actions) ? advisory.actions.slice(0, 6) : [],
-          },
-        });
-      }
-      base.cards = existingCards;
-
-      const advisoryChips = Array.isArray(advisory.chips) ? advisory.chips : [];
-      if (advisoryChips.length > 0) {
-        const existingChips = Array.isArray(base.suggested_chips) ? base.suggested_chips : [];
-        const seen = new Set(existingChips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : '').trim()).filter(Boolean));
-        const mergedChips = existingChips.slice();
-        for (const chip of advisoryChips) {
-          const chipId = String(chip && chip.chip_id ? chip.chip_id : '').trim();
-          if (chipId && seen.has(chipId)) continue;
-          if (chipId) seen.add(chipId);
-          mergedChips.push(chip);
-        }
-        base.suggested_chips = mergedChips.slice(0, 12);
-      }
 
       const events = Array.isArray(base.events) ? base.events.slice(0, 96) : [];
       if (!events.some((evt) => evt && evt.event_name === 'safety_advisory_inline')) {
@@ -37063,50 +37037,59 @@ function mountAuroraBffRoutes(app, { logger }) {
       const base = envelope && typeof envelope === 'object' && !Array.isArray(envelope)
         ? { ...envelope }
         : { assistant_message: null, suggested_chips: [], cards: [], session_patch: {}, events: [] };
-      const cards = Array.isArray(base.cards) ? base.cards.slice() : [];
-      const existingGateIds = new Set(
-        cards
-          .map((card) => {
-            const payload = card && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : null;
-            return payload ? String(payload.gate_id || '').trim() : '';
-          })
+      const normalizeSuppressedGateIds = (values, max = 12) => {
+        const out = [];
+        const seen = new Set();
+        for (const raw of Array.isArray(values) ? values : []) {
+          const token = String(raw || '').trim();
+          if (!token) continue;
+          const key = token.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(token);
+          if (out.length >= max) break;
+        }
+        return out;
+      };
+      const sessionPatch = isPlainObject(base.session_patch) ? { ...base.session_patch } : {};
+      const sessionMeta =
+        sessionPatch.meta && typeof sessionPatch.meta === 'object' && !Array.isArray(sessionPatch.meta)
+          ? { ...sessionPatch.meta }
+          : {};
+      const suppressedIds = normalizeSuppressedGateIds(
+        [
+          ...(Array.isArray(sessionMeta.suppressed_gate_ids) ? sessionMeta.suppressed_gate_ids : []),
+          ...pendingGateAdvisories.map((advisory) => (advisory && advisory.gate_id ? advisory.gate_id : 'gate_advisory')),
+        ],
+        24,
+      );
+      sessionMeta.passive_gate_suppressed = true;
+      sessionMeta.suppressed_gate_ids = suppressedIds;
+      sessionPatch.meta = sessionMeta;
+      base.session_patch = sessionPatch;
+
+      const events = Array.isArray(base.events) ? base.events.slice(0, 96) : [];
+      const advisoryEventGateIds = new Set(
+        events
+          .filter((evt) => evt && evt.event_name === 'gate_advisory_inline')
+          .map((evt) => String((evt.event_data && evt.event_data.gate_id) || '').trim())
           .filter(Boolean),
       );
-      for (const advisory of pendingGateAdvisories.slice(0, 4)) {
+      for (const advisory of pendingGateAdvisories.slice(0, 8)) {
         if (!advisory || typeof advisory !== 'object') continue;
-        if (existingGateIds.has(advisory.gate_id)) continue;
-        cards.push({
-          card_id: `gate_${advisory.gate_id}_${ctx.request_id}`,
-          type: 'confidence_notice',
-          payload: {
-            reason: 'gate_advisory',
-            gate_id: advisory.gate_id,
-            non_blocking: true,
-            severity: 'info',
-            message:
-              advisory.message ||
-              (ctx.lang === 'CN'
-                ? '该信息用于提高准确度，不会阻断当前回答。'
-                : 'This detail improves precision and does not block the current answer.'),
-            details: Array.isArray(advisory.reason_codes) ? advisory.reason_codes.slice(0, 6) : [],
+        const gateId = String(advisory.gate_id || '').trim();
+        if (gateId && advisoryEventGateIds.has(gateId)) continue;
+        if (gateId) advisoryEventGateIds.add(gateId);
+        events.push(
+          makeEvent(ctx, 'gate_advisory_inline', {
+            gate_id: gateId || 'gate_advisory',
+            reason_codes: Array.isArray(advisory.reason_codes) ? advisory.reason_codes.slice(0, 8) : [],
             actions: Array.isArray(advisory.actions) ? advisory.actions.slice(0, 6) : [],
-          },
-        });
+            suppressed: true,
+          }),
+        );
       }
-      base.cards = cards;
-      const chipMap = new Set((Array.isArray(base.suggested_chips) ? base.suggested_chips : []).map((chip) => String(chip && chip.chip_id ? chip.chip_id : '').trim()).filter(Boolean));
-      const mergedChips = Array.isArray(base.suggested_chips) ? base.suggested_chips.slice() : [];
-      for (const advisory of pendingGateAdvisories) {
-        for (const chip of Array.isArray(advisory && advisory.chips) ? advisory.chips : []) {
-          const chipId = String(chip && chip.chip_id ? chip.chip_id : '').trim();
-          if (!chipId || chipMap.has(chipId)) continue;
-          chipMap.add(chipId);
-          mergedChips.push(chip);
-          if (mergedChips.length >= 12) break;
-        }
-        if (mergedChips.length >= 12) break;
-      }
-      base.suggested_chips = mergedChips;
+      base.events = events.slice(0, 96);
       return base;
     };
     const applyPendingPregnancyPolicyEventsToEnvelope = (envelope) => {
