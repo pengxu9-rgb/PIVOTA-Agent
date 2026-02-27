@@ -28,6 +28,11 @@ on:
         type: boolean
         required: false
         default: true
+      run_force_false_compare:
+        description: "Run non-blocking compare job with AURORA_DIAG_FORCE_GEMINI=false"
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: aurora-bff-release-gate
@@ -37,6 +42,7 @@ jobs:
   unit:
     name: Unit + Contract Gate
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,7 +70,11 @@ jobs:
           make ingredient-kb-audit
           make claims-audit
 
-      - name: Aurora BFF unit tests (offline)
+      - name: Aurora BFF unit tests (offline, force Gemini)
+        env:
+          AURORA_BFF_USE_MOCK: "true"
+          AURORA_CHATCARDS_RESPONSE_CONTRACT: "dual"
+          AURORA_DIAG_FORCE_GEMINI: "true"
         run: npm run test:aurora-bff:unit
 
       - name: Replay quality gate (deterministic)
@@ -94,11 +104,36 @@ jobs:
           path: RELEASE_GATE.md
           if-no-files-found: error
 
+  unit_force_false_nightly:
+    name: Aurora BFF Unit Compare (nightly force=false, non-blocking)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_force_false_compare == true)
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Aurora BFF unit compare (offline, force=false)
+        env:
+          AURORA_BFF_USE_MOCK: "true"
+          AURORA_CHATCARDS_RESPONSE_CONTRACT: "dual"
+          AURORA_DIAG_FORCE_GEMINI: "false"
+        run: npm run test:aurora-bff:unit
+
   runtime_smoke:
     name: Runtime Smoke (deployed)
     runs-on: ubuntu-latest
     needs: [unit]
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.event_name != 'schedule'
     env:
       BASE_URL: ${{ inputs.base_url || vars.AURORA_BFF_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
     steps:

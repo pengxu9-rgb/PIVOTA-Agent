@@ -5,7 +5,7 @@ Shadow mode only records verifier outputs and metrics. It does not change user-v
 
 ## 1) Preconditions
 
-- `DIAG_GEMINI_VERIFY=false` by default.
+- `DIAG_VERIFY_SHADOW_ENABLED=false` by default (`DIAG_GEMINI_VERIFY` is legacy compatible flag).
 - `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) configured in target environment.
 - `AURORA_PSEUDO_LABEL_ENABLED=true` and writable `AURORA_PSEUDO_LABEL_DIR`.
 - Optional hard-case sink path configured:
@@ -15,7 +15,8 @@ Shadow mode only records verifier outputs and metrics. It does not change user-v
 
 Set in staging:
 
-- `DIAG_GEMINI_VERIFY=true`
+- `DIAG_VERIFY_SHADOW_ENABLED=true` (or legacy `DIAG_GEMINI_VERIFY=true`)
+- `DIAG_VERIFY_SHADOW_SAMPLE_RATE=0.1` (example warm-up rate)
 - `DIAG_VERIFY_TIMEOUT_MS=12000`
 - `DIAG_GEMINI_VERIFY_RETRIES=1`
 - `DIAG_VERIFY_MAX_CALLS_PER_MIN=<small cap>` (recommended start: `60`)
@@ -46,6 +47,24 @@ Recommended sequence:
    - guard hit rate
 
 Do not remove guard caps until daily report is stable for multiple cycles.
+
+## 3.1) Production Full-Shadow Profile (Gemini Forced Mainline)
+
+When the chosen strategy is "Gemini forced for user-visible path + full shadow for comparison", use:
+
+- `AURORA_DIAG_FORCE_GEMINI=true`
+- `AURORA_SKIN_VISION_ENABLED=true`
+- `DIAG_VERIFY_SHADOW_ENABLED=true`
+- `DIAG_VERIFY_SHADOW_SAMPLE_RATE=1`
+- `DIAG_VERIFY_MAX_CALLS_PER_MIN=<quota-aligned cap>`
+- `DIAG_VERIFY_MAX_CALLS_PER_DAY=<quota-aligned cap>`
+- `DIAG_GEMINI_VERIFY_HARD_CASE_PATH=<persistent path>`
+- `ALLOW_GUARD_TEST=false`
+
+Notes:
+
+- Keep guard-test override disabled in production (`ALLOW_GUARD_TEST=false`).
+- Keep caps enabled even at full sample rate; tune caps to provider quota instead of setting unlimited.
 
 ## 4) Rollback
 
