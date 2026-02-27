@@ -9210,6 +9210,12 @@ async function proxyAgentSearchToBackend(req, res) {
     miss: false,
     latency_ms: null,
   };
+  const proxySearchQueryClass = isLookupStyleSearchQuery(
+    queryText,
+    extractSearchAnchorTokens(queryText),
+  )
+    ? 'lookup'
+    : null;
   const cacheStage = {
     hit: false,
     candidate_count: 0,
@@ -9312,7 +9318,7 @@ async function proxyAgentSearchToBackend(req, res) {
       operation: 'find_products_multi',
       metadata: resolverFirstMetadata,
       queryText,
-      queryClass: traceQueryClass,
+      queryClass: proxySearchQueryClass,
       brandLike: resolverFirstBrandLike,
   }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
 
@@ -9385,7 +9391,7 @@ async function proxyAgentSearchToBackend(req, res) {
       queryText,
       {
         disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
-        queryClass: traceQueryClass,
+        queryClass: proxySearchQueryClass,
         brandLike: secondarySkipBrandLike,
       },
     );
@@ -9864,7 +9870,7 @@ async function proxyAgentSearchToBackend(req, res) {
       queryText,
       {
         disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
-        queryClass: traceQueryClass,
+        queryClass: proxySearchQueryClass,
         brandLike: secondarySkipBrandLike,
       },
     );
