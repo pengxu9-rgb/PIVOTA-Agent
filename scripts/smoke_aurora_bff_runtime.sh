@@ -80,8 +80,13 @@ gate_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     "session":{"state":"S7_PRODUCT_RECO"}
   }')"
 printf "%s\n" "$gate_json" | jq_assert "chat returns cards array" '.cards | type=="array" and (length >= 1)'
-printf "%s\n" "$gate_json" | jq_assert "answer-first output exists (recommendations or confidence_notice)" '.cards | any(.type=="recommendations") or any(.type=="confidence_notice")'
-printf "%s\n" "$gate_json" | jq_assert "no safety require-info hard gate event on reco entry" '(.events | any(.event_name=="safety_gate_require_info")) | not'
+printf "%s\n" "$gate_json" | jq_assert "answer-first output exists (recommendations/product_verdict/confidence_notice)" '
+  .cards
+  | any(.type=="recommendations")
+    or any(.type=="product_verdict")
+    or any(.type=="confidence_notice")
+'
+printf "%s\n" "$gate_json" | jq_assert "no safety require-info hard gate event on reco entry" '((.events // []) | any(.event_name=="safety_gate_require_info")) | not'
 
 say "profile update (core + itinerary)"
 profile_json="$(curl_do -fsS -X POST "${BASE}/v1/profile/update" \
@@ -142,6 +147,7 @@ parse_url_json="$(curl_do -fsS -X POST "${BASE}/v1/product/parse" \
 started_at_after_parse_url="$(health_started_at)"
 assert_started_at_stable "product parse (Lab Series URL)" "$started_at_before_parse_url" "$started_at_after_parse_url"
 printf "%s\n" "$parse_url_json" | jq_assert "product_parse card exists for URL" '.cards | any(.type=="product_parse")'
+printf "%s\n" "$parse_url_json" | jq_assert "product_parse keeps trace_id continuity" "(.trace_id // \"\") == \"${TRACE_ID}\""
 
 started_at_before_analyze_url="$(health_started_at)"
 analyze_url_json="$(curl_do -fsS -X POST "${BASE}/v1/product/analyze" \
@@ -151,10 +157,25 @@ analyze_url_json="$(curl_do -fsS -X POST "${BASE}/v1/product/analyze" \
 started_at_after_analyze_url="$(health_started_at)"
 assert_started_at_stable "product analyze (Lab Series URL)" "$started_at_before_analyze_url" "$started_at_after_analyze_url"
 printf "%s\n" "$analyze_url_json" | jq_assert "product_analysis card exists for URL" '.cards | any(.type=="product_analysis")'
+printf "%s\n" "$analyze_url_json" | jq_assert "product_analyze keeps trace_id continuity" "(.trace_id // \"\") == \"${TRACE_ID}\""
 printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze provenance.url_fetch has provider-aware attempts" '
   (.cards[]|select(.type=="product_analysis")|.payload.provenance.url_fetch.attempts) as $atts |
   (($atts|type)=="array") and
   (if ($atts|length)==0 then true else ($atts | all(((.strategy // "")|length>0) and ((.provider // "")|length>0)) ) end)
+'
+printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze retrieval_degradation is diagnosable when degraded" '
+  (.cards[]|select(.type=="product_analysis")|.payload.provenance.retrieval_degradation) as $rd |
+  (($rd|type)=="object") and
+  (
+    if ($rd.degraded == true and (($rd.transient_failure_count // 0) > 0)) then
+      (
+        (.cards[]|select(.type=="product_analysis")|.payload.missing_info // [])
+        | any(. == "catalog_ann_transient_failure" or . == "competitor_recall_transient_degraded")
+      )
+    else
+      true
+    end
+  )
 '
 printf "%s\n" "$analyze_url_json" | jq_assert "URL analyze alternatives do not contain obvious non-skincare tools" '
   [
@@ -201,7 +222,7 @@ printf "%s\n" "$chat_json" | jq_assert "chat includes routine_simulation" '.card
 printf "%s\n" "$chat_json" | jq_assert "chat includes conflict_heatmap" '.cards | any(.type=="conflict_heatmap")'
 printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
 printf "%s\n" "$chat_json" | jq_assert "chat optional safety advisory (if present) is non-blocking" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="safety_optional_profile_missing") | .payload.non_blocking] | if length==0 then true else all(. == true) end)'
-printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '(.events | any(.event_name=="safety_gate_require_info")) | not'
+printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '((.events // []) | any(.event_name=="safety_gate_require_info")) | not'
 
 say "chat follow-up alternatives (goal+anchor should stay anchored)"
 followup_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
@@ -271,7 +292,12 @@ reco_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     "session":{"state":"S2_DIAGNOSIS"}
   }')"
 
-printf "%s\n" "$reco_json" | jq_assert "chat reco returns recommendations or confidence_notice" '.cards | any(.type=="recommendations") or any(.type=="confidence_notice")'
+printf "%s\n" "$reco_json" | jq_assert "chat reco returns recommendations/product_verdict or confidence_notice" '
+  .cards
+  | any(.type=="recommendations")
+    or any(.type=="product_verdict")
+    or any(.type=="confidence_notice")
+'
 
 if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >/dev/null; then
   printf "%s\n" "$reco_json" | jq_assert "recommendations length >= 1" '(.cards[]|select(.type=="recommendations")|.payload.recommendations|length) >= 1'

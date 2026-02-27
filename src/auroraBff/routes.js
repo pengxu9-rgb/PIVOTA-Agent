@@ -721,6 +721,32 @@ const RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 5 * 60 * 1000;
   return Math.max(1000, Math.min(60 * 60 * 1000, v));
 })();
+const RECO_CATALOG_SOURCE_TRANSIENT_FAIL_THRESHOLD = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_FAIL_THRESHOLD || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(20, v));
+})();
+const RECO_CATALOG_SOURCE_TRANSIENT_COOLDOWN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_COOLDOWN_MS || 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 60 * 1000;
+  return Math.max(1000, Math.min(60 * 60 * 1000, v));
+})();
+const RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS || 700);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 700;
+  return Math.max(300, Math.min(5000, v));
+})();
+const RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  return Math.max(300, Math.min(8000, v));
+})();
+const RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE || 'shopping-agent')
+    .trim()
+    .toLowerCase();
+  return raw || 'shopping-agent';
+})();
 const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK || 'true')
     .trim()
@@ -2453,6 +2479,10 @@ function markRecoCatalogSearchSourceFailure(baseUrl, reason, nowMs = Date.now())
   if (!state) return;
   const normalizedReason = String(reason || '').trim() || 'unknown';
   const isEmpty = normalizedReason === 'empty' || normalizedReason === 'not_found';
+  const isTransient =
+    normalizedReason === 'upstream_timeout' ||
+    normalizedReason === 'upstream_error' ||
+    normalizedReason === 'rate_limited';
   if (isEmpty) {
     state.consecutive_empty = Number(state.consecutive_empty || 0) + 1;
     state.consecutive_failures = 0;
@@ -2462,6 +2492,12 @@ function markRecoCatalogSearchSourceFailure(baseUrl, reason, nowMs = Date.now())
   } else {
     state.consecutive_failures = Number(state.consecutive_failures || 0) + 1;
     state.consecutive_empty = 0;
+    if (
+      isTransient &&
+      state.consecutive_failures >= RECO_CATALOG_SOURCE_TRANSIENT_FAIL_THRESHOLD
+    ) {
+      state.deprioritized_until_ms = nowMs + RECO_CATALOG_SOURCE_TRANSIENT_COOLDOWN_MS;
+    }
   }
   state.last_reason = normalizedReason;
   state.last_updated_at = nowMs;
@@ -2648,9 +2684,11 @@ async function searchPivotaBackendProducts({
   logger,
   timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
   minTimeoutMs = 300,
+  mode = 'main_path',
   searchAllMerchants = true,
   deadlineMs = 0,
   forceLocalSearchFallback = false,
+  searchSourceOverride = '',
   allowExternalSeed = undefined,
   externalSeedStrategy = '',
   fastMode = true,
@@ -2658,9 +2696,20 @@ async function searchPivotaBackendProducts({
   const startedAt = Date.now();
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
+  const modeToken = String(mode || '').trim().toLowerCase();
+  const isMainPathMode = modeToken === 'main_path';
+  const isSelfProxyMode = modeToken === 'self_proxy';
+  const sourceOverrideToken = String(searchSourceOverride || '').trim().toLowerCase();
+  const effectiveSearchSource = sourceOverrideToken || RECO_CATALOG_SEARCH_SOURCE;
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
+  const timeoutFloorForMode = isMainPathMode
+    ? RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS
+    : isSelfProxyMode
+      ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
+      : 120;
   const normalizedMinTimeout = Math.max(
     120,
+    timeoutFloorForMode,
     Math.min(4000, Number.isFinite(Number(minTimeoutMs)) ? Math.trunc(Number(minTimeoutMs)) : 300),
   );
   const normalizedTimeout = Math.max(
@@ -2679,7 +2728,7 @@ async function searchPivotaBackendProducts({
     in_stock_only: false,
     limit: normalizedLimit,
     offset: 0,
-    source: RECO_CATALOG_SEARCH_SOURCE,
+    source: effectiveSearchSource,
   };
   if (allowExternalSeed !== undefined) params.allow_external_seed = allowExternalSeed === true;
   const normalizedExternalSeedStrategy = String(externalSeedStrategy || '').trim().toLowerCase();
@@ -2717,6 +2766,82 @@ async function searchPivotaBackendProducts({
     else if (statusCode === 404) reason = 'not_found';
     else if (statusCode === 429) reason = 'rate_limited';
     return reason;
+  };
+  const extractSearchAttemptMetaFromBody = ({ data } = {}) => {
+    const body = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+    if (!body) {
+      return {
+        resolver_first_applied: false,
+        resolver_first_skipped_for_aurora: false,
+        search_source: null,
+      };
+    }
+    const metadata =
+      body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+        ? body.metadata
+        : null;
+    const searchTrace =
+      metadata &&
+      metadata.search_trace &&
+      typeof metadata.search_trace === 'object' &&
+      !Array.isArray(metadata.search_trace)
+        ? metadata.search_trace
+        : null;
+    const routeDebug =
+      metadata &&
+      metadata.route_debug &&
+      typeof metadata.route_debug === 'object' &&
+      !Array.isArray(metadata.route_debug)
+        ? metadata.route_debug
+        : null;
+    const proxyFallback =
+      metadata &&
+      metadata.proxy_search_fallback &&
+      typeof metadata.proxy_search_fallback === 'object' &&
+      !Array.isArray(metadata.proxy_search_fallback)
+        ? metadata.proxy_search_fallback
+        : null;
+    const sourceToken = String(
+      metadata?.source ||
+      searchTrace?.request_source ||
+      routeDebug?.request_source ||
+      '',
+    )
+      .trim()
+      .toLowerCase();
+    const finalDecisionToken = String(
+      searchTrace?.final_decision ||
+      searchTrace?.primary_path_used ||
+      routeDebug?.primary_path_used ||
+      '',
+    )
+      .trim()
+      .toLowerCase();
+    const resolverFallbackReason = String(proxyFallback?.reason || '')
+      .trim()
+      .toLowerCase();
+    const resolverFirstApplied =
+      searchTrace?.resolver_first_applied === true ||
+      routeDebug?.resolver_first_applied === true ||
+      finalDecisionToken === 'resolver_stage' ||
+      resolverFallbackReason === 'resolver_first';
+    const resolverFirstSkippedReason = String(
+      searchTrace?.resolver_first_skipped_reason ||
+      routeDebug?.resolver_first_skipped_reason ||
+      '',
+    )
+      .trim()
+      .toLowerCase();
+    const resolverFirstSkippedForAurora = Boolean(
+      resolverFirstSkippedReason &&
+      sourceToken.startsWith('aurora') &&
+      resolverFirstSkippedReason.includes('aurora')
+    );
+    return {
+      resolver_first_applied: resolverFirstApplied,
+      resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+      search_source: sourceToken || null,
+    };
   };
   const mapProxySearchFallbackReason = (raw) => {
     const token = String(raw || '').trim().toLowerCase();
@@ -2897,12 +3022,19 @@ async function searchPivotaBackendProducts({
       const remainingBudgetMs = timeoutForAttemptMs - elapsedMs;
       const remainingOverallMs = Math.max(0, getRemainingOverallMs() - deadlineReserveMs);
       const requestTimeoutMs = Math.trunc(Math.max(0, Math.min(remainingBudgetMs, remainingOverallMs)));
-      if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 40) {
+      const requestTimeoutFloorMs = isLocalInvokeBase
+        ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
+        : normalizedMinTimeout;
+      if (
+        !Number.isFinite(requestTimeoutMs) ||
+        requestTimeoutMs <= 40 ||
+        requestTimeoutMs < requestTimeoutFloorMs
+      ) {
         const failed = {
           ok: false,
           products: [],
-          reason: 'upstream_timeout',
-          status_code: 504,
+          reason: 'budget_exhausted',
+          status_code: null,
           source_base_url: normalizedBase,
           source_endpoint: endpoint,
           source_path: pathToken,
@@ -2912,8 +3044,8 @@ async function searchPivotaBackendProducts({
           endpoint,
           path: pathToken,
           ok: false,
-          reason: 'upstream_timeout',
-          status_code: 504,
+          reason: 'budget_exhausted',
+          status_code: null,
           products: 0,
         });
         lastFailure = failed;
@@ -2963,6 +3095,7 @@ async function searchPivotaBackendProducts({
         }
 
         const body = resp && resp.data ? resp.data : null;
+        const searchMeta = extractSearchAttemptMetaFromBody({ data: body });
         const products = normalizeProductsFromSearchData(body);
         const bodyReason = products.length
           ? null
@@ -2977,6 +3110,7 @@ async function searchPivotaBackendProducts({
             source_endpoint: endpoint,
             source_path: pathToken,
             latency_ms: Date.now() - startedAt,
+            ...searchMeta,
           };
           pathAttempts.push({
             endpoint,
@@ -2985,6 +3119,7 @@ async function searchPivotaBackendProducts({
             reason: bodyReason,
             status_code: statusCode,
             products: 0,
+            ...searchMeta,
           });
           lastFailure = failed;
           const shouldTryNextPath =
@@ -3007,6 +3142,7 @@ async function searchPivotaBackendProducts({
           source_endpoint: endpoint,
           source_path: pathToken,
           latency_ms: Date.now() - startedAt,
+          ...searchMeta,
         };
         pathAttempts.push({
           endpoint,
@@ -3015,6 +3151,7 @@ async function searchPivotaBackendProducts({
           reason: result.reason || null,
           status_code: statusCode,
           products: products.length,
+          ...searchMeta,
         });
         if (products.length > 0) {
           return {
@@ -3050,6 +3187,8 @@ async function searchPivotaBackendProducts({
           source_path: pathToken,
           latency_ms: Date.now() - startedAt,
           err: errMessage,
+          resolver_first_applied: false,
+          resolver_first_skipped_for_aurora: false,
         };
         pathAttempts.push({
           endpoint,
@@ -3058,6 +3197,8 @@ async function searchPivotaBackendProducts({
           reason,
           status_code: statusCode,
           products: 0,
+          resolver_first_applied: false,
+          resolver_first_skipped_for_aurora: false,
         });
         lastFailure = failed;
         const shouldTryNextPath =
@@ -3104,6 +3245,9 @@ async function searchPivotaBackendProducts({
     ? rankRecoCatalogSearchBaseUrls(baseUrlCandidates, nowMs)
     : baseUrlCandidates.slice(0, 1);
   const attempts = [];
+  let resolverFirstApplied = false;
+  let resolverFirstSkippedForAurora = false;
+  let sourceTemporarilyDeprioritized = false;
   let finalFailure = null;
   let finalEmpty = null;
   const collectAttemptedEndpoints = () =>
@@ -3148,7 +3292,12 @@ async function searchPivotaBackendProducts({
       ok: Boolean(attempt.ok),
       products: Array.isArray(attempt.products) ? attempt.products.length : 0,
       status_code: Number.isFinite(Number(attempt.status_code)) ? Math.trunc(Number(attempt.status_code)) : null,
+      resolver_first_applied: attempt.resolver_first_applied === true,
+      resolver_first_skipped_for_aurora: attempt.resolver_first_skipped_for_aurora === true,
     });
+    resolverFirstApplied = resolverFirstApplied || attempt.resolver_first_applied === true;
+    resolverFirstSkippedForAurora =
+      resolverFirstSkippedForAurora || attempt.resolver_first_skipped_for_aurora === true;
 
     if (attempt.ok && Array.isArray(attempt.products) && attempt.products.length > 0) {
       markRecoCatalogSearchSourceSuccess(baseUrl, Date.now());
@@ -3169,11 +3318,25 @@ async function searchPivotaBackendProducts({
         attempted_sources: attempts.map((item) => item.base_url),
         attempted_endpoints: collectAttemptedEndpoints(),
         source_failover: idx > 0,
+        resolver_first_applied: resolverFirstApplied,
+        resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+        source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
+        search_source: effectiveSearchSource,
       };
     }
 
     const failureReason = String(attempt.reason || '').trim().toLowerCase() || 'unknown';
     markRecoCatalogSearchSourceFailure(baseUrl, failureReason, Date.now());
+    const sourceState = getRecoCatalogSearchSourceState(baseUrl);
+    const sourceDeprioritizedNow =
+      Number(sourceState?.deprioritized_until_ms || 0) > Date.now();
+    if (sourceDeprioritizedNow) {
+      sourceTemporarilyDeprioritized = true;
+      const currentAttempt = attempts[attempts.length - 1];
+      if (currentAttempt && typeof currentAttempt === 'object') {
+        currentAttempt.source_deprioritized = true;
+      }
+    }
 
     if (attempt.ok) {
       finalEmpty = attempt;
@@ -3213,6 +3376,10 @@ async function searchPivotaBackendProducts({
       attempted_endpoints: collectAttemptedEndpoints(),
       source_failover: attempts.length > 1,
       latency_ms: Date.now() - startedAt,
+      resolver_first_applied: resolverFirstApplied,
+      resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+      source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
+      search_source: effectiveSearchSource,
     };
   }
 
@@ -3229,6 +3396,10 @@ async function searchPivotaBackendProducts({
       attempted_endpoints: collectAttemptedEndpoints(),
       source_failover: attempts.length > 1,
       latency_ms: Date.now() - startedAt,
+      resolver_first_applied: resolverFirstApplied,
+      resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+      source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
+      search_source: effectiveSearchSource,
     };
   }
 
@@ -3240,6 +3411,10 @@ async function searchPivotaBackendProducts({
     attempted_endpoints: collectAttemptedEndpoints(),
     source_failover: attempts.length > 1,
     latency_ms: Date.now() - startedAt,
+    resolver_first_applied: resolverFirstApplied,
+    resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+    source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
+    search_source: effectiveSearchSource,
   };
 }
 
@@ -6799,6 +6974,11 @@ async function buildRealtimeCompetitorCandidates({
   );
   const searchResults = [];
   const reasonCounts = Object.create(null);
+  const attemptedSourceSet = new Set();
+  const attemptedSourceEndpointSet = new Set();
+  let resolverFirstApplied = false;
+  let resolverFirstSkippedForAurora = false;
+  let sourceTemporarilyDeprioritized = false;
   const bumpReason = (rawReason) => {
     const token = String(rawReason || '').trim().toLowerCase();
     if (!token) return;
@@ -6855,6 +7035,8 @@ async function buildRealtimeCompetitorCandidates({
           ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS
           : 220;
     const perQueryTimeoutMs = Math.max(perQueryMinMs, Math.min(effectiveSearchTimeoutMs, fairShareMs));
+    const searchSourceOverride =
+      runMode === 'main_path' ? RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE : '';
     // eslint-disable-next-line no-await-in-loop
     const searched = await runSearch({
       query: queryText,
@@ -6864,11 +7046,26 @@ async function buildRealtimeCompetitorCandidates({
       minTimeoutMs: perQueryMinMs,
       searchAllMerchants,
       deadlineMs: isMainFirstQuery ? softDeadlineMs + firstQueryGraceMs : softDeadlineMs,
+      mode: runMode,
       allowExternalSeed,
       externalSeedStrategy,
       fastMode: true,
+      searchSourceOverride,
     });
     searchResults.push({ query: queryText, searched });
+    for (const sourceBaseUrl of Array.isArray(searched?.attempted_sources) ? searched.attempted_sources : []) {
+      const token = String(sourceBaseUrl || '').trim();
+      if (token) attemptedSourceSet.add(token);
+    }
+    for (const endpoint of Array.isArray(searched?.attempted_endpoints) ? searched.attempted_endpoints : []) {
+      const token = String(endpoint || '').trim();
+      if (token) attemptedSourceEndpointSet.add(token);
+    }
+    resolverFirstApplied = resolverFirstApplied || searched?.resolver_first_applied === true;
+    resolverFirstSkippedForAurora =
+      resolverFirstSkippedForAurora || searched?.resolver_first_skipped_for_aurora === true;
+    sourceTemporarilyDeprioritized =
+      sourceTemporarilyDeprioritized || searched?.source_temporarily_deprioritized === true;
     if (searched && typeof searched === 'object') {
       if (searched.ok === false) bumpReason(searched.reason || 'upstream_error');
       else if (Array.isArray(searched.products) && searched.products.length === 0) bumpReason('empty');
@@ -6887,6 +7084,28 @@ async function buildRealtimeCompetitorCandidates({
   }
 
   const diagnosticQueries = searchResults.map((row) => String(row?.query || '').trim()).filter(Boolean);
+  const transientFailureCount =
+    Number(reasonCounts.upstream_timeout || 0) +
+    Number(reasonCounts.upstream_error || 0) +
+    Number(reasonCounts.rate_limited || 0);
+  const retrievalBudgetProfile = {
+    mode: runMode,
+    timeout_ms: effectiveTimeoutMs,
+    soft_deadline_ms: Math.max(0, softDeadlineMs - startedAt),
+    search_timeout_ms: effectiveSearchTimeoutMs,
+    per_query_min_ms: runMode === 'main_path' ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS : 220,
+  };
+  const retrievalMeta = {
+    reason_counts: reasonCounts,
+    query_attempted: searchResults.length,
+    transient_failure_count: transientFailureCount,
+    attempted_sources: Array.from(attemptedSourceSet).slice(0, 8),
+    attempted_endpoints: Array.from(attemptedSourceEndpointSet).slice(0, 12),
+    resolver_first_applied: resolverFirstApplied,
+    resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+    source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
+    budget_profile: retrievalBudgetProfile,
+  };
   const queryTokens = tokenizeProductTextForSimilarity(
     (diagnosticQueries.length ? diagnosticQueries : plannedQueries).join(' | '),
   );
@@ -7060,10 +7279,7 @@ async function buildRealtimeCompetitorCandidates({
       candidates: finalCandidates,
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
-      meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
-      },
+      meta: retrievalMeta,
     };
   }
   const allSearchTransientFailure =
@@ -7078,10 +7294,7 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
-      meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
-      },
+      meta: retrievalMeta,
     };
   }
   if (runMode === 'main_path' && !allSearchTransientFailure) {
@@ -7089,10 +7302,7 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: 'catalog_search_no_candidates',
-      meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
-      },
+      meta: retrievalMeta,
     };
   }
   if (runMode === 'main_path' && getRemainingMs() < 420) {
@@ -7100,10 +7310,7 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_budget_exhausted',
-      meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
-      },
+      meta: retrievalMeta,
     };
   }
 
@@ -7257,10 +7464,7 @@ async function buildRealtimeCompetitorCandidates({
       candidates: finalCandidates,
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
-      meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
-      },
+      meta: retrievalMeta,
     };
   }
 
@@ -7270,10 +7474,7 @@ async function buildRealtimeCompetitorCandidates({
     candidates: [],
     queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
     reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty',
-    meta: {
-      reason_counts: reasonCounts,
-      query_attempted: searchResults.length,
-    },
+    meta: retrievalMeta,
   };
 }
 
@@ -11074,6 +11275,62 @@ async function buildProductAnalysisFromUrlIngredients({
     confidence = Number(Math.min(confidence, 0.62).toFixed(3));
   }
 
+  const dagFallbacksUsed = Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : [];
+  const dagTimedOutBlocks = Array.isArray(dagDiagnostics?.timed_out_blocks) ? dagDiagnostics.timed_out_blocks : [];
+  const routeReasonCodes = dagReasonCodes.length ? dagReasonCodes : summarizeRouterReasonCodes(routedPools.routed);
+  const catalogAnnStats =
+    dagProvenancePatch &&
+    typeof dagProvenancePatch === 'object' &&
+    !Array.isArray(dagProvenancePatch) &&
+    dagProvenancePatch.block_stats &&
+    typeof dagProvenancePatch.block_stats === 'object' &&
+    !Array.isArray(dagProvenancePatch.block_stats) &&
+    dagProvenancePatch.block_stats.catalog_ann &&
+    typeof dagProvenancePatch.block_stats.catalog_ann === 'object' &&
+    !Array.isArray(dagProvenancePatch.block_stats.catalog_ann)
+      ? dagProvenancePatch.block_stats.catalog_ann
+      : {};
+  const catalogAnnReasonCounts =
+    catalogAnnStats.reason_counts &&
+    typeof catalogAnnStats.reason_counts === 'object' &&
+    !Array.isArray(catalogAnnStats.reason_counts)
+      ? catalogAnnStats.reason_counts
+      : {};
+  const catalogAnnTransientFailureCount =
+    Number(catalogAnnStats.transient_failure_count || 0) ||
+    Number(catalogAnnReasonCounts.upstream_timeout || 0) +
+      Number(catalogAnnReasonCounts.upstream_error || 0) +
+      Number(catalogAnnReasonCounts.rate_limited || 0);
+  const catalogSourceTemporarilyDeprioritized = catalogAnnStats.source_temporarily_deprioritized === true;
+  const resolverFirstSkippedForAurora = catalogAnnStats.resolver_first_skipped_for_aurora === true;
+  const retrievalAttemptedSources = uniqCaseInsensitiveStrings(
+    Array.isArray(catalogAnnStats.attempted_sources) ? catalogAnnStats.attempted_sources : [],
+    8,
+  );
+  const retrievalBudgetProfile =
+    catalogAnnStats.budget_profile &&
+    typeof catalogAnnStats.budget_profile === 'object' &&
+    !Array.isArray(catalogAnnStats.budget_profile)
+      ? catalogAnnStats.budget_profile
+      : null;
+  const competitorRecallTransientDegraded =
+    catalogAnnTransientFailureCount > 0 &&
+    competitorSource === 'on_page_related_only' &&
+    relatedCandidates.length > 0 &&
+    competitorCandidates.length === 0;
+  const retrievalDegradation = {
+    transient_failure_count: Math.max(0, Math.trunc(Number(catalogAnnTransientFailureCount) || 0)),
+    attempted_sources: retrievalAttemptedSources,
+    resolver_first_applied: catalogAnnStats.resolver_first_applied === true,
+    resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+    source_temporarily_deprioritized: catalogSourceTemporarilyDeprioritized,
+    ...(retrievalBudgetProfile ? { budget_profile: retrievalBudgetProfile } : {}),
+    degraded:
+      catalogAnnTransientFailureCount > 0 ||
+      competitorSource === 'on_page_related_only' ||
+      dagTimedOutBlocks.includes('catalog_ann'),
+  };
+
   const evidenceMissingInfo = [];
   if (!html && !fetchOut.ok && fetchOut.failure_code) evidenceMissingInfo.push(String(fetchOut.failure_code));
   if (!html && !fetchOut.ok) evidenceMissingInfo.push('on_page_fetch_blocked');
@@ -11107,6 +11364,10 @@ async function buildProductAnalysisFromUrlIngredients({
   if (!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT) {
     evidenceMissingInfo.push('competitors_low_coverage');
   }
+  if (catalogAnnTransientFailureCount > 0) evidenceMissingInfo.push('catalog_ann_transient_failure');
+  if (catalogSourceTemporarilyDeprioritized) evidenceMissingInfo.push('catalog_source_temporarily_deprioritized');
+  if (resolverFirstSkippedForAurora) evidenceMissingInfo.push('resolver_first_skipped_for_aurora');
+  if (competitorRecallTransientDegraded) evidenceMissingInfo.push('competitor_recall_transient_degraded');
   if (Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0) {
     evidenceMissingInfo.push('competitors_non_skincare_filtered');
   }
@@ -11119,9 +11380,6 @@ async function buildProductAnalysisFromUrlIngredients({
   if (relatedSemanticsReclassified) evidenceMissingInfo.push('related_semantics_reclassified');
   if (hasCategoryUnknownBlocked) evidenceMissingInfo.push('competitor_category_unknown_blocked');
   if (competitorMissing && competitorReason) evidenceMissingInfo.push(`competitor_recall_${String(competitorReason).toLowerCase()}`);
-  const dagFallbacksUsed = Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : [];
-  const dagTimedOutBlocks = Array.isArray(dagDiagnostics?.timed_out_blocks) ? dagDiagnostics.timed_out_blocks : [];
-  const routeReasonCodes = dagReasonCodes.length ? dagReasonCodes : summarizeRouterReasonCodes(routedPools.routed);
 
   const defaultConfidenceByBlock = {
     competitors: {
@@ -11338,6 +11596,7 @@ async function buildProductAnalysisFromUrlIngredients({
         }
         : {}),
       social_enrichment_status: 'pending_async',
+      retrieval_degradation: retrievalDegradation,
       ...(hasCandidateFilterDropStats(candidateFilterStats)
         ? {
           candidate_filter_stats: {
@@ -11419,6 +11678,10 @@ async function buildProductAnalysisFromUrlIngredients({
         ...(socialMissing ? ['social_signals_missing'] : []),
         ...(competitorMissing ? ['competitors_missing'] : []),
         ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
+        ...(catalogAnnTransientFailureCount > 0 ? ['catalog_ann_transient_failure'] : []),
+        ...(catalogSourceTemporarilyDeprioritized ? ['catalog_source_temporarily_deprioritized'] : []),
+        ...(resolverFirstSkippedForAurora ? ['resolver_first_skipped_for_aurora'] : []),
+        ...(competitorRecallTransientDegraded ? ['competitor_recall_transient_degraded'] : []),
         ...(Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0 ? ['competitors_non_skincare_filtered'] : []),
         ...(Number(candidateFilterStats.related_dropped_non_skincare || 0) > 0 ? ['related_products_non_skincare_filtered'] : []),
         ...(Number(candidateFilterStats.dupes_dropped_non_skincare || 0) > 0 ? ['dupes_non_skincare_filtered'] : []),
@@ -11498,6 +11761,10 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
       ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
+      ...(catalogAnnTransientFailureCount > 0 ? ['catalog_ann_transient_failure'] : []),
+      ...(catalogSourceTemporarilyDeprioritized ? ['catalog_source_temporarily_deprioritized'] : []),
+      ...(resolverFirstSkippedForAurora ? ['resolver_first_skipped_for_aurora'] : []),
+      ...(competitorRecallTransientDegraded ? ['competitor_recall_transient_degraded'] : []),
       ...(Number(candidateFilterStats.competitors_dropped_non_skincare || 0) > 0 ? ['competitors_non_skincare_filtered'] : []),
       ...(Number(candidateFilterStats.related_dropped_non_skincare || 0) > 0 ? ['related_products_non_skincare_filtered'] : []),
       ...(Number(candidateFilterStats.dupes_dropped_non_skincare || 0) > 0 ? ['dupes_non_skincare_filtered'] : []),
@@ -11541,6 +11808,7 @@ async function buildProductAnalysisFromUrlIngredients({
       competitor_queries: competitorOut?.queries || [],
       competitor_reason: competitorReason || null,
       competitor_source: competitorSource,
+      retrieval_degradation: retrievalDegradation,
       ...(regulatorySupplement && regulatorySupplement.ok
         ? {
           regulatory_source: {
@@ -30889,6 +31157,31 @@ function mountAuroraBffRoutes(app, { logger }) {
         parse_source: parseSource,
         recovery_path: Array.from(new Set(recoveryPath.filter(Boolean))).slice(0, 12),
       };
+      const parseReasonCounts = (() => {
+        const counts = {};
+        for (const code of Array.isArray(payload?.missing_info) ? payload.missing_info : []) {
+          const key = String(code || '').trim().toLowerCase();
+          if (!key) continue;
+          counts[key] = Number(counts[key] || 0) + 1;
+        }
+        return counts;
+      })();
+      logger?.info?.(
+        {
+          event: 'aurora_product_parse_diagnostics',
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          parse_source: parseSource,
+          attempted_sources: Array.isArray(payload?.recovery_path) ? payload.recovery_path : [],
+          reason_counts: parseReasonCounts,
+          budget_profile: {
+            upstream_timeout_ms: AURORA_CHAT_UPSTREAM_TIMEOUT_MS,
+            catalog_search_timeout_ms: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
+            catalog_fallback_enabled: PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED,
+          },
+        },
+        'aurora bff: product parse diagnostics',
+      );
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -30901,7 +31194,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
           },
         ],
-        session_patch: {},
+        session_patch: {
+          meta: {
+            retrieval_path_version: 'aurora_retrieval_v2',
+          },
+        },
         events: [makeEvent(ctx, 'value_moment', { kind: 'product_parse' })],
       });
       return res.json(envelope);
@@ -30945,6 +31242,77 @@ function mountAuroraBffRoutes(app, { logger }) {
         envelope: augmented,
         logger,
       });
+      const sessionPatchBase =
+        augmented && augmented.session_patch && typeof augmented.session_patch === 'object' && !Array.isArray(augmented.session_patch)
+          ? augmented.session_patch
+          : {};
+      const sessionPatchMeta =
+        sessionPatchBase.meta && typeof sessionPatchBase.meta === 'object' && !Array.isArray(sessionPatchBase.meta)
+          ? sessionPatchBase.meta
+          : {};
+      augmented = {
+        ...augmented,
+        session_patch: {
+          ...sessionPatchBase,
+          meta: {
+            ...sessionPatchMeta,
+            retrieval_path_version: 'aurora_retrieval_v2',
+          },
+        },
+      };
+      try {
+        const productCard = Array.isArray(augmented?.cards)
+          ? augmented.cards.find((card) => card && card.type === 'product_analysis')
+          : null;
+        const payload =
+          productCard && productCard.payload && typeof productCard.payload === 'object' && !Array.isArray(productCard.payload)
+            ? productCard.payload
+            : null;
+        if (payload) {
+          const reasonCounts = {};
+          for (const code of Array.isArray(payload.missing_info) ? payload.missing_info : []) {
+            const key = String(code || '').trim().toLowerCase();
+            if (!key) continue;
+            reasonCounts[key] = Number(reasonCounts[key] || 0) + 1;
+          }
+          const retrievalDegradation =
+            payload.provenance &&
+            typeof payload.provenance === 'object' &&
+            !Array.isArray(payload.provenance) &&
+            payload.provenance.retrieval_degradation &&
+            typeof payload.provenance.retrieval_degradation === 'object' &&
+            !Array.isArray(payload.provenance.retrieval_degradation)
+              ? payload.provenance.retrieval_degradation
+              : {};
+          logger?.info?.(
+            {
+              event: 'aurora_product_analyze_diagnostics',
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              mode,
+              attempted_sources: Array.isArray(retrievalDegradation.attempted_sources)
+                ? retrievalDegradation.attempted_sources
+                : [],
+              reason_counts: reasonCounts,
+              budget_profile:
+                retrievalDegradation.budget_profile &&
+                typeof retrievalDegradation.budget_profile === 'object' &&
+                !Array.isArray(retrievalDegradation.budget_profile)
+                  ? retrievalDegradation.budget_profile
+                  : {
+                    reco_blocks_budget_ms: AURORA_BFF_RECO_BLOCKS_BUDGET_MS,
+                    reco_catalog_timeout_ms: AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS,
+                    product_url_competitor_timeout_ms: PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS,
+                  },
+              degraded: retrievalDegradation.degraded === true,
+              resolver_first_applied: retrievalDegradation.resolver_first_applied === true,
+            },
+            'aurora bff: product analyze diagnostics',
+          );
+        }
+      } catch (_) {
+        // ignore diagnostics logging failures
+      }
       if (statusCode >= 400) return res.status(statusCode).json(augmented);
       return res.json(augmented);
     };

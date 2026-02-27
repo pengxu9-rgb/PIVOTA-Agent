@@ -27,6 +27,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
+      PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA:
+        process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA,
       PROXY_SEARCH_RESOLVER_DETAIL_ENABLED: process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED,
       PROXY_SEARCH_INVOKE_FALLBACK_ENABLED:
         process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
@@ -80,6 +82,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
+    delete process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA;
     delete process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED;
     delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
@@ -153,6 +156,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY =
         prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA =
+        prevEnv.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA;
     }
     if (prevEnv.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED === undefined) {
       delete process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED;
@@ -1148,6 +1157,64 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resolverSpy.mock.calls.length).toBeGreaterThan(callCountAfterAurora);
     expect(auroraTimeouts.every((value) => value === 350)).toBe(true);
     expect(genericTimeouts.some((value) => value === 1600)).toBe(true);
+  });
+
+  test('resolver-first can be explicitly disabled for aurora source', async () => {
+    const queryText = 'lab series moisturizer spf';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA = 'true';
+
+    const resolverSpy = jest.fn().mockResolvedValue({
+      resolved: false,
+      confidence: 0,
+      reason: 'no_candidates',
+      reason_code: 'no_candidates',
+      metadata: {
+        latency_ms: 8,
+        sources: [{ source: 'products_cache_global', ok: false, reason: 'no_results' }],
+      },
+    });
+
+    jest.doMock('../../src/services/productGroundingResolver', () => {
+      const actual = jest.requireActual('../../src/services/productGroundingResolver');
+      return {
+        ...actual,
+        resolveProductRef: resolverSpy,
+      };
+    });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'labseries_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Lab Series All-in-One Defense Lotion SPF 35',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resolverSpy).not.toHaveBeenCalled();
+    expect(String(resp.body?.metadata?.search_trace?.final_decision || '').toLowerCase()).not.toBe('resolver_stage');
   });
 
   test('aurora source detects same-brand external monoculture and forces semantic retry fallback', async () => {
