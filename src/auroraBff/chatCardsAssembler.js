@@ -14,12 +14,124 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function normalizeRiskLevel(safetyDecision) {
-  const blockLevel = asString(safetyDecision && safetyDecision.block_level).toUpperCase();
-  if (blockLevel === 'BLOCK') return 'high';
-  if (blockLevel === 'REQUIRE_INFO') return 'medium';
-  if (blockLevel === 'WARN') return 'low';
+function normalizeBlockLevelToRisk(value) {
+  const token = asString(value).toUpperCase();
+  if (token === 'BLOCK') return 'high';
+  if (token === 'REQUIRE_INFO') return 'medium';
+  if (token === 'WARN') return 'low';
+  if (token === 'INFO') return 'none';
+  return '';
+}
+
+function riskRank(level) {
+  if (level === 'high') return 3;
+  if (level === 'medium') return 2;
+  if (level === 'low') return 1;
+  return 0;
+}
+
+function inferRiskFromEnvelopeEvents(envelope) {
+  const events = asArray(envelope && envelope.events);
+  let highest = 'none';
+  for (const evt of events) {
+    if (!isPlainObject(evt)) continue;
+    const eventName = asString(evt.event_name).toLowerCase();
+    if (!eventName) continue;
+    const data = isPlainObject(evt.data) ? evt.data : {};
+    const fromLevel = normalizeBlockLevelToRisk(data.block_level || data.level);
+    if (fromLevel && riskRank(fromLevel) > riskRank(highest)) {
+      highest = fromLevel;
+    }
+    if (eventName === 'safety_advisory_inline' && riskRank('low') > riskRank(highest)) {
+      highest = 'low';
+    }
+  }
+  return highest;
+}
+
+function normalizeRiskLevel({ safetyDecision, envelope } = {}) {
+  const decision = isPlainObject(safetyDecision) ? safetyDecision : {};
+
+  const explicitRisk = asString(decision.risk_level || decision.riskLevel).toLowerCase();
+  if (explicitRisk === 'high' || explicitRisk === 'medium' || explicitRisk === 'low' || explicitRisk === 'none') {
+    return explicitRisk;
+  }
+
+  const fromBlockLevel = normalizeBlockLevelToRisk(decision.block_level || decision.blockLevel);
+  if (fromBlockLevel) return fromBlockLevel;
+
+  let matchedHighest = 'none';
+  const matchedRules = asArray(decision.matched_rules || decision.matchedRules);
+  for (const rule of matchedRules) {
+    if (!isPlainObject(rule)) continue;
+    const next = normalizeBlockLevelToRisk(rule.level || rule.block_level);
+    if (next && riskRank(next) > riskRank(matchedHighest)) {
+      matchedHighest = next;
+    }
+  }
+  if (matchedHighest !== 'none') return matchedHighest;
+
+  const fromEvents = inferRiskFromEnvelopeEvents(envelope);
+  if (fromEvents !== 'none') return fromEvents;
+
+  if (asArray(decision.reasons).some((row) => asString(row))) return 'low';
   return 'none';
+}
+
+function normalizeSafetyRedFlags({ safetyDecision, envelope } = {}) {
+  const decision = isPlainObject(safetyDecision) ? safetyDecision : {};
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const text = asString(value);
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+
+  for (const value of asArray(decision.reasons)) push(value);
+  for (const value of asArray(decision.reason_codes || decision.reasonCodes)) push(value);
+  for (const value of asArray(decision.required_questions || decision.requiredQuestions)) push(value);
+  for (const rule of asArray(decision.matched_rules || decision.matchedRules)) {
+    if (!isPlainObject(rule)) continue;
+    push(rule.id);
+  }
+
+  if (out.length === 0) {
+    const events = asArray(envelope && envelope.events);
+    for (const evt of events) {
+      if (!isPlainObject(evt)) continue;
+      const eventName = asString(evt.event_name).toLowerCase();
+      if (!eventName.startsWith('safety_')) continue;
+      if (eventName === 'safety_gate_block') push('safety_gate_block');
+      if (eventName === 'safety_advisory_inline') push('safety_advisory_inline');
+      const data = isPlainObject(evt.data) ? evt.data : {};
+      push(data.reason);
+    }
+  }
+
+  return out.slice(0, 8);
+}
+
+function buildSafetyDisclaimer({ riskLevel, language }) {
+  if (riskLevel === 'high') {
+    return language === 'CN'
+      ? '检测到高风险信号：暂停强功效叠加，必要时及时就医。'
+      : 'High-risk signal detected: pause aggressive actives and seek medical care when needed.';
+  }
+  if (riskLevel === 'medium') {
+    return language === 'CN'
+      ? '存在中等风险：补充关键安全信息前，请先按保守方案执行。'
+      : 'Medium-risk signal detected: use conservative options until key safety details are confirmed.';
+  }
+  if (riskLevel === 'low') {
+    return language === 'CN'
+      ? '有低风险提示：建议降低活性强度并观察皮肤反应。'
+      : 'Low-risk note: consider reducing active intensity and monitor skin response.';
+  }
+  return '';
 }
 
 function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = '' } = {}) {
@@ -218,17 +330,9 @@ function buildChatCardsResponse({
     intent,
   });
 
-  const riskLevel = normalizeRiskLevel(safetyDecision);
-  const redFlags = asArray(safetyDecision && safetyDecision.reasons)
-    .map((row) => asString(row))
-    .filter(Boolean)
-    .slice(0, 8);
-  const disclaimer =
-    riskLevel === 'high'
-      ? language === 'CN'
-        ? '检测到高风险信号：暂停强功效叠加，必要时及时就医。'
-        : 'High-risk signal detected: pause aggressive actives and seek medical care when needed.'
-      : '';
+  const riskLevel = normalizeRiskLevel({ safetyDecision, envelope: base });
+  const redFlags = normalizeSafetyRedFlags({ safetyDecision, envelope: base });
+  const disclaimer = buildSafetyDisclaimer({ riskLevel, language });
 
   const ops = normalizeOps({ envelope: base, threadOps });
 

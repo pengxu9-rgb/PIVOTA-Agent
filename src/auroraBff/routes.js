@@ -23483,6 +23483,72 @@ async function applyProductIntelGuardrailsToEnvelope({
   };
 }
 
+async function safelyApplyProductIntelGuardrailsToEnvelope({
+  envelope,
+  ctx,
+  profile,
+  language,
+  logger = null,
+  qaRuntime = null,
+  applyFn = applyProductIntelGuardrailsToEnvelope,
+} = {}) {
+  const runGuardrail = typeof applyFn === 'function' ? applyFn : applyProductIntelGuardrailsToEnvelope;
+  try {
+    const out = await runGuardrail({
+      envelope,
+      ctx,
+      profile,
+      language,
+      logger,
+      qaRuntime,
+    });
+    if (out && typeof out === 'object' && !Array.isArray(out)) {
+      return out;
+    }
+    return {
+      envelope: isPlainObject(envelope) ? { ...envelope } : envelope,
+      dropped: 0,
+      externalized: 0,
+      rejected: [],
+      failed: false,
+    };
+  } catch (err) {
+    const baseEnvelope = isPlainObject(envelope) ? { ...envelope } : {};
+    const events = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice(0, 96) : [];
+    const errorCode = String((err && (err.code || err.name)) || 'GUARDRAIL_RUNTIME_ERROR').trim() || 'GUARDRAIL_RUNTIME_ERROR';
+    const eventCtx = ctx && typeof ctx === 'object' ? ctx : {};
+    events.push(
+      makeEvent(eventCtx, 'product_intel_guardrail_failed', {
+        code: errorCode.slice(0, 64),
+      }),
+    );
+
+    if (logger?.warn) {
+      logger.warn(
+        {
+          request_id: eventCtx.request_id || null,
+          trace_id: eventCtx.trace_id || null,
+          error_code: errorCode.slice(0, 64),
+          err: err && err.message ? err.message : String(err || ''),
+        },
+        'aurora bff: product-intel guardrail runtime failure',
+      );
+    }
+
+    return {
+      envelope: {
+        ...baseEnvelope,
+        events: events.slice(0, 96),
+      },
+      dropped: 0,
+      externalized: 0,
+      rejected: [],
+      failed: true,
+      error_code: errorCode.slice(0, 64),
+    };
+  }
+}
+
 function coerceRecoRowsForGuardrail(rows) {
   const source = Array.isArray(rows) ? rows : [];
   const out = [];
@@ -36873,12 +36939,22 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         };
       })();
-      const guardrailResult = await applyProductIntelGuardrailsToEnvelope({
+      const guardrailResult = await safelyApplyProductIntelGuardrailsToEnvelope({
         envelope: envelopeWithContract,
         ctx,
         profile,
         language: ctx.lang,
       });
+      if (guardrailResult && guardrailResult.failed) {
+        logger?.warn(
+          {
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            error_code: guardrailResult.error_code || null,
+          },
+          'aurora bff: product-intel guardrail failed, fallback envelope used',
+        );
+      }
       if (guardrailResult && Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
         persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
       }
@@ -41936,6 +42012,7 @@ const __internal = {
   shouldSkipQaByBudget,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
+  safelyApplyProductIntelGuardrailsToEnvelope,
   applyRecommendationOutputGuardrailsForRoute,
   sanitizeDupeSuggestPayload,
   applyDupeSuggestSanitizeToEnvelope,
