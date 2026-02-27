@@ -593,6 +593,8 @@ const PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY = (() => {
 })();
 const CREATOR_CACHE_SHORT_CIRCUIT_ENABLED =
   String(process.env.CREATOR_CACHE_SHORT_CIRCUIT_ENABLED || 'false').toLowerCase() === 'true';
+const PROXY_SEARCH_CREATOR_SCOPE_TO_CONFIG =
+  String(process.env.PROXY_SEARCH_CREATOR_SCOPE_TO_CONFIG || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS = Math.max(
   600,
   Math.min(
@@ -3034,7 +3036,8 @@ function normalizeAgentSource(source) {
   return String(source || '')
     .trim()
     .toLowerCase()
-    .replace(/_/g, '-');
+    .replace(/[_\s]+/g, '-')
+    .replace(/-+/g, '-');
 }
 
 function isShoppingSource(source) {
@@ -15441,6 +15444,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const priceMax = search.price_max ?? search.max_price;
 
         const shouldScopeToCreatorCatalog =
+          PROXY_SEARCH_CREATOR_SCOPE_TO_CONFIG &&
           isCreatorUiSource(metadata?.source) &&
           !merchantId &&
           merchantIds.length === 0 &&
