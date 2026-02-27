@@ -492,6 +492,28 @@ function scoreCandidate({ overlapCount, evidenceGrade, citationsCount, evidenceS
   return overlapScore + evidenceRankScore + citationScore + evidenceSoftBonus;
 }
 
+function renderProductWhyMatchLayered({
+  issueType,
+  ingredientName,
+  market,
+  lang,
+  conservativeMode = false,
+} = {}) {
+  const base = renderAllowedTemplate({ templateType: 'product_why_match', issueType, ingredientName, market, lang });
+  if (!conservativeMode) return base;
+  const zh = normalizeLang(lang) === 'zh';
+  const tail = zh
+    ? '当前证据较有限，建议先低频使用并观察耐受，再决定是否长期保留。'
+    : 'Evidence is still limited. Start low-frequency and monitor tolerance before long-term use.';
+  const text = [String(base.text || '').trim(), tail].filter(Boolean).join(' ').slice(0, 260);
+  return {
+    text,
+    template_key: `${String(base.template_key || 'product_why_match').trim()}__limited_conservative`,
+    fallback: Boolean(base.fallback),
+    reason: String(base.reason || 'limited_conservative'),
+  };
+}
+
 function buildProductOutput({
   product,
   issueType,
@@ -503,9 +525,13 @@ function buildProductOutput({
   fallbackToGeneric,
 } = {}) {
   const ingredientName = String(ingredientId || '').trim() || (normalizeLang(lang) === 'zh' ? '该成分' : 'this ingredient');
-  const whyRendered = fallbackToGeneric
-    ? renderAllowedTemplate({ templateType: 'generic_safe', issueType, ingredientName, market, lang })
-    : renderAllowedTemplate({ templateType: 'product_why_match', issueType, ingredientName, market, lang });
+  const whyRendered = renderProductWhyMatchLayered({
+    issueType,
+    ingredientName,
+    market,
+    lang,
+    conservativeMode: Boolean(fallbackToGeneric),
+  });
   const howRendered = renderAllowedTemplate({ templateType: 'how_to_use', issueType, ingredientName, market, lang });
 
   const cautionsSource = normalizeLang(lang) === 'zh' ? product.cautions_zh : product.cautions_en;
@@ -1069,6 +1095,39 @@ async function buildIngredientProductRecommendationsNeutral({
     : dedupedCtas.length
       ? 'strict_filter_fallback_only'
       : suppressedReason || 'no_candidate';
+  const richImageCount = outputs.filter((item) => Boolean(String(item && item.image_url || '').trim())).length;
+  const richPriceCount = outputs.filter((item) => {
+    const hasPrice = Number.isFinite(Number(item && item.price));
+    const hasPriceLabel = Boolean(String(item && item.price_label || '').trim());
+    return hasPrice || hasPriceLabel;
+  }).length;
+  const richSocialCount = outputs.filter((item) => {
+    const social = item && item.social_proof && typeof item.social_proof === 'object' ? item.social_proof : null;
+    if (!social) return false;
+    const hasRating = Number.isFinite(Number(social.rating));
+    const hasReviews = Number.isFinite(Number(social.review_count));
+    const hasSummary = Boolean(String(social.summary || '').trim());
+    return hasRating || hasReviews || hasSummary;
+  }).length;
+  const richAnyCount = outputs.filter((item) => {
+    const hasImage = Boolean(String(item && item.image_url || '').trim());
+    const hasPrice = Number.isFinite(Number(item && item.price)) || Boolean(String(item && item.price_label || '').trim());
+    const social = item && item.social_proof && typeof item.social_proof === 'object' ? item.social_proof : null;
+    const hasSocial = Boolean(
+      social
+        && (
+          Number.isFinite(Number(social.rating))
+          || Number.isFinite(Number(social.review_count))
+          || String(social.summary || '').trim()
+        ),
+    );
+    return hasImage || hasPrice || hasSocial;
+  }).length;
+  const genericCopyCount = outputs.filter((item) =>
+    String(item && item.why_match_template_key || '')
+      .trim()
+      .toLowerCase()
+      .includes('generic')).length;
 
   return {
     products: outputs,
@@ -1093,6 +1152,16 @@ async function buildIngredientProductRecommendationsNeutral({
         acc[key] = Number(acc[key] || 0) + 1;
         return acc;
       }, {}),
+      external_candidate_rate: round3(
+        pool.length > 0 ? Number(sourceCounter.external_seed || 0) / Math.max(1, pool.length) : 0,
+      ),
+      generic_copy_rate: round3(outputs.length > 0 ? genericCopyCount / outputs.length : 0),
+      rich_fields_coverage: {
+        image_rate: round3(outputs.length > 0 ? richImageCount / outputs.length : 0),
+        price_rate: round3(outputs.length > 0 ? richPriceCount / outputs.length : 0),
+        social_rate: round3(outputs.length > 0 ? richSocialCount / outputs.length : 0),
+        any_rate: round3(outputs.length > 0 ? richAnyCount / outputs.length : 0),
+      },
       soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
     },
   };

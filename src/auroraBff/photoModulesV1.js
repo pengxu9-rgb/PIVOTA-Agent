@@ -243,6 +243,22 @@ const DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD = parseEnvNumber(
   0.005,
   0.4,
 );
+const PHOTO_MODULES_TOP_ACTIONS_LIMIT = Math.max(
+  1,
+  Math.min(6, Math.trunc(Number(process.env.PHOTO_MODULES_TOP_ACTIONS_LIMIT || 3) || 3)),
+);
+const PHOTO_MODULES_CONFIDENCE_LOW_THRESHOLD = parseEnvNumber(
+  process.env.PHOTO_MODULES_CONFIDENCE_LOW_THRESHOLD,
+  0.15,
+  0.01,
+  0.6,
+);
+const PHOTO_MODULES_CONFIDENCE_MEDIUM_THRESHOLD = parseEnvNumber(
+  process.env.PHOTO_MODULES_CONFIDENCE_MEDIUM_THRESHOLD,
+  0.45,
+  0.05,
+  0.9,
+);
 
 function clamp01(value) {
   const number = Number(value);
@@ -283,6 +299,255 @@ function normalizeSeverity0to4(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 0;
   return Math.max(0, Math.min(4, number));
+}
+
+function confidenceBucketFromValue(confidence0to1) {
+  const confidence = clamp01(Number(confidence0to1));
+  if (confidence < PHOTO_MODULES_CONFIDENCE_LOW_THRESHOLD) return 'low';
+  if (confidence < PHOTO_MODULES_CONFIDENCE_MEDIUM_THRESHOLD) return 'medium';
+  return 'high';
+}
+
+function normalizeStringList(values, max = 6) {
+  const out = [];
+  const seen = new Set();
+  const rows = Array.isArray(values) ? values : [];
+  for (const raw of rows) {
+    const token = String(raw || '').trim();
+    if (!token) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function computeIssueRankScore({ severity0to4, confidence0to1 } = {}) {
+  const severityScore = clamp01(normalizeSeverity0to4(severity0to4) / 4);
+  const confidenceScore = clamp01(confidence0to1);
+  return round3(clamp01(severityScore * 0.72 + confidenceScore * 0.28));
+}
+
+function actionDedupeKey(action) {
+  const canonicalId = String(
+    action && (action.ingredient_canonical_id || action.ingredientCanonicalId || action.ingredient_id || action.ingredientId)
+      ? action.ingredient_canonical_id || action.ingredientCanonicalId || action.ingredient_id || action.ingredientId
+      : '',
+  )
+    .trim()
+    .toLowerCase();
+  if (canonicalId) return canonicalId;
+  const ingredientName = String(action && action.ingredient_name ? action.ingredient_name : '')
+    .trim()
+    .toLowerCase();
+  return ingredientName || '__unknown_ingredient__';
+}
+
+function actionIssueTypes(action) {
+  return normalizeStringList(
+    Array.isArray(action && action.evidence_issue_types) ? action.evidence_issue_types : [],
+    4,
+  );
+}
+
+function actionPrioritySeed(action, issueRankByType) {
+  const issueTypes = actionIssueTypes(action);
+  if (!issueTypes.length) return 0;
+  let best = 0;
+  for (const issueType of issueTypes) {
+    const score = Number(issueRankByType.get(issueType) || 0);
+    if (score > best) best = score;
+  }
+  return round3(clamp01(best));
+}
+
+function mergeActionRows(baseAction, incomingAction, issueRankByType) {
+  const baseSeed = actionPrioritySeed(baseAction, issueRankByType);
+  const incomingSeed = actionPrioritySeed(incomingAction, issueRankByType);
+  const preferIncoming = incomingSeed > baseSeed;
+  const primary = preferIncoming ? incomingAction : baseAction;
+  const secondary = preferIncoming ? baseAction : incomingAction;
+
+  const merged = {
+    ...primary,
+    evidence_issue_types: normalizeStringList(
+      [
+        ...(Array.isArray(primary && primary.evidence_issue_types) ? primary.evidence_issue_types : []),
+        ...(Array.isArray(secondary && secondary.evidence_issue_types) ? secondary.evidence_issue_types : []),
+      ],
+      4,
+    ),
+    evidence_region_ids: normalizeStringList(
+      [
+        ...(Array.isArray(primary && primary.evidence_region_ids) ? primary.evidence_region_ids : []),
+        ...(Array.isArray(secondary && secondary.evidence_region_ids) ? secondary.evidence_region_ids : []),
+      ],
+      6,
+    ),
+    cautions: normalizeStringList(
+      [
+        ...(Array.isArray(primary && primary.cautions) ? primary.cautions : []),
+        ...(Array.isArray(secondary && secondary.cautions) ? secondary.cautions : []),
+      ],
+      6,
+    ),
+    do_not_mix: normalizeStringList(
+      [
+        ...(Array.isArray(primary && primary.do_not_mix) ? primary.do_not_mix : []),
+        ...(Array.isArray(secondary && secondary.do_not_mix) ? secondary.do_not_mix : []),
+      ],
+      6,
+    ),
+  };
+
+  if (!String(merged.ingredient_canonical_id || '').trim()) {
+    merged.ingredient_canonical_id = String(
+      incomingAction && incomingAction.ingredient_canonical_id
+        ? incomingAction.ingredient_canonical_id
+        : baseAction && baseAction.ingredient_canonical_id
+          ? baseAction.ingredient_canonical_id
+          : '',
+    ).trim();
+  }
+  return merged;
+}
+
+function computeActionRankScore(action, issueRankByType) {
+  const issueTypes = actionIssueTypes(action);
+  if (!issueTypes.length) return 0;
+  const issueScores = issueTypes
+    .map((issueType) => Number(issueRankByType.get(issueType) || 0))
+    .filter((score) => Number.isFinite(score) && score > 0);
+  if (!issueScores.length) return 0;
+  const maxScore = Math.max(...issueScores);
+  const meanScore = issueScores.reduce((acc, score) => acc + score, 0) / issueScores.length;
+  const coverageBoost = Math.min(0.08, issueTypes.length * 0.02);
+  const cautionPenalty = Math.min(0.08, (Array.isArray(action && action.cautions) ? action.cautions.length : 0) * 0.01);
+  return round3(clamp01(maxScore * 0.7 + meanScore * 0.22 + coverageBoost - cautionPenalty));
+}
+
+function rankAndGroupActions(actions, issueRankByType) {
+  const map = new Map();
+  const safeActions = Array.isArray(actions) ? actions : [];
+  for (const actionRaw of safeActions) {
+    const action = actionRaw && typeof actionRaw === 'object' ? { ...actionRaw } : null;
+    if (!action) continue;
+    const key = actionDedupeKey(action);
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, action);
+      continue;
+    }
+    map.set(key, mergeActionRows(existing, action, issueRankByType));
+  }
+
+  const ranked = Array.from(map.values())
+    .map((action) => ({
+      ...action,
+      action_rank_score: computeActionRankScore(action, issueRankByType),
+    }))
+    .sort((left, right) => {
+      const scoreDiff = Number(right.action_rank_score || 0) - Number(left.action_rank_score || 0);
+      if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+      return String(left.ingredient_name || left.ingredient_id || '').localeCompare(
+        String(right.ingredient_name || right.ingredient_id || ''),
+      );
+    });
+
+  const grouped = ranked.map((action, index) => ({
+    ...action,
+    group: index < PHOTO_MODULES_TOP_ACTIONS_LIMIT ? 'top' : 'more',
+  }));
+  return {
+    actions: grouped,
+    topActions: grouped.filter((action) => action.group === 'top'),
+    moreActions: grouped.filter((action) => action.group === 'more'),
+  };
+}
+
+function computeModuleRankScore({ issues, actions } = {}) {
+  const safeIssues = Array.isArray(issues) ? issues : [];
+  const safeActions = Array.isArray(actions) ? actions : [];
+  const issueScores = safeIssues
+    .map((issue) => Number(issue && issue.issue_rank_score))
+    .filter((score) => Number.isFinite(score) && score > 0)
+    .sort((a, b) => b - a);
+  const topIssueScore = issueScores[0] || 0;
+  const avgTopIssueScore = issueScores.length
+    ? issueScores.slice(0, 2).reduce((acc, score) => acc + score, 0) / Math.min(2, issueScores.length)
+    : 0;
+  const topActionScore = safeActions.reduce(
+    (max, action) => Math.max(max, Number(action && action.action_rank_score || 0)),
+    0,
+  );
+  return round3(clamp01(topIssueScore * 0.68 + avgTopIssueScore * 0.2 + topActionScore * 0.12));
+}
+
+function findTopProductIdFromModule(moduleRow) {
+  if (!moduleRow || typeof moduleRow !== 'object') return null;
+  const actionRows = Array.isArray(moduleRow.actions) ? moduleRow.actions : [];
+  const rankedActions = actionRows
+    .slice()
+    .sort((left, right) => Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0));
+  for (const action of rankedActions) {
+    const products = Array.isArray(action && action.products) ? action.products : [];
+    for (const product of products) {
+      const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
+        .trim();
+      if (productId) return productId;
+    }
+  }
+  const moduleProducts = Array.isArray(moduleRow.products) ? moduleRow.products : [];
+  for (const product of moduleProducts) {
+    const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
+      .trim();
+    if (productId) return productId;
+  }
+  return null;
+}
+
+function buildSummaryV1(modules) {
+  const safeModules = Array.isArray(modules) ? modules : [];
+  if (!safeModules.length) return null;
+  const rankedModules = safeModules
+    .slice()
+    .sort((left, right) => {
+      const rankDiff = Number(right && right.module_rank_score || 0) - Number(left && left.module_rank_score || 0);
+      if (Math.abs(rankDiff) > 1e-6) return rankDiff;
+      const leftSeverity = Array.isArray(left && left.issues)
+        ? left.issues.reduce((max, issue) => Math.max(max, normalizeSeverity0to4(issue && issue.severity_0_4)), 0)
+        : 0;
+      const rightSeverity = Array.isArray(right && right.issues)
+        ? right.issues.reduce((max, issue) => Math.max(max, normalizeSeverity0to4(issue && issue.severity_0_4)), 0)
+        : 0;
+      return rightSeverity - leftSeverity;
+    });
+  const topModule = rankedModules[0];
+  if (!topModule || !topModule.module_id) return null;
+  const topIssue = (Array.isArray(topModule.issues) ? topModule.issues : [])
+    .slice()
+    .sort((left, right) => {
+      const rankDiff = Number(right && right.issue_rank_score || 0) - Number(left && left.issue_rank_score || 0);
+      if (Math.abs(rankDiff) > 1e-6) return rankDiff;
+      const severityDiff = normalizeSeverity0to4(right && right.severity_0_4) - normalizeSeverity0to4(left && left.severity_0_4);
+      if (severityDiff !== 0) return severityDiff;
+      return clamp01(Number(right && right.confidence_0_1)) - clamp01(Number(left && left.confidence_0_1));
+    })[0] || null;
+  const topAction = (Array.isArray(topModule.actions) ? topModule.actions : [])
+    .slice()
+    .sort((left, right) => Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0))[0] || null;
+
+  return {
+    top_module_id: String(topModule.module_id),
+    top_issue_type: topIssue && topIssue.issue_type ? String(topIssue.issue_type) : null,
+    top_issue_severity: topIssue ? round3(normalizeSeverity0to4(topIssue.severity_0_4)) : null,
+    top_issue_confidence: topIssue ? round3(clamp01(topIssue.confidence_0_1)) : null,
+    top_action_ingredient_id: topAction
+      ? String(topAction.ingredient_canonical_id || topAction.ingredient_id || '').trim() || null
+      : null,
+    top_product_id: findTopProductIdFromModule(topModule),
+  };
 }
 
 function isPointNearlyEqual(a, b, eps = 1e-6) {
@@ -1254,14 +1519,37 @@ function buildModuleIssues({
     }
   }
 
+  const rankedIssues = moduleIssues
+    .map((issue) => ({
+      ...issue,
+      issue_rank_score: computeIssueRankScore({
+        severity0to4: issue && issue.severity_0_4,
+        confidence0to1: issue && issue.confidence_0_1,
+      }),
+      confidence_bucket: confidenceBucketFromValue(issue && issue.confidence_0_1),
+    }))
+    .sort((left, right) => {
+      const rankDiff = Number(right.issue_rank_score || 0) - Number(left.issue_rank_score || 0);
+      if (Math.abs(rankDiff) > 1e-6) return rankDiff;
+      const severityDiff = normalizeSeverity0to4(right.severity_0_4) - normalizeSeverity0to4(left.severity_0_4);
+      if (severityDiff !== 0) return severityDiff;
+      return clamp01(Number(right.confidence_0_1 || 0)) - clamp01(Number(left.confidence_0_1 || 0));
+    })
+    .slice(0, 4);
+  const issueRankByType = new Map(
+    rankedIssues.map((issue) => [String(issue && issue.issue_type ? issue.issue_type : ''), Number(issue.issue_rank_score || 0)]),
+  );
+  const rankedActionBuild = rankAndGroupActions(actions, issueRankByType);
+  const rankedActions = rankedActionBuild.actions;
+
   let products = [];
   let productSuppressedReason = null;
   let productRecDebug = null;
   if (productRecEnabled) {
     const productRecResult = buildProductRecommendations({
       moduleId,
-      issues: moduleIssues,
-      actions,
+      issues: rankedIssues,
+      actions: rankedActions,
       market,
       lang: normalizeLanguage(language) === 'CN' ? 'zh' : 'en',
       riskTier,
@@ -1289,8 +1577,10 @@ function buildModuleIssues({
   }
 
   return {
-    issues: moduleIssues.sort((a, b) => b.severity_0_4 - a.severity_0_4).slice(0, 4),
-    actions,
+    issues: rankedIssues,
+    actions: rankedActions,
+    topActions: rankedActionBuild.topActions,
+    moreActions: rankedActionBuild.moreActions,
     products,
     productSuppressedReason,
     productRecDebug,
@@ -1390,10 +1680,17 @@ function buildModules({
       }
     }
 
+    const topActions = Array.isArray(result.topActions) ? result.topActions : actions.filter((action) => action && action.group === 'top');
+    const moreActions = Array.isArray(result.moreActions) ? result.moreActions : actions.filter((action) => action && action.group === 'more');
+    const moduleRankScore = computeModuleRankScore({ issues, actions });
+
     const modulePayload = {
       module_id: moduleId,
       issues,
       actions,
+      top_actions: topActions,
+      more_actions: moreActions,
+      module_rank_score: moduleRankScore,
       ...(productRecEnabled ? { products } : {}),
     };
     if (internalTestMode) {
@@ -3804,6 +4101,7 @@ function buildPhotoModulesCard({
     skinmask_reliable: Boolean(moduleMaskBuild.skinmask_reliable),
     degraded_reasons: Array.isArray(moduleMaskBuild.degraded_reasons) ? moduleMaskBuild.degraded_reasons.slice(0, 8) : [],
   };
+  const summaryV1 = buildSummaryV1(moduleMaskBuild.modules);
 
   const payload = {
     used_photos: true,
@@ -3820,6 +4118,7 @@ function buildPhotoModulesCard({
     regions_available_count: regionsAvailableCount,
     regions_unavailable_count: regionsUnavailableCount,
     modules: moduleMaskBuild.modules,
+    ...(summaryV1 ? { summary_v1: summaryV1 } : {}),
     module_overlay_debug: moduleOverlayDebug,
     ...(Array.isArray(moduleMaskBuild.degraded_reasons) && moduleMaskBuild.degraded_reasons.length
       ? { degraded_reason: moduleMaskBuild.degraded_reasons[0], degraded_reasons: moduleMaskBuild.degraded_reasons }
