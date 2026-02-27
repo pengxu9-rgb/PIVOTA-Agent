@@ -184,9 +184,12 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
 
   const regionIds = new Set(payload.regions.map((region) => region.region_id));
   for (const module of payload.modules) {
+    assert.ok(Number.isFinite(Number(module.module_rank_score)));
     for (const issue of module.issues || []) {
       const evidenceIds = Array.isArray(issue.evidence_region_ids) ? issue.evidence_region_ids : [];
       assert.ok(evidenceIds.length >= 1);
+      assert.ok(Number.isFinite(Number(issue.issue_rank_score)));
+      assert.ok(['low', 'medium', 'high'].includes(String(issue.confidence_bucket || '').toLowerCase()));
       if (issue.issue_type === 'shine') {
         assert.equal(
           evidenceIds.every((regionId) => String(regionId).includes('heatmap')),
@@ -198,6 +201,23 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
         assert.equal(regionIds.has(evidenceId), true);
       }
     }
+    for (const action of module.actions || []) {
+      assert.ok(Number.isFinite(Number(action.action_rank_score)));
+      assert.ok(['top', 'more'].includes(String(action.group || '').toLowerCase()));
+    }
+  }
+  assert.ok(payload.summary_v1 && typeof payload.summary_v1 === 'object');
+  assert.ok(
+    payload.modules.some((module) => String(module.module_id || '') === String(payload.summary_v1.top_module_id || '')),
+  );
+  if (payload.summary_v1.top_issue_type) {
+    const targetModule =
+      payload.modules.find((module) => String(module.module_id || '') === String(payload.summary_v1.top_module_id || ''))
+      || payload.modules[0];
+    assert.ok(
+      Array.isArray(targetModule && targetModule.issues)
+      && targetModule.issues.some((issue) => String(issue.issue_type || '') === String(payload.summary_v1.top_issue_type)),
+    );
   }
 
   assert.ok(payload.module_overlay_debug && typeof payload.module_overlay_debug === 'object');

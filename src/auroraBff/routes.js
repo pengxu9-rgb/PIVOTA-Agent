@@ -13424,8 +13424,8 @@ async function enrichPhotoModulesCardWithIngredientProducts({
             timeoutMs: PHOTO_MODULES_ACTION_RECO_SEARCH_TIMEOUT_MS,
             limit: Math.max(1, Math.min(12, Number(limit) || 6)),
             allowExternalSeed: Boolean(allowExternalSeed) && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true,
-            // Avoid two-step catalog+external search per action to keep analysis latency bounded.
-            externalSeedStrategy: 'on_empty_only',
+            // Keep source-neutral pool quality by supplementing internal hits with external candidates.
+            externalSeedStrategy: 'supplement_internal_first',
           })
       : null;
 

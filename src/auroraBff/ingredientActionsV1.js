@@ -66,6 +66,34 @@ function toAction({ issueType, ingredient, evidenceRegionIds, language, isFragil
   };
 }
 
+function renderLimitedConservativeWhy({
+  issueType,
+  ingredientName,
+  market,
+  language,
+} = {}) {
+  const lang = normalizeLang(language);
+  const templateLang = lang === 'CN' ? 'zh' : 'en';
+  const base = renderAllowedTemplate({
+    templateType: 'ingredient_why',
+    issueType,
+    ingredientName,
+    market,
+    lang: templateLang,
+  });
+  const conservativeTail =
+    lang === 'CN'
+      ? '当前证据强度有限，建议先低频、单一引入并观察耐受。'
+      : 'Evidence is still limited, so start low-frequency as a single active and monitor tolerance.';
+  const text = [String(base.text || '').trim(), conservativeTail].filter(Boolean).join(' ').slice(0, 300);
+  return {
+    text,
+    template_key: `${String(base.template_key || 'ingredient_why').trim()}__limited_conservative`,
+    fallback: Boolean(base.fallback),
+    reason: String(base.reason || 'limited_conservative'),
+  };
+}
+
 const ISSUE_INGREDIENT_MAP = Object.freeze({
   redness: [
     {
@@ -325,17 +353,16 @@ function mapIngredientActions({
       market: resolvedMarket,
     });
     if (merged.evidence_limited) {
-      const safeWhy = renderAllowedTemplate({
-        templateType: 'generic_safe',
+      const limitedWhy = renderLimitedConservativeWhy({
         issueType: key,
         ingredientName: merged.ingredient_name,
         market: resolvedMarket,
-        lang: lang === 'CN' ? 'zh' : 'en',
+        language: lang,
       });
-      merged.why = safeWhy.text;
-      merged.why_template_key = safeWhy.template_key;
-      merged.why_template_fallback = true;
-      merged.why_template_reason = safeWhy.reason || 'generic_safe';
+      merged.why = limitedWhy.text;
+      merged.why_template_key = limitedWhy.template_key;
+      merged.why_template_fallback = Boolean(limitedWhy.fallback);
+      merged.why_template_reason = limitedWhy.reason || 'limited_conservative';
     }
     merged.evidence_badge = merged.evidence_limited ? 'limited' : 'supported';
     if (internalTestMode) {
