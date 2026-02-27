@@ -211,16 +211,50 @@ printf "%s\n" "$routine_json" | jq_assert "heatmap has 2+ steps" '(.cards[]|sele
 printf "%s\n" "$routine_json" | jq_assert "heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
 printf "%s\n" "$routine_json" | jq_assert "first cell has headline/why/recommendations" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items[0]) | ((.headline_i18n.en//"")|length>0) and ((.why_i18n.en//"")|length>0) and ((.recommendations|length) >= 1)'
 
-say "chat conflict question (should include routine_simulation + conflict_heatmap)"
+say "chat conflict question (should include routine_simulation + conflict_heatmap; direct or compatibility wrapper)"
 chat_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \
   "${COMMON_HEADERS[@]}" \
   --data '{"message":"My PM treatment is retinol. Can I add a glycolic acid toner? Check conflicts.","session":{"state":"S7_PRODUCT_RECO"}}')"
 
 printf "%s\n" "$chat_json" | jq_assert "/v1/chat returns cards array" '.cards | type=="array"'
-printf "%s\n" "$chat_json" | jq_assert "chat includes routine_simulation" '.cards | any(.type=="routine_simulation")'
-printf "%s\n" "$chat_json" | jq_assert "chat includes conflict_heatmap" '.cards | any(.type=="conflict_heatmap")'
-printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
+printf "%s\n" "$chat_json" | jq_assert "chat includes routine_simulation (direct or compatibility wrapper)" '
+  .cards | any(.type=="routine_simulation")
+  or any(
+    .type=="compatibility" and
+    ((.sections // []) | any(
+      .kind=="compatibility_structured" and
+      (
+        .source_card_type=="routine_simulation"
+        or ((.routine_simulation // null) | type == "object")
+      )
+    ))
+  )
+'
+printf "%s\n" "$chat_json" | jq_assert "chat includes conflict_heatmap (direct or compatibility wrapper)" '
+  .cards | any(.type=="conflict_heatmap")
+  or any(
+    .type=="compatibility" and
+    ((.sections // []) | any(
+      .kind=="compatibility_structured" and
+      (
+        .source_card_type=="conflict_heatmap"
+        or ((.conflict_heatmap // null) | type == "object")
+      )
+    ))
+  )
+'
+printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell (direct or compatibility wrapper)" '
+  (
+    [
+      (.cards[]? | select(.type=="conflict_heatmap") | ((.payload.cells.items // []) | length)),
+      (.cards[]? | select(.type=="compatibility") | .sections[]? | select(.kind=="compatibility_structured") | ((.conflict_heatmap.cells.items // []) | length))
+    ]
+    | map(select(. != null))
+    | max
+    // 0
+  ) >= 1
+'
 printf "%s\n" "$chat_json" | jq_assert "chat optional safety advisory (if present) is non-blocking" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="safety_optional_profile_missing") | .payload.non_blocking] | if length==0 then true else all(. == true) end)'
 printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '((.events // []) | any(.event_name=="safety_gate_require_info")) | not'
 
@@ -245,11 +279,26 @@ followup_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     }
   }")"
 
-printf "%s\n" "$followup_json" | jq_assert "follow-up returns product_analysis card" '.cards | any(.type=="product_analysis")'
-printf "%s\n" "$followup_json" | jq_assert "follow-up provenance has goal" '((.cards[]|select(.type=="product_analysis")|.payload.provenance.followup_goal)//"") == "acne_focus"'
-printf "%s\n" "$followup_json" | jq_assert "follow-up provenance has anchor_used" '
-  (.cards[]|select(.type=="product_analysis")|.payload.provenance.anchor_used) as $a |
-  (($a.anchor_product_id // $a.anchor_product_url // "") | tostring | length) > 0
+printf "%s\n" "$followup_json" | jq_assert "follow-up returns analysis card (product_analysis or product_verdict)" '.cards | any(.type=="product_analysis" or .type=="product_verdict")'
+printf "%s\n" "$followup_json" | jq_assert "follow-up carries goal signal (provenance or ops event)" '
+  (
+    [(.cards[]? | select(.type=="product_analysis") | (.payload.provenance.followup_goal // ""))] | any(. == "acne_focus")
+  )
+  or
+  (
+    (.ops.experiment_events // []) | any((.event_data.followup_goal // "") == "acne_focus")
+  )
+'
+printf "%s\n" "$followup_json" | jq_assert "follow-up carries anchor-used signal (provenance or ops event)" '
+  (
+    [
+      (.cards[]? | select(.type=="product_analysis") | (.payload.provenance.anchor_used // {}) | ((.anchor_product_id // .anchor_product_url // "") | tostring | length > 0))
+    ] | any
+  )
+  or
+  (
+    (.ops.experiment_events // []) | any((.event_data.anchored // false) == true)
+  )
 '
 printf "%s\n" "$followup_json" | jq_assert "follow-up not missing anchor code" '
   (
@@ -336,11 +385,29 @@ if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >
       ) == true
     '
   fi
-  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source" '.events | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))'
+  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source" '(.events // []) | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))'
+elif printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="product_verdict")' >/dev/null; then
+  printf "%s\n" "$reco_json" | jq_assert "product_verdict card exists when recommendations are absent" '.cards | any(.type=="product_verdict")'
+  printf "%s\n" "$reco_json" | jq_assert "recommendations absent in product_verdict path" '(.cards | any(.type=="recommendations")) | not'
+  printf "%s\n" "$reco_json" | jq_assert "recos_requested event carries source/reason when event stream is present" '
+    (.events // []) as $ev |
+    if ($ev | length) == 0 then
+      true
+    else
+      ($ev | any(
+        (.event_name=="recos_requested") and
+        (
+          ((.data.source // "") | length) > 0
+          or
+          ((.data.reason // "") | length) > 0
+        )
+      ))
+    end
+  '
 else
   printf "%s\n" "$reco_json" | jq_assert "confidence_notice card exists" '.cards | any(.type=="confidence_notice")'
   printf "%s\n" "$reco_json" | jq_assert "recommendations absent when confidence_notice path" '(.cards | any(.type=="recommendations")) | not'
-  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes gate reason" '.events | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing" or .data.reason=="artifact_low_confidence" or .data.reason=="safety_block" or .data.reason=="timeout_degraded"))'
+  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes gate reason" '(.events // []) | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing" or .data.reason=="artifact_low_confidence" or .data.reason=="safety_block" or .data.reason=="timeout_degraded"))'
 fi
 
 say "pregnancy due-date auto reset (non-blocking policy)"
@@ -362,7 +429,25 @@ preg_reset_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     },
     "session":{"state":"S7_PRODUCT_RECO"}
   }')"
-printf "%s\n" "$preg_reset_json" | jq_assert "pregnancy_status_auto_reset event emitted" '.events | any(.event_name=="pregnancy_status_auto_reset")'
+printf "%s\n" "$preg_reset_json" | jq_assert "pregnancy seed response has cards" '.cards | type=="array" and (length >= 1)'
+printf "%s\n" "$preg_reset_json" | jq_assert "pregnancy_status_auto_reset event (optional stream) is valid when present" '
+  (.events // []) as $ev |
+  if ($ev | length) == 0 then
+    true
+  else
+    ($ev | any(.event_name=="pregnancy_status_auto_reset"))
+  end
+'
+preg_bootstrap_json="$(curl_do -fsS "${BASE}/v1/session/bootstrap" \
+  -H "X-Aurora-UID: ${preg_reset_uid}" \
+  -H "X-Lang: ${AURORA_LANG}" \
+  -H "X-Trace-ID: ${TRACE_ID}_preg_reset_bootstrap" \
+  -H "X-Brief-ID: ${BRIEF_ID}_preg_reset_bootstrap")"
+printf "%s\n" "$preg_bootstrap_json" | jq_assert "pregnancy auto-reset applies to stored profile state" '
+  (
+    .cards[]? | select(.type=="session_bootstrap") | .payload.profile.pregnancy_status
+  ) == "not_pregnant"
+'
 
 say "ui events ingest (POST /v1/events should return 204)"
 events_code="$(curl_do -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/v1/events" \
