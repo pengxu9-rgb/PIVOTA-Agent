@@ -67,6 +67,16 @@ npm run demo:openai
 npm run demo:status
 ```
 
+### Test Stability Guardrails
+
+- Use Node 20 (`nvm use` reads `.nvmrc`).
+- Run tests only from this project root. Do not run tests from any `_deploy_tmp_*` directory.
+- Prefer a local non-cloud path (for example `~/dev/...`) instead of Desktop-managed sync folders.
+- Run `npm run test:preflight` before troubleshooting any test issue.
+- Use `npm run test:file -- <path>` to auto-route by runner:
+  - `*.node.test.cjs` -> `node --test`
+  - `*.test.js` / `*.test.ts` -> `jest`
+
 ## API Reference
 
 ### Main Endpoint

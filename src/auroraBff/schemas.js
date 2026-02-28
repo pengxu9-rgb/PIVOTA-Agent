@@ -116,35 +116,12 @@ const AnalysisMetaSchema = z
     llm_report_called: z.boolean(),
     artifact_usable: z.boolean(),
     degrade_reason: z.string().min(1).nullable().optional(),
-    qa_mode: z.string().min(1).optional(),
-    qa_provider: z.string().min(1).optional(),
-    diag_provider: z.string().min(1).optional(),
-    diag_model: z.string().min(1).nullable().optional(),
-    story_provider: z.string().min(1).optional(),
-    story_model: z.string().min(1).optional(),
-    product_lookup_mode: z.string().min(1).optional(),
-    product_lookup_fallback_used: z.boolean().optional(),
-    product_lookup_fallback_attempted: z.number().int().nonnegative().optional(),
-    product_lookup_fallback_recovered: z.number().int().nonnegative().optional(),
-    product_lookup_fallback_timeout: z.number().int().nonnegative().optional(),
-    product_lookup_fallback_invalid_json: z.number().int().nonnegative().optional(),
-    product_lookup_fallback_error: z.number().int().nonnegative().optional(),
-    product_lookup_fallback_empty: z.number().int().nonnegative().optional(),
-    photo_modules_emit_rate: z.number().min(0).max(1).optional(),
-    regions_unavailable_rate: z.number().min(0).max(1).optional(),
-    analysis_story_ui_card_rate: z.number().min(0).max(1).optional(),
-    product_llm_fallback_hit_rate: z.number().min(0).max(1).optional(),
-    product_llm_fallback_error_rate: z.number().min(0).max(1).optional(),
-    empty_products_rate: z.number().min(0).max(1).optional(),
-    invalid_url_drop_rate: z.number().min(0).max(1).optional(),
-    product_lookup_fallback_last_reason: z.string().min(1).optional(),
-    qa_skipped_reason: z.string().min(1).optional(),
   })
-  .passthrough();
+  .strict();
 
 const RecommendationMetaSchema = z
   .object({
-    source_mode: z.enum(['artifact_matcher', 'upstream_fallback', 'rules_only']),
+    source_mode: z.enum(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only']),
     used_recent_logs: z.boolean(),
     used_itinerary: z.boolean(),
     used_safety_flags: z.boolean(),
@@ -296,7 +273,6 @@ const UserProfilePatchSchema = z
       .enum(['unknown', 'under_13', '13_17', '18_24', '25_34', '35_44', '45_54', '55_plus'])
       .optional(),
     pregnancy_status: z.enum(['unknown', 'not_pregnant', 'pregnant', 'trying']).optional(),
-    pregnancy_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     lactation_status: z.enum(['unknown', 'not_lactating', 'lactating']).optional(),
     high_risk_medications: z.array(z.string().min(1)).max(30).optional(),
     travel_plan: z
@@ -304,9 +280,6 @@ const UserProfilePatchSchema = z
         destination: z.string().min(1).optional(),
         start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-        time_window: z
-          .enum(['today', 'tomorrow', 'this_week', 'next_week', 'this_month', 'next_month', 'weekend', 'unknown'])
-          .optional(),
         indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
         itinerary: z.string().min(1).max(1200).optional(),
         trip_id: z.string().min(1).max(80).optional(),
@@ -377,7 +350,7 @@ const ProductParseRequestSchema = z
     llm_provider: z.string().min(1).optional(),
     llm_model: z.string().min(1).optional(),
   })
-  .passthrough();
+  .strict();
 
 const ProductAnalyzeRequestSchema = z
   .object({
@@ -387,18 +360,8 @@ const ProductAnalyzeRequestSchema = z
     force_refresh: z.boolean().optional(),
     llm_provider: z.string().min(1).optional(),
     llm_model: z.string().min(1).optional(),
-    session: z
-      .object({
-        session_id: z.string().min(1).optional(),
-        sessionId: z.string().min(1).optional(),
-        id: z.string().min(1).optional(),
-        next_state: z.string().min(1).optional(),
-        state: z.union([z.string().min(1), z.record(z.string(), z.any())]).optional(),
-      })
-      .passthrough()
-      .optional(),
   })
-  .passthrough();
+  .strict();
 
 const DupeCompareRequestSchema = z
   .object({
@@ -456,12 +419,12 @@ const SkinAnalysisRequestSchema = z
             slot_id: z.string().min(1),
             qc_status: z.string().min(1).optional(),
           })
-          .passthrough(),
+          .strict(),
       )
-      .max(12)
+      .max(4)
       .optional(),
   })
-  .passthrough();
+  .strict();
 
 const AuthStartRequestSchema = z
   .object({
