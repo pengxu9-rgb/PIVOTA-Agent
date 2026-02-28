@@ -134,7 +134,7 @@ def test_e2e_contract_analysis_skin_qc_fail_golden() -> None:
     snapshot = _snapshot_from_envelope(envelope)
 
     assert snapshot["quality_grade"] == "fail"
-    assert snapshot["analysis_source"] == "retake"
+    assert snapshot["analysis_source"] == "rule_based_with_photo_qc"
     assert snapshot["llm_called"] == {"vision": False, "report": False}
     assert snapshot["finding_types"] == []
 
@@ -151,4 +151,3 @@ def test_e2e_contract_analysis_skin_qc_fail_golden() -> None:
 
     if snapshot != expected:
         raise AssertionError("golden mismatch\n" + _json_diff(expected, snapshot))
-
