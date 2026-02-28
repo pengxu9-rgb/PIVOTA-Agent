@@ -521,3 +521,100 @@ test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade',
     },
   );
 });
+
+test('/v1/analysis/skin: aggressive mode keeps non-empty analysis on fail-grade photo', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_RULE_RELAX_MODE: 'aggressive',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_SKIN_VISION_ENABLED: 'true',
+      AURORA_SKIN_VISION_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'dummy_openai_key',
+      PIVOTA_BACKEND_BASE_URL: '',
+      PIVOTA_BACKEND_AGENT_API_KEY: '',
+    },
+    async () => {
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      try {
+        const { mountAuroraBffRoutes } = mod;
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_aggressive_fail_photo',
+            'X-Trace-ID': 'trace_aggressive_fail_photo',
+            'X-Brief-ID': 'brief_aggressive_fail_photo',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'AM cleanser + SPF; PM cleanser + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_aggressive_fail', qc_status: 'failed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(Boolean(card?.payload?.analysis && typeof card.payload.analysis === 'object'), true);
+        assert.equal(card?.payload?.low_confidence, true);
+        assert.notEqual(String(card?.payload?.analysis_source || ''), 'retake');
+        assert.equal(card?.payload?.analysis_meta?.low_quality_tolerated, true);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: aggressive mode does not hard-block missing primary input when photo exists', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_RULE_RELAX_MODE: 'aggressive',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_SKIN_VISION_ENABLED: 'true',
+      AURORA_SKIN_VISION_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'dummy_openai_key',
+      PIVOTA_BACKEND_BASE_URL: '',
+      PIVOTA_BACKEND_AGENT_API_KEY: '',
+    },
+    async () => {
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      try {
+        const { mountAuroraBffRoutes } = mod;
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_aggressive_missing_primary',
+            'X-Trace-ID': 'trace_aggressive_missing_primary',
+            'X-Brief-ID': 'brief_aggressive_missing_primary',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_aggressive_missing_primary', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(Boolean(card?.payload?.analysis && typeof card.payload.analysis === 'object'), true);
+        assert.equal(String(card?.payload?.analysis_source || ''), 'rule_based_with_photo_qc');
+        const failureCode = String(card?.payload?.photo_notice?.failure_code || '');
+        assert.equal(['MISSING_PRIMARY_INPUT', 'DOWNLOAD_URL_GENERATE_FAILED'].includes(failureCode), true);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
