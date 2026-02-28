@@ -530,6 +530,8 @@ function normalizeAuroraIngredientsFlowStage(stage) {
   const token = cleanMetricToken(stage, 'unknown');
   if (
     token === 'entry_opened' ||
+    token === 'text_query_routed' ||
+    token === 'text_route_drift' ||
     token === 'mode_selected' ||
     token === 'answer_served' ||
     token === 'optin_diagnosis' ||
@@ -2742,6 +2744,8 @@ function renderVisionMetricsPrometheus() {
   const ingredientPlans = counterValueByLabels(auroraSkinFlowCounter, { stage: 'ingredient_plan', outcome: 'hit' });
   const analysisTimeoutDegraded = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_timeout_degraded', outcome: 'hit' });
   const ingredientEntries = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'entry_opened', outcome: 'hit' });
+  const ingredientTextQueryRouted = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'text_query_routed', outcome: 'hit' });
+  const ingredientTextRouteDrift = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'text_route_drift', outcome: 'hit' });
   const ingredientRecoOptin = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'reco_optin', outcome: 'hit' });
   const ingredientUnwantedDiagnosis = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'unwanted_diagnosis', outcome: 'hit' });
 
@@ -2784,6 +2788,12 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP ingredients_to_reco_optin_rate ingredient-path reco opt-ins / ingredients entries.');
   lines.push('# TYPE ingredients_to_reco_optin_rate gauge');
   lines.push(`ingredients_to_reco_optin_rate ${ingredientEntries > 0 ? ingredientRecoOptin / ingredientEntries : 0}`);
+
+  lines.push('# HELP ingredients_text_route_drift_rate ingredient text-route drift / ingredient text query routes.');
+  lines.push('# TYPE ingredients_text_route_drift_rate gauge');
+  lines.push(
+    `ingredients_text_route_drift_rate ${ingredientTextQueryRouted > 0 ? ingredientTextRouteDrift / ingredientTextQueryRouted : 0}`,
+  );
 
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');

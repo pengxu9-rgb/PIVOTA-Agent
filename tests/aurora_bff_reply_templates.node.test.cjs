@@ -124,3 +124,52 @@ test('replyTemplates: no-photo analysis includes explicit no-photo boundary text
 
   assert.equal(/没有可用照片|no usable photos/i.test(content), true);
 });
+
+test('replyTemplates: ingredient query-first cards keep default template and avoid diagnosis clarification injection', () => {
+  const baseMessage = 'Ingredient path stays query-first.';
+  const envelope = makeEnvelope({
+    assistant_message: { role: 'assistant', format: 'text', content: baseMessage },
+    cards: [{ card_id: 'ing_hub_1', type: 'ingredient_hub', payload: { mode: 'query_first' } }],
+    session_patch: {
+      meta: {
+        ingredient_query_first_applied: true,
+        ingredient_route_source: 'text',
+      },
+    },
+  });
+
+  const out = applyReplyTemplates({ envelope, ctx: { lang: 'EN' } });
+  const content = String(out?.assistant_message?.content || '');
+  const chips = Array.isArray(out?.suggested_chips) ? out.suggested_chips : [];
+  const hasDiagnosisNormChip = chips.some(
+    (chip) => chip && chip.data && String(chip.data.norm_id || '').toLowerCase() === 'skintype',
+  );
+
+  assert.equal(content, baseMessage);
+  assert.equal(hasDiagnosisNormChip, false);
+});
+
+test('replyTemplates: diagnosis clarification is still applied only when diagnosis_gate exists', () => {
+  const envelope = makeEnvelope({
+    cards: [
+      {
+        card_id: 'diag_gate_1',
+        type: 'diagnosis_gate',
+        payload: { missing_fields: ['skinType'] },
+      },
+    ],
+    session_patch: {
+      meta: { ingredient_query_first_applied: true },
+    },
+  });
+
+  const out = applyReplyTemplates({ envelope, ctx: { lang: 'EN' } });
+  const content = String(out?.assistant_message?.content || '');
+  const chips = Array.isArray(out?.suggested_chips) ? out.suggested_chips : [];
+  const hasSkinTypeChip = chips.some(
+    (chip) => chip && chip.data && String(chip.data.norm_id || '').toLowerCase() === 'skintype',
+  );
+
+  assert.equal(/[?？]/.test(content), true);
+  assert.equal(hasSkinTypeChip, true);
+});

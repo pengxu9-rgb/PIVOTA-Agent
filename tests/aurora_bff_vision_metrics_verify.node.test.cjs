@@ -376,6 +376,8 @@ test('vision metrics: aurora skin flow counters and rates are exported', () => {
 test('vision metrics: ingredients query-first counters, rates and latency are exported', () => {
   resetVisionMetrics();
   recordAuroraIngredientsFlowMetric({ stage: 'entry_opened', hit: true, delta: 4 });
+  recordAuroraIngredientsFlowMetric({ stage: 'text_query_routed', hit: true, delta: 4 });
+  recordAuroraIngredientsFlowMetric({ stage: 'text_route_drift', hit: true, delta: 1 });
   recordAuroraIngredientsFlowMetric({ stage: 'mode_selected', hit: true, delta: 3 });
   recordAuroraIngredientsFlowMetric({ stage: 'answer_served', hit: true, delta: 3 });
   recordAuroraIngredientsFlowMetric({ stage: 'reco_optin', hit: true, delta: 1 });
@@ -385,10 +387,13 @@ test('vision metrics: ingredients query-first counters, rates and latency are ex
 
   const metrics = renderVisionMetricsPrometheus();
   assert.match(metrics, /aurora_ingredients_flow_total\{stage="entry_opened",outcome="hit"\} 4/);
+  assert.match(metrics, /aurora_ingredients_flow_total\{stage="text_query_routed",outcome="hit"\} 4/);
+  assert.match(metrics, /aurora_ingredients_flow_total\{stage="text_route_drift",outcome="hit"\} 1/);
   assert.match(metrics, /aurora_ingredients_flow_total\{stage="reco_optin",outcome="hit"\} 1/);
   assert.match(metrics, /aurora_ingredients_flow_total\{stage="unwanted_diagnosis",outcome="hit"\} 1/);
   assert.match(metrics, /ingredients_unwanted_diagnosis_rate 0\.25\b/);
   assert.match(metrics, /ingredients_to_reco_optin_rate 0\.25\b/);
+  assert.match(metrics, /ingredients_text_route_drift_rate 0\.25\b/);
   assert.match(metrics, /ingredients_first_answer_latency_ms_bucket\{le="1000"\} 1/);
   assert.match(metrics, /ingredients_first_answer_latency_ms_bucket\{le="5000"\} 2/);
   assert.match(metrics, /ingredients_first_answer_latency_ms_count 2/);

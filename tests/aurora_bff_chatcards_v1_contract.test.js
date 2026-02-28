@@ -157,7 +157,9 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
 
     expect(res.body.version).toBe('1.0');
     expect(res.body.telemetry.ui_language).toBe('EN');
-    expect(res.body.telemetry.matching_language).toBe('CN');
+    expect(res.body.telemetry.matching_language).toBe('EN');
+    expect(res.body.telemetry.language_mismatch).toBe(true);
+    expect(res.body.telemetry.language_resolution_source).toBe('header');
     expect(res.body.safety).toBeTruthy();
     expect(res.body.safety.risk_level).toBe('high');
     expect(Array.isArray(res.body.safety.red_flags)).toBe(true);
@@ -175,8 +177,8 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
 
     expect(res.body.version).toBe('1.0');
     expect(res.body.telemetry.ui_language).toBe('EN');
-    expect(res.body.telemetry.matching_language).toBe('CN');
+    expect(res.body.telemetry.matching_language).toBe('EN');
     expect(res.body.telemetry.language_mismatch).toBe(true);
-    expect(res.body.telemetry.language_resolution_source).toBe('mixed_override');
+    expect(res.body.telemetry.language_resolution_source).toBe('header');
   });
 });

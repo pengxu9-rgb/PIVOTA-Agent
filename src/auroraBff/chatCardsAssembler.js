@@ -360,7 +360,7 @@ function buildChatCardsResponse({
   const languageMismatch = Boolean((ctx && ctx.language_mismatch) === true || uiLanguage !== matchingLanguage);
   const languageResolutionSource = normalizeLanguageResolutionSource(
     ctx && ctx.language_resolution_source,
-    languageMismatch ? 'mixed_override' : 'text_detected',
+    'text_detected',
   );
 
   const assistantText =

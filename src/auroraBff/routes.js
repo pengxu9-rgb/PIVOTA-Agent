@@ -28924,6 +28924,60 @@ function normalizeIngredientLookupToken(raw) {
   return '';
 }
 
+function mapIngredientLookupTokenToQuery(token, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const key = String(token || '').trim().toLowerCase();
+  if (!key) return '';
+  if (key === 'niacinamide') return lang === 'CN' ? '烟酰胺' : 'niacinamide';
+  if (key === 'retinol') return lang === 'CN' ? 'A醇/维A类' : 'retinol';
+  if (key === 'azelaic_acid') return lang === 'CN' ? '壬二酸' : 'azelaic acid';
+  if (key === 'vitamin_c') return lang === 'CN' ? '维生素C' : 'vitamin c';
+  return '';
+}
+
+function mapRoutineActiveTokenToIngredientQuery(token, language = 'EN') {
+  const key = String(token || '').trim().toLowerCase();
+  if (!key) return '';
+  if (key === 'retinoid') return mapIngredientLookupTokenToQuery('retinol', language);
+  if (key === 'niacinamide') return mapIngredientLookupTokenToQuery('niacinamide', language);
+  if (key === 'azelaic_acid') return mapIngredientLookupTokenToQuery('azelaic_acid', language);
+  if (key === 'vitamin_c') return mapIngredientLookupTokenToQuery('vitamin_c', language);
+  return '';
+}
+
+function extractIngredientLookupTargetFromText(message, language = 'EN') {
+  const raw = String(message || '').trim();
+  if (!raw) return '';
+  const lang = language === 'CN' ? 'CN' : 'EN';
+
+  const knownActives = extractKnownActivesFromText(raw, lang);
+  for (const token of knownActives) {
+    const mapped = mapRoutineActiveTokenToIngredientQuery(token, lang);
+    if (mapped) return String(mapped).slice(0, 120);
+  }
+
+  const ontologyHits = matchIngredientOntology({ text: raw, language: lang, max: 8 });
+  const ontologyPreferred = pickFirstTrimmed(
+    ...ontologyHits
+      .map((row) => (row && typeof row === 'object' ? row.matched_text : ''))
+      .filter((value) => normalizeIngredientLookupToken(value)),
+  );
+  if (ontologyPreferred) return String(ontologyPreferred).slice(0, 120);
+
+  const normalized = normalizeIngredientLookupToken(raw);
+  const normalizedQuery = mapIngredientLookupTokenToQuery(normalized, lang);
+  if (normalizedQuery) return String(normalizedQuery).slice(0, 120);
+
+  const ontologyAny = pickFirstTrimmed(
+    ...ontologyHits
+      .map((row) => (row && typeof row === 'object' ? row.matched_text : ''))
+      .filter(Boolean),
+  );
+  if (ontologyAny) return String(ontologyAny).slice(0, 120);
+
+  return '';
+}
+
 function buildIngredientReportPayload({ language, query } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const token = normalizeIngredientLookupToken(query);
@@ -38023,13 +38077,36 @@ function mountAuroraBffRoutes(app, { logger }) {
       const legacyCardTypes = collectLegacyCardTypes(envelopeWithGuardrails);
       const gateType = inferGateFromLegacyCardTypes(legacyCardTypes);
       const nextState = extractNextStateFromEnvelope(envelopeWithGuardrails);
+      const sessionPatchForReplay =
+        envelopeWithGuardrails &&
+        envelopeWithGuardrails.session_patch &&
+        typeof envelopeWithGuardrails.session_patch === 'object' &&
+        !Array.isArray(envelopeWithGuardrails.session_patch)
+          ? envelopeWithGuardrails.session_patch
+          : {};
+      const sessionMetaForReplay =
+        sessionPatchForReplay &&
+        sessionPatchForReplay.meta &&
+        typeof sessionPatchForReplay.meta === 'object' &&
+        !Array.isArray(sessionPatchForReplay.meta)
+          ? sessionPatchForReplay.meta
+          : {};
+      const ingredientQueryFirstApplied = sessionMetaForReplay.ingredient_query_first_applied === true;
+      const ingredientRouteSource = pickFirstTrimmed(
+        sessionMetaForReplay.ingredient_route_source,
+        ingredientReplayContext.route_source,
+      );
       const hasIngredientAnswerCard = legacyCardTypes.some((type) => isIngredientAnswerCardType(type));
       const ingredientReplayRelevant = Boolean(
         ingredientReplayContext.intent_requested ||
           ingredientReplayContext.starter_action ||
           ingredientReplayContext.reco_optin ||
+          ingredientQueryFirstApplied ||
           hasIngredientAnswerCard,
       );
+      if (ingredientRouteSource) {
+        ingredientReplayContext.route_source = ingredientRouteSource;
+      }
       if (ingredientReplayRelevant && hasIngredientAnswerCard) {
         recordAuroraIngredientsFlowMetric({ stage: 'answer_served', hit: true });
       }
@@ -38041,8 +38118,23 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (unwantedDiagnosis) {
         recordAuroraIngredientsFlowMetric({ stage: 'unwanted_diagnosis', hit: true });
       }
+      const ingredientSafetyBlocked = Boolean(
+        Array.isArray(envelopeWithGuardrails?.events) &&
+          envelopeWithGuardrails.events.some((evt) => String(evt && evt.event_name ? evt.event_name : '').trim() === 'safety_gate_block'),
+      );
+      const ingredientTextRouteDrift = Boolean(
+        ingredientQueryFirstApplied &&
+          String(ingredientRouteSource || '').toLowerCase() === 'text' &&
+          !ingredientReplayContext.diagnosis_optin &&
+          !hasIngredientAnswerCard &&
+          !ingredientSafetyBlocked,
+      );
+      if (ingredientTextRouteDrift) {
+        recordAuroraIngredientsFlowMetric({ stage: 'text_route_drift', hit: true });
+      }
       const ingredientReplayLogNeeded = Boolean(
         ingredientReplayRelevant ||
+          ingredientTextRouteDrift ||
           gateType === 'diagnosis_gate' ||
           gateType === 'budget_gate' ||
           String(actionIdForReplay || '').toLowerCase().includes('ingredient'),
@@ -38059,6 +38151,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate: gateType,
             card_types: legacyCardTypes.slice(0, 12),
             next_state: nextState,
+            route_source: ingredientRouteSource || null,
+            ingredient_query_first_applied: ingredientQueryFirstApplied,
+            text_route_drift: ingredientTextRouteDrift,
             client_state: clientStateForReplay || null,
             agent_state: agentStateForReplay || null,
           },
@@ -39352,15 +39447,47 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientByGoalRequested = isIngredientByGoalAction(actionId);
       const ingredientDiagnosisOptInRequested = isIngredientDiagnosisOptInAction(actionId);
       const ingredientRecoOptInRequested = isIngredientRecoOptInAction(actionId, normalizedActionPayload);
+      const ingredientTextTrigger = ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit';
       const ingredientLookupQuery = ingredientLookupRequested
         ? extractIngredientLookupQuery(normalizedActionPayload)
         : '';
+      const ingredientTextMessage = String(message || '').trim();
+      const ingredientLookupTargetFromText = ingredientTextTrigger
+        ? extractIngredientLookupTargetFromText(message, ctx.lang)
+        : '';
+      const ingredientFallbackSuppressed = Boolean(
+        looksLikeProductEvaluationIntentV2(message, actionId) ||
+          looksLikeRecommendationRequest(message) ||
+          looksLikeSuitabilityRequest(message),
+      );
+      const ingredientQueryCue = Boolean(
+        ingredientTextTrigger &&
+          (
+            /(成分(机理|机制|科学|证据|原理)?|证据链|循证|临床证据|论文证据|问成分|lookup|ingredient|ingredients|active|actives|inci|evidence|mechanism)/i.test(
+              ingredientTextMessage,
+            ) ||
+            /(查|查询|了解|讲讲|科普).{0,12}(成分|ingredient|ingredients|active|inci)/i.test(ingredientTextMessage)
+          ),
+      );
+      const ingredientKeywordSignal =
+        ingredientTextTrigger &&
+        ingredientQueryCue &&
+        !ingredientFallbackSuppressed;
+      const ingredientScienceIntentEffective =
+        ingredientScienceIntent ||
+        ingredientKeywordSignal ||
+        (
+          ingredientTextTrigger &&
+          !ingredientFallbackSuppressed &&
+          Boolean(ingredientLookupTargetFromText) &&
+          ingredientTextMessage.length <= 48
+        );
       const ingredientGoalRequest = ingredientByGoalRequested
         ? extractIngredientGoalRequest(normalizedActionPayload)
         : { goal: '', sensitivity: 'unknown' };
       const ingredientActionData = extractActionDataObject(normalizedActionPayload);
       ingredientReplayContext = {
-        intent_requested: Boolean(ingredientScienceIntent),
+        intent_requested: Boolean(ingredientScienceIntentEffective),
         starter_action: Boolean(ingredientEntryRequested || ingredientLookupRequested || ingredientByGoalRequested),
         diagnosis_optin: Boolean(
           ingredientDiagnosisOptInRequested ||
@@ -39368,9 +39495,27 @@ function mountAuroraBffRoutes(app, { logger }) {
             normalizeIngredientActionId(actionId) === 'chip_start_diagnosis',
         ),
         reco_optin: Boolean(ingredientRecoOptInRequested),
+        route_source:
+          ingredientTextTrigger && ingredientScienceIntentEffective
+            ? 'text'
+            : ingredientEntryRequested || ingredientLookupRequested || ingredientByGoalRequested || ingredientDiagnosisOptInRequested
+              ? 'chip'
+              : null,
         entry:
           pickFirstTrimmed(ingredientActionData && ingredientActionData.entry_source, ingredientActionData && ingredientActionData.trigger_source) ||
-          (ingredientEntryRequested ? 'ingredients_entry' : ingredientScienceIntent ? 'ingredient_intent' : null),
+          (ingredientEntryRequested ? 'ingredients_entry' : ingredientScienceIntentEffective ? 'ingredient_intent' : null),
+      };
+      const attachIngredientRouteMetaToSessionPatch = (sessionPatch, { queryFirstApplied = false, routeSource = '' } = {}) => {
+        const patch = isPlainObject(sessionPatch) ? { ...sessionPatch } : {};
+        const meta =
+          patch.meta && typeof patch.meta === 'object' && !Array.isArray(patch.meta)
+            ? { ...patch.meta }
+            : {};
+        if (queryFirstApplied) meta.ingredient_query_first_applied = true;
+        const source = String(routeSource || '').trim().toLowerCase();
+        if (source === 'text' || source === 'chip') meta.ingredient_route_source = source;
+        if (Object.keys(meta).length > 0) patch.meta = meta;
+        return patch;
       };
       if (ingredientEntryRequested) {
         recordAuroraIngredientsFlowMetric({ stage: 'entry_opened', hit: true });
@@ -39395,7 +39540,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const evaluateIntent =
         (canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT || looksLikeProductEvaluationIntentV2(message, actionId)) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
-        !ingredientScienceIntent;
+        !ingredientScienceIntentEffective;
       const recommendationEntryRequested = Boolean(
         actionId === 'chip.start.reco_products' ||
         actionId === 'chip_get_recos' ||
@@ -39416,7 +39561,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         !diagnosisEntryRequested &&
         !recommendationEntryRequested &&
         !evaluateIntent &&
-        !ingredientScienceIntent &&
+        !ingredientScienceIntentEffective &&
         !conflictIntentRequested &&
         !looksLikeWeatherOrEnvironmentQuestion(message),
       );
@@ -39435,7 +39580,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const shouldBypassAvailabilityShortCircuit =
         anchorCollectionSignal ||
         evaluateIntent ||
-        ingredientScienceIntent ||
+        ingredientScienceIntentEffective ||
         canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
         canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV ||
         Boolean(
@@ -39450,7 +39595,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (ctx.state === 'S6_BUDGET') {
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
-        const wantsScience = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+        const wantsScience = ingredientScienceIntentEffective;
         const wantsRecoNoRoutine =
           looksLikeRecommendationRequest(message) &&
           !looksLikeRoutineRequest(message, normalizedActionPayload);
@@ -39520,7 +39665,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         safetyDecision &&
           (
             hasSafetySensitiveActiveMention ||
-            ingredientScienceIntent ||
+            ingredientScienceIntentEffective ||
             conflictIntentRequested ||
             canonicalIntent.intent === INTENT_ENUM.RECO_PRODUCTS ||
             canonicalIntent.intent === INTENT_ENUM.ROUTINE ||
@@ -39600,8 +39745,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: hubPayload,
             },
           ],
-          session_patch:
+          session_patch: attachIngredientRouteMetaToSessionPatch(
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_hub_entry' })],
         });
         return sendChatEnvelope(envelope);
@@ -39629,8 +39776,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: goalPayload,
             },
           ],
-          session_patch:
+          session_patch: attachIngredientRouteMetaToSessionPatch(
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
         });
         return sendChatEnvelope(envelope);
@@ -39653,8 +39802,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: hubPayload,
             },
           ],
-          session_patch:
+          session_patch: attachIngredientRouteMetaToSessionPatch(
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_missing_query' })],
         });
         return sendChatEnvelope(envelope);
@@ -39693,8 +39844,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: reportPayload,
             },
           ],
-          session_patch:
+          session_patch: attachIngredientRouteMetaToSessionPatch(
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_report' })],
         });
         return sendChatEnvelope(envelope);
@@ -40366,9 +40519,20 @@ function mountAuroraBffRoutes(app, { logger }) {
       const inDiagnosisState =
         String(agentState || '') === 'DIAG_PROFILE' ||
         String(agentState || '').startsWith('DIAG_');
+      const ingredientDiagnosisRouteGuardActive =
+        ingredientScienceIntentEffective &&
+        !ingredientDiagnosisOptInRequested &&
+        normalizeIngredientActionId(actionId) !== 'chip.start.diagnosis' &&
+        normalizeIngredientActionId(actionId) !== 'chip_start_diagnosis' &&
+        (
+          ingredientEntryRequested ||
+          ingredientLookupRequested ||
+          ingredientByGoalRequested ||
+          ingredientTextTrigger
+        );
       if (
         (diagnosisEntryRequested || (inDiagnosisState && diagnosisFlowContinuationAllowed)) &&
-        !(ingredientScienceIntent && ingredientEntryRequested)
+        !ingredientDiagnosisRouteGuardActive
       ) {
         const { score, missing } = profileCompleteness(profile);
         const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
@@ -40437,7 +40601,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (ingredientScienceIntent && safetyDecision) {
+      if (ingredientScienceIntentEffective && safetyDecision) {
         const ingredientSafetyGate = resolveSafetyGateActionV2({
           safety: safetyDecision,
           profileValue: profile,
@@ -40483,20 +40647,99 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               },
             ],
-            session_patch: {},
+            session_patch: attachIngredientRouteMetaToSessionPatch(
+              {},
+              { routeSource: ingredientTextTrigger ? 'text' : 'chip' },
+            ),
             events: [makeEvent(ctx, 'safety_gate_block', { intent: 'ingredient_science', block_level: safetyDecision.block_level })],
           });
           return sendChatEnvelope(envelope);
         }
       }
-      const ingredientLookupTargetProvided =
-        Boolean(ingredientLookupQuery) ||
-        messageContainsSpecificIngredientScienceTarget(message);
-      const shouldKickoffIngredientScience =
-        ingredientScienceIntent &&
+      const ingredientTextQueryFirstEligible =
+        ingredientScienceIntentEffective &&
+        ingredientTextTrigger &&
         !ingredientEntryRequested &&
         !ingredientByGoalRequested &&
         !ingredientLookupRequested &&
+        !ingredientDiagnosisOptInRequested &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+        !looksLikeSuitabilityRequest(message) &&
+        !looksLikeCompatibilityOrConflictQuestion(message) &&
+        !looksLikeWeatherOrEnvironmentQuestion(message);
+      if (ingredientTextQueryFirstEligible) {
+        recordAuroraIngredientsFlowMetric({ stage: 'text_query_routed', hit: true });
+        ingredientReplayContext.route_source = 'text';
+        const baseSessionPatch =
+          nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
+        const sessionPatch = attachIngredientRouteMetaToSessionPatch(baseSessionPatch, {
+          queryFirstApplied: true,
+          routeSource: 'text',
+        });
+        if (ingredientLookupTargetFromText) {
+          const reportPayload = buildIngredientReportPayload({
+            language: ctx.lang,
+            query: ingredientLookupTargetFromText,
+          });
+          const ingredientName =
+            pickFirstTrimmed(
+              reportPayload?.ingredient?.display_name,
+              reportPayload?.ingredient?.inci,
+              ingredientLookupTargetFromText,
+            ) || ingredientLookupTargetFromText;
+          const assistantText =
+            ctx.lang === 'CN'
+              ? `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
+              : `I generated a 1-minute ingredient report for ${ingredientName}.`;
+          requestMessage = 'ingredient_text_lookup_report';
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(assistantText),
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `ingredient_report_${ctx.request_id}`,
+                type: 'aurora_ingredient_report',
+                payload: reportPayload,
+              },
+            ],
+            session_patch: sessionPatch,
+            events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_text_lookup_report' })],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        const hubPayload = buildIngredientHubCardPayload({ language: ctx.lang });
+        const assistantText =
+          ctx.lang === 'CN'
+            ? '你可以先查具体成分，或按功效找成分；开始诊断是可选项。'
+            : 'You can start with a specific ingredient lookup or find by goal first; diagnosis is optional.';
+        requestMessage = 'ingredient_text_query_hub';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `ingredient_hub_${ctx.request_id}`,
+              type: 'ingredient_hub',
+              payload: hubPayload,
+            },
+          ],
+          session_patch: sessionPatch,
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_text_query_hub' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      const ingredientLookupTargetProvided =
+        Boolean(ingredientLookupQuery) ||
+        Boolean(ingredientLookupTargetFromText) ||
+        messageContainsSpecificIngredientScienceTarget(message);
+      const shouldKickoffIngredientScience =
+        ingredientScienceIntentEffective &&
+        !ingredientEntryRequested &&
+        !ingredientByGoalRequested &&
+        !ingredientLookupRequested &&
+        !ingredientDiagnosisOptInRequested &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         !looksLikeCompatibilityOrConflictQuestion(message) &&
@@ -40506,7 +40749,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (shouldKickoffIngredientScience) {
         const kickoff = buildIngredientScienceKickoff({ language: ctx.lang });
         const safetyPrefix =
-          ingredientScienceIntent &&
+          ingredientScienceIntentEffective &&
           safetyDecision &&
           safetyDecision.block_level === BLOCK_LEVEL.WARN
             ? buildSafetyNoticeText(safetyDecision)
@@ -41462,7 +41705,19 @@ function mountAuroraBffRoutes(app, { logger }) {
 	          recordSessionPatchProfileEmitted({ changed: true });
 	        }
 
-	        if (inDiagnosisFlow && missingCore.length && !(ingredientScienceIntent && ingredientEntryRequested)) {
+	        if (
+	          inDiagnosisFlow &&
+	          missingCore.length &&
+	          !(
+	            ingredientScienceIntentEffective &&
+	            (
+	              ingredientEntryRequested ||
+	              ingredientLookupRequested ||
+	              ingredientByGoalRequested ||
+	              ingredientTextTrigger
+	            )
+	          )
+	        ) {
 	          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
 	          const chips = buildDiagnosisChips(ctx.lang, missingCore);
 	          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
