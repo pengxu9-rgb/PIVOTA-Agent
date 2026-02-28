@@ -4085,6 +4085,87 @@ test('/v1/chat: ingredient diagnosis opt-in enters S2 diagnosis flow from non-di
   });
 });
 
+test('/chatCardsAssembler: ingredient_hub keeps card type (no nudge downgrade)', async () => {
+  return withEnv(
+    {
+      AURORA_CHATCARDS_RESPONSE_CONTRACT: 'chatcards',
+    },
+    async () => {
+      const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
+      const response = buildChatCardsResponse({
+        envelope: {
+          request_id: 'req_ing_hub',
+          trace_id: 'trace_ing_hub',
+          assistant_message: { role: 'assistant', content: 'ingredient hub', format: 'markdown' },
+          cards: [
+            {
+              card_id: 'legacy_ing_hub',
+              type: 'ingredient_hub',
+              title: 'Ingredient Hub',
+              payload: {
+                title: 'Ingredient Hub',
+                subtitle: 'Start with lookup or goal match',
+                suggested_goals: ['Acne', 'Brightening'],
+              },
+            },
+          ],
+          suggested_chips: [],
+          session_patch: {},
+          events: [],
+        },
+        ctx: { request_id: 'req_ing_hub', trace_id: 'trace_ing_hub', ui_lang: 'EN', lang: 'EN', match_lang: 'EN' },
+        intent: 'ingredient_science',
+        intentConfidence: 0.95,
+        entities: [],
+      });
+      assert.equal(response.version, '1.0');
+      const cardTypes = (response.cards || []).map((c) => c && c.type).filter(Boolean);
+      assert.equal(cardTypes.includes('ingredient_hub'), true);
+      assert.equal(cardTypes.includes('nudge'), false);
+    },
+  );
+});
+
+test('/chatCardsAssembler: diagnosis_gate keeps card type (no nudge downgrade)', async () => {
+  return withEnv(
+    {
+      AURORA_CHATCARDS_RESPONSE_CONTRACT: 'chatcards',
+    },
+    async () => {
+      const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
+      const response = buildChatCardsResponse({
+        envelope: {
+          request_id: 'req_diag_gate',
+          trace_id: 'trace_diag_gate',
+          assistant_message: { role: 'assistant', content: 'diag gate', format: 'markdown' },
+          cards: [
+            {
+              card_id: 'legacy_diag_gate',
+              type: 'diagnosis_gate',
+              title: 'Quick skin profile first',
+              payload: {
+                title: 'Quick skin profile first',
+                reason: 'ingredient_optin',
+              },
+            },
+          ],
+          suggested_chips: [],
+          session_patch: {},
+          events: [],
+        },
+        ctx: { request_id: 'req_diag_gate', trace_id: 'trace_diag_gate', ui_lang: 'EN', lang: 'EN', match_lang: 'EN' },
+        intent: 'diagnosis_start',
+        intentConfidence: 0.95,
+        entities: [],
+      });
+      assert.equal(response.version, '1.0');
+      const cardTypes = (response.cards || []).map((c) => c && c.type).filter(Boolean);
+      assert.equal(cardTypes.includes('diagnosis_gate'), true);
+      assert.equal(cardTypes.includes('nudge'), false);
+    },
+  );
+});
+
 test('/v1/chat: recommendation intent bypasses budget gate in S6_BUDGET (anti-aging)', async () => {
   return withEnv(
     {

@@ -19,6 +19,17 @@ function asStringArray(value, max = 6) {
   return out;
 }
 
+function asRecordArray(value, max = 8) {
+  const source = Array.isArray(value) ? value : [];
+  const out = [];
+  for (const item of source) {
+    if (!isPlainObject(item)) continue;
+    out.push(item);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 function normalizeCardId(value, fallbackPrefix, requestId, idx) {
   const fromRaw = asString(value);
   if (fromRaw) return fromRaw.slice(0, 120);
@@ -433,6 +444,50 @@ function buildNudgeCard({ card, requestId, index, language = 'EN' }) {
   };
 }
 
+function normalizeLegacyActionRows(rawActions, language) {
+  const rows = asRecordArray(rawActions, 6);
+  return rows
+    .map((row, idx) => {
+      const actionType = asString(row.type) || asString(row.action_id) || asString(row.id) || `action_${idx + 1}`;
+      const label = asString(row.label) || actionType || (language === 'CN' ? '继续' : 'Continue');
+      if (!actionType || !label) return null;
+      return {
+        type: actionType.slice(0, 120),
+        label: label.slice(0, 160),
+        payload: row,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildPassthroughCard({ card, requestId, index, language = 'EN', fallbackTitle = '' }) {
+  const payload = isPlainObject(card && card.payload) ? card.payload : {};
+  const type = asString(card && card.type).toLowerCase();
+  const title = asString(card && card.title) || asString(payload.title) || fallbackTitle || (language === 'CN' ? '信息卡片' : 'Information card');
+  const subtitle = asString(payload.subtitle) || undefined;
+  const priorityRaw = Number(card && card.priority);
+  const payloadPriorityRaw = Number(payload.priority);
+  const priority = Number.isFinite(priorityRaw)
+    ? Math.max(1, Math.min(3, Math.trunc(priorityRaw)))
+    : Number.isFinite(payloadPriorityRaw)
+      ? Math.max(1, Math.min(3, Math.trunc(payloadPriorityRaw)))
+      : 2;
+  const tags = asStringArray(payload.tags, 6);
+  const sections = asRecordArray(payload.sections, 8);
+  const actions = normalizeLegacyActionRows(payload.actions, language);
+  return {
+    id: normalizeCardId(card && card.card_id, type || 'card', requestId, index),
+    type,
+    priority,
+    title,
+    ...(subtitle ? { subtitle } : {}),
+    tags,
+    sections,
+    actions,
+    payload,
+  };
+}
+
 function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 } = {}) {
   const type = asString(card && card.type).toLowerCase();
   if (!type) return [];
@@ -450,14 +505,31 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
     ];
   }
   if (type === 'confidence_notice') {
-    const payload = isPlainObject(card && card.payload) ? card.payload : {};
-    const reason = asString(payload.reason).toLowerCase();
-    if (reason.includes('safety')) return [buildTriageCard({ card, requestId, index, language })];
-    if (reason.includes('timeout')) return [buildEffectReviewCard({ card, requestId, index, language })];
-    return [buildNudgeCard({ card, requestId, index, language })];
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '置信度提示' : 'Confidence notice' })];
   }
   if (type === 'env_stress' || type === 'travel') {
     return [buildTravelCard({ card, requestId, index, language })];
+  }
+  if (type === 'analysis_story_v2') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '分析解读' : 'Analysis story' })];
+  }
+  if (type === 'ingredient_hub') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '成分查询入口' : 'Ingredient hub' })];
+  }
+  if (type === 'ingredient_goal_match') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '按功效找成分' : 'Ingredient goal match' })];
+  }
+  if (type === 'aurora_ingredient_report') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '成分报告' : 'Ingredient report' })];
+  }
+  if (type === 'diagnosis_gate') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '先做一个极简肤况确认' : 'Quick skin profile first' })];
+  }
+  if (type === 'budget_gate') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '预算确认' : 'Budget check' })];
+  }
+  if (type === 'gate_notice') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '门控提示' : 'Gate notice' })];
   }
   if (type === 'ingredient_plan' || type === 'ingredient_plan_v2' || type === 'routine_prompt') {
     return [buildRoutineCard({ card, requestId, index, language })];
