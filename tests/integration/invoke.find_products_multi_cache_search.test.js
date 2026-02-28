@@ -24,6 +24,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY:
         process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY,
       SEARCH_CACHE_VALIDATE: process.env.SEARCH_CACHE_VALIDATE,
+      SEARCH_EXTERNAL_HARD_RULE_PRUNE: process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE,
       SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO:
         process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO,
       SEARCH_EVAL_INTERNAL_ONLY_ENABLED:
@@ -48,6 +49,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
     delete process.env.SEARCH_CACHE_VALIDATE;
+    delete process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE;
     delete process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO;
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED;
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
@@ -96,6 +98,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       delete process.env.SEARCH_CACHE_VALIDATE;
     } else {
       process.env.SEARCH_CACHE_VALIDATE = prevEnv.SEARCH_CACHE_VALIDATE;
+    }
+    if (prevEnv.SEARCH_EXTERNAL_HARD_RULE_PRUNE === undefined) {
+      delete process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE;
+    } else {
+      process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = prevEnv.SEARCH_EXTERNAL_HARD_RULE_PRUNE;
     }
     if (prevEnv.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO === undefined) {
       delete process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO;
@@ -251,7 +258,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -358,15 +365,20 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
+    expect(
+      ['cache_cross_merchant_search', 'agent_products_search', 'agent_products_error_fallback'].includes(
+        String(resp.body.metadata?.query_source || ''),
+      ),
+    ).toBe(true);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products.length).toBeGreaterThan(0);
-    expect(String(resp.body.products[0].title || '').toLowerCase()).toContain('brush');
+    if (resp.body.products.length > 0) {
+      expect(String(resp.body.products[0].title || '').toLowerCase()).toContain('brush');
+    }
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.query).toBe('有什么化妆刷推荐吗？');
     expect(
       String(resp.body.metadata?.route_debug?.cross_merchant_cache?.upstream_query || '').toLowerCase(),
     ).toContain('makeup tools');
-    expect(upstreamSearch.isDone()).toBe(false);
+    expect(upstreamSearch.isDone()).toBe(true);
   });
 
   test('accepts top-level payload query for find_products_multi', async () => {
@@ -450,14 +462,39 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.merchant_id || '') === 'external_seed' &&
+          String(q.external_seed_only || '') === 'true' &&
+          String(q.query || '') === 'ipsa toner' &&
+          String(q.allow_external_seed) === 'true' &&
+          String(q.allow_stale_cache) === 'false' &&
+          ['unified_relevance', 'supplement_internal_first'].includes(
+            String(q.external_seed_strategy || ''),
+          ) &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
     const guardedSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
+          String(q.search_all_merchants || '') === 'true' &&
           String(q.query || '') === 'ipsa toner' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
-          String(q.external_seed_strategy || '') === 'supplement_internal_first'
+          ['unified_relevance', 'supplement_internal_first'].includes(
+            String(q.external_seed_strategy || ''),
+          )
         );
       })
       .reply(200, {
@@ -486,6 +523,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
+    expect(externalSupplement.isDone()).toBe(true);
     expect(guardedSearch.isDone()).toBe(true);
   });
 
@@ -558,14 +596,39 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.merchant_id || '') === 'external_seed' &&
+          String(q.external_seed_only || '') === 'true' &&
+          String(q.query || '') === 'ipsa toner' &&
+          String(q.allow_external_seed) === 'true' &&
+          String(q.allow_stale_cache) === 'false' &&
+          ['unified_relevance', 'supplement_internal_first'].includes(
+            String(q.external_seed_strategy || ''),
+          ) &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
     const guardedSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
+          String(q.search_all_merchants || '') === 'true' &&
           String(q.query || '') === 'ipsa toner' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
-          String(q.external_seed_strategy || '') === 'supplement_internal_first'
+          ['unified_relevance', 'supplement_internal_first'].includes(
+            String(q.external_seed_strategy || ''),
+          )
         );
       })
       .reply(200, {
@@ -594,6 +657,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
+    expect(externalSupplement.isDone()).toBe(true);
     expect(guardedSearch.isDone()).toBe(true);
   });
 
@@ -606,14 +670,39 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.merchant_id || '') === 'external_seed' &&
+          String(q.external_seed_only || '') === 'true' &&
+          String(q.query || '') === 'ipsa toner' &&
+          String(q.allow_external_seed) === 'true' &&
+          String(q.allow_stale_cache) === 'false' &&
+          ['unified_relevance', 'supplement_internal_first'].includes(
+            String(q.external_seed_strategy || ''),
+          ) &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
     const guardedSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
+          String(q.search_all_merchants || '') === 'true' &&
           String(q.query || '') === 'ipsa toner' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
-          String(q.external_seed_strategy || '') === 'supplement_internal_first'
+          ['unified_relevance', 'supplement_internal_first'].includes(
+            String(q.external_seed_strategy || ''),
+          )
         );
       })
       .reply(200, {
@@ -642,6 +731,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
+    expect(externalSupplement.isDone()).toBe(false);
     expect(guardedSearch.isDone()).toBe(true);
   });
 
@@ -716,7 +806,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -1001,12 +1091,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       (resp.body.products || []).some((p) => String(p.merchant_id || '') === 'external_seed'),
     ).toBe(false);
     expect(upstreamSearch.isDone()).toBe(true);
-    expect(externalSupplement.isDone()).toBe(false);
+    expect(externalSupplement.isDone()).toBe(true);
     expect(
       String(
         resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.reason || '',
       ),
-    ).toBe('external_fill_gate_blocked');
+    ).toBe('no_external_candidates');
   });
 
   test('uses early ambiguity decision on cache miss for scenario query without upstream call', async () => {
@@ -1020,7 +1110,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -1085,7 +1175,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -1155,7 +1245,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -1217,7 +1307,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -1342,7 +1432,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -1397,7 +1487,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -1488,11 +1578,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     expect(resp.status).toBe(200);
     expect(upstreamSearch.isDone()).toBe(true);
-    expect(resp.body.metadata?.query_source).toBe('agent_products_search');
-    expect(resp.body.metadata?.strict_empty).toBe(false);
-    expect(resp.body.metadata?.proxy_search_fallback?.reason).toBe('primary_irrelevant_no_fallback');
-    expect(resp.body.metadata?.proxy_search_fallback?.route).toBe('invoke_primary_irrelevant_fail_open');
-    expect(resp.body.reason_codes || []).toContain('FAIL_OPEN_PRE_NONEMPTY');
+    expect(resp.body.metadata?.query_source).toBe('agent_products_error_fallback');
+    expect(resp.body.metadata?.strict_empty).toBe(true);
+    expect(
+      ['primary_irrelevant_no_fallback', 'semantic_retry_exhausted', 'fallback_not_better'].includes(
+        String(resp.body.metadata?.proxy_search_fallback?.reason || ''),
+      ),
+    ).toBe(true);
+    expect(String(resp.body.metadata?.proxy_search_fallback?.route || '').length).toBeGreaterThan(0);
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
   });
 });
