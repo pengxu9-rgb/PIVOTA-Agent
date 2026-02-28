@@ -445,6 +445,21 @@ const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS = parseTimeoutMs(
 );
 const UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT =
   String(process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT || '').toLowerCase() === 'true';
+const CHECKOUT_RETRY_MAX_ATTEMPTS = parsePositiveInt(
+  process.env.CHECKOUT_RETRY_MAX_ATTEMPTS,
+  2,
+  { min: 1, max: 5 },
+);
+const CHECKOUT_RETRY_BASE_MS = parsePositiveInt(
+  process.env.CHECKOUT_RETRY_BASE_MS,
+  140,
+  { min: 50, max: 1000 },
+);
+const CHECKOUT_RETRY_MAX_MS = parsePositiveInt(
+  process.env.CHECKOUT_RETRY_MAX_MS,
+  500,
+  { min: 100, max: 5000 },
+);
 // Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
 // even when the reviews service is degraded.
 const UPSTREAM_TIMEOUT_REVIEWS_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_REVIEWS_MS, 4000);
@@ -5271,7 +5286,7 @@ function getUiChatLlmClient() {
 // single retry for key read-heavy operations when we hit a timeout.
 // This keeps the gateway responsive while being more tolerant of
 // occasional slow product/search slowness.
-async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
+async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {}) {
   const timeoutRetryableOps = ['find_products', 'find_similar_products'];
   if (UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT) {
     timeoutRetryableOps.push('find_products_multi');
@@ -5289,12 +5304,18 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
     'track_product_click',
     'offers.resolve',
   ];
-  const maxBusyAttempts = Math.max(
-    1,
-    Math.min(5, Number(process.env.UPSTREAM_RETRY_MAX_ATTEMPTS || 3)),
-  );
-  const baseDelayMs = Math.max(50, Number(process.env.UPSTREAM_RETRY_BASE_MS || 250));
-  const capDelayMs = Math.max(baseDelayMs, Number(process.env.UPSTREAM_RETRY_MAX_MS || 2000));
+  const checkoutOps = new Set(['preview_quote', 'create_order', 'submit_payment']);
+  const isCheckoutOperation = checkoutOps.has(String(operation || '').trim().toLowerCase());
+  const maxBusyAttempts = isCheckoutOperation
+    ? CHECKOUT_RETRY_MAX_ATTEMPTS
+    : Math.max(1, Math.min(5, Number(process.env.UPSTREAM_RETRY_MAX_ATTEMPTS || 3)));
+  const baseDelayMs = isCheckoutOperation
+    ? CHECKOUT_RETRY_BASE_MS
+    : Math.max(50, Number(process.env.UPSTREAM_RETRY_BASE_MS || 250));
+  const capDelayMs = isCheckoutOperation
+    ? Math.max(baseDelayMs, CHECKOUT_RETRY_MAX_MS)
+    : Math.max(baseDelayMs, Number(process.env.UPSTREAM_RETRY_MAX_MS || 2000));
+  const onRetry = typeof options?.onRetry === 'function' ? options.onRetry : null;
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -5395,6 +5416,15 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
           },
           'Upstream timeout, retrying once',
         );
+        if (onRetry) {
+          onRetry({
+            operation,
+            reason: 'timeout',
+            attempt,
+            max_attempts: 2,
+            delay_ms: 0,
+          });
+        }
         continue;
       }
 
@@ -5415,6 +5445,15 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
           },
           'Upstream temporary unavailable, retrying',
         );
+        if (onRetry) {
+          onRetry({
+            operation,
+            reason: 'temporary_unavailable',
+            attempt,
+            max_attempts: maxBusyAttempts,
+            delay_ms: delayMs,
+          });
+        }
         await sleep(delayMs);
         continue;
       }
@@ -8410,6 +8449,8 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const defaults = [
+    'https://agent.pivota.cc',
+    'https://creator.pivota.cc',
     'https://look-replicator.pivota.cc',
     'https://aurora.pivota.cc',
     'http://localhost:3000',
@@ -11926,6 +11967,7 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
 });
 
 // ---------------- Main invoke endpoint ----------------
+const CHECKOUT_TIMING_OPS = new Set(['preview_quote', 'create_order', 'submit_payment']);
 
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
@@ -11944,6 +11986,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     intent: null,
     expansionMode: null,
   };
+  let upstreamElapsedMs = 0;
+  let gatewayRetryCount = 0;
+  const setInvokePerfHeaders = (operationOverride = null) => {
+    const op = String(operationOverride || debugRuntime.operation || '').trim().toLowerCase();
+    if (!CHECKOUT_TIMING_OPS.has(op)) return;
+    const totalMs = Math.max(0, Date.now() - invokeStartedAtMs);
+    const upstreamMs = Math.max(0, Math.round(upstreamElapsedMs));
+    const proxyMs = Math.max(0, totalMs - upstreamMs);
+    res.setHeader('Server-Timing', [
+      `upstream;dur=${upstreamMs}`,
+      `proxy;dur=${proxyMs}`,
+      `gateway;dur=${totalMs}`,
+    ].join(', '));
+    res.setHeader('x-gateway-retries', String(Math.max(0, gatewayRetryCount)));
+  };
   res.on('finish', () => {
     logger.info(
       {
@@ -11953,6 +12010,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation: debugRuntime.operation,
         status: res.statusCode,
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
+        upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
+        gateway_retries: Math.max(0, gatewayRetryCount),
       },
       'invoke request complete',
     );
@@ -12008,6 +12067,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         'failed to build/emit debug bundle',
       );
     }
+    setInvokePerfHeaders();
     return originalJson(finalBody);
   };
   res.setHeader('X-Gateway-Request-Id', gatewayRequestId);
@@ -16110,6 +16170,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : getUpstreamTimeoutMs(operation),
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
+    const callTrackedUpstream = async (op, config) => {
+      const normalizedOp = String(op || '').trim().toLowerCase();
+      const measureCheckout = CHECKOUT_TIMING_OPS.has(normalizedOp);
+      const startedAt = measureCheckout ? Date.now() : 0;
+      try {
+        return await callUpstreamWithOptionalRetry(op, config, {
+          onRetry: () => {
+            if (measureCheckout) gatewayRetryCount += 1;
+          },
+        });
+      } finally {
+        if (measureCheckout) {
+          upstreamElapsedMs += Math.max(0, Date.now() - startedAt);
+        }
+      }
+    };
 
     let response;
     const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
@@ -16213,7 +16289,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (!response) {
-        response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+        response = await callTrackedUpstream(operation, axiosConfig);
         if (operation === 'get_product_detail') {
           productDetailCacheMeta = { hit: false, source: 'upstream' };
         }
@@ -16230,7 +16306,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       ) {
         try {
           axiosConfig.data = { order_request: requestBody };
-          response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+          response = await callTrackedUpstream(operation, axiosConfig);
         } catch (wrappedErr) {
           err = wrappedErr;
         }
@@ -16272,7 +16348,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             };
 
             const quoteUrl = `${PIVOTA_API_BASE}/agent/v1/quotes/preview`;
-            const quoteResp = await callUpstreamWithOptionalRetry('preview_quote', {
+            const quoteResp = await callTrackedUpstream('preview_quote', {
               method: 'POST',
               url: quoteUrl,
               headers: {
@@ -16295,7 +16371,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 createOrderBody && createOrderBody.order_request
                   ? { order_request: normalizedOrderRequest }
                   : normalizedOrderRequest;
-              response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+              response = await callTrackedUpstream(operation, axiosConfig);
             }
           } catch (_) {
             // Fall through and surface the original upstream error.
@@ -16310,8 +16386,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             { operation, code },
             'Upstream reported temporary unavailability; retrying submit_payment once'
           );
-          await new Promise((resolve) => setTimeout(resolve, 900));
-          response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+          const quickRetryDelayMs = Math.min(
+            200,
+            Math.max(120, CHECKOUT_RETRY_BASE_MS + Math.floor(Math.random() * 80)),
+          );
+          gatewayRetryCount += 1;
+          await new Promise((resolve) => setTimeout(resolve, quickRetryDelayMs));
+          response = await callTrackedUpstream(operation, axiosConfig);
         }
       }
 
