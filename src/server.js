@@ -460,6 +460,66 @@ const CHECKOUT_RETRY_MAX_MS = parsePositiveInt(
   500,
   { min: 100, max: 5000 },
 );
+const BACKEND_OWNED_PAYMENT_STATUSES = new Set([
+  'processing',
+  'paid',
+  'completed',
+  'succeeded',
+]);
+const CLIENT_OWNED_PAYMENT_STATUSES = new Set([
+  'requires_payment_method',
+  'requires_confirmation',
+  'requires_action',
+]);
+
+function normalizeSubmitPaymentStatus(rawStatus) {
+  const statusString =
+    typeof rawStatus === 'string'
+      ? rawStatus.trim()
+      : rawStatus != null
+      ? String(rawStatus).trim()
+      : '';
+  if (!statusString) {
+    return {
+      payment_status: 'unknown',
+      payment_status_raw: null,
+    };
+  }
+  const normalized = statusString.toLowerCase();
+  if (
+    BACKEND_OWNED_PAYMENT_STATUSES.has(normalized) ||
+    CLIENT_OWNED_PAYMENT_STATUSES.has(normalized)
+  ) {
+    return {
+      payment_status: normalized,
+      payment_status_raw: null,
+    };
+  }
+  return {
+    payment_status: 'unknown',
+    payment_status_raw: statusString,
+  };
+}
+
+function resolveSubmitPaymentContract(upstreamPayload = {}) {
+  const topLevelStatus =
+    upstreamPayload.payment_status != null
+      ? upstreamPayload.payment_status
+      : upstreamPayload.status;
+  const nestedStatus =
+    upstreamPayload?.payment?.payment_status != null
+      ? upstreamPayload.payment.payment_status
+      : upstreamPayload?.payment?.status;
+  const statusCandidate = topLevelStatus != null ? topLevelStatus : nestedStatus;
+  const normalizedStatus = normalizeSubmitPaymentStatus(statusCandidate);
+  const isClientOwned = CLIENT_OWNED_PAYMENT_STATUSES.has(normalizedStatus.payment_status);
+  return {
+    payment_status: normalizedStatus.payment_status,
+    payment_status_raw: normalizedStatus.payment_status_raw,
+    confirmation_owner: isClientOwned ? 'client' : 'backend',
+    requires_client_confirmation: isClientOwned,
+  };
+}
 // Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
 // even when the reviews service is degraded.
 const UPSTREAM_TIMEOUT_REVIEWS_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_REVIEWS_MS, 4000);
@@ -11986,6 +12046,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     intent: null,
     expansionMode: null,
   };
+  const checkoutRuntime = {
+    checkoutTraceId: null,
+    paymentStatus: null,
+    confirmationOwner: null,
+    requiresClientConfirmation: null,
+  };
   let upstreamElapsedMs = 0;
   let gatewayRetryCount = 0;
   const setInvokePerfHeaders = (operationOverride = null) => {
@@ -12012,6 +12078,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
         upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
         gateway_retries: Math.max(0, gatewayRetryCount),
+        ...(debugRuntime.operation === 'submit_payment'
+          ? {
+              checkout_trace_id: checkoutRuntime.checkoutTraceId || gatewayRequestId,
+              payment_status: checkoutRuntime.paymentStatus,
+              confirmation_owner: checkoutRuntime.confirmationOwner,
+              requires_client_confirmation: checkoutRuntime.requiresClientConfirmation,
+            }
+          : {}),
       },
       'invoke request complete',
     );
@@ -16944,15 +17018,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // payment object with PSP + payment_action, regardless of PSP type.
     if (operation === 'submit_payment') {
       const p = upstreamData || {};
+      const paymentObj =
+        p.payment && typeof p.payment === 'object' && !Array.isArray(p.payment)
+          ? p.payment
+          : {};
       const psp =
         p.psp ||
         p.psp_used ||
-        (p.payment && (p.payment.psp || p.payment.psp_used)) ||
+        paymentObj.psp ||
+        paymentObj.psp_used ||
         null;
 
       let paymentAction =
         p.payment_action ||
-        (p.payment && p.payment.payment_action) ||
+        paymentObj.payment_action ||
         null;
 
       // Derive payment_action when backend only returns flat fields
@@ -16981,18 +17060,47 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
+      const paymentContract = resolveSubmitPaymentContract(p);
+      checkoutRuntime.checkoutTraceId = gatewayRequestId;
+      checkoutRuntime.paymentStatus = paymentContract.payment_status;
+      checkoutRuntime.confirmationOwner = paymentContract.confirmation_owner;
+      checkoutRuntime.requiresClientConfirmation = paymentContract.requires_client_confirmation;
+
       const wrapped = {
         ...p,
+        payment_status: paymentContract.payment_status,
+        confirmation_owner: paymentContract.confirmation_owner,
+        requires_client_confirmation: paymentContract.requires_client_confirmation,
+        ...(paymentContract.payment_status_raw
+          ? { payment_status_raw: paymentContract.payment_status_raw }
+          : {}),
         psp: psp || null,
         payment_action: paymentAction || null,
         payment: {
+          ...paymentObj,
           psp: psp || null,
-          client_secret: p.client_secret || null,
-          payment_intent_id: p.payment_intent_id || null,
+          client_secret: p.client_secret || paymentObj.client_secret || null,
+          payment_intent_id: p.payment_intent_id || paymentObj.payment_intent_id || null,
           payment_action: paymentAction || null,
+          payment_status: paymentContract.payment_status,
+          confirmation_owner: paymentContract.confirmation_owner,
+          requires_client_confirmation: paymentContract.requires_client_confirmation,
+          ...(paymentContract.payment_status_raw
+            ? { payment_status_raw: paymentContract.payment_status_raw }
+            : {}),
         },
       };
 
+      logger.info(
+        {
+          gateway_request_id: gatewayRequestId,
+          checkout_trace_id: gatewayRequestId,
+          payment_status: paymentContract.payment_status,
+          confirmation_owner: paymentContract.confirmation_owner,
+          requires_client_confirmation: paymentContract.requires_client_confirmation,
+        },
+        'submit_payment contract normalized',
+      );
       return res.status(response.status).json(wrapped);
     }
 
