@@ -3022,6 +3022,10 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       ? diagnostics.route_health
       : null;
   const routeHealth = routeHealthPatch ? { ...existingRouteHealth, ...routeHealthPatch } : existingRouteHealth;
+  const existingSearchDecision =
+    metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
+      ? { ...metadata.search_decision }
+      : null;
   const intNonNegative = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
@@ -3068,10 +3072,22 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       routeHealth.primary_path_used ||
       'unknown',
   );
+  const normalizedQuerySemanticClass = (() => {
+    const candidate =
+      routeHealth.query_semantic_class ??
+      metadata.query_semantic_class ??
+      existingSearchDecision?.query_semantic_class ??
+      null;
+    const value = String(candidate || '').trim().toLowerCase();
+    return value || null;
+  })();
+  routeHealth.query_semantic_class = normalizedQuerySemanticClass;
   routeHealth.domain_filter_dropped_external = intNonNegative(
     routeHealth.domain_filter_dropped_external != null
       ? routeHealth.domain_filter_dropped_external
-      : metadata.domain_filter_dropped_external,
+      : metadata.domain_filter_dropped_external != null
+      ? metadata.domain_filter_dropped_external
+      : existingSearchDecision?.domain_filter_dropped_external,
   );
   routeHealth.external_fill_gate_reason =
     routeHealth.external_fill_gate_reason != null
@@ -3109,6 +3125,7 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   routeHealth.fallback_reason = fallbackReason;
   metadata.orchestrator_path = routeHealth.orchestrator_path;
   metadata.decision_node = routeHealth.decision_node;
+  metadata.query_semantic_class = routeHealth.query_semantic_class;
   metadata.domain_filter_dropped_external = routeHealth.domain_filter_dropped_external;
   metadata.external_fill_gate_reason = routeHealth.external_fill_gate_reason;
   metadata.semantic_retry_applied = routeHealth.semantic_retry_applied;
@@ -3119,6 +3136,11 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   metadata.external_seed_broad_fallback_used = routeHealth.external_seed_broad_fallback_used;
   metadata.external_seed_broad_scope_rows = routeHealth.external_seed_broad_scope_rows;
   metadata.fallback_reason = fallbackReason;
+  if (existingSearchDecision) {
+    existingSearchDecision.query_semantic_class = routeHealth.query_semantic_class;
+    existingSearchDecision.domain_filter_dropped_external = routeHealth.domain_filter_dropped_external;
+    metadata.search_decision = existingSearchDecision;
+  }
   metadata.route_health = routeHealth;
 
   if (diagnostics.search_trace) metadata.search_trace = diagnostics.search_trace;
@@ -3225,7 +3247,23 @@ function buildProxySearchSoftFallbackResponse({
   forceClarify = false,
 }) {
   const quotaExhausted = isUpstreamQuotaExhausted({ upstreamStatus, upstreamCode, upstreamMessage });
-  const shouldClarify = Boolean(forceClarify) || (quotaExhausted && shouldClarifyOnQuota({ queryClass, intent }));
+  const fallbackReasonToken = String(reason || '').trim().toLowerCase();
+  const forceClarifyByRecallExhaustion = [
+    'semantic_retry_exhausted',
+    'fallback_not_better',
+    'primary_irrelevant_no_fallback',
+    'primary_monoculture_no_fallback',
+    'primary_irrelevant_skip_secondary',
+    'primary_monoculture_skip_secondary',
+    'resolver_miss_skip_secondary',
+    'cache_miss_strict_empty',
+    'cache_irrelevant_strict_empty',
+    'no_candidates',
+  ].includes(fallbackReasonToken);
+  const shouldClarify =
+    Boolean(forceClarify) ||
+    forceClarifyByRecallExhaustion ||
+    (quotaExhausted && shouldClarifyOnQuota({ queryClass, intent }));
   const clarification = shouldClarify
     ? buildClarification({
         queryClass: String(queryClass || intent?.query_class || 'exploratory').toLowerCase(),
@@ -3259,6 +3297,8 @@ function buildProxySearchSoftFallbackResponse({
         ? {
             reason_codes: forceClarify
               ? ['SEMANTIC_RETRY_EXHAUSTED', 'AMBIGUITY_CLARIFY']
+              : forceClarifyByRecallExhaustion
+                ? ['SEMANTIC_RETRY_EXHAUSTED', 'AMBIGUITY_CLARIFY']
               : ['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY'],
           }
         : {}),
@@ -16146,7 +16186,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
           const bypassCacheStrictEmpty =
             isAuroraSource(source) && PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
+          const cacheStrictEmptyEarlyReturnEnabled = false;
           if (
+            cacheStrictEmptyEarlyReturnEnabled &&
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&

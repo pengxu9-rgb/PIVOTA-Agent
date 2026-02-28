@@ -1,11 +1,11 @@
 const STATIC_BRAND_ALIASES = Object.freeze({
   tom_ford: ['tom ford', 'tomford', 'tf'],
-  jo_malone: ['jo malone', 'jo malone london', 'jomalone'],
+  jo_malone: ['jo malone london', 'jo malone', 'jomalone', 'jomalonelondon'],
   byredo: ['byredo'],
   dior: ['dior', 'christian dior'],
-  fenty_beauty: ['fenty', 'fenty beauty'],
-  kylie_cosmetics: ['kylie', 'kylie cosmetics'],
-  sigma_beauty: ['sigma', 'sigma beauty'],
+  fenty_beauty: ['fenty beauty', 'fentybeauty', 'fenty'],
+  kylie_cosmetics: ['kylie cosmetics', 'kyliecosmetics', 'kylie'],
+  sigma_beauty: ['sigma beauty', 'sigmabeauty', 'sigma'],
 });
 
 const BRAND_SUFFIX_TOKENS = new Set([
@@ -91,21 +91,32 @@ function collectDynamicBrandAliases(candidateProducts = []) {
 }
 
 function detectBrandByStaticAliases(normalizedQuery) {
+  const compactQuery = normalizedQuery.replace(/\s+/g, '');
   const matches = [];
   for (const aliases of Object.values(STATIC_BRAND_ALIASES)) {
-    for (const alias of aliases) {
+    const sortedAliases = [...aliases].sort((a, b) => String(b || '').length - String(a || '').length);
+    let matchedAlias = null;
+    for (const alias of sortedAliases) {
       const normalizedAlias = normalizeBrandText(alias);
       if (!normalizedAlias) continue;
+      const compactAlias = normalizedAlias.replace(/\s+/g, '');
       if (
         normalizedQuery === normalizedAlias ||
         normalizedQuery.includes(` ${normalizedAlias} `) ||
         normalizedQuery.startsWith(`${normalizedAlias} `) ||
         normalizedQuery.endsWith(` ${normalizedAlias}`) ||
-        normalizedQuery.includes(normalizedAlias)
+        normalizedQuery.includes(normalizedAlias) ||
+        (compactAlias && compactQuery.includes(compactAlias))
       ) {
-        matches.push(toCanonicalBrandLabel(aliases[0]));
+        matchedAlias = normalizedAlias;
         break;
       }
+    }
+    if (!matchedAlias) continue;
+    const canonical = toCanonicalBrandLabel(aliases[0]);
+    matches.push(canonical);
+    if (matchedAlias !== canonical) {
+      matches.push(toCanonicalBrandLabel(matchedAlias));
     }
   }
   return Array.from(new Set(matches));
