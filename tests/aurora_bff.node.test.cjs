@@ -3997,6 +3997,102 @@ test('/v1/chat: ingredient entry action returns ingredient_hub (no diagnosis_gat
   });
 });
 
+test('/v1/chat: ingredient lookup action returns aurora_ingredient_report (query-first, no diagnosis_gate)', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'test_uid_ingredient_lookup_report',
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      },
+      body: {
+        action: {
+          action_id: 'ingredient.lookup',
+          kind: 'action',
+          data: { ingredient_query: 'niacinamide', trigger_source: 'ingredient_hub' },
+        },
+        session: { state: 'S6_BUDGET' },
+        client_state: 'RECO_GATE',
+        language: 'EN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+    const cardTypes = cards.map((c) => c && c.type).filter(Boolean);
+    assert.equal(cardTypes.includes('aurora_ingredient_report'), true);
+    assert.equal(cardTypes.includes('diagnosis_gate'), false);
+    assert.equal(cardTypes.includes('budget_gate'), false);
+
+    const reportCard = cards.find((c) => c && c.type === 'aurora_ingredient_report') || null;
+    assert.ok(reportCard && reportCard.payload && typeof reportCard.payload === 'object');
+    assert.equal(String(reportCard?.payload?.ingredient?.inci || '').toLowerCase(), 'niacinamide');
+  });
+});
+
 test('/v1/chat: ingredient diagnosis opt-in enters S2 diagnosis flow from non-diagnosis state', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const express = require('express');

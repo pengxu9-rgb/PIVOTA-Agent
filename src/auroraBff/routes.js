@@ -28914,6 +28914,210 @@ function buildIngredientGoalMatchPayload({ language, goal, sensitivity } = {}) {
   };
 }
 
+function normalizeIngredientLookupToken(raw) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return '';
+  if (/(niacinamide|nicotinamide|烟酰胺|维生素b3|维b3)/.test(text)) return 'niacinamide';
+  if (/(retinol|retinoid|维a|a醇|维甲醇|视黄醇)/.test(text)) return 'retinol';
+  if (/(azelaic|azelaic acid|壬二酸)/.test(text)) return 'azelaic_acid';
+  if (/(vitamin\\s*c|ascorbic|抗坏血酸|vc|维c)/.test(text)) return 'vitamin_c';
+  return '';
+}
+
+function buildIngredientReportPayload({ language, query } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const token = normalizeIngredientLookupToken(query);
+  const inputName = String(query || '').trim() || (lang === 'CN' ? '该成分' : 'this ingredient');
+
+  const library = {
+    niacinamide: {
+      inci: 'Niacinamide',
+      display_name: lang === 'CN' ? '烟酰胺' : 'Niacinamide',
+      aliases: lang === 'CN' ? ['维生素B3', 'Nicotinamide'] : ['Nicotinamide', 'Vitamin B3'],
+      category: lang === 'CN' ? '屏障/提亮支持' : 'Barrier + brightening support',
+      one_liner:
+        lang === 'CN'
+          ? '烟酰胺通常可兼顾提亮、油脂管理与屏障支持，耐受性相对友好。'
+          : 'Niacinamide commonly supports brightening, oil balance, and barrier function with generally good tolerance.',
+      benefits:
+        lang === 'CN'
+          ? [
+            { concern: 'brightening', strength: 2, what_it_means: '辅助改善暗沉与色素不均。' },
+            { concern: 'barrier-support', strength: 2, what_it_means: '支持屏障稳定并降低刺激风险。' },
+            { concern: 'acne', strength: 2, what_it_means: '对出油与毛孔可提供温和支持。' },
+          ]
+          : [
+            { concern: 'brightening', strength: 2, what_it_means: 'Can help improve dullness and uneven tone.' },
+            { concern: 'barrier-support', strength: 2, what_it_means: 'Supports barrier resilience and comfort.' },
+            { concern: 'acne', strength: 2, what_it_means: 'Can provide gentle support for oil and pores.' },
+          ],
+      watchouts:
+        lang === 'CN'
+          ? [{ issue: '早期轻微刺痒/泛红', likelihood: 'uncommon', what_to_do: '从低频低浓度开始并观察 1-2 周。' }]
+          : [{ issue: 'Mild transient sting/redness', likelihood: 'uncommon', what_to_do: 'Start lower and increase slowly over 1-2 weeks.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '泛醇', '透明质酸'] : ['Ceramides', 'Panthenol', 'Hyaluronic acid'],
+      separate: lang === 'CN' ? ['与高刺激活性同晚叠加时注意耐受'] : ['Watch tolerance when stacking with stronger actives'],
+    },
+    retinol: {
+      inci: 'Retinol',
+      display_name: lang === 'CN' ? '视黄醇（A醇）' : 'Retinol',
+      aliases: lang === 'CN' ? ['维A醇', 'Retinoid'] : ['Vitamin A alcohol', 'Retinoid'],
+      category: lang === 'CN' ? '抗老/纹理' : 'Anti-aging / texture',
+      one_liner:
+        lang === 'CN'
+          ? '视黄醇对细纹与纹理有较强证据，但需循序渐进以降低刺激。'
+          : 'Retinol has strong support for lines and texture, but needs gradual ramp-up to manage irritation.',
+      benefits:
+        lang === 'CN'
+          ? [
+            { concern: 'fine-lines', strength: 3, what_it_means: '长期可改善细纹与肤质。' },
+            { concern: 'texture', strength: 3, what_it_means: '促进角质更新，改善粗糙感。' },
+          ]
+          : [
+            { concern: 'fine-lines', strength: 3, what_it_means: 'Long-term support for fine lines.' },
+            { concern: 'texture', strength: 3, what_it_means: 'Improves texture via cell turnover support.' },
+          ],
+      watchouts:
+        lang === 'CN'
+          ? [{ issue: '干燥/脱屑/刺激', likelihood: 'common', what_to_do: '先低频夜间使用，并配合保湿与防晒。' }]
+          : [{ issue: 'Dryness/flaking/irritation', likelihood: 'common', what_to_do: 'Start low-frequency at night with moisturizer and daytime SPF.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '保湿乳霜'] : ['Ceramides', 'Moisturizer'],
+      separate: lang === 'CN' ? ['同晚多酸/高浓去角质'] : ['Multiple acids or strong exfoliants in the same night'],
+    },
+    azelaic_acid: {
+      inci: 'Azelaic Acid',
+      display_name: lang === 'CN' ? '壬二酸' : 'Azelaic Acid',
+      aliases: lang === 'CN' ? ['Azelic Acid'] : ['Azelic Acid'],
+      category: lang === 'CN' ? '痘痘/泛红支持' : 'Acne + redness support',
+      one_liner:
+        lang === 'CN'
+          ? '壬二酸常用于痘痘与泛红管理，通常耐受性较好。'
+          : 'Azelaic acid is commonly used for acne and redness support with generally good tolerance.',
+      benefits:
+        lang === 'CN'
+          ? [
+            { concern: 'acne', strength: 2, what_it_means: '对痘痘与闭口有实用支持。' },
+            { concern: 'brightening', strength: 2, what_it_means: '可辅助管理色沉与痘印。' },
+          ]
+          : [
+            { concern: 'acne', strength: 2, what_it_means: 'Practical support for acne/texture concerns.' },
+            { concern: 'brightening', strength: 2, what_it_means: 'Can support post-acne mark management.' },
+          ],
+      watchouts:
+        lang === 'CN'
+          ? [{ issue: '初期轻微刺痛', likelihood: 'common', what_to_do: '降低频率并搭配温和保湿。' }]
+          : [{ issue: 'Mild initial tingling', likelihood: 'common', what_to_do: 'Reduce frequency and pair with bland moisturizer.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '神经酰胺'] : ['Niacinamide', 'Ceramides'],
+      separate: lang === 'CN' ? ['同晚过度叠加去角质产品'] : ['Avoid over-stacking exfoliants on the same night'],
+    },
+    vitamin_c: {
+      inci: 'Ascorbic Acid',
+      display_name: lang === 'CN' ? '维生素C' : 'Vitamin C',
+      aliases: lang === 'CN' ? ['抗坏血酸', 'L-ascorbic acid'] : ['Ascorbic acid', 'L-ascorbic acid'],
+      category: lang === 'CN' ? '提亮/抗氧化' : 'Brightening / antioxidant',
+      one_liner:
+        lang === 'CN'
+          ? '维C在提亮与抗氧化方面证据较强，需关注配方稳定性与耐受。'
+          : 'Vitamin C has strong support for brightening and antioxidant defense; stability and tolerance matter.',
+      benefits:
+        lang === 'CN'
+          ? [
+            { concern: 'brightening', strength: 3, what_it_means: '对暗沉和肤色不均有较强支持。' },
+            { concern: 'firmness', strength: 2, what_it_means: '可辅助胶原相关支持。' },
+          ]
+          : [
+            { concern: 'brightening', strength: 3, what_it_means: 'Strong support for dullness and uneven tone.' },
+            { concern: 'firmness', strength: 2, what_it_means: 'Can support collagen-related firmness goals.' },
+          ],
+      watchouts:
+        lang === 'CN'
+          ? [{ issue: '刺痛/氧化失活', likelihood: 'common', what_to_do: '低浓度起步并避光密封保存。' }]
+          : [{ issue: 'Sting/oxidation instability', likelihood: 'common', what_to_do: 'Start lower strength and store away from light/air.' }],
+      pair_well: lang === 'CN' ? ['防晒', '维E/阿魏酸体系'] : ['Sunscreen', 'Vitamin E/Ferulic systems'],
+      separate: lang === 'CN' ? ['与高刺激活性同频堆叠时注意耐受'] : ['Watch tolerance when layering with stronger actives'],
+    },
+  };
+
+  const picked = library[token] || {
+    inci: inputName,
+    display_name: inputName,
+    aliases: [],
+    category: lang === 'CN' ? '成分查询' : 'Ingredient lookup',
+    one_liner:
+      lang === 'CN'
+        ? `这是关于 ${inputName} 的快速成分概览；如需更高准确度，可补充目标与敏感度。`
+        : `Here is a quick ingredient snapshot for ${inputName}; add goal/sensitivity for more precise matching.`,
+    benefits: [
+      {
+        concern: 'hydration',
+        strength: 1,
+        what_it_means: lang === 'CN' ? '可提供基础方向判断，建议结合肤况验证。' : 'Provides baseline directional guidance; validate with your skin context.',
+      },
+    ],
+    watchouts: [
+      {
+        issue: lang === 'CN' ? '证据与适配度待补充' : 'Evidence and fit need more context',
+        likelihood: 'unknown',
+        what_to_do: lang === 'CN' ? '可继续补充功效目标与敏感度。' : 'You can add goal and sensitivity for refinement.',
+      },
+    ],
+    pair_well: [],
+    separate: [],
+  };
+
+  return {
+    schema_version: 'aurora.ingredient_report.v1',
+    locale: lang === 'CN' ? 'zh-CN' : 'en-US',
+    ingredient: {
+      inci: picked.inci,
+      display_name: picked.display_name,
+      aliases: picked.aliases,
+      category: picked.category,
+    },
+    verdict: {
+      one_liner: picked.one_liner,
+      top_benefits: (picked.benefits || []).map((row) => row && row.what_it_means).filter(Boolean).slice(0, 3),
+      evidence_grade: token ? 'A' : 'unknown',
+      irritation_risk: token === 'retinol' || token === 'vitamin_c' ? 'medium' : token ? 'low' : 'unknown',
+      time_to_results: token ? '4-8w' : 'unknown',
+      confidence: token ? 0.8 : 0.55,
+    },
+    benefits: picked.benefits,
+    how_to_use: {
+      frequency: token === 'retinol' ? '3-4x/week' : 'daily',
+      routine_step: token === 'retinol' ? 'cream' : 'serum',
+      pair_well: picked.pair_well,
+      consider_separating: picked.separate,
+      notes:
+        lang === 'CN'
+          ? ['先从低频开始，观察 1-2 周耐受。', '白天请配合防晒。']
+          : ['Start low and monitor tolerance for 1-2 weeks.', 'Use daytime sunscreen consistently.'],
+    },
+    watchouts: picked.watchouts,
+    use_cases: [],
+    evidence: {
+      summary:
+        lang === 'CN'
+          ? '基于公开皮肤学共识生成的快速摘要，适合做第一步筛选。'
+          : 'Quick summary based on common dermatology consensus for first-pass screening.',
+      citations: [],
+      show_citations_by_default: false,
+    },
+    next_questions: [
+      {
+        id: 'goal',
+        label: lang === 'CN' ? '你的主要目标是什么？' : 'What is your primary goal?',
+        chips: lang === 'CN' ? ['祛痘', '提亮', '修护', '抗老'] : ['Acne', 'Brightening', 'Barrier repair', 'Anti-aging'],
+      },
+      {
+        id: 'sensitivity',
+        label: lang === 'CN' ? '你的敏感度如何？' : 'How sensitive is your skin?',
+        chips: lang === 'CN' ? ['低', '中', '高'] : ['Low', 'Medium', 'High'],
+      },
+    ],
+  };
+}
+
 function messageContainsSpecificIngredientScienceTarget(message) {
   const raw = String(message || '').trim();
   if (!raw) return false;
@@ -39452,6 +39656,46 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch:
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_missing_query' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      const ingredientLookupTarget = ingredientLookupRequested
+        ? pickFirstTrimmed(
+          ingredientLookupQuery,
+          typeof message === 'string' ? message.trim().slice(0, 120) : '',
+        )
+        : '';
+
+      if (ingredientLookupRequested && ingredientLookupTarget) {
+        const reportPayload = buildIngredientReportPayload({
+          language: ctx.lang,
+          query: ingredientLookupTarget,
+        });
+        const ingredientName =
+          pickFirstTrimmed(
+            reportPayload?.ingredient?.display_name,
+            reportPayload?.ingredient?.inci,
+            ingredientLookupTarget,
+          ) || ingredientLookupTarget;
+        const assistantText =
+          ctx.lang === 'CN'
+            ? `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
+            : `I generated a 1-minute ingredient report for ${ingredientName}.`;
+        requestMessage = 'ingredient_lookup_report';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `ingredient_report_${ctx.request_id}`,
+              type: 'aurora_ingredient_report',
+              payload: reportPayload,
+            },
+          ],
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_report' })],
         });
         return sendChatEnvelope(envelope);
       }
