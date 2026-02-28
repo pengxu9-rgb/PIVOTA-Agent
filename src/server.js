@@ -3220,9 +3220,10 @@ function buildProxySearchSoftFallbackResponse({
   semanticRetryApplied = false,
   semanticRetryQuery = null,
   semanticRetryHits = 0,
+  forceClarify = false,
 }) {
   const quotaExhausted = isUpstreamQuotaExhausted({ upstreamStatus, upstreamCode, upstreamMessage });
-  const shouldClarify = quotaExhausted && shouldClarifyOnQuota({ queryClass, intent });
+  const shouldClarify = Boolean(forceClarify) || (quotaExhausted && shouldClarifyOnQuota({ queryClass, intent }));
   const clarification = shouldClarify
     ? buildClarification({
         queryClass: String(queryClass || intent?.query_class || 'exploratory').toLowerCase(),
@@ -3253,7 +3254,11 @@ function buildProxySearchSoftFallbackResponse({
           }
         : {}),
       ...(shouldClarify
-        ? { reason_codes: ['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY'] }
+        ? {
+            reason_codes: forceClarify
+              ? ['SEMANTIC_RETRY_EXHAUSTED', 'AMBIGUITY_CLARIFY']
+              : ['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY'],
+          }
         : {}),
       metadata: {
         query_source: String(querySource || 'agent_products_error_fallback'),
@@ -3264,7 +3269,7 @@ function buildProxySearchSoftFallbackResponse({
         semantic_retry_applied: Boolean(semanticRetryApplied),
         semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
         semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
-        ...(shouldClarify ? { upstream_quota_guarded: true } : {}),
+        ...(quotaExhausted && shouldClarify ? { upstream_quota_guarded: true } : {}),
       },
     },
     {
@@ -17860,6 +17865,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   0,
                   Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
                 ),
+                forceClarify: true,
               });
             } else {
               upstreamData = withProxySearchFallbackMetadata(upstreamData, {
