@@ -21,9 +21,9 @@ test('request context resolves matching language from text when UI language diff
   const req = makeReq({ 'X-Lang': 'EN' });
   const ctx = buildRequestContext(req, { message: '我想买防晒，给我一个方案' });
   assert.equal(ctx.ui_lang, 'EN');
-  assert.equal(ctx.match_lang, 'CN');
+  assert.equal(ctx.match_lang, 'EN');
   assert.equal(ctx.language_mismatch, true);
-  assert.equal(ctx.language_resolution_source, 'mixed_override');
+  assert.equal(ctx.language_resolution_source, 'header');
 });
 
 test('request context uses text-detected language without explicit header/body language', () => {

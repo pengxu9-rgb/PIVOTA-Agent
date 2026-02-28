@@ -46,17 +46,9 @@ function resolveMatchingLanguage({
     };
   }
 
-  if (detected !== ui) {
-    return {
-      match_lang: detected,
-      language_mismatch: true,
-      language_resolution_source: 'mixed_override',
-    };
-  }
-
   return {
-    match_lang: detected,
-    language_mismatch: false,
+    match_lang: ui,
+    language_mismatch: detected !== ui,
     language_resolution_source: explicitSource === 'body' ? 'body' : 'header',
   };
 }

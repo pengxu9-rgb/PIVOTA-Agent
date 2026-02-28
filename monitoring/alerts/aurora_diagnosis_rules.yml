@@ -68,6 +68,12 @@ groups:
           /
           clamp_min(aurora:ingredients_entry_rate:15m, 0.000001)
 
+      - record: aurora:ingredients_text_route_drift_rate:15m
+        expr: |
+          sum(rate(aurora_ingredients_flow_total{stage="text_route_drift",outcome="hit"}[15m]))
+          /
+          clamp_min(sum(rate(aurora_ingredients_flow_total{stage="text_query_routed",outcome="hit"}[15m])), 0.000001)
+
       - record: aurora:ingredients_first_answer_latency_p95_ms:15m
         expr: |
           histogram_quantile(

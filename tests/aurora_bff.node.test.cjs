@@ -3807,7 +3807,7 @@ test('/v1/chat: compatibility bypasses the AM/PM budget gate when session.state=
   });
 });
 
-test('/v1/chat: ingredient science bypasses budget gate in S6_BUDGET and asks science clarification first', async () => {
+test('/v1/chat: ingredient science text query bypasses budget gate in S6_BUDGET and returns ingredient_hub', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const express = require('express');
     const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
@@ -3895,11 +3895,11 @@ test('/v1/chat: ingredient science bypasses budget gate in S6_BUDGET and asks sc
 
     assert.equal(resp.status, 200);
     const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+    assert.equal(cardTypes.includes('ingredient_hub'), true);
+    assert.equal(cardTypes.includes('diagnosis_gate'), false);
     assert.equal(cardTypes.includes('budget_gate'), false);
-    const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
-    const chipIds = chips.map((c) => String(c && c.chip_id || '')).filter(Boolean);
-    assert.ok(chipIds.includes('chip.science.target.niacinamide'));
-    assert.ok(chipIds.includes('chip.science.goal.acne'));
+    assert.equal(resp.body?.session_patch?.meta?.ingredient_query_first_applied, true);
+    assert.equal(resp.body?.session_patch?.meta?.ingredient_route_source, 'text');
   });
 });
 
@@ -4090,6 +4090,189 @@ test('/v1/chat: ingredient lookup action returns aurora_ingredient_report (query
     const reportCard = cards.find((c) => c && c.type === 'aurora_ingredient_report') || null;
     assert.ok(reportCard && reportCard.payload && typeof reportCard.payload === 'object');
     assert.equal(String(reportCard?.payload?.ingredient?.inci || '').toLowerCase(), 'niacinamide');
+  });
+});
+
+test('/v1/chat: ingredient science text query with explicit ingredient returns aurora_ingredient_report (no diagnosis gate)', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'test_uid_ingredient_text_lookup_report',
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'CN',
+      },
+      body: {
+        message: '我想查烟酰胺成分，讲讲证据和注意事项。',
+        session: { state: 'S6_BUDGET' },
+        client_state: 'RECO_GATE',
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+    const cardTypes = cards.map((c) => c && c.type).filter(Boolean);
+    assert.equal(cardTypes.includes('aurora_ingredient_report'), true);
+    assert.equal(cardTypes.includes('diagnosis_gate'), false);
+    assert.equal(cardTypes.includes('budget_gate'), false);
+    assert.equal(cardTypes.includes('skin_status'), false);
+    assert.equal(resp.body?.session_patch?.meta?.ingredient_query_first_applied, true);
+    assert.equal(resp.body?.session_patch?.meta?.ingredient_route_source, 'text');
+
+    const reportCard = cards.find((c) => c && c.type === 'aurora_ingredient_report') || null;
+    assert.ok(reportCard && reportCard.payload && typeof reportCard.payload === 'object');
+    assert.equal(String(reportCard?.payload?.ingredient?.inci || '').toLowerCase(), 'niacinamide');
+  });
+});
+
+test('/v1/chat: high-risk ingredient text stays in ingredient path (no auto diagnosis gate)', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'test_uid_ingredient_text_safety_guard',
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'CN',
+      },
+      body: {
+        message: '孕期我想查A醇成分，是否安全？',
+        session: { state: 'S6_BUDGET' },
+        client_state: 'RECO_GATE',
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+    assert.equal(cardTypes.includes('diagnosis_gate'), false);
+    assert.equal(cardTypes.includes('budget_gate'), false);
+    assert.equal(cardTypes.includes('skin_status'), false);
+    assert.equal(resp.body?.session_patch?.meta?.ingredient_route_source, 'text');
   });
 });
 
