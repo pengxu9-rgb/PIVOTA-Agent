@@ -50,6 +50,9 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Test preflight
+        run: npm run test:preflight
+
       - name: Reco guardrail gate (fail-fast)
         shell: bash
         run: |

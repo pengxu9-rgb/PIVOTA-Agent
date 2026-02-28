@@ -121,7 +121,7 @@ const AnalysisMetaSchema = z
 
 const RecommendationMetaSchema = z
   .object({
-    source_mode: z.enum(['artifact_matcher', 'upstream_fallback', 'rules_only']),
+    source_mode: z.enum(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only']),
     used_recent_logs: z.boolean(),
     used_itinerary: z.boolean(),
     used_safety_flags: z.boolean(),
@@ -354,7 +354,7 @@ const ProductParseRequestSchema = z
     llm_provider: z.string().min(1).optional(),
     llm_model: z.string().min(1).optional(),
   })
-  .strict();
+  .passthrough();
 
 const ProductAnalyzeRequestSchema = z
   .object({
@@ -364,8 +364,18 @@ const ProductAnalyzeRequestSchema = z
     force_refresh: z.boolean().optional(),
     llm_provider: z.string().min(1).optional(),
     llm_model: z.string().min(1).optional(),
+    session: z
+      .object({
+        session_id: z.string().min(1).optional(),
+        sessionId: z.string().min(1).optional(),
+        id: z.string().min(1).optional(),
+        next_state: z.string().min(1).optional(),
+        state: z.union([z.string().min(1), z.record(z.string(), z.any())]).optional(),
+      })
+      .passthrough()
+      .optional(),
   })
-  .strict();
+  .passthrough();
 
 const DupeCompareRequestSchema = z
   .object({
@@ -423,12 +433,12 @@ const SkinAnalysisRequestSchema = z
             slot_id: z.string().min(1),
             qc_status: z.string().min(1).optional(),
           })
-          .strict(),
+          .passthrough(),
       )
-      .max(4)
+      .max(12)
       .optional(),
   })
-  .strict();
+  .passthrough();
 
 const AuthStartRequestSchema = z
   .object({
