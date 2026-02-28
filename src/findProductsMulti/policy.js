@@ -2,7 +2,6 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
-const { buildClarification } = require('./clarification');
 const { buildScenarioAssociationPlan } = require('./scenarioAssociation');
 const {
   detectBrandEntities,
@@ -28,16 +27,6 @@ const SEARCH_DOMAIN_HARD_FILTER_MODE = ['strict', 'balanced'].includes(
 )
   ? String(process.env.SEARCH_DOMAIN_HARD_FILTER_MODE || 'strict').toLowerCase()
   : 'strict';
-const SEARCH_DOMAIN_BALANCED_MIN_DROP_RATIO = Math.max(
-  0,
-  Math.min(1, Number(process.env.SEARCH_DOMAIN_BALANCED_MIN_DROP_RATIO || 0.4)),
-);
-const SEARCH_DOMAIN_FILTER_K_MIN = Math.max(
-  1,
-  Number(process.env.SEARCH_DOMAIN_FILTER_K_MIN || 6) || 6,
-);
-const SEARCH_DOMAIN_BEAUTY_FAIL_OPEN =
-  String(process.env.SEARCH_DOMAIN_BEAUTY_FAIL_OPEN || 'false').toLowerCase() === 'true';
 const SEARCH_EXTERNAL_FILL_GATED =
   String(process.env.SEARCH_EXTERNAL_FILL_GATED || 'true').toLowerCase() !== 'false';
 const SEARCH_ANCHOR_ALIAS_V2 =
@@ -1361,77 +1350,17 @@ function matchesDomainAllowlist(product, domainKey, options = {}) {
 }
 
 function applyDomainHardFilter(products, intent, rawQuery) {
-  if (!SEARCH_DOMAIN_HARD_FILTER_ENABLED) return { products: Array.isArray(products) ? products : [], dropped: 0 };
   const list = Array.isArray(products) ? products : [];
   const domainKey = inferSearchDomainKey(intent, rawQuery);
-  if (domainKey === 'general') return { products: list, dropped: 0 };
-  const allowTokens = extractCategoryTokensFromIntent(intent, rawQuery);
-  const strictFiltered = list.filter((product) =>
-    matchesDomainAllowlist(product, domainKey, { mode: 'strict', allowTokens }),
-  );
-  const strictDropped = Math.max(0, list.length - strictFiltered.length);
-  const strictDropRatio = list.length > 0 ? strictDropped / list.length : 0;
-
-  if (
-    SEARCH_DOMAIN_HARD_FILTER_MODE === 'balanced' &&
-    strictFiltered.length < SEARCH_DOMAIN_FILTER_K_MIN &&
-    strictDropRatio > SEARCH_DOMAIN_BALANCED_MIN_DROP_RATIO
-  ) {
-    const balancedFiltered = list.filter((product) =>
-      matchesDomainAllowlist(product, domainKey, { mode: 'balanced', allowTokens }),
-    );
-    if (balancedFiltered.length >= strictFiltered.length) {
-      return {
-        products: balancedFiltered,
-        dropped: Math.max(0, list.length - balancedFiltered.length),
-        domain_key: domainKey,
-        mode_used: 'balanced',
-        pass2_triggered: true,
-        strict_kept: strictFiltered.length,
-        strict_dropped: strictDropped,
-      };
-    }
-  }
-
-  if (domainKey === 'beauty' && list.length > 0 && strictFiltered.length === 0 && SEARCH_DOMAIN_BEAUTY_FAIL_OPEN) {
-    const scenarioName = String(intent?.scenario?.name || '').toLowerCase();
-    const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
-    const requiredCategories = Array.isArray(intent?.category?.required)
-      ? intent.category.required.map((item) => String(item || '').toLowerCase())
-      : [];
-    const query = String(rawQuery || '').toLowerCase();
-    const isBeautyIntent =
-      primaryDomain === 'beauty' ||
-      scenarioName.includes('beauty') ||
-      requiredCategories.some(
-        (category) =>
-          category.includes('beauty') ||
-          category.includes('cosmetic') ||
-          category.includes('makeup') ||
-          category.includes('skin'),
-      ) ||
-      /化妆|化妝|美妆|美妝|彩妆|彩妝|护肤|護膚|粉底|口红|口紅|眼影|睫毛膏|刷|brush|makeup|beauty|cosmetic|skincare|foundation|lipstick|eyeshadow/.test(
-        query,
-      );
-    if (isBeautyIntent) {
-      return {
-        products: list,
-        dropped: 0,
-        domain_key: domainKey,
-        mode_used: 'strict',
-        fail_open: true,
-        fail_open_reason: 'beauty_domain_filter_empty_fallback',
-      };
-    }
-  }
+  // Recall-first policy: keep domain telemetry but do not hard-drop candidates.
   return {
-    products: strictFiltered,
-    dropped: strictDropped,
+    products: list,
+    dropped: 0,
     domain_key: domainKey,
-    mode_used: 'strict',
+    mode_used: 'disabled',
     pass2_triggered: false,
-    strict_kept: strictFiltered.length,
-    strict_dropped: strictDropped,
+    strict_kept: list.length,
+    strict_dropped: 0,
   };
 }
 
@@ -1827,9 +1756,9 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
     scenario === 'beauty_tools'
   ) {
     if (!isBeautyToolLikeProduct(product)) {
-      // For tool-first requests, block non-tool products (e.g., lingerie/apparel)
-      // to avoid confusing outputs.
-      riskLevel = 'hard_block';
+      // Recall-first: keep non-tool candidates as soft-block so ranking can demote,
+      // instead of hard-dropping the pool.
+      if (riskLevel === 'ok') riskLevel = 'soft_block';
       reasonCodes.add(REASON_CODES.NOT_TOOL_PRODUCT);
     }
   }
@@ -1841,7 +1770,7 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
     scenario === 'eye_shadow_brush'
   ) {
     if (!isEyeBrushLikeProduct(product)) {
-      riskLevel = 'hard_block';
+      if (riskLevel === 'ok') riskLevel = 'soft_block';
       reasonCodes.add(REASON_CODES.NOT_EYE_BRUSH_PRODUCT);
     }
   }
@@ -3063,17 +2992,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     filtered = ordered;
   }
 
-  // If we couldn't reliably match beauty tools, avoid showing unrelated products.
-  // We still keep toolRec so the agent can provide a tool-first template reply.
-  if (
-    intent?.primary_domain === 'beauty' &&
-    intent?.scenario?.name === 'beauty_tools' &&
-    toolRec?.stats &&
-    String(toolRec.stats.match_tier || '') === 'none' &&
-    Number(toolRec.stats.tool_candidates_count || 0) === 0
-  ) {
-    filtered = [];
-  }
+  // Recall-first policy: for tool queries, keep low-confidence results instead of hard empty.
 
   const skipConstraintReorder =
     intent?.primary_domain === 'beauty' &&
@@ -3090,7 +3009,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       topN: BEAUTY_DIVERSITY_TOPN,
       minBuckets: BEAUTY_DIVERSITY_MIN_BUCKETS,
       toolsMaxRatio: BEAUTY_DIVERSITY_TOOLS_MAX_RATIO,
-      strictEmptyOnFailure: BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE,
+      strictEmptyOnFailure: false,
+      preservePrimaryOnFailure: true,
     });
     filtered = Array.isArray(diversityResult.products) ? diversityResult.products : [];
     diversityDebug = diversityResult.debug || null;
@@ -3107,13 +3027,12 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
         (bucket) => Number(mix[bucket] || 0) > 0,
       ).length;
       if (nonToolDistinctBuckets < 2) {
-        filtered = [];
         diversityDebug = {
           ...diversityDebug,
-          reason: 'beauty_non_tool_min_not_met',
-          strict_empty: true,
+          reason: 'beauty_non_tool_min_not_met_soft',
+          strict_empty: false,
           requirement_unmet: true,
-          preserve_primary_on_failure: false,
+          preserve_primary_on_failure: true,
           required_non_tool_buckets: 2,
           non_tool_distinct_buckets: nonToolDistinctBuckets,
         };
@@ -3258,22 +3177,14 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     brandQueryDetected &&
     postCandidateCount > 0 &&
     (strictEmptyByAmbiguityBase || clarifyByAmbiguityBase);
-  const strictEmptyByAmbiguity = strictEmptyByAmbiguityBase && !brandQueryBypassAmbiguity;
-  const clarifyByAmbiguity = clarifyByAmbiguityBase && !brandQueryBypassAmbiguity;
+  const strictEmptyByAmbiguity = false;
+  const clarifySuggestedByAmbiguity =
+    !brandQueryBypassAmbiguity && (strictEmptyByAmbiguityBase || clarifyByAmbiguityBase);
 
   let clarification = null;
   let finalDecision = 'products_returned';
-  if (strictEmptyByAmbiguity) {
-    filtered = [];
-    finalDecision = 'strict_empty';
-  } else if (clarifyByAmbiguity) {
-    clarification = buildClarification({
-      queryClass,
-      intent,
-      language: intent?.language,
-    });
-    filtered = [];
-    finalDecision = 'clarify';
+  if (clarifySuggestedByAmbiguity) {
+    finalDecision = 'products_returned';
   }
   after = filtered.length;
 
@@ -3308,9 +3219,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (diversityDebug?.reason === 'beauty_non_tool_min_not_met') {
     reasonCodes.add('BEAUTY_NON_TOOL_MIN_NOT_MET');
   }
-  if (strictEmptyByAmbiguity) reasonCodes.add('AMBIGUITY_STRICT_EMPTY');
-  if (clarifyByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY');
-  if (clarifyByAmbiguity && postQualityTriggered) reasonCodes.add('LOW_CONF_POST');
+  if (clarifySuggestedByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY_SUGGESTED');
+  if (clarifySuggestedByAmbiguity && postQualityTriggered) reasonCodes.add('LOW_CONF_POST');
   if (brandQueryBypassAmbiguity) reasonCodes.add('BRAND_QUERY_BYPASS_AMBIGUITY');
   if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
   if (domainCondenserResult?.debug?.applied) reasonCodes.add('DOMAIN_CONDENSED');
@@ -3339,6 +3249,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
                 score_pre: ambiguityScorePre,
                 score_post: ambiguityScorePost,
                 clarify_triggered: Boolean(clarification),
+                clarify_suggested: Boolean(clarifySuggestedByAmbiguity),
                 strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
                 brand_query_detected: Boolean(brandQueryDetected),
                 brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
@@ -3549,6 +3460,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               ambiguity_score_pre: ambiguityScorePre,
               ambiguity_score_post: ambiguityScorePost,
               clarify_triggered: Boolean(clarification),
+              clarify_suggested: Boolean(clarifySuggestedByAmbiguity),
               strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
               final_decision: finalDecision,
               domain_condenser: domainCondenserResult?.debug || null,
@@ -3569,6 +3481,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               ambiguity_score_pre: ambiguityScorePre,
               ambiguity_score_post: ambiguityScorePost,
               clarify_triggered: Boolean(clarification),
+              clarify_suggested: Boolean(clarifySuggestedByAmbiguity),
               strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
               final_decision: finalDecision,
               domain_condenser: domainCondenserResult?.debug || null,

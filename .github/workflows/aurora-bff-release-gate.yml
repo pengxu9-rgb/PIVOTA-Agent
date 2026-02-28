@@ -47,6 +47,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify release source
+        shell: bash
+        env:
+          EXPECTED_REPO_NAME: pivota-agent-backend
+          ALLOWED_BRANCH_REGEX: "^(main|deploy/.+)$"
+        run: |
+          bash scripts/verify_release_source.sh
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

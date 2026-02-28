@@ -3166,7 +3166,24 @@ function buildProxySearchSoftFallbackResponse({
   queryText = '',
 }) {
   const quotaExhausted = isUpstreamQuotaExhausted({ upstreamStatus, upstreamCode, upstreamMessage });
-  const shouldClarify = quotaExhausted && shouldClarifyOnQuota({ queryClass, intent });
+  const fallbackReasonToken = String(reason || '').trim().toLowerCase();
+  const forceClarifyByRecallExhaustion =
+    SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
+    [
+      'semantic_retry_exhausted',
+      'fallback_not_better',
+      'primary_irrelevant_no_fallback',
+      'primary_monoculture_no_fallback',
+      'primary_irrelevant_skip_secondary',
+      'primary_monoculture_skip_secondary',
+      'resolver_miss_skip_secondary',
+      'cache_miss_strict_empty',
+      'cache_irrelevant_strict_empty',
+      'no_candidates',
+    ].includes(fallbackReasonToken);
+  const shouldClarify =
+    forceClarifyByRecallExhaustion ||
+    (quotaExhausted && shouldClarifyOnQuota({ queryClass, intent }));
   const clarification = shouldClarify
     ? buildClarification({
         queryClass: String(queryClass || intent?.query_class || 'exploratory').toLowerCase(),
@@ -3197,7 +3214,11 @@ function buildProxySearchSoftFallbackResponse({
           }
         : {}),
       ...(shouldClarify
-        ? { reason_codes: ['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY'] }
+        ? {
+            reason_codes: quotaExhausted
+              ? ['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY']
+              : ['SEARCH_RETRY_EXHAUSTED', 'AMBIGUITY_CLARIFY'],
+          }
         : {}),
       metadata: {
         query_source: 'agent_products_error_fallback',
@@ -3205,7 +3226,8 @@ function buildProxySearchSoftFallbackResponse({
         upstream_error_code: upstreamCode ? String(upstreamCode) : null,
         upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
         fallback_route: route || null,
-        ...(shouldClarify ? { upstream_quota_guarded: true } : {}),
+        ...(shouldClarify && quotaExhausted ? { upstream_quota_guarded: true } : {}),
+        ...(shouldClarify && !quotaExhausted ? { retry_exhausted_clarify: true } : {}),
       },
     },
     {
@@ -4033,6 +4055,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!product || typeof product !== 'object') return false;
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
+  let softPenalty = 1;
 
   const hasFragranceSearch = hasFragranceSearchSignal(queryText);
   const hasFragranceCandidateSignal =
@@ -4047,8 +4070,12 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   );
 
   if (hasFragranceSearch) {
-    if (!hasFragranceCandidateSignal && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
-    if (isBeautyToolLikeCandidate && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
+    if (!hasFragranceCandidateSignal) {
+      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.68 : 0.45;
+    }
+    if (isBeautyToolLikeCandidate) {
+      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.65 : 0.4;
+    }
   }
 
   const brandTerms = Array.isArray(options.brandTerms)
@@ -4058,15 +4085,19 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     : [];
   if (brandTerms.length > 0) {
     const brandMatched = brandTerms.some((term) => hasBrandTermMatch(candidateText, term));
-    if (!brandMatched && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
+    if (!brandMatched) {
+      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.72 : 0.5;
+    }
   }
 
   if (hasPetHarnessSearchSignal(queryText)) {
-    if (!hasStrictPetHarnessCatalogSignal(candidateText)) return false;
+    if (!hasStrictPetHarnessCatalogSignal(candidateText)) {
+      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.42 : 0.25;
+    }
   }
 
   if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
-    return false;
+    softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.6 : 0.35;
   }
 
   const normalizedQuery =
@@ -4105,7 +4136,15 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     return candidateText.includes(effectiveTokens[0]);
   }
   const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
-  return overlapCount >= (ingredientIntent ? 1 : 2);
+  const strictOverlapRequired = ingredientIntent ? 1 : 2;
+  const relaxedOverlapRequired = SEARCH_EXTERNAL_HARD_RULE_PRUNE
+    ? Math.max(1, strictOverlapRequired - 1)
+    : strictOverlapRequired;
+  if (overlapCount >= relaxedOverlapRequired) return true;
+  if (SEARCH_EXTERNAL_HARD_RULE_PRUNE && overlapCount >= 1) {
+    return softPenalty >= 0.35;
+  }
+  return false;
 }
 
 function inferCacheProductDomainKey(product) {
@@ -4324,7 +4363,7 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   if (externalSeedStrategy) search.external_seed_strategy = externalSeedStrategy;
 
   const limit = parseQueryNumber(query.limit ?? query.page_size);
-  if (limit !== undefined) search.limit = Math.max(1, Math.min(100, Math.floor(limit)));
+  if (limit !== undefined) search.limit = Math.max(1, Math.min(200, Math.floor(limit)));
 
   const offset = parseQueryNumber(query.offset);
   if (offset !== undefined) {
@@ -4474,6 +4513,7 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
   const base = String(baseQueryText || '').trim();
   if (!base) return [];
   const normalized = normalizeSearchTextForMatch(base);
+  const hasFragranceSignal = hasFragranceSearchSignal(base);
   const peptideNormalizedBase = base
     .replace(/\b(tri|tetra|hexa)peptides?\b/gi, 'peptide')
     .replace(/\bpeptides\b/gi, 'peptide')
@@ -4503,6 +4543,27 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
   }
   if (/\bniacinamide\b/.test(normalized) && /\b(serum|essence)\b/.test(normalized)) {
     push(`${base} vitamin b3`);
+  }
+  if (hasFragranceSignal) {
+    const fragranceStem = base
+      .replace(/\b(beauty|cosmetics?|makeup|tool|tools|brush(?:es)?|kit)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const fragranceCore = fragranceStem
+      .replace(
+        /\b(perfume|perfumes|fragrance|fragrances|parfum|parfums|cologne|body mist|eau de parfum|eau de toilette)\b/gi,
+        ' ',
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
+    const seed = fragranceCore || fragranceStem || base;
+    push(`${seed} fragrance`);
+    push(`${seed} perfume`);
+    push(`${seed} parfum`);
+    push(`${seed} cologne`);
+    push(`${seed} eau de parfum`);
+    push(`${seed} eau de toilette`);
+    push(`${seed} body mist`);
   }
 
   return candidates.slice(0, PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES);
@@ -7127,7 +7188,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20, opt
   }
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 200);
   const fetchLimit = Math.max(safeLimit * Math.max(safePage, 1) * 2, 20);
   const inStockOnly = options?.inStockOnly !== false;
 
@@ -7532,7 +7593,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   }
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 200);
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
@@ -8047,7 +8108,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
 
 async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 200);
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
@@ -8348,7 +8409,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
 async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 200);
   const inStockOnly = options?.inStockOnly !== false;
 
   // Oversample so JS-level filtering (in-stock-only, de-dupe) can still fill the page.
@@ -8420,7 +8481,7 @@ async function loadMerchantBrowseFromCache(merchantId, page = 1, limit = 20, opt
   if (!mid) return { products: [], total: 0, page: 1, page_size: 0 };
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 200);
   const inStockOnly = options?.inStockOnly !== false;
 
   // Oversample so JS-level filtering (in-stock-only, de-dupe) can still fill the page.
@@ -9995,9 +10056,7 @@ async function proxyAgentSearchToBackend(req, res) {
             '',
         ).trim() || null
       : null;
-    const fallbackNotBetterReason = semanticRetryApplied
-      ? 'semantic_retry_exhausted'
-      : 'fallback_not_better';
+    const fallbackNotBetterReason = 'semantic_retry_exhausted';
 
     if (primaryIrrelevant && Number(resp.status) >= 200 && Number(resp.status) < 300) {
       const reason = skipSecondaryFallback
@@ -10018,12 +10077,12 @@ async function proxyAgentSearchToBackend(req, res) {
           fallbackStrategy,
         }),
         {
-          finalDecision: 'strict_empty',
+          finalDecision: 'clarify',
           primaryPathUsed: 'proxy_search_primary',
           fallbackTriggered: true,
           fallbackReason: reason,
           upstreamStage,
-          strictEmptyReason: reason,
+          strictEmptyReason: null,
           fallbackStrategy,
         },
       );
@@ -10042,12 +10101,12 @@ async function proxyAgentSearchToBackend(req, res) {
           fallbackStrategy,
         }),
         {
-          finalDecision: 'strict_empty',
+          finalDecision: 'clarify',
           primaryPathUsed: 'proxy_search_primary',
           fallbackTriggered: true,
           fallbackReason: reason,
           upstreamStage,
-          strictEmptyReason: reason,
+          strictEmptyReason: null,
           fallbackStrategy,
         },
       );
@@ -10085,17 +10144,20 @@ async function proxyAgentSearchToBackend(req, res) {
         200,
         strictBodyWithSemanticMeta,
         {
-          finalDecision: 'strict_empty',
+          finalDecision: 'clarify',
           primaryPathUsed: 'proxy_search_primary',
           fallbackTriggered: true,
           fallbackReason: fallbackNotBetterReason,
           upstreamStage,
-          strictEmptyReason: fallbackNotBetterReason,
+          strictEmptyReason: null,
           fallbackStrategy,
         },
       );
     }
 
+    const shouldClarifyFinalEmpty =
+      normalizedProducts.length === 0 &&
+      (SEARCH_EXTERNAL_HARD_RULE_PRUNE || primaryIrrelevant || shouldFallback);
     return respondSearch(
       resp.status,
       withProxySearchFallbackMetadata(normalized, {
@@ -10120,6 +10182,8 @@ async function proxyAgentSearchToBackend(req, res) {
         finalDecision:
           normalizedProducts.length > 0
             ? 'upstream_returned'
+            : shouldClarifyFinalEmpty
+            ? 'clarify'
             : 'strict_empty',
         primaryPathUsed: 'proxy_search_primary',
         fallbackTriggered: Boolean(shouldFallback),
@@ -10140,6 +10204,8 @@ async function proxyAgentSearchToBackend(req, res) {
         upstreamStage,
         strictEmptyReason:
           normalizedProducts.length > 0
+            ? null
+            : shouldClarifyFinalEmpty
             ? null
             : shouldFallback && skipSecondaryFallback
             ? 'resolver_miss_skip_secondary'
@@ -15632,11 +15698,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
           const bypassCacheStrictEmpty =
             isAuroraSource(source) && PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
+          const cacheStrictEmptyEarlyReturnEnabled = false;
           if (
+            cacheStrictEmptyEarlyReturnEnabled &&
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&
             !isLookupQuery &&
+            !SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
             !bypassCacheStrictEmpty &&
             !bypassCacheStrictEmptyForUnified &&
             !forceControlledRecallForScenario
@@ -15808,7 +15877,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      if (isBrowse && merchantId) {
 	        try {
 	          const page = Math.max(1, Number(search.page || 1) || 1);
-	          const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 100);
+	          const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 200);
 	          const fromCache = await loadMerchantBrowseFromCache(merchantId, page, limit, { inStockOnly });
 	          const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
 
@@ -15875,7 +15944,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // Single-merchant product search (Agent Search endpoint).
         const search = effectivePayload.search || effectivePayload || {};
         const page = Math.max(1, Number(search.page || 1) || 1);
-        const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 200);
         const offset = (page - 1) * limit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
@@ -15916,7 +15985,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // Cross-merchant search via Agent Search endpoint.
         const search = effectivePayload.search || effectivePayload || {};
         const page = Math.max(1, Number(search.page || 1) || 1);
-        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 200);
         const offset = (page - 1) * limit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
@@ -17168,15 +17237,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           } else {
             const fallbackReason = skipSecondaryFallback
               ? 'resolver_miss_skip_secondary'
-              : secondaryFallbackMeta?.semantic_retry_applied
-              ? 'semantic_retry_exhausted'
-              : 'fallback_not_better';
+              : 'semantic_retry_exhausted';
             const upstreamProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
             const shouldForceClarifyAfterRetry =
               SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
               upstreamProducts.length === 0 &&
-              !skipSecondaryFallback &&
-              Boolean(secondaryFallbackMeta?.semantic_retry_applied);
+              !skipSecondaryFallback;
             if (shouldForceClarifyAfterRetry) {
               upstreamData = buildProxySearchSoftFallbackResponse({
                 queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -17570,7 +17636,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (operation === 'find_products_multi') {
       try {
         const search = effectivePayload.search || effectivePayload || {};
-        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 200);
         const reranked = await maybeRerankFindProductsMultiResponse({
           response: maybePolicy,
           userQuery: rawUserQuery,
