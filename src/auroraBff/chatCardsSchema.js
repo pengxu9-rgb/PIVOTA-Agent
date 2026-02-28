@@ -9,6 +9,14 @@ const CHAT_CARD_TYPES = [
   'effect_review',
   'travel',
   'nudge',
+  'ingredient_hub',
+  'ingredient_goal_match',
+  'aurora_ingredient_report',
+  'diagnosis_gate',
+  'analysis_story_v2',
+  'confidence_notice',
+  'budget_gate',
+  'gate_notice',
 ];
 
 const CardActionSchema = z
@@ -29,6 +37,7 @@ const ChatCardSchema = z
     tags: z.array(z.string()).default([]),
     sections: z.array(z.record(z.string(), z.any())).default([]),
     actions: z.array(CardActionSchema).default([]),
+    payload: z.record(z.string(), z.any()).optional(),
   })
   .strict();
 

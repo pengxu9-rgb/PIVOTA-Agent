@@ -20595,6 +20595,9 @@ const CHATBOX_UI_RENDERABLE_CARD_TYPES = new Set([
   'analysis_summary',
   'analysis_story_v2',
   'diagnosis_gate',
+  'ingredient_hub',
+  'ingredient_goal_match',
+  'aurora_ingredient_report',
 ]);
 
 const CHATBOX_UI_HIDDEN_CARD_TYPES = new Set(['gate_notice', 'session_bootstrap', 'budget_gate', 'aurora_context_raw']);
@@ -29283,6 +29286,264 @@ function buildIngredientGoalMatchPayload({ language, goal, sensitivity } = {}) {
     sensitivity_label: sensitivityLabel,
     candidate_ingredients: selected.candidates,
     avoid_pairs: selected.avoid_pairs,
+  };
+}
+
+function normalizeIngredientLookupToken(raw) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return '';
+  if (/(niacinamide|nicotinamide|烟酰胺|维生素b3|维b3)/.test(text)) return 'niacinamide';
+  if (/(retinol|retinoid|维a|a醇|维甲醇|视黄醇)/.test(text)) return 'retinol';
+  if (/(azelaic|azelaic acid|壬二酸)/.test(text)) return 'azelaic_acid';
+  if (/(vitamin\\s*c|ascorbic|抗坏血酸|vc|维c)/.test(text)) return 'vitamin_c';
+  return '';
+}
+
+function mapIngredientLookupTokenToQuery(token, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const key = String(token || '').trim().toLowerCase();
+  if (!key) return '';
+  if (key === 'niacinamide') return lang === 'CN' ? '烟酰胺' : 'niacinamide';
+  if (key === 'retinol') return lang === 'CN' ? 'A醇/维A类' : 'retinol';
+  if (key === 'azelaic_acid') return lang === 'CN' ? '壬二酸' : 'azelaic acid';
+  if (key === 'vitamin_c') return lang === 'CN' ? '维生素C' : 'vitamin c';
+  return '';
+}
+
+function mapRoutineActiveTokenToIngredientQuery(token, language = 'EN') {
+  const key = String(token || '').trim().toLowerCase();
+  if (!key) return '';
+  if (key === 'retinoid') return mapIngredientLookupTokenToQuery('retinol', language);
+  if (key === 'niacinamide') return mapIngredientLookupTokenToQuery('niacinamide', language);
+  if (key === 'azelaic_acid') return mapIngredientLookupTokenToQuery('azelaic_acid', language);
+  if (key === 'vitamin_c') return mapIngredientLookupTokenToQuery('vitamin_c', language);
+  return '';
+}
+
+function extractIngredientLookupTargetFromText(message, language = 'EN') {
+  const raw = String(message || '').trim();
+  if (!raw) return '';
+  const lang = language === 'CN' ? 'CN' : 'EN';
+
+  const knownActives = extractKnownActivesFromText(raw, lang);
+  for (const token of knownActives) {
+    const mapped = mapRoutineActiveTokenToIngredientQuery(token, lang);
+    if (mapped) return String(mapped).slice(0, 120);
+  }
+
+  const ontologyHits = matchIngredientOntology({ text: raw, language: lang, max: 8 });
+  const ontologyPreferred = pickFirstTrimmed(
+    ...ontologyHits
+      .map((row) => (row && typeof row === 'object' ? row.matched_text : ''))
+      .filter((value) => normalizeIngredientLookupToken(value)),
+  );
+  if (ontologyPreferred) return String(ontologyPreferred).slice(0, 120);
+
+  const normalized = normalizeIngredientLookupToken(raw);
+  const normalizedQuery = mapIngredientLookupTokenToQuery(normalized, lang);
+  if (normalizedQuery) return String(normalizedQuery).slice(0, 120);
+
+  const ontologyAny = pickFirstTrimmed(
+    ...ontologyHits
+      .map((row) => (row && typeof row === 'object' ? row.matched_text : ''))
+      .filter(Boolean),
+  );
+  if (ontologyAny) return String(ontologyAny).slice(0, 120);
+
+  return '';
+}
+
+function buildIngredientReportPayload({ language, query } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const token = normalizeIngredientLookupToken(query);
+  const inputName = String(query || '').trim() || (lang === 'CN' ? '该成分' : 'this ingredient');
+
+  const library = {
+    niacinamide: {
+      inci: 'Niacinamide',
+      display_name: lang === 'CN' ? '烟酰胺' : 'Niacinamide',
+      aliases: lang === 'CN' ? ['维生素B3', 'Nicotinamide'] : ['Nicotinamide', 'Vitamin B3'],
+      category: lang === 'CN' ? '屏障/提亮支持' : 'Barrier + brightening support',
+      one_liner:
+        lang === 'CN'
+          ? '烟酰胺通常可兼顾提亮、油脂管理与屏障支持，耐受性相对友好。'
+          : 'Niacinamide commonly supports brightening, oil balance, and barrier function with generally good tolerance.',
+      benefits:
+        lang === 'CN'
+          ? [
+            { concern: 'brightening', strength: 2, what_it_means: '辅助改善暗沉与色素不均。' },
+            { concern: 'barrier-support', strength: 2, what_it_means: '支持屏障稳定并降低刺激风险。' },
+            { concern: 'acne', strength: 2, what_it_means: '对出油与毛孔可提供温和支持。' },
+          ]
+          : [
+            { concern: 'brightening', strength: 2, what_it_means: 'Can help improve dullness and uneven tone.' },
+            { concern: 'barrier-support', strength: 2, what_it_means: 'Supports barrier resilience and comfort.' },
+            { concern: 'acne', strength: 2, what_it_means: 'Can provide gentle support for oil and pores.' },
+          ],
+      watchouts:
+        lang === 'CN'
+          ? [{ issue: '早期轻微刺痒/泛红', likelihood: 'uncommon', what_to_do: '从低频低浓度开始并观察 1-2 周。' }]
+          : [{ issue: 'Mild transient sting/redness', likelihood: 'uncommon', what_to_do: 'Start lower and increase slowly over 1-2 weeks.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '泛醇', '透明质酸'] : ['Ceramides', 'Panthenol', 'Hyaluronic acid'],
+      separate: lang === 'CN' ? ['与高刺激活性同晚叠加时注意耐受'] : ['Watch tolerance when stacking with stronger actives'],
+    },
+    retinol: {
+      inci: 'Retinol',
+      display_name: lang === 'CN' ? '视黄醇（A醇）' : 'Retinol',
+      aliases: lang === 'CN' ? ['维A醇', 'Retinoid'] : ['Vitamin A alcohol', 'Retinoid'],
+      category: lang === 'CN' ? '抗老/纹理' : 'Anti-aging / texture',
+      one_liner:
+        lang === 'CN'
+          ? '视黄醇对细纹与纹理有较强证据，但需循序渐进以降低刺激。'
+          : 'Retinol has strong support for lines and texture, but needs gradual ramp-up to manage irritation.',
+      benefits:
+        lang === 'CN'
+          ? [
+            { concern: 'fine-lines', strength: 3, what_it_means: '长期可改善细纹与肤质。' },
+            { concern: 'texture', strength: 3, what_it_means: '促进角质更新，改善粗糙感。' },
+          ]
+          : [
+            { concern: 'fine-lines', strength: 3, what_it_means: 'Long-term support for fine lines.' },
+            { concern: 'texture', strength: 3, what_it_means: 'Improves texture via cell turnover support.' },
+          ],
+      watchouts:
+        lang === 'CN'
+          ? [{ issue: '干燥/脱屑/刺激', likelihood: 'common', what_to_do: '先低频夜间使用，并配合保湿与防晒。' }]
+          : [{ issue: 'Dryness/flaking/irritation', likelihood: 'common', what_to_do: 'Start low-frequency at night with moisturizer and daytime SPF.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '保湿乳霜'] : ['Ceramides', 'Moisturizer'],
+      separate: lang === 'CN' ? ['同晚多酸/高浓去角质'] : ['Multiple acids or strong exfoliants in the same night'],
+    },
+    azelaic_acid: {
+      inci: 'Azelaic Acid',
+      display_name: lang === 'CN' ? '壬二酸' : 'Azelaic Acid',
+      aliases: lang === 'CN' ? ['Azelic Acid'] : ['Azelic Acid'],
+      category: lang === 'CN' ? '痘痘/泛红支持' : 'Acne + redness support',
+      one_liner:
+        lang === 'CN'
+          ? '壬二酸常用于痘痘与泛红管理，通常耐受性较好。'
+          : 'Azelaic acid is commonly used for acne and redness support with generally good tolerance.',
+      benefits:
+        lang === 'CN'
+          ? [
+            { concern: 'acne', strength: 2, what_it_means: '对痘痘与闭口有实用支持。' },
+            { concern: 'brightening', strength: 2, what_it_means: '可辅助管理色沉与痘印。' },
+          ]
+          : [
+            { concern: 'acne', strength: 2, what_it_means: 'Practical support for acne/texture concerns.' },
+            { concern: 'brightening', strength: 2, what_it_means: 'Can support post-acne mark management.' },
+          ],
+      watchouts:
+        lang === 'CN'
+          ? [{ issue: '初期轻微刺痛', likelihood: 'common', what_to_do: '降低频率并搭配温和保湿。' }]
+          : [{ issue: 'Mild initial tingling', likelihood: 'common', what_to_do: 'Reduce frequency and pair with bland moisturizer.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '神经酰胺'] : ['Niacinamide', 'Ceramides'],
+      separate: lang === 'CN' ? ['同晚过度叠加去角质产品'] : ['Avoid over-stacking exfoliants on the same night'],
+    },
+    vitamin_c: {
+      inci: 'Ascorbic Acid',
+      display_name: lang === 'CN' ? '维生素C' : 'Vitamin C',
+      aliases: lang === 'CN' ? ['抗坏血酸', 'L-ascorbic acid'] : ['Ascorbic acid', 'L-ascorbic acid'],
+      category: lang === 'CN' ? '提亮/抗氧化' : 'Brightening / antioxidant',
+      one_liner:
+        lang === 'CN'
+          ? '维C在提亮与抗氧化方面证据较强，需关注配方稳定性与耐受。'
+          : 'Vitamin C has strong support for brightening and antioxidant defense; stability and tolerance matter.',
+      benefits:
+        lang === 'CN'
+          ? [
+            { concern: 'brightening', strength: 3, what_it_means: '对暗沉和肤色不均有较强支持。' },
+            { concern: 'firmness', strength: 2, what_it_means: '可辅助胶原相关支持。' },
+          ]
+          : [
+            { concern: 'brightening', strength: 3, what_it_means: 'Strong support for dullness and uneven tone.' },
+            { concern: 'firmness', strength: 2, what_it_means: 'Can support collagen-related firmness goals.' },
+          ],
+      watchouts:
+        lang === 'CN'
+          ? [{ issue: '刺痛/氧化失活', likelihood: 'common', what_to_do: '低浓度起步并避光密封保存。' }]
+          : [{ issue: 'Sting/oxidation instability', likelihood: 'common', what_to_do: 'Start lower strength and store away from light/air.' }],
+      pair_well: lang === 'CN' ? ['防晒', '维E/阿魏酸体系'] : ['Sunscreen', 'Vitamin E/Ferulic systems'],
+      separate: lang === 'CN' ? ['与高刺激活性同频堆叠时注意耐受'] : ['Watch tolerance when layering with stronger actives'],
+    },
+  };
+
+  const picked = library[token] || {
+    inci: inputName,
+    display_name: inputName,
+    aliases: [],
+    category: lang === 'CN' ? '成分查询' : 'Ingredient lookup',
+    one_liner:
+      lang === 'CN'
+        ? `这是关于 ${inputName} 的快速成分概览；如需更高准确度，可补充目标与敏感度。`
+        : `Here is a quick ingredient snapshot for ${inputName}; add goal/sensitivity for more precise matching.`,
+    benefits: [
+      {
+        concern: 'hydration',
+        strength: 1,
+        what_it_means: lang === 'CN' ? '可提供基础方向判断，建议结合肤况验证。' : 'Provides baseline directional guidance; validate with your skin context.',
+      },
+    ],
+    watchouts: [
+      {
+        issue: lang === 'CN' ? '证据与适配度待补充' : 'Evidence and fit need more context',
+        likelihood: 'unknown',
+        what_to_do: lang === 'CN' ? '可继续补充功效目标与敏感度。' : 'You can add goal and sensitivity for refinement.',
+      },
+    ],
+    pair_well: [],
+    separate: [],
+  };
+
+  return {
+    schema_version: 'aurora.ingredient_report.v1',
+    locale: lang === 'CN' ? 'zh-CN' : 'en-US',
+    ingredient: {
+      inci: picked.inci,
+      display_name: picked.display_name,
+      aliases: picked.aliases,
+      category: picked.category,
+    },
+    verdict: {
+      one_liner: picked.one_liner,
+      top_benefits: (picked.benefits || []).map((row) => row && row.what_it_means).filter(Boolean).slice(0, 3),
+      evidence_grade: token ? 'A' : 'unknown',
+      irritation_risk: token === 'retinol' || token === 'vitamin_c' ? 'medium' : token ? 'low' : 'unknown',
+      time_to_results: token ? '4-8w' : 'unknown',
+      confidence: token ? 0.8 : 0.55,
+    },
+    benefits: picked.benefits,
+    how_to_use: {
+      frequency: token === 'retinol' ? '3-4x/week' : 'daily',
+      routine_step: token === 'retinol' ? 'cream' : 'serum',
+      pair_well: picked.pair_well,
+      consider_separating: picked.separate,
+      notes:
+        lang === 'CN'
+          ? ['先从低频开始，观察 1-2 周耐受。', '白天请配合防晒。']
+          : ['Start low and monitor tolerance for 1-2 weeks.', 'Use daytime sunscreen consistently.'],
+    },
+    watchouts: picked.watchouts,
+    use_cases: [],
+    evidence: {
+      summary:
+        lang === 'CN'
+          ? '基于公开皮肤学共识生成的快速摘要，适合做第一步筛选。'
+          : 'Quick summary based on common dermatology consensus for first-pass screening.',
+      citations: [],
+      show_citations_by_default: false,
+    },
+    next_questions: [
+      {
+        id: 'goal',
+        label: lang === 'CN' ? '你的主要目标是什么？' : 'What is your primary goal?',
+        chips: lang === 'CN' ? ['祛痘', '提亮', '修护', '抗老'] : ['Acne', 'Brightening', 'Barrier repair', 'Anti-aging'],
+      },
+      {
+        id: 'sensitivity',
+        label: lang === 'CN' ? '你的敏感度如何？' : 'How sensitive is your skin?',
+        chips: lang === 'CN' ? ['低', '中', '高'] : ['Low', 'Medium', 'High'],
+      },
+    ],
   };
 }
 
@@ -39640,15 +39901,22 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientByGoalRequested = isIngredientByGoalAction(actionId);
       const ingredientDiagnosisOptInRequested = isIngredientDiagnosisOptInAction(actionId);
       const ingredientRecoOptInRequested = isIngredientRecoOptInAction(actionId, normalizedActionPayload);
+      const ingredientTextTrigger = ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit';
       const ingredientLookupQuery = ingredientLookupRequested
         ? extractIngredientLookupQuery(normalizedActionPayload)
         : '';
+      const ingredientLookupTargetFromText = ingredientTextTrigger
+        ? extractIngredientLookupTargetFromText(message, ctx.lang)
+        : '';
+      const ingredientScienceIntentEffective =
+        ingredientScienceIntent ||
+        (ingredientTextTrigger && Boolean(ingredientLookupTargetFromText));
       const ingredientGoalRequest = ingredientByGoalRequested
         ? extractIngredientGoalRequest(normalizedActionPayload)
         : { goal: '', sensitivity: 'unknown' };
       const ingredientActionData = extractActionDataObject(normalizedActionPayload);
       ingredientReplayContext = {
-        intent_requested: Boolean(ingredientScienceIntent),
+        intent_requested: Boolean(ingredientScienceIntentEffective),
         starter_action: Boolean(ingredientEntryRequested || ingredientLookupRequested || ingredientByGoalRequested),
         diagnosis_optin: Boolean(
           ingredientDiagnosisOptInRequested ||
@@ -39656,9 +39924,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             normalizeIngredientActionId(actionId) === 'chip_start_diagnosis',
         ),
         reco_optin: Boolean(ingredientRecoOptInRequested),
+        route_source: ingredientTextTrigger && ingredientScienceIntentEffective ? 'text' : 'chip',
         entry:
           pickFirstTrimmed(ingredientActionData && ingredientActionData.entry_source, ingredientActionData && ingredientActionData.trigger_source) ||
-          (ingredientEntryRequested ? 'ingredients_entry' : ingredientScienceIntent ? 'ingredient_intent' : null),
+          (ingredientEntryRequested ? 'ingredients_entry' : ingredientScienceIntentEffective ? 'ingredient_intent' : null),
+      };
+      const attachIngredientRouteMetaToSessionPatch = (sessionPatch, { queryFirstApplied = false, routeSource = '' } = {}) => {
+        const patch = sessionPatch && typeof sessionPatch === 'object' && !Array.isArray(sessionPatch) ? { ...sessionPatch } : {};
+        const source = String(routeSource || '').trim().toLowerCase();
+        const meta = patch.meta && typeof patch.meta === 'object' && !Array.isArray(patch.meta) ? { ...patch.meta } : {};
+        if (queryFirstApplied) meta.ingredient_query_first_applied = true;
+        if (source === 'text' || source === 'chip') meta.ingredient_route_source = source;
+        if (Object.keys(meta).length > 0) patch.meta = meta;
+        return patch;
       };
       if (ingredientEntryRequested) {
         recordAuroraIngredientsFlowMetric({ stage: 'entry_opened', hit: true });
@@ -39683,7 +39961,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const evaluateIntent =
         (canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT || looksLikeProductEvaluationIntentV2(message, actionId)) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
-        !ingredientScienceIntent;
+        !ingredientScienceIntentEffective;
       const recommendationEntryRequested = Boolean(
         actionId === 'chip.start.reco_products' ||
         actionId === 'chip_get_recos' ||
@@ -39704,7 +39982,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         !diagnosisEntryRequested &&
         !recommendationEntryRequested &&
         !evaluateIntent &&
-        !ingredientScienceIntent &&
+        !ingredientScienceIntentEffective &&
         !conflictIntentRequested &&
         !looksLikeWeatherOrEnvironmentQuestion(message),
       );
@@ -39723,7 +40001,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const shouldBypassAvailabilityShortCircuit =
         anchorCollectionSignal ||
         evaluateIntent ||
-        ingredientScienceIntent ||
+        ingredientScienceIntentEffective ||
         canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
         canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV ||
         Boolean(
@@ -39738,7 +40016,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (ctx.state === 'S6_BUDGET') {
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
-        const wantsScience = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+        const wantsScience = ingredientScienceIntentEffective;
         const wantsRecoNoRoutine =
           looksLikeRecommendationRequest(message) &&
           !looksLikeRoutineRequest(message, normalizedActionPayload);
@@ -39808,7 +40086,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         safetyDecision &&
           (
             hasSafetySensitiveActiveMention ||
-            ingredientScienceIntent ||
+            ingredientScienceIntentEffective ||
             conflictIntentRequested ||
             canonicalIntent.intent === INTENT_ENUM.RECO_PRODUCTS ||
             canonicalIntent.intent === INTENT_ENUM.ROUTINE ||
@@ -39888,8 +40166,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: hubPayload,
             },
           ],
-          session_patch:
+          session_patch: attachIngredientRouteMetaToSessionPatch(
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_hub_entry' })],
         });
         return sendChatEnvelope(envelope);
@@ -39917,8 +40197,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: goalPayload,
             },
           ],
-          session_patch:
+          session_patch: attachIngredientRouteMetaToSessionPatch(
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
         });
         return sendChatEnvelope(envelope);
@@ -39941,9 +40223,53 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: hubPayload,
             },
           ],
-          session_patch:
+          session_patch: attachIngredientRouteMetaToSessionPatch(
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_missing_query' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      const ingredientLookupTarget = ingredientLookupRequested
+        ? pickFirstTrimmed(
+          ingredientLookupQuery,
+          typeof message === 'string' ? message.trim().slice(0, 120) : '',
+        )
+        : '';
+
+      if (ingredientLookupRequested && ingredientLookupTarget) {
+        const reportPayload = buildIngredientReportPayload({
+          language: ctx.lang,
+          query: ingredientLookupTarget,
+        });
+        const ingredientName =
+          pickFirstTrimmed(
+            reportPayload?.ingredient?.display_name,
+            reportPayload?.ingredient?.inci,
+            ingredientLookupTarget,
+          ) || ingredientLookupTarget;
+        const assistantText =
+          ctx.lang === 'CN'
+            ? `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
+            : `I generated a 1-minute ingredient report for ${ingredientName}.`;
+        requestMessage = 'ingredient_lookup_report';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `ingredient_report_${ctx.request_id}`,
+              type: 'aurora_ingredient_report',
+              payload: reportPayload,
+            },
+          ],
+          session_patch: attachIngredientRouteMetaToSessionPatch(
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_report' })],
         });
         return sendChatEnvelope(envelope);
       }
@@ -40614,9 +40940,18 @@ function mountAuroraBffRoutes(app, { logger }) {
       const inDiagnosisState =
         String(agentState || '') === 'DIAG_PROFILE' ||
         String(agentState || '').startsWith('DIAG_');
+      const ingredientDiagnosisRouteGuardActive =
+        ingredientScienceIntentEffective &&
+        !ingredientDiagnosisOptInRequested &&
+        (
+          ingredientEntryRequested ||
+          ingredientLookupRequested ||
+          ingredientByGoalRequested ||
+          ingredientTextTrigger
+        );
       if (
         (diagnosisEntryRequested || (inDiagnosisState && diagnosisFlowContinuationAllowed)) &&
-        !(ingredientScienceIntent && ingredientEntryRequested)
+        !ingredientDiagnosisRouteGuardActive
       ) {
         const { score, missing } = profileCompleteness(profile);
         const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
@@ -40685,7 +41020,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (ingredientScienceIntent && safetyDecision) {
+      if (ingredientScienceIntentEffective && safetyDecision) {
         const ingredientSafetyGate = resolveSafetyGateActionV2({
           safety: safetyDecision,
           profileValue: profile,
@@ -40731,20 +41066,97 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               },
             ],
-            session_patch: {},
+            session_patch: attachIngredientRouteMetaToSessionPatch(
+              {},
+              { routeSource: ingredientTextTrigger ? 'text' : 'chip' },
+            ),
             events: [makeEvent(ctx, 'safety_gate_block', { intent: 'ingredient_science', block_level: safetyDecision.block_level })],
           });
           return sendChatEnvelope(envelope);
         }
       }
-      const ingredientLookupTargetProvided =
-        Boolean(ingredientLookupQuery) ||
-        messageContainsSpecificIngredientScienceTarget(message);
-      const shouldKickoffIngredientScience =
-        ingredientScienceIntent &&
+      const ingredientTextQueryFirstEligible =
+        ingredientScienceIntentEffective &&
+        ingredientTextTrigger &&
         !ingredientEntryRequested &&
         !ingredientByGoalRequested &&
         !ingredientLookupRequested &&
+        !ingredientDiagnosisOptInRequested &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+        !looksLikeSuitabilityRequest(message) &&
+        !looksLikeCompatibilityOrConflictQuestion(message) &&
+        !looksLikeWeatherOrEnvironmentQuestion(message);
+      if (ingredientTextQueryFirstEligible) {
+        recordAuroraIngredientsFlowMetric({ stage: 'text_query_routed', hit: true });
+        const baseSessionPatch =
+          nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
+        const sessionPatch = attachIngredientRouteMetaToSessionPatch(baseSessionPatch, {
+          queryFirstApplied: true,
+          routeSource: 'text',
+        });
+        if (ingredientLookupTargetFromText) {
+          const reportPayload = buildIngredientReportPayload({
+            language: ctx.lang,
+            query: ingredientLookupTargetFromText,
+          });
+          const ingredientName =
+            pickFirstTrimmed(
+              reportPayload?.ingredient?.display_name,
+              reportPayload?.ingredient?.inci,
+              ingredientLookupTargetFromText,
+            ) || ingredientLookupTargetFromText;
+          const assistantText =
+            ctx.lang === 'CN'
+              ? `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
+              : `I generated a 1-minute ingredient report for ${ingredientName}.`;
+          requestMessage = 'ingredient_text_lookup_report';
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(assistantText),
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `ingredient_report_${ctx.request_id}`,
+                type: 'aurora_ingredient_report',
+                payload: reportPayload,
+              },
+            ],
+            session_patch: sessionPatch,
+            events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_text_lookup_report' })],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        const hubPayload = buildIngredientHubCardPayload({ language: ctx.lang });
+        const assistantText =
+          ctx.lang === 'CN'
+            ? '你可以先查具体成分，或按功效找成分；开始诊断是可选项。'
+            : 'You can start with a specific ingredient lookup or find by goal first; diagnosis is optional.';
+        requestMessage = 'ingredient_text_query_hub';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `ingredient_hub_${ctx.request_id}`,
+              type: 'ingredient_hub',
+              payload: hubPayload,
+            },
+          ],
+          session_patch: sessionPatch,
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_text_query_hub' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+      const ingredientLookupTargetProvided =
+        Boolean(ingredientLookupQuery) ||
+        Boolean(ingredientLookupTargetFromText) ||
+        messageContainsSpecificIngredientScienceTarget(message);
+      const shouldKickoffIngredientScience =
+        ingredientScienceIntentEffective &&
+        !ingredientEntryRequested &&
+        !ingredientByGoalRequested &&
+        !ingredientLookupRequested &&
+        !ingredientDiagnosisOptInRequested &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         !looksLikeCompatibilityOrConflictQuestion(message) &&
@@ -40754,7 +41166,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (shouldKickoffIngredientScience) {
         const kickoff = buildIngredientScienceKickoff({ language: ctx.lang });
         const safetyPrefix =
-          ingredientScienceIntent &&
+          ingredientScienceIntentEffective &&
           safetyDecision &&
           safetyDecision.block_level === BLOCK_LEVEL.WARN
             ? buildSafetyNoticeText(safetyDecision)
@@ -40802,7 +41214,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         // Example: "Is this product suitable for me?" should go to fit-check/product analysis (budget is irrelevant).
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
-        const wantsScience = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+        const wantsScience = ingredientScienceIntentEffective;
         const wantsRecoNoRoutine =
           looksLikeRecommendationRequest(message) &&
           !looksLikeRoutineRequest(message, normalizedActionPayload);
@@ -41378,11 +41790,6 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let matcherBundle = null;
         let matcherPayload = null;
-        let matcherBundlePromise = null;
-        let matcherCheckErrorCode = '';
-        let matcherCheckAttempted = false;
-        let matcherCheckReady = false;
-        const matcherFallbackTimeoutMs = 1200;
         const artifactConfidenceLevel = artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low';
         const lowConfidenceArtifact = artifactConfidenceLevel === 'low';
         const artifactConfidenceScoreRaw = Number(
@@ -41395,7 +41802,6 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         if (AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact) {
           try {
-            matcherCheckAttempted = true;
             const artifactPayload = latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object'
               ? {
                   ...latestArtifact.artifact_json,
@@ -41407,39 +41813,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               mappedIngredientPlan ||
               buildIngredientPlan({ artifact: artifactPayload, profile: profile || {} });
             if (!mappedIngredientPlan) mappedIngredientPlan = planForMatcher;
-            matcherBundlePromise = new Promise((resolve, reject) => {
-              setImmediate(() => {
-                try {
-                  const computedBundle = buildProductRecommendationsBundle({
-                    ingredientPlan: planForMatcher,
-                    artifact: artifactPayload,
-                    profile,
-                    language: ctx.lang,
-                    disallowTreatment: lowConfidenceArtifact,
-                    catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-                  });
-                  const computedPayload = toLegacyRecommendationsPayload(computedBundle, { language: ctx.lang });
-                  resolve({ matcherBundle: computedBundle, matcherPayload: computedPayload });
-                } catch (err) {
-                  reject(err);
-                }
-              });
+
+            matcherBundle = buildProductRecommendationsBundle({
+              ingredientPlan: planForMatcher,
+              artifact: artifactPayload,
+              profile,
+              language: ctx.lang,
+              disallowTreatment: lowConfidenceArtifact,
+              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
             });
-            matcherBundlePromise
-              .then((resolved) => {
-                if (resolved && typeof resolved === 'object') {
-                  matcherBundle = resolved.matcherBundle || null;
-                  matcherPayload = resolved.matcherPayload || null;
-                }
-                matcherCheckReady = true;
-              })
-              .catch((err) => {
-                matcherCheckErrorCode = String((err && err.code) || 'matcher_check_failed').trim().toLowerCase() || 'matcher_check_failed';
-                logger?.warn(
-                  { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
-                  'aurora bff: product matcher async check failed',
-                );
-              });
+            matcherPayload = toLegacyRecommendationsPayload(matcherBundle, { language: ctx.lang });
           } catch (err) {
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
@@ -41502,30 +41885,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoSource = generatedPayloadSource || 'catalog_transient_fallback';
         }
 
-        if (!llmPrimaryUsed && matcherBundlePromise) {
-          try {
-            const resolvedMatcher = await withTimeout(
-              matcherBundlePromise,
-              matcherFallbackTimeoutMs,
-              'AURORA_CHAT_MATCHER_FALLBACK_TIMEOUT',
-            );
-            if (resolvedMatcher && typeof resolvedMatcher === 'object') {
-              matcherBundle = resolvedMatcher.matcherBundle || matcherBundle;
-              matcherPayload = resolvedMatcher.matcherPayload || matcherPayload;
-              matcherCheckReady = true;
-            }
-          } catch (err) {
-            const timeoutCode = String(err && err.code ? err.code : '').trim();
-            if (timeoutCode !== 'AURORA_CHAT_MATCHER_FALLBACK_TIMEOUT') {
-              matcherCheckErrorCode =
-                String((err && err.code) || 'matcher_fallback_failed').trim().toLowerCase() || 'matcher_fallback_failed';
-              logger?.warn(
-                { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
-                'aurora bff: matcher fallback failed',
-              );
-            }
-          }
-        }
         const matcherRecoCount = Array.isArray(matcherPayload?.recommendations) ? matcherPayload.recommendations.length : 0;
         if (!llmPrimaryUsed && matcherRecoCount > 0) {
           norm = {
@@ -41541,27 +41900,20 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoSource = 'artifact_matcher_v1';
           recoTimeoutDegraded = false;
         }
-        if (llmPrimaryUsed && isPlainObject(norm?.payload) && matcherCheckAttempted) {
-          const matcherReady = Boolean(matcherCheckReady && matcherBundle);
+        if (llmPrimaryUsed && isPlainObject(norm?.payload) && matcherBundle) {
           const matcherConfidence =
-            matcherReady && matcherBundle.confidence && Number.isFinite(Number(matcherBundle.confidence.score))
+            matcherBundle.confidence && Number.isFinite(Number(matcherBundle.confidence.score))
               ? Number(matcherBundle.confidence.score)
               : null;
-          const matcherCount = matcherReady && Array.isArray(matcherPayload?.recommendations)
-            ? matcherPayload.recommendations.length
-            : 0;
           norm.payload = {
             ...norm.payload,
             metadata: {
               ...(isPlainObject(norm.payload.metadata) ? norm.payload.metadata : {}),
               matcher_check_result: {
                 source: 'artifact_matcher_v1',
-                status: matcherReady ? 'ready' : 'pending',
-                pending: !matcherReady,
-                available: matcherReady ? matcherCount > 0 : false,
-                recommendation_count: matcherCount,
+                available: matcherRecoCount > 0,
+                recommendation_count: matcherRecoCount,
                 confidence: matcherConfidence,
-                ...(matcherCheckErrorCode ? { error_code: matcherCheckErrorCode } : {}),
               },
             },
           };
@@ -41849,31 +42201,31 @@ function mountAuroraBffRoutes(app, { logger }) {
         looksLikeWeatherOrEnvironmentQuestion(message) ||
         looksLikeRecommendationRequest(message);
 
-	      if (appliedProfilePatch && (!message || profileClarificationAction) && !hasExplicitUserIntentMessage) {
-	        const inDiagnosisFlow =
-	          String(agentState || '').startsWith('DIAG_') ||
-	          String(ctx.state || '').startsWith('S2_') ||
-	          String(ctx.state || '').startsWith('S3_') ||
-	          profileClarificationAction;
+      if (appliedProfilePatch && (!message || profileClarificationAction) && !hasExplicitUserIntentMessage) {
+        const inDiagnosisFlow =
+          String(agentState || '').startsWith('DIAG_') ||
+          String(ctx.state || '').startsWith('S2_') ||
+          String(ctx.state || '').startsWith('S3_') ||
+          profileClarificationAction;
 
-	        const { score, missing } = profileCompleteness(profile);
+        const { score, missing } = profileCompleteness(profile);
 
-	        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
-	        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
-	        const profileSummaryForPatch = summarizeChatProfileForContext(profile);
-	        if (profileSummaryForPatch) {
-	          recordSessionPatchProfileEmitted({ changed: true });
-	        }
+        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
+        const profileSummaryForPatch = summarizeChatProfileForContext(profile);
+        if (profileSummaryForPatch) {
+          recordSessionPatchProfileEmitted({ changed: true });
+        }
 
-	        if (inDiagnosisFlow && missingCore.length && !(ingredientScienceIntent && ingredientEntryRequested)) {
-	          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
-	          const chips = buildDiagnosisChips(ctx.lang, missingCore);
-	          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+        if (inDiagnosisFlow && missingCore.length && !ingredientDiagnosisRouteGuardActive) {
+          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
+          const chips = buildDiagnosisChips(ctx.lang, missingCore);
+          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
-	          const envelope = buildEnvelope(ctx, {
-	            assistant_message: makeChatAssistantMessage(prompt),
-	            suggested_chips: chips,
-	            cards: [
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(prompt),
+            suggested_chips: chips,
+            cards: [
               {
                 card_id: `diag_${ctx.request_id}`,
                 type: 'diagnosis_gate',
