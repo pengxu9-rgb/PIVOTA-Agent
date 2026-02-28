@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
 const { createHash, randomUUID } = require('crypto');
+const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
@@ -220,13 +221,33 @@ const REVIEWS_API_BASE = (
 ).replace(/\/$/, '');
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
-const CREATOR_INVOKE_API_KEY = String(process.env.CREATOR_INVOKE_API_KEY || '').trim();
-const CREATOR_INVOKE_REQUIRE_KEY = (() => {
-  const raw = String(process.env.CREATOR_INVOKE_REQUIRE_KEY || '').trim().toLowerCase();
-  if (raw) return ['1', 'true', 'yes', 'y', 'on'].includes(raw);
-  const env = String(process.env.NODE_ENV || process.env.APP_ENV || '').trim().toLowerCase();
-  return env === 'production' || env === 'prod';
-})();
+const AGENT_AUTH_INTROSPECT_URL = String(
+  process.env.AGENT_AUTH_INTROSPECT_URL ||
+    `${PIVOTA_API_BASE}/agent/internal/auth/introspect`,
+).trim();
+const AGENT_AUTH_INTROSPECT_INTERNAL_KEY = String(
+  process.env.AGENT_AUTH_INTROSPECT_INTERNAL_KEY || '',
+).trim();
+const AGENT_AUTH_INTROSPECT_TIMEOUT_MS = parseTimeoutMs(
+  process.env.AGENT_AUTH_INTROSPECT_TIMEOUT_MS,
+  2_500,
+);
+const AGENT_AUTH_CACHE_POSITIVE_TTL_MS = parsePositiveInt(
+  process.env.AGENT_AUTH_CACHE_POSITIVE_TTL_MS,
+  60_000,
+  { min: 1_000, max: 10 * 60_000 },
+);
+const AGENT_AUTH_CACHE_NEGATIVE_TTL_MS = parsePositiveInt(
+  process.env.AGENT_AUTH_CACHE_NEGATIVE_TTL_MS,
+  15_000,
+  { min: 1_000, max: 5 * 60_000 },
+);
+const AGENT_AUTH_CACHE_MAX_ENTRIES = parsePositiveInt(
+  process.env.AGENT_AUTH_CACHE_MAX_ENTRIES,
+  20_000,
+  { min: 100, max: 200_000 },
+);
+const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 
 // Agent budgeting & loop protection (per /ui/chat turn)
 const MAX_AGENT_STEPS_PER_TURN = Number(process.env.AGENT_MAX_STEPS_PER_TURN || 8);
@@ -629,6 +650,10 @@ const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = (() => {
       .toLowerCase() === 'true'
   );
 })();
+const PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA = (() => {
+  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA || defaultValue).toLowerCase() === 'true';
+})();
 const PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
@@ -772,6 +797,10 @@ const SEARCH_STRICT_EMPTY_ENABLED =
   String(process.env.SEARCH_STRICT_EMPTY_ENABLED || 'true').toLowerCase() !== 'false';
 const SEARCH_EXTERNAL_FILL_GATED =
   String(process.env.SEARCH_EXTERNAL_FILL_GATED || 'true').toLowerCase() !== 'false';
+const SEARCH_LIMIT_MAX = parsePositiveInt(process.env.SEARCH_LIMIT_MAX, 200, {
+  min: 1,
+  max: 200,
+});
 const SEARCH_EXTERNAL_HARD_RULE_PRUNE =
   String(process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE || 'true').toLowerCase() !== 'false';
 const SEARCH_CACHE_VALIDATE =
@@ -824,6 +853,24 @@ const FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = Math.max(
 const FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = Math.max(
   1800,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS, 4500),
+);
+const FPM_GATE_SIMPLIFY_V1 =
+  String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
+const FPM_LOOKUP_ONLY_RESOLVER =
+  String(process.env.FPM_LOOKUP_ONLY_RESOLVER || 'true').toLowerCase() !== 'false';
+const FPM_CLARIFY_NEVER_EMPTY =
+  String(process.env.FPM_CLARIFY_NEVER_EMPTY || 'true').toLowerCase() !== 'false';
+const FPM_GATEWAY_TOTAL_BUDGET_MS = Math.max(
+  1200,
+  parseTimeoutMs(process.env.FPM_GATEWAY_TOTAL_BUDGET_MS, 2500),
+);
+const FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS = Math.max(
+  300,
+  parseTimeoutMs(process.env.FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS, 550),
+);
+const FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS = Math.max(
+  350,
+  parseTimeoutMs(process.env.FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS, 700),
 );
 
 const OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS = parseTimeoutMs(
@@ -3111,6 +3158,9 @@ function withStrictEmptyFallback({
     intent,
     queryClass,
     queryText,
+    querySource: hasFragranceQuerySignal(queryText)
+      ? 'agent_products_semantic_retry_exhausted'
+      : 'agent_products_error_fallback',
   });
   const hasClarification = Boolean(emptyBody?.clarification?.question);
   return withSearchDiagnostics(emptyBody, {
@@ -3164,6 +3214,10 @@ function buildProxySearchSoftFallbackResponse({
   intent = null,
   queryClass = null,
   queryText = '',
+  querySource = 'agent_products_error_fallback',
+  semanticRetryApplied = false,
+  semanticRetryQuery = null,
+  semanticRetryHits = 0,
 }) {
   const quotaExhausted = isUpstreamQuotaExhausted({ upstreamStatus, upstreamCode, upstreamMessage });
   const shouldClarify = quotaExhausted && shouldClarifyOnQuota({ queryClass, intent });
@@ -3200,11 +3254,14 @@ function buildProxySearchSoftFallbackResponse({
         ? { reason_codes: ['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY'] }
         : {}),
       metadata: {
-        query_source: 'agent_products_error_fallback',
+        query_source: String(querySource || 'agent_products_error_fallback'),
         upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
         upstream_error_code: upstreamCode ? String(upstreamCode) : null,
         upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
         fallback_route: route || null,
+        semantic_retry_applied: Boolean(semanticRetryApplied),
+        semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+        semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
         ...(shouldClarify ? { upstream_quota_guarded: true } : {}),
       },
     },
@@ -3761,6 +3818,34 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   return false;
 }
 
+const FRAGRANCE_SEMANTIC_TERMS = [
+  'fragrance',
+  'perfume',
+  'parfum',
+  'cologne',
+  'eau de parfum',
+  'eau de toilette',
+  'body mist',
+];
+const FRAGRANCE_QUERY_REGEX =
+  /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i;
+
+function hasFragranceQuerySignal(queryText = '') {
+  return FRAGRANCE_QUERY_REGEX.test(String(queryText || ''));
+}
+
+function buildFragranceSemanticRetryQuery(queryText = '') {
+  const raw = String(queryText || '').trim();
+  if (!raw) return '';
+  const lower = raw.toLowerCase();
+  const terms = [raw];
+  for (const item of FRAGRANCE_SEMANTIC_TERMS) {
+    if (!lower.includes(item)) terms.push(item);
+  }
+  const joined = terms.join(' ').replace(/\s+/g, ' ').trim();
+  return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+}
+
 function buildFallbackCandidateText(product) {
   if (!product || typeof product !== 'object') return '';
   const parts = [
@@ -4033,7 +4118,6 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!product || typeof product !== 'object') return false;
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
-  let softPenalty = 1;
 
   const hasFragranceSearch = hasFragranceSearchSignal(queryText);
   const hasFragranceCandidateSignal =
@@ -4048,12 +4132,8 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   );
 
   if (hasFragranceSearch) {
-    if (!hasFragranceCandidateSignal) {
-      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.68 : 0.45;
-    }
-    if (isBeautyToolLikeCandidate) {
-      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.65 : 0.4;
-    }
+    if (!hasFragranceCandidateSignal && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
+    if (isBeautyToolLikeCandidate && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
   }
 
   const brandTerms = Array.isArray(options.brandTerms)
@@ -4063,19 +4143,15 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     : [];
   if (brandTerms.length > 0) {
     const brandMatched = brandTerms.some((term) => hasBrandTermMatch(candidateText, term));
-    if (!brandMatched) {
-      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.72 : 0.5;
-    }
+    if (!brandMatched && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
   }
 
   if (hasPetHarnessSearchSignal(queryText)) {
-    if (!hasStrictPetHarnessCatalogSignal(candidateText)) {
-      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.42 : 0.25;
-    }
+    if (!hasStrictPetHarnessCatalogSignal(candidateText)) return false;
   }
 
   if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
-    softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.6 : 0.35;
+    return false;
   }
 
   const normalizedQuery =
@@ -4114,15 +4190,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     return candidateText.includes(effectiveTokens[0]);
   }
   const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
-  const strictOverlapRequired = ingredientIntent ? 1 : 2;
-  const relaxedOverlapRequired = SEARCH_EXTERNAL_HARD_RULE_PRUNE
-    ? Math.max(1, strictOverlapRequired - 1)
-    : strictOverlapRequired;
-  if (overlapCount >= relaxedOverlapRequired) return true;
-  if (SEARCH_EXTERNAL_HARD_RULE_PRUNE && overlapCount >= 1) {
-    return softPenalty >= 0.35;
-  }
-  return false;
+  return overlapCount >= (ingredientIntent ? 1 : 2);
 }
 
 function inferCacheProductDomainKey(product) {
@@ -4290,14 +4358,15 @@ function getFallbackAdoptUsableThreshold({
   return baseThreshold;
 }
 
-function buildFindProductsMultiPayloadFromQuery(rawQuery) {
+function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const search = {};
   const metadata = {};
+  const allowEmptyQuery = options && typeof options === 'object' && options.allowEmptyQuery === true;
 
   const textQuery = extractSearchQueryText(query);
-  if (!textQuery) return null;
-  search.query = textQuery;
+  if (!textQuery && !allowEmptyQuery) return null;
+  search.query = textQuery || '';
 
   const merchantId = String(firstQueryParamValue(query.merchant_id || query.merchantId) || '').trim();
   if (merchantId) search.merchant_id = merchantId;
@@ -4341,7 +4410,7 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   if (externalSeedStrategy) search.external_seed_strategy = externalSeedStrategy;
 
   const limit = parseQueryNumber(query.limit ?? query.page_size);
-  if (limit !== undefined) search.limit = Math.max(1, Math.min(100, Math.floor(limit)));
+  if (limit !== undefined) search.limit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(limit)));
 
   const offset = parseQueryNumber(query.offset);
   if (offset !== undefined) {
@@ -4373,6 +4442,11 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
 
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const limit = Math.min(Math.max(requestedCount * 6, 48), 320);
+  const hardBudgetMs = Math.max(
+    800,
+    Number(process.env.PROXY_SEARCH_EXTERNAL_SEED_SUPPLEMENT_BUDGET_MS || 2200),
+  );
+  const startedAtMs = Date.now();
   const brandDetection = detectBrandEntities(queryText, { candidateProducts: [] });
   const hasExplicitCategory = hasExplicitCategoryHint(queryText, null);
   const brandTerms = Array.isArray(brandDetection?.brands)
@@ -4380,28 +4454,30 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     : [];
   const baseVariants = buildBrandQueryVariants(queryText, brandTerms);
   const fragranceVariants =
-    /\b(perfume|fragrance|parfum|cologne)\b/i.test(queryText) || hasExplicitCategory
+    hasFragranceQuerySignal(queryText) || hasExplicitCategory
       ? ['perfume', 'fragrance', 'parfum', 'cologne', 'body mist', 'eau de parfum']
       : [];
   const queryVariants = Array.from(
     new Set([queryText, ...baseVariants, ...fragranceVariants].map((item) => String(item || '').trim()).filter(Boolean)),
-  ).slice(0, 8);
+  ).slice(0, 4);
   const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
   const requestHeaders = {
-    ...(checkoutToken
-      ? { 'X-Checkout-Token': checkoutToken }
-      : {
-          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-        }),
+    ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
   };
   const seenKeys = new Set();
   const mergedProducts = [];
   let upstreamStatus = 0;
   let upstreamCalls = 0;
   let rawFetchedCount = 0;
+  let budgetExhausted = false;
 
   for (const variant of queryVariants) {
+    const elapsedMs = Date.now() - startedAtMs;
+    const remainingBudgetMs = hardBudgetMs - elapsedMs;
+    if (remainingBudgetMs <= 0) {
+      budgetExhausted = true;
+      break;
+    }
     const upstreamParams = {
       merchant_id: 'external_seed',
       external_seed_only: true,
@@ -4422,7 +4498,14 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       url,
       params: upstreamParams,
       headers: requestHeaders,
-      timeout: Math.min(6500, getUpstreamTimeoutMs('find_products_multi')),
+      timeout: Math.max(
+        500,
+        Math.min(
+          remainingBudgetMs,
+          2500,
+          getUpstreamTimeoutMs('find_products_multi'),
+        ),
+      ),
       validateStatus: () => true,
     });
     upstreamCalls += 1;
@@ -4443,7 +4526,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       seenKeys.add(key);
       mergedProducts.push(product);
     }
-    if (mergedProducts.length >= Math.max(requestedCount * 3, 48)) {
+    if (mergedProducts.length >= requestedCount) {
       break;
     }
   }
@@ -4483,6 +4566,8 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       filtered_out_irrelevant_count: filteredOutIrrelevantCount,
       query_variants: queryVariants,
       upstream_status: upstreamStatus,
+      supplement_budget_ms: hardBudgetMs,
+      supplement_budget_exhausted: budgetExhausted,
     },
   };
 }
@@ -4491,7 +4576,6 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
   const base = String(baseQueryText || '').trim();
   if (!base) return [];
   const normalized = normalizeSearchTextForMatch(base);
-  const hasFragranceSignal = hasFragranceSearchSignal(base);
   const peptideNormalizedBase = base
     .replace(/\b(tri|tetra|hexa)peptides?\b/gi, 'peptide')
     .replace(/\bpeptides\b/gi, 'peptide')
@@ -4522,27 +4606,6 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
   if (/\bniacinamide\b/.test(normalized) && /\b(serum|essence)\b/.test(normalized)) {
     push(`${base} vitamin b3`);
   }
-  if (hasFragranceSignal) {
-    const fragranceStem = base
-      .replace(/\b(beauty|cosmetics?|makeup|tool|tools|brush(?:es)?|kit)\b/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const fragranceCore = fragranceStem
-      .replace(
-        /\b(perfume|perfumes|fragrance|fragrances|parfum|parfums|cologne|body mist|eau de parfum|eau de toilette)\b/gi,
-        ' ',
-      )
-      .replace(/\s+/g, ' ')
-      .trim();
-    const seed = fragranceCore || fragranceStem || base;
-    push(`${seed} fragrance`);
-    push(`${seed} perfume`);
-    push(`${seed} parfum`);
-    push(`${seed} cologne`);
-    push(`${seed} eau de parfum`);
-    push(`${seed} eau de toilette`);
-    push(`${seed} body mist`);
-  }
 
   return candidates.slice(0, PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES);
 }
@@ -4566,12 +4629,7 @@ async function invokeFindProductsMultiFallbackOnce({
     ? normalizedRequestSource
     : fallbackSource || 'agent_search_proxy_fallback';
   const requestHeaders = {
-    ...(checkoutToken
-      ? { 'X-Checkout-Token': checkoutToken }
-      : {
-          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-        }),
+    ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
   };
   const searchPayload = payload?.search && typeof payload.search === 'object' ? payload.search : {};
   const requestTimeoutMs = Math.max(
@@ -4666,13 +4724,28 @@ async function queryFindProductsMultiFallback({
     (String(reason || '').trim() === 'primary_irrelevant' || isAuroraMonocultureRetry);
   const isFragranceSemanticRetry =
     SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
-    hasFragranceSearchSignal(baseQueryText) &&
+    hasFragranceQuerySignal(baseQueryText) &&
     String(reason || '').trim() !== 'primary_request_failed';
   const semanticRetryEnabled = isAuroraSemanticRetry || isFragranceSemanticRetry;
-  const semanticRetryQueries = semanticRetryEnabled
-    ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)
-    : [];
-  const candidateQueries = [baseQueryText, ...semanticRetryQueries].filter(Boolean);
+  const fragranceSemanticRetryQuery = isFragranceSemanticRetry
+    ? buildFragranceSemanticRetryQuery(baseQueryText)
+    : '';
+  const auroraSemanticRetryQuery = isAuroraSemanticRetry
+    ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)[0] || ''
+    : '';
+  const semanticRetryQueries = [];
+  if (
+    fragranceSemanticRetryQuery &&
+    normalizeSearchTextForMatch(fragranceSemanticRetryQuery) !== normalizeSearchTextForMatch(baseQueryText)
+  ) {
+    semanticRetryQueries.push(fragranceSemanticRetryQuery);
+  } else if (
+    auroraSemanticRetryQuery &&
+    normalizeSearchTextForMatch(auroraSemanticRetryQuery) !== normalizeSearchTextForMatch(baseQueryText)
+  ) {
+    semanticRetryQueries.push(auroraSemanticRetryQuery);
+  }
+  const candidateQueries = Array.from(new Set([baseQueryText, ...semanticRetryQueries].filter(Boolean))).slice(0, 2);
   const configuredFallbackTimeoutMs = isAuroraSource(normalizedRequestSource)
     ? Math.min(PROXY_SEARCH_FALLBACK_TIMEOUT_MS, PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS)
     : PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
@@ -4748,11 +4821,17 @@ async function queryFindProductsMultiFallback({
   }
 
   if (!selectedAttempt) return null;
+  const semanticRetryApplied =
+    normalizeSearchTextForMatch(String(selectedAttempt.queryUsed || '')) !==
+    normalizeSearchTextForMatch(String(baseQueryText || ''));
   return {
     status: selectedAttempt.status,
     usableCount: selectedAttempt.usableCount,
     relevanceMatched: selectedAttempt.relevanceMatched,
     selectedQuery: selectedAttempt.queryUsed,
+    semanticRetryApplied,
+    semanticRetryQuery: semanticRetryApplied ? selectedAttempt.queryUsed : null,
+    semanticRetryHits: semanticRetryApplied ? Number(selectedAttempt.usableCount || 0) : 0,
     attempts,
     data: selectedAttempt.data,
   };
@@ -5215,11 +5294,13 @@ function shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText = '') {
 function shouldSkipSecondaryFallbackAfterResolverMiss(
   result,
   queryText = '',
-  { disableSkipAfterResolverMiss = false } = {},
+  { disableSkipAfterResolverMiss = false, queryClass = null, brandLike = false } = {},
 ) {
   return Boolean(
     getSecondaryFallbackSkipReason(result, queryText, {
       disableSkipAfterResolverMiss,
+      queryClass,
+      brandLike,
     }),
   );
 }
@@ -5227,15 +5308,45 @@ function shouldSkipSecondaryFallbackAfterResolverMiss(
 function getSecondaryFallbackSkipReason(
   result,
   queryText = '',
-  { disableSkipAfterResolverMiss = false } = {},
+  { disableSkipAfterResolverMiss = false, queryClass = null, brandLike = false } = {},
 ) {
   if (disableSkipAfterResolverMiss) return null;
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return null;
   if (hasPetSearchSignal(queryText)) return null;
+  if (hasFragranceQuerySignal(queryText)) return null;
   if (!shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText)) return null;
+  if (brandLike) return null;
+
+  const normalizedQueryClass = String(queryClass || '')
+    .trim()
+    .toLowerCase();
+  const lookupOnlyClasses = new Set(['lookup', 'attribute']);
+  const forceSearchFirstClasses = new Set([
+    'category',
+    'exploratory',
+    'scenario',
+    'mission',
+    'gift',
+    'non_shopping',
+  ]);
+  if (normalizedQueryClass && forceSearchFirstClasses.has(normalizedQueryClass)) {
+    return null;
+  }
+
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
+  if (
+    FPM_GATE_SIMPLIFY_V1 &&
+    FPM_LOOKUP_ONLY_RESOLVER &&
+    ((!normalizedQueryClass && !lookupStyle) ||
+      (normalizedQueryClass && !lookupOnlyClasses.has(normalizedQueryClass)))
+  ) {
+    return null;
+  }
   if (isKnownLookupAliasQuery(queryText)) return 'resolver_miss_lookup_alias';
   if (isUuidLikeSearchQuery(queryText)) return 'resolver_miss_uuid_like';
   if (isStrongResolverFirstQuery(queryText)) return 'resolver_miss_strong_resolver_query';
+  if (lookupStyle) return 'resolver_miss_lookup_style';
   return null;
 }
 
@@ -5313,24 +5424,66 @@ function isStrongResolverFirstQuery(queryText) {
   return false;
 }
 
-function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
+function shouldUseResolverFirstSearch({
+  operation,
+  metadata,
+  queryText,
+  remainingBudgetMs = null,
+  queryClass = null,
+  brandLike = false,
+}) {
   if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
   if (!String(queryText || '').trim()) return false;
+  if (brandLike) return false;
+  if (
+    Number.isFinite(Number(remainingBudgetMs)) &&
+    Number(remainingBudgetMs) < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
+  ) {
+    return false;
+  }
+
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  const forceSearchFirstClasses = new Set([
+    'category',
+    'exploratory',
+    'scenario',
+    'mission',
+    'gift',
+    'non_shopping',
+  ]);
+  if (FPM_GATE_SIMPLIFY_V1 && normalizedQueryClass && forceSearchFirstClasses.has(normalizedQueryClass)) {
+    return false;
+  }
+
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
+  const strongResolverQuery = isStrongResolverFirstQuery(queryText);
+  const lookupOnlyClasses = new Set(['lookup', 'attribute']);
+  if (
+    FPM_GATE_SIMPLIFY_V1 &&
+    FPM_LOOKUP_ONLY_RESOLVER &&
+    !strongResolverQuery &&
+    ((!normalizedQueryClass && !lookupStyle) ||
+      (normalizedQueryClass && !lookupOnlyClasses.has(normalizedQueryClass)))
+  ) {
+    return false;
+  }
 
   const source = normalizeAgentSource(metadata?.source);
   if (isCreatorUiSource(source)) return false;
+  const auroraSource = isAuroraSource(source);
+  if (auroraSource && PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA) return false;
   if (!source) return true;
   const isCatalogSource = isResolverFirstCatalogSource(source);
-  if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && isCatalogSource) {
-    const anchorTokens = extractSearchAnchorTokens(queryText);
+  if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && (isCatalogSource || auroraSource)) {
     return (
-      isStrongResolverFirstQuery(queryText) ||
-      isLookupStyleSearchQuery(queryText, anchorTokens)
+      strongResolverQuery ||
+      lookupStyle
     );
   }
 
-  return isCatalogSource || isAuroraSource(source);
+  return isCatalogSource || auroraSource;
 }
 
 function normalizeAgentProductDetailResponse(raw) {
@@ -5762,12 +5915,7 @@ async function fetchProductDetailFromUpstream(args) {
     url,
     headers: {
       'Content-Type': 'application/json',
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: timeoutMs,
     data,
@@ -5787,12 +5935,7 @@ async function fetchLegacyProductDetailFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('get_product_detail'),
   };
@@ -5809,12 +5952,7 @@ async function fetchVariantDetailFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('get_product_detail'),
   };
@@ -5829,12 +5967,7 @@ async function fetchProductGroupMembersFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -5854,12 +5987,7 @@ async function resolveProductGroupFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -5878,12 +6006,7 @@ async function resolveProductGroupByProductIdFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -6106,12 +6229,7 @@ async function fetchSimilarProductsFromUpstream(args) {
     url,
     headers: {
       'Content-Type': 'application/json',
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
+      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
     },
     timeout: Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
       ? Number(timeoutMs)
@@ -6353,6 +6471,12 @@ function fingerprintSecret(rawSecret) {
   return createHash('sha256').update(secret).digest('hex').slice(0, 16);
 }
 
+function hashSecretForCache(rawSecret) {
+  const secret = String(rawSecret || '').trim();
+  if (!secret) return null;
+  return createHash('sha256').update(secret).digest('hex');
+}
+
 function extractInvokeAuthToken(req) {
   const xAgent = String(
     req?.header('X-Agent-API-Key') ||
@@ -6364,71 +6488,239 @@ function extractInvokeAuthToken(req) {
   return bearer || null;
 }
 
-function requireCreatorInvokeKey(req, res, next) {
-  if (!CREATOR_INVOKE_API_KEY) {
-    if (CREATOR_INVOKE_REQUIRE_KEY) {
-      logger.error(
-        { path: req?.path || null },
-        'CREATOR_INVOKE_API_KEY is required but not configured',
-      );
-      return res.status(500).json({
-        error: 'CREATOR_INVOKE_KEY_NOT_CONFIGURED',
-        message: 'CREATOR_INVOKE_API_KEY is required for /agent/creator/v1/invoke',
-      });
+const INVOKE_EXTERNAL_API_KEY_PATTERN = /^ak_(live_)?[0-9a-f]{64}$/;
+const invokeAuthCache = new Map();
+
+function getInvokeAuthSource(req) {
+  const fromHeader = String(req?.header('X-Agent-API-Key') || req?.header('x-agent-api-key') || '').trim();
+  return fromHeader ? 'x-agent-api-key' : 'authorization_bearer';
+}
+
+function pruneInvokeAuthCache(nowMs = Date.now()) {
+  for (const [cacheKey, entry] of invokeAuthCache.entries()) {
+    if (!entry || typeof entry !== 'object') {
+      invokeAuthCache.delete(cacheKey);
+      continue;
     }
+    if (Number(entry.expires_at_ms || 0) <= nowMs) {
+      invokeAuthCache.delete(cacheKey);
+    }
+  }
+  while (invokeAuthCache.size > AGENT_AUTH_CACHE_MAX_ENTRIES) {
+    const oldest = invokeAuthCache.keys().next();
+    if (!oldest || oldest.done) break;
+    invokeAuthCache.delete(oldest.value);
+  }
+}
+
+function getCachedInvokeAuthResult(apiKey) {
+  const cacheKey = hashSecretForCache(apiKey);
+  if (!cacheKey) return null;
+  const nowMs = Date.now();
+  const entry = invokeAuthCache.get(cacheKey);
+  if (!entry || typeof entry !== 'object') return null;
+  if (Number(entry.expires_at_ms || 0) <= nowMs) {
+    invokeAuthCache.delete(cacheKey);
+    return null;
+  }
+  invokeAuthCache.delete(cacheKey);
+  invokeAuthCache.set(cacheKey, entry);
+  return { ...entry.result, cache_hit: true };
+}
+
+function putCachedInvokeAuthResult(apiKey, result) {
+  const cacheKey = hashSecretForCache(apiKey);
+  if (!cacheKey || !result || typeof result !== 'object') return;
+  const valid = result.valid === true;
+  const ttlMs = valid ? AGENT_AUTH_CACHE_POSITIVE_TTL_MS : AGENT_AUTH_CACHE_NEGATIVE_TTL_MS;
+  invokeAuthCache.set(cacheKey, {
+    expires_at_ms: Date.now() + ttlMs,
+    result: {
+      valid,
+      agent_id: result.agent_id || null,
+      is_active: result.is_active === false ? false : true,
+      auth_source: result.auth_source || null,
+    },
+  });
+  pruneInvokeAuthCache();
+}
+
+async function introspectInvokeApiKey(apiKey) {
+  const cached = getCachedInvokeAuthResult(apiKey);
+  if (cached) return cached;
+
+  if (!AGENT_AUTH_INTROSPECT_URL || !AGENT_AUTH_INTROSPECT_INTERNAL_KEY) {
+    const err = new Error('agent auth introspect is not configured');
+    err.code = 'AUTH_INTROSPECT_NOT_CONFIGURED';
+    throw err;
+  }
+
+  let response;
+  try {
+    response = await axios.post(
+      AGENT_AUTH_INTROSPECT_URL,
+      { api_key: apiKey },
+      {
+        timeout: AGENT_AUTH_INTROSPECT_TIMEOUT_MS,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Key': AGENT_AUTH_INTROSPECT_INTERNAL_KEY,
+        },
+        validateStatus: () => true,
+      },
+    );
+  } catch (err) {
+    const e = new Error(err?.message || 'introspect request failed');
+    e.code = 'AUTH_INTROSPECT_UNAVAILABLE';
+    throw e;
+  }
+
+  if (response.status >= 500) {
+    const err = new Error(`introspect upstream status=${response.status}`);
+    err.code = 'AUTH_INTROSPECT_UNAVAILABLE';
+    throw err;
+  }
+
+  if (response.status < 200 || response.status >= 300) {
+    const err = new Error(`introspect rejected status=${response.status}`);
+    err.code = 'AUTH_INTROSPECT_REJECTED';
+    throw err;
+  }
+
+  const data = response?.data && typeof response.data === 'object' ? response.data : {};
+  const result = {
+    valid: data.valid === true,
+    agent_id: String(data.agent_id || '').trim() || null,
+    is_active: data.is_active === false ? false : true,
+    auth_source: String(data.auth_source || '').trim() || null,
+    cache_hit: false,
+  };
+  putCachedInvokeAuthResult(apiKey, result);
+  return result;
+}
+
+async function requireExternalInvokeAuth(req, res, next) {
+  const checkoutToken = String(
+    req?.header('X-Checkout-Token') || req?.header('x-checkout-token') || '',
+  ).trim();
+  if (checkoutToken) {
     req.invokeAuth = {
       key_fingerprint: null,
-      auth_source: null,
-      creator_key_matched: false,
+      auth_source: 'x-checkout-token',
+      auth_mode: 'checkout_token',
+      agent_id: null,
+      raw_token: null,
+      cache_hit: false,
     };
     return next();
   }
 
   const provided = extractInvokeAuthToken(req);
   const keyFingerprint = fingerprintSecret(provided);
-  if (!provided || provided !== CREATOR_INVOKE_API_KEY) {
+  if (!provided) {
+    return res.status(401).json({
+      error: 'UNAUTHORIZED',
+      message: 'Missing or invalid API key',
+    });
+  }
+
+  if (!INVOKE_EXTERNAL_API_KEY_PATTERN.test(provided)) {
     logger.warn(
       {
         path: req?.path || null,
-        client_channel: 'creator',
         key_fingerprint: keyFingerprint,
       },
-      'creator invoke auth rejected',
+      'invoke auth rejected: invalid api key format',
     );
     return res.status(401).json({
       error: 'UNAUTHORIZED',
-      message: 'Missing or invalid creator invoke key',
+      message: 'Missing or invalid API key',
+    });
+  }
+
+  let introspection;
+  try {
+    introspection = await introspectInvokeApiKey(provided);
+  } catch (err) {
+    logger.error(
+      {
+        path: req?.path || null,
+        key_fingerprint: keyFingerprint,
+        code: err?.code || null,
+        err: err?.message || String(err),
+      },
+      'invoke auth introspection unavailable',
+    );
+    return res.status(503).json({
+      error: 'AUTH_INTROSPECT_UNAVAILABLE',
+      message: 'Authentication service unavailable',
+    });
+  }
+
+  if (!introspection || introspection.valid !== true) {
+    logger.warn(
+      {
+        path: req?.path || null,
+        key_fingerprint: keyFingerprint,
+      },
+      'invoke auth rejected: key not found',
+    );
+    return res.status(401).json({
+      error: 'UNAUTHORIZED',
+      message: 'Missing or invalid API key',
+    });
+  }
+
+  if (introspection.is_active === false) {
+    return res.status(403).json({
+      error: 'FORBIDDEN',
+      message: 'Agent is deactivated',
     });
   }
 
   req.invokeAuth = {
-    key_fingerprint: keyFingerprint || fingerprintSecret(CREATOR_INVOKE_API_KEY),
-    auth_source: String(req?.header('X-Agent-API-Key') || req?.header('x-agent-api-key') || '').trim()
-      ? 'x-agent-api-key'
-      : 'authorization_bearer',
-    creator_key_matched: true,
+    key_fingerprint: keyFingerprint,
+    auth_source: getInvokeAuthSource(req),
+    auth_mode: 'api_key',
+    agent_id: introspection.agent_id || null,
+    raw_token: provided,
+    cache_hit: introspection.cache_hit === true,
+    introspect_auth_source: introspection.auth_source || null,
   };
   return next();
 }
 
-function rejectCreatorKeyOnShopInvoke(req, res, next) {
-  if (!CREATOR_INVOKE_API_KEY) return next();
-  const provided = extractInvokeAuthToken(req);
-  if (!provided) return next();
-  if (provided !== CREATOR_INVOKE_API_KEY) return next();
+function getInvokeAuthContext() {
+  return INVOKE_AUTH_CONTEXT.getStore() || null;
+}
 
-  logger.warn(
-    {
-      path: req?.path || null,
-      client_channel: 'shop',
-      key_fingerprint: fingerprintSecret(provided),
-    },
-    'creator key attempted on shop invoke route',
-  );
-  return res.status(403).json({
-    error: 'FORBIDDEN',
-    message: 'creator invoke key must use /agent/creator/v1/invoke',
-  });
+function getInvokeAuthApiKey() {
+  const store = getInvokeAuthContext();
+  const key = String(store?.api_key || '').trim();
+  return key || null;
+}
+
+function buildInvokeUpstreamAuthHeaders({ checkoutToken, allowInternalFallback = true } = {}) {
+  const normalizedCheckoutToken = String(checkoutToken || '').trim();
+  if (normalizedCheckoutToken) {
+    return { 'X-Checkout-Token': normalizedCheckoutToken };
+  }
+
+  const callerApiKey = getInvokeAuthApiKey();
+  if (callerApiKey) {
+    return {
+      'X-API-Key': callerApiKey,
+      Authorization: `Bearer ${callerApiKey}`,
+    };
+  }
+
+  if (allowInternalFallback && PIVOTA_API_KEY) {
+    return {
+      'X-API-Key': PIVOTA_API_KEY,
+      Authorization: `Bearer ${PIVOTA_API_KEY}`,
+    };
+  }
+  return {};
 }
 
 function isPromoActive(promo, nowTs) {
@@ -7166,7 +7458,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20, opt
   }
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const fetchLimit = Math.max(safeLimit * Math.max(safePage, 1) * 2, 20);
   const inStockOnly = options?.inStockOnly !== false;
 
@@ -7571,7 +7863,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   }
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
@@ -8086,7 +8378,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
 
 async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
@@ -8387,7 +8679,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
 async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const inStockOnly = options?.inStockOnly !== false;
 
   // Oversample so JS-level filtering (in-stock-only, de-dupe) can still fill the page.
@@ -8459,7 +8751,7 @@ async function loadMerchantBrowseFromCache(merchantId, page = 1, limit = 20, opt
   if (!mid) return { products: [], total: 0, page: 1, page_size: 0 };
 
   const safePage = Math.max(1, Number(page || 1));
-  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const inStockOnly = options?.inStockOnly !== false;
 
   // Oversample so JS-level filtering (in-stock-only, de-dupe) can still fill the page.
@@ -9429,12 +9721,7 @@ async function proxyPhotosToBackend(req, res) {
         ...(method !== 'GET' && method !== 'HEAD' && method !== 'DELETE'
           ? { 'Content-Type': 'application/json' }
           : {}),
-        ...(checkoutToken
-          ? { 'X-Checkout-Token': checkoutToken }
-          : {
-              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-            }),
+        ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
       },
       timeout: UPSTREAM_TIMEOUT_ADMIN_MS,
       ...(method === 'GET' || method === 'DELETE' ? { params: req.query } : { data: req.body }),
@@ -9487,6 +9774,12 @@ async function proxyAgentSearchToBackend(req, res) {
     miss: false,
     latency_ms: null,
   };
+  const proxySearchQueryClass = isLookupStyleSearchQuery(
+    queryText,
+    extractSearchAnchorTokens(queryText),
+  )
+    ? 'lookup'
+    : null;
   const cacheStage = {
     hit: false,
     candidate_count: 0,
@@ -9582,10 +9875,15 @@ async function proxyAgentSearchToBackend(req, res) {
   };
 
   let resolverFirstResult = null;
+  const resolverFirstBrandLike = Boolean(
+    detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+  );
   const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation: 'find_products_multi',
       metadata: resolverFirstMetadata,
       queryText,
+      queryClass: proxySearchQueryClass,
+      brandLike: resolverFirstBrandLike,
   }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
 
   if (shouldAttemptResolverFirst) {
@@ -9649,11 +9947,16 @@ async function proxyAgentSearchToBackend(req, res) {
         : basePrimaryTimeoutMs;
     const totalBudgetMs = Math.max(primaryTimeoutMs, PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS);
     requestDeadlineMs = Date.now() + totalBudgetMs;
+    const secondarySkipBrandLike = Boolean(
+      detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+    );
     const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
       resolverFirstResult,
       queryText,
       {
         disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
+        queryClass: proxySearchQueryClass,
+        brandLike: secondarySkipBrandLike,
       },
     );
     const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
@@ -9707,12 +10010,7 @@ async function proxyAgentSearchToBackend(req, res) {
         url,
         params,
         headers: {
-          ...(checkoutToken
-            ? { 'X-Checkout-Token': checkoutToken }
-            : {
-                ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-                ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-              }),
+          ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
         },
         timeout: timeoutMs,
         validateStatus: () => true,
@@ -10190,11 +10488,16 @@ async function proxyAgentSearchToBackend(req, res) {
     );
   } catch (err) {
     const primaryTimedOut = String(err?.code || '').toUpperCase() === 'ECONNABORTED';
+    const secondarySkipBrandLike = Boolean(
+      detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+    );
     const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
       resolverFirstResult,
       queryText,
       {
         disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
+        queryClass: proxySearchQueryClass,
+        brandLike: secondarySkipBrandLike,
       },
     );
     const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
@@ -10418,7 +10721,31 @@ async function proxyAgentSearchToBackend(req, res) {
   }
 }
 
-app.get('/agent/v1/products/search', proxyAgentSearchToBackend);
+async function handleAgentProductsSearchViaInvoke(req, res) {
+  const payload = buildFindProductsMultiPayloadFromQuery(req.query, { allowEmptyQuery: true });
+  if (!payload) {
+    return res.status(400).json({
+      error: 'INVALID_QUERY',
+      message: 'query payload is invalid',
+    });
+  }
+
+  req.body = {
+    operation: 'find_products_multi',
+    payload,
+    metadata:
+      payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+        ? payload.metadata
+        : {},
+  };
+
+  return handleInvokeRequest(req, res, {
+    client_channel: 'search',
+    orchestrator_path: 'search_route_adapter',
+  });
+}
+
+app.get('/agent/v1/products/search', handleAgentProductsSearchViaInvoke);
 app.get('/agent/v1/beauty/products/search', (req, res) => {
   const mergedQuery =
     req.query && typeof req.query === 'object' && !Array.isArray(req.query)
@@ -11251,12 +11578,7 @@ async function callOffersResolveSourceWithRetry({
   const safeBackoffMs = Math.max(25, Number(retryBackoffMs) || 100);
   const headers = {
     'Content-Type': 'application/json',
-    ...(checkoutToken
-      ? { 'X-Checkout-Token': checkoutToken }
-      : {
-          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-        }),
+    ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
   };
 
   let attempts = 0;
@@ -11957,6 +12279,7 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
     config: {
       resolver_first_enabled: PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       resolver_first_strong_only: PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
+      resolver_first_disable_aurora: PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA,
       resolver_first_would_apply: resolverFirstWouldApply,
       resolver_query_is_strong: strongResolverQuery,
       resolver_timeout_ms: PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
@@ -12402,6 +12725,78 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         'failed to build/emit debug bundle',
       );
     }
+    try {
+      const operation = String(debugRuntime.operation || req?.body?.operation || '')
+        .trim()
+        .toLowerCase();
+      if (
+        operation === 'find_products_multi' &&
+        finalBody &&
+        typeof finalBody === 'object' &&
+        !Array.isArray(finalBody)
+      ) {
+        const existingMeta =
+          finalBody.metadata &&
+          typeof finalBody.metadata === 'object' &&
+          !Array.isArray(finalBody.metadata)
+            ? finalBody.metadata
+            : {};
+        const existingSearchDecision =
+          existingMeta.search_decision &&
+          typeof existingMeta.search_decision === 'object' &&
+          !Array.isArray(existingMeta.search_decision)
+            ? existingMeta.search_decision
+            : {};
+        const existingRouteDebugPolicy =
+          existingMeta.route_debug &&
+          typeof existingMeta.route_debug === 'object' &&
+          !Array.isArray(existingMeta.route_debug) &&
+          existingMeta.route_debug.policy &&
+          typeof existingMeta.route_debug.policy === 'object' &&
+          !Array.isArray(existingMeta.route_debug.policy)
+            ? existingMeta.route_debug.policy
+            : {};
+        const defaultExternalFillGateReason =
+          String(existingMeta.external_fill_gate_reason || '').trim() ||
+          String(existingMeta.external_seed_skip_reason || '').trim() ||
+          String(existingMeta.route_health?.external_seed_skip_reason || '').trim() ||
+          null;
+        const domainFilterDroppedExternal =
+          Number(
+            existingMeta.domain_filter_dropped_external ??
+              existingSearchDecision.domain_filter_dropped_external ??
+              existingRouteDebugPolicy?.ambiguity?.domain_filter_dropped_external ??
+              0,
+          ) || 0;
+        finalBody = {
+          ...finalBody,
+          metadata: {
+            ...existingMeta,
+            orchestrator_version: String(
+              process.env.SEARCH_ORCHESTRATOR_VERSION || 'search_orchestrator_unified_v1',
+            ),
+            orchestrator_path:
+              String(routeContext?.orchestrator_path || '').trim() ||
+              (String(req?.path || '').trim() === '/agent/v1/products/search'
+                ? 'search_route_adapter'
+                : 'invoke_route'),
+            semantic_retry_applied: Boolean(existingMeta.semantic_retry_applied),
+            semantic_retry_query: existingMeta.semantic_retry_query || null,
+            semantic_retry_hits: Math.max(0, Number(existingMeta.semantic_retry_hits || 0) || 0),
+            domain_filter_dropped_external: Math.max(0, domainFilterDroppedExternal),
+            external_fill_gate_reason: defaultExternalFillGateReason,
+          },
+        };
+      }
+    } catch (metadataErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: metadataErr?.message || String(metadataErr),
+        },
+        'failed to normalize find_products_multi metadata',
+      );
+    }
     setInvokePerfHeaders();
     return originalJson(finalBody);
   };
@@ -12504,6 +12899,29 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     )
       ? Number(findProductsExpansionMeta.ambiguity_score_pre)
       : null;
+    const fpmGateTrace = [];
+    const fpmSkippedGatesDueToBudget = [];
+    let fpmLatencyGuardApplied = false;
+    const addFpmGateTrace = ({
+      gateId,
+      applied = false,
+      decision = 'pass',
+      reason = null,
+      costMsEstimate = 0,
+      queryClass = null,
+    }) => {
+      fpmGateTrace.push({
+        gate_id: String(gateId || 'unknown'),
+        applied: Boolean(applied),
+        decision: String(decision || 'pass'),
+        reason: reason ? String(reason) : null,
+        cost_ms_estimate: Math.max(0, Number(costMsEstimate || 0) || 0),
+        query_class: queryClass ? String(queryClass) : null,
+      });
+    };
+    const getFpmElapsedMs = () => Math.max(0, Date.now() - invokeStartedAtMs);
+    const getFpmRemainingBudgetMs = () =>
+      Math.max(0, Number(FPM_GATEWAY_TOTAL_BUDGET_MS || 0) - getFpmElapsedMs());
 
   // Redundant allowlist check for semantics clarity.
   if (!OperationEnum.options.includes(operation)) {
@@ -14330,12 +14748,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         method: 'GET',
         url: `${searchUrl}${queryString}`,
         headers: {
-          ...(checkoutToken
-            ? { 'X-Checkout-Token': checkoutToken }
-            : {
-                ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-                ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-              }),
+          ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
         },
         timeout: getUpstreamTimeoutMs('find_products_multi'),
       };
@@ -15262,8 +15675,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             },
           };
 
+          const cacheBrandDetection = detectBrandEntities(cacheQueryText, {
+            candidateProducts: effectiveProducts,
+          });
+          const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
+          const cachePolicyQueryClass = String(traceQueryClass || effectiveIntent?.query_class || '').toLowerCase();
+          const cacheLookupClass = cachePolicyQueryClass === 'lookup' || cachePolicyQueryClass === 'attribute';
           const shouldSkipLookupPolicyForCacheHit =
+            !FPM_GATE_SIMPLIFY_V1 &&
             isLookupQuery &&
+            cacheLookupClass &&
+            !cacheBrandLikeQuery &&
             String(upstreamData?.metadata?.query_source || '').startsWith(
               'cache_cross_merchant_search',
             );
@@ -15281,7 +15703,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? withPolicy.products
             : [];
           const cacheValidationQueryClass =
-            traceQueryClass || effectiveIntent?.query_class || (isLookupQuery ? 'lookup' : null);
+            traceQueryClass ||
+            effectiveIntent?.query_class ||
+            (isLookupQuery && !cacheBrandLikeQuery ? 'lookup' : null);
           const cacheValidation = evaluateCacheQualityGate({
             products: withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts,
             queryText: cacheQueryText,
@@ -15301,10 +15725,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           if (cacheMissingExternalForUnified) {
             effectiveCacheHit = false;
           }
-          const cacheBrandDetection = detectBrandEntities(cacheQueryText, {
-            candidateProducts: effectiveProducts,
-          });
-          const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
           const cacheStrictEmptyBypassReason =
             cacheMissingExternalForUnified
               ? 'missing_external_for_unified'
@@ -15412,6 +15832,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             'exploratory',
             'non_shopping',
           ].includes(queryClassForEarlyDecision);
+          const forceSearchFirstForClass = ['category', 'exploratory'].includes(
+            queryClassForEarlyDecision,
+          );
           const earlyDecisionCause =
             internalProductsAfterAnchor.length === 0
               ? 'cache_miss_ambiguity_sensitive'
@@ -15420,8 +15843,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             effectiveIntent &&
             !isBrandLikeForEarlyDecision &&
             !isStrongLookupForEarlyDecision &&
+            !forceSearchFirstForClass &&
             (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
             !forceControlledRecallForScenario;
+          addFpmGateTrace({
+            gateId: 'early_ambiguity_decision',
+            applied: Boolean(effectiveIntent),
+            decision: canUseEarlyAmbiguityDecision ? 'clarify_only_early' : 'pass',
+            reason: canUseEarlyAmbiguityDecision
+              ? earlyDecisionCause
+              : isBrandLikeForEarlyDecision
+                ? 'brand_like_search_first'
+                : forceSearchFirstForClass
+                  ? 'search_first_query_class'
+                  : null,
+            costMsEstimate: 110,
+            queryClass: queryClassForEarlyDecision || traceQueryClass,
+          });
+          if (
+            forceSearchFirstForClass &&
+            crossMerchantCacheRouteDebug &&
+            typeof crossMerchantCacheRouteDebug === 'object'
+          ) {
+            crossMerchantCacheRouteDebug.early_decision = {
+              applied: false,
+              reason: 'search_first_query_class',
+              query_class: queryClassForEarlyDecision,
+            };
+          }
           if (
             forceControlledRecallForScenario &&
             crossMerchantCacheRouteDebug &&
@@ -15676,7 +16125,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&
             !isLookupQuery &&
-            !SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
             !bypassCacheStrictEmpty &&
             !bypassCacheStrictEmptyForUnified &&
             !forceControlledRecallForScenario
@@ -15848,7 +16296,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      if (isBrowse && merchantId) {
 	        try {
 	          const page = Math.max(1, Number(search.page || 1) || 1);
-	          const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 100);
+	          const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), SEARCH_LIMIT_MAX);
 	          const fromCache = await loadMerchantBrowseFromCache(merchantId, page, limit, { inStockOnly });
 	          const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
 
@@ -15915,7 +16363,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // Single-merchant product search (Agent Search endpoint).
         const search = effectivePayload.search || effectivePayload || {};
         const page = Math.max(1, Number(search.page || 1) || 1);
-        const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), SEARCH_LIMIT_MAX);
         const offset = (page - 1) * limit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
@@ -15956,7 +16404,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // Cross-merchant search via Agent Search endpoint.
         const search = effectivePayload.search || effectivePayload || {};
         const page = Math.max(1, Number(search.page || 1) || 1);
-        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
         const offset = (page - 1) * limit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
@@ -16510,14 +16958,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       url: `${url}${queryString}`,
       headers: {
         ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
-        ...(checkoutToken
-          ? { 'X-Checkout-Token': checkoutToken }
-          : {
-              // Pivota backend Agent API expects `X-API-Key` (some deployments used
-              // `Authorization: Bearer ...` historically). Send both for compatibility.
-              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-            }),
+        ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
       },
       // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
       timeout:
@@ -16551,13 +16992,56 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const resolverTimeoutMs = auroraFallbackOverrides.active
       ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
       : PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
-    const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
+    const resolverRemainingBudgetMs = getFpmRemainingBudgetMs();
+    const resolverBrandLike = Boolean(
+      detectBrandEntities(resolverQueryText, { candidateProducts: [] })?.brand_like,
+    );
+    let shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation,
       metadata,
       queryText: resolverQueryText,
+      remainingBudgetMs: resolverRemainingBudgetMs,
+      queryClass: traceQueryClass,
+      brandLike: resolverBrandLike,
     });
+    if (
+      operation === 'find_products_multi' &&
+      FPM_GATE_SIMPLIFY_V1 &&
+      shouldAttemptResolverFirst &&
+      resolverRemainingBudgetMs < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
+    ) {
+      shouldAttemptResolverFirst = false;
+      fpmLatencyGuardApplied = true;
+      fpmSkippedGatesDueToBudget.push('resolver_first');
+      addFpmGateTrace({
+        gateId: 'resolver_first',
+        applied: false,
+        decision: 'skipped',
+        reason: 'budget_guard',
+        costMsEstimate: 220,
+        queryClass: traceQueryClass,
+      });
+    }
+    if (!shouldAttemptResolverFirst) {
+      addFpmGateTrace({
+        gateId: 'resolver_first',
+        applied: false,
+        decision: 'pass',
+        reason: 'disabled_or_not_lookup',
+        costMsEstimate: 0,
+        queryClass: traceQueryClass,
+      });
+    }
     let resolverFirstResult = null;
     if (shouldAttemptResolverFirst) {
+      addFpmGateTrace({
+        gateId: 'resolver_first',
+        applied: true,
+        decision: 'attempted',
+        reason: 'lookup_first',
+        costMsEstimate: 220,
+        queryClass: traceQueryClass,
+      });
       try {
         resolverFirstResult = await queryResolveSearchFallback({
           queryParams: resolverQueryParams,
@@ -16573,8 +17057,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           resolverFirstResult.usableCount > 0
         ) {
           response = { status: resolverFirstResult.status, data: resolverFirstResult.data };
+          addFpmGateTrace({
+            gateId: 'resolver_first_result',
+            applied: true,
+            decision: 'adopted',
+            reason: 'resolver_hit',
+            costMsEstimate: 15,
+            queryClass: traceQueryClass,
+          });
+        } else {
+          addFpmGateTrace({
+            gateId: 'resolver_first_result',
+            applied: true,
+            decision: 'miss',
+            reason: 'resolver_no_usable',
+            costMsEstimate: 15,
+            queryClass: traceQueryClass,
+          });
         }
       } catch (resolverErr) {
+        addFpmGateTrace({
+          gateId: 'resolver_first_result',
+          applied: true,
+          decision: 'error',
+          reason: 'resolver_exception',
+          costMsEstimate: 15,
+          queryClass: traceQueryClass,
+        });
         logger.warn(
           { err: resolverErr?.message || String(resolverErr), operation },
           `${operation} resolver-first failed; falling back to upstream`,
@@ -16709,12 +17218,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               url: quoteUrl,
               headers: {
                 'Content-Type': 'application/json',
-                ...(checkoutToken
-                  ? { 'X-Checkout-Token': checkoutToken }
-                  : {
-                      ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-                      ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-                    }),
+                ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
               },
               timeout: getUpstreamTimeoutMs('preview_quote'),
               data: quoteBody,
@@ -16756,11 +17260,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const queryText = resolverQueryText || searchQueryText;
         const upstreamStatus = err?.response?.status || null;
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
+        const secondarySkipBrandLike = Boolean(
+          detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+        );
         const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
           resolverFirstResult,
           queryText,
           {
             disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
+            queryClass: traceQueryClass,
+            brandLike: secondarySkipBrandLike,
           },
         );
         const allowResolverFallback = shouldAllowResolverFallback(operation);
@@ -16904,6 +17413,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
+              querySource: hasFragranceQuerySignal(queryText)
+                ? 'agent_products_semantic_retry_exhausted'
+                : 'agent_products_error_fallback',
             }),
           };
         }
@@ -16953,7 +17465,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const shouldFallback = primaryUnusable || primaryIrrelevant;
       const requestedLimit = Math.min(
         Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
-        100,
+        SEARCH_LIMIT_MAX,
       );
       const requestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
       const requestedPageFromPayload = Number(queryParams?.page || 0) || 0;
@@ -16961,14 +17473,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         requestedPageFromPayload > 0
           ? requestedPageFromPayload
           : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
+      const secondarySkipBrandLike = Boolean(
+        detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
+      );
       const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
         resolverFirstResult,
         queryText,
         {
           disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
+          queryClass: traceQueryClass,
+          brandLike: secondarySkipBrandLike,
         },
       );
       const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
+      addFpmGateTrace({
+        gateId: 'secondary_fallback_skip_check',
+        applied: true,
+        decision: skipSecondaryFallback ? 'skipped' : 'pass',
+        reason: skipSecondaryFallback ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary' : null,
+        costMsEstimate: 25,
+        queryClass: traceQueryClass,
+      });
       const allowResolverFallback = shouldAllowResolverFallback(operation);
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
         forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
@@ -16977,6 +17502,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
       });
       let secondarySupplementMeta = null;
+      let semanticRetryApplied = false;
+      let semanticRetryQuery = null;
+      let semanticRetryHits = 0;
       let secondaryFallbackMeta = null;
 
       if (
@@ -16988,7 +17516,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         primaryUsableCount < requestedLimit &&
         FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
       ) {
-        if (requestedFindProductsMultiPage > 1) {
+        const remainingBudgetForSecondStage = getFpmRemainingBudgetMs();
+        const shouldSkipSecondStageByBudget =
+          FPM_GATE_SIMPLIFY_V1 &&
+          remainingBudgetForSecondStage < FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS;
+        if (shouldSkipSecondStageByBudget) {
+          fpmLatencyGuardApplied = true;
+          fpmSkippedGatesDueToBudget.push('second_stage_expansion');
+          addFpmGateTrace({
+            gateId: 'second_stage_expansion',
+            applied: false,
+            decision: 'skipped',
+            reason: 'budget_guard',
+            costMsEstimate: 260,
+            queryClass: traceQueryClass,
+          });
+          secondarySupplementMeta = {
+            attempted: true,
+            applied: false,
+            added_count: 0,
+            expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+            reason: 'disabled_for_budget_guard',
+            page: requestedFindProductsMultiPage,
+          };
+        } else if (requestedFindProductsMultiPage > 1) {
+          addFpmGateTrace({
+            gateId: 'second_stage_expansion',
+            applied: false,
+            decision: 'skipped',
+            reason: 'disabled_for_page_gt_1',
+            costMsEstimate: 0,
+            queryClass: traceQueryClass,
+          });
           secondarySupplementMeta = {
             attempted: true,
             applied: false,
@@ -16998,6 +17557,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             page: requestedFindProductsMultiPage,
           };
         } else {
+        addFpmGateTrace({
+          gateId: 'second_stage_expansion',
+          applied: true,
+          decision: 'attempted',
+          reason: 'under_limit_first_page',
+          costMsEstimate: 260,
+          queryClass: traceQueryClass,
+        });
         try {
           const secondStageCtx = await buildFindProductsMultiContext({
             payload,
@@ -17067,6 +17634,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 expanded_query: expandedSecondaryQuery,
                 reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
               };
+              addFpmGateTrace({
+                gateId: 'second_stage_expansion_result',
+                applied: true,
+                decision: toAppend.length > 0 ? 'applied' : 'no_change',
+                reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
+                costMsEstimate: 25,
+                queryClass: traceQueryClass,
+              });
             } else {
               secondarySupplementMeta = {
                 attempted: true,
@@ -17076,6 +17651,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 expanded_query: expandedSecondaryQuery,
                 reason: 'second_stage_unavailable',
               };
+              addFpmGateTrace({
+                gateId: 'second_stage_expansion_result',
+                applied: true,
+                decision: 'no_change',
+                reason: 'second_stage_unavailable',
+                costMsEstimate: 25,
+                queryClass: traceQueryClass,
+              });
             }
           }
         } catch (secondaryErr) {
@@ -17087,6 +17670,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             reason: 'second_stage_error',
             error: String(secondaryErr?.message || secondaryErr),
           };
+          addFpmGateTrace({
+            gateId: 'second_stage_expansion_result',
+            applied: true,
+            decision: 'error',
+            reason: 'second_stage_error',
+            costMsEstimate: 25,
+            queryClass: traceQueryClass,
+          });
           logger.warn(
             { err: secondaryErr?.message || String(secondaryErr), query: queryText },
             `${operation} second-stage conservative->aggressive supplement failed`,
@@ -17143,25 +17734,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : fallback
               ? [{ query: fallback.selectedQuery || queryText }]
               : [];
-            const semanticRetryApplied =
+            const fallbackSemanticRetryApplied =
               fallbackAttempts.length > 1 ||
               fallbackAttempts.some(
                 (attempt) =>
                   normalizeSearchTextForMatch(String(attempt?.query || '')) !==
                   normalizeSearchTextForMatch(String(queryText || '')),
               );
+            semanticRetryApplied = fallbackSemanticRetryApplied;
+            semanticRetryQuery = fallbackSemanticRetryApplied
+              ? String(
+                  fallback?.selectedQuery ||
+                    fallbackAttempts[fallbackAttempts.length - 1]?.query ||
+                    '',
+                ).trim() || null
+              : null;
+            semanticRetryHits = Math.max(0, Number(fallback?.usableCount || 0) || 0);
             secondaryFallbackMeta = {
               attempt_count: fallbackAttempts.length,
               attempts: fallbackAttempts.slice(0, 3),
               selected_query: fallback?.selectedQuery || null,
-              semantic_retry_applied: semanticRetryApplied,
-              semantic_retry_query: semanticRetryApplied
-                ? String(
-                    fallback?.selectedQuery ||
-                      fallbackAttempts[fallbackAttempts.length - 1]?.query ||
-                      '',
-                  ).trim() || null
-                : null,
+              semantic_retry_applied: fallbackSemanticRetryApplied,
+              semantic_retry_query: semanticRetryQuery,
               semantic_retry_hits: Math.max(0, Number(fallback?.usableCount || 0) || 0),
             };
             const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
@@ -17190,6 +17784,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
         if (!replacedByFallback) {
           if (primaryIrrelevant) {
+            const fragranceSemanticExhausted = hasFragranceQuerySignal(queryText);
             upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               reason: skipSecondaryFallback
@@ -17204,6 +17799,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
+              querySource: fragranceSemanticExhausted
+                ? 'agent_products_semantic_retry_exhausted'
+                : 'agent_products_error_fallback',
+              semanticRetryApplied,
+              semanticRetryQuery,
+              semanticRetryHits,
             });
           } else {
             const fallbackReason = skipSecondaryFallback
@@ -17266,6 +17867,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           metadata: {
             ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
             search_stage_b: secondarySupplementMeta,
+            semantic_retry_applied: Boolean(semanticRetryApplied),
+            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+          },
+        };
+      } else if (
+        (operation === 'find_products' || operation === 'find_products_multi') &&
+        upstreamData &&
+        typeof upstreamData === 'object' &&
+        !Array.isArray(upstreamData)
+      ) {
+        upstreamData = {
+          ...upstreamData,
+          metadata: {
+            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
+            semantic_retry_applied: Boolean(semanticRetryApplied),
+            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
           },
         };
       }
@@ -17288,6 +17907,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             secondary_fallback_skip_reason: skipSecondaryFallback
               ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
               : null,
+            latency_guard_applied: Boolean(fpmLatencyGuardApplied),
+            skipped_gates_due_to_budget: Array.from(
+              new Set(
+                fpmSkippedGatesDueToBudget
+                  .map((gateId) => String(gateId || '').trim())
+                  .filter(Boolean),
+              ),
+            ),
+            gate_trace: fpmGateTrace,
+            gate_summary: {
+              applied_count: fpmGateTrace.filter((item) => item && item.applied).length,
+              blocked_count: fpmGateTrace.filter(
+                (item) =>
+                  item &&
+                  (String(item.decision || '') === 'strict_empty' ||
+                    String(item.decision || '') === 'clarify_only_early'),
+              ).length,
+              total_cost_ms_estimate: fpmGateTrace.reduce(
+                (sum, item) => sum + Math.max(0, Number(item?.cost_ms_estimate || 0) || 0),
+                0,
+              ),
+            },
           },
         };
       }
@@ -17610,7 +18251,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (operation === 'find_products_multi') {
       try {
         const search = effectivePayload.search || effectivePayload || {};
-        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
         const reranked = await maybeRerankFindProductsMultiResponse({
           response: maybePolicy,
           userQuery: rawUserQuery,
@@ -17728,10 +18369,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       };
       const finalDecision = isStrictEmpty
         ? 'strict_empty'
-        : hasClarification
+        : hasClarification && (!FPM_CLARIFY_NEVER_EMPTY || products.length === 0)
           ? 'clarify'
           : searchDecision?.final_decision
             ? String(searchDecision.final_decision)
+            : hasClarification
+              ? 'products_returned_with_clarification'
             : querySource.startsWith('cache_')
               ? 'cache_returned'
               : querySource.includes('resolver')
@@ -17799,6 +18442,63 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             }
           : {}),
       });
+      if (enriched && typeof enriched === 'object' && !Array.isArray(enriched)) {
+        const existingMetaForGates =
+          enriched.metadata && typeof enriched.metadata === 'object' && !Array.isArray(enriched.metadata)
+            ? enriched.metadata
+            : {};
+        const existingGateTrace = Array.isArray(existingMetaForGates.gate_trace)
+          ? existingMetaForGates.gate_trace
+          : [];
+        const combinedGateTrace = existingGateTrace.concat(fpmGateTrace);
+        const dedupSkippedGates = Array.from(
+          new Set(
+            fpmSkippedGatesDueToBudget
+              .map((gateId) => String(gateId || '').trim())
+              .filter(Boolean),
+          ),
+        );
+        const existingLowConfidenceReasons = Array.isArray(existingMetaForGates.low_confidence_reasons)
+          ? existingMetaForGates.low_confidence_reasons
+          : Array.isArray(searchDecision?.low_confidence_reasons)
+            ? searchDecision.low_confidence_reasons
+            : [];
+        const normalizedLowConfidenceReasons = Array.from(
+          new Set(
+            existingLowConfidenceReasons
+              .map((item) => String(item || '').trim())
+              .filter(Boolean),
+          ),
+        );
+        const lowConfidenceFlag =
+          Boolean(existingMetaForGates.low_confidence) ||
+          Boolean(searchDecision?.low_confidence) ||
+          normalizedLowConfidenceReasons.length > 0;
+        enriched = {
+          ...enriched,
+          metadata: {
+            ...existingMetaForGates,
+            gate_trace: combinedGateTrace,
+            gate_summary: {
+              applied_count: combinedGateTrace.filter((item) => item && item.applied).length,
+              blocked_count: combinedGateTrace.filter(
+                (item) =>
+                  item &&
+                  (String(item.decision || '') === 'strict_empty' ||
+                    String(item.decision || '') === 'clarify_only_early'),
+              ).length,
+              total_cost_ms_estimate: combinedGateTrace.reduce(
+                (sum, item) => sum + Math.max(0, Number(item?.cost_ms_estimate || 0) || 0),
+                0,
+              ),
+            },
+            latency_guard_applied: Boolean(fpmLatencyGuardApplied),
+            skipped_gates_due_to_budget: dedupSkippedGates,
+            low_confidence: lowConfidenceFlag,
+            low_confidence_reasons: normalizedLowConfidenceReasons,
+          },
+        };
+      }
     }
 
     return res.status(response.status).json(enriched);
@@ -18023,19 +18723,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   }
 }
 
-app.post('/agent/shop/v1/invoke', rejectCreatorKeyOnShopInvoke, async (req, res) => {
-  return handleInvokeRequest(req, res, {
-    client_channel: 'shop',
-    key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
+function registerExternalInvokeRoute(path, clientChannel) {
+  app.post(path, requireExternalInvokeAuth, async (req, res) => {
+    return INVOKE_AUTH_CONTEXT.run(
+      {
+        api_key: req?.invokeAuth?.raw_token || null,
+        agent_id: req?.invokeAuth?.agent_id || null,
+        auth_mode: req?.invokeAuth?.auth_mode || null,
+        auth_source: req?.invokeAuth?.auth_source || null,
+      },
+      () =>
+        handleInvokeRequest(req, res, {
+          client_channel: clientChannel,
+          orchestrator_path: 'external_invoke_route',
+          key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
+          agent_id: req?.invokeAuth?.agent_id || null,
+          auth_mode: req?.invokeAuth?.auth_mode || null,
+          auth_source: req?.invokeAuth?.auth_source || null,
+        }),
+    );
   });
-});
+}
 
-app.post('/agent/creator/v1/invoke', requireCreatorInvokeKey, async (req, res) => {
-  return handleInvokeRequest(req, res, {
-    client_channel: 'creator',
-    key_fingerprint: req?.invokeAuth?.key_fingerprint || null,
-  });
-});
+registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
+// Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
+registerExternalInvokeRoute('/agent/creator/v1/invoke', 'creator');
 
 // Global error handler - prevent crashes and avoid double sends
 app.use((err, req, res, next) => {
