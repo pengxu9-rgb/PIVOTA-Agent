@@ -6,6 +6,7 @@ const supertest = require('supertest');
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
 process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT = 'dual';
+process.env.AURORA_RULE_RELAX_MODE = 'conservative';
 
 const {
   shouldDiagnosisGate,
