@@ -1,5 +1,5 @@
-# Use glibc-based Node image (onnxruntime-node is not compatible with Alpine musl).
-FROM node:20-bookworm-slim
+# Use official Node.js LTS image
+FROM node:18-alpine
 
 # Set working directory
 WORKDIR /app
@@ -7,15 +7,24 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# onnxruntime-node needs glibc compatibility on Alpine.
+RUN apk add --no-cache libc6-compat gcompat libstdc++
+
 # Install production dependencies
 RUN npm ci --only=production
 
 # Copy application files
 COPY . .
 
-# Change ownership and switch to built-in non-root user.
-RUN chown -R node:node /app
-USER node
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Change ownership
+RUN chown -R nodejs:nodejs /app
+
+# Switch to non-root user
+USER nodejs
 
 # Expose port
 EXPOSE 3000
