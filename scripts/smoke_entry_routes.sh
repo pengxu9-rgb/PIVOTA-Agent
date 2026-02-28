@@ -195,11 +195,16 @@ if "product_verdict" in types:
     raise SystemExit(0)
 if "skin_status" in types or "routine" in types:
     raise SystemExit(0)
+if "aurora_ingredient_report" in types or "ingredient_hub" in types:
+    raise SystemExit(0)
 if "nudge" in types:
     # Passive advisory path can return nudge-only in current chatcards contract.
     raise SystemExit(0)
 if "confidence_notice" not in types:
-    raise SystemExit(f"reco stage expected recommendations/product_verdict/skin_status/routine/nudge/confidence_notice, got={types}")
+    raise SystemExit(
+        f"reco stage expected recommendations/product_verdict/skin_status/routine/"
+        f"aurora_ingredient_report/ingredient_hub/nudge/confidence_notice, got={types}"
+    )
 reason = None
 for c in cards:
     if c.get("type") == "confidence_notice":
@@ -298,7 +303,7 @@ say "1) no-profile recommendation gate"
 capture_case "gate" "/v1/chat" "{\"message\":\"${MSG_GATE}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_gate"
 assert_no_banned_first_line "$CASE_gate" "$LANG_UPPER"
-assert_cards "$CASE_gate" "contains_any" "diagnosis_gate,product_verdict,confidence_notice"
+assert_cards "$CASE_gate" "contains_any" "diagnosis_gate,product_verdict,confidence_notice,aurora_ingredient_report,ingredient_hub,nudge"
 assert_cards "$CASE_gate" "contains_none" "recommendations"
 
 say "2) profile patch"
