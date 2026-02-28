@@ -803,6 +803,8 @@ const SEARCH_LIMIT_MAX = parsePositiveInt(process.env.SEARCH_LIMIT_MAX, 200, {
 });
 const SEARCH_EXTERNAL_HARD_RULE_PRUNE =
   String(process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE || 'true').toLowerCase() !== 'false';
+const SEARCH_FRAGRANCE_SEMANTIC_RETRY =
+  String(process.env.SEARCH_FRAGRANCE_SEMANTIC_RETRY || 'true').toLowerCase() !== 'false';
 const SEARCH_CACHE_VALIDATE =
   String(process.env.SEARCH_CACHE_VALIDATE || 'false').toLowerCase() === 'true';
 const SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO =
@@ -3839,8 +3841,21 @@ function buildFragranceSemanticRetryQuery(queryText = '') {
   if (!raw) return '';
   const lower = raw.toLowerCase();
   const terms = [raw];
+  let appendedAnySemanticTerm = false;
   for (const item of FRAGRANCE_SEMANTIC_TERMS) {
-    if (!lower.includes(item)) terms.push(item);
+    if (!lower.includes(item)) {
+      terms.push(item);
+      appendedAnySemanticTerm = true;
+    }
+  }
+  if (!appendedAnySemanticTerm) {
+    if (!lower.includes('fragrance products')) {
+      terms.push('fragrance products');
+    } else if (!lower.includes('fragrance catalog')) {
+      terms.push('fragrance catalog');
+    } else {
+      terms.push('fragrance shopping');
+    }
   }
   const joined = terms.join(' ').replace(/\s+/g, ' ').trim();
   return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
@@ -4723,10 +4738,10 @@ async function queryFindProductsMultiFallback({
     isAuroraSource(normalizedRequestSource) &&
     (String(reason || '').trim() === 'primary_irrelevant' || isAuroraMonocultureRetry);
   const isFragranceSemanticRetry =
-    SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
-    hasFragranceQuerySignal(baseQueryText) &&
-    String(reason || '').trim() !== 'primary_request_failed';
+    SEARCH_FRAGRANCE_SEMANTIC_RETRY &&
+    hasFragranceQuerySignal(baseQueryText);
   const semanticRetryEnabled = isAuroraSemanticRetry || isFragranceSemanticRetry;
+  const normalizedBaseQuery = normalizeSearchTextForMatch(baseQueryText);
   const fragranceSemanticRetryQuery = isFragranceSemanticRetry
     ? buildFragranceSemanticRetryQuery(baseQueryText)
     : '';
@@ -4736,12 +4751,12 @@ async function queryFindProductsMultiFallback({
   const semanticRetryQueries = [];
   if (
     fragranceSemanticRetryQuery &&
-    normalizeSearchTextForMatch(fragranceSemanticRetryQuery) !== normalizeSearchTextForMatch(baseQueryText)
+    normalizeSearchTextForMatch(fragranceSemanticRetryQuery) !== normalizedBaseQuery
   ) {
     semanticRetryQueries.push(fragranceSemanticRetryQuery);
   } else if (
     auroraSemanticRetryQuery &&
-    normalizeSearchTextForMatch(auroraSemanticRetryQuery) !== normalizeSearchTextForMatch(baseQueryText)
+    normalizeSearchTextForMatch(auroraSemanticRetryQuery) !== normalizedBaseQuery
   ) {
     semanticRetryQueries.push(auroraSemanticRetryQuery);
   }
@@ -10332,7 +10347,10 @@ async function proxyAgentSearchToBackend(req, res) {
             '',
         ).trim() || null
       : null;
-    const fallbackNotBetterReason = semanticRetryApplied
+    const fragranceSemanticRetryExpected =
+      SEARCH_FRAGRANCE_SEMANTIC_RETRY &&
+      hasFragranceQuerySignal(queryText);
+    const fallbackNotBetterReason = semanticRetryApplied || fragranceSemanticRetryExpected
       ? 'semantic_retry_exhausted'
       : 'fallback_not_better';
 
@@ -10395,7 +10413,8 @@ async function proxyAgentSearchToBackend(req, res) {
       normalizedProducts.length === 0 &&
       shouldFallback &&
       !primaryIrrelevant &&
-      !skipSecondaryFallback;
+      !skipSecondaryFallback &&
+      (semanticRetryApplied || fragranceSemanticRetryExpected);
     if (shouldForceClarifyAfterFallback) {
       const strictBody = withStrictEmptyFallback({
         body: normalized,
@@ -10411,7 +10430,9 @@ async function proxyAgentSearchToBackend(req, res) {
             ? { ...strictBody.metadata }
             : {}
           : {};
-      strictBodyMetadata.semantic_retry_applied = Boolean(semanticRetryApplied);
+      strictBodyMetadata.semantic_retry_applied = Boolean(
+        semanticRetryApplied || fragranceSemanticRetryExpected,
+      );
       strictBodyMetadata.semantic_retry_query = semanticRetryQuery;
       strictBodyMetadata.semantic_retry_hits = 0;
       const strictBodyWithSemanticMeta =
@@ -10722,7 +10743,7 @@ async function proxyAgentSearchToBackend(req, res) {
 }
 
 async function handleAgentProductsSearchViaInvoke(req, res) {
-  const payload = buildFindProductsMultiPayloadFromQuery(req.query, { allowEmptyQuery: true });
+  const payload = buildFindProductsMultiPayloadFromQuery(req.query);
   if (!payload) {
     return res.status(400).json({
       error: 'INVALID_QUERY',
@@ -10740,8 +10761,8 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
   };
 
   return handleInvokeRequest(req, res, {
-    client_channel: 'search',
-    orchestrator_path: 'search_route_adapter',
+    client_channel: 'shop',
+    orchestrator_path: 'external_invoke_route',
   });
 }
 
@@ -12776,10 +12797,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               process.env.SEARCH_ORCHESTRATOR_VERSION || 'search_orchestrator_unified_v1',
             ),
             orchestrator_path:
-              String(routeContext?.orchestrator_path || '').trim() ||
-              (String(req?.path || '').trim() === '/agent/v1/products/search'
-                ? 'search_route_adapter'
-                : 'invoke_route'),
+              String(routeContext?.orchestrator_path || existingMeta.orchestrator_path || '').trim() ||
+              'external_invoke_route',
             semantic_retry_applied: Boolean(existingMeta.semantic_retry_applied),
             semantic_retry_query: existingMeta.semantic_retry_query || null,
             semantic_retry_hits: Math.max(0, Number(existingMeta.semantic_retry_hits || 0) || 0),
@@ -17451,6 +17470,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const fragranceQuerySignal =
+        SEARCH_FRAGRANCE_SEMANTIC_RETRY &&
+        hasFragranceQuerySignal(queryText);
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
@@ -17784,7 +17806,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
         if (!replacedByFallback) {
           if (primaryIrrelevant) {
-            const fragranceSemanticExhausted = hasFragranceQuerySignal(queryText);
             upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               reason: skipSecondaryFallback
@@ -17799,17 +17820,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
-              querySource: fragranceSemanticExhausted
+              querySource: fragranceQuerySignal
                 ? 'agent_products_semantic_retry_exhausted'
                 : 'agent_products_error_fallback',
-              semanticRetryApplied,
+              semanticRetryApplied: semanticRetryApplied || fragranceQuerySignal,
               semanticRetryQuery,
               semanticRetryHits,
             });
           } else {
             const fallbackReason = skipSecondaryFallback
               ? 'resolver_miss_skip_secondary'
-              : secondaryFallbackMeta?.semantic_retry_applied
+              : secondaryFallbackMeta?.semantic_retry_applied || fragranceQuerySignal
               ? 'semantic_retry_exhausted'
               : 'fallback_not_better';
             const upstreamProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
@@ -17817,7 +17838,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
               upstreamProducts.length === 0 &&
               !skipSecondaryFallback &&
-              Boolean(secondaryFallbackMeta?.semantic_retry_applied);
+              Boolean(secondaryFallbackMeta?.semantic_retry_applied || fragranceQuerySignal);
             if (shouldForceClarifyAfterRetry) {
               upstreamData = buildProxySearchSoftFallbackResponse({
                 queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -17827,6 +17848,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 intent: effectiveIntent,
                 queryClass: traceQueryClass,
                 queryText,
+                querySource:
+                  fallbackReason === 'semantic_retry_exhausted'
+                    ? 'agent_products_semantic_retry_exhausted'
+                    : 'agent_products_error_fallback',
+                semanticRetryApplied: Boolean(
+                  secondaryFallbackMeta?.semantic_retry_applied || fragranceQuerySignal,
+                ),
+                semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
+                semanticRetryHits: Math.max(
+                  0,
+                  Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
+                ),
               });
             } else {
               upstreamData = withProxySearchFallbackMetadata(upstreamData, {
@@ -17840,7 +17873,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 upstreamData.metadata && typeof upstreamData.metadata === 'object'
                   ? { ...upstreamData.metadata }
                   : {};
-              upstreamMeta.semantic_retry_applied = Boolean(secondaryFallbackMeta?.semantic_retry_applied);
+              upstreamMeta.semantic_retry_applied = Boolean(
+                secondaryFallbackMeta?.semantic_retry_applied || fragranceQuerySignal,
+              );
               upstreamMeta.semantic_retry_query = secondaryFallbackMeta?.semantic_retry_query || null;
               upstreamMeta.semantic_retry_hits = Math.max(
                 0,
