@@ -117,6 +117,56 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
+  test('brand query keeps brand-relevant external beauty products through domain hard filter', () => {
+    withPolicyEnv(
+      {
+        SEARCH_AMBIGUITY_GATE_ENABLED: 'false',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('fenty beauty gloss bomb', [], []);
+        const resp = applyWithEnv({
+          response: {
+            products: [
+              makeRawProduct({
+                id: 'ext-1',
+                merchant_id: 'external_seed',
+                source: 'external_seed',
+                title: 'Fenty Beauty Gloss Bomb Lip Luminizer',
+                brand: 'Fenty Beauty',
+                category: 'beauty',
+                description: 'lip gloss beauty product',
+              }),
+              makeRawProduct({
+                id: 'other-1',
+                merchant_id: 'merch_1',
+                title: 'Alpine Hiking Backpack',
+                category: 'outdoor',
+                description: 'trail backpack for hiking',
+              }),
+            ],
+            reply: null,
+          },
+          intent: {
+            ...intent,
+            primary_domain: 'beauty',
+            soft_preferences: {
+              ...(intent.soft_preferences || {}),
+              brands: ['fenty'],
+            },
+          },
+          requestPayload: { search: { query: 'fenty beauty gloss bomb' } },
+          metadata: { ambiguity_score_pre: 0.1 },
+          rawUserQuery: 'fenty beauty gloss bomb',
+        });
+
+        const productIds = (resp.products || []).map((p) => String(p?.id || p?.product_id || ''));
+        expect(productIds).toContain('ext-1');
+        expect(resp.metadata?.domain_filter_dropped_external).toBe(0);
+        expect(resp.reason_codes || []).not.toContain('DOMAIN_FILTER_DROPPED_EXTERNAL');
+      },
+    );
+  });
+
   test('scenario query returns products when post-quality thresholds are met', () => {
     withPolicyEnv(
       {
@@ -1027,5 +1077,106 @@ describe('find_products_multi intent + filtering', () => {
         required_non_tool_buckets: 2,
       }),
     );
+  });
+
+  test('brand keep-floor rescues partially dropped brand-relevant external products', () => {
+    withPolicyEnv(
+      {
+        SEARCH_AMBIGUITY_GATE_ENABLED: 'false',
+        SEARCH_DOMAIN_BEAUTY_FAIL_OPEN: 'false',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('fenty beauty gift set', [], []);
+        const resp = applyWithEnv({
+          response: {
+            products: [
+              makeRawProduct({
+                id: 'ext-keep',
+                merchant_id: 'external_seed',
+                source: 'external_seed',
+                title: 'Fenty Beauty Gloss Bomb makeup',
+                brand: 'Fenty Beauty',
+                description: 'lip makeup gloss',
+              }),
+              makeRawProduct({
+                id: 'ext-rescue',
+                merchant_id: 'external_seed',
+                source: 'external_seed',
+                title: 'Holiday Limited Edition Set',
+                brand: 'Fenty Beauty',
+                category: 'gift accessories',
+                description: 'limited pack',
+              }),
+              makeRawProduct({
+                id: 'int-1',
+                merchant_id: 'm1',
+                title: 'Hydrating Mascara',
+                category: 'beauty',
+                description: 'eye makeup mascara',
+              }),
+            ],
+            reply: null,
+          },
+          intent: {
+            ...intent,
+            primary_domain: 'beauty',
+            soft_preferences: {
+              ...(intent.soft_preferences || {}),
+              brands: ['fenty'],
+            },
+          },
+          requestPayload: { search: { query: 'fenty beauty gift set' } },
+          metadata: { ambiguity_score_pre: 0.15 },
+          rawUserQuery: 'fenty beauty gift set',
+        });
+
+        const productIds = (resp.products || []).map((p) => String(p?.id || p?.product_id || ''));
+        expect(productIds).toEqual(expect.arrayContaining(['ext-keep', 'ext-rescue']));
+        expect(resp.metadata?.domain_filter_dropped_external).toBe(0);
+      },
+    );
+  });
+
+  test('fragrance queries bypass beauty diversity strict-empty gate', () => {
+    const intent = {
+      language: 'en',
+      primary_domain: 'beauty',
+      target_object: { type: 'human', age_group: 'all', notes: '' },
+      category: { required: [], optional: [] },
+      scenario: { name: 'general', signals: [] },
+      hard_constraints: {
+        must_exclude_domains: [],
+        must_exclude_keywords: [],
+      },
+      ambiguity: { needs_clarification: false, missing_slots: [], clarifying_questions: [] },
+    };
+    const products = [
+      makeRawProduct({
+        id: 'frag-1',
+        title: 'Eau de Parfum Floral Mist',
+        description: 'fragrance perfume long-lasting',
+      }),
+      makeRawProduct({
+        id: 'frag-2',
+        title: 'Citrus Body Mist',
+        description: 'fragrance body mist daily wear',
+      }),
+      makeRawProduct({
+        id: 'frag-3',
+        title: 'Classic Cologne Spray',
+        description: 'fresh cologne perfume',
+      }),
+    ];
+
+    const resp = applyFindProductsMultiPolicy({
+      response: { products, reply: null },
+      intent,
+      requestPayload: { search: { query: 'perfume' } },
+      rawUserQuery: 'perfume',
+    });
+
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.reason_codes || []).not.toEqual(expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET']));
+    expect(resp.reason_codes || []).not.toEqual(expect.arrayContaining(['BEAUTY_NON_TOOL_MIN_NOT_MET']));
   });
 });

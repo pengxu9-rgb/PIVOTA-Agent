@@ -69,6 +69,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       PROXY_SEARCH_AURORA_API_BASE: process.env.PROXY_SEARCH_AURORA_API_BASE,
       PROXY_SEARCH_AURORA_BACKEND_BASE_URL:
         process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL,
+      SEARCH_ORCHESTRATOR_UNIFIED: process.env.SEARCH_ORCHESTRATOR_UNIFIED,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
         process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
     };
@@ -107,6 +108,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_AURORA_API_BASE;
     delete process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
+    process.env.SEARCH_ORCHESTRATOR_UNIFIED = 'false';
     delete process.env.DATABASE_URL;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
@@ -309,12 +311,86 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL =
         prevEnv.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
     }
+    if (prevEnv.SEARCH_ORCHESTRATOR_UNIFIED === undefined) {
+      delete process.env.SEARCH_ORCHESTRATOR_UNIFIED;
+    } else {
+      process.env.SEARCH_ORCHESTRATOR_UNIFIED = prevEnv.SEARCH_ORCHESTRATOR_UNIFIED;
+    }
     if (prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED === undefined) {
       delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
     } else {
       process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED =
         prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
     }
+  });
+
+  test('delegates to unified find_products_multi orchestration when enabled', async () => {
+    process.env.SEARCH_ORCHESTRATOR_UNIFIED = 'true';
+
+    const invokeScope = nock('http://gateway.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'find_products_multi' &&
+          body.payload &&
+          body.payload.search &&
+          String(body.payload.search.query || '') === 'fenty beauty'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'ext_1',
+            product_id: 'ext_1',
+            merchant_id: 'external_seed',
+            title: 'Fenty Beauty Gloss Bomb',
+            source: 'external_seed',
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 24,
+        metadata: {
+          query_source: 'agent_products_search',
+          search_trace: {
+            final_decision: 'products_returned',
+          },
+          route_health: {
+            external_seed_brand_strict_rows: 18,
+            external_seed_brand_relevant_rows: 12,
+            external_seed_broad_fallback_used: true,
+            external_seed_broad_scope_rows: 67,
+          },
+        },
+      });
+    const legacyProxyScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { status: 'success', products: [] });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({ query: 'fenty beauty', source: 'shopping-agent-web', limit: 24 })
+      .set('x-forwarded-proto', 'http')
+      .set('x-forwarded-host', 'gateway.test');
+
+    expect(resp.status).toBe(200);
+    expect(invokeScope.isDone()).toBe(true);
+    expect(legacyProxyScope.isDone()).toBe(false);
+    expect(resp.body?.metadata?.orchestrator_path).toBe('find_products_multi_unified');
+    expect(resp.body?.metadata?.orchestrator_version).toBeTruthy();
+    expect(resp.body?.metadata?.decision_node).toBe('products_returned');
+    expect(resp.body?.metadata).toEqual(
+      expect.objectContaining({
+        external_seed_brand_strict_rows: 18,
+        external_seed_brand_relevant_rows: 12,
+        external_seed_broad_fallback_used: true,
+        external_seed_broad_scope_rows: 67,
+      }),
+    );
   });
 
   test('does not run resolver-first on proxy route by default', async () => {
@@ -2279,6 +2355,105 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       'copper peptide',
     );
     expect(resp.body?.metadata?.fallback_strategy?.secondary_attempt_count).toBeGreaterThanOrEqual(1);
+  });
+
+  test('shopping-agent-web source is treated as shopping source for query guards', async () => {
+    const queryText = 'fenty beauty';
+    const primaryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q?.query || '') === queryText &&
+          String(q?.source || '').toLowerCase() === 'shopping-agent-web' &&
+          String(q?.fast_mode || '').toLowerCase() === 'true' &&
+          String(q?.external_seed_strategy || '').toLowerCase() === 'supplement_internal_first'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'fenty_1', merchant_id: 'm1', title: 'Fenty Beauty Gloss Bomb' }],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'shopping-agent-web',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(expect.objectContaining({ product_id: 'fenty_1' }));
+    expect(primaryScope.isDone()).toBe(true);
+  });
+
+  test('shopping perfume query applies semantic retry before returning clarify', async () => {
+    const queryText = 'perfume';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q?.query || '').toLowerCase() === queryText &&
+          String(q?.source || '').toLowerCase() === 'shopping-agent-web'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        const queryValue = String(q?.query || '').toLowerCase();
+        return (
+          String(q?.source || '').toLowerCase() === 'shopping-agent-web' &&
+          queryValue.includes('eau de parfum')
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'shopping-agent-web',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.clarification?.question).toBeTruthy();
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_semantic_clarify',
+        semantic_retry_applied: true,
+        semantic_retry_hits: 0,
+      }),
+    );
+    expect(String(resp.body?.metadata?.semantic_retry_query || '').toLowerCase()).toContain('eau de parfum');
+    expect(resp.body?.metadata?.query_source).not.toBe('agent_products_error_fallback');
+    expect(resp.body?.metadata?.strict_empty).not.toBe(true);
+    expect(resp.body?.metadata?.route_health).toEqual(
+      expect.objectContaining({
+        semantic_retry_applied: true,
+        semantic_retry_hits: 0,
+      }),
+    );
   });
 
   test('primary timeout does not trigger post-timeout fallback when total budget is exhausted', async () => {
