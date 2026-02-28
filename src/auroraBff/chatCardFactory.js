@@ -463,7 +463,11 @@ function normalizeLegacyActionRows(rawActions, language) {
 function buildPassthroughCard({ card, requestId, index, language = 'EN', fallbackTitle = '' }) {
   const payload = isPlainObject(card && card.payload) ? card.payload : {};
   const type = asString(card && card.type).toLowerCase();
-  const title = asString(card && card.title) || asString(payload.title) || fallbackTitle || (language === 'CN' ? '信息卡片' : 'Information card');
+  const title =
+    asString(card && card.title) ||
+    asString(payload.title) ||
+    fallbackTitle ||
+    (language === 'CN' ? '信息卡片' : 'Information card');
   const subtitle = asString(payload.subtitle) || undefined;
   const priorityRaw = Number(card && card.priority);
   const payloadPriorityRaw = Number(payload.priority);
