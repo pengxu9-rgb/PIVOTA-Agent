@@ -96,7 +96,16 @@ Failure-code contract (for `analysis_summary.payload.photo_notice.failure_code`)
 
 ## Full Rollout Gate (No Canary)
 
-Current release strategy is **full rollout directly** (no gray/canary split). Before each production deploy, explicitly verify these env vars on Railway:
+Current release strategy is **direct 100% rollout for internal traffic** (no gray/canary split).
+Use the aggressive policy set as the default release profile:
+
+- `AURORA_RULE_RELAX_MODE=aggressive`
+- `AURORA_KB_WRITE_POLICY=allow_all`
+- `AURORA_KB_SERVE_POLICY=serve_with_labels`
+- `AURORA_PRODUCT_GUARDRAIL_MODE=telemetry_only`
+- `AURORA_PRODUCT_STRICT_SKINCARE_FILTER=false` (optional explicit override)
+
+Before deploy, still verify baseline runtime safety envs on Railway:
 
 - `AURORA_BFF_USE_MOCK=false`
 - `AURORA_SKIN_VISION_ENABLED=true`
@@ -119,6 +128,13 @@ Current release strategy is **full rollout directly** (no gray/canary split). Be
   - `ALLOW_GUARD_TEST=false`
 - UI event durability (no PostHog dependency):
   - `AURORA_EVENTS_JSONL_SINK_DIR=/var/log/aurora-ui-events`
+
+Execution cadence:
+
+1. D0 config freeze with aggressive envs above.
+2. D0 deploy to 100% internal traffic.
+3. D0-D1 run 6-12h high-intensity observation window.
+4. D1 decide keep aggressive or selectively roll back.
 
 Pre-release hard gate commands:
 
@@ -147,6 +163,21 @@ Hard pass criteria:
 - empty cards without notice = `0`
 - safety block with recommendation leakage = `0`
 - all runtime/smoke scripts PASS
+
+Stop-loss runbook (mandatory for 100% release):
+
+- Monitor in real time:
+  - success rate
+  - empty response rate
+  - low-confidence response rate
+  - KB write rate / KB hit rate
+  - p95 latency
+  - 5xx rate
+- Trigger rollback if any core metric degrades materially for 15-30 minutes continuously.
+- Rollback order:
+  1. `AURORA_RULE_RELAX_MODE=conservative`
+  2. `AURORA_PRODUCT_GUARDRAIL_MODE=enforce`
+- Keep telemetry on after rollback for root-cause analysis and stepwise recovery.
 
 ## Response Meta Contract (Optional, backward-compatible)
 

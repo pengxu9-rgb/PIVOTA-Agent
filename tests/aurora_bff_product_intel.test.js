@@ -12,6 +12,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED = 'true';
+    process.env.AURORA_RULE_RELAX_MODE = 'conservative';
+    process.env.AURORA_KB_WRITE_POLICY = 'strict';
+    process.env.AURORA_KB_SERVE_POLICY = 'strict';
+    process.env.AURORA_PRODUCT_GUARDRAIL_MODE = 'enforce';
+    process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'true';
   });
 
   afterEach(() => {
@@ -21,6 +26,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL;
     delete process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED;
+    delete process.env.AURORA_RULE_RELAX_MODE;
+    delete process.env.AURORA_KB_WRITE_POLICY;
+    delete process.env.AURORA_KB_SERVE_POLICY;
+    delete process.env.AURORA_PRODUCT_GUARDRAIL_MODE;
+    delete process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE;
@@ -2156,6 +2166,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    process.env.AURORA_PRODUCT_GUARDRAIL_MODE = 'telemetry_only';
+    process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'false';
 
     let deepScanCalls = 0;
     nock('http://aurora.test')
@@ -2200,7 +2213,14 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const res = await request(app)
       .post('/v1/product/analyze')
       .set('X-Aurora-UID', 'uid_test_analyze_fast_unknown_1')
-      .send({ url: 'https://example.com/non-catalog-product.html' })
+      .send({
+        url: 'https://example.com/non-catalog-product.html',
+        session: {
+          session_id: 'sess_fast_unknown',
+          state: 'idle',
+          trace_hint: 'schema_passthrough_check',
+        },
+      })
       .expect(200);
 
     expect(deepScanCalls).toBe(1);
@@ -2211,6 +2231,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.missing_info).toContain('product_not_resolved');
     expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
     expect(card.payload.assessment.reasons.join(' ')).toMatch(/no-anchor deep scan|无锚点 Deep Scan/i);
+    expect(card.payload.low_confidence).toBe(true);
+    expect(card.payload.low_relevance).toBe(true);
     expect(card.payload.internal_debug_codes).toBeUndefined();
     expect(card.payload.missing_info_internal).toBeUndefined();
   });
@@ -3503,6 +3525,46 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(decision.reasons.length).toBeGreaterThan(0);
   });
 
+  test('shouldServeProductIntelKbEntry serves quarantined payload with labels when policy is serve_with_labels', () => {
+    process.env.AURORA_KB_SERVE_POLICY = 'serve_with_labels';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldServeProductIntelKbEntry({
+      kbEntry: {
+        kb_key: 'product_url:https://brand.example/x',
+        source_meta: {},
+      },
+      payload: {
+        assessment: {
+          verdict: 'Unknown',
+          reasons: ['Insufficient evidence.'],
+        },
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+        },
+        missing_info: [],
+        provenance: {},
+      },
+      productUrl: 'https://brand.example/x',
+      anchorTrustContext: {
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+        reasons: ['anchor_soft_blocked_url_mismatch'],
+      },
+    });
+    expect(decision).toEqual(
+      expect.objectContaining({
+        serve: true,
+        quarantined: true,
+      }),
+    );
+    expect(Array.isArray(decision.reasons)).toBe(true);
+    expect(decision.reasons.length).toBeGreaterThan(0);
+  });
+
   test('reconcileProductAnalysisConsistency generates diagnostic unknown reasons instead of legacy static fallback text', () => {
     const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
     const out = reconcileProductAnalysisConsistency(
@@ -3589,6 +3651,36 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         attempted: true,
         persisted: false,
         blocked_reason: 'incidecoder_unverified_not_persisted',
+      }),
+    );
+  });
+
+  test('shouldPersistProductIntelKb allow_all keeps write enabled and records audit blocked reason', () => {
+    process.env.AURORA_KB_WRITE_POLICY = 'allow_all';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldPersistProductIntelKb({
+      assessment: { verdict: 'Likely Suitable' },
+      evidence: {
+        science: {
+          key_ingredients: ['Niacinamide', 'Glycerin', 'Panthenol'],
+        },
+        sources: [
+          { type: 'inci_decoder', url: 'https://incidecoder.com/products/lab-series-all-in-one-defense-lotion' },
+        ],
+      },
+      ingredient_intel: {
+        inci_normalized: ['Niacinamide', 'Glycerin', 'Panthenol'],
+      },
+    });
+    expect(decision).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        persisted: true,
+        blocked_reason: 'incidecoder_unverified_not_persisted',
+        audit_blocked_reason: 'incidecoder_unverified_not_persisted',
+        policy: 'allow_all',
       }),
     );
   });

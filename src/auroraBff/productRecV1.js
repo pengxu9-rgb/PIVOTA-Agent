@@ -48,6 +48,13 @@ const PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED = parseBooleanEnv(
   'AURORA_PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED',
   true,
 );
+const AURORA_RULE_RELAX_MODE = (() => {
+  const raw = String(process.env.AURORA_RULE_RELAX_MODE || 'aggressive')
+    .trim()
+    .toLowerCase();
+  return raw === 'conservative' ? 'conservative' : 'aggressive';
+})();
+const AURORA_RULE_RELAX_AGGRESSIVE = AURORA_RULE_RELAX_MODE === 'aggressive';
 
 const catalogCache = {
   path: '',
@@ -676,6 +683,10 @@ function buildProductRecommendations({
   catalogPath,
   softEvidenceGateEnabled = PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED,
 } = {}) {
+  const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
+  const forceHardEvidenceGate = Object.prototype.hasOwnProperty.call(options, 'softEvidenceGateEnabled')
+    && softEvidenceGateEnabled === false;
+  const allowAggressiveEvidenceRelax = AURORA_RULE_RELAX_AGGRESSIVE && !forceHardEvidenceGate;
   const normalizedMarket = normalizeMarket(market);
   const normalizedLang = normalizeLang(lang);
   const normalizedRiskTier = normalizeRiskTier(riskTier);
@@ -724,7 +735,7 @@ function buildProductRecommendations({
       })
     : [];
 
-  if (!softEvidenceGateEnabled && useRepairFallback && !repairEligibleIngredientIds.length) {
+  if (!softEvidenceGateEnabled && useRepairFallback && !repairEligibleIngredientIds.length && !allowAggressiveEvidenceRelax) {
     return {
       products: [],
       suppressed_reason: 'LOW_EVIDENCE',
@@ -741,7 +752,7 @@ function buildProductRecommendations({
     };
   }
 
-  if (!softEvidenceGateEnabled && !eligibleEvidence.length && !useRepairFallback) {
+  if (!softEvidenceGateEnabled && !eligibleEvidence.length && !useRepairFallback && !allowAggressiveEvidenceRelax) {
     return {
       products: [],
       suppressed_reason: 'LOW_EVIDENCE',
@@ -760,23 +771,34 @@ function buildProductRecommendations({
   let filteredByRisk = 0;
   let filteredByMarket = 0;
   let filteredByNoOverlap = 0;
+  let softenedByRisk = 0;
+  let softenedByMarket = 0;
+  let softenedByNoOverlap = 0;
   for (const product of catalog) {
-    if (!asArray(product.market_scope).includes(normalizedMarket)) {
+    const marketMismatch = !asArray(product.market_scope).includes(normalizedMarket);
+    if (marketMismatch) {
       filteredByMarket += 1;
-      continue;
+      if (!AURORA_RULE_RELAX_AGGRESSIVE) continue;
+      softenedByMarket += 1;
     }
-    if (shouldFilterByRisk(product, normalizedRiskTier)) {
+    const riskMismatch = shouldFilterByRisk(product, normalizedRiskTier);
+    if (riskMismatch) {
       filteredByRisk += 1;
-      continue;
+      if (!AURORA_RULE_RELAX_AGGRESSIVE) continue;
+      softenedByRisk += 1;
     }
 
     const productIngredients = asArray(product.ingredient_ids);
-    const overlap = useRepairFallback
+    let overlap = useRepairFallback
       ? productIngredients.filter((id) => repairEligibleIngredientIds.includes(id))
       : productIngredients.filter((id) => evidenceMap.has(id) && (softEvidenceGateEnabled || evidenceMap.get(id).pass));
+    let overlapFallbackUsed = false;
     if (!overlap.length) {
       filteredByNoOverlap += 1;
-      continue;
+      if (!AURORA_RULE_RELAX_AGGRESSIVE || !productIngredients.length) continue;
+      overlapFallbackUsed = true;
+      softenedByNoOverlap += 1;
+      overlap = [productIngredients[0]];
     }
 
     const primaryIngredientId = overlap[0];
@@ -797,14 +819,29 @@ function buildProductRecommendations({
       internalTestMode,
       fallbackToGeneric: useRepairFallback,
     });
+    const lowEvidence = !softEvidenceGateEnabled && !primaryEvidence.pass;
+    const relevanceFlags = [
+      ...(marketMismatch ? ['market_scope_mismatch'] : []),
+      ...(riskMismatch ? ['risk_tier_mismatch'] : []),
+      ...(overlapFallbackUsed ? ['ingredient_overlap_missing'] : []),
+      ...(lowEvidence ? ['low_evidence'] : []),
+    ];
+    const penalty = (marketMismatch ? 8 : 0) + (riskMismatch ? 9 : 0) + (overlapFallbackUsed ? 12 : 0) + (lowEvidence ? 6 : 0);
+    const outputWithLabels = relevanceFlags.length
+      ? {
+        ...output,
+        low_relevance: true,
+        relevance_flags: relevanceFlags,
+      }
+      : output;
     candidates.push({
-      output,
-      score: scoreCandidate({
+      output: outputWithLabels,
+      score: Math.max(0, scoreCandidate({
         overlapCount: overlap.length,
         evidenceGrade: primaryEvidence.evidence_grade,
         citationsCount: primaryEvidence.citations_count,
         evidenceScore: primaryEvidence.evidence_score,
-      }),
+      }) - penalty),
     });
   }
 
@@ -825,7 +862,11 @@ function buildProductRecommendations({
         filtered_by_market: filteredByMarket,
         filtered_by_risk: filteredByRisk,
         filtered_by_no_overlap: filteredByNoOverlap,
+        softened_by_market: softenedByMarket,
+        softened_by_risk: softenedByRisk,
+        softened_by_no_overlap: softenedByNoOverlap,
         repair_fallback: useRepairFallback,
+        relax_mode: AURORA_RULE_RELAX_MODE,
         soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
       },
     };
@@ -842,6 +883,10 @@ function buildProductRecommendations({
       issue_type: issueType,
       candidate_count: candidates.length,
       repair_fallback: useRepairFallback,
+      softened_by_market: softenedByMarket,
+      softened_by_risk: softenedByRisk,
+      softened_by_no_overlap: softenedByNoOverlap,
+      relax_mode: AURORA_RULE_RELAX_MODE,
       soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
     },
   };
@@ -869,6 +914,10 @@ async function buildIngredientProductRecommendationsNeutral({
   dedupeExternalSearchCtas = null,
   softEvidenceGateEnabled = PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED,
 } = {}) {
+  const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
+  const forceHardEvidenceGate = Object.prototype.hasOwnProperty.call(options, 'softEvidenceGateEnabled')
+    && softEvidenceGateEnabled === false;
+  const allowAggressiveEvidenceRelax = AURORA_RULE_RELAX_AGGRESSIVE && !forceHardEvidenceGate;
   const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
   if (!normalizedIngredientId) {
     return {
@@ -926,7 +975,7 @@ async function buildIngredientProductRecommendationsNeutral({
     softEvidenceGateEnabled,
   });
 
-  if (!softEvidenceGateEnabled && !evidence.pass) {
+  if (!softEvidenceGateEnabled && !evidence.pass && !allowAggressiveEvidenceRelax) {
     return {
       products: [],
       suppressed_reason: 'LOW_EVIDENCE',
@@ -963,26 +1012,48 @@ async function buildIngredientProductRecommendationsNeutral({
   const sourceCounter = { catalog: 0, external_seed: 0, llm_fallback: 0 };
   let filteredBySafety = 0;
   let filteredByUrl = 0;
+  let softenedBySafety = 0;
+  let softenedByUrl = 0;
   let fallbackStage = 'internal_external_pool';
   const isSearchLikeUrl = (value) => {
     const token = String(value || '').trim().toLowerCase();
     return token.includes('google.com/search') || token.includes('/search?');
   };
   const mergeCandidate = (candidate, { defaultSource = 'catalog', defaultReason = '' } = {}) => {
-    const normalized = normalizeNeutralCandidate(candidate, {
+    const normalizedBase = normalizeNeutralCandidate(candidate, {
       fallbackSource: defaultSource,
       fallbackReason: defaultReason,
     });
-    if (!normalized) return;
-    if (shouldFilterByRisk(normalized, normalizedRiskTier)) {
+    if (!normalizedBase) return;
+    const normalized = { ...normalizedBase };
+    const relevanceFlags = [];
+    const safetyFiltered = shouldFilterByRisk(normalized, normalizedRiskTier);
+    if (safetyFiltered) {
       filteredBySafety += 1;
-      return;
+      if (!AURORA_RULE_RELAX_AGGRESSIVE) return;
+      softenedBySafety += 1;
+      relevanceFlags.push('risk_tier_mismatch');
     }
     const directUrl = extractDirectUrl(normalized);
     const hasInvalidUrl = Boolean(directUrl) && (!String(directUrl).trim().toLowerCase().startsWith('https://') || isSearchLikeUrl(directUrl));
     if (hasInvalidUrl) {
       filteredByUrl += 1;
-      return;
+      if (!AURORA_RULE_RELAX_AGGRESSIVE) return;
+      softenedByUrl += 1;
+      relevanceFlags.push('url_quality_low');
+      normalized.direct_url = '';
+      delete normalized.url;
+      delete normalized.pdp_url;
+      delete normalized.product_url;
+      delete normalized.purchase_path;
+    }
+    if (!softEvidenceGateEnabled && !evidence.pass) {
+      relevanceFlags.push('low_evidence');
+    }
+    if (relevanceFlags.length) {
+      normalized.low_relevance = true;
+      normalized.relevance_flags = relevanceFlags;
+      normalized.__soft_penalty = (Number(normalized.__soft_penalty || 0) + (safetyFiltered ? 0.22 : 0) + (hasInvalidUrl ? 0.18 : 0) + (!softEvidenceGateEnabled && !evidence.pass ? 0.16 : 0));
     }
     const key = buildCandidateStableKey(normalized);
     if (seen.has(key)) return;
@@ -1047,7 +1118,7 @@ async function buildIngredientProductRecommendationsNeutral({
   const outputs = pool
     .map((candidate) => {
       const overlapCount = asArray(candidate.ingredient_ids).filter((id) => id === normalizedIngredientId).length;
-      return buildNeutralProductOutput({
+      const baseOutput = buildNeutralProductOutput({
         candidate,
         issueType: normalizedIssueType,
         ingredientId: normalizedIngredientId,
@@ -1059,6 +1130,18 @@ async function buildIngredientProductRecommendationsNeutral({
         fallbackToGeneric,
         overlapCount,
       });
+      const softPenalty = Number.isFinite(Number(candidate && candidate.__soft_penalty))
+        ? Math.max(0, Number(candidate.__soft_penalty))
+        : 0;
+      const nextScore = Math.max(0, Number(baseOutput && baseOutput.suitability_score || 0) - softPenalty);
+      return {
+        ...baseOutput,
+        suitability_score: round3(nextScore),
+        ...(candidate && candidate.low_relevance ? { low_relevance: true } : {}),
+        ...(Array.isArray(candidate && candidate.relevance_flags) && candidate.relevance_flags.length
+          ? { relevance_flags: candidate.relevance_flags.slice(0, 6) }
+          : {}),
+      };
     })
     .sort((a, b) => {
       const scoreDiff = Number(b && b.suitability_score || 0) - Number(a && a.suitability_score || 0);
@@ -1089,12 +1172,16 @@ async function buildIngredientProductRecommendationsNeutral({
     );
   }
 
-  const suppressedReason = outputs.length ? null : 'NO_MATCH';
+  const suppressedReason = outputs.length
+    ? null
+    : AURORA_RULE_RELAX_AGGRESSIVE
+      ? null
+      : 'NO_MATCH';
   const productsEmptyReason = outputs.length
     ? null
     : dedupedCtas.length
-      ? 'strict_filter_fallback_only'
-      : suppressedReason || 'no_candidate';
+      ? (AURORA_RULE_RELAX_AGGRESSIVE ? 'low_confidence_fallback_only' : 'strict_filter_fallback_only')
+      : suppressedReason || (AURORA_RULE_RELAX_AGGRESSIVE ? 'low_confidence' : 'no_candidate');
   const richImageCount = outputs.filter((item) => Boolean(String(item && item.image_url || '').trim())).length;
   const richPriceCount = outputs.filter((item) => {
     const hasPrice = Number.isFinite(Number(item && item.price));
@@ -1143,6 +1230,8 @@ async function buildIngredientProductRecommendationsNeutral({
       candidate_count_external: Number(sourceCounter.external_seed || 0),
       filtered_by_safety: filteredBySafety,
       filtered_by_url: filteredByUrl,
+      softened_by_safety: softenedBySafety,
+      softened_by_url: softenedByUrl,
       evidence_score: Number(evidence && evidence.evidence_score || 0),
       fallback_stage: fallbackStage,
       products_count: outputs.length,
@@ -1156,12 +1245,14 @@ async function buildIngredientProductRecommendationsNeutral({
         pool.length > 0 ? Number(sourceCounter.external_seed || 0) / Math.max(1, pool.length) : 0,
       ),
       generic_copy_rate: round3(outputs.length > 0 ? genericCopyCount / outputs.length : 0),
+      low_confidence_fallback_only: Boolean(AURORA_RULE_RELAX_AGGRESSIVE && outputs.length === 0 && dedupedCtas.length > 0),
       rich_fields_coverage: {
         image_rate: round3(outputs.length > 0 ? richImageCount / outputs.length : 0),
         price_rate: round3(outputs.length > 0 ? richPriceCount / outputs.length : 0),
         social_rate: round3(outputs.length > 0 ? richSocialCount / outputs.length : 0),
         any_rate: round3(outputs.length > 0 ? richAnyCount / outputs.length : 0),
       },
+      relax_mode: AURORA_RULE_RELAX_MODE,
       soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
     },
   };
