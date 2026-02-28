@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
 process.env.AURORA_BFF_RECO_CATALOG_GROUNDED = 'true';
+process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT = 'dual';
 process.env.PIVOTA_BACKEND_BASE_URL = 'https://pivota-backend.test';
 process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'test_key';
 // This suite validates legacy reco catalog/PDP behavior. Keep matcher/artifact gate off.

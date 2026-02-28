@@ -5,7 +5,9 @@
       "sample_hash": "mockhash001",
       "source": "lapa",
       "local_path": "/tmp/mock_001.jpg",
-      "image": "file:///tmp/mock_001.jpg"
+      "image": "file:///tmp/mock_001.jpg",
+      "original_width": 1000,
+      "original_height": 800
     },
     "annotations": [
       {
@@ -17,6 +19,8 @@
             "from_name": "face_oval",
             "value": {
               "polygonlabels": ["face_oval"],
+              "original_width": 1000,
+              "original_height": 800,
               "points": [[20, 10], [80, 10], [85, 50], [80, 90], [20, 90], [15, 50]]
             }
           },
@@ -25,6 +29,8 @@
             "from_name": "skin",
             "value": {
               "polygonlabels": ["skin"],
+              "original_width": 1000,
+              "original_height": 800,
               "points": [[25, 18], [75, 18], [78, 48], [75, 82], [25, 82], [22, 48]]
             }
           },
@@ -33,6 +39,8 @@
             "from_name": "hair",
             "value": {
               "polygonlabels": ["hair"],
+              "original_width": 1000,
+              "original_height": 800,
               "points": [[24, 8], [76, 8], [80, 22], [20, 22]]
             }
           },
@@ -41,7 +49,9 @@
             "from_name": "background",
             "value": {
               "polygonlabels": ["background"],
-              "points": [[0, 0], [100, 0], [100, 8], [0, 8]]
+              "original_width": 1000,
+              "original_height": 800,
+              "points": [[0, 0], [100, 0], [100, 7], [0, 7]]
             }
           }
         ]
@@ -52,53 +62,55 @@
     "id": "task_mock_002",
     "data": {
       "sample_hash": "mockhash002",
-      "source": "celebamaskhq",
+      "source": "lapa",
       "local_path": "/tmp/mock_002.jpg",
       "image": "file:///tmp/mock_002.jpg",
-      "width": 1000,
-      "height": 800
+      "original_width": 1200,
+      "original_height": 900
     },
     "annotations": [
       {
         "created_at": "2026-02-11T10:05:00.000Z",
-        "completed_by": {
-          "email": "annotator_beta@local"
-        },
+        "completed_by": "annotator_beta",
         "result": [
           {
             "type": "polygonlabels",
+            "from_name": "face_oval",
             "value": {
               "polygonlabels": ["face_oval"],
-              "original_width": 1000,
-              "original_height": 800,
-              "points": [[180, 90], [820, 90], [860, 390], [820, 710], [180, 710], [140, 390]]
+              "original_width": 1200,
+              "original_height": 900,
+              "points": [[18, 12], [82, 12], [88, 50], [82, 88], [18, 88], [12, 50]]
             }
           },
           {
             "type": "polygonlabels",
+            "from_name": "skin",
             "value": {
               "polygonlabels": ["skin"],
-              "original_width": 1000,
-              "original_height": 800,
-              "points": [[240, 150], [760, 150], [790, 390], [760, 650], [240, 650], [210, 390]]
+              "original_width": 1200,
+              "original_height": 900,
+              "points": [[24, 20], [76, 20], [80, 50], [76, 80], [24, 80], [20, 50]]
             }
           },
           {
             "type": "polygonlabels",
+            "from_name": "hair",
             "value": {
               "polygonlabels": ["hair"],
-              "original_width": 1000,
-              "original_height": 800,
-              "points": [[220, 70], [780, 70], [810, 180], [190, 180]]
+              "original_width": 1200,
+              "original_height": 900,
+              "points": [[20, 8], [80, 8], [84, 20], [16, 20]]
             }
           },
           {
             "type": "polygonlabels",
+            "from_name": "background",
             "value": {
               "polygonlabels": ["background"],
-              "original_width": 1000,
-              "original_height": 800,
-              "points": [[0, 0], [1000, 0], [1000, 70], [0, 70]]
+              "original_width": 1200,
+              "original_height": 900,
+              "points": [[0, 0], [100, 0], [100, 8], [0, 8]]
             }
           }
         ]
