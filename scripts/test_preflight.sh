@@ -2,6 +2,7 @@
 set -euo pipefail
 
 PROJECT_DIR_NAME="_wt_backend_gate_v1"
+CI_PROJECT_DIR_NAME="${CI_PROJECT_DIR_NAME:-PIVOTA-Agent}"
 REQUIRED_NODE_MAJOR="20"
 SCAN_TIMEOUT_SECONDS="${TEST_PREFLIGHT_SCAN_TIMEOUT_SECONDS:-15}"
 MAX_SCAN_FILES="${TEST_PREFLIGHT_MAX_SCAN_FILES:-1200}"
@@ -46,8 +47,9 @@ if [[ "$cwd" == *"/_deploy_tmp_"* ]]; then
   fail "do not run tests inside _deploy_tmp_ directories: $cwd"
 fi
 
-if [[ "$(basename "$cwd")" != "$PROJECT_DIR_NAME" ]]; then
-  fail "run tests from project root '$PROJECT_DIR_NAME'. current: $cwd"
+cwd_base="$(basename "$cwd")"
+if [[ "$cwd_base" != "$PROJECT_DIR_NAME" && "$cwd_base" != "$CI_PROJECT_DIR_NAME" ]]; then
+  fail "run tests from project root '$PROJECT_DIR_NAME' (or CI root '$CI_PROJECT_DIR_NAME'). current: $cwd"
 fi
 
 if [[ "$cwd" == *"/Desktop/"* && "${ALLOW_DESKTOP_WORKSPACE:-0}" != "1" ]]; then
