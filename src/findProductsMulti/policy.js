@@ -2,7 +2,6 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
-const { buildClarification } = require('./clarification');
 const { buildScenarioAssociationPlan } = require('./scenarioAssociation');
 const {
   detectBrandEntities,
@@ -28,16 +27,6 @@ const SEARCH_DOMAIN_HARD_FILTER_MODE = ['strict', 'balanced'].includes(
 )
   ? String(process.env.SEARCH_DOMAIN_HARD_FILTER_MODE || 'strict').toLowerCase()
   : 'strict';
-const SEARCH_DOMAIN_BALANCED_MIN_DROP_RATIO = Math.max(
-  0,
-  Math.min(1, Number(process.env.SEARCH_DOMAIN_BALANCED_MIN_DROP_RATIO || 0.4)),
-);
-const SEARCH_DOMAIN_FILTER_K_MIN = Math.max(
-  1,
-  Number(process.env.SEARCH_DOMAIN_FILTER_K_MIN || 6) || 6,
-);
-const SEARCH_DOMAIN_BEAUTY_FAIL_OPEN =
-  String(process.env.SEARCH_DOMAIN_BEAUTY_FAIL_OPEN || 'false').toLowerCase() === 'true';
 const SEARCH_EXTERNAL_FILL_GATED =
   String(process.env.SEARCH_EXTERNAL_FILL_GATED || 'true').toLowerCase() !== 'false';
 const SEARCH_ANCHOR_ALIAS_V2 =
@@ -85,12 +74,6 @@ const SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER = Math.max(
   1,
   Number(process.env.SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER || 4) || 4,
 );
-const FPM_GATE_SIMPLIFY_V1 =
-  String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
-const FPM_CLARIFY_NEVER_EMPTY =
-  String(process.env.FPM_CLARIFY_NEVER_EMPTY || 'true').toLowerCase() !== 'false';
-const FPM_DOMAIN_CONDENSER_REORDER_ONLY =
-  String(process.env.FPM_DOMAIN_CONDENSER_REORDER_ONLY || 'true').toLowerCase() !== 'false';
 const AMBIGUITY_THRESHOLD_CLARIFY = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_AMBIGUITY_THRESHOLD_CLARIFY || 0.35)),
@@ -189,58 +172,6 @@ const LINGERIE_PATTERNS = [
   // JA
   /下着|ブラ|パンティ|ランジェリー/,
 ];
-
-const FRAGRANCE_QUERY_REGEX =
-  /\b(perfume|fragrance|parfum|cologne|eau de parfum|eau de toilette|body mist)\b/i;
-const BRAND_TERM_SUFFIXES = new Set([
-  'beauty',
-  'cosmetic',
-  'cosmetics',
-  'fragrance',
-  'perfume',
-  'parfum',
-  'makeup',
-]);
-
-function hasFragranceQuerySignal(rawQuery) {
-  return FRAGRANCE_QUERY_REGEX.test(String(rawQuery || ''));
-}
-
-function isExternalSeedProduct(product) {
-  if (!product || typeof product !== 'object') return false;
-  const merchantId = String(product.merchant_id || product.merchantId || '').trim().toLowerCase();
-  const source = String(product.source || '').trim().toLowerCase();
-  return merchantId === 'external_seed' || source === 'external_seed';
-}
-
-function normalizeBrandTerms(terms) {
-  if (!Array.isArray(terms)) return [];
-  const out = [];
-  const seen = new Set();
-  for (const term of terms) {
-    const normalized = normalizeWordTokens(term).join(' ').trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    out.push(normalized);
-  }
-  return out;
-}
-
-function hasBrandTermMatchInText(text, term) {
-  const normalizedText = String(text || '').toLowerCase();
-  const normalizedTerm = String(term || '').toLowerCase().trim();
-  if (!normalizedText || !normalizedTerm) return false;
-  if (normalizedText.includes(normalizedTerm)) return true;
-
-  const compactText = normalizedText.replace(/\s+/g, '');
-  const compactTerm = normalizedTerm.replace(/\s+/g, '');
-  if (compactTerm && compactText.includes(compactTerm)) return true;
-
-  const tokens = normalizeWordTokens(normalizedTerm).filter((token) => !BRAND_TERM_SUFFIXES.has(token));
-  if (!tokens.length) return false;
-  if (tokens.length === 1) return normalizedText.includes(tokens[0]);
-  return tokens.every((token) => normalizedText.includes(token));
-}
 
 function includesAny(haystack, needles) {
   if (!haystack) return false;
@@ -959,7 +890,6 @@ function inferSearchDomainKey(intent, rawQuery) {
   const query = String(rawQuery || '').toLowerCase();
   if (target === 'pet') return 'pet';
   if (primaryDomain === 'beauty') return 'beauty';
-  if (hasFragranceQuerySignal(query)) return 'beauty';
   if (
     /travel|trip|business trip|packing|luggage|toiletry|出差|旅行|旅游|差旅/.test(query)
   ) {
@@ -1008,8 +938,8 @@ function inferProductDomainKey(product) {
     return 'pet';
   }
   if (
-    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic|fragrance|perfume|parfum|cologne|eau de parfum|eau de toilette|body mist|scent|aroma)\b/i.test(text) ||
-    /化妆|美妆|护肤|精华|口红|粉底|防晒|香水|香氛/.test(text)
+    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
+    /化妆|美妆|护肤|精华|口红|粉底|防晒/.test(text)
   ) {
     return 'beauty';
   }
@@ -1419,155 +1349,18 @@ function matchesDomainAllowlist(product, domainKey, options = {}) {
   return false;
 }
 
-function applyDomainHardFilter(products, intent, rawQuery, options = {}) {
+function applyDomainHardFilter(products, intent, rawQuery) {
   const list = Array.isArray(products) ? products : [];
-  const externalBefore = list.filter((product) => isExternalSeedProduct(product)).length;
-  if (!SEARCH_DOMAIN_HARD_FILTER_ENABLED) {
-    return {
-      products: list,
-      dropped: 0,
-      dropped_external: 0,
-      domain_key: inferSearchDomainKey(intent, rawQuery),
-      mode_used: 'disabled',
-      pass2_triggered: false,
-    };
-  }
   const domainKey = inferSearchDomainKey(intent, rawQuery);
-  if (domainKey === 'general') {
-    return {
-      products: list,
-      dropped: 0,
-      dropped_external: 0,
-      domain_key: domainKey,
-      mode_used: 'strict',
-      pass2_triggered: false,
-    };
-  }
-  const allowTokens = extractCategoryTokensFromIntent(intent, rawQuery);
-  const strictFiltered = list.filter((product) =>
-    matchesDomainAllowlist(product, domainKey, { mode: 'strict', allowTokens }),
-  );
-  const strictDropped = Math.max(0, list.length - strictFiltered.length);
-  const strictDropRatio = list.length > 0 ? strictDropped / list.length : 0;
-  const strictExternalCount = strictFiltered.filter((product) => isExternalSeedProduct(product)).length;
-  const strictDroppedExternal = Math.max(0, externalBefore - strictExternalCount);
-  const brandQueryDetected = Boolean(options?.brandQueryDetected);
-  const brandTerms = normalizeBrandTerms(options?.brandTerms || []);
-  const countExternalBrandRelevant = (items) => {
-    if (!brandTerms.length) return 0;
-    let count = 0;
-    for (const product of Array.isArray(items) ? items : []) {
-      if (!isExternalSeedProduct(product)) continue;
-      const text = buildProductText(product);
-      if (!text) continue;
-      if (brandTerms.some((term) => hasBrandTermMatchInText(text, term))) count += 1;
-    }
-    return count;
-  };
-
-  const sourceExternalBrandRelevant =
-    brandQueryDetected && brandTerms.length ? countExternalBrandRelevant(list) : 0;
-  const strictExternalBrandRelevant =
-    brandQueryDetected && brandTerms.length ? countExternalBrandRelevant(strictFiltered) : 0;
-
-  if (brandQueryDetected && sourceExternalBrandRelevant > 0 && strictExternalBrandRelevant === 0) {
-    const balancedFiltered = list.filter((product) =>
-      matchesDomainAllowlist(product, domainKey, { mode: 'balanced', allowTokens }),
-    );
-    const balancedExternalBrandRelevant = countExternalBrandRelevant(balancedFiltered);
-    if (balancedFiltered.length > 0 && balancedExternalBrandRelevant > 0) {
-      const balancedExternal = balancedFiltered.filter((product) => isExternalSeedProduct(product)).length;
-      return {
-        products: balancedFiltered,
-        dropped: Math.max(0, list.length - balancedFiltered.length),
-        dropped_external: Math.max(0, externalBefore - balancedExternal),
-        domain_key: domainKey,
-        mode_used: 'balanced',
-        pass2_triggered: true,
-        strict_kept: strictFiltered.length,
-        strict_dropped: strictDropped,
-        fail_open: true,
-        fail_open_reason: 'brand_external_fail_open_balanced',
-      };
-    }
-    return {
-      products: list,
-      dropped: 0,
-      dropped_external: 0,
-      domain_key: domainKey,
-      mode_used: 'strict',
-      pass2_triggered: true,
-      strict_kept: strictFiltered.length,
-      strict_dropped: strictDropped,
-      fail_open: true,
-      fail_open_reason: 'brand_external_fail_open_all',
-    };
-  }
-
-  if (
-    SEARCH_DOMAIN_HARD_FILTER_MODE === 'balanced' &&
-    strictFiltered.length < SEARCH_DOMAIN_FILTER_K_MIN &&
-    strictDropRatio > SEARCH_DOMAIN_BALANCED_MIN_DROP_RATIO
-  ) {
-    const balancedFiltered = list.filter((product) =>
-      matchesDomainAllowlist(product, domainKey, { mode: 'balanced', allowTokens }),
-    );
-    if (balancedFiltered.length >= strictFiltered.length) {
-      const balancedExternal = balancedFiltered.filter((product) => isExternalSeedProduct(product)).length;
-      return {
-        products: balancedFiltered,
-        dropped: Math.max(0, list.length - balancedFiltered.length),
-        dropped_external: Math.max(0, externalBefore - balancedExternal),
-        domain_key: domainKey,
-        mode_used: 'balanced',
-        pass2_triggered: true,
-        strict_kept: strictFiltered.length,
-        strict_dropped: strictDropped,
-      };
-    }
-  }
-
-  if (domainKey === 'beauty' && list.length > 0 && strictFiltered.length === 0 && SEARCH_DOMAIN_BEAUTY_FAIL_OPEN) {
-    const scenarioName = String(intent?.scenario?.name || '').toLowerCase();
-    const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
-    const requiredCategories = Array.isArray(intent?.category?.required)
-      ? intent.category.required.map((item) => String(item || '').toLowerCase())
-      : [];
-    const query = String(rawQuery || '').toLowerCase();
-    const isBeautyIntent =
-      primaryDomain === 'beauty' ||
-      scenarioName.includes('beauty') ||
-      requiredCategories.some(
-        (category) =>
-          category.includes('beauty') ||
-          category.includes('cosmetic') ||
-          category.includes('makeup') ||
-          category.includes('skin'),
-      ) ||
-      /化妆|化妝|美妆|美妝|彩妆|彩妝|护肤|護膚|粉底|口红|口紅|眼影|睫毛膏|刷|brush|makeup|beauty|cosmetic|skincare|foundation|lipstick|eyeshadow|fragrance|perfume|parfum|cologne|香水|香氛/.test(
-        query,
-      );
-    if (isBeautyIntent) {
-      return {
-        products: list,
-        dropped: 0,
-        dropped_external: 0,
-        domain_key: domainKey,
-        mode_used: 'strict',
-        fail_open: true,
-        fail_open_reason: 'beauty_domain_filter_empty_fallback',
-      };
-    }
-  }
+  // Recall-first policy: keep domain telemetry but do not hard-drop candidates.
   return {
-    products: strictFiltered,
-    dropped: strictDropped,
-    dropped_external: strictDroppedExternal,
+    products: list,
+    dropped: 0,
     domain_key: domainKey,
-    mode_used: 'strict',
+    mode_used: 'disabled',
     pass2_triggered: false,
-    strict_kept: strictFiltered.length,
-    strict_dropped: strictDropped,
+    strict_kept: list.length,
+    strict_dropped: 0,
   };
 }
 
@@ -3045,27 +2838,12 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	        if (lang === 'ja') extra.push('メイクブラシ');
 	      }
       } else if (intent?.primary_domain === 'beauty') {
-        const fragranceQueryDetected = hasFragranceQuerySignal(q);
 	      const wantsSkincare =
 	        /护肤|護膚|skincare|skin\s*care|serum|toner|essence|moisturizer|cleanser|sunscreen|cream/i.test(
 	          q,
 	        );
 	      const wantsDateLook = /约会|約會|\bdate\b|\bnight\s*out\b/i.test(q);
-      if (fragranceQueryDetected) {
-        extra.push(
-          'fragrance',
-          'perfume',
-          'parfum',
-          'cologne',
-          'eau de parfum',
-          'eau de toilette',
-          'body mist',
-        );
-        if (lang === 'zh') extra.push('香水', '香氛');
-        if (lang === 'es') extra.push('fragancia', 'perfume');
-        if (lang === 'fr') extra.push('parfum', 'fragrance');
-        if (lang === 'ja') extra.push('香水', 'フレグランス');
-      } else if (!brandQueryWithoutCategory && wantsSkincare) {
+      if (!brandQueryWithoutCategory && wantsSkincare) {
         extra.push('skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
         if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
         if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'tónico', 'hidratante');
@@ -3113,7 +2891,6 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     },
   };
 
-  const querySemanticClass = hasFragranceQuerySignal(latestUserQuery) ? 'fragrance' : null;
   const expansionMeta = {
     mode: rewriteGate.mode,
     strategy_version: STRATEGY_VERSION,
@@ -3124,7 +2901,6 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     rewrite_gate: rewriteGate,
     association_plan: associationPlan,
     ambiguity_score_pre: ambiguityScorePre,
-    query_semantic_class: querySemanticClass,
     brand_query_detected: brandQueryDetected,
     brand_entities: brandEntities,
     brand_detection_mode: brandDetection?.detection_mode || null,
@@ -3153,17 +2929,6 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 }
 
 function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata, rawUserQuery }) {
-  const gateTrace = [];
-  const pushGateTrace = (gateId, applied, decision, reason, costMsEstimate, queryClassValue = null) => {
-    gateTrace.push({
-      gate_id: gateId,
-      applied: Boolean(applied),
-      decision: String(decision || 'pass'),
-      reason: reason ? String(reason) : null,
-      cost_ms_estimate: Math.max(0, Number(costMsEstimate || 0) || 0),
-      query_class: queryClassValue ? String(queryClassValue) : null,
-    });
-  };
   const { key, list } = getResponseProductList(response);
   const before = Array.isArray(list) ? list.length : 0;
   const rawQuery =
@@ -3227,28 +2992,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     filtered = ordered;
   }
 
-  // If we couldn't reliably match beauty tools, avoid showing unrelated products.
-  // We still keep toolRec so the agent can provide a tool-first template reply.
-  if (
-    intent?.primary_domain === 'beauty' &&
-    intent?.scenario?.name === 'beauty_tools' &&
-    toolRec?.stats &&
-    String(toolRec.stats.match_tier || '') === 'none' &&
-    Number(toolRec.stats.tool_candidates_count || 0) === 0
-  ) {
-    filtered = [];
-  }
-
-  const metadataSemanticClass = String(
-    metadata?.query_semantic_class ??
-      metadata?.querySemanticClass ??
-      metadata?.search_decision?.query_semantic_class ??
-      metadata?.searchDecision?.querySemanticClass ??
-      '',
-  )
-    .trim()
-    .toLowerCase();
-  const querySemanticClass = metadataSemanticClass || (hasFragranceQuerySignal(rawQuery) ? 'fragrance' : null);
+  // Recall-first policy: for tool queries, keep low-confidence results instead of hard empty.
 
   const skipConstraintReorder =
     intent?.primary_domain === 'beauty' &&
@@ -3257,27 +3001,16 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     filtered = reorderProductsForConstraints(filtered, intent, rawQuery);
   }
   const preDomainFilterCandidates = Array.isArray(filtered) ? filtered.slice() : [];
-  const domainFilterResult = applyDomainHardFilter(filtered, intent, rawQuery, {
-    brandQueryDetected,
-    brandTerms: brandEntities,
-    querySemanticClass,
-  });
+  const domainFilterResult = applyDomainHardFilter(filtered, intent, rawQuery);
   filtered = Array.isArray(domainFilterResult.products) ? domainFilterResult.products : [];
-  pushGateTrace(
-    'domain_hard_filter',
-    Boolean(domainFilterResult?.applied),
-    Number(domainFilterResult?.dropped || 0) > 0 ? 'filtered' : 'pass',
-    Number(domainFilterResult?.dropped || 0) > 0 ? 'domain_filtered' : null,
-    90,
-    null,
-  );
   let diversityDebug = null;
   if (shouldApplyBeautyDiversity(intent, rawQuery) && !brandQueryDetected) {
     const diversityResult = applyBeautyDiversityPolicy(filtered, {
       topN: BEAUTY_DIVERSITY_TOPN,
       minBuckets: BEAUTY_DIVERSITY_MIN_BUCKETS,
       toolsMaxRatio: BEAUTY_DIVERSITY_TOOLS_MAX_RATIO,
-      strictEmptyOnFailure: BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE,
+      strictEmptyOnFailure: false,
+      preservePrimaryOnFailure: true,
     });
     filtered = Array.isArray(diversityResult.products) ? diversityResult.products : [];
     diversityDebug = diversityResult.debug || null;
@@ -3294,13 +3027,12 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
         (bucket) => Number(mix[bucket] || 0) > 0,
       ).length;
       if (nonToolDistinctBuckets < 2) {
-        filtered = [];
         diversityDebug = {
           ...diversityDebug,
-          reason: 'beauty_non_tool_min_not_met',
-          strict_empty: true,
+          reason: 'beauty_non_tool_min_not_met_soft',
+          strict_empty: false,
           requirement_unmet: true,
-          preserve_primary_on_failure: false,
+          preserve_primary_on_failure: true,
           required_non_tool_buckets: 2,
           non_tool_distinct_buckets: nonToolDistinctBuckets,
         };
@@ -3343,29 +3075,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     anchorTokens: postAnchorBasis?.tokens,
     sourceCandidateCount: before,
   });
-  const condenserProducts = Array.isArray(domainCondenserResult.products)
-    ? domainCondenserResult.products
-    : filtered;
-  const condenserWouldDrop =
-    Array.isArray(condenserProducts) &&
-    Array.isArray(filtered) &&
-    condenserProducts.length < filtered.length;
-  const condenserApplied =
-    Boolean(domainCondenserResult?.debug?.applied) &&
-    (!FPM_GATE_SIMPLIFY_V1 || !FPM_DOMAIN_CONDENSER_REORDER_ONLY || !condenserWouldDrop);
-  if (condenserApplied) {
-    filtered = condenserProducts;
-  }
-  pushGateTrace(
-    'domain_condenser',
-    Boolean(domainCondenserResult?.debug?.applied),
-    condenserApplied ? 'reordered' : 'pass',
-    condenserWouldDrop && FPM_GATE_SIMPLIFY_V1 && FPM_DOMAIN_CONDENSER_REORDER_ONLY
-      ? 'drop_prevented_reorder_only'
-      : domainCondenserResult?.debug?.reason || null,
-    120,
-    null,
-  );
+  filtered = Array.isArray(domainCondenserResult.products) ? domainCondenserResult.products : filtered;
   const scenarioDerivedAnchorActive =
     SEARCH_SCENARIO_ANCHOR_MODE === 'derived' &&
     ['scenario', 'mission'].includes(String(queryClass || ''));
@@ -3449,66 +3159,32 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   };
   const postQualityOk =
     postQuality.candidates_ok && postQuality.anchor_ok && postQuality.entropy_ok;
-  const postQualityHardFail = enforcePostQualityGate && !postQualityOk;
-  const postQualityTriggered = FPM_GATE_SIMPLIFY_V1 ? false : postQualityHardFail;
-  const lowConfidenceReasons = [];
-  if (postQualityHardFail) {
-    lowConfidenceReasons.push('post_quality_low_confidence');
-  }
+  const postQualityTriggered = enforcePostQualityGate && !postQualityOk;
   const strictEmptyByAmbiguityBase =
     SEARCH_AMBIGUITY_GATE_ENABLED &&
     ambiguitySensitiveClass &&
     ambiguityScorePre > AMBIGUITY_THRESHOLD_STRICT_EMPTY &&
     ambiguityScorePost > AMBIGUITY_THRESHOLD_STRICT_EMPTY &&
     (!baselineStats.has_good_match || filtered.length === 0);
-  const highRiskNonShopping = queryClass === 'non_shopping';
-  const strictEmptyByAmbiguityBaseConstrained =
-    strictEmptyByAmbiguityBase &&
-    (!FPM_GATE_SIMPLIFY_V1 || (before === 0 && postCandidateCount === 0 && highRiskNonShopping));
   const clarifyByAmbiguityBase =
     clarifyEligible &&
     clarifyIntentGate &&
-    !strictEmptyByAmbiguityBaseConstrained &&
+    !strictEmptyByAmbiguityBase &&
     (postQualityTriggered ||
       postCandidateCount === 0 ||
       (ambiguitySignalOnly && ambiguityScorePost > AMBIGUITY_THRESHOLD_CLARIFY));
   const brandQueryBypassAmbiguity =
     brandQueryDetected &&
     postCandidateCount > 0 &&
-    (strictEmptyByAmbiguityBaseConstrained || clarifyByAmbiguityBase);
-  const strictEmptyByAmbiguity = strictEmptyByAmbiguityBaseConstrained && !brandQueryBypassAmbiguity;
-  const clarifyByAmbiguity = clarifyByAmbiguityBase && !brandQueryBypassAmbiguity;
-  pushGateTrace(
-    'ambiguity_gate',
-    Boolean(clarifyEligible || strictEmptyByAmbiguityBaseConstrained),
-    strictEmptyByAmbiguity ? 'strict_empty' : clarifyByAmbiguity ? 'clarify' : 'pass',
-    strictEmptyByAmbiguity
-      ? 'ambiguity_strict_empty'
-      : clarifyByAmbiguity
-        ? 'ambiguity_clarify'
-        : null,
-    140,
-    queryClass,
-  );
+    (strictEmptyByAmbiguityBase || clarifyByAmbiguityBase);
+  const strictEmptyByAmbiguity = false;
+  const clarifySuggestedByAmbiguity =
+    !brandQueryBypassAmbiguity && (strictEmptyByAmbiguityBase || clarifyByAmbiguityBase);
 
   let clarification = null;
   let finalDecision = 'products_returned';
-  if (strictEmptyByAmbiguity) {
-    filtered = [];
-    finalDecision = 'strict_empty';
-  } else if (clarifyByAmbiguity) {
-    clarification = buildClarification({
-      queryClass,
-      intent,
-      language: intent?.language,
-    });
-    if (FPM_CLARIFY_NEVER_EMPTY && postCandidateCount > 0) {
-      finalDecision = 'products_returned_with_clarification';
-      lowConfidenceReasons.push('clarification_attached_non_blocking');
-    } else {
-      filtered = [];
-      finalDecision = 'clarify';
-    }
+  if (clarifySuggestedByAmbiguity) {
+    finalDecision = 'products_returned';
   }
   after = filtered.length;
 
@@ -3543,9 +3219,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (diversityDebug?.reason === 'beauty_non_tool_min_not_met') {
     reasonCodes.add('BEAUTY_NON_TOOL_MIN_NOT_MET');
   }
-  if (strictEmptyByAmbiguity) reasonCodes.add('AMBIGUITY_STRICT_EMPTY');
-  if (clarifyByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY');
-  if (postQualityHardFail) reasonCodes.add('LOW_CONF_POST');
+  if (clarifySuggestedByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY_SUGGESTED');
+  if (clarifySuggestedByAmbiguity && postQualityTriggered) reasonCodes.add('LOW_CONF_POST');
   if (brandQueryBypassAmbiguity) reasonCodes.add('BRAND_QUERY_BYPASS_AMBIGUITY');
   if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
   if (domainCondenserResult?.debug?.applied) reasonCodes.add('DOMAIN_CONDENSED');
@@ -3574,15 +3249,14 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
                 score_pre: ambiguityScorePre,
                 score_post: ambiguityScorePost,
                 clarify_triggered: Boolean(clarification),
+                clarify_suggested: Boolean(clarifySuggestedByAmbiguity),
                 strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
                 brand_query_detected: Boolean(brandQueryDetected),
                 brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
                 brand_entities: brandEntities,
                 brand_scope: brandScope,
                 query_class: queryClass,
-                query_semantic_class: querySemanticClass,
                 domain_filter_dropped: Number(domainFilterResult?.dropped || 0),
-                domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
                 domain_filter_key: domainFilterResult?.domain_key || null,
                 domain_filter_mode: domainFilterResult?.mode_used || null,
                 domain_filter_pass2: Boolean(domainFilterResult?.pass2_triggered),
@@ -3779,7 +3453,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             strategy_version: STRATEGY_VERSION,
             search_decision: {
               query_class: queryClass,
-              query_semantic_class: querySemanticClass,
               brand_query_detected: Boolean(brandQueryDetected),
               brand_entities: brandEntities,
               brand_scope: brandScope,
@@ -3787,23 +3460,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               ambiguity_score_pre: ambiguityScorePre,
               ambiguity_score_post: ambiguityScorePost,
               clarify_triggered: Boolean(clarification),
+              clarify_suggested: Boolean(clarifySuggestedByAmbiguity),
               strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
               final_decision: finalDecision,
               domain_condenser: domainCondenserResult?.debug || null,
               post_quality: postQuality,
-              low_confidence: lowConfidenceReasons.length > 0,
-              low_confidence_reasons: lowConfidenceReasons,
-              domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
-            },
-            domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
-            gate_trace: gateTrace,
-            gate_summary: {
-              applied_count: gateTrace.filter((item) => item.applied).length,
-              blocked_count: gateTrace.filter((item) => String(item.decision) === 'strict_empty').length,
-              total_cost_ms_estimate: gateTrace.reduce(
-                (sum, item) => sum + Math.max(0, Number(item.cost_ms_estimate || 0) || 0),
-                0,
-              ),
             },
           },
         }
@@ -3813,7 +3474,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             strategy_version: STRATEGY_VERSION,
             search_decision: {
               query_class: queryClass,
-              query_semantic_class: querySemanticClass,
               brand_query_detected: Boolean(brandQueryDetected),
               brand_entities: brandEntities,
               brand_scope: brandScope,
@@ -3821,23 +3481,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               ambiguity_score_pre: ambiguityScorePre,
               ambiguity_score_post: ambiguityScorePost,
               clarify_triggered: Boolean(clarification),
+              clarify_suggested: Boolean(clarifySuggestedByAmbiguity),
               strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
               final_decision: finalDecision,
               domain_condenser: domainCondenserResult?.debug || null,
               post_quality: postQuality,
-              low_confidence: lowConfidenceReasons.length > 0,
-              low_confidence_reasons: lowConfidenceReasons,
-              domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
-            },
-            domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
-            gate_trace: gateTrace,
-            gate_summary: {
-              applied_count: gateTrace.filter((item) => item.applied).length,
-              blocked_count: gateTrace.filter((item) => String(item.decision) === 'strict_empty').length,
-              total_cost_ms_estimate: gateTrace.reduce(
-                (sum, item) => sum + Math.max(0, Number(item.cost_ms_estimate || 0) || 0),
-                0,
-              ),
             },
           },
         }),
