@@ -3037,6 +3037,8 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   const semanticRetryAppliedDerived = Boolean(
     metadata.semantic_retry_applied ||
       routeHealth.semantic_retry_applied ||
+      String(routeHealth.fallback_reason || metadata.fallback_reason || '').trim() ===
+        'semantic_retry_exhausted' ||
       String(metadata?.proxy_search_fallback?.query_variant || '').trim() === 'semantic_retry' ||
       secondaryAttempts.length > 1 ||
       secondaryAttemptCount > 1,
