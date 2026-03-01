@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('crypto');
 const express = require('express');
 const supertest = require('supertest');
 
@@ -4161,10 +4162,66 @@ test('ingredient reco context keeps candidates and injects constraint prompt eve
       lang: 'EN',
       ingredientContext: { goal: 'barrier', sensitivity: 'high', candidates: ['Ceramide NP', 'Panthenol'] },
     });
-    assert.match(prompt, /Ingredient context:/i);
-    assert.match(prompt, /goal=barrier/i);
-    assert.match(prompt, /candidates=/i);
-    assert.match(prompt, /ingredient_context_sparse/i);
+    assert.match(prompt, /"ingredient_context"\s*:/i);
+    assert.match(prompt, /"goal"\s*:\s*"barrier"/i);
+    assert.match(prompt, /"candidates"\s*:\s*\[/i);
+    assert.match(prompt, /Respect ingredient_context strictly/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco prompt contract: query must contain template/system/user blocks and hash must match', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const query = __internal.buildAuroraProductRecommendationsQuery({
+      profile: { skinType: 'combination' },
+      requestText: 'Recommend products for barrier support',
+      lang: 'EN',
+      ingredientContext: { goal: 'barrier', sensitivity: 'high', candidates: ['Ceramide NP'] },
+    });
+    const expectedHash = crypto.createHash('sha1').update(String(query || '')).digest('hex').slice(0, 16);
+    const okResult = __internal.validateRecoPromptContract({
+      query,
+      expectedTemplateId: 'reco_main_v1_0',
+      expectedPromptHash: expectedHash,
+    });
+    assert.equal(okResult.ok, true);
+    assert.equal(Array.isArray(okResult.issues), true);
+    assert.equal(okResult.issues.length, 0);
+    assert.equal(okResult.template_id, 'reco_main_v1_0');
+
+    const badResult = __internal.validateRecoPromptContract({
+      query: String(query || '').replace('USER_PROMPT_JSON:', 'USER_PROMPT_BLOCK:'),
+      expectedTemplateId: 'reco_main_v1_0',
+      expectedPromptHash: expectedHash,
+    });
+    assert.equal(badResult.ok, false);
+    assert.equal(badResult.issues.includes('missing_user_prompt_json_block'), true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco warning visibility contract hides internal-only warning codes from user-visible warnings', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const contract = __internal.applyRecoWarningVisibilityContract({
+      warnings: ['analysis_missing', 'recent_logs_missing', 'over_budget'],
+      missing_info: ['itinerary_unknown', 'price_unknown'],
+    });
+    assert.equal(Array.isArray(contract?.payload?.warning_codes_internal), true);
+    assert.equal(contract.payload.warning_codes_internal.includes('analysis_missing'), true);
+    assert.equal(contract.payload.warning_codes_internal.includes('recent_logs_missing'), true);
+    assert.equal(contract.payload.warning_codes_internal.includes('itinerary_unknown'), true);
+    assert.equal(contract.payload.warning_codes_internal.includes('price_unknown'), true);
+    assert.equal(Array.isArray(contract?.payload?.warning_codes_user_visible), true);
+    assert.equal(contract.payload.warning_codes_user_visible.includes('analysis_missing'), false);
+    assert.equal(contract.payload.warning_codes_user_visible.includes('recent_logs_missing'), false);
+    assert.equal(contract.payload.warning_codes_user_visible.includes('itinerary_unknown'), false);
+    assert.equal(contract.payload.warning_codes_user_visible.includes('over_budget'), true);
+    assert.equal(contract.payload.warning_codes_user_visible.includes('price_unknown'), true);
+    assert.deepEqual(contract.payload.warnings, contract.payload.warning_codes_user_visible);
   } finally {
     delete require.cache[moduleId];
   }

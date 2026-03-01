@@ -18504,6 +18504,121 @@ function formatAuroraPromptQuery({ templateId, systemPrompt, userPayload } = {})
   ].join('\n');
 }
 
+function parsePromptTemplateIdFromQuery(query) {
+  const text = String(query || '');
+  if (!text) return '';
+  const match = text.match(/(?:^|\n)PROMPT_TEMPLATE_ID=([^\n\r]+)/);
+  if (!match || !match[1]) return '';
+  return String(match[1]).trim();
+}
+
+function validateRecoPromptContract({ query, expectedTemplateId = '', expectedPromptHash = '' } = {}) {
+  const text = String(query || '');
+  const issues = [];
+  if (!text.includes('PROMPT_TEMPLATE_ID=')) issues.push('missing_prompt_template_id');
+  if (!text.includes('SYSTEM_PROMPT:')) issues.push('missing_system_prompt_block');
+  if (!text.includes('USER_PROMPT_JSON:')) issues.push('missing_user_prompt_json_block');
+
+  const templateIdInQuery = parsePromptTemplateIdFromQuery(text);
+  if (!templateIdInQuery) {
+    issues.push('template_id_unparseable');
+  } else if (expectedTemplateId && templateIdInQuery !== String(expectedTemplateId).trim()) {
+    issues.push('template_id_mismatch');
+  }
+
+  const promptHashActual = text
+    ? crypto.createHash('sha1').update(text).digest('hex').slice(0, 16)
+    : null;
+  const expectedHashToken = String(expectedPromptHash || '').trim() || null;
+  if (expectedHashToken && promptHashActual !== expectedHashToken) {
+    issues.push('prompt_hash_mismatch');
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+    template_id: templateIdInQuery || null,
+    prompt_hash_actual: promptHashActual,
+    prompt_hash_expected: expectedHashToken,
+  };
+}
+
+const RECO_WARNING_LIKE_CODES = new Set([
+  'over_budget',
+  'price_unknown',
+  'availability_unknown',
+  'recent_logs_missing',
+  'itinerary_unknown',
+  'analysis_missing',
+  'upstream_analysis_missing',
+  'evidence_missing',
+  'upstream_missing_or_unstructured',
+  'upstream_missing_or_empty',
+  'alternatives_partial',
+]);
+
+const RECO_WARNING_INTERNAL_ONLY_CODES = new Set([
+  'analysis_missing',
+  'upstream_analysis_missing',
+  'recent_logs_missing',
+  'itinerary_unknown',
+  'evidence_missing',
+  'upstream_missing_or_unstructured',
+  'upstream_missing_or_empty',
+]);
+
+function splitRecoWarningCodes({ warnings = [], missingInfo = [] } = {}) {
+  const merged = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(warnings),
+      ...asStringArray(missingInfo).filter((code) => RECO_WARNING_LIKE_CODES.has(String(code || '').trim().toLowerCase())),
+    ],
+    16,
+  );
+  const internal = merged.map((code) => String(code || '').trim()).filter(Boolean);
+  const userVisible = internal.filter((code) => !RECO_WARNING_INTERNAL_ONLY_CODES.has(String(code || '').trim().toLowerCase()));
+  return {
+    internal,
+    user_visible: userVisible,
+  };
+}
+
+function applyRecoWarningVisibilityContract(payload) {
+  const base = isPlainObject(payload) ? { ...payload } : {};
+  const split = splitRecoWarningCodes({
+    warnings: base.warnings,
+    missingInfo: base.missing_info,
+  });
+  return {
+    payload: {
+      ...base,
+      warnings: split.user_visible,
+      warning_codes_internal: split.internal,
+      warning_codes_user_visible: split.user_visible,
+    },
+    split,
+  };
+}
+
+function hasItineraryContextForReco(profileSummary) {
+  const profileObj =
+    profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
+      ? profileSummary
+      : null;
+  if (!profileObj) return false;
+  if (String(profileObj.itinerary || '').trim()) return true;
+  const travelPlan =
+    profileObj.travel_plan && typeof profileObj.travel_plan === 'object' && !Array.isArray(profileObj.travel_plan)
+      ? profileObj.travel_plan
+      : null;
+  if (!travelPlan) return false;
+  return Boolean(
+    String(travelPlan.destination || '').trim() ||
+    String(travelPlan.start_date || '').trim() ||
+    String(travelPlan.end_date || '').trim(),
+  );
+}
+
 function normalizeClarificationField(raw) {
   const rawText = String(raw == null ? '' : raw).trim();
   const lowered = rawText.toLowerCase();
@@ -33405,7 +33520,7 @@ async function generateProductRecommendations({
   let answerJson = null;
   const globalStatus = {
     budget_known: Boolean(normalizeBudgetHint(profileSummary && profileSummary.budgetTier)),
-    itinerary_provided: Boolean(String(profileSummary && profileSummary.itinerary ? profileSummary.itinerary : '').trim()),
+    itinerary_provided: hasItineraryContextForReco(profileSummary),
     recent_logs_provided: Array.isArray(recentLogs) && recentLogs.length > 0,
   };
   const query =
@@ -33416,6 +33531,7 @@ async function generateProductRecommendations({
       lang: ctx.lang,
       globalStatus,
       candidates: [],
+      ingredientContext: normalizedIngredientContext,
     });
   const llmTraceCoverage = buildRecoInputCoverage({
     profileSummary,
@@ -33431,79 +33547,45 @@ async function generateProductRecommendations({
     model: null,
     coverage: llmTraceCoverage,
   });
+  const promptContract = validateRecoPromptContract({
+    query,
+    expectedTemplateId: RECO_MAIN_PROMPT_TEMPLATE_ID,
+    expectedPromptHash: llmTraceSeed.prompt_hash,
+  });
+
+  let llmStructured = null;
+  let llmStructuredSource = null;
   const llmStartedAtMs = Date.now();
-
-  try {
-    upstream = await auroraChat({
-      baseUrl: AURORA_DECISION_BASE_URL,
-      query,
-      timeoutMs: RECO_UPSTREAM_TIMEOUT_MS,
-      trace_id: ctx.trace_id,
-      request_id: ctx.request_id,
-      prompt_hash: llmTraceSeed.prompt_hash,
-      prompt_template_id: llmTraceSeed.template_id,
-    });
-    llmLatencyMs = Date.now() - llmStartedAtMs;
-  } catch (err) {
-    llmLatencyMs = Date.now() - llmStartedAtMs;
-    upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
-    if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
-      logger?.warn(
-        {
-          err: err && err.message ? err.message : String(err),
-          code: err && err.code ? err.code : null,
-          normalized_code: upstreamFailureCode || null,
-        },
-        'aurora bff: product reco upstream failed',
-      );
-    }
-  }
-  const llmTrace = {
-    ...llmTraceSeed,
-    latency_ms: llmLatencyMs,
-    cache_hit: false,
-  };
-
-  const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
-  const routine = contextObj ? contextObj.routine : null;
-  contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
-  if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
-    contextMeta.budget = profileSummary.budgetTier;
-  }
-
-  answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['recommendations']) : null;
-  const structuredFallback = getUpstreamStructuredOrJson(upstream);
-  let llmStructured = answerJson;
-  let llmStructuredSource = answerJson ? 'llm_answer_json' : null;
-  if (!llmStructured && routine) {
-    llmStructured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
-    llmStructuredSource = 'llm_context_routine';
-  }
-  if (!llmStructured) {
-    llmStructured = structuredFallback;
-    llmStructuredSource = structuredFallback ? 'llm_structured_fallback' : null;
-  }
-
-  let structured = llmStructured || catalogTransientFallbackStructured;
-  let structuredSource = llmStructured
-    ? 'llm_primary'
-    : catalogTransientFallbackStructured
-      ? 'catalog_transient_fallback'
-      : null;
-
-  if (!structured) {
-    const query =
-      `${prefix}` +
-      buildAuroraProductRecommendationsQuery({
-        profile: profileSummary || {},
-        requestText: userAsk,
-        lang: ctx.lang,
-        ingredientContext: normalizedIngredientContext,
-      });
-
+  if (!promptContract.ok) {
+    llmLatencyMs = 0;
+    upstreamFailureCode = 'PROMPT_CONTRACT_MISMATCH';
+    recordAuroraSkinFlowMetric({ stage: 'reco_prompt_contract_mismatch', hit: true });
+    logger?.warn(
+      {
+        request_id: ctx.request_id,
+        trace_id: ctx.trace_id,
+        prompt_contract_issues: promptContract.issues,
+        expected_template_id: RECO_MAIN_PROMPT_TEMPLATE_ID,
+        actual_template_id: promptContract.template_id,
+        expected_prompt_hash: promptContract.prompt_hash_expected,
+        actual_prompt_hash: promptContract.prompt_hash_actual,
+      },
+      'aurora bff: reco prompt contract mismatch; skip upstream call',
+    );
+  } else {
     try {
-      upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: RECO_UPSTREAM_TIMEOUT_MS });
+      upstream = await auroraChat({
+        baseUrl: AURORA_DECISION_BASE_URL,
+        query,
+        timeoutMs: RECO_UPSTREAM_TIMEOUT_MS,
+        trace_id: ctx.trace_id,
+        request_id: ctx.request_id,
+        prompt_hash: llmTraceSeed.prompt_hash,
+        prompt_template_id: llmTraceSeed.template_id,
+      });
+      llmLatencyMs = Date.now() - llmStartedAtMs;
     } catch (err) {
+      llmLatencyMs = Date.now() - llmStartedAtMs;
       upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
       if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
         logger?.warn(
@@ -33526,18 +33608,34 @@ async function generateProductRecommendations({
 
     answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['recommendations']) : null;
     const structuredFallback = getUpstreamStructuredOrJson(upstream);
-
-    structured = answerJson;
-    structuredSource = answerJson ? 'answer_json' : null;
-    if (!structured && routine) {
-      structured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
-      structuredSource = 'context_routine';
+    llmStructured = answerJson;
+    llmStructuredSource = answerJson ? 'llm_answer_json' : null;
+    if (!llmStructured && routine) {
+      llmStructured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
+      llmStructuredSource = 'llm_context_routine';
     }
-    if (!structured) {
-      structured = structuredFallback;
-      structuredSource = structuredFallback ? 'structured_fallback' : null;
+    if (!llmStructured) {
+      llmStructured = structuredFallback;
+      llmStructuredSource = structuredFallback ? 'llm_structured_fallback' : null;
     }
   }
+
+  const llmTrace = {
+    ...llmTraceSeed,
+    latency_ms: llmLatencyMs,
+    cache_hit: false,
+    prompt_contract_ok: promptContract.ok,
+    ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
+  };
+
+  let structured = llmStructured || catalogStructured || catalogTransientFallbackStructured;
+  let structuredSource = llmStructured
+    ? 'llm_primary'
+    : catalogStructured
+      ? 'catalog_grounded'
+      : catalogTransientFallbackStructured
+        ? 'catalog_transient_fallback'
+        : null;
 
   const upstreamDebug = debug
     ? {
@@ -33733,6 +33831,7 @@ async function generateProductRecommendations({
     return out;
   };
 
+  const itineraryAvailable = hasItineraryContextForReco(profileSummary);
   const itineraryText = profileSummary && typeof profileSummary.itinerary === 'string' ? profileSummary.itinerary.trim() : '';
   const itinerary = itineraryText ? itineraryText.slice(0, 160) : '';
   if (itinerary && Array.isArray(norm.payload?.recommendations)) {
@@ -33817,7 +33916,7 @@ async function generateProductRecommendations({
     },
   };
   const sourceMode = structuredSource === 'llm_primary' ? 'llm_primary' : 'rules_only';
-  norm.payload = {
+  let nextPayload = {
     ...norm.payload,
     source: sourceMode === 'llm_primary' ? 'llm_primary_v1' : 'catalog_transient_fallback',
     recommendation_meta: {
@@ -33826,11 +33925,27 @@ async function generateProductRecommendations({
       trigger_source: normalizedRecoTriggerSource,
       recompute_from_profile_update: recomputeFromProfileUpdateFlag,
       used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-      used_itinerary: Boolean(itinerary),
+      used_itinerary: itineraryAvailable,
       used_safety_flags: false,
+      prompt_contract_ok: promptContract.ok,
       llm_trace: llmTrace,
     },
   };
+  const warningContract = applyRecoWarningVisibilityContract(nextPayload);
+  nextPayload = {
+    ...warningContract.payload,
+    prompt_contract_ok: promptContract.ok,
+    ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
+  };
+  if (normalizedIngredientContext) {
+    const recoCount = Array.isArray(nextPayload.recommendations) ? nextPayload.recommendations.length : 0;
+    nextPayload.constraint_match_summary = {
+      total: recoCount,
+      matched: null,
+      dropped: null,
+    };
+  }
+  norm.payload = nextPayload;
 
   return { norm, upstreamDebug, alternativesDebug, upstreamFailureCode, llmTrace };
 }
@@ -45903,6 +46018,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (constrained.constrained) {
             norm.payload = constrained.payload;
           }
+          norm.payload = {
+            ...norm.payload,
+            constraint_match_summary: {
+              total: Number(constrained.totalCount || 0),
+              matched: Number(constrained.keptCount || 0),
+              dropped: Number(constrained.droppedCount || 0),
+            },
+          };
           if (constrained.droppedCount > 0) {
             norm.field_missing = mergeFieldMissing(norm.field_missing, [
               { field: 'payload.recommendations', reason: 'ingredient_constraint_filtered' },
@@ -46047,6 +46170,20 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
         }
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+        const promptContractOkFromTrace =
+          isPlainObject(upstreamDebug && upstreamDebug.llm_prompt_trace)
+            ? upstreamDebug.llm_prompt_trace.prompt_contract_ok !== false
+            : true;
+        if (isPlainObject(norm?.payload)) {
+          const warningContract = applyRecoWarningVisibilityContract(norm.payload);
+          norm.payload = {
+            ...warningContract.payload,
+            prompt_contract_ok:
+              norm.payload.prompt_contract_ok === false
+                ? false
+                : promptContractOkFromTrace,
+          };
+        }
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
         if (isPlainObject(payload)) {
           payload.recommendation_confidence_level = artifactConfidenceLevel;
@@ -47803,6 +47940,10 @@ const __internal = {
   applyRecoRecentDiversityGuard,
   getRecoRecentExposureTokens,
   updateRecoRecentExposureTokens,
+  parsePromptTemplateIdFromQuery,
+  validateRecoPromptContract,
+  applyRecoWarningVisibilityContract,
+  hasItineraryContextForReco,
   enrichRecoItemWithPdpOpenContract,
   enrichRecommendationsWithPdpOpenContract,
   getPdpPrefetchStateSnapshot,
