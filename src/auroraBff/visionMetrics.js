@@ -531,7 +531,13 @@ function normalizeAuroraIngredientsFlowStage(stage) {
   if (
     token === 'entry_opened' ||
     token === 'mode_selected' ||
+    token === 'text_query_routed' ||
+    token === 'text_route_drift' ||
     token === 'answer_served' ||
+    token === 'research_requested' ||
+    token === 'research_completed' ||
+    token === 'kb_hit' ||
+    token === 'kb_miss' ||
     token === 'optin_diagnosis' ||
     token === 'reco_optin' ||
     token === 'unwanted_diagnosis'
