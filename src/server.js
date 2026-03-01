@@ -5002,6 +5002,9 @@ async function queryFindProductsMultiFallback({
   const fragranceSemanticRetryQuery = isFragranceSemanticRetry
     ? buildFragranceSemanticRetryQuery(baseQueryText)
     : '';
+  const fragranceSemanticRetryFallbackQuery = isFragranceSemanticRetry
+    ? 'fragrance perfume parfum cologne eau de parfum eau de toilette body mist'
+    : '';
   const auroraSemanticRetryQuery = isAuroraSemanticRetry
     ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)[0] || ''
     : '';
@@ -5011,6 +5014,11 @@ async function queryFindProductsMultiFallback({
     normalizeSearchTextForMatch(fragranceSemanticRetryQuery) !== normalizedBaseQuery
   ) {
     semanticRetryQueries.push(fragranceSemanticRetryQuery);
+  } else if (
+    fragranceSemanticRetryFallbackQuery &&
+    normalizeSearchTextForMatch(fragranceSemanticRetryFallbackQuery) !== normalizedBaseQuery
+  ) {
+    semanticRetryQueries.push(fragranceSemanticRetryFallbackQuery);
   } else if (
     auroraSemanticRetryQuery &&
     normalizeSearchTextForMatch(auroraSemanticRetryQuery) !== normalizedBaseQuery
