@@ -3114,6 +3114,11 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       ? fallbackStrategy.secondary_usable_count
       : 0,
   );
+  const bodyProductsForHealth = Array.isArray(body?.products) ? body.products : [];
+  const bodyExternalCountForHealth = bodyProductsForHealth.filter((product) =>
+    isExternalSeedProduct(product),
+  ).length;
+  const bodyInternalCountForHealth = Math.max(0, bodyProductsForHealth.length - bodyExternalCountForHealth);
   routeHealth.orchestrator_path = String(
     routeHealth.orchestrator_path || metadata.orchestrator_path || 'external_invoke_route',
   );
@@ -3190,26 +3195,33 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       ? routeHealth.external_seed_broad_scope_rows
       : metadata.external_seed_broad_scope_rows,
   );
-  routeHealth.internal_raw_count = intNonNegative(
-    routeHealth.internal_raw_count != null
-      ? routeHealth.internal_raw_count
-      : metadata.internal_raw_count != null
-      ? metadata.internal_raw_count
-      : metadata?.source_breakdown?.internal_count,
+  routeHealth.internal_raw_count = Math.max(
+    intNonNegative(
+      routeHealth.internal_raw_count != null
+        ? routeHealth.internal_raw_count
+        : metadata.internal_raw_count != null
+        ? metadata.internal_raw_count
+        : metadata?.source_breakdown?.internal_count,
+    ),
+    bodyInternalCountForHealth,
   );
-  routeHealth.external_raw_count = intNonNegative(
-    routeHealth.external_raw_count != null
-      ? routeHealth.external_raw_count
-      : metadata.external_raw_count != null
-      ? metadata.external_raw_count
-      : metadata?.source_breakdown?.external_seed_count,
+  routeHealth.external_raw_count = Math.max(
+    intNonNegative(
+      routeHealth.external_raw_count != null
+        ? routeHealth.external_raw_count
+        : metadata.external_raw_count != null
+        ? metadata.external_raw_count
+        : metadata?.source_breakdown?.external_seed_count,
+    ),
+    bodyExternalCountForHealth,
   );
-  routeHealth.merged_pre_limit_count = intNonNegative(
+  routeHealth.merged_pre_limit_count = Math.max(
     routeHealth.merged_pre_limit_count != null
-      ? routeHealth.merged_pre_limit_count
+      ? intNonNegative(routeHealth.merged_pre_limit_count)
       : metadata.merged_pre_limit_count != null
-      ? metadata.merged_pre_limit_count
-      : body?.total,
+      ? intNonNegative(metadata.merged_pre_limit_count)
+      : intNonNegative(body?.total),
+    bodyProductsForHealth.length,
   );
   const primaryQualityScoreRaw =
     routeHealth.primary_quality_score != null
@@ -3263,14 +3275,17 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     secondaryAttemptCount,
     semanticRetryAppliedDerived ? 1 : 0,
   );
-  routeHealth.final_returned_count = intNonNegative(
-    routeHealth.final_returned_count != null
-      ? routeHealth.final_returned_count
-      : metadata.final_returned_count != null
-      ? metadata.final_returned_count
-      : Array.isArray(body?.products)
-      ? body.products.length
-      : 0,
+  routeHealth.final_returned_count = Math.max(
+    intNonNegative(
+      routeHealth.final_returned_count != null
+        ? routeHealth.final_returned_count
+        : metadata.final_returned_count != null
+        ? metadata.final_returned_count
+        : Array.isArray(body?.products)
+        ? body.products.length
+        : 0,
+    ),
+    bodyProductsForHealth.length,
   );
   const fallbackReason =
     routeHealth.fallback_reason != null
