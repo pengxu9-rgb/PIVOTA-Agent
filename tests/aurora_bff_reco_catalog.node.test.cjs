@@ -1996,11 +1996,11 @@ test('/v1/chat availability: generic non-whitelist product query short-circuits 
           data: {
             products: [
               {
-                product_id: 'prod_to_niacinamide',
-                merchant_id: 'mid_to',
-                brand: 'The Ordinary',
-                name: 'Niacinamide 10% + Zinc 1%',
-                display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                product_id: 'prod_cerave_foaming_cleanser',
+                merchant_id: 'mid_cerave',
+                brand: 'CeraVe',
+                name: 'Foaming Cleanser',
+                display_name: 'CeraVe Foaming Cleanser',
               },
             ],
           },
@@ -2030,7 +2030,7 @@ test('/v1/chat availability: generic non-whitelist product query short-circuits 
             'X-Lang': 'EN',
           },
           body: {
-            message: 'Do you have The Ordinary Niacinamide 10% + Zinc 1%?',
+            message: 'Do you have CeraVe Foaming Cleanser?',
             session: {
               state: 'idle',
               profile: {
@@ -2218,7 +2218,7 @@ test('/v1/chat availability: generic concrete query uses local resolver on soft-
               product_id: 'prod_generic_local_fallback',
               merchant_id: 'mid_generic_local_fallback',
             },
-            candidates: [{ title: 'The Ordinary Niacinamide 10% + Zinc 1%' }],
+            candidates: [{ title: 'CeraVe Foaming Cleanser' }],
           };
         });
         const { mountAuroraBffRoutes } = loaded;
@@ -2234,7 +2234,7 @@ test('/v1/chat availability: generic concrete query uses local resolver on soft-
             'X-Lang': 'EN',
           },
           body: {
-            message: 'Do you have The Ordinary Niacinamide 10% + Zinc 1%?',
+            message: 'Do you have CeraVe Foaming Cleanser?',
             session: {
               state: 'idle',
               profile: {
