@@ -1535,10 +1535,17 @@ const AURORA_ROUTINE_EVIDENCE_REFS_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
+const RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS || 7000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 7000;
+  return Math.max(3000, Math.min(15000, v));
+})();
+
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 6500);
   const v = Number.isFinite(n) ? Math.trunc(n) : 6500;
-  return Math.max(2000, Math.min(20000, v));
+  const bounded = Math.max(2000, Math.min(20000, v));
+  return Math.min(bounded, RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS);
 })();
 
 const RECO_ALTERNATIVES_UPSTREAM_RETRIES = (() => {
@@ -32901,6 +32908,42 @@ function buildRecoRecommendationDedupeKey(item) {
   return '';
 }
 
+function dedupeRecoRecommendationsStrict(recommendations, { maxItems = 8 } = {}) {
+  const list = Array.isArray(recommendations) ? recommendations : [];
+  const out = [];
+  const seenKeys = new Set();
+  const seenProductIds = new Set();
+  const cap = Number.isFinite(Number(maxItems)) ? Math.max(1, Math.min(12, Math.trunc(Number(maxItems)))) : 8;
+  for (const item of list) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const base = item;
+    const productId = normalizeRecoDedupeToken(
+      pickFirstTrimmed(
+        base.product_id,
+        base.productId,
+        base?.sku?.product_id,
+        base?.sku?.productId,
+        base?.product?.product_id,
+        base?.product?.productId,
+      ),
+    );
+    if (productId) {
+      if (seenProductIds.has(productId)) continue;
+      seenProductIds.add(productId);
+    }
+    const dedupeKey = buildRecoRecommendationDedupeKey(base) || (productId ? `pid:${productId}` : '');
+    if (!dedupeKey) continue;
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
+    out.push({ ...base });
+    if (out.length >= cap) break;
+  }
+  return {
+    recommendations: out,
+    dropped_count: Math.max(0, list.length - out.length),
+  };
+}
+
 function buildRecoAlternativesCacheKey({ inputText, anchorId, productObj, lang } = {}) {
   const langToken = normalizeRecoDedupeToken(lang || 'EN') || 'en';
   const anchorToken = normalizeRecoDedupeToken(anchorId);
@@ -34025,18 +34068,8 @@ async function generateProductRecommendations({
     history_size_after: 0,
   };
   if (Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length) {
-    const deduped = [];
-    const seen = new Set();
-    for (const item of norm.payload.recommendations) {
-      if (!item || typeof item !== 'object') continue;
-      const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
-      const key = buildRecoRecommendationDedupeKey(base);
-      if (!key) continue;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      deduped.push({ ...base, slot: 'other' });
-      if (deduped.length >= 8) break;
-    }
+    const prePdpDeduped = dedupeRecoRecommendationsStrict(norm.payload.recommendations, { maxItems: 8 });
+    const deduped = prePdpDeduped.recommendations.map((row) => ({ ...row, slot: 'other' }));
     const limited = limitRecoKnownTestSeedRecommendations(deduped);
     recoSeedFilterInfo = {
       applied: Boolean(limited.applied),
@@ -34193,14 +34226,16 @@ async function generateProductRecommendations({
     logger,
     fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
   });
+  const pdpDeduped = dedupeRecoRecommendationsStrict(pdpOpenOut.recommendations, { maxItems: 8 });
   norm.payload = {
     ...norm.payload,
-    recommendations: pdpOpenOut.recommendations,
+    recommendations: pdpDeduped.recommendations,
     metadata: {
       ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
       pdp_open_path_stats: pdpOpenOut.path_stats,
       resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
       time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+      reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
     },
   };
   const sourceMode = structuredSource === 'llm_primary' ? 'llm_primary' : 'rules_only';
