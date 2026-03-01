@@ -702,6 +702,9 @@ const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
   return Math.max(3000, Math.min(20000, v));
 })();
+const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI = String(
+  process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro',
+).trim() || 'gemini-3-pro';
 const AURORA_INGREDIENT_CIRCUIT_OPEN_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_OPEN_MS || 90000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
@@ -13388,6 +13391,7 @@ async function callGeminiJsonObject({
   temperature = 0,
   maxOutputTokens = null,
   responseJsonSchema = null,
+  allowDiagForceModel = true,
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -13396,10 +13400,14 @@ async function callGeminiJsonObject({
       reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
     };
   }
+  const resolvedModel =
+    allowDiagForceModel && AURORA_DIAG_FORCE_GEMINI
+      ? AURORA_DIAG_FORCE_GEMINI_MODEL
+      : model || ANALYSIS_STORY_MODEL_GEMINI;
   try {
     const resp = await withTimeout(
       gemini.client.models.generateContent({
-        model: AURORA_DIAG_FORCE_GEMINI ? AURORA_DIAG_FORCE_GEMINI_MODEL : model || ANALYSIS_STORY_MODEL_GEMINI,
+        model: resolvedModel,
         contents: [
           {
             role: 'user',
@@ -13431,14 +13439,16 @@ async function callGeminiJsonObject({
         ok: false,
         reason: 'gemini_json_invalid',
         raw_text: typeof text === 'string' ? text : null,
+        resolved_model: resolvedModel,
       };
     }
-    return { ok: true, json: parsed };
+    return { ok: true, json: parsed, resolved_model: resolvedModel };
   } catch (err) {
     return {
       ok: false,
       reason: err && err.code ? String(err.code) : 'gemini_error',
       detail: err && err.message ? String(err.message) : null,
+      resolved_model: resolvedModel,
     };
   }
 }
@@ -31061,18 +31071,52 @@ function mapRoutineActiveTokenToIngredientQuery(token, language = 'EN') {
   return '';
 }
 
+function stripIngredientLookupLeadIn(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  return raw
+    .replace(/^(check|analyze|analyse|lookup|look\s*up|research|find|inspect|review)\s*[:：-]?\s*/i, '')
+    .replace(/^(what\s+is|tell\s+me\s+about|can\s+you\s+analyze)\s*/i, '')
+    .replace(/^(查|查询|查一下|帮我查|分析|看一下|看看)\s*/i, '')
+    .trim();
+}
+
+function ingredientIsLikelyLookupText(message) {
+  const raw = String(message || '').trim();
+  if (!raw) return false;
+  if (/\b(ingredient|inci|lookup|effect|safety|benefit|evidence)\b/i.test(raw)) return true;
+  if (/(成分|功效|安全|机制|证据|刺激)/.test(raw)) return true;
+  const stripped = stripIngredientLookupLeadIn(raw);
+  const words = stripped.split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 6) return false;
+  if (
+    /[a-z]/i.test(stripped) &&
+    /(acid|amide|ate|ene|one|ol|yl|retin|niacin|ceramide|peptide|salicyl|azelaic|tranexamic|octocrylene|butyloctyl|ethylhexyl|avobenzone)/i.test(
+      stripped,
+    )
+  ) {
+    return true;
+  }
+  if (/[\u4e00-\u9fff]/.test(stripped) && /(酸|酰胺|醇|肽|酯|维c|烟酰胺|神经酰胺|视黄醇|壬二酸|水杨酸)/.test(stripped)) {
+    return true;
+  }
+  return looksLikeFreeTextIngredientName(stripped);
+}
+
 function extractIngredientLookupTargetFromText(message, language = 'EN') {
   const raw = String(message || '').trim();
   if (!raw) return '';
+  const stripped = stripIngredientLookupLeadIn(raw);
+  if (!stripped) return '';
   const lang = language === 'CN' ? 'CN' : 'EN';
 
-  const knownActives = extractKnownActivesFromText(raw, lang);
+  const knownActives = extractKnownActivesFromText(stripped, lang);
   for (const token of knownActives) {
     const mapped = mapRoutineActiveTokenToIngredientQuery(token, lang);
     if (mapped) return String(mapped).slice(0, 120);
   }
 
-  const ontologyHits = matchIngredientOntology({ text: raw, language: lang, max: 8 });
+  const ontologyHits = matchIngredientOntology({ text: stripped, language: lang, max: 8 });
   const ontologyPreferred = pickFirstTrimmed(
     ...ontologyHits
       .map((row) => (row && typeof row === 'object' ? row.matched_text : ''))
@@ -31080,7 +31124,7 @@ function extractIngredientLookupTargetFromText(message, language = 'EN') {
   );
   if (ontologyPreferred) return String(ontologyPreferred).slice(0, 120);
 
-  const normalized = normalizeIngredientLookupToken(raw);
+  const normalized = normalizeIngredientLookupToken(stripped);
   const normalizedQuery = mapIngredientLookupTokenToQuery(normalized, lang);
   if (normalizedQuery) return String(normalizedQuery).slice(0, 120);
 
@@ -31091,7 +31135,7 @@ function extractIngredientLookupTargetFromText(message, language = 'EN') {
   );
   if (ontologyAny) return String(ontologyAny).slice(0, 120);
 
-  if (looksLikeFreeTextIngredientName(raw)) return raw.slice(0, 120);
+  if (looksLikeFreeTextIngredientName(stripped)) return stripped.slice(0, 120);
   return '';
 }
 
@@ -31136,19 +31180,51 @@ function normalizeIngredientResearchKey(raw) {
     .trim();
 }
 
-function classifyIngredientProviderError(reason) {
-  const token = String(reason || '').trim().toLowerCase();
+function classifyIngredientProviderError(reason, detail = '') {
+  const token = `${String(reason || '').trim()} ${String(detail || '').trim()}`.trim().toLowerCase();
   if (!token) return 'provider_unavailable';
-  if (token.includes('timeout')) return 'gemini_timeout';
+  if (
+    token.includes('timeout') ||
+    token.includes('deadline') ||
+    token.includes('timed out') ||
+    token.includes('gemini_json_timeout')
+  ) {
+    return 'gemini_timeout';
+  }
   if (token.includes('rate') || token.includes('quota') || token.includes('429')) return 'gemini_rate_limited';
-  if (token.includes('auth') || token.includes('key') || token.includes('permission') || token.includes('401') || token.includes('403')) {
+  if (
+    token.includes('auth') ||
+    token.includes('key') ||
+    token.includes('permission') ||
+    token.includes('invalid_api_key') ||
+    token.includes('unauthenticated') ||
+    token.includes('401') ||
+    token.includes('403')
+  ) {
     return 'gemini_auth';
   }
   if (token.includes('json')) return 'gemini_invalid_json';
-  if (token.includes('network') || token.includes('socket') || token.includes('dns') || token.includes('econn') || token.includes('enotfound')) {
+  if (
+    token.includes('network') ||
+    token.includes('socket') ||
+    token.includes('dns') ||
+    token.includes('econn') ||
+    token.includes('enotfound') ||
+    token.includes('connection reset') ||
+    token.includes('failed to fetch')
+  ) {
     return 'gemini_network';
   }
-  if (token.includes('5xx') || token.includes('500') || token.includes('502') || token.includes('503') || token.includes('504') || token.includes('upstream')) {
+  if (
+    token.includes('5xx') ||
+    token.includes('500') ||
+    token.includes('502') ||
+    token.includes('503') ||
+    token.includes('504') ||
+    token.includes('internal') ||
+    token.includes('unavailable') ||
+    token.includes('upstream')
+  ) {
     return 'gemini_upstream_5xx';
   }
   return 'gemini_unknown';
@@ -32036,7 +32112,10 @@ async function runIngredientResearchSync({
   logger = null,
 } = {}) {
   const provider = 'gemini';
-  const modelTier = 'flash';
+  const resolvedModel = AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI;
+  const modelTier = /pro/i.test(String(resolvedModel || '')) ? 'pro' : 'flash';
+  let effectiveModel = resolvedModel;
+  let effectiveModelTier = modelTier;
   const providerAttempts = [];
   const startedAt = Date.now();
   const circuitState = getIngredientProviderCircuitState();
@@ -32053,6 +32132,7 @@ async function runIngredientResearchSync({
     return {
       ok: false,
       provider,
+      resolved_model: resolvedModel,
       provider_model_tier: modelTier,
       provider_circuit_state: circuitState,
       research_error_code: reason === 'provider_unavailable' ? 'provider_unavailable' : reason,
@@ -32087,15 +32167,21 @@ async function runIngredientResearchSync({
     const callTimeoutMs = Math.max(800, Math.min(AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS, remainingBudget));
     const callStartedAt = Date.now();
     const resp = await callGeminiJsonObjectImpl({
-      model: ANALYSIS_STORY_MODEL_GEMINI,
+      model: resolvedModel,
       systemPrompt: prompt.systemPrompt,
       userPrompt: prompt.userPrompt,
       timeoutMs: callTimeoutMs,
       temperature: 0.3,
       maxOutputTokens: 700,
       responseJsonSchema: prompt.responseJsonSchema,
+      allowDiagForceModel: false,
     });
     const latencyMs = Math.max(0, Date.now() - callStartedAt);
+    const attemptModel = pickFirstTrimmed(resp && resp.resolved_model, effectiveModel);
+    if (attemptModel) {
+      effectiveModel = attemptModel;
+      effectiveModelTier = /pro/i.test(String(attemptModel || '')) ? 'pro' : 'flash';
+    }
     if (resp && resp.ok && resp.json && typeof resp.json === 'object' && !Array.isArray(resp.json)) {
       const parsed = sanitizeIngredientResearchOutput(resp.json, {
         query,
@@ -32114,7 +32200,8 @@ async function runIngredientResearchSync({
       return {
         ok: true,
         provider,
-        provider_model_tier: modelTier,
+        resolved_model: effectiveModel,
+        provider_model_tier: effectiveModelTier,
         provider_circuit_state: getIngredientProviderCircuitState(),
         research: parsed,
         provider_attempts: providerAttempts,
@@ -32126,7 +32213,7 @@ async function runIngredientResearchSync({
         },
       };
     }
-    const reasonCode = classifyIngredientProviderError(resp && resp.reason);
+    const reasonCode = classifyIngredientProviderError(resp && resp.reason, resp && resp.detail);
     const recoveredParsed = resp && typeof resp.raw_text === 'string'
       ? sanitizeIngredientResearchOutput(extractResearchObjectFromRawText(resp.raw_text), {
         query,
@@ -32147,7 +32234,8 @@ async function runIngredientResearchSync({
       return {
         ok: true,
         provider,
-        provider_model_tier: modelTier,
+        resolved_model: effectiveModel,
+        provider_model_tier: effectiveModelTier,
         provider_circuit_state: getIngredientProviderCircuitState(),
         research: recoveredParsed,
         provider_attempts: providerAttempts,
@@ -32163,6 +32251,9 @@ async function runIngredientResearchSync({
       provider,
       outcome: 'error',
       reason_code: reasonCode,
+      reason_raw: pickFirstTrimmed(resp && resp.reason, null),
+      detail_raw: pickFirstTrimmed(resp && resp.detail, null),
+      resolved_model: attemptModel || effectiveModel || null,
       latency_ms: latencyMs,
     });
     recordAuroraIngredientProviderMetric({ stage: 'attempt', provider, outcome: reasonCode });
@@ -32194,7 +32285,8 @@ async function runIngredientResearchSync({
       ingredient_query: String(query || '').slice(0, 120),
       normalized_query: String(normalizedQuery || '').slice(0, 120),
       provider,
-      provider_model_tier: modelTier,
+      resolved_model: effectiveModel,
+      provider_model_tier: effectiveModelTier,
       provider_circuit_state: afterCircuitState,
       research_error_code: finalErrorCode,
       attempts: providerAttempts,
@@ -32204,7 +32296,8 @@ async function runIngredientResearchSync({
   return {
     ok: false,
     provider,
-    provider_model_tier: modelTier,
+    resolved_model: effectiveModel,
+    provider_model_tier: effectiveModelTier,
     provider_circuit_state: afterCircuitState,
     research_error_code: finalErrorCode,
     research: fallback,
@@ -32286,6 +32379,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
         job_id: jobId,
         schema_version: 'v2-lite',
         provider: syncResult && syncResult.provider ? syncResult.provider : 'gemini',
+        resolved_model: syncResult && syncResult.resolved_model ? syncResult.resolved_model : AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
         provider_model_tier: syncResult && syncResult.provider_model_tier ? syncResult.provider_model_tier : 'flash',
         provider_circuit_state: syncResult && syncResult.provider_circuit_state ? syncResult.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResult && syncResult.research_error_code ? syncResult.research_error_code : null,
@@ -32489,6 +32583,11 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     metaObj.provider_model_tier,
     researchObj && researchObj.provider_model_tier,
     'flash',
+  );
+  const resolvedModel = pickFirstTrimmed(
+    metaObj.resolved_model,
+    researchObj && researchObj.resolved_model,
+    AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
   );
   const providerCircuitState = pickFirstTrimmed(
     metaObj.provider_circuit_state,
@@ -32759,8 +32858,9 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
       ? String(Math.trunc(Number(researchObj && researchObj.updated_at_ms)))
       : null,
     ),
-    provider_model_tier: providerModelTier || 'flash',
+    provider_model_tier: providerModelTier || (/pro/i.test(String(resolvedModel || '')) ? 'pro' : 'flash'),
     provider_circuit_state: providerCircuitState || 'closed',
+    resolved_model: resolvedModel || null,
     research_attempts: providerAttempts,
     ingredient: {
       inci: pickFirstTrimmed(researchIngredient.inci, picked.inci, inputName),
@@ -32870,6 +32970,7 @@ async function buildIngredientReportPayloadWithResearch({
         ...syncPayload,
         status: syncResearch && syncResearch.ok ? 'ready' : 'fallback',
         provider: syncResearch && syncResearch.provider ? syncResearch.provider : 'gemini',
+        resolved_model: syncResearch && syncResearch.resolved_model ? syncResearch.resolved_model : AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
         provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : 'flash',
         provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
@@ -32904,6 +33005,7 @@ async function buildIngredientReportPayloadWithResearch({
       route_rule_version: pickFirstTrimmed(metaObj.route_rule_version, INGREDIENT_ROUTE_RULE_VERSION),
       provider_model_tier: pickFirstTrimmed(metaObj.provider_model_tier, resolvedResearch && resolvedResearch.provider_model_tier),
       provider_circuit_state: pickFirstTrimmed(metaObj.provider_circuit_state, resolvedResearch && resolvedResearch.provider_circuit_state),
+      resolved_model: pickFirstTrimmed(metaObj.resolved_model, resolvedResearch && resolvedResearch.resolved_model, AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI),
       research_provider: pickFirstTrimmed(metaObj.research_provider, resolvedResearch && resolvedResearch.provider),
       research_error_code: pickFirstTrimmed(
         metaObj.research_error_code,
