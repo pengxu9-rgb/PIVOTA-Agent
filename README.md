@@ -1,5 +1,8 @@
 # Pivota Shopping Agent
 
+> Archived backend mirror (read-only).  
+> Active backend source is `/Users/pengchydan/dev/Pivota-cursor-create-project-directory-structure-8344/PIVOTA-Agent-hotfix`.
+
 A unified gateway for AI-powered shopping experiences, integrating with Pivota Infrastructure, ACP (Agentic Commerce Protocol), and AP2 (Agent Payments Protocol).
 
 ## Overview

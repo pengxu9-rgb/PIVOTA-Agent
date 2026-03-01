@@ -14,6 +14,10 @@ fail() {
   exit 1
 }
 
+if [[ "${ALLOW_WT_WORKSPACE:-0}" != "1" ]]; then
+  fail "_wt_backend_gate_v1 is archived read-only. Run tests from /Users/pengchydan/dev/Pivota-cursor-create-project-directory-structure-8344/PIVOTA-Agent-hotfix instead."
+fi
+
 probe_readable() {
   local target="$1"
   if command -v python3 >/dev/null 2>&1; then
