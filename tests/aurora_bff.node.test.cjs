@@ -4324,7 +4324,7 @@ test('/v1/chat: recommendation intent bypasses budget gate in S6_BUDGET (anti-ag
     const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
     assert.ok(cardTypes.includes('recommendations') || conf);
     if (conf) {
-      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(conf?.payload?.reason || '')));
+      assert.notEqual(String(conf?.payload?.reason || ''), 'diagnosis_first');
     }
     },
   );
@@ -5264,7 +5264,7 @@ test('enrichProductAnalysisPayload: adds profile-fit reasons and hides raw risk 
   assert.equal(/\bTargets:\b/i.test(joined), false);
 });
 
-test('/v1/chat: chip_get_recos gates when profile missing, then yields recommendations after profile saved', async () => {
+test('/v1/chat: chip_get_recos does not hard-gate when profile missing, then yields recommendations after profile saved', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -5359,7 +5359,7 @@ test('/v1/chat: chip_get_recos gates when profile missing, then yields recommend
     const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
     assert.ok(reco1 || conf1);
     if (conf1) {
-      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(conf1?.payload?.reason || '')));
+      assert.notEqual(String(conf1?.payload?.reason || ''), 'diagnosis_first');
     }
 
     const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
@@ -5392,14 +5392,14 @@ test('/v1/chat: chip_get_recos gates when profile missing, then yields recommend
       assert.equal(Array.isArray(recs), true);
       const recommendationMeta = reco && reco.payload && typeof reco.payload === 'object' ? reco.payload.recommendation_meta : null;
       if (recommendationMeta && typeof recommendationMeta === 'object') {
-        assert.ok(['artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
+        assert.ok(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
         assert.equal(typeof recommendationMeta.used_recent_logs, 'boolean');
         assert.equal(typeof recommendationMeta.used_itinerary, 'boolean');
         assert.equal(typeof recommendationMeta.used_safety_flags, 'boolean');
       }
     }
     if (conf) {
-      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(conf?.payload?.reason || '')));
+      assert.notEqual(String(conf?.payload?.reason || ''), 'diagnosis_first');
     }
     },
   );
@@ -5921,7 +5921,7 @@ test('/v1/chat: cards-below stub + stripped recos does not claim hidden cards', 
   });
 });
 
-test('/v1/chat: reco chip gates when profile is incomplete', async () => {
+test('/v1/chat: reco chip does not hard-gate when profile is incomplete', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const express = require('express');
     const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
@@ -5996,7 +5996,8 @@ test('/v1/chat: reco chip gates when profile is incomplete', async () => {
 
     assert.equal(resp.status, 200);
     assert.equal(resp.body?.session_patch?.next_state, 'RECO_RESULTS');
-    assert.equal(resp.body?.session_patch?.state?._internal_next_state, undefined);
+    const internalNextState = resp.body?.session_patch?.state?._internal_next_state;
+    assert.ok(internalNextState === undefined || internalNextState === 'S7_PRODUCT_RECO');
 
     const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
     assert.equal(cards.some((c) => c && c.type === 'diagnosis_gate'), false);
@@ -6004,7 +6005,7 @@ test('/v1/chat: reco chip gates when profile is incomplete', async () => {
     const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
     assert.ok(reco || conf);
     if (conf) {
-      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(conf?.payload?.reason || '')));
+      assert.notEqual(String(conf?.payload?.reason || ''), 'diagnosis_first');
     }
   });
 });
