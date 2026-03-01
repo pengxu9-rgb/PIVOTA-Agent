@@ -160,6 +160,12 @@ const auroraIngredientsFirstAnswerLatency = {
 };
 const auroraSkinAnalysisRealModelCounter = new Map();
 const auroraSkinLlmCallCounter = new Map();
+const auroraSkinLlmSchemaViolationCounter = new Map();
+const auroraSkinLlmRetryCounter = new Map();
+const auroraSkinLlmRetrySuccessCounter = new Map();
+const auroraSkinMainlineProviderCounter = new Map();
+const auroraSkinFallbackDeterministicCounter = new Map();
+let auroraSkinShadowVerifyIsolatedWriteCount = 0;
 const auroraRecoLlmCallCounter = new Map();
 let recoAlternativesBudgetExhaustedTotal = 0;
 let recoAlternativesTimeoutTotal = 0;
@@ -621,6 +627,16 @@ function normalizeAuroraLlmCallOutcome(outcome) {
   return 'skip';
 }
 
+function normalizeAuroraSkinMainlineProvider(provider) {
+  const token = cleanMetricToken(provider, 'gemini');
+  if (token === 'gemini' || token === 'openai' || token === 'unknown') return token;
+  return 'unknown';
+}
+
+function normalizeAuroraSkinFallbackReason(reason) {
+  return cleanMetricToken(reason, 'unknown');
+}
+
 function normalizeAuroraRecoLlmStage(stage) {
   const token = cleanMetricToken(stage, 'main');
   if (token === 'main' || token === 'alternatives') return token;
@@ -637,7 +653,8 @@ function normalizeAuroraRecoLlmCallOutcome(outcome) {
     token === 'prompt_contract_mismatch' ||
     token === 'provider_error' ||
     token === 'timeout' ||
-    token === 'empty_structured'
+    token === 'empty_structured' ||
+    token === 'empty_structured_clarify'
   ) {
     return token;
   }
@@ -2104,6 +2121,72 @@ function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
   );
 }
 
+function recordAuroraSkinLlmSchemaViolation({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinLlmSchemaViolationCounter,
+    {
+      reason: normalizeAuroraSkinFallbackReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinLlmRetry({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinLlmRetryCounter,
+    {
+      reason: normalizeAuroraSkinFallbackReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinLlmRetrySuccess({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinLlmRetrySuccessCounter,
+    {
+      reason: normalizeAuroraSkinFallbackReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinMainlineProvider({ provider, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinMainlineProviderCounter,
+    {
+      provider: normalizeAuroraSkinMainlineProvider(provider),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinFallbackDeterministic({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinFallbackDeterministicCounter,
+    {
+      reason: normalizeAuroraSkinFallbackReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinShadowVerifyIsolatedWrite({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  auroraSkinShadowVerifyIsolatedWriteCount += amount;
+}
+
 function recordAuroraRecoLlmCall({ stage, outcome, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -2920,6 +3003,30 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
+  lines.push('# HELP aurora_skin_llm_schema_violation_total Total skin LLM schema/content validation violations.');
+  lines.push('# TYPE aurora_skin_llm_schema_violation_total counter');
+  renderCounter(lines, 'aurora_skin_llm_schema_violation_total', auroraSkinLlmSchemaViolationCounter);
+
+  lines.push('# HELP aurora_skin_llm_retry_total Total skin LLM retry attempts after validation failure.');
+  lines.push('# TYPE aurora_skin_llm_retry_total counter');
+  renderCounter(lines, 'aurora_skin_llm_retry_total', auroraSkinLlmRetryCounter);
+
+  lines.push('# HELP aurora_skin_llm_retry_success_total Total successful retries after skin LLM validation failure.');
+  lines.push('# TYPE aurora_skin_llm_retry_success_total counter');
+  renderCounter(lines, 'aurora_skin_llm_retry_success_total', auroraSkinLlmRetrySuccessCounter);
+
+  lines.push('# HELP aurora_skin_mainline_provider_total Mainline skin provider usage (expected gemini-only).');
+  lines.push('# TYPE aurora_skin_mainline_provider_total counter');
+  renderCounter(lines, 'aurora_skin_mainline_provider_total', auroraSkinMainlineProviderCounter);
+
+  lines.push('# HELP aurora_skin_fallback_deterministic_total Deterministic fallback counts by reason.');
+  lines.push('# TYPE aurora_skin_fallback_deterministic_total counter');
+  renderCounter(lines, 'aurora_skin_fallback_deterministic_total', auroraSkinFallbackDeterministicCounter);
+
+  lines.push('# HELP aurora_skin_shadow_verify_isolated_write_total Shadow verify isolated write count.');
+  lines.push('# TYPE aurora_skin_shadow_verify_isolated_write_total counter');
+  lines.push(`aurora_skin_shadow_verify_isolated_write_total ${auroraSkinShadowVerifyIsolatedWriteCount}`);
+
   lines.push('# HELP aurora_reco_llm_call_total Total recommendation LLM call decisions grouped by stage and outcome.');
   lines.push('# TYPE aurora_reco_llm_call_total counter');
   renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
@@ -3271,6 +3378,12 @@ function resetVisionMetrics() {
   }
   auroraSkinAnalysisRealModelCounter.clear();
   auroraSkinLlmCallCounter.clear();
+  auroraSkinLlmSchemaViolationCounter.clear();
+  auroraSkinLlmRetryCounter.clear();
+  auroraSkinLlmRetrySuccessCounter.clear();
+  auroraSkinMainlineProviderCounter.clear();
+  auroraSkinFallbackDeterministicCounter.clear();
+  auroraSkinShadowVerifyIsolatedWriteCount = 0;
   auroraRecoLlmCallCounter.clear();
   recoAlternativesBudgetExhaustedTotal = 0;
   recoAlternativesTimeoutTotal = 0;
@@ -3435,6 +3548,12 @@ function snapshotVisionMetrics() {
     },
     auroraSkinAnalysisRealModel: Array.from(auroraSkinAnalysisRealModelCounter.entries()),
     auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
+    auroraSkinLlmSchemaViolation: Array.from(auroraSkinLlmSchemaViolationCounter.entries()),
+    auroraSkinLlmRetry: Array.from(auroraSkinLlmRetryCounter.entries()),
+    auroraSkinLlmRetrySuccess: Array.from(auroraSkinLlmRetrySuccessCounter.entries()),
+    auroraSkinMainlineProvider: Array.from(auroraSkinMainlineProviderCounter.entries()),
+    auroraSkinFallbackDeterministic: Array.from(auroraSkinFallbackDeterministicCounter.entries()),
+    auroraSkinShadowVerifyIsolatedWriteCount,
     auroraRecoLlmCall: Array.from(auroraRecoLlmCallCounter.entries()),
     recoAlternativesBudgetExhaustedTotal,
     recoAlternativesTimeoutTotal,
@@ -3560,6 +3679,12 @@ module.exports = {
   observeAuroraIngredientsFirstAnswerLatency,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
+  recordAuroraSkinLlmSchemaViolation,
+  recordAuroraSkinLlmRetry,
+  recordAuroraSkinLlmRetrySuccess,
+  recordAuroraSkinMainlineProvider,
+  recordAuroraSkinFallbackDeterministic,
+  recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraRecoLlmCall,
   recordRecoAlternativesBudgetExhausted,
   recordRecoAlternativesTimeout,
