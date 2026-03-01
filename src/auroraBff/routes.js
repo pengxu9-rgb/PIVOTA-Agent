@@ -29762,40 +29762,64 @@ async function buildIngredientReportPayloadWithResearch({ language, query } = {}
     };
   }
 
-  const provider = resolveQaSingleProvider(null);
-  if (!resolveQaProviderAvailability(provider)) {
+  const primaryProvider = resolveQaSingleProvider(null);
+  const providers = [];
+  if (resolveQaProviderAvailability(primaryProvider)) providers.push(primaryProvider);
+  if (primaryProvider !== 'openai' && resolveQaProviderAvailability('openai')) providers.push('openai');
+  if (primaryProvider !== 'gemini' && resolveQaProviderAvailability('gemini')) providers.push('gemini');
+  if (!providers.length) {
     recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
     return {
       ...basePayload,
       research_status: 'provider_unavailable',
+      research_error_code: 'provider_unavailable',
       updated_at_ms: Date.now(),
     };
   }
 
   recordAuroraIngredientsFlowMetric({ stage: 'research_requested', hit: true });
-  const callFn = provider === 'openai' ? callOpenAiJsonObject : callGeminiJsonObjectImpl;
-  const model = provider === 'openai' ? ANALYSIS_STORY_MODEL_OPENAI : ANALYSIS_STORY_MODEL_GEMINI;
-  const llmResult = await callFn({
-    model,
-    systemPrompt: buildIngredientLlmSystemPrompt(language),
-    userPrompt: buildIngredientLlmUserPrompt({ query: ingredientQuery, language }),
-    timeoutMs: AURORA_INGREDIENT_LLM_REPORT_TIMEOUT_MS,
-    maxTokens: 1200,
-    temperature: 0.1,
-  });
-  if (!(llmResult && llmResult.ok && isPlainObject(llmResult.json))) {
+  const systemPrompt = buildIngredientLlmSystemPrompt(language);
+  const userPrompt = buildIngredientLlmUserPrompt({ query: ingredientQuery, language });
+  let successPayload = null;
+  let lastErrorCode = 'unknown';
+
+  for (const provider of providers) {
+    const callFn = provider === 'openai' ? callOpenAiJsonObject : callGeminiJsonObjectImpl;
+    const model = provider === 'openai' ? ANALYSIS_STORY_MODEL_OPENAI : ANALYSIS_STORY_MODEL_GEMINI;
+    const llmResult = await callFn({
+      model,
+      systemPrompt,
+      userPrompt,
+      timeoutMs: AURORA_INGREDIENT_LLM_REPORT_TIMEOUT_MS,
+      maxTokens: 1200,
+      temperature: 0.1,
+    });
+    if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
+      successPayload = llmResult.json;
+      break;
+    }
+    lastErrorCode = pickFirstTrimmed(
+      llmResult && llmResult.reason,
+      llmResult && llmResult.error,
+      llmResult && llmResult.detail,
+      `${provider}_failed`,
+    );
+  }
+
+  if (!successPayload) {
     recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: false });
     recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
     return {
       ...basePayload,
       research_status: 'fallback',
+      research_error_code: String(lastErrorCode || 'unknown').slice(0, 80),
       updated_at_ms: Date.now(),
     };
   }
 
   recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: true });
   recordAuroraIngredientsFlowMetric({ stage: 'kb_hit', hit: true });
-  return mergeIngredientReportWithLlm(basePayload, llmResult.json, language);
+  return mergeIngredientReportWithLlm(basePayload, successPayload, language);
 }
 
 function messageContainsSpecificIngredientScienceTarget(message) {
@@ -40532,6 +40556,117 @@ function mountAuroraBffRoutes(app, { logger }) {
             { routeSource: 'chip', lookupQuery: ingredientLookupTarget },
           ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_report' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      if (ingredientRecoOptInRequested && !ingredientDiagnosisOptInRequested) {
+        const candidateIngredients = asArray(ingredientActionData && ingredientActionData.ingredient_candidates)
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+          .slice(0, 5);
+        const recoLookupQuery = pickFirstTrimmed(
+          ingredientActionData && ingredientActionData.ingredient_query,
+          ingredientActionData && ingredientActionData.lookup_query,
+          ingredientActionData && ingredientActionData.ingredient,
+          candidateIngredients[0],
+          ingredientLookupQuery,
+          ingredientLookupTargetFromText,
+        );
+        const goalToken = pickFirstTrimmed(ingredientActionData && ingredientActionData.ingredient_goal);
+        const sensitivityToken = pickFirstTrimmed(ingredientActionData && ingredientActionData.ingredient_sensitivity);
+
+        if (recoLookupQuery) {
+          const reportPayload = await buildIngredientReportPayloadWithResearch({
+            language: ctx.lang,
+            query: recoLookupQuery,
+          });
+          const ingredientName =
+            pickFirstTrimmed(
+              reportPayload?.ingredient?.display_name,
+              reportPayload?.ingredient?.inci,
+              recoLookupQuery,
+            ) || recoLookupQuery;
+          const topProducts = asArray(reportPayload?.top_products);
+          const assistantText =
+            ctx.lang === 'CN'
+              ? topProducts.length > 0
+                ? `已基于 ${ingredientName} 生成成分报告，并补充了相关产品候选（${topProducts.length} 个）。`
+                : `已基于 ${ingredientName} 生成成分报告；当前可用产品候选不足，建议补充预算/地区后再筛选。`
+              : topProducts.length > 0
+                ? `I generated an ingredient report for ${ingredientName} and added related product candidates (${topProducts.length}).`
+                : `I generated an ingredient report for ${ingredientName}; product candidates are limited now, add budget/region for better matching.`;
+          requestMessage = 'ingredient_reco_optin_report';
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(assistantText),
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `ingredient_report_${ctx.request_id}`,
+                type: 'aurora_ingredient_report',
+                payload: reportPayload,
+              },
+            ],
+            session_patch: attachIngredientRouteMetaToSessionPatch(
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+              { routeSource: 'chip', lookupQuery: recoLookupQuery },
+            ),
+            events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_reco_optin_report' })],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        if (goalToken) {
+          const goalPayload = buildIngredientGoalMatchPayload({
+            language: ctx.lang,
+            goal: goalToken,
+            sensitivity: sensitivityToken || 'unknown',
+          });
+          const assistantText =
+            ctx.lang === 'CN'
+              ? `先按“${goalPayload.goal_label}”给你整理候选成分，再继续筛产品。`
+              : `I mapped candidate ingredients for “${goalPayload.goal_label}” first, then we can narrow products.`;
+          requestMessage = 'ingredient_reco_optin_goal_match';
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(assistantText),
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `ingredient_goal_match_${ctx.request_id}`,
+                type: 'ingredient_goal_match',
+                payload: goalPayload,
+              },
+            ],
+            session_patch: attachIngredientRouteMetaToSessionPatch(
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+              { routeSource: 'chip' },
+            ),
+            events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_reco_optin_goal_match' })],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        const hubPayload = buildIngredientHubCardPayload({ language: ctx.lang });
+        const assistantText =
+          ctx.lang === 'CN'
+            ? '请先给我一个具体成分或功效目标，我再返回更相关的产品候选。'
+            : 'Share a specific ingredient or goal first, then I will return more relevant product candidates.';
+        requestMessage = 'ingredient_reco_optin_hub';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `ingredient_hub_${ctx.request_id}`,
+              type: 'ingredient_hub',
+              payload: hubPayload,
+            },
+          ],
+          session_patch: attachIngredientRouteMetaToSessionPatch(
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            { routeSource: 'chip' },
+          ),
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_reco_optin_hub' })],
         });
         return sendChatEnvelope(envelope);
       }
