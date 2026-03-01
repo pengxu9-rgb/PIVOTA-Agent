@@ -1348,6 +1348,15 @@ const AURORA_INGREDIENT_PLAN_ENABLED = (() => {
   const raw = String(process.env.AURORA_INGREDIENT_PLAN_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_INGREDIENT_LLM_REPORT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_LLM_REPORT_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_INGREDIENT_LLM_REPORT_MAX_PRODUCTS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_LLM_REPORT_MAX_PRODUCTS || 5);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5;
+  return Math.max(1, Math.min(8, v));
+})();
 const AURORA_PRODUCT_MATCHER_ENABLED = (() => {
   const raw = String(process.env.AURORA_PRODUCT_MATCHER_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -12888,6 +12897,7 @@ async function callOpenAiJsonObject({
     };
   }
 }
+let callOpenAiJsonObjectImpl = callOpenAiJsonObject;
 
 async function callGeminiJsonObject({
   model,
@@ -29547,6 +29557,367 @@ function buildIngredientReportPayload({ language, query } = {}) {
   };
 }
 
+function normalizeIngredientReportEvidenceGrade(value, fallback = 'unknown') {
+  const token = String(value || '')
+    .trim()
+    .toUpperCase();
+  if (token === 'A' || token === 'B' || token === 'C') return token;
+  if (token === 'UNKNOWN') return 'unknown';
+  return fallback;
+}
+
+function normalizeIngredientReportRisk(value, fallback = 'unknown') {
+  const token = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (token === 'low' || token === 'medium' || token === 'high' || token === 'unknown') return token;
+  return fallback;
+}
+
+function normalizeIngredientReportStringArray(values, max = 6) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((row) => String(row || '').trim())
+    .filter(Boolean)
+    .slice(0, Math.max(1, Math.trunc(Number(max) || 6)));
+}
+
+function normalizeIngredientReportCitations(citations) {
+  if (!Array.isArray(citations)) return [];
+  const out = [];
+  for (const row of citations) {
+    if (out.length >= 8) break;
+    if (typeof row === 'string') {
+      const url = row.trim();
+      if (!url) continue;
+      out.push({ title: url, url });
+      continue;
+    }
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const title = pickFirstTrimmed(row.title, row.source, row.journal, row.name);
+    const url = pickFirstTrimmed(row.url, row.source_url, row.link);
+    const year = Number.isFinite(Number(row.year)) ? Math.trunc(Number(row.year)) : null;
+    if (!title && !url) continue;
+    out.push({
+      ...(title ? { title } : {}),
+      ...(url ? { url } : {}),
+      ...(year ? { year } : {}),
+    });
+  }
+  return out;
+}
+
+function normalizeIngredientReportTopProducts(products, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (!Array.isArray(products)) return [];
+  const out = [];
+  for (const row of products) {
+    if (out.length >= AURORA_INGREDIENT_LLM_REPORT_MAX_PRODUCTS) break;
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const name = pickFirstTrimmed(row.name, row.product_name, row.title);
+    if (!name) continue;
+    const tierRaw = String(pickFirstTrimmed(row.price_tier, row.price_band) || '').toLowerCase();
+    const priceTier = tierRaw === 'budget' || tierRaw === 'mid' || tierRaw === 'premium' ? tierRaw : 'unknown';
+    out.push({
+      name,
+      ...(pickFirstTrimmed(row.brand) ? { brand: pickFirstTrimmed(row.brand) } : {}),
+      ...(pickFirstTrimmed(row.category) ? { category: pickFirstTrimmed(row.category) } : {}),
+      ...(pickFirstTrimmed(row.why, row.rationale, row.reason)
+        ? { why: pickFirstTrimmed(row.why, row.rationale, row.reason) }
+        : {
+            why:
+              lang === 'CN'
+                ? '与该成分方向相关，建议结合个人耐受度与预算再筛选。'
+                : 'Relevant to this ingredient direction; refine by tolerance and budget before final pick.',
+          }),
+      ...(priceTier !== 'unknown' ? { price_tier: priceTier } : {}),
+      ...(pickFirstTrimmed(row.pdp_url, row.url) ? { pdp_url: pickFirstTrimmed(row.pdp_url, row.url) } : {}),
+    });
+  }
+  return out;
+}
+
+function buildIngredientLlmSystemPrompt(language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (lang === 'CN') {
+    return (
+      '你是资深皮肤学成分研究助手。' +
+      '返回严格 JSON，不要 markdown，不要额外解释。' +
+      '只给证据审慎、可执行建议，避免诊断结论。'
+    );
+  }
+  return (
+    'You are a senior dermatology ingredient research assistant. ' +
+    'Return strict JSON only, no markdown, no extra prose. ' +
+    'Provide evidence-aware actionable guidance and avoid diagnostic claims.'
+  );
+}
+
+function buildIngredientLlmUserPrompt({ query, language = 'EN' } = {}) {
+  const ingredientName = String(query || '').trim();
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (lang === 'CN') {
+    return (
+      `成分：${ingredientName}\n` +
+      '返回 JSON：\n' +
+      '{\n' +
+      '  "ingredient":{"inci":"","display_name":"","aliases":[]},\n' +
+      '  "verdict":{"one_liner":"","top_benefits":[],"evidence_grade":"A|B|C|unknown","irritation_risk":"low|medium|high|unknown","time_to_results":"","confidence":0.0},\n' +
+      '  "benefits":[{"concern":"","strength":1-3,"what_it_means":""}],\n' +
+      '  "how_to_use":{"frequency":"","routine_step":"","pair_well":[],"consider_separating":[],"notes":[]},\n' +
+      '  "watchouts":[{"issue":"","likelihood":"low|medium|high|unknown","what_to_do":""}],\n' +
+      '  "evidence":{"summary":"","citations":[{"title":"","url":"","year":2024}]},\n' +
+      '  "top_products":[{"name":"","brand":"","category":"","price_tier":"budget|mid|premium","why":"","pdp_url":""}]\n' +
+      '}\n' +
+      '要求：不确定时用 unknown；citations 尽量给可访问 URL；top_products 给 3-5 个。'
+    );
+  }
+  return (
+    `Ingredient: ${ingredientName}\n` +
+    'Return JSON:\n' +
+    '{\n' +
+    '  "ingredient":{"inci":"","display_name":"","aliases":[]},\n' +
+    '  "verdict":{"one_liner":"","top_benefits":[],"evidence_grade":"A|B|C|unknown","irritation_risk":"low|medium|high|unknown","time_to_results":"","confidence":0.0},\n' +
+    '  "benefits":[{"concern":"","strength":1-3,"what_it_means":""}],\n' +
+    '  "how_to_use":{"frequency":"","routine_step":"","pair_well":[],"consider_separating":[],"notes":[]},\n' +
+    '  "watchouts":[{"issue":"","likelihood":"low|medium|high|unknown","what_to_do":""}],\n' +
+    '  "evidence":{"summary":"","citations":[{"title":"","url":"","year":2024}]},\n' +
+    '  "top_products":[{"name":"","brand":"","category":"","price_tier":"budget|mid|premium","why":"","pdp_url":""}]\n' +
+    '}\n' +
+    'Rules: use unknown when uncertain; citations should prefer accessible URLs; include 3-5 top_products.'
+  );
+}
+
+function normalizeIngredientResearchErrorCode({ provider, reason, detail } = {}) {
+  const normalizedProvider = String(provider || '')
+    .trim()
+    .toLowerCase();
+  if (normalizedProvider !== 'gemini') return 'gemini_unknown';
+  const reasonText = String(reason || '')
+    .trim()
+    .toLowerCase();
+  const detailText = String(detail || '')
+    .trim()
+    .toLowerCase();
+  const merged = `${reasonText} ${detailText}`.trim();
+  if (
+    reasonText === 'gemini_json_timeout' ||
+    merged.includes('timeout') ||
+    merged.includes('timed out') ||
+    merged.includes('etimedout')
+  ) {
+    return 'gemini_timeout';
+  }
+  if (
+    merged.includes('invalid_api_key') ||
+    merged.includes('unauthorized') ||
+    merged.includes('permission') ||
+    merged.includes('forbidden') ||
+    merged.includes('auth') ||
+    merged.includes('status 401') ||
+    merged.includes(' 401')
+  ) {
+    return 'gemini_auth';
+  }
+  if (
+    merged.includes('rate_limited') ||
+    merged.includes('resource_exhausted') ||
+    merged.includes('too_many_requests') ||
+    merged.includes('quota') ||
+    merged.includes('status 429') ||
+    merged.includes(' 429')
+  ) {
+    return 'gemini_rate_limited';
+  }
+  if (reasonText === 'gemini_json_invalid' || merged.includes('invalid json') || merged.includes('malformed json')) {
+    return 'gemini_invalid_json';
+  }
+  return 'gemini_unknown';
+}
+
+function buildIngredientResearchAttempt({ provider, llmResult } = {}) {
+  const normalizedProvider = String(provider || '')
+    .trim()
+    .toLowerCase();
+  const safeProvider = normalizedProvider === 'gemini' || normalizedProvider === 'openai' ? normalizedProvider : 'unknown';
+  if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
+    return {
+      provider: safeProvider,
+      outcome: 'ok',
+      reason_code: 'ok',
+    };
+  }
+  return {
+    provider: safeProvider,
+    outcome: 'error',
+    reason_code: normalizeIngredientResearchErrorCode({
+      provider: safeProvider,
+      reason: llmResult && llmResult.reason,
+      detail: llmResult && llmResult.detail,
+    }),
+  };
+}
+
+function mergeIngredientReportWithLlm(basePayload, llmPayload, language = 'EN') {
+  const base = isPlainObject(basePayload) ? basePayload : {};
+  const llm = isPlainObject(llmPayload) ? llmPayload : {};
+  const llmIngredient = isPlainObject(llm.ingredient) ? llm.ingredient : {};
+  const llmVerdict = isPlainObject(llm.verdict) ? llm.verdict : {};
+  const llmHowToUse = isPlainObject(llm.how_to_use) ? llm.how_to_use : {};
+  const llmEvidence = isPlainObject(llm.evidence) ? llm.evidence : {};
+  const citations = normalizeIngredientReportCitations(llmEvidence.citations);
+  const topProducts = normalizeIngredientReportTopProducts(llm.top_products, language);
+  const confidenceRaw = Number(llmVerdict.confidence);
+  const confidence = Number.isFinite(confidenceRaw)
+    ? Math.max(0, Math.min(1, confidenceRaw))
+    : Number(base?.verdict?.confidence || 0.65);
+
+  return {
+    ...base,
+    ingredient: {
+      ...(isPlainObject(base.ingredient) ? base.ingredient : {}),
+      ...(pickFirstTrimmed(llmIngredient.inci) ? { inci: pickFirstTrimmed(llmIngredient.inci) } : {}),
+      ...(pickFirstTrimmed(llmIngredient.display_name) ? { display_name: pickFirstTrimmed(llmIngredient.display_name) } : {}),
+      ...(Array.isArray(llmIngredient.aliases) ? { aliases: normalizeIngredientReportStringArray(llmIngredient.aliases, 8) } : {}),
+    },
+    verdict: {
+      ...(isPlainObject(base.verdict) ? base.verdict : {}),
+      ...(pickFirstTrimmed(llmVerdict.one_liner) ? { one_liner: pickFirstTrimmed(llmVerdict.one_liner) } : {}),
+      ...(Array.isArray(llmVerdict.top_benefits) ? { top_benefits: normalizeIngredientReportStringArray(llmVerdict.top_benefits, 4) } : {}),
+      evidence_grade: normalizeIngredientReportEvidenceGrade(llmVerdict.evidence_grade, normalizeIngredientReportEvidenceGrade(base?.verdict?.evidence_grade, 'unknown')),
+      irritation_risk: normalizeIngredientReportRisk(llmVerdict.irritation_risk, normalizeIngredientReportRisk(base?.verdict?.irritation_risk, 'unknown')),
+      ...(pickFirstTrimmed(llmVerdict.time_to_results) ? { time_to_results: pickFirstTrimmed(llmVerdict.time_to_results) } : {}),
+      confidence,
+    },
+    ...(Array.isArray(llm.benefits) ? { benefits: llm.benefits.slice(0, 6) } : {}),
+    ...(Array.isArray(llm.watchouts) ? { watchouts: llm.watchouts.slice(0, 6) } : {}),
+    how_to_use: {
+      ...(isPlainObject(base.how_to_use) ? base.how_to_use : {}),
+      ...(pickFirstTrimmed(llmHowToUse.frequency) ? { frequency: pickFirstTrimmed(llmHowToUse.frequency) } : {}),
+      ...(pickFirstTrimmed(llmHowToUse.routine_step) ? { routine_step: pickFirstTrimmed(llmHowToUse.routine_step) } : {}),
+      ...(Array.isArray(llmHowToUse.pair_well) ? { pair_well: normalizeIngredientReportStringArray(llmHowToUse.pair_well, 8) } : {}),
+      ...(Array.isArray(llmHowToUse.consider_separating)
+        ? { consider_separating: normalizeIngredientReportStringArray(llmHowToUse.consider_separating, 8) }
+        : {}),
+      ...(Array.isArray(llmHowToUse.notes) ? { notes: normalizeIngredientReportStringArray(llmHowToUse.notes, 8) } : {}),
+    },
+    evidence: {
+      ...(isPlainObject(base.evidence) ? base.evidence : {}),
+      ...(pickFirstTrimmed(llmEvidence.summary) ? { summary: pickFirstTrimmed(llmEvidence.summary) } : {}),
+      citations,
+      show_citations_by_default: citations.length > 0,
+    },
+    research_status: 'ready',
+    top_products: topProducts,
+    updated_at_ms: Date.now(),
+  };
+}
+
+async function buildIngredientReportPayloadWithResearch({ language, query } = {}) {
+  const basePayload = buildIngredientReportPayload({ language, query });
+  const ingredientQuery = pickFirstTrimmed(query);
+  if (!ingredientQuery) return basePayload;
+  if (!AURORA_INGREDIENT_LLM_REPORT_ENABLED) {
+    return {
+      ...basePayload,
+      research_status: 'disabled',
+      research_provider: null,
+      research_attempts: [],
+      updated_at_ms: Date.now(),
+    };
+  }
+
+  const providers = pickQaProvidersForMode({
+    mode: AURORA_LLM_QA_MODE,
+    singleProvider: AURORA_LLM_SINGLE_PROVIDER,
+    allowOpenAiFallback: false,
+  }).filter((provider) => provider === 'gemini');
+  if (!providers.length) {
+    recordAuroraIngredientsFlowMetric({
+      stage: 'research_provider_final',
+      provider: 'none',
+      hit: false,
+    });
+    recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
+    return {
+      ...basePayload,
+      research_status: 'provider_unavailable',
+      research_provider: null,
+      research_attempts: [],
+      research_error_code: 'provider_unavailable',
+      updated_at_ms: Date.now(),
+    };
+  }
+
+  recordAuroraIngredientsFlowMetric({ stage: 'research_requested', hit: true });
+  const systemPrompt = buildIngredientLlmSystemPrompt(language);
+  const userPrompt = buildIngredientLlmUserPrompt({ query: ingredientQuery, language });
+  const researchAttempts = [];
+  let successPayload = null;
+  let successProvider = null;
+  let finalErrorCode = 'gemini_unknown';
+  let finalProvider = 'gemini';
+
+  for (const provider of providers) {
+    const callFn = provider === 'openai' ? callOpenAiJsonObjectImpl : callGeminiJsonObjectImpl;
+    const model = provider === 'openai' ? ANALYSIS_STORY_MODEL_OPENAI : ANALYSIS_STORY_MODEL_GEMINI;
+    const llmResult = await callFn({
+      model,
+      systemPrompt,
+      userPrompt,
+      // Ingredient deep-research removes local short timeout to avoid false fallback under Gemini latency spikes.
+      timeoutMs: null,
+      maxTokens: 1200,
+      temperature: 0.1,
+    });
+    const attempt = buildIngredientResearchAttempt({ provider, llmResult });
+    researchAttempts.push(attempt);
+    recordAuroraIngredientsFlowMetric({
+      stage: 'research_provider_attempt',
+      provider,
+      hit: attempt.outcome === 'ok',
+    });
+    if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
+      successPayload = llmResult.json;
+      successProvider = provider;
+      break;
+    }
+    finalErrorCode = attempt.reason_code || 'gemini_unknown';
+    finalProvider = provider;
+  }
+
+  if (!successPayload) {
+    recordAuroraIngredientsFlowMetric({
+      stage: 'research_provider_final',
+      provider: finalProvider || 'none',
+      hit: false,
+    });
+    recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: false });
+    recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
+    return {
+      ...basePayload,
+      research_status: 'fallback',
+      research_provider: finalProvider || null,
+      research_attempts: researchAttempts.slice(0, 3),
+      research_error_code: String(finalErrorCode || 'gemini_unknown').slice(0, 80),
+      updated_at_ms: Date.now(),
+    };
+  }
+
+  recordAuroraIngredientsFlowMetric({
+    stage: 'research_provider_final',
+    provider: successProvider || 'none',
+    hit: true,
+  });
+  recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: true });
+  recordAuroraIngredientsFlowMetric({ stage: 'kb_hit', hit: true });
+  const mergedPayload = mergeIngredientReportWithLlm(basePayload, successPayload, language);
+  return {
+    ...mergedPayload,
+    research_provider: successProvider || null,
+    research_attempts: researchAttempts.slice(0, 3),
+  };
+}
 function messageContainsSpecificIngredientScienceTarget(message) {
   const raw = String(message || '').trim();
   if (!raw) return false;
@@ -43793,6 +44164,13 @@ const __internal = {
   __resetCallGeminiJsonObjectForTest() {
     callGeminiJsonObjectImpl = callGeminiJsonObject;
   },
+  __setCallOpenAiJsonObjectForTest(fn) {
+    callOpenAiJsonObjectImpl = typeof fn === 'function' ? fn : callOpenAiJsonObject;
+  },
+  __resetCallOpenAiJsonObjectForTest() {
+    callOpenAiJsonObjectImpl = callOpenAiJsonObject;
+  },
+  buildIngredientReportPayloadWithResearch,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };
