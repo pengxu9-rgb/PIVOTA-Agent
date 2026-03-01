@@ -32243,13 +32243,12 @@ async function generateProductRecommendations({
     llmStructuredSource = structuredFallback ? 'llm_structured_fallback' : null;
   }
 
-  const structured = llmStructured || catalogTransientFallbackStructured;
-  const structuredSource = llmStructured
+  let structured = llmStructured || catalogTransientFallbackStructured;
+  let structuredSource = llmStructured
     ? 'llm_primary'
     : catalogTransientFallbackStructured
       ? 'catalog_transient_fallback'
       : null;
-  let answerJson = null;
 
   if (!structured) {
     const query =
@@ -42044,9 +42043,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientGoalRequest = ingredientByGoalRequested
         ? extractIngredientGoalRequest(normalizedActionPayload)
         : { goal: '', sensitivity: 'unknown' };
-      const ingredientRecoContext = ingredientRecoOptInRequested
-        ? extractIngredientRecoContext(normalizedActionPayload)
-        : null;
       const ingredientActionData = extractActionDataObject(normalizedActionPayload);
       const sessionMetaInput =
         parsed.data &&
@@ -46418,7 +46414,6 @@ const __internal = {
   __resetCallOpenAiJsonObjectForTest() {
     callOpenAiJsonObjectImpl = callOpenAiJsonObject;
   },
-  buildIngredientReportPayloadWithResearch,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };
