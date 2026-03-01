@@ -1552,6 +1552,24 @@ const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   return Math.min(bounded, RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS);
 })();
 
+const RECO_ALTERNATIVES_ANCHOR_PRECHECK_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHOR_PRECHECK_TIMEOUT_MS || 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1000;
+  return Math.max(300, Math.min(3000, v));
+})();
+
+const RECO_ALTERNATIVES_REFRESH_DELAY_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_REFRESH_DELAY_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  return Math.max(300, Math.min(6000, v));
+})();
+
+const RECO_ALTERNATIVES_REFRESH_CACHE_TTL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_REFRESH_CACHE_TTL_MS || 5 * 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5 * 60 * 1000;
+  return Math.max(20 * 1000, Math.min(30 * 60 * 1000, v));
+})();
+
 const RECO_ALTERNATIVES_UPSTREAM_RETRIES = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_UPSTREAM_RETRIES || 0);
   const v = Number.isFinite(n) ? Math.trunc(n) : 0;
@@ -1937,6 +1955,8 @@ const DUPE_DEEPSCAN_CACHE_TTL_MS = (() => {
 })();
 
 const dupeDeepscanCache = new Map();
+const recoAlternativesRefreshCache = new Map();
+const recoAlternativesRefreshInFlight = new Set();
 const photoBytesCache = new Map();
 const pdpPrefetchRecentMap = new Map();
 const recoRecentExposureState = new Map();
@@ -1985,6 +2005,39 @@ function setDupeDeepscanCache(key, value) {
     const oldestKey = dupeDeepscanCache.keys().next().value;
     if (!oldestKey) break;
     dupeDeepscanCache.delete(oldestKey);
+  }
+}
+
+function makeRecoAlternativesRefreshKey({ anchorId, productInput, lang, maxTotal } = {}) {
+  const anchor = String(anchorId || '').trim().toLowerCase();
+  const input = String(productInput || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 220);
+  const language = normalizeRecoPromptLanguage(lang);
+  const limit = Number.isFinite(Number(maxTotal)) ? Math.max(1, Math.min(8, Math.trunc(Number(maxTotal)))) : 6;
+  if (!anchor && !input) return '';
+  return `alt:${language}:${limit}:${stableHashBase36(`${anchor}::${input}`).slice(0, 20)}`;
+}
+
+function getRecoAlternativesRefreshCache(key) {
+  if (!key) return null;
+  const entry = recoAlternativesRefreshCache.get(key);
+  if (!entry) return null;
+  if (!entry.expiresAt || entry.expiresAt <= Date.now()) {
+    recoAlternativesRefreshCache.delete(key);
+    return null;
+  }
+  return entry.value || null;
+}
+
+function setRecoAlternativesRefreshCache(key, value) {
+  if (!key || !value || typeof value !== 'object') return;
+  recoAlternativesRefreshCache.set(key, {
+    value,
+    expiresAt: Date.now() + RECO_ALTERNATIVES_REFRESH_CACHE_TTL_MS,
+  });
+  while (recoAlternativesRefreshCache.size > 400) {
+    const oldestKey = recoAlternativesRefreshCache.keys().next().value;
+    if (!oldestKey) break;
+    recoAlternativesRefreshCache.delete(oldestKey);
   }
 }
 
@@ -33339,83 +33392,60 @@ async function fetchRecoAlternativesForProduct({
   budget = null,
   debug,
   logger,
+  options,
 }) {
+  const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+  const disableFallback = opts.disable_fallback === true;
+  const disableAsyncRefresh = opts.disable_async_refresh === true;
+  const skipAnchorPrecheck = opts.skip_anchor_precheck === true;
+  const preferRefreshCache = opts.prefer_refresh_cache !== false;
+
   const inputText = String(productInput || '').trim();
-  const anchor = anchorId ? String(anchorId).trim() : '';
-  const bestInput = inputText || anchor;
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
+  let anchor = anchorId ? String(anchorId).trim() : '';
+  const bestInput = inputText || anchor;
+  let refreshKey = makeRecoAlternativesRefreshKey({
+    anchorId: anchor || null,
+    productInput: bestInput,
+    lang: ctx.lang,
+    maxTotal,
+  });
+
+  if (preferRefreshCache && refreshKey) {
+    const cached = getRecoAlternativesRefreshCache(refreshKey);
+    if (cached && Array.isArray(cached.alternatives) && cached.alternatives.length) {
+      return {
+        ok: true,
+        alternatives: cached.alternatives.slice(0, Math.max(1, Math.min(8, Number(maxTotal) || 6))),
+        field_missing: [],
+        source_mode: 'llm',
+        fallback_source: 'refresh_cache',
+        refresh_pending: false,
+        refresh_after_ms: 0,
+        failure_class: null,
+        attempt_count: 0,
+        ...(cached.llm_trace ? { llm_trace: cached.llm_trace } : {}),
+      };
+    }
+  }
+
   if (!bestInput) {
     recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
-    return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }] };
-  }
-  const alternativesCacheKey = buildRecoAlternativesCacheKey({
-    inputText: bestInput,
-    anchorId: anchor,
-    productObj,
-    lang: ctx.lang,
-  });
-  const hotCacheHit = readRecoAlternativesCache(alternativesCacheKey);
-  if (hotCacheHit && Array.isArray(hotCacheHit.alternatives) && hotCacheHit.alternatives.length) {
-    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
-    const cachedTrace = hotCacheHit.llm_trace && typeof hotCacheHit.llm_trace === 'object'
-      ? {
-        ...hotCacheHit.llm_trace,
-        cache_hit: true,
-        latency_ms: 0,
-      }
-      : {
-        template_id: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
-        prompt_hash: null,
-        prompt_chars: 0,
-        token_est: 0,
-        latency_ms: 0,
-        cache_hit: true,
-        provider: 'aurora',
-        model: null,
-      };
     return {
-      ok: true,
-      alternatives: hotCacheHit.alternatives,
-      field_missing: [],
-      ...(debug
-        ? {
-          debug: {
-            input: bestInput.slice(0, 200),
-            anchor_id: anchor || null,
-            cache_hit: true,
-            cache_age_ms: hotCacheHit.age_ms,
-          },
-        }
-        : {}),
-      llm_trace: cachedTrace,
-    };
-  }
-
-  const profileSnapshot = buildAlternativesProfileSnapshot(
-    profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : {},
-  );
-  const candidates = buildRecoAlternativesCandidatePool({
-    sharedCandidates: candidatePool,
-    productObj,
-    anchorId: anchor,
-    maxCandidates: 20,
-  });
-  if (!candidates.length) {
-    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
-    recordRecoAlternativesEmpty();
-    return {
-      ok: true,
+      ok: false,
       alternatives: [],
-      no_result_reason: 'no_candidates',
-      field_missing: [{ field: 'alternatives', reason: 'no_candidates' }],
-      timeout_root_cause: 'unknown',
+      field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }],
+      source_mode: 'local_fallback',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: 'precheck_fail',
+      attempt_count: 0,
     };
   }
 
-  const configuredBudgetMs = Math.max(1200, AURORA_BFF_CHAT_RECO_BUDGET_MS - RECO_ALTERNATIVES_OVERHEAD_MS);
-  const budgetClampedTimeoutMs = Math.max(1200, Math.min(RECO_ALTERNATIVES_TIMEOUT_MS, configuredBudgetMs));
-  const budgetDeadlineMs = Number.isFinite(Number(budget && budget.deadline_ms))
-    ? Number(budget && budget.deadline_ms)
+  const budgetDeadlineMs = budget && Number.isFinite(Number(budget.deadline_ms))
+    ? Number(budget.deadline_ms)
     : null;
   const remainingBudgetMs = Number.isFinite(budgetDeadlineMs)
     ? Math.max(0, Math.trunc(budgetDeadlineMs - Date.now()))
@@ -33426,15 +33456,202 @@ async function fetchRecoAlternativesForProduct({
     return {
       ok: true,
       alternatives: [],
-      no_result_reason: 'alternatives_budget_exhausted',
       field_missing: [{ field: 'alternatives', reason: 'alternatives_budget_exhausted' }],
+      source_mode: 'local_fallback',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: 'budget_exhausted',
+      attempt_count: 0,
+      no_result_reason: 'alternatives_budget_exhausted',
       timeout_root_cause: 'budget_exceeded',
     };
   }
-  const effectiveAlternativesTimeoutMs = Number.isFinite(remainingBudgetMs)
-    ? Math.max(1200, Math.min(budgetClampedTimeoutMs, remainingBudgetMs - RECO_ALTERNATIVES_OVERHEAD_MS))
-    : budgetClampedTimeoutMs;
 
+  const mapFallbackCandidateToAlternative = (row, kind = 'similar') => {
+    const candidate = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+    if (!candidate) return null;
+    const displayName = pickFirstTrimmed(candidate.display_name, candidate.displayName, candidate.name);
+    if (!displayName) return null;
+    const product = {
+      brand: pickFirstTrimmed(candidate.brand) || null,
+      name: displayName,
+      product_id: pickFirstTrimmed(candidate.product_id, candidate.productId, candidate.sku_id, candidate.skuId) || null,
+      sku_id: pickFirstTrimmed(candidate.sku_id, candidate.skuId, candidate.product_id, candidate.productId) || null,
+    };
+    const scoreRaw = Number.isFinite(Number(candidate.similarity_score))
+      ? Number(candidate.similarity_score)
+      : Number.isFinite(Number(candidate.similarity))
+        ? Number(candidate.similarity)
+        : null;
+    const score = scoreRaw == null ? null : scoreRaw > 1 ? Math.max(0, Math.min(100, Math.round(scoreRaw))) : Math.round(scoreRaw * 100);
+    const reasons = Array.isArray(candidate.why_candidate?.reasons_user_visible)
+      ? candidate.why_candidate.reasons_user_visible
+      : Array.isArray(candidate.reasons)
+        ? candidate.reasons
+        : [];
+    return {
+      kind: kind === 'dupe' || kind === 'premium' ? kind : 'similar',
+      product,
+      ...(score != null ? { similarity: score } : {}),
+      reasons: reasons.slice(0, 2).map((x) => String(x || '').trim()).filter(Boolean),
+      tradeoffs: Array.isArray(candidate.compare_highlights) ? candidate.compare_highlights.slice(0, 2) : [],
+      evidence: {
+        science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+        social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+        expert_notes: [],
+        confidence: score == null ? null : Math.max(0, Math.min(1, score / 100)),
+        missing_info: ['local_fallback_seed'],
+      },
+      missing_info: ['local_fallback_seed'],
+    };
+  };
+
+  const buildLocalFallbackAlternatives = async ({ failureClass }) => {
+    const maxItems = Number.isFinite(Number(maxTotal)) ? Math.max(1, Math.min(8, Math.trunc(Number(maxTotal)))) : 6;
+    const out = [];
+    let fallbackSource = 'synthetic';
+    if (anchor) {
+      try {
+        const kbKey = normalizeDupeKbKey(`id:${anchor}`);
+        const kbEntry = kbKey ? await getDupeKbEntry(kbKey) : null;
+        if (kbEntry && kbEntry.verified === true) {
+          for (const row of Array.isArray(kbEntry.dupes) ? kbEntry.dupes : []) {
+            const mappedAlt = mapFallbackCandidateToAlternative(row, 'dupe');
+            if (!mappedAlt) continue;
+            out.push(mappedAlt);
+            if (out.length >= maxItems) break;
+          }
+          if (out.length < maxItems) {
+            for (const row of Array.isArray(kbEntry.comparables) ? kbEntry.comparables : []) {
+              const mappedAlt = mapFallbackCandidateToAlternative(row, 'similar');
+              if (!mappedAlt) continue;
+              out.push(mappedAlt);
+              if (out.length >= maxItems) break;
+            }
+          }
+          if (out.length) fallbackSource = 'kb';
+        }
+      } catch {
+        // ignore kb fallback errors
+      }
+    }
+    if (!out.length) {
+      const base = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
+      const brand = pickFirstTrimmed(base.brand, base.manufacturer) || null;
+      const name = pickFirstTrimmed(base.display_name, base.displayName, base.name, inputText, anchor) || null;
+      const prefixName = name || (ctx.lang === 'CN' ? '护肤替代候选' : 'Skincare alternative candidate');
+      const templates = [
+        { kind: 'dupe', score: 78, title: ctx.lang === 'CN' ? `${prefixName}（平替）` : `${prefixName} (budget dupe)` },
+        { kind: 'similar', score: 74, title: ctx.lang === 'CN' ? `${prefixName}（相似）` : `${prefixName} (similar option)` },
+        { kind: 'premium', score: 70, title: ctx.lang === 'CN' ? `${prefixName}（升级）` : `${prefixName} (premium option)` },
+      ];
+      for (const row of templates) {
+        out.push({
+          kind: row.kind,
+          product: { brand, name: row.title, product_id: null, sku_id: null },
+          similarity: row.score,
+          reasons: [ctx.lang === 'CN' ? '先给出可用替代项，后台继续刷新更完整结果。' : 'Returning immediate alternatives while richer results refresh in background.'],
+          tradeoffs: [`fallback_reason: ${failureClass || 'upstream_unavailable'}`],
+          evidence: {
+            science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+            social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+            expert_notes: [],
+            confidence: Math.max(0, Math.min(1, row.score / 100)),
+            missing_info: ['local_fallback_seed'],
+          },
+          missing_info: ['local_fallback_seed'],
+        });
+        if (out.length >= maxItems) break;
+      }
+    }
+    return { alternatives: out.slice(0, maxItems), fallback_source: fallbackSource };
+  };
+
+  let anchorPrecheck = null;
+  if (!anchor && !skipAnchorPrecheck) {
+    try {
+      const startedAt = Date.now();
+      const resolved = await resolveAvailabilityProductByLocalResolver({
+        query: bestInput,
+        lang: String(ctx.lang || '').toLowerCase() === 'cn' ? 'cn' : 'en',
+        timeoutMs: RECO_ALTERNATIVES_ANCHOR_PRECHECK_TIMEOUT_MS,
+        logger,
+      });
+      const resolvedAnchor = extractAnchorIdFromProductLike(resolved && resolved.product);
+      anchorPrecheck = {
+        resolved: Boolean(resolvedAnchor),
+        reason: resolved && resolved.resolve_reason_code ? resolved.resolve_reason_code : null,
+        latency_ms: Date.now() - startedAt,
+      };
+      if (resolvedAnchor) {
+        anchor = resolvedAnchor;
+        refreshKey = makeRecoAlternativesRefreshKey({
+          anchorId: anchor || null,
+          productInput: bestInput,
+          lang: ctx.lang,
+          maxTotal,
+        });
+      } else {
+        recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
+        if (disableFallback) {
+          return {
+            ok: false,
+            alternatives: [],
+            field_missing: [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
+            source_mode: 'llm',
+            fallback_source: 'none',
+            refresh_pending: false,
+            refresh_after_ms: 0,
+            failure_class: 'anchor_missing_precheck',
+            attempt_count: 0,
+          };
+        }
+        const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
+        return {
+          ok: true,
+          alternatives: localFallback.alternatives,
+          field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
+          source_mode: 'local_fallback',
+          fallback_source: localFallback.fallback_source,
+          refresh_pending: false,
+          refresh_after_ms: 0,
+          failure_class: 'anchor_missing_precheck',
+          attempt_count: 0,
+          ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
+        };
+      }
+    } catch (err) {
+      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
+      if (!disableFallback) {
+        const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
+        return {
+          ok: true,
+          alternatives: localFallback.alternatives,
+          field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
+          source_mode: 'local_fallback',
+          fallback_source: localFallback.fallback_source,
+          refresh_pending: false,
+          refresh_after_ms: 0,
+          failure_class: 'anchor_missing_precheck',
+          attempt_count: 0,
+          ...(debug ? { debug: { anchor_precheck: { resolved: false, reason: err && err.message ? err.message : 'anchor_precheck_error' } } } : {}),
+        };
+      }
+    }
+  }
+
+  const profileSnapshot = buildAlternativesProfileSnapshot(
+    profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : {},
+  );
+  const prefix = buildContextPrefix({
+    profile: profileSummary || null,
+    recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
+    lang: ctx.lang,
+    trigger_source: ctx.trigger_source,
+    intent: 'alternatives',
+    action_id: 'chip.action.dupe_compare',
+  });
   const queryPack = buildAuroraRecoAlternativesQuery({
     lang: ctx.lang,
     profileSnapshot,
@@ -33442,230 +33659,170 @@ async function fetchRecoAlternativesForProduct({
     productObj,
     maxTotal,
     region: normalizeRecoPromptRegion(profileSummary),
-    candidates,
+    candidates: [],
     anchorId: anchor,
   });
-  const traceCoverage = {
-    has_anchor_id: Boolean(anchor),
-    has_product_json: Boolean(productJson),
-    has_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-    candidates_count: candidates.length,
-  };
-  const llmTraceSeed = buildRecoPromptTrace({
+  const query = `${prefix}${queryPack.query}`;
+
+  const traceSeed = buildRecoPromptTrace({
     templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
-    query: queryPack.query,
+    query,
     latencyMs: null,
     cacheHit: false,
-    provider: 'gemini',
-    model: ANALYSIS_STORY_MODEL_GEMINI,
-    coverage: traceCoverage,
+    provider: 'aurora',
+    model: null,
+    coverage: {
+      has_anchor_id: Boolean(anchor),
+      has_product_json: Boolean(productJson),
+      has_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+    },
   });
-  const promptContractBase = validateRecoPromptContract({
-    query: queryPack.query,
-    expectedTemplateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
-    expectedPromptHash: llmTraceSeed.prompt_hash,
-  });
-  const promptContract = AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH
-    ? {
-      ...promptContractBase,
-      ok: false,
-      issues: Array.from(new Set([...(Array.isArray(promptContractBase.issues) ? promptContractBase.issues : []), 'forced_mismatch'])),
-    }
-    : promptContractBase;
-  if (!promptContract.ok) {
-    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'prompt_contract_mismatch' });
-    recordPromptContractMismatch();
-    recordAuroraSkinFlowMetric({ stage: 'reco_prompt_contract_mismatch', hit: true });
-    return {
-      ok: true,
-      alternatives: [],
-      prompt_contract_ok: false,
-      prompt_contract_issues: promptContract.issues.slice(0, 6),
-      no_result_reason: 'prompt_contract_mismatch',
-      field_missing: [{ field: 'alternatives', reason: 'prompt_contract_mismatch' }],
-      timeout_root_cause: 'unknown',
-      llm_trace: {
-        ...llmTraceSeed,
-        latency_ms: 0,
-        cache_hit: false,
-        prompt_contract_ok: false,
-        prompt_contract_issues: promptContract.issues.slice(0, 6),
-      },
-    };
-  }
-
-  if (!GEMINI_API_KEY || USE_AURORA_BFF_MOCK) {
-    const policyFallback = mapSelectorCandidatesToAlternatives(candidates, {
-      maxTotal,
-      lang: ctx.lang,
-      reasonLine: ctx.lang === 'CN' ? '候选集快速回退（未触发上游模型）。' : 'Candidate-only fast fallback (upstream model not invoked).',
-    });
-    if (!policyFallback.length) {
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
-      recordRecoAlternativesEmpty();
-    } else {
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
-    }
-    return {
-      ok: true,
-      alternatives: policyFallback,
-      prompt_contract_ok: true,
-      prompt_contract_issues: [],
-      no_result_reason: policyFallback.length ? null : 'provider_unavailable',
-      field_missing: policyFallback.length ? [] : [{ field: 'alternatives', reason: 'provider_unavailable' }],
-      timeout_root_cause: 'unknown',
-      llm_trace: {
-        ...llmTraceSeed,
-        latency_ms: 0,
-        cache_hit: false,
-        prompt_contract_ok: true,
-        error_class: 'policy_skip',
-      },
-    };
-  }
 
   const startedAtMs = Date.now();
-  let llmResp = null;
+  let upstream = null;
+  let llmFailureClass = null;
   try {
-    llmResp = await callGeminiJsonObjectImpl({
-      model: ANALYSIS_STORY_MODEL_GEMINI,
-      systemPrompt: queryPack.systemPrompt,
-      userPrompt: queryPack.query,
-      timeoutMs: effectiveAlternativesTimeoutMs,
-      temperature: 0.2,
-      maxOutputTokens: 400,
-      responseJsonSchema: buildRecoAlternativesSchema(Math.max(1, Math.min(6, Number(maxTotal) || 3))),
+    upstream = await auroraChat({
+      baseUrl: AURORA_DECISION_BASE_URL,
+      query,
+      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+      retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
+      trace_id: ctx.trace_id,
+      request_id: ctx.request_id,
+      prompt_hash: traceSeed.prompt_hash,
+      prompt_template_id: traceSeed.template_id,
+      ...(anchor ? { anchor_product_id: anchor } : {}),
+      intent_hint: 'alternatives',
+      disallow_clarify: true,
+      required_structured_keys: ['alternatives'],
+      allow_recommendations: true,
     });
   } catch (err) {
-    llmResp = { ok: false, reason: err && err.code ? String(err.code) : 'gemini_error', detail: err && err.message ? String(err.message) : null };
-  }
-  const latencyMs = Math.max(0, Date.now() - startedAtMs);
-  const llmTrace = {
-    ...llmTraceSeed,
-    latency_ms: latencyMs,
-    cache_hit: false,
-    prompt_contract_ok: true,
-  };
-
-  if (!(llmResp && llmResp.ok === true && llmResp.json && typeof llmResp.json === 'object' && !Array.isArray(llmResp.json))) {
-    const failureCode = classifyAlternativesFailureCode(llmResp && llmResp.reason);
-    const timeoutRootCause = mapAlternativesFailureToRootCause(failureCode);
-    const outcome = failureCode === 'timeout' ? 'timeout' : 'provider_error';
-    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome });
-    if (failureCode === 'timeout') recordRecoAlternativesTimeout();
+    const transientCode = classifyRecoUpstreamFailureCode(err);
+    llmFailureClass =
+      err && err.code === 'AURORA_NOT_CONFIGURED'
+        ? 'precheck_fail'
+        : isTransientRecoUpstreamFailureCode(transientCode)
+          ? 'timeout'
+          : 'provider_error';
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: llmFailureClass });
+    const localFallback = disableFallback ? { alternatives: [], fallback_source: 'none' } : await buildLocalFallbackAlternatives({ failureClass: llmFailureClass });
     return {
-      ok: false,
-      alternatives: [],
-      prompt_contract_ok: true,
-      no_result_reason: failureCode,
-      timeout_root_cause: timeoutRootCause,
-      field_missing: [{ field: 'alternatives', reason: failureCode === 'timeout' ? 'alternatives_timeout' : 'alternatives_provider_error' }],
-      ...(debug
-        ? {
-          debug: {
-            input: bestInput.slice(0, 200),
-            anchor_id: anchor || null,
-            product_json_preview: productJson ? productJson.slice(0, 300) : null,
-            candidates_count: candidates.length,
-            llm_error_reason: String(llmResp && llmResp.reason ? llmResp.reason : '').slice(0, 120) || null,
-          },
-        }
-        : {}),
-      llm_trace: { ...llmTrace, error_class: outcome },
+      ok: !disableFallback,
+      alternatives: localFallback.alternatives,
+      field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'upstream_error' }],
+      source_mode: disableFallback ? 'llm' : 'local_fallback',
+      fallback_source: localFallback.fallback_source,
+      refresh_pending: !disableFallback && Boolean(anchor) && Boolean(refreshKey),
+      refresh_after_ms: !disableFallback && Boolean(anchor) && Boolean(refreshKey) ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
+      failure_class: llmFailureClass,
+      attempt_count: 1,
+      llm_trace: {
+        ...traceSeed,
+        latency_ms: Date.now() - startedAtMs,
+        cache_hit: false,
+        error_class: llmFailureClass,
+      },
     };
   }
 
-  const selected = [];
-  const selectedSeen = new Set();
-  const idToCandidate = new Map(candidates.map((row) => [String(row.id || '').trim().toLowerCase(), row]));
-  for (const row of Array.isArray(llmResp.json.products) ? llmResp.json.products : []) {
-    const item = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
-    if (!item) continue;
-    const id = String(item.id || '').trim().toLowerCase();
-    if (!id || selectedSeen.has(id)) continue;
-    const candidate = idToCandidate.get(id);
-    if (!candidate) continue;
-    selectedSeen.add(id);
-    selected.push({
-      candidate,
-      why: String(item.why || '').trim().slice(0, 180),
-    });
-    if (selected.length >= Math.max(1, Math.min(6, Number(maxTotal) || 3))) break;
-  }
-
-  if (!selected.length) {
-    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
-    recordRecoAlternativesEmpty();
-    return {
-      ok: true,
-      alternatives: [],
-      prompt_contract_ok: true,
-      no_result_reason: 'no_valid_selector_match',
-      field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
-      timeout_root_cause: 'unknown',
-      ...(debug ? { debug: { candidates_count: candidates.length, selected_count: 0 } } : {}),
-      llm_trace: llmTrace,
-    };
-  }
-
-  const alternativesRaw = selected.map(({ candidate, why }, idx) => ({
-    kind: 'similar',
-    product: {
-      ...(candidate.product_id ? { product_id: candidate.product_id } : {}),
-      ...(candidate.sku_id ? { sku_id: candidate.sku_id } : {}),
-      ...(candidate.brand ? { brand: candidate.brand } : {}),
-      name: candidate.name,
-      ...(candidate.category ? { category: candidate.category } : {}),
-      ...(candidate.price && typeof candidate.price === 'object' ? { price: candidate.price } : {}),
-      ...(candidate.pdp_url ? { pdp_url: candidate.pdp_url, url: candidate.pdp_url } : {}),
-    },
-    similarity_score: Number.isFinite(Number(candidate.similarity_score))
-      ? Number(candidate.similarity_score)
-      : Math.max(55, 84 - idx * 6),
-    reasons: why ? [why] : [],
-    tradeoffs: Array.isArray(candidate.signals) ? candidate.signals.slice(0, 3) : [],
-    evidence: {},
-    missing_info: [],
-  }));
+  const answerJson =
+    upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['alternatives']) : null;
+  const structuredFallback = getUpstreamStructuredOrJson(upstream);
+  const structured =
+    answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) && Array.isArray(answerJson.alternatives)
+      ? answerJson
+      : structuredFallback || answerJson;
+  const alternativesRaw = Array.isArray(structured?.alternatives) ? structured.alternatives : [];
   const mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
     lang: ctx.lang,
     maxTotal: maxTotal ?? 3,
   });
+  let llmOutcome = 'success';
   if (!mapped.length) {
-    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
-    recordRecoAlternativesEmpty();
+    llmOutcome = String(upstream && upstream.intent || '').trim().toLowerCase() === 'clarify' ? 'empty_structured_clarify' : 'empty_structured';
+  }
+  recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: llmOutcome });
+  const llmTrace = {
+    ...traceSeed,
+    latency_ms: Date.now() - startedAtMs,
+    cache_hit: false,
+    ...(llmOutcome === 'success' ? {} : { error_class: llmOutcome === 'empty_structured_clarify' ? 'policy_skip' : 'empty_structured' }),
+  };
+
+  if (mapped.length) {
+    writeRecoAlternativesCache(
+      buildRecoAlternativesCacheKey({ inputText: bestInput, anchorId: anchor, productObj, lang: ctx.lang }),
+      mapped,
+      llmTrace,
+    );
     return {
       ok: true,
-      alternatives: [],
-      prompt_contract_ok: true,
-      no_result_reason: 'mapped_empty',
-      field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
-      timeout_root_cause: 'unknown',
-      ...(debug ? { debug: { candidates_count: candidates.length, selected_count: selected.length } } : {}),
+      alternatives: mapped,
+      field_missing: [],
+      source_mode: 'llm',
+      fallback_source: null,
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: null,
+      attempt_count: 1,
       llm_trace: llmTrace,
+      ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
   }
-  recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'success' });
-  return {
-    ok: true,
-    alternatives: mapped,
-    prompt_contract_ok: true,
-    prompt_contract_issues: [],
-    field_missing: [],
-    timeout_root_cause: 'unknown',
-    ...(debug
-      ? {
-        debug: {
-          input: bestInput.slice(0, 200),
-          anchor_id: anchor || null,
-          product_json_preview: productJson ? productJson.slice(0, 300) : null,
-          candidates_count: candidates.length,
-          selected_count: selected.length,
-          effective_timeout_ms: effectiveAlternativesTimeoutMs,
-        },
+
+  const localFallback = disableFallback ? { alternatives: [], fallback_source: 'none' } : await buildLocalFallbackAlternatives({
+    failureClass: llmOutcome === 'empty_structured_clarify' ? 'policy_skip' : 'empty_structured',
+  });
+  const shouldRefresh = !disableFallback && !disableAsyncRefresh && Boolean(anchor) && Boolean(refreshKey);
+  if (shouldRefresh && !recoAlternativesRefreshInFlight.has(refreshKey)) {
+    recoAlternativesRefreshInFlight.add(refreshKey);
+    const refreshHandle = setTimeout(async () => {
+      try {
+        const refreshed = await fetchRecoAlternativesForProduct({
+          ctx,
+          profileSummary,
+          recentLogs,
+          productInput: bestInput,
+          productObj,
+          anchorId: anchor,
+          maxTotal,
+          debug: false,
+          logger,
+          options: {
+            disable_fallback: true,
+            disable_async_refresh: true,
+            skip_anchor_precheck: true,
+            prefer_refresh_cache: false,
+          },
+        });
+        if (refreshed && Array.isArray(refreshed.alternatives) && refreshed.alternatives.length) {
+          setRecoAlternativesRefreshCache(refreshKey, {
+            alternatives: refreshed.alternatives.slice(0, Math.max(1, Math.min(8, Number(maxTotal) || 6))),
+            llm_trace: refreshed.llm_trace || null,
+          });
+        }
+      } catch {
+        // ignore refresh worker failure
+      } finally {
+        recoAlternativesRefreshInFlight.delete(refreshKey);
       }
-      : {}),
+    }, RECO_ALTERNATIVES_REFRESH_DELAY_MS);
+    if (refreshHandle && typeof refreshHandle.unref === 'function') refreshHandle.unref();
+  }
+
+  return {
+    ok: !disableFallback,
+    alternatives: localFallback.alternatives,
+    field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+    source_mode: disableFallback ? 'llm' : 'local_fallback',
+    fallback_source: localFallback.fallback_source,
+    refresh_pending: shouldRefresh,
+    refresh_after_ms: shouldRefresh ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
+    failure_class: llmOutcome === 'empty_structured_clarify' ? 'empty_structured_clarify' : 'empty_structured',
+    attempt_count: 1,
     llm_trace: llmTrace,
+    ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
   };
 }
 
@@ -38362,8 +38519,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           : null;
       const productInput = String(parsed.data.product_input || '').trim() || buildProductInputText(productObj, null);
       const anchorId = String(parsed.data.anchor_product_id || '').trim() || extractAnchorIdFromProductLike(productObj);
-      const includeDebugFromHeader = coerceBoolean(req.get('X-Debug') ?? req.get('X-Aurora-Debug'));
-      const includeDebug = includeDebugFromHeader ?? Boolean(parsed.data.include_debug);
+      const debugHeaderRaw = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
+      const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
+      const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
       const maxTotal = Number.isFinite(Number(parsed.data.max_total))
         ? Math.max(1, Math.min(8, Math.trunc(Number(parsed.data.max_total))))
         : 6;
@@ -38396,6 +38554,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         ok: out && out.ok !== false,
         alternatives: Array.isArray(out && out.alternatives) ? out.alternatives : [],
         field_missing: Array.isArray(out && out.field_missing) ? out.field_missing : [],
+        source_mode: out && typeof out.source_mode === 'string' ? out.source_mode : 'llm',
+        fallback_source: out && typeof out.fallback_source === 'string' ? out.fallback_source : null,
+        refresh_pending: Boolean(out && out.refresh_pending === true),
+        refresh_after_ms: Number.isFinite(Number(out && out.refresh_after_ms)) ? Number(out && out.refresh_after_ms) : 0,
+        failure_class: out && typeof out.failure_class === 'string' ? out.failure_class : null,
+        attempt_count: Number.isFinite(Number(out && out.attempt_count)) ? Math.max(0, Math.trunc(Number(out && out.attempt_count))) : 0,
         prompt_contract_ok: out && out.prompt_contract_ok !== false,
         prompt_contract_issues: Array.isArray(out && out.prompt_contract_issues) ? out.prompt_contract_issues : [],
         no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,

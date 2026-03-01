@@ -637,7 +637,8 @@ function normalizeAuroraRecoLlmCallOutcome(outcome) {
     token === 'prompt_contract_mismatch' ||
     token === 'provider_error' ||
     token === 'timeout' ||
-    token === 'empty_structured'
+    token === 'empty_structured' ||
+    token === 'empty_structured_clarify'
   ) {
     return token;
   }

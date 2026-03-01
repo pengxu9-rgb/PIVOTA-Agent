@@ -4496,15 +4496,17 @@ test('/v1/reco/alternatives: no candidates returns explainable empty and never c
 
         assert.equal(resp.status, 200);
         assert.equal(Array.isArray(resp.body?.alternatives), true);
-        assert.equal(resp.body.alternatives.length, 0);
-        assert.equal(resp.body?.no_result_reason, 'no_candidates');
+        assert.ok(resp.body.alternatives.length > 0);
+        assert.equal(resp.body?.source_mode, 'local_fallback');
+        assert.equal(resp.body?.failure_class, 'anchor_missing_precheck');
         assert.equal(geminiCalls, 0);
 
         const reasons = Array.isArray(resp.body?.field_missing) ? resp.body.field_missing.map((x) => String(x?.reason || '')) : [];
-        assert.equal(reasons.includes('no_candidates'), true);
+        assert.equal(reasons.includes('anchor_missing_precheck'), false);
 
         const snap = snapshotVisionMetrics();
-        assert.ok(Number(snap.recoAlternativesEmptyTotal || 0) >= 1);
+        const precheckLabel = JSON.stringify({ stage: 'alternatives', outcome: 'precheck_fail' });
+        assert.ok(Number(snap.auroraRecoLlmCall?.find(([k]) => k === precheckLabel)?.[1] || 0) >= 1);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();

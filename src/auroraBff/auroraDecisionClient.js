@@ -11,7 +11,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs } = {}) {
+async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs, headers } = {}) {
   const maxRetries = Number.isFinite(retries) ? retries : 1;
   const delayMs = Number.isFinite(retryDelayMs) ? retryDelayMs : 200;
 
@@ -21,6 +21,7 @@ async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs } = {
       const resp = await axios.post(url, body, {
         timeout: Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000,
         validateStatus: () => true,
+        ...(headers && typeof headers === 'object' ? { headers } : {}),
         ...getAxiosKeepAliveConfig(),
       });
       if (resp.status >= 200 && resp.status < 300) return resp;
@@ -1077,6 +1078,9 @@ async function auroraChat({
   llm_model,
   anchor_product_id,
   anchor_product_url,
+  intent_hint,
+  disallow_clarify,
+  required_structured_keys,
   messages,
   debug,
   allow_recommendations,
@@ -1102,6 +1106,11 @@ async function auroraChat({
   if (llm_model) payload.llm_model = llm_model;
   if (anchor_product_id) payload.anchor_product_id = anchor_product_id;
   if (anchor_product_url) payload.anchor_product_url = anchor_product_url;
+  if (intent_hint) payload.intent_hint = intent_hint;
+  if (typeof disallow_clarify === 'boolean') payload.disallow_clarify = disallow_clarify;
+  if (Array.isArray(required_structured_keys) && required_structured_keys.length) {
+    payload.required_structured_keys = required_structured_keys;
+  }
   if (Array.isArray(messages) && messages.length) payload.messages = messages;
   if (typeof debug === 'boolean') payload.debug = debug;
   if (typeof allow_recommendations === 'boolean') payload.allow_recommendations = allow_recommendations;
