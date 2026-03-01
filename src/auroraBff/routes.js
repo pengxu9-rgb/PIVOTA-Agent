@@ -33446,7 +33446,9 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
         alternatives_raw_count: 0,
         alternatives_mapped_count: 0,
       });
-      continue;
+      // Do not run a second alternatives attempt after transport/provider failure;
+      // this only doubles latency and token burn without improving recovery odds.
+      break;
     }
     lastError = null;
     lastIntent = upstream && typeof upstream.intent === 'string' ? upstream.intent : null;
