@@ -14,9 +14,23 @@ const GEMINI_API_KEY = String(
   process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
 ).trim();
 
-const SKIN_MODEL_GEMINI =
-  String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
-  'gemini-2.0-flash';
+const DEFAULT_SKIN_GEMINI_MODEL = 'gemini-3-pro';
+const SKIN_VISION_MODEL_GEMINI =
+  String(
+    process.env.AURORA_SKIN_VISION_MODEL_GEMINI ||
+      process.env.AURORA_SKIN_MODEL_GEMINI ||
+      process.env.GEMINI_MODEL ||
+      DEFAULT_SKIN_GEMINI_MODEL,
+  ).trim() || DEFAULT_SKIN_GEMINI_MODEL;
+const SKIN_REPORT_MODEL_GEMINI =
+  String(
+    process.env.AURORA_SKIN_REPORT_MODEL_GEMINI ||
+      process.env.AURORA_SKIN_MODEL_GEMINI ||
+      process.env.AURORA_SKIN_VISION_MODEL_GEMINI ||
+      process.env.GEMINI_MODEL ||
+      DEFAULT_SKIN_GEMINI_MODEL,
+  ).trim() || SKIN_VISION_MODEL_GEMINI;
+const SKIN_MODEL_GEMINI = SKIN_VISION_MODEL_GEMINI;
 
 const SKIN_LLM_TIMEOUT_MS = Math.max(2000, Math.min(30000, Number(process.env.AURORA_SKIN_VISION_TIMEOUT_MS || 12000)));
 
@@ -91,25 +105,93 @@ function unwrapCodeFence(raw) {
   return lines.slice(1, end).join('\n').trim();
 }
 
+function trimOrNull(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function clampText(value, maxLen = 500) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, Math.max(1, maxLen - 3))}...`;
+}
+
+function toStatusCode(error) {
+  const candidates = [error && error.status, error && error.statusCode, error && error.response && error.response.status];
+  for (const value of candidates) {
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) return Math.trunc(num);
+  }
+  return null;
+}
+
+function getHeaderValue(headers, keyCandidates = []) {
+  if (!headers || typeof headers !== 'object') return null;
+  for (const key of keyCandidates) {
+    const direct = trimOrNull(headers[key]);
+    if (direct) return direct;
+    const lower = trimOrNull(headers[String(key || '').toLowerCase()]);
+    if (lower) return lower;
+  }
+  return null;
+}
+
 function classifyGeminiError(err) {
-  if (!err) return { reason: 'UNKNOWN', upstream_status_code: null };
+  if (!err) return { reason: 'UNKNOWN', upstream_status_code: null, error_evidence: null };
   const code = String(err.code || '').trim().toUpperCase();
-  const status = Number.isFinite(Number(err.status)) ? Math.trunc(Number(err.status)) : null;
+  const status = toStatusCode(err);
   const message = String(err.message || '').toLowerCase();
+  const responseHeaders = err && err.response && err.response.headers ? err.response.headers : null;
+  const rootHeaders = err && err.headers ? err.headers : null;
+  const headers = responseHeaders || rootHeaders;
+  const evidenceBase = {
+    reason_normalized: 'VISION_UNKNOWN',
+    http_status: status,
+    grpc_status: /^[A-Z_]+$/.test(code) ? code : null,
+    provider_error_code: trimOrNull(code || err.code || err.errorCode),
+    provider_error_message: clampText(err && err.message),
+    provider_request_id: getHeaderValue(headers, ['x-request-id', 'x-goog-request-id', 'request-id']),
+    provider_trace: getHeaderValue(headers, ['traceparent', 'x-cloud-trace-context', 'x-b3-traceid', 'x-trace-id']),
+    timeout_ms: null,
+    region: trimOrNull(err && err.region),
+    model: trimOrNull(err && err.model),
+  };
 
   if (code === 'GEMINI_TIMEOUT' || message.includes('timeout') || message.includes('deadline exceeded')) {
-    return { reason: 'TIMEOUT', upstream_status_code: null };
+    return {
+      reason: 'TIMEOUT',
+      upstream_status_code: null,
+      error_evidence: { ...evidenceBase, reason_normalized: 'VISION_TIMEOUT' },
+    };
   }
   if (status === 429 || message.includes('rate limit') || message.includes('resource exhausted')) {
-    return { reason: 'RATE_LIMIT', upstream_status_code: 429 };
+    return {
+      reason: 'RATE_LIMIT',
+      upstream_status_code: 429,
+      error_evidence: { ...evidenceBase, reason_normalized: 'VISION_RATE_LIMITED', http_status: 429 },
+    };
   }
   if (status && status >= 500) {
-    return { reason: 'UPSTREAM_5XX', upstream_status_code: status };
+    return {
+      reason: 'UPSTREAM_5XX',
+      upstream_status_code: status,
+      error_evidence: { ...evidenceBase, reason_normalized: 'VISION_UPSTREAM_5XX' },
+    };
   }
   if (status && status >= 400) {
-    return { reason: 'UPSTREAM_4XX', upstream_status_code: status };
+    return {
+      reason: 'UPSTREAM_4XX',
+      upstream_status_code: status,
+      error_evidence: { ...evidenceBase, reason_normalized: 'VISION_UPSTREAM_4XX' },
+    };
   }
-  return { reason: 'UNKNOWN', upstream_status_code: status };
+  return {
+    reason: 'UNKNOWN',
+    upstream_status_code: status,
+    error_evidence: evidenceBase,
+  };
 }
 
 function validateSkinAnalysisContent(layer, { lang } = {}) {
@@ -143,6 +225,7 @@ function validateSkinAnalysisContent(layer, { lang } = {}) {
 }
 
 async function callGeminiJson({
+  model,
   systemInstruction,
   userText,
   imageBuffer,
@@ -164,8 +247,9 @@ async function callGeminiJson({
   }
 
   const startedAt = Date.now();
+  const modelName = String(model || SKIN_VISION_MODEL_GEMINI);
   const request = {
-    model: SKIN_MODEL_GEMINI,
+    model: modelName,
     systemInstruction: {
       parts: [{ text: String(systemInstruction || '').trim() }],
     },
@@ -201,7 +285,7 @@ async function callGeminiJson({
     const invoke = () => withTimeout(client.models.generateContent(request), timeoutMs || SKIN_LLM_TIMEOUT_MS);
     const resp =
       profiler && typeof profiler.timeLlmCall === 'function'
-        ? await profiler.timeLlmCall({ provider: 'gemini', model: SKIN_MODEL_GEMINI, kind }, invoke)
+        ? await profiler.timeLlmCall({ provider: 'gemini', model: modelName, kind }, invoke)
         : await invoke();
     const text = await extractTextFromGeminiResponse(resp);
     const jsonOnly = unwrapCodeFence(text);
@@ -216,10 +300,17 @@ async function callGeminiJson({
     };
   } catch (err) {
     const classified = classifyGeminiError(err);
+    if (classified && classified.error_evidence && typeof classified.error_evidence === 'object') {
+      classified.error_evidence.timeout_ms = Number.isFinite(Number(timeoutMs))
+        ? Math.max(0, Math.trunc(Number(timeoutMs)))
+        : SKIN_LLM_TIMEOUT_MS;
+      classified.error_evidence.model = modelName;
+    }
     return {
       ok: false,
       reason: classified.reason,
       upstream_status_code: classified.upstream_status_code,
+      error_evidence: classified.error_evidence || null,
       response_text: '',
       parsed: null,
       latency_ms: Date.now() - startedAt,
@@ -252,6 +343,7 @@ async function runGeminiVisionStrategy({
 
   const bundle = buildSkinVisionPromptBundle({ language, dto: visionDto, promptVersion });
   const response = await callGeminiJson({
+    model: SKIN_VISION_MODEL_GEMINI,
     systemInstruction: bundle.systemInstruction,
     userText: bundle.userPrompt,
     imageBuffer,
@@ -270,6 +362,7 @@ async function runGeminiVisionStrategy({
       analysis: null,
       retry: { attempted: 0, final: 'fail', last_reason: response.reason || 'UNKNOWN' },
       upstream_status_code: response.upstream_status_code,
+      error_evidence: response.error_evidence || null,
       latency_ms: response.latency_ms,
       prompt_version: bundle.promptVersion,
       input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
@@ -320,6 +413,7 @@ async function runGeminiReportStrategy({
   const attempt = async (revisionHint) => {
     const userPrompt = revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt;
     return await callGeminiJson({
+      model: SKIN_REPORT_MODEL_GEMINI,
       systemInstruction: bundle.systemInstruction,
       userText: userPrompt,
       imageBuffer: null,
@@ -374,6 +468,7 @@ async function runGeminiReportStrategy({
         last_reason: !second.ok ? second.reason || 'UNKNOWN' : !secondValidation.ok ? 'SCHEMA_INVALID' : 'SAFETY_INVALID',
       },
       upstream_status_code: second.upstream_status_code,
+      error_evidence: second.error_evidence || null,
       latency_ms: second.latency_ms,
       prompt_version: bundle.promptVersion,
       input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
@@ -399,6 +494,8 @@ async function runGeminiReportStrategy({
 
 module.exports = {
   SKIN_MODEL_GEMINI,
+  SKIN_VISION_MODEL_GEMINI,
+  SKIN_REPORT_MODEL_GEMINI,
   SKIN_LLM_TIMEOUT_MS,
   isGeminiSkinGatewayAvailable,
   validateSkinAnalysisContent,

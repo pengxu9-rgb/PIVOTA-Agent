@@ -4,6 +4,7 @@
   "snapshot": {
     "analysis_source": "rule_based_with_photo_qc",
     "quality_grade": "fail",
+    "upload_qc_status": "fail",
     "failure_codes": [
       "no_usable_photo",
       "qc_failed"
