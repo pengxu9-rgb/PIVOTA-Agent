@@ -1641,14 +1641,14 @@ const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
 })();
 
 const RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 900);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
   return Math.max(600, Math.min(12000, v));
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 900);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
   return Math.max(300, Math.min(6000, v));
 })();
 
@@ -1730,8 +1730,8 @@ const RECO_PDP_ENRICH_CONCURRENCY = (() => {
 })();
 
 const RECO_PDP_ENRICH_MAX_NETWORK_ITEMS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS || 0);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 0;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
   return Math.max(0, Math.min(8, v));
 })();
 
@@ -1743,14 +1743,32 @@ const RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP = (() => {
 })();
 
 const RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK || 'true')
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
 const RECO_PDP_STRICT_INTERNAL_FIRST = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST || 'false')
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_PDP_LIGHT_ENRICH_ENABLED = (() => {
+  const raw = String(
+    process.env.AURORA_BFF_RECO_PDP_LIGHT_ENRICH || (process.env.NODE_ENV === 'production' ? 'true' : 'false'),
+  )
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED = (() => {
+  const raw = String(
+    process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE || (process.env.NODE_ENV === 'production' ? 'true' : 'false'),
+  )
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -25339,6 +25357,7 @@ async function applyRecommendationOutputGuardrailsForRoute({
     const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
       recommendations: Array.isArray(payload.recommendations) ? payload.recommendations : [],
       logger,
+      lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
     });
     cardsWithPdpOpen.push({
       ...card,
@@ -29201,6 +29220,7 @@ async function enrichRecommendationsWithPdpOpenContract({
   recommendations,
   logger,
   fastExternalFallbackReasonCode = null,
+  lightEnrich = false,
 } = {}) {
   const recos = Array.isArray(recommendations) ? recommendations : [];
   if (!recos.length) {
@@ -29228,6 +29248,20 @@ async function enrichRecommendationsWithPdpOpenContract({
       path_stats: tallyPdpOpenPathStats(fastExternal),
       fail_reason_counts: tallyResolveFailReasonCounts(fastExternal),
       time_to_pdp_ms_stats: summarizeTimeToPdpStats(fastExternal),
+    };
+  }
+
+  if (lightEnrich) {
+    const quickItems = recos.map((item) => buildRecoPdpQuickItem(item, { fastFallbackReasonCode: null }));
+    schedulePdpCorePrefetchFromItems(quickItems, {
+      logger,
+      reason: 'reco_card_light_enrich',
+    });
+    return {
+      recommendations: quickItems,
+      path_stats: tallyPdpOpenPathStats(quickItems),
+      fail_reason_counts: tallyResolveFailReasonCounts(quickItems),
+      time_to_pdp_ms_stats: summarizeTimeToPdpStats(quickItems),
     };
   }
 
@@ -33583,6 +33617,7 @@ async function fetchRecoAlternativesForProduct({
         resolved && resolved.resolve_reason_code ? normalizeResolveReasonCode(resolved.resolve_reason_code, null) : null;
       const canProceedWithoutAnchor =
         Boolean(bestInput) &&
+        RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED &&
         (precheckReasonCode === 'db_error' ||
           precheckReasonCode === 'upstream_timeout' ||
           precheckReasonCode === 'rate_limited');
@@ -33643,7 +33678,7 @@ async function fetchRecoAlternativesForProduct({
         error: err && err.message ? err.message : String(err),
         continue_without_anchor: Boolean(bestInput),
       };
-      if (bestInput) {
+      if (bestInput && RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED) {
         refreshKey = makeRecoAlternativesRefreshKey({
           anchorId: null,
           productInput: bestInput,
@@ -33653,7 +33688,7 @@ async function fetchRecoAlternativesForProduct({
       } else {
         recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
       }
-      if (bestInput) {
+      if (bestInput && RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED) {
         // Continue with anchorless LLM path when local precheck is unavailable.
       } else if (!disableFallback) {
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
@@ -34053,6 +34088,7 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
     recommendations: norm.payload.recommendations,
     logger,
+    lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
   });
   norm.payload = {
     ...norm.payload,
@@ -34530,6 +34566,7 @@ async function generateProductRecommendations({
     recommendations: norm.payload.recommendations,
     logger,
     fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
+    lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
   });
   const pdpDeduped = dedupeRecoRecommendationsStrict(pdpOpenOut.recommendations, { maxItems: 8 });
   norm.payload = {
