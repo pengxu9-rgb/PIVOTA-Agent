@@ -156,7 +156,144 @@ function collectErrorText(error) {
   return values.filter(Boolean).map((item) => String(item)).join(' ').toLowerCase();
 }
 
-function classifyVisionProviderFailure(error) {
+function trimOrNull(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function clampMessage(value, maxLen = 500) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, Math.max(1, maxLen - 3))}...`;
+}
+
+function getNested(obj, path) {
+  let cur = obj;
+  for (const key of path) {
+    if (!cur || typeof cur !== 'object') return undefined;
+    cur = cur[key];
+  }
+  return cur;
+}
+
+function getHeaderValue(headers, keyCandidates = []) {
+  if (!headers || typeof headers !== 'object') return null;
+  for (const key of keyCandidates) {
+    if (!key) continue;
+    const direct = trimOrNull(headers[key]);
+    if (direct) return direct;
+    const lower = trimOrNull(headers[String(key).toLowerCase()]);
+    if (lower) return lower;
+    const upper = trimOrNull(headers[String(key).toUpperCase()]);
+    if (upper) return upper;
+  }
+  const normalized = Object.create(null);
+  for (const [k, v] of Object.entries(headers)) {
+    normalized[String(k || '').toLowerCase()] = v;
+  }
+  for (const key of keyCandidates) {
+    const value = trimOrNull(normalized[String(key || '').toLowerCase()]);
+    if (value) return value;
+  }
+  return null;
+}
+
+function toGrpcStatus(error) {
+  const raw =
+    trimOrNull(error && error.grpc_status) ||
+    trimOrNull(error && error.grpcStatus) ||
+    trimOrNull(error && error.statusDetails && error.statusDetails.code) ||
+    null;
+  if (raw && /^[A-Z_]+$/.test(raw.toUpperCase())) return raw.toUpperCase();
+  const code = trimOrNull(error && error.code);
+  if (code && /^[A-Z_]+$/.test(code.toUpperCase())) return code.toUpperCase();
+  return null;
+}
+
+function toProviderErrorCode(error) {
+  const raw =
+    trimOrNull(error && error.code) ||
+    trimOrNull(error && error.errorCode) ||
+    trimOrNull(getNested(error, ['error', 'code'])) ||
+    trimOrNull(getNested(error, ['response', 'data', 'error', 'code'])) ||
+    trimOrNull(getNested(error, ['response', 'data', 'code'])) ||
+    null;
+  return raw;
+}
+
+function toProviderErrorMessage(error) {
+  const detail = getNested(error, ['response', 'data', 'error']);
+  const detailText =
+    typeof detail === 'string'
+      ? detail
+      : detail && typeof detail === 'object'
+        ? JSON.stringify(detail)
+        : null;
+  const raw =
+    trimOrNull(error && error.message) ||
+    trimOrNull(getNested(error, ['error', 'message'])) ||
+    trimOrNull(getNested(error, ['response', 'data', 'message'])) ||
+    trimOrNull(getNested(error, ['response', 'data', 'detail'])) ||
+    trimOrNull(detailText) ||
+    null;
+  return clampMessage(raw, 500);
+}
+
+function buildVisionErrorEvidence(error, { reason, statusCode, timeoutMs, region, model } = {}) {
+  const responseHeaders = getNested(error, ['response', 'headers']);
+  const rootHeaders = error && error.headers;
+  const requestHeaders = getNested(error, ['request', 'headers']);
+  const providerRequestId =
+    getHeaderValue(responseHeaders, ['x-request-id', 'x-goog-request-id', 'request-id']) ||
+    getHeaderValue(rootHeaders, ['x-request-id', 'x-goog-request-id', 'request-id']) ||
+    trimOrNull(error && error.requestId) ||
+    trimOrNull(error && error.request_id) ||
+    null;
+  const providerTrace =
+    getHeaderValue(responseHeaders, ['traceparent', 'x-cloud-trace-context', 'x-b3-traceid', 'x-trace-id']) ||
+    getHeaderValue(rootHeaders, ['traceparent', 'x-cloud-trace-context', 'x-b3-traceid', 'x-trace-id']) ||
+    getHeaderValue(requestHeaders, ['traceparent', 'x-cloud-trace-context', 'x-b3-traceid', 'x-trace-id']) ||
+    trimOrNull(error && error.trace) ||
+    trimOrNull(error && error.trace_id) ||
+    null;
+  const timeoutValue =
+    Number.isFinite(Number(timeoutMs))
+      ? Math.max(0, Math.trunc(Number(timeoutMs)))
+      : Number.isFinite(Number(error && error.timeout_ms))
+        ? Math.max(0, Math.trunc(Number(error.timeout_ms)))
+        : Number.isFinite(Number(error && error.timeoutMs))
+          ? Math.max(0, Math.trunc(Number(error.timeoutMs)))
+          : Number.isFinite(Number(getNested(error, ['config', 'timeout'])))
+            ? Math.max(0, Math.trunc(Number(getNested(error, ['config', 'timeout']))))
+            : null;
+  const regionValue =
+    trimOrNull(region) ||
+    trimOrNull(error && error.region) ||
+    getHeaderValue(responseHeaders, ['x-goog-region']) ||
+    null;
+  const modelValue =
+    trimOrNull(model) ||
+    trimOrNull(error && error.model) ||
+    trimOrNull(getNested(error, ['request', 'model'])) ||
+    null;
+  const evidence = {
+    reason_normalized: normalizeVisionReason(reason),
+    http_status: Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : null,
+    grpc_status: toGrpcStatus(error),
+    provider_error_code: toProviderErrorCode(error),
+    provider_error_message: toProviderErrorMessage(error),
+    provider_request_id: providerRequestId,
+    provider_trace: providerTrace,
+    timeout_ms: timeoutValue,
+    region: regionValue,
+    model: modelValue,
+  };
+  return evidence;
+}
+
+function classifyVisionProviderFailure(error, { timeoutMs, region, model } = {}) {
   const mappedFromExplicitReason = normalizeReasonToken(error && (error.__vision_reason || error.reason));
   if (mappedFromExplicitReason && mappedFromExplicitReason !== 'VISION_FAILED') {
     const reason = normalizeVisionReason(mappedFromExplicitReason);
@@ -164,6 +301,13 @@ function classifyVisionProviderFailure(error) {
       reason,
       status_code: toStatusCode(error),
       error_code: toErrorCode(error),
+      error_evidence: buildVisionErrorEvidence(error, {
+        reason,
+        statusCode: toStatusCode(error),
+        timeoutMs,
+        region,
+        model,
+      }),
     };
   }
 
@@ -184,88 +328,176 @@ function classifyVisionProviderFailure(error) {
 
   if (normalizedErrorCode) {
     if (normalizedErrorCode === 'DEADLINE_EXCEEDED') {
+      const reason = VisionUnavailabilityReason.VISION_TIMEOUT;
       return {
-        reason: VisionUnavailabilityReason.VISION_TIMEOUT,
+        reason,
         status_code: statusCode,
         error_code: errorCode,
+        error_evidence: buildVisionErrorEvidence(error, {
+          reason,
+          statusCode,
+          timeoutMs,
+          region,
+          model,
+        }),
       };
     }
     if (normalizedErrorCode === 'RESOURCE_EXHAUSTED') {
       const quotaLike = /quota|insufficient[_\s-]?quota|billing|credit/.test(text);
+      const reason = quotaLike ? VisionUnavailabilityReason.VISION_QUOTA_EXCEEDED : VisionUnavailabilityReason.VISION_RATE_LIMITED;
       return {
-        reason: quotaLike ? VisionUnavailabilityReason.VISION_QUOTA_EXCEEDED : VisionUnavailabilityReason.VISION_RATE_LIMITED,
+        reason,
         status_code: statusCode || 429,
         error_code: errorCode,
+        error_evidence: buildVisionErrorEvidence(error, {
+          reason,
+          statusCode: statusCode || 429,
+          timeoutMs,
+          region,
+          model,
+        }),
       };
     }
     if (grpc4xxCodes.has(normalizedErrorCode)) {
+      const reason = VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
       return {
-        reason: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+        reason,
         status_code: statusCode,
         error_code: errorCode,
+        error_evidence: buildVisionErrorEvidence(error, {
+          reason,
+          statusCode,
+          timeoutMs,
+          region,
+          model,
+        }),
       };
     }
     if (grpc5xxCodes.has(normalizedErrorCode)) {
+      const reason = VisionUnavailabilityReason.VISION_UPSTREAM_5XX;
       return {
-        reason: VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
+        reason,
         status_code: statusCode,
         error_code: errorCode,
+        error_evidence: buildVisionErrorEvidence(error, {
+          reason,
+          statusCode,
+          timeoutMs,
+          region,
+          model,
+        }),
       };
     }
   }
 
   if ((error && error.name === 'AbortError') || /timeout|timed out|econnaborted|etimedout/.test(text)) {
+    const reason = VisionUnavailabilityReason.VISION_TIMEOUT;
     return {
-      reason: VisionUnavailabilityReason.VISION_TIMEOUT,
+      reason,
       status_code: statusCode,
       error_code: errorCode,
+      error_evidence: buildVisionErrorEvidence(error, {
+        reason,
+        statusCode,
+        timeoutMs,
+        region,
+        model,
+      }),
     };
   }
 
   if (statusCode === 429) {
     const quotaLike = /quota|insufficient[_\s-]?quota|billing|credit/.test(text);
+    const reason = quotaLike ? VisionUnavailabilityReason.VISION_QUOTA_EXCEEDED : VisionUnavailabilityReason.VISION_RATE_LIMITED;
     return {
-      reason: quotaLike ? VisionUnavailabilityReason.VISION_QUOTA_EXCEEDED : VisionUnavailabilityReason.VISION_RATE_LIMITED,
+      reason,
       status_code: statusCode,
       error_code: errorCode,
+      error_evidence: buildVisionErrorEvidence(error, {
+        reason,
+        statusCode,
+        timeoutMs,
+        region,
+        model,
+      }),
     };
   }
 
   if (statusCode != null && statusCode >= 500) {
+    const reason = VisionUnavailabilityReason.VISION_UPSTREAM_5XX;
     return {
-      reason: VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
+      reason,
       status_code: statusCode,
       error_code: errorCode,
+      error_evidence: buildVisionErrorEvidence(error, {
+        reason,
+        statusCode,
+        timeoutMs,
+        region,
+        model,
+      }),
     };
   }
 
   if (statusCode != null && statusCode >= 400) {
+    const reason = VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
     return {
-      reason: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+      reason,
       status_code: statusCode,
       error_code: errorCode,
+      error_evidence: buildVisionErrorEvidence(error, {
+        reason,
+        statusCode,
+        timeoutMs,
+        region,
+        model,
+      }),
     };
   }
 
   if (/clienterror|invalid argument|permission denied|unauthenticated|forbidden/.test(text)) {
+    const reason = VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
     return {
-      reason: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+      reason,
       status_code: statusCode,
       error_code: errorCode,
+      error_evidence: buildVisionErrorEvidence(error, {
+        reason,
+        statusCode,
+        timeoutMs,
+        region,
+        model,
+      }),
     };
   }
   if (/servererror|backend error|service unavailable|upstream unavailable/.test(text)) {
+    const reason = VisionUnavailabilityReason.VISION_UPSTREAM_5XX;
     return {
-      reason: VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
+      reason,
       status_code: statusCode,
       error_code: errorCode,
+      error_evidence: buildVisionErrorEvidence(error, {
+        reason,
+        statusCode,
+        timeoutMs,
+        region,
+        model,
+      }),
     };
   }
 
+  const reason = VisionUnavailabilityReason.VISION_UNKNOWN;
   return {
-    reason: VisionUnavailabilityReason.VISION_UNKNOWN,
+    reason,
     status_code: statusCode,
     error_code: errorCode,
+    error_evidence: buildVisionErrorEvidence(error, {
+      reason,
+      statusCode,
+      timeoutMs,
+      region,
+      model,
+    }),
   };
 }
 
@@ -274,6 +506,7 @@ async function executeVisionWithRetry({
   maxRetries = 2,
   baseDelayMs = 250,
   classifyError = classifyVisionProviderFailure,
+  errorContext,
 } = {}) {
   if (typeof operation !== 'function') {
     throw new Error('executeVisionWithRetry requires an operation function');
@@ -286,6 +519,7 @@ async function executeVisionWithRetry({
   let lastReason = VisionUnavailabilityReason.VISION_UNKNOWN;
   let lastStatusCode = null;
   let lastErrorCode = null;
+  let lastErrorEvidence = null;
 
   for (let attempt = 0; attempt <= retriesLimit; attempt += 1) {
     try {
@@ -300,10 +534,11 @@ async function executeVisionWithRetry({
         },
       };
     } catch (error) {
-      const mapped = classifyError(error);
+      const mapped = classifyError(error, errorContext && typeof errorContext === 'object' ? errorContext : {});
       lastReason = normalizeVisionReason(mapped && mapped.reason);
       lastStatusCode = mapped && Number.isFinite(Number(mapped.status_code)) ? Math.trunc(Number(mapped.status_code)) : null;
       lastErrorCode = mapped && mapped.error_code ? String(mapped.error_code) : null;
+      lastErrorEvidence = mapped && mapped.error_evidence && typeof mapped.error_evidence === 'object' ? mapped.error_evidence : null;
 
       if (!shouldRetryVision(lastReason) || attempt >= retriesLimit) {
         break;
@@ -320,6 +555,7 @@ async function executeVisionWithRetry({
     reason: lastReason,
     upstream_status_code: lastStatusCode,
     error_code: lastErrorCode,
+    error_evidence: lastErrorEvidence,
     retry: {
       attempted: retriesAttempted,
       final: 'fail',

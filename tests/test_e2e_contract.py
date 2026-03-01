@@ -91,9 +91,24 @@ def _snapshot_from_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
     payload = card.get("payload") or {}
     quality_report = payload.get("quality_report") or {}
     photo_quality = quality_report.get("photo_quality") or {}
+    effective_quality = quality_report.get("effective_quality") or {}
     llm = quality_report.get("llm") or {}
     vision = llm.get("vision") or {}
     report = llm.get("report") or {}
+
+    required_quality_keys = [
+        "upload_qc_status",
+        "analysis_photo_quality",
+        "effective_quality",
+        "quality_merge_rule",
+        "quality_reasons",
+        "photo_quality",
+    ]
+    for key in required_quality_keys:
+        if key not in quality_report:
+            raise AssertionError(f"quality_report missing required key: {key}")
+    if photo_quality != effective_quality:
+        raise AssertionError("quality_report.photo_quality must stay aligned with effective_quality")
 
     failure_codes = _uniq_str_list(list(photo_quality.get("reasons") or []))
     for fm in card.get("field_missing") or []:
@@ -104,6 +119,7 @@ def _snapshot_from_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "analysis_source": payload.get("analysis_source"),
         "quality_grade": photo_quality.get("grade"),
+        "upload_qc_status": quality_report.get("upload_qc_status"),
         "failure_codes": failure_codes,
         "llm_called": {
             "vision": vision.get("decision") == "call",

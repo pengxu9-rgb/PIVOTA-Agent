@@ -96,6 +96,44 @@ test('vision failure mapping: timeout / 429 / 4xx / 5xx / schema', () => {
   assert.equal(grpcUnauthenticated.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
 });
 
+test('vision failure mapping emits actionable error evidence', () => {
+  const longMessage = `upstream overloaded ${'x'.repeat(800)}`;
+  const err = {
+    status: 503,
+    code: 'UNAVAILABLE',
+    message: longMessage,
+    response: {
+      status: 503,
+      headers: {
+        'x-goog-request-id': 'req_vision_123',
+        traceparent: '00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01',
+      },
+      data: {
+        error: {
+          code: 'UNAVAILABLE',
+          message: longMessage,
+        },
+      },
+    },
+  };
+  const mapped = classifyVisionProviderFailure(err, {
+    timeoutMs: 12000,
+    region: 'us-central1',
+    model: 'gemini-3-pro',
+  });
+  assert.equal(mapped.reason, VisionUnavailabilityReason.VISION_UPSTREAM_5XX);
+  assert.equal(mapped.status_code, 503);
+  assert.equal(mapped.error_code, 'UNAVAILABLE');
+  assert.equal(typeof mapped.error_evidence, 'object');
+  assert.equal(mapped.error_evidence.http_status, 503);
+  assert.equal(mapped.error_evidence.provider_request_id, 'req_vision_123');
+  assert.equal(mapped.error_evidence.region, 'us-central1');
+  assert.equal(mapped.error_evidence.model, 'gemini-3-pro');
+  assert.equal(mapped.error_evidence.reason_normalized, VisionUnavailabilityReason.VISION_UPSTREAM_5XX);
+  assert.equal(typeof mapped.error_evidence.provider_error_message, 'string');
+  assert.equal(mapped.error_evidence.provider_error_message.length <= 500, true);
+});
+
 test('vision retry policy: only retry retryable reasons', async () => {
   let transientAttempts = 0;
   const transient = await executeVisionWithRetry({
@@ -130,6 +168,8 @@ test('vision retry policy: only retry retryable reasons', async () => {
   assert.equal(nonRetryAttempts, 1);
   assert.equal(nonRetry.retry.attempted, 0);
   assert.equal(nonRetry.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
+  assert.equal(typeof nonRetry.error_evidence, 'object');
+  assert.equal(nonRetry.error_evidence.reason_normalized, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
 
   assert.equal(shouldRetryVision(VisionUnavailabilityReason.VISION_TIMEOUT), true);
   assert.equal(shouldRetryVision(VisionUnavailabilityReason.VISION_UPSTREAM_5XX), true);
@@ -305,6 +345,9 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
         const metrics = await request.get('/metrics').expect(200);
         const body = String(metrics.text || '');
         assert.match(body, new RegExp(`vision_calls_total\\{provider="${expectedProvider}",decision="${visionDecision}"\\}\\s+1`));
+        if (visionDecision === 'skip') {
+          assert.match(body, new RegExp(`vision_skipped_total\\{provider="${expectedProvider}",reason="vision_missing_key"\\}\\s+1`));
+        }
         assert.match(body, new RegExp(`vision_fail_total\\{provider="${expectedProvider}",reason="VISION_MISSING_KEY"\\}\\s+1`));
         if (visionDecision === 'fallback') {
           assert.match(body, new RegExp(`vision_fallback_total\\{provider="${expectedProvider}",reason="VISION_MISSING_KEY"\\}\\s+1`));
@@ -409,6 +452,9 @@ test('/v1/analysis/skin: forced gemini with missing key reports gemini reason an
         const metrics = await request.get('/metrics').expect(200);
         const body = String(metrics.text || '');
         assert.match(body, new RegExp(`vision_calls_total\\{provider="gemini",decision="${visionDecision}"\\}\\s+1`));
+        if (visionDecision === 'skip') {
+          assert.match(body, /vision_skipped_total\{provider="gemini",reason="vision_missing_key"\}\s+1/);
+        }
         assert.match(body, /vision_fail_total\{provider="gemini",reason="VISION_MISSING_KEY"\}\s+1/);
         if (visionDecision === 'fallback') {
           assert.match(body, /vision_fallback_total\{provider="gemini",reason="VISION_MISSING_KEY"\}\s+1/);
