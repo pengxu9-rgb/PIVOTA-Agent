@@ -1536,9 +1536,15 @@ const AURORA_ROUTINE_EVIDENCE_REFS_ENABLED = (() => {
 })();
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 6500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6500;
   return Math.max(2000, Math.min(20000, v));
+})();
+
+const RECO_ALTERNATIVES_UPSTREAM_RETRIES = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_UPSTREAM_RETRIES || 0);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 0;
+  return Math.max(0, Math.min(2, v));
 })();
 
 const RECO_ALTERNATIVES_MAX_PRODUCTS = (() => {
@@ -1552,6 +1558,20 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 2;
   return Math.max(1, Math.min(4, v));
 })();
+
+const RECO_ALTERNATIVES_CACHE_TTL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_CACHE_TTL_MS || 1800000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1800000;
+  return Math.max(60000, Math.min(24 * 60 * 60 * 1000, v));
+})();
+
+const RECO_ALTERNATIVES_CACHE_MAX_KEYS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_CACHE_MAX_KEYS || 256);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 256;
+  return Math.max(32, Math.min(2048, v));
+})();
+
+const recoAlternativesResponseCache = new Map();
 
 const RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS || 4500);
@@ -32812,6 +32832,122 @@ function extractAnchorIdFromProductLike(obj) {
   return v || null;
 }
 
+function normalizeRecoDedupeToken(raw) {
+  const token = String(raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return token || '';
+}
+
+function normalizeRecoNameToken(raw) {
+  const token = normalizeRecoDedupeToken(raw).replace(/[^a-z0-9]+/g, ' ').trim();
+  return token || '';
+}
+
+function normalizeRecoUrlToken(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  try {
+    const parsed = new URL(text);
+    const path = parsed.pathname ? parsed.pathname.replace(/\/+$/, '') : '';
+    return `${String(parsed.hostname || '').toLowerCase()}${path}`.toLowerCase();
+  } catch {
+    return normalizeRecoDedupeToken(text);
+  }
+}
+
+function buildRecoRecommendationDedupeKey(item) {
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+  if (!base) return '';
+  const candidate =
+    base.sku && typeof base.sku === 'object'
+      ? base.sku
+      : base.product && typeof base.product === 'object'
+        ? base.product
+        : base;
+
+  const productId = normalizeRecoDedupeToken(
+    pickFirstTrimmed(candidate.product_id, candidate.productId, base.product_id, base.productId),
+  );
+  if (productId) return `pid:${productId}`;
+
+  const skuId = normalizeRecoDedupeToken(pickFirstTrimmed(candidate.sku_id, candidate.skuId, base.sku_id, base.skuId));
+  const merchantId = normalizeRecoDedupeToken(
+    pickFirstTrimmed(candidate.merchant_id, candidate.merchantId, base.merchant_id, base.merchantId),
+  );
+  if (merchantId && skuId) return `merchant_sku:${merchantId}:${skuId}`;
+  if (skuId) return `sku:${skuId}`;
+
+  const openUrl = normalizeRecoUrlToken(
+    pickFirstTrimmed(
+      extractCandidateOpenUrl(base),
+      extractCandidateOpenUrl(candidate),
+      base.url,
+      base.product_url,
+      candidate.url,
+      candidate.product_url,
+    ),
+  );
+  if (openUrl) return `url:${openUrl}`;
+
+  const brand = normalizeRecoNameToken(pickFirstTrimmed(candidate.brand, base.brand));
+  const name = normalizeRecoNameToken(
+    pickFirstTrimmed(candidate.display_name, candidate.name, base.display_name, base.name),
+  );
+  if (brand || name) return `name:${brand}::${name}`;
+
+  const fallbackInput = normalizeRecoNameToken(
+    buildProductInputText(candidate, base && typeof base.url === 'string' ? base.url : null),
+  );
+  if (fallbackInput) return `txt:${fallbackInput}`;
+  return '';
+}
+
+function buildRecoAlternativesCacheKey({ inputText, anchorId, productObj, lang } = {}) {
+  const langToken = normalizeRecoDedupeToken(lang || 'EN') || 'en';
+  const anchorToken = normalizeRecoDedupeToken(anchorId);
+  if (anchorToken) return `anchor:${langToken}:${anchorToken}`;
+  const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
+  const productIdToken = normalizeRecoDedupeToken(
+    pickFirstTrimmed(product.product_id, product.productId, product.sku_id, product.skuId),
+  );
+  if (productIdToken) return `product:${langToken}:${productIdToken}`;
+  const inputToken = normalizeRecoNameToken(inputText);
+  return inputToken ? `input:${langToken}:${inputToken}` : '';
+}
+
+function readRecoAlternativesCache(cacheKey, { allowStale = false } = {}) {
+  const key = String(cacheKey || '').trim();
+  if (!key) return null;
+  const entry = recoAlternativesResponseCache.get(key);
+  if (!entry || typeof entry !== 'object') return null;
+  const ageMs = Date.now() - Number(entry.createdAtMs || 0);
+  if (!allowStale && (!Number.isFinite(ageMs) || ageMs > RECO_ALTERNATIVES_CACHE_TTL_MS)) return null;
+  if (!Array.isArray(entry.alternatives) || !entry.alternatives.length) return null;
+  return {
+    alternatives: safeStructuredCloneJson(entry.alternatives) || [],
+    llm_trace: entry.llm_trace && typeof entry.llm_trace === 'object' ? { ...entry.llm_trace } : null,
+    age_ms: Number.isFinite(ageMs) ? ageMs : null,
+    stale: Number.isFinite(ageMs) ? ageMs > RECO_ALTERNATIVES_CACHE_TTL_MS : true,
+  };
+}
+
+function writeRecoAlternativesCache(cacheKey, alternatives, llmTrace = null) {
+  const key = String(cacheKey || '').trim();
+  if (!key) return;
+  const rows = Array.isArray(alternatives) ? alternatives : [];
+  if (!rows.length) return;
+  const payload = safeStructuredCloneJson(rows);
+  if (!Array.isArray(payload) || !payload.length) return;
+  if (!recoAlternativesResponseCache.has(key) && recoAlternativesResponseCache.size >= RECO_ALTERNATIVES_CACHE_MAX_KEYS) {
+    const oldestKey = recoAlternativesResponseCache.keys().next().value;
+    if (oldestKey) recoAlternativesResponseCache.delete(oldestKey);
+  }
+  recoAlternativesResponseCache.set(key, {
+    createdAtMs: Date.now(),
+    alternatives: payload,
+    llm_trace: llmTrace && typeof llmTrace === 'object' ? { ...llmTrace } : null,
+  });
+}
+
 function mergeFieldMissing(a, b) {
   const out = [];
   const seen = new Set();
@@ -32952,6 +33088,48 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
   if (!bestInput) {
     recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
     return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }] };
+  }
+  const alternativesCacheKey = buildRecoAlternativesCacheKey({
+    inputText: bestInput,
+    anchorId: anchor,
+    productObj,
+    lang: ctx.lang,
+  });
+  const hotCacheHit = readRecoAlternativesCache(alternativesCacheKey);
+  if (hotCacheHit && Array.isArray(hotCacheHit.alternatives) && hotCacheHit.alternatives.length) {
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
+    const cachedTrace = hotCacheHit.llm_trace && typeof hotCacheHit.llm_trace === 'object'
+      ? {
+        ...hotCacheHit.llm_trace,
+        cache_hit: true,
+        latency_ms: 0,
+      }
+      : {
+        template_id: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+        prompt_hash: null,
+        prompt_chars: 0,
+        token_est: 0,
+        latency_ms: 0,
+        cache_hit: true,
+        provider: 'aurora',
+        model: null,
+      };
+    return {
+      ok: true,
+      alternatives: hotCacheHit.alternatives,
+      field_missing: [],
+      ...(debug
+        ? {
+          debug: {
+            input: bestInput.slice(0, 200),
+            anchor_id: anchor || null,
+            cache_hit: true,
+            cache_age_ms: hotCacheHit.age_ms,
+          },
+        }
+        : {}),
+      llm_trace: cachedTrace,
+    };
   }
 
   const normalizeAlternativesSkinType = (raw) => {
@@ -33158,6 +33336,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
         baseUrl: AURORA_DECISION_BASE_URL,
         query,
         timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+        retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
         trace_id: ctx.trace_id,
         request_id: ctx.request_id,
         prompt_hash: traceSeed.prompt_hash,
@@ -33252,6 +33431,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     lastLlmTrace = llmTrace;
     if (attemptMapped.length > 0) {
       recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'success' });
+      writeRecoAlternativesCache(alternativesCacheKey, attemptMapped, llmTrace);
     } else {
       recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
     }
@@ -33280,6 +33460,32 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
   }
 
   if (lastError && !mapped.length) {
+    const staleCache = readRecoAlternativesCache(alternativesCacheKey, { allowStale: true });
+    if (staleCache && Array.isArray(staleCache.alternatives) && staleCache.alternatives.length) {
+      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
+      return {
+        ok: true,
+        alternatives: staleCache.alternatives,
+        field_missing: [{ field: 'alternatives', reason: 'upstream_error_cached_fallback' }],
+        ...(debug
+          ? {
+            debug: {
+              input: bestInput.slice(0, 200),
+              anchor_id: anchor || null,
+              cache_fallback: true,
+              cache_age_ms: staleCache.age_ms,
+              cache_stale: staleCache.stale,
+              error: lastError && lastError.message ? lastError.message : String(lastError),
+              attempts: attemptDebug,
+            },
+          }
+          : {}),
+        llm_trace: {
+          ...(lastLlmTrace && typeof lastLlmTrace === 'object' ? lastLlmTrace : {}),
+          cache_hit: true,
+        },
+      };
+    }
     return {
       ok: false,
       alternatives: [],
@@ -33297,6 +33503,35 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
         : {}),
       ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
     };
+  }
+
+  if (!mapped.length) {
+    const staleCache = readRecoAlternativesCache(alternativesCacheKey, { allowStale: true });
+    if (staleCache && Array.isArray(staleCache.alternatives) && staleCache.alternatives.length) {
+      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
+      return {
+        ok: true,
+        alternatives: staleCache.alternatives,
+        field_missing: [{ field: 'alternatives', reason: 'upstream_empty_cached_fallback' }],
+        ...(debug
+          ? {
+            debug: {
+              input: bestInput.slice(0, 200),
+              anchor_id: anchor || null,
+              cache_fallback: true,
+              cache_age_ms: staleCache.age_ms,
+              cache_stale: staleCache.stale,
+              upstream_intent: lastIntent,
+              attempts: attemptDebug,
+            },
+          }
+          : {}),
+        llm_trace: {
+          ...(lastLlmTrace && typeof lastLlmTrace === 'object' ? lastLlmTrace : {}),
+          cache_hit: true,
+        },
+      };
+    }
   }
 
   return {
@@ -33795,15 +34030,7 @@ async function generateProductRecommendations({
     for (const item of norm.payload.recommendations) {
       if (!item || typeof item !== 'object') continue;
       const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
-      const candidate =
-        base && base.sku && typeof base.sku === 'object'
-          ? base.sku
-          : base && base.product && typeof base.product === 'object'
-            ? base.product
-            : base;
-      const anchorId = extractAnchorIdFromProductLike(candidate) || extractAnchorIdFromProductLike(base);
-      const inputText = buildProductInputText(candidate, base && typeof base.url === 'string' ? base.url : null);
-      const key = String(anchorId || inputText || '').trim().toLowerCase();
+      const key = buildRecoRecommendationDedupeKey(base);
       if (!key) continue;
       if (seen.has(key)) continue;
       seen.add(key);
