@@ -8,6 +8,8 @@ process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
 process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT = 'dual';
 process.env.AURORA_RULE_RELAX_MODE = 'conservative';
+process.env.AURORA_BFF_RECO_PDP_LIGHT_ENRICH = 'false';
+process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE = 'false';
 
 const {
   shouldDiagnosisGate,

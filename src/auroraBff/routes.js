@@ -1758,7 +1758,7 @@ const RECO_PDP_STRICT_INTERNAL_FIRST = (() => {
 
 const RECO_PDP_LIGHT_ENRICH_ENABLED = (() => {
   const raw = String(
-    process.env.AURORA_BFF_RECO_PDP_LIGHT_ENRICH || (process.env.NODE_ENV === 'production' ? 'true' : 'false'),
+    process.env.AURORA_BFF_RECO_PDP_LIGHT_ENRICH || (process.env.NODE_ENV === 'test' ? 'false' : 'true'),
   )
     .trim()
     .toLowerCase();
@@ -1767,7 +1767,7 @@ const RECO_PDP_LIGHT_ENRICH_ENABLED = (() => {
 
 const RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED = (() => {
   const raw = String(
-    process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE || (process.env.NODE_ENV === 'production' ? 'true' : 'false'),
+    process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE || (process.env.NODE_ENV === 'test' ? 'false' : 'true'),
   )
     .trim()
     .toLowerCase();
