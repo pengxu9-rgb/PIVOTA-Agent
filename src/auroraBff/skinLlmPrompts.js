@@ -84,50 +84,75 @@ function summarizeRoutineActives(routineCandidate) {
   return Array.from(found).slice(0, 8);
 }
 
-function buildSkinVisionPrompt({ language, photoQuality, diagnosisPolicy, diagnosisV1, profileSummary, promptVersion } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const replyLanguage = lang === 'CN' ? 'Simplified Chinese' : 'English';
-  const replyInstruction = lang === 'CN' ? '只用简体中文。' : 'Reply ONLY in English.';
-  const version =
-    typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim().toLowerCase() : 'v1';
+function normalizeLang(language) {
+  const token = String(language || '').trim().toLowerCase();
+  if (token === 'cn' || token === 'zh-cn' || token === 'zh') return 'zh-CN';
+  return 'en-US';
+}
 
-  const quality = photoQuality && typeof photoQuality === 'object'
-    ? { grade: photoQuality.grade || 'unknown', reasons: Array.isArray(photoQuality.reasons) ? photoQuality.reasons.slice(0, 6) : [] }
-    : { grade: 'unknown', reasons: [] };
-  const policy = diagnosisPolicy && typeof diagnosisPolicy === 'object' ? diagnosisPolicy : null;
-
-  const context = {
-    profile: compactProfile(profileSummary),
-    photo_quality: quality,
-    ...(policy ? { detector_policy: policy } : {}),
-    ...(diagnosisV1 ? { detector_candidates: pickDetectorCandidates(diagnosisV1, { max: 2 }) } : {}),
-  };
-
-  if (version === 'v2') {
-    return (
-      `prompt_version=v2\n` +
-      `context=${JSON.stringify(context)}\n` +
-      `Task: Use the photo ONLY for visible cosmetic skin signals. Focus on face skin only; ignore hair/eyes/lips/background. If unclear (blur/lighting), be conservative and use "not_sure".\n` +
-      `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-      `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
-      `- features: 3–5 items; observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}.\n` +
-      `- strategy: <=900 chars, actionable and executable.\n` +
-      `- no brand/product recommendations.\n` +
-      `Language: ${replyLanguage}. ${replyInstruction}\n`
-    );
+function buildSkinVisionPromptBundle({ language, dto, promptVersion } = {}) {
+  const lang = normalizeLang(language);
+  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'skin_hotfix_v1';
+  if (lang === 'zh-CN') {
+    return {
+      promptVersion: version,
+      systemInstruction:
+        'Role: 你是客观、保守的护肤观察助手。仅基于可见美容信号给建议。禁止疾病诊断、治疗宣称、处方药名称、品牌与具体产品推荐。Language: 简体中文。',
+      userPrompt:
+        `task: 仅根据面部照片的可见信号，输出保守且可执行的美容护肤观察与建议。\n` +
+        `focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.\n` +
+        `dto: ${JSON.stringify(dto || {})}`,
+    };
   }
+  return {
+    promptVersion: version,
+    systemInstruction:
+      'Role: You are an objective, conservative cosmetic skincare observer. Safety: no disease diagnosis, no treatment claims, no prescription drug names, no brand or specific product recommendations. Language: English (US).',
+    userPrompt:
+      `task: Based only on visible FACE skin cues from the image, provide conservative cosmetic observations and practical guidance.\n` +
+      `focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.\n` +
+      `dto: ${JSON.stringify(dto || {})}`,
+  };
+}
 
-  return (
-    `prompt_version=v1\n` +
-    `context=${JSON.stringify(context)}\n` +
-    `Task: Use the photo ONLY for visible cosmetic skin signals (redness, acne-like bumps, shine, dryness/flaking, uneven tone, texture). Focus on face skin only; ignore hair/eyes/lips/background. If unclear (blur/lighting), be conservative and use "not_sure".\n` +
-    `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-    `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
-    `- features: 4–6 items; each {"observation": string<=200 chars, "confidence": "pretty_sure"|"somewhat_sure"|"not_sure"}; no numbers/percent.\n` +
-    `- strategy: <=1000 chars, actionable and executable.\n` +
-    `- no brand/product recommendations.\n` +
-    `Language: ${replyLanguage}. ${replyInstruction}\n`
-  );
+function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
+  const lang = normalizeLang(language);
+  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'skin_hotfix_v1';
+  if (lang === 'zh-CN') {
+    return {
+      promptVersion: version,
+      systemInstruction:
+        'Role: 你是客观、保守的护肤建议助手。仅基于输入信号给出策略。禁止疾病诊断、治疗宣称、处方药名称、品牌与具体产品推荐。Language: 简体中文。',
+      userPrompt:
+        `task: 基于提供的文本信号输出谨慎、可执行的护肤策略，不得声称看到了照片。\n` +
+        `dto: ${JSON.stringify(dto || {})}`,
+    };
+  }
+  return {
+    promptVersion: version,
+    systemInstruction:
+      'Role: You are an objective, conservative cosmetic skincare advisor. Safety: no disease diagnosis, no treatment claims, no prescription drug names, no brand or specific product recommendations. Language: English (US).',
+    userPrompt:
+      `task: Provide cautious and actionable skincare strategy using only provided text signals. Do not claim photo visibility unless explicitly stated.\n` +
+      `dto: ${JSON.stringify(dto || {})}`,
+  };
+}
+
+// Legacy wrappers retained for compatibility with existing non-mainline call sites.
+function buildSkinVisionPrompt({ language, photoQuality, diagnosisPolicy, diagnosisV1, profileSummary, promptVersion } = {}) {
+  const bundle = buildSkinVisionPromptBundle({
+    language,
+    promptVersion,
+    dto: {
+      profile: compactProfile(profileSummary),
+      photo_quality: photoQuality && typeof photoQuality === 'object'
+        ? { grade: photoQuality.grade || 'unknown', reasons: Array.isArray(photoQuality.reasons) ? photoQuality.reasons.slice(0, 6) : [] }
+        : { grade: 'unknown', reasons: [] },
+      ...(diagnosisPolicy && typeof diagnosisPolicy === 'object' ? { detector_policy: diagnosisPolicy } : {}),
+      ...(diagnosisV1 ? { detector_candidates: pickDetectorCandidates(diagnosisV1, { max: 2 }) } : {}),
+    },
+  });
+  return `${bundle.systemInstruction}\n${bundle.userPrompt}`;
 }
 
 function buildSkinReportPrompt({
@@ -140,60 +165,28 @@ function buildSkinReportPrompt({
   recentLogsSummary,
   promptVersion,
 } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const replyLanguage = lang === 'CN' ? 'Simplified Chinese' : 'English';
-  const replyInstruction = lang === 'CN' ? '只用简体中文。' : 'Reply ONLY in English.';
-  const version =
-    typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim().toLowerCase() : 'v1';
-
-  const quality = photoQuality && typeof photoQuality === 'object'
-    ? { grade: photoQuality.grade || 'unknown', reasons: Array.isArray(photoQuality.reasons) ? photoQuality.reasons.slice(0, 6) : [] }
-    : { grade: 'unknown', reasons: [] };
-  const policy = diagnosisPolicy && typeof diagnosisPolicy === 'object' ? diagnosisPolicy : null;
-  const routineActives = summarizeRoutineActives(routineCandidate);
-  const logsN = Array.isArray(recentLogsSummary) ? recentLogsSummary.length : 0;
-
-  const context = {
-    profile: compactProfile(profileSummary),
-    recent_logs_n: logsN,
-    routine_actives: routineActives,
-    photo_quality: quality,
-    ...(policy ? { detector_policy: policy } : {}),
-    ...(diagnosisV1 ? { detector_candidates: pickDetectorCandidates(diagnosisV1, { max: 2 }) } : {}),
-  };
-
-  if (version === 'v2') {
-    return (
-      `prompt_version=v2\n` +
-      `context=${JSON.stringify(context)}\n` +
-      `Task: Provide a cautious skin assessment using ONLY the context. Do NOT claim you can see the user's skin in a photo.\n` +
-      `If routine_actives suggests irritation risk, suggest minimal safe adjustments (no new brands).\n` +
-      `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-      `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
-      `- features: 3–5 items; observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}.\n` +
-      `- strategy: <=900 chars, actionable and executable.\n` +
-      `- no brand/product recommendations.\n` +
-      `Language: ${replyLanguage}. ${replyInstruction}\n`
-    );
-  }
-
-  return (
-    `prompt_version=v1\n` +
-    `context=${JSON.stringify(context)}\n` +
-    `Task: Provide a cautious skin assessment using ONLY the context. Do NOT claim you can see the user's skin in a photo.\n` +
-    `If routine_actives suggests irritation risk, suggest minimal safe adjustments (no new brands).\n` +
-    `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-    `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
-    `- features: 4–6 items; each observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}; no numbers/percent.\n` +
-    `- strategy: <=1000 chars, actionable and executable.\n` +
-    `- no brand/product recommendations.\n` +
-    `Language: ${replyLanguage}. ${replyInstruction}\n`
-  );
+  const bundle = buildSkinReportPromptBundle({
+    language,
+    promptVersion,
+    dto: {
+      profile: compactProfile(profileSummary),
+      recent_logs_n: Array.isArray(recentLogsSummary) ? recentLogsSummary.length : 0,
+      routine_actives: summarizeRoutineActives(routineCandidate),
+      photo_quality: photoQuality && typeof photoQuality === 'object'
+        ? { grade: photoQuality.grade || 'unknown', reasons: Array.isArray(photoQuality.reasons) ? photoQuality.reasons.slice(0, 6) : [] }
+        : { grade: 'unknown', reasons: [] },
+      ...(diagnosisPolicy && typeof diagnosisPolicy === 'object' ? { detector_policy: diagnosisPolicy } : {}),
+      ...(diagnosisV1 ? { detector_candidates: pickDetectorCandidates(diagnosisV1, { max: 2 }) } : {}),
+    },
+  });
+  return `${bundle.systemInstruction}\n${bundle.userPrompt}`;
 }
 
 module.exports = {
   buildSkinVisionPrompt,
   buildSkinReportPrompt,
+  buildSkinVisionPromptBundle,
+  buildSkinReportPromptBundle,
   pickDetectorCandidates,
   summarizeRoutineActives,
 };

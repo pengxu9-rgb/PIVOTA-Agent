@@ -45,6 +45,12 @@ const {
   setSocialCacheHitRate,
   setSocialChannelsCoverage,
   recordAuroraSkinFlowMetric,
+  recordAuroraSkinLlmSchemaViolation,
+  recordAuroraSkinLlmRetry,
+  recordAuroraSkinLlmRetrySuccess,
+  recordAuroraSkinMainlineProvider,
+  recordAuroraSkinFallbackDeterministic,
+  recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraIngredientsFlowMetric,
   observeAuroraIngredientsFirstAnswerLatency,
 } = require('../src/auroraBff/visionMetrics');
@@ -403,4 +409,36 @@ test('vision metrics: ingredients query-first counters, rates and latency are ex
   assert.match(metrics, /ingredients_first_answer_latency_ms_bucket\{le="1000"\} 1/);
   assert.match(metrics, /ingredients_first_answer_latency_ms_bucket\{le="5000"\} 2/);
   assert.match(metrics, /ingredients_first_answer_latency_ms_count 2/);
+});
+
+test('vision metrics: skin mainline llm counters are exported', () => {
+  resetVisionMetrics();
+  recordAuroraSkinMainlineProvider({ provider: 'gemini' });
+  recordAuroraSkinLlmSchemaViolation({
+    stage: 'report',
+    provider: 'gemini',
+    reason: 'schema_invalid',
+    inputHashPrefix: 'abcd1234',
+  });
+  recordAuroraSkinLlmRetry({ stage: 'report', provider: 'gemini', inputHashPrefix: 'abcd1234' });
+  recordAuroraSkinLlmRetrySuccess({ stage: 'report', provider: 'gemini', inputHashPrefix: 'abcd1234' });
+  recordAuroraSkinFallbackDeterministic({ reason: 'report_failed' });
+  recordAuroraSkinShadowVerifyIsolatedWrite({ status: 'success' });
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(metrics, /aurora_skin_mainline_provider_total\{provider="gemini"\} 1/);
+  assert.match(
+    metrics,
+    /aurora_skin_llm_schema_violation_total\{stage="report",provider="gemini",reason="schema_invalid",input_hash_prefix="abcd1234"\} 1/,
+  );
+  assert.match(
+    metrics,
+    /aurora_skin_llm_retry_total\{stage="report",provider="gemini",input_hash_prefix="abcd1234"\} 1/,
+  );
+  assert.match(
+    metrics,
+    /aurora_skin_llm_retry_success_total\{stage="report",provider="gemini",input_hash_prefix="abcd1234"\} 1/,
+  );
+  assert.match(metrics, /aurora_skin_fallback_deterministic_total\{reason="report_failed"\} 1/);
+  assert.match(metrics, /aurora_skin_shadow_verify_isolated_write_total\{status="success"\} 1/);
 });

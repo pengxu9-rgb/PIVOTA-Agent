@@ -151,6 +151,12 @@ let actionClickCount = 0;
 let actionCopyCount = 0;
 let retakeAfterModulesCount = 0;
 const auroraSkinFlowCounter = new Map();
+const auroraSkinLlmSchemaViolationCounter = new Map();
+const auroraSkinLlmRetryCounter = new Map();
+const auroraSkinLlmRetrySuccessCounter = new Map();
+const auroraSkinMainlineProviderCounter = new Map();
+const auroraSkinFallbackDeterministicCounter = new Map();
+const auroraSkinShadowVerifyIsolatedWriteCounter = new Map();
 const auroraIngredientsFlowCounter = new Map();
 const auroraIngredientProviderCounter = new Map();
 const auroraIngredientsFirstAnswerLatency = {
@@ -222,6 +228,11 @@ function normalizePipelineVersion(version) {
 
 function normalizeDeviceClass(deviceClass) {
   return cleanMetricToken(deviceClass, 'unknown');
+}
+
+function normalizeInputHashPrefix(inputHashPrefix) {
+  const token = cleanMetricToken(inputHashPrefix, 'none');
+  return token.slice(0, 8) || 'none';
 }
 
 function normalizeIssueType(issueType) {
@@ -2032,6 +2043,79 @@ function recordAuroraSkinFlowMetric({ stage, outcome, hit, delta } = {}) {
   );
 }
 
+function recordAuroraSkinLlmSchemaViolation({ stage, provider, reason, inputHashPrefix, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinLlmSchemaViolationCounter,
+    {
+      stage: cleanMetricToken(stage, 'unknown'),
+      provider: cleanMetricToken(provider, 'gemini'),
+      reason: cleanMetricToken(reason, 'unknown'),
+      input_hash_prefix: normalizeInputHashPrefix(inputHashPrefix),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinLlmRetry({ stage, provider, inputHashPrefix, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinLlmRetryCounter,
+    {
+      stage: cleanMetricToken(stage, 'unknown'),
+      provider: cleanMetricToken(provider, 'gemini'),
+      input_hash_prefix: normalizeInputHashPrefix(inputHashPrefix),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinLlmRetrySuccess({ stage, provider, inputHashPrefix, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinLlmRetrySuccessCounter,
+    {
+      stage: cleanMetricToken(stage, 'unknown'),
+      provider: cleanMetricToken(provider, 'gemini'),
+      input_hash_prefix: normalizeInputHashPrefix(inputHashPrefix),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinMainlineProvider({ provider, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinMainlineProviderCounter,
+    { provider: cleanMetricToken(provider, 'gemini') },
+    amount,
+  );
+}
+
+function recordAuroraSkinFallbackDeterministic({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinFallbackDeterministicCounter,
+    { reason: cleanMetricToken(reason, 'unknown') },
+    amount,
+  );
+}
+
+function recordAuroraSkinShadowVerifyIsolatedWrite({ status, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinShadowVerifyIsolatedWriteCounter,
+    { status: cleanMetricToken(status, 'unknown') },
+    amount,
+  );
+}
+
 function recordAuroraIngredientsFlowMetric({ stage, outcome, hit, delta, provider } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -2895,6 +2979,30 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_flow_total counter');
   renderCounter(lines, 'aurora_skin_flow_total', auroraSkinFlowCounter);
 
+  lines.push('# HELP aurora_skin_llm_schema_violation_total Total LLM schema validation failures in skin mainline.');
+  lines.push('# TYPE aurora_skin_llm_schema_violation_total counter');
+  renderCounter(lines, 'aurora_skin_llm_schema_violation_total', auroraSkinLlmSchemaViolationCounter);
+
+  lines.push('# HELP aurora_skin_llm_retry_total Total single lightweight retries for skin mainline LLM calls.');
+  lines.push('# TYPE aurora_skin_llm_retry_total counter');
+  renderCounter(lines, 'aurora_skin_llm_retry_total', auroraSkinLlmRetryCounter);
+
+  lines.push('# HELP aurora_skin_llm_retry_success_total Total successful retries for skin mainline LLM calls.');
+  lines.push('# TYPE aurora_skin_llm_retry_success_total counter');
+  renderCounter(lines, 'aurora_skin_llm_retry_success_total', auroraSkinLlmRetrySuccessCounter);
+
+  lines.push('# HELP aurora_skin_mainline_provider_total Mainline provider usage count for /v1/analysis/skin.');
+  lines.push('# TYPE aurora_skin_mainline_provider_total counter');
+  renderCounter(lines, 'aurora_skin_mainline_provider_total', auroraSkinMainlineProviderCounter);
+
+  lines.push('# HELP aurora_skin_fallback_deterministic_total Total deterministic fallbacks in skin mainline.');
+  lines.push('# TYPE aurora_skin_fallback_deterministic_total counter');
+  renderCounter(lines, 'aurora_skin_fallback_deterministic_total', auroraSkinFallbackDeterministicCounter);
+
+  lines.push('# HELP aurora_skin_shadow_verify_isolated_write_total Total isolated shadow verify write attempts.');
+  lines.push('# TYPE aurora_skin_shadow_verify_isolated_write_total counter');
+  renderCounter(lines, 'aurora_skin_shadow_verify_isolated_write_total', auroraSkinShadowVerifyIsolatedWriteCounter);
+
   lines.push('# HELP aurora_ingredients_flow_total Aurora ingredients query-first flow counters by stage and outcome.');
   lines.push('# TYPE aurora_ingredients_flow_total counter');
   renderCounter(lines, 'aurora_ingredients_flow_total', auroraIngredientsFlowCounter);
@@ -3263,6 +3371,12 @@ function resetVisionMetrics() {
   actionCopyCount = 0;
   retakeAfterModulesCount = 0;
   auroraSkinFlowCounter.clear();
+  auroraSkinLlmSchemaViolationCounter.clear();
+  auroraSkinLlmRetryCounter.clear();
+  auroraSkinLlmRetrySuccessCounter.clear();
+  auroraSkinMainlineProviderCounter.clear();
+  auroraSkinFallbackDeterministicCounter.clear();
+  auroraSkinShadowVerifyIsolatedWriteCounter.clear();
   auroraIngredientsFlowCounter.clear();
   auroraIngredientProviderCounter.clear();
   auroraIngredientsFirstAnswerLatency.count = 0;
@@ -3427,6 +3541,12 @@ function snapshotVisionMetrics() {
     actionCopyCount,
     retakeAfterModulesCount,
     auroraSkinFlow: Array.from(auroraSkinFlowCounter.entries()),
+    auroraSkinLlmSchemaViolations: Array.from(auroraSkinLlmSchemaViolationCounter.entries()),
+    auroraSkinLlmRetry: Array.from(auroraSkinLlmRetryCounter.entries()),
+    auroraSkinLlmRetrySuccess: Array.from(auroraSkinLlmRetrySuccessCounter.entries()),
+    auroraSkinMainlineProvider: Array.from(auroraSkinMainlineProviderCounter.entries()),
+    auroraSkinFallbackDeterministic: Array.from(auroraSkinFallbackDeterministicCounter.entries()),
+    auroraSkinShadowVerifyIsolatedWrite: Array.from(auroraSkinShadowVerifyIsolatedWriteCounter.entries()),
     auroraIngredientsFlow: Array.from(auroraIngredientsFlowCounter.entries()),
     auroraIngredientProvider: Array.from(auroraIngredientProviderCounter.entries()),
     auroraIngredientsFirstAnswerLatency: {
@@ -3556,6 +3676,12 @@ module.exports = {
   recordClaimsTemplateFallback,
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
+  recordAuroraSkinLlmSchemaViolation,
+  recordAuroraSkinLlmRetry,
+  recordAuroraSkinLlmRetrySuccess,
+  recordAuroraSkinMainlineProvider,
+  recordAuroraSkinFallbackDeterministic,
+  recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
   observeAuroraIngredientsFirstAnswerLatency,

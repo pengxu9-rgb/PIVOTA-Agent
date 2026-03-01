@@ -43,6 +43,8 @@ function withEnv(patch, fn) {
 }
 
 function loadAuroraRoutesModule() {
+  const gatewayId = require.resolve('../src/auroraBff/skinLlmGateway');
+  delete require.cache[gatewayId];
   const moduleId = require.resolve('../src/auroraBff/routes');
   delete require.cache[moduleId];
   const mod = require('../src/auroraBff/routes');
@@ -425,8 +427,11 @@ test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN 
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: '',
       AURORA_SKIN_VISION_ENABLED: 'true',
-      AURORA_SKIN_VISION_PROVIDER: 'openai',
-      OPENAI_API_KEY: 'dummy_openai_key',
+      AURORA_SKIN_VISION_PROVIDER: 'gemini',
+      AURORA_SKIN_GEMINI_API_KEY: undefined,
+      GEMINI_API_KEY: 'dummy_gemini_key',
+      GOOGLE_API_KEY: undefined,
+      OPENAI_API_KEY: undefined,
       PIVOTA_BACKEND_BASE_URL: '',
       PIVOTA_BACKEND_AGENT_API_KEY: '',
     },

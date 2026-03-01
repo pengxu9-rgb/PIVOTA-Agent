@@ -26,6 +26,7 @@ const ephemeral = {
   logs: new Map(),
   experiments: new Map(),
   identityLinks: new Map(),
+  shadowVerifyRuns: new Map(),
 };
 
 function touchEphemeral(map, key, value) {
@@ -1456,6 +1457,190 @@ async function saveLastAnalysisForIdentity({ auroraUid, userId }, { analysis, la
   return mapProfileFromDb(res.rows && res.rows[0]);
 }
 
+function normalizeShadowVerifyPayload(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const source = String(p.source || 'shadow_verify').trim() || 'shadow_verify';
+  const provider = String(p.provider || 'gemini').trim() || 'gemini';
+  const promptVersion = typeof p.prompt_version === 'string' ? p.prompt_version.trim() : '';
+  const inputHash = typeof p.input_hash === 'string' ? p.input_hash.trim().toLowerCase() : '';
+  const verdict = p.verdict && typeof p.verdict === 'object' && !Array.isArray(p.verdict) ? p.verdict : {};
+  const meta = p.meta && typeof p.meta === 'object' && !Array.isArray(p.meta) ? p.meta : {};
+  const createdAt = typeof p.created_at === 'string' && p.created_at.trim() ? p.created_at.trim() : isoTs();
+  return {
+    source,
+    provider,
+    prompt_version: promptVersion || null,
+    input_hash: inputHash || null,
+    verdict,
+    meta,
+    created_at: createdAt,
+  };
+}
+
+async function saveShadowVerifyForIdentity({ auroraUid, userId }, { shadow }) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const hasIdentity = Boolean(identity.user_id) || Boolean(identity.aurora_uid);
+  if (!hasIdentity) return null;
+
+  const normalized = normalizeShadowVerifyPayload(shadow);
+  if (persistenceDisabled()) {
+    const key = identity.user_id
+      ? profileKeyFor({ kind: 'account', id: identity.user_id })
+      : profileKeyFor({ kind: 'guest', id: identity.aurora_uid });
+    if (!key) return null;
+    const list = ephemeral.shadowVerifyRuns.get(key) || [];
+    const nextId = `${key}:shadow:${Date.now()}:${list.length + 1}`;
+    const row = {
+      shadow_id: nextId,
+      aurora_uid: identity.aurora_uid || null,
+      user_id: identity.user_id || null,
+      ...normalized,
+    };
+    list.push(row);
+    while (list.length > 20) list.shift();
+    touchEphemeral(ephemeral.shadowVerifyRuns, key, list);
+    return row;
+  }
+
+  if (identity.user_id) {
+    await ensureAccountProfileRow(identity.user_id);
+  } else if (identity.aurora_uid) {
+    await ensureUserProfileRow(identity.aurora_uid);
+  }
+
+  const params = [
+    identity.aurora_uid || null,
+    identity.user_id || null,
+    normalized.source,
+    normalized.provider,
+    normalized.prompt_version,
+    normalized.input_hash,
+    JSON.stringify(normalized.verdict || {}),
+    JSON.stringify(normalized.meta || {}),
+    normalized.created_at,
+  ];
+  const res = await query(
+    `
+      INSERT INTO aurora_skin_shadow_verify_runs (
+        aurora_uid,
+        user_id,
+        source,
+        provider,
+        prompt_version,
+        input_hash,
+        verdict_json,
+        meta_json,
+        created_at
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::timestamptz)
+      RETURNING
+        id AS shadow_id,
+        aurora_uid,
+        user_id,
+        source,
+        provider,
+        prompt_version,
+        input_hash,
+        verdict_json,
+        meta_json,
+        created_at
+    `,
+    params,
+  );
+  const row = res.rows && res.rows[0] ? res.rows[0] : null;
+  if (!row) return null;
+  return {
+    shadow_id: row.shadow_id,
+    aurora_uid: row.aurora_uid || null,
+    user_id: row.user_id || null,
+    source: row.source || normalized.source,
+    provider: row.provider || normalized.provider,
+    prompt_version: row.prompt_version || normalized.prompt_version || null,
+    input_hash: row.input_hash || normalized.input_hash || null,
+    verdict: row.verdict_json && typeof row.verdict_json === 'object' ? row.verdict_json : {},
+    meta: row.meta_json && typeof row.meta_json === 'object' ? row.meta_json : {},
+    created_at: row.created_at ? new Date(row.created_at).toISOString() : normalized.created_at,
+  };
+}
+
+function appendShadowIdsToAnalysis(analysisObj, shadowId, maxIds = 20) {
+  const base = analysisObj && typeof analysisObj === 'object' && !Array.isArray(analysisObj) ? { ...analysisObj } : {};
+  const existing = Array.isArray(base.shadow_ids) ? base.shadow_ids : [];
+  const dedup = [];
+  const seen = new Set();
+  for (const id of existing) {
+    const v = String(id || '').trim();
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    dedup.push(v);
+  }
+  const incoming = String(shadowId || '').trim();
+  if (incoming && !seen.has(incoming)) dedup.push(incoming);
+  base.shadow_ids = dedup.slice(Math.max(0, dedup.length - Math.max(1, Math.min(100, Number(maxIds) || 20))));
+  return base;
+}
+
+async function appendShadowIdToLastAnalysisForIdentity({ auroraUid, userId }, { shadowId, maxIds } = {}) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const incoming = String(shadowId || '').trim();
+  if (!incoming) return null;
+
+  if (persistenceDisabled()) {
+    const key = identity.user_id
+      ? profileKeyFor({ kind: 'account', id: identity.user_id })
+      : profileKeyFor({ kind: 'guest', id: identity.aurora_uid });
+    if (!key) return null;
+    const existing = ephemeral.profiles.get(key) || ensureEphemeralProfile({ kind: identity.user_id ? 'account' : 'guest', id: identity.user_id || identity.aurora_uid });
+    if (!existing) return null;
+    const next = {
+      ...existing,
+      lastAnalysis: appendShadowIdsToAnalysis(existing.lastAnalysis, incoming, maxIds),
+      lastAnalysisAt: isoTs(),
+      updated_at: isoTs(),
+    };
+    touchEphemeral(ephemeral.profiles, key, next);
+    return next;
+  }
+
+  if (identity.user_id) {
+    await ensureAccountProfileRow(identity.user_id);
+    const profile = await getAccountProfile(identity.user_id);
+    const nextAnalysis = appendShadowIdsToAnalysis(profile && profile.lastAnalysis, incoming, maxIds);
+    const json = JSON.stringify(nextAnalysis);
+    const res = await query(
+      `
+        UPDATE aurora_account_profiles
+        SET last_analysis = $2::jsonb,
+            last_analysis_at = now(),
+            updated_at = now(),
+            deleted_at = NULL
+        WHERE user_id = $1
+        RETURNING *
+      `,
+      [identity.user_id, json],
+    );
+    return mapAccountProfileFromDb(res.rows && res.rows[0]);
+  }
+
+  await ensureUserProfileRow(identity.aurora_uid);
+  const profile = await getUserProfile(identity.aurora_uid);
+  const nextAnalysis = appendShadowIdsToAnalysis(profile && profile.lastAnalysis, incoming, maxIds);
+  const json = JSON.stringify(nextAnalysis);
+  const res = await query(
+    `
+      UPDATE aurora_user_profiles
+      SET last_analysis = $2::jsonb,
+          last_analysis_at = now(),
+          updated_at = now(),
+          deleted_at = NULL
+      WHERE aurora_uid = $1
+      RETURNING *
+    `,
+    [identity.aurora_uid, json],
+  );
+  return mapProfileFromDb(res.rows && res.rows[0]);
+}
+
 async function deleteIdentityData({ auroraUid, userId }) {
   const identity = identityFromRequest({ auroraUid, userId });
   const hasAny = Boolean(identity.aurora_uid) || Boolean(identity.user_id);
@@ -1533,6 +1718,8 @@ module.exports = {
   appendExperimentEventForIdentity,
   listExperimentEventsForIdentity,
   saveLastAnalysisForIdentity,
+  saveShadowVerifyForIdentity,
+  appendShadowIdToLastAnalysisForIdentity,
   deleteIdentityData,
   isCheckinDue,
 };

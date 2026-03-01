@@ -10,6 +10,17 @@ const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope')
 const { createStageProfiler } = require('./skinAnalysisProfiling');
 const { runSkinDiagnosisV1, summarizeDiagnosisForPolicy, buildSkinAnalysisFromDiagnosisV1 } = require('./skinDiagnosisV1');
 const { buildSkinVisionPrompt, buildSkinReportPrompt } = require('./skinLlmPrompts');
+const { buildVisionSignalsDto, buildReportSignalsDto, buildInputHashPrefix } = require('./skinSignalsDto');
+const {
+  buildFactLayer,
+  finalizeSkinAnalysisContract,
+  mergeFinalContractIntoAnalysis,
+} = require('./skinAnalysisContract');
+const {
+  runGeminiVisionStrategy,
+  runGeminiReportStrategy,
+  isGeminiSkinGatewayAvailable,
+} = require('./skinLlmGateway');
 const {
   classifyPhotoQuality,
   inferDetectorConfidence,
@@ -74,6 +85,12 @@ const {
   recordClaimsTemplateFallback,
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
+  recordAuroraSkinLlmSchemaViolation,
+  recordAuroraSkinLlmRetry,
+  recordAuroraSkinLlmRetrySuccess,
+  recordAuroraSkinMainlineProvider,
+  recordAuroraSkinFallbackDeterministic,
+  recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
   recordAuroraSkinAnalysisRealModel,
@@ -168,6 +185,8 @@ const {
   upsertChatContextForIdentity,
   appendExperimentEventForIdentity,
   saveLastAnalysisForIdentity,
+  saveShadowVerifyForIdentity,
+  appendShadowIdToLastAnalysisForIdentity,
   deleteIdentityData,
   isCheckinDue,
   resolveNextStateFromSessionPatch,
@@ -15299,13 +15318,13 @@ async function runOpenAIVisionSkinAnalysis({
               max_tokens: 480,
               response_format: { type: 'json_object' },
               messages: [
-                { role: 'system', content: 'You produce ONLY JSON.' },
+                { role: 'system', content: 'You are an objective and conservative cosmetic skincare assistant.' },
                 {
                   role: 'user',
                   content: [
                     {
                       type: 'text',
-                      text: `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and keep strategy actionable.\n`,
+                      text: promptBase,
                     },
                     { type: 'image_url', image_url: { url: dataUrl } },
                   ],
@@ -15456,7 +15475,7 @@ async function runGeminiVisionSkinAnalysis({
                     },
                   },
                   {
-                    text: `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and keep strategy actionable.\n`,
+                    text: promptBase,
                   },
                 ],
               },
@@ -15647,15 +15666,15 @@ function normalizeSkinAnalysisFromLLM(obj, { language } = {}) {
     return out;
   };
 
-  let strategyRaw = clampText(o.strategy, 900);
+  let strategyRaw = clampText(o.strategy, 700);
   const needsRiskCheckRaw = o.needs_risk_check ?? o.needsRiskCheck;
   const needs_risk_check = typeof needsRiskCheckRaw === 'boolean' ? needsRiskCheckRaw : false;
   if (strategyRaw && forbiddenRegex.test(strategyRaw)) return null;
 
   const fallbackStrategy =
     lang === 'CN'
-      ? '先执行 7 天温和基线（洁面-保湿-防晒），若出现持续刺痛/泛红立即降阶。'
-      : 'Run a gentle 7-day baseline first (cleanse-moisturize-SPF), and de-escalate immediately if persistent stinging/redness appears.';
+      ? 'AM: 温和清洁+保湿+防晒。PM: 温和清洁+保湿。若出现持续刺激，立即简化护理并暂停新增活性。'
+      : 'AM: gentle cleanse + moisturizer + sunscreen. PM: gentle cleanse + moisturizer. If irritation persists, simplify and pause new actives.';
   const strategy = strategyRaw || fallbackStrategy;
 
   if (features.length < 2 && !strategyRaw) return null;
@@ -39652,13 +39671,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         const hasLlmPrimaryInput = hasPrimaryInput || hasPhotoPrimaryInput;
         const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasLlmPrimaryInput);
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
-        const selectedVisionProvider = resolveVisionProviderSelection();
+        const selectedVisionProvider = {
+          provider: 'gemini',
+          requested: 'gemini_locked_mainline',
+          apiKeyConfigured: isGeminiSkinGatewayAvailable(),
+        };
         const visionAvailability = classifyVisionAvailability({
           enabled: SKIN_VISION_ENABLED,
           apiKeyConfigured: selectedVisionProvider.apiKeyConfigured,
         });
         const visionAvailable = visionAvailability.available && !rollout.llmKillSwitch;
-        const reportAvailable = Boolean(AURORA_DECISION_BASE_URL) && !USE_AURORA_BFF_MOCK && !rollout.llmKillSwitch;
+        const reportAvailable = Boolean(selectedVisionProvider.apiKeyConfigured) && !rollout.llmKillSwitch;
 
         const analysisFieldMissing = [];
         const qualityReportReasons = [];
@@ -39667,6 +39690,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         let analysisSource = 'rule_based';
         let visionRuntime = null;
         let visionDecisionForReport = null;
+        let visionLayer = null;
+        let reportLayer = null;
+        let llmInputHash = null;
+        let llmInputHashPrefix = null;
+        let deterministicFallbackReason = null;
         let reportModelCalled = false;
         let reportModelErrored = false;
 
@@ -39904,92 +39932,104 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
 
             if (photoBytes) {
-              const vision = await runVisionSkinAnalysis({
-                provider: selectedVisionProvider.provider,
-                imageBuffer: photoBytes,
-                language: ctx.lang,
+              const deterministicSeedForVisionDto =
+                userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality
+                  ? buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language: ctx.lang, profileSummary })
+                  : buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang });
+              const factLayerSeed = buildFactLayer({
+                deterministicAnalysis: deterministicSeedForVisionDto,
+                visionLayer: null,
+              });
+              const visionDto = buildVisionSignalsDto({
+                lang: ctx.lang,
                 photoQuality,
-                llmKillSwitch: rollout.llmKillSwitch,
-                diagnosisPolicy,
-                diagnosisV1,
                 profileSummary,
-                recentLogsSummary,
-                profiler,
+                diagnosisPolicy,
+                factLayer: factLayerSeed,
+                imageBuffer: photoBytes,
+              });
+              llmInputHash = visionDto.input_hash || llmInputHash;
+              llmInputHashPrefix = buildInputHashPrefix(llmInputHash);
+              recordAuroraSkinMainlineProvider({ provider: 'gemini' });
+              const vision = await runGeminiVisionStrategy({
+                imageBuffer: photoBytes,
+                visionDto,
+                language: ctx.lang,
                 promptVersion,
+                profiler,
               });
               visionRuntime = vision;
               if (vision && vision.ok && vision.analysis) {
-                analysis = vision.analysis;
+                visionLayer = vision.analysis;
                 usedPhotos = true;
                 shadowVerifyPhotoBytes = photoBytes;
-                const openAiFallback = vision.provider === 'openai' && String(vision.fallback_from || '').trim().toLowerCase() === 'gemini';
-                analysisSource = vision.provider === 'gemini'
-                  ? 'vision_gemini'
-                  : openAiFallback
-                    ? 'vision_openai_fallback'
-                    : 'vision_openai';
+                analysisSource = 'vision_gemini';
                 logger?.info(
                   {
                     kind: 'metric',
                     name: 'aurora.skin.analysis.provider_success.count',
                     value: 1,
-                    provider: vision.provider || selectedVisionProvider.provider || 'unknown',
+                    provider: 'gemini',
                     analysis_source: analysisSource,
                   },
                   'metric',
                 );
-                if (openAiFallback) {
-                  if (ctx.lang === 'CN') qualityReportReasons.push('Gemini 视觉结果不可用，本次已自动回退到 OpenAI 视觉模型。');
-                  else qualityReportReasons.push('Gemini vision result was unavailable, so this run fell back to OpenAI vision.');
-                  logger?.info({ kind: 'metric', name: 'aurora.skin_analysis.vision_openai_fallback.count', value: 1 }, 'metric');
-                  logger?.info(
-                    {
-                      kind: 'metric',
-                      name: 'aurora.skin.analysis.provider_fallback.count',
-                      value: 1,
-                      from: 'gemini',
-                      to: 'openai',
-                    },
-                    'metric',
-                  );
+                if (vision.retry && Number(vision.retry.attempted || 0) > 0) {
+                  recordAuroraSkinLlmRetry({
+                    stage: 'vision',
+                    provider: 'gemini',
+                    inputHashPrefix: llmInputHashPrefix,
+                  });
+                  if (vision.retry.final === 'success') {
+                    recordAuroraSkinLlmRetrySuccess({
+                      stage: 'vision',
+                      provider: 'gemini',
+                      inputHashPrefix: llmInputHashPrefix,
+                    });
+                  }
                 }
               } else if (vision && !vision.ok) {
-                const normalizedReason = normalizeVisionReason(vision.reason);
-                const fallbackFrom = String(vision.fallback_from || '').trim().toLowerCase();
+                const gatewayReasonMap = {
+                  TIMEOUT: VisionUnavailabilityReason.VISION_TIMEOUT,
+                  RATE_LIMIT: VisionUnavailabilityReason.VISION_RATE_LIMITED,
+                  UPSTREAM_5XX: VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
+                  UPSTREAM_4XX: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+                  SCHEMA_INVALID: VisionUnavailabilityReason.VISION_SCHEMA_INVALID,
+                  IMAGE_FETCH_FAILED: VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED,
+                  MISSING_GEMINI_KEY: VisionUnavailabilityReason.VISION_MISSING_KEY,
+                };
+                const normalizedReason = normalizeVisionReason(gatewayReasonMap[String(vision.reason || '').trim().toUpperCase()] || vision.reason);
+                visionRuntime = { ...vision, reason: normalizedReason || vision.reason };
+                deterministicFallbackReason = normalizedReason || deterministicFallbackReason || 'vision_failed';
                 analysisFieldMissing.push({
                   field: 'analysis.used_photos',
                   reason: normalizedReason || 'VISION_UNKNOWN',
                 });
                 if (ctx.lang === 'CN') qualityReportReasons.push(`照片解析失败（${normalizedReason || 'VISION_UNKNOWN'}）；我会退回到确定性基线。`);
                 else qualityReportReasons.push(`Photo analysis failed (${normalizedReason || 'VISION_UNKNOWN'}); falling back to deterministic baseline.`);
+                if (vision.schema_violation) {
+                  recordAuroraSkinLlmSchemaViolation({
+                    stage: 'vision',
+                    provider: 'gemini',
+                    reason: normalizedReason || 'VISION_SCHEMA_INVALID',
+                    inputHashPrefix: llmInputHashPrefix,
+                  });
+                }
                 logger?.info(
                   {
                     kind: 'metric',
                     name: 'aurora.skin.analysis.provider_failure.count',
                     value: 1,
-                    provider: vision.provider || selectedVisionProvider.provider || 'unknown',
+                    provider: 'gemini',
                     reason: normalizedReason || 'VISION_UNKNOWN',
-                    fallback_from: fallbackFrom || null,
+                    fallback_from: null,
                   },
                   'metric',
                 );
-                if (fallbackFrom === 'gemini' && String(vision.provider || '').trim().toLowerCase() === 'openai') {
-                  logger?.info(
-                    {
-                      kind: 'metric',
-                      name: 'aurora.skin.analysis.provider_fallback_failure.count',
-                      value: 1,
-                      from: 'gemini',
-                      to: 'openai',
-                      reason: normalizedReason || 'VISION_UNKNOWN',
-                    },
-                    'metric',
-                  );
-                }
                 logger?.warn(
                   {
                     reason: normalizedReason || 'VISION_UNKNOWN',
-                    provider: vision.provider || selectedVisionProvider.provider || 'unknown',
+                    provider: 'gemini',
                     upstream_status_code: toNullableInt(vision.upstream_status_code),
                     error_code: vision.error || null,
                   },
@@ -40004,67 +40044,69 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push(`Skipped photo analysis: ${r.join('; ') || 'unknown reason'}`);
         }
 
-        if (reportDecision.decision === 'call' && hasLlmPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+        if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && reportAvailable) {
           reportModelCalled = true;
-          const promptBase = buildSkinReportPrompt({
-            language: ctx.lang,
-            photoQuality: qualityForReport,
-            diagnosisPolicy,
+          const deterministicSeedForReportDto =
+            userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality
+              ? buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language: ctx.lang, profileSummary })
+              : buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang });
+          const factLayerForReport = buildFactLayer({
+            deterministicAnalysis: deterministicSeedForReportDto,
+            visionLayer,
+          });
+          const reportDto = buildReportSignalsDto({
+            lang: ctx.lang,
             diagnosisV1,
+            diagnosisPolicy,
             profileSummary,
             routineCandidate: hasRoutine ? routineCandidate : null,
-            recentLogsSummary,
-            promptVersion,
+            photoQuality: qualityForReport,
+            factLayer: factLayerForReport,
+            imageBuffer: diagnosisPhotoBytes || shadowVerifyPhotoBytes || null,
           });
-
-          let reportFailure = null;
-          for (let attempt = 0; attempt < 2; attempt += 1) {
-            const prompt =
-              attempt === 0
-                ? promptBase
-                : `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON only (no markdown/text), exactly the specified keys, and keep strategy executable.\n`;
-
-            let upstream = null;
-            try {
-              upstream = await profiler.timeLlmCall({ provider: 'aurora', model: null, kind: 'skin_text' }, async () =>
-                auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query: prompt, timeoutMs: 12000 }),
-              );
-            } catch (err) {
-              logger?.warn({ err: err.message }, 'aurora bff: skin analysis upstream failed');
-              reportFailure = 'report_upstream_failed';
-              break;
+          llmInputHash = reportDto.input_hash || llmInputHash;
+          llmInputHashPrefix = buildInputHashPrefix(llmInputHash);
+          recordAuroraSkinMainlineProvider({ provider: 'gemini' });
+          const reportResult = await runGeminiReportStrategy({
+            reportDto,
+            language: ctx.lang,
+            promptVersion,
+            profiler,
+          });
+          if (reportResult.retry && Number(reportResult.retry.attempted || 0) > 0) {
+            recordAuroraSkinLlmRetry({
+              stage: 'report',
+              provider: 'gemini',
+              inputHashPrefix: llmInputHashPrefix,
+            });
+            if (reportResult.retry.final === 'success') {
+              recordAuroraSkinLlmRetrySuccess({
+                stage: 'report',
+                provider: 'gemini',
+                inputHashPrefix: llmInputHashPrefix,
+              });
             }
-
-            const answer = upstream && typeof upstream.answer === 'string' ? upstream.answer : '';
-            const jsonOnly = unwrapCodeFence(answer);
-            const parsedObj = parseJsonOnlyObject(jsonOnly);
-            const reportAnalysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
-            if (reportAnalysis) {
-              if (!analysis) {
-                analysis = reportAnalysis;
-                analysisSource = 'aurora_text';
-              } else {
-                const baseFeatures = Array.isArray(analysis.features) ? analysis.features : [];
-                const reportFeatures = Array.isArray(reportAnalysis.features) ? reportAnalysis.features : [];
-                if (reportFeatures.length) analysis.features = [...baseFeatures, ...reportFeatures].slice(0, 8);
-                const reportStrategy = typeof reportAnalysis.strategy === 'string' ? reportAnalysis.strategy.trim() : '';
-                if (reportStrategy) analysis.strategy = reportStrategy;
-                const reportQuestions = Array.isArray(reportAnalysis.ask_3_questions) ? reportAnalysis.ask_3_questions : [];
-                if (reportQuestions.length) analysis.ask_3_questions = reportQuestions.slice(0, 3);
-                if (ctx.lang === 'CN') qualityReportReasons.push('报告模型已调用：用于汇总照片与问卷信号。');
-                else qualityReportReasons.push('Report model called to summarize combined photo + questionnaire signals.');
-              }
-              break;
-            }
-            reportFailure = 'report_output_invalid';
           }
-          if (!analysis && reportFailure) {
+          if (reportResult.ok && reportResult.layer) {
+            reportLayer = reportResult.layer;
+            analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
+          } else {
+            const reportFailure = reportResult.reason || 'report_output_invalid';
+            deterministicFallbackReason = deterministicFallbackReason || reportFailure;
             reportModelErrored = true;
+            if (reportResult.schema_violation) {
+              recordAuroraSkinLlmSchemaViolation({
+                stage: 'report',
+                provider: 'gemini',
+                reason: reportFailure,
+                inputHashPrefix: llmInputHashPrefix,
+              });
+            }
             if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailure}）；我会退回到确定性基线。`);
             else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
           }
         }
-        if (!analysis && reportDecision.decision === 'skip' && reportAvailable && hasLlmPrimaryInput) {
+        if (!analysis && reportDecision.decision === 'skip' && hasPrimaryInput) {
           const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
           if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过报告模型：${r.join('；') || '原因未知'}`);
           else qualityReportReasons.push(`Skipped report model: ${r.join('; ') || 'unknown reason'}`);
@@ -40105,6 +40147,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               );
             }
           }
+        }
+        if (
+          analysis &&
+          deterministicFallbackReason &&
+          analysisSource !== 'gemini_vision_report' &&
+          analysisSource !== 'gemini_report' &&
+          analysisSource !== 'vision_gemini'
+        ) {
+          recordAuroraSkinFallbackDeterministic({ reason: deterministicFallbackReason });
+        }
+        if (analysis && reportLayer && analysisSource !== 'retake') {
+          analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
         }
 
         const baseVisionReasons = Array.isArray(visionDecision.reasons) ? visionDecision.reasons.filter(Boolean) : [];
@@ -40202,6 +40256,25 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary,
           });
         }
+        let finalContract = null;
+        if (analysis) {
+          const factLayer = buildFactLayer({
+            deterministicAnalysis: analysis,
+            visionLayer,
+          });
+          finalContract = finalizeSkinAnalysisContract({
+            factLayer,
+            reportLayer,
+            quality: photoQuality,
+            lang: ctx.lang,
+            deterministicFallback: analysis,
+          });
+          if (finalContract && finalContract.__contract_fallback) {
+            deterministicFallbackReason = deterministicFallbackReason || 'contract_invalid';
+            recordAuroraSkinFallbackDeterministic({ reason: deterministicFallbackReason });
+          }
+          analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract });
+        }
         const photoNotUsed = Boolean(userRequestedPhoto && photosProvided && !usedPhotos);
         const photoFailureCode =
           photoFailureCodes[0] || (photoNotUsed && hasPhotoPrimaryInput && !hasPrimaryInput ? 'MISSING_PRIMARY_INPUT' : null);
@@ -40243,6 +40316,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               : null;
           if (analysis && Object.prototype.hasOwnProperty.call(analysis, '__geometry_sanitizer')) {
             delete analysis.__geometry_sanitizer;
+          }
+          if (finalContract) {
+            const locked = finalizeSkinAnalysisContract({
+              factLayer: buildFactLayer({ deterministicAnalysis: analysis, visionLayer }),
+              reportLayer,
+              quality: photoQuality,
+              lang: ctx.lang,
+              deterministicFallback: analysis,
+            });
+            analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract: locked });
           }
         }
 
@@ -40546,6 +40629,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
             degraded_mode: SKIN_DEGRADED_MODE,
             llm: { vision: visionDecisionForReport || visionDecision, report: reportDecision },
+            ...(llmInputHashPrefix ? { input_hash_prefix: llmInputHashPrefix } : {}),
             reasons: qualityReportReasons.slice(0, 8),
           },
           ...(diagnosisArtifact ? { diagnosis_artifact: diagnosisArtifact } : {}),
@@ -40872,7 +40956,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                onVerifyHardCase: () => recordVerifyHardCase(),
 	              },
 		            })
-		              .then((verify) => {
+		              .then(async (verify) => {
 		                if (!verify || !verify.called) return;
 		                logger?.info(
 		                  {
@@ -40895,10 +40979,65 @@ function mountAuroraBffRoutes(app, { logger }) {
 		                  },
 		                  'diag verify: shadow run recorded',
 		                );
+                    try {
+                      const shadowRecord = {
+                        source: 'shadow_verify',
+                        provider: 'gemini',
+                        prompt_version:
+                          verify &&
+                          verify.verifier &&
+                          typeof verify.verifier.schema_version === 'string' &&
+                          verify.verifier.schema_version.trim()
+                            ? verify.verifier.schema_version.trim()
+                            : 'aurora.diag.verify_shadow.v1',
+                        created_at: new Date().toISOString(),
+                        input_hash: llmInputHash || null,
+                        verdict: {
+                          ok: Boolean(verify.ok),
+                          final_reason: verify.final_reason || null,
+                          raw_final_reason: verify.raw_final_reason || null,
+                          verify_fail_reason: verify.verify_fail_reason || null,
+                          agreement_score:
+                            Number.isFinite(Number(verify.agreement_score)) ? Number(verify.agreement_score) : null,
+                          disagreement_reasons: Array.isArray(verify.disagreement_reasons)
+                            ? verify.disagreement_reasons.slice(0, 10)
+                            : [],
+                        },
+                        meta: {
+                          request_id: ctx.request_id || null,
+                          trace_id: ctx.trace_id || null,
+                          provider_status_code:
+                            Number.isFinite(Number(verify.provider_status_code)) ? Number(verify.provider_status_code) : null,
+                          attempts: Number.isFinite(Number(verify.attempts)) ? Number(verify.attempts) : null,
+                          latency_ms: Number.isFinite(Number(verify.latency_ms)) ? Number(verify.latency_ms) : null,
+                          upstream_request_id: verify.upstream_request_id || null,
+                          hard_case_written: Boolean(verify.hard_case_written),
+                        },
+                      };
+                      const savedShadow = await saveShadowVerifyForIdentity(
+                        { auroraUid: identity.auroraUid, userId: identity.userId },
+                        { shadow: shadowRecord },
+                      );
+                      if (savedShadow && savedShadow.shadow_id != null) {
+                        await appendShadowIdToLastAnalysisForIdentity(
+                          { auroraUid: identity.auroraUid, userId: identity.userId },
+                          { shadowId: savedShadow.shadow_id, maxIds: 20 },
+                        );
+                        recordAuroraSkinShadowVerifyIsolatedWrite({ status: 'success' });
+                      } else {
+                        recordAuroraSkinShadowVerifyIsolatedWrite({ status: 'skip' });
+                      }
+                    } catch (shadowErr) {
+                      recordAuroraSkinShadowVerifyIsolatedWrite({ status: 'fail' });
+                      logger?.warn(
+                        { err: shadowErr && shadowErr.message ? shadowErr.message : String(shadowErr) },
+                        'diag verify: isolated shadow write failed',
+                      );
+                    }
 		              })
-	              .catch((err) => {
-	                logger?.warn({ err: err && err.message ? err.message : String(err) }, 'diag verify: shadow run failed');
-	              });
+		              .catch((err) => {
+		                logger?.warn({ err: err && err.message ? err.message : String(err) }, 'diag verify: shadow run failed');
+		              });
 	          });
 	        }
 
