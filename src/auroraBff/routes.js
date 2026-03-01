@@ -13326,6 +13326,7 @@ async function callGeminiJsonObject({
   temperature = 0,
   maxOutputTokens = null,
   responseJsonSchema = null,
+  allowDiagForceModel = true,
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -13334,10 +13335,14 @@ async function callGeminiJsonObject({
       reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
     };
   }
+  const resolvedModel =
+    allowDiagForceModel && AURORA_DIAG_FORCE_GEMINI
+      ? AURORA_DIAG_FORCE_GEMINI_MODEL
+      : model || ANALYSIS_STORY_MODEL_GEMINI;
   try {
     const resp = await withTimeout(
       gemini.client.models.generateContent({
-        model: AURORA_DIAG_FORCE_GEMINI ? AURORA_DIAG_FORCE_GEMINI_MODEL : model || ANALYSIS_STORY_MODEL_GEMINI,
+        model: resolvedModel,
         contents: [
           {
             role: 'user',
@@ -13369,14 +13374,16 @@ async function callGeminiJsonObject({
         ok: false,
         reason: 'gemini_json_invalid',
         raw_text: typeof text === 'string' ? text : null,
+        resolved_model: resolvedModel,
       };
     }
-    return { ok: true, json: parsed };
+    return { ok: true, json: parsed, resolved_model: resolvedModel };
   } catch (err) {
     return {
       ok: false,
       reason: err && err.code ? String(err.code) : 'gemini_error',
       detail: err && err.message ? String(err.message) : null,
+      resolved_model: resolvedModel,
     };
   }
 }
@@ -30901,19 +30908,51 @@ function normalizeIngredientResearchKey(raw) {
     .trim();
 }
 
-function classifyIngredientProviderError(reason) {
-  const token = String(reason || '').trim().toLowerCase();
+function classifyIngredientProviderError(reason, detail = '') {
+  const token = `${String(reason || '').trim()} ${String(detail || '').trim()}`.trim().toLowerCase();
   if (!token) return 'provider_unavailable';
-  if (token.includes('timeout')) return 'gemini_timeout';
+  if (
+    token.includes('timeout') ||
+    token.includes('deadline') ||
+    token.includes('timed out') ||
+    token.includes('gemini_json_timeout')
+  ) {
+    return 'gemini_timeout';
+  }
   if (token.includes('rate') || token.includes('quota') || token.includes('429')) return 'gemini_rate_limited';
-  if (token.includes('auth') || token.includes('key') || token.includes('permission') || token.includes('401') || token.includes('403')) {
+  if (
+    token.includes('auth') ||
+    token.includes('key') ||
+    token.includes('permission') ||
+    token.includes('invalid_api_key') ||
+    token.includes('unauthenticated') ||
+    token.includes('401') ||
+    token.includes('403')
+  ) {
     return 'gemini_auth';
   }
   if (token.includes('json')) return 'gemini_invalid_json';
-  if (token.includes('network') || token.includes('socket') || token.includes('dns') || token.includes('econn') || token.includes('enotfound')) {
+  if (
+    token.includes('network') ||
+    token.includes('socket') ||
+    token.includes('dns') ||
+    token.includes('econn') ||
+    token.includes('enotfound') ||
+    token.includes('connection reset') ||
+    token.includes('failed to fetch')
+  ) {
     return 'gemini_network';
   }
-  if (token.includes('5xx') || token.includes('500') || token.includes('502') || token.includes('503') || token.includes('504') || token.includes('upstream')) {
+  if (
+    token.includes('5xx') ||
+    token.includes('500') ||
+    token.includes('502') ||
+    token.includes('503') ||
+    token.includes('504') ||
+    token.includes('internal') ||
+    token.includes('unavailable') ||
+    token.includes('upstream')
+  ) {
     return 'gemini_upstream_5xx';
   }
   return 'gemini_unknown';
@@ -31780,6 +31819,8 @@ async function runIngredientResearchSync({
   const provider = 'gemini';
   const resolvedModel = AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI;
   const modelTier = /pro/i.test(String(resolvedModel || '')) ? 'pro' : 'flash';
+  let effectiveModel = resolvedModel;
+  let effectiveModelTier = modelTier;
   const providerAttempts = [];
   const startedAt = Date.now();
   const circuitState = getIngredientProviderCircuitState();
@@ -31838,8 +31879,14 @@ async function runIngredientResearchSync({
       temperature: 0.3,
       maxOutputTokens: 700,
       responseJsonSchema: prompt.responseJsonSchema,
+      allowDiagForceModel: false,
     });
     const latencyMs = Math.max(0, Date.now() - callStartedAt);
+    const attemptModel = pickFirstTrimmed(resp && resp.resolved_model, effectiveModel);
+    if (attemptModel) {
+      effectiveModel = attemptModel;
+      effectiveModelTier = /pro/i.test(String(attemptModel || '')) ? 'pro' : 'flash';
+    }
     if (resp && resp.ok && resp.json && typeof resp.json === 'object' && !Array.isArray(resp.json)) {
       const parsed = sanitizeIngredientResearchOutput(resp.json, {
         query,
@@ -31858,8 +31905,8 @@ async function runIngredientResearchSync({
       return {
         ok: true,
         provider,
-        resolved_model: resolvedModel,
-        provider_model_tier: modelTier,
+        resolved_model: effectiveModel,
+        provider_model_tier: effectiveModelTier,
         provider_circuit_state: getIngredientProviderCircuitState(),
         research: parsed,
         provider_attempts: providerAttempts,
@@ -31871,7 +31918,7 @@ async function runIngredientResearchSync({
         },
       };
     }
-    const reasonCode = classifyIngredientProviderError(resp && resp.reason);
+    const reasonCode = classifyIngredientProviderError(resp && resp.reason, resp && resp.detail);
     const recoveredParsed = resp && typeof resp.raw_text === 'string'
       ? sanitizeIngredientResearchOutput(extractResearchObjectFromRawText(resp.raw_text), {
         query,
@@ -31892,8 +31939,8 @@ async function runIngredientResearchSync({
       return {
         ok: true,
         provider,
-        resolved_model: resolvedModel,
-        provider_model_tier: modelTier,
+        resolved_model: effectiveModel,
+        provider_model_tier: effectiveModelTier,
         provider_circuit_state: getIngredientProviderCircuitState(),
         research: recoveredParsed,
         provider_attempts: providerAttempts,
@@ -31909,6 +31956,9 @@ async function runIngredientResearchSync({
       provider,
       outcome: 'error',
       reason_code: reasonCode,
+      reason_raw: pickFirstTrimmed(resp && resp.reason, null),
+      detail_raw: pickFirstTrimmed(resp && resp.detail, null),
+      resolved_model: attemptModel || effectiveModel || null,
       latency_ms: latencyMs,
     });
     recordAuroraIngredientProviderMetric({ stage: 'attempt', provider, outcome: reasonCode });
@@ -31940,8 +31990,8 @@ async function runIngredientResearchSync({
       ingredient_query: String(query || '').slice(0, 120),
       normalized_query: String(normalizedQuery || '').slice(0, 120),
       provider,
-      resolved_model: resolvedModel,
-      provider_model_tier: modelTier,
+      resolved_model: effectiveModel,
+      provider_model_tier: effectiveModelTier,
       provider_circuit_state: afterCircuitState,
       research_error_code: finalErrorCode,
       attempts: providerAttempts,
@@ -31951,8 +32001,8 @@ async function runIngredientResearchSync({
   return {
     ok: false,
     provider,
-    resolved_model: resolvedModel,
-    provider_model_tier: modelTier,
+    resolved_model: effectiveModel,
+    provider_model_tier: effectiveModelTier,
     provider_circuit_state: afterCircuitState,
     research_error_code: finalErrorCode,
     research: fallback,
@@ -32513,7 +32563,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
       ? String(Math.trunc(Number(researchObj && researchObj.updated_at_ms)))
       : null,
     ),
-    provider_model_tier: providerModelTier || 'flash',
+    provider_model_tier: providerModelTier || (/pro/i.test(String(resolvedModel || '')) ? 'pro' : 'flash'),
     provider_circuit_state: providerCircuitState || 'closed',
     resolved_model: resolvedModel || null,
     research_attempts: providerAttempts,
@@ -32625,6 +32675,7 @@ async function buildIngredientReportPayloadWithResearch({
         ...syncPayload,
         status: syncResearch && syncResearch.ok ? 'ready' : 'fallback',
         provider: syncResearch && syncResearch.provider ? syncResearch.provider : 'gemini',
+        resolved_model: syncResearch && syncResearch.resolved_model ? syncResearch.resolved_model : AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
         provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : 'flash',
         provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
