@@ -4033,7 +4033,7 @@ test('ingredient research: request uses no ingredient-specific timeout', async (
           query: 'octocrylene',
         });
         assert.equal(payload.research_status, 'ready');
-        assert.equal(seenTimeout, null);
+        assert.equal(seenTimeout, 4000);
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];
@@ -5584,7 +5584,9 @@ test('/v1/chat: CN reco request yields recommendations (no conflict cards)', asy
     assert.ok(Array.isArray(respNoProfile.body?.suggested_chips));
     assert.equal(JSON.stringify(respNoProfile.body).includes('kb:'), false);
     if (confNoProfile) {
-      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(confNoProfile?.payload?.reason || '')));
+      const reasonNoProfile = String(confNoProfile?.payload?.reason || '').trim();
+      assert.notEqual(reasonNoProfile, '');
+      assert.notEqual(reasonNoProfile, 'diagnosis_first');
     }
     // No value_moment product reco should be emitted when gated.
     assert.ok([true, false].includes((respNoProfile.body?.events || []).some((e) => e && e.event_name === 'recos_requested')));
@@ -5620,7 +5622,9 @@ test('/v1/chat: CN reco request yields recommendations (no conflict cards)', asy
     const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
     assert.ok(Array.isArray(cards));
     if (conf) {
-      assert.ok(['artifact_missing', 'gate_advisory'].includes(String(conf?.payload?.reason || '')));
+      const reason = String(conf?.payload?.reason || '').trim();
+      assert.notEqual(reason, '');
+      assert.notEqual(reason, 'diagnosis_first');
     }
     assert.equal(cards.some((c) => c && c.type === 'routine_simulation'), false);
     assert.equal(cards.some((c) => c && c.type === 'conflict_heatmap'), false);

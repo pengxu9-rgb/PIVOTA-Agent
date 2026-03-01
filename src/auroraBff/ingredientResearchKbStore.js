@@ -39,18 +39,43 @@ function normalizeStatus(value) {
   return 'ready'
 }
 
+function normalizeLayer(value) {
+  const token = String(value || '').trim().toLowerCase()
+  if (token === 'variant') return 'variant'
+  return 'generic'
+}
+
+function normalizeVariantKey(value) {
+  const token = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:=+-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return token.slice(0, 120)
+}
+
 function normalizeProvider(value) {
   const token = String(value || '').trim().toLowerCase()
   if (token === 'gemini' || token === 'openai') return token
   return null
 }
 
-function buildIngredientResearchKbKey({ query, lang } = {}) {
+function buildIngredientResearchKbKey({ query, lang, layer = 'generic', goal = '', sensitivity = '', variantKey = '' } = {}) {
   const q = normalizeQueryText(query)
   const language = normalizeLang(lang)
+  const kbLayer = normalizeLayer(layer)
+  const normalizedVariantKey =
+    kbLayer === 'variant'
+      ? normalizeVariantKey(
+          variantKey || [goal ? `goal=${String(goal).trim().toLowerCase()}` : '', sensitivity ? `sensitivity=${String(sensitivity).trim().toLowerCase()}` : '']
+            .filter(Boolean)
+            .join(';'),
+        )
+      : ''
   if (!q) return null
-  const hash = crypto.createHash('sha1').update(`${language}:${q}`).digest('hex')
-  return `ing_research:${language}:${hash}`
+  const hash = crypto.createHash('sha1').update(`${language}:${kbLayer}:${normalizedVariantKey}:${q}`).digest('hex')
+  return `ing_research:${language}:${kbLayer}:${normalizedVariantKey}:${hash}`
 }
 
 function normalizeJsonbParam(value) {
@@ -107,6 +132,9 @@ function mapRowToEntry(row) {
     kb_key: kbKey,
     query_norm: queryNorm,
     lang: normalizeLang(row.lang),
+    kb_layer: normalizeLayer(row.kb_layer),
+    variant_key: normalizeVariantKey(row.variant_key),
+    revision: Number.isFinite(Number(row.revision)) ? Math.max(1, Math.trunc(Number(row.revision))) : 1,
     status: normalizeStatus(row.status),
     provider: normalizeProvider(row.provider),
     error_code: String(row.error_code || '').trim() || null,
@@ -129,6 +157,9 @@ async function readFromDb(kbKey) {
           kb_key,
           query_norm,
           lang,
+          kb_layer,
+          variant_key,
+          revision,
           status,
           provider,
           error_code,
@@ -166,6 +197,9 @@ async function upsertToDb(entry) {
   if (!kbKey || !queryNorm) return
 
   const lang = normalizeLang(entry.lang)
+  const kbLayer = normalizeLayer(entry.kb_layer)
+  const variantKey = normalizeVariantKey(entry.variant_key)
+  const revision = Number.isFinite(Number(entry.revision)) ? Math.max(1, Math.trunc(Number(entry.revision))) : 1
   const status = normalizeStatus(entry.status)
   const provider = normalizeProvider(entry.provider)
   const errorCode = String(entry.error_code || '').trim() || null
@@ -183,6 +217,9 @@ async function upsertToDb(entry) {
           kb_key,
           query_norm,
           lang,
+          kb_layer,
+          variant_key,
+          revision,
           status,
           provider,
           error_code,
@@ -192,12 +229,15 @@ async function upsertToDb(entry) {
           expires_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6,
-          $7::jsonb, $8::jsonb, $9::timestamptz, $10::timestamptz
+          $1, $2, $3, $4, $5, $6, $7, $8, $9,
+          $10::jsonb, $11::jsonb, $12::timestamptz, $13::timestamptz
         )
         ON CONFLICT (kb_key) DO UPDATE SET
           query_norm = EXCLUDED.query_norm,
           lang = EXCLUDED.lang,
+          kb_layer = EXCLUDED.kb_layer,
+          variant_key = EXCLUDED.variant_key,
+          revision = EXCLUDED.revision,
           status = EXCLUDED.status,
           provider = EXCLUDED.provider,
           error_code = EXCLUDED.error_code,
@@ -210,6 +250,9 @@ async function upsertToDb(entry) {
         kbKey,
         queryNorm,
         lang,
+        kbLayer,
+        variantKey,
+        revision,
         status,
         provider,
         errorCode,
@@ -226,8 +269,8 @@ async function upsertToDb(entry) {
   }
 }
 
-async function getIngredientResearchKbEntry({ query, lang = 'EN' } = {}) {
-  const kbKey = buildIngredientResearchKbKey({ query, lang })
+async function getIngredientResearchKbEntry({ query, lang = 'EN', layer = 'generic', goal = '', sensitivity = '', variantKey = '' } = {}) {
+  const kbKey = buildIngredientResearchKbKey({ query, lang, layer, goal, sensitivity, variantKey })
   if (!kbKey) return null
 
   const memHit = state.memIndex.get(kbKey)
@@ -249,6 +292,9 @@ async function upsertIngredientResearchKbEntry(entry) {
     kb_key: kbKey,
     query_norm: queryNorm,
     lang: normalizeLang(entry.lang),
+    kb_layer: normalizeLayer(entry.kb_layer),
+    variant_key: normalizeVariantKey(entry.variant_key),
+    revision: Number.isFinite(Number(entry.revision)) ? Math.max(1, Math.trunc(Number(entry.revision))) : 1,
     status: normalizeStatus(entry.status),
     provider: normalizeProvider(entry.provider),
     error_code: String(entry.error_code || '').trim() || null,
