@@ -29936,6 +29936,7 @@ function looksLikeRoutineRequest(message, action) {
 function looksLikeIngredientScienceIntent(message, action) {
   const raw = String(message || '').trim();
   const text = raw.toLowerCase();
+  const language = /[\u4e00-\u9fff]/.test(raw) ? 'CN' : 'EN';
   const id =
     typeof action === 'string'
       ? action
@@ -29960,7 +29961,14 @@ function looksLikeIngredientScienceIntent(message, action) {
     /\b(ingredient|ingredients|active|actives)\b.{0,28}\b(science|evidence|mechanism|clinical|study|paper|citation|citations)\b/i.test(raw) ||
     /\b(science|evidence|mechanism|clinical|study|paper|citation|citations)\b.{0,28}\b(ingredient|ingredients|active|actives)\b/i.test(raw);
   const cn = /(成分(机理|机制|科学|证据|原理)|证据链|循证|临床证据|论文证据|问成分)/.test(raw);
-  return en || cn;
+  if (en || cn) return true;
+
+  // Query-first guard: direct ingredient lookup text should enter ingredient route,
+  // even when explicit "ingredient science" keywords are absent.
+  const specificEntity = extractIngredientLookupTargetFromText(raw, language);
+  if (specificEntity && ingredientIsLikelyLookupText(raw)) return true;
+
+  return false;
 }
 
 function normalizeIngredientActionId(actionId) {
@@ -44386,6 +44394,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         anchorCollectionSignal ||
         evaluateIntent ||
         ingredientScienceIntentEffective ||
+        Boolean(extractIngredientLookupTargetFromText(message, ctx.lang) && ingredientIsLikelyLookupText(message)) ||
         canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
         canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV ||
         Boolean(
