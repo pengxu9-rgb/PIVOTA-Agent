@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "lang": "EN",
+    "intent": "reco_products",
+    "region": "US",
+    "no_clarify": true
+  },
+  "profile": {
+    "skinType": null,
+    "sensitivity": null,
+    "barrierStatus": null,
+    "goals": [
+      "acne-control",
+      "low irritation"
+    ],
+    "contraindications": []
+  },
+  "global_status": {
+    "candidates_provided": false,
+    "recent_logs_provided": false,
+    "itinerary_provided": false,
+    "budget_known": false
+  },
+  "candidates": [],
+  "task": {
+    "max_recommendations": 5,
+    "ranking_priorities": [
+      "low irritation / barrier-safe",
+      "acne efficacy",
+      "balanced value in US"
+    ],
+    "defaults_when_profile_missing": [
+      "prefer fragrance-free",
+      "avoid high-irritation leave-on acids if barrier unknown",
+      "prefer barrier-friendly bases (glycerin/ceramides/panthenol)",
+      "keep actives simple: one main acne active per product"
+    ]
+  },
+  "output_contract": {
+    "keys": [
+      "recommendations",
+      "evidence",
+      "confidence",
+      "missing_info",
+      "warnings"
+    ],
+    "recommendations_item": {
+      "slot": "other",
+      "step": "cleanser|treatment|moisturizer|sunscreen|other",
+      "score": "int 0..100",
+      "sku": {
+        "brand": "string|null",
+        "name": "string|null",
+        "display_name": "string|null",
+        "sku_id": "string|null",
+        "product_id": "string|null",
+        "category": "string|null",
+        "availability": "string[]",
+        "price": {
+          "usd": "number|null",
+          "cny": "number|null",
+          "unknown": "boolean"
+        }
+      },
+      "reasons": "string[] (max 3)",
+      "evidence_pack": {
+        "keyActives": "string[]?",
+        "sensitivityFlags": "string[]?",
+        "pairingRules": "string[]?",
+        "comparisonNotes": "string[]?",
+        "citations": "string[]?"
+      },
+      "missing_info": "string[]",
+      "warnings": "string[]"
+    }
+  },
+  "hard_rules": [
+    "Return JSON only with exactly the required keys.",
+    "Do NOT output routines/AM-PM/onboarding text.",
+    "Do NOT ask questions; use missing_info/warnings.",
+    "Do not duplicate product_id/sku_id.",
+    "If global_status.recent_logs_provided=false add top-level warning 'recent_logs_missing' once.",
+    "If global_status.itinerary_provided=false add top-level warning 'itinerary_unknown' once."
+  ]
+}

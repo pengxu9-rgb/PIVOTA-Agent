@@ -1081,6 +1081,8 @@ async function auroraChat({
   intent_hint,
   intent_contract,
   disallow_clarify,
+  no_clarify,
+  force_intent,
   required_structured_keys,
   messages,
   debug,
@@ -1110,6 +1112,8 @@ async function auroraChat({
   if (intent_hint) payload.intent_hint = intent_hint;
   if (intent_contract) payload.intent_contract = intent_contract;
   if (typeof disallow_clarify === 'boolean') payload.disallow_clarify = disallow_clarify;
+  if (typeof no_clarify === 'boolean') payload.no_clarify = no_clarify;
+  if (force_intent) payload.force_intent = force_intent;
   if (Array.isArray(required_structured_keys) && required_structured_keys.length) {
     payload.required_structured_keys = required_structured_keys;
   }
@@ -1124,6 +1128,7 @@ async function auroraChat({
     ...(trace_id ? { 'X-Parent-Trace-Id': String(trace_id) } : {}),
     ...(request_id ? { 'X-Parent-Request-Id': String(request_id) } : {}),
     ...(intent_contract ? { 'X-Intent-Contract': String(intent_contract) } : {}),
+    ...(force_intent ? { 'X-Force-Intent': String(force_intent) } : {}),
     ...(prompt_hash ? { 'X-Prompt-Hash': String(prompt_hash) } : {}),
     ...(prompt_template_id ? { 'X-Prompt-Template': String(prompt_template_id) } : {}),
   };

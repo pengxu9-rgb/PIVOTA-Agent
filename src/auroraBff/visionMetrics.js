@@ -10,6 +10,7 @@ const SNAPSHOT_AGE_BUCKETS_SEC = Object.freeze([60, 300, 1800, 3600, 21600, 8640
 const callsCounter = new Map();
 const failCounter = new Map();
 const fallbackCounter = new Map();
+const skippedCounter = new Map();
 const latencyByProvider = new Map();
 const ensembleProviderCalls = new Map();
 const ensembleProviderFails = new Map();
@@ -691,7 +692,7 @@ function normalizeAuroraRecoAltPrecheckReason(reason) {
 
 function normalizeAuroraRecoAltStage(stage) {
   const token = cleanMetricToken(stage, 'total');
-  if (token === 'precheck' || token === 'llm' || token === 'map' || token === 'total') return token;
+  if (token === 'precheck' || token === 'llm' || token === 'map' || token === 'fallback' || token === 'total') return token;
   return 'total';
 }
 
@@ -1727,6 +1728,19 @@ function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
   }
 
   const reasonList = Array.isArray(reasons) ? reasons : [];
+  if (safeDecision === 'skip') {
+    const skipReasons = Array.from(
+      new Set(
+        reasonList
+          .map((reason) => cleanMetricToken(reason, 'unknown'))
+          .filter(Boolean),
+      ),
+    );
+    if (!skipReasons.length) skipReasons.push('unknown');
+    for (const reason of skipReasons.slice(0, 4)) {
+      incCounter(skippedCounter, { provider: safeProvider, reason }, 1);
+    }
+  }
   const normalizedReasons = Array.from(
     new Set(
       reasonList
@@ -2496,6 +2510,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP vision_calls_total Total number of vision pipeline decisions.');
   lines.push('# TYPE vision_calls_total counter');
   renderCounter(lines, 'vision_calls_total', callsCounter);
+
+  lines.push('# HELP vision_skipped_total Total number of vision policy skips grouped by reason.');
+  lines.push('# TYPE vision_skipped_total counter');
+  renderCounter(lines, 'vision_skipped_total', skippedCounter);
 
   lines.push('# HELP vision_fail_total Total number of vision failures grouped by reason.');
   lines.push('# TYPE vision_fail_total counter');
@@ -3336,6 +3354,7 @@ function renderVisionMetricsPrometheus() {
 
 function resetVisionMetrics() {
   callsCounter.clear();
+  skippedCounter.clear();
   failCounter.clear();
   fallbackCounter.clear();
   latencyByProvider.clear();
@@ -3506,6 +3525,7 @@ function resetVisionMetrics() {
 function snapshotVisionMetrics() {
   return {
     calls: Array.from(callsCounter.entries()),
+    skips: Array.from(skippedCounter.entries()),
     fails: Array.from(failCounter.entries()),
     fallbacks: Array.from(fallbackCounter.entries()),
     latencyProviders: Array.from(latencyByProvider.keys()),
