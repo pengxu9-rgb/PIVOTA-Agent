@@ -657,9 +657,9 @@ const PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA = (() => {
 const PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
-  String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'false').toLowerCase() === 'true';
+  String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
-  String(process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED || 'false').toLowerCase() === 'true';
+  String(process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS =
   String(process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS || 'true').toLowerCase() ===
   'true';
@@ -3038,21 +3038,35 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     ? fallbackStrategy.secondary_attempts.filter((item) => item && typeof item === 'object')
     : [];
   const secondaryAttemptCount = intNonNegative(fallbackStrategy.secondary_attempt_count);
-  const semanticRetryAppliedDerived = Boolean(
-    metadata.semantic_retry_applied ||
-      routeHealth.semantic_retry_applied ||
-      String(routeHealth.fallback_reason || metadata.fallback_reason || '').trim() ===
-        'semantic_retry_exhausted' ||
-      String(metadata?.proxy_search_fallback?.query_variant || '').trim() === 'semantic_retry' ||
-      secondaryAttempts.length > 1 ||
-      secondaryAttemptCount > 1,
+  const retryBaseQueryNormalized = normalizeSearchTextForMatch(
+    String(
+      diagnostics?.search_trace?.raw_query ||
+        metadata?.search_trace?.raw_query ||
+        '',
+    ).trim(),
   );
-  const semanticRetryQueryDerived =
+  const semanticRetryQueryCandidate =
     metadata.semantic_retry_query ||
     routeHealth.semantic_retry_query ||
     fallbackStrategy.secondary_selected_query ||
     (secondaryAttempts.length > 1 ? secondaryAttempts[secondaryAttempts.length - 1]?.query : null) ||
     null;
+  const semanticRetryQueryNormalized = normalizeSearchTextForMatch(
+    String(semanticRetryQueryCandidate || '').trim(),
+  );
+  const semanticRetryAppliedDerived = Boolean(
+    metadata.semantic_retry_applied === true ||
+      routeHealth.semantic_retry_applied === true ||
+      String(metadata?.proxy_search_fallback?.query_variant || '').trim() === 'semantic_retry' ||
+      secondaryAttempts.length > 1 ||
+      secondaryAttemptCount > 1 ||
+      (
+        semanticRetryQueryNormalized &&
+        retryBaseQueryNormalized &&
+        semanticRetryQueryNormalized !== retryBaseQueryNormalized
+      ),
+  );
+  const semanticRetryQueryDerived = semanticRetryAppliedDerived ? semanticRetryQueryCandidate : null;
   const semanticRetryHitsDerived = intNonNegative(
     metadata.semantic_retry_hits != null
       ? metadata.semantic_retry_hits
@@ -3073,12 +3087,28 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       'unknown',
   );
   const normalizedQuerySemanticClass = (() => {
+    const routeDebugSemanticClass = String(
+      metadata?.route_debug?.policy?.ambiguity?.query_semantic_class || '',
+    )
+      .trim()
+      .toLowerCase();
+    const inferredByRawQuery = (() => {
+      const raw =
+        String(diagnostics?.search_trace?.raw_query || metadata?.search_trace?.raw_query || '').trim();
+      if (!raw) return '';
+      return hasFragranceQuerySignal(raw) ? 'fragrance' : '';
+    })();
     const candidate =
-      routeHealth.query_semantic_class ??
-      metadata.query_semantic_class ??
-      existingSearchDecision?.query_semantic_class ??
-      null;
-    const value = String(candidate || '').trim().toLowerCase();
+      [
+        routeHealth.query_semantic_class,
+        metadata.query_semantic_class,
+        existingSearchDecision?.query_semantic_class,
+        routeDebugSemanticClass,
+      ].find((value) => value != null && String(value).trim() !== '') || null;
+    let value = String(candidate || '').trim().toLowerCase();
+    if ((!value || value === 'default') && inferredByRawQuery) {
+      value = inferredByRawQuery;
+    }
     return value || null;
   })();
   routeHealth.query_semantic_class = normalizedQuerySemanticClass;
@@ -3139,6 +3169,30 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   if (existingSearchDecision) {
     existingSearchDecision.query_semantic_class = routeHealth.query_semantic_class;
     existingSearchDecision.domain_filter_dropped_external = routeHealth.domain_filter_dropped_external;
+    const bodyProducts = Array.isArray(body?.products) ? body.products : [];
+    const hasBodyClarification = Boolean(body?.clarification?.question);
+    const decisionToken = String(existingSearchDecision.final_decision || '').trim();
+    const productsEmpty = bodyProducts.length === 0;
+    if (productsEmpty) {
+      if (hasBodyClarification) {
+        if (
+          decisionToken === 'products_returned' ||
+          decisionToken === 'upstream_returned' ||
+          decisionToken === 'cache_returned' ||
+          decisionToken === 'resolver_returned'
+        ) {
+          existingSearchDecision.final_decision = 'clarify';
+        }
+      } else if (
+        decisionToken === 'products_returned' ||
+        decisionToken === 'products_returned_with_clarification' ||
+        decisionToken === 'upstream_returned' ||
+        decisionToken === 'cache_returned' ||
+        decisionToken === 'resolver_returned'
+      ) {
+        existingSearchDecision.final_decision = 'strict_empty';
+      }
+    }
     metadata.search_decision = existingSearchDecision;
   }
   metadata.route_health = routeHealth;
@@ -3184,9 +3238,7 @@ function withStrictEmptyFallback({
     intent,
     queryClass,
     queryText,
-    querySource: hasFragranceQuerySignal(queryText)
-      ? 'agent_products_semantic_retry_exhausted'
-      : 'agent_products_error_fallback',
+    querySource: 'agent_products_error_fallback',
   });
   const hasClarification = Boolean(emptyBody?.clarification?.question);
   return withSearchDiagnostics(emptyBody, {
@@ -4111,6 +4163,10 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
 
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (!normalizedQuery) return true;
+  if (hasFragranceQuerySignal(queryText)) {
+    // Recall-first for fragrance: keep candidates for downstream ranking/clarify.
+    return products.slice(0, 8).some((product) => hasUsableSearchProduct(product));
+  }
 
   const hasPetHarnessSignal = hasPetHarnessSearchSignal(queryText);
   if (hasPetHarnessSignal) {
@@ -4196,6 +4252,8 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (hasFragranceSearch) {
     if (!hasFragranceCandidateSignal && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
     if (isBeautyToolLikeCandidate && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
+    // Recall-first for fragrance supplement: skip hard lexical overlap gates.
+    return true;
   }
 
   const brandTerms = Array.isArray(options.brandTerms)
@@ -4506,7 +4564,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   const limit = Math.min(Math.max(requestedCount * 6, 48), 320);
   const hardBudgetMs = Math.max(
     800,
-    Number(process.env.PROXY_SEARCH_EXTERNAL_SEED_SUPPLEMENT_BUDGET_MS || 2200),
+    Number(process.env.PROXY_SEARCH_EXTERNAL_SEED_SUPPLEMENT_BUDGET_MS || 4400),
   );
   const startedAtMs = Date.now();
   const brandDetection = detectBrandEntities(queryText, { candidateProducts: [] });
@@ -10313,8 +10371,11 @@ async function proxyAgentSearchToBackend(req, res) {
             });
             const fallbackRelevant = Boolean(
               fallback &&
-                (fallback.relevanceMatched === true ||
-                  (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))),
+                (
+                  (hasFragranceQuerySignal(queryText) && Number(fallback?.usableCount || 0) > 0) ||
+                  fallback.relevanceMatched === true ||
+                  (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))
+                ),
             );
             fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
             fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
@@ -10394,10 +10455,7 @@ async function proxyAgentSearchToBackend(req, res) {
             '',
         ).trim() || null
       : null;
-    const fragranceSemanticRetryExpected =
-      SEARCH_FRAGRANCE_SEMANTIC_RETRY &&
-      hasFragranceQuerySignal(queryText);
-    const fallbackNotBetterReason = semanticRetryApplied || fragranceSemanticRetryExpected
+    const fallbackNotBetterReason = semanticRetryApplied
       ? 'semantic_retry_exhausted'
       : 'fallback_not_better';
 
@@ -10411,21 +10469,24 @@ async function proxyAgentSearchToBackend(req, res) {
         : 'primary_irrelevant_no_fallback';
       return respondSearch(
         200,
-        withStrictEmptyFallback({
+        buildProxySearchSoftFallbackResponse({
           body: normalized,
           queryParams: guardedQueryParams,
           reason,
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_irrelevant',
-          fallbackStrategy,
+          queryText,
+          semanticRetryApplied: Boolean(semanticRetryApplied),
+          semanticRetryQuery,
+          semanticRetryHits: Math.max(0, Number(fallbackStrategy.secondary_usable_count || 0) || 0),
+          forceClarify: true,
         }),
         {
-          finalDecision: 'strict_empty',
+          finalDecision: 'clarify',
           primaryPathUsed: 'proxy_search_primary',
           fallbackTriggered: true,
           fallbackReason: reason,
           upstreamStage,
-          strictEmptyReason: reason,
           fallbackStrategy,
         },
       );
@@ -10461,41 +10522,30 @@ async function proxyAgentSearchToBackend(req, res) {
       shouldFallback &&
       !primaryIrrelevant &&
       !skipSecondaryFallback &&
-      (semanticRetryApplied || fragranceSemanticRetryExpected);
+      semanticRetryApplied;
     if (shouldForceClarifyAfterFallback) {
-      const strictBody = withStrictEmptyFallback({
+      const clarifyBody = buildProxySearchSoftFallbackResponse({
         body: normalized,
         queryParams: guardedQueryParams,
         reason: fallbackNotBetterReason,
         upstreamStatus: resp.status,
         route: 'proxy_search_fallback_exhausted',
-        fallbackStrategy,
+        queryText,
+        semanticRetryApplied: Boolean(semanticRetryApplied),
+        semanticRetryQuery,
+        semanticRetryHits: 0,
+        forceClarify: true,
       });
-      const strictBodyMetadata =
-        strictBody && typeof strictBody === 'object' && !Array.isArray(strictBody)
-          ? strictBody.metadata && typeof strictBody.metadata === 'object'
-            ? { ...strictBody.metadata }
-            : {}
-          : {};
-      strictBodyMetadata.semantic_retry_applied = Boolean(
-        semanticRetryApplied || fragranceSemanticRetryExpected,
-      );
-      strictBodyMetadata.semantic_retry_query = semanticRetryQuery;
-      strictBodyMetadata.semantic_retry_hits = 0;
-      const strictBodyWithSemanticMeta =
-        strictBody && typeof strictBody === 'object' && !Array.isArray(strictBody)
-          ? { ...strictBody, metadata: strictBodyMetadata }
-          : strictBody;
       return respondSearch(
         200,
-        strictBodyWithSemanticMeta,
+        clarifyBody,
         {
-          finalDecision: 'strict_empty',
+          finalDecision: 'clarify',
           primaryPathUsed: 'proxy_search_primary',
           fallbackTriggered: true,
           fallbackReason: fallbackNotBetterReason,
           upstreamStage,
-          strictEmptyReason: fallbackNotBetterReason,
+          strictEmptyReason: null,
           fallbackStrategy,
         },
       );
@@ -10684,8 +10734,11 @@ async function proxyAgentSearchToBackend(req, res) {
             });
             const fallbackRelevant = Boolean(
               fallback &&
-                (fallback.relevanceMatched === true ||
-                  (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))),
+                (
+                  (hasFragranceQuerySignal(queryText) && Number(fallback?.usableCount || 0) > 0) ||
+                  fallback.relevanceMatched === true ||
+                  (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))
+                ),
             );
             fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
             fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
@@ -17481,9 +17534,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
-              querySource: hasFragranceQuerySignal(queryText)
-                ? 'agent_products_semantic_retry_exhausted'
-                : 'agent_products_error_fallback',
+              querySource: 'agent_products_error_fallback',
             }),
           };
         }
@@ -17519,9 +17570,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
-      const fragranceQuerySignal =
-        SEARCH_FRAGRANCE_SEMANTIC_RETRY &&
-        hasFragranceQuerySignal(queryText);
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
@@ -17840,7 +17888,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               fallback.status >= 200 &&
               fallback.status < 300 &&
               fallback.usableCount >= fallbackAdoptUsableThreshold &&
-              isProxySearchFallbackRelevant(fallback.data, queryText)
+              (
+                (hasFragranceQuerySignal(queryText) && Number(fallback.usableCount || 0) > 0) ||
+                isProxySearchFallbackRelevant(fallback.data, queryText)
+              )
             ) {
               upstreamData = fallback.data;
               replacedByFallback = true;
@@ -17869,17 +17920,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
-              querySource: fragranceQuerySignal
+              querySource: semanticRetryApplied
                 ? 'agent_products_semantic_retry_exhausted'
                 : 'agent_products_error_fallback',
-              semanticRetryApplied: semanticRetryApplied || fragranceQuerySignal,
+              semanticRetryApplied,
               semanticRetryQuery,
               semanticRetryHits,
+              forceClarify: true,
             });
           } else {
             const fallbackReason = skipSecondaryFallback
               ? 'resolver_miss_skip_secondary'
-              : secondaryFallbackMeta?.semantic_retry_applied || fragranceQuerySignal
+              : secondaryFallbackMeta?.semantic_retry_applied
               ? 'semantic_retry_exhausted'
               : 'fallback_not_better';
             const upstreamProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
@@ -17887,7 +17939,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
               upstreamProducts.length === 0 &&
               !skipSecondaryFallback &&
-              Boolean(secondaryFallbackMeta?.semantic_retry_applied || fragranceQuerySignal);
+              Boolean(secondaryFallbackMeta?.semantic_retry_applied);
             if (shouldForceClarifyAfterRetry) {
               upstreamData = buildProxySearchSoftFallbackResponse({
                 queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -17902,7 +17954,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ? 'agent_products_semantic_retry_exhausted'
                     : 'agent_products_error_fallback',
                 semanticRetryApplied: Boolean(
-                  secondaryFallbackMeta?.semantic_retry_applied || fragranceQuerySignal,
+                  secondaryFallbackMeta?.semantic_retry_applied,
                 ),
                 semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
                 semanticRetryHits: Math.max(
@@ -17924,7 +17976,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   ? { ...upstreamData.metadata }
                   : {};
               upstreamMeta.semantic_retry_applied = Boolean(
-                secondaryFallbackMeta?.semantic_retry_applied || fragranceQuerySignal,
+                secondaryFallbackMeta?.semantic_retry_applied,
               );
               upstreamMeta.semantic_retry_query = secondaryFallbackMeta?.semantic_retry_query || null;
               upstreamMeta.semantic_retry_hits = Math.max(
