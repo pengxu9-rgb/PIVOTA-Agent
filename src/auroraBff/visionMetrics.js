@@ -160,7 +160,9 @@ const auroraIngredientsFirstAnswerLatency = {
 };
 const auroraSkinAnalysisRealModelCounter = new Map();
 const auroraSkinLlmCallCounter = new Map();
+const auroraRecoLlmCallCounter = new Map();
 const auroraRecoEntrySourceCounter = new Map();
+const auroraRecoKbWriteCounter = new Map();
 const auroraProfileAutoPatchCounter = new Map();
 const auroraRecoContextUsedCounter = new Map();
 const responseSchemaViolationCounter = new Map();
@@ -543,6 +545,8 @@ function normalizeAuroraIngredientsFlowStage(stage) {
     token === 'kb_miss' ||
     token === 'research_requested' ||
     token === 'research_completed' ||
+    token === 'research_provider_attempt' ||
+    token === 'research_provider_final' ||
     token === 'research_error' ||
     token === 'invalid_json' ||
     token === 'empty_section_prevented' ||
@@ -563,6 +567,10 @@ function normalizeAuroraIngredientsFlowOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'hit');
   if (token === 'hit' || token === 'miss') return token;
   return 'hit';
+}
+
+function normalizeAuroraIngredientsFlowProvider(provider) {
+  return cleanMetricToken(provider, 'unknown');
 }
 
 function normalizeAuroraIngredientProviderStage(stage) {
@@ -607,10 +615,51 @@ function normalizeAuroraLlmCallOutcome(outcome) {
   return 'skip';
 }
 
+function normalizeAuroraRecoLlmStage(stage) {
+  const token = cleanMetricToken(stage, 'main');
+  if (token === 'main' || token === 'alternatives') return token;
+  return 'main';
+}
+
+function normalizeAuroraRecoLlmCallOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'provider_error');
+  if (
+    token === 'success' ||
+    token === 'policy_skip' ||
+    token === 'precheck_fail' ||
+    token === 'provider_error' ||
+    token === 'timeout' ||
+    token === 'empty_structured'
+  ) {
+    return token;
+  }
+  return 'provider_error';
+}
+
 function normalizeAuroraRecoEntrySource(source) {
   const token = cleanMetricToken(source, 'goal_driven');
   if (token === 'goal_driven' || token === 'ingredient_driven' || token === 'profile_refine_rerun') return token;
   return 'goal_driven';
+}
+
+function normalizeAuroraRecoKbWriteSource(source) {
+  const token = cleanMetricToken(source, 'llm_primary');
+  if (token === 'llm_primary' || token === 'artifact_matcher' || token === 'rules_only') return token;
+  return 'llm_primary';
+}
+
+function normalizeAuroraRecoKbWriteOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'attempted');
+  if (
+    token === 'attempted' ||
+    token === 'persisted' ||
+    token === 'quarantined' ||
+    token === 'skipped' ||
+    token === 'error'
+  ) {
+    return token;
+  }
+  return 'attempted';
 }
 
 function normalizeAuroraProfileAutoPatchField(field) {
@@ -2047,6 +2096,19 @@ function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
   );
 }
 
+function recordAuroraRecoLlmCall({ stage, outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoLlmCallCounter,
+    {
+      stage: normalizeAuroraRecoLlmStage(stage),
+      outcome: normalizeAuroraRecoLlmCallOutcome(outcome),
+    },
+    amount,
+  );
+}
+
 function recordAuroraRecoEntrySource({ source, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -2054,6 +2116,19 @@ function recordAuroraRecoEntrySource({ source, delta } = {}) {
     auroraRecoEntrySourceCounter,
     {
       source: normalizeAuroraRecoEntrySource(source),
+    },
+    amount,
+  );
+}
+
+function recordAuroraRecoKbWrite({ source, outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoKbWriteCounter,
+    {
+      source: normalizeAuroraRecoKbWriteSource(source),
+      outcome: normalizeAuroraRecoKbWriteOutcome(outcome),
     },
     amount,
   );
@@ -2813,9 +2888,17 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
+  lines.push('# HELP aurora_reco_llm_call_total Total recommendation LLM call decisions grouped by stage and outcome.');
+  lines.push('# TYPE aurora_reco_llm_call_total counter');
+  renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
+
   lines.push('# HELP aurora_reco_entry_source_total Total recommendation entry counts by request source detail.');
   lines.push('# TYPE aurora_reco_entry_source_total counter');
   renderCounter(lines, 'aurora_reco_entry_source_total', auroraRecoEntrySourceCounter);
+
+  lines.push('# HELP aurora_reco_kb_write_total Total recommendation KB write attempts grouped by source and outcome.');
+  lines.push('# TYPE aurora_reco_kb_write_total counter');
+  renderCounter(lines, 'aurora_reco_kb_write_total', auroraRecoKbWriteCounter);
 
   lines.push('# HELP aurora_profile_autopatch_total Auto profile patch field updates and outcomes from free-text extraction.');
   lines.push('# TYPE aurora_profile_autopatch_total counter');
@@ -3140,7 +3223,9 @@ function resetVisionMetrics() {
   }
   auroraSkinAnalysisRealModelCounter.clear();
   auroraSkinLlmCallCounter.clear();
+  auroraRecoLlmCallCounter.clear();
   auroraRecoEntrySourceCounter.clear();
+  auroraRecoKbWriteCounter.clear();
   auroraProfileAutoPatchCounter.clear();
   auroraRecoContextUsedCounter.clear();
   responseSchemaViolationCounter.clear();
@@ -3298,7 +3383,9 @@ function snapshotVisionMetrics() {
     },
     auroraSkinAnalysisRealModel: Array.from(auroraSkinAnalysisRealModelCounter.entries()),
     auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
+    auroraRecoLlmCall: Array.from(auroraRecoLlmCallCounter.entries()),
     auroraRecoEntrySource: Array.from(auroraRecoEntrySourceCounter.entries()),
+    auroraRecoKbWrite: Array.from(auroraRecoKbWriteCounter.entries()),
     auroraProfileAutoPatch: Array.from(auroraProfileAutoPatchCounter.entries()),
     auroraRecoContextUsed: Array.from(auroraRecoContextUsedCounter.entries()),
     responseSchemaViolations: Array.from(responseSchemaViolationCounter.entries()),
@@ -3417,7 +3504,9 @@ module.exports = {
   observeAuroraIngredientsFirstAnswerLatency,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
+  recordAuroraRecoLlmCall,
   recordAuroraRecoEntrySource,
+  recordAuroraRecoKbWrite,
   recordAuroraProfileAutoPatch,
   recordAuroraRecoContextUsed,
   recordResponseSchemaViolation,

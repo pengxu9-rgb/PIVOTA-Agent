@@ -613,7 +613,7 @@ test('Stable-id offers.resolve upstream_timeout does not attempt local invoke fa
   );
 });
 
-test('/v1/chat reco PDP: local invoke fallback still runs before confidence_notice downgrade', async () => {
+test('/v1/chat reco PDP: local invoke fallback still runs and keeps recommendation cards available', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
@@ -710,8 +710,8 @@ test('/v1/chat reco PDP: local invoke fallback still runs before confidence_noti
 
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
         const recos = getRecoItems(resp.body);
-        assert.equal(recos.length, 0);
-        assert.ok(cards.some((c) => c && c.type === 'confidence_notice'));
+        assert.ok(recos.length > 0);
+        assert.ok(!cards.some((c) => c && c.type === 'confidence_notice'));
         assert.ok(primaryStableCalls > 0);
         assert.ok(localStableCalls > 0);
         assert.equal(queryResolveCalls, 0);
