@@ -40561,7 +40561,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       if (ingredientRecoOptInRequested && !ingredientDiagnosisOptInRequested) {
-        const candidateIngredients = asArray(ingredientActionData && ingredientActionData.ingredient_candidates)
+        const candidateIngredients = (
+          Array.isArray(ingredientActionData && ingredientActionData.ingredient_candidates)
+            ? ingredientActionData.ingredient_candidates
+            : []
+        )
           .map((item) => String(item || '').trim())
           .filter(Boolean)
           .slice(0, 5);
@@ -40587,7 +40591,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               reportPayload?.ingredient?.inci,
               recoLookupQuery,
             ) || recoLookupQuery;
-          const topProducts = asArray(reportPayload?.top_products);
+          const topProducts = Array.isArray(reportPayload?.top_products) ? reportPayload.top_products : [];
           const assistantText =
             ctx.lang === 'CN'
               ? topProducts.length > 0
