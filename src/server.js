@@ -5095,7 +5095,9 @@ async function queryFindProductsMultiFallback({
 
     if (attempt.relevanceMatched && attempt.usableCount > 0) {
       const shouldForceNextSemanticAttempt =
-        isAuroraMonocultureRetry && i === 0 && candidateQueries.length > 1;
+        i === 0 &&
+        candidateQueries.length > 1 &&
+        (isAuroraMonocultureRetry || isFragranceSemanticRetry);
       if (!shouldForceNextSemanticAttempt) break;
     }
   }
@@ -18396,6 +18398,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        const routeHealthProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
 	        const routeHealthExternalCount = routeHealthProducts.filter((product) => isExternalSeedProduct(product)).length;
 	        const routeHealthInternalCount = Math.max(0, routeHealthProducts.length - routeHealthExternalCount);
+          const mergedPreLimitCount = Number.isFinite(Number(upstreamData?.total))
+            ? Math.max(routeHealthProducts.length, Number(upstreamData.total))
+            : routeHealthProducts.length;
+          const supplementAttempted = Boolean(secondarySupplementMeta?.attempted || shouldFallback);
+          const supplementSkipReason = secondarySupplementMeta?.attempted
+            ? secondarySupplementMeta?.reason || null
+            : !shouldFallback
+            ? 'not_needed'
+            : skipSecondaryFallback
+            ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
+            : 'not_attempted';
+          const retryAttemptCount = Math.max(
+            0,
+            Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
+          );
 	        upstreamData = {
 	          ...upstreamData,
 	          metadata: {
@@ -18412,21 +18429,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            low_quality_nonempty_detected: primaryLowQualityNonempty,
 	            internal_raw_count: routeHealthInternalCount,
 	            external_raw_count: routeHealthExternalCount,
-	            merged_pre_limit_count: Number.isFinite(Number(upstreamData?.total))
-	              ? Math.max(routeHealthProducts.length, Number(upstreamData.total))
-	              : routeHealthProducts.length,
-	            supplement_attempted: Boolean(secondarySupplementMeta?.attempted || shouldFallback),
-	            supplement_skip_reason: secondarySupplementMeta?.attempted
-	              ? secondarySupplementMeta?.reason || null
-	              : !shouldFallback
-	              ? 'not_needed'
-	              : skipSecondaryFallback
-	              ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
-	              : 'not_attempted',
-	            retry_attempt_count: Math.max(
-	              0,
-	              Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
-	            ),
+	            merged_pre_limit_count: mergedPreLimitCount,
+	            supplement_attempted: supplementAttempted,
+	            supplement_skip_reason: supplementSkipReason,
+	            retry_attempt_count: retryAttemptCount,
+              route_health: {
+                ...(
+                  upstreamData?.metadata?.route_health &&
+                  typeof upstreamData.metadata.route_health === 'object' &&
+                  !Array.isArray(upstreamData.metadata.route_health)
+                    ? upstreamData.metadata.route_health
+                    : {}
+                ),
+                semantic_retry_applied: Boolean(semanticRetryApplied),
+                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+                primary_quality_gate_passed: primaryQualityGatePassed,
+                primary_quality_score:
+                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
+                    ? Number(primaryQualityScore)
+                    : null,
+                low_quality_nonempty_detected: Boolean(primaryLowQualityNonempty),
+                internal_raw_count: routeHealthInternalCount,
+                external_raw_count: routeHealthExternalCount,
+                merged_pre_limit_count: mergedPreLimitCount,
+                supplement_attempted: supplementAttempted,
+                supplement_skip_reason: supplementSkipReason,
+                retry_attempt_count: retryAttemptCount,
+                final_returned_count: routeHealthProducts.length,
+              },
 	          },
 	        };
 	      } else if (
@@ -18438,6 +18469,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        const routeHealthProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
 	        const routeHealthExternalCount = routeHealthProducts.filter((product) => isExternalSeedProduct(product)).length;
 	        const routeHealthInternalCount = Math.max(0, routeHealthProducts.length - routeHealthExternalCount);
+          const mergedPreLimitCount = Number.isFinite(Number(upstreamData?.total))
+            ? Math.max(routeHealthProducts.length, Number(upstreamData.total))
+            : routeHealthProducts.length;
+          const supplementAttempted = Boolean(shouldFallback);
+          const supplementSkipReason = !shouldFallback
+            ? 'not_needed'
+            : skipSecondaryFallback
+            ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
+            : 'not_attempted';
+          const retryAttemptCount = Math.max(
+            0,
+            Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
+          );
 	        upstreamData = {
 	          ...upstreamData,
 	          metadata: {
@@ -18453,19 +18497,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            low_quality_nonempty_detected: primaryLowQualityNonempty,
 	            internal_raw_count: routeHealthInternalCount,
 	            external_raw_count: routeHealthExternalCount,
-	            merged_pre_limit_count: Number.isFinite(Number(upstreamData?.total))
-	              ? Math.max(routeHealthProducts.length, Number(upstreamData.total))
-	              : routeHealthProducts.length,
-	            supplement_attempted: Boolean(shouldFallback),
-	            supplement_skip_reason: !shouldFallback
-	              ? 'not_needed'
-	              : skipSecondaryFallback
-	              ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
-	              : 'not_attempted',
-	            retry_attempt_count: Math.max(
-	              0,
-	              Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
-	            ),
+	            merged_pre_limit_count: mergedPreLimitCount,
+	            supplement_attempted: supplementAttempted,
+	            supplement_skip_reason: supplementSkipReason,
+	            retry_attempt_count: retryAttemptCount,
+              route_health: {
+                ...(
+                  upstreamData?.metadata?.route_health &&
+                  typeof upstreamData.metadata.route_health === 'object' &&
+                  !Array.isArray(upstreamData.metadata.route_health)
+                    ? upstreamData.metadata.route_health
+                    : {}
+                ),
+                semantic_retry_applied: Boolean(semanticRetryApplied),
+                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+                primary_quality_gate_passed: primaryQualityGatePassed,
+                primary_quality_score:
+                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
+                    ? Number(primaryQualityScore)
+                    : null,
+                low_quality_nonempty_detected: Boolean(primaryLowQualityNonempty),
+                internal_raw_count: routeHealthInternalCount,
+                external_raw_count: routeHealthExternalCount,
+                merged_pre_limit_count: mergedPreLimitCount,
+                supplement_attempted: supplementAttempted,
+                supplement_skip_reason: supplementSkipReason,
+                retry_attempt_count: retryAttemptCount,
+                final_returned_count: routeHealthProducts.length,
+              },
 	          },
 	        };
 	      }
