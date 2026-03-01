@@ -75,6 +75,7 @@ const {
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
   recordAuroraIngredientsFlowMetric,
+  recordAuroraIngredientProviderMetric,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoEntrySource,
@@ -613,6 +614,110 @@ const AURORA_CHAT_RESPONSE_FORMAT = String(process.env.AURORA_CHAT_RESPONSE_FORM
   .trim()
   .toLowerCase();
 const AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE = AURORA_CHAT_RESPONSE_FORMAT === 'legacy';
+const AURORA_INGREDIENT_RESEARCH_ASYNC_ENABLED = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_RESEARCH_ASYNC_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const INGREDIENT_ROUTE_V2_ENABLED = (() => {
+  const raw = String(process.env.INGREDIENT_ROUTE_V2_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const INGREDIENT_LEGACY_PATH_ENABLED = (() => {
+  const raw = String(process.env.INGREDIENT_LEGACY_PATH_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const INGREDIENT_KB_ONLY_MODE = (() => {
+  const raw = String(process.env.INGREDIENT_KB_ONLY_MODE || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_INGREDIENT_RESEARCH_CACHE_MAX = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_RESEARCH_CACHE_MAX || 500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 500;
+  return Math.max(32, Math.min(5000, v));
+})();
+const AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS || 14000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 14000;
+  return Math.max(3000, Math.min(30000, v));
+})();
+const AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 4000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
+  return Math.max(1500, Math.min(8000, v));
+})();
+const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 10000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
+  return Math.max(3000, Math.min(20000, v));
+})();
+const AURORA_INGREDIENT_CIRCUIT_OPEN_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_OPEN_MS || 90000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
+  return Math.max(5000, Math.min(300000, v));
+})();
+const AURORA_INGREDIENT_CIRCUIT_HALF_OPEN_PROBES = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_HALF_OPEN_PROBES || 10);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10;
+  return Math.max(2, Math.min(50, v));
+})();
+const AURORA_INGREDIENT_LOOKUP_SESSION_PER_MIN = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_LOOKUP_SESSION_PER_MIN || 6);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6;
+  return Math.max(1, Math.min(60, v));
+})();
+const AURORA_INGREDIENT_LOOKUP_IP_PER_MIN = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_LOOKUP_IP_PER_MIN || 30);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 30;
+  return Math.max(5, Math.min(240, v));
+})();
+const INGREDIENT_ROUTE_RULE_VERSION = String(
+  process.env.INGREDIENT_ROUTE_RULE_VERSION || 'ingredient_route_v2_lite_20260301',
+).trim();
+const INGREDIENT_PROMPT_VERSION = String(
+  process.env.INGREDIENT_PROMPT_VERSION || 'ingredient_research_v2_lite',
+).trim();
+const AURORA_INGREDIENT_GOAL_ENRICH_ENABLED = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_GOAL_ENRICH_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_INGREDIENT_GOAL_ENRICH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_GOAL_ENRICH_TIMEOUT_MS || 2800);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2800;
+  return Math.max(1000, Math.min(12000, v));
+})();
+const AURORA_INGREDIENT_RESEARCH_KB_PATH = String(process.env.AURORA_INGREDIENT_RESEARCH_KB_PATH || '').trim();
+const AURORA_INGREDIENT_RESEARCH_PERSIST_ENABLED = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_RESEARCH_PERSIST_ENABLED || '')
+    .trim()
+    .toLowerCase();
+  if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on') return true;
+  if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'n' || raw === 'off') return false;
+  return Boolean(AURORA_INGREDIENT_RESEARCH_KB_PATH);
+})();
+const ingredientResearchCache = new Map();
+const ingredientResearchInflight = new Set();
+const ingredientLookupSessionRateCounter = new Map();
+const ingredientLookupIpRateCounter = new Map();
+const ingredientProviderCircuit = {
+  state: 'closed',
+  opened_at_ms: 0,
+  half_open_probe_count: 0,
+};
+const ingredientProviderRecentCalls1m = [];
+const ingredientProviderRecentCalls5m = [];
+let ingredientResearchCacheLoadedFromDisk = false;
+let ingredientResearchCachePersistTimer = null;
+let ingredientResearchCachePersistPending = false;
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
@@ -12166,7 +12271,57 @@ function applyCommerceMedicalClaimGuard(text, lang) {
     : "I can help with product info/ingredients/where to buy, but I can't provide medical diagnosis or treatment advice. If you suspect dermatitis/eczema, please see a clinician. Which brand or product are you looking for?";
 }
 
-function buildRecoCatalogQueries({ profileSummary, lang } = {}) {
+function normalizeIngredientRecoContextValue(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const query = pickFirstTrimmed(
+    raw.query,
+    raw.ingredient_query,
+    raw.ingredientQuery,
+    raw.inci,
+    raw.ingredient_name,
+    raw.ingredientName,
+  );
+  const goal = normalizeIngredientGoalToken(
+    pickFirstTrimmed(raw.goal, raw.ingredient_goal, raw.ingredientGoal, raw.target_goal, raw.effect_goal),
+  );
+  const sensitivity = normalizeIngredientSensitivityToken(
+    pickFirstTrimmed(raw.sensitivity, raw.ingredient_sensitivity, raw.ingredientSensitivity, raw.skin_sensitivity),
+  );
+  const source = pickFirstTrimmed(raw.source, raw.entry_source, raw.trigger_source, raw.route_source);
+  const updatedRaw = Number(raw.updated_at_ms || raw.updatedAtMs || 0);
+  if (!query && !goal) return null;
+  const out = {
+    ...(query ? { query: String(query).slice(0, 120) } : {}),
+    ...(goal ? { goal } : {}),
+    sensitivity: sensitivity || 'unknown',
+    ...(source ? { source: String(source).slice(0, 48) } : {}),
+  };
+  if (Number.isFinite(updatedRaw) && updatedRaw > 0) {
+    out.updated_at_ms = Math.trunc(updatedRaw);
+  }
+  return out;
+}
+
+function mergeIngredientRecoContextValue(base, patch) {
+  const left = normalizeIngredientRecoContextValue(base);
+  const right = normalizeIngredientRecoContextValue(patch);
+  if (!left) return right;
+  if (!right) return left;
+  return {
+    ...left,
+    ...right,
+    query: right.query || left.query || '',
+    goal: right.goal || left.goal || '',
+    sensitivity: right.sensitivity || left.sensitivity || 'unknown',
+    source: right.source || left.source || '',
+    updated_at_ms: Math.max(
+      Number.isFinite(Number(left.updated_at_ms)) ? Number(left.updated_at_ms) : 0,
+      Number.isFinite(Number(right.updated_at_ms)) ? Number(right.updated_at_ms) : 0,
+    ) || Date.now(),
+  };
+}
+
+function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {}) {
   const raw = RECO_CATALOG_GROUNDED_QUERIES;
   const fromEnv = raw
     ? raw
@@ -12199,7 +12354,49 @@ function buildRecoCatalogQueries({ profileSummary, lang } = {}) {
     return { query: String(query || '').trim(), step, slot };
   });
 
-  return items.slice(0, 8);
+  const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
+  if (normalizedIngredientContext && normalizedIngredientContext.query) {
+    const ingredientSeed = String(normalizedIngredientContext.query).trim();
+    const goalSeed = normalizeIngredientGoalToken(normalizedIngredientContext.goal);
+    const goalLabelMap = {
+      acne: isCn ? '祛痘' : 'acne',
+      brightening: isCn ? '提亮' : 'brightening',
+      barrier: isCn ? '修护' : 'barrier',
+      antiaging: isCn ? '抗老' : 'anti-aging',
+      hydration: isCn ? '保湿' : 'hydration',
+    };
+    const goalLabel = goalSeed ? goalLabelMap[goalSeed] : '';
+    const seededQueries = [
+      `${ingredientSeed} skincare`,
+      goalLabel ? `${ingredientSeed} ${goalLabel}` : '',
+      isCn ? `${ingredientSeed} 成分 护肤` : `${ingredientSeed} ingredient skincare`,
+    ]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean);
+    for (const query of seededQueries) {
+      items.unshift({
+        query,
+        step: stepLabels.treatment,
+        slot: 'other',
+      });
+    }
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const item of items) {
+    const query = String(item && item.query ? item.query : '').trim();
+    if (!query) continue;
+    const step = String(item && item.step ? item.step : stepLabels.treatment).trim();
+    const slot = String(item && item.slot ? item.slot : 'other').trim().toLowerCase();
+    const key = `${query.toLowerCase()}::${slot}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push({ query, step, slot: slot || 'other' });
+    if (deduped.length >= 8) break;
+  }
+
+  return deduped;
 }
 
 function shouldUseRecoCatalogTransientFallback(catalogDebug) {
@@ -12461,7 +12658,7 @@ async function buildPurchasableFallbackCandidates({
   };
 }
 
-async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger } = {}) {
+async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientContext, debug, logger } = {}) {
   const startedAt = Date.now();
   const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
   let probeWhileOpen = false;
@@ -12501,7 +12698,11 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
   }
 
-  const queries = buildRecoCatalogQueries({ profileSummary, lang: ctx && ctx.lang ? ctx.lang : 'EN' });
+  const queries = buildRecoCatalogQueries({
+    profileSummary,
+    lang: ctx && ctx.lang ? ctx.lang : 'EN',
+    ingredientContext,
+  });
   if (!queries.length) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
   }
@@ -12945,7 +13146,13 @@ async function callGeminiJsonObject({
     );
     const text = await extractTextFromGeminiResponse(resp);
     const parsed = parseJsonOnlyObject(unwrapCodeFence(text));
-    if (!parsed || typeof parsed !== 'object') return { ok: false, reason: 'gemini_json_invalid' };
+    if (!parsed || typeof parsed !== 'object') {
+      return {
+        ok: false,
+        reason: 'gemini_json_invalid',
+        raw_text: typeof text === 'string' ? text : null,
+      };
+    }
     return { ok: true, json: parsed };
   } catch (err) {
     return {
@@ -20746,6 +20953,10 @@ const CHATBOX_UI_RENDERABLE_CARD_TYPES = new Set([
   'conflict_heatmap',
   'analysis_summary',
   'analysis_story_v2',
+  'ingredient_hub',
+  'ingredient_goal_match',
+  'aurora_ingredient_report',
+  'confidence_notice',
   'diagnosis_gate',
   'ingredient_hub',
   'ingredient_goal_match',
@@ -29058,7 +29269,7 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
   );
 }
 
-function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) {
+function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, ingredientContext }) {
   const skinType = profile && typeof profile.skinType === 'string' ? profile.skinType : 'unknown';
   const barrierStatus = mapBarrierStatus(profile && profile.barrierStatus);
   const concerns = mapConcerns(profile && profile.goals);
@@ -29068,6 +29279,25 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) 
   const concernsStr = concerns.length ? concerns.join(', ') : 'none';
   const replyLang = lang === 'CN' ? 'Chinese' : 'English';
   const req = typeof requestText === 'string' ? requestText.trim() : '';
+  const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
+  const ingredientQuery =
+    normalizedIngredientContext && normalizedIngredientContext.query
+      ? String(normalizedIngredientContext.query).trim()
+      : '';
+  const ingredientGoal =
+    normalizedIngredientContext && normalizedIngredientContext.goal
+      ? String(normalizedIngredientContext.goal).trim()
+      : '';
+  const ingredientSensitivity =
+    normalizedIngredientContext && normalizedIngredientContext.sensitivity
+      ? String(normalizedIngredientContext.sensitivity).trim()
+      : '';
+  const ingredientContextRule = ingredientQuery
+    ? `Ingredient context: "${ingredientQuery}"` +
+      `${ingredientGoal ? `; goal=${ingredientGoal}` : ''}` +
+      `${ingredientSensitivity ? `; sensitivity=${ingredientSensitivity}` : ''}.` +
+      ' Prioritize products explicitly aligned with this ingredient context; if uncertain, return fewer items instead of unrelated picks.'
+    : '';
   const budgetReasonRule = budgetKnown
     ? 'If budget is known, include one reason that references budget fit.'
     : 'If budget is unknown, do not ask budget in the first response; focus on efficacy/tolerance and balanced value.';
@@ -29075,6 +29305,7 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) 
   return (
     `User profile: skin type ${skinType}; barrier status: ${barrierStatus}; concerns: ${concernsStr}; region: ${region}; budget: ${budget}.\n` +
     (req ? `User request: ${req}\n` : '') +
+    (ingredientContextRule ? `${ingredientContextRule}\n` : '') +
     `Task: Generate skincare product picks (NOT a full AM/PM routine).\n` +
     `Return ONLY a JSON object with keys: recommendations (array), evidence (object), confidence (0..1), missing_info (string[]), warnings (string[]).\n` +
     `recommendations: up to 5 items, ranked.\n` +
@@ -29096,6 +29327,9 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) 
     `- Do NOT include checkout links.\n` +
     `- Do NOT recommend the exact same sku_id/product_id twice.\n` +
     `- If unsure, use null/unknown and list missing_info/warnings (do not fabricate).\n` +
+    (ingredientQuery
+      ? '- Do not return recommendations that are unrelated to the ingredient context. If relevance is weak, reduce count and add warnings: "ingredient_context_sparse".\n'
+      : '') +
     `- All free-text strings should be in ${replyLang}.\n`
   );
 }
@@ -29143,7 +29377,8 @@ function looksLikeIngredientScienceIntent(message, action) {
     idText === 'chip.start.ingredients.entry' ||
     idText === 'chip_start_ingredients_entry' ||
     idText === 'ingredient.lookup' ||
-    idText === 'ingredient.by_goal'
+    idText === 'ingredient.by_goal' ||
+    idText === 'ingredient.research.poll'
   ) {
     return true;
   }
@@ -29179,6 +29414,10 @@ function isIngredientByGoalAction(actionId) {
 
 function isIngredientDiagnosisOptInAction(actionId) {
   return normalizeIngredientActionId(actionId) === 'ingredient.optin_diagnosis';
+}
+
+function isIngredientResearchPollAction(actionId) {
+  return normalizeIngredientActionId(actionId) === 'ingredient.research.poll';
 }
 
 function isIngredientRecoOptInAction(actionId, action) {
@@ -29374,6 +29613,121 @@ function buildIngredientHubCardPayload({ language } = {}) {
   };
 }
 
+function buildIngredientHubQuickReplyChips({ language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  return [
+    {
+      chip_id: 'chip.start.ingredients.lookup',
+      label: lang === 'CN' ? '查具体成分' : 'Lookup ingredient',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'chip.start.ingredients.entry',
+        preferred_mode: 'lookup',
+        entry_source: 'ingredient_hub_chip',
+      },
+    },
+    {
+      chip_id: 'chip.start.ingredients.by_goal',
+      label: lang === 'CN' ? '按功效找成分' : 'Find by goal',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'chip.start.ingredients.entry',
+        preferred_mode: 'by_goal',
+        entry_source: 'ingredient_hub_chip',
+      },
+    },
+    {
+      chip_id: 'chip.start.ingredients.optin_diagnosis',
+      label: lang === 'CN' ? '开始诊断（可选）' : 'Start diagnosis (optional)',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'ingredient.optin_diagnosis',
+        entry_source: 'ingredient_hub_chip',
+      },
+    },
+  ];
+}
+
+function buildIngredientReportQuickReplyChips({ language, reportPayload } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const out = buildIngredientHubQuickReplyChips({ language: lang }).slice(0, 2);
+  const seen = new Set(out.map((chip) => String(chip && chip.chip_id ? chip.chip_id : '').trim()).filter(Boolean));
+  const ingredientQuery = pickFirstTrimmed(
+    reportPayload && reportPayload.ingredient && reportPayload.ingredient.display_name,
+    reportPayload && reportPayload.ingredient && reportPayload.ingredient.inci,
+  );
+  const researchStatus = String(reportPayload && reportPayload.research_status ? reportPayload.research_status : '').trim().toLowerCase();
+  const normalizedQuery = pickFirstTrimmed(reportPayload && reportPayload.normalized_query, ingredientQuery);
+  if (ingredientQuery) {
+    const chipId = 'chip.start.ingredients.reco';
+    if (!seen.has(chipId)) {
+      seen.add(chipId);
+      out.push({
+        chip_id: chipId,
+        label: lang === 'CN' ? '看相关产品（可选）' : 'See related products (optional)',
+        kind: 'quick_reply',
+        data: {
+          action_id: 'chip.start.reco_products',
+          entry_source: 'ingredient_report',
+          ingredient_query: String(ingredientQuery).slice(0, 120),
+        },
+      });
+    }
+  }
+  if ((researchStatus === 'queued' || researchStatus === 'fallback' || researchStatus === 'error') && normalizedQuery) {
+    const chipId = 'chip.start.ingredients.research_poll';
+    if (!seen.has(chipId)) {
+      seen.add(chipId);
+      out.push({
+        chip_id: chipId,
+        label: lang === 'CN' ? '刷新增强结果' : 'Refresh enhanced result',
+        kind: 'quick_reply',
+        data: {
+          action_id: 'ingredient.research.poll',
+          ingredient_query: String(ingredientQuery || '').slice(0, 120),
+          normalized_query: String(normalizedQuery || '').slice(0, 120),
+          entry_source: 'ingredient_report',
+        },
+      });
+    }
+  }
+  const nextQuestions = Array.isArray(reportPayload && reportPayload.next_questions) ? reportPayload.next_questions : [];
+  for (const question of nextQuestions.slice(0, 2)) {
+    const q = question && typeof question === 'object' ? question : {};
+    const qid = String(q.id || '').trim().toLowerCase();
+    const chips = Array.isArray(q.chips) ? q.chips : [];
+    for (const rawLabel of chips.slice(0, 3)) {
+      const label = String(rawLabel || '').trim();
+      if (!label) continue;
+      const slug = label
+        .toLowerCase()
+        .replace(/[^\w\u4e00-\u9fff]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 36);
+      if (!slug) continue;
+      const chipId = `chip.start.ingredients.${qid || 'next'}.${slug}`.slice(0, 80);
+      if (seen.has(chipId)) continue;
+      const data = { reply_text: label };
+      if (qid === 'goal') {
+        const goal = normalizeIngredientGoalToken(label);
+        data.action_id = 'ingredient.by_goal';
+        if (goal) data.goal = goal;
+      } else if (qid === 'sensitivity') {
+        data.sensitivity = normalizeIngredientSensitivityToken(label);
+      }
+      seen.add(chipId);
+      out.push({
+        chip_id: chipId,
+        label,
+        kind: 'quick_reply',
+        data,
+      });
+      if (out.length >= 8) return out;
+    }
+  }
+  return out;
+}
+
 function buildIngredientGoalMatchPayload({ language, goal, sensitivity } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const key = String(goal || '').trim().toLowerCase();
@@ -29505,25 +29859,267 @@ function buildIngredientGoalMatchPayload({ language, goal, sensitivity } = {}) {
   };
 }
 
+async function enrichIngredientGoalMatchPayload({
+  basePayload,
+  language = 'EN',
+  goal = '',
+  sensitivity = 'unknown',
+  logger,
+} = {}) {
+  const payloadBase =
+    basePayload && typeof basePayload === 'object' && !Array.isArray(basePayload)
+      ? { ...basePayload }
+      : null;
+  if (!payloadBase) return basePayload;
+  if (!AURORA_INGREDIENT_GOAL_ENRICH_ENABLED || !AURORA_DECISION_BASE_URL || USE_AURORA_BFF_MOCK) return payloadBase;
+
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const goalToken = normalizeIngredientGoalToken(goal || payloadBase.goal || '');
+  const sensitivityToken = normalizeIngredientSensitivityToken(sensitivity || payloadBase.sensitivity || 'unknown');
+  const prompt = lang === 'CN'
+    ? [
+      '请按如下 schema 仅输出 JSON（不要 markdown）：',
+      '{',
+      '  "candidate_ingredients":[{"ingredient":"","reason":"","evidence_grade":"A|B|C|unknown"}],',
+      '  "avoid_pairs":[""],',
+      '  "evidence_notes":[""],',
+      '  "top_products":{"budget":[],"mid":[],"premium":[]}',
+      '}',
+      `目标: ${goalToken || 'barrier'}`,
+      `敏感度: ${sensitivityToken || 'unknown'}`,
+      '要求：候选成分最多 6 个；避免组合最多 6 条；避免空泛文案，给出可执行原因。',
+    ].join('\n')
+    : [
+      'Return strict JSON only (no markdown) with schema:',
+      '{',
+      '  "candidate_ingredients":[{"ingredient":"","reason":"","evidence_grade":"A|B|C|unknown"}],',
+      '  "avoid_pairs":[""],',
+      '  "evidence_notes":[""],',
+      '  "top_products":{"budget":[],"mid":[],"premium":[]}',
+      '}',
+      `Goal: ${goalToken || 'barrier'}`,
+      `Sensitivity: ${sensitivityToken || 'unknown'}`,
+      'Rules: up to 6 candidate ingredients, up to 6 avoid pairs, concise actionable reasons.',
+    ].join('\n');
+
+  const safeObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : null);
+  const safeStrings = (value, max = 8, maxLen = 180) => {
+    const out = [];
+    const seen = new Set();
+    const source = Array.isArray(value) ? value : [];
+    for (const row of source) {
+      const text = String(row || '').trim();
+      if (!text) continue;
+      const key = text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(text.slice(0, maxLen));
+      if (out.length >= max) break;
+    }
+    return out;
+  };
+  const safeCandidates = (value) => {
+    const out = [];
+    const source = Array.isArray(value) ? value : [];
+    for (const row of source) {
+      const item = safeObject(row);
+      if (!item) continue;
+      const ingredient = String(item.ingredient || item.name || '').trim().slice(0, 120);
+      const reason = String(item.reason || item.why || '').trim().slice(0, 220);
+      const evidenceGrade = normalizeIngredientEvidenceGrade(item.evidence_grade || item.evidenceGrade, 'unknown');
+      if (!ingredient) continue;
+      out.push({ ingredient, reason, evidence_grade: evidenceGrade });
+      if (out.length >= 6) break;
+    }
+    return out;
+  };
+
+  try {
+    const upstream = await auroraChat({
+      baseUrl: AURORA_DECISION_BASE_URL,
+      query: prompt,
+      timeoutMs: AURORA_INGREDIENT_GOAL_ENRICH_TIMEOUT_MS,
+      retries: 0,
+    });
+    const parsed =
+      safeObject(
+        upstream && typeof upstream.answer === 'string'
+          ? extractJsonObjectByKeys(upstream.answer, ['candidate_ingredients', 'avoid_pairs'])
+          : null,
+      ) ||
+      safeObject(upstream && upstream.structured) ||
+      null;
+    if (!parsed) return payloadBase;
+
+    const candidateIngredients = safeCandidates(parsed.candidate_ingredients);
+    const avoidPairs = safeStrings(parsed.avoid_pairs, 6, 180);
+    const evidenceNotes = safeStrings(parsed.evidence_notes || parsed.evidenceNotes, 6, 220);
+    const topProductsObj = safeObject(parsed.top_products || parsed.topProducts) || {};
+    const topProducts = {
+      budget: safeStrings(topProductsObj.budget, 8, 120),
+      mid: safeStrings(topProductsObj.mid, 8, 120),
+      premium: safeStrings(topProductsObj.premium, 8, 120),
+    };
+
+    const merged = {
+      ...payloadBase,
+      ...(candidateIngredients.length ? { candidate_ingredients: candidateIngredients } : {}),
+      ...(avoidPairs.length ? { avoid_pairs: avoidPairs } : {}),
+      ...(evidenceNotes.length ? { evidence_notes: evidenceNotes } : {}),
+      ...(topProducts.budget.length || topProducts.mid.length || topProducts.premium.length
+        ? { top_products: topProducts }
+        : {}),
+    };
+    return merged;
+  } catch (err) {
+    logger?.warn?.(
+      {
+        err: err && err.message ? err.message : String(err),
+        goal: goalToken || '',
+        sensitivity: sensitivityToken || 'unknown',
+      },
+      'aurora bff: ingredient goal enrich failed',
+    );
+    return payloadBase;
+  }
+}
+
+const INGREDIENT_ENTITY_DICT = Object.freeze([
+  {
+    key: 'niacinamide',
+    canonical_en: 'niacinamide',
+    canonical_cn: '烟酰胺',
+    aliases: ['nicotinamide', 'vitamin b3', '维生素b3', '维b3'],
+  },
+  {
+    key: 'retinol',
+    canonical_en: 'retinol',
+    canonical_cn: 'A醇/维A类',
+    aliases: ['retinoid', 'vitamin a', '视黄醇', 'a醇', '维a', '维甲醇'],
+  },
+  {
+    key: 'azelaic_acid',
+    canonical_en: 'azelaic acid',
+    canonical_cn: '壬二酸',
+    aliases: ['azelaic', 'azelic acid'],
+  },
+  {
+    key: 'vitamin_c',
+    canonical_en: 'vitamin c',
+    canonical_cn: '维生素C',
+    aliases: ['ascorbic acid', 'ascorbic', 'vc', '维c', '抗坏血酸'],
+  },
+  {
+    key: 'salicylic_acid',
+    canonical_en: 'salicylic acid',
+    canonical_cn: '水杨酸',
+    aliases: ['bha', 'beta hydroxy acid'],
+  },
+  {
+    key: 'octocrylene',
+    canonical_en: 'octocrylene',
+    canonical_cn: '奥克立林',
+    aliases: ['octocrileno'],
+  },
+  {
+    key: 'butyloctyl_salicylate',
+    canonical_en: 'butyloctyl salicylate',
+    canonical_cn: '辛基水杨酸丁酯',
+    aliases: ['butyloctyl salicylate'],
+  },
+]);
+
+function ingredient_query_normalize(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[’‘`´]/g, "'")
+    .replace(/[-–—_]/g, ' ')
+    .replace(/[()[\]{}:,;.!?]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function ingredientEntityDisplayName(entityKey, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const row = INGREDIENT_ENTITY_DICT.find((entry) => entry && entry.key === entityKey);
+  if (!row) return '';
+  return lang === 'CN' ? String(row.canonical_cn || '').trim() : String(row.canonical_en || '').trim();
+}
+
+function ingredientEntityMatchFromText(raw, language = 'EN') {
+  const normalized = ingredient_query_normalize(raw);
+  if (!normalized) {
+    return {
+      normalized_query: '',
+      entity_key: '',
+      entity_match_type: 'none',
+      entity_confidence: 0,
+    };
+  }
+  for (const row of INGREDIENT_ENTITY_DICT) {
+    const exactSet = [
+      ingredient_query_normalize(row.canonical_en),
+      ingredient_query_normalize(row.canonical_cn),
+      ...((Array.isArray(row.aliases) ? row.aliases : []).map((alias) => ingredient_query_normalize(alias))),
+    ].filter(Boolean);
+    if (exactSet.includes(normalized)) {
+      return {
+        normalized_query: normalized,
+        entity_key: row.key,
+        entity_match_type: 'exact',
+        entity_confidence: 1,
+      };
+    }
+  }
+  for (const row of INGREDIENT_ENTITY_DICT) {
+    const aliasSet = [
+      ingredient_query_normalize(row.canonical_en),
+      ingredient_query_normalize(row.canonical_cn),
+      ...((Array.isArray(row.aliases) ? row.aliases : []).map((alias) => ingredient_query_normalize(alias))),
+    ].filter(Boolean);
+    if (aliasSet.some((token) => token && normalized.includes(token))) {
+      return {
+        normalized_query: normalized,
+        entity_key: row.key,
+        entity_match_type: 'alias',
+        entity_confidence: 0.88,
+      };
+    }
+  }
+  for (const row of INGREDIENT_ENTITY_DICT) {
+    const fuzzyTokens = [
+      ingredient_query_normalize(row.canonical_en),
+      ingredient_query_normalize(row.canonical_cn),
+      ...((Array.isArray(row.aliases) ? row.aliases : []).map((alias) => ingredient_query_normalize(alias))),
+    ]
+      .map((token) => token.replace(/\s+/g, ''))
+      .filter((token) => token.length >= 5);
+    const compact = normalized.replace(/\s+/g, '');
+    if (fuzzyTokens.some((token) => compact.includes(token) || token.includes(compact))) {
+      return {
+        normalized_query: normalized,
+        entity_key: row.key,
+        entity_match_type: 'fuzzy',
+        entity_confidence: 0.7,
+      };
+    }
+  }
+  return {
+    normalized_query: normalized,
+    entity_key: '',
+    entity_match_type: 'none',
+    entity_confidence: 0,
+  };
+}
+
 function normalizeIngredientLookupToken(raw) {
-  const text = String(raw || '').trim().toLowerCase();
-  if (!text) return '';
-  if (/(niacinamide|nicotinamide|烟酰胺|维生素b3|维b3)/.test(text)) return 'niacinamide';
-  if (/(retinol|retinoid|维a|a醇|维甲醇|视黄醇)/.test(text)) return 'retinol';
-  if (/(azelaic|azelaic acid|壬二酸)/.test(text)) return 'azelaic_acid';
-  if (/(vitamin\\s*c|ascorbic|抗坏血酸|vc|维c)/.test(text)) return 'vitamin_c';
-  return '';
+  const match = ingredientEntityMatchFromText(raw);
+  return match.entity_key || '';
 }
 
 function mapIngredientLookupTokenToQuery(token, language = 'EN') {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const key = String(token || '').trim().toLowerCase();
-  if (!key) return '';
-  if (key === 'niacinamide') return lang === 'CN' ? '烟酰胺' : 'niacinamide';
-  if (key === 'retinol') return lang === 'CN' ? 'A醇/维A类' : 'retinol';
-  if (key === 'azelaic_acid') return lang === 'CN' ? '壬二酸' : 'azelaic acid';
-  if (key === 'vitamin_c') return lang === 'CN' ? '维生素C' : 'vitamin c';
-  return '';
+  return ingredientEntityDisplayName(String(token || '').trim().toLowerCase(), language);
 }
 
 function mapRoutineActiveTokenToIngredientQuery(token, language = 'EN') {
@@ -29566,13 +30162,939 @@ function extractIngredientLookupTargetFromText(message, language = 'EN') {
   );
   if (ontologyAny) return String(ontologyAny).slice(0, 120);
 
+  if (looksLikeFreeTextIngredientName(raw)) return raw.slice(0, 120);
   return '';
 }
 
-function buildIngredientReportPayload({ language, query } = {}) {
+function looksLikeFreeTextIngredientName(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return false;
+  if (!/^[A-Za-z][A-Za-z0-9'()+\-\s]{3,120}$/.test(text)) return false;
+  const lower = text.toLowerCase();
+  const tokens = lower.split(/\s+/).filter(Boolean);
+  if (!tokens.length || tokens.length > 5) return false;
+
+  // Avoid routing plain action/request phrases into ingredient lookup.
+  if (
+    /\b(start|diagnosis|analysis|routine|recommend|recommendation|product|products|skin|profile|help|please|can|should|need|want|send|link|url|evaluate|check)\b/.test(
+      lower,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    /(acid|amide|retinol|niacinamide|ceramide|peptide|salicylate|glycol|ascorb|benzoyl|tretinoin|adapalene|azelaic|tocopherol|panthenol|hyaluron|squalane|glycerin|alcohol|extract|oxide|sulfate|phosphate|siloxane|butyl|ethyl|methyl|propyl)/.test(
+      lower,
+    )
+  ) {
+    return true;
+  }
+
+  const originalTokens = text.split(/\s+/).filter(Boolean);
+  const titleCaseLike = originalTokens.every((token) => /^[A-Z][a-z0-9()+\-']+$/.test(token));
+  if (titleCaseLike && originalTokens.length <= 3 && originalTokens.join('').length >= 12) {
+    return true;
+  }
+
+  return false;
+}
+
+function normalizeIngredientResearchKey(raw) {
+  return ingredient_query_normalize(raw)
+    .replace(/[^a-z0-9\u4e00-\u9fff+\s']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function classifyIngredientProviderError(reason) {
+  const token = String(reason || '').trim().toLowerCase();
+  if (!token) return 'provider_unavailable';
+  if (token.includes('json')) return 'gemini_invalid_json';
+  if (token.includes('timeout')) return 'gemini_timeout';
+  if (token.includes('rate') || token.includes('quota') || token.includes('429')) return 'gemini_rate_limited';
+  if (token.includes('auth') || token.includes('key') || token.includes('permission') || token.includes('401') || token.includes('403')) {
+    return 'gemini_auth';
+  }
+  if (token.includes('network') || token.includes('socket') || token.includes('dns') || token.includes('econn') || token.includes('enotfound')) {
+    return 'gemini_network';
+  }
+  if (token.includes('5xx') || token.includes('500') || token.includes('502') || token.includes('503') || token.includes('504') || token.includes('upstream')) {
+    return 'gemini_upstream_5xx';
+  }
+  return 'gemini_unknown';
+}
+
+function extractFirstJsonObjectFromText(text) {
+  const raw = String(text || '');
+  if (!raw) return null;
+  const start = raw.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const candidate = raw.slice(start, i + 1);
+        try {
+          const parsed = JSON.parse(candidate);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeIngredientConfidenceLevel(raw, fallback = 'medium') {
+  const token = String(raw || '').trim().toLowerCase();
+  if (token === 'low' || token === 'medium' || token === 'high') return token;
+  return fallback;
+}
+
+function normalizeIngredientUsageTime(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (token === 'am') return 'AM';
+  if (token === 'pm') return 'PM';
+  if (token === 'both' || token === 'am_pm' || token === 'am/pm') return 'Both';
+  return 'Both';
+}
+
+function normalizeIngredientUsageObject(rawUsage) {
+  const usage = asResearchObject(rawUsage) || {};
+  const avoid = asResearchStringArray(usage.avoid, 8);
+  const frequency = pickFirstTrimmed(usage.frequency, usage.freq) || null;
+  return {
+    time: normalizeIngredientUsageTime(usage.time || usage.time_of_day || usage.timing),
+    frequency: frequency || null,
+    avoid,
+  };
+}
+
+function buildIngredientMinimalResearch({
+  query = '',
+  normalizedQuery = '',
+  language = 'EN',
+  errorCode = 'provider_unavailable',
+  provider = 'gemini',
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const ingredientName = String(query || '').trim() || (lang === 'CN' ? '该成分' : 'this ingredient');
+  const oneLiner = lang === 'CN'
+    ? `当前先返回 ${ingredientName} 的快速结论，增强证据稍后可继续刷新。`
+    : `Returning a quick brief for ${ingredientName} now; enhanced evidence can be refreshed shortly.`;
+  return {
+    status: 'fallback',
+    ingredient_query: ingredientName.slice(0, 120),
+    provider,
+    error_code: String(errorCode || 'provider_unavailable').slice(0, 60),
+    normalized_query: String(normalizedQuery || '').slice(0, 120) || null,
+    confidence_level: 'low',
+    ingredient: {
+      inci: ingredientName.slice(0, 120),
+      display_name: ingredientName.slice(0, 120),
+      aliases: [],
+    },
+    overview: oneLiner,
+    what_it_is: lang === 'CN'
+      ? `${ingredientName} 的快速摘要（增强研究暂不可用）。`
+      : `Quick snapshot for ${ingredientName} (enhanced research currently unavailable).`,
+    benefits: [
+      {
+        concern: 'general',
+        strength: 1,
+        what_it_means: lang === 'CN'
+          ? '建议结合个人目标与敏感度后再做精准匹配。'
+          : 'Add your goal and sensitivity for a more precise match.',
+      },
+    ],
+    safety: {
+      irritation_risk: null,
+      watchouts: [
+        {
+          issue: lang === 'CN' ? '信息不足' : 'Limited evidence',
+          likelihood: null,
+          what_to_do: lang === 'CN'
+            ? '先进行小范围试用并观察耐受。'
+            : 'Patch-test first and monitor tolerance.',
+        },
+      ],
+    },
+    usage: {
+      time: 'Both',
+      frequency: null,
+      avoid: [],
+      routine_step: null,
+      pair_well: [],
+      consider_separating: [],
+      notes: [],
+    },
+    evidence: {
+      grade: null,
+      summary: lang === 'CN'
+        ? '当前为最小可读卡片，增强证据生成中或暂时不可用。'
+        : 'This is a minimal readable card while enhanced evidence is pending/unavailable.',
+      citations: [],
+    },
+    top_products: {
+      budget: [],
+      mid: [],
+      premium: [],
+    },
+    updated_at_ms: Date.now(),
+  };
+}
+
+function recordIngredientProviderWindow({ ok }) {
+  const now = Date.now();
+  ingredientProviderRecentCalls1m.push({ ts: now, ok: ok === true });
+  ingredientProviderRecentCalls5m.push({ ts: now, ok: ok === true });
+  while (ingredientProviderRecentCalls1m.length && now - ingredientProviderRecentCalls1m[0].ts > 60 * 1000) {
+    ingredientProviderRecentCalls1m.shift();
+  }
+  while (ingredientProviderRecentCalls5m.length && now - ingredientProviderRecentCalls5m[0].ts > 5 * 60 * 1000) {
+    ingredientProviderRecentCalls5m.shift();
+  }
+}
+
+function getIngredientProviderCircuitState() {
+  const now = Date.now();
+  if (ingredientProviderCircuit.state === 'open') {
+    if (now - Number(ingredientProviderCircuit.opened_at_ms || 0) >= AURORA_INGREDIENT_CIRCUIT_OPEN_MS) {
+      ingredientProviderCircuit.state = 'half_open';
+      ingredientProviderCircuit.half_open_probe_count = 0;
+    }
+  }
+  return ingredientProviderCircuit.state;
+}
+
+function updateIngredientProviderCircuit({ outcome = 'ok' } = {}) {
+  const now = Date.now();
+  const fail = outcome !== 'ok';
+  recordIngredientProviderWindow({ ok: !fail });
+  if (ingredientProviderCircuit.state === 'half_open') {
+    ingredientProviderCircuit.half_open_probe_count = Number(ingredientProviderCircuit.half_open_probe_count || 0) + 1;
+    if (fail) {
+      ingredientProviderCircuit.state = 'open';
+      ingredientProviderCircuit.opened_at_ms = now;
+      ingredientProviderCircuit.half_open_probe_count = 0;
+      return ingredientProviderCircuit.state;
+    }
+    if (ingredientProviderCircuit.half_open_probe_count >= AURORA_INGREDIENT_CIRCUIT_HALF_OPEN_PROBES) {
+      ingredientProviderCircuit.state = 'closed';
+      ingredientProviderCircuit.opened_at_ms = 0;
+      ingredientProviderCircuit.half_open_probe_count = 0;
+    }
+    return ingredientProviderCircuit.state;
+  }
+  if (ingredientProviderCircuit.state === 'closed') {
+    const oneMinuteTotal = ingredientProviderRecentCalls1m.length;
+    const oneMinuteFail = ingredientProviderRecentCalls1m.filter((row) => row.ok !== true).length;
+    const fiveMinuteTotal = ingredientProviderRecentCalls5m.length;
+    const fiveMinuteFail = ingredientProviderRecentCalls5m.filter((row) => row.ok !== true).length;
+    const oneMinuteRate = oneMinuteTotal > 0 ? oneMinuteFail / oneMinuteTotal : 0;
+    const fiveMinuteRate = fiveMinuteTotal > 0 ? fiveMinuteFail / fiveMinuteTotal : 0;
+    if (
+      (oneMinuteTotal >= 20 && oneMinuteRate >= 0.35) ||
+      (fiveMinuteTotal >= 20 && fiveMinuteRate >= 0.2)
+    ) {
+      ingredientProviderCircuit.state = 'open';
+      ingredientProviderCircuit.opened_at_ms = now;
+      ingredientProviderCircuit.half_open_probe_count = 0;
+    }
+  }
+  return ingredientProviderCircuit.state;
+}
+
+function compactIngredientRateCounter(map, now, windowMs = 60 * 1000) {
+  for (const [key, value] of map.entries()) {
+    if (!value || typeof value !== 'object') {
+      map.delete(key);
+      continue;
+    }
+    if (now - Number(value.window_started_at_ms || 0) >= windowMs) {
+      map.delete(key);
+    }
+  }
+}
+
+function checkIngredientLookupRateLimit({ sessionKey = '', ipKey = '' } = {}) {
+  const now = Date.now();
+  compactIngredientRateCounter(ingredientLookupSessionRateCounter, now);
+  compactIngredientRateCounter(ingredientLookupIpRateCounter, now);
+  const windowMs = 60 * 1000;
+  let sessionExceeded = false;
+  let ipExceeded = false;
+  if (sessionKey) {
+    const row = ingredientLookupSessionRateCounter.get(sessionKey) || {
+      count: 0,
+      window_started_at_ms: now,
+    };
+    if (now - Number(row.window_started_at_ms || 0) >= windowMs) {
+      row.count = 0;
+      row.window_started_at_ms = now;
+    }
+    row.count += 1;
+    ingredientLookupSessionRateCounter.set(sessionKey, row);
+    sessionExceeded = Number(row.count || 0) > AURORA_INGREDIENT_LOOKUP_SESSION_PER_MIN;
+  }
+  if (ipKey) {
+    const row = ingredientLookupIpRateCounter.get(ipKey) || {
+      count: 0,
+      window_started_at_ms: now,
+    };
+    if (now - Number(row.window_started_at_ms || 0) >= windowMs) {
+      row.count = 0;
+      row.window_started_at_ms = now;
+    }
+    row.count += 1;
+    ingredientLookupIpRateCounter.set(ipKey, row);
+    ipExceeded = Number(row.count || 0) > AURORA_INGREDIENT_LOOKUP_IP_PER_MIN;
+  }
+  return {
+    blocked: sessionExceeded || ipExceeded,
+    reason: sessionExceeded ? 'session_rate_limited' : ipExceeded ? 'ip_rate_limited' : '',
+  };
+}
+
+function isPlainResearchObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function buildIngredientResearchCacheArtifact() {
+  const entries = {};
+  for (const [rawKey, rawValue] of ingredientResearchCache.entries()) {
+    const key = normalizeIngredientResearchKey(rawKey);
+    if (!key || !isPlainResearchObject(rawValue)) continue;
+    entries[key] = rawValue;
+  }
+  return {
+    schema_version: 'aurora.ingredient_profile_v1.cache',
+    updated_at_ms: Date.now(),
+    entries,
+  };
+}
+
+function persistIngredientResearchCacheNow({ logger } = {}) {
+  if (!AURORA_INGREDIENT_RESEARCH_PERSIST_ENABLED || !AURORA_INGREDIENT_RESEARCH_KB_PATH) return;
+  try {
+    const dir = path.dirname(AURORA_INGREDIENT_RESEARCH_KB_PATH);
+    fs.mkdirSync(dir, { recursive: true });
+    const payload = buildIngredientResearchCacheArtifact();
+    const tmpPath = `${AURORA_INGREDIENT_RESEARCH_KB_PATH}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(payload), 'utf8');
+    fs.renameSync(tmpPath, AURORA_INGREDIENT_RESEARCH_KB_PATH);
+  } catch (err) {
+    logger?.warn?.(
+      {
+        path: AURORA_INGREDIENT_RESEARCH_KB_PATH,
+        err: err && err.message ? err.message : String(err),
+      },
+      'aurora bff: ingredient research cache persist failed',
+    );
+  }
+}
+
+function scheduleIngredientResearchCachePersist({ logger } = {}) {
+  if (!AURORA_INGREDIENT_RESEARCH_PERSIST_ENABLED || !AURORA_INGREDIENT_RESEARCH_KB_PATH) return;
+  ingredientResearchCachePersistPending = true;
+  if (ingredientResearchCachePersistTimer) return;
+  ingredientResearchCachePersistTimer = setTimeout(() => {
+    ingredientResearchCachePersistTimer = null;
+    if (!ingredientResearchCachePersistPending) return;
+    ingredientResearchCachePersistPending = false;
+    persistIngredientResearchCacheNow({ logger });
+  }, 250);
+  if (ingredientResearchCachePersistTimer && typeof ingredientResearchCachePersistTimer.unref === 'function') {
+    ingredientResearchCachePersistTimer.unref();
+  }
+}
+
+function hydrateIngredientResearchCacheFromDisk({ logger } = {}) {
+  if (ingredientResearchCacheLoadedFromDisk) return;
+  ingredientResearchCacheLoadedFromDisk = true;
+  if (!AURORA_INGREDIENT_RESEARCH_PERSIST_ENABLED || !AURORA_INGREDIENT_RESEARCH_KB_PATH) return;
+  try {
+    if (!fs.existsSync(AURORA_INGREDIENT_RESEARCH_KB_PATH)) return;
+    const raw = fs.readFileSync(AURORA_INGREDIENT_RESEARCH_KB_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    const entries = isPlainResearchObject(parsed && parsed.entries) ? parsed.entries : {};
+    for (const [rawKey, rawValue] of Object.entries(entries)) {
+      const key = normalizeIngredientResearchKey(rawKey);
+      if (!key || !isPlainResearchObject(rawValue)) continue;
+      touchIngredientResearchCache(key, rawValue, { persist: false });
+    }
+  } catch (err) {
+    logger?.warn?.(
+      {
+        path: AURORA_INGREDIENT_RESEARCH_KB_PATH,
+        err: err && err.message ? err.message : String(err),
+      },
+      'aurora bff: ingredient research cache hydrate failed',
+    );
+  }
+}
+
+function touchIngredientResearchCache(key, value, { persist = false, logger = null } = {}) {
+  if (!key) return;
+  ingredientResearchCache.delete(key);
+  ingredientResearchCache.set(key, value);
+  while (ingredientResearchCache.size > AURORA_INGREDIENT_RESEARCH_CACHE_MAX) {
+    const oldest = ingredientResearchCache.keys().next();
+    if (!oldest || oldest.done) break;
+    ingredientResearchCache.delete(oldest.value);
+  }
+  if (persist) scheduleIngredientResearchCachePersist({ logger });
+}
+
+function getIngredientResearchCache(query) {
+  hydrateIngredientResearchCacheFromDisk();
+  const key = normalizeIngredientResearchKey(query);
+  if (!key) return null;
+  const row = ingredientResearchCache.get(key) || null;
+  if (!row) return null;
+  touchIngredientResearchCache(key, row);
+  return row;
+}
+
+function buildIngredientResearchPrompt({ query, language = 'EN' } = {}) {
+  const target = String(query || '').trim();
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (!target) return '';
+  if (lang === 'CN') {
+    return [
+      `你是成分研究助手。请仅围绕成分 "${target}" 输出结构化 JSON。`,
+      '要求：范围聚焦、短句、可执行，不输出 markdown，不输出多余字段。',
+      '{',
+      '  "schema_version":"v2-lite",',
+      '  "ingredient":{"inci":"","display_name":"","aliases":[],"what_it_is":""},',
+      '  "overview":"",',
+      '  "benefits":[{"concern":"","strength":0-3,"what_it_means":""}],',
+      '  "safety":{"irritation_risk":"low|medium|high|null","watchouts":[{"issue":"","likelihood":"rare|uncommon|common|null","what_to_do":""}]},',
+      '  "usage":{"time":"AM|PM|Both","frequency":null,"avoid":[],"routine_step":null,"pair_well":[],"consider_separating":[],"notes":[]},',
+      '  "confidence":"low|medium|high",',
+      '  "evidence":{"grade":"A|B|C|null","summary":"","citations":[{"title":"","url":"","year":null,"source":""}]},',
+      '  "top_products":{"budget":[],"mid":[],"premium":[]}',
+      '}',
+      '禁止输出字符串 "unknown"；缺失值用 null 或省略。',
+    ].join('\n');
+  }
+  return [
+    `You are an ingredient research assistant. Focus only on ingredient "${target}" and return strict JSON.`,
+    'Keep output concise, actionable, and schema-only. No markdown.',
+    '{',
+    '  "schema_version":"v2-lite",',
+    '  "ingredient":{"inci":"","display_name":"","aliases":[],"what_it_is":""},',
+    '  "overview":"",',
+    '  "benefits":[{"concern":"","strength":0-3,"what_it_means":""}],',
+    '  "safety":{"irritation_risk":"low|medium|high|null","watchouts":[{"issue":"","likelihood":"rare|uncommon|common|null","what_to_do":""}]},',
+    '  "usage":{"time":"AM|PM|Both","frequency":null,"avoid":[],"routine_step":null,"pair_well":[],"consider_separating":[],"notes":[]},',
+    '  "confidence":"low|medium|high",',
+    '  "evidence":{"grade":"A|B|C|null","summary":"","citations":[{"title":"","url":"","year":null,"source":""}]},',
+    '  "top_products":{"budget":[],"mid":[],"premium":[]}',
+    '}',
+    'Do not output the literal string "unknown"; use null or omit fields instead.',
+  ].join('\n');
+}
+
+function buildIngredientResearchPrompts({ query, language = 'EN', goal = null, sensitivity = null, profileSummary = null } = {}) {
+  const promptCore = buildIngredientResearchPrompt({ query, language });
+  const userContext = {
+    ingredient_query: String(query || '').trim(),
+    language: language === 'CN' ? 'CN' : 'EN',
+    ...(goal ? { goal: String(goal).trim().toLowerCase() } : {}),
+    ...(sensitivity ? { sensitivity: String(sensitivity).trim().toLowerCase() } : {}),
+    ...(profileSummary && typeof profileSummary === 'object' ? { profile_summary: profileSummary } : {}),
+  };
+  const userPrompt = `${promptCore}\n\ncontext=${JSON.stringify(userContext)}`;
+  const systemPrompt = language === 'CN'
+    ? '仅输出 JSON；保持简短；避免医学诊断结论；无证据时用 null。'
+    : 'Return JSON only; keep concise; avoid medical diagnosis claims; use null when evidence is insufficient.';
+  const promptHash = crypto.createHash('sha1').update(`${systemPrompt}||${userPrompt}`).digest('hex');
+  return {
+    systemPrompt,
+    userPrompt,
+    promptVersion: INGREDIENT_PROMPT_VERSION,
+    promptHash,
+    inputChars: userPrompt.length + systemPrompt.length,
+  };
+}
+
+function asResearchObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function asResearchStringArray(value, max = 8) {
+  const source = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const row of source) {
+    const text = String(row || '').trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text.slice(0, 160));
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function extractResearchObjectFromRawText(rawText) {
+  const raw = String(rawText || '').trim();
+  if (!raw) return null;
+  const strict = parseJsonOnlyObject(unwrapCodeFence(raw));
+  if (strict && typeof strict === 'object' && !Array.isArray(strict)) return strict;
+  const byKeys = extractJsonObjectByKeys(raw, ['ingredient', 'benefits', 'safety', 'usage', 'evidence']);
+  if (byKeys && typeof byKeys === 'object' && !Array.isArray(byKeys)) return byKeys;
+  return extractFirstJsonObjectFromText(raw);
+}
+
+async function runIngredientResearchSync({
+  query,
+  normalizedQuery = '',
+  language = 'EN',
+  goal = null,
+  sensitivity = null,
+  profileSummary = null,
+  logger = null,
+} = {}) {
+  const provider = 'gemini';
+  const modelTier = 'flash';
+  const providerAttempts = [];
+  const startedAt = Date.now();
+  const circuitState = getIngredientProviderCircuitState();
+  if (INGREDIENT_KB_ONLY_MODE || circuitState === 'open' || !GEMINI_API_KEY) {
+    const reason = INGREDIENT_KB_ONLY_MODE ? 'kb_only_mode' : circuitState === 'open' ? 'circuit_open' : 'provider_unavailable';
+    if (circuitState === 'open') {
+      recordAuroraIngredientsFlowMetric({ stage: 'circuit_open', hit: true });
+    }
+    recordAuroraIngredientProviderMetric({
+      stage: 'final',
+      provider,
+      outcome: reason,
+    });
+    return {
+      ok: false,
+      provider,
+      provider_model_tier: modelTier,
+      provider_circuit_state: circuitState,
+      research_error_code: reason === 'provider_unavailable' ? 'provider_unavailable' : reason,
+      research: buildIngredientMinimalResearch({
+        query,
+        normalizedQuery,
+        language,
+        errorCode: reason,
+        provider,
+      }),
+      provider_attempts: providerAttempts,
+      prompt_meta: null,
+      fallback_reason: reason,
+    };
+  }
+  const prompt = buildIngredientResearchPrompts({
+    query,
+    language,
+    goal,
+    sensitivity,
+    profileSummary,
+  });
+  const maxAttempts = 2;
+  let finalErrorCode = 'provider_unavailable';
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const remainingBudget = AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS - (Date.now() - startedAt);
+    if (remainingBudget <= 200) {
+      finalErrorCode = 'gemini_timeout';
+      break;
+    }
+    const callTimeoutMs = Math.max(800, Math.min(AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS, remainingBudget));
+    const callStartedAt = Date.now();
+    const resp = await callGeminiJsonObjectImpl({
+      model: ANALYSIS_STORY_MODEL_GEMINI,
+      systemPrompt: prompt.systemPrompt,
+      userPrompt: prompt.userPrompt,
+      timeoutMs: callTimeoutMs,
+      temperature: 0,
+    });
+    const latencyMs = Math.max(0, Date.now() - callStartedAt);
+    if (resp && resp.ok && resp.json && typeof resp.json === 'object' && !Array.isArray(resp.json)) {
+      const parsed = resp.json;
+      providerAttempts.push({
+        provider,
+        outcome: 'ok',
+        reason_code: null,
+        latency_ms: latencyMs,
+      });
+      recordAuroraIngredientProviderMetric({ stage: 'attempt', provider, outcome: 'ok' });
+      recordAuroraIngredientProviderMetric({ stage: 'final', provider, outcome: 'ok' });
+      updateIngredientProviderCircuit({ outcome: 'ok' });
+      return {
+        ok: true,
+        provider,
+        provider_model_tier: modelTier,
+        provider_circuit_state: getIngredientProviderCircuitState(),
+        research: parsed,
+        provider_attempts: providerAttempts,
+        prompt_meta: {
+          prompt_version: prompt.promptVersion,
+          prompt_hash: prompt.promptHash,
+          input_chars: prompt.inputChars,
+          output_chars: JSON.stringify(parsed).length,
+        },
+      };
+    }
+    const reasonCode = classifyIngredientProviderError(resp && resp.reason);
+    const recoveredParsed = resp && typeof resp.raw_text === 'string'
+      ? extractResearchObjectFromRawText(resp.raw_text)
+      : null;
+    if (recoveredParsed && typeof recoveredParsed === 'object' && !Array.isArray(recoveredParsed)) {
+      providerAttempts.push({
+        provider,
+        outcome: 'ok',
+        reason_code: 'json_recovered',
+        latency_ms: latencyMs,
+      });
+      recordAuroraIngredientProviderMetric({ stage: 'attempt', provider, outcome: 'ok' });
+      recordAuroraIngredientProviderMetric({ stage: 'final', provider, outcome: 'ok' });
+      updateIngredientProviderCircuit({ outcome: 'ok' });
+      return {
+        ok: true,
+        provider,
+        provider_model_tier: modelTier,
+        provider_circuit_state: getIngredientProviderCircuitState(),
+        research: recoveredParsed,
+        provider_attempts: providerAttempts,
+        prompt_meta: {
+          prompt_version: prompt.promptVersion,
+          prompt_hash: prompt.promptHash,
+          input_chars: prompt.inputChars,
+          output_chars: String(resp.raw_text || '').length,
+        },
+      };
+    }
+    providerAttempts.push({
+      provider,
+      outcome: 'error',
+      reason_code: reasonCode,
+      latency_ms: latencyMs,
+    });
+    recordAuroraIngredientProviderMetric({ stage: 'attempt', provider, outcome: reasonCode });
+    finalErrorCode = reasonCode;
+    const shouldRetry = reasonCode === 'gemini_network' && attempt === 0;
+    if (!shouldRetry) break;
+  }
+  const afterCircuitState = updateIngredientProviderCircuit({ outcome: 'error' });
+  recordAuroraIngredientProviderMetric({
+    stage: 'final',
+    provider,
+    outcome: finalErrorCode,
+  });
+  if (finalErrorCode === 'gemini_invalid_json') {
+    recordAuroraIngredientsFlowMetric({ stage: 'invalid_json', hit: true });
+  }
+  if (afterCircuitState === 'open') {
+    recordAuroraIngredientsFlowMetric({ stage: 'circuit_open', hit: true });
+  }
+  const fallback = buildIngredientMinimalResearch({
+    query,
+    normalizedQuery,
+    language,
+    errorCode: finalErrorCode,
+    provider,
+  });
+  logger?.warn?.(
+    {
+      ingredient_query: String(query || '').slice(0, 120),
+      normalized_query: String(normalizedQuery || '').slice(0, 120),
+      provider,
+      provider_model_tier: modelTier,
+      provider_circuit_state: afterCircuitState,
+      research_error_code: finalErrorCode,
+      attempts: providerAttempts,
+    },
+    'aurora bff: ingredient sync research fallback',
+  );
+  return {
+    ok: false,
+    provider,
+    provider_model_tier: modelTier,
+    provider_circuit_state: afterCircuitState,
+    research_error_code: finalErrorCode,
+    research: fallback,
+    provider_attempts: providerAttempts.slice(0, 3),
+    prompt_meta: {
+      prompt_version: prompt.promptVersion,
+      prompt_hash: prompt.promptHash,
+      input_chars: prompt.inputChars,
+      output_chars: 0,
+    },
+    fallback_reason: finalErrorCode,
+  };
+}
+
+function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', traceId = '', logger } = {}) {
+  hydrateIngredientResearchCacheFromDisk({ logger });
+  const key = normalizeIngredientResearchKey(query);
+  if (!key) return null;
+  const normalizedLanguage = language === 'CN' ? 'CN' : 'EN';
+  const jobId = `ingr_${crypto.createHash('sha1').update(`${key}|${normalizedLanguage}`).digest('hex').slice(0, 20)}`;
+  const existing = ingredientResearchCache.get(key);
+  if (existing && existing.status === 'ready') return { key, status: 'ready', job_id: existing.job_id || jobId };
+  if (ingredientResearchInflight.has(key)) {
+    recordAuroraIngredientsFlowMetric({ stage: 'duplicate_job_dedup', hit: true });
+    return { key, status: 'queued', job_id: existing && existing.job_id ? existing.job_id : jobId };
+  }
+  const base = {
+    status: 'queued',
+    ingredient_query: String(query || '').slice(0, 120),
+    normalized_query: key,
+    job_id: jobId,
+    updated_at_ms: Date.now(),
+  };
+  touchIngredientResearchCache(key, base, { persist: false });
+  ingredientResearchInflight.add(key);
+  setImmediate(async () => {
+    const startedAtMs = Date.now();
+    try {
+      if (!AURORA_INGREDIENT_RESEARCH_ASYNC_ENABLED || USE_AURORA_BFF_MOCK) {
+        touchIngredientResearchCache(key, {
+          ...base,
+          status: 'skipped',
+          reason: 'research_disabled',
+          updated_at_ms: Date.now(),
+        }, { persist: true, logger });
+        return;
+      }
+      const syncResult = await runIngredientResearchSync({
+        query,
+        normalizedQuery: key,
+        language: normalizedLanguage,
+        logger,
+      });
+      const payload = asResearchObject(syncResult && syncResult.research) || {};
+      const ingredient = asResearchObject(payload.ingredient) || {};
+      const safety = asResearchObject(payload.safety) || {};
+      const usage = asResearchObject(payload.usage) || {};
+      const evidence = asResearchObject(payload.evidence) || {};
+      const topProducts = asResearchObject(payload.top_products) || asResearchObject(payload.topProducts) || {};
+      const confidenceLevel = normalizeIngredientConfidenceLevel(
+        payload.confidence ||
+          payload.confidence_level ||
+          payload.confidenceLevel,
+        syncResult && syncResult.ok ? 'medium' : 'low',
+      );
+      const whatItIs = pickFirstTrimmed(payload.what_it_is, ingredient.what_it_is, ingredient.whatItIs, payload.overview);
+      const watchouts = (Array.isArray(safety.watchouts) ? safety.watchouts : [])
+        .map((row) => asResearchObject(row))
+        .filter(Boolean)
+        .map((row) => ({
+          issue: String(row.issue || '').slice(0, 120),
+          likelihood: String(row.likelihood || '').toLowerCase() || null,
+          what_to_do: String(row.what_to_do || row.whatToDo || '').slice(0, 220),
+        }))
+        .filter((row) => row.issue || row.what_to_do)
+        .slice(0, 6);
+      const ready = {
+        status: syncResult && syncResult.ok ? 'ready' : 'fallback',
+        job_id: jobId,
+        schema_version: 'v2-lite',
+        provider: syncResult && syncResult.provider ? syncResult.provider : 'gemini',
+        provider_model_tier: syncResult && syncResult.provider_model_tier ? syncResult.provider_model_tier : 'flash',
+        provider_circuit_state: syncResult && syncResult.provider_circuit_state ? syncResult.provider_circuit_state : getIngredientProviderCircuitState(),
+        error_code: syncResult && syncResult.research_error_code ? syncResult.research_error_code : null,
+        confidence_level: confidenceLevel,
+        ingredient: {
+          inci: String(ingredient.inci || query || '').slice(0, 120),
+          display_name: String(ingredient.display_name || ingredient.displayName || query || '').slice(0, 120),
+          aliases: asResearchStringArray(ingredient.aliases, 6),
+          what_it_is: String(whatItIs || '').slice(0, 300),
+        },
+        overview: String(payload.overview || whatItIs || '').slice(0, 320),
+        benefits: (Array.isArray(payload.benefits) ? payload.benefits : [])
+          .map((row) => asResearchObject(row))
+          .filter(Boolean)
+          .map((row) => ({
+            concern: String(row.concern || '').slice(0, 64),
+            strength: Number.isFinite(Number(row.strength)) ? Math.max(0, Math.min(3, Math.trunc(Number(row.strength)))) : 1,
+            what_it_means: String(row.what_it_means || row.whatItMeans || '').slice(0, 220),
+          }))
+          .slice(0, 6),
+        safety: {
+          irritation_risk: String(safety.irritation_risk || safety.irritationRisk || '').toLowerCase() || null,
+          watchouts,
+        },
+        usage: {
+          ...normalizeIngredientUsageObject(usage),
+          routine_step: String(usage.routine_step || usage.routineStep || '').toLowerCase() || null,
+          pair_well: asResearchStringArray(usage.pair_well || usage.pairWell, 8),
+          consider_separating: asResearchStringArray(usage.consider_separating || usage.considerSeparating, 8),
+          notes: asResearchStringArray(usage.notes, 8),
+        },
+        evidence: {
+          grade: String(evidence.grade || evidence.evidence_grade || '').toUpperCase() || null,
+          summary: String(evidence.summary || '').slice(0, 280),
+          citations: (Array.isArray(evidence.citations) ? evidence.citations : [])
+            .map((row) => asResearchObject(row))
+            .filter(Boolean)
+            .map((row) => ({
+              title: String(row.title || '').slice(0, 160),
+              url: String(row.url || '').slice(0, 400),
+              year: Number.isFinite(Number(row.year)) ? Math.trunc(Number(row.year)) : null,
+              source: String(row.source || '').slice(0, 120),
+            }))
+            .slice(0, 8),
+        },
+        top_products: {
+          budget: asResearchStringArray(topProducts.budget, 8),
+          mid: asResearchStringArray(topProducts.mid, 8),
+          premium: asResearchStringArray(topProducts.premium, 8),
+        },
+        prompt_meta: syncResult && syncResult.prompt_meta ? syncResult.prompt_meta : null,
+        provider_attempts: Array.isArray(syncResult && syncResult.provider_attempts)
+          ? syncResult.provider_attempts.slice(0, 3)
+          : [],
+        updated_at_ms: Date.now(),
+        request_id: requestId || null,
+        trace_id: traceId || null,
+      };
+      const passQualityGate = confidenceLevel !== 'low' && Boolean(ready.ingredient.what_it_is) && ready.safety.watchouts.length > 0;
+      if (!passQualityGate) {
+        touchIngredientResearchCache(key, {
+          ...base,
+          status: 'fallback',
+          provider: ready.provider,
+          provider_model_tier: ready.provider_model_tier,
+          provider_circuit_state: ready.provider_circuit_state,
+          error_code: ready.error_code || 'quality_gate_failed',
+          updated_at_ms: Date.now(),
+        }, { persist: true, logger });
+        recordAuroraIngredientsFlowMetric({ stage: 'empty_section_prevented', hit: true });
+      } else {
+        touchIngredientResearchCache(key, ready, { persist: true, logger });
+      }
+    } catch (err) {
+      touchIngredientResearchCache(key, {
+        ...base,
+        status: 'error',
+        error: err && err.message ? String(err.message).slice(0, 200) : 'research_error',
+        updated_at_ms: Date.now(),
+      }, { persist: true, logger });
+      logger?.warn?.(
+        {
+          request_id: requestId || null,
+          trace_id: traceId || null,
+          ingredient_query: String(query || '').slice(0, 120),
+          err: err && err.message ? err.message : String(err),
+        },
+        'aurora bff: ingredient async research failed',
+      );
+      recordAuroraIngredientsFlowMetric({ stage: 'research_error', hit: true });
+    } finally {
+      const finishedAtMs = Date.now();
+      const finalState = ingredientResearchCache.get(key);
+      if (finalState && (finalState.status === 'ready' || finalState.status === 'fallback')) {
+        logger?.info?.(
+          {
+            request_id: requestId || null,
+            trace_id: traceId || null,
+            ingredient_query: String(query || '').slice(0, 120),
+            normalized_query: key,
+            job_id: jobId,
+            latency_ms: Math.max(0, finishedAtMs - startedAtMs),
+            status: finalState.status,
+            provider: finalState.provider || 'gemini',
+          },
+          'aurora bff: ingredient_research_completed',
+        );
+        recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: true });
+      }
+      ingredientResearchInflight.delete(key);
+    }
+  });
+  return { key, status: 'queued', job_id: jobId };
+}
+
+function normalizeIngredientEvidenceGrade(raw, fallback = 'unknown') {
+  const token = String(raw || '').trim().toUpperCase();
+  if (token === 'A' || token === 'B' || token === 'C') return token;
+  return fallback;
+}
+
+function normalizeIngredientIrritationRisk(raw, fallback = 'unknown') {
+  const token = String(raw || '').trim().toLowerCase();
+  if (token === 'low' || token === 'medium' || token === 'high' || token === 'unknown') return token;
+  return fallback;
+}
+
+function normalizeIngredientLikelihood(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (token === 'rare' || token === 'uncommon' || token === 'common' || token === 'unknown') return token;
+  return 'unknown';
+}
+
+function buildIngredientReportPayload({ language, query, research = null, meta = null } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const token = normalizeIngredientLookupToken(query);
   const inputName = String(query || '').trim() || (lang === 'CN' ? '该成分' : 'this ingredient');
+  const researchObj = asResearchObject(research);
+  const metaObj = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+  const normalizedQuery = pickFirstTrimmed(
+    metaObj.normalized_query,
+    researchObj && researchObj.normalized_query,
+    normalizeIngredientResearchKey(inputName),
+  );
+  const routeDecisionReasons = Array.isArray(metaObj.route_decision_reasons)
+    ? metaObj.route_decision_reasons.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 12)
+    : [];
+  const routeRuleVersion = pickFirstTrimmed(metaObj.route_rule_version, INGREDIENT_ROUTE_RULE_VERSION) || INGREDIENT_ROUTE_RULE_VERSION;
+  const providerModelTier = pickFirstTrimmed(
+    metaObj.provider_model_tier,
+    researchObj && researchObj.provider_model_tier,
+    'flash',
+  );
+  const providerCircuitState = pickFirstTrimmed(
+    metaObj.provider_circuit_state,
+    researchObj && researchObj.provider_circuit_state,
+    getIngredientProviderCircuitState(),
+  );
+  const providerAttempts = Array.isArray(researchObj && researchObj.provider_attempts)
+    ? researchObj.provider_attempts
+      .map((row) => (row && typeof row === 'object' ? row : null))
+      .filter(Boolean)
+      .map((row) => ({
+        provider: String(row.provider || 'gemini').slice(0, 32),
+        outcome: String(row.outcome || 'unknown').slice(0, 48),
+        reason_code: row.reason_code ? String(row.reason_code).slice(0, 64) : null,
+      }))
+      .slice(0, 3)
+    : [];
+  const researchProvider = pickFirstTrimmed(
+    metaObj.research_provider,
+    researchObj && researchObj.provider,
+    'gemini',
+  );
+  const researchErrorCode = pickFirstTrimmed(
+    metaObj.research_error_code,
+    researchObj && (researchObj.error_code || researchObj.error),
+  );
+  const confidenceLevelFromResearch = normalizeIngredientConfidenceLevel(
+    researchObj && (researchObj.confidence_level || researchObj.confidence),
+    'medium',
+  );
+  const researchStatusRaw = String(researchObj && researchObj.status ? researchObj.status : '').trim().toLowerCase();
+  const researchStatus =
+    researchStatusRaw === 'ready' ||
+    researchStatusRaw === 'queued' ||
+    researchStatusRaw === 'error' ||
+    researchStatusRaw === 'skipped' ||
+    researchStatusRaw === 'fallback'
+      ? researchStatusRaw
+      : 'none';
+  const researchReady = researchStatus === 'ready' ? researchObj : null;
 
   const library = {
     niacinamide: {
@@ -29710,44 +31232,147 @@ function buildIngredientReportPayload({ language, query } = {}) {
     separate: [],
   };
 
+  const researchIngredient = asResearchObject(researchReady && researchReady.ingredient) || {};
+  const researchSafety = asResearchObject(researchReady && researchReady.safety) || {};
+  const researchUsage = asResearchObject(researchReady && researchReady.usage) || {};
+  const researchEvidence = asResearchObject(researchReady && researchReady.evidence) || {};
+  const researchTopProducts = asResearchObject(researchReady && researchReady.top_products) || {};
+  const researchBenefits = (Array.isArray(researchReady && researchReady.benefits) ? researchReady.benefits : [])
+    .map((row) => asResearchObject(row))
+    .filter(Boolean)
+    .map((row) => ({
+      concern: String(row.concern || '').slice(0, 64),
+      strength: Number.isFinite(Number(row.strength)) ? Math.max(0, Math.min(3, Math.trunc(Number(row.strength)))) : 1,
+      what_it_means: String(row.what_it_means || row.whatItMeans || '').slice(0, 220),
+    }))
+    .filter((row) => row.concern || row.what_it_means)
+    .slice(0, 8);
+  const researchWatchouts = (Array.isArray(researchSafety.watchouts) ? researchSafety.watchouts : [])
+    .map((row) => asResearchObject(row))
+    .filter(Boolean)
+    .map((row) => ({
+      issue: String(row.issue || '').slice(0, 160),
+      likelihood: normalizeIngredientLikelihood(row.likelihood),
+      what_to_do: String(row.what_to_do || row.whatToDo || '').slice(0, 220),
+    }))
+    .filter((row) => row.issue || row.what_to_do)
+    .slice(0, 8);
+  const researchCitations = (Array.isArray(researchEvidence.citations) ? researchEvidence.citations : [])
+    .map((row) => asResearchObject(row))
+    .filter(Boolean)
+    .map((row) => ({
+      title: String(row.title || '').slice(0, 160),
+      url: String(row.url || '').slice(0, 400),
+      year: Number.isFinite(Number(row.year)) ? Math.trunc(Number(row.year)) : null,
+      source: String(row.source || '').slice(0, 120),
+    }))
+    .filter((row) => row.title || row.url)
+    .slice(0, 8);
+  const evidenceGradeFallback = token ? 'A' : 'unknown';
+  const evidenceGrade = normalizeIngredientEvidenceGrade(researchEvidence.grade, evidenceGradeFallback);
+  const irritationRiskFallback = token === 'retinol' || token === 'vitamin_c' ? 'medium' : token ? 'low' : 'unknown';
+  const irritationRisk = normalizeIngredientIrritationRisk(researchSafety.irritation_risk, irritationRiskFallback);
+  const benefits = researchBenefits.length ? researchBenefits : picked.benefits;
+  const watchouts = researchWatchouts.length ? researchWatchouts : picked.watchouts;
+  const pairWell = asResearchStringArray(researchUsage.pair_well, 8).length
+    ? asResearchStringArray(researchUsage.pair_well, 8)
+    : picked.pair_well;
+  const separate = asResearchStringArray(researchUsage.consider_separating, 8).length
+    ? asResearchStringArray(researchUsage.consider_separating, 8)
+    : picked.separate;
+  const notes = asResearchStringArray(researchUsage.notes, 8).length
+    ? asResearchStringArray(researchUsage.notes, 8)
+    : lang === 'CN'
+      ? ['先从低频开始，观察 1-2 周耐受。', '白天请配合防晒。']
+      : ['Start low and monitor tolerance for 1-2 weeks.', 'Use daytime sunscreen consistently.'];
+  const topProducts = {
+    budget: asResearchStringArray(researchTopProducts.budget, 10),
+    mid: asResearchStringArray(researchTopProducts.mid, 10),
+    premium: asResearchStringArray(researchTopProducts.premium, 10),
+  };
+  const oneLiner = pickFirstTrimmed(
+    String(researchReady && researchReady.overview ? researchReady.overview : '').slice(0, 260),
+    picked.one_liner,
+  );
+  const confidence = (() => {
+    if (!researchReady) return token ? 0.8 : 0.55;
+    let base = 0.7;
+    if (evidenceGrade === 'A') base = 0.9;
+    else if (evidenceGrade === 'B') base = 0.82;
+    else if (evidenceGrade === 'C') base = 0.72;
+    if (researchCitations.length >= 3) base += 0.04;
+    if (researchCitations.length === 0) base -= 0.08;
+    return Math.max(0.5, Math.min(0.95, Number(base.toFixed(2))));
+  })();
+
   return {
-    schema_version: 'aurora.ingredient_report.v1',
+    schema_version: 'aurora.ingredient_report.v2-lite',
     locale: lang === 'CN' ? 'zh-CN' : 'en-US',
+    research_status: researchStatus,
+    research_provider: researchProvider || null,
+    research_error_code: researchErrorCode || null,
+    normalized_query: normalizedQuery || null,
+    route_decision_reasons: routeDecisionReasons,
+    route_rule_version: routeRuleVersion,
+    kb_revision: Number.isFinite(Number(researchObj && researchObj.updated_at_ms))
+      ? String(Math.trunc(Number(researchObj && researchObj.updated_at_ms)))
+      : null,
+    provider_model_tier: providerModelTier || 'flash',
+    provider_circuit_state: providerCircuitState || 'closed',
+    research_attempts: providerAttempts,
     ingredient: {
-      inci: picked.inci,
-      display_name: picked.display_name,
-      aliases: picked.aliases,
+      inci: pickFirstTrimmed(researchIngredient.inci, picked.inci, inputName),
+      display_name: pickFirstTrimmed(researchIngredient.display_name, picked.display_name, inputName),
+      aliases: asResearchStringArray(researchIngredient.aliases, 8).length
+        ? asResearchStringArray(researchIngredient.aliases, 8)
+        : picked.aliases,
+      what_it_is: pickFirstTrimmed(
+        researchIngredient.what_it_is,
+        researchIngredient.whatItIs,
+        researchReady && researchReady.what_it_is,
+        researchReady && researchReady.overview,
+      ) || null,
       category: picked.category,
     },
     verdict: {
-      one_liner: picked.one_liner,
-      top_benefits: (picked.benefits || []).map((row) => row && row.what_it_means).filter(Boolean).slice(0, 3),
-      evidence_grade: token ? 'A' : 'unknown',
-      irritation_risk: token === 'retinol' || token === 'vitamin_c' ? 'medium' : token ? 'low' : 'unknown',
-      time_to_results: token ? '4-8w' : 'unknown',
-      confidence: token ? 0.8 : 0.55,
+      one_liner: oneLiner,
+      top_benefits: benefits.map((row) => row && row.what_it_means).filter(Boolean).slice(0, 3),
+      evidence_grade: evidenceGrade,
+      irritation_risk: irritationRisk,
+      time_to_results: token || researchReady ? '4-8w' : 'unknown',
+      confidence,
+      confidence_level: confidenceLevelFromResearch || (confidence >= 0.85 ? 'high' : confidence >= 0.65 ? 'medium' : 'low'),
     },
-    benefits: picked.benefits,
+    confidence: confidenceLevelFromResearch || (confidence >= 0.85 ? 'high' : confidence >= 0.65 ? 'medium' : 'low'),
+    benefits,
+    usage: {
+      ...normalizeIngredientUsageObject(researchUsage),
+      avoid: asResearchStringArray(researchUsage.avoid, 8),
+    },
     how_to_use: {
-      frequency: token === 'retinol' ? '3-4x/week' : 'daily',
-      routine_step: token === 'retinol' ? 'cream' : 'serum',
-      pair_well: picked.pair_well,
-      consider_separating: picked.separate,
-      notes:
-        lang === 'CN'
-          ? ['先从低频开始，观察 1-2 周耐受。', '白天请配合防晒。']
-          : ['Start low and monitor tolerance for 1-2 weeks.', 'Use daytime sunscreen consistently.'],
+      frequency: String(researchUsage.frequency || '').trim().toLowerCase() || (token === 'retinol' ? '3-4x/week' : 'daily'),
+      routine_step: String(researchUsage.routine_step || '').trim().toLowerCase() || (token === 'retinol' ? 'cream' : 'serum'),
+      pair_well: pairWell,
+      consider_separating: separate,
+      notes,
     },
-    watchouts: picked.watchouts,
+    watchouts,
     use_cases: [],
+    top_products: topProducts,
     evidence: {
       summary:
-        lang === 'CN'
-          ? '基于公开皮肤学共识生成的快速摘要，适合做第一步筛选。'
-          : 'Quick summary based on common dermatology consensus for first-pass screening.',
-      citations: [],
-      show_citations_by_default: false,
+        pickFirstTrimmed(
+          String(researchEvidence.summary || '').slice(0, 320),
+          lang === 'CN'
+            ? '基于公开皮肤学共识生成的快速摘要，适合做第一步筛选。'
+            : 'Quick summary based on common dermatology consensus for first-pass screening.',
+        ),
+      citations: researchCitations,
+      show_citations_by_default: researchCitations.length > 0,
     },
+    updated_at_ms: Number.isFinite(Number(researchReady && researchReady.updated_at_ms))
+      ? Math.trunc(Number(researchReady && researchReady.updated_at_ms))
+      : null,
     next_questions: [
       {
         id: 'goal',
@@ -29763,469 +31388,6 @@ function buildIngredientReportPayload({ language, query } = {}) {
   };
 }
 
-function normalizeIngredientReportEvidenceGrade(value, fallback = 'unknown') {
-  const token = String(value || '')
-    .trim()
-    .toUpperCase();
-  if (token === 'A' || token === 'B' || token === 'C') return token;
-  if (token === 'UNKNOWN') return 'unknown';
-  return fallback;
-}
-
-function normalizeIngredientReportRisk(value, fallback = 'unknown') {
-  const token = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (token === 'low' || token === 'medium' || token === 'high' || token === 'unknown') return token;
-  return fallback;
-}
-
-function normalizeIngredientReportStringArray(values, max = 6) {
-  if (!Array.isArray(values)) return [];
-  return values
-    .map((row) => String(row || '').trim())
-    .filter(Boolean)
-    .slice(0, Math.max(1, Math.trunc(Number(max) || 6)));
-}
-
-function normalizeIngredientReportCitations(citations) {
-  if (!Array.isArray(citations)) return [];
-  const out = [];
-  for (const row of citations) {
-    if (out.length >= 8) break;
-    if (typeof row === 'string') {
-      const url = row.trim();
-      if (!url) continue;
-      out.push({ title: url, url });
-      continue;
-    }
-    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    const title = pickFirstTrimmed(row.title, row.source, row.journal, row.name);
-    const url = pickFirstTrimmed(row.url, row.source_url, row.link);
-    const year = Number.isFinite(Number(row.year)) ? Math.trunc(Number(row.year)) : null;
-    if (!title && !url) continue;
-    out.push({
-      ...(title ? { title } : {}),
-      ...(url ? { url } : {}),
-      ...(year ? { year } : {}),
-    });
-  }
-  return out;
-}
-
-function normalizeIngredientReportTopProducts(products, language = 'EN') {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  if (!Array.isArray(products)) return [];
-  const out = [];
-  for (const row of products) {
-    if (out.length >= AURORA_INGREDIENT_LLM_REPORT_MAX_PRODUCTS) break;
-    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    const name = pickFirstTrimmed(row.name, row.product_name, row.title);
-    if (!name) continue;
-    const tierRaw = String(pickFirstTrimmed(row.price_tier, row.price_band) || '').toLowerCase();
-    const priceTier = tierRaw === 'budget' || tierRaw === 'mid' || tierRaw === 'premium' ? tierRaw : 'unknown';
-    out.push({
-      name,
-      ...(pickFirstTrimmed(row.brand) ? { brand: pickFirstTrimmed(row.brand) } : {}),
-      ...(pickFirstTrimmed(row.category) ? { category: pickFirstTrimmed(row.category) } : {}),
-      ...(pickFirstTrimmed(row.why, row.rationale, row.reason)
-        ? { why: pickFirstTrimmed(row.why, row.rationale, row.reason) }
-        : {
-            why:
-              lang === 'CN'
-                ? '与该成分方向相关，建议结合个人耐受度与预算再筛选。'
-                : 'Relevant to this ingredient direction; refine by tolerance and budget before final pick.',
-          }),
-      ...(priceTier !== 'unknown' ? { price_tier: priceTier } : {}),
-      ...(pickFirstTrimmed(row.pdp_url, row.url) ? { pdp_url: pickFirstTrimmed(row.pdp_url, row.url) } : {}),
-    });
-  }
-  return out;
-}
-
-function buildIngredientLlmSystemPrompt(language = 'EN') {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  if (lang === 'CN') {
-    return (
-      '你是资深皮肤学成分研究助手。' +
-      '返回严格 JSON，不要 markdown，不要额外解释。' +
-      '只给证据审慎、可执行建议，避免诊断结论。'
-    );
-  }
-  return (
-    'You are a senior dermatology ingredient research assistant. ' +
-    'Return strict JSON only, no markdown, no extra prose. ' +
-    'Provide evidence-aware actionable guidance and avoid diagnostic claims.'
-  );
-}
-
-function buildIngredientLlmUserPrompt({ query, language = 'EN' } = {}) {
-  const ingredientName = String(query || '').trim();
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  if (lang === 'CN') {
-    return (
-      `成分：${ingredientName}\n` +
-      '返回 JSON：\n' +
-      '{\n' +
-      '  "ingredient":{"inci":"","display_name":"","aliases":[]},\n' +
-      '  "verdict":{"one_liner":"","top_benefits":[],"evidence_grade":"A|B|C|unknown","irritation_risk":"low|medium|high|unknown","time_to_results":"","confidence":0.0},\n' +
-      '  "benefits":[{"concern":"","strength":1-3,"what_it_means":""}],\n' +
-      '  "how_to_use":{"frequency":"","routine_step":"","pair_well":[],"consider_separating":[],"notes":[]},\n' +
-      '  "watchouts":[{"issue":"","likelihood":"low|medium|high|unknown","what_to_do":""}],\n' +
-      '  "evidence":{"summary":"","citations":[{"title":"","url":"","year":2024}]},\n' +
-      '  "top_products":[{"name":"","brand":"","category":"","price_tier":"budget|mid|premium","why":"","pdp_url":""}]\n' +
-      '}\n' +
-      '要求：不确定时用 unknown；citations 尽量给可访问 URL；top_products 给 3-5 个。'
-    );
-  }
-  return (
-    `Ingredient: ${ingredientName}\n` +
-    'Return JSON:\n' +
-    '{\n' +
-    '  "ingredient":{"inci":"","display_name":"","aliases":[]},\n' +
-    '  "verdict":{"one_liner":"","top_benefits":[],"evidence_grade":"A|B|C|unknown","irritation_risk":"low|medium|high|unknown","time_to_results":"","confidence":0.0},\n' +
-    '  "benefits":[{"concern":"","strength":1-3,"what_it_means":""}],\n' +
-    '  "how_to_use":{"frequency":"","routine_step":"","pair_well":[],"consider_separating":[],"notes":[]},\n' +
-    '  "watchouts":[{"issue":"","likelihood":"low|medium|high|unknown","what_to_do":""}],\n' +
-    '  "evidence":{"summary":"","citations":[{"title":"","url":"","year":2024}]},\n' +
-    '  "top_products":[{"name":"","brand":"","category":"","price_tier":"budget|mid|premium","why":"","pdp_url":""}]\n' +
-    '}\n' +
-    'Rules: use unknown when uncertain; citations should prefer accessible URLs; include 3-5 top_products.'
-  );
-}
-
-function normalizeIngredientResearchErrorCode({ provider, reason, detail } = {}) {
-  const normalizedProvider = String(provider || '')
-    .trim()
-    .toLowerCase();
-  if (normalizedProvider !== 'gemini') return 'gemini_unknown';
-  const reasonText = String(reason || '')
-    .trim()
-    .toLowerCase();
-  const detailText = String(detail || '')
-    .trim()
-    .toLowerCase();
-  const merged = `${reasonText} ${detailText}`.trim();
-  if (
-    reasonText === 'gemini_json_timeout' ||
-    merged.includes('timeout') ||
-    merged.includes('timed out') ||
-    merged.includes('etimedout')
-  ) {
-    return 'gemini_timeout';
-  }
-  if (
-    merged.includes('invalid_api_key') ||
-    merged.includes('unauthorized') ||
-    merged.includes('permission') ||
-    merged.includes('forbidden') ||
-    merged.includes('auth') ||
-    merged.includes('status 401') ||
-    merged.includes(' 401')
-  ) {
-    return 'gemini_auth';
-  }
-  if (
-    merged.includes('rate_limited') ||
-    merged.includes('resource_exhausted') ||
-    merged.includes('too_many_requests') ||
-    merged.includes('quota') ||
-    merged.includes('status 429') ||
-    merged.includes(' 429')
-  ) {
-    return 'gemini_rate_limited';
-  }
-  if (reasonText === 'gemini_json_invalid' || merged.includes('invalid json') || merged.includes('malformed json')) {
-    return 'gemini_invalid_json';
-  }
-  return 'gemini_unknown';
-}
-
-function buildIngredientResearchAttempt({ provider, llmResult } = {}) {
-  const normalizedProvider = String(provider || '')
-    .trim()
-    .toLowerCase();
-  const safeProvider = normalizedProvider === 'gemini' || normalizedProvider === 'openai' ? normalizedProvider : 'unknown';
-  if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
-    return {
-      provider: safeProvider,
-      outcome: 'ok',
-      reason_code: 'ok',
-    };
-  }
-  return {
-    provider: safeProvider,
-    outcome: 'error',
-    reason_code: normalizeIngredientResearchErrorCode({
-      provider: safeProvider,
-      reason: llmResult && llmResult.reason,
-      detail: llmResult && llmResult.detail,
-    }),
-  };
-}
-
-function mergeIngredientReportWithLlm(basePayload, llmPayload, language = 'EN') {
-  const base = isPlainObject(basePayload) ? basePayload : {};
-  const llm = isPlainObject(llmPayload) ? llmPayload : {};
-  const llmIngredient = isPlainObject(llm.ingredient) ? llm.ingredient : {};
-  const llmVerdict = isPlainObject(llm.verdict) ? llm.verdict : {};
-  const llmHowToUse = isPlainObject(llm.how_to_use) ? llm.how_to_use : {};
-  const llmEvidence = isPlainObject(llm.evidence) ? llm.evidence : {};
-  const citations = normalizeIngredientReportCitations(llmEvidence.citations);
-  const topProducts = normalizeIngredientReportTopProducts(llm.top_products, language);
-  const confidenceRaw = Number(llmVerdict.confidence);
-  const confidence = Number.isFinite(confidenceRaw)
-    ? Math.max(0, Math.min(1, confidenceRaw))
-    : Number(base?.verdict?.confidence || 0.65);
-
-  return {
-    ...base,
-    ingredient: {
-      ...(isPlainObject(base.ingredient) ? base.ingredient : {}),
-      ...(pickFirstTrimmed(llmIngredient.inci) ? { inci: pickFirstTrimmed(llmIngredient.inci) } : {}),
-      ...(pickFirstTrimmed(llmIngredient.display_name) ? { display_name: pickFirstTrimmed(llmIngredient.display_name) } : {}),
-      ...(Array.isArray(llmIngredient.aliases) ? { aliases: normalizeIngredientReportStringArray(llmIngredient.aliases, 8) } : {}),
-    },
-    verdict: {
-      ...(isPlainObject(base.verdict) ? base.verdict : {}),
-      ...(pickFirstTrimmed(llmVerdict.one_liner) ? { one_liner: pickFirstTrimmed(llmVerdict.one_liner) } : {}),
-      ...(Array.isArray(llmVerdict.top_benefits) ? { top_benefits: normalizeIngredientReportStringArray(llmVerdict.top_benefits, 4) } : {}),
-      evidence_grade: normalizeIngredientReportEvidenceGrade(llmVerdict.evidence_grade, normalizeIngredientReportEvidenceGrade(base?.verdict?.evidence_grade, 'unknown')),
-      irritation_risk: normalizeIngredientReportRisk(llmVerdict.irritation_risk, normalizeIngredientReportRisk(base?.verdict?.irritation_risk, 'unknown')),
-      ...(pickFirstTrimmed(llmVerdict.time_to_results) ? { time_to_results: pickFirstTrimmed(llmVerdict.time_to_results) } : {}),
-      confidence,
-    },
-    ...(Array.isArray(llm.benefits) ? { benefits: llm.benefits.slice(0, 6) } : {}),
-    ...(Array.isArray(llm.watchouts) ? { watchouts: llm.watchouts.slice(0, 6) } : {}),
-    how_to_use: {
-      ...(isPlainObject(base.how_to_use) ? base.how_to_use : {}),
-      ...(pickFirstTrimmed(llmHowToUse.frequency) ? { frequency: pickFirstTrimmed(llmHowToUse.frequency) } : {}),
-      ...(pickFirstTrimmed(llmHowToUse.routine_step) ? { routine_step: pickFirstTrimmed(llmHowToUse.routine_step) } : {}),
-      ...(Array.isArray(llmHowToUse.pair_well) ? { pair_well: normalizeIngredientReportStringArray(llmHowToUse.pair_well, 8) } : {}),
-      ...(Array.isArray(llmHowToUse.consider_separating)
-        ? { consider_separating: normalizeIngredientReportStringArray(llmHowToUse.consider_separating, 8) }
-        : {}),
-      ...(Array.isArray(llmHowToUse.notes) ? { notes: normalizeIngredientReportStringArray(llmHowToUse.notes, 8) } : {}),
-    },
-    evidence: {
-      ...(isPlainObject(base.evidence) ? base.evidence : {}),
-      ...(pickFirstTrimmed(llmEvidence.summary) ? { summary: pickFirstTrimmed(llmEvidence.summary) } : {}),
-      citations,
-      show_citations_by_default: citations.length > 0,
-    },
-    research_status: 'ready',
-    top_products: topProducts,
-    updated_at_ms: Date.now(),
-  };
-}
-
-async function buildIngredientReportPayloadWithResearch({ language, query } = {}) {
-  const basePayload = buildIngredientReportPayload({ language, query });
-  const ingredientQuery = pickFirstTrimmed(query);
-  if (!ingredientQuery) return basePayload;
-
-  const kbKey = buildIngredientResearchKbKey({ query: ingredientQuery, lang: language });
-  if (kbKey) {
-    try {
-      const kbEntry = await getIngredientResearchKbEntry({ query: ingredientQuery, lang: language });
-      if (kbEntry && isPlainObject(kbEntry.ingredient_profile_json)) {
-        const cachedPayload = kbEntry.ingredient_profile_json;
-        const cachedStatus = pickFirstTrimmed(kbEntry.status, cachedPayload.research_status, 'ready');
-        const cachedProvider = pickFirstTrimmed(kbEntry.provider, cachedPayload.research_provider);
-        const cachedUpdatedAtMs = Number(cachedPayload.updated_at_ms);
-        const updatedAtMs = Number.isFinite(cachedUpdatedAtMs)
-          ? cachedUpdatedAtMs
-          : kbEntry.updated_at
-            ? Date.parse(kbEntry.updated_at) || Date.now()
-            : Date.now();
-        recordAuroraIngredientsFlowMetric({ stage: 'kb_hit', hit: true });
-        return {
-          ...basePayload,
-          ...cachedPayload,
-          research_status: cachedStatus,
-          research_provider: cachedProvider || null,
-          research_attempts: Array.isArray(cachedPayload.research_attempts)
-            ? cachedPayload.research_attempts.slice(0, 3)
-            : [],
-          ...(pickFirstTrimmed(kbEntry.error_code, cachedPayload.research_error_code)
-            ? { research_error_code: pickFirstTrimmed(kbEntry.error_code, cachedPayload.research_error_code) }
-            : {}),
-          updated_at_ms: updatedAtMs,
-        };
-      }
-    } catch (err) {
-      // ignore cache read errors and continue on live research path
-    }
-  }
-
-  recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
-
-  const enqueueIngredientResearchKbPersist = ({
-    status = 'ready',
-    provider = null,
-    errorCode = null,
-    reportPayload = null,
-    researchAttempts = [],
-  } = {}) => {
-    if (!kbKey || !isPlainObject(reportPayload)) return null;
-    if (ingredientResearchWriteInFlight.has(kbKey)) return null;
-    ingredientResearchWriteInFlight.add(kbKey);
-    const jobId = `ing_research_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const runPersist = async () => {
-      try {
-        await upsertIngredientResearchKbEntry({
-          kb_key: kbKey,
-          query_norm: ingredientQuery,
-          lang: language,
-          status,
-          provider,
-          error_code: errorCode,
-          ingredient_profile_json: {
-            ...reportPayload,
-            research_status: status,
-            research_provider: provider || null,
-            research_attempts: Array.isArray(researchAttempts) ? researchAttempts.slice(0, 3) : [],
-            ...(errorCode ? { research_error_code: errorCode } : {}),
-            updated_at_ms: Number.isFinite(Number(reportPayload.updated_at_ms))
-              ? Number(reportPayload.updated_at_ms)
-              : Date.now(),
-          },
-          source_meta: {
-            route: 'ingredient_query_first',
-            query: ingredientQuery.slice(0, 180),
-            job_id: jobId,
-          },
-        });
-      } catch (_err) {
-        // Ignore KB write errors and keep response-path stable.
-      } finally {
-        ingredientResearchWriteInFlight.delete(kbKey);
-      }
-    };
-    const handle = setImmediate(runPersist);
-    if (handle && typeof handle.unref === 'function') handle.unref();
-    return jobId;
-  };
-
-  if (!AURORA_INGREDIENT_LLM_REPORT_ENABLED) {
-    return {
-      ...basePayload,
-      research_status: 'disabled',
-      research_provider: null,
-      research_attempts: [],
-      updated_at_ms: Date.now(),
-    };
-  }
-
-  const providers = pickQaProvidersForMode({
-    mode: AURORA_LLM_QA_MODE,
-    singleProvider: AURORA_LLM_SINGLE_PROVIDER,
-    allowOpenAiFallback: false,
-  }).filter((provider) => provider === 'gemini');
-  if (!providers.length) {
-    recordAuroraIngredientsFlowMetric({
-      stage: 'research_provider_final',
-      provider: 'none',
-      hit: false,
-    });
-    return {
-      ...basePayload,
-      research_status: 'provider_unavailable',
-      research_provider: null,
-      research_attempts: [],
-      research_error_code: 'provider_unavailable',
-      updated_at_ms: Date.now(),
-    };
-  }
-
-  recordAuroraIngredientsFlowMetric({ stage: 'research_requested', hit: true });
-  const systemPrompt = buildIngredientLlmSystemPrompt(language);
-  const userPrompt = buildIngredientLlmUserPrompt({ query: ingredientQuery, language });
-  const researchAttempts = [];
-  let successPayload = null;
-  let successProvider = null;
-  let finalErrorCode = 'gemini_unknown';
-  let finalProvider = 'gemini';
-
-  for (const provider of providers) {
-    const callFn = provider === 'openai' ? callOpenAiJsonObjectImpl : callGeminiJsonObjectImpl;
-    const model = provider === 'openai' ? ANALYSIS_STORY_MODEL_OPENAI : ANALYSIS_STORY_MODEL_GEMINI;
-    const llmResult = await callFn({
-      model,
-      systemPrompt,
-      userPrompt,
-      // Ingredient deep-research removes local short timeout to avoid false fallback under Gemini latency spikes.
-      timeoutMs: null,
-      maxTokens: 1200,
-      temperature: 0.1,
-    });
-    const attempt = buildIngredientResearchAttempt({ provider, llmResult });
-    researchAttempts.push(attempt);
-    recordAuroraIngredientsFlowMetric({
-      stage: 'research_provider_attempt',
-      provider,
-      hit: attempt.outcome === 'ok',
-    });
-    if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
-      successPayload = llmResult.json;
-      successProvider = provider;
-      break;
-    }
-    finalErrorCode = attempt.reason_code || 'gemini_unknown';
-    finalProvider = provider;
-  }
-
-  if (!successPayload) {
-    recordAuroraIngredientsFlowMetric({
-      stage: 'research_provider_final',
-      provider: finalProvider || 'none',
-      hit: false,
-    });
-    recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: false });
-    const fallbackPayload = {
-      ...basePayload,
-      research_status: 'fallback',
-      research_provider: finalProvider || null,
-      research_attempts: researchAttempts.slice(0, 3),
-      research_error_code: String(finalErrorCode || 'gemini_unknown').slice(0, 80),
-      updated_at_ms: Date.now(),
-    };
-    const researchJobId = enqueueIngredientResearchKbPersist({
-      status: 'fallback',
-      provider: finalProvider || null,
-      errorCode: fallbackPayload.research_error_code || null,
-      reportPayload: fallbackPayload,
-      researchAttempts: researchAttempts.slice(0, 3),
-    });
-    return {
-      ...fallbackPayload,
-      ...(researchJobId ? { research_job_id: researchJobId } : {}),
-    };
-  }
-
-  recordAuroraIngredientsFlowMetric({
-    stage: 'research_provider_final',
-    provider: successProvider || 'none',
-    hit: true,
-  });
-  recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: true });
-  const mergedPayload = mergeIngredientReportWithLlm(basePayload, successPayload, language);
-  const finalPayload = {
-    ...mergedPayload,
-    research_provider: successProvider || null,
-    research_attempts: researchAttempts.slice(0, 3),
-  };
-  const researchJobId = enqueueIngredientResearchKbPersist({
-    status: 'ready',
-    provider: successProvider || null,
-    reportPayload: finalPayload,
-    researchAttempts: researchAttempts.slice(0, 3),
-  });
-  return {
-    ...finalPayload,
-    ...(researchJobId ? { research_job_id: researchJobId } : {}),
-  };
-}
 function messageContainsSpecificIngredientScienceTarget(message) {
   const raw = String(message || '').trim();
   if (!raw) return false;
@@ -30984,14 +32146,13 @@ async function generateProductRecommendations({
   profile,
   recentLogs,
   message,
+  ingredientContext,
   includeAlternatives,
-  ingredientContext = null,
   debug,
   logger,
-  recoTriggerSource = 'goal_driven',
-  recomputeFromProfileUpdate = false,
-} = {}) {
+}) {
   const profileSummary = summarizeProfileForContext(profile);
+  const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
   const analysisSummary =
     profile && profile.lastAnalysis ? profile.lastAnalysis : null;
   const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
@@ -31015,7 +32176,13 @@ async function generateProductRecommendations({
   let contextMeta = {};
   let upstreamFailureCode = '';
 
-  const catalogOut = await buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger });
+  const catalogOut = await buildRecoGenerateFromCatalog({
+    ctx,
+    profileSummary,
+    ingredientContext: normalizedIngredientContext,
+    debug,
+    logger,
+  });
   const catalogStructured =
     catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
       ? catalogOut.structured
@@ -31076,12 +32243,60 @@ async function generateProductRecommendations({
     llmStructuredSource = structuredFallback ? 'llm_structured_fallback' : null;
   }
 
-  const structured = llmStructured || catalogTransientFallbackStructured;
-  const structuredSource = llmStructured
+  let structured = llmStructured || catalogTransientFallbackStructured;
+  let structuredSource = llmStructured
     ? 'llm_primary'
     : catalogTransientFallbackStructured
       ? 'catalog_transient_fallback'
       : null;
+
+  if (!structured) {
+    const query =
+      `${prefix}` +
+      buildAuroraProductRecommendationsQuery({
+        profile: profileSummary || {},
+        requestText: userAsk,
+        lang: ctx.lang,
+        ingredientContext: normalizedIngredientContext,
+      });
+
+    try {
+      upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: RECO_UPSTREAM_TIMEOUT_MS });
+    } catch (err) {
+      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
+        logger?.warn(
+          {
+            err: err && err.message ? err.message : String(err),
+            code: err && err.code ? err.code : null,
+            normalized_code: upstreamFailureCode || null,
+          },
+          'aurora bff: product reco upstream failed',
+        );
+      }
+    }
+
+    const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
+    const routine = contextObj ? contextObj.routine : null;
+    contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
+    if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
+      contextMeta.budget = profileSummary.budgetTier;
+    }
+
+    answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['recommendations']) : null;
+    const structuredFallback = getUpstreamStructuredOrJson(upstream);
+
+    structured = answerJson;
+    structuredSource = answerJson ? 'answer_json' : null;
+    if (!structured && routine) {
+      structured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
+      structuredSource = 'context_routine';
+    }
+    if (!structured) {
+      structured = structuredFallback;
+      structuredSource = structuredFallback ? 'structured_fallback' : null;
+    }
+  }
 
   const upstreamDebug = debug
     ? {
@@ -31129,7 +32344,7 @@ async function generateProductRecommendations({
       reco_pdp_fast_external_fallback_enabled: RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
       reco_catalog_debug: catalogDebug,
       reco_pdp_fast_fallback_reason: pdpFastFallbackReasonCode,
-      llm_structured_source: llmStructuredSource,
+      ingredient_context: normalizedIngredientContext || null,
     }
     : null;
   const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
@@ -39294,31 +40509,86 @@ function mountAuroraBffRoutes(app, { logger }) {
       const legacyCardTypes = collectLegacyCardTypes(envelopeWithGuardrails);
       const gateType = inferGateFromLegacyCardTypes(legacyCardTypes);
       const nextState = extractNextStateFromEnvelope(envelopeWithGuardrails);
-      const hasIngredientAnswerCard = legacyCardTypes.some((type) => isIngredientAnswerCardType(type));
-      const sessionPatchMeta =
+      const sessionPatchForReplay =
         envelopeWithGuardrails &&
         envelopeWithGuardrails.session_patch &&
         typeof envelopeWithGuardrails.session_patch === 'object' &&
-        !Array.isArray(envelopeWithGuardrails.session_patch) &&
-        envelopeWithGuardrails.session_patch.meta &&
-        typeof envelopeWithGuardrails.session_patch.meta === 'object' &&
-        !Array.isArray(envelopeWithGuardrails.session_patch.meta)
-          ? envelopeWithGuardrails.session_patch.meta
-          : null;
-      const ingredientRouteSource =
-        pickFirstTrimmed(
-          sessionPatchMeta && sessionPatchMeta.ingredient_route_source,
-          ingredientReplayContext.route_source,
-        ) || null;
-      const ingredientQueryFirstApplied = Boolean(
-        sessionPatchMeta && sessionPatchMeta.ingredient_query_first_applied === true,
+        !Array.isArray(envelopeWithGuardrails.session_patch)
+          ? envelopeWithGuardrails.session_patch
+          : {};
+      const sessionMetaForReplay =
+        sessionPatchForReplay &&
+        sessionPatchForReplay.meta &&
+        typeof sessionPatchForReplay.meta === 'object' &&
+        !Array.isArray(sessionPatchForReplay.meta)
+          ? sessionPatchForReplay.meta
+          : {};
+      const ingredientQueryFirstApplied = sessionMetaForReplay.ingredient_query_first_applied === true;
+      const ingredientRouteSource = pickFirstTrimmed(
+        sessionMetaForReplay.ingredient_route_source,
+        ingredientReplayContext.route_source,
       );
+      const ingredientNormalizedQuery = pickFirstTrimmed(
+        sessionMetaForReplay.normalized_query,
+        sessionMetaForReplay.ingredient_normalized_query,
+      );
+      const ingredientRouteDecisionReasons = Array.isArray(sessionMetaForReplay.route_decision_reasons)
+        ? sessionMetaForReplay.route_decision_reasons.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 12)
+        : [];
+      const ingredientRouteRuleVersion = pickFirstTrimmed(
+        sessionMetaForReplay.route_rule_version,
+        INGREDIENT_ROUTE_RULE_VERSION,
+      );
+      const ingredientReportPayloadForReplay = Array.isArray(envelopeWithGuardrails && envelopeWithGuardrails.cards)
+        ? (() => {
+          const row = envelopeWithGuardrails.cards.find(
+            (card) => card && String(card.type || '').trim().toLowerCase() === 'aurora_ingredient_report',
+          );
+          return row && typeof row.payload === 'object' && row.payload && !Array.isArray(row.payload)
+            ? row.payload
+            : null;
+        })()
+        : null;
+      const ingredientProviderFinal = pickFirstTrimmed(
+        ingredientReportPayloadForReplay && ingredientReportPayloadForReplay.research_provider,
+        ingredientReportPayloadForReplay && ingredientReportPayloadForReplay.provider,
+      );
+      const ingredientProviderAttempts = Array.isArray(ingredientReportPayloadForReplay && ingredientReportPayloadForReplay.research_attempts)
+        ? ingredientReportPayloadForReplay.research_attempts
+          .map((row) => (row && typeof row === 'object' ? row : null))
+          .filter(Boolean)
+          .map((row) => ({
+            provider: String(row.provider || '').slice(0, 32),
+            outcome: String(row.outcome || '').slice(0, 48),
+            reason_code: row.reason_code ? String(row.reason_code).slice(0, 64) : null,
+          }))
+          .slice(0, 3)
+        : [];
+      const ingredientProviderCircuitState = pickFirstTrimmed(
+        ingredientReportPayloadForReplay && ingredientReportPayloadForReplay.provider_circuit_state,
+        sessionMetaForReplay.provider_circuit_state,
+      );
+      const ingredientFallbackReason = pickFirstTrimmed(
+        ingredientReportPayloadForReplay && ingredientReportPayloadForReplay.research_error_code,
+        sessionMetaForReplay.fallback_reason,
+      );
+      const hasIngredientAnswerCard = legacyCardTypes.some((type) => isIngredientAnswerCardType(type));
+      const chatCardsTypes = Array.isArray(chatCardsResponse && chatCardsResponse.cards)
+        ? chatCardsResponse.cards
+          .map((card) => String(card && card.type ? card.type : '').trim().toLowerCase())
+          .filter(Boolean)
+        : [];
+      const hasIngredientRenderableCard = chatCardsTypes.some((type) => isIngredientAnswerCardType(type));
       const ingredientReplayRelevant = Boolean(
         ingredientReplayContext.intent_requested ||
           ingredientReplayContext.starter_action ||
           ingredientReplayContext.reco_optin ||
+          ingredientQueryFirstApplied ||
           hasIngredientAnswerCard,
       );
+      if (ingredientRouteSource) {
+        ingredientReplayContext.route_source = ingredientRouteSource;
+      }
       if (ingredientReplayRelevant && hasIngredientAnswerCard) {
         recordAuroraIngredientsFlowMetric({ stage: 'answer_served', hit: true });
       }
@@ -39330,20 +40600,31 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (unwantedDiagnosis) {
         recordAuroraIngredientsFlowMetric({ stage: 'unwanted_diagnosis', hit: true });
       }
+      const ingredientCardRenderDrop = Boolean(
+        ingredientReplayRelevant &&
+          hasIngredientAnswerCard &&
+          !hasIngredientRenderableCard,
+      );
+      if (ingredientCardRenderDrop) {
+        recordAuroraIngredientsFlowMetric({ stage: 'card_render_drop', hit: true });
+      }
+      const ingredientSafetyBlocked = Boolean(
+        Array.isArray(envelopeWithGuardrails?.events) &&
+          envelopeWithGuardrails.events.some((evt) => String(evt && evt.event_name ? evt.event_name : '').trim() === 'safety_gate_block'),
+      );
       const ingredientTextRouteDrift = Boolean(
         ingredientQueryFirstApplied &&
-          ingredientRouteSource === 'text' &&
+          String(ingredientRouteSource || '').toLowerCase() === 'text' &&
+          !ingredientReplayContext.diagnosis_optin &&
           !hasIngredientAnswerCard &&
-          !(
-            gateType === 'diagnosis_gate' &&
-            ingredientReplayContext.diagnosis_optin
-          ),
+          !ingredientSafetyBlocked,
       );
       if (ingredientTextRouteDrift) {
         recordAuroraIngredientsFlowMetric({ stage: 'text_route_drift', hit: true });
       }
       const ingredientReplayLogNeeded = Boolean(
         ingredientReplayRelevant ||
+          ingredientTextRouteDrift ||
           gateType === 'diagnosis_gate' ||
           gateType === 'budget_gate' ||
           String(actionIdForReplay || '').toLowerCase().includes('ingredient'),
@@ -39360,7 +40641,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate: gateType,
             card_types: legacyCardTypes.slice(0, 12),
             next_state: nextState,
-            route_source: ingredientRouteSource,
+            route_source: ingredientRouteSource || null,
+            ingredient_query_first_applied: ingredientQueryFirstApplied,
+            normalized_query: ingredientNormalizedQuery || null,
+            route_rule_version: ingredientRouteRuleVersion || null,
+            route_decision_reasons: ingredientRouteDecisionReasons,
+            text_route_drift: ingredientTextRouteDrift,
+            ingredient_card_render_drop: ingredientCardRenderDrop,
+            provider_attempt: ingredientProviderAttempts,
+            provider_final: ingredientProviderFinal || null,
+            provider_circuit_state: ingredientProviderCircuitState || null,
+            fallback_reason: ingredientFallbackReason || null,
             client_state: clientStateForReplay || null,
             agent_state: agentStateForReplay || null,
           },
@@ -40694,53 +41985,368 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientLookupRequested = isIngredientLookupAction(actionId);
       const ingredientByGoalRequested = isIngredientByGoalAction(actionId);
       const ingredientDiagnosisOptInRequested = isIngredientDiagnosisOptInAction(actionId);
+      const ingredientResearchPollRequested = isIngredientResearchPollAction(actionId);
       const ingredientRecoOptInRequested = isIngredientRecoOptInAction(actionId, normalizedActionPayload);
+      const ingredientRouteDecisionReasons = [];
+      const pushIngredientRouteDecision = (reason) => {
+        const token = String(reason || '').trim();
+        if (!token) return;
+        if (ingredientRouteDecisionReasons.includes(token)) return;
+        ingredientRouteDecisionReasons.push(token);
+      };
+      if (ingredientEntryRequested) pushIngredientRouteDecision('chip_entry_hit');
+      if (ingredientLookupRequested) pushIngredientRouteDecision('action_lookup');
+      if (ingredientByGoalRequested) pushIngredientRouteDecision('action_by_goal');
+      if (ingredientDiagnosisOptInRequested) pushIngredientRouteDecision('action_optin_diagnosis');
+      if (ingredientResearchPollRequested) pushIngredientRouteDecision('action_research_poll');
       const ingredientTextTrigger = ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit';
       const ingredientLookupQuery = ingredientLookupRequested
         ? extractIngredientLookupQuery(normalizedActionPayload)
         : '';
+      const ingredientTextMessage = String(message || '').trim();
       const ingredientLookupTargetFromText = ingredientTextTrigger
         ? extractIngredientLookupTargetFromText(message, ctx.lang)
         : '';
+      const ingredientEntityMatch = ingredientTextTrigger
+        ? ingredientEntityMatchFromText(message, ctx.lang)
+        : { normalized_query: '', entity_key: '', entity_match_type: 'none', entity_confidence: 0 };
+      if (ingredientTextTrigger && ingredientEntityMatch.entity_match_type !== 'none') {
+        pushIngredientRouteDecision(`entity_${ingredientEntityMatch.entity_match_type}_match`);
+      }
+      const ingredientFallbackSuppressed = Boolean(
+        looksLikeProductEvaluationIntentV2(message, actionId) ||
+          looksLikeRecommendationRequest(message) ||
+          looksLikeSuitabilityRequest(message),
+      );
+      const ingredientQueryCue = Boolean(
+        ingredientTextTrigger &&
+          (
+            /(成分(机理|机制|科学|证据|原理)?|证据链|循证|临床证据|论文证据|问成分|lookup|ingredient|ingredients|active|actives|inci|evidence|mechanism)/i.test(
+              ingredientTextMessage,
+            ) ||
+            /(查|查询|了解|讲讲|科普).{0,12}(成分|ingredient|ingredients|active|inci)/i.test(ingredientTextMessage)
+          ),
+      );
+      const ingredientKeywordSignal =
+        ingredientTextTrigger &&
+        ingredientQueryCue &&
+        !ingredientFallbackSuppressed;
       const ingredientScienceIntentEffective =
         ingredientScienceIntent ||
-        (ingredientTextTrigger && Boolean(ingredientLookupTargetFromText));
+        ingredientKeywordSignal ||
+        (
+          ingredientTextTrigger &&
+          !ingredientFallbackSuppressed &&
+          Boolean(ingredientLookupTargetFromText) &&
+          ingredientTextMessage.length <= 48
+        );
       const ingredientGoalRequest = ingredientByGoalRequested
         ? extractIngredientGoalRequest(normalizedActionPayload)
         : { goal: '', sensitivity: 'unknown' };
-      const ingredientRecoContext = ingredientRecoOptInRequested
-        ? extractIngredientRecoContext(normalizedActionPayload)
-        : null;
       const ingredientActionData = extractActionDataObject(normalizedActionPayload);
-      const ingredientRecommendationShortcutAllowed =
-        allowRecoCards &&
-        !ingredientDiagnosisOptInRequested &&
-        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
-        !looksLikeSuitabilityRequest(message) &&
-        !looksLikeCompatibilityOrConflictQuestion(message) &&
-        !looksLikeWeatherOrEnvironmentQuestion(message);
+      const sessionMetaInput =
+        parsed.data &&
+        parsed.data.session &&
+        typeof parsed.data.session === 'object' &&
+        !Array.isArray(parsed.data.session) &&
+        parsed.data.session.meta &&
+        typeof parsed.data.session.meta === 'object' &&
+        !Array.isArray(parsed.data.session.meta)
+          ? parsed.data.session.meta
+          : null;
+      let ingredientRecoContext = normalizeIngredientRecoContextValue(sessionMetaInput && sessionMetaInput.ingredient_context);
+      ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+        query: pickFirstTrimmed(
+          ingredientActionData && ingredientActionData.ingredient_query,
+          ingredientActionData && ingredientActionData.ingredientQuery,
+          ingredientActionData && ingredientActionData.inci,
+          ingredientActionData && ingredientActionData.ingredient_name,
+        ),
+        goal: pickFirstTrimmed(
+          ingredientActionData && ingredientActionData.ingredient_goal,
+          ingredientActionData && ingredientActionData.ingredientGoal,
+          ingredientActionData && ingredientActionData.goal,
+        ),
+        sensitivity: pickFirstTrimmed(
+          ingredientActionData && ingredientActionData.ingredient_sensitivity,
+          ingredientActionData && ingredientActionData.ingredientSensitivity,
+          ingredientActionData && ingredientActionData.sensitivity,
+        ),
+        source: pickFirstTrimmed(
+          ingredientActionData && ingredientActionData.entry_source,
+          ingredientActionData && ingredientActionData.trigger_source,
+          'action',
+        ),
+        updated_at_ms: Date.now(),
+      });
       ingredientReplayContext = {
         intent_requested: Boolean(ingredientScienceIntentEffective),
-        starter_action: Boolean(ingredientEntryRequested || ingredientLookupRequested || ingredientByGoalRequested),
+        starter_action: Boolean(
+          ingredientEntryRequested ||
+            ingredientLookupRequested ||
+            ingredientByGoalRequested ||
+            ingredientResearchPollRequested
+        ),
         diagnosis_optin: Boolean(
           ingredientDiagnosisOptInRequested ||
             normalizeIngredientActionId(actionId) === 'chip.start.diagnosis' ||
             normalizeIngredientActionId(actionId) === 'chip_start_diagnosis',
         ),
         reco_optin: Boolean(ingredientRecoOptInRequested),
-        route_source: ingredientTextTrigger && ingredientScienceIntentEffective ? 'text' : 'chip',
+        route_source:
+          ingredientTextTrigger && ingredientScienceIntentEffective
+            ? 'text'
+            : ingredientEntryRequested || ingredientLookupRequested || ingredientByGoalRequested || ingredientDiagnosisOptInRequested || ingredientResearchPollRequested
+              ? 'chip'
+              : null,
         entry:
           pickFirstTrimmed(ingredientActionData && ingredientActionData.entry_source, ingredientActionData && ingredientActionData.trigger_source) ||
           (ingredientEntryRequested ? 'ingredients_entry' : ingredientScienceIntentEffective ? 'ingredient_intent' : null),
       };
-      const attachIngredientRouteMetaToSessionPatch = (sessionPatch, { queryFirstApplied = false, routeSource = '' } = {}) => {
-        const patch = sessionPatch && typeof sessionPatch === 'object' && !Array.isArray(sessionPatch) ? { ...sessionPatch } : {};
-        const source = String(routeSource || '').trim().toLowerCase();
-        const meta = patch.meta && typeof patch.meta === 'object' && !Array.isArray(patch.meta) ? { ...patch.meta } : {};
+      const attachIngredientRouteMetaToSessionPatch = (
+        sessionPatch,
+        {
+          queryFirstApplied = false,
+          routeSource = '',
+          normalizedQuery = '',
+          entityMatchType = '',
+          entityConfidence = null,
+          routeDecisionReasons = null,
+          routeRuleVersion = '',
+        } = {},
+      ) => {
+        const patch = isPlainObject(sessionPatch) ? { ...sessionPatch } : {};
+        const meta =
+          patch.meta && typeof patch.meta === 'object' && !Array.isArray(patch.meta)
+            ? { ...patch.meta }
+            : {};
         if (queryFirstApplied) meta.ingredient_query_first_applied = true;
+        const source = String(routeSource || '').trim().toLowerCase();
         if (source === 'text' || source === 'chip') meta.ingredient_route_source = source;
+        const normalized = String(normalizedQuery || '').trim().slice(0, 120);
+        if (normalized) meta.normalized_query = normalized;
+        const matchType = String(entityMatchType || '').trim().toLowerCase();
+        if (matchType) meta.entity_match_type = matchType;
+        if (Number.isFinite(Number(entityConfidence))) {
+          meta.entity_confidence = Math.max(0, Math.min(1, Number(entityConfidence)));
+        }
+        const decisionReasons = Array.isArray(routeDecisionReasons)
+          ? routeDecisionReasons.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 12)
+          : [];
+        if (decisionReasons.length > 0) meta.route_decision_reasons = decisionReasons;
+        const ruleVersion = String(routeRuleVersion || '').trim();
+        if (ruleVersion) meta.route_rule_version = ruleVersion;
         if (Object.keys(meta).length > 0) patch.meta = meta;
         return patch;
+      };
+      const attachIngredientResearchJobMetaToSessionPatch = (sessionPatch, jobId = '') => {
+        const job = String(jobId || '').trim();
+        if (!job) return sessionPatch;
+        const patch = isPlainObject(sessionPatch) ? { ...sessionPatch } : {};
+        const meta =
+          patch.meta && typeof patch.meta === 'object' && !Array.isArray(patch.meta)
+            ? { ...patch.meta }
+            : {};
+        meta.ingredient_research_job_id = job.slice(0, 120);
+        patch.meta = meta;
+        return patch;
+      };
+      const attachIngredientContextMetaToSessionPatch = (sessionPatch, contextValue) => {
+        const contextNormalized = normalizeIngredientRecoContextValue(contextValue);
+        if (!contextNormalized) return sessionPatch;
+        const patch = isPlainObject(sessionPatch) ? { ...sessionPatch } : {};
+        const meta =
+          patch.meta && typeof patch.meta === 'object' && !Array.isArray(patch.meta)
+            ? { ...patch.meta }
+            : {};
+        meta.ingredient_context = contextNormalized;
+        patch.meta = meta;
+        return patch;
+      };
+      const buildIngredientLookupEnvelope = async ({
+        lookupTarget = '',
+        routeSource = 'chip',
+        queryFirstApplied = false,
+        reasonTag = 'ingredient_lookup_report',
+        explicitRouteReasons = [],
+        skipRateLimit = false,
+      } = {}) => {
+        const target = String(lookupTarget || '').trim().slice(0, 120);
+        if (!target) return null;
+        const normalizedQuery = normalizeIngredientResearchKey(target);
+        const entityMatch = ingredientEntityMatchFromText(target, ctx.lang);
+        const routeReasons = Array.isArray(explicitRouteReasons)
+          ? explicitRouteReasons.map((value) => String(value || '').trim()).filter(Boolean)
+          : [];
+        if (entityMatch.entity_match_type && entityMatch.entity_match_type !== 'none') {
+          routeReasons.push(`entity_${entityMatch.entity_match_type}_match`);
+        }
+        if (!entityMatch.entity_match_type || entityMatch.entity_match_type === 'none') {
+          routeReasons.push('entity_no_match');
+        }
+
+        const rateLimit = skipRateLimit
+          ? { blocked: false, reason: '' }
+          : checkIngredientLookupRateLimit({
+            sessionKey: pickFirstTrimmed(identity && identity.auroraUid, ctx.aurora_uid, ctx.brief_id, ctx.trace_id),
+            ipKey: String((req && (req.ip || req.headers?.['x-forwarded-for'])) || '').split(',')[0].trim(),
+          });
+        if (rateLimit.blocked) {
+          routeReasons.push(rateLimit.reason || 'rate_limited');
+          recordAuroraIngredientsFlowMetric({ stage: 'rate_limited', hit: true });
+        }
+
+        const researchCache = getIngredientResearchCache(target);
+        const researchReady = Boolean(researchCache && researchCache.status === 'ready');
+        let resolvedResearch = researchCache || null;
+        let syncResearch = null;
+        if (!researchReady && INGREDIENT_ROUTE_V2_ENABLED && !INGREDIENT_LEGACY_PATH_ENABLED && !rateLimit.blocked) {
+          syncResearch = await runIngredientResearchSync({
+            query: target,
+            normalizedQuery,
+            language: ctx.lang,
+            logger,
+          });
+          const syncPayload = asResearchObject(syncResearch && syncResearch.research) || null;
+          if (syncPayload) {
+            const syncState = {
+              ...syncPayload,
+              status: syncResearch && syncResearch.ok ? 'ready' : 'fallback',
+              provider: syncResearch && syncResearch.provider ? syncResearch.provider : 'gemini',
+              provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : 'flash',
+              provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
+              error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
+              provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
+              normalized_query: normalizedQuery,
+              updated_at_ms: Date.now(),
+            };
+            resolvedResearch = syncState;
+            const hasMinimumSections = Boolean(
+              pickFirstTrimmed(
+                syncState.what_it_is,
+                syncState.overview,
+                syncState.ingredient && syncState.ingredient.what_it_is,
+              ) &&
+                Array.isArray(syncState.safety && syncState.safety.watchouts) &&
+                (syncState.safety.watchouts || []).length > 0,
+            );
+            if (syncResearch && syncResearch.ok && hasMinimumSections) {
+              touchIngredientResearchCache(normalizedQuery, syncState, { persist: true, logger });
+              routeReasons.push('sync_research_hit');
+            } else {
+              routeReasons.push('sync_research_fallback');
+              recordAuroraIngredientsFlowMetric({ stage: 'empty_section_prevented', hit: true });
+            }
+          }
+        }
+
+        const cacheAfterSync = getIngredientResearchCache(target);
+        const readyAfterSync = Boolean(cacheAfterSync && cacheAfterSync.status === 'ready');
+        if (readyAfterSync) {
+          resolvedResearch = cacheAfterSync;
+          recordAuroraIngredientsFlowMetric({ stage: 'kb_hit', hit: true });
+        } else {
+          recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
+        }
+
+        const shouldQueueResearch = !readyAfterSync && !INGREDIENT_KB_ONLY_MODE;
+        const researchJob = shouldQueueResearch
+          ? enqueueIngredientResearchJob({
+            query: target,
+            language: ctx.lang,
+            requestId: ctx.request_id,
+            traceId: ctx.trace_id,
+            logger,
+          })
+          : readyAfterSync
+            ? { status: 'ready', job_id: cacheAfterSync && cacheAfterSync.job_id ? cacheAfterSync.job_id : null }
+            : null;
+        if (researchJob && researchJob.status === 'queued') {
+          recordAuroraIngredientsFlowMetric({ stage: 'research_requested', hit: true });
+        }
+
+        const reportPayload = buildIngredientReportPayload({
+          language: ctx.lang,
+          query: target,
+          research: resolvedResearch || researchJob || null,
+          meta: {
+            normalized_query: normalizedQuery,
+            route_decision_reasons: routeReasons.slice(0, 12),
+            route_rule_version: INGREDIENT_ROUTE_RULE_VERSION,
+            provider_model_tier: resolvedResearch && resolvedResearch.provider_model_tier,
+            provider_circuit_state: resolvedResearch && resolvedResearch.provider_circuit_state,
+            research_provider: resolvedResearch && resolvedResearch.provider,
+            research_error_code: resolvedResearch && (resolvedResearch.error_code || resolvedResearch.error),
+          },
+        });
+        const ingredientName = pickFirstTrimmed(
+          reportPayload && reportPayload.ingredient && reportPayload.ingredient.display_name,
+          reportPayload && reportPayload.ingredient && reportPayload.ingredient.inci,
+          target,
+        ) || target;
+        const assistantText =
+          ctx.lang === 'CN'
+            ? reportPayload.research_status === 'queued'
+              ? `已先返回 ${ingredientName} 的快速结论，增强证据生成中。`
+              : `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
+            : reportPayload.research_status === 'queued'
+              ? `Returning a quick brief for ${ingredientName}; enhanced evidence is generating.`
+              : `I generated a 1-minute ingredient report for ${ingredientName}.`;
+        let sessionPatch = attachIngredientRouteMetaToSessionPatch(
+          nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          {
+            queryFirstApplied,
+            routeSource,
+            normalizedQuery,
+            entityMatchType: entityMatch.entity_match_type,
+            entityConfidence: entityMatch.entity_confidence,
+            routeDecisionReasons: routeReasons,
+            routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+          },
+        );
+        if (researchJob && researchJob.job_id) {
+          sessionPatch = attachIngredientResearchJobMetaToSessionPatch(sessionPatch, researchJob.job_id);
+        }
+        sessionPatch = attachIngredientContextMetaToSessionPatch(
+          sessionPatch,
+          mergeIngredientRecoContextValue(ingredientRecoContext, {
+            query: target,
+            source: routeSource === 'text' ? 'text_lookup' : 'chip_lookup',
+            updated_at_ms: Date.now(),
+          }),
+        );
+        const events = [
+          makeEvent(ctx, readyAfterSync ? 'ingredient_kb_hit' : 'ingredient_kb_miss', {
+            query: String(target || '').slice(0, 120),
+            normalized_query: normalizedQuery,
+          }),
+          makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: reasonTag }),
+        ];
+        if (researchJob && researchJob.status === 'queued') {
+          events.push(
+            makeEvent(ctx, 'ingredient_research_requested', {
+              ingredient_query: String(target || '').slice(0, 120),
+              normalized_query: normalizedQuery,
+              job_id: String(researchJob.job_id || '').slice(0, 120),
+            }),
+          );
+        }
+        return buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: buildIngredientReportQuickReplyChips({
+            language: ctx.lang,
+            reportPayload,
+          }),
+          cards: [
+            {
+              card_id: `ingredient_report_${ctx.request_id}`,
+              type: 'aurora_ingredient_report',
+              payload: reportPayload,
+            },
+          ],
+          session_patch: sessionPatch,
+          events,
+        });
       };
       if (ingredientEntryRequested) {
         recordAuroraIngredientsFlowMetric({ stage: 'entry_opened', hit: true });
@@ -40754,7 +42360,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (ingredientRecoOptInRequested) {
         recordAuroraIngredientsFlowMetric({ stage: 'reco_optin', hit: true });
       }
-      if (ingredientEntryRequested || ingredientByGoalRequested || ingredientLookupRequested) {
+      if (ingredientEntryRequested || ingredientByGoalRequested || ingredientLookupRequested || ingredientResearchPollRequested) {
         skipRoutineRulesFallback = true;
       }
       if (ingredientLookupRequested && !message && ingredientLookupQuery) {
@@ -40841,55 +42447,60 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      if (evaluateIntent && !hasFitCheckAnchor && anchorCollectionSignal) {
+      if (evaluateIntent && !hasFitCheckAnchor) {
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
         const prompt = buildFitCheckAnchorPrompt(lang);
+        const reasonCodes = anchorCollectionSignal
+          ? ['anchor_soft_blocked_ambiguous']
+          : ['anchor_id_not_used_due_to_low_trust'];
         const firstQuestion = lang === 'CN'
           ? '请粘贴产品链接、完整产品名，或成分表（INCI）。'
           : 'Please paste the product link, full product name, or ingredient list (INCI).';
         const gate = pushGateDecision('fit_check_anchor_gate', {
-          reason_codes: ['anchor_soft_blocked_ambiguous'],
-        });
-        if (gate && gate.mode === GATE_MODE.ADVISORY) {
-          enqueueGateAdvisory({
-            gate_id: 'fit_check_anchor_gate',
-            message:
-              lang === 'CN'
-                ? '我会先给出通用可执行分析，再根据你补充的产品信息精确化。'
-                : 'I will provide a usable baseline now and refine it once you share product details.',
-            reason_codes: ['anchor_soft_blocked_ambiguous'],
-            actions: ['provide_anchor_url_or_name'],
-            chips: prompt.chips,
-          });
-          policyMeta.gate_type = 'soft';
-          logger?.info(
-            { request_id: ctx.request_id, trace_id: ctx.trace_id, question: firstQuestion },
-            'aurora bff: fit-check anchor gate downgraded to advisory',
-          );
-        }
-      }
-      if (evaluateIntent && !hasFitCheckAnchor) {
-        const prompt = buildFitCheckAnchorPrompt(ctx.lang);
-        const firstQuestion = ctx.lang === 'CN'
-          ? '请粘贴产品链接、完整产品名，或成分表（INCI）。'
-          : 'Please paste the product link, full product name, or ingredient list (INCI).';
-        const gate = pushGateDecision('fit_check_anchor_gate', {
-          reason_codes: ['anchor_id_not_used_due_to_low_trust'],
+          reason_codes: reasonCodes,
         });
         if (gate && gate.mode === GATE_MODE.ADVISORY) {
           enqueueGateAdvisory({
             gate_id: 'fit_check_anchor_gate',
             message: prompt.prompt,
-            reason_codes: ['anchor_id_not_used_due_to_low_trust'],
+            reason_codes: reasonCodes,
             actions: ['provide_anchor_url_or_name'],
             chips: prompt.chips,
           });
           policyMeta.gate_type = 'soft';
           logger?.info(
             { request_id: ctx.request_id, trace_id: ctx.trace_id, question: firstQuestion },
-            'aurora bff: fit-check anchor required gate changed to advisory',
+            'aurora bff: fit-check anchor required; returning anchor collection prompt',
           );
         }
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(prompt.prompt),
+          suggested_chips: prompt.chips,
+          cards: [
+            {
+              card_id: `conf_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: lang,
+                reason: 'gate_advisory',
+                confidence: {
+                  score: 0.55,
+                  level: 'medium',
+                  rationale: reasonCodes,
+                },
+                actions: ['provide_product_anchor'],
+                details: [firstQuestion],
+              }),
+            },
+          ],
+          session_patch: {},
+          events: [
+            makeEvent(ctx, 'fitcheck_anchor_requested', {
+              reason_codes: reasonCodes,
+            }),
+          ],
+        });
+        return sendChatEnvelope(envelope);
       }
 
       const shouldRunSafetyPreGate = Boolean(
@@ -40968,7 +42579,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestMessage = 'ingredient_hub_entry';
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(assistantText),
-          suggested_chips: [],
+          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
           cards: [
             {
               card_id: `ingredient_hub_${ctx.request_id}`,
@@ -40976,9 +42587,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: hubPayload,
             },
           ],
-          session_patch: attachIngredientRouteMetaToSessionPatch(
-            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-            { routeSource: 'chip' },
+          session_patch: attachIngredientContextMetaToSessionPatch(
+            attachIngredientRouteMetaToSessionPatch(
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+              {
+                routeSource: 'chip',
+                routeDecisionReasons: ['hub_entry', ...ingredientRouteDecisionReasons],
+                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+              },
+            ),
+            ingredientRecoContext,
           ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_hub_entry' })],
         });
@@ -40987,10 +42605,23 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (ingredientByGoalRequested && !ingredientRecommendationShortcutAllowed) {
         const requestedGoal = ingredientGoalRequest.goal || 'barrier';
-        const goalPayload = buildIngredientGoalMatchPayload({
+        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+          goal: requestedGoal,
+          sensitivity: ingredientGoalRequest.sensitivity,
+          source: ingredientTextTrigger ? 'text_goal' : 'chip_goal',
+          updated_at_ms: Date.now(),
+        });
+        const goalPayloadBase = buildIngredientGoalMatchPayload({
           language: ctx.lang,
           goal: requestedGoal,
           sensitivity: ingredientGoalRequest.sensitivity,
+        });
+        const goalPayload = await enrichIngredientGoalMatchPayload({
+          basePayload: goalPayloadBase,
+          language: ctx.lang,
+          goal: requestedGoal,
+          sensitivity: ingredientGoalRequest.sensitivity,
+          logger,
         });
         const assistantText =
           ctx.lang === 'CN'
@@ -40999,7 +42630,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestMessage = 'ingredient_goal_match';
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(assistantText),
-          suggested_chips: [],
+          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
           cards: [
             {
               card_id: `ingredient_goal_match_${ctx.request_id}`,
@@ -41007,9 +42638,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: goalPayload,
             },
           ],
-          session_patch: attachIngredientRouteMetaToSessionPatch(
-            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-            { routeSource: 'chip' },
+          session_patch: attachIngredientContextMetaToSessionPatch(
+            attachIngredientRouteMetaToSessionPatch(
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+              {
+                routeSource: 'chip',
+                routeDecisionReasons: ['goal_match', ...ingredientRouteDecisionReasons],
+                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+              },
+            ),
+            ingredientRecoContext,
           ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
         });
@@ -41025,7 +42663,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestMessage = 'ingredient_lookup_missing_query';
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(assistantText),
-          suggested_chips: [],
+          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
           cards: [
             {
               card_id: `ingredient_hub_${ctx.request_id}`,
@@ -41033,9 +42671,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: hubPayload,
             },
           ],
-          session_patch: attachIngredientRouteMetaToSessionPatch(
-            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-            { routeSource: 'chip' },
+          session_patch: attachIngredientContextMetaToSessionPatch(
+            attachIngredientRouteMetaToSessionPatch(
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+              {
+                routeSource: 'chip',
+                routeDecisionReasons: ['lookup_missing_query', ...ingredientRouteDecisionReasons],
+                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+              },
+            ),
+            ingredientRecoContext,
           ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_missing_query' })],
         });
@@ -41049,49 +42694,62 @@ function mountAuroraBffRoutes(app, { logger }) {
         )
         : '';
 
-      if (ingredientLookupRequested && ingredientLookupTarget && !ingredientRecommendationShortcutAllowed) {
-        const reportPayload = await buildIngredientReportPayloadWithResearch({
-          language: ctx.lang,
-          query: ingredientLookupTarget,
-        });
-        const researchJobId = pickFirstTrimmed(reportPayload && reportPayload.research_job_id);
-        const ingredientName =
-          pickFirstTrimmed(
-            reportPayload?.ingredient?.display_name,
-            reportPayload?.ingredient?.inci,
-            ingredientLookupTarget,
-          ) || ingredientLookupTarget;
-        const assistantText =
-          ctx.lang === 'CN'
-            ? `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
-            : `I generated a 1-minute ingredient report for ${ingredientName}.`;
+      if (ingredientLookupRequested && ingredientLookupTarget) {
         requestMessage = 'ingredient_lookup_report';
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
-          suggested_chips: [],
-          cards: [
-            {
-              card_id: `ingredient_report_${ctx.request_id}`,
-              type: 'aurora_ingredient_report',
-              payload: reportPayload,
-            },
-          ],
-          session_patch: attachIngredientRouteMetaToSessionPatch(
-            {
-              ...(nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {}),
-              ...(researchJobId
-                ? {
-                    meta: {
-                      ingredient_research_job_id: researchJobId,
-                    },
-                  }
-                : {}),
-            },
-            { routeSource: 'chip' },
-          ),
-          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_report' })],
+        const envelope = await buildIngredientLookupEnvelope({
+          lookupTarget: ingredientLookupTarget,
+          routeSource: 'chip',
+          queryFirstApplied: false,
+          reasonTag: 'ingredient_lookup_report',
+          explicitRouteReasons: ['lookup_action_hit', ...ingredientRouteDecisionReasons],
         });
-        return sendChatEnvelope(envelope);
+        if (envelope) return sendChatEnvelope(envelope);
+      }
+
+      if (ingredientResearchPollRequested) {
+        const pollQuery = pickFirstTrimmed(
+          ingredientActionData && ingredientActionData.ingredient_query,
+          ingredientActionData && ingredientActionData.query,
+          ingredientActionData && ingredientActionData.normalized_query,
+          ingredientRecoContext && ingredientRecoContext.query,
+        );
+        if (!pollQuery) {
+          const assistantText =
+            ctx.lang === 'CN'
+              ? '我还不知道你要查哪个成分。请先输入成分名（INCI/别名）。'
+              : 'I do not have an ingredient target yet. Please enter the ingredient name (INCI/alias).';
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(assistantText),
+            suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
+            cards: [
+              {
+                card_id: `ingredient_hub_${ctx.request_id}`,
+                type: 'ingredient_hub',
+                payload: buildIngredientHubCardPayload({ language: ctx.lang }),
+              },
+            ],
+            session_patch: attachIngredientRouteMetaToSessionPatch(
+              {},
+              {
+                routeSource: ingredientTextTrigger ? 'text' : 'chip',
+                routeDecisionReasons: ['poll_missing_query', ...ingredientRouteDecisionReasons],
+                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+              },
+            ),
+            events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_poll_missing_query' })],
+          });
+          return sendChatEnvelope(envelope);
+        }
+        requestMessage = 'ingredient_research_poll';
+        const envelope = await buildIngredientLookupEnvelope({
+          lookupTarget: pollQuery,
+          routeSource: ingredientTextTrigger ? 'text' : 'chip',
+          queryFirstApplied: ingredientTextTrigger,
+          reasonTag: 'ingredient_research_poll',
+          explicitRouteReasons: ['research_poll', ...ingredientRouteDecisionReasons],
+          skipRateLimit: true,
+        });
+        if (envelope) return sendChatEnvelope(envelope);
       }
 
       if (
@@ -41763,10 +43421,13 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientDiagnosisRouteGuardActive =
         ingredientScienceIntentEffective &&
         !ingredientDiagnosisOptInRequested &&
+        normalizeIngredientActionId(actionId) !== 'chip.start.diagnosis' &&
+        normalizeIngredientActionId(actionId) !== 'chip_start_diagnosis' &&
         (
           ingredientEntryRequested ||
           ingredientLookupRequested ||
           ingredientByGoalRequested ||
+          ingredientResearchPollRequested ||
           ingredientTextTrigger
         );
       if (
@@ -41888,7 +43549,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             ],
             session_patch: attachIngredientRouteMetaToSessionPatch(
               {},
-              { routeSource: ingredientTextTrigger ? 'text' : 'chip' },
+              {
+                routeSource: ingredientTextTrigger ? 'text' : 'chip',
+                routeDecisionReasons: ['safety_block', ...ingredientRouteDecisionReasons],
+                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+              },
             ),
             events: [makeEvent(ctx, 'safety_gate_block', { intent: 'ingredient_science', block_level: safetyDecision.block_level })],
           });
@@ -41901,66 +43566,37 @@ function mountAuroraBffRoutes(app, { logger }) {
         !ingredientEntryRequested &&
         !ingredientByGoalRequested &&
         !ingredientLookupRequested &&
+        !ingredientResearchPollRequested &&
         !ingredientDiagnosisOptInRequested &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         !looksLikeCompatibilityOrConflictQuestion(message) &&
         !looksLikeWeatherOrEnvironmentQuestion(message);
       if (ingredientTextQueryFirstEligible) {
-        skipRoutineRulesFallback = true;
-      }
-      if (ingredientTextQueryFirstEligible) {
         recordAuroraIngredientsFlowMetric({ stage: 'text_query_routed', hit: true });
+        ingredientReplayContext.route_source = 'text';
         const baseSessionPatch =
           nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
-        const sessionPatch = attachIngredientRouteMetaToSessionPatch(baseSessionPatch, {
+        let sessionPatch = attachIngredientRouteMetaToSessionPatch(baseSessionPatch, {
           queryFirstApplied: true,
           routeSource: 'text',
+          routeDecisionReasons: ['text_query_routed', ...ingredientRouteDecisionReasons],
+          routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
         });
         if (ingredientLookupTargetFromText) {
-          const reportPayload = await buildIngredientReportPayloadWithResearch({
-            language: ctx.lang,
-            query: ingredientLookupTargetFromText,
-          });
-          const researchJobId = pickFirstTrimmed(reportPayload && reportPayload.research_job_id);
-          const ingredientName =
-            pickFirstTrimmed(
-              reportPayload?.ingredient?.display_name,
-              reportPayload?.ingredient?.inci,
-              ingredientLookupTargetFromText,
-            ) || ingredientLookupTargetFromText;
-          const assistantText =
-            ctx.lang === 'CN'
-              ? `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
-              : `I generated a 1-minute ingredient report for ${ingredientName}.`;
           requestMessage = 'ingredient_text_lookup_report';
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(assistantText),
-            suggested_chips: [],
-            cards: [
-              {
-                card_id: `ingredient_report_${ctx.request_id}`,
-                type: 'aurora_ingredient_report',
-                payload: reportPayload,
-              },
-            ],
-            session_patch: researchJobId
-              ? attachIngredientRouteMetaToSessionPatch(
-                  {
-                    ...sessionPatch,
-                    meta: {
-                      ...(sessionPatch && sessionPatch.meta && typeof sessionPatch.meta === 'object' && !Array.isArray(sessionPatch.meta)
-                        ? sessionPatch.meta
-                        : {}),
-                      ingredient_research_job_id: researchJobId,
-                    },
-                  },
-                  { queryFirstApplied: true, routeSource: 'text' },
-                )
-              : sessionPatch,
-            events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_text_lookup_report' })],
+          const envelope = await buildIngredientLookupEnvelope({
+            lookupTarget: ingredientLookupTargetFromText,
+            routeSource: 'text',
+            queryFirstApplied: true,
+            reasonTag: 'ingredient_text_lookup_report',
+            explicitRouteReasons: [
+              'text_query_routed',
+              ingredientEntityMatch.entity_match_type === 'none' ? 'entity_fallback_from_text' : '',
+              ...ingredientRouteDecisionReasons,
+            ].filter(Boolean),
           });
-          return sendChatEnvelope(envelope);
+          if (envelope) return sendChatEnvelope(envelope);
         }
 
         const hubPayload = buildIngredientHubCardPayload({ language: ctx.lang });
@@ -41971,7 +43607,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestMessage = 'ingredient_text_query_hub';
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(assistantText),
-          suggested_chips: [],
+          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
           cards: [
             {
               card_id: `ingredient_hub_${ctx.request_id}`,
@@ -41979,11 +43615,12 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: hubPayload,
             },
           ],
-          session_patch: sessionPatch,
+          session_patch: attachIngredientContextMetaToSessionPatch(sessionPatch, ingredientRecoContext),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_text_query_hub' })],
         });
         return sendChatEnvelope(envelope);
       }
+
       const ingredientLookupTargetProvided =
         Boolean(ingredientLookupQuery) ||
         Boolean(ingredientLookupTargetFromText) ||
@@ -41993,6 +43630,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         !ingredientEntryRequested &&
         !ingredientByGoalRequested &&
         !ingredientLookupRequested &&
+        !ingredientResearchPollRequested &&
         !ingredientDiagnosisOptInRequested &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
@@ -42382,6 +44020,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const wantsProductRecommendations =
         !forceUpstreamAfterPendingAbandon &&
         allowRecoCards &&
+        (!looksLikeIngredientScienceIntent(message, normalizedActionPayload) || ingredientRecoOptInRequested) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         recoInteractionAllowed &&
@@ -42396,6 +44035,43 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
 
       if (wantsProductRecommendations) {
+        let recoIngredientContext = mergeIngredientRecoContextValue(
+          ingredientRecoContext,
+          ingredientRecoOptInRequested
+            ? {
+              query: pickFirstTrimmed(
+                ingredientActionData && ingredientActionData.ingredient_query,
+                ingredientActionData && ingredientActionData.ingredientQuery,
+                ingredientActionData && ingredientActionData.inci,
+                ingredientActionData && ingredientActionData.ingredient_name,
+              ),
+              goal: pickFirstTrimmed(
+                ingredientActionData && ingredientActionData.ingredient_goal,
+                ingredientActionData && ingredientActionData.ingredientGoal,
+                ingredientActionData && ingredientActionData.goal,
+              ),
+              sensitivity: pickFirstTrimmed(
+                ingredientActionData && ingredientActionData.ingredient_sensitivity,
+                ingredientActionData && ingredientActionData.ingredientSensitivity,
+                ingredientActionData && ingredientActionData.sensitivity,
+              ),
+              source: pickFirstTrimmed(
+                ingredientActionData && ingredientActionData.entry_source,
+                ingredientActionData && ingredientActionData.trigger_source,
+                'ingredient_reco_optin',
+              ),
+              updated_at_ms: Date.now(),
+            }
+            : null,
+        );
+        if (!recoIngredientContext) {
+          const lookupTargetFromRecoText = extractIngredientLookupTargetFromText(message, ctx.lang);
+          recoIngredientContext = mergeIngredientRecoContextValue(recoIngredientContext, {
+            query: lookupTargetFromRecoText,
+            source: lookupTargetFromRecoText ? 'text_reco' : '',
+            updated_at_ms: lookupTargetFromRecoText ? Date.now() : 0,
+          });
+        }
         recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
         recordAuroraRecoEntrySource({ source: recoEntrySourceDetail });
         const recoSafetyGate = resolveSafetyGateActionV2({
@@ -42711,60 +44387,41 @@ function mountAuroraBffRoutes(app, { logger }) {
         let alternativesDebug = null;
         let recoTimeoutDegraded = false;
         let upstreamFailureCode = '';
-        let matcherFallbackUsed = false;
-        let llmPrimaryUsed = false;
-        let recoSource = 'catalog_transient_fallback';
-        const recoContextIngredientQuery = pickFirstTrimmed(
-          ingredientLookupQuery,
-          ingredientLookupTargetFromText,
-          latestRecoContextFromSession && latestRecoContextFromSession.ingredient_query,
-        );
-        const recoContextGoal = pickFirstTrimmed(
-          ingredientGoalRequest && ingredientGoalRequest.goal,
-          latestRecoContextFromSession && latestRecoContextFromSession.goal,
-        );
-        const recoSeedMessage = shouldAutoRerunRecommendationsFromProfilePatch
-          ? pickFirstTrimmed(latestRecoContextFromSession && latestRecoContextFromSession.message, message)
-          : pickFirstTrimmed(message, latestRecoContextFromSession && latestRecoContextFromSession.message);
-        const recoRequestMessage = pickFirstTrimmed(
-          recoSeedMessage,
-          recoContextIngredientQuery
-            ? ctx.lang === 'CN'
-              ? `请基于成分“${recoContextIngredientQuery}”推荐护肤产品。`
-              : `Recommend skincare products around ingredient "${recoContextIngredientQuery}".`
-            : '',
-          recoContextGoal
-            ? ctx.lang === 'CN'
-              ? `请围绕“${recoContextGoal}”目标推荐护肤产品。`
-              : `Recommend skincare products focused on "${recoContextGoal}".`
-            : '',
-          ctx.lang === 'CN' ? '请根据我的情况推荐护肤产品。' : 'Recommend skincare products for my needs.',
-        );
-        try {
-          const upstreamReco = await withTimeout(
-            generateProductRecommendations({
-              ctx,
-              profile,
-              recentLogs,
-              message: recoRequestMessage,
-              includeAlternatives,
-              ingredientContext: ingredientRecoOptInRequested ? ingredientRecoContext : null,
-              debug: debugUpstream,
-              logger,
-              recoTriggerSource: recoEntrySourceDetail,
-              recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch,
-            }),
-            AURORA_BFF_CHAT_RECO_BUDGET_MS,
-            'AURORA_CHAT_RECO_BUDGET_TIMEOUT',
-          );
-          norm = upstreamReco.norm;
-          upstreamDebug = upstreamReco.upstreamDebug;
-          alternativesDebug = upstreamReco.alternativesDebug;
-          upstreamFailureCode = String(upstreamReco.upstreamFailureCode || '').trim().toUpperCase();
-        } catch (err) {
-          const transientCode = classifyRecoUpstreamFailureCode(err);
-          if (!(err && err.code === 'AURORA_CHAT_RECO_BUDGET_TIMEOUT') && !isTransientRecoUpstreamFailureCode(transientCode)) {
-            throw err;
+        if (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0) {
+          try {
+            const upstreamReco = await withTimeout(
+              generateProductRecommendations({
+                ctx,
+                profile,
+                recentLogs,
+                message,
+                ingredientContext: recoIngredientContext,
+                includeAlternatives,
+                debug: debugUpstream,
+                logger,
+              }),
+              AURORA_BFF_CHAT_RECO_BUDGET_MS,
+              'AURORA_CHAT_RECO_BUDGET_TIMEOUT',
+            );
+            norm = upstreamReco.norm;
+            upstreamDebug = upstreamReco.upstreamDebug;
+            alternativesDebug = upstreamReco.alternativesDebug;
+            upstreamFailureCode = String(upstreamReco.upstreamFailureCode || '').trim().toUpperCase();
+          } catch (err) {
+            const transientCode = classifyRecoUpstreamFailureCode(err);
+            if (!(err && err.code === 'AURORA_CHAT_RECO_BUDGET_TIMEOUT') && !isTransientRecoUpstreamFailureCode(transientCode)) {
+              throw err;
+            }
+            recoTimeoutDegraded = true;
+            logger?.warn(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                budget_ms: AURORA_BFF_CHAT_RECO_BUDGET_MS,
+                transient_code: transientCode || null,
+              },
+              'aurora bff: reco upstream timeout/transient failure, degraded to confidence_notice',
+            );
           }
           recoTimeoutDegraded = true;
           logger?.warn(
@@ -43055,6 +44712,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         const sessionPatch = nextState ? { next_state: nextState } : {};
+        if (recoIngredientContext) {
+          sessionPatch.meta = {
+            ...(sessionPatch.meta && typeof sessionPatch.meta === 'object' ? sessionPatch.meta : {}),
+            ingredient_context: recoIngredientContext,
+          };
+        }
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
           appendLatestRecoContextToSessionPatch(sessionPatch, {
             intent: 'reco_products',
@@ -43150,7 +44813,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           cards,
           session_patch: sessionPatch,
           events: [
-            makeEvent(ctx, 'value_moment', { kind: 'product_reco' }),
+            ...(hasRecs ? [makeEvent(ctx, 'value_moment', { kind: 'product_reco' })] : []),
             makeEvent(ctx, 'recos_requested', {
               explicit: true,
               source: recoSource,
@@ -43159,7 +44822,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               low_confidence: lowConfidenceArtifact,
               confidence_level: artifactConfidenceLevel,
               ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
-              ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
+              ...(!hasRecs ? { reason: 'artifact_missing' } : {}),
             }),
           ],
         });
@@ -43190,10 +44853,22 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordSessionPatchProfileEmitted({ changed: true });
         }
 
-        if (inDiagnosisFlow && missingCore.length && !ingredientDiagnosisRouteGuardActive) {
-          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
-          const chips = buildDiagnosisChips(ctx.lang, missingCore);
-          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+	        if (
+	          inDiagnosisFlow &&
+	          missingCore.length &&
+	          !(
+	            ingredientScienceIntentEffective &&
+	            (
+	              ingredientEntryRequested ||
+	              ingredientLookupRequested ||
+	              ingredientByGoalRequested ||
+	              ingredientTextTrigger
+	            )
+	          )
+	        ) {
+	          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
+	          const chips = buildDiagnosisChips(ctx.lang, missingCore);
+	          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(prompt),
@@ -44739,7 +46414,6 @@ const __internal = {
   __resetCallOpenAiJsonObjectForTest() {
     callOpenAiJsonObjectImpl = callOpenAiJsonObject;
   },
-  buildIngredientReportPayloadWithResearch,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };
