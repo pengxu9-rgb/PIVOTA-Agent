@@ -303,7 +303,7 @@ say "1) no-profile recommendation gate"
 capture_case "gate" "/v1/chat" "{\"message\":\"${MSG_GATE}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_gate"
 assert_no_banned_first_line "$CASE_gate" "$LANG_UPPER"
-assert_cards "$CASE_gate" "contains_any" "diagnosis_gate,product_verdict,confidence_notice,aurora_ingredient_report,ingredient_hub,nudge"
+assert_cards "$CASE_gate" "contains_any" "diagnosis_gate,recommendations,product_verdict,confidence_notice,aurora_ingredient_report,ingredient_hub,nudge"
 assert_cards "$CASE_gate" "contains_none" "recommendations"
 
 say "2) profile patch"
