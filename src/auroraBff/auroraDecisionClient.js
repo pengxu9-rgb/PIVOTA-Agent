@@ -11,7 +11,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs, headers } = {}) {
+async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs } = {}) {
   const maxRetries = Number.isFinite(retries) ? retries : 1;
   const delayMs = Number.isFinite(retryDelayMs) ? retryDelayMs : 200;
 
@@ -21,7 +21,6 @@ async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs, head
       const resp = await axios.post(url, body, {
         timeout: Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000,
         validateStatus: () => true,
-        ...(headers && typeof headers === 'object' ? { headers } : {}),
         ...getAxiosKeepAliveConfig(),
       });
       if (resp.status >= 200 && resp.status < 300) return resp;
@@ -1082,10 +1081,6 @@ async function auroraChat({
   debug,
   allow_recommendations,
   resume_context,
-  trace_id,
-  request_id,
-  prompt_hash,
-  prompt_template_id,
 } = {}) {
   const queryText = String(query || '');
   const resumePrefix = buildResumeContextPrefix(resume_context);
@@ -1106,23 +1101,8 @@ async function auroraChat({
   if (Array.isArray(messages) && messages.length) payload.messages = messages;
   if (typeof debug === 'boolean') payload.debug = debug;
   if (typeof allow_recommendations === 'boolean') payload.allow_recommendations = allow_recommendations;
-  if (trace_id) payload.parent_trace_id = trace_id;
-  if (request_id) payload.parent_request_id = request_id;
-  if (prompt_hash) payload.prompt_hash = prompt_hash;
-  if (prompt_template_id) payload.prompt_template_id = prompt_template_id;
-  const upstreamHeaders = {
-    ...(trace_id ? { 'X-Parent-Trace-Id': String(trace_id) } : {}),
-    ...(request_id ? { 'X-Parent-Request-Id': String(request_id) } : {}),
-    ...(prompt_hash ? { 'X-Prompt-Hash': String(prompt_hash) } : {}),
-    ...(prompt_template_id ? { 'X-Prompt-Template': String(prompt_template_id) } : {}),
-  };
   const normalizedRetries = Number.isFinite(Number(retries)) ? Math.max(0, Math.trunc(Number(retries))) : 1;
-  const resp = await postWithRetry(url, payload, {
-    timeoutMs,
-    retries: normalizedRetries,
-    retryDelayMs: 250,
-    headers: Object.keys(upstreamHeaders).length ? upstreamHeaders : undefined,
-  });
+  const resp = await postWithRetry(url, payload, { timeoutMs, retries: normalizedRetries, retryDelayMs: 250 });
   const data = resp && resp.data;
   return data && typeof data === 'object' ? data : { raw: data };
 }
