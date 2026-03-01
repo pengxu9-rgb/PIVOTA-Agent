@@ -102,6 +102,8 @@ const {
   recordAuroraSkinFallbackDeterministic,
   recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAltPrecheck,
+  observeAuroraRecoAltStageLatency,
   recordAuroraRecoEntrySource,
   recordAuroraRecoKbWrite,
   recordAuroraProfileAutoPatch,
@@ -1560,9 +1562,28 @@ const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
 })();
 
 const RECO_ALTERNATIVES_ANCHOR_PRECHECK_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHOR_PRECHECK_TIMEOUT_MS || 1000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1000;
-  return Math.max(300, Math.min(3000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHOR_PRECHECK_TIMEOUT_MS || 450);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 450;
+  return Math.max(200, Math.min(3000, v));
+})();
+
+const RECO_ALTERNATIVES_ANCHOR_PRECHECK_CIRCUIT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHOR_PRECHECK_CIRCUIT_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_ALTERNATIVES_ANCHOR_PRECHECK_CIRCUIT_OPEN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHOR_PRECHECK_CIRCUIT_OPEN_MS || 60000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 60000;
+  return Math.max(1000, Math.min(15 * 60 * 1000, v));
+})();
+
+const RECO_ALTERNATIVES_ANCHOR_PRECHECK_PROBE_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHOR_PRECHECK_PROBE_TIMEOUT_MS || 350);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 350;
+  return Math.max(150, Math.min(2000, v));
 })();
 
 const RECO_ALTERNATIVES_REFRESH_DELAY_MS = (() => {
@@ -1938,6 +1959,12 @@ const DUPE_DEEPSCAN_CACHE_TTL_MS = (() => {
 const dupeDeepscanCache = new Map();
 const recoAlternativesRefreshCache = new Map();
 const recoAlternativesRefreshInFlight = new Set();
+const recoAlternativesAnchorPrecheckCircuitState = {
+  open_until_ms: 0,
+  last_reason: null,
+  last_failure_at_ms: 0,
+};
+let recoAlternativesAnchorPrecheckProbeInFlight = false;
 const photoBytesCache = new Map();
 const pdpPrefetchRecentMap = new Map();
 const recoRecentExposureState = new Map();
@@ -2020,6 +2047,72 @@ function setRecoAlternativesRefreshCache(key, value) {
     if (!oldestKey) break;
     recoAlternativesRefreshCache.delete(oldestKey);
   }
+}
+
+function buildAlternativesAnchorPrecheckHints(productObj) {
+  const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : null;
+  if (!product) return null;
+  const precheckHints = {
+    ...(pickFirstTrimmed(product.brand) ? { brand: pickFirstTrimmed(product.brand) } : {}),
+    ...(pickFirstTrimmed(product.name, product.display_name, product.displayName)
+      ? { title: pickFirstTrimmed(product.name, product.display_name, product.displayName) }
+      : {}),
+  };
+  return Object.keys(precheckHints).length ? precheckHints : null;
+}
+
+function isRecoAlternativesAnchorPrecheckCircuitOpen(nowMs = Date.now()) {
+  if (!RECO_ALTERNATIVES_ANCHOR_PRECHECK_CIRCUIT_ENABLED) return false;
+  return Number(recoAlternativesAnchorPrecheckCircuitState.open_until_ms || 0) > nowMs;
+}
+
+function openRecoAlternativesAnchorPrecheckCircuit(reason) {
+  if (!RECO_ALTERNATIVES_ANCHOR_PRECHECK_CIRCUIT_ENABLED) return;
+  recoAlternativesAnchorPrecheckCircuitState.open_until_ms = Date.now() + RECO_ALTERNATIVES_ANCHOR_PRECHECK_CIRCUIT_OPEN_MS;
+  recoAlternativesAnchorPrecheckCircuitState.last_reason = String(reason || '').trim() || 'error';
+  recoAlternativesAnchorPrecheckCircuitState.last_failure_at_ms = Date.now();
+}
+
+function closeRecoAlternativesAnchorPrecheckCircuit() {
+  recoAlternativesAnchorPrecheckCircuitState.open_until_ms = 0;
+  recoAlternativesAnchorPrecheckCircuitState.last_reason = null;
+}
+
+function scheduleRecoAlternativesAnchorPrecheckProbe({
+  query,
+  lang,
+  productObj,
+  logger,
+} = {}) {
+  if (!RECO_ALTERNATIVES_ANCHOR_PRECHECK_CIRCUIT_ENABLED) return;
+  const queryText = String(query || '').trim();
+  if (!queryText || recoAlternativesAnchorPrecheckProbeInFlight) return;
+  recoAlternativesAnchorPrecheckProbeInFlight = true;
+  const probeHandle = setTimeout(async () => {
+    try {
+      const resolved = await resolveAvailabilityProductByLocalResolver({
+        query: queryText,
+        lang: String(lang || '').toLowerCase() === 'cn' ? 'cn' : 'en',
+        hints: buildAlternativesAnchorPrecheckHints(productObj),
+        timeoutMs: RECO_ALTERNATIVES_ANCHOR_PRECHECK_PROBE_TIMEOUT_MS,
+        logger,
+      });
+      const resolvedAnchor = extractAnchorIdFromProductLike(resolved && resolved.product);
+      const reasonCodeDetailed = mapResolveFailureCode({
+        resolveBody: resolved,
+        error: null,
+        detailed: true,
+      });
+      if (resolvedAnchor || reasonCodeDetailed === 'no_candidates') {
+        closeRecoAlternativesAnchorPrecheckCircuit();
+      }
+    } catch {
+      // keep circuit open on probe errors
+    } finally {
+      recoAlternativesAnchorPrecheckProbeInFlight = false;
+    }
+  }, 0);
+  if (probeHandle && typeof probeHandle.unref === 'function') probeHandle.unref();
 }
 
 function getAuroraUidFromReq(req) {
@@ -4392,7 +4485,7 @@ async function resolveAvailabilityProductByLocalResolver({
   const q = String(query || '').trim();
   if (!q) return { ok: false, reason: 'query_missing', product: null, resolve_reason_code: 'no_candidates', latency_ms: 0 };
   if (typeof resolveProductRefDirectImpl !== 'function') {
-    return { ok: false, reason: 'local_resolver_unavailable', product: null, resolve_reason_code: 'db_error', latency_ms: 0 };
+    return { ok: false, reason: 'local_resolver_unavailable', product: null, resolve_reason_code: 'db_not_configured', latency_ms: 0 };
   }
 
   const startedAt = Date.now();
@@ -26919,10 +27012,37 @@ function buildRecoResolveHints({ base, skuCandidate, rawProductId, rawMerchantId
   return hints;
 }
 
-function normalizeResolveReasonCode(raw, fallback = 'no_candidates') {
+function normalizeResolveReasonCodeDetailed(raw, fallback = 'no_candidates') {
   const code = String(raw || '').trim().toLowerCase();
-  if (code === 'db_error' || code === 'upstream_timeout' || code === 'no_candidates') return code;
+  if (!code) return fallback;
+  if (
+    code === 'db_error' ||
+    code === 'db_not_configured' ||
+    code === 'db_query_timeout' ||
+    code === 'db_unreachable' ||
+    code === 'db_schema_mismatch' ||
+    code === 'db_auth_failed' ||
+    code === 'products_cache_missing' ||
+    code === 'upstream_timeout' ||
+    code === 'rate_limited' ||
+    code === 'no_candidates'
+  ) {
+    return code;
+  }
+  if (code.startsWith('db_')) return 'db_error';
+  if (code.includes('timeout') || code.startsWith('upstream_')) return 'upstream_timeout';
+  if (code === 'upstream_status_429') return 'rate_limited';
+  if (code === 'not_found' || code === 'no_results') return 'no_candidates';
   return fallback;
+}
+
+function normalizeResolveReasonCode(raw, fallback = 'no_candidates') {
+  const detailed = normalizeResolveReasonCodeDetailed(raw, '');
+  if (!detailed) return fallback;
+  if (detailed === 'upstream_timeout') return 'upstream_timeout';
+  if (detailed === 'rate_limited') return 'upstream_timeout';
+  if (detailed === 'no_candidates') return 'no_candidates';
+  return 'db_error';
 }
 
 function normalizePdpOpenMode(raw, fallback = 'external') {
@@ -26938,10 +27058,18 @@ function normalizePdpOpenPath(raw, fallback = 'external') {
   return fallback;
 }
 
-function mapResolveFailureCode({ resolveBody, statusCode, error } = {}) {
-  const explicit = normalizeResolveReasonCode(
-    resolveBody?.reason_code || resolveBody?.reasonCode || resolveBody?.metadata?.resolve_reason_code,
-    '',
+function mapResolveFailureCode({ resolveBody, statusCode, error, detailed = false } = {}) {
+  const toOutput = (reasonCode) => {
+    if (!reasonCode) return '';
+    if (detailed) return normalizeResolveReasonCodeDetailed(reasonCode, '');
+    return normalizeResolveReasonCode(reasonCode, '');
+  };
+  const explicit = toOutput(
+    resolveBody?.reason_code ||
+      resolveBody?.reasonCode ||
+      resolveBody?.resolve_reason_code ||
+      resolveBody?.resolveReasonCode ||
+      resolveBody?.metadata?.resolve_reason_code,
   );
 
   const reason = String(resolveBody?.reason || '').trim().toLowerCase();
@@ -26949,35 +27077,63 @@ function mapResolveFailureCode({ resolveBody, statusCode, error } = {}) {
   const sourceReasons = sources
     .map((item) => String(item && item.reason ? item.reason : '').trim().toLowerCase())
     .filter(Boolean);
-  const sourceDerivedReason =
-    sourceReasons.some((r) => r.startsWith('db_') || r === 'products_cache_missing')
-      ? 'db_error'
-      : sourceReasons.some((r) => r.includes('timeout') || r.startsWith('upstream_'))
-        ? 'upstream_timeout'
-        : null;
+  if (explicit) return explicit;
 
-  if (explicit === 'db_error' || explicit === 'upstream_timeout') return explicit;
-  if (sourceDerivedReason) return sourceDerivedReason;
-  if (explicit === 'no_candidates') return explicit;
+  const sourcePriority = [
+    'db_not_configured',
+    'db_query_timeout',
+    'db_unreachable',
+    'db_schema_mismatch',
+    'db_auth_failed',
+    'products_cache_missing',
+    'db_error',
+    'rate_limited',
+    'upstream_timeout',
+    'no_candidates',
+  ];
+  if (reason === 'no_candidates' || reason === 'low_confidence' || reason === 'empty_query') return toOutput('no_candidates');
+  if (reason === 'rate_limited' || reason === 'upstream_status_429') return toOutput('rate_limited');
+  if (reason.startsWith('db_') || reason === 'products_cache_missing') return toOutput(reason);
+  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') {
+    return toOutput('upstream_timeout');
+  }
 
-  if (reason === 'no_candidates' || reason === 'low_confidence' || reason === 'empty_query') return 'no_candidates';
-  if (reason.startsWith('db_') || reason === 'products_cache_missing') return 'db_error';
-  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
-
-  if (sourceReasons.some((r) => r.startsWith('db_') || r === 'products_cache_missing')) return 'db_error';
-  if (sourceReasons.some((r) => r.includes('timeout') || r.startsWith('upstream_'))) return 'upstream_timeout';
+  const sourceNormalized = sourceReasons
+    .map((r) => normalizeResolveReasonCodeDetailed(r, ''))
+    .filter(Boolean);
+  if (sourceNormalized.length) {
+    for (const candidate of sourcePriority) {
+      if (sourceNormalized.includes(candidate)) return toOutput(candidate);
+    }
+    return toOutput(sourceNormalized[0]);
+  }
 
   const status = Number(statusCode || 0);
-  if (status >= 500 || status === 429) return 'upstream_timeout';
+  if (status === 429) return toOutput('rate_limited');
+  if (status >= 500) return toOutput('upstream_timeout');
 
   const errText = String(error?.code || error?.message || error || '').trim().toLowerCase();
   if (errText.includes('timeout') || errText.includes('econnaborted') || errText.includes('etimedout')) {
-    return 'upstream_timeout';
+    return toOutput('upstream_timeout');
+  }
+  if (errText.includes('429') || errText.includes('rate')) return toOutput('rate_limited');
+  if (errText.includes('db_not_configured')) return toOutput('db_not_configured');
+  if (errText.includes('db_query_timeout') || errText.includes('query canceled') || errText.includes('statement timeout')) {
+    return toOutput('db_query_timeout');
+  }
+  if (errText.includes('db_unreachable') || errText.includes('econnrefused') || errText.includes('no pg_hba')) {
+    return toOutput('db_unreachable');
+  }
+  if (errText.includes('db_schema_mismatch') || errText.includes('undefined table') || errText.includes('undefined column')) {
+    return toOutput('db_schema_mismatch');
+  }
+  if (errText.includes('db_auth_failed') || errText.includes('invalid_password') || errText.includes('password authentication failed')) {
+    return toOutput('db_auth_failed');
   }
   if (errText.includes('db_') || errText.includes('database') || errText.includes('postgres')) {
-    return 'db_error';
+    return toOutput('db_error');
   }
-  return 'no_candidates';
+  return toOutput('no_candidates');
 }
 
 function shouldAttemptLocalRecoFallback(reasonCode, error) {
@@ -32827,6 +32983,24 @@ async function fetchRecoAlternativesForProduct({
   logger,
   options,
 }) {
+  const totalStartedAt = Date.now();
+  let precheckLatencyMs = null;
+  let llmLatencyMs = null;
+  let mapLatencyMs = null;
+  const finalizeAlternativesResult = (result) => {
+    if (Number.isFinite(Number(precheckLatencyMs))) {
+      observeAuroraRecoAltStageLatency({ stage: 'precheck', latencyMs: Number(precheckLatencyMs) });
+    }
+    if (Number.isFinite(Number(llmLatencyMs))) {
+      observeAuroraRecoAltStageLatency({ stage: 'llm', latencyMs: Number(llmLatencyMs) });
+    }
+    if (Number.isFinite(Number(mapLatencyMs))) {
+      observeAuroraRecoAltStageLatency({ stage: 'map', latencyMs: Number(mapLatencyMs) });
+    }
+    observeAuroraRecoAltStageLatency({ stage: 'total', latencyMs: Date.now() - totalStartedAt });
+    return result;
+  };
+
   const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
   const disableFallback = opts.disable_fallback === true;
   const disableAsyncRefresh = opts.disable_async_refresh === true;
@@ -32850,7 +33024,7 @@ async function fetchRecoAlternativesForProduct({
   if (preferRefreshCache && refreshKey) {
     const cached = getRecoAlternativesRefreshCache(refreshKey);
     if (cached && Array.isArray(cached.alternatives) && cached.alternatives.length) {
-      return {
+      return finalizeAlternativesResult({
         ok: true,
         alternatives: cached.alternatives.slice(0, Math.max(1, Math.min(8, Number(maxTotal) || 6))),
         field_missing: [],
@@ -32861,13 +33035,14 @@ async function fetchRecoAlternativesForProduct({
         failure_class: null,
         attempt_count: 0,
         ...(cached.llm_trace ? { llm_trace: cached.llm_trace } : {}),
-      };
+      });
     }
   }
 
   if (!bestInput) {
+    recordAuroraRecoAltPrecheck({ outcome: 'failed', reason: 'anchor_missing_precheck' });
     recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
-    return {
+    return finalizeAlternativesResult({
       ok: false,
       alternatives: [],
       field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }],
@@ -32877,7 +33052,7 @@ async function fetchRecoAlternativesForProduct({
       refresh_after_ms: 0,
       failure_class: 'precheck_fail',
       attempt_count: 0,
-    };
+    });
   }
 
   const normalizeAlternativesSkinType = (raw) => {
@@ -33165,39 +33340,75 @@ async function fetchRecoAlternativesForProduct({
   const profileObj = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
     ? profileSummary
     : {};
+  const isDbPrecheckReason = (reasonCode) => {
+    const code = String(reasonCode || '').trim().toLowerCase();
+    return (
+      code === 'db_error' ||
+      code === 'db_not_configured' ||
+      code === 'db_query_timeout' ||
+      code === 'db_unreachable' ||
+      code === 'db_schema_mismatch' ||
+      code === 'db_auth_failed' ||
+      code === 'products_cache_missing'
+    );
+  };
 
   let anchorPrecheck = null;
   if (!anchor && !skipAnchorPrecheck) {
-    try {
-      const precheckStartedAt = Date.now();
-      const precheckHints = {
-        ...(pickFirstTrimmed(productObj?.brand) ? { brand: pickFirstTrimmed(productObj.brand) } : {}),
-        ...(pickFirstTrimmed(productObj?.name, productObj?.display_name, productObj?.displayName)
-          ? { title: pickFirstTrimmed(productObj?.name, productObj?.display_name, productObj?.displayName) }
-          : {}),
+    if (isRecoAlternativesAnchorPrecheckCircuitOpen()) {
+      precheckLatencyMs = 0;
+      const reason = String(recoAlternativesAnchorPrecheckCircuitState.last_reason || '').trim() || 'circuit_open';
+      anchorPrecheck = {
+        resolved: false,
+        reason,
+        latency_ms: 0,
+        continue_without_anchor: Boolean(bestInput),
+        circuit_open: true,
       };
+      recordAuroraRecoAltPrecheck({ outcome: 'skipped', reason: 'circuit_open' });
+      scheduleRecoAlternativesAnchorPrecheckProbe({
+        query: bestInput,
+        lang: ctx.lang,
+        productObj,
+        logger,
+      });
+      refreshKey = makeRecoAlternativesRefreshKey({
+        anchorId: null,
+        productInput: bestInput,
+        lang: ctx.lang,
+        maxTotal,
+      });
+    } else {
+    const precheckStartedAt = Date.now();
+    try {
+      const precheckHints = buildAlternativesAnchorPrecheckHints(productObj);
       const resolved = await resolveAvailabilityProductByLocalResolver({
         query: bestInput,
         lang: String(ctx.lang || '').toLowerCase() === 'cn' ? 'cn' : 'en',
-        hints: Object.keys(precheckHints).length ? precheckHints : null,
+        hints: precheckHints,
         timeoutMs: RECO_ALTERNATIVES_ANCHOR_PRECHECK_TIMEOUT_MS,
         logger,
       });
+      precheckLatencyMs = Date.now() - precheckStartedAt;
       const resolvedAnchor = extractAnchorIdFromProductLike(resolved && resolved.product);
-      const precheckReasonCode =
-        resolved && resolved.resolve_reason_code ? normalizeResolveReasonCode(resolved.resolve_reason_code, null) : null;
+      const precheckReasonCode = mapResolveFailureCode({
+        resolveBody: resolved,
+        detailed: true,
+      });
       const canProceedWithoutAnchor =
         Boolean(bestInput) &&
-        (precheckReasonCode === 'db_error' ||
+        (isDbPrecheckReason(precheckReasonCode) ||
           precheckReasonCode === 'upstream_timeout' ||
           precheckReasonCode === 'rate_limited');
       anchorPrecheck = {
         resolved: Boolean(resolvedAnchor),
-        reason: precheckReasonCode,
-        latency_ms: Date.now() - precheckStartedAt,
+        reason: resolvedAnchor ? 'resolved' : precheckReasonCode,
+        latency_ms: precheckLatencyMs,
         continue_without_anchor: Boolean(!resolvedAnchor && canProceedWithoutAnchor),
       };
       if (resolvedAnchor) {
+        closeRecoAlternativesAnchorPrecheckCircuit();
+        recordAuroraRecoAltPrecheck({ outcome: 'resolved', reason: 'resolved' });
         anchor = resolvedAnchor;
         refreshKey = makeRecoAlternativesRefreshKey({
           anchorId: anchor || null,
@@ -33206,6 +33417,10 @@ async function fetchRecoAlternativesForProduct({
           maxTotal,
         });
       } else if (canProceedWithoutAnchor) {
+        recordAuroraRecoAltPrecheck({ outcome: 'failed', reason: precheckReasonCode || 'db_error' });
+        if (isDbPrecheckReason(precheckReasonCode) || precheckReasonCode === 'upstream_timeout' || precheckReasonCode === 'rate_limited') {
+          openRecoAlternativesAnchorPrecheckCircuit(precheckReasonCode || 'db_error');
+        }
         refreshKey = makeRecoAlternativesRefreshKey({
           anchorId: null,
           productInput: bestInput,
@@ -33213,9 +33428,10 @@ async function fetchRecoAlternativesForProduct({
           maxTotal,
         });
       } else {
+        recordAuroraRecoAltPrecheck({ outcome: 'failed', reason: precheckReasonCode || 'anchor_missing_precheck' });
         recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
         if (disableFallback) {
-          return {
+          return finalizeAlternativesResult({
             ok: false,
             alternatives: [],
             field_missing: [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
@@ -33226,10 +33442,10 @@ async function fetchRecoAlternativesForProduct({
             failure_class: 'anchor_missing_precheck',
             attempt_count: 0,
             ...(debug ? { debug: { input: bestInput.slice(0, 200), anchor_id: null, anchor_precheck: anchorPrecheck, attempts: [] } } : {}),
-          };
+          });
         }
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
-        return {
+        return finalizeAlternativesResult({
           ok: true,
           alternatives: localFallback.alternatives,
           field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
@@ -33249,15 +33465,18 @@ async function fetchRecoAlternativesForProduct({
               },
             }
             : {}),
-        };
+        });
       }
     } catch (err) {
+      precheckLatencyMs = Number.isFinite(Number(precheckLatencyMs)) ? precheckLatencyMs : Date.now() - precheckStartedAt;
       anchorPrecheck = {
         resolved: false,
-        reason: 'anchor_precheck_error',
+        reason: 'error',
         error: err && err.message ? err.message : String(err),
         continue_without_anchor: Boolean(bestInput),
       };
+      recordAuroraRecoAltPrecheck({ outcome: 'error', reason: 'error' });
+      openRecoAlternativesAnchorPrecheckCircuit('error');
       if (bestInput) {
         refreshKey = makeRecoAlternativesRefreshKey({
           anchorId: null,
@@ -33272,7 +33491,7 @@ async function fetchRecoAlternativesForProduct({
         // Continue with anchorless LLM path when local precheck is unavailable.
       } else if (!disableFallback) {
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
-        return {
+        return finalizeAlternativesResult({
           ok: true,
           alternatives: localFallback.alternatives,
           field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
@@ -33292,9 +33511,9 @@ async function fetchRecoAlternativesForProduct({
               },
             }
             : {}),
-        };
+        });
       } else {
-        return {
+        return finalizeAlternativesResult({
           ok: false,
           alternatives: [],
           field_missing: [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
@@ -33314,9 +33533,12 @@ async function fetchRecoAlternativesForProduct({
               },
             }
             : {}),
-        };
+        });
       }
     }
+    }
+  } else if (anchor || skipAnchorPrecheck) {
+    recordAuroraRecoAltPrecheck({ outcome: 'skipped', reason: anchor ? 'anchor_supplied' : 'cache_hit' });
   }
 
   const prefix = buildContextPrefix({
@@ -33382,6 +33604,7 @@ async function fetchRecoAlternativesForProduct({
         prompt_template_id: traceSeed.template_id,
         ...(anchor ? { anchor_product_id: anchor } : {}),
         intent_hint: 'alternatives',
+        intent_contract: 'alternatives_strict_v1',
         disallow_clarify: true,
         required_structured_keys: ['alternatives'],
         allow_recommendations: true,
@@ -33411,6 +33634,7 @@ async function fetchRecoAlternativesForProduct({
         cache_hit: false,
       };
       lastLlmTrace = llmTrace;
+      llmLatencyMs = llmTrace.latency_ms;
     } catch (err) {
       lastError = err;
       const transientCode = classifyRecoUpstreamFailureCode(err);
@@ -33429,6 +33653,7 @@ async function fetchRecoAlternativesForProduct({
         error_class: llmOutcome,
       };
       lastLlmTrace = llmTrace;
+      llmLatencyMs = llmTrace.latency_ms;
       logger?.warn(
         {
           err: err && err.message ? err.message : String(err),
@@ -33471,25 +33696,37 @@ async function fetchRecoAlternativesForProduct({
       structured,
       answerJson,
     });
+    const mapStartedAtMs = Date.now();
     const attemptMapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
       lang: ctx.lang,
       maxTotal: maxTotal ?? 3,
     });
+    mapLatencyMs = Date.now() - mapStartedAtMs;
     const llmTrace = {
       ...traceSeed,
       latency_ms: Date.now() - startedAtMs,
       cache_hit: false,
     };
     lastLlmTrace = llmTrace;
+    llmLatencyMs = llmTrace.latency_ms;
 
     const isClarifyEmpty = String(lastIntent || '').trim().toLowerCase() === 'clarify' && attemptMapped.length === 0;
     if (attemptMapped.length > 0) {
       recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'success' });
       llmFailureClass = null;
     } else if (isClarifyEmpty) {
+      logger?.warn(
+        {
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          upstream_intent: lastIntent,
+          attempt: attempt.id,
+        },
+        'aurora bff: alternatives upstream returned clarify despite disallow_clarify',
+      );
       recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured_clarify' });
-      llmFailureClass = 'policy_skip';
-      lastLlmTrace = { ...llmTrace, error_class: 'policy_skip' };
+      llmFailureClass = 'empty_structured_clarify';
+      lastLlmTrace = { ...llmTrace, error_class: 'policy_skip', violation_code: 'clarify_disallowed' };
     } else {
       recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
       llmFailureClass = 'empty_structured';
@@ -33521,7 +33758,7 @@ async function fetchRecoAlternativesForProduct({
   }
 
   if (mapped.length) {
-    return {
+    return finalizeAlternativesResult({
       ok: true,
       alternatives: mapped,
       field_missing: [],
@@ -33554,18 +33791,46 @@ async function fetchRecoAlternativesForProduct({
         }
         : {}),
       ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
-    };
+    });
   }
 
   const fallbackReason = lastError
     ? 'upstream_error'
-    : llmFailureClass === 'policy_skip'
+    : llmFailureClass === 'empty_structured_clarify'
       ? 'upstream_missing_or_empty'
       : lastStructured
         ? 'upstream_missing_or_empty'
         : 'upstream_missing_or_unstructured';
+  if (llmFailureClass === 'empty_structured_clarify') {
+    return finalizeAlternativesResult({
+      ok: false,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: fallbackReason }],
+      source_mode: 'llm',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: 'empty_structured_clarify',
+      attempt_count: attemptDebug.length,
+      ...(debug
+        ? {
+          debug: {
+            input: bestInput.slice(0, 200),
+            anchor_id: anchor || null,
+            product_json_preview: productJson ? productJson.slice(0, 300) : null,
+            anchor_precheck: anchorPrecheck,
+            upstream_intent: lastIntent,
+            attempts: attemptDebug,
+            alternatives_raw_count: Array.isArray(lastAlternativesRaw) ? lastAlternativesRaw.length : 0,
+            alternatives_mapped_count: 0,
+          },
+        }
+        : {}),
+      ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
+    });
+  }
   if (disableFallback) {
-    return {
+    return finalizeAlternativesResult({
       ok: false,
       alternatives: [],
       field_missing: [{ field: 'alternatives', reason: fallbackReason }],
@@ -33588,7 +33853,7 @@ async function fetchRecoAlternativesForProduct({
         }
         : {}),
       ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
-    };
+    });
   }
 
   const localFallback = await buildLocalFallbackAlternatives({
@@ -33598,8 +33863,7 @@ async function fetchRecoAlternativesForProduct({
     !disableAsyncRefresh &&
     Boolean(anchor) &&
     Boolean(refreshKey) &&
-    (llmFailureClass === 'policy_skip' ||
-      llmFailureClass === 'timeout' ||
+    (llmFailureClass === 'timeout' ||
       llmFailureClass === 'provider_error' ||
       llmFailureClass === 'empty_structured' ||
       lastError);
@@ -33640,7 +33904,7 @@ async function fetchRecoAlternativesForProduct({
     if (refreshHandle && typeof refreshHandle.unref === 'function') refreshHandle.unref();
   }
 
-  return {
+  return finalizeAlternativesResult({
     ok: true,
     alternatives: localFallback.alternatives,
     field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: fallbackReason }],
@@ -33673,7 +33937,7 @@ async function fetchRecoAlternativesForProduct({
       }
       : {}),
     ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
-  };
+  });
 }
 
 async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, recentLogs, recommendations, debug, logger }) {

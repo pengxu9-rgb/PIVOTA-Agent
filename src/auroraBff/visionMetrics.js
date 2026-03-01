@@ -167,6 +167,8 @@ const auroraSkinMainlineProviderCounter = new Map();
 const auroraSkinFallbackDeterministicCounter = new Map();
 let auroraSkinShadowVerifyIsolatedWriteCount = 0;
 const auroraRecoLlmCallCounter = new Map();
+const auroraRecoAltPrecheckCounter = new Map();
+const auroraRecoAltStageLatencyByStage = new Map();
 const auroraRecoEntrySourceCounter = new Map();
 const auroraRecoKbWriteCounter = new Map();
 const auroraProfileAutoPatchCounter = new Map();
@@ -651,6 +653,43 @@ function normalizeAuroraRecoLlmCallOutcome(outcome) {
     return token;
   }
   return 'provider_error';
+}
+
+function normalizeAuroraRecoAltPrecheckOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'failed');
+  if (token === 'resolved' || token === 'skipped' || token === 'failed' || token === 'error') return token;
+  return 'failed';
+}
+
+function normalizeAuroraRecoAltPrecheckReason(reason) {
+  const token = cleanMetricToken(reason, 'unknown');
+  if (
+    token === 'resolved' ||
+    token === 'cache_hit' ||
+    token === 'circuit_open' ||
+    token === 'anchor_supplied' ||
+    token === 'anchor_missing_precheck' ||
+    token === 'db_not_configured' ||
+    token === 'db_query_timeout' ||
+    token === 'db_unreachable' ||
+    token === 'db_schema_mismatch' ||
+    token === 'db_auth_failed' ||
+    token === 'products_cache_missing' ||
+    token === 'db_error' ||
+    token === 'upstream_timeout' ||
+    token === 'rate_limited' ||
+    token === 'no_candidates' ||
+    token === 'error'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeAuroraRecoAltStage(stage) {
+  const token = cleanMetricToken(stage, 'total');
+  if (token === 'precheck' || token === 'llm' || token === 'map' || token === 'total') return token;
+  return 'total';
 }
 
 function normalizeAuroraRecoEntrySource(source) {
@@ -2192,6 +2231,41 @@ function recordAuroraRecoLlmCall({ stage, outcome, delta } = {}) {
   );
 }
 
+function recordAuroraRecoAltPrecheck({ outcome, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoAltPrecheckCounter,
+    {
+      outcome: normalizeAuroraRecoAltPrecheckOutcome(outcome),
+      reason: normalizeAuroraRecoAltPrecheckReason(reason),
+    },
+    amount,
+  );
+}
+
+function observeAuroraRecoAltStageLatency({ stage, latencyMs } = {}) {
+  const latency = Number(latencyMs);
+  if (!Number.isFinite(latency) || latency < 0) return;
+  const stageKey = normalizeAuroraRecoAltStage(stage);
+  let state = auroraRecoAltStageLatencyByStage.get(stageKey);
+  if (!state) {
+    state = {
+      count: 0,
+      sum: 0,
+      buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
+    };
+    auroraRecoAltStageLatencyByStage.set(stageKey, state);
+  }
+  state.count += 1;
+  state.sum += latency;
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    if (latency <= bucket) {
+      state.buckets.set(bucket, (state.buckets.get(bucket) || 0) + 1);
+    }
+  }
+}
+
 function recordAuroraRecoEntrySource({ source, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -2999,6 +3073,24 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_reco_llm_call_total counter');
   renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
 
+  lines.push('# HELP aurora_reco_alt_precheck_total Total alternatives anchor precheck outcomes grouped by outcome and reason.');
+  lines.push('# TYPE aurora_reco_alt_precheck_total counter');
+  renderCounter(lines, 'aurora_reco_alt_precheck_total', auroraRecoAltPrecheckCounter);
+
+  lines.push('# HELP aurora_reco_alt_stage_latency_ms Alternatives pipeline stage latency histogram by stage.');
+  lines.push('# TYPE aurora_reco_alt_stage_latency_ms histogram');
+  for (const [stage, state] of Array.from(auroraRecoAltStageLatencyByStage.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+    for (const bucket of LATENCY_BUCKETS_MS) {
+      const le = bucket === Infinity ? '+Inf' : String(bucket);
+      const value = state.buckets.get(bucket) || 0;
+      lines.push(
+        `aurora_reco_alt_stage_latency_ms_bucket{stage="${escapePromValue(stage)}",le="${le}"} ${value}`,
+      );
+    }
+    lines.push(`aurora_reco_alt_stage_latency_ms_sum{stage="${escapePromValue(stage)}"} ${state.sum}`);
+    lines.push(`aurora_reco_alt_stage_latency_ms_count{stage="${escapePromValue(stage)}"} ${state.count}`);
+  }
+
   lines.push('# HELP aurora_reco_entry_source_total Total recommendation entry counts by request source detail.');
   lines.push('# TYPE aurora_reco_entry_source_total counter');
   renderCounter(lines, 'aurora_reco_entry_source_total', auroraRecoEntrySourceCounter);
@@ -3337,6 +3429,8 @@ function resetVisionMetrics() {
   auroraSkinFallbackDeterministicCounter.clear();
   auroraSkinShadowVerifyIsolatedWriteCount = 0;
   auroraRecoLlmCallCounter.clear();
+  auroraRecoAltPrecheckCounter.clear();
+  auroraRecoAltStageLatencyByStage.clear();
   auroraRecoEntrySourceCounter.clear();
   auroraRecoKbWriteCounter.clear();
   auroraProfileAutoPatchCounter.clear();
@@ -3503,6 +3597,13 @@ function snapshotVisionMetrics() {
     auroraSkinFallbackDeterministic: Array.from(auroraSkinFallbackDeterministicCounter.entries()),
     auroraSkinShadowVerifyIsolatedWriteCount,
     auroraRecoLlmCall: Array.from(auroraRecoLlmCallCounter.entries()),
+    auroraRecoAltPrecheck: Array.from(auroraRecoAltPrecheckCounter.entries()),
+    auroraRecoAltStageLatency: Array.from(auroraRecoAltStageLatencyByStage.entries()).map(([stage, state]) => ({
+      stage,
+      count: state.count,
+      sum: state.sum,
+      buckets: Array.from(state.buckets.entries()),
+    })),
     auroraRecoEntrySource: Array.from(auroraRecoEntrySourceCounter.entries()),
     auroraRecoKbWrite: Array.from(auroraRecoKbWriteCounter.entries()),
     auroraProfileAutoPatch: Array.from(auroraProfileAutoPatchCounter.entries()),
@@ -3630,6 +3731,8 @@ module.exports = {
   recordAuroraSkinFallbackDeterministic,
   recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAltPrecheck,
+  observeAuroraRecoAltStageLatency,
   recordAuroraRecoEntrySource,
   recordAuroraRecoKbWrite,
   recordAuroraProfileAutoPatch,

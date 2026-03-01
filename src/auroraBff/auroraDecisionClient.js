@@ -1079,6 +1079,7 @@ async function auroraChat({
   anchor_product_id,
   anchor_product_url,
   intent_hint,
+  intent_contract,
   disallow_clarify,
   required_structured_keys,
   messages,
@@ -1107,6 +1108,7 @@ async function auroraChat({
   if (anchor_product_id) payload.anchor_product_id = anchor_product_id;
   if (anchor_product_url) payload.anchor_product_url = anchor_product_url;
   if (intent_hint) payload.intent_hint = intent_hint;
+  if (intent_contract) payload.intent_contract = intent_contract;
   if (typeof disallow_clarify === 'boolean') payload.disallow_clarify = disallow_clarify;
   if (Array.isArray(required_structured_keys) && required_structured_keys.length) {
     payload.required_structured_keys = required_structured_keys;
@@ -1121,6 +1123,7 @@ async function auroraChat({
   const upstreamHeaders = {
     ...(trace_id ? { 'X-Parent-Trace-Id': String(trace_id) } : {}),
     ...(request_id ? { 'X-Parent-Request-Id': String(request_id) } : {}),
+    ...(intent_contract ? { 'X-Intent-Contract': String(intent_contract) } : {}),
     ...(prompt_hash ? { 'X-Prompt-Hash': String(prompt_hash) } : {}),
     ...(prompt_template_id ? { 'X-Prompt-Template': String(prompt_template_id) } : {}),
   };
