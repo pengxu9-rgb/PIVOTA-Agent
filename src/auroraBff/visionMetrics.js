@@ -152,6 +152,7 @@ let actionCopyCount = 0;
 let retakeAfterModulesCount = 0;
 const auroraSkinFlowCounter = new Map();
 const auroraIngredientsFlowCounter = new Map();
+const auroraIngredientProviderCounter = new Map();
 const auroraIngredientsFirstAnswerLatency = {
   count: 0,
   sum: 0,
@@ -536,12 +537,19 @@ function normalizeAuroraIngredientsFlowStage(stage) {
     token === 'text_route_drift' ||
     token === 'mode_selected' ||
     token === 'answer_served' ||
-    token === 'research_requested' ||
-    token === 'research_completed' ||
-    token === 'research_provider_attempt' ||
-    token === 'research_provider_final' ||
+    token === 'text_query_routed' ||
+    token === 'text_route_drift' ||
     token === 'kb_hit' ||
     token === 'kb_miss' ||
+    token === 'research_requested' ||
+    token === 'research_completed' ||
+    token === 'research_error' ||
+    token === 'invalid_json' ||
+    token === 'empty_section_prevented' ||
+    token === 'duplicate_job_dedup' ||
+    token === 'rate_limited' ||
+    token === 'circuit_open' ||
+    token === 'card_render_drop' ||
     token === 'optin_diagnosis' ||
     token === 'reco_optin' ||
     token === 'unwanted_diagnosis'
@@ -557,10 +565,21 @@ function normalizeAuroraIngredientsFlowOutcome(outcome) {
   return 'hit';
 }
 
-function normalizeAuroraIngredientsFlowProvider(provider) {
-  const token = cleanMetricToken(provider, 'unknown');
-  if (token === 'gemini' || token === 'openai' || token === 'none' || token === 'unknown') return token;
-  return 'unknown';
+function normalizeAuroraIngredientProviderStage(stage) {
+  const token = cleanMetricToken(stage, 'attempt');
+  if (token === 'attempt' || token === 'final') return token;
+  return 'attempt';
+}
+
+function normalizeAuroraIngredientProvider(provider) {
+  const token = cleanMetricToken(provider, 'gemini');
+  if (token === 'gemini' || token === 'openai') return token;
+  return 'gemini';
+}
+
+function normalizeAuroraIngredientProviderOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'unknown');
+  return token || 'unknown';
 }
 
 function normalizeAuroraAnalysisSource(source) {
@@ -1976,6 +1995,20 @@ function recordAuroraIngredientsFlowMetric({ stage, outcome, hit, delta, provide
   );
 }
 
+function recordAuroraIngredientProviderMetric({ stage, provider, outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraIngredientProviderCounter,
+    {
+      stage: normalizeAuroraIngredientProviderStage(stage),
+      provider: normalizeAuroraIngredientProvider(provider),
+      outcome: normalizeAuroraIngredientProviderOutcome(outcome),
+    },
+    amount,
+  );
+}
+
 function observeAuroraIngredientsFirstAnswerLatency({ latencyMs } = {}) {
   const latency = Number(latencyMs);
   if (!Number.isFinite(latency) || latency < 0) return;
@@ -2758,6 +2791,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_ingredients_flow_total counter');
   renderCounter(lines, 'aurora_ingredients_flow_total', auroraIngredientsFlowCounter);
 
+  lines.push('# HELP aurora_ingredient_provider_total Aurora ingredient research provider attempts/finals by provider and outcome.');
+  lines.push('# TYPE aurora_ingredient_provider_total counter');
+  renderCounter(lines, 'aurora_ingredient_provider_total', auroraIngredientProviderCounter);
+
   lines.push('# HELP ingredients_first_answer_latency_ms Ingredient first-answer latency measured from ui events.');
   lines.push('# TYPE ingredients_first_answer_latency_ms histogram');
   for (const bucket of LATENCY_BUCKETS_MS) {
@@ -2839,10 +2876,25 @@ function renderVisionMetricsPrometheus() {
   const ingredientPlans = counterValueByLabels(auroraSkinFlowCounter, { stage: 'ingredient_plan', outcome: 'hit' });
   const analysisTimeoutDegraded = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_timeout_degraded', outcome: 'hit' });
   const ingredientEntries = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'entry_opened', outcome: 'hit' });
+  const ingredientAnswers = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'answer_served', outcome: 'hit' });
   const ingredientTextQueryRouted = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'text_query_routed', outcome: 'hit' });
   const ingredientTextRouteDrift = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'text_route_drift', outcome: 'hit' });
+  const ingredientKbHit = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'kb_hit', outcome: 'hit' });
+  const ingredientKbMiss = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'kb_miss', outcome: 'hit' });
+  const ingredientResearchRequested = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_requested', outcome: 'hit' });
+  const ingredientResearchCompleted = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_completed', outcome: 'hit' });
+  const ingredientResearchError = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_error', outcome: 'hit' });
+  const ingredientInvalidJson = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'invalid_json', outcome: 'hit' });
+  const ingredientEmptySectionPrevented = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'empty_section_prevented', outcome: 'hit' });
+  const ingredientDuplicateJobDedup = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'duplicate_job_dedup', outcome: 'hit' });
+  const ingredientCircuitOpen = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'circuit_open', outcome: 'hit' });
+  const ingredientCardRenderDrop = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'card_render_drop', outcome: 'hit' });
   const ingredientRecoOptin = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'reco_optin', outcome: 'hit' });
   const ingredientUnwantedDiagnosis = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'unwanted_diagnosis', outcome: 'hit' });
+  const ingredientProviderAttemptGemini = counterValueByLabels(auroraIngredientProviderCounter, {
+    stage: 'attempt',
+    provider: 'gemini',
+  });
 
   lines.push('# HELP aurora_skin_reco_generated_rate reco_generated / reco_request.');
   lines.push('# TYPE aurora_skin_reco_generated_rate gauge');
@@ -2884,10 +2936,52 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE ingredients_to_reco_optin_rate gauge');
   lines.push(`ingredients_to_reco_optin_rate ${ingredientEntries > 0 ? ingredientRecoOptin / ingredientEntries : 0}`);
 
-  lines.push('# HELP ingredients_text_route_drift_rate ingredient text-route drift / ingredient text query routes.');
+  lines.push('# HELP ingredients_text_route_drift_rate ingredient text-route drifts / ingredient text query-first routed.');
   lines.push('# TYPE ingredients_text_route_drift_rate gauge');
   lines.push(
     `ingredients_text_route_drift_rate ${ingredientTextQueryRouted > 0 ? ingredientTextRouteDrift / ingredientTextQueryRouted : 0}`,
+  );
+
+  lines.push('# HELP ingredient_kb_hit_rate ingredient KB hit / (hit + miss).');
+  lines.push('# TYPE ingredient_kb_hit_rate gauge');
+  lines.push(`ingredient_kb_hit_rate ${ingredientKbHit + ingredientKbMiss > 0 ? ingredientKbHit / (ingredientKbHit + ingredientKbMiss) : 0}`);
+
+  lines.push('# HELP ingredient_card_render_drop_rate ingredient card render drops / ingredient answers.');
+  lines.push('# TYPE ingredient_card_render_drop_rate gauge');
+  lines.push(`ingredient_card_render_drop_rate ${ingredientAnswers > 0 ? ingredientCardRenderDrop / ingredientAnswers : 0}`);
+
+  lines.push('# HELP ingredient_research_completion_rate ingredient deep-research completed / requested.');
+  lines.push('# TYPE ingredient_research_completion_rate gauge');
+  lines.push(
+    `ingredient_research_completion_rate ${ingredientResearchRequested > 0 ? ingredientResearchCompleted / ingredientResearchRequested : 0}`,
+  );
+
+  lines.push('# HELP ingredient_research_error_rate ingredient deep-research errors / requested.');
+  lines.push('# TYPE ingredient_research_error_rate gauge');
+  lines.push(
+    `ingredient_research_error_rate ${ingredientResearchRequested > 0 ? ingredientResearchError / ingredientResearchRequested : 0}`,
+  );
+
+  lines.push('# HELP gemini_circuit_open_rate ingredient provider circuit-open events / gemini attempts.');
+  lines.push('# TYPE gemini_circuit_open_rate gauge');
+  lines.push(
+    `gemini_circuit_open_rate ${ingredientProviderAttemptGemini > 0 ? ingredientCircuitOpen / ingredientProviderAttemptGemini : 0}`,
+  );
+
+  lines.push('# HELP invalid_json_rate ingredient invalid-json fallbacks / ingredient research requested.');
+  lines.push('# TYPE invalid_json_rate gauge');
+  lines.push(`invalid_json_rate ${ingredientResearchRequested > 0 ? ingredientInvalidJson / ingredientResearchRequested : 0}`);
+
+  lines.push('# HELP empty_section_prevented_rate ingredient minimal-card preventions / ingredient answers.');
+  lines.push('# TYPE empty_section_prevented_rate gauge');
+  lines.push(
+    `empty_section_prevented_rate ${ingredientAnswers > 0 ? ingredientEmptySectionPrevented / ingredientAnswers : 0}`,
+  );
+
+  lines.push('# HELP duplicate_job_dedup_rate ingredient deduped async research jobs / ingredient KB misses.');
+  lines.push('# TYPE duplicate_job_dedup_rate gauge');
+  lines.push(
+    `duplicate_job_dedup_rate ${ingredientKbMiss > 0 ? ingredientDuplicateJobDedup / ingredientKbMiss : 0}`,
   );
 
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
@@ -3038,6 +3132,7 @@ function resetVisionMetrics() {
   retakeAfterModulesCount = 0;
   auroraSkinFlowCounter.clear();
   auroraIngredientsFlowCounter.clear();
+  auroraIngredientProviderCounter.clear();
   auroraIngredientsFirstAnswerLatency.count = 0;
   auroraIngredientsFirstAnswerLatency.sum = 0;
   for (const key of auroraIngredientsFirstAnswerLatency.buckets.keys()) {
@@ -3195,6 +3290,7 @@ function snapshotVisionMetrics() {
     retakeAfterModulesCount,
     auroraSkinFlow: Array.from(auroraSkinFlowCounter.entries()),
     auroraIngredientsFlow: Array.from(auroraIngredientsFlowCounter.entries()),
+    auroraIngredientProvider: Array.from(auroraIngredientProviderCounter.entries()),
     auroraIngredientsFirstAnswerLatency: {
       count: auroraIngredientsFirstAnswerLatency.count,
       sum: auroraIngredientsFirstAnswerLatency.sum,
@@ -3317,6 +3413,7 @@ module.exports = {
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
   recordAuroraIngredientsFlowMetric,
+  recordAuroraIngredientProviderMetric,
   observeAuroraIngredientsFirstAnswerLatency,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
