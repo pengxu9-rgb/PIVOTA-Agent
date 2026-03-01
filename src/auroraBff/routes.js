@@ -1352,11 +1352,6 @@ const AURORA_INGREDIENT_LLM_REPORT_ENABLED = (() => {
   const raw = String(process.env.AURORA_INGREDIENT_LLM_REPORT_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
-const AURORA_INGREDIENT_LLM_REPORT_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_LLM_REPORT_TIMEOUT_MS || 2600);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2600;
-  return Math.max(800, Math.min(12000, v));
-})();
 const AURORA_INGREDIENT_LLM_REPORT_MAX_PRODUCTS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_LLM_REPORT_MAX_PRODUCTS || 5);
   const v = Number.isFinite(n) ? Math.trunc(n) : 5;
@@ -12902,6 +12897,7 @@ async function callOpenAiJsonObject({
     };
   }
 }
+let callOpenAiJsonObjectImpl = callOpenAiJsonObject;
 
 async function callGeminiJsonObject({
   model,
@@ -29711,6 +29707,76 @@ function buildIngredientLlmUserPrompt({ query, language = 'EN' } = {}) {
   );
 }
 
+function normalizeIngredientResearchErrorCode({ provider, reason, detail } = {}) {
+  const normalizedProvider = String(provider || '')
+    .trim()
+    .toLowerCase();
+  if (normalizedProvider !== 'gemini') return 'gemini_unknown';
+  const reasonText = String(reason || '')
+    .trim()
+    .toLowerCase();
+  const detailText = String(detail || '')
+    .trim()
+    .toLowerCase();
+  const merged = `${reasonText} ${detailText}`.trim();
+  if (
+    reasonText === 'gemini_json_timeout' ||
+    merged.includes('timeout') ||
+    merged.includes('timed out') ||
+    merged.includes('etimedout')
+  ) {
+    return 'gemini_timeout';
+  }
+  if (
+    merged.includes('invalid_api_key') ||
+    merged.includes('unauthorized') ||
+    merged.includes('permission') ||
+    merged.includes('forbidden') ||
+    merged.includes('auth') ||
+    merged.includes('status 401') ||
+    merged.includes(' 401')
+  ) {
+    return 'gemini_auth';
+  }
+  if (
+    merged.includes('rate_limited') ||
+    merged.includes('resource_exhausted') ||
+    merged.includes('too_many_requests') ||
+    merged.includes('quota') ||
+    merged.includes('status 429') ||
+    merged.includes(' 429')
+  ) {
+    return 'gemini_rate_limited';
+  }
+  if (reasonText === 'gemini_json_invalid' || merged.includes('invalid json') || merged.includes('malformed json')) {
+    return 'gemini_invalid_json';
+  }
+  return 'gemini_unknown';
+}
+
+function buildIngredientResearchAttempt({ provider, llmResult } = {}) {
+  const normalizedProvider = String(provider || '')
+    .trim()
+    .toLowerCase();
+  const safeProvider = normalizedProvider === 'gemini' || normalizedProvider === 'openai' ? normalizedProvider : 'unknown';
+  if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
+    return {
+      provider: safeProvider,
+      outcome: 'ok',
+      reason_code: 'ok',
+    };
+  }
+  return {
+    provider: safeProvider,
+    outcome: 'error',
+    reason_code: normalizeIngredientResearchErrorCode({
+      provider: safeProvider,
+      reason: llmResult && llmResult.reason,
+      detail: llmResult && llmResult.detail,
+    }),
+  };
+}
+
 function mergeIngredientReportWithLlm(basePayload, llmPayload, language = 'EN') {
   const base = isPlainObject(basePayload) ? basePayload : {};
   const llm = isPlainObject(llmPayload) ? llmPayload : {};
@@ -29774,20 +29840,29 @@ async function buildIngredientReportPayloadWithResearch({ language, query } = {}
     return {
       ...basePayload,
       research_status: 'disabled',
+      research_provider: null,
+      research_attempts: [],
       updated_at_ms: Date.now(),
     };
   }
 
-  const primaryProvider = resolveQaSingleProvider(null);
-  const providers = [];
-  if (resolveQaProviderAvailability(primaryProvider)) providers.push(primaryProvider);
-  if (primaryProvider !== 'openai' && resolveQaProviderAvailability('openai')) providers.push('openai');
-  if (primaryProvider !== 'gemini' && resolveQaProviderAvailability('gemini')) providers.push('gemini');
+  const providers = pickQaProvidersForMode({
+    mode: AURORA_LLM_QA_MODE,
+    singleProvider: AURORA_LLM_SINGLE_PROVIDER,
+    allowOpenAiFallback: false,
+  }).filter((provider) => provider === 'gemini');
   if (!providers.length) {
+    recordAuroraIngredientsFlowMetric({
+      stage: 'research_provider_final',
+      provider: 'none',
+      hit: false,
+    });
     recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
     return {
       ...basePayload,
       research_status: 'provider_unavailable',
+      research_provider: null,
+      research_attempts: [],
       research_error_code: 'provider_unavailable',
       updated_at_ms: Date.now(),
     };
@@ -29796,46 +29871,71 @@ async function buildIngredientReportPayloadWithResearch({ language, query } = {}
   recordAuroraIngredientsFlowMetric({ stage: 'research_requested', hit: true });
   const systemPrompt = buildIngredientLlmSystemPrompt(language);
   const userPrompt = buildIngredientLlmUserPrompt({ query: ingredientQuery, language });
+  const researchAttempts = [];
   let successPayload = null;
-  let lastErrorCode = 'unknown';
+  let successProvider = null;
+  let finalErrorCode = 'gemini_unknown';
+  let finalProvider = 'gemini';
 
   for (const provider of providers) {
-    const callFn = provider === 'openai' ? callOpenAiJsonObject : callGeminiJsonObjectImpl;
+    const callFn = provider === 'openai' ? callOpenAiJsonObjectImpl : callGeminiJsonObjectImpl;
     const model = provider === 'openai' ? ANALYSIS_STORY_MODEL_OPENAI : ANALYSIS_STORY_MODEL_GEMINI;
     const llmResult = await callFn({
       model,
       systemPrompt,
       userPrompt,
-      timeoutMs: AURORA_INGREDIENT_LLM_REPORT_TIMEOUT_MS,
+      // Ingredient deep-research removes local short timeout to avoid false fallback under Gemini latency spikes.
+      timeoutMs: null,
       maxTokens: 1200,
       temperature: 0.1,
     });
+    const attempt = buildIngredientResearchAttempt({ provider, llmResult });
+    researchAttempts.push(attempt);
+    recordAuroraIngredientsFlowMetric({
+      stage: 'research_provider_attempt',
+      provider,
+      hit: attempt.outcome === 'ok',
+    });
     if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
       successPayload = llmResult.json;
+      successProvider = provider;
       break;
     }
-    lastErrorCode = pickFirstTrimmed(
-      llmResult && llmResult.reason,
-      llmResult && llmResult.error,
-      llmResult && llmResult.detail,
-      `${provider}_failed`,
-    );
+    finalErrorCode = attempt.reason_code || 'gemini_unknown';
+    finalProvider = provider;
   }
 
   if (!successPayload) {
+    recordAuroraIngredientsFlowMetric({
+      stage: 'research_provider_final',
+      provider: finalProvider || 'none',
+      hit: false,
+    });
     recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: false });
     recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
     return {
       ...basePayload,
       research_status: 'fallback',
-      research_error_code: String(lastErrorCode || 'unknown').slice(0, 80),
+      research_provider: finalProvider || null,
+      research_attempts: researchAttempts.slice(0, 3),
+      research_error_code: String(finalErrorCode || 'gemini_unknown').slice(0, 80),
       updated_at_ms: Date.now(),
     };
   }
 
+  recordAuroraIngredientsFlowMetric({
+    stage: 'research_provider_final',
+    provider: successProvider || 'none',
+    hit: true,
+  });
   recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: true });
   recordAuroraIngredientsFlowMetric({ stage: 'kb_hit', hit: true });
-  return mergeIngredientReportWithLlm(basePayload, successPayload, language);
+  const mergedPayload = mergeIngredientReportWithLlm(basePayload, successPayload, language);
+  return {
+    ...mergedPayload,
+    research_provider: successProvider || null,
+    research_attempts: researchAttempts.slice(0, 3),
+  };
 }
 
 function messageContainsSpecificIngredientScienceTarget(message) {
@@ -44214,6 +44314,13 @@ const __internal = {
   __resetCallGeminiJsonObjectForTest() {
     callGeminiJsonObjectImpl = callGeminiJsonObject;
   },
+  __setCallOpenAiJsonObjectForTest(fn) {
+    callOpenAiJsonObjectImpl = typeof fn === 'function' ? fn : callOpenAiJsonObject;
+  },
+  __resetCallOpenAiJsonObjectForTest() {
+    callOpenAiJsonObjectImpl = callOpenAiJsonObject;
+  },
+  buildIngredientReportPayloadWithResearch,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };
