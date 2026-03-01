@@ -674,29 +674,29 @@ const PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
   'false';
 const PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED =
   String(process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED || 'true').toLowerCase() === 'true';
-const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
-  const raw = String(
-    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY || 'supplement_internal_first',
-  )
+function normalizeExternalSeedStrategy(value, fallback = 'unified_relevance') {
+  const token = String(value || '')
     .trim()
     .toLowerCase();
-  return ['legacy', 'supplement_internal_first', 'unified_relevance'].includes(raw)
-    ? raw
-    : 'supplement_internal_first';
+  if (token === 'supplement_internal_first') return 'unified_relevance';
+  if (token === 'legacy' || token === 'unified_relevance') return token;
+  return fallback;
+}
+const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
+  return normalizeExternalSeedStrategy(
+    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY || 'unified_relevance',
+    'unified_relevance',
+  );
 })();
 const PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED =
   String(process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED || 'true')
     .trim()
     .toLowerCase() === 'true';
 const PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY = (() => {
-  const raw = String(
-    process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY || 'supplement_internal_first',
-  )
-    .trim()
-    .toLowerCase();
-  return ['legacy', 'supplement_internal_first', 'unified_relevance'].includes(raw)
-    ? raw
-    : 'supplement_internal_first';
+  return normalizeExternalSeedStrategy(
+    process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY || 'unified_relevance',
+    'unified_relevance',
+  );
 })();
 const CREATOR_CACHE_SHORT_CIRCUIT_ENABLED =
   String(process.env.CREATOR_CACHE_SHORT_CIRCUIT_ENABLED || 'false').toLowerCase() === 'true';
@@ -2850,6 +2850,16 @@ function buildSearchRouteHealth({
   externalSeedBrandRelevantRows = 0,
   externalSeedBroadFallbackUsed = false,
   externalSeedBroadScopeRows = 0,
+  internalRawCount = 0,
+  externalRawCount = 0,
+  mergedPreLimitCount = 0,
+  primaryQualityGatePassed = true,
+  primaryQualityScore = null,
+  lowQualityNonemptyDetected = false,
+  supplementAttempted = false,
+  supplementSkipReason = null,
+  retryAttemptCount = 0,
+  finalReturnedCount = 0,
 }) {
   return {
     orchestrator_path: orchestratorPath ? String(orchestratorPath) : 'external_invoke_route',
@@ -2882,6 +2892,34 @@ function buildSearchRouteHealth({
     external_seed_broad_scope_rows: Math.max(
       0,
       Number.isFinite(Number(externalSeedBroadScopeRows)) ? Number(externalSeedBroadScopeRows) : 0,
+    ),
+    internal_raw_count: Math.max(
+      0,
+      Number.isFinite(Number(internalRawCount)) ? Number(internalRawCount) : 0,
+    ),
+    external_raw_count: Math.max(
+      0,
+      Number.isFinite(Number(externalRawCount)) ? Number(externalRawCount) : 0,
+    ),
+    merged_pre_limit_count: Math.max(
+      0,
+      Number.isFinite(Number(mergedPreLimitCount)) ? Number(mergedPreLimitCount) : 0,
+    ),
+    primary_quality_gate_passed: Boolean(primaryQualityGatePassed),
+    primary_quality_score:
+      Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
+        ? Math.max(0, Math.min(1, Number(primaryQualityScore)))
+        : null,
+    low_quality_nonempty_detected: Boolean(lowQualityNonemptyDetected),
+    supplement_attempted: Boolean(supplementAttempted),
+    supplement_skip_reason: supplementSkipReason ? String(supplementSkipReason) : null,
+    retry_attempt_count: Math.max(
+      0,
+      Number.isFinite(Number(retryAttemptCount)) ? Number(retryAttemptCount) : 0,
+    ),
+    final_returned_count: Math.max(
+      0,
+      Number.isFinite(Number(finalReturnedCount)) ? Number(finalReturnedCount) : 0,
     ),
     ambiguity_score_pre: Number.isFinite(Number(ambiguityScorePre))
       ? Math.max(0, Math.min(1, Number(ambiguityScorePre)))
@@ -3146,6 +3184,78 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       ? routeHealth.external_seed_broad_scope_rows
       : metadata.external_seed_broad_scope_rows,
   );
+  routeHealth.internal_raw_count = intNonNegative(
+    routeHealth.internal_raw_count != null
+      ? routeHealth.internal_raw_count
+      : metadata.internal_raw_count != null
+      ? metadata.internal_raw_count
+      : metadata?.source_breakdown?.internal_count,
+  );
+  routeHealth.external_raw_count = intNonNegative(
+    routeHealth.external_raw_count != null
+      ? routeHealth.external_raw_count
+      : metadata.external_raw_count != null
+      ? metadata.external_raw_count
+      : metadata?.source_breakdown?.external_seed_count,
+  );
+  routeHealth.merged_pre_limit_count = intNonNegative(
+    routeHealth.merged_pre_limit_count != null
+      ? routeHealth.merged_pre_limit_count
+      : metadata.merged_pre_limit_count != null
+      ? metadata.merged_pre_limit_count
+      : body?.total,
+  );
+  const primaryQualityScoreRaw =
+    routeHealth.primary_quality_score != null
+      ? routeHealth.primary_quality_score
+      : metadata.primary_quality_score;
+  routeHealth.primary_quality_score =
+    Number.isFinite(Number(primaryQualityScoreRaw)) && Number(primaryQualityScoreRaw) >= 0
+      ? Math.max(0, Math.min(1, Number(primaryQualityScoreRaw)))
+      : null;
+  routeHealth.low_quality_nonempty_detected = Boolean(
+    routeHealth.low_quality_nonempty_detected != null
+      ? routeHealth.low_quality_nonempty_detected
+      : metadata.low_quality_nonempty_detected,
+  );
+  routeHealth.primary_quality_gate_passed = Boolean(
+    routeHealth.primary_quality_gate_passed != null
+      ? routeHealth.primary_quality_gate_passed
+      : metadata.primary_quality_gate_passed != null
+      ? metadata.primary_quality_gate_passed
+      : !routeHealth.low_quality_nonempty_detected,
+  );
+  routeHealth.supplement_attempted = Boolean(
+    routeHealth.supplement_attempted != null
+      ? routeHealth.supplement_attempted
+      : metadata.supplement_attempted != null
+      ? metadata.supplement_attempted
+      : metadata?.search_stage_b?.attempted,
+  );
+  routeHealth.supplement_skip_reason =
+    routeHealth.supplement_skip_reason != null
+      ? String(routeHealth.supplement_skip_reason || '').trim() || null
+      : String(
+          metadata.supplement_skip_reason != null
+            ? metadata.supplement_skip_reason
+            : metadata?.search_stage_b?.reason || '',
+        ).trim() || null;
+  routeHealth.retry_attempt_count = intNonNegative(
+    routeHealth.retry_attempt_count != null
+      ? routeHealth.retry_attempt_count
+      : metadata.retry_attempt_count != null
+      ? metadata.retry_attempt_count
+      : metadata?.fallback_strategy?.secondary_attempt_count,
+  );
+  routeHealth.final_returned_count = intNonNegative(
+    routeHealth.final_returned_count != null
+      ? routeHealth.final_returned_count
+      : metadata.final_returned_count != null
+      ? metadata.final_returned_count
+      : Array.isArray(body?.products)
+      ? body.products.length
+      : 0,
+  );
   const fallbackReason =
     routeHealth.fallback_reason != null
       ? routeHealth.fallback_reason
@@ -3165,6 +3275,16 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   metadata.external_seed_brand_relevant_rows = routeHealth.external_seed_brand_relevant_rows;
   metadata.external_seed_broad_fallback_used = routeHealth.external_seed_broad_fallback_used;
   metadata.external_seed_broad_scope_rows = routeHealth.external_seed_broad_scope_rows;
+  metadata.internal_raw_count = routeHealth.internal_raw_count;
+  metadata.external_raw_count = routeHealth.external_raw_count;
+  metadata.merged_pre_limit_count = routeHealth.merged_pre_limit_count;
+  metadata.primary_quality_gate_passed = routeHealth.primary_quality_gate_passed;
+  metadata.primary_quality_score = routeHealth.primary_quality_score;
+  metadata.low_quality_nonempty_detected = routeHealth.low_quality_nonempty_detected;
+  metadata.supplement_attempted = routeHealth.supplement_attempted;
+  metadata.supplement_skip_reason = routeHealth.supplement_skip_reason;
+  metadata.retry_attempt_count = routeHealth.retry_attempt_count;
+  metadata.final_returned_count = routeHealth.final_returned_count;
   metadata.fallback_reason = fallbackReason;
   if (existingSearchDecision) {
     existingSearchDecision.query_semantic_class = routeHealth.query_semantic_class;
@@ -3493,8 +3613,11 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
       ? explicitAllowExternalSeed
       : (isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true);
   const externalSeedStrategy =
-    explicitExternalSeedStrategy ||
-    (isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'unified_relevance');
+    normalizeExternalSeedStrategy(
+      explicitExternalSeedStrategy ||
+        (isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'unified_relevance'),
+      isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'unified_relevance',
+    );
   return {
     ...params,
     allow_external_seed: allowExternalSeed,
@@ -4448,6 +4571,31 @@ function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
             ? 'domain_entropy_above_threshold'
             : 'cross_domain_ratio_above_threshold',
   };
+}
+
+function computePrimaryQualityScore(gateResult) {
+  if (!gateResult || typeof gateResult !== 'object') return null;
+  const count = Math.max(0, Number(gateResult.count || 0) || 0);
+  const minCount = Math.max(1, Number(gateResult.min_count || 1) || 1);
+  const countScore = Math.max(0, Math.min(1, count / minCount));
+  const anchorScore = Math.max(0, Math.min(1, Number(gateResult.anchor_ratio || 0) || 0));
+  const entropyTopK = Math.max(0, Number(gateResult.domain_entropy_topk || 0) || 0);
+  const maxEntropy = Math.max(0.01, Number(gateResult.max_domain_entropy || 1) || 1);
+  const entropyScore = Math.max(0, Math.min(1, 1 - entropyTopK / maxEntropy));
+  const crossDomainRatioRaw = gateResult.cross_domain_ratio;
+  const maxCrossDomain = Math.max(
+    0.01,
+    Number(gateResult.max_cross_domain_ratio == null ? 1 : gateResult.max_cross_domain_ratio) || 1,
+  );
+  const crossDomainScore =
+    crossDomainRatioRaw == null
+      ? 1
+      : Math.max(
+          0,
+          Math.min(1, 1 - (Math.max(0, Number(crossDomainRatioRaw) || 0) / maxCrossDomain)),
+        );
+  const composite = (countScore + anchorScore + entropyScore + crossDomainScore) / 4;
+  return Math.max(0, Math.min(1, Number(composite.toFixed(3)) || 0));
 }
 
 function shouldFallbackProxySearch(normalized, statusCode) {
@@ -9925,12 +10073,95 @@ async function proxyAgentSearchToBackend(req, res) {
 	    } = {},
 	  ) => {
     const latencyMs = Math.max(0, Date.now() - startedAtMs);
+    const intNonNegative = (value, fallback = 0) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : Math.max(0, Math.floor(fallback));
+    };
+    const responseProducts = Array.isArray(body?.products) ? body.products : [];
+    const responseMetadata =
+      body?.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+        ? body.metadata
+        : {};
+    const sourceBreakdown =
+      responseMetadata.source_breakdown &&
+      typeof responseMetadata.source_breakdown === 'object' &&
+      !Array.isArray(responseMetadata.source_breakdown)
+        ? responseMetadata.source_breakdown
+        : {};
+    const retryAttemptCount = intNonNegative(
+      fallbackStrategy?.secondary_attempt_count != null
+        ? fallbackStrategy.secondary_attempt_count
+        : Array.isArray(fallbackStrategy?.secondary_attempts)
+        ? fallbackStrategy.secondary_attempts.length
+        : responseMetadata.retry_attempt_count,
+      0,
+    );
+    const primaryQualityScore =
+      Number.isFinite(Number(fallbackStrategy?.primary_quality_score)) &&
+      Number(fallbackStrategy?.primary_quality_score) >= 0
+        ? Math.max(0, Math.min(1, Number(fallbackStrategy.primary_quality_score)))
+        : Number.isFinite(Number(responseMetadata.primary_quality_score)) &&
+          Number(responseMetadata.primary_quality_score) >= 0
+        ? Math.max(0, Math.min(1, Number(responseMetadata.primary_quality_score)))
+        : null;
+    const lowQualityNonemptyDetected = Boolean(
+      fallbackStrategy?.low_quality_nonempty_detected || responseMetadata.low_quality_nonempty_detected,
+    );
+    const primaryQualityGatePassed =
+      fallbackStrategy?.primary_quality_gate_passed != null
+        ? Boolean(fallbackStrategy.primary_quality_gate_passed)
+        : responseMetadata.primary_quality_gate_passed != null
+        ? Boolean(responseMetadata.primary_quality_gate_passed)
+        : !lowQualityNonemptyDetected;
+    const supplementAttempted = Boolean(
+      fallbackStrategy?.secondary_attempted || responseMetadata?.search_stage_b?.attempted,
+    );
+    const supplementSkipReason =
+      String(responseMetadata.supplement_skip_reason || '').trim() ||
+      String(responseMetadata?.search_stage_b?.reason || '').trim() ||
+      (supplementAttempted
+        ? null
+        : primaryQualityGatePassed
+        ? 'not_needed'
+        : String(fallbackStrategy?.secondary_skipped_reason || '').trim() || 'quality_gate_forced_but_skipped');
     let out = withSearchDiagnostics(body, {
       route_health: buildSearchRouteHealth({
         primaryPathUsed,
         primaryLatencyMs: latencyMs,
         fallbackTriggered,
         fallbackReason,
+        internalRawCount: intNonNegative(
+          responseMetadata.internal_raw_count != null
+            ? responseMetadata.internal_raw_count
+            : sourceBreakdown.internal_count,
+          responseProducts.filter((product) => !isExternalSeedProduct(product)).length,
+        ),
+        externalRawCount: intNonNegative(
+          responseMetadata.external_raw_count != null
+            ? responseMetadata.external_raw_count
+            : sourceBreakdown.external_seed_count,
+          responseProducts.filter((product) => isExternalSeedProduct(product)).length,
+        ),
+        mergedPreLimitCount: intNonNegative(
+          responseMetadata.merged_pre_limit_count != null
+            ? responseMetadata.merged_pre_limit_count
+            : responseMetadata.total != null
+            ? responseMetadata.total
+            : body?.total,
+          responseProducts.length,
+        ),
+        primaryQualityGatePassed,
+        primaryQualityScore,
+        lowQualityNonemptyDetected,
+        supplementAttempted,
+        supplementSkipReason,
+        retryAttemptCount,
+        finalReturnedCount: intNonNegative(
+          responseMetadata.final_returned_count != null
+            ? responseMetadata.final_returned_count
+            : responseProducts.length,
+          responseProducts.length,
+        ),
       }),
       search_trace: buildSearchTrace({
         traceId,
@@ -10149,6 +10380,18 @@ async function proxyAgentSearchToBackend(req, res) {
       const usableCount = countUsableSearchProducts(normalizedResponse?.products);
       const unusable = Boolean(queryText) && shouldFallbackProxySearch(normalizedResponse, response.status);
       const relevant = queryText ? isProxySearchFallbackRelevant(normalizedResponse, queryText) : true;
+      const primaryQualityGate = evaluateCacheQualityGate({
+        products: normalizedResponse?.products,
+        queryText,
+        intent: null,
+        queryClass: proxySearchQueryClass,
+      });
+      const primaryQualityScore = computePrimaryQualityScore(primaryQualityGate);
+      const lowQualityNonempty =
+        Boolean(queryText) &&
+        usableCount > 0 &&
+        primaryQualityGate.enabled &&
+        !primaryQualityGate.accepted;
       const monocultureSignal = detectAuroraExternalSeedMonoculture({
         normalized: normalizedResponse,
         queryText,
@@ -10169,7 +10412,10 @@ async function proxyAgentSearchToBackend(req, res) {
         monoculture_signal: monocultureSignal,
         monoculture,
         irrelevant,
-        should_fallback: unusable || irrelevant,
+        primary_quality_gate: primaryQualityGate,
+        primary_quality_score: primaryQualityScore,
+        low_quality_nonempty: lowQualityNonempty,
+        should_fallback: unusable || irrelevant || lowQualityNonempty,
       };
     };
 
@@ -10290,12 +10536,33 @@ async function proxyAgentSearchToBackend(req, res) {
     const primaryMonocultureSignal = primaryRun.monoculture_signal;
     const primaryMonoculture = primaryRun.monoculture;
     const primaryIrrelevant = primaryRun.irrelevant;
+    const primaryQualityGate = primaryRun.primary_quality_gate || null;
+    const primaryQualityScore = primaryRun.primary_quality_score;
+    const primaryLowQualityNonempty = Boolean(primaryRun.low_quality_nonempty);
     const shouldFallback = primaryRun.should_fallback;
+    const primaryProducts = Array.isArray(normalized?.products) ? normalized.products : [];
+    const primaryExternalRawCount = primaryProducts.filter((product) => isExternalSeedProduct(product)).length;
+    const primaryInternalRawCount = Math.max(0, primaryProducts.length - primaryExternalRawCount);
     fallbackStrategy.primary_monoculture_detected = primaryMonoculture;
     fallbackStrategy.primary_monoculture_dominant_brand = primaryMonocultureSignal.dominantBrand || null;
     fallbackStrategy.primary_monoculture_external_ratio = Number(
       primaryMonocultureSignal.externalRatio || 0,
     );
+    fallbackStrategy.primary_quality_gate_passed = !primaryLowQualityNonempty;
+    fallbackStrategy.primary_quality_score =
+      Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
+        ? Number(primaryQualityScore)
+        : null;
+    fallbackStrategy.low_quality_nonempty_detected = primaryLowQualityNonempty;
+    fallbackStrategy.internal_raw_count = primaryInternalRawCount;
+    fallbackStrategy.external_raw_count = primaryExternalRawCount;
+    fallbackStrategy.merged_pre_limit_count = Number.isFinite(Number(normalized?.total))
+      ? Math.max(primaryProducts.length, Number(normalized.total))
+      : primaryProducts.length;
+    fallbackStrategy.primary_quality_reason =
+      primaryQualityGate && typeof primaryQualityGate === 'object'
+        ? String(primaryQualityGate.reason || '').trim() || null
+        : null;
     const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
       operation: 'find_products_multi',
       source,
@@ -10352,6 +10619,8 @@ async function proxyAgentSearchToBackend(req, res) {
           : 'empty_or_unusable_primary'
         : primaryMonoculture
         ? 'primary_monoculture'
+        : primaryLowQualityNonempty
+        ? 'primary_low_quality'
         : 'primary_irrelevant';
 
       if (allowSecondaryFallback && allowInvokeFallback && !skipSecondaryFallback) {
@@ -10393,7 +10662,7 @@ async function proxyAgentSearchToBackend(req, res) {
               fallback.status >= 200 &&
               fallback.status < 300 &&
               fallback.usableCount >= fallbackAdoptUsableThreshold &&
-              fallbackRelevant
+              (primaryLowQualityNonempty ? fallback.usableCount > 0 : fallbackRelevant)
             ) {
               fallbackStrategy.secondary_rejected_reason = null;
               fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
@@ -10405,6 +10674,8 @@ async function proxyAgentSearchToBackend(req, res) {
                   ? 'secondary_after_primary_unusable'
                   : primaryMonoculture
                   ? 'secondary_after_primary_monoculture'
+                  : primaryLowQualityNonempty
+                  ? 'secondary_after_primary_low_quality'
                   : 'secondary_after_primary_irrelevant',
                 upstreamStage,
                 fallbackStrategy,
@@ -10456,7 +10727,11 @@ async function proxyAgentSearchToBackend(req, res) {
         ).trim() || null
       : null;
     const fallbackNotBetterReason = semanticRetryApplied
-      ? 'semantic_retry_exhausted'
+      ? primaryLowQualityNonempty
+        ? 'low_quality_semantic_retry_exhausted'
+        : 'semantic_retry_exhausted'
+      : primaryLowQualityNonempty
+      ? 'low_quality_no_improvement'
       : 'fallback_not_better';
 
     if (primaryIrrelevant && Number(resp.status) >= 200 && Number(resp.status) < 300) {
@@ -10523,7 +10798,13 @@ async function proxyAgentSearchToBackend(req, res) {
       !primaryIrrelevant &&
       !skipSecondaryFallback &&
       semanticRetryApplied;
-    if (shouldForceClarifyAfterFallback) {
+    const shouldForceClarifyLowQuality =
+      SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
+      primaryLowQualityNonempty &&
+      normalizedProducts.length > 0 &&
+      shouldFallback &&
+      !primaryIrrelevant;
+    if (shouldForceClarifyAfterFallback || shouldForceClarifyLowQuality) {
       const clarifyBody = buildProxySearchSoftFallbackResponse({
         body: normalized,
         queryParams: guardedQueryParams,
@@ -10533,7 +10814,7 @@ async function proxyAgentSearchToBackend(req, res) {
         queryText,
         semanticRetryApplied: Boolean(semanticRetryApplied),
         semanticRetryQuery,
-        semanticRetryHits: 0,
+        semanticRetryHits: Math.max(0, Number(fallbackStrategy.secondary_usable_count || 0) || 0),
         forceClarify: true,
       });
       return respondSearch(
@@ -15724,16 +16005,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             effectiveProducts.length > 0 &&
             (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
           let effectiveCacheHit = effectiveCacheHitBase;
-          const normalizedSeedStrategyForCache = String(
+          const normalizedSeedStrategyForCache = normalizeExternalSeedStrategy(
             firstQueryParamValue(
               search?.external_seed_strategy ||
                 search?.externalSeedStrategy ||
                 payload?.search?.external_seed_strategy ||
                 payload?.search?.externalSeedStrategy,
             ) || (isCatalogGuardSource(source) ? 'unified_relevance' : 'legacy'),
-          )
-            .trim()
-            .toLowerCase();
+            isCatalogGuardSource(source) ? 'unified_relevance' : 'legacy',
+          );
           const unifiedRelevanceRequested = normalizedSeedStrategyForCache === 'unified_relevance';
           const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
           crossMerchantCacheRouteDebug = {
@@ -17573,6 +17853,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
+      const primaryQualityGate = evaluateCacheQualityGate({
+        products: upstreamData?.products,
+        queryText,
+        intent: effectiveIntent,
+        queryClass: traceQueryClass || proxySearchQueryClass,
+      });
+      const primaryQualityScore = computePrimaryQualityScore(primaryQualityGate);
+      const primaryLowQualityNonempty =
+        Boolean(queryText) &&
+        primaryUsableCount > 0 &&
+        primaryQualityGate.enabled &&
+        !primaryQualityGate.accepted;
       const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
         normalized: upstreamData,
         queryText,
@@ -17581,7 +17873,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const primaryMonoculture = Boolean(primaryMonocultureSignal.detected);
       const primaryIrrelevant =
         Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
-      const shouldFallback = primaryUnusable || primaryIrrelevant;
+      const shouldFallback = primaryUnusable || primaryIrrelevant || primaryLowQualityNonempty;
       const requestedLimit = Math.min(
         Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
         SEARCH_LIMIT_MAX,
@@ -17845,6 +18137,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   : 'empty_or_unusable_primary'
                 : primaryMonoculture
                 ? 'primary_monoculture'
+                : primaryLowQualityNonempty
+                ? 'primary_low_quality'
                 : 'primary_irrelevant',
               requestSource: metadata?.source,
             });
@@ -17883,16 +18177,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               primaryUsableCount,
               primaryIrrelevant,
             });
-            if (
-              fallback &&
-              fallback.status >= 200 &&
-              fallback.status < 300 &&
-              fallback.usableCount >= fallbackAdoptUsableThreshold &&
-              (
-                (hasFragranceQuerySignal(queryText) && Number(fallback.usableCount || 0) > 0) ||
-                isProxySearchFallbackRelevant(fallback.data, queryText)
-              )
-            ) {
+	            if (
+	              fallback &&
+	              fallback.status >= 200 &&
+	              fallback.status < 300 &&
+	              fallback.usableCount >= fallbackAdoptUsableThreshold &&
+	              (
+	                primaryLowQualityNonempty ||
+	                (hasFragranceQuerySignal(queryText) && Number(fallback.usableCount || 0) > 0) ||
+	                isProxySearchFallbackRelevant(fallback.data, queryText)
+	              )
+	            ) {
               upstreamData = fallback.data;
               replacedByFallback = true;
             }
@@ -17904,9 +18199,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         }
 
-        if (!replacedByFallback) {
-          if (primaryIrrelevant) {
-            upstreamData = buildProxySearchSoftFallbackResponse({
+	        if (!replacedByFallback) {
+	          if (primaryIrrelevant) {
+	            upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               reason: skipSecondaryFallback
                 ? primaryMonoculture
@@ -17926,9 +18221,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               semanticRetryApplied,
               semanticRetryQuery,
               semanticRetryHits,
+	              forceClarify: true,
+	            });
+          } else if (primaryLowQualityNonempty) {
+            const lowQualityReason = secondaryFallbackMeta?.semantic_retry_applied
+              ? 'low_quality_semantic_retry_exhausted'
+              : skipSecondaryFallback
+              ? 'primary_low_quality_skip_secondary'
+              : 'primary_low_quality_no_fallback';
+            upstreamData = buildProxySearchSoftFallbackResponse({
+              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
+              reason: lowQualityReason,
+              upstreamStatus: response.status,
+              route: 'invoke_primary_low_quality',
+              intent: effectiveIntent,
+              queryClass: traceQueryClass,
+              queryText,
+              querySource: secondaryFallbackMeta?.semantic_retry_applied
+                ? 'agent_products_semantic_retry_exhausted'
+                : 'agent_products_error_fallback',
+              semanticRetryApplied: Boolean(secondaryFallbackMeta?.semantic_retry_applied),
+              semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
+              semanticRetryHits: Math.max(
+                0,
+                Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
+              ),
               forceClarify: true,
             });
-          } else {
+	          } else {
             const fallbackReason = skipSecondaryFallback
               ? 'resolver_miss_skip_secondary'
               : secondaryFallbackMeta?.semantic_retry_applied
@@ -17992,39 +18312,89 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
-      if (
-        operation === 'find_products_multi' &&
-        secondarySupplementMeta &&
-        upstreamData &&
-        typeof upstreamData === 'object' &&
-        !Array.isArray(upstreamData)
-      ) {
-        upstreamData = {
-          ...upstreamData,
-          metadata: {
-            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
-            search_stage_b: secondarySupplementMeta,
-            semantic_retry_applied: Boolean(semanticRetryApplied),
-            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
-          },
-        };
-      } else if (
-        (operation === 'find_products' || operation === 'find_products_multi') &&
-        upstreamData &&
-        typeof upstreamData === 'object' &&
-        !Array.isArray(upstreamData)
-      ) {
-        upstreamData = {
-          ...upstreamData,
-          metadata: {
-            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
-            semantic_retry_applied: Boolean(semanticRetryApplied),
-            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
-          },
-        };
-      }
+	      if (
+	        operation === 'find_products_multi' &&
+	        secondarySupplementMeta &&
+	        upstreamData &&
+	        typeof upstreamData === 'object' &&
+	        !Array.isArray(upstreamData)
+	      ) {
+	        const routeHealthProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+	        const routeHealthExternalCount = routeHealthProducts.filter((product) => isExternalSeedProduct(product)).length;
+	        const routeHealthInternalCount = Math.max(0, routeHealthProducts.length - routeHealthExternalCount);
+	        upstreamData = {
+	          ...upstreamData,
+	          metadata: {
+	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
+	            search_stage_b: secondarySupplementMeta,
+	            semantic_retry_applied: Boolean(semanticRetryApplied),
+	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	            primary_quality_gate_passed: !primaryLowQualityNonempty,
+	            primary_quality_score:
+	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
+	                ? Number(primaryQualityScore)
+	                : null,
+	            low_quality_nonempty_detected: primaryLowQualityNonempty,
+	            internal_raw_count: routeHealthInternalCount,
+	            external_raw_count: routeHealthExternalCount,
+	            merged_pre_limit_count: Number.isFinite(Number(upstreamData?.total))
+	              ? Math.max(routeHealthProducts.length, Number(upstreamData.total))
+	              : routeHealthProducts.length,
+	            supplement_attempted: Boolean(secondarySupplementMeta?.attempted || shouldFallback),
+	            supplement_skip_reason: secondarySupplementMeta?.attempted
+	              ? secondarySupplementMeta?.reason || null
+	              : !shouldFallback
+	              ? 'not_needed'
+	              : skipSecondaryFallback
+	              ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
+	              : 'not_attempted',
+	            retry_attempt_count: Math.max(
+	              0,
+	              Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
+	            ),
+	          },
+	        };
+	      } else if (
+	        (operation === 'find_products' || operation === 'find_products_multi') &&
+	        upstreamData &&
+	        typeof upstreamData === 'object' &&
+	        !Array.isArray(upstreamData)
+	      ) {
+	        const routeHealthProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+	        const routeHealthExternalCount = routeHealthProducts.filter((product) => isExternalSeedProduct(product)).length;
+	        const routeHealthInternalCount = Math.max(0, routeHealthProducts.length - routeHealthExternalCount);
+	        upstreamData = {
+	          ...upstreamData,
+	          metadata: {
+	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
+	            semantic_retry_applied: Boolean(semanticRetryApplied),
+	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	            primary_quality_gate_passed: !primaryLowQualityNonempty,
+	            primary_quality_score:
+	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
+	                ? Number(primaryQualityScore)
+	                : null,
+	            low_quality_nonempty_detected: primaryLowQualityNonempty,
+	            internal_raw_count: routeHealthInternalCount,
+	            external_raw_count: routeHealthExternalCount,
+	            merged_pre_limit_count: Number.isFinite(Number(upstreamData?.total))
+	              ? Math.max(routeHealthProducts.length, Number(upstreamData.total))
+	              : routeHealthProducts.length,
+	            supplement_attempted: Boolean(shouldFallback),
+	            supplement_skip_reason: !shouldFallback
+	              ? 'not_needed'
+	              : skipSecondaryFallback
+	              ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
+	              : 'not_attempted',
+	            retry_attempt_count: Math.max(
+	              0,
+	              Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
+	            ),
+	          },
+	        };
+	      }
 
       if (
         (operation === 'find_products' || operation === 'find_products_multi') &&
