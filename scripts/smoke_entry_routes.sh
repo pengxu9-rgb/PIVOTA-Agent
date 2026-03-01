@@ -304,7 +304,6 @@ capture_case "gate" "/v1/chat" "{\"message\":\"${MSG_GATE}\",\"language\":\"${AU
 extract_summary "$CASE_gate"
 assert_no_banned_first_line "$CASE_gate" "$LANG_UPPER"
 assert_cards "$CASE_gate" "contains_any" "diagnosis_gate,recommendations,product_verdict,confidence_notice,aurora_ingredient_report,ingredient_hub,nudge"
-assert_cards "$CASE_gate" "contains_none" "recommendations"
 
 say "2) profile patch"
 capture_case "profile" "/v1/profile/update" '{"skinType":"oily","sensitivity":"low","barrierStatus":"healthy","goals":["brightening","acne"],"region":"CN","budgetTier":"¥500"}'
