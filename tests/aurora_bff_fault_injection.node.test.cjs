@@ -539,7 +539,7 @@ test('P0-4 reco upstream empty/invalid output -> guard fallback confidence_notic
   );
 });
 
-test('P0-5 low-confidence path filters treatment/high-irritation recs; empty after filter -> confidence_notice', async () => {
+test('P0-5 low/medium confidence no longer auto-filters treatment recs; recommendations remain available', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -594,7 +594,8 @@ test('P0-5 low-confidence path filters treatment/high-irritation recs; empty aft
         const recs = Array.isArray(reco.payload && reco.payload.recommendations) ? reco.payload.recommendations : [];
         assert.ok(recs.length >= 1);
         const hasTreatment = recs.some((item) => harnessMixed.routesMod.__internal.isTreatmentLikeRecommendationForLowConfidence(item));
-        assert.equal(hasTreatment, false);
+        assert.equal(hasTreatment, true);
+        assert.equal(Boolean(findCard(cards, 'confidence_notice')), false);
       } finally {
         harnessMixed.restore();
       }
@@ -633,10 +634,13 @@ test('P0-5 low-confidence path filters treatment/high-irritation recs; empty aft
           .expect(200);
 
         const cards = parseCards(resp.body);
-        const conf = findCard(cards, 'confidence_notice');
-        assert.ok(conf);
-        assert.equal(conf.payload && conf.payload.reason, 'artifact_missing');
-        assert.equal(Boolean(findCard(cards, 'recommendations')), false);
+        const reco = findCard(cards, 'recommendations');
+        assert.ok(reco);
+        const recs = Array.isArray(reco.payload && reco.payload.recommendations) ? reco.payload.recommendations : [];
+        assert.ok(recs.length >= 1);
+        const hasTreatment = recs.some((item) => harnessOnlyTreatment.routesMod.__internal.isTreatmentLikeRecommendationForLowConfidence(item));
+        assert.equal(hasTreatment, true);
+        assert.equal(Boolean(findCard(cards, 'confidence_notice')), false);
       } finally {
         harnessOnlyTreatment.restore();
       }

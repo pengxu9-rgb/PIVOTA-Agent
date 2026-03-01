@@ -13,6 +13,12 @@ process.env.AURORA_INGREDIENT_PLAN_ENABLED = 'false';
 // Disable background prefetch/prewarm noise for deterministic network-call assertions.
 process.env.AURORA_BFF_PDP_CORE_PREFETCH_ENABLED = 'false';
 process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
+// Keep this suite on legacy PDP behavior regardless of production fast-path defaults.
+process.env.AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK = 'false';
+process.env.AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST = 'true';
+process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS = '3';
+process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS = '2200';
+process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = '2200';
 
 const axios = require('axios');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');

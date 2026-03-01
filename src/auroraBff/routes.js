@@ -1660,14 +1660,14 @@ const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
 })();
 
 const RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 2200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
   return Math.max(600, Math.min(12000, v));
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
   return Math.max(300, Math.min(6000, v));
 })();
 
@@ -1749,8 +1749,8 @@ const RECO_PDP_ENRICH_CONCURRENCY = (() => {
 })();
 
 const RECO_PDP_ENRICH_MAX_NETWORK_ITEMS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS || 3);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS || 0);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 0;
   return Math.max(0, Math.min(8, v));
 })();
 
@@ -1762,14 +1762,14 @@ const RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP = (() => {
 })();
 
 const RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK || 'false')
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
 const RECO_PDP_STRICT_INTERNAL_FIRST = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST || 'true')
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
