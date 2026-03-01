@@ -4130,6 +4130,81 @@ test('/v1/chat: ingredient.lookup uses research path and second lookup can hit i
   );
 });
 
+test('ingredient reco context keeps candidates and injects constraint prompt even without direct query', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const normalized = __internal.normalizeIngredientRecoContextValue({
+      goal: 'barrier repair',
+      sensitivity: 'high',
+      ingredient_candidates: ['Ceramide NP', 'Panthenol'],
+    });
+    assert.equal(normalized?.goal, 'barrier');
+    assert.equal(normalized?.sensitivity, 'high');
+    assert.ok(Array.isArray(normalized?.candidates));
+    assert.equal(normalized.candidates.includes('Ceramide NP'), true);
+    assert.equal(normalized.candidates.includes('Panthenol'), true);
+
+    const merged = __internal.mergeIngredientRecoContextValue(
+      { query: 'octocrylene', candidates: ['Octocrylene'] },
+      { goal: 'barrier', sensitivity: 'medium', candidates: ['Ceramide NP'] },
+    );
+    assert.equal(merged?.query, 'octocrylene');
+    assert.equal(merged?.goal, 'barrier');
+    assert.equal(merged?.sensitivity, 'medium');
+    assert.equal(Array.isArray(merged?.candidates), true);
+    assert.equal(merged.candidates.includes('Octocrylene'), true);
+    assert.equal(merged.candidates.includes('Ceramide NP'), true);
+
+    const prompt = __internal.buildAuroraProductRecommendationsQuery({
+      profile: { skinType: 'combination', barrierStatus: 'healthy', goals: ['barrier repair'] },
+      requestText: '',
+      lang: 'EN',
+      ingredientContext: { goal: 'barrier', sensitivity: 'high', candidates: ['Ceramide NP', 'Panthenol'] },
+    });
+    assert.match(prompt, /Ingredient context:/i);
+    assert.match(prompt, /goal=barrier/i);
+    assert.match(prompt, /candidates=/i);
+    assert.match(prompt, /ingredient_context_sparse/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('/v1/chat: ingredient.by_goal returns ingredient_goal_match even when client_state=RECO_GATE', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const moduleId = require.resolve('../src/auroraBff/routes');
+    delete require.cache[moduleId];
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const resp = await supertest(app)
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'test_uid_ingredient_goal_reco_gate',
+        'X-Trace-ID': 'test_trace_goal_reco_gate',
+        'X-Brief-ID': 'test_brief_goal_reco_gate',
+        'X-Lang': 'EN',
+      })
+      .send({
+        action: {
+          action_id: 'ingredient.by_goal',
+          kind: 'action',
+          data: { goal: 'barrier', sensitivity: 'medium', entry_source: 'ingredient_hub' },
+        },
+        session: { state: 'S7_PRODUCT_RECO' },
+        client_state: 'RECO_GATE',
+        language: 'EN',
+      });
+
+    assert.equal(resp.status, 200);
+    const cardTypes = Array.isArray(resp.body?.cards) ? resp.body.cards.map((card) => String(card?.type || '')) : [];
+    assert.equal(cardTypes.includes('ingredient_goal_match'), true);
+    assert.equal(cardTypes.includes('diagnosis_gate'), false);
+  });
+});
+
 test('/v1/chat: ingredient entry action returns ingredient_hub (no diagnosis_gate/budget_gate) in S6_BUDGET', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const express = require('express');

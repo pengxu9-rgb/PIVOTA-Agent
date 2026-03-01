@@ -12299,12 +12299,23 @@ function normalizeIngredientRecoContextValue(raw) {
   const sensitivity = normalizeIngredientSensitivityToken(
     pickFirstTrimmed(raw.sensitivity, raw.ingredient_sensitivity, raw.ingredientSensitivity, raw.skin_sensitivity),
   );
+  const candidates = normalizeIngredientCandidateList(
+    Array.isArray(raw.candidates)
+      ? raw.candidates
+      : Array.isArray(raw.ingredient_candidates)
+        ? raw.ingredient_candidates
+        : Array.isArray(raw.ingredientCandidates)
+          ? raw.ingredientCandidates
+          : [],
+    8,
+  );
   const source = pickFirstTrimmed(raw.source, raw.entry_source, raw.trigger_source, raw.route_source);
   const updatedRaw = Number(raw.updated_at_ms || raw.updatedAtMs || 0);
-  if (!query && !goal) return null;
+  if (!query && !goal && candidates.length === 0) return null;
   const out = {
     ...(query ? { query: String(query).slice(0, 120) } : {}),
     ...(goal ? { goal } : {}),
+    ...(candidates.length ? { candidates } : {}),
     sensitivity: sensitivity || 'unknown',
     ...(source ? { source: String(source).slice(0, 48) } : {}),
   };
@@ -12319,11 +12330,19 @@ function mergeIngredientRecoContextValue(base, patch) {
   const right = normalizeIngredientRecoContextValue(patch);
   if (!left) return right;
   if (!right) return left;
+  const mergedCandidates = normalizeIngredientCandidateList(
+    [
+      ...(Array.isArray(left.candidates) ? left.candidates : []),
+      ...(Array.isArray(right.candidates) ? right.candidates : []),
+    ],
+    8,
+  );
   return {
     ...left,
     ...right,
     query: right.query || left.query || '',
     goal: right.goal || left.goal || '',
+    ...(mergedCandidates.length ? { candidates: mergedCandidates } : {}),
     sensitivity: right.sensitivity || left.sensitivity || 'unknown',
     source: right.source || left.source || '',
     updated_at_ms: Math.max(
@@ -12367,8 +12386,15 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
   });
 
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
-  if (normalizedIngredientContext && normalizedIngredientContext.query) {
-    const ingredientSeed = String(normalizedIngredientContext.query).trim();
+  const ingredientCandidates = normalizeIngredientCandidateList(
+    normalizedIngredientContext && normalizedIngredientContext.candidates,
+    4,
+  );
+  if (
+    normalizedIngredientContext &&
+    (normalizedIngredientContext.query || ingredientCandidates.length > 0)
+  ) {
+    const ingredientSeed = String(normalizedIngredientContext.query || ingredientCandidates[0] || '').trim();
     const goalSeed = normalizeIngredientGoalToken(normalizedIngredientContext.goal);
     const goalLabelMap = {
       acne: isCn ? '祛痘' : 'acne',
@@ -12379,9 +12405,10 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
     };
     const goalLabel = goalSeed ? goalLabelMap[goalSeed] : '';
     const seededQueries = [
-      `${ingredientSeed} skincare`,
-      goalLabel ? `${ingredientSeed} ${goalLabel}` : '',
-      isCn ? `${ingredientSeed} 成分 护肤` : `${ingredientSeed} ingredient skincare`,
+      ingredientSeed ? `${ingredientSeed} skincare` : '',
+      goalLabel ? `${ingredientSeed || goalLabel} ${goalLabel}` : '',
+      isCn ? `${ingredientSeed || goalLabel} 成分 护肤` : `${ingredientSeed || goalLabel} ingredient skincare`,
+      ...ingredientCandidates.map((candidate) => `${candidate} skincare`),
     ]
       .map((v) => String(v || '').trim())
       .filter(Boolean);
@@ -29409,11 +29436,19 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, in
     normalizedIngredientContext && normalizedIngredientContext.sensitivity
       ? String(normalizedIngredientContext.sensitivity).trim()
       : '';
-  const ingredientContextRule = ingredientQuery
-    ? `Ingredient context: "${ingredientQuery}"` +
-      `${ingredientGoal ? `; goal=${ingredientGoal}` : ''}` +
-      `${ingredientSensitivity ? `; sensitivity=${ingredientSensitivity}` : ''}.` +
-      ' Prioritize products explicitly aligned with this ingredient context; if uncertain, return fewer items instead of unrelated picks.'
+  const ingredientCandidates = normalizeIngredientCandidateList(
+    normalizedIngredientContext && normalizedIngredientContext.candidates,
+    6,
+  );
+  const ingredientContextFields = [
+    ingredientQuery ? `query="${ingredientQuery}"` : '',
+    ingredientGoal ? `goal=${ingredientGoal}` : '',
+    ingredientSensitivity && ingredientSensitivity !== 'unknown' ? `sensitivity=${ingredientSensitivity}` : '',
+    ingredientCandidates.length ? `candidates=${ingredientCandidates.join(', ')}` : '',
+  ].filter(Boolean);
+  const ingredientContextRule = ingredientContextFields.length
+    ? `Ingredient context: ${ingredientContextFields.join('; ')}. ` +
+      'Prioritize products explicitly aligned with this ingredient context; if uncertain, return fewer items instead of unrelated picks.'
     : '';
   const budgetReasonRule = budgetKnown
     ? 'If budget is known, include one reason that references budget fit.'
@@ -29444,7 +29479,7 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, in
     `- Do NOT include checkout links.\n` +
     `- Do NOT recommend the exact same sku_id/product_id twice.\n` +
     `- If unsure, use null/unknown and list missing_info/warnings (do not fabricate).\n` +
-    (ingredientQuery
+    (ingredientContextFields.length
       ? '- Do not return recommendations that are unrelated to the ingredient context. If relevance is weak, reduce count and add warnings: "ingredient_context_sparse".\n'
       : '') +
     `- All free-text strings should be in ${replyLang}.\n`
@@ -29577,9 +29612,14 @@ function buildIngredientLookupUpstreamPrompt({ query, language } = {}) {
 }
 
 function normalizeIngredientCandidateList(raw, max = 6) {
+  const source = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string'
+      ? raw.split(/[、,;|/]+/)
+      : [];
   const out = [];
   const seen = new Set();
-  for (const item of Array.isArray(raw) ? raw : []) {
+  for (const item of source) {
     const text = String(item || '').trim();
     if (!text) continue;
     const key = text.toLowerCase();
@@ -29604,7 +29644,10 @@ function extractIngredientRecoContext(action) {
       (typeof data.sensitivity === 'string' && data.sensitivity) ||
       '',
   );
-  const candidates = normalizeIngredientCandidateList(data.ingredient_candidates, 6);
+  const candidates = normalizeIngredientCandidateList(
+    data.ingredient_candidates || data.ingredientCandidates || data.candidates || [],
+    6,
+  );
   if (!goal && !candidates.length && sensitivity === 'unknown') return null;
   return {
     goal: goal || '',
@@ -29638,6 +29681,84 @@ function buildIngredientRecoUpstreamPrompt({ language, context } = {}) {
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+const INGREDIENT_RECO_TOKEN_STOPWORDS = new Set([
+  'acid',
+  'extract',
+  'serum',
+  'cream',
+  'lotion',
+  'gel',
+  'skin',
+  'skincare',
+  'ingredient',
+  'ingredients',
+  'care',
+  'with',
+  'for',
+  'and',
+  'the',
+]);
+
+function collectIngredientRecoConstraintTokens(context) {
+  const normalizedContext = normalizeIngredientRecoContextValue(context);
+  if (!normalizedContext) return [];
+  const out = [];
+  const seen = new Set();
+  const pushToken = (raw) => {
+    const normalized = ingredient_query_normalize(raw);
+    if (!normalized) return;
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      out.push(normalized);
+    }
+    for (const part of normalized.split(' ')) {
+      const token = String(part || '').trim().toLowerCase();
+      if (!token || token.length < 4 || INGREDIENT_RECO_TOKEN_STOPWORDS.has(token)) continue;
+      if (seen.has(token)) continue;
+      seen.add(token);
+      out.push(token);
+    }
+  };
+  pushToken(normalizedContext.query || '');
+  for (const candidate of Array.isArray(normalizedContext.candidates) ? normalizedContext.candidates : []) {
+    pushToken(candidate);
+  }
+  return out.slice(0, 16);
+}
+
+function applyIngredientRecoConstraint(payload, context) {
+  const base = isPlainObject(payload) ? { ...payload } : {};
+  const recommendations = Array.isArray(base.recommendations) ? base.recommendations : [];
+  const tokens = collectIngredientRecoConstraintTokens(context);
+  if (!recommendations.length || !tokens.length) {
+    return {
+      payload: base,
+      constrained: false,
+      droppedCount: 0,
+      totalCount: recommendations.length,
+      keptCount: recommendations.length,
+    };
+  }
+  const kept = [];
+  for (const row of recommendations) {
+    const serialized = ingredient_query_normalize(JSON.stringify(row || {}));
+    if (!serialized) continue;
+    if (tokens.some((token) => serialized.includes(token))) {
+      kept.push(row);
+    }
+  }
+  return {
+    payload: {
+      ...base,
+      recommendations: kept,
+    },
+    constrained: true,
+    droppedCount: Math.max(0, recommendations.length - kept.length),
+    totalCount: recommendations.length,
+    keptCount: kept.length,
+  };
 }
 
 function normalizeIngredientGoalToken(raw) {
@@ -42762,6 +42883,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? parsed.data.session.meta
           : null;
       let ingredientRecoContext = normalizeIngredientRecoContextValue(sessionMetaInput && sessionMetaInput.ingredient_context);
+      ingredientRecoContext = mergeIngredientRecoContextValue(
+        ingredientRecoContext,
+        extractIngredientRecoContext(normalizedActionPayload),
+      );
       ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
         query: pickFirstTrimmed(
           ingredientActionData && ingredientActionData.ingredient_query,
@@ -42773,6 +42898,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           ingredientActionData && ingredientActionData.ingredient_goal,
           ingredientActionData && ingredientActionData.ingredientGoal,
           ingredientActionData && ingredientActionData.goal,
+        ),
+        candidates: normalizeIngredientCandidateList(
+          (ingredientActionData &&
+            (
+              ingredientActionData.ingredient_candidates ||
+              ingredientActionData.ingredientCandidates ||
+              ingredientActionData.candidates
+            )) || [],
+          8,
         ),
         sensitivity: pickFirstTrimmed(
           ingredientActionData && ingredientActionData.ingredient_sensitivity,
@@ -42786,13 +42920,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         ),
         updated_at_ms: Date.now(),
       });
-      const ingredientRecommendationShortcutAllowed =
-        allowRecoCards &&
-        !ingredientDiagnosisOptInRequested &&
-        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
-        !looksLikeSuitabilityRequest(message) &&
-        !looksLikeCompatibilityOrConflictQuestion(message) &&
-        !looksLikeWeatherOrEnvironmentQuestion(message);
       ingredientReplayContext = {
         intent_requested: Boolean(ingredientScienceIntentEffective),
         starter_action: Boolean(
@@ -43385,7 +43512,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (ingredientByGoalRequested && !ingredientRecommendationShortcutAllowed) {
+      if (ingredientByGoalRequested) {
         const requestedGoal = ingredientGoalRequest.goal || 'barrier';
         ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
           goal: requestedGoal,
@@ -43404,6 +43531,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           goal: requestedGoal,
           sensitivity: ingredientGoalRequest.sensitivity,
           logger,
+        });
+        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+          candidates: Array.isArray(goalPayload && goalPayload.candidate_ingredients)
+            ? goalPayload.candidate_ingredients.map((item) =>
+              pickFirstTrimmed(item && item.ingredient, item && item.name),
+            ).filter(Boolean)
+            : [],
+          source: ingredientTextTrigger ? 'text_goal' : 'chip_goal',
+          updated_at_ms: Date.now(),
         });
         const assistantText =
           ctx.lang === 'CN'
@@ -43436,7 +43572,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (ingredientLookupRequested && !message && !ingredientLookupQuery && !ingredientRecommendationShortcutAllowed) {
+      if (ingredientLookupRequested && !message && !ingredientLookupQuery) {
         const hubPayload = buildIngredientHubCardPayload({ language: ctx.lang });
         const assistantText =
           ctx.lang === 'CN'
@@ -44835,6 +44971,15 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ingredientActionData && ingredientActionData.ingredientGoal,
                 ingredientActionData && ingredientActionData.goal,
               ),
+              candidates: normalizeIngredientCandidateList(
+                (ingredientActionData &&
+                  (
+                    ingredientActionData.ingredient_candidates ||
+                    ingredientActionData.ingredientCandidates ||
+                    ingredientActionData.candidates
+                  )) || [],
+                8,
+              ),
               sensitivity: pickFirstTrimmed(
                 ingredientActionData && ingredientActionData.ingredient_sensitivity,
                 ingredientActionData && ingredientActionData.ingredientSensitivity,
@@ -45251,8 +45396,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoTimeoutDegraded = false;
         }
         if (ingredientRecoOptInRequested && isPlainObject(norm?.payload)) {
-          const constrainedRecoCount = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations.length : 0;
-          if (constrainedRecoCount === 0) {
+          const constrained = applyIngredientRecoConstraint(norm.payload, recoIngredientContext);
+          if (constrained.constrained) {
+            norm.payload = constrained.payload;
+          }
+          if (constrained.droppedCount > 0) {
+            norm.field_missing = mergeFieldMissing(norm.field_missing, [
+              { field: 'payload.recommendations', reason: 'ingredient_constraint_filtered' },
+            ]);
+          }
+          if (constrained.keptCount === 0) {
             norm.payload = {
               ...norm.payload,
               products_empty_reason: 'ingredient_constraint_no_match',
@@ -47097,6 +47250,10 @@ const __internal = {
   buildPurchasableFallbackCandidates,
   recoverPurchasableProductsFromQueries,
   recoverProductsWithLlmFallbackFromQueries,
+  normalizeIngredientRecoContextValue,
+  mergeIngredientRecoContextValue,
+  buildAuroraProductRecommendationsQuery,
+  applyIngredientRecoConstraint,
   buildIngredientReportPayloadWithResearch,
   initLlmFallbackStageCounts,
   mergeLlmFallbackStageCounts,
