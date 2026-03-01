@@ -159,6 +159,8 @@ const auroraIngredientsFirstAnswerLatency = {
 };
 const auroraSkinAnalysisRealModelCounter = new Map();
 const auroraSkinLlmCallCounter = new Map();
+const auroraRecoEntrySourceCounter = new Map();
+const auroraProfileAutoPatchCounter = new Map();
 const auroraRecoContextUsedCounter = new Map();
 const responseSchemaViolationCounter = new Map();
 const auroraKbV0LoaderErrorCounter = new Map();
@@ -573,8 +575,52 @@ function normalizeAuroraLlmStage(stage) {
 
 function normalizeAuroraLlmCallOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'skip');
-  if (token === 'call' || token === 'skip' || token === 'error') return token;
+  if (
+    token === 'call' ||
+    token === 'skip' ||
+    token === 'error' ||
+    token === 'policy_skip' ||
+    token === 'precheck_fail' ||
+    token === 'provider_error'
+  ) {
+    return token;
+  }
   return 'skip';
+}
+
+function normalizeAuroraRecoEntrySource(source) {
+  const token = cleanMetricToken(source, 'goal_driven');
+  if (token === 'goal_driven' || token === 'ingredient_driven' || token === 'profile_refine_rerun') return token;
+  return 'goal_driven';
+}
+
+function normalizeAuroraProfileAutoPatchField(field) {
+  const token = cleanMetricToken(field, 'unknown');
+  if (
+    token === 'skintype' ||
+    token === 'sensitivity' ||
+    token === 'barrierstatus' ||
+    token === 'goals' ||
+    token === 'currentroutine' ||
+    token === 'recentlogs'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeAuroraProfileAutoPatchOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'applied');
+  if (
+    token === 'applied' ||
+    token === 'persisted' ||
+    token === 'persist_error' ||
+    token === 'corrected' ||
+    token === 'skipped'
+  ) {
+    return token;
+  }
+  return 'applied';
 }
 
 function normalizeAuroraRecoContextSignal(signal) {
@@ -1968,6 +2014,31 @@ function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
   );
 }
 
+function recordAuroraRecoEntrySource({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoEntrySourceCounter,
+    {
+      source: normalizeAuroraRecoEntrySource(source),
+    },
+    amount,
+  );
+}
+
+function recordAuroraProfileAutoPatch({ field, outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraProfileAutoPatchCounter,
+    {
+      field: normalizeAuroraProfileAutoPatchField(field),
+      outcome: normalizeAuroraProfileAutoPatchOutcome(outcome),
+    },
+    amount,
+  );
+}
+
 function recordAuroraRecoContextUsed({ signal, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -2705,6 +2776,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
+  lines.push('# HELP aurora_reco_entry_source_total Total recommendation entry counts by request source detail.');
+  lines.push('# TYPE aurora_reco_entry_source_total counter');
+  renderCounter(lines, 'aurora_reco_entry_source_total', auroraRecoEntrySourceCounter);
+
+  lines.push('# HELP aurora_profile_autopatch_total Auto profile patch field updates and outcomes from free-text extraction.');
+  lines.push('# TYPE aurora_profile_autopatch_total counter');
+  renderCounter(lines, 'aurora_profile_autopatch_total', auroraProfileAutoPatchCounter);
+
   lines.push('# HELP aurora_reco_context_used_total Total recommendation responses that used specific user-context signals.');
   lines.push('# TYPE aurora_reco_context_used_total counter');
   renderCounter(lines, 'aurora_reco_context_used_total', auroraRecoContextUsedCounter);
@@ -2966,6 +3045,8 @@ function resetVisionMetrics() {
   }
   auroraSkinAnalysisRealModelCounter.clear();
   auroraSkinLlmCallCounter.clear();
+  auroraRecoEntrySourceCounter.clear();
+  auroraProfileAutoPatchCounter.clear();
   auroraRecoContextUsedCounter.clear();
   responseSchemaViolationCounter.clear();
   fpmClarifyReasonCounter.clear();
@@ -3121,6 +3202,8 @@ function snapshotVisionMetrics() {
     },
     auroraSkinAnalysisRealModel: Array.from(auroraSkinAnalysisRealModelCounter.entries()),
     auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
+    auroraRecoEntrySource: Array.from(auroraRecoEntrySourceCounter.entries()),
+    auroraProfileAutoPatch: Array.from(auroraProfileAutoPatchCounter.entries()),
     auroraRecoContextUsed: Array.from(auroraRecoContextUsedCounter.entries()),
     responseSchemaViolations: Array.from(responseSchemaViolationCounter.entries()),
     fpmClarifyReason: Array.from(fpmClarifyReasonCounter.entries()),
@@ -3237,6 +3320,8 @@ module.exports = {
   observeAuroraIngredientsFirstAnswerLatency,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
+  recordAuroraRecoEntrySource,
+  recordAuroraProfileAutoPatch,
   recordAuroraRecoContextUsed,
   recordResponseSchemaViolation,
   recordFpmClarifyReason,

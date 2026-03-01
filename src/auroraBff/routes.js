@@ -77,6 +77,8 @@ const {
   recordAuroraIngredientsFlowMetric,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
+  recordAuroraRecoEntrySource,
+  recordAuroraProfileAutoPatch,
   recordAuroraRecoContextUsed,
   recordSkinmaskEnabled,
   recordSkinmaskFallback,
@@ -18008,6 +18010,60 @@ function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
   sessionPatch.state = state;
 }
 
+function normalizeRecoSourceDetail(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (token === 'goal_driven' || token === 'ingredient_driven' || token === 'profile_refine_rerun') return token;
+  return 'goal_driven';
+}
+
+function sanitizeRecoRequestContext(raw = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const message = String(raw.message || '').trim();
+  const actionId = String(raw.action_id || '').trim();
+  const sourceDetail = normalizeRecoSourceDetail(raw.source_detail || raw.sourceDetail);
+  const intent = String(raw.intent || '').trim().toLowerCase();
+  const triggerSource = String(raw.trigger_source || raw.triggerSource || '').trim().toLowerCase();
+  const ingredientQuery = String(raw.ingredient_query || raw.ingredientQuery || '').trim();
+  const goal = String(raw.goal || '').trim();
+  const createdAtMsRaw = Number(raw.created_at_ms || raw.createdAtMs);
+  const createdAtMs = Number.isFinite(createdAtMsRaw) ? Math.max(0, Math.trunc(createdAtMsRaw)) : Date.now();
+  const includeAlternatives = raw.include_alternatives === true;
+  const out = {
+    source_detail: sourceDetail,
+    intent: intent || 'reco_products',
+    trigger_source: triggerSource || 'chat',
+    created_at_ms: createdAtMs,
+    include_alternatives: includeAlternatives,
+  };
+  if (message) out.message = message.slice(0, 240);
+  if (actionId) out.action_id = actionId.slice(0, 120);
+  if (ingredientQuery) out.ingredient_query = ingredientQuery.slice(0, 120);
+  if (goal) out.goal = goal.slice(0, 80);
+  return out;
+}
+
+function extractLatestRecoContextFromSession(session) {
+  if (!session || typeof session !== 'object' || Array.isArray(session)) return null;
+  const state = isPlainObject(session.state) ? session.state : null;
+  if (!state) return null;
+  const context = sanitizeRecoRequestContext(
+    state.latest_reco_context && typeof state.latest_reco_context === 'object'
+      ? state.latest_reco_context
+      : null,
+  );
+  if (!context) return null;
+  return context;
+}
+
+function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
+  if (!sessionPatch || typeof sessionPatch !== 'object') return;
+  const normalized = sanitizeRecoRequestContext(context);
+  if (!normalized) return;
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  state.latest_reco_context = normalized;
+  sessionPatch.state = state;
+}
+
 function buildIngredientPlanCard(plan, requestId) {
   return {
     card_id: `ing_plan_${requestId}`,
@@ -18942,6 +18998,49 @@ function extractProfilePatchFromFreeText({ message, canonicalIntent } = {}) {
     patch.lactation_status = 'not_lactating';
   }
 
+  if (/(油皮|油性|出油|oily\b|very oily|greasy)/i.test(text)) {
+    patch.skinType = 'oily';
+  } else if (/(干皮|干性|起皮|紧绷|dry skin|very dry|dry\b)/i.test(text)) {
+    patch.skinType = 'dry';
+  } else if (/(混合皮|混合性|t区|combination|combo)/i.test(text)) {
+    patch.skinType = 'combination';
+  } else if (/(中性皮|normal skin|normal\b)/i.test(text)) {
+    patch.skinType = 'normal';
+  } else if (/(敏感肌|敏感性皮肤|sensitive skin)/i.test(text)) {
+    patch.skinType = 'sensitive';
+  }
+
+  if (/(高敏|敏感严重|very sensitive|high sensitivity|easily irritated)/i.test(text)) {
+    patch.sensitivity = 'high';
+  } else if (/(低敏|不敏感|not sensitive|low sensitivity|resilient)/i.test(text)) {
+    patch.sensitivity = 'low';
+  } else if (/(中敏|medium sensitivity|moderately sensitive)/i.test(text)) {
+    patch.sensitivity = 'medium';
+  }
+
+  if (/(屏障受损|屏障不稳|刺痛|泛红|barrier impaired|barrier damaged|stinging|burning|reactive)/i.test(text)) {
+    patch.barrierStatus = 'impaired';
+  } else if (/(屏障稳定|状态稳定|barrier healthy|barrier stable|well tolerated)/i.test(text)) {
+    patch.barrierStatus = 'healthy';
+  }
+
+  const inferredGoal = inferGoalFromClarificationText(text);
+  if (inferredGoal) {
+    patch.goals = Array.from(
+      new Set([...(Array.isArray(patch.goals) ? patch.goals : []), inferredGoal]),
+    ).slice(0, 4);
+  }
+
+  const routineMatch =
+    text.match(/(?:current routine|my routine|现在在用|目前在用|当前用的是|routine[:：])\s*([^\n]{4,260})/i) ||
+    text.match(/(?:am|pm|早上|晚上).{0,160}(?:cleanser|serum|cream|spf|洁面|精华|面霜|防晒)/i);
+  if (routineMatch) {
+    const routineText = String(routineMatch[1] || routineMatch[0] || '').trim();
+    if (routineText) {
+      patch.currentRoutine = routineText.slice(0, 500);
+    }
+  }
+
   const travelEntities = canonicalIntent && canonicalIntent.entities && typeof canonicalIntent.entities === 'object'
     ? canonicalIntent.entities
     : {};
@@ -18970,6 +19069,43 @@ function extractProfilePatchFromFreeText({ message, canonicalIntent } = {}) {
   if (!parsed.success) return null;
   const clean = parsed.data;
   return Object.keys(clean).length ? clean : null;
+}
+
+function extractTrackerLogFromFreeText({ message } = {}) {
+  const text = String(message || '').trim();
+  if (!text) return null;
+  if (!/(today|recent|最近|今天|check[- ]?in|打卡|泛红|痘|爆痘|出油|干燥|刺痛|hydration|redness|acne)/i.test(text)) {
+    return null;
+  }
+
+  const clamp0to5 = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(5, Math.trunc(n)));
+  };
+  const parseScore = (re) => {
+    const m = text.match(re);
+    if (!m) return null;
+    return clamp0to5(m[1]);
+  };
+
+  const redness = parseScore(/(?:redness|泛红|发红)\s*[:=]?\s*([0-5])/i);
+  const acne = parseScore(/(?:acne|breakout|痘痘|爆痘|闭口)\s*[:=]?\s*([0-5])/i);
+  const hydration = parseScore(/(?:hydration|dryness|保湿|干燥)\s*[:=]?\s*([0-5])/i);
+  const sensationMatch = text.match(/(?:sensation|感觉|体感)\s*[:：]?\s*([^\n]{2,120})/i);
+  const notes = text.slice(0, 380);
+
+  const log = {
+    date: utcTodayIsoDate(),
+    ...(redness != null ? { redness } : {}),
+    ...(acne != null ? { acne } : {}),
+    ...(hydration != null ? { hydration } : {}),
+    ...(sensationMatch && sensationMatch[1] ? { sensation: String(sensationMatch[1]).trim().slice(0, 120) } : {}),
+    notes,
+  };
+  const parsed = TrackerLogSchema.safeParse(log);
+  if (!parsed.success) return null;
+  return parsed.data;
 }
 
 function normalizeSafetyPromptStateForChat(rawState) {
@@ -30671,7 +30807,17 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   return { norm, suggestedChips };
 }
 
-async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger }) {
+async function generateProductRecommendations({
+  ctx,
+  profile,
+  recentLogs,
+  message,
+  includeAlternatives,
+  debug,
+  logger,
+  recoTriggerSource = 'goal_driven',
+  recomputeFromProfileUpdate = false,
+} = {}) {
   const profileSummary = summarizeProfileForContext(profile);
   const analysisSummary =
     profile && profile.lastAnalysis ? profile.lastAnalysis : null;
@@ -31037,6 +31183,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     recommendation_meta: {
       ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
       source_mode: sourceMode,
+      trigger_source: normalizeRecoSourceDetail(recoTriggerSource),
+      recompute_from_profile_update: recomputeFromProfileUpdate === true,
       used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
       used_itinerary: Boolean(itinerary),
       used_safety_flags: false,
@@ -36819,11 +36967,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           visionModelCalled
             ? visionRuntime && visionRuntime.ok
               ? 'call'
-              : 'error'
+              : 'provider_error'
             : visionDecision && visionDecision.decision === 'call'
-              ? 'error'
-              : 'skip';
-        const reportLlmOutcome = reportModelCalled ? (reportModelErrored ? 'error' : 'call') : 'skip';
+              ? 'precheck_fail'
+              : 'policy_skip';
+        const reportLlmOutcome = reportModelCalled
+          ? (reportModelErrored ? 'provider_error' : 'call')
+          : reportDecision && reportDecision.decision === 'call'
+            ? 'precheck_fail'
+            : 'policy_skip';
         if (!shadowRun) {
           recordAuroraSkinAnalysisRealModel({ source: renderedAnalysisSource });
           recordAuroraSkinLlmCall({ stage: 'vision', outcome: visionLlmOutcome });
@@ -37272,8 +37424,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         logger?.info({ kind: 'metric', name: 'aurora.skin.analysis.timeout_degraded_rate', value: 1 }, 'metric');
         recordAuroraSkinFlowMetric({ stage: 'analysis_timeout_degraded', hit: true });
         recordAuroraSkinAnalysisRealModel({ source: 'baseline_low_confidence' });
-        recordAuroraSkinLlmCall({ stage: 'vision', outcome: 'skip' });
-        recordAuroraSkinLlmCall({ stage: 'report', outcome: 'skip' });
+        recordAuroraSkinLlmCall({ stage: 'vision', outcome: 'policy_skip' });
+        recordAuroraSkinLlmCall({ stage: 'report', outcome: 'policy_skip' });
 
         const degradedAnalysis = buildLowConfidenceBaselineSkinAnalysis({
           profile: null,
@@ -38259,9 +38411,27 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (!envelope || typeof envelope !== 'object') return envelope;
       const sourceMode = inferRecommendationSourceMode(envelope);
       if (!sourceMode) return envelope;
+      const existingCardMeta = (() => {
+        const cards = Array.isArray(envelope.cards) ? envelope.cards : [];
+        for (const card of cards) {
+          if (!card || typeof card !== 'object') continue;
+          if (String(card.type || '').trim().toLowerCase() !== 'recommendations') continue;
+          const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+          return payload.recommendation_meta && typeof payload.recommendation_meta === 'object' && !Array.isArray(payload.recommendation_meta)
+            ? payload.recommendation_meta
+            : null;
+        }
+        return null;
+      })();
 
       const recommendationMeta = {
+        ...(isPlainObject(existingCardMeta) ? existingCardMeta : {}),
         source_mode: sourceMode,
+        trigger_source: normalizeRecoSourceDetail(
+          pickFirstTrimmed(existingCardMeta && existingCardMeta.trigger_source, existingCardMeta && existingCardMeta.triggerSource),
+        ),
+        recompute_from_profile_update:
+          existingCardMeta && (existingCardMeta.recompute_from_profile_update === true || existingCardMeta.recomputeFromProfileUpdate === true),
         used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
         used_itinerary: hasItineraryContext(profile),
         used_safety_flags: hasSafetyFlags(safetyDecision),
@@ -39097,6 +39267,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Allow chips/actions to patch profile inline (so chat can progress without an extra API call).
       const profilePatchFromAction = parseProfilePatchFromAction(normalizedActionPayload);
       let appliedProfilePatch = null;
+      let textDerivedProfilePatch = null;
+      let textDerivedSkinLog = null;
+      const latestRecoContextFromSession = extractLatestRecoContextFromSession(parsed.data.session);
       if (profilePatchFromAction) {
         const patchParsed = UserProfilePatchSchema.safeParse(profilePatchFromAction);
         if (patchParsed.success) {
@@ -39235,39 +39408,77 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {},
       };
 
-      if (AURORA_ROUTER_DST_PATCH_V1_ENABLED) {
-        const textDerivedPatch = extractProfilePatchFromFreeText({ message, canonicalIntent });
-        if (textDerivedPatch) {
-          const profileBeforePatch = profile && typeof profile === 'object' ? profile : null;
-          const normalizedPatch = {
-            ...textDerivedPatch,
-            ...(textDerivedPatch.travel_plan && typeof textDerivedPatch.travel_plan === 'object'
-              ? {
-                travel_plan: {
-                  ...(profileBeforePatch &&
-                  profileBeforePatch.travel_plan &&
-                  typeof profileBeforePatch.travel_plan === 'object' &&
-                  !Array.isArray(profileBeforePatch.travel_plan)
-                    ? profileBeforePatch.travel_plan
-                    : {}),
-                  ...textDerivedPatch.travel_plan,
-                },
-              }
-              : {}),
-          };
-          appliedProfilePatch = {
-            ...(appliedProfilePatch && typeof appliedProfilePatch === 'object' ? appliedProfilePatch : {}),
-            ...normalizedPatch,
-          };
-          profile = { ...(profile || {}), ...normalizedPatch };
-          const shouldPersistTextPatch = shouldPersistProfilePatch(profileBeforePatch, normalizedPatch);
-          if (shouldPersistTextPatch) {
-            try {
-              profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, normalizedPatch);
-            } catch (err) {
-              logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to apply text-derived profile patch');
+      const textDerivedPatch = extractProfilePatchFromFreeText({ message, canonicalIntent });
+      if (textDerivedPatch) {
+        const profileBeforePatch = profile && typeof profile === 'object' ? profile : null;
+        const normalizedPatch = {
+          ...textDerivedPatch,
+          ...(textDerivedPatch.travel_plan && typeof textDerivedPatch.travel_plan === 'object'
+            ? {
+              travel_plan: {
+                ...(profileBeforePatch &&
+                profileBeforePatch.travel_plan &&
+                typeof profileBeforePatch.travel_plan === 'object' &&
+                !Array.isArray(profileBeforePatch.travel_plan)
+                  ? profileBeforePatch.travel_plan
+                  : {}),
+                ...textDerivedPatch.travel_plan,
+              },
             }
+            : {}),
+        };
+        textDerivedProfilePatch = normalizedPatch;
+        appliedProfilePatch = {
+          ...(appliedProfilePatch && typeof appliedProfilePatch === 'object' ? appliedProfilePatch : {}),
+          ...normalizedPatch,
+        };
+        profile = { ...(profile || {}), ...normalizedPatch };
+
+        const patchFields = Object.keys(normalizedPatch);
+        for (const field of patchFields) {
+          recordAuroraProfileAutoPatch({ field, outcome: 'applied' });
+          const beforeValue =
+            profileBeforePatch && Object.prototype.hasOwnProperty.call(profileBeforePatch, field)
+              ? profileBeforePatch[field]
+              : undefined;
+          const afterValue = normalizedPatch[field];
+          if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
+            recordAuroraProfileAutoPatch({ field, outcome: 'corrected' });
           }
+        }
+
+        const shouldPersistTextPatch = shouldPersistProfilePatch(profileBeforePatch, normalizedPatch);
+        if (shouldPersistTextPatch) {
+          try {
+            profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, normalizedPatch);
+            for (const field of patchFields) {
+              recordAuroraProfileAutoPatch({ field, outcome: 'persisted' });
+            }
+          } catch (err) {
+            for (const field of patchFields) {
+              recordAuroraProfileAutoPatch({ field, outcome: 'persist_error' });
+            }
+            logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to apply text-derived profile patch');
+          }
+        } else {
+          for (const field of patchFields) {
+            recordAuroraProfileAutoPatch({ field, outcome: 'skipped' });
+          }
+        }
+      }
+
+      textDerivedSkinLog = extractTrackerLogFromFreeText({ message });
+      if (textDerivedSkinLog) {
+        try {
+          const savedLog = await upsertSkinLogForIdentity(
+            { auroraUid: identity.auroraUid, userId: identity.userId },
+            textDerivedSkinLog,
+          );
+          recordAuroraProfileAutoPatch({ field: 'recentLogs', outcome: 'persisted' });
+          recentLogs = [savedLog, ...(Array.isArray(recentLogs) ? recentLogs : [])].slice(0, 7);
+        } catch (err) {
+          recordAuroraProfileAutoPatch({ field: 'recentLogs', outcome: 'persist_error' });
+          logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist text-derived tracker log');
         }
       }
 
@@ -40286,6 +40497,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? extractIngredientGoalRequest(normalizedActionPayload)
         : { goal: '', sensitivity: 'unknown' };
       const ingredientActionData = extractActionDataObject(normalizedActionPayload);
+      const ingredientRecommendationShortcutAllowed =
+        allowRecoCards &&
+        !ingredientDiagnosisOptInRequested &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+        !looksLikeSuitabilityRequest(message) &&
+        !looksLikeCompatibilityOrConflictQuestion(message) &&
+        !looksLikeWeatherOrEnvironmentQuestion(message);
       ingredientReplayContext = {
         intent_requested: Boolean(ingredientScienceIntentEffective),
         starter_action: Boolean(ingredientEntryRequested || ingredientLookupRequested || ingredientByGoalRequested),
@@ -40546,7 +40764,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (ingredientByGoalRequested) {
+      if (ingredientByGoalRequested && !ingredientRecommendationShortcutAllowed) {
         const requestedGoal = ingredientGoalRequest.goal || 'barrier';
         const goalPayload = buildIngredientGoalMatchPayload({
           language: ctx.lang,
@@ -40577,7 +40795,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (ingredientLookupRequested && !message && !ingredientLookupQuery) {
+      if (ingredientLookupRequested && !message && !ingredientLookupQuery && !ingredientRecommendationShortcutAllowed) {
         const hubPayload = buildIngredientHubCardPayload({ language: ctx.lang });
         const assistantText =
           ctx.lang === 'CN'
@@ -40610,7 +40828,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         )
         : '';
 
-      if (ingredientLookupRequested && ingredientLookupTarget) {
+      if (ingredientLookupRequested && ingredientLookupTarget && !ingredientRecommendationShortcutAllowed) {
         const reportPayload = buildIngredientReportPayload({
           language: ctx.lang,
           query: ingredientLookupTarget,
@@ -41831,6 +42049,29 @@ function mountAuroraBffRoutes(app, { logger }) {
         !forceUpstreamAfterPendingAbandon &&
         Boolean(appliedProfilePatch && Object.keys(appliedProfilePatch).length > 0) &&
         (String(actionId || '').trim().toLowerCase().startsWith('chip.clarify.') || Boolean(clarificationId));
+      const profilePatchTriggeredByText =
+        !forceUpstreamAfterPendingAbandon &&
+        Boolean(textDerivedProfilePatch && Object.keys(textDerivedProfilePatch).length > 0);
+      const hasRecoContextForAutoRerun =
+        latestRecoContextFromSession &&
+        String(latestRecoContextFromSession.intent || '').trim().toLowerCase() === 'reco_products';
+      const shouldAutoRerunRecommendationsFromProfilePatch =
+        allowRecoCards &&
+        (profilePatchTriggeredByText || Boolean(textDerivedSkinLog)) &&
+        hasRecoContextForAutoRerun &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+        !looksLikeSuitabilityRequest(message) &&
+        !looksLikeCompatibilityOrConflictQuestion(message) &&
+        !looksLikeWeatherOrEnvironmentQuestion(message);
+      const ingredientDrivenRecommendationRequested =
+        ingredientRecoOptInRequested ||
+        ingredientLookupRequested ||
+        ingredientByGoalRequested;
+      const recoEntrySourceDetail = shouldAutoRerunRecommendationsFromProfilePatch
+        ? 'profile_refine_rerun'
+        : ingredientDrivenRecommendationRequested
+          ? 'ingredient_driven'
+          : 'goal_driven';
       const budgetChipOutOfFlow =
         budgetClarificationAction &&
         !budgetChipCanContinueReco &&
@@ -41893,7 +42134,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       const wantsProductRecommendations =
         !forceUpstreamAfterPendingAbandon &&
         allowRecoCards &&
-        !looksLikeIngredientScienceIntent(message, normalizedActionPayload) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         recoInteractionAllowed &&
@@ -41902,11 +42142,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           actionId === 'chip_get_recos' ||
           budgetChipCanContinueReco ||
           profileClarificationAction ||
-          looksLikeRecommendationRequest(message)
+          ingredientDrivenRecommendationRequested ||
+          looksLikeRecommendationRequest(message) ||
+          shouldAutoRerunRecommendationsFromProfilePatch
         );
 
       if (wantsProductRecommendations) {
         recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
+        recordAuroraRecoEntrySource({ source: recoEntrySourceDetail });
         const recoSafetyGate = resolveSafetyGateActionV2({
           safety: safetyDecision,
           profileValue: profile,
@@ -42090,10 +42333,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               gate_id: 'artifact_missing_gate',
               message:
                 ctx.lang === 'CN'
-                  ? '我会先给你低置信保守推荐；补充 daylight + indoor_white 可显著提升准确度。'
-                  : 'I will return a low-confidence conservative recommendation first; adding daylight + indoor_white photos will improve precision.',
+                  ? '我会先给你可执行推荐；补充 daylight + indoor_white 可进一步提升精准度。'
+                  : 'I will provide actionable recommendations first; adding daylight + indoor_white photos can further improve precision.',
               reason_codes: ['artifact_missing'],
-              actions: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
+              actions: ['upload_daylight_and_indoor_white', 'refine_profile'],
               chips: [...refinementChips, ...chips].slice(0, 8),
             });
             logger?.info(
@@ -42162,8 +42405,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         let matcherBundle = null;
         let matcherPayload = null;
         let matcherComputed = false;
-        const artifactConfidenceLevel = artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low';
-        const lowConfidenceArtifact = artifactConfidenceLevel === 'low';
+        const hasRecoArtifact = Boolean(latestArtifact && latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object');
+        const artifactConfidenceLevel =
+          hasRecoArtifact && artifactGate && artifactGate.confidence_level
+            ? artifactGate.confidence_level
+            : 'unknown';
+        const lowConfidenceArtifact = hasRecoArtifact && artifactConfidenceLevel === 'low';
         const artifactConfidenceScoreRaw = Number(
           latestArtifact &&
           latestArtifact.artifact_json &&
@@ -42219,16 +42466,44 @@ function mountAuroraBffRoutes(app, { logger }) {
         let matcherFallbackUsed = false;
         let llmPrimaryUsed = false;
         let recoSource = 'catalog_transient_fallback';
+        const recoContextIngredientQuery = pickFirstTrimmed(
+          ingredientLookupQuery,
+          ingredientLookupTargetFromText,
+          latestRecoContextFromSession && latestRecoContextFromSession.ingredient_query,
+        );
+        const recoContextGoal = pickFirstTrimmed(
+          ingredientGoalRequest && ingredientGoalRequest.goal,
+          latestRecoContextFromSession && latestRecoContextFromSession.goal,
+        );
+        const recoSeedMessage = shouldAutoRerunRecommendationsFromProfilePatch
+          ? pickFirstTrimmed(latestRecoContextFromSession && latestRecoContextFromSession.message, message)
+          : pickFirstTrimmed(message, latestRecoContextFromSession && latestRecoContextFromSession.message);
+        const recoRequestMessage = pickFirstTrimmed(
+          recoSeedMessage,
+          recoContextIngredientQuery
+            ? ctx.lang === 'CN'
+              ? `请基于成分“${recoContextIngredientQuery}”推荐护肤产品。`
+              : `Recommend skincare products around ingredient "${recoContextIngredientQuery}".`
+            : '',
+          recoContextGoal
+            ? ctx.lang === 'CN'
+              ? `请围绕“${recoContextGoal}”目标推荐护肤产品。`
+              : `Recommend skincare products focused on "${recoContextGoal}".`
+            : '',
+          ctx.lang === 'CN' ? '请根据我的情况推荐护肤产品。' : 'Recommend skincare products for my needs.',
+        );
         try {
           const upstreamReco = await withTimeout(
             generateProductRecommendations({
               ctx,
               profile,
               recentLogs,
-              message,
+              message: recoRequestMessage,
               includeAlternatives,
               debug: debugUpstream,
               logger,
+              recoTriggerSource: recoEntrySourceDetail,
+              recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch,
             }),
             AURORA_BFF_CHAT_RECO_BUDGET_MS,
             'AURORA_CHAT_RECO_BUDGET_TIMEOUT',
@@ -42375,6 +42650,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           const sessionPatch = {};
           appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
+          appendLatestRecoContextToSessionPatch(sessionPatch, {
+            intent: 'reco_products',
+            source_detail: recoEntrySourceDetail,
+            trigger_source: ctx.trigger_source,
+            action_id: actionId || '',
+            message: recoRequestMessage,
+            include_alternatives: includeAlternatives === true,
+            ingredient_query: recoContextIngredientQuery || '',
+            goal: recoContextGoal || '',
+          });
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(
               ctx.lang === 'CN'
@@ -42390,6 +42675,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 gated: true,
                 reason: 'timeout_degraded',
                 source: 'upstream_timeout',
+                source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
+                recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
                 ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
               }),
             ],
@@ -42410,6 +42697,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           payload.recommendation_meta = {
             ...metaExisting,
             source_mode: llmPrimaryUsed ? 'llm_primary' : matcherFallbackUsed ? 'artifact_matcher' : 'rules_only',
+            trigger_source: normalizeRecoSourceDetail(recoEntrySourceDetail),
+            recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
             used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
             used_safety_flags: lowConfidenceArtifact,
@@ -42444,12 +42733,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
         const safetyWarnText =
           safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.WARN ? buildSafetyNoticeText(safetyDecision) : '';
+        const refinementTail =
+          hasRecs
+            ? (ctx.lang === 'CN'
+              ? '如你愿意，可继续补充肤质/敏感度/当前 routine；我会基于本次上下文自动重算并优化推荐。'
+              : 'If you want, add skin type/sensitivity/current routine and I will automatically re-run recommendations with your latest context.')
+            : '';
         const assistantText = addEmotionalPreambleToAssistantText(assistantTextRaw, {
           language: ctx.lang,
           profile,
           seed: ctx.request_id,
         });
-        const finalAssistantText = [safetyWarnText, assistantText].filter(Boolean).join('\n\n');
+        const finalAssistantText = [safetyWarnText, assistantText, refinementTail].filter(Boolean).join('\n\n');
 
         const cards = [
           {
@@ -42500,6 +42795,16 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const sessionPatch = nextState ? { next_state: nextState } : {};
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
+          appendLatestRecoContextToSessionPatch(sessionPatch, {
+            intent: 'reco_products',
+            source_detail: recoEntrySourceDetail,
+            trigger_source: ctx.trigger_source,
+            action_id: actionId || '',
+            message: recoRequestMessage,
+            include_alternatives: includeAlternatives === true,
+            ingredient_query: recoContextIngredientQuery || '',
+            goal: recoContextGoal || '',
+          });
 
         if (latestArtifact) {
           const baseRecoRunContext = {
@@ -42588,6 +42893,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             makeEvent(ctx, 'recos_requested', {
               explicit: true,
               source: recoSource,
+              source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
+              recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
               low_confidence: lowConfidenceArtifact,
               confidence_level: artifactConfidenceLevel,
               ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
