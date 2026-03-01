@@ -2869,6 +2869,11 @@ function buildSearchRouteHealth({
   selectedFallbackAttempt = 0,
   finalReturnedCount = 0,
 }) {
+  const normalizedExternalSeedSkipReason = externalSeedSkipReason
+    ? String(externalSeedSkipReason || '').trim() || null
+    : null;
+  const derivedExternalSeedCacheHit =
+    Boolean(externalSeedCacheHit) || normalizedExternalSeedSkipReason === 'cache_hit';
   return {
     orchestrator_path: orchestratorPath ? String(orchestratorPath) : 'external_invoke_route',
     decision_node: decisionNode ? String(decisionNode) : String(primaryPathUsed || 'unknown'),
@@ -2890,8 +2895,8 @@ function buildSearchRouteHealth({
       Number.isFinite(Number(semanticRetryHits)) ? Number(semanticRetryHits) : 0,
     ),
     external_seed_query_timeout: Boolean(externalSeedQueryTimeout),
-    external_seed_skip_reason: externalSeedSkipReason ? String(externalSeedSkipReason) : null,
-    external_seed_cache_hit: Boolean(externalSeedCacheHit),
+    external_seed_skip_reason: normalizedExternalSeedSkipReason,
+    external_seed_cache_hit: derivedExternalSeedCacheHit,
     external_seed_rows_fetched: Math.max(
       0,
       Number.isFinite(Number(externalSeedRowsFetched)) ? Number(externalSeedRowsFetched) : 0,
@@ -3209,11 +3214,12 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     routeHealth.external_seed_skip_reason != null
       ? String(routeHealth.external_seed_skip_reason || '').trim() || null
       : String(metadata.external_seed_skip_reason || '').trim() || null;
-  routeHealth.external_seed_cache_hit = Boolean(
-    routeHealth.external_seed_cache_hit != null
-      ? routeHealth.external_seed_cache_hit
-      : metadata.external_seed_cache_hit,
-  );
+  routeHealth.external_seed_cache_hit =
+    Boolean(
+      routeHealth.external_seed_cache_hit != null
+        ? routeHealth.external_seed_cache_hit
+        : metadata.external_seed_cache_hit,
+    ) || routeHealth.external_seed_skip_reason === 'cache_hit';
   routeHealth.external_seed_rows_fetched = intNonNegative(
     routeHealth.external_seed_rows_fetched != null
       ? routeHealth.external_seed_rows_fetched
