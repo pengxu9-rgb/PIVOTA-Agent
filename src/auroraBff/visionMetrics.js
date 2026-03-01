@@ -161,6 +161,10 @@ const auroraIngredientsFirstAnswerLatency = {
 const auroraSkinAnalysisRealModelCounter = new Map();
 const auroraSkinLlmCallCounter = new Map();
 const auroraRecoLlmCallCounter = new Map();
+let recoAlternativesBudgetExhaustedTotal = 0;
+let recoAlternativesTimeoutTotal = 0;
+let recoAlternativesEmptyTotal = 0;
+let promptContractMismatchTotal = 0;
 const auroraRecoEntrySourceCounter = new Map();
 const auroraRecoKbWriteCounter = new Map();
 const auroraProfileAutoPatchCounter = new Map();
@@ -544,6 +548,7 @@ function normalizeAuroraIngredientsFlowStage(stage) {
     token === 'text_route_drift' ||
     token === 'kb_hit' ||
     token === 'kb_miss' ||
+    token === 'kb_updated' ||
     token === 'research_requested' ||
     token === 'research_completed' ||
     token === 'research_provider_attempt' ||
@@ -628,6 +633,8 @@ function normalizeAuroraRecoLlmCallOutcome(outcome) {
     token === 'success' ||
     token === 'policy_skip' ||
     token === 'precheck_fail' ||
+    token === 'budget_exhausted' ||
+    token === 'prompt_contract_mismatch' ||
     token === 'provider_error' ||
     token === 'timeout' ||
     token === 'empty_structured'
@@ -2110,6 +2117,30 @@ function recordAuroraRecoLlmCall({ stage, outcome, delta } = {}) {
   );
 }
 
+function recordRecoAlternativesBudgetExhausted({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  recoAlternativesBudgetExhaustedTotal += amount;
+}
+
+function recordRecoAlternativesTimeout({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  recoAlternativesTimeoutTotal += amount;
+}
+
+function recordRecoAlternativesEmpty({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  recoAlternativesEmptyTotal += amount;
+}
+
+function recordPromptContractMismatch({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  promptContractMismatchTotal += amount;
+}
+
 function recordAuroraRecoEntrySource({ source, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -2893,6 +2924,22 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_reco_llm_call_total counter');
   renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
 
+  lines.push('# HELP reco_alternatives_budget_exhausted_total Total alternatives calls skipped because remaining budget was insufficient.');
+  lines.push('# TYPE reco_alternatives_budget_exhausted_total counter');
+  lines.push(`reco_alternatives_budget_exhausted_total ${recoAlternativesBudgetExhaustedTotal}`);
+
+  lines.push('# HELP reco_alternatives_timeout_total Total alternatives calls that timed out.');
+  lines.push('# TYPE reco_alternatives_timeout_total counter');
+  lines.push(`reco_alternatives_timeout_total ${recoAlternativesTimeoutTotal}`);
+
+  lines.push('# HELP reco_alternatives_empty_total Total alternatives calls that returned empty product selections.');
+  lines.push('# TYPE reco_alternatives_empty_total counter');
+  lines.push(`reco_alternatives_empty_total ${recoAlternativesEmptyTotal}`);
+
+  lines.push('# HELP prompt_contract_mismatch_total Total blocked calls due to prompt contract mismatch.');
+  lines.push('# TYPE prompt_contract_mismatch_total counter');
+  lines.push(`prompt_contract_mismatch_total ${promptContractMismatchTotal}`);
+
   lines.push('# HELP aurora_reco_entry_source_total Total recommendation entry counts by request source detail.');
   lines.push('# TYPE aurora_reco_entry_source_total counter');
   renderCounter(lines, 'aurora_reco_entry_source_total', auroraRecoEntrySourceCounter);
@@ -3225,6 +3272,10 @@ function resetVisionMetrics() {
   auroraSkinAnalysisRealModelCounter.clear();
   auroraSkinLlmCallCounter.clear();
   auroraRecoLlmCallCounter.clear();
+  recoAlternativesBudgetExhaustedTotal = 0;
+  recoAlternativesTimeoutTotal = 0;
+  recoAlternativesEmptyTotal = 0;
+  promptContractMismatchTotal = 0;
   auroraRecoEntrySourceCounter.clear();
   auroraRecoKbWriteCounter.clear();
   auroraProfileAutoPatchCounter.clear();
@@ -3385,6 +3436,10 @@ function snapshotVisionMetrics() {
     auroraSkinAnalysisRealModel: Array.from(auroraSkinAnalysisRealModelCounter.entries()),
     auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
     auroraRecoLlmCall: Array.from(auroraRecoLlmCallCounter.entries()),
+    recoAlternativesBudgetExhaustedTotal,
+    recoAlternativesTimeoutTotal,
+    recoAlternativesEmptyTotal,
+    promptContractMismatchTotal,
     auroraRecoEntrySource: Array.from(auroraRecoEntrySourceCounter.entries()),
     auroraRecoKbWrite: Array.from(auroraRecoKbWriteCounter.entries()),
     auroraProfileAutoPatch: Array.from(auroraProfileAutoPatchCounter.entries()),
@@ -3506,6 +3561,10 @@ module.exports = {
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
+  recordRecoAlternativesBudgetExhausted,
+  recordRecoAlternativesTimeout,
+  recordRecoAlternativesEmpty,
+  recordPromptContractMismatch,
   recordAuroraRecoEntrySource,
   recordAuroraRecoKbWrite,
   recordAuroraProfileAutoPatch,

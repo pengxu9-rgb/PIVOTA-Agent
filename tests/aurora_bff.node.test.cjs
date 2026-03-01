@@ -4381,6 +4381,139 @@ test('reco warning visibility contract hides internal-only warning codes from us
   }
 });
 
+test('/v1/chat: alternatives budget exhausted only degrades alternatives (recommendations remain)', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_CHAT_RECO_BUDGET_MS: '2000',
+      AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS: '6500',
+      AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS: '2000',
+    },
+    async () => {
+      resetVisionMetrics();
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        let geminiCalls = 0;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return { ok: true, json: { products: [{ id: 'fake_1', why: 'should_not_happen' }] } };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_budget',
+            'X-Trace-ID': 'test_trace_alt_budget',
+            'X-Brief-ID': 'test_brief_alt_budget',
+            'X-Lang': 'EN',
+          })
+          .send({
+            action: {
+              action_id: 'chip.start.routine',
+              kind: 'chip',
+              data: {
+                reply_text: 'Build AM PM routine',
+                include_alternatives: true,
+                profile_patch: {
+                  skinType: 'combination',
+                  sensitivity: 'low',
+                  barrierStatus: 'healthy',
+                  goals: ['pores'],
+                  budgetTier: 'budget',
+                },
+              },
+            },
+            session: { state: 'S2_DIAGNOSIS' },
+            language: 'EN',
+          });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const recoCard = cards.find((c) => c && c.type === 'recommendations');
+        assert.ok(recoCard);
+        const recos = Array.isArray(recoCard?.payload?.recommendations) ? recoCard.payload.recommendations : [];
+        assert.ok(recos.length > 0);
+        assert.equal(recos.some((item) => Array.isArray(item?.alternatives) && item.alternatives.length > 0), false);
+        assert.equal(geminiCalls, 0);
+
+        const snap = snapshotVisionMetrics();
+        assert.ok(Number(snap.recoAlternativesBudgetExhaustedTotal || 0) >= 1);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: no candidates returns explainable empty and never calls provider', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_CHAT_RECO_BUDGET_MS: '9000',
+      AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS: '6500',
+      AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS: '2000',
+    },
+    async () => {
+      resetVisionMetrics();
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        let geminiCalls = 0;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return { ok: true, json: { products: [{ id: 'fake_1', why: 'should_not_happen' }] } };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_no_candidates',
+            'X-Trace-ID': 'test_trace_alt_no_candidates',
+            'X-Brief-ID': 'test_brief_alt_no_candidates',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'unknown product text with no structured candidate',
+            max_total: 3,
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 0);
+        assert.equal(resp.body?.no_result_reason, 'no_candidates');
+        assert.equal(geminiCalls, 0);
+
+        const reasons = Array.isArray(resp.body?.field_missing) ? resp.body.field_missing.map((x) => String(x?.reason || '')) : [];
+        assert.equal(reasons.includes('no_candidates'), true);
+
+        const snap = snapshotVisionMetrics();
+        assert.ok(Number(snap.recoAlternativesEmptyTotal || 0) >= 1);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: ingredient.by_goal returns ingredient_goal_match even when client_state=RECO_GATE', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const moduleId = require.resolve('../src/auroraBff/routes');

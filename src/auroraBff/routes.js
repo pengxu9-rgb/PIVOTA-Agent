@@ -79,6 +79,10 @@ const {
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
+  recordRecoAlternativesBudgetExhausted,
+  recordRecoAlternativesTimeout,
+  recordRecoAlternativesEmpty,
+  recordPromptContractMismatch,
   recordAuroraRecoEntrySource,
   recordAuroraRecoKbWrite,
   recordAuroraProfileAutoPatch,
@@ -1552,6 +1556,12 @@ const RECO_ALTERNATIVES_UPSTREAM_RETRIES = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_UPSTREAM_RETRIES || 0);
   const v = Number.isFinite(n) ? Math.trunc(n) : 0;
   return Math.max(0, Math.min(2, v));
+})();
+
+const RECO_ALTERNATIVES_OVERHEAD_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS || 2000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2000;
+  return Math.max(500, Math.min(6000, v));
 })();
 
 const RECO_ALTERNATIVES_MAX_PRODUCTS = (() => {
@@ -31392,6 +31402,29 @@ function buildProductRetrieverJsonSchema(maxN = 6) {
   };
 }
 
+function buildRecoAlternativesSchema(maxN = 6) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['products'],
+    properties: {
+      products: {
+        type: 'array',
+        maxItems: Math.max(0, Math.min(8, Math.trunc(Number(maxN) || 6))),
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['id', 'why'],
+          properties: {
+            id: { type: 'string', maxLength: 120 },
+            why: { type: 'string', maxLength: 180 },
+          },
+        },
+      },
+    },
+  };
+}
+
 function buildIngredientResearchPrompts({
   query,
   language = 'EN',
@@ -33007,6 +33040,153 @@ function mergeFieldMissing(a, b) {
   return out;
 }
 
+function normalizeAlternativesSkinType(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return '';
+  if (token.includes('oily')) return 'Oily';
+  if (token.includes('dry')) return 'Dry';
+  if (token.includes('combo') || token.includes('mix')) return 'Combo/Mixed';
+  return '';
+}
+
+function normalizeAlternativesSensitivity(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return '';
+  if (token.includes('high') || token.includes('sensitive') || token.includes('reactive')) return 'High';
+  if (token.includes('low')) return 'Low';
+  if (token.includes('medium') || token.includes('mid')) return 'Medium';
+  return '';
+}
+
+function normalizeAlternativesBarrier(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return '';
+  if (token.includes('impaired') || token.includes('stinging') || token.includes('red') || token.includes('damaged') || token.includes('reactive')) {
+    return 'Impaired';
+  }
+  if (token.includes('stable') || token.includes('normal') || token.includes('healthy')) return 'Stable';
+  return '';
+}
+
+function normalizeAlternativesGoal(raw) {
+  const token = String(raw || '').trim();
+  if (!token) return '';
+  const lower = token.toLowerCase();
+  if (lower.includes('acne') || lower.includes('texture') || lower.includes('pore')) return 'Acne/Texture';
+  if (lower.includes('bright') || lower.includes('dark spot') || lower.includes('tone')) return 'Dark spots/Brightening';
+  if (lower.includes('aging') || lower.includes('firm') || lower.includes('wrinkle')) return 'Aging';
+  if (lower.includes('red') || lower.includes('barrier') || lower.includes('repair') || lower.includes('soothing')) return 'Redness/Barrier repair';
+  if (lower.includes('hydrat') || lower.includes('moist')) return 'Hydration';
+  return token.slice(0, 40);
+}
+
+function buildAlternativesProfileSnapshot(profileObjRaw) {
+  const profileObjSafe = profileObjRaw && typeof profileObjRaw === 'object' && !Array.isArray(profileObjRaw) ? profileObjRaw : {};
+  const skinTypeKnown = normalizeAlternativesSkinType(
+    pickFirstTrimmed(profileObjSafe.skinType, profileObjSafe.skin_type, profileObjSafe.skin_type_text),
+  );
+  const sensitivityKnown = normalizeAlternativesSensitivity(
+    pickFirstTrimmed(profileObjSafe.sensitivity, profileObjSafe.sensitivity_level),
+  );
+  const barrierKnown = normalizeAlternativesBarrier(
+    pickFirstTrimmed(profileObjSafe.barrierStatus, profileObjSafe.barrier_status),
+  );
+  const goalsKnown = uniqCaseInsensitiveStrings(
+    Array.isArray(profileObjSafe.goals) ? profileObjSafe.goals.map((item) => normalizeAlternativesGoal(item)).filter(Boolean) : [],
+    4,
+  );
+  return {
+    skinType: skinTypeKnown || 'Combo/Mixed',
+    sensitivity: sensitivityKnown || 'Medium',
+    barrierStatus: barrierKnown || 'Impaired',
+    goals: goalsKnown.length ? goalsKnown : ['Hydration'],
+  };
+}
+
+function normalizeAlternativesSelectorCandidate(row, { index = 0 } = {}) {
+  const normalized = normalizeRecoCatalogProduct(row) || (row && typeof row === 'object' && !Array.isArray(row) ? row : null);
+  if (!normalized || typeof normalized !== 'object') return null;
+  const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
+  const skuId = pickFirstTrimmed(normalized.sku_id, normalized.skuId);
+  const brand = pickFirstTrimmed(normalized.brand);
+  const name = pickFirstTrimmed(normalized.display_name, normalized.displayName, normalized.name, normalized.title);
+  const category = pickFirstTrimmed(normalized.category, normalized.category_name, normalized.product_type, normalized.type);
+  const pdpUrl = extractCandidateOpenUrl(normalized);
+  const idMaterial = pickFirstTrimmed(productId, skuId, brand && name ? `${brand}:${name}` : name);
+  const id = idMaterial
+    ? String(idMaterial).trim()
+    : `cand_${stableHashBase36(`${name || ''}|${brand || ''}|${pdpUrl || ''}|${index}`).slice(0, 18)}`;
+  if (!id || !name) return null;
+  const priceObj = normalized.price && typeof normalized.price === 'object' && !Array.isArray(normalized.price)
+    ? normalized.price
+    : Number.isFinite(Number(normalized.price_usd))
+      ? { amount: Number(normalized.price_usd), currency: 'USD' }
+      : null;
+  return {
+    id: String(id).trim().slice(0, 120),
+    product_id: productId || null,
+    sku_id: skuId || null,
+    name: String(name).trim().slice(0, 140),
+    brand: brand || null,
+    category: category || null,
+    pdp_url: pdpUrl || null,
+    similarity_score: Number.isFinite(Number(normalized.similarity_score))
+      ? Math.max(0, Math.min(100, Number(normalized.similarity_score) > 1 ? Number(normalized.similarity_score) : Number(normalized.similarity_score) * 100))
+      : null,
+    signals: uniqCaseInsensitiveStrings(
+      [
+        ...asStringArray(normalized.why_candidate),
+        ...asStringArray(normalized.compare_highlights),
+      ],
+      4,
+    ),
+    ...(priceObj ? { price: priceObj } : {}),
+  };
+}
+
+function buildRecoAlternativesCandidatePool({ sharedCandidates = [], productObj = null, anchorId = '', maxCandidates = 16 } = {}) {
+  const out = [];
+  const seen = new Set();
+  const anchor = String(anchorId || '').trim().toLowerCase();
+  const limit = Math.max(1, Math.min(24, Number.isFinite(Number(maxCandidates)) ? Math.trunc(Number(maxCandidates)) : 16));
+  const maybePush = (row, idx = 0) => {
+    const normalized = normalizeAlternativesSelectorCandidate(row, { index: idx });
+    if (!normalized) return;
+    const idKey = String(normalized.id || '').trim().toLowerCase();
+    if (!idKey || seen.has(idKey)) return;
+    const pidKey = String(normalized.product_id || normalized.sku_id || '').trim().toLowerCase();
+    if ((anchor && idKey === anchor) || (anchor && pidKey === anchor)) return;
+    seen.add(idKey);
+    out.push(normalized);
+  };
+  let idx = 0;
+  for (const row of Array.isArray(sharedCandidates) ? sharedCandidates : []) {
+    maybePush(row, idx);
+    idx += 1;
+    if (out.length >= limit) break;
+  }
+  const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
+  const listCandidates = [
+    product.candidates,
+    product.product_candidates,
+    product.alternatives,
+    product.alternative_candidates,
+    product.related_products && product.related_products.candidates,
+    product.relatedProducts && product.relatedProducts.candidates,
+    product.competitors && product.competitors.candidates,
+    product.dupes && product.dupes.candidates,
+  ];
+  for (const list of listCandidates) {
+    for (const row of Array.isArray(list) ? list : []) {
+      maybePush(row, idx);
+      idx += 1;
+      if (out.length >= limit) break;
+    }
+    if (out.length >= limit) break;
+  }
+  return out.slice(0, limit);
+}
+
 function buildRecoAlternativesPromptPayload({
   lang,
   profileSnapshot,
@@ -33014,93 +33194,58 @@ function buildRecoAlternativesPromptPayload({
   productObj,
   maxTotal,
   region,
+  candidates = [],
+  anchorId = '',
 } = {}) {
-  const fallbackSchema = {
-    meta: { lang: 'EN', intent: 'alternatives', region: 'US' },
-    profile: { skinType: 'Combo/Mixed', sensitivity: 'Medium', barrierStatus: 'Impaired', goals: ['Hydration'] },
-    target_product: { brand: null, name: null, region_variant: 'unknown', known_actives: [], notes: null },
-    task: {
-      max_alternatives: 6,
-      mix: { dupe: 2, similar: 2, premium: 2 },
-      bias: [
-        'prefer barrier-safe options for impaired barrier',
-        'avoid higher-irritation leave-ons if possible',
-        'match formulation intent and actives when known',
-      ],
-    },
-    hard_rules: [
-      'If target_product.known_actives is empty and region_variant is unknown, do NOT assume the formula; reflect uncertainty via missing_info.',
-    ],
-    output_item_schema: {
-      type: 'dupe|similar|premium',
-      product: { brand: 'string|null', name: 'string|null', product_id: 'string|null', sku_id: 'string|null' },
-      similarity_score: 'integer 0-100',
-      reasons: ['string (max 2)'],
-      tradeoffs: { pros: ['string (max 2)'], cons: ['string (max 2)'] },
-      evidence: { keyActives: ['string'], sensitivityFlags: ['string'] },
-      missing_info: ['string'],
-    },
-  };
-  const template = loadRecoPromptTemplateFile('reco_alternatives_v1_0.user_schema.json', {
-    parseJson: true,
-    fallback: fallbackSchema,
-  });
-  const payload = safeStructuredCloneJson(template) || safeStructuredCloneJson(fallbackSchema) || {};
   const profileObj = profileSnapshot && typeof profileSnapshot === 'object' && !Array.isArray(profileSnapshot) ? profileSnapshot : {};
   const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
-  const knownActives = uniqCaseInsensitiveStrings(
-    Array.isArray(product.known_actives)
-      ? product.known_actives
-      : Array.isArray(product.keyActives)
-        ? product.keyActives
-        : Array.isArray(product.key_actives)
-          ? product.key_actives
-          : [],
-    12,
-  );
-  const brand = pickFirstTrimmed(product.brand, product.manufacturer) || null;
-  const name = pickFirstTrimmed(product.display_name, product.name, product.product_name, productInput) || null;
-  const regionVariant = pickFirstTrimmed(product.region_variant, product.regionVariant, 'unknown') || 'unknown';
-  const limit = Number.isFinite(Number(maxTotal)) ? Math.max(1, Math.min(8, Math.trunc(Number(maxTotal)))) : 6;
+  const limit = Number.isFinite(Number(maxTotal)) ? Math.max(1, Math.min(6, Math.trunc(Number(maxTotal)))) : 3;
   const langCode = normalizeRecoPromptLanguage(lang);
-
-  payload.meta = {
-    ...(payload.meta && typeof payload.meta === 'object' ? payload.meta : {}),
-    lang: langCode,
-    intent: 'alternatives',
-    region: String(region || 'US').trim() || 'US',
+  const name = pickFirstTrimmed(product.display_name, product.name, product.product_name, productInput) || null;
+  const brand = pickFirstTrimmed(product.brand, product.manufacturer) || null;
+  const normalizedCandidates = (Array.isArray(candidates) ? candidates : [])
+    .map((row) => (row && typeof row === 'object' && !Array.isArray(row) ? row : null))
+    .filter(Boolean)
+    .slice(0, 20);
+  return {
+    meta: {
+      lang: langCode,
+      intent: 'alternatives_selector',
+      region: String(region || 'US').trim() || 'US',
+    },
+    profile: {
+      skinType: pickFirstTrimmed(profileObj.skinType, 'Combo/Mixed') || 'Combo/Mixed',
+      sensitivity: pickFirstTrimmed(profileObj.sensitivity, 'Medium') || 'Medium',
+      barrierStatus: pickFirstTrimmed(profileObj.barrierStatus, 'Impaired') || 'Impaired',
+      goals: uniqCaseInsensitiveStrings(Array.isArray(profileObj.goals) ? profileObj.goals : ['Hydration'], 4),
+    },
+    target_product: {
+      anchor_id: String(anchorId || '').trim() || null,
+      brand,
+      name,
+      query: String(productInput || '').trim().slice(0, 180) || null,
+    },
+    task: {
+      max_alternatives: limit,
+      reco_trigger: 'explicit_user_action',
+    },
+    candidates: normalizedCandidates.map((row) => ({
+      id: row.id,
+      name: row.name,
+      brand: row.brand || null,
+      category: row.category || null,
+      pdp_url: row.pdp_url || null,
+      signals: Array.isArray(row.signals) ? row.signals.slice(0, 4) : [],
+    })),
   };
-  payload.profile = {
-    ...(payload.profile && typeof payload.profile === 'object' ? payload.profile : {}),
-    skinType: pickFirstTrimmed(profileObj.skinType, 'Combo/Mixed') || 'Combo/Mixed',
-    sensitivity: pickFirstTrimmed(profileObj.sensitivity, 'Medium') || 'Medium',
-    barrierStatus: pickFirstTrimmed(profileObj.barrierStatus, 'Impaired') || 'Impaired',
-    goals: uniqCaseInsensitiveStrings(Array.isArray(profileObj.goals) ? profileObj.goals : ['Hydration'], 4),
-  };
-  payload.target_product = {
-    ...(payload.target_product && typeof payload.target_product === 'object' ? payload.target_product : {}),
-    brand,
-    name,
-    region_variant: regionVariant,
-    known_actives: knownActives,
-    notes: productInput && name && productInput !== name ? String(productInput).slice(0, 180) : null,
-  };
-  payload.task = {
-    ...(payload.task && typeof payload.task === 'object' ? payload.task : {}),
-    max_alternatives: limit,
-  };
-  return payload;
 }
 
-function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput, productObj, maxTotal, region }) {
+function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput, productObj, maxTotal, region, candidates, anchorId }) {
   const fallbackSystemPrompt = [
-    'You are a skincare formulation comparison engine.',
-    '',
-    'Output MUST be a single valid JSON object with exactly one key: alternatives (array). No other keys.',
-    'Never invent product IDs/SKUs/prices/actives. If unknown, use null and add missing_info.',
-    'Similarity_score MUST be an integer 0-100.',
-    'No clarifying questions.',
-    'Keep each reasons array max 2 items, each <= 22 words.',
+    'You are a strict skincare recommendation selector.',
+    'Output MUST be valid JSON only. No markdown and no extra keys.',
+    'Never invent product names, brands, or URLs.',
+    'Select ONLY from context.candidates and keep each reason short.',
   ].join('\n');
   const systemPrompt = loadRecoPromptTemplateFile('reco_alternatives_v1_0.system.txt', {
     parseJson: false,
@@ -33113,21 +33258,92 @@ function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput,
     productObj,
     maxTotal,
     region,
+    candidates,
+    anchorId,
   });
   const promptBody = formatAuroraPromptQuery({
     templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
     systemPrompt,
     userPayload: payload,
   });
-  // Backward-compatible sentinel for existing mock/test detectors.
-  return `Task: Deep-scan this product and return alternatives (dupe/similar/premium).\n${promptBody}`;
+  return {
+    systemPrompt,
+    payload,
+    query: `Task: Select up to ${Math.max(1, Math.min(6, Number(maxTotal) || 3))} alternatives ONLY from context.candidates.\n${promptBody}`,
+  };
 }
 
-async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, maxTotal, debug, logger }) {
+function classifyAlternativesFailureCode(reason) {
+  const token = String(reason || '').trim().toLowerCase();
+  if (!token) return 'provider_error';
+  if (token.includes('timeout') || token.includes('timed_out') || token.includes('aborted')) return 'timeout';
+  if (token.includes('rate') || token.includes('quota')) return 'rate_limited';
+  if (token.includes('network') || token.includes('econn') || token.includes('enotfound') || token.includes('eai_again')) return 'network';
+  if (token.includes('5xx') || token.includes('503') || token.includes('500')) return 'upstream_5xx';
+  if (token.includes('json_invalid') || token.includes('invalid_json')) return 'invalid_json';
+  if (token.includes('auth') || token.includes('api_key')) return 'auth';
+  return 'provider_error';
+}
+
+function mapAlternativesFailureToRootCause(code) {
+  if (code === 'budget_exhausted') return 'budget_exceeded';
+  if (code === 'timeout') return 'provider_timeout';
+  if (code === 'rate_limited') return 'rate_limited';
+  if (code === 'network') return 'network';
+  return 'unknown';
+}
+
+function mapSelectorCandidatesToAlternatives(candidates, { maxTotal = 3, lang = 'EN', reasonLine = '' } = {}) {
+  const rows = (Array.isArray(candidates) ? candidates : [])
+    .map((row) => (row && typeof row === 'object' && !Array.isArray(row) ? row : null))
+    .filter(Boolean)
+    .slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 3)));
+  if (!rows.length) return [];
+  const raw = rows.map((candidate, idx) => ({
+    kind: 'similar',
+    product: {
+      ...(candidate.product_id ? { product_id: candidate.product_id } : {}),
+      ...(candidate.sku_id ? { sku_id: candidate.sku_id } : {}),
+      ...(candidate.brand ? { brand: candidate.brand } : {}),
+      name: candidate.name,
+      ...(candidate.category ? { category: candidate.category } : {}),
+      ...(candidate.price && typeof candidate.price === 'object' ? { price: candidate.price } : {}),
+      ...(candidate.pdp_url ? { pdp_url: candidate.pdp_url, url: candidate.pdp_url } : {}),
+    },
+    similarity_score: Number.isFinite(Number(candidate.similarity_score))
+      ? Number(candidate.similarity_score)
+      : Math.max(55, 82 - idx * 5),
+    reasons: uniqCaseInsensitiveStrings(
+      [
+        reasonLine,
+        ...asStringArray(candidate.signals),
+      ],
+      2,
+    ),
+    tradeoffs: Array.isArray(candidate.signals) ? candidate.signals.slice(0, 3) : [],
+    evidence: {},
+    missing_info: [],
+  }));
+  return mapAuroraAlternativesToRecoAlternatives(raw, { lang, maxTotal });
+}
+
+async function fetchRecoAlternativesForProduct({
+  ctx,
+  profileSummary,
+  recentLogs,
+  productInput,
+  productObj,
+  anchorId,
+  maxTotal,
+  candidatePool = [],
+  budget = null,
+  debug,
+  logger,
+}) {
   const inputText = String(productInput || '').trim();
-  const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
   const anchor = anchorId ? String(anchorId).trim() : '';
   const bestInput = inputText || anchor;
+  const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
   if (!bestInput) {
     recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
     return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }] };
@@ -33175,438 +33391,281 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     };
   }
 
-  const normalizeAlternativesSkinType = (raw) => {
-    const token = String(raw || '').trim().toLowerCase();
-    if (!token) return '';
-    if (token.includes('oily')) return 'Oily';
-    if (token.includes('dry')) return 'Dry';
-    if (token.includes('combo') || token.includes('mix')) return 'Combo/Mixed';
-    return '';
-  };
-  const normalizeAlternativesSensitivity = (raw) => {
-    const token = String(raw || '').trim().toLowerCase();
-    if (!token) return '';
-    if (token.includes('high') || token.includes('sensitive') || token.includes('reactive')) return 'High';
-    if (token.includes('low')) return 'Low';
-    if (token.includes('medium') || token.includes('mid')) return 'Medium';
-    return '';
-  };
-  const normalizeAlternativesBarrier = (raw) => {
-    const token = String(raw || '').trim().toLowerCase();
-    if (!token) return '';
-    if (
-      token.includes('impaired') ||
-      token.includes('stinging') ||
-      token.includes('red') ||
-      token.includes('damaged') ||
-      token.includes('reactive')
-    ) {
-      return 'Impaired';
-    }
-    if (token.includes('stable') || token.includes('normal') || token.includes('healthy')) return 'Stable';
-    return '';
-  };
-  const normalizeAlternativesGoal = (raw) => {
-    const token = String(raw || '').trim();
-    if (!token) return '';
-    const lower = token.toLowerCase();
-    if (lower.includes('acne') || lower.includes('texture') || lower.includes('pore')) return 'Acne/Texture';
-    if (lower.includes('bright') || lower.includes('dark spot') || lower.includes('tone')) return 'Dark spots/Brightening';
-    if (lower.includes('aging') || lower.includes('firm') || lower.includes('wrinkle')) return 'Aging';
-    if (lower.includes('red') || lower.includes('barrier') || lower.includes('repair') || lower.includes('soothing')) {
-      return 'Redness/Barrier repair';
-    }
-    if (lower.includes('hydrat') || lower.includes('moist')) return 'Hydration';
-    return token.slice(0, 40);
-  };
-  const buildProfileSnapshot = (profileObjRaw, { forceConservative = false } = {}) => {
-    const profileObjSafe =
-      profileObjRaw && typeof profileObjRaw === 'object' && !Array.isArray(profileObjRaw)
-        ? profileObjRaw
-        : {};
-    const skinTypeKnown = normalizeAlternativesSkinType(
-      pickFirstTrimmed(profileObjSafe.skinType, profileObjSafe.skin_type, profileObjSafe.skin_type_text),
-    );
-    const sensitivityKnown = normalizeAlternativesSensitivity(
-      pickFirstTrimmed(profileObjSafe.sensitivity, profileObjSafe.sensitivity_level),
-    );
-    const barrierKnown = normalizeAlternativesBarrier(
-      pickFirstTrimmed(profileObjSafe.barrierStatus, profileObjSafe.barrier_status),
-    );
-    const goalsKnown = uniqCaseInsensitiveStrings(
-      Array.isArray(profileObjSafe.goals)
-        ? profileObjSafe.goals.map((item) => normalizeAlternativesGoal(item)).filter(Boolean)
-        : [],
-      3,
-    );
-    if (forceConservative) {
-      return {
-        skinType: skinTypeKnown || 'Oily',
-        sensitivity: sensitivityKnown || 'Medium',
-        barrierStatus: 'Impaired',
-        goals: goalsKnown.length ? goalsKnown : ['Hydration'],
-        assumptions_applied: true,
-      };
-    }
-    return {
-      skinType: skinTypeKnown || 'Combo/Mixed',
-      sensitivity: sensitivityKnown || 'Medium',
-      barrierStatus: barrierKnown || 'Impaired',
-      goals: goalsKnown.length ? goalsKnown : ['Hydration'],
-      assumptions_applied: !skinTypeKnown || !sensitivityKnown || !barrierKnown || !goalsKnown.length,
-    };
-  };
-  const extractAlternativesRawFromUpstream = ({ upstream, structured, answerJson }) => {
-    const structuredObj = structured && typeof structured === 'object' && !Array.isArray(structured) ? structured : null;
-    const answerObj = answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? answerJson : null;
-    if (Array.isArray(structuredObj?.alternatives)) return structuredObj.alternatives;
-    if (Array.isArray(answerObj?.alternatives)) return answerObj.alternatives;
-
-    const fromCards = [];
-    const cards = Array.isArray(upstream?.cards) ? upstream.cards : [];
-    for (const card of cards) {
-      if (!card || typeof card !== 'object') continue;
-      const type = String(card.type || '').trim().toLowerCase();
-      const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : null;
-      if (!payload) continue;
-      const candidateToAlt = (row, kind) => {
-        const candidate = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
-        if (!candidate) return null;
-        const productName = pickFirstTrimmed(candidate.display_name, candidate.name);
-        if (!productName) return null;
-        const product = {
-          ...(pickFirstTrimmed(candidate.product_id, candidate.sku_id) ? { product_id: pickFirstTrimmed(candidate.product_id, candidate.sku_id) } : {}),
-          ...(pickFirstTrimmed(candidate.sku_id) ? { sku_id: pickFirstTrimmed(candidate.sku_id) } : {}),
-          ...(pickFirstTrimmed(candidate.brand) ? { brand: pickFirstTrimmed(candidate.brand) } : {}),
-          name: productName,
-          ...(pickFirstTrimmed(candidate.category) ? { category: pickFirstTrimmed(candidate.category) } : {}),
-          ...(candidate.price && typeof candidate.price === 'object' ? { price: candidate.price } : {}),
-        };
-        const why = candidate.why_candidate;
-        const reasons = Array.isArray(why)
-          ? why
-          : why && typeof why === 'object' && !Array.isArray(why) && Array.isArray(why.reasons_user_visible)
-            ? why.reasons_user_visible
-            : [];
-        return {
-          kind,
-          product,
-          ...(candidate.similarity_score != null ? { similarity_score: candidate.similarity_score } : {}),
-          ...(reasons.length ? { reasons } : {}),
-          tradeoffs: Array.isArray(candidate.compare_highlights) ? candidate.compare_highlights : [],
-          evidence: {},
-          missing_info: [],
-        };
-      };
-      if (type === 'dupe_suggest') {
-        for (const row of Array.isArray(payload.dupes) ? payload.dupes : []) {
-          const alt = candidateToAlt(row, 'dupe');
-          if (alt) fromCards.push(alt);
-        }
-        for (const row of Array.isArray(payload.comparables) ? payload.comparables : []) {
-          const alt = candidateToAlt(row, 'similar');
-          if (alt) fromCards.push(alt);
-        }
-      } else if (type === 'product_analysis') {
-        for (const row of Array.isArray(payload?.dupes?.candidates) ? payload.dupes.candidates : []) {
-          const alt = candidateToAlt(row, 'dupe');
-          if (alt) fromCards.push(alt);
-        }
-        for (const row of Array.isArray(payload?.competitors?.candidates) ? payload.competitors.candidates : []) {
-          const alt = candidateToAlt(row, 'similar');
-          if (alt) fromCards.push(alt);
-        }
-      }
-    }
-    return fromCards;
-  };
-
-  const profileObj = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
-    ? profileSummary
-    : {};
-
-  const prefix = buildContextPrefix({
-    profile: profileSummary || null,
-    recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
-    lang: ctx.lang,
-    trigger_source: ctx.trigger_source,
-    intent: 'alternatives',
-    action_id: 'chip.action.dupe_compare',
+  const profileSnapshot = buildAlternativesProfileSnapshot(
+    profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : {},
+  );
+  const candidates = buildRecoAlternativesCandidatePool({
+    sharedCandidates: candidatePool,
+    productObj,
+    anchorId: anchor,
+    maxCandidates: 20,
   });
-
-  const attempts = [{ id: 'primary', forceConservative: false }, { id: 'conservative_retry', forceConservative: true }];
-  const attemptDebug = [];
-  let mapped = [];
-  let lastStructured = null;
-  let lastAnswerJson = null;
-  let lastAlternativesRaw = [];
-  let lastIntent = null;
-  let lastError = null;
-  let lastLlmTrace = null;
-  for (const attempt of attempts) {
-    const profileSnapshot = buildProfileSnapshot(profileObj, {
-      forceConservative: attempt.forceConservative,
-    });
-    const query =
-      `${prefix}` +
-      buildAuroraRecoAlternativesQuery({
-        lang: ctx.lang,
-        profileSnapshot,
-        productInput: bestInput,
-        productObj,
-        maxTotal,
-        region: normalizeRecoPromptRegion(profileSummary),
-      });
-    const traceCoverage = {
-      assumptions_applied: Boolean(profileSnapshot.assumptions_applied),
-      has_anchor_id: Boolean(anchor),
-      has_product_json: Boolean(productJson),
-      has_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+  if (!candidates.length) {
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
+    recordRecoAlternativesEmpty();
+    return {
+      ok: true,
+      alternatives: [],
+      no_result_reason: 'no_candidates',
+      field_missing: [{ field: 'alternatives', reason: 'no_candidates' }],
+      timeout_root_cause: 'unknown',
     };
-    const traceSeed = buildRecoPromptTrace({
-      templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
-      query,
-      latencyMs: null,
-      cacheHit: false,
-      provider: 'aurora',
-      model: null,
-      coverage: traceCoverage,
-    });
-    const startedAtMs = Date.now();
-    let upstream = null;
-    try {
-      upstream = await auroraChat({
-        baseUrl: AURORA_DECISION_BASE_URL,
-        query,
-        timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
-        retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
-        trace_id: ctx.trace_id,
-        request_id: ctx.request_id,
-        prompt_hash: traceSeed.prompt_hash,
-        prompt_template_id: traceSeed.template_id,
-        ...(anchor ? { anchor_product_id: anchor } : {}),
-        allow_recommendations: true,
-        resume_context: {
-          enabled: true,
-          template_version: 'v2',
-          flow_id: 'alternatives',
-          include_history: true,
-          clarification_history: [
-            { question_id: 'skin_type', option: profileSnapshot.skinType },
-            { question_id: 'sensitivity', option: profileSnapshot.sensitivity },
-            { question_id: 'barrier_status', option: profileSnapshot.barrierStatus },
-            { question_id: 'goals', option: profileSnapshot.goals[0] || 'Hydration' },
-          ],
-          resume_user_text: `Find dupe/similar/premium alternatives for ${bestInput}`,
-          known_profile_fields: {
-            skinType: profileSnapshot.skinType,
-            sensitivity: profileSnapshot.sensitivity,
-            barrierStatus: profileSnapshot.barrierStatus,
-            goals: profileSnapshot.goals,
-          },
-        },
-      });
-      const llmTrace = {
-        ...traceSeed,
-        latency_ms: Date.now() - startedAtMs,
-        cache_hit: false,
-      };
-      lastLlmTrace = llmTrace;
-    } catch (err) {
-      lastError = err;
-      const transientCode = classifyRecoUpstreamFailureCode(err);
-      const llmOutcome =
-        err && err.code === 'AURORA_NOT_CONFIGURED'
-          ? 'precheck_fail'
-          : isTransientRecoUpstreamFailureCode(transientCode)
-            ? 'timeout'
-            : 'provider_error';
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: llmOutcome });
-      const llmTrace = {
-        ...traceSeed,
-        latency_ms: Date.now() - startedAtMs,
-        cache_hit: false,
-        error_class: llmOutcome,
-      };
-      lastLlmTrace = llmTrace;
-      logger?.warn(
-        {
-          err: err && err.message ? err.message : String(err),
-          attempt: attempt.id,
-        },
-        'aurora bff: alternatives upstream failed',
-      );
-      attemptDebug.push({
-        attempt: attempt.id,
-        assumptions_applied: profileSnapshot.assumptions_applied,
-        upstream_intent: null,
-        error: err && err.message ? err.message : String(err),
-        llm_trace: llmTrace,
-        llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
-        alternatives_raw_count: 0,
-        alternatives_mapped_count: 0,
-      });
-      // Do not run a second alternatives attempt after transport/provider failure;
-      // this only doubles latency and token burn without improving recovery odds.
-      break;
-    }
-    lastError = null;
-    lastIntent = upstream && typeof upstream.intent === 'string' ? upstream.intent : null;
-    const answerJson =
-      upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['alternatives']) : null;
-    const structuredFallback = getUpstreamStructuredOrJson(upstream);
-    const structured =
-      answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) && Array.isArray(answerJson.alternatives)
-        ? answerJson
-        : structuredFallback || answerJson;
-    const alternativesRaw = extractAlternativesRawFromUpstream({
-      upstream,
-      structured,
-      answerJson,
-    });
-    const attemptMapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
-      lang: ctx.lang,
-      maxTotal: maxTotal ?? 3,
-    });
-    const llmTrace = {
-      ...traceSeed,
-      latency_ms: Date.now() - startedAtMs,
-      cache_hit: false,
-    };
-    lastLlmTrace = llmTrace;
-    if (attemptMapped.length > 0) {
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'success' });
-      writeRecoAlternativesCache(alternativesCacheKey, attemptMapped, llmTrace);
-    } else {
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
-    }
-    attemptDebug.push({
-      attempt: attempt.id,
-      assumptions_applied: profileSnapshot.assumptions_applied,
-      upstream_intent: lastIntent,
-      has_structured: Boolean(upstream && upstream.structured),
-      structured_keys:
-        upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
-          ? Object.keys(upstream.structured).slice(0, 24)
-          : [],
-      llm_trace: llmTrace,
-      llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
-      alternatives_raw_count: Array.isArray(alternativesRaw) ? alternativesRaw.length : 0,
-      alternatives_mapped_count: Array.isArray(attemptMapped) ? attemptMapped.length : 0,
-    });
-    lastStructured = structured;
-    lastAnswerJson = answerJson;
-    lastAlternativesRaw = Array.isArray(alternativesRaw) ? alternativesRaw : [];
-    if (attemptMapped.length) {
-      mapped = attemptMapped;
-      break;
-    }
-    if (lastIntent !== 'clarify') break;
   }
 
-  if (lastError && !mapped.length) {
-    const staleCache = readRecoAlternativesCache(alternativesCacheKey, { allowStale: true });
-    if (staleCache && Array.isArray(staleCache.alternatives) && staleCache.alternatives.length) {
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
-      return {
-        ok: true,
-        alternatives: staleCache.alternatives,
-        field_missing: [{ field: 'alternatives', reason: 'upstream_error_cached_fallback' }],
-        ...(debug
-          ? {
-            debug: {
-              input: bestInput.slice(0, 200),
-              anchor_id: anchor || null,
-              cache_fallback: true,
-              cache_age_ms: staleCache.age_ms,
-              cache_stale: staleCache.stale,
-              error: lastError && lastError.message ? lastError.message : String(lastError),
-              attempts: attemptDebug,
-            },
-          }
-          : {}),
-        llm_trace: {
-          ...(lastLlmTrace && typeof lastLlmTrace === 'object' ? lastLlmTrace : {}),
-          cache_hit: true,
-        },
-      };
+  const configuredBudgetMs = Math.max(1200, AURORA_BFF_CHAT_RECO_BUDGET_MS - RECO_ALTERNATIVES_OVERHEAD_MS);
+  const budgetClampedTimeoutMs = Math.max(1200, Math.min(RECO_ALTERNATIVES_TIMEOUT_MS, configuredBudgetMs));
+  const budgetDeadlineMs = Number.isFinite(Number(budget && budget.deadline_ms))
+    ? Number(budget && budget.deadline_ms)
+    : null;
+  const remainingBudgetMs = Number.isFinite(budgetDeadlineMs)
+    ? Math.max(0, Math.trunc(budgetDeadlineMs - Date.now()))
+    : null;
+  if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= RECO_ALTERNATIVES_OVERHEAD_MS + 200) {
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'budget_exhausted' });
+    recordRecoAlternativesBudgetExhausted();
+    return {
+      ok: true,
+      alternatives: [],
+      no_result_reason: 'alternatives_budget_exhausted',
+      field_missing: [{ field: 'alternatives', reason: 'alternatives_budget_exhausted' }],
+      timeout_root_cause: 'budget_exceeded',
+    };
+  }
+  const effectiveAlternativesTimeoutMs = Number.isFinite(remainingBudgetMs)
+    ? Math.max(1200, Math.min(budgetClampedTimeoutMs, remainingBudgetMs - RECO_ALTERNATIVES_OVERHEAD_MS))
+    : budgetClampedTimeoutMs;
+
+  const queryPack = buildAuroraRecoAlternativesQuery({
+    lang: ctx.lang,
+    profileSnapshot,
+    productInput: bestInput,
+    productObj,
+    maxTotal,
+    region: normalizeRecoPromptRegion(profileSummary),
+    candidates,
+    anchorId: anchor,
+  });
+  const traceCoverage = {
+    has_anchor_id: Boolean(anchor),
+    has_product_json: Boolean(productJson),
+    has_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+    candidates_count: candidates.length,
+  };
+  const llmTraceSeed = buildRecoPromptTrace({
+    templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+    query: queryPack.query,
+    latencyMs: null,
+    cacheHit: false,
+    provider: 'gemini',
+    model: ANALYSIS_STORY_MODEL_GEMINI,
+    coverage: traceCoverage,
+  });
+  const promptContractBase = validateRecoPromptContract({
+    query: queryPack.query,
+    expectedTemplateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+    expectedPromptHash: llmTraceSeed.prompt_hash,
+  });
+  const promptContract = AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH
+    ? {
+      ...promptContractBase,
+      ok: false,
+      issues: Array.from(new Set([...(Array.isArray(promptContractBase.issues) ? promptContractBase.issues : []), 'forced_mismatch'])),
     }
+    : promptContractBase;
+  if (!promptContract.ok) {
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'prompt_contract_mismatch' });
+    recordPromptContractMismatch();
+    recordAuroraSkinFlowMetric({ stage: 'reco_prompt_contract_mismatch', hit: true });
+    return {
+      ok: true,
+      alternatives: [],
+      prompt_contract_ok: false,
+      prompt_contract_issues: promptContract.issues.slice(0, 6),
+      no_result_reason: 'prompt_contract_mismatch',
+      field_missing: [{ field: 'alternatives', reason: 'prompt_contract_mismatch' }],
+      timeout_root_cause: 'unknown',
+      llm_trace: {
+        ...llmTraceSeed,
+        latency_ms: 0,
+        cache_hit: false,
+        prompt_contract_ok: false,
+        prompt_contract_issues: promptContract.issues.slice(0, 6),
+      },
+    };
+  }
+
+  if (!GEMINI_API_KEY || USE_AURORA_BFF_MOCK) {
+    const policyFallback = mapSelectorCandidatesToAlternatives(candidates, {
+      maxTotal,
+      lang: ctx.lang,
+      reasonLine: ctx.lang === 'CN' ? '候选集快速回退（未触发上游模型）。' : 'Candidate-only fast fallback (upstream model not invoked).',
+    });
+    if (!policyFallback.length) {
+      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
+      recordRecoAlternativesEmpty();
+    } else {
+      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
+    }
+    return {
+      ok: true,
+      alternatives: policyFallback,
+      prompt_contract_ok: true,
+      prompt_contract_issues: [],
+      no_result_reason: policyFallback.length ? null : 'provider_unavailable',
+      field_missing: policyFallback.length ? [] : [{ field: 'alternatives', reason: 'provider_unavailable' }],
+      timeout_root_cause: 'unknown',
+      llm_trace: {
+        ...llmTraceSeed,
+        latency_ms: 0,
+        cache_hit: false,
+        prompt_contract_ok: true,
+        error_class: 'policy_skip',
+      },
+    };
+  }
+
+  const startedAtMs = Date.now();
+  let llmResp = null;
+  try {
+    llmResp = await callGeminiJsonObjectImpl({
+      model: ANALYSIS_STORY_MODEL_GEMINI,
+      systemPrompt: queryPack.systemPrompt,
+      userPrompt: queryPack.query,
+      timeoutMs: effectiveAlternativesTimeoutMs,
+      temperature: 0.2,
+      maxOutputTokens: 400,
+      responseJsonSchema: buildRecoAlternativesSchema(Math.max(1, Math.min(6, Number(maxTotal) || 3))),
+    });
+  } catch (err) {
+    llmResp = { ok: false, reason: err && err.code ? String(err.code) : 'gemini_error', detail: err && err.message ? String(err.message) : null };
+  }
+  const latencyMs = Math.max(0, Date.now() - startedAtMs);
+  const llmTrace = {
+    ...llmTraceSeed,
+    latency_ms: latencyMs,
+    cache_hit: false,
+    prompt_contract_ok: true,
+  };
+
+  if (!(llmResp && llmResp.ok === true && llmResp.json && typeof llmResp.json === 'object' && !Array.isArray(llmResp.json))) {
+    const failureCode = classifyAlternativesFailureCode(llmResp && llmResp.reason);
+    const timeoutRootCause = mapAlternativesFailureToRootCause(failureCode);
+    const outcome = failureCode === 'timeout' ? 'timeout' : 'provider_error';
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome });
+    if (failureCode === 'timeout') recordRecoAlternativesTimeout();
     return {
       ok: false,
       alternatives: [],
-      field_missing: [{ field: 'alternatives', reason: 'upstream_error' }],
+      prompt_contract_ok: true,
+      no_result_reason: failureCode,
+      timeout_root_cause: timeoutRootCause,
+      field_missing: [{ field: 'alternatives', reason: failureCode === 'timeout' ? 'alternatives_timeout' : 'alternatives_provider_error' }],
       ...(debug
         ? {
           debug: {
             input: bestInput.slice(0, 200),
             anchor_id: anchor || null,
             product_json_preview: productJson ? productJson.slice(0, 300) : null,
-            error: lastError && lastError.message ? lastError.message : String(lastError),
-            attempts: attemptDebug,
+            candidates_count: candidates.length,
+            llm_error_reason: String(llmResp && llmResp.reason ? llmResp.reason : '').slice(0, 120) || null,
           },
         }
         : {}),
-      ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
+      llm_trace: { ...llmTrace, error_class: outcome },
     };
   }
 
-  if (!mapped.length) {
-    const staleCache = readRecoAlternativesCache(alternativesCacheKey, { allowStale: true });
-    if (staleCache && Array.isArray(staleCache.alternatives) && staleCache.alternatives.length) {
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
-      return {
-        ok: true,
-        alternatives: staleCache.alternatives,
-        field_missing: [{ field: 'alternatives', reason: 'upstream_empty_cached_fallback' }],
-        ...(debug
-          ? {
-            debug: {
-              input: bestInput.slice(0, 200),
-              anchor_id: anchor || null,
-              cache_fallback: true,
-              cache_age_ms: staleCache.age_ms,
-              cache_stale: staleCache.stale,
-              upstream_intent: lastIntent,
-              attempts: attemptDebug,
-            },
-          }
-          : {}),
-        llm_trace: {
-          ...(lastLlmTrace && typeof lastLlmTrace === 'object' ? lastLlmTrace : {}),
-          cache_hit: true,
-        },
-      };
-    }
+  const selected = [];
+  const selectedSeen = new Set();
+  const idToCandidate = new Map(candidates.map((row) => [String(row.id || '').trim().toLowerCase(), row]));
+  for (const row of Array.isArray(llmResp.json.products) ? llmResp.json.products : []) {
+    const item = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+    if (!item) continue;
+    const id = String(item.id || '').trim().toLowerCase();
+    if (!id || selectedSeen.has(id)) continue;
+    const candidate = idToCandidate.get(id);
+    if (!candidate) continue;
+    selectedSeen.add(id);
+    selected.push({
+      candidate,
+      why: String(item.why || '').trim().slice(0, 180),
+    });
+    if (selected.length >= Math.max(1, Math.min(6, Number(maxTotal) || 3))) break;
   }
 
+  if (!selected.length) {
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
+    recordRecoAlternativesEmpty();
+    return {
+      ok: true,
+      alternatives: [],
+      prompt_contract_ok: true,
+      no_result_reason: 'no_valid_selector_match',
+      field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+      timeout_root_cause: 'unknown',
+      ...(debug ? { debug: { candidates_count: candidates.length, selected_count: 0 } } : {}),
+      llm_trace: llmTrace,
+    };
+  }
+
+  const alternativesRaw = selected.map(({ candidate, why }, idx) => ({
+    kind: 'similar',
+    product: {
+      ...(candidate.product_id ? { product_id: candidate.product_id } : {}),
+      ...(candidate.sku_id ? { sku_id: candidate.sku_id } : {}),
+      ...(candidate.brand ? { brand: candidate.brand } : {}),
+      name: candidate.name,
+      ...(candidate.category ? { category: candidate.category } : {}),
+      ...(candidate.price && typeof candidate.price === 'object' ? { price: candidate.price } : {}),
+      ...(candidate.pdp_url ? { pdp_url: candidate.pdp_url, url: candidate.pdp_url } : {}),
+    },
+    similarity_score: Number.isFinite(Number(candidate.similarity_score))
+      ? Number(candidate.similarity_score)
+      : Math.max(55, 84 - idx * 6),
+    reasons: why ? [why] : [],
+    tradeoffs: Array.isArray(candidate.signals) ? candidate.signals.slice(0, 3) : [],
+    evidence: {},
+    missing_info: [],
+  }));
+  const mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
+    lang: ctx.lang,
+    maxTotal: maxTotal ?? 3,
+  });
+  if (!mapped.length) {
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'empty_structured' });
+    recordRecoAlternativesEmpty();
+    return {
+      ok: true,
+      alternatives: [],
+      prompt_contract_ok: true,
+      no_result_reason: 'mapped_empty',
+      field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+      timeout_root_cause: 'unknown',
+      ...(debug ? { debug: { candidates_count: candidates.length, selected_count: selected.length } } : {}),
+      llm_trace: llmTrace,
+    };
+  }
+  recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'success' });
   return {
     ok: true,
     alternatives: mapped,
-    field_missing: mapped.length
-      ? []
-      : [{ field: 'alternatives', reason: lastStructured ? 'upstream_missing_or_empty' : 'upstream_missing_or_unstructured' }],
+    prompt_contract_ok: true,
+    prompt_contract_issues: [],
+    field_missing: [],
+    timeout_root_cause: 'unknown',
     ...(debug
       ? {
         debug: {
           input: bestInput.slice(0, 200),
           anchor_id: anchor || null,
           product_json_preview: productJson ? productJson.slice(0, 300) : null,
-          upstream_intent: lastIntent,
-          extracted_answer_json_keys:
-            lastAnswerJson && typeof lastAnswerJson === 'object' && !Array.isArray(lastAnswerJson)
-              ? Object.keys(lastAnswerJson).slice(0, 24)
-              : [],
-          extracted_structured_keys:
-            lastStructured && typeof lastStructured === 'object' && !Array.isArray(lastStructured)
-              ? Object.keys(lastStructured).slice(0, 24)
-              : [],
-          alternatives_raw_count: Array.isArray(lastAlternativesRaw) ? lastAlternativesRaw.length : 0,
-          alternatives_mapped_count: mapped.length,
-          attempts: attemptDebug,
+          candidates_count: candidates.length,
+          selected_count: selected.length,
+          effective_timeout_ms: effectiveAlternativesTimeoutMs,
         },
       }
       : {}),
-    ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
+    llm_trace: llmTrace,
   };
 }
 
@@ -33614,10 +33673,9 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
   const recos = Array.isArray(recommendations) ? recommendations : [];
   const maxProducts = RECO_ALTERNATIVES_MAX_PRODUCTS;
   if (!recos.length || maxProducts <= 0) return { recommendations: recos, field_missing: [] };
-
-  if (!AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
-    return { recommendations: recos, field_missing: [{ field: 'recommendations[].alternatives', reason: 'aurora_not_configured' }] };
-  }
+  const alternativesBudget = {
+    deadline_ms: Date.now() + AURORA_BFF_CHAT_RECO_BUDGET_MS,
+  };
 
   const firstBySlot = { am: null, pm: null, other: null };
   for (let i = 0; i < recos.length; i += 1) {
@@ -33641,6 +33699,27 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
     orderedIdx.push(i);
   }
 
+  const sharedCandidatePool = [];
+  for (let i = 0; i < recos.length; i += 1) {
+    const item = recos[i];
+    const base = item && typeof item === 'object' ? item : null;
+    const candidate =
+      base && base.sku && typeof base.sku === 'object'
+        ? base.sku
+        : base && base.product && typeof base.product === 'object'
+          ? base.product
+          : base;
+    const normalized = normalizeAlternativesSelectorCandidate(
+      {
+        ...(candidate && typeof candidate === 'object' ? candidate : {}),
+        ...(typeof base?.url === 'string' ? { pdp_url: base.url, url: base.url } : {}),
+        ...(Array.isArray(base?.reasons) ? { why_candidate: base.reasons } : {}),
+      },
+      { index: i },
+    );
+    if (normalized) sharedCandidatePool.push(normalized);
+  }
+
   const targets = [];
   for (const idx of orderedIdx) {
     if (targets.length >= maxProducts) break;
@@ -33656,7 +33735,15 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
     const inputText = buildProductInputText(candidate, base && typeof base.url === 'string' ? base.url : null);
     const anchorId = extractAnchorIdFromProductLike(candidate) || extractAnchorIdFromProductLike(base);
     if (!inputText && !anchorId) continue;
-    targets.push({ idx, inputText, anchorId, productObj: candidate });
+    const anchorToken = String(anchorId || '').trim().toLowerCase();
+    const candidatePool = sharedCandidatePool.filter((row) => {
+      if (!row || typeof row !== 'object') return false;
+      const idToken = String(row.id || '').trim().toLowerCase();
+      const pidToken = String(row.product_id || row.sku_id || '').trim().toLowerCase();
+      if (!anchorToken) return true;
+      return idToken !== anchorToken && pidToken !== anchorToken;
+    });
+    targets.push({ idx, inputText, anchorId, productObj: candidate, candidatePool });
   }
 
   if (!targets.length) {
@@ -33671,6 +33758,8 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
       productInput: t.inputText,
       productObj: t.productObj,
       anchorId: t.anchorId,
+      candidatePool: t.candidatePool,
+      budget: alternativesBudget,
       debug,
       logger,
     });
@@ -33679,16 +33768,27 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
 
   const enriched = recos.slice();
   let anyEmpty = false;
+  let mergedFieldMissing = [];
   for (const r of results) {
     if (!r || typeof r !== 'object' || typeof r.idx !== 'number') continue;
     const base = enriched[r.idx];
     const next = base && typeof base === 'object' ? { ...base } : {};
     next.alternatives = Array.isArray(r.alternatives) ? r.alternatives : [];
+    if (Array.isArray(r.alternatives) && r.alternatives.length > 0) {
+      next.reco_reason_codes = uniqCaseInsensitiveStrings([
+        ...asStringArray(next.reco_reason_codes),
+        'matched_candidate',
+      ], 8);
+    }
     enriched[r.idx] = next;
     if (!next.alternatives.length) anyEmpty = true;
+    mergedFieldMissing = mergeFieldMissing(mergedFieldMissing, r.field_missing);
   }
 
-  const field_missing = anyEmpty ? [{ field: 'recommendations[].alternatives', reason: 'alternatives_partial' }] : [];
+  let field_missing = mergedFieldMissing;
+  if (anyEmpty) {
+    field_missing = mergeFieldMissing(field_missing, [{ field: 'recommendations[].alternatives', reason: 'alternatives_partial' }]);
+  }
   const debugInfo = debug
     ? results
       .map((r) => (r && typeof r === 'object' && r.debug ? { idx: r.idx, ...r.debug } : null))
@@ -33899,7 +33999,8 @@ async function generateProductRecommendations({
     llmLatencyMs = 0;
     upstreamFailureCode = 'PROMPT_CONTRACT_MISMATCH';
     llmFailureClass = 'precheck_fail';
-    recordAuroraRecoLlmCall({ stage: 'main', outcome: 'precheck_fail' });
+    recordAuroraRecoLlmCall({ stage: 'main', outcome: 'prompt_contract_mismatch' });
+    recordPromptContractMismatch();
     recordAuroraSkinFlowMetric({ stage: 'reco_prompt_contract_mismatch', hit: true });
     logger?.warn(
       {
@@ -38295,6 +38396,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         ok: out && out.ok !== false,
         alternatives: Array.isArray(out && out.alternatives) ? out.alternatives : [],
         field_missing: Array.isArray(out && out.field_missing) ? out.field_missing : [],
+        prompt_contract_ok: out && out.prompt_contract_ok !== false,
+        prompt_contract_issues: Array.isArray(out && out.prompt_contract_issues) ? out.prompt_contract_issues : [],
+        no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,
+        timeout_root_cause: out && out.timeout_root_cause ? String(out.timeout_root_cause) : null,
         llm_trace: out && out.llm_trace && typeof out.llm_trace === 'object' ? out.llm_trace : null,
         ...(includeDebug && out && out.debug && typeof out.debug === 'object' ? { debug: out.debug } : {}),
       });
