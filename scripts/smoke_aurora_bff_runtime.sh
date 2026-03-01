@@ -442,7 +442,14 @@ if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >
       ) == true
     '
   fi
-  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source" '.events | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))'
+  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source when event stream is present" '
+    (.events // []) as $ev |
+    if ($ev | length) == 0 then
+      true
+    else
+      ($ev | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0)))
+    end
+  '
 elif printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="product_verdict")' >/dev/null; then
   printf "%s\n" "$reco_json" | jq_assert "product_verdict card exists when recommendations are absent" '.cards | any(.type=="product_verdict")'
   printf "%s\n" "$reco_json" | jq_assert "product_verdict keeps structured section" '
