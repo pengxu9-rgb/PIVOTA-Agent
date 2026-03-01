@@ -3276,6 +3276,17 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     ),
     bodyExternalCountForHealth,
   );
+  const externalSeedReturnedCount = Math.max(
+    intNonNegative(
+      routeHealth.external_seed_returned_count != null
+        ? routeHealth.external_seed_returned_count
+        : metadata.external_seed_returned_count != null
+        ? metadata.external_seed_returned_count
+        : metadata?.source_breakdown?.external_seed_count,
+    ),
+    bodyExternalCountForHealth,
+  );
+  routeHealth.external_seed_returned_count = externalSeedReturnedCount;
   routeHealth.merged_pre_limit_count = Math.max(
     routeHealth.merged_pre_limit_count != null
       ? intNonNegative(routeHealth.merged_pre_limit_count)
@@ -3383,6 +3394,7 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   metadata.external_seed_brand_relevant_rows = routeHealth.external_seed_brand_relevant_rows;
   metadata.external_seed_broad_fallback_used = routeHealth.external_seed_broad_fallback_used;
   metadata.external_seed_broad_scope_rows = routeHealth.external_seed_broad_scope_rows;
+  metadata.external_seed_returned_count = externalSeedReturnedCount;
   metadata.internal_raw_count = routeHealth.internal_raw_count;
   metadata.external_raw_count = routeHealth.external_raw_count;
   metadata.merged_pre_limit_count = routeHealth.merged_pre_limit_count;
