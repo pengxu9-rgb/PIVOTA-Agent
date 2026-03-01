@@ -3164,6 +3164,12 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   routeHealth.semantic_retry_applied = semanticRetryAppliedDerived;
   routeHealth.semantic_retry_query = semanticRetryQueryDerived ? String(semanticRetryQueryDerived) : null;
   routeHealth.semantic_retry_hits = semanticRetryHitsDerived;
+  const fallbackReasonToken = String(
+    routeHealth.fallback_reason != null ? routeHealth.fallback_reason : metadata.fallback_reason || '',
+  )
+    .trim()
+    .toLowerCase();
+  const lowQualityReasonHint = fallbackReasonToken.includes('low_quality');
   routeHealth.external_seed_brand_strict_rows = intNonNegative(
     routeHealth.external_seed_brand_strict_rows != null
       ? routeHealth.external_seed_brand_strict_rows
@@ -3213,18 +3219,23 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     Number.isFinite(Number(primaryQualityScoreRaw)) && Number(primaryQualityScoreRaw) >= 0
       ? Math.max(0, Math.min(1, Number(primaryQualityScoreRaw)))
       : null;
-  routeHealth.low_quality_nonempty_detected = Boolean(
+  const lowQualityNonemptyDerived = Boolean(
     routeHealth.low_quality_nonempty_detected != null
       ? routeHealth.low_quality_nonempty_detected
       : metadata.low_quality_nonempty_detected,
   );
-  routeHealth.primary_quality_gate_passed = Boolean(
-    routeHealth.primary_quality_gate_passed != null
-      ? routeHealth.primary_quality_gate_passed
-      : metadata.primary_quality_gate_passed != null
-      ? metadata.primary_quality_gate_passed
-      : !routeHealth.low_quality_nonempty_detected,
-  );
+  routeHealth.low_quality_nonempty_detected = lowQualityNonemptyDerived || lowQualityReasonHint;
+  if (lowQualityReasonHint) {
+    routeHealth.primary_quality_gate_passed = false;
+  } else {
+    routeHealth.primary_quality_gate_passed = Boolean(
+      routeHealth.primary_quality_gate_passed != null
+        ? routeHealth.primary_quality_gate_passed
+        : metadata.primary_quality_gate_passed != null
+        ? metadata.primary_quality_gate_passed
+        : !routeHealth.low_quality_nonempty_detected,
+    );
+  }
   routeHealth.supplement_attempted = Boolean(
     routeHealth.supplement_attempted != null
       ? routeHealth.supplement_attempted
@@ -3240,12 +3251,17 @@ function withSearchDiagnostics(body, diagnostics = {}) {
             ? metadata.supplement_skip_reason
             : metadata?.search_stage_b?.reason || '',
         ).trim() || null;
-  routeHealth.retry_attempt_count = intNonNegative(
+  const retryAttemptCountDerived = intNonNegative(
     routeHealth.retry_attempt_count != null
       ? routeHealth.retry_attempt_count
       : metadata.retry_attempt_count != null
       ? metadata.retry_attempt_count
       : metadata?.fallback_strategy?.secondary_attempt_count,
+  );
+  routeHealth.retry_attempt_count = Math.max(
+    retryAttemptCountDerived,
+    secondaryAttemptCount,
+    semanticRetryAppliedDerived ? 1 : 0,
   );
   routeHealth.final_returned_count = intNonNegative(
     routeHealth.final_returned_count != null
