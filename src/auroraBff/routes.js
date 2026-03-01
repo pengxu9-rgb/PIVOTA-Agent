@@ -714,6 +714,12 @@ const AURORA_INGREDIENT_GOAL_ENRICH_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 2800;
   return Math.max(1000, Math.min(12000, v));
 })();
+const AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH = (() => {
+  const raw = String(process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_INGREDIENT_RESEARCH_KB_PATH = String(process.env.AURORA_INGREDIENT_RESEARCH_KB_PATH || '').trim();
 const AURORA_INGREDIENT_RESEARCH_PERSIST_ENABLED = (() => {
   const raw = String(process.env.AURORA_INGREDIENT_RESEARCH_PERSIST_ENABLED || '')
@@ -33593,11 +33599,18 @@ async function generateProductRecommendations({
     model: null,
     coverage: llmTraceCoverage,
   });
-  const promptContract = validateRecoPromptContract({
+  const promptContractBase = validateRecoPromptContract({
     query,
     expectedTemplateId: RECO_MAIN_PROMPT_TEMPLATE_ID,
     expectedPromptHash: llmTraceSeed.prompt_hash,
   });
+  const promptContract = AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH
+    ? {
+      ...promptContractBase,
+      ok: false,
+      issues: Array.from(new Set([...(Array.isArray(promptContractBase.issues) ? promptContractBase.issues : []), 'forced_mismatch'])),
+    }
+    : promptContractBase;
 
   let llmStructured = null;
   let llmStructuredSource = null;
@@ -47962,6 +47975,7 @@ const __internal = {
   mergeIngredientRecoContextValue,
   buildAuroraProductRecommendationsQuery,
   applyIngredientRecoConstraint,
+  generateProductRecommendations,
   buildIngredientReportPayloadWithResearch,
   initLlmFallbackStageCounts,
   mergeLlmFallbackStageCounts,

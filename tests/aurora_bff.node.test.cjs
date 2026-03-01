@@ -4061,9 +4061,11 @@ test('/v1/chat: ingredient.lookup uses research path and second lookup can hit i
       const routeModule = require('../src/auroraBff/routes');
       const { mountAuroraBffRoutes, __internal } = routeModule;
       let geminiCalls = 0;
+      let geminiArgs = null;
       try {
-        __internal.__setCallGeminiJsonObjectForTest(async () => {
+        __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
           geminiCalls += 1;
+          geminiArgs = args;
           return {
             ok: true,
             json: {
@@ -4110,6 +4112,26 @@ test('/v1/chat: ingredient.lookup uses research path and second lookup can hit i
         assert.ok(firstReport);
         assert.equal(firstReport.payload?.research_status, 'ready');
         assert.equal(firstReport.payload?.research_provider, 'gemini');
+        assert.equal(firstReport.payload?.schema_version, 'aurora.ingredient_report.v2-lite');
+        assert.equal(Array.isArray(firstReport.payload?.benefits), true);
+        assert.equal(firstReport.payload?.benefits?.length > 0, true);
+        assert.equal(typeof firstReport.payload?.verdict?.one_liner, 'string');
+        assert.equal(firstReport.payload?.verdict?.one_liner?.length > 0, true);
+        assert.equal(Array.isArray(firstReport.payload?.watchouts), true);
+        assert.equal(firstReport.payload?.watchouts?.length > 0, true);
+        assert.equal(
+          Boolean(geminiArgs?.responseJsonSchema) &&
+            typeof geminiArgs.responseJsonSchema === 'object' &&
+            !Array.isArray(geminiArgs.responseJsonSchema),
+          true,
+        );
+        assert.equal(
+          Array.isArray(geminiArgs?.responseJsonSchema?.required) &&
+            geminiArgs.responseJsonSchema.required.includes('schema_version'),
+          true,
+        );
+        assert.match(String(geminiArgs?.systemPrompt || ''), /strictly parsable JSON only/i);
+        assert.match(String(geminiArgs?.userPrompt || ''), /schema_version\"\s*:\s*\"v2-lite\"/i);
         assert.equal(geminiCalls, 1);
 
         await new Promise((resolve) => setTimeout(resolve, 30));
@@ -4126,6 +4148,138 @@ test('/v1/chat: ingredient.lookup uses research path and second lookup can hit i
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: ingredient reco opt-in first query already carries ingredient_context', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+    delete require.cache[decisionModuleId];
+    const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+    const originalAuroraChat = decisionModule.auroraChat;
+    const capturedQueries = [];
+
+    decisionModule.auroraChat = async ({ query }) => {
+      capturedQueries.push(String(query || ''));
+      return {
+        answer: JSON.stringify({
+          recommendations: [
+            {
+              step: 'treatment',
+              reasons: ['Matched for barrier support and sensitivity profile.'],
+              sku: { brand: 'Mock', display_name: 'Barrier Repair Serum' },
+            },
+          ],
+        }),
+      };
+    };
+
+    const moduleId = require.resolve('../src/auroraBff/routes');
+    delete require.cache[moduleId];
+    try {
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_ing_reco_context_first_query',
+          'X-Trace-ID': 'test_trace_ing_reco_context_first_query',
+          'X-Brief-ID': 'test_brief_ing_reco_context_first_query',
+          'X-Lang': 'EN',
+        })
+        .send({
+          action: {
+            action_id: 'chip.start.reco_products',
+            kind: 'chip',
+            data: {
+              reply_text: 'Recommend products',
+              entry_source: 'ingredient_goal_match',
+              goal: 'barrier',
+              sensitivity: 'high',
+              candidates: ['Ceramide NP', 'Panthenol'],
+            },
+          },
+          language: 'EN',
+        });
+
+      assert.equal(resp.status, 200);
+      assert.equal(capturedQueries.length > 0, true);
+      const firstQuery = capturedQueries[0];
+      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_0/i);
+      assert.match(firstQuery, /SYSTEM_PROMPT:/i);
+      assert.match(firstQuery, /USER_PROMPT_JSON:/i);
+      assert.match(firstQuery, /"ingredient_context"\s*:/i);
+      assert.match(firstQuery, /"goal"\s*:\s*"barrier"/i);
+      assert.match(firstQuery, /"sensitivity"\s*:\s*"high"/i);
+      assert.match(firstQuery, /"candidates"\s*:\s*\[/i);
+    } finally {
+      decisionModule.auroraChat = originalAuroraChat;
+      delete require.cache[moduleId];
+      delete require.cache[decisionModuleId];
+    }
+  });
+});
+
+test('/v1/chat: prompt contract mismatch skips upstream and returns readable fallback with mismatch metric', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH: 'true',
+    },
+    async () => {
+      resetVisionMetrics();
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let upstreamCalls = 0;
+      decisionModule.auroraChat = async () => {
+        upstreamCalls += 1;
+        throw new Error('should_not_be_called_when_prompt_contract_mismatch');
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        const out = await __internal.generateProductRecommendations({
+          ctx: {
+            uid: 'test_uid_prompt_contract_mismatch',
+            lang: 'EN',
+            trigger_source: 'chip',
+            action_id: 'chip.start.reco_products',
+            request_id: 'req_prompt_contract_mismatch',
+            trace_id: 'trace_prompt_contract_mismatch',
+            profile: {},
+          },
+          profileSummary: {},
+          recentLogs: [],
+          userAsk: 'Recommend products for acne-safe routine',
+          logger: null,
+        });
+
+        assert.equal(upstreamCalls, 0);
+        assert.equal(Boolean(out?.norm?.payload), true);
+        assert.equal(out?.norm?.payload?.prompt_contract_ok, false);
+        assert.equal(Array.isArray(out?.norm?.payload?.recommendations), true);
+        const issues = Array.isArray(out?.norm?.payload?.prompt_contract_issues)
+          ? out.norm.payload.prompt_contract_issues.map((x) => String(x || ''))
+          : [];
+        assert.equal(issues.includes('forced_mismatch'), true);
+
+        const snap = snapshotVisionMetrics();
+        assert.ok(getLabeledCounterValue(snap.auroraSkinFlow, { stage: 'reco_prompt_contract_mismatch', outcome: 'hit' }) >= 1);
+      } finally {
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[routeModuleId];
+        delete require.cache[decisionModuleId];
       }
     },
   );

@@ -518,7 +518,8 @@ function normalizeAuroraSkinFlowStage(stage) {
     token === 'reco_low_confidence' ||
     token === 'reco_safety_block' ||
     token === 'reco_timeout_degraded' ||
-    token === 'reco_output_guard_fallback'
+    token === 'reco_output_guard_fallback' ||
+    token === 'reco_prompt_contract_mismatch'
   ) {
     return token;
   }
