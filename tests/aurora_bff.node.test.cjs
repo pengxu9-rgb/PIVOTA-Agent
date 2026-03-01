@@ -4161,10 +4161,10 @@ test('ingredient reco context keeps candidates and injects constraint prompt eve
       lang: 'EN',
       ingredientContext: { goal: 'barrier', sensitivity: 'high', candidates: ['Ceramide NP', 'Panthenol'] },
     });
-    assert.match(prompt, /Ingredient context:/i);
-    assert.match(prompt, /goal=barrier/i);
-    assert.match(prompt, /candidates=/i);
-    assert.match(prompt, /ingredient_context_sparse/i);
+    assert.match(prompt, /"ingredient_context"\s*:/i);
+    assert.match(prompt, /"goal"\s*:\s*"barrier"/i);
+    assert.match(prompt, /"candidates"\s*:\s*\[/i);
+    assert.match(prompt, /Respect ingredient_context strictly/i);
   } finally {
     delete require.cache[moduleId];
   }

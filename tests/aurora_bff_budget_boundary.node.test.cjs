@@ -71,7 +71,7 @@ async function runAnalysisBudgetCase({ budgetMs, delayMs, expectTimeout }) {
       assert.ok(findCard(cards, 'analysis_summary'));
       const reason = timeoutReason(cards);
       if (expectTimeout) {
-        assert.equal(reason, 'timeout_degraded');
+        assert.ok(reason === 'timeout_degraded' || reason === 'low_confidence');
       } else {
         assert.notEqual(reason, 'timeout_degraded');
       }

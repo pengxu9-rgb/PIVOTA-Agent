@@ -1,8 +1,15 @@
 function clampText(raw, maxLen) {
-  const s = typeof raw === 'string' ? raw.trim() : '';
-  if (!s) return '';
-  if (s.length <= maxLen) return s;
-  return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text) return '';
+  if (!Number.isFinite(maxLen) || maxLen <= 0) return '';
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen).trim();
+}
+
+function normalizeLanguage(language) {
+  const token = String(language || '').trim().toLowerCase();
+  if (token === 'cn' || token === 'zh' || token === 'zh-cn' || token === 'zh_hans') return 'zh-CN';
+  return 'en-US';
 }
 
 function compactProfile(profileSummary) {
@@ -47,7 +54,7 @@ function pickDetectorCandidates(diagnosisV1, { max = 2 } = {}) {
     const evidenceShort = evidenceShortRaw
       .filter((v) => typeof v === 'string' && v.trim())
       .slice(0, 2)
-      .map((v) => clampText(v, 200));
+      .map((v) => clampText(v, 120));
     out.push({
       issue_type: issueType,
       ...(severity ? { severity } : {}),
@@ -84,111 +91,90 @@ function summarizeRoutineActives(routineCandidate) {
   return Array.from(found).slice(0, 8);
 }
 
-function buildSkinVisionPrompt({ language, photoQuality, diagnosisPolicy, diagnosisV1, profileSummary, promptVersion } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const replyLanguage = lang === 'CN' ? 'Simplified Chinese' : 'English';
-  const replyInstruction = lang === 'CN' ? '只用简体中文。' : 'Reply ONLY in English.';
-  const version =
-    typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim().toLowerCase() : 'v1';
+function buildSkinVisionPrompt({ language, promptVersion } = {}) {
+  const lang = normalizeLanguage(language);
+  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'stable-v3';
 
-  const quality = photoQuality && typeof photoQuality === 'object'
-    ? { grade: photoQuality.grade || 'unknown', reasons: Array.isArray(photoQuality.reasons) ? photoQuality.reasons.slice(0, 6) : [] }
-    : { grade: 'unknown', reasons: [] };
-  const policy = diagnosisPolicy && typeof diagnosisPolicy === 'object' ? diagnosisPolicy : null;
-
-  const context = {
-    profile: compactProfile(profileSummary),
-    photo_quality: quality,
-    ...(policy ? { detector_policy: policy } : {}),
-    ...(diagnosisV1 ? { detector_candidates: pickDetectorCandidates(diagnosisV1, { max: 2 }) } : {}),
-  };
-
-  if (version === 'v2') {
-    return (
-      `prompt_version=v2\n` +
-      `context=${JSON.stringify(context)}\n` +
-      `Task: Use the photo ONLY for visible cosmetic skin signals. Focus on face skin only; ignore hair/eyes/lips/background. If unclear (blur/lighting), be conservative and use "not_sure".\n` +
-      `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-      `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
-      `- features: 3–5 items; observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}.\n` +
-      `- strategy: <=900 chars, actionable and executable.\n` +
-      `- no brand/product recommendations.\n` +
-      `Language: ${replyLanguage}. ${replyInstruction}\n`
-    );
+  if (lang === 'zh-CN') {
+    return [
+      `prompt_version=${version}`,
+      'Role: 你是客观且保守的护肤观察助手。',
+      'Task: 仅基于照片中面部皮肤可见线索，给出化妆品护理层面的观察与建议。',
+      '',
+      'Focus ONLY on: 泛红、痘样凸起、油光、干燥/起屑、肤色不均、粗糙纹理、可见毛孔。',
+      'Ignore: 头发、眼睛、嘴唇、背景、妆容风格、年龄/性别猜测。',
+      '',
+      'Strict safety boundaries:',
+      '- 禁止医学诊断，不要使用疾病名。',
+      '- 禁止治疗方案与处方药名。',
+      '- 禁止品牌或具体产品推荐。',
+      '- 若图片不清晰（模糊、强光、滤镜、遮挡），必须保守：多用 not_sure，并请求重拍（自然光、无滤镜、正脸、30-50cm、清晰对焦）。',
+      '',
+      'Output should be concise and practical.',
+      'Language: Simplified Chinese.',
+    ].join('\n');
   }
 
-  return (
-    `prompt_version=v1\n` +
-    `context=${JSON.stringify(context)}\n` +
-    `Task: Use the photo ONLY for visible cosmetic skin signals (redness, acne-like bumps, shine, dryness/flaking, uneven tone, texture). Focus on face skin only; ignore hair/eyes/lips/background. If unclear (blur/lighting), be conservative and use "not_sure".\n` +
-    `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-    `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
-    `- features: 4–6 items; each {"observation": string<=200 chars, "confidence": "pretty_sure"|"somewhat_sure"|"not_sure"}; no numbers/percent.\n` +
-    `- strategy: <=1000 chars, actionable and executable.\n` +
-    `- no brand/product recommendations.\n` +
-    `Language: ${replyLanguage}. ${replyInstruction}\n`
-  );
+  return [
+    `prompt_version=${version}`,
+    'Role: You are an objective, conservative cosmetic skincare observer.',
+    "Task: Based ONLY on visible cues from the user's FACE skin in the photo, provide cosmetic observations and actionable skincare guidance.",
+    '',
+    'Focus ONLY on: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.',
+    'Ignore: hair, eyes, lips, background, makeup style judgments, and any age/gender guesses.',
+    '',
+    'Strict safety boundaries:',
+    '- No medical diagnosis. Do not use disease names.',
+    '- No treatment plans. No prescription drug names.',
+    '- No brand or specific product recommendations.',
+    '- If the image is unclear (blur, strong lighting, heavy filters, occlusion), be conservative: use not_sure and ask for a better photo (natural daylight, no beauty filter, front-facing, 30-50cm, sharp focus).',
+    '',
+    'Output should be concise and practical.',
+    'Language: English (US).',
+  ].join('\n');
 }
 
-function buildSkinReportPrompt({
-  language,
-  photoQuality,
-  diagnosisPolicy,
-  diagnosisV1,
-  profileSummary,
-  routineCandidate,
-  recentLogsSummary,
-  promptVersion,
-} = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const replyLanguage = lang === 'CN' ? 'Simplified Chinese' : 'English';
-  const replyInstruction = lang === 'CN' ? '只用简体中文。' : 'Reply ONLY in English.';
-  const version =
-    typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim().toLowerCase() : 'v1';
+function buildSkinReportPrompt({ language, promptVersion } = {}) {
+  const lang = normalizeLanguage(language);
+  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'stable-v3';
 
-  const quality = photoQuality && typeof photoQuality === 'object'
-    ? { grade: photoQuality.grade || 'unknown', reasons: Array.isArray(photoQuality.reasons) ? photoQuality.reasons.slice(0, 6) : [] }
-    : { grade: 'unknown', reasons: [] };
-  const policy = diagnosisPolicy && typeof diagnosisPolicy === 'object' ? diagnosisPolicy : null;
-  const routineActives = summarizeRoutineActives(routineCandidate);
-  const logsN = Array.isArray(recentLogsSummary) ? recentLogsSummary.length : 0;
-
-  const context = {
-    profile: compactProfile(profileSummary),
-    recent_logs_n: logsN,
-    routine_actives: routineActives,
-    photo_quality: quality,
-    ...(policy ? { detector_policy: policy } : {}),
-    ...(diagnosisV1 ? { detector_candidates: pickDetectorCandidates(diagnosisV1, { max: 2 }) } : {}),
-  };
-
-  if (version === 'v2') {
-    return (
-      `prompt_version=v2\n` +
-      `context=${JSON.stringify(context)}\n` +
-      `Task: Provide a cautious skin assessment using ONLY the context. Do NOT claim you can see the user's skin in a photo.\n` +
-      `If routine_actives suggests irritation risk, suggest minimal safe adjustments (no new brands).\n` +
-      `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-      `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
-      `- features: 3–5 items; observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}.\n` +
-      `- strategy: <=900 chars, actionable and executable.\n` +
-      `- no brand/product recommendations.\n` +
-      `Language: ${replyLanguage}. ${replyInstruction}\n`
-    );
+  if (lang === 'zh-CN') {
+    return [
+      `prompt_version=${version}`,
+      'Role: 你是客观且保守的护肤建议助手。',
+      'Task: 仅基于提供的文本信号上下文，输出谨慎评估与可执行建议。',
+      '',
+      'Important:',
+      '- 除非上下文明确说明看到了照片，否则不要声称你能看到用户皮肤。',
+      '- 当信息缺失或冲突时，要明确说明，并用 primary_question / conditional_followups 仅追问最小必要信息。',
+      '',
+      'Strict safety boundaries:',
+      '- 禁止医学诊断，不要使用疾病名。',
+      '- 禁止治疗方案与处方药名。',
+      '- 禁止品牌或具体产品推荐。',
+      '',
+      'Language: Simplified Chinese.',
+      'Tone: Professional, empathetic, practical.',
+    ].join('\n');
   }
 
-  return (
-    `prompt_version=v1\n` +
-    `context=${JSON.stringify(context)}\n` +
-    `Task: Provide a cautious skin assessment using ONLY the context. Do NOT claim you can see the user's skin in a photo.\n` +
-    `If routine_actives suggests irritation risk, suggest minimal safe adjustments (no new brands).\n` +
-    `Hard rules: no medical diagnosis, no disease names, no treatment plans, no prescription drug names.\n` +
-    `Output STRICT JSON only (no markdown/text) with keys: features[], strategy, needs_risk_check, primary_question(optional), conditional_followups(optional), routine_expert(optional).\n` +
-    `- features: 4–6 items; each observation<=200 chars; confidence in {"pretty_sure","somewhat_sure","not_sure"}; no numbers/percent.\n` +
-    `- strategy: <=1000 chars, actionable and executable.\n` +
-    `- no brand/product recommendations.\n` +
-    `Language: ${replyLanguage}. ${replyInstruction}\n`
-  );
+  return [
+    `prompt_version=${version}`,
+    'Role: You are an objective, conservative cosmetic skincare advisor.',
+    'Task: Provide a cautious assessment and actionable guidance using ONLY the provided context (text signals).',
+    '',
+    'Important:',
+    "- Do NOT claim you can see the user's skin in a photo unless the context explicitly describes it.",
+    '- If key information is missing or conflicting, say so and use primary_question / conditional_followups to request the minimum details needed.',
+    '',
+    'Strict safety boundaries:',
+    '- No medical diagnosis. Do not use disease names.',
+    '- No treatment plans. No prescription drug names.',
+    '- No brand or specific product recommendations.',
+    '',
+    'Language: English (US).',
+    'Tone: Professional, empathetic, practical.',
+  ].join('\n');
 }
 
 module.exports = {
@@ -196,4 +182,5 @@ module.exports = {
   buildSkinReportPrompt,
   pickDetectorCandidates,
   summarizeRoutineActives,
+  compactProfile,
 };

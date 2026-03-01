@@ -1456,6 +1456,97 @@ async function saveLastAnalysisForIdentity({ auroraUid, userId }, { analysis, la
   return mapProfileFromDb(res.rows && res.rows[0]);
 }
 
+function normalizeShadowVerifyPatch(patch) {
+  const p = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : null;
+  if (!p) return null;
+  const verdict = p.verdict && typeof p.verdict === 'object' && !Array.isArray(p.verdict) ? p.verdict : null;
+  const meta = p.meta && typeof p.meta === 'object' && !Array.isArray(p.meta) ? p.meta : {};
+  const provider = typeof p.provider === 'string' && p.provider.trim() ? p.provider.trim() : 'gemini';
+  const promptVersion =
+    typeof p.prompt_version === 'string' && p.prompt_version.trim() ? p.prompt_version.trim() : 'stable-v3';
+  const createdAt =
+    typeof p.created_at === 'string' && p.created_at.trim() ? p.created_at.trim() : isoTs();
+
+  return {
+    source: 'shadow_verify',
+    provider,
+    prompt_version: promptVersion,
+    created_at: createdAt,
+    ...(verdict ? { verdict } : {}),
+    meta: {
+      ...meta,
+      source: 'shadow_verify',
+      provider,
+      prompt_version: promptVersion,
+      created_at: createdAt,
+    },
+  };
+}
+
+async function appendShadowVerifyToLastAnalysisForIdentity({ auroraUid, userId }, { shadowVerify } = {}) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const patch = normalizeShadowVerifyPatch(shadowVerify);
+  if (!patch) return null;
+
+  if (persistenceDisabled()) {
+    const key = identity.user_id
+      ? profileKeyFor({ kind: 'account', id: identity.user_id })
+      : profileKeyFor({ kind: 'guest', id: identity.aurora_uid });
+    if (!key) return null;
+    const existing =
+      ephemeral.profiles.get(key) ||
+      ensureEphemeralProfile({ kind: identity.user_id ? 'account' : 'guest', id: identity.user_id || identity.aurora_uid });
+    if (!existing) return null;
+    const baseAnalysis =
+      existing.lastAnalysis && typeof existing.lastAnalysis === 'object' && !Array.isArray(existing.lastAnalysis)
+        ? existing.lastAnalysis
+        : {};
+    const next = {
+      ...existing,
+      lastAnalysis: {
+        ...baseAnalysis,
+        shadow_verify: patch,
+      },
+      updated_at: isoTs(),
+    };
+    touchEphemeral(ephemeral.profiles, key, next);
+    return next;
+  }
+
+  const patchJson = normalizeJsonbParam(patch);
+  if (patchJson === undefined) return null;
+
+  if (identity.user_id) {
+    await ensureAccountProfileRow(identity.user_id);
+    const res = await query(
+      `
+        UPDATE aurora_account_profiles
+        SET last_analysis = jsonb_set(COALESCE(last_analysis, '{}'::jsonb), '{shadow_verify}', $2::jsonb, true),
+            updated_at = now(),
+            deleted_at = NULL
+        WHERE user_id = $1
+        RETURNING *
+      `,
+      [identity.user_id, patchJson],
+    );
+    return mapAccountProfileFromDb(res.rows && res.rows[0]);
+  }
+
+  await ensureUserProfileRow(identity.aurora_uid);
+  const res = await query(
+    `
+      UPDATE aurora_user_profiles
+      SET last_analysis = jsonb_set(COALESCE(last_analysis, '{}'::jsonb), '{shadow_verify}', $2::jsonb, true),
+          updated_at = now(),
+          deleted_at = NULL
+      WHERE aurora_uid = $1
+      RETURNING *
+    `,
+    [identity.aurora_uid, patchJson],
+  );
+  return mapProfileFromDb(res.rows && res.rows[0]);
+}
+
 async function deleteIdentityData({ auroraUid, userId }) {
   const identity = identityFromRequest({ auroraUid, userId });
   const hasAny = Boolean(identity.aurora_uid) || Boolean(identity.user_id);
@@ -1533,6 +1624,7 @@ module.exports = {
   appendExperimentEventForIdentity,
   listExperimentEventsForIdentity,
   saveLastAnalysisForIdentity,
+  appendShadowVerifyToLastAnalysisForIdentity,
   deleteIdentityData,
   isCheckinDue,
 };

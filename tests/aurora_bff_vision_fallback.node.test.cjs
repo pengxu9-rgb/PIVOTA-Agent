@@ -27,7 +27,7 @@ function loadRoutesModule() {
   }
 }
 
-test('vision fallback: gemini failure falls back to openai once when allowed', async (t) => {
+test('vision mainline: gemini failure does not fall back to openai', async (t) => {
   const { moduleId, mod } = loadRoutesModule();
   const { __internal } = mod;
   let geminiCalls = 0;
@@ -70,11 +70,10 @@ test('vision fallback: gemini failure falls back to openai once when allowed', a
   });
 
   assert.equal(geminiCalls, 1);
-  assert.equal(openaiCalls, 1);
-  assert.equal(out.ok, true);
-  assert.equal(out.provider, 'openai');
-  assert.equal(out.fallback_from, 'gemini');
-  assert.deepEqual(out.attempted_providers, ['gemini', 'openai']);
+  assert.equal(openaiCalls, 0);
+  assert.equal(out.ok, false);
+  assert.equal(out.provider, 'gemini');
+  assert.deepEqual(out.attempted_providers, ['gemini']);
 });
 
 test('vision fallback: kill switch prevents openai fallback', async (t) => {
@@ -167,14 +166,14 @@ test('vision fallback: photo quality fail prevents openai fallback', async (t) =
   assert.deepEqual(out.attempted_providers, ['gemini']);
 });
 
-test('fallback decision helper: only pass/degraded and kill switch off can fallback', async () => {
+test('fallback decision helper: openai fallback is always disabled', async () => {
   const { moduleId, mod } = loadRoutesModule();
   const { __internal } = mod;
   try {
-    assert.equal(__internal.shouldAttemptOpenAiFallbackFromGemini({ photoQuality: { grade: 'pass' }, llmKillSwitch: false }), true);
+    assert.equal(__internal.shouldAttemptOpenAiFallbackFromGemini({ photoQuality: { grade: 'pass' }, llmKillSwitch: false }), false);
     assert.equal(
       __internal.shouldAttemptOpenAiFallbackFromGemini({ photoQuality: { grade: 'degraded' }, llmKillSwitch: false }),
-      true,
+      false,
     );
     assert.equal(__internal.shouldAttemptOpenAiFallbackFromGemini({ photoQuality: { grade: 'fail' }, llmKillSwitch: false }), false);
     assert.equal(__internal.shouldAttemptOpenAiFallbackFromGemini({ photoQuality: { grade: 'pass' }, llmKillSwitch: true }), false);
@@ -183,7 +182,7 @@ test('fallback decision helper: only pass/degraded and kill switch off can fallb
   }
 });
 
-test('vision fallback: gemini + openai both fail returns fallback_failure contract fields', async (t) => {
+test('vision mainline: gemini failure returns gemini failure contract fields', async (t) => {
   const { moduleId, mod } = loadRoutesModule();
   const { __internal } = mod;
   let geminiCalls = 0;
@@ -222,15 +221,14 @@ test('vision fallback: gemini + openai both fail returns fallback_failure contra
   });
 
   assert.equal(geminiCalls, 1);
-  assert.equal(openaiCalls, 1);
+  assert.equal(openaiCalls, 0);
   assert.equal(out.ok, false);
-  assert.equal(out.provider, 'openai');
-  assert.equal(out.fallback_from, 'gemini');
-  assert.equal(out.primary_failure_reason, 'VISION_TIMEOUT');
-  assert.deepEqual(out.attempted_providers, ['gemini', 'openai']);
+  assert.equal(out.provider, 'gemini');
+  assert.equal(out.reason, 'VISION_TIMEOUT');
+  assert.deepEqual(out.attempted_providers, ['gemini']);
 });
 
-test('vision fallback: explicit openai provider does not call gemini', async (t) => {
+test('vision mainline: explicit openai provider input still routes to gemini', async (t) => {
   const { moduleId, mod } = loadRoutesModule();
   const { __internal } = mod;
   let geminiCalls = 0;
@@ -268,9 +266,9 @@ test('vision fallback: explicit openai provider does not call gemini', async (t)
     imageBuffer: Buffer.from('x'),
   });
 
-  assert.equal(geminiCalls, 0);
-  assert.equal(openaiCalls, 1);
+  assert.equal(geminiCalls, 1);
+  assert.equal(openaiCalls, 0);
   assert.equal(out.ok, true);
-  assert.equal(out.provider, 'openai');
-  assert.deepEqual(out.attempted_providers, ['openai']);
+  assert.equal(out.provider, 'gemini');
+  assert.deepEqual(out.attempted_providers, ['gemini']);
 });
