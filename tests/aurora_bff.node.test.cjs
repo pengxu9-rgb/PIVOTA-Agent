@@ -4042,6 +4042,94 @@ test('ingredient research: request uses no ingredient-specific timeout', async (
   );
 });
 
+test('/v1/chat: ingredient.lookup uses research path and second lookup can hit in-memory KB cache', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: true,
+            json: {
+              verdict: {
+                one_liner: 'Octocrylene is a UVB filter used in sunscreen formulas.',
+                evidence_grade: 'B',
+                irritation_risk: 'medium',
+                confidence: 0.78,
+              },
+              benefits: [{ concern: 'uv_protection', strength: 2, what_it_means: 'Adds UVB coverage support.' }],
+              how_to_use: { frequency: 'daily', routine_step: 'cream', notes: ['Use adequate amount and reapply.'] },
+              watchouts: [{ issue: 'Potential irritation in sensitive users', likelihood: 'common', what_to_do: 'Patch test first.' }],
+              evidence: { summary: 'Mocked research summary', citations: [{ title: 'Mock UV filter reference', url: 'https://example.com/octocrylene' }] },
+              top_products: [{ name: 'Mock SPF 50', brand: 'Brand A', category: 'sunscreen', price_tier: 'mid', pdp_url: 'https://example.com/spf-50' }],
+            },
+          };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const uniqueIngredient = `octocrylene_lookup_${Date.now()}`;
+
+        const requestBody = {
+          action: {
+            action_id: 'ingredient.lookup',
+            kind: 'action',
+            data: { ingredient_query: uniqueIngredient, entry_source: 'ingredient_hub' },
+          },
+          language: 'EN',
+        };
+        const headers = {
+          'X-Aurora-UID': 'test_uid_ingredient_lookup_research',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        };
+
+        const first = await supertest(app).post('/v1/chat').set(headers).send(requestBody);
+        assert.equal(first.status, 200);
+        const firstReport = Array.isArray(first.body?.cards)
+          ? first.body.cards.find((card) => card && card.type === 'aurora_ingredient_report')
+          : null;
+        assert.ok(firstReport);
+        assert.equal(firstReport.payload?.research_status, 'ready');
+        assert.equal(firstReport.payload?.research_provider, 'gemini');
+        assert.equal(geminiCalls, 1);
+
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        const second = await supertest(app).post('/v1/chat').set(headers).send(requestBody);
+        assert.equal(second.status, 200);
+        const secondReport = Array.isArray(second.body?.cards)
+          ? second.body.cards.find((card) => card && card.type === 'aurora_ingredient_report')
+          : null;
+        assert.ok(secondReport);
+        assert.equal(secondReport.payload?.research_status, 'ready');
+        assert.equal(secondReport.payload?.research_provider, 'gemini');
+        assert.equal(geminiCalls, 1);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: ingredient entry action returns ingredient_hub (no diagnosis_gate/budget_gate) in S6_BUDGET', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const express = require('express');
