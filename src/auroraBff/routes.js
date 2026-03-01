@@ -42079,6 +42079,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         ),
         updated_at_ms: Date.now(),
       });
+      const ingredientRecommendationShortcutAllowed =
+        allowRecoCards &&
+        !ingredientDiagnosisOptInRequested &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+        !looksLikeSuitabilityRequest(message) &&
+        !looksLikeCompatibilityOrConflictQuestion(message) &&
+        !looksLikeWeatherOrEnvironmentQuestion(message);
       ingredientReplayContext = {
         intent_requested: Boolean(ingredientScienceIntentEffective),
         starter_action: Boolean(
