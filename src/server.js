@@ -3423,6 +3423,10 @@ function buildProxySearchSoftFallbackResponse({
   const forceClarifyByRecallExhaustion = [
     'semantic_retry_exhausted',
     'fallback_not_better',
+    'low_quality_no_improvement',
+    'low_quality_semantic_retry_exhausted',
+    'primary_low_quality_no_fallback',
+    'primary_low_quality_skip_secondary',
     'primary_irrelevant_no_fallback',
     'primary_monoculture_no_fallback',
     'primary_irrelevant_skip_secondary',
@@ -10387,11 +10391,18 @@ async function proxyAgentSearchToBackend(req, res) {
         queryClass: proxySearchQueryClass,
       });
       const primaryQualityScore = computePrimaryQualityScore(primaryQualityGate);
+      const primaryProducts = Array.isArray(normalizedResponse?.products) ? normalizedResponse.products : [];
+      const primaryHasExternalSeed = primaryProducts.some((product) => isExternalSeedProduct(product));
+      const primaryBrandLike = Boolean(
+        detectBrandEntities(queryText, { candidateProducts: primaryProducts })?.brand_like,
+      );
       const lowQualityNonempty =
         Boolean(queryText) &&
         usableCount > 0 &&
         primaryQualityGate.enabled &&
-        !primaryQualityGate.accepted;
+        !primaryQualityGate.accepted &&
+        !primaryBrandLike &&
+        !primaryHasExternalSeed;
       const monocultureSignal = detectAuroraExternalSeedMonoculture({
         normalized: normalizedResponse,
         queryText,
@@ -10625,18 +10636,23 @@ async function proxyAgentSearchToBackend(req, res) {
 
       if (allowSecondaryFallback && allowInvokeFallback && !skipSecondaryFallback) {
         const secondaryRemainingBudgetMs = getRemainingBudgetMs();
-        if (secondaryRemainingBudgetMs < 160) {
+        const forceLowQualityFallbackAttempt =
+          primaryLowQualityNonempty && SEARCH_EXTERNAL_HARD_RULE_PRUNE;
+        if (secondaryRemainingBudgetMs < 160 && !forceLowQualityFallbackAttempt) {
           fallbackStrategy.fallback_skipped_due_budget = true;
           fallbackStrategy.secondary_skipped_reason = 'budget_exhausted';
         } else {
           fallbackStrategy.secondary_attempted = true;
           try {
+            const fallbackTimeoutMs = forceLowQualityFallbackAttempt
+              ? Math.max(500, secondaryRemainingBudgetMs)
+              : secondaryRemainingBudgetMs;
             const fallback = await queryFindProductsMultiFallback({
               queryParams: guardedQueryParams,
               checkoutToken,
               reason: secondaryFallbackReason,
               requestSource: source,
-              timeoutMs: secondaryRemainingBudgetMs,
+              timeoutMs: fallbackTimeoutMs,
             });
             const fallbackRelevant = Boolean(
               fallback &&
@@ -10801,7 +10817,6 @@ async function proxyAgentSearchToBackend(req, res) {
     const shouldForceClarifyLowQuality =
       SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
       primaryLowQualityNonempty &&
-      normalizedProducts.length > 0 &&
       shouldFallback &&
       !primaryIrrelevant;
     if (shouldForceClarifyAfterFallback || shouldForceClarifyLowQuality) {
@@ -17860,11 +17875,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryClass: traceQueryClass || proxySearchQueryClass,
       });
       const primaryQualityScore = computePrimaryQualityScore(primaryQualityGate);
+      const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+      const primaryHasExternalSeed = primaryProducts.some((product) => isExternalSeedProduct(product));
+      const primaryBrandLike = Boolean(
+        detectBrandEntities(queryText, { candidateProducts: primaryProducts })?.brand_like,
+      );
       const primaryLowQualityNonempty =
         Boolean(queryText) &&
         primaryUsableCount > 0 &&
         primaryQualityGate.enabled &&
-        !primaryQualityGate.accepted;
+        !primaryQualityGate.accepted &&
+        !primaryBrandLike &&
+        !primaryHasExternalSeed;
       const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
         normalized: upstreamData,
         queryText,
