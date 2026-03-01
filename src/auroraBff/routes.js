@@ -1641,14 +1641,14 @@ const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
 })();
 
 const RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 2200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
   return Math.max(600, Math.min(12000, v));
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
   return Math.max(300, Math.min(6000, v));
 })();
 
@@ -1730,8 +1730,8 @@ const RECO_PDP_ENRICH_CONCURRENCY = (() => {
 })();
 
 const RECO_PDP_ENRICH_MAX_NETWORK_ITEMS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS || 3);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS || 0);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 0;
   return Math.max(0, Math.min(8, v));
 })();
 
@@ -1743,14 +1743,14 @@ const RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP = (() => {
 })();
 
 const RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK || 'false')
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
 const RECO_PDP_STRICT_INTERNAL_FIRST = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST || 'true')
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -33579,15 +33579,30 @@ async function fetchRecoAlternativesForProduct({
         logger,
       });
       const resolvedAnchor = extractAnchorIdFromProductLike(resolved && resolved.product);
+      const precheckReasonCode =
+        resolved && resolved.resolve_reason_code ? normalizeResolveReasonCode(resolved.resolve_reason_code, null) : null;
+      const canProceedWithoutAnchor =
+        Boolean(bestInput) &&
+        (precheckReasonCode === 'db_error' ||
+          precheckReasonCode === 'upstream_timeout' ||
+          precheckReasonCode === 'rate_limited');
       anchorPrecheck = {
         resolved: Boolean(resolvedAnchor),
-        reason: resolved && resolved.resolve_reason_code ? resolved.resolve_reason_code : null,
+        reason: precheckReasonCode,
         latency_ms: Date.now() - startedAt,
+        continue_without_anchor: Boolean(!resolvedAnchor && canProceedWithoutAnchor),
       };
       if (resolvedAnchor) {
         anchor = resolvedAnchor;
         refreshKey = makeRecoAlternativesRefreshKey({
           anchorId: anchor || null,
+          productInput: bestInput,
+          lang: ctx.lang,
+          maxTotal,
+        });
+      } else if (canProceedWithoutAnchor) {
+        refreshKey = makeRecoAlternativesRefreshKey({
+          anchorId: null,
           productInput: bestInput,
           lang: ctx.lang,
           maxTotal,
@@ -33622,8 +33637,25 @@ async function fetchRecoAlternativesForProduct({
         };
       }
     } catch (err) {
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
-      if (!disableFallback) {
+      anchorPrecheck = {
+        resolved: false,
+        reason: 'anchor_precheck_error',
+        error: err && err.message ? err.message : String(err),
+        continue_without_anchor: Boolean(bestInput),
+      };
+      if (bestInput) {
+        refreshKey = makeRecoAlternativesRefreshKey({
+          anchorId: null,
+          productInput: bestInput,
+          lang: ctx.lang,
+          maxTotal,
+        });
+      } else {
+        recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
+      }
+      if (bestInput) {
+        // Continue with anchorless LLM path when local precheck is unavailable.
+      } else if (!disableFallback) {
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
         return {
           ok: true,
@@ -33635,7 +33667,20 @@ async function fetchRecoAlternativesForProduct({
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
-          ...(debug ? { debug: { anchor_precheck: { resolved: false, reason: err && err.message ? err.message : 'anchor_precheck_error' } } } : {}),
+          ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
+        };
+      } else {
+        return {
+          ok: false,
+          alternatives: [],
+          field_missing: [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
+          source_mode: 'llm',
+          fallback_source: 'none',
+          refresh_pending: false,
+          refresh_after_ms: 0,
+          failure_class: 'anchor_missing_precheck',
+          attempt_count: 0,
+          ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
     }
