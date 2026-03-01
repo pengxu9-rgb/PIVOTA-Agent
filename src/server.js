@@ -5101,17 +5101,50 @@ async function queryFindProductsMultiFallback({
   }
 
   if (!selectedAttempt) return null;
-  const semanticRetryApplied =
+  const attemptedSemanticRetry = attempts.some((attempt, index) => {
+    if (!attempt || index === 0) return false;
+    return (
+      normalizeSearchTextForMatch(String(attempt.query || '')) !==
+      normalizeSearchTextForMatch(String(baseQueryText || ''))
+    );
+  });
+  const selectedAttemptIsSemanticRetry =
     normalizeSearchTextForMatch(String(selectedAttempt.queryUsed || '')) !==
     normalizeSearchTextForMatch(String(baseQueryText || ''));
+  const semanticRetryApplied = attemptedSemanticRetry || selectedAttemptIsSemanticRetry;
+  const semanticRetrySelectedQuery =
+    semanticRetryApplied && selectedAttemptIsSemanticRetry
+      ? String(selectedAttempt.queryUsed || '').trim()
+      : semanticRetryApplied
+      ? String(
+          attempts.find(
+            (attempt) =>
+              normalizeSearchTextForMatch(String(attempt?.query || '')) !==
+              normalizeSearchTextForMatch(String(baseQueryText || '')),
+          )?.query || '',
+        ).trim()
+      : '';
+  const semanticRetryHits = semanticRetryApplied
+    ? Math.max(
+        0,
+        ...attempts
+          .filter(
+            (attempt) =>
+              normalizeSearchTextForMatch(String(attempt?.query || '')) !==
+              normalizeSearchTextForMatch(String(baseQueryText || '')),
+          )
+          .map((attempt) => Math.max(0, Number(attempt?.usable_count || 0) || 0)),
+      )
+    : 0;
   return {
     status: selectedAttempt.status,
     usableCount: selectedAttempt.usableCount,
     relevanceMatched: selectedAttempt.relevanceMatched,
     selectedQuery: selectedAttempt.queryUsed,
     semanticRetryApplied,
-    semanticRetryQuery: semanticRetryApplied ? selectedAttempt.queryUsed : null,
-    semanticRetryHits: semanticRetryApplied ? Number(selectedAttempt.usableCount || 0) : 0,
+    semanticRetryQuery: semanticRetryApplied ? semanticRetrySelectedQuery || null : null,
+    semanticRetryHits,
+    actualRetryAttempted: attemptedSemanticRetry,
     attempts,
     data: selectedAttempt.data,
   };
@@ -17904,6 +17937,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const primaryIrrelevant =
         Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
       const shouldFallback = primaryUnusable || primaryIrrelevant || primaryLowQualityNonempty;
+      const forceInvokeFallbackForFragrance =
+        hasFragranceQuerySignal(queryText) && primaryUsableCount === 0;
+      const primaryQualityGatePassed = !primaryLowQualityNonempty && primaryUsableCount > 0;
       const requestedLimit = Math.min(
         Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
         SEARCH_LIMIT_MAX,
@@ -18156,7 +18192,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         }
 
-        if (!replacedByFallback && allowSecondaryFallback && allowInvokeFallback && !skipSecondaryFallback) {
+        if (
+          !replacedByFallback &&
+          allowSecondaryFallback &&
+          (allowInvokeFallback || forceInvokeFallbackForFragrance) &&
+          !skipSecondaryFallback
+        ) {
           try {
             const fallback = await queryFindProductsMultiFallback({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -18177,13 +18218,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : fallback
               ? [{ query: fallback.selectedQuery || queryText }]
               : [];
-            const fallbackSemanticRetryApplied =
-              fallbackAttempts.length > 1 ||
-              fallbackAttempts.some(
-                (attempt) =>
-                  normalizeSearchTextForMatch(String(attempt?.query || '')) !==
-                  normalizeSearchTextForMatch(String(queryText || '')),
-              );
+            const fallbackSemanticRetryApplied = Boolean(
+              fallback?.actualRetryAttempted ||
+                fallbackAttempts.length > 1 ||
+                fallbackAttempts.some(
+                  (attempt) =>
+                    normalizeSearchTextForMatch(String(attempt?.query || '')) !==
+                    normalizeSearchTextForMatch(String(queryText || '')),
+                ),
+            );
             semanticRetryApplied = fallbackSemanticRetryApplied;
             semanticRetryQuery = fallbackSemanticRetryApplied
               ? String(
@@ -18360,7 +18403,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            semantic_retry_applied: Boolean(semanticRetryApplied),
 	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
 	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
-	            primary_quality_gate_passed: !primaryLowQualityNonempty,
+	            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
 	                ? Number(primaryQualityScore)
@@ -18401,7 +18444,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            semantic_retry_applied: Boolean(semanticRetryApplied),
 	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
 	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
-	            primary_quality_gate_passed: !primaryLowQualityNonempty,
+	            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
 	                ? Number(primaryQualityScore)
