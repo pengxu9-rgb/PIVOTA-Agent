@@ -31061,18 +31061,52 @@ function mapRoutineActiveTokenToIngredientQuery(token, language = 'EN') {
   return '';
 }
 
+function stripIngredientLookupLeadIn(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  return raw
+    .replace(/^(check|analyze|analyse|lookup|look\s*up|research|find|inspect|review)\s*[:：-]?\s*/i, '')
+    .replace(/^(what\s+is|tell\s+me\s+about|can\s+you\s+analyze)\s*/i, '')
+    .replace(/^(查|查询|查一下|帮我查|分析|看一下|看看)\s*/i, '')
+    .trim();
+}
+
+function ingredientIsLikelyLookupText(message) {
+  const raw = String(message || '').trim();
+  if (!raw) return false;
+  if (/\b(ingredient|inci|lookup|effect|safety|benefit|evidence)\b/i.test(raw)) return true;
+  if (/(成分|功效|安全|机制|证据|刺激)/.test(raw)) return true;
+  const stripped = stripIngredientLookupLeadIn(raw);
+  const words = stripped.split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 6) return false;
+  if (
+    /[a-z]/i.test(stripped) &&
+    /(acid|amide|ate|ene|one|ol|yl|retin|niacin|ceramide|peptide|salicyl|azelaic|tranexamic|octocrylene|butyloctyl|ethylhexyl|avobenzone)/i.test(
+      stripped,
+    )
+  ) {
+    return true;
+  }
+  if (/[\u4e00-\u9fff]/.test(stripped) && /(酸|酰胺|醇|肽|酯|维c|烟酰胺|神经酰胺|视黄醇|壬二酸|水杨酸)/.test(stripped)) {
+    return true;
+  }
+  return looksLikeFreeTextIngredientName(stripped);
+}
+
 function extractIngredientLookupTargetFromText(message, language = 'EN') {
   const raw = String(message || '').trim();
   if (!raw) return '';
+  const stripped = stripIngredientLookupLeadIn(raw);
+  if (!stripped) return '';
   const lang = language === 'CN' ? 'CN' : 'EN';
 
-  const knownActives = extractKnownActivesFromText(raw, lang);
+  const knownActives = extractKnownActivesFromText(stripped, lang);
   for (const token of knownActives) {
     const mapped = mapRoutineActiveTokenToIngredientQuery(token, lang);
     if (mapped) return String(mapped).slice(0, 120);
   }
 
-  const ontologyHits = matchIngredientOntology({ text: raw, language: lang, max: 8 });
+  const ontologyHits = matchIngredientOntology({ text: stripped, language: lang, max: 8 });
   const ontologyPreferred = pickFirstTrimmed(
     ...ontologyHits
       .map((row) => (row && typeof row === 'object' ? row.matched_text : ''))
@@ -31080,7 +31114,7 @@ function extractIngredientLookupTargetFromText(message, language = 'EN') {
   );
   if (ontologyPreferred) return String(ontologyPreferred).slice(0, 120);
 
-  const normalized = normalizeIngredientLookupToken(raw);
+  const normalized = normalizeIngredientLookupToken(stripped);
   const normalizedQuery = mapIngredientLookupTokenToQuery(normalized, lang);
   if (normalizedQuery) return String(normalizedQuery).slice(0, 120);
 
@@ -31091,7 +31125,7 @@ function extractIngredientLookupTargetFromText(message, language = 'EN') {
   );
   if (ontologyAny) return String(ontologyAny).slice(0, 120);
 
-  if (looksLikeFreeTextIngredientName(raw)) return raw.slice(0, 120);
+  if (looksLikeFreeTextIngredientName(stripped)) return stripped.slice(0, 120);
   return '';
 }
 
