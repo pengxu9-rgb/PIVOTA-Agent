@@ -1781,6 +1781,33 @@ test('Skin LLM policy: degraded calls only one model (configurable)', async () =
   }
 });
 
+test('Skin analysis route helper: degraded/report mode forces vision skip unless debug force is enabled', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const shouldSkip = __internal.shouldForceSkipVisionForDegradedReport({
+      forceVisionCall: false,
+      userRequestedPhoto: true,
+      photosProvided: true,
+      effectiveQualityGrade: 'degraded',
+      degradedMode: 'report',
+      reportDecision: { decision: 'call', reasons: ['degraded_mode_report'] },
+    });
+    assert.equal(shouldSkip, true);
+
+    const skipBlockedByForce = __internal.shouldForceSkipVisionForDegradedReport({
+      forceVisionCall: true,
+      userRequestedPhoto: true,
+      photosProvided: true,
+      effectiveQualityGrade: 'degraded',
+      degradedMode: 'report',
+      reportDecision: { decision: 'call', reasons: ['degraded_mode_report'] },
+    });
+    assert.equal(skipBlockedByForce, false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('Skin LLM policy: pass skips report when detector is confident', async () => {
   const base = {
     hasPrimaryInput: true,
@@ -4034,6 +4061,129 @@ test('ingredient research: request uses no ingredient-specific timeout', async (
         });
         assert.equal(payload.research_status, 'ready');
         assert.equal(seenTimeout, 4000);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: ingredient.lookup returns queued on gemini rate limit and avoids same-request re-hit', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_SYNC_MODEL_GEMINI: 'gemini-sync-flash-test',
+      AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI: 'gemini-3-pro',
+      AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS: '90000',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: false,
+            reason: '429',
+            detail: 'rate limit exceeded',
+          };
+        });
+
+        const app = express();
+        app.use(express.json());
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set('X-Aurora-UID', 'test_uid_ingr_lookup_rate_limit')
+          .set('X-Trace-ID', 'test_trace_ingr_lookup_rate_limit')
+          .set('X-Brief-ID', 'test_brief_ingr_lookup_rate_limit')
+          .set('X-Lang', 'EN')
+          .send({
+            message: 'BUTYLOCTYL',
+            action_id: 'ingredient.lookup',
+            action_data: {
+              query: 'BUTYLOCTYL',
+              ingredient_query: 'BUTYLOCTYL',
+              entry_source: 'ingredient_hub_chip',
+            },
+            language: 'EN',
+          });
+
+        assert.equal(resp.statusCode, 200);
+        const payload = resp.body && resp.body.cards && resp.body.cards[0] && resp.body.cards[0].payload;
+        assert.ok(payload);
+        assert.equal(payload.research_status, 'queued');
+        assert.equal(payload.research_error_code, 'gemini_rate_limited');
+        assert.equal(payload.resolved_model, 'gemini-sync-flash-test');
+        assert.equal(payload.provider_model_tier, 'flash');
+        assert.equal(geminiCalls, 1);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('ingredient research: sync path uses dedicated sync model override', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_SYNC_MODEL_GEMINI: 'gemini-sync-flash-test',
+      AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI: 'gemini-3-pro',
+    },
+    async () => {
+      const { moduleId, __internal } = loadRouteInternals();
+      let seenModel = '';
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+          seenModel = String(args.model || '');
+          return {
+            ok: true,
+            json: {
+              ingredient: {
+                inci: 'Octocrylene',
+                display_name: 'Octocrylene',
+                aliases: [],
+                what_it_is: 'UV filter',
+              },
+              overview: 'A UV filter used in sunscreen systems.',
+              benefits: [{ concern: 'uv_protection', strength: 2, what_it_means: 'Adds UVB coverage.' }],
+              safety: { irritation_risk: 'medium', watchouts: [] },
+              usage: { time: 'AM', frequency: 'daily', avoid: [], routine_step: 'sunscreen', pair_well: [], consider_separating: [], notes: [] },
+              confidence: 'medium',
+              evidence: { grade: null, summary: 'Mock summary.', citations: [] },
+              schema_version: 'v2-lite',
+            },
+          };
+        });
+        const payload = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'octocrylene',
+        });
+        assert.equal(payload.research_status, 'ready');
+        assert.equal(payload.resolved_model, 'gemini-sync-flash-test');
+        assert.equal(payload.provider_model_tier, 'flash');
+        assert.equal(seenModel, 'gemini-sync-flash-test');
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];
@@ -7549,6 +7699,18 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
 
   assert.equal(card.payload.analysis_source, 'retake');
   assert.equal(card.payload?.quality_report?.photo_quality?.grade, 'fail');
+  assert.equal(card.payload?.quality_report?.upload_qc_status, 'fail');
+  assert.equal(card.payload?.quality_report?.analysis_photo_quality?.grade, 'unknown');
+  assert.equal(card.payload?.quality_report?.effective_quality?.grade, 'fail');
+  assert.equal(card.payload?.quality_report?.quality_merge_rule, 'effective = worse(upload_qc_status, analysis_photo_quality.grade)');
+  assert.deepEqual(
+    card.payload?.quality_report?.photo_quality,
+    card.payload?.quality_report?.effective_quality,
+  );
+  assert.deepEqual(
+    card.payload?.quality_report?.quality_reasons,
+    card.payload?.quality_report?.effective_quality?.reasons,
+  );
   assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
   assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
   assert.equal(Array.isArray(card.payload?.analysis?.features), true);
