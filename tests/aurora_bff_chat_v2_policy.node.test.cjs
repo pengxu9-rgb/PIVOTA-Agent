@@ -227,7 +227,7 @@ test('safety engine blocks isotretinoin + benzoyl peroxide', () => {
   });
 
   assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
-  assert.equal(result.decision_source, 'legacy');
+  assert.equal(result.decision_source, 'kb_v0');
   assert.ok(Array.isArray(result.triggered_by));
   assert.ok(result.triggered_by.includes('medications'));
 });
@@ -246,7 +246,7 @@ test('safety engine promotes MEDICATION_ISOTRETINOIN concept to medications_any 
   });
 
   assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
-  assert.equal(result.decision_source, 'legacy');
+  assert.equal(result.decision_source, 'kb_v0');
   assert.ok(Array.isArray(result.triggered_by));
   assert.ok(result.triggered_by.includes('medications'));
   assert.ok(Array.isArray(result.matched_rules));
