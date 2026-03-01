@@ -7,6 +7,10 @@ const path = require('node:path');
 const { buildIngredientPlanV2 } = require('../src/auroraBff/ingredientMapperV1');
 const { __internal: routeInternals } = require('../src/auroraBff/routes');
 
+test.afterEach(() => {
+  routeInternals.__resetCallGeminiJsonObjectForTest();
+});
+
 function createTempCatalog(rows) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-ing-fallback-'));
   const file = path.join(dir, 'catalog.json');
@@ -104,130 +108,112 @@ test('ingredient fallback: partial catalog keeps local hit and supplements remai
   }
 });
 
-test('ingredient fallback executor: builds realtime candidates from search + crawl', async () => {
-  const out = await routeInternals.runIngredientExternalExecutorForIngredient({
-    ingredientId: 'azelaic_acid',
-    ingredientName: 'Azelaic Acid',
-    budgetTier: 'mid',
-    deadlineMs: Date.now() + 1800,
-    searchFn: async () => ({
-      ok: true,
-      reason: null,
+test('ingredient fallback llm: recovers realtime candidates from LLM JSON payload', async () => {
+  routeInternals.__setCallGeminiJsonObjectForTest(async () => ({
+    ok: true,
+    json: {
       products: [
         {
-          product_id: 'amz_az_1',
           name: 'Azelaic Face Serum SPF 30',
           brand: 'Brand A',
           category: 'Facial treatment serum',
-          why_match: 'Topical face serum for azelaic acid routine',
+          why: 'Topical face serum for azelaic acid routine',
           pdp_url: 'https://www.amazon.com/dp/B00TEST123',
-          image_url: 'https://images.example.com/az_1.jpg',
         },
       ],
-    }),
-    fetchHtmlFn: async () =>
-      `<html>
-        <meta property="product:price:currency" content="USD" />
-        <meta property="product:price:amount" content="22.50" />
-        <script type="application/ld+json">
-          {"@context":"https://schema.org","@type":"Product","aggregateRating":{"@type":"AggregateRating","ratingValue":"4.4","reviewCount":"120"}}
-        </script>
-      </html>`,
-    llmExtractFn: async () => null,
+    },
+  }));
+
+  const out = await routeInternals.recoverProductsWithLlmFallbackFromQueries({
+    queries: ['azelaic acid serum'],
+    strictFilter: true,
+    maxProducts: 3,
   });
 
   assert.ok(out);
-  assert.equal(out.capture_mode, 'sync_external_executor');
-  assert.equal(out.status, 'external_executor_returned');
-  assert.equal(Array.isArray(out.candidates), true);
-  assert.equal(out.candidates.length, 1);
-  assert.equal(out.candidates[0].source, 'amazon');
-  assert.equal(out.candidates[0].price, 22.5);
-  assert.equal(out.candidates[0].currency, 'USD');
-  assert.equal(out.candidates[0].rating_value, 4.4);
-  assert.equal(out.candidates[0].rating_count, 120);
+  assert.equal(out.llm_used, true);
+  assert.equal(Array.isArray(out.products), true);
+  assert.equal(out.products.length, 1);
+  assert.equal(out.products[0].source, 'llm_fallback');
+  assert.equal(out.products[0].retrieval_source, 'llm_fallback');
+  assert.equal(out.products[0].pdp_url, 'https://www.amazon.com/dp/B00TEST123');
+  assert.equal(out.stage_counts.recovered >= 1, true);
+  assert.equal(out.last_reason, 'llm_recovered');
 });
 
-test('ingredient fallback executor: returns google fallback metadata when search misses', async () => {
-  const out = await routeInternals.runIngredientExternalExecutorForIngredient({
-    ingredientId: 'panthenol',
-    ingredientName: 'Panthenol',
-    budgetTier: 'mid',
-    deadlineMs: Date.now() + 1200,
-    searchFn: async () => ({
-      ok: false,
-      reason: 'upstream_timeout',
-      products: [],
-    }),
-    fetchHtmlFn: async () => '',
-    llmExtractFn: async () => null,
+test('ingredient fallback llm: timeout-like upstream failure yields timeout stage and empty products', async () => {
+  routeInternals.__setCallGeminiJsonObjectForTest(async () => ({
+    ok: false,
+    error: 'upstream_timeout',
+  }));
+
+  const out = await routeInternals.recoverProductsWithLlmFallbackFromQueries({
+    queries: ['panthenol moisturizer'],
+    strictFilter: true,
+    maxProducts: 3,
   });
 
   assert.ok(out);
-  assert.equal(out.capture_mode, 'sync_external_executor');
-  assert.equal(out.status, 'external_executor_empty');
-  assert.equal(out.failure_reason, 'upstream_timeout');
-  assert.equal(Array.isArray(out.candidates), true);
-  assert.equal(out.candidates.length, 0);
-  assert.equal(typeof out.candidate_url, 'string');
-  assert.equal(out.candidate_url.includes('google.com/search'), true);
+  assert.equal(out.llm_used, false);
+  assert.equal(Array.isArray(out.products), true);
+  assert.equal(out.products.length, 0);
+  assert.equal(out.stage_counts.timeout, 1);
+  assert.equal(out.last_reason, 'llm_timeout');
 });
 
-test('ingredient fallback relevance: rejects non-skincare tool candidates for UV filters', () => {
-  const decision = routeInternals.evaluateIngredientCandidateSkincareRelevance({
-    ingredientId: 'uv_filters',
-    ingredientName: 'UV filters',
-    strictFilterEnabled: true,
-    candidate: {
+test('ingredient fallback relevance: rejects non-skincare tool candidates for UV filters', async () => {
+  const decision = await routeInternals.evaluateIngredientCandidateWithQaMode(
+    {
       name: 'Contour Brush - Sculpt & Soften',
       category: 'Beauty tool',
       source: 'google',
       why_match: 'Fallback from Google',
       pdp_url: 'https://example.com/brush',
     },
-  });
+    {
+      qaMode: 'off',
+      qaContext: null,
+    },
+  );
 
   assert.ok(decision && typeof decision === 'object');
   assert.equal(decision.pass, false);
-  assert.equal(String(decision.reason || '').startsWith('negative_keyword:'), true);
+  assert.equal(String(decision.reject_reason || '').includes('heuristic_relevance_reject'), true);
 });
 
-test('ingredient fallback executor: all non-skincare candidates are dropped and downgraded to google fallback', async () => {
-  const out = await routeInternals.runIngredientExternalExecutorForIngredient({
-    ingredientId: 'uv_filters',
-    ingredientName: 'UV Filters',
-    budgetTier: 'mid',
-    deadlineMs: Date.now() + 1800,
-    searchFn: async () => ({
-      ok: true,
-      reason: null,
+test('ingredient fallback llm: all non-skincare candidates are filtered out', async () => {
+  routeInternals.__setCallGeminiJsonObjectForTest(async () => ({
+    ok: true,
+    json: {
       products: [
         {
-          product_id: 'brush_1',
           name: 'Contour Brush - With Pouch',
           brand: 'Tool Brand',
           category: 'Makeup brush',
           pdp_url: 'https://example.com/brush_1',
         },
         {
-          product_id: 'brush_2',
           name: 'Soft Synthetic Brush',
           brand: 'Tool Brand',
           category: 'Beauty tools',
           pdp_url: 'https://example.com/brush_2',
         },
       ],
-    }),
-    fetchHtmlFn: async () => '',
-    llmExtractFn: async () => null,
+    },
+  }));
+
+  const out = await routeInternals.recoverProductsWithLlmFallbackFromQueries({
+    queries: ['uv filters'],
+    strictFilter: true,
+    maxProducts: 3,
   });
 
   assert.ok(out);
-  assert.equal(out.status, 'external_executor_empty');
-  assert.equal(Array.isArray(out.candidates), true);
-  assert.equal(out.candidates.length, 0);
-  assert.equal(typeof out.candidate_url, 'string');
-  assert.equal(out.candidate_url.includes('google.com/search'), true);
-  assert.equal(Array.isArray(out.rejected_candidates), true);
-  assert.equal(out.rejected_candidates.length >= 1, true);
+  assert.equal(out.llm_used, true);
+  assert.equal(Array.isArray(out.products), true);
+  assert.equal(out.products.length, 0);
+  assert.equal(Array.isArray(out.rejected), true);
+  assert.equal(out.rejected.length >= 1, true);
+  assert.equal(out.stage_counts.empty >= 1, true);
+  assert.equal(out.last_reason, 'llm_empty_after_filter');
 });
