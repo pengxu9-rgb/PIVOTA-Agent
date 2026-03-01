@@ -702,6 +702,9 @@ const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
   return Math.max(3000, Math.min(20000, v));
 })();
+const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI = String(
+  process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro',
+).trim() || 'gemini-3-pro';
 const AURORA_INGREDIENT_CIRCUIT_OPEN_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_OPEN_MS || 90000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
@@ -32070,7 +32073,8 @@ async function runIngredientResearchSync({
   logger = null,
 } = {}) {
   const provider = 'gemini';
-  const modelTier = 'flash';
+  const resolvedModel = AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI;
+  const modelTier = /pro/i.test(String(resolvedModel || '')) ? 'pro' : 'flash';
   const providerAttempts = [];
   const startedAt = Date.now();
   const circuitState = getIngredientProviderCircuitState();
@@ -32087,6 +32091,7 @@ async function runIngredientResearchSync({
     return {
       ok: false,
       provider,
+      resolved_model: resolvedModel,
       provider_model_tier: modelTier,
       provider_circuit_state: circuitState,
       research_error_code: reason === 'provider_unavailable' ? 'provider_unavailable' : reason,
@@ -32121,7 +32126,7 @@ async function runIngredientResearchSync({
     const callTimeoutMs = Math.max(800, Math.min(AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS, remainingBudget));
     const callStartedAt = Date.now();
     const resp = await callGeminiJsonObjectImpl({
-      model: ANALYSIS_STORY_MODEL_GEMINI,
+      model: resolvedModel,
       systemPrompt: prompt.systemPrompt,
       userPrompt: prompt.userPrompt,
       timeoutMs: callTimeoutMs,
@@ -32148,6 +32153,7 @@ async function runIngredientResearchSync({
       return {
         ok: true,
         provider,
+        resolved_model: resolvedModel,
         provider_model_tier: modelTier,
         provider_circuit_state: getIngredientProviderCircuitState(),
         research: parsed,
@@ -32181,6 +32187,7 @@ async function runIngredientResearchSync({
       return {
         ok: true,
         provider,
+        resolved_model: resolvedModel,
         provider_model_tier: modelTier,
         provider_circuit_state: getIngredientProviderCircuitState(),
         research: recoveredParsed,
@@ -32228,6 +32235,7 @@ async function runIngredientResearchSync({
       ingredient_query: String(query || '').slice(0, 120),
       normalized_query: String(normalizedQuery || '').slice(0, 120),
       provider,
+      resolved_model: resolvedModel,
       provider_model_tier: modelTier,
       provider_circuit_state: afterCircuitState,
       research_error_code: finalErrorCode,
@@ -32238,6 +32246,7 @@ async function runIngredientResearchSync({
   return {
     ok: false,
     provider,
+    resolved_model: resolvedModel,
     provider_model_tier: modelTier,
     provider_circuit_state: afterCircuitState,
     research_error_code: finalErrorCode,
@@ -32320,6 +32329,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
         job_id: jobId,
         schema_version: 'v2-lite',
         provider: syncResult && syncResult.provider ? syncResult.provider : 'gemini',
+        resolved_model: syncResult && syncResult.resolved_model ? syncResult.resolved_model : AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
         provider_model_tier: syncResult && syncResult.provider_model_tier ? syncResult.provider_model_tier : 'flash',
         provider_circuit_state: syncResult && syncResult.provider_circuit_state ? syncResult.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResult && syncResult.research_error_code ? syncResult.research_error_code : null,
@@ -32523,6 +32533,11 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     metaObj.provider_model_tier,
     researchObj && researchObj.provider_model_tier,
     'flash',
+  );
+  const resolvedModel = pickFirstTrimmed(
+    metaObj.resolved_model,
+    researchObj && researchObj.resolved_model,
+    AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
   );
   const providerCircuitState = pickFirstTrimmed(
     metaObj.provider_circuit_state,
@@ -32795,6 +32810,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     ),
     provider_model_tier: providerModelTier || 'flash',
     provider_circuit_state: providerCircuitState || 'closed',
+    resolved_model: resolvedModel || null,
     research_attempts: providerAttempts,
     ingredient: {
       inci: pickFirstTrimmed(researchIngredient.inci, picked.inci, inputName),
@@ -32938,6 +32954,7 @@ async function buildIngredientReportPayloadWithResearch({
       route_rule_version: pickFirstTrimmed(metaObj.route_rule_version, INGREDIENT_ROUTE_RULE_VERSION),
       provider_model_tier: pickFirstTrimmed(metaObj.provider_model_tier, resolvedResearch && resolvedResearch.provider_model_tier),
       provider_circuit_state: pickFirstTrimmed(metaObj.provider_circuit_state, resolvedResearch && resolvedResearch.provider_circuit_state),
+      resolved_model: pickFirstTrimmed(metaObj.resolved_model, resolvedResearch && resolvedResearch.resolved_model, AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI),
       research_provider: pickFirstTrimmed(metaObj.research_provider, resolvedResearch && resolvedResearch.provider),
       research_error_code: pickFirstTrimmed(
         metaObj.research_error_code,
