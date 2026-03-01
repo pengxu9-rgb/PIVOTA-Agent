@@ -51,6 +51,38 @@
             },
             "additionalProperties": true
           },
+          "context": {
+            "type": "object",
+            "description": "Optional conversational context used by find_products_multi to avoid repeated clarifications.",
+            "properties": {
+              "resolved_slots": {
+                "type": "object",
+                "description": "Slots already provided by the user in recent turns.",
+                "properties": {
+                  "scenario": { "type": "string", "description": "Resolved usage scenario (e.g. date/commute/travel)." },
+                  "category": { "type": "string", "description": "Resolved product category direction." },
+                  "budget": { "type": "string", "description": "Resolved budget hint (free-text or compact range)." },
+                  "brand": { "type": "string", "description": "Resolved brand preference." }
+                },
+                "additionalProperties": true
+              },
+              "asked_slots": {
+                "type": "array",
+                "description": "Slots that were already asked recently to avoid repeated follow-up prompts.",
+                "items": { "type": "string" }
+              },
+              "clarify_budget": {
+                "type": "object",
+                "description": "Clarification budget control for slot follow-ups.",
+                "properties": {
+                  "max_rounds": { "type": "integer", "minimum": 0 },
+                  "used_rounds": { "type": "integer", "minimum": 0 }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          },
           "product": {
             "type": "object",
             "description": "Used when operation = get_product_detail",
@@ -200,5 +232,42 @@
     },
     "required": ["operation", "payload"],
     "additionalProperties": false
+  },
+  "x_response_extensions": {
+    "type": "object",
+    "description": "Optional response extensions emitted by find_products_multi (backward compatible).",
+    "properties": {
+      "clarification": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "description": "Clarification slot name, e.g. scenario/category/budget/brand."
+          },
+          "dedup_key": {
+            "type": "string",
+            "description": "Stable dedup key for frontend anti-repeat handling."
+          }
+        },
+        "additionalProperties": true
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "search_trace": {
+            "type": "object",
+            "properties": {
+              "slot_state": {
+                "type": "object",
+                "description": "Resolved/asked slot trace for observability."
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
   }
 }

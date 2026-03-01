@@ -14,6 +14,10 @@ CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-2}"
 CURL_CONNECT_TIMEOUT_SEC="${CURL_CONNECT_TIMEOUT_SEC:-8}"
 CURL_MAX_TIME_SEC="${CURL_MAX_TIME_SEC:-45}"
 SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg}"
+HEATMAP_LOW_SIGNAL_MAX_THRESHOLD="${HEATMAP_LOW_SIGNAL_MAX_THRESHOLD:-0.20}"
+HEATMAP_LOW_SIGNAL_P90_THRESHOLD="${HEATMAP_LOW_SIGNAL_P90_THRESHOLD:-0.12}"
+HEATMAP_PROXY_VISIBILITY_MAX_FLOOR="${HEATMAP_PROXY_VISIBILITY_MAX_FLOOR:-0.55}"
+HEATMAP_PROXY_VISIBILITY_P90_FLOOR="${HEATMAP_PROXY_VISIBILITY_P90_FLOOR:-0.18}"
 
 for required_bin in curl jq python3; do
   if ! command -v "$required_bin" >/dev/null 2>&1; then
@@ -183,6 +187,7 @@ normalize_json "$ANALYSIS_RAW" "$ANALYSIS_JSON"
 
 python3 - <<'PY' "$ANALYSIS_JSON" "$SUMMARY_JSON" "$EXPECT_BRANCH" "$QC_FOR_ANALYSIS" "$PHOTO_ID_FOR_ANALYSIS"
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -191,8 +196,18 @@ out = Path(sys.argv[2])
 expect_branch = str(sys.argv[3] if len(sys.argv) > 3 else "usable").strip().lower()
 qc_for_analysis = str(sys.argv[4] if len(sys.argv) > 4 else "").strip()
 photo_id_for_analysis = str(sys.argv[5] if len(sys.argv) > 5 else "").strip()
+heatmap_low_signal_max_threshold = float(os.environ.get("HEATMAP_LOW_SIGNAL_MAX_THRESHOLD", "0.20"))
+heatmap_low_signal_p90_threshold = float(os.environ.get("HEATMAP_LOW_SIGNAL_P90_THRESHOLD", "0.12"))
+heatmap_proxy_visibility_max_floor = float(os.environ.get("HEATMAP_PROXY_VISIBILITY_MAX_FLOOR", "0.55"))
+heatmap_proxy_visibility_p90_floor = float(os.environ.get("HEATMAP_PROXY_VISIBILITY_P90_FLOOR", "0.18"))
 data = json.loads(src.read_text(encoding="utf-8"))
 cards = data.get("cards") or []
+if any(
+    (card or {}).get("type") == "confidence_notice"
+    and str(((card or {}).get("payload") or {}).get("reason") or "").strip().lower() == "pregnancy_optional_profile"
+    for card in cards
+):
+    raise AssertionError("passive pregnancy_optional_profile card should be suppressed")
 
 analysis_card = next((card for card in cards if card.get("type") == "analysis_summary"), None)
 if analysis_card is None:
@@ -236,14 +251,62 @@ else:
     regions = modules_payload.get("regions") or []
     if not regions:
         raise AssertionError("regions must not be empty")
+    regions_by_id = {region.get("region_id"): region for region in regions if region.get("region_id")}
+    regions_available_count = int(modules_payload.get("regions_available_count") or 0)
+    regions_unavailable_count = int(modules_payload.get("regions_unavailable_count") or 0)
+    if regions_available_count + regions_unavailable_count != len(regions):
+        raise AssertionError("regions_available_count + regions_unavailable_count mismatch")
+
+    module_overlay_debug = modules_payload.get("module_overlay_debug") or {}
+    required_overlay_keys = (
+        "module_box_mode",
+        "module_box_dynamic_applied",
+        "module_box_dynamic_reason",
+        "skinmask_source",
+        "skinmask_fallback_reason",
+        "skinmask_reliable",
+        "onnx_infer_ms",
+        "skinmask_model_loaded",
+        "source_confidence_bucket",
+    )
+    for key in required_overlay_keys:
+        if key not in module_overlay_debug:
+            raise AssertionError(f"module_overlay_debug missing key: {key}")
+    overlay_source = str(module_overlay_debug.get("skinmask_source") or "").strip().lower() or "none"
+    if overlay_source not in {"onnx", "diagnosis_bbox", "none"}:
+        raise AssertionError(f"invalid module_overlay_debug.skinmask_source: {overlay_source!r}")
+    if overlay_source == "none":
+        raise AssertionError("module overlay unavailable: skinmask_source must not be none")
+    source_confidence_bucket = str(module_overlay_debug.get("source_confidence_bucket") or "").strip().lower()
+    if source_confidence_bucket not in {"low", "medium", "high"}:
+        raise AssertionError(f"invalid module_overlay_debug.source_confidence_bucket: {source_confidence_bucket!r}")
+
+    def heatmap_signal_stats(values):
+        if not values:
+            return {"max": 0.0, "p90": 0.0}
+        numbers = [max(0.0, min(1.0, float(v))) for v in values]
+        numbers.sort()
+        p90 = numbers[min(len(numbers) - 1, int(0.9 * (len(numbers) - 1)))]
+        return {"max": numbers[-1], "p90": p90}
 
     region_ids = [region.get("region_id") for region in regions]
     if len(set(region_ids)) != len(region_ids):
         raise AssertionError("region_id values are not unique")
 
+    available_calculated = 0
+    unavailable_calculated = 0
     for region in regions:
         if region.get("coord_space") != "face_crop_norm_v1":
             raise AssertionError("region coord_space is not face_crop_norm_v1")
+        status = str(region.get("status") or "").strip().lower()
+        if status not in {"available", "unavailable"}:
+            raise AssertionError(f"invalid region status: {status!r}")
+        if status == "available":
+            available_calculated += 1
+        if status == "unavailable":
+            unavailable_calculated += 1
+            if not str(region.get("missing_reason") or "").strip():
+                raise AssertionError("unavailable region missing missing_reason")
         heatmap = region.get("heatmap")
         if heatmap:
             grid = heatmap.get("grid") or {}
@@ -255,14 +318,61 @@ else:
             for value in values:
                 if not (0.0 <= float(value) <= 1.0):
                     raise AssertionError("heatmap values must be in [0,1]")
+            signal_stats = region.get("signal_stats")
+            if signal_stats:
+                signal_max = float(signal_stats.get("max") or 0.0)
+                signal_p90 = float(signal_stats.get("p90") or 0.0)
+                signal_source = str(signal_stats.get("source") or "").strip().lower()
+                if signal_source not in {"raw", "proxy"}:
+                    raise AssertionError(f"signal_stats.source must be raw/proxy, got {signal_source!r}")
+                if signal_max < 0 or signal_max > 1 or signal_p90 < 0 or signal_p90 > 1:
+                    raise AssertionError(f"signal_stats out of range: max={signal_max} p90={signal_p90}")
+    if available_calculated != regions_available_count:
+        raise AssertionError("regions_available_count does not match region statuses")
+    if unavailable_calculated != regions_unavailable_count:
+        raise AssertionError("regions_unavailable_count does not match region statuses")
 
     region_set = set(region_ids)
+    low_p90_issue_evidence = []
     modules = modules_payload.get("modules") or []
     for module in modules:
         for issue in module.get("issues") or []:
             for evidence_id in issue.get("evidence_region_ids") or []:
                 if evidence_id not in region_set:
                     raise AssertionError(f"unmapped evidence_region_id: {evidence_id}")
+                region = regions_by_id.get(evidence_id) or {}
+                if str(region.get("status") or "").strip().lower() != "available":
+                    raise AssertionError(f"issue evidence region is unavailable: {evidence_id}")
+                region_type = str(region.get("type") or "").strip().lower()
+                if region_type == "heatmap":
+                    heatmap = region.get("heatmap") or {}
+                    values = heatmap.get("values") or []
+                    stats = heatmap_signal_stats(values)
+                    signal_stats = region.get("signal_stats") or {}
+                    signal_source = str(signal_stats.get("source") or "").strip().lower() or "raw"
+                    signal_max = float(signal_stats.get("max") or stats["max"])
+                    signal_p90 = float(signal_stats.get("p90") or stats["p90"])
+                    if signal_source == "proxy":
+                        if signal_max < heatmap_proxy_visibility_max_floor or signal_p90 < heatmap_proxy_visibility_p90_floor:
+                            raise AssertionError(
+                                f"proxy evidence heatmap below visibility floor: {evidence_id} max={signal_max:.3f} p90={signal_p90:.3f}"
+                            )
+                    else:
+                        if signal_max < heatmap_low_signal_max_threshold or signal_p90 < heatmap_low_signal_p90_threshold:
+                            raise AssertionError(
+                                f"raw evidence heatmap is low-signal and should be replaced: {evidence_id} max={signal_max:.3f} p90={signal_p90:.3f}"
+                            )
+                    if signal_p90 < heatmap_low_signal_p90_threshold:
+                        low_p90_issue_evidence.append(
+                            {
+                                "region_id": evidence_id,
+                                "source": signal_source,
+                                "max": round(float(signal_max), 4),
+                                "p90": round(float(signal_p90), 4),
+                            }
+                        )
+                elif region_type not in {"bbox", "polygon"}:
+                    raise AssertionError(f"issue evidence region type is not drawable: {evidence_id} type={region_type!r}")
 
     serialized = json.dumps(modules_payload, ensure_ascii=False)
     for forbidden_key in ("overlay_url", "server_overlay", "overlay_image"):
@@ -276,10 +386,15 @@ else:
         "quality_grade": modules_quality_grade,
         "regions_count": len(regions),
         "modules_count": len(modules),
+        "regions_available_count": regions_available_count,
+        "regions_unavailable_count": regions_unavailable_count,
+        "module_overlay_debug": module_overlay_debug,
         "has_photo_modules_v1": True,
         "expect_branch": "usable",
         "forced_qc_status": qc_for_analysis or None,
         "analysis_photo_id": photo_id_for_analysis or None,
+        "issue_heatmap_low_p90_advisory_count": len(low_p90_issue_evidence),
+        "issue_heatmap_low_p90_advisories": low_p90_issue_evidence[:10],
     }
 out.write_text(json.dumps(summary, ensure_ascii=False), encoding="utf-8")
 PY

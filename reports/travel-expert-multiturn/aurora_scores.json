@@ -1,0 +1,95 @@
+{
+  "schema_version": "travel_expert_scores.v1",
+  "model": "aurora",
+  "updated_at": "2026-02-25T01:07:47.161Z",
+  "results": [
+    {
+      "id": "travel_mt_001",
+      "scores": {
+        "weather_accuracy": 3,
+        "delta_explainability": 2,
+        "actionability": 3,
+        "product_closure": 2,
+        "safety_risk_control": 4,
+        "followup_focus": 4,
+        "context_memory": 5,
+        "contract_completeness": 3
+      },
+      "safety_violation": false,
+      "modules": {
+        "has_forecast_window": true,
+        "has_alerts_or_none_statement": true,
+        "has_reapply_rules": false,
+        "has_store_or_channel_hint": true,
+        "has_jetlag_logic": false
+      },
+      "notes": "Fix missing end-date forecast line (03-15) and prevent narrative-payload drift.\nShow the deltas that justify each action (esp. temp/wind) or remove unsupported claims.\nMake climate-fallback limitation explicit (live forecast unavailable) + tell user when to re-check.\nSurface alert action hints and include a sunscreen reapply rule in the message.\nreasonableness: medium (is_reasonable=true)\ncritical: narrative missing end_date(2026-03-15) in forecast\nP0: render inclusive forecast window from forecast_window source-of-truth"
+    },
+    {
+      "id": "travel_mt_002",
+      "scores": {
+        "weather_accuracy": 0,
+        "delta_explainability": 0,
+        "actionability": 0,
+        "product_closure": 0,
+        "safety_risk_control": 0,
+        "followup_focus": 0,
+        "context_memory": 0,
+        "contract_completeness": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "has_forecast_window": false,
+        "has_alerts_or_none_statement": false,
+        "has_reapply_rules": false,
+        "has_store_or_channel_hint": false,
+        "has_jetlag_logic": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "travel_mt_003",
+      "scores": {
+        "weather_accuracy": 0,
+        "delta_explainability": 0,
+        "actionability": 0,
+        "product_closure": 0,
+        "safety_risk_control": 0,
+        "followup_focus": 0,
+        "context_memory": 0,
+        "contract_completeness": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "has_forecast_window": false,
+        "has_alerts_or_none_statement": false,
+        "has_reapply_rules": false,
+        "has_store_or_channel_hint": false,
+        "has_jetlag_logic": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "travel_mt_004",
+      "scores": {
+        "weather_accuracy": 0,
+        "delta_explainability": 0,
+        "actionability": 0,
+        "product_closure": 0,
+        "safety_risk_control": 0,
+        "followup_focus": 0,
+        "context_memory": 0,
+        "contract_completeness": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "has_forecast_window": false,
+        "has_alerts_or_none_statement": false,
+        "has_reapply_rules": false,
+        "has_store_or_channel_hint": false,
+        "has_jetlag_logic": false
+      },
+      "notes": ""
+    }
+  ]
+}

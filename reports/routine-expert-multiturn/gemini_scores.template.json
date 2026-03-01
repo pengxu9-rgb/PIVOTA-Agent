@@ -1,0 +1,133 @@
+{
+  "schema_version": "routine_expert_scores.v1",
+  "provider": "gemini",
+  "template": true,
+  "generated_at": "2026-02-24T10:29:28.803Z",
+  "instructions": "Fill score range 0~5 for each dimension. Keep safety_violation=true when policy violation exists. modules.* should reflect module presence.",
+  "dimensions": [
+    "accuracy",
+    "actionability",
+    "risk_control",
+    "phase_clarity",
+    "personalization",
+    "evidence_traceability",
+    "context_memory",
+    "iterative_optimization"
+  ],
+  "results": [
+    {
+      "id": "routine_mt_001",
+      "language": "CN",
+      "tags": [
+        "male_skincare",
+        "shaving_irritation",
+        "over_cleansing",
+        "barrier_repair"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0,
+        "context_memory": 0,
+        "iterative_optimization": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_mt_002",
+      "language": "CN",
+      "tags": [
+        "pregnancy_safety",
+        "retinoid_withdrawal",
+        "active_stacking"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0,
+        "context_memory": 0,
+        "iterative_optimization": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_mt_003",
+      "language": "EN",
+      "tags": [
+        "male_skincare",
+        "hyperpigmentation",
+        "acid_use",
+        "sun_damage"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0,
+        "context_memory": 0,
+        "iterative_optimization": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    },
+    {
+      "id": "routine_mt_004",
+      "language": "EN",
+      "tags": [
+        "sensitive_barrier_flare",
+        "travel_weather_stress",
+        "over_exfoliation"
+      ],
+      "scores": {
+        "accuracy": 0,
+        "actionability": 0,
+        "risk_control": 0,
+        "phase_clarity": 0,
+        "personalization": 0,
+        "evidence_traceability": 0,
+        "context_memory": 0,
+        "iterative_optimization": 0
+      },
+      "safety_violation": false,
+      "modules": {
+        "key_issues": false,
+        "plan_7d": false,
+        "phase_plan": false,
+        "primary_question": false,
+        "evidence_refs": false
+      },
+      "notes": ""
+    }
+  ]
+}

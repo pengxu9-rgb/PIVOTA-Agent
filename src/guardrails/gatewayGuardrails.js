@@ -9,6 +9,10 @@ const RATE_LIMIT_CLEANUP_INTERVAL_MS = Math.max(
   Number(process.env.GATEWAY_RATE_LIMIT_CLEANUP_INTERVAL_MS || 0) || 60 * 1000,
   5 * 1000,
 );
+const SEARCH_LIMIT_MAX = Math.max(
+  1,
+  Math.min(Number(process.env.SEARCH_LIMIT_MAX || 200) || 200, 200),
+);
 
 const BUCKETS = new Map(); // key -> { tokens, lastRefillMs, lastSeenMs }
 let lastCleanupAtMs = 0;
@@ -144,7 +148,7 @@ function clampSearchPayload(payload) {
   // Keep query fanout bounded. The underlying search endpoint supports large limits; we
   // cap here as a guardrail (partners should paginate if needed).
   if (Object.prototype.hasOwnProperty.call(search, 'limit')) {
-    search.limit = clampInt(search.limit, 1, 50, 20);
+    search.limit = clampInt(search.limit, 1, SEARCH_LIMIT_MAX, 20);
   }
   if (Object.prototype.hasOwnProperty.call(search, 'offset')) {
     search.offset = clampInt(search.offset, 0, 500, 0);
@@ -227,4 +231,3 @@ module.exports = {
     sha256Hex,
   },
 };
-

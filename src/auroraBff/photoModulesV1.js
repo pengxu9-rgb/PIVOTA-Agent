@@ -151,6 +151,14 @@ const MODULE_BOX_DYNAMIC_MIN_SCORE = Math.max(
   0,
   Math.min(1, Number(process.env.DIAG_MODULE_BOX_DYNAMIC_MIN_SCORE || 0.6)),
 );
+const MODULE_DYNAMIC_MIN_BOXES = Math.max(
+  3,
+  Math.min(7, Math.trunc(Number(process.env.DIAG_MODULE_DYNAMIC_MIN_BOXES || 4) || 4)),
+);
+const MODULE_DYNAMIC_MIN_DIRECT_BOXES = Math.max(
+  2,
+  Math.min(7, Math.trunc(Number(process.env.DIAG_MODULE_DYNAMIC_MIN_DIRECT_BOXES || 3) || 3)),
+);
 const MODULE_SUPPORT_REFINEMENT_ENABLED = parseEnvBoolean(
   process.env.DIAG_MODULE_SUPPORT_REFINEMENT_ENABLED,
   true,
@@ -219,6 +227,50 @@ const MODULE_POST_VALIDATOR_YAW_BIAS_RATIO = Math.max(
   0,
   Math.min(0.18, Number(process.env.DIAG_MODULE_POST_VALIDATOR_YAW_BIAS_RATIO || 0.04)),
 );
+const DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED = parseEnvBoolean(
+  process.env.DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED,
+  true,
+);
+const DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD = parseEnvNumber(
+  process.env.DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD,
+  0.2,
+  0.01,
+  0.6,
+);
+const DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD = parseEnvNumber(
+  process.env.DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD,
+  0.12,
+  0.005,
+  0.4,
+);
+const DIAG_HEATMAP_PROXY_VISIBILITY_MAX_FLOOR = parseEnvNumber(
+  process.env.DIAG_HEATMAP_PROXY_VISIBILITY_MAX_FLOOR,
+  0.55,
+  0.2,
+  0.95,
+);
+const DIAG_HEATMAP_PROXY_VISIBILITY_P90_FLOOR = parseEnvNumber(
+  process.env.DIAG_HEATMAP_PROXY_VISIBILITY_P90_FLOOR,
+  0.18,
+  0.05,
+  0.7,
+);
+const PHOTO_MODULES_TOP_ACTIONS_LIMIT = Math.max(
+  1,
+  Math.min(6, Math.trunc(Number(process.env.PHOTO_MODULES_TOP_ACTIONS_LIMIT || 3) || 3)),
+);
+const PHOTO_MODULES_CONFIDENCE_LOW_THRESHOLD = parseEnvNumber(
+  process.env.PHOTO_MODULES_CONFIDENCE_LOW_THRESHOLD,
+  0.15,
+  0.01,
+  0.6,
+);
+const PHOTO_MODULES_CONFIDENCE_MEDIUM_THRESHOLD = parseEnvNumber(
+  process.env.PHOTO_MODULES_CONFIDENCE_MEDIUM_THRESHOLD,
+  0.45,
+  0.05,
+  0.9,
+);
 
 function clamp01(value) {
   const number = Number(value);
@@ -244,10 +296,279 @@ function normalizeQualityGrade(qualityGrade) {
   return 'unknown';
 }
 
+function normalizeSkinmaskSource(source) {
+  const token = String(source || '').trim().toLowerCase();
+  if (token === 'onnx' || token === 'diagnosis_bbox' || token === 'none') return token;
+  return 'none';
+}
+
+function normalizeSkinmaskFallbackReason(reason) {
+  const token = String(reason || '').trim().toUpperCase();
+  return token || null;
+}
+
 function normalizeSeverity0to4(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 0;
   return Math.max(0, Math.min(4, number));
+}
+
+function confidenceBucketFromValue(confidence0to1) {
+  const confidence = clamp01(Number(confidence0to1));
+  if (confidence < PHOTO_MODULES_CONFIDENCE_LOW_THRESHOLD) return 'low';
+  if (confidence < PHOTO_MODULES_CONFIDENCE_MEDIUM_THRESHOLD) return 'medium';
+  return 'high';
+}
+
+function resolveSkinmaskSourceConfidenceBucket({ skinmaskSource, skinmaskReliable, skinmaskFallbackReason } = {}) {
+  const source = normalizeSkinmaskSource(skinmaskSource);
+  if (source === 'onnx') return skinmaskReliable ? 'high' : 'medium';
+  if (source === 'diagnosis_bbox') return skinmaskReliable ? 'medium' : 'low';
+  const fallbackReason = String(skinmaskFallbackReason || '').trim().toUpperCase();
+  if (fallbackReason === 'MODEL_MISSING' || fallbackReason === 'DISABLED') return 'low';
+  return 'low';
+}
+
+function normalizeStringList(values, max = 6) {
+  const out = [];
+  const seen = new Set();
+  const rows = Array.isArray(values) ? values : [];
+  for (const raw of rows) {
+    const token = String(raw || '').trim();
+    if (!token) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function computeIssueRankScore({ severity0to4, confidence0to1 } = {}) {
+  const severityScore = clamp01(normalizeSeverity0to4(severity0to4) / 4);
+  const confidenceScore = clamp01(confidence0to1);
+  return round3(clamp01(severityScore * 0.72 + confidenceScore * 0.28));
+}
+
+function actionDedupeKey(action) {
+  const canonicalId = String(
+    action && (action.ingredient_canonical_id || action.ingredientCanonicalId || action.ingredient_id || action.ingredientId)
+      ? action.ingredient_canonical_id || action.ingredientCanonicalId || action.ingredient_id || action.ingredientId
+      : '',
+  )
+    .trim()
+    .toLowerCase();
+  if (canonicalId) return canonicalId;
+  const ingredientName = String(action && action.ingredient_name ? action.ingredient_name : '')
+    .trim()
+    .toLowerCase();
+  return ingredientName || '__unknown_ingredient__';
+}
+
+function actionIssueTypes(action) {
+  return normalizeStringList(
+    Array.isArray(action && action.evidence_issue_types) ? action.evidence_issue_types : [],
+    4,
+  );
+}
+
+function actionPrioritySeed(action, issueRankByType) {
+  const issueTypes = actionIssueTypes(action);
+  if (!issueTypes.length) return 0;
+  let best = 0;
+  for (const issueType of issueTypes) {
+    const score = Number(issueRankByType.get(issueType) || 0);
+    if (score > best) best = score;
+  }
+  return round3(clamp01(best));
+}
+
+function mergeActionRows(baseAction, incomingAction, issueRankByType) {
+  const baseSeed = actionPrioritySeed(baseAction, issueRankByType);
+  const incomingSeed = actionPrioritySeed(incomingAction, issueRankByType);
+  const preferIncoming = incomingSeed > baseSeed;
+  const primary = preferIncoming ? incomingAction : baseAction;
+  const secondary = preferIncoming ? baseAction : incomingAction;
+
+  const merged = {
+    ...primary,
+    evidence_issue_types: normalizeStringList(
+      [
+        ...(Array.isArray(primary && primary.evidence_issue_types) ? primary.evidence_issue_types : []),
+        ...(Array.isArray(secondary && secondary.evidence_issue_types) ? secondary.evidence_issue_types : []),
+      ],
+      4,
+    ),
+    evidence_region_ids: normalizeStringList(
+      [
+        ...(Array.isArray(primary && primary.evidence_region_ids) ? primary.evidence_region_ids : []),
+        ...(Array.isArray(secondary && secondary.evidence_region_ids) ? secondary.evidence_region_ids : []),
+      ],
+      6,
+    ),
+    cautions: normalizeStringList(
+      [
+        ...(Array.isArray(primary && primary.cautions) ? primary.cautions : []),
+        ...(Array.isArray(secondary && secondary.cautions) ? secondary.cautions : []),
+      ],
+      6,
+    ),
+    do_not_mix: normalizeStringList(
+      [
+        ...(Array.isArray(primary && primary.do_not_mix) ? primary.do_not_mix : []),
+        ...(Array.isArray(secondary && secondary.do_not_mix) ? secondary.do_not_mix : []),
+      ],
+      6,
+    ),
+  };
+
+  if (!String(merged.ingredient_canonical_id || '').trim()) {
+    merged.ingredient_canonical_id = String(
+      incomingAction && incomingAction.ingredient_canonical_id
+        ? incomingAction.ingredient_canonical_id
+        : baseAction && baseAction.ingredient_canonical_id
+          ? baseAction.ingredient_canonical_id
+          : '',
+    ).trim();
+  }
+  return merged;
+}
+
+function computeActionRankScore(action, issueRankByType) {
+  const issueTypes = actionIssueTypes(action);
+  if (!issueTypes.length) return 0;
+  const issueScores = issueTypes
+    .map((issueType) => Number(issueRankByType.get(issueType) || 0))
+    .filter((score) => Number.isFinite(score) && score > 0);
+  if (!issueScores.length) return 0;
+  const maxScore = Math.max(...issueScores);
+  const meanScore = issueScores.reduce((acc, score) => acc + score, 0) / issueScores.length;
+  const coverageBoost = Math.min(0.08, issueTypes.length * 0.02);
+  const cautionPenalty = Math.min(0.08, (Array.isArray(action && action.cautions) ? action.cautions.length : 0) * 0.01);
+  return round3(clamp01(maxScore * 0.7 + meanScore * 0.22 + coverageBoost - cautionPenalty));
+}
+
+function rankAndGroupActions(actions, issueRankByType) {
+  const map = new Map();
+  const safeActions = Array.isArray(actions) ? actions : [];
+  for (const actionRaw of safeActions) {
+    const action = actionRaw && typeof actionRaw === 'object' ? { ...actionRaw } : null;
+    if (!action) continue;
+    const key = actionDedupeKey(action);
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, action);
+      continue;
+    }
+    map.set(key, mergeActionRows(existing, action, issueRankByType));
+  }
+
+  const ranked = Array.from(map.values())
+    .map((action) => ({
+      ...action,
+      action_rank_score: computeActionRankScore(action, issueRankByType),
+    }))
+    .sort((left, right) => {
+      const scoreDiff = Number(right.action_rank_score || 0) - Number(left.action_rank_score || 0);
+      if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+      return String(left.ingredient_name || left.ingredient_id || '').localeCompare(
+        String(right.ingredient_name || right.ingredient_id || ''),
+      );
+    });
+
+  const grouped = ranked.map((action, index) => ({
+    ...action,
+    group: index < PHOTO_MODULES_TOP_ACTIONS_LIMIT ? 'top' : 'more',
+  }));
+  return {
+    actions: grouped,
+    topActions: grouped.filter((action) => action.group === 'top'),
+    moreActions: grouped.filter((action) => action.group === 'more'),
+  };
+}
+
+function computeModuleRankScore({ issues, actions } = {}) {
+  const safeIssues = Array.isArray(issues) ? issues : [];
+  const safeActions = Array.isArray(actions) ? actions : [];
+  const issueScores = safeIssues
+    .map((issue) => Number(issue && issue.issue_rank_score))
+    .filter((score) => Number.isFinite(score) && score > 0)
+    .sort((a, b) => b - a);
+  const topIssueScore = issueScores[0] || 0;
+  const avgTopIssueScore = issueScores.length
+    ? issueScores.slice(0, 2).reduce((acc, score) => acc + score, 0) / Math.min(2, issueScores.length)
+    : 0;
+  const topActionScore = safeActions.reduce(
+    (max, action) => Math.max(max, Number(action && action.action_rank_score || 0)),
+    0,
+  );
+  return round3(clamp01(topIssueScore * 0.68 + avgTopIssueScore * 0.2 + topActionScore * 0.12));
+}
+
+function findTopProductIdFromModule(moduleRow) {
+  if (!moduleRow || typeof moduleRow !== 'object') return null;
+  const actionRows = Array.isArray(moduleRow.actions) ? moduleRow.actions : [];
+  const rankedActions = actionRows
+    .slice()
+    .sort((left, right) => Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0));
+  for (const action of rankedActions) {
+    const products = Array.isArray(action && action.products) ? action.products : [];
+    for (const product of products) {
+      const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
+        .trim();
+      if (productId) return productId;
+    }
+  }
+  const moduleProducts = Array.isArray(moduleRow.products) ? moduleRow.products : [];
+  for (const product of moduleProducts) {
+    const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
+      .trim();
+    if (productId) return productId;
+  }
+  return null;
+}
+
+function buildSummaryV1(modules) {
+  const safeModules = Array.isArray(modules) ? modules : [];
+  if (!safeModules.length) return null;
+  const rankedModules = safeModules
+    .slice()
+    .sort((left, right) => {
+      const rankDiff = Number(right && right.module_rank_score || 0) - Number(left && left.module_rank_score || 0);
+      if (Math.abs(rankDiff) > 1e-6) return rankDiff;
+      const leftSeverity = Array.isArray(left && left.issues)
+        ? left.issues.reduce((max, issue) => Math.max(max, normalizeSeverity0to4(issue && issue.severity_0_4)), 0)
+        : 0;
+      const rightSeverity = Array.isArray(right && right.issues)
+        ? right.issues.reduce((max, issue) => Math.max(max, normalizeSeverity0to4(issue && issue.severity_0_4)), 0)
+        : 0;
+      return rightSeverity - leftSeverity;
+    });
+  const topModule = rankedModules[0];
+  if (!topModule || !topModule.module_id) return null;
+  const topIssue = (Array.isArray(topModule.issues) ? topModule.issues : [])
+    .slice()
+    .sort((left, right) => {
+      const rankDiff = Number(right && right.issue_rank_score || 0) - Number(left && left.issue_rank_score || 0);
+      if (Math.abs(rankDiff) > 1e-6) return rankDiff;
+      const severityDiff = normalizeSeverity0to4(right && right.severity_0_4) - normalizeSeverity0to4(left && left.severity_0_4);
+      if (severityDiff !== 0) return severityDiff;
+      return clamp01(Number(right && right.confidence_0_1)) - clamp01(Number(left && left.confidence_0_1));
+    })[0] || null;
+  const topAction = (Array.isArray(topModule.actions) ? topModule.actions : [])
+    .slice()
+    .sort((left, right) => Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0))[0] || null;
+
+  return {
+    top_module_id: String(topModule.module_id),
+    top_issue_type: topIssue && topIssue.issue_type ? String(topIssue.issue_type) : null,
+    top_issue_severity: topIssue ? round3(normalizeSeverity0to4(topIssue.severity_0_4)) : null,
+    top_issue_confidence: topIssue ? round3(clamp01(topIssue.confidence_0_1)) : null,
+    top_action_ingredient_id: topAction
+      ? String(topAction.ingredient_canonical_id || topAction.ingredient_id || '').trim() || null
+      : null,
+    top_product_id: findTopProductIdFromModule(topModule),
+  };
 }
 
 function isPointNearlyEqual(a, b, eps = 1e-6) {
@@ -519,6 +840,145 @@ function sanitizeHeatmap(rawHeatmap) {
   };
 }
 
+function buildSyntheticHeatmapFromBBox(bbox, { severity0to4, confidence0to1 } = {}) {
+  if (!bbox || typeof bbox !== 'object') return null;
+  const x = Number(bbox.x);
+  const y = Number(bbox.y);
+  const w = Number(bbox.w);
+  const h = Number(bbox.h);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h)) return null;
+  if (w <= 0.001 || h <= 0.001) return null;
+
+  const gridW = HEATMAP_GRID_DEFAULT.w;
+  const gridH = HEATMAP_GRID_DEFAULT.h;
+  const cx = x + (w / 2);
+  const cy = y + (h / 2);
+  const halfW = Math.max(0.01, w / 2);
+  const halfH = Math.max(0.01, h / 2);
+  const severityFactor = clamp01(normalizeSeverity0to4(severity0to4) / 4);
+  const confidenceFactor = clamp01(confidence0to1);
+  const amplitude = clamp01(0.42 + (severityFactor * 0.38) + (confidenceFactor * 0.2));
+  const values = new Array(gridW * gridH).fill(0);
+
+  for (let gy = 0; gy < gridH; gy += 1) {
+    const py = (gy + 0.5) / gridH;
+    for (let gx = 0; gx < gridW; gx += 1) {
+      const px = (gx + 0.5) / gridW;
+      const nx = (px - cx) / halfW;
+      const ny = (py - cy) / halfH;
+      const radius = Math.sqrt((nx * nx) + (ny * ny));
+
+      let value = 0;
+      if (radius <= 1) {
+        value = 1 - radius;
+      } else if (radius <= 1.3) {
+        value = ((1.3 - radius) / 0.3) * 0.22;
+      }
+
+      values[(gy * gridW) + gx] = round3(clamp01(value * amplitude));
+    }
+  }
+
+  return enforceProxyHeatmapVisibilityFloor({
+    coord_space: FACE_COORD_SPACE,
+    grid: { w: gridW, h: gridH },
+    values,
+    value_range: { min: 0, max: 1 },
+    smoothing_hint: 'bilinear',
+    generated_from: 'bbox_proxy_v1',
+  });
+}
+
+function summarizeHeatmapSignal(heatmap) {
+  if (!heatmap || !heatmap.grid || !Array.isArray(heatmap.values)) {
+    return { ok: false, max: 0, p90: 0 };
+  }
+  const width = Math.max(1, Math.trunc(Number(heatmap.grid.w || 0)));
+  const height = Math.max(1, Math.trunc(Number(heatmap.grid.h || 0)));
+  const expected = width * height;
+  if (heatmap.values.length < expected) return { ok: false, max: 0, p90: 0 };
+  const values = [];
+  for (let index = 0; index < expected; index += 1) {
+    values.push(clamp01(Number(heatmap.values[index] || 0)));
+  }
+  values.sort((a, b) => a - b);
+  const max = values.length ? values[values.length - 1] : 0;
+  const p90 = values.length ? values[Math.min(values.length - 1, Math.floor(0.9 * (values.length - 1)))] : 0;
+  return {
+    ok: true,
+    max: clamp01(max),
+    p90: clamp01(p90),
+  };
+}
+
+function buildRegionSignalStats(heatmap, source) {
+  const stats = summarizeHeatmapSignal(heatmap);
+  if (!stats.ok) return null;
+  const normalizedSource = String(source || '').trim().toLowerCase() === 'proxy' ? 'proxy' : 'raw';
+  return {
+    max: round3(stats.max),
+    p90: round3(stats.p90),
+    source: normalizedSource,
+  };
+}
+
+function enforceProxyHeatmapVisibilityFloor(heatmap) {
+  if (!heatmap || !heatmap.grid || !Array.isArray(heatmap.values)) return heatmap;
+  const targetMax = clamp01(DIAG_HEATMAP_PROXY_VISIBILITY_MAX_FLOOR);
+  const targetP90 = clamp01(Math.min(targetMax, DIAG_HEATMAP_PROXY_VISIBILITY_P90_FLOOR));
+  const values = heatmap.values.map((value) => clamp01(Number(value)));
+  if (!values.length) return heatmap;
+
+  const buildHeatmap = (nextValues) => ({
+    ...heatmap,
+    values: nextValues,
+  });
+
+  let nextValues = values.slice();
+  let stats = summarizeHeatmapSignal(buildHeatmap(nextValues));
+  let changed = false;
+
+  if (stats.ok && stats.max > 0 && stats.max < targetMax) {
+    const scale = targetMax / Math.max(0.001, stats.max);
+    nextValues = nextValues.map((value) => clamp01(value * scale));
+    stats = summarizeHeatmapSignal(buildHeatmap(nextValues));
+    changed = true;
+  }
+
+  if (stats.ok && stats.p90 < targetP90) {
+    const sortedIndexes = nextValues
+      .map((value, index) => ({ value, index }))
+      .sort((left, right) => left.value - right.value);
+    const start = Math.max(0, Math.floor(0.9 * (sortedIndexes.length - 1)));
+    for (let i = start; i < sortedIndexes.length; i += 1) {
+      const idx = sortedIndexes[i].index;
+      if (nextValues[idx] < targetP90) nextValues[idx] = targetP90;
+    }
+    stats = summarizeHeatmapSignal(buildHeatmap(nextValues));
+    changed = true;
+  }
+
+  if (stats.ok && stats.max > 0 && stats.max < targetMax) {
+    const scale = targetMax / Math.max(0.001, stats.max);
+    nextValues = nextValues.map((value) => clamp01(value * scale));
+    changed = true;
+  }
+
+  if (!changed) return heatmap;
+  return {
+    ...heatmap,
+    values: nextValues.map((value) => round3(clamp01(value))),
+    visibility_floor_applied: true,
+  };
+}
+
+function isLowSignalHeatmap(heatmap) {
+  if (!DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED) return false;
+  const stats = summarizeHeatmapSignal(heatmap);
+  if (!stats.ok) return false;
+  return stats.max < DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD || stats.p90 < DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD;
+}
+
 function computeBoxOverlapRatio(moduleBox, regionBox) {
   const x0 = Math.max(moduleBox.x, regionBox.x);
   const y0 = Math.max(moduleBox.y, regionBox.y);
@@ -708,11 +1168,31 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
   const safeFindings = Array.isArray(findings) ? findings : [];
   const regions = [];
   const regionMeta = new Map();
+  const findingMissingReasons = new Map();
   const drops = [];
   const clips = [];
+  const HEATMAP_RECOVERABLE_MISSING_REASONS = new Set([
+    'heatmap_missing',
+    'heatmap_invalid_grid',
+    'heatmap_values_length_mismatch',
+    'heatmap_invalid',
+  ]);
 
-  function drop(reason, regionType) {
+  function addMissingReason(findingId, reason) {
+    const normalizedFindingId = String(findingId || '').trim();
+    const normalizedReason = String(reason || '').trim();
+    if (!normalizedFindingId || !normalizedReason) return;
+    const existing = findingMissingReasons.get(normalizedFindingId);
+    if (!existing) {
+      findingMissingReasons.set(normalizedFindingId, [normalizedReason]);
+      return;
+    }
+    if (!existing.includes(normalizedReason)) existing.push(normalizedReason);
+  }
+
+  function drop(reason, regionType, findingId) {
     drops.push({ reason, region_type: regionType || 'unknown' });
+    addMissingReason(findingId, reason);
   }
 
   function clip(reason, regionType) {
@@ -733,117 +1213,221 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
     const confidence = clamp01(Number(finding.confidence));
     const style = computeRegionStyle({ severity0to4: severity, confidence0to1: confidence, issueType });
     const geometry = finding.geometry && typeof finding.geometry === 'object' ? finding.geometry : null;
+    const emittedBefore = regions.length;
+    let emittedHeatmap = false;
     if (!geometry) {
-      drop('geometry_missing', 'unknown');
-      continue;
+      drop('geometry_missing', 'unknown', findingId);
     }
 
-    const rawBBox = geometry.bbox_norm ? toBBoxFromNorm(geometry.bbox_norm) : geometry.bbox;
-    if (rawBBox) {
-      const bbox = sanitizeBBox(rawBBox);
-      if (!bbox.ok || !bbox.bbox) {
-        drop(bbox.reason || 'bbox_invalid', 'bbox');
-      } else {
-        const regionId = `${findingId}_bbox`;
-        const notes = [];
-        if (bbox.clipped) {
-          const clipReason = bbox.clip_reason || 'bbox_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'bbox');
+    if (geometry) {
+      const rawBBox = geometry.bbox_norm ? toBBoxFromNorm(geometry.bbox_norm) : geometry.bbox;
+      let sanitizedBBoxForHeatmap = null;
+      if (rawBBox) {
+        const bbox = sanitizeBBox(rawBBox);
+        if (!bbox.ok || !bbox.bbox) {
+          drop(bbox.reason || 'bbox_invalid', 'bbox', findingId);
+        } else {
+          sanitizedBBoxForHeatmap = bbox.bbox;
+          const regionId = `${findingId}_bbox`;
+          const notes = [];
+          if (bbox.clipped) {
+            const clipReason = bbox.clip_reason || 'bbox_clipped';
+            notes.push(clipReason);
+            clip(clipReason, 'bbox');
+          }
+          const region = {
+            region_id: regionId,
+            type: 'bbox',
+            coord_space: FACE_COORD_SPACE,
+            status: 'available',
+            bbox: bbox.bbox,
+            style,
+            ...(notes.length ? { notes } : {}),
+            ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+          };
+          regions.push(region);
+          regionMeta.set(regionId, {
+            issue_type: issueType,
+            severity_0_4: severity,
+            confidence_0_1: confidence,
+            region_type: 'bbox',
+            bbox: bbox.bbox,
+            heatmap: null,
+          });
         }
-        const region = {
-          region_id: regionId,
-          type: 'bbox',
-          coord_space: FACE_COORD_SPACE,
-          bbox: bbox.bbox,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'bbox',
-          bbox: bbox.bbox,
-          heatmap: null,
+      }
+
+      if (geometry.polygon && typeof geometry.polygon === 'object') {
+        const polygon = sanitizePolygon(geometry.polygon);
+        if (!polygon.ok || !polygon.polygon) {
+          drop(polygon.reason || 'polygon_invalid', 'polygon', findingId);
+        } else {
+          const regionId = `${findingId}_polygon`;
+          const notes = [];
+          if (polygon.clipped) {
+            const clipReason = polygon.clip_reason || 'polygon_clipped';
+            notes.push(clipReason);
+            clip(clipReason, 'polygon');
+          }
+          const region = {
+            region_id: regionId,
+            type: 'polygon',
+            coord_space: FACE_COORD_SPACE,
+            status: 'available',
+            polygon: polygon.polygon,
+            style,
+            ...(notes.length ? { notes } : {}),
+            ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+          };
+          regions.push(region);
+          regionMeta.set(regionId, {
+            issue_type: issueType,
+            severity_0_4: severity,
+            confidence_0_1: confidence,
+            region_type: 'polygon',
+            bbox: polygon.bbox,
+            heatmap: null,
+          });
+        }
+      }
+
+      const maybeHeatmap =
+        geometry &&
+        ((geometry.type === 'grid' && Number.isFinite(Number(geometry.rows)) && Number.isFinite(Number(geometry.cols)) && Array.isArray(geometry.values))
+          ? { grid: { w: Number(geometry.cols), h: Number(geometry.rows) }, values: geometry.values }
+          : geometry.heatmap && typeof geometry.heatmap === 'object'
+            ? geometry.heatmap
+            : null);
+
+      if (maybeHeatmap) {
+        const heatmap = sanitizeHeatmap(maybeHeatmap);
+        if (!heatmap.ok || !heatmap.heatmap) {
+          drop(heatmap.reason || 'heatmap_invalid', 'heatmap', findingId);
+        } else {
+          const lowSignalHeatmap = isLowSignalHeatmap(heatmap.heatmap);
+          if (lowSignalHeatmap && sanitizedBBoxForHeatmap) {
+            const proxyHeatmap = buildSyntheticHeatmapFromBBox(sanitizedBBoxForHeatmap, {
+              severity0to4: severity,
+              confidence0to1: confidence,
+            });
+            if (proxyHeatmap) {
+              const signalStats = buildRegionSignalStats(proxyHeatmap, 'proxy');
+              emittedHeatmap = true;
+              const regionId = `${findingId}_heatmap_proxy`;
+              const notes = ['heatmap_from_bbox_proxy', 'heatmap_low_signal_replaced'];
+              const region = {
+                region_id: regionId,
+                type: 'heatmap',
+                coord_space: FACE_COORD_SPACE,
+                status: 'available',
+                heatmap: proxyHeatmap,
+                style,
+                notes,
+                ...(signalStats ? { signal_stats: signalStats } : {}),
+                ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+              };
+              regions.push(region);
+              regionMeta.set(regionId, {
+                issue_type: issueType,
+                severity_0_4: severity,
+                confidence_0_1: confidence,
+                region_type: 'heatmap',
+                bbox: sanitizedBBoxForHeatmap,
+                heatmap: proxyHeatmap,
+                signal_stats: signalStats,
+              });
+            }
+          }
+          if (!emittedHeatmap) {
+            const signalStats = buildRegionSignalStats(heatmap.heatmap, 'raw');
+            emittedHeatmap = true;
+            const regionId = `${findingId}_heatmap`;
+            const notes = [];
+            if (heatmap.clipped) {
+              const clipReason = heatmap.clip_reason || 'heatmap_clipped';
+              notes.push(clipReason);
+              clip(clipReason, 'heatmap');
+            }
+            const region = {
+              region_id: regionId,
+              type: 'heatmap',
+              coord_space: FACE_COORD_SPACE,
+              status: 'available',
+              heatmap: heatmap.heatmap,
+              style,
+              ...(signalStats ? { signal_stats: signalStats } : {}),
+              ...(notes.length ? { notes } : {}),
+              ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+            };
+            regions.push(region);
+            regionMeta.set(regionId, {
+              issue_type: issueType,
+              severity_0_4: severity,
+              confidence_0_1: confidence,
+              region_type: 'heatmap',
+              bbox: sanitizedBBoxForHeatmap,
+              heatmap: heatmap.heatmap,
+              signal_stats: signalStats,
+            });
+          }
+        }
+      }
+
+      if (!emittedHeatmap && sanitizedBBoxForHeatmap) {
+        const syntheticHeatmap = buildSyntheticHeatmapFromBBox(sanitizedBBoxForHeatmap, {
+          severity0to4: severity,
+          confidence0to1: confidence,
         });
+        if (syntheticHeatmap) {
+          const signalStats = buildRegionSignalStats(syntheticHeatmap, 'proxy');
+          emittedHeatmap = true;
+          const regionId = `${findingId}_heatmap_proxy`;
+          const notes = ['heatmap_from_bbox_proxy'];
+          const region = {
+            region_id: regionId,
+            type: 'heatmap',
+            coord_space: FACE_COORD_SPACE,
+            status: 'available',
+            heatmap: syntheticHeatmap,
+            style,
+            notes,
+            ...(signalStats ? { signal_stats: signalStats } : {}),
+            ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+          };
+          regions.push(region);
+          regionMeta.set(regionId, {
+            issue_type: issueType,
+            severity_0_4: severity,
+            confidence_0_1: confidence,
+            region_type: 'heatmap',
+            bbox: sanitizedBBoxForHeatmap,
+            heatmap: syntheticHeatmap,
+            signal_stats: signalStats,
+          });
+        }
       }
     }
 
-    if (geometry.polygon && typeof geometry.polygon === 'object') {
-      const polygon = sanitizePolygon(geometry.polygon);
-      if (!polygon.ok || !polygon.polygon) {
-        drop(polygon.reason || 'polygon_invalid', 'polygon');
-      } else {
-        const regionId = `${findingId}_polygon`;
-        const notes = [];
-        if (polygon.clipped) {
-          const clipReason = polygon.clip_reason || 'polygon_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'polygon');
-        }
-        const region = {
-          region_id: regionId,
-          type: 'polygon',
-          coord_space: FACE_COORD_SPACE,
-          polygon: polygon.polygon,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'polygon',
-          bbox: polygon.bbox,
-          heatmap: null,
-        });
-      }
+    const emittedForFinding = regions.length > emittedBefore;
+    let missingReasons = findingMissingReasons.get(findingId) || [];
+    if (emittedHeatmap && missingReasons.length) {
+      missingReasons = missingReasons.filter((reason) => {
+        const token = String(reason || '').trim().toLowerCase();
+        return !HEATMAP_RECOVERABLE_MISSING_REASONS.has(token);
+      });
     }
-
-    const maybeHeatmap =
-      geometry &&
-      ((geometry.type === 'grid' && Number.isFinite(Number(geometry.rows)) && Number.isFinite(Number(geometry.cols)) && Array.isArray(geometry.values))
-        ? { grid: { w: Number(geometry.cols), h: Number(geometry.rows) }, values: geometry.values }
-        : geometry.heatmap && typeof geometry.heatmap === 'object'
-          ? geometry.heatmap
-          : null);
-
-    if (maybeHeatmap) {
-      const heatmap = sanitizeHeatmap(maybeHeatmap);
-      if (!heatmap.ok || !heatmap.heatmap) {
-        drop(heatmap.reason || 'heatmap_invalid', 'heatmap');
-      } else {
-        const regionId = `${findingId}_heatmap`;
-        const notes = [];
-        if (heatmap.clipped) {
-          const clipReason = heatmap.clip_reason || 'heatmap_clipped';
-          notes.push(clipReason);
-          clip(clipReason, 'heatmap');
-        }
-        const region = {
-          region_id: regionId,
-          type: 'heatmap',
-          coord_space: FACE_COORD_SPACE,
-          heatmap: heatmap.heatmap,
-          style,
-          ...(notes.length ? { notes } : {}),
-          ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
-        };
-        regions.push(region);
-        regionMeta.set(regionId, {
-          issue_type: issueType,
-          severity_0_4: severity,
-          confidence_0_1: confidence,
-          region_type: 'heatmap',
-          bbox: rawBBox ? sanitizeBBox(rawBBox).bbox : null,
-          heatmap: heatmap.heatmap,
-        });
-      }
+    if (!emittedForFinding || missingReasons.length) {
+      const primaryMissingReason = missingReasons.length ? missingReasons[0] : 'geometry_unresolved';
+      regions.push({
+        region_id: `${findingId}_unavailable`,
+        type: 'missing',
+        coord_space: FACE_COORD_SPACE,
+        status: 'unavailable',
+        missing_reason: primaryMissingReason,
+        missing_reasons: missingReasons.length ? missingReasons.slice(0, 4) : [primaryMissingReason],
+        style,
+        ...(qualityFlags.length ? { quality_flags: qualityFlags.slice(0, 4) } : {}),
+      });
     }
   }
 
@@ -859,7 +1443,19 @@ function moduleContribution({ moduleBox, region, meta } = {}) {
   if (meta.region_type === 'heatmap' && region.heatmap) {
     const stats = heatmapStatsInModule(region.heatmap, moduleBox);
     const overlap = Math.max(stats.mean, stats.p90);
-    if (overlap <= 0.02) return null;
+    if (overlap <= 0.02) {
+      const regionBox = meta.bbox;
+      if (!regionBox) return null;
+      const boxOverlap = computeBoxOverlapRatio(moduleBox, regionBox);
+      if (boxOverlap <= 0.03) return null;
+      const fallbackSignal = clamp01(Math.max(stats.mean, stats.p90, 0.08));
+      return {
+        overlap: boxOverlap,
+        signalScore: fallbackSignal,
+        severityScore: clamp01(normalizeSeverity0to4(meta.severity_0_4) / 4),
+        confidence: clamp01(meta.confidence_0_1),
+      };
+    }
     return {
       overlap,
       signalScore: clamp01(Math.max(stats.mean, stats.p90)),
@@ -878,6 +1474,19 @@ function moduleContribution({ moduleBox, region, meta } = {}) {
     severityScore: clamp01(normalizeSeverity0to4(meta.severity_0_4) / 4),
     confidence: clamp01(meta.confidence_0_1),
   };
+}
+
+function regionVisibilityScoreFromMeta(meta) {
+  if (!meta || typeof meta !== 'object') return 0;
+  const stats = meta.signal_stats && typeof meta.signal_stats === 'object' ? meta.signal_stats : null;
+  if (stats) {
+    const max = clamp01(Number(stats.max));
+    const p90 = clamp01(Number(stats.p90));
+    const source = String(stats.source || '').trim().toLowerCase();
+    const proxyBoost = source === 'proxy' ? 0.02 : 0;
+    return clamp01(max * 0.58 + p90 * 0.42 + proxyBoost);
+  }
+  return clamp01(normalizeSeverity0to4(meta.severity_0_4) / 4);
 }
 
 function buildModuleIssues({
@@ -924,6 +1533,13 @@ function buildModuleIssues({
   const templateFallbackRows = [];
   const claimsViolationRows = [];
   const qualityFactor = qualityFactorForModule(qualityGrade);
+  const evidenceRegionTypeRank = (regionType) => {
+    const token = String(regionType || '').trim().toLowerCase();
+    if (token === 'heatmap') return 3;
+    if (token === 'polygon') return 2;
+    if (token === 'bbox') return 1;
+    return 0;
+  };
 
   for (const [issueType, list] of issueBucket.entries()) {
     if (!list.length) continue;
@@ -938,9 +1554,31 @@ function buildModuleIssues({
 
     const confidenceRaw = Math.max(...list.map((item) => item.confidence));
     const confidence0to1 = round3(clamp01(confidenceRaw * qualityFactor));
-    const evidenceRegionIds = list
+    const evidenceRows = list
       .slice()
-      .sort((a, b) => b.overlap - a.overlap)
+      .sort((a, b) => {
+        const visibilityDiff =
+          regionVisibilityScoreFromMeta(regionMeta.get(b.region_id)) -
+          regionVisibilityScoreFromMeta(regionMeta.get(a.region_id));
+        if (Math.abs(visibilityDiff) > 1e-6) return visibilityDiff;
+        const overlapDiff = b.overlap - a.overlap;
+        if (Math.abs(overlapDiff) > 1e-6) return overlapDiff;
+        const rankDiff =
+          evidenceRegionTypeRank(regionMeta.get(b.region_id) && regionMeta.get(b.region_id).region_type) -
+          evidenceRegionTypeRank(regionMeta.get(a.region_id) && regionMeta.get(a.region_id).region_type);
+        if (rankDiff !== 0) return rankDiff;
+        return b.signalScore - a.signalScore;
+      });
+    const preferredEvidenceRows = evidenceRows.some((item) => {
+      const meta = regionMeta.get(item.region_id);
+      return meta && meta.region_type === 'heatmap';
+    })
+      ? evidenceRows.filter((item) => {
+          const meta = regionMeta.get(item.region_id);
+          return meta && meta.region_type === 'heatmap';
+        })
+      : evidenceRows;
+    const evidenceRegionIds = preferredEvidenceRows
       .slice(0, 3)
       .map((item) => item.region_id);
     const explanation = buildIssueExplanation({ moduleId, issueType, evidenceRegionIds, language, market });
@@ -989,14 +1627,37 @@ function buildModuleIssues({
     }
   }
 
+  const rankedIssues = moduleIssues
+    .map((issue) => ({
+      ...issue,
+      issue_rank_score: computeIssueRankScore({
+        severity0to4: issue && issue.severity_0_4,
+        confidence0to1: issue && issue.confidence_0_1,
+      }),
+      confidence_bucket: confidenceBucketFromValue(issue && issue.confidence_0_1),
+    }))
+    .sort((left, right) => {
+      const rankDiff = Number(right.issue_rank_score || 0) - Number(left.issue_rank_score || 0);
+      if (Math.abs(rankDiff) > 1e-6) return rankDiff;
+      const severityDiff = normalizeSeverity0to4(right.severity_0_4) - normalizeSeverity0to4(left.severity_0_4);
+      if (severityDiff !== 0) return severityDiff;
+      return clamp01(Number(right.confidence_0_1 || 0)) - clamp01(Number(left.confidence_0_1 || 0));
+    })
+    .slice(0, 4);
+  const issueRankByType = new Map(
+    rankedIssues.map((issue) => [String(issue && issue.issue_type ? issue.issue_type : ''), Number(issue.issue_rank_score || 0)]),
+  );
+  const rankedActionBuild = rankAndGroupActions(actions, issueRankByType);
+  const rankedActions = rankedActionBuild.actions;
+
   let products = [];
   let productSuppressedReason = null;
   let productRecDebug = null;
   if (productRecEnabled) {
     const productRecResult = buildProductRecommendations({
       moduleId,
-      issues: moduleIssues,
-      actions,
+      issues: rankedIssues,
+      actions: rankedActions,
       market,
       lang: normalizeLanguage(language) === 'CN' ? 'zh' : 'en',
       riskTier,
@@ -1024,8 +1685,10 @@ function buildModuleIssues({
   }
 
   return {
-    issues: moduleIssues.sort((a, b) => b.severity_0_4 - a.severity_0_4).slice(0, 4),
-    actions,
+    issues: rankedIssues,
+    actions: rankedActions,
+    topActions: rankedActionBuild.topActions,
+    moreActions: rankedActionBuild.moreActions,
     products,
     productSuppressedReason,
     productRecDebug,
@@ -1125,10 +1788,17 @@ function buildModules({
       }
     }
 
+    const topActions = Array.isArray(result.topActions) ? result.topActions : actions.filter((action) => action && action.group === 'top');
+    const moreActions = Array.isArray(result.moreActions) ? result.moreActions : actions.filter((action) => action && action.group === 'more');
+    const moduleRankScore = computeModuleRankScore({ issues, actions });
+
     const modulePayload = {
       module_id: moduleId,
       issues,
       actions,
+      top_actions: topActions,
+      more_actions: moreActions,
+      module_rank_score: moduleRankScore,
       ...(productRecEnabled ? { products } : {}),
     };
     if (internalTestMode) {
@@ -2351,13 +3021,14 @@ function deriveModuleBoxesFromSkinMask({ skinMask, gridSize } = {}) {
     ? Math.min(0.08, (sideImbalance - 0.45) * 0.18)
     : 0;
   const adjustedScore = round3(clamp01(baseScore - farFacePenalty - sideImbalancePenalty));
-  const hasRequiredDynamic = Object.keys(dynamicBoxes).length >= 5;
-  const hasLowDirectCoverage = directModuleIds.size < 5;
+  const dynamicBoxCount = Object.keys(dynamicBoxes).length;
+  const hasRequiredDynamic = dynamicBoxCount >= MODULE_DYNAMIC_MIN_BOXES;
+  const hasLowDirectCoverage = directModuleIds.size < MODULE_DYNAMIC_MIN_DIRECT_BOXES;
   const ratioReason = ratioInRange ? null : 'skinmask_positive_ratio_out_of_range';
   const finalReason = hasRequiredDynamic
     ? (
       hasLowDirectCoverage
-        ? 'dynamic_boxes_partial_direct'
+        ? 'dynamic_boxes_low_direct_coverage'
         : (ratioReason
           || (pairAdjustmentDebug.length ? 'dynamic_boxes_side_adjusted' : null)
           || (farFacePenalty > 0.02 ? 'dynamic_boxes_far_face' : null))
@@ -2382,9 +3053,13 @@ function deriveModuleBoxesFromSkinMask({ skinMask, gridSize } = {}) {
     strict_adjustments: strictAdjustmentDebug,
     post_validator_enabled: MODULE_POST_VALIDATOR_ENABLED,
     post_adjustments: postAdjustmentDebug,
+    dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
+    dynamic_min_direct_boxes: MODULE_DYNAMIC_MIN_DIRECT_BOXES,
+    dynamic_boxes_count: dynamicBoxCount,
+    direct_boxes_count: directModuleIds.size,
     derived_modules_count: directModuleIds.size,
     fallback_modules_count: fallbackModuleIds.size,
-    total_modules_count: Object.keys(dynamicBoxes).length,
+    total_modules_count: dynamicBoxCount,
     anchors: {
       forehead_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.2), targetGrid),
       eye_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.4), targetGrid),
@@ -2409,7 +3084,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
     derived.module_boxes && typeof derived.module_boxes === 'object'
       ? Object.keys(derived.module_boxes).length
       : 0;
-  const hasDerivedBoxes = boxCount >= 5;
+  const hasDerivedBoxes = boxCount >= MODULE_DYNAMIC_MIN_BOXES;
   const meetsScore = hasDerivedBoxes && score >= MODULE_BOX_DYNAMIC_MIN_SCORE;
 
   if (MODULE_BOX_MODE === 'static') {
@@ -2418,6 +3093,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
       module_box_dynamic_applied: false,
       module_box_dynamic_reason: 'mode_static',
       module_box_dynamic_score: round3(score),
+      module_box_dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
     };
   }
   if (MODULE_BOX_MODE === 'auto' && !meetsScore) {
@@ -2427,6 +3103,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
       module_box_dynamic_reason: derived.reason || (hasDerivedBoxes ? 'auto_fallback_low_score' : 'auto_fallback_dynamic_unavailable'),
       module_box_dynamic_score: round3(score),
       module_box_dynamic_boxes_count: boxCount,
+      module_box_dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
     };
   }
   if (MODULE_BOX_MODE === 'auto' && meetsScore) {
@@ -2436,6 +3113,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
       module_box_dynamic_reason: derived.reason || null,
       module_box_dynamic_score: round3(score),
       module_box_dynamic_boxes_count: boxCount,
+      module_box_dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
     };
   }
 
@@ -2449,6 +3127,7 @@ function resolveModuleBoxDynamicDebug({ derivation } = {}) {
     module_box_dynamic_reason: reason,
     module_box_dynamic_score: round3(score),
     module_box_dynamic_boxes_count: boxCount,
+    module_box_dynamic_min_boxes: MODULE_DYNAMIC_MIN_BOXES,
   };
 }
 
@@ -3424,6 +4103,7 @@ function buildPhotoModulesCard({
   photoQuality,
   photoNotice,
   diagnosisInternal,
+  sourcePhoto,
   profileSummary,
   language,
   ingredientRecEnabled,
@@ -3504,13 +4184,64 @@ function buildPhotoModulesCard({
     allowFaceOvalClip,
   });
 
+  const sourceSlotId = sourcePhoto && typeof sourcePhoto.slot_id === 'string' ? sourcePhoto.slot_id.trim() : '';
+  const sourcePhotoId = sourcePhoto && typeof sourcePhoto.photo_id === 'string' ? sourcePhoto.photo_id.trim() : '';
+  const regionsAvailableCount = regions.filter((region) => String(region && region.status || 'available').toLowerCase() === 'available').length;
+  const regionsUnavailableCount = regions.filter((region) => String(region && region.status || '').toLowerCase() === 'unavailable').length;
+  const skinmaskSource = normalizeSkinmaskSource(
+    skinMask && typeof skinMask === 'object' ? (skinMask.skinmask_source || skinMask.source) : null,
+  );
+  const skinmaskFallbackReason = normalizeSkinmaskFallbackReason(
+    skinMask && typeof skinMask === 'object' ? skinMask.skinmask_fallback_reason : null,
+  );
+  const onnxInferMs = Number.isFinite(Number(skinMask && skinMask.onnx_infer_ms))
+    ? Number(skinMask.onnx_infer_ms)
+    : null;
+  const skinmaskModelLoaded = typeof (skinMask && skinMask.skinmask_model_loaded) === 'boolean'
+    ? Boolean(skinMask.skinmask_model_loaded)
+    : null;
+  const sourceConfidenceBucket = resolveSkinmaskSourceConfidenceBucket({
+    skinmaskSource,
+    skinmaskReliable: moduleMaskBuild.skinmask_reliable,
+    skinmaskFallbackReason,
+  });
+  const moduleOverlayDebug = {
+    module_box_mode: moduleBoxDynamicDebug.module_box_mode,
+    module_box_dynamic_applied: Boolean(moduleBoxDynamicDebug.module_box_dynamic_applied),
+    module_box_dynamic_reason: moduleBoxDynamicDebug.module_box_dynamic_reason || null,
+    module_box_dynamic_score: Number.isFinite(Number(moduleBoxDynamicDebug.module_box_dynamic_score))
+      ? Number(moduleBoxDynamicDebug.module_box_dynamic_score)
+      : null,
+    module_box_dynamic_boxes_count: Number.isFinite(Number(moduleBoxDynamicDebug.module_box_dynamic_boxes_count))
+      ? Math.max(0, Math.trunc(Number(moduleBoxDynamicDebug.module_box_dynamic_boxes_count)))
+      : 0,
+    skinmask_source: skinmaskSource,
+    skinmask_fallback_reason: skinmaskFallbackReason,
+    skinmask_reliable: Boolean(moduleMaskBuild.skinmask_reliable),
+    onnx_infer_ms: onnxInferMs,
+    skinmask_model_loaded: skinmaskModelLoaded,
+    source_confidence_bucket: sourceConfidenceBucket,
+    degraded_reasons: Array.isArray(moduleMaskBuild.degraded_reasons) ? moduleMaskBuild.degraded_reasons.slice(0, 8) : [],
+  };
+  const summaryV1 = buildSummaryV1(moduleMaskBuild.modules);
+
   const payload = {
     used_photos: true,
     quality_grade: qualityGrade,
     ...(typeof photoNotice === 'string' && photoNotice.trim() ? { photo_notice: photoNotice.trim() } : {}),
-    face_crop: faceCrop,
+    ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),
+    ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),
+    face_crop: {
+      ...faceCrop,
+      ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),
+      ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),
+    },
     regions,
+    regions_available_count: regionsAvailableCount,
+    regions_unavailable_count: regionsUnavailableCount,
     modules: moduleMaskBuild.modules,
+    ...(summaryV1 ? { summary_v1: summaryV1 } : {}),
+    module_overlay_debug: moduleOverlayDebug,
     ...(Array.isArray(moduleMaskBuild.degraded_reasons) && moduleMaskBuild.degraded_reasons.length
       ? { degraded_reason: moduleMaskBuild.degraded_reasons[0], degraded_reasons: moduleMaskBuild.degraded_reasons }
       : {}),
@@ -3536,6 +4267,11 @@ function buildPhotoModulesCard({
       skinmask_grid: moduleMaskBuild.skinmask_grid,
       skinmask_reliable: moduleMaskBuild.skinmask_reliable,
       skinmask_positive_ratio: moduleMaskBuild.skinmask_positive_ratio,
+      skinmask_source: skinmaskSource,
+      skinmask_fallback_reason: skinmaskFallbackReason,
+      onnx_infer_ms: onnxInferMs,
+      skinmask_model_loaded: skinmaskModelLoaded,
+      source_confidence_bucket: sourceConfidenceBucket,
       face_oval_clip_enabled: moduleMaskBuild.face_oval_clip_enabled,
       face_oval_mask_source: moduleMaskBuild.face_oval_mask_source,
       face_oval_clip_fallback_modules: moduleMaskBuild.face_oval_clip_fallback_modules,

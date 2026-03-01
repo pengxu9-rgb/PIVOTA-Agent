@@ -67,6 +67,28 @@ npm run demo:openai
 npm run demo:status
 ```
 
+### Test Stability Guardrails
+
+- Use Node 20 (`nvm use` reads `.nvmrc`).
+- Run tests only from this project root. Do not run tests from any `_deploy_tmp_*` directory.
+- Desktop workspace is blocked for tests/release. Use `~/dev/...` only.
+- Run `npm run test:preflight` before troubleshooting any test issue.
+- Use `npm run test:file -- <path>` to auto-route by runner:
+  - `*.node.test.cjs` -> `node --test`
+  - `*.test.js` / `*.test.ts` -> `jest`
+
+### Aurora Reco Production Probes
+
+- `npm run probe:aurora:reco:prod-manual`
+  - Runs reproducible production manual cases with isolated `aurora_uid/trace_id/brief_id`.
+  - Saves a full report under `reports/aurora_reco_prod_manual_suite_*.json`.
+- `npm run probe:aurora:reco:prompt-extract`
+  - Captures BFF-visible prompt traces (`prompt_hash/template_id/prompt_chars/token_est`) from live reco paths.
+  - Saves a report under `reports/aurora_reco_prompt_extract_*.json`.
+- `npm run probe:aurora:reco:baseline-snapshot`
+  - Fetches `/metrics` and snapshots key reco stability gauges.
+  - Saves a report under `reports/aurora_reco_baseline_snapshot_*.json`.
+
 ## API Reference
 
 ### Main Endpoint
@@ -113,6 +135,7 @@ Configure env vars in `env.example` under `LOOK_REPLICATOR_*`. In production, se
 - [ACP Protocol](docs/acp-spec-bridge.md) - Commerce protocol handling
 - [AP2 Protocol](docs/ap2-spec-bridge.md) - Payment protocol handling
 - [Deployment Guide](docs/deployment.md) - Production deployment
+- [Deploy Policy (GitHub Push Only)](docs/runbooks/deploy_via_github_push_only.md) - Production source-of-truth workflow
 
 ## Project Structure
 

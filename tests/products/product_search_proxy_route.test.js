@@ -27,6 +27,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
+      PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA:
+        process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA,
       PROXY_SEARCH_RESOLVER_DETAIL_ENABLED: process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED,
       PROXY_SEARCH_INVOKE_FALLBACK_ENABLED:
         process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
@@ -46,6 +48,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       PROXY_SEARCH_AURORA_FORCE_TWO_PASS: process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS,
       PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS: process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS,
       PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS: process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS:
+        process.env.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS,
       PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE:
         process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED:
@@ -78,6 +82,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
+    delete process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA;
     delete process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED;
     delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
@@ -91,6 +96,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS;
     delete process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS;
     delete process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES;
@@ -150,6 +156,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY =
         prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA =
+        prevEnv.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA;
     }
     if (prevEnv.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED === undefined) {
       delete process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED;
@@ -222,6 +234,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS =
         prevEnv.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS =
+        prevEnv.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS;
     }
     if (prevEnv.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE === undefined) {
       delete process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE;
@@ -435,7 +453,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           body.payload.search.fast_mode === true &&
           body.payload.search.allow_stale_cache === false &&
           body.payload.search.allow_external_seed === false &&
-          String(body.payload.search.external_seed_strategy || '') === 'legacy' &&
+          String(body.payload.search.external_seed_strategy || '') ===
+            'supplement_internal_first' &&
           String(body.metadata?.source || '') === 'aurora-bff'
         );
       })
@@ -622,7 +641,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           secondary_skipped_reason: null,
           aurora_external_seed_forced: true,
           aurora_external_seed_enabled: false,
-          aurora_seed_strategy: 'legacy',
+          aurora_seed_strategy: 'supplement_internal_first',
         }),
       }),
     );
@@ -754,7 +773,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           String(parsed.payload.search.query || '') === queryText &&
           parsed.payload.search.fast_mode === true &&
           parsed.payload.search.allow_stale_cache === false &&
-          String(parsed.payload.search.external_seed_strategy || '') === 'legacy' &&
+          String(parsed.payload.search.external_seed_strategy || '') ===
+            'supplement_internal_first' &&
           parsed.metadata &&
           String(parsed.metadata.source || '') === 'aurora-bff'
         );
@@ -1137,6 +1157,64 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resolverSpy.mock.calls.length).toBeGreaterThan(callCountAfterAurora);
     expect(auroraTimeouts.every((value) => value === 350)).toBe(true);
     expect(genericTimeouts.some((value) => value === 1600)).toBe(true);
+  });
+
+  test('resolver-first can be explicitly disabled for aurora source', async () => {
+    const queryText = 'lab series moisturizer spf';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA = 'true';
+
+    const resolverSpy = jest.fn().mockResolvedValue({
+      resolved: false,
+      confidence: 0,
+      reason: 'no_candidates',
+      reason_code: 'no_candidates',
+      metadata: {
+        latency_ms: 8,
+        sources: [{ source: 'products_cache_global', ok: false, reason: 'no_results' }],
+      },
+    });
+
+    jest.doMock('../../src/services/productGroundingResolver', () => {
+      const actual = jest.requireActual('../../src/services/productGroundingResolver');
+      return {
+        ...actual,
+        resolveProductRef: resolverSpy,
+      };
+    });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'labseries_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Lab Series All-in-One Defense Lotion SPF 35',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resolverSpy).not.toHaveBeenCalled();
+    expect(String(resp.body?.metadata?.search_trace?.final_decision || '').toLowerCase()).not.toBe('resolver_stage');
   });
 
   test('aurora source detects same-brand external monoculture and forces semantic retry fallback', async () => {
@@ -2269,4 +2347,60 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
     expect(resp.body?.metadata?.fallback_strategy?.secondary_attempt_count).toBeGreaterThanOrEqual(1);
   });
+
+  test('primary timeout does not trigger post-timeout fallback when total budget is exhausted', async () => {
+    const queryText = 'retinol serum';
+    process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = '900';
+    process.env.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS = '900';
+    process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS = '450';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .delay(1200)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const invokeScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'should_not_be_called', merchant_id: 'm1', title: 'Fallback hit' }],
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(invokeScope.isDone()).toBe(false);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        strict_empty: true,
+        strict_empty_reason: 'primary_timeout',
+        fallback_strategy: expect.objectContaining({
+          fallback_skipped_due_budget: true,
+          fallback_after_primary_timeout_attempted: false,
+        }),
+      }),
+    );
+  });
+
 });

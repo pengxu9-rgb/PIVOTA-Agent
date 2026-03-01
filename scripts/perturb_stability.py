@@ -255,6 +255,10 @@ async function main() {
         language: job.lang === 'CN' ? 'CN' : 'EN',
         profileSummary: safeObj(job.profileSummary) || null,
         recentLogsSummary: Array.isArray(job.recentLogsSummary) ? job.recentLogsSummary : [],
+        qualityGateConfig:
+          safeObj(job.qualityGateConfig) || {
+            capture_frame: { enabled: false },
+          },
       });
     } catch (err) {
       out.push({ ...job, ok: false, reason: 'diagnosis_threw' });
@@ -346,6 +350,9 @@ def _run_diagnosis_batch(
                 "lang": "CN" if lang.upper() == "CN" else "EN",
                 "profileSummary": profile_summary,
                 "recentLogsSummary": [],
+                "qualityGateConfig": {
+                    "capture_frame": {"enabled": False},
+                },
             }
         )
 

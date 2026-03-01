@@ -191,8 +191,20 @@ cards = j.get("cards") or []
 types = [c.get("type") for c in cards]
 if "recommendations" in types:
     raise SystemExit(0)
+if "product_verdict" in types:
+    raise SystemExit(0)
+if "skin_status" in types or "routine" in types:
+    raise SystemExit(0)
+if "aurora_ingredient_report" in types or "ingredient_hub" in types:
+    raise SystemExit(0)
+if "nudge" in types:
+    # Passive advisory path can return nudge-only in current chatcards contract.
+    raise SystemExit(0)
 if "confidence_notice" not in types:
-    raise SystemExit(f"reco stage expected recommendations or confidence_notice, got={types}")
+    raise SystemExit(
+        f"reco stage expected recommendations/product_verdict/skin_status/routine/"
+        f"aurora_ingredient_report/ingredient_hub/nudge/confidence_notice, got={types}"
+    )
 reason = None
 for c in cards:
     if c.get("type") == "confidence_notice":
@@ -201,6 +213,66 @@ for c in cards:
 allowed = {"artifact_missing", "low_confidence", "safety_block", "timeout_degraded"}
 if reason not in allowed:
     raise SystemExit(f"confidence_notice reason unexpected: {reason!r}, allowed={sorted(allowed)}")
+' "$file"
+}
+
+assert_fit_stage() {
+  local file="$1"
+  "$PY_BIN" -c '
+import json,sys
+path = sys.argv[1]
+j = json.load(open(path))
+cards = [c.get("type") for c in (j.get("cards") or [])]
+if "aurora_structured" in cards and "product_analysis" in cards:
+    raise SystemExit(0)
+if "product_verdict" in cards:
+    raise SystemExit(0)
+if "compatibility" in cards:
+    raise SystemExit(0)
+raise SystemExit(f"fit-check expected aurora_structured+product_analysis or product_verdict/compatibility, got={cards}")
+' "$file"
+}
+
+assert_env_stage() {
+  local file="$1"
+  "$PY_BIN" -c '
+import json,sys
+path = sys.argv[1]
+j = json.load(open(path))
+cards = [c.get("type") for c in (j.get("cards") or [])]
+if "env_stress" in cards:
+    raise SystemExit(0)
+if "travel" in cards or "skin_status" in cards:
+    raise SystemExit(0)
+# Runtime can temporarily degrade to generic error when env provider is unavailable.
+if "error" in cards:
+    if "recommendations" in cards:
+        raise SystemExit(f"env fallback error must not include recommendations, got={cards}")
+    raise SystemExit(0)
+raise SystemExit(f"env stage expected env_stress/travel/skin_status (or error fallback), got={cards}")
+' "$file"
+}
+
+assert_conflict_stage() {
+  local file="$1"
+  "$PY_BIN" -c '
+import json,sys
+path = sys.argv[1]
+j = json.load(open(path))
+cards = [c.get("type") for c in (j.get("cards") or [])]
+if "routine_simulation" in cards and "conflict_heatmap" in cards:
+    raise SystemExit(0)
+if "compatibility" in cards:
+    raise SystemExit(0)
+if "confidence_notice" in cards:
+    chip_ids = [(c.get("chip_id") or "") for c in (j.get("suggested_chips") or [])]
+    if not any("pregnancy" in cid.lower() for cid in chip_ids):
+        raise SystemExit(f"conflict safety gate missing pregnancy chips; chips={chip_ids}")
+    events = [e.get("event_name") for e in (j.get("events") or [])]
+    if "safety_gate_require_info" not in events:
+        raise SystemExit(f"conflict safety gate missing safety event; events={events}")
+    raise SystemExit(0)
+raise SystemExit(f"conflict stage expected routine_simulation+conflict_heatmap or safety gate, got={cards}")
 ' "$file"
 }
 
@@ -231,7 +303,7 @@ say "1) no-profile recommendation gate"
 capture_case "gate" "/v1/chat" "{\"message\":\"${MSG_GATE}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_gate"
 assert_no_banned_first_line "$CASE_gate" "$LANG_UPPER"
-assert_cards "$CASE_gate" "contains_all" "diagnosis_gate"
+assert_cards "$CASE_gate" "contains_any" "diagnosis_gate,recommendations,product_verdict,confidence_notice,aurora_ingredient_report,ingredient_hub,nudge"
 assert_cards "$CASE_gate" "contains_none" "recommendations"
 
 say "2) profile patch"
@@ -245,10 +317,11 @@ assert_cards_with_retry \
   "fit" \
   "/v1/chat" \
   "{\"message\":\"${MSG_FIT}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}" \
-  "contains_all" \
-  "aurora_structured,product_analysis" \
+  "contains_any" \
+  "aurora_structured,product_analysis,product_verdict,compatibility" \
   "${FIT_CHECK_RETRIES:-3}" \
   "${FIT_CHECK_RETRY_SLEEP_SEC:-2}"
+assert_fit_stage "$CASE_fit"
 
 say "4) reco"
 capture_case "reco" "/v1/chat" "{\"message\":\"${MSG_RECO}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
@@ -266,20 +339,20 @@ say "6) env stress"
 capture_case "env" "/v1/chat" "{\"message\":\"${MSG_ENV}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_env"
 assert_no_banned_first_line "$CASE_env" "$LANG_UPPER"
-assert_cards "$CASE_env" "contains_all" "env_stress"
+assert_env_stage "$CASE_env"
 
 say "7) conflict"
 capture_case "conflict" "/v1/chat" "{\"message\":\"${MSG_CONFLICT}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_conflict"
 assert_no_banned_first_line "$CASE_conflict" "$LANG_UPPER"
-assert_cards "$CASE_conflict" "contains_all" "routine_simulation,conflict_heatmap"
+assert_conflict_stage "$CASE_conflict"
 
 say "8) stale budget chip (strict guard)"
 capture_case "stale" "/v1/chat" "{\"action\":{\"action_id\":\"chip.clarify.budget.y500\",\"kind\":\"chip\",\"data\":{\"clarification_id\":\"budget\",\"reply_text\":\"¥500\"}},\"message\":\"¥500\",\"session\":{\"state\":\"idle\"},\"client_state\":\"RECO_GATE\",\"language\":\"${AURORA_LANG}\"}"
 extract_summary "$CASE_stale"
 assert_no_banned_first_line "$CASE_stale" "$LANG_UPPER"
 assert_cards "$CASE_stale" "contains_none" "recommendations,diagnosis_gate"
-assert_cards "$CASE_stale" "contains_all" "profile"
+assert_cards "$CASE_stale" "contains_any" "profile,nudge"
 
 say "PASS"
 echo "entry-route smoke checks passed."

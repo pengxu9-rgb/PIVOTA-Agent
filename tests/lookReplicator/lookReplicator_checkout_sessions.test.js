@@ -2,6 +2,7 @@ const request = require('supertest');
 const http = require('http');
 
 jest.mock('axios', () => ({
+  defaults: {},
   post: jest.fn(),
 }));
 

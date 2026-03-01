@@ -85,6 +85,42 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
   });
 
+  test('brand query keeps candidates instead of clarify-empty', () => {
+    const intent = extractIntentRuleBased('kylie cosmetics', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'brand-1',
+            title: 'Kylie Cosmetics Matte Lip Kit',
+            description: 'Official lipstick kit',
+            brand: 'Kylie Cosmetics',
+          }),
+        ],
+        total: 1,
+        page_size: 1,
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'kylie cosmetics' } },
+      metadata: {
+        ambiguity_score_pre: 0.55,
+        brand_query_detected: true,
+        brand_query_without_category: true,
+        brand_scope: 'broad',
+        brand_entities: ['kylie cosmetics'],
+      },
+      rawUserQuery: 'kylie cosmetics',
+    });
+
+    expect(Array.isArray(resp.products)).toBe(true);
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.metadata?.search_decision?.brand_query_detected).toBe(true);
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+    expect(resp.total).toBe(resp.products.length);
+  });
+
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {
     withPolicyEnv(
       {
@@ -113,6 +149,47 @@ describe('find_products_multi intent + filtering', () => {
 
         expect(resp.products).toHaveLength(1);
         expect(resp.metadata?.search_decision?.post_quality?.candidates).toBe(1);
+      },
+    );
+  });
+
+  test('brand query fail-opens when strict domain filter would drop all brand external products', () => {
+    withPolicyEnv(
+      {
+        SEARCH_DOMAIN_HARD_FILTER_MODE: 'strict',
+        SEARCH_DOMAIN_BEAUTY_FAIL_OPEN: 'false',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('fenty beauty', [], []);
+        const resp = applyWithEnv({
+          response: {
+            products: [
+              makeRawProduct({
+                id: 'ext-fenty-1',
+                product_id: 'ext-fenty-1',
+                merchant_id: 'external_seed',
+                source: 'external_seed',
+                title: 'Fenty Beauty Eau de Parfum',
+                description: 'signature fragrance perfume',
+              }),
+            ],
+            total: 1,
+            page_size: 1,
+            reply: null,
+          },
+          intent,
+          requestPayload: { search: { query: 'fenty beauty' } },
+          metadata: {
+            brand_query_detected: true,
+            brand_query_without_category: true,
+            brand_entities: ['fenty beauty'],
+            brand_scope: 'broad',
+          },
+          rawUserQuery: 'fenty beauty',
+        });
+
+        expect(resp.products.length).toBeGreaterThan(0);
+        expect(resp.metadata?.search_decision?.domain_filter_dropped_external).toBe(0);
       },
     );
   });
@@ -354,7 +431,7 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
-  test('high ambiguity enforces strict empty', () => {
+  test('high ambiguity keeps candidates and attaches clarification', () => {
     const intent = extractIntentRuleBased('你好', [], []);
     const resp = applyFindProductsMultiPolicy({
       response: {
@@ -368,10 +445,10 @@ describe('find_products_multi intent + filtering', () => {
       metadata: { ambiguity_score_pre: 0.8 },
     });
 
-    expect(resp.products).toHaveLength(0);
-    expect(resp.metadata?.search_decision?.final_decision).toBe('strict_empty');
-    expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_STRICT_EMPTY']));
-    expect(resp.clarification).toBeUndefined();
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned_with_clarification');
+    expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
+    expect(resp.clarification?.question).toBeTruthy();
   });
 
   test('discovery intent: English greeting routes to discovery', () => {

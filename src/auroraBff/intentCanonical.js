@@ -1,4 +1,9 @@
 const { matchConcepts } = require('./kbV0/conceptMatcher');
+const {
+  detectLanguageFromText,
+  isIngredientScienceLikeText,
+  isRecommendationLikeText,
+} = require('./languageIntentLexicon');
 
 const INTENT_ENUM = Object.freeze({
   RECO_PRODUCTS: 'reco_products',
@@ -26,6 +31,12 @@ const ACTION_MAP = Object.freeze({
   'chip.start.dupes': INTENT_ENUM.DUPE_COMPARE,
   'chip.start.ingredients': INTENT_ENUM.INGREDIENT_SCIENCE,
   'chip_start_ingredients': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'chip.start.ingredients.entry': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'chip_start_ingredients_entry': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'ingredient.lookup': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'ingredient.by_goal': INTENT_ENUM.INGREDIENT_SCIENCE,
+  'ingredient.optin_diagnosis': INTENT_ENUM.DIAGNOSIS_START,
+  'ingredient_optin_diagnosis': INTENT_ENUM.DIAGNOSIS_START,
   'chip.start.diagnosis': INTENT_ENUM.DIAGNOSIS_START,
 });
 
@@ -56,7 +67,7 @@ const KNOWN_OPTION_TEXT = [
     intent: INTENT_ENUM.DUPE_COMPARE,
   },
   {
-    re: /(ingredient science|ask ingredient science|成分机理|成分科学|证据链|机制|机理)/i,
+    re: /(ingredient science|ask ingredient science|ingredient (mechanism|evidence|clinical|study|paper|research)|mechanism of ingredients|evidence for ingredients|成分机理|成分科学|证据链|机制|机理)/i,
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
   },
   {
@@ -83,7 +94,7 @@ const HEURISTICS = [
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
   },
   {
-    re: /(analy[sz]e ingredient|ingredient analysis|成分分析|watchouts?|benefits?|证据|机制|机理)/i,
+    re: /(analy[sz]e ingredient|ingredient analysis|ingredient (mechanism|evidence|clinical|study|paper|research)|mechanism of|evidence for|成分分析|watchouts?|benefits?|证据|机制|机理)/i,
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
   },
   {
@@ -128,6 +139,7 @@ function inferFromActionId(actionId) {
 
   if (norm.includes('dupe')) return INTENT_ENUM.DUPE_COMPARE;
   if (norm.includes('routine')) return INTENT_ENUM.ROUTINE;
+  if (norm.includes('diagnosis') || norm.includes('diag')) return INTENT_ENUM.DIAGNOSIS_START;
   if (norm.includes('ingredient') || norm.includes('science')) return INTENT_ENUM.INGREDIENT_SCIENCE;
   if (norm.includes('evaluate') || norm.includes('fit_check') || norm.includes('fit-check') || norm.includes('analyze_product')) {
     return INTENT_ENUM.EVALUATE_PRODUCT;
@@ -135,7 +147,6 @@ function inferFromActionId(actionId) {
   if (norm.includes('reco') || norm.includes('recommend')) return INTENT_ENUM.RECO_PRODUCTS;
   if (norm.includes('travel') || norm.includes('weather') || norm.includes('env')) return INTENT_ENUM.TRAVEL_PLANNING;
   if (norm.includes('conflict') || norm.includes('compat')) return INTENT_ENUM.CONFLICT_CHECK;
-  if (norm.includes('diagnosis') || norm.includes('diag')) return INTENT_ENUM.DIAGNOSIS_START;
   return null;
 }
 
@@ -185,10 +196,20 @@ function extractTravelEntities(message) {
     entities.destination = String(destination).trim();
   }
 
+  const lowered = text.toLowerCase();
+  if (/下周|\bnext\s+week\b/i.test(text)) entities.time_window = 'next_week';
+  else if (/这周|\bthis\s+week\b/i.test(text)) entities.time_window = 'this_week';
+  else if (/下个月|\bnext\s+month\b/i.test(text)) entities.time_window = 'next_month';
+  else if (/这个月|\bthis\s+month\b/i.test(text)) entities.time_window = 'this_month';
+  else if (/周末|\bweekend\b/i.test(text)) entities.time_window = 'weekend';
+  else if (/明天|\btomorrow\b/i.test(text)) entities.time_window = 'tomorrow';
+  else if (/今天|\btoday\b/i.test(text)) entities.time_window = 'today';
+  else if (/travel|trip|itinerary|出差|旅行/.test(lowered)) entities.time_window = 'unknown';
+
   return entities;
 }
 
-function inferCanonicalIntent({ message, actionId, actionLabel } = {}) {
+function inferCanonicalIntent({ message, actionId, actionLabel, language } = {}) {
   const text = String(message || '').trim();
   const optionText = String(actionLabel || '').trim() || text;
 
@@ -234,16 +255,25 @@ function inferCanonicalIntent({ message, actionId, actionLabel } = {}) {
   }
 
   if (text) {
-    const language = /[\u4e00-\u9fff]/.test(text) ? 'CN' : 'EN';
+    const inferredLang = String(language || '').toUpperCase() === 'CN'
+      ? 'CN'
+      : String(language || '').toUpperCase() === 'EN'
+        ? 'EN'
+        : detectLanguageFromText(text);
     const conceptMatches = matchConcepts({
       text,
-      language,
+      language: inferredLang,
       max: 24,
       includeSubstring: true,
     });
     const hasIngredientConcept = conceptMatches.some((row) => isIngredientScienceConceptId(row && row.concept_id));
-    const hasRecoCue = /(recommend|products?|shop|buy|购物|购买|推荐|产品|精华|面霜|防晒|乳液|routine|护肤流程)/i.test(text);
-    const hasScienceCue = /(ingredient science|evidence|mechanism|clinical|citation|成分(科学|机理|机制|证据)|循证|证据链)/i.test(text);
+    const hasRecoCue =
+      isRecommendationLikeText(text) ||
+      /\b(shop|buy)\b/i.test(text) ||
+      /(购物|购买|产品|精华|面霜|防晒|乳液|护肤流程)/.test(text);
+    const hasScienceCue =
+      isIngredientScienceLikeText(text) ||
+      /\b(citation|citations|journal|journals)\b/i.test(text);
     if (hasIngredientConcept && (!hasRecoCue || hasScienceCue)) {
       return {
         intent: INTENT_ENUM.INGREDIENT_SCIENCE,

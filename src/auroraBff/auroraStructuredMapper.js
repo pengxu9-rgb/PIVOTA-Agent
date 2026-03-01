@@ -434,6 +434,13 @@ function mapAuroraProductAnalysis(upstreamStructured) {
   const analyze = structured && asPlainObject(structured.analyze);
   const verdict = analyze ? asString(analyze.verdict) : null;
   const reasons = analyze ? asStringArray(analyze.reasons) : [];
+  const summary = analyze ? asString(analyze.summary) : null;
+  const formulaIntent = analyze ? asStringArray(analyze.formula_intent || analyze.formulaIntent) : [];
+  const bestFor = analyze ? asStringArray(analyze.best_for || analyze.bestFor) : [];
+  const notFor = analyze ? asStringArray(analyze.not_for || analyze.notFor) : [];
+  const ifNotIdeal = analyze ? asStringArray(analyze.if_not_ideal || analyze.ifNotIdeal) : [];
+  const betterPairing = analyze ? asStringArray(analyze.better_pairing || analyze.betterPairing) : [];
+  const followUpQuestion = analyze ? asString(analyze.follow_up_question || analyze.followUpQuestion) : null;
 
   const kb = structured && asPlainObject(structured.kb_requirements_check || structured.kbRequirementsCheck);
   const missingFields = kb ? asStringArray(kb.missing_fields || kb.missingFields) : [];
@@ -442,8 +449,17 @@ function mapAuroraProductAnalysis(upstreamStructured) {
   const assessment = {
     ...(verdict ? { verdict } : {}),
     ...(reasons.length ? { reasons } : {}),
+    ...(summary ? { summary } : {}),
+    ...(formulaIntent.length ? { formula_intent: formulaIntent } : {}),
+    ...(bestFor.length ? { best_for: bestFor } : {}),
+    ...(notFor.length ? { not_for: notFor } : {}),
+    ...(ifNotIdeal.length ? { if_not_ideal: ifNotIdeal } : {}),
+    ...(betterPairing.length ? { better_pairing: betterPairing } : {}),
+    ...(followUpQuestion ? { follow_up_question: followUpQuestion } : {}),
     ...(anchor ? { anchor_product: anchor } : {}),
-    ...(analyze && analyze.how_to_use != null ? { how_to_use: analyze.how_to_use } : {}),
+    ...(analyze && (analyze.how_to_use != null || analyze.howToUse != null)
+      ? { how_to_use: analyze.how_to_use != null ? analyze.how_to_use : analyze.howToUse }
+      : {}),
   };
 
   const evidenceOut = mapAuroraAnalyzeToEvidence(analyze, { missingFields, kbNotes });

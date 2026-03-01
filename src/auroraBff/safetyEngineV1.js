@@ -12,6 +12,17 @@ const BLOCK_LEVEL = Object.freeze({
   BLOCK: 'BLOCK',
 });
 
+const HARD_BLOCK_RULE_ALLOWLIST = new Set([
+  'P1',
+  'P2',
+  'P3',
+  'P8',
+  'L1',
+  'M1',
+  'M2',
+  'M2B',
+]);
+
 const LEVEL_WEIGHT = Object.freeze({
   INFO: 0,
   WARN: 1,
@@ -100,15 +111,30 @@ function hasAny(text, patterns) {
   return patterns.some((re) => re.test(raw));
 }
 
+function normalizeIsoDate(value) {
+  const raw = normalizeText(value);
+  if (!raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  return raw;
+}
+
 function normalizeProfile(profile) {
   const p = profile && typeof profile === 'object' ? profile : {};
   const pregnancyRaw = p.pregnancy_status ?? p.pregnancyStatus;
+  const pregnancyDueDateRaw = p.pregnancy_due_date ?? p.pregnancyDueDate;
   const lactationRaw = p.lactation_status ?? p.lactationStatus;
   const ageBandRaw = p.age_band ?? p.ageBand;
   const medsRaw = p.high_risk_medications ?? p.highRiskMedications;
+  const pregnancyDueDate = normalizeIsoDate(pregnancyDueDateRaw);
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  let pregnancyStatus = normalizePregnancyStatus(pregnancyRaw || 'unknown') || 'unknown';
+  if (pregnancyStatus === 'pregnant' && pregnancyDueDate && pregnancyDueDate < todayUtc) {
+    pregnancyStatus = 'not_pregnant';
+  }
   return {
     age_band: normalizeAgeBand(ageBandRaw || 'unknown') || 'unknown',
-    pregnancy_status: normalizePregnancyStatus(pregnancyRaw || 'unknown') || 'unknown',
+    pregnancy_status: pregnancyStatus,
+    pregnancy_due_date: pregnancyDueDate,
     lactation_status: normalizeLactationStatus(lactationRaw || 'unknown') || 'unknown',
     high_risk_medications: Array.isArray(medsRaw)
       ? medsRaw.map((item) => normalizeText(item)).filter(Boolean)
@@ -188,8 +214,9 @@ function buildCtx({
 
   const mentions = {
     oralIsotretinoin: hasExplicitOralIsotretinoinSignal(text),
-    retinoid: hasAny(lower, [/\b(retinoid|retinol|retinal|tretinoin|adapalene|tazarotene|维a|a醇|维甲酸|阿达帕林)\b/i]),
-    hydroquinone: hasAny(lower, [/\b(hydroquinone|氢醌)\b/i]),
+    // Use language-aware tokenization: CN tokens should not depend on \b boundaries.
+    retinoid: hasAny(lower, [/\b(retinoid|retinol|retinal|tretinoin|adapalene|tazarotene)\b/i, /(维a|a醇|维甲酸|阿达帕林)/i]),
+    hydroquinone: hasAny(lower, [/\bhydroquinone\b/i, /氢醌/i]),
     strongSalicylic: hasAny(lower, [/(salicylic\s*acid\s*(30|20|high|strong)|高浓度水杨酸|水杨酸焕肤|bha\s*peel)/i]),
     aggressivePeel: hasAny(lower, [/(chemical\s*peel|peel\s*kit|焕肤|刷酸换肤|剥脱)/i]),
     prescription: hasAny(lower, [/(prescription|rx|处方|医生开|药膏)/i]),
@@ -484,6 +511,7 @@ const SAFETY_RULES = [
     level: BLOCK_LEVEL.REQUIRE_INFO,
     when: (ctx) => ctx.profile.pregnancy_status === 'unknown' && ctx.mentions.retinoid,
     reason: bilingual('Pregnancy status is needed before retinoid guidance.', '给维A建议前需先确认孕期状态。'),
+    reason_code: 'optional_profile_missing_pregnancy_for_retinoid',
     required_fields: ['pregnancy_status'],
     required_questions: ['Are you currently pregnant or trying to conceive?'],
     required_questions_cn: ['你当前是否怀孕或备孕？'],
@@ -558,6 +586,40 @@ function normalizeBlockLevel(level) {
     return value;
   }
   return BLOCK_LEVEL.INFO;
+}
+
+function toRuleKeyFromId(ruleId) {
+  const raw = normalizeText(ruleId).toUpperCase();
+  if (!raw) return '';
+  const idx = raw.lastIndexOf(':');
+  return idx >= 0 ? raw.slice(idx + 1) : raw;
+}
+
+function applyHardBlockAllowlist(rule) {
+  const currentLevel = normalizeBlockLevel(rule && rule.level);
+  if (currentLevel !== BLOCK_LEVEL.BLOCK) return { ...rule, level: currentLevel };
+
+  const ruleId = normalizeText(rule && rule.id);
+  if (/^kb_v0:/i.test(ruleId)) {
+    return { ...rule, level: BLOCK_LEVEL.BLOCK };
+  }
+
+  const key = toRuleKeyFromId(rule && rule.id);
+  if (HARD_BLOCK_RULE_ALLOWLIST.has(key)) {
+    return { ...rule, level: BLOCK_LEVEL.BLOCK };
+  }
+
+  const mergedReasonCodes = dedupeStrings([
+    ...(Array.isArray(rule && rule.reason_codes) ? rule.reason_codes : []),
+    typeof rule && typeof rule.reason_code === 'string' ? rule.reason_code : '',
+    'safety_block_downgraded_non_allowlist',
+  ], 8);
+  return {
+    ...rule,
+    level: BLOCK_LEVEL.WARN,
+    reason_code: mergedReasonCodes[0] || 'safety_block_downgraded_non_allowlist',
+    reason_codes: mergedReasonCodes,
+  };
 }
 
 function normalizeConceptIds(values) {
@@ -946,7 +1008,7 @@ function evaluateSafety({
     recordAuroraKbV0LegacyFallback({ reason: 'no_kb_match' });
   }
 
-  const matched = [...kbMatches, ...legacyMatches];
+  const matched = [...kbMatches, ...legacyMatches].map((rule) => applyHardBlockAllowlist(rule));
   let blockLevel = BLOCK_LEVEL.INFO;
   for (const rule of matched) {
     blockLevel = mergeBlockLevel(blockLevel, normalizeBlockLevel(rule.level));
@@ -956,6 +1018,12 @@ function evaluateSafety({
   const safeAlternatives = dedupeStrings(matched.flatMap((rule) => (Array.isArray(rule.alternatives) ? rule.alternatives : [])), 10);
   const requiredQuestions = dedupeStrings(matched.flatMap((rule) => (Array.isArray(rule.required_questions) ? rule.required_questions : [])), 6);
   const requiredFields = dedupeStrings(matched.flatMap((rule) => (Array.isArray(rule.required_fields) ? rule.required_fields : [])), 6);
+  const reasonCodes = dedupeStrings(
+    matched
+      .map((rule) => (typeof rule.reason_code === 'string' ? rule.reason_code.trim() : ''))
+      .filter(Boolean),
+    8,
+  );
   const decisiveRules = matched.filter((rule) => normalizeBlockLevel(rule.level) === blockLevel);
   const decisionSource = decisiveRules.some((rule) => String(rule.id || '').startsWith('kb_v0:')) || (kbMatches.length > 0 && legacyMatches.length === 0)
     ? 'kb_v0'
@@ -973,6 +1041,7 @@ function evaluateSafety({
     decision_source: decisionSource,
     triggered_by: triggeredBy,
     reasons,
+    reason_codes: reasonCodes,
     required_fields: requiredFields,
     required_questions: requiredQuestions,
     safe_alternatives: safeAlternatives,
@@ -986,5 +1055,7 @@ module.exports = {
   __internal: {
     SAFETY_RULES,
     buildCtx,
+    HARD_BLOCK_RULE_ALLOWLIST,
+    applyHardBlockAllowlist,
   },
 };

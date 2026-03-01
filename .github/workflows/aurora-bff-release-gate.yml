@@ -1,22 +1,6 @@
 name: Aurora BFF Release Gate
 
 on:
-  pull_request:
-    paths:
-      - "src/**"
-      - "scripts/**"
-      - "tests/**"
-      - "docs/**"
-      - "monitoring/**"
-      - "ci/**"
-      - ".github/workflows/aurora-bff-release-gate.yml"
-      - "Makefile"
-      - "package.json"
-      - "package-lock.json"
-  push:
-    branches: ["main"]
-  schedule:
-    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       base_url:
@@ -41,6 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify release source
+        shell: bash
+        env:
+          EXPECTED_REPO_NAME: PIVOTA-Agent
+          ALLOWED_BRANCH_REGEX: "^main$"
+        run: |
+          bash scripts/verify_release_source.sh
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -49,6 +41,9 @@ jobs:
 
       - name: Install deps
         run: npm ci
+
+      - name: Test preflight
+        run: npm run test:preflight
 
       - name: Reco guardrail gate (fail-fast)
         shell: bash

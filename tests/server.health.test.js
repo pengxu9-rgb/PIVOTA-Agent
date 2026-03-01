@@ -19,4 +19,13 @@ describe('health endpoints', () => {
     expect(health.body.version?.service).toBe(healthz.body.version?.service);
     expect(health.body.version?.commit).toBe(healthz.body.version?.commit);
   });
+
+  it('returns 404 for deprecated lite health endpoints', async () => {
+    const app = require('../src/server');
+
+    await Promise.all([
+      request(app).get('/healthz/lite').expect(404),
+      request(app).get('/health/lite').expect(404),
+    ]);
+  });
 });

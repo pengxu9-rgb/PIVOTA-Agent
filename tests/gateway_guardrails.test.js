@@ -33,7 +33,7 @@ describe('gateway guardrails', () => {
       effectivePayload: payload,
       metadata: { source: 'shopping-agent-ui' },
     });
-    expect(payload.search.limit).toBe(50);
+    expect(payload.search.limit).toBe(200);
     expect(payload.search.offset).toBe(500);
   });
 

@@ -63,6 +63,19 @@ function makeHeatmapValues(w, h) {
   return values;
 }
 
+function summarizeHeatmap(values) {
+  const normalized = Array.isArray(values)
+    ? values.map((value) => Math.max(0, Math.min(1, Number(value) || 0)))
+    : [];
+  if (!normalized.length) return { max: 0, p90: 0 };
+  normalized.sort((a, b) => a - b);
+  const p90Index = Math.min(normalized.length - 1, Math.floor(0.9 * (normalized.length - 1)));
+  return {
+    max: normalized[normalized.length - 1],
+    p90: normalized[p90Index],
+  };
+}
+
 function makeAnalysisFixture() {
   return {
     photo_findings: [
@@ -142,10 +155,20 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   assert.equal(payload.quality_grade, 'pass');
   assert.equal(payload.face_crop.coord_space, 'orig_px_v1');
   assert.equal(payload.regions.length > 0, true);
+  assert.equal(
+    Number(payload.regions_available_count || 0) + Number(payload.regions_unavailable_count || 0),
+    payload.regions.length,
+  );
+  assert.equal(Number(payload.regions_available_count || 0) > 0, true);
 
   for (const region of payload.regions) {
     assert.equal(region.coord_space, 'face_crop_norm_v1');
     assert.ok(region.style && typeof region.style === 'object');
+    assert.ok(region.status === 'available' || region.status === 'unavailable');
+    if (region.status === 'unavailable') {
+      assert.equal(typeof region.missing_reason, 'string');
+      assert.equal(region.missing_reason.length > 0, true);
+    }
     if (region.bbox) {
       assert.ok(region.bbox.x >= 0 && region.bbox.x <= 1);
       assert.ok(region.bbox.y >= 0 && region.bbox.y <= 1);
@@ -166,16 +189,78 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
     }
   }
 
+  const shineProxyHeatmap = payload.regions.find((region) => region.region_id === 'pf_shine_heatmap_proxy');
+  assert.ok(shineProxyHeatmap, 'expected bbox-only shine finding to emit synthetic heatmap proxy');
+  assert.equal(shineProxyHeatmap.type, 'heatmap');
+  assert.equal(Array.isArray(shineProxyHeatmap.notes), true);
+  assert.equal(shineProxyHeatmap.notes.includes('heatmap_from_bbox_proxy'), true);
+  assert.ok(shineProxyHeatmap.signal_stats && typeof shineProxyHeatmap.signal_stats === 'object');
+  assert.equal(String(shineProxyHeatmap.signal_stats.source), 'proxy');
+  assert.ok(Number(shineProxyHeatmap.signal_stats.max) >= 0.55);
+  assert.ok(Number(shineProxyHeatmap.signal_stats.p90) >= 0.18);
+
   const regionIds = new Set(payload.regions.map((region) => region.region_id));
   for (const module of payload.modules) {
+    assert.ok(Number.isFinite(Number(module.module_rank_score)));
     for (const issue of module.issues || []) {
       const evidenceIds = Array.isArray(issue.evidence_region_ids) ? issue.evidence_region_ids : [];
       assert.ok(evidenceIds.length >= 1);
+      assert.ok(Number.isFinite(Number(issue.issue_rank_score)));
+      assert.ok(['low', 'medium', 'high'].includes(String(issue.confidence_bucket || '').toLowerCase()));
+      if (issue.issue_type === 'shine') {
+        assert.equal(
+          evidenceIds.every((regionId) => String(regionId).includes('heatmap')),
+          true,
+          'shine issue evidence should prioritize heatmap regions when available',
+        );
+      }
       for (const evidenceId of evidenceIds) {
         assert.equal(regionIds.has(evidenceId), true);
       }
     }
+    for (const action of module.actions || []) {
+      assert.ok(Number.isFinite(Number(action.action_rank_score)));
+      assert.ok(['top', 'more'].includes(String(action.group || '').toLowerCase()));
+    }
   }
+  assert.ok(payload.summary_v1 && typeof payload.summary_v1 === 'object');
+  assert.ok(
+    payload.modules.some((module) => String(module.module_id || '') === String(payload.summary_v1.top_module_id || '')),
+  );
+  if (payload.summary_v1.top_issue_type) {
+    const targetModule =
+      payload.modules.find((module) => String(module.module_id || '') === String(payload.summary_v1.top_module_id || ''))
+      || payload.modules[0];
+    assert.ok(
+      Array.isArray(targetModule && targetModule.issues)
+      && targetModule.issues.some((issue) => String(issue.issue_type || '') === String(payload.summary_v1.top_issue_type)),
+    );
+  }
+
+  assert.ok(payload.module_overlay_debug && typeof payload.module_overlay_debug === 'object');
+  assert.ok(['onnx', 'diagnosis_bbox', 'none'].includes(String(payload.module_overlay_debug.skinmask_source || 'none')));
+  assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'skinmask_fallback_reason'));
+  assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'onnx_infer_ms'));
+  assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'skinmask_model_loaded'));
+  assert.ok(Object.prototype.hasOwnProperty.call(payload.module_overlay_debug, 'source_confidence_bucket'));
+  assert.equal(typeof payload.module_overlay_debug.module_box_dynamic_applied, 'boolean');
+  assert.ok(
+    payload.module_overlay_debug.module_box_dynamic_reason == null
+      || typeof payload.module_overlay_debug.module_box_dynamic_reason === 'string',
+  );
+  assert.ok(
+    payload.module_overlay_debug.module_box_dynamic_score == null
+      || Number.isFinite(Number(payload.module_overlay_debug.module_box_dynamic_score)),
+  );
+  assert.ok(
+    payload.module_overlay_debug.onnx_infer_ms == null
+      || Number.isFinite(Number(payload.module_overlay_debug.onnx_infer_ms)),
+  );
+  assert.ok(
+    payload.module_overlay_debug.skinmask_model_loaded == null
+      || typeof payload.module_overlay_debug.skinmask_model_loaded === 'boolean',
+  );
+  assert.ok(['low', 'medium', 'high'].includes(String(payload.module_overlay_debug.source_confidence_bucket || '')));
 
   const serialized = JSON.stringify(payload).toLowerCase();
   assert.equal(serialized.includes('overlay_url'), false);
@@ -209,6 +294,182 @@ test('photo modules card: only emits for used_photos=true and quality pass/degra
     productRecEnabled: false,
   });
   assert.equal(disabledByQuality, null);
+});
+
+test('photo modules card: keeps heatmap evidence when bbox overlaps but heatmap intensity is weak', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_heatmap_weak_overlap',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_heatmap_weak',
+          issue_type: 'shine',
+          severity: 2,
+          confidence: 0.72,
+          geometry: {
+            bbox: { x: 0.42, y: 0.3, w: 0.24, h: 0.28 },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: new Array(8 * 8).fill(0),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'degraded', reasons: ['glare'] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  const regions = Array.isArray(built.card.payload.regions) ? built.card.payload.regions : [];
+  const weakProxy = regions.find((region) => region.region_id === 'pf_heatmap_weak_heatmap_proxy');
+  assert.ok(weakProxy, 'weak heatmap should be replaced by proxy');
+  assert.ok(Array.isArray(weakProxy.notes) && weakProxy.notes.includes('heatmap_low_signal_replaced'));
+  assert.ok(weakProxy.signal_stats && typeof weakProxy.signal_stats === 'object');
+  assert.equal(String(weakProxy.signal_stats.source || ''), 'proxy');
+  const weakProxyStats = summarizeHeatmap(weakProxy.heatmap && weakProxy.heatmap.values);
+  assert.ok(weakProxyStats.max >= 0.55);
+  assert.ok(weakProxyStats.p90 >= 0.18);
+
+  const modules = Array.isArray(built.card.payload.modules) ? built.card.payload.modules : [];
+  const shineIssues = modules
+    .flatMap((moduleRow) => (Array.isArray(moduleRow.issues) ? moduleRow.issues : []))
+    .filter((issue) => issue.issue_type === 'shine');
+  assert.equal(shineIssues.length > 0, true);
+  for (const issue of shineIssues) {
+    const evidenceIds = Array.isArray(issue.evidence_region_ids) ? issue.evidence_region_ids : [];
+    assert.equal(evidenceIds.length > 0, true);
+    assert.equal(evidenceIds.every((id) => String(id).includes('heatmap')), true);
+  }
+});
+
+test('photo modules card: prefers polygon from finding geometry over bbox/heatmap for same finding', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_polygon_priority',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_poly_first',
+          issue_type: 'redness',
+          severity: 3,
+          confidence: 0.91,
+          geometry: {
+            bbox: { x: 0.12, y: 0.18, w: 0.42, h: 0.36 },
+            polygon: {
+              points: [
+                { x: 0.16, y: 0.2 },
+                { x: 0.5, y: 0.2 },
+                { x: 0.54, y: 0.46 },
+                { x: 0.22, y: 0.52 },
+              ],
+            },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: makeHeatmapValues(8, 8),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  const regions = Array.isArray(built.card.payload.regions) ? built.card.payload.regions : [];
+  const findingRegions = regions.filter((region) => String(region.region_id || '').startsWith('pf_poly_first_'));
+  assert.equal(findingRegions.length >= 1, true);
+  assert.equal(findingRegions.some((region) => region.type === 'polygon'), true);
+  assert.equal(findingRegions.some((region) => region.type === 'heatmap'), true);
+  const relatedIssue = (built.card.payload.modules || [])
+    .flatMap((moduleRow) => (Array.isArray(moduleRow.issues) ? moduleRow.issues : []))
+    .find((issue) => issue.issue_type === 'redness');
+  assert.ok(relatedIssue && Array.isArray(relatedIssue.evidence_region_ids));
+  assert.equal(
+    relatedIssue.evidence_region_ids.some((regionId) => String(regionId).includes('_bbox')),
+    false,
+    'evidence should prioritize visible heatmap/polygon over bbox fallback',
+  );
+});
+
+test('photo modules card: heatmap-only finding emits raw heatmap with signal stats when polygon is missing', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_contour_fallback',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_contour',
+          issue_type: 'shine',
+          severity: 2,
+          confidence: 0.72,
+          geometry: {
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: makeHeatmapValues(8, 8),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'degraded', reasons: ['glare'] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  const contourRegion = (built.card.payload.regions || []).find((region) => String(region.region_id || '').startsWith('pf_contour_'));
+  assert.ok(contourRegion);
+  assert.equal(contourRegion.type, 'heatmap');
+  assert.ok(contourRegion.signal_stats && typeof contourRegion.signal_stats === 'object');
+  assert.equal(String(contourRegion.signal_stats.source || ''), 'raw');
+});
+
+test('photo modules card: low-signal heatmap + bbox emits proxy heatmap replacement notes', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_bbox_fallback',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_bbox_fallback',
+          issue_type: 'texture',
+          severity: 2,
+          confidence: 0.7,
+          geometry: {
+            bbox: { x: 0.2, y: 0.2, w: 0.35, h: 0.3 },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: new Array(8 * 8).fill(0),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  const proxyRegion = (built.card.payload.regions || []).find((region) => String(region.region_id || '') === 'pf_bbox_fallback_heatmap_proxy');
+  assert.ok(proxyRegion);
+  assert.equal(proxyRegion.type, 'heatmap');
+  const notesText = Array.isArray(proxyRegion.notes) ? proxyRegion.notes.join('|') : '';
+  assert.equal(notesText.includes('heatmap_from_bbox_proxy'), true);
+  assert.equal(notesText.includes('heatmap_low_signal_replaced'), true);
 });
 
 test('routes helper: flag off does not emit card, flag on emits and records metrics', () =>
@@ -261,10 +522,10 @@ test('routes helper: flag off does not emit card, flag on emits and records metr
 
           const metrics = renderVisionMetricsPrometheus();
           assert.match(metrics, /photo_modules_card_emitted_total\{quality_grade="degraded"\} 1/);
-          assert.match(metrics, /regions_emitted_total\{region_type="bbox",issue_type="redness"\}/);
+          assert.match(metrics, /regions_emitted_total\{region_type="polygon",issue_type="redness"\}/);
           assert.match(metrics, /modules_issue_count_histogram\{module_id="[^"]+",issue_type="redness"\}/);
           assert.match(metrics, /ingredient_actions_emitted_total\{module_id="[^"]+",issue_type="redness"\}/);
-          assert.match(metrics, /geometry_sanitizer_drop_total\{reason="[^"]+",region_type="bbox"\}/);
+          assert.match(metrics, /geometry_sanitizer_drop_total\{reason="[^"]+",region_type="polygon"\}/);
         },
       );
     },

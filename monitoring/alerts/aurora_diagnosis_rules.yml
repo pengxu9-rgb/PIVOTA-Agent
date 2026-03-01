@@ -52,6 +52,35 @@ groups:
           /
           clamp_min(aurora:skin_reco_request_rate:15m, 0.000001)
 
+      - record: aurora:ingredients_entry_rate:15m
+        expr: |
+          sum(rate(aurora_ingredients_flow_total{stage="entry_opened",outcome="hit"}[15m]))
+
+      - record: aurora:ingredients_unwanted_diagnosis_rate:15m
+        expr: |
+          sum(rate(aurora_ingredients_flow_total{stage="unwanted_diagnosis",outcome="hit"}[15m]))
+          /
+          clamp_min(aurora:ingredients_entry_rate:15m, 0.000001)
+
+      - record: aurora:ingredients_reco_optin_rate:15m
+        expr: |
+          sum(rate(aurora_ingredients_flow_total{stage="reco_optin",outcome="hit"}[15m]))
+          /
+          clamp_min(aurora:ingredients_entry_rate:15m, 0.000001)
+
+      - record: aurora:ingredients_text_route_drift_rate:15m
+        expr: |
+          sum(rate(aurora_ingredients_flow_total{stage="text_route_drift",outcome="hit"}[15m]))
+          /
+          clamp_min(sum(rate(aurora_ingredients_flow_total{stage="text_query_routed",outcome="hit"}[15m])), 0.000001)
+
+      - record: aurora:ingredients_first_answer_latency_p95_ms:15m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(ingredients_first_answer_latency_ms_bucket[15m])) by (le)
+          )
+
       - record: aurora:chat_proxy_fallback_rate:5m
         expr: |
           (
@@ -246,4 +275,46 @@ groups:
         annotations:
           summary: "Reco output-guard fallback rate elevated"
           description: "reco_output_guard_fallback_rate stayed above 0.1%. Check upstream recommendation card schema/serialization drift."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraIngredientsUnwantedDiagnosisRateHigh
+        expr: |
+          aurora:ingredients_entry_rate:15m > 0.01
+          and
+          aurora:ingredients_unwanted_diagnosis_rate:15m > 0.005
+        for: 10m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Ingredients unwanted diagnosis rate elevated"
+          description: "ingredients_unwanted_diagnosis_rate stayed above 0.5%. Inspect action mapping / route drift for ingredient starter flows."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraIngredientsFirstAnswerLatencyHigh
+        expr: |
+          aurora:ingredients_entry_rate:15m > 0.01
+          and
+          aurora:ingredients_first_answer_latency_p95_ms:15m > 8000
+        for: 10m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Ingredients first-answer latency p95 is high"
+          description: "ingredients_first_answer_latency_ms p95 stayed above 8s. Check /v1/chat response latency and event ingest lag."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraResponseSchemaViolationDetected
+        expr: increase(aurora_schema_violation_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Aurora response schema violation detected"
+          description: "aurora_schema_violation_total increased in the last 10m. Treat as release blocker and inspect envelope validation failures."
           runbook: "docs/MONITORING_RUNBOOK.md"

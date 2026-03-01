@@ -7,6 +7,23 @@
 
 This guide covers deploying the Pivota Agent Gateway to production environments, with a focus on Railway deployment and general best practices.
 
+## Production Deploy Policy (Source of Truth)
+
+For this repo, production deploys must use **GitHub push to `main` + Railway auto-deploy**.
+
+- Allowed: merge to `main`, then wait for Railway auto deployment.
+- Not allowed for normal flow: `railway up` to production.
+
+Reason: manual CLI deployment is easy to overwrite by later auto deploy and creates commit drift.
+
+Commit-match verification command:
+
+```bash
+npm run deploy:verify:production
+```
+
+Detailed policy: `docs/runbooks/deploy_via_github_push_only.md`
+
 ## Environment Variables
 
 Create a `.env` file from the template:
@@ -57,6 +74,41 @@ AURORA_KB_V0_DISABLE=1
 # Temporary fail-open (use only during KB integrity incidents)
 AURORA_KB_FAIL_MODE=open
 ```
+
+### Aurora Photo skinmask rollout defaults
+
+For `photo_modules_v1` circle-selection stability, use these defaults in production:
+
+```bash
+# ONNX first-path for skinmask in production.
+DIAG_SKINMASK_ENABLED=true
+DIAG_SKINMASK_MODEL_PATH=artifacts/skinmask_v2.onnx
+DIAG_SKINMASK_TIMEOUT_MS=1200
+
+# If model file is not bundled, runtime can fetch it once and cache locally.
+DIAG_SKINMASK_MODEL_URL=https://github.com/yakhyo/face-parsing/releases/download/v0.0.1/resnet18.onnx
+# Optional; default resolves to DIAG_SKINMASK_MODEL_PATH (or /tmp if model path is URL)
+DIAG_SKINMASK_MODEL_CACHE_PATH=artifacts/skinmask_v2.onnx
+DIAG_SKINMASK_MODEL_DOWNLOAD_TIMEOUT_MS=8000
+DIAG_SKINMASK_MODEL_MAX_BYTES=134217728
+
+# Face-parsing class index for skin (background is class 0 in this model).
+DIAG_SKINMASK_CLASS_ID=1
+
+# Always enable diagnosis bbox fallback (recommended).
+DIAG_SKINMASK_BBOX_FALLBACK_ENABLED=true
+
+# Replace low-signal issue heatmaps with bbox proxy heatmaps.
+DIAG_HEATMAP_LOW_SIGNAL_PROXY_ENABLED=true
+DIAG_HEATMAP_LOW_SIGNAL_MAX_THRESHOLD=0.20
+DIAG_HEATMAP_LOW_SIGNAL_P90_THRESHOLD=0.12
+DIAG_HEATMAP_PROXY_VISIBILITY_MAX_FLOOR=0.55
+DIAG_HEATMAP_PROXY_VISIBILITY_P90_FLOOR=0.18
+```
+
+Post-enable verification:
+- `skinmask_enabled_total` should increase.
+- `photo_modules_v1.payload.module_overlay_debug.skinmask_source` should show `onnx` or `diagnosis_bbox`, not long-term `none`.
 
 ### Look Replicator (optional)
 
@@ -314,6 +366,24 @@ curl https://your-gateway.com/healthz
 # Expected response
 {"ok":true}
 ```
+
+### 5. TLS Budget Gate (Before/After Optimization)
+```bash
+# 1) Baseline (allow non-zero exit to capture current bottlenecks)
+ROUNDS=8 OUTPUT_JSON=/tmp/tls_before.json ./scripts/eval_tls_budget.sh || true
+
+# 2) After infra/TLS optimization, compare against baseline
+ROUNDS=8 BASELINE_JSON=/tmp/tls_before.json OUTPUT_JSON=/tmp/tls_after.json ./scripts/eval_tls_budget.sh
+```
+
+`eval_tls_budget.sh` will:
+- output p50/p90/p95 for first-request and warmed-request latency
+- output derived `first_app_time` (`first_ttfb - first_tls`) for bottleneck attribution
+- fail fast when configured latency budgets are exceeded
+- optionally fail on regression vs a saved baseline JSON
+
+For infra-side tuning order and rollback rules, see:
+`docs/runbooks/tls_infra_optimization_runbook.md`
 
 ## Performance Optimization
 

@@ -45,7 +45,10 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'alternatives_limited': 'analysis_in_progress',
   'competitor_sync_aurora_fallback_used': 'analysis_in_progress',
   'catalog_product_missing': 'product_not_resolved',
+  'catalog_backend_not_configured': 'product_not_resolved',
+  'pivota_backend_not_configured': 'product_not_resolved',
   'upstream_deep_scan_skipped_anchor_missing': 'product_not_resolved',
+  'anchor_missing_deepscan_degraded': 'product_not_resolved',
   'product_not_resolved': 'product_not_resolved',
   'evidence_missing': 'evidence_limited',
   'evidence_limited': 'evidence_limited',
@@ -55,6 +58,23 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'analysis_limited': 'analysis_limited',
   'upstream_analysis_missing': 'analysis_in_progress',
   'analysis_in_progress': 'analysis_in_progress',
+  'url_fetch_forbidden_403': 'url_fetch_forbidden_403',
+  'url_fetch_challenge_cloudflare': 'url_fetch_challenge_cloudflare',
+  'url_fetch_access_denied': 'url_fetch_access_denied',
+  'url_fetch_vendor_unblock_used': 'url_fetch_vendor_unblock_used',
+  'url_fetch_vendor_unblock_failed': 'url_fetch_vendor_unblock_failed',
+  'url_fetch_recovered_with_fallback': 'url_fetch_recovered_with_fallback',
+  'on_page_fetch_blocked': 'on_page_fetch_blocked',
+  'regulatory_source_used': 'regulatory_source_used',
+  'retail_source_used': 'retail_source_used',
+  'retail_source_no_match': 'retail_source_no_match',
+  'incidecoder_source_used': 'incidecoder_source_used',
+  'incidecoder_no_match': 'incidecoder_no_match',
+  'incidecoder_fetch_failed': 'incidecoder_fetch_failed',
+  'incidecoder_unverified_not_persisted': 'incidecoder_unverified_not_persisted',
+  'ingredient_source_conflict': 'ingredient_source_conflict',
+  'related_semantics_reclassified': 'related_semantics_reclassified',
+  'version_verification_needed': 'version_verification_needed',
   'price_unknown': 'price_temporarily_unavailable',
   'price_missing': 'price_temporarily_unavailable',
   'anchor_price_unknown': 'price_temporarily_unavailable',
@@ -86,10 +106,15 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT = new Set([
   'competitor_async_backfill_used',
   'profile_context_dropped_for_reliability',
   'competitor_candidates_filtered_noise',
+  'reco_blocks_schema_invalid',
   'reco_guardrail_applied',
   'reco_guardrail_same_brand_filtered',
   'reco_guardrail_on_page_filtered',
   'reco_guardrail_circuit_open',
+  'reco_blocks_schema_invalid',
+  'summary_quality_retry_used',
+  'how_to_use_retry_used',
+  'summary_profile_echo_sanitized',
 ]);
 
 const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
@@ -101,11 +126,32 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
   'competitors.',
   'router.',
   'reco_dag_',
+  'reco_blocks_',
   'url_',
   'upstream_',
   'internal_',
   'reco_guardrail_',
 ];
+
+const PRODUCT_ANALYSIS_USER_VISIBLE_EXACT = new Set([
+  'url_fetch_forbidden_403',
+  'url_fetch_challenge_cloudflare',
+  'url_fetch_access_denied',
+  'url_fetch_vendor_unblock_used',
+  'url_fetch_vendor_unblock_failed',
+  'url_fetch_recovered_with_fallback',
+  'on_page_fetch_blocked',
+  'regulatory_source_used',
+  'retail_source_used',
+  'retail_source_no_match',
+  'incidecoder_source_used',
+  'incidecoder_no_match',
+  'incidecoder_fetch_failed',
+  'incidecoder_unverified_not_persisted',
+  'ingredient_source_conflict',
+  'related_semantics_reclassified',
+  'version_verification_needed',
+]);
 
 function mapProductAnalysisGapCode(code) {
   const raw = String(code || '').trim();
@@ -119,6 +165,7 @@ function mapProductAnalysisGapCode(code) {
 function isInternalProductAnalysisGapCode(code) {
   const lower = String(code || '').trim().toLowerCase();
   if (!lower) return true;
+  if (PRODUCT_ANALYSIS_USER_VISIBLE_EXACT.has(lower)) return false;
   if (PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT.has(lower)) return true;
   if (PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES.some((prefix) => lower.startsWith(prefix))) return true;
   return false;
@@ -208,6 +255,312 @@ function applyProductAnalysisGapContract(payload) {
   };
 }
 
+function collectProductAnalysisGapCodes(payload, fieldMissing = null) {
+  const p = asPlainObject(payload) || {};
+  const evidence = asPlainObject(p.evidence) || {};
+  const fromFieldMissing = Array.isArray(fieldMissing)
+    ? fieldMissing.map((item) => String(item?.reason || '').trim()).filter(Boolean)
+    : [];
+  const payloadFieldMissingReasons = Array.isArray(p.field_missing)
+    ? p.field_missing.map((item) => String(item?.reason || '').trim()).filter(Boolean)
+    : [];
+  return uniqueStrings([
+    ...asStringArray(p.missing_info ?? p.missingInfo),
+    ...asStringArray(p.user_facing_gaps ?? p.userFacingGaps),
+    ...asStringArray(p.internal_debug_codes ?? p.internalDebugCodes),
+    ...asStringArray(p.missing_info_internal ?? p.missingInfoInternal),
+    ...asStringArray(evidence.missing_info ?? evidence.missingInfo),
+    ...fromFieldMissing,
+    ...payloadFieldMissingReasons,
+  ]);
+}
+
+function hasEvidenceSourcesOfType(payload, acceptedTypes = []) {
+  const p = asPlainObject(payload) || {};
+  const evidence = asPlainObject(p.evidence) || {};
+  const accepted = new Set(
+    (Array.isArray(acceptedTypes) ? acceptedTypes : [])
+      .map((item) => String(item || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!accepted.size) return false;
+  return asStringArray(
+    (Array.isArray(evidence.sources) ? evidence.sources : [])
+      .map((item) => (asPlainObject(item) ? String(item.type || '').trim().toLowerCase() : ''))
+      .filter(Boolean),
+  ).some((type) => accepted.has(type));
+}
+
+function hasRenderableEvidenceSignals(payload) {
+  const p = asPlainObject(payload) || {};
+  const evidence = asPlainObject(p.evidence) || {};
+  const science = asPlainObject(evidence.science) || {};
+  const social = asPlainObject(evidence.social_signals ?? evidence.socialSignals) || {};
+  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const mechanisms = asStringArray(science.mechanisms);
+  const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const expertNotes = asStringArray(evidence.expert_notes ?? evidence.expertNotes);
+  const positives = asStringArray(social.typical_positive ?? social.typicalPositive);
+  const negatives = asStringArray(social.typical_negative ?? social.typicalNegative);
+  const riskForGroups = asStringArray(social.risk_for_groups ?? social.riskForGroups);
+  const sources = Array.isArray(evidence.sources) ? evidence.sources.length : 0;
+  return (
+    keyIngredients.length > 0 ||
+    mechanisms.length > 0 ||
+    fitNotes.length > 0 ||
+    riskNotes.length > 0 ||
+    expertNotes.length > 0 ||
+    positives.length > 0 ||
+    negatives.length > 0 ||
+    riskForGroups.length > 0 ||
+    sources > 0
+  );
+}
+
+function buildDiagnosticUnknownReasons(payload, { lang = 'EN', fieldMissing = null } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const p = asPlainObject(payload) || {};
+  const gapCodes = collectProductAnalysisGapCodes(p, fieldMissing).map((item) => String(item || '').toLowerCase());
+  const gapSet = new Set(gapCodes);
+  const provenance = asPlainObject(p.provenance) || {};
+  const urlFetch = asPlainObject(provenance.url_fetch ?? provenance.urlFetch) || {};
+  const urlFailureCode = String(urlFetch.failure_code || '').trim().toLowerCase();
+  const reasons = [];
+
+  if (gapSet.has('url_fetch_challenge_cloudflare') || urlFailureCode === 'url_fetch_challenge_cloudflare') {
+    reasons.push(
+      isCn
+        ? '目标页面命中了 Cloudflare 反爬挑战页，无法直接提取商品正文。'
+        : 'The target page hit a Cloudflare anti-bot challenge, so product-page content could not be extracted directly.',
+    );
+  } else if (gapSet.has('url_fetch_access_denied') || urlFailureCode === 'url_fetch_access_denied') {
+    reasons.push(
+      isCn
+        ? '目标页面返回 Access Denied，当前网络路径无法稳定读取商品正文。'
+        : 'The target page returned Access Denied, so the current network path could not read product-page content reliably.',
+    );
+  } else if (gapSet.has('url_fetch_forbidden_403') || urlFailureCode === 'url_fetch_forbidden_403') {
+    reasons.push(
+      isCn
+        ? '目标页面被站点策略拦截（403），本次无法稳定抓取完整产品证据。'
+        : 'The target page was blocked by site policy (403), so full product evidence could not be fetched reliably.',
+    );
+  } else if (gapSet.has('on_page_fetch_blocked')) {
+    reasons.push(
+      isCn
+        ? '官网页面抓取受限，本次分析走了降级路径。'
+        : 'Official-page fetching was blocked, so this run used a degraded analysis path.',
+    );
+  }
+
+  if (
+    gapSet.has('anchor_product_missing') ||
+    gapSet.has('product_not_resolved') ||
+    gapSet.has('catalog_product_missing') ||
+    gapSet.has('catalog_no_match')
+  ) {
+    reasons.push(
+      isCn
+        ? '产品锚点解析不稳定（品牌/型号未完全确认），结论可信度受限。'
+        : 'Product anchoring is not stable yet (brand/model not fully resolved), which limits confidence.',
+    );
+  }
+
+  if (gapSet.has('regulatory_source_used')) {
+    reasons.push(
+      isCn
+        ? '已使用监管源补证（如 DailyMed），但不同地区/批次可能存在配方差异。'
+        : 'A regulatory source (for example DailyMed) was used, but formulas can vary by market/batch.',
+    );
+  }
+
+  if (gapSet.has('retail_source_used')) {
+    reasons.push(
+      isCn
+        ? '已使用主流零售页面补充证据，建议与官方/监管信息和实物包装 INCI 交叉核对。'
+        : 'A mainstream retail PDP was used as supplemental evidence; cross-check with official/regulatory data and package INCI.',
+    );
+  }
+
+  if (gapSet.has('incidecoder_source_used')) {
+    reasons.push(
+      isCn
+        ? '已使用 INCIDecoder 补充成分线索，建议继续与实物包装 INCI 交叉核对。'
+        : 'INCIDecoder was used as a supplemental ingredient source; cross-check with package INCI is still recommended.',
+    );
+  }
+
+  if (gapSet.has('url_fetch_vendor_unblock_failed')) {
+    reasons.push(
+      isCn
+        ? '已尝试解封抓取链路但仍失败，建议改用可访问的零售 PDP 或直接贴 INCI。'
+        : 'An unblock-fetch fallback was attempted but still failed; use an accessible retail PDP or paste the INCI directly.',
+    );
+  }
+
+  if (
+    gapSet.has('evidence_missing') ||
+    gapSet.has('analysis_limited') ||
+    gapSet.has('upstream_missing_or_unstructured') ||
+    !hasRenderableEvidenceSignals(p)
+  ) {
+    reasons.push(
+      isCn
+        ? '当前证据链覆盖不足（成分/口碑/专家注释存在缺口），暂不能给出高置信结论。'
+        : 'Current evidence coverage is limited (ingredient/social/expert gaps), so a high-confidence verdict is not available yet.',
+    );
+  }
+
+  if (gapSet.has('version_verification_needed')) {
+    reasons.push(
+      isCn
+        ? '需核对地区与批次版本差异，以实物包装 INCI 为准。'
+        : 'Version/region verification is still required; use your package INCI as final reference.',
+    );
+  }
+
+  reasons.push(
+    isCn
+      ? '下一步：请粘贴完整 INCI，或提供可公开访问的官方产品页后重试。'
+      : 'Next step: paste the full INCI or share a publicly accessible official product page and retry.',
+  );
+
+  return uniqueStrings(reasons).slice(0, 5);
+}
+
+function backfillUrlFetchAttemptProviders(provenanceInput) {
+  const provenance = asPlainObject(provenanceInput);
+  if (!provenance) return provenanceInput;
+  const hasSnake = provenance.url_fetch != null;
+  const urlFetch = asPlainObject(hasSnake ? provenance.url_fetch : provenance.urlFetch);
+  if (!urlFetch) return provenanceInput;
+  const attempts = Array.isArray(urlFetch.attempts) ? urlFetch.attempts : null;
+  if (!attempts || !attempts.length) return provenanceInput;
+
+  const normalizedAttempts = attempts.map((entry) => {
+    const item = asPlainObject(entry);
+    if (!item) return entry;
+    const provider = String(item.provider || 'native').trim().toLowerCase() || 'native';
+    return {
+      ...item,
+      provider,
+    };
+  });
+
+  const nextUrlFetch = {
+    ...urlFetch,
+    attempts: normalizedAttempts,
+  };
+
+  return hasSnake
+    ? {
+      ...provenance,
+      url_fetch: nextUrlFetch,
+    }
+    : {
+      ...provenance,
+      urlFetch: nextUrlFetch,
+    };
+}
+
+function normalizeRetrievalDegradationContract(input) {
+  const raw = asPlainObject(input) || {};
+  const transientFailureCount = Math.max(0, Math.trunc(Number(raw.transient_failure_count ?? raw.transientFailureCount) || 0));
+  const attemptedSources = uniqueStrings(asStringArray(raw.attempted_sources ?? raw.attemptedSources)).slice(0, 8);
+  const resolverFirstApplied = raw.resolver_first_applied === true;
+  const resolverFirstSkippedForAurora = raw.resolver_first_skipped_for_aurora === true;
+  const sourceTemporarilyDeprioritized = raw.source_temporarily_deprioritized === true;
+  const degraded = raw.degraded === true || transientFailureCount > 0 || sourceTemporarilyDeprioritized;
+  const budgetProfile = asPlainObject(raw.budget_profile ?? raw.budgetProfile);
+  return {
+    ...raw,
+    transient_failure_count: transientFailureCount,
+    attempted_sources: attemptedSources,
+    resolver_first_applied: resolverFirstApplied,
+    resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
+    source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
+    degraded,
+    ...(budgetProfile ? { budget_profile: budgetProfile } : {}),
+  };
+}
+
+function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissing = null } = {}) {
+  const p = asPlainObject(payload);
+  if (!p) return payload;
+
+  const assessment = asPlainObject(p.assessment);
+  const anchor = asPlainObject(assessment?.anchor_product ?? assessment?.anchorProduct);
+  const hasAnchor =
+    !!anchor &&
+    !!String(
+      anchor.product_id ||
+      anchor.sku_id ||
+      anchor.display_name ||
+      anchor.displayName ||
+      anchor.name ||
+      anchor.url ||
+      '',
+    ).trim();
+
+  const pruneAnchorMissing = (input) =>
+    uniqueStrings(asStringArray(input).filter((code) => String(code || '').trim().toLowerCase() !== 'anchor_product_missing'));
+
+  let next = { ...p };
+  const nextProvenance = backfillUrlFetchAttemptProviders(next.provenance);
+  if (asPlainObject(nextProvenance)) {
+    const provenanceObj = asPlainObject(nextProvenance) || {};
+    next.provenance = {
+      ...provenanceObj,
+      retrieval_degradation: normalizeRetrievalDegradationContract(
+        provenanceObj.retrieval_degradation ?? provenanceObj.retrievalDegradation,
+      ),
+    };
+  }
+  if (hasAnchor) {
+    next = {
+      ...next,
+      missing_info: pruneAnchorMissing(next.missing_info ?? next.missingInfo),
+      user_facing_gaps: pruneAnchorMissing(next.user_facing_gaps ?? next.userFacingGaps),
+      internal_debug_codes: pruneAnchorMissing(next.internal_debug_codes ?? next.internalDebugCodes),
+      missing_info_internal: pruneAnchorMissing(next.missing_info_internal ?? next.missingInfoInternal),
+    };
+    const evidenceObj = asPlainObject(next.evidence) || null;
+    if (evidenceObj) {
+      next.evidence = {
+        ...evidenceObj,
+        missing_info: pruneAnchorMissing(evidenceObj.missing_info ?? evidenceObj.missingInfo),
+      };
+    }
+  }
+
+  const currentAssessment = asPlainObject(next.assessment);
+  if (!currentAssessment) {
+    const fallbackAnchor = hasAnchor ? anchor : asPlainObject(next.product);
+    next.assessment = {
+      verdict: String(lang).toUpperCase() === 'CN' ? '未知' : 'Unknown',
+      reasons: buildDiagnosticUnknownReasons(next, { lang, fieldMissing }),
+      ...(fallbackAnchor ? { anchor_product: fallbackAnchor } : {}),
+    };
+  } else {
+    const verdictToken = String(currentAssessment.verdict || '').trim().toLowerCase();
+    const isUnknownVerdict = verdictToken === 'unknown' || verdictToken === '未知';
+    if (isUnknownVerdict) {
+      const reasons = asStringArray(currentAssessment.reasons);
+      const nonGenericReasons = reasons.filter((line) => !isGenericReason(line, lang));
+      const hasHighQualitySources = hasEvidenceSourcesOfType(next, ['official_page', 'regulatory']);
+      if (!nonGenericReasons.length || hasHighQualitySources) {
+        next.assessment = {
+          ...currentAssessment,
+          reasons: buildDiagnosticUnknownReasons(next, { lang, fieldMissing }),
+        };
+      }
+    }
+  }
+
+  return applyProductAnalysisGapContract(next);
+}
+
 function asRecordOfNumbers(value) {
   const o = asPlainObject(value);
   if (!o) return undefined;
@@ -264,6 +617,26 @@ function normalizeEvidence(raw) {
     risk_for_groups: asStringArray(socialRaw?.risk_for_groups ?? socialRaw?.riskForGroups),
   };
 
+  const sources = [];
+  for (const item of Array.isArray(ev.sources) ? ev.sources : []) {
+    const row = asPlainObject(item);
+    if (!row) continue;
+    const type = String(row.type || '').trim().toLowerCase();
+    if (!type) continue;
+    if (type !== 'official_page' && type !== 'regulatory' && type !== 'retail_page' && type !== 'inci_decoder') continue;
+    const url = String(row.url || '').trim();
+    if (!/^https?:\/\//i.test(url)) continue;
+    const label = String(row.label || '').trim();
+    const confidence = asNumberOrNull(row.confidence);
+    sources.push({
+      type,
+      url,
+      ...(label ? { label } : {}),
+      ...(confidence != null ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
+    });
+    if (sources.length >= 8) break;
+  }
+
   const missing_info = uniqueStrings(asStringArray(ev.missing_info ?? ev.missingInfo));
   const confidence = asNumberOrNull(ev.confidence);
 
@@ -274,6 +647,7 @@ function normalizeEvidence(raw) {
       expert_notes,
       confidence,
       missing_info,
+      ...(sources.length ? { sources } : {}),
     },
     field_missing,
   };
@@ -497,6 +871,50 @@ function humanizeRiskLine(line, lang) {
   return out.length ? truncateText(out.join('；'), 200) : '';
 }
 
+function isProfileEchoNarrativeLine(line) {
+  const text = String(line || '').trim();
+  if (!text) return false;
+  if (/^(your profile|profile priorities|你的情况|你的画像|画像信息)[:：]/i.test(text)) return true;
+  if (/^(fit signal|匹配点)[:：]/i.test(text)) {
+    if (
+      /\b(skintype\s*=|sensitivity\s*=|barrier\s*=)\b/i.test(text) ||
+      /profile|画像|肤质|敏感|屏障|油皮|干皮|混合皮|低敏|中敏|高敏/i.test(text)
+    ) {
+      return true;
+    }
+  }
+  if (/\b(skintype\s*=|sensitivity\s*=|barrier\s*=)\b/i.test(text)) return true;
+
+  const normalized = text.toLowerCase();
+  const profileTokenCount = [
+    /\b(oily|dry|combo|combination|normal)\b/.test(normalized),
+    /\b(sensitivity|sensitive|low|medium|high)\b/.test(normalized),
+    /\b(barrier|healthy|impaired)\b/.test(normalized),
+    /肤质|敏感|屏障|油皮|干皮|混合皮|低敏|中敏|高敏/.test(text),
+  ].filter(Boolean).length;
+  const productSignal = /\b(ingredient|formula|efficacy|mechanis|retino|acid|niacinamide|ceramide|peptide|spf|sunscreen|cleanser|moisturizer|serum|防晒|保湿|修护|控痘|去角质)\b/i
+    .test(text);
+  if (!productSignal && profileTokenCount >= 2 && text.length <= 120) return true;
+
+  return false;
+}
+
+function sanitizeAssessmentNarrativeLines(lines, { max = 6, allowProfileEcho = false } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(lines) ? lines : []) {
+    const text = String(raw || '').trim();
+    if (!text) continue;
+    if (!allowProfileEcho && isProfileEchoNarrativeLine(text)) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(truncateText(text, 220));
+    if (out.length >= Math.max(1, Number(max) || 6)) break;
+  }
+  return out;
+}
+
 function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) {
   const p = asPlainObject(profileSummary);
   if (!p) return [];
@@ -564,16 +982,13 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
     if (goals.includes('brightening')) priorityTargets.push('keep brightening/pigment goals on track');
   }
 
-  // Keep profile summary as the first CN line for stable, user-facing ordering.
-  if (tags.length) {
-    out.push(cn ? `你的情况：${truncateText(tags.join(' / '), 80)}。` : `Your profile: ${truncateText(tags.join(' / '), 120)}.`);
-  }
-
-  if (priorityTargets.length) {
+  // Keep fit hints product-centric; do not emit profile recap lines here.
+  const compactPriority = uniqueStrings(priorityTargets).slice(0, 3);
+  if (compactPriority.length) {
     out.push(
       cn
-        ? `匹配点：${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('；'), 120)}。`
-        : `Profile priorities: ${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('; '), 180)}.`,
+        ? `匹配点：${truncateText(compactPriority.join('；'), 120)}。`
+        : `Fit signal: ${truncateText(compactPriority.join('; '), 180)}.`,
     );
   }
 
@@ -610,7 +1025,7 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
     );
   }
 
-  return uniqueStrings(out.map((x) => truncateText(x, 220)).filter(Boolean)).slice(0, 3);
+  return sanitizeAssessmentNarrativeLines(out, { max: 3, allowProfileEcho: false });
 }
 
 function pickHeroIngredientFromEvidence(evidence, { lang = 'EN' } = {}) {
@@ -843,6 +1258,279 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   }
 
   return uniqueStrings(out);
+}
+
+function readAssessmentStringArray(assessment, snakeKey, camelKey) {
+  return uniqueStrings(
+    [
+      ...asStringArray(assessment?.[snakeKey]),
+      ...asStringArray(assessment?.[camelKey]),
+    ].map((line) => truncateText(String(line || '').trim(), 220)).filter(Boolean),
+  );
+}
+
+function buildFormulaIntentFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const mechanisms = asStringArray(science.mechanisms);
+  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients)
+    .filter((item) => !/^water$/i.test(String(item || '').trim()));
+  const hero = pickHeroIngredientFromEvidence(ev, { lang });
+  const isCn = String(lang).toUpperCase() === 'CN';
+  const out = [];
+  if (mechanisms.length) out.push(...mechanisms.slice(0, 2));
+  if (hero && hero.name) {
+    out.push(
+      isCn
+        ? `核心驱动成分：${hero.name}${hero.role ? `（${hero.role}）` : ''}，主要目标是 ${hero.why || '提升配方主功效'}。`
+        : `Core driver: ${hero.name}${hero.role ? ` (${hero.role})` : ''}, mainly targeting ${hero.why || 'the primary claimed effect'}.`,
+    );
+  }
+  if (!out.length && keyIngredients.length) {
+    out.push(
+      isCn
+        ? `这支产品主要围绕 ${keyIngredients.slice(0, 3).join('、')} 构建功效路径。`
+        : `This formula mainly builds its efficacy around ${keyIngredients.slice(0, 3).join(', ')}.`,
+    );
+  }
+  return uniqueStrings(out.map((line) => truncateText(String(line || ''), 220)).filter(Boolean)).slice(0, 3);
+}
+
+function buildBestForFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+  if (fitNotes.length) return uniqueStrings(fitNotes.map((line) => truncateText(line, 200))).slice(0, 3);
+  const isCn = String(lang).toUpperCase() === 'CN';
+  return [
+    isCn
+      ? '若目标是稳态保养和低刺激迭代，这类配方通常更好起步。'
+      : 'If your goal is steady maintenance and low-irritation iteration, this profile is usually easier to start with.',
+  ];
+}
+
+function buildNotForFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const human = uniqueStrings(riskNotes.map((line) => humanizeRiskLine(line, lang) || String(line || '').trim()).filter(Boolean));
+  return human.slice(0, 3);
+}
+
+function buildIfNotIdealFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const isCn = String(lang).toUpperCase() === 'CN';
+  const riskLines = buildNotForFromEvidence(evidence, { lang });
+  const out = [];
+  if (riskLines.length) {
+    out.push(
+      isCn
+        ? '如果出现持续刺痛/泛红，先暂停该产品并切回温和清洁 + 修护保湿的基线。'
+        : 'If persistent stinging/redness appears, pause this product and return to a gentle cleanse + barrier-repair baseline.',
+    );
+  }
+  out.push(
+    isCn
+      ? '先从低频开始（每周 2-3 次），连续观察 10-14 天再决定是否加频。'
+      : 'Start low-frequency (2-3x/week) and monitor for 10-14 days before increasing usage.',
+  );
+  return uniqueStrings(out).slice(0, 3);
+}
+
+function buildBetterPairingFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const riskJoined = asStringArray(science.risk_notes ?? science.riskNotes).join(' | ').toLowerCase();
+  const isCn = String(lang).toUpperCase() === 'CN';
+  const out = [];
+  if (/\b(dry|drying|tight|dehydrat|干燥|紧绷)\b/i.test(riskJoined)) {
+    out.push(
+      isCn
+        ? '搭配建议：加一层简单保湿修护（神经酰胺/泛醇/甘油）减少拔干风险。'
+        : 'Pairing idea: add a simple barrier-hydration layer (ceramide/panthenol/glycerin) to reduce dryness risk.',
+    );
+  }
+  if (/\b(acne|comedone|pores?|痘|闭口|毛孔)\b/i.test(riskJoined)) {
+    out.push(
+      isCn
+        ? '若重点是控痘，优先搭配低刺激控油步骤并避免同晚叠加强活性。'
+        : 'If acne control is the priority, pair with low-irritation oil-control steps and avoid same-night strong active stacking.',
+    );
+  }
+  if (!out.length) {
+    out.push(
+      isCn
+        ? '搭配建议：白天坚持防晒，夜间保持单变量迭代，更容易判断是否适配。'
+        : 'Pairing idea: keep consistent daytime SPF and single-variable PM iteration to judge fit reliably.',
+    );
+  }
+  return uniqueStrings(out).slice(0, 3);
+}
+
+function buildFollowUpQuestionFromPayload(payload, { lang = 'EN' } = {}) {
+  const p = asPlainObject(payload) || {};
+  const profilePrompt = asPlainObject(p.profile_prompt ?? p.profilePrompt) || {};
+  const missingFields = uniqueStrings(asStringArray(profilePrompt.missing_fields ?? profilePrompt.missingFields));
+  const isCn = String(lang).toUpperCase() === 'CN';
+  if (missingFields.includes('sensitivity')) {
+    return isCn
+      ? '你目前的敏感度大概是低/中/高哪一档？这会直接影响频率建议。'
+      : 'Would you rate your sensitivity as low/medium/high? This directly changes the usage frequency recommendation.';
+  }
+  if (missingFields.includes('goals')) {
+    return isCn
+      ? '你当前最优先是控痘、提亮还是修护？我可以据此把替代方案收敛到 2-3 个。'
+      : 'What is your top priority now: acne control, brightening, or barrier repair? I can narrow alternatives to 2-3 options.';
+  }
+  return isCn
+    ? '你更在意“更温和”还是“见效更快”？我可以按这个偏好给你下一步选项。'
+    : 'Do you prefer “gentler” or “faster-visible results”? I can tune the next-step options based on that.';
+}
+
+function isProfileEchoSummaryText(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  return /\b(your profile|profile priorities|你的情况|你的画像|匹配点)\b/i.test(text);
+}
+
+function buildConservativeProductSummary(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const mechanisms = asStringArray(science.mechanisms);
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const isCn = String(lang).toUpperCase() === 'CN';
+  if (mechanisms.length) {
+    return isCn
+      ? `该产品主要目标是：${truncateText(mechanisms[0], 140)}。`
+      : `This formula mainly aims to: ${truncateText(mechanisms[0], 180)}.`;
+  }
+  if (riskNotes.length) {
+    const risk = humanizeRiskLine(riskNotes[0], lang) || riskNotes[0];
+    return isCn
+      ? `该产品可用，但需关注：${truncateText(risk, 140)}。`
+      : `This product can be usable, but watch for: ${truncateText(risk, 180)}.`;
+  }
+  return isCn
+    ? '该产品可作为基础方案尝试，建议先低频并观察皮肤耐受。'
+    : 'This product can be tried as a baseline option; start low-frequency and monitor tolerance.';
+}
+
+function pickAssessmentSummary({
+  assessment,
+  formulaIntent = [],
+  evidence = null,
+  reasons = [],
+  lang = 'EN',
+} = {}) {
+  const candidates = [];
+  const addCandidate = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    if (isProfileEchoSummaryText(text)) return;
+    candidates.push(text);
+  };
+  if (asPlainObject(assessment)) {
+    addCandidate(assessment.summary);
+    addCandidate(assessment.quick_summary);
+    addCandidate(assessment.quickSummary);
+  }
+  if (formulaIntent.length) addCandidate(formulaIntent[0]);
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const mechanisms = asStringArray(science.mechanisms);
+  if (mechanisms.length) addCandidate(mechanisms[0]);
+  for (const reason of Array.isArray(reasons) ? reasons : []) addCandidate(reason);
+  if (!candidates.length) {
+    return buildConservativeProductSummary(evidence, { lang });
+  }
+  return candidates[0];
+}
+
+function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    const steps = uniqueStrings(asStringArray(value).map((line) => truncateText(line, 220))).slice(0, 6);
+    if (!steps.length) return null;
+    return {
+      steps,
+      observation_window: String(lang).toUpperCase() === 'CN'
+        ? '先观察 10-14 天，再决定是否加频。'
+        : 'Monitor for 10-14 days before increasing frequency.',
+      stop_signs: String(lang).toUpperCase() === 'CN'
+        ? ['若持续刺痛/泛红/起皮，请暂停并回到温和修护。']
+        : ['Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs.'],
+    };
+  }
+  if (typeof value === 'string') {
+    const note = String(value || '').trim();
+    if (!note) return null;
+    return {
+      steps: [truncateText(note, 220)],
+      observation_window: String(lang).toUpperCase() === 'CN'
+        ? '先观察 10-14 天，再决定是否加频。'
+        : 'Monitor for 10-14 days before increasing frequency.',
+      stop_signs: String(lang).toUpperCase() === 'CN'
+        ? ['若持续刺痛/泛红/起皮，请暂停并回到温和修护。']
+        : ['Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs.'],
+    };
+  }
+  const obj = asPlainObject(value);
+  if (!obj) return null;
+  const timing = String(obj.timing || obj.time || '').trim();
+  const frequency = String(obj.frequency || '').trim();
+  const steps = uniqueStrings(asStringArray(obj.steps).map((line) => truncateText(line, 220))).slice(0, 5);
+  const notes = uniqueStrings(asStringArray(obj.notes).map((line) => truncateText(line, 220))).slice(0, 5);
+  const mergedSteps = uniqueStrings([...steps, ...notes]).slice(0, 6);
+  const observationWindow = String(obj.observation_window || obj.observationWindow || '').trim();
+  const stopSigns = uniqueStrings(asStringArray(obj.stop_signs || obj.stopSigns).map((line) => truncateText(line, 220))).slice(0, 4);
+  const out = {
+    ...(timing ? { timing } : {}),
+    ...(frequency ? { frequency } : {}),
+    ...(mergedSteps.length ? { steps: mergedSteps } : {}),
+    ...(observationWindow ? { observation_window: observationWindow } : {}),
+    ...(stopSigns.length ? { stop_signs: stopSigns } : {}),
+  };
+  if (!Object.keys(out).length) return null;
+  if (!out.observation_window) {
+    out.observation_window = String(lang).toUpperCase() === 'CN'
+      ? '先观察 10-14 天，再决定是否加频。'
+      : 'Monitor for 10-14 days before increasing frequency.';
+  }
+  if (!Array.isArray(out.stop_signs) || !out.stop_signs.length) {
+    out.stop_signs = String(lang).toUpperCase() === 'CN'
+      ? ['若持续刺痛/泛红/起皮，请暂停并回到温和修护。']
+      : ['Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs.'];
+  }
+  return out;
+}
+
+function buildHowToUseFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const isCn = String(lang).toUpperCase() === 'CN';
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const riskJoined = asStringArray(science.risk_notes ?? science.riskNotes).join(' | ').toLowerCase();
+  const hasDrynessRisk = /\b(dry|drying|tight|dehydrat|干燥|紧绷)\b/i.test(riskJoined);
+  const hasIrritationRisk = /\b(irrit|sting|burn|redness|刺激|刺痛|泛红)\b/i.test(riskJoined);
+  const steps = [];
+  if (isCn) {
+    steps.push('按由薄到厚叠加，先保湿再封层。');
+    steps.push('白天作为最后一步前请补足防晒。');
+    if (hasDrynessRisk) steps.push('若出现拔干，先叠加简单保湿修护层再上该产品。');
+    if (hasIrritationRisk) steps.push('先每周 2-3 次，耐受稳定后再加频。');
+  } else {
+    steps.push('Layer from thinnest to thickest; keep hydration before occlusive steps.');
+    steps.push('Use daytime SPF as the final AM step.');
+    if (hasDrynessRisk) steps.push('If dryness appears, add a simple barrier-hydration layer before this product.');
+    if (hasIrritationRisk) steps.push('Start at 2-3x/week and increase only after stable tolerance.');
+  }
+  return {
+    timing: isCn ? '早晚均可；敏感期优先夜间。' : 'AM/PM; prefer PM first during reactive phases.',
+    frequency: isCn ? '先每周 2-3 次，10-14 天稳定后再决定是否加频。' : 'Start 2-3x/week; only increase after 10-14 days of stable tolerance.',
+    steps: uniqueStrings(steps).slice(0, 6),
+    observation_window: isCn ? '观察 10-14 天，重点看刺痛、泛红、紧绷是否下降。' : 'Observe for 10-14 days and track stinging, redness, and tightness.',
+    stop_signs: isCn
+      ? ['持续刺痛 >30-60 秒', '泛红/干痒持续加重', '出现明显爆痘或屏障不稳迹象']
+      : ['Persistent stinging beyond 30-60 seconds', 'Worsening redness/dry itch', 'Noticeable breakout or barrier instability signals'],
+  };
 }
 
 const PRODUCT_INTEL_CONTRACT_VERSION = 'aurora.product_intel.contract.v2';
@@ -1206,6 +1894,22 @@ function buildSkinFitBlock(payload, { profileSummary = null, generatedAt = new D
   const reasons = asStringArray(assessment.reasons);
   const howToUse = asStringArray(assessment.how_to_use ?? assessment.howToUse);
   const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const scienceKeyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const scienceMechanisms = asStringArray(science.mechanisms);
+  const scienceFitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+  const hasScienceEvidence =
+    scienceKeyIngredients.length > 0 ||
+    scienceMechanisms.length > 0 ||
+    scienceFitNotes.length > 0 ||
+    riskNotes.length > 0;
+  const hasOnlyTemplateReasons =
+    reasons.length > 0 &&
+    reasons.every((line) => {
+      const text = String(line || '').trim();
+      if (!text) return true;
+      if (isGenericReason(text, 'EN')) return true;
+      return /(unknown|insufficient evidence|cannot complete|无法|证据不足|证据链|结论暂时为未知)/i.test(text);
+    });
 
   const profileSkinType = typeof profile.skinType === 'string' ? profile.skinType.trim() : '';
   const profileSensitivity = typeof profile.sensitivity === 'string' ? profile.sensitivity.trim().toLowerCase() : '';
@@ -1256,6 +1960,8 @@ function buildSkinFitBlock(payload, { profileSummary = null, generatedAt = new D
 
   const warnings = [];
   if (!profileGoals.length) warnings.push('profile.goals_missing');
+  const evidenceGateApplied = !hasScienceEvidence || hasOnlyTemplateReasons;
+  if (evidenceGateApplied) warnings.push('skin_fit_evidence_gate_applied');
 
   const evidenceItems = [];
   if (reasons.length) {
@@ -1297,14 +2003,36 @@ function buildSkinFitBlock(payload, { profileSummary = null, generatedAt = new D
     );
   }
 
-  const confidence = buildBlockConfidence({
-    coverage: (reasons.length ? 0.4 : 0) + (riskNotes.length ? 0.25 : 0) + (profileSkinType || profileSensitivity || profileBarrier ? 0.35 : 0),
-    source_quality: 0.74,
+  let confidence = buildBlockConfidence({
+    coverage: (() => {
+      const base = (reasons.length ? 0.4 : 0) + (riskNotes.length ? 0.25 : 0) + (profileSkinType || profileSensitivity || profileBarrier ? 0.35 : 0);
+      if (!evidenceGateApplied) return base;
+      return Math.min(base, hasScienceEvidence ? 0.58 : 0.36);
+    })(),
+    source_quality: evidenceGateApplied ? (hasScienceEvidence ? 0.62 : 0.5) : 0.74,
     freshness: 0.92,
-    consistency: hasIrritationRisk && !isCautionVerdict ? 0.62 : 0.72,
-    reasons: ['rules_first=skin_fit'],
+    consistency: evidenceGateApplied
+      ? Math.min(hasIrritationRisk && !isCautionVerdict ? 0.62 : 0.72, hasScienceEvidence ? 0.64 : 0.55)
+      : hasIrritationRisk && !isCautionVerdict
+        ? 0.62
+        : 0.72,
+    reasons: ['rules_first=skin_fit', ...(evidenceGateApplied ? ['evidence_gate=science_sparse'] : [])],
     missing_fields: missingFields,
   });
+  if (evidenceGateApplied) {
+    const ceiling = hasScienceEvidence ? 0.58 : 0.42;
+    if (Number(confidence.score) > ceiling) {
+      confidence = {
+        ...confidence,
+        score: Number(ceiling.toFixed(3)),
+        level: mapConfidenceLevel(ceiling),
+        reasons: uniqueStrings([
+          ...asStringArray(confidence.reasons),
+          hasScienceEvidence ? 'confidence_ceiling=58%' : 'confidence_ceiling=42%',
+        ]).slice(0, 8),
+      };
+    }
+  }
 
   return {
     block: {
@@ -1683,57 +2411,40 @@ function attachProductIntelContract(payload, { lang = 'EN', profileSummary = nul
 }
 
 function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = null } = {}) {
-  const p = asPlainObject(payload);
-  if (!p) return payload;
+  const basePayload = asPlainObject(payload);
+  if (!basePayload) return payload;
+  const p = reconcileProductAnalysisConsistency(basePayload, { lang });
+  const internalDebugCodes = uniqueStrings(asStringArray(p.internal_debug_codes ?? p.internalDebugCodes));
   const assessment = asPlainObject(p.assessment);
   if (!assessment) {
-    const ev = asPlainObject(p.evidence) || {};
-    const science = asPlainObject(ev.science) || {};
-    const social = asPlainObject(ev.social_signals || ev.socialSignals) || {};
-    const evidenceLooksMissing = (() => {
-      const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
-      const mechanisms = asStringArray(science.mechanisms);
-      const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
-      const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
-      const expertNotes = asStringArray(ev.expert_notes ?? ev.expertNotes);
-      const positives = asStringArray(social.typical_positive ?? social.typicalPositive);
-      const negatives = asStringArray(social.typical_negative ?? social.typicalNegative);
-      return (
-        keyIngredients.length === 0 &&
-        mechanisms.length === 0 &&
-        fitNotes.length === 0 &&
-        riskNotes.length === 0 &&
-        expertNotes.length === 0 &&
-        positives.length === 0 &&
-        negatives.length === 0
-      );
-    })();
-
-    const reasons = [];
-    if (String(lang).toUpperCase() === 'CN') {
-      reasons.push('目前无法获取可靠的产品分析结果，因此结论暂时为“未知”。');
-      if (evidenceLooksMissing) reasons.push('证据链缺失（成分/口碑/专家笔记未返回），无法做出有把握的评估。');
-      reasons.push('你可以补充产品链接或完整成分表（INCI），我再做更准确的 Deep Scan。');
-    } else {
-      reasons.push('I couldn’t retrieve a reliable product analysis right now, so the verdict is “Unknown”.');
-      if (evidenceLooksMissing) reasons.push('Evidence is missing (ingredients/social/expert notes were not returned), so confidence is low.');
-      reasons.push('Send the product link or full INCI ingredient list and I’ll re-run a deeper scan.');
-    }
-
+    const fallbackAnchor = asPlainObject(p.product);
     const fallbackPayload = {
       ...p,
       assessment: {
         verdict: String(lang).toUpperCase() === 'CN' ? '未知' : 'Unknown',
-        reasons: uniqueStrings(reasons).slice(0, 5),
+        reasons: buildDiagnosticUnknownReasons(p, { lang }),
+        ...(fallbackAnchor ? { anchor_product: fallbackAnchor } : {}),
       },
     };
-    return attachProductIntelContract(fallbackPayload, { lang, profileSummary });
+    return reconcileProductAnalysisConsistency(
+      attachProductIntelContract(fallbackPayload, { lang, profileSummary }),
+      { lang },
+    );
   }
 
   const verdict =
     typeof assessment.verdict === 'string' ? assessment.verdict.trim() : String(assessment.verdict || '').trim();
+  const hasTemplateSectionsFromModel =
+    readAssessmentStringArray(assessment, 'formula_intent', 'formulaIntent').length > 0 ||
+    readAssessmentStringArray(assessment, 'best_for', 'bestFor').length > 0 ||
+    readAssessmentStringArray(assessment, 'not_for', 'notFor').length > 0 ||
+    readAssessmentStringArray(assessment, 'if_not_ideal', 'ifNotIdeal').length > 0 ||
+    readAssessmentStringArray(assessment, 'better_pairing', 'betterPairing').length > 0;
 
-  const existingReasons = asStringArray(assessment.reasons);
+  const existingReasons = sanitizeAssessmentNarrativeLines(asStringArray(assessment.reasons), {
+    max: 10,
+    allowProfileEcho: false,
+  });
   const keptReasons = existingReasons
     .filter((r) => !isGenericReason(r, lang))
     .map((r) => truncateText(r, 200))
@@ -1745,7 +2456,9 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
   let reasons = keptReasons.slice();
 
   // Optional: inject profile-fit explanations when profile context is available (chat/product-analyze flows).
-  const profileReasons = buildProfileFitReasons(profileSummary ?? p.profile_summary ?? p.profileSummary ?? null, p.evidence, { lang });
+  const profileReasons = hasTemplateSectionsFromModel
+    ? []
+    : buildProfileFitReasons(profileSummary ?? p.profile_summary ?? p.profileSummary ?? null, p.evidence, { lang });
   let profileReasonsUsed = 0;
   if (profileReasons.length) {
     // CN users often receive mixed-language upstream reasons; prefer CN-ish reasons when we have them.
@@ -1774,6 +2487,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
         return true;
       }),
   ).slice(0, maxReasons);
+  reasons = sanitizeAssessmentNarrativeLines(reasons, { max: maxReasons, allowProfileEcho: false });
 
   if (reasons.length < minReasons) {
     const derived = buildReasonsFromEvidence(p.evidence, { lang, verdict });
@@ -1786,11 +2500,18 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
   }
 
   if (!reasons.length) {
-    reasons = [
-      String(lang).toUpperCase() === 'CN'
-        ? '上游未返回可用的解释理由（仅有结论标签）。'
-        : 'Upstream did not return usable reasoning (verdict label only).',
-    ];
+    const isUnknownVerdict = (() => {
+      const verdictToken = String(assessment.verdict || '').trim().toLowerCase();
+      return verdictToken === 'unknown' || verdictToken === '未知';
+    })();
+    if (isUnknownVerdict) reasons = buildDiagnosticUnknownReasons(p, { lang });
+    else {
+      reasons = [
+        String(lang).toUpperCase() === 'CN'
+          ? '上游未返回可用的解释理由（仅有结论标签）。'
+          : 'Upstream did not return usable reasoning (verdict label only).',
+      ];
+    }
   }
 
   const heroExisting = assessment.hero_ingredient ?? assessment.heroIngredient ?? null;
@@ -1815,12 +2536,71 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     }
   }
 
+  const formulaIntentExisting = readAssessmentStringArray(assessment, 'formula_intent', 'formulaIntent');
+  const formulaIntent = formulaIntentExisting.length
+    ? formulaIntentExisting.slice(0, 3)
+    : buildFormulaIntentFromEvidence(p.evidence, { lang });
+  const summaryRaw = pickAssessmentSummary({
+    assessment,
+    formulaIntent,
+    evidence: p.evidence,
+    reasons,
+    lang,
+  });
+  const summary = truncateText(String(summaryRaw || '').trim(), 260) || '';
+  const summarySanitized =
+    summary &&
+    isProfileEchoSummaryText(String(assessment.summary ?? assessment.quick_summary ?? assessment.quickSummary ?? '')) &&
+    !isProfileEchoSummaryText(summary);
+  if (summarySanitized) internalDebugCodes.push('summary_profile_echo_sanitized');
+  const bestForExisting = readAssessmentStringArray(assessment, 'best_for', 'bestFor');
+  const bestFor = sanitizeAssessmentNarrativeLines(bestForExisting.length
+    ? bestForExisting.slice(0, 3)
+    : buildBestForFromEvidence(p.evidence, { lang }).slice(0, 3), { max: 3, allowProfileEcho: false });
+  const notForExisting = readAssessmentStringArray(assessment, 'not_for', 'notFor');
+  const notFor = notForExisting.length
+    ? notForExisting.slice(0, 3)
+    : buildNotForFromEvidence(p.evidence, { lang }).slice(0, 3);
+  const ifNotIdealExisting = readAssessmentStringArray(assessment, 'if_not_ideal', 'ifNotIdeal');
+  const ifNotIdeal = ifNotIdealExisting.length
+    ? ifNotIdealExisting.slice(0, 3)
+    : buildIfNotIdealFromEvidence(p.evidence, { lang }).slice(0, 3);
+  const betterPairingExisting = readAssessmentStringArray(assessment, 'better_pairing', 'betterPairing');
+  const betterPairing = betterPairingExisting.length
+    ? betterPairingExisting.slice(0, 3)
+    : buildBetterPairingFromEvidence(p.evidence, { lang }).slice(0, 3);
+  const followUpQuestion = truncateText(
+    String(assessment.follow_up_question || assessment.followUpQuestion || '').trim(),
+    220,
+  ) || buildFollowUpQuestionFromPayload(p, { lang });
+  const howToUseNormalized =
+    normalizeHowToUseShape(assessment.how_to_use ?? assessment.howToUse, { lang }) ||
+    buildHowToUseFromEvidence(p.evidence, { lang });
+
   const outAssessment = {
     ...assessment,
     ...(hero && typeof hero === 'object' ? { hero_ingredient: hero } : {}),
+    ...(summary ? { summary } : {}),
+    ...(formulaIntent.length ? { formula_intent: formulaIntent } : {}),
+    ...(bestFor.length ? { best_for: bestFor } : {}),
+    ...(notFor.length ? { not_for: notFor } : {}),
+    ...(ifNotIdeal.length ? { if_not_ideal: ifNotIdeal } : {}),
+    ...(betterPairing.length ? { better_pairing: betterPairing } : {}),
+    ...(followUpQuestion ? { follow_up_question: followUpQuestion } : {}),
+    ...(howToUseNormalized ? { how_to_use: howToUseNormalized } : {}),
     reasons: uniqueStrings(reasons).slice(0, maxReasons),
   };
-  return attachProductIntelContract({ ...p, assessment: outAssessment }, { lang, profileSummary });
+  return reconcileProductAnalysisConsistency(
+    attachProductIntelContract(
+      {
+        ...p,
+        assessment: outAssessment,
+        ...(internalDebugCodes.length ? { internal_debug_codes: uniqueStrings(internalDebugCodes) } : {}),
+      },
+      { lang, profileSummary },
+    ),
+    { lang },
+  );
 }
 
 function normalizeDupeCompare(raw) {
@@ -1948,6 +2728,7 @@ module.exports = {
   normalizeProductParse,
   normalizeProductAnalysis,
   applyProductAnalysisGapContract,
+  reconcileProductAnalysisConsistency,
   enrichProductAnalysisPayload,
   normalizeDupeCompare,
   normalizeRecoGenerate,

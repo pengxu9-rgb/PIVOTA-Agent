@@ -23,6 +23,24 @@ test('intent canonical detects ingredient science from bilingual patterns', () =
   assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
 });
 
+test('intent canonical maps ingredient entry action to ingredient science', () => {
+  const out = inferCanonicalIntent({
+    message: '',
+    actionId: 'chip.start.ingredients.entry',
+  });
+  assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
+  assert.equal(out.source, 'action_id');
+});
+
+test('intent canonical maps ingredient diagnosis opt-in action to diagnosis_start', () => {
+  const out = inferCanonicalIntent({
+    message: '',
+    actionId: 'ingredient.optin_diagnosis',
+  });
+  assert.equal(out.intent, INTENT_ENUM.DIAGNOSIS_START);
+  assert.equal(out.source, 'action_id');
+});
+
 test('intent canonical maps "Send a link" to evaluate intent (anchor collect)', () => {
   const out = inferCanonicalIntent({
     message: 'Send a link',
@@ -46,7 +64,7 @@ test('intent canonical prefers travel_planning when travel cue and weather words
   assert.equal(out.intent, INTENT_ENUM.TRAVEL_PLANNING);
 });
 
-test('qa planner produces hard gate for recommendation with missing core profile', () => {
+test('qa planner produces soft gate for recommendation with missing core profile', () => {
   const plan = resolveQaPlan({
     intent: INTENT_ENUM.RECO_PRODUCTS,
     profile: { skinType: 'oily' },
@@ -56,9 +74,9 @@ test('qa planner produces hard gate for recommendation with missing core profile
     session: {},
   });
 
-  assert.equal(plan.gate_type, 'hard');
-  assert.equal(plan.next_step, 'ask');
-  assert.equal(plan.question_budget, 1);
+  assert.equal(plan.gate_type, 'soft');
+  assert.equal(plan.next_step, 'upstream');
+  assert.equal(plan.question_budget, 2);
   assert.ok(plan.required_fields.includes('sensitivity'));
 });
 
@@ -99,9 +117,9 @@ test('qa planner enforces one-question ask when safety requires info', () => {
     },
   });
 
-  assert.equal(plan.gate_type, 'hard');
-  assert.equal(plan.next_step, 'ask');
-  assert.equal(plan.question_budget, 1);
+  assert.equal(plan.gate_type, 'soft');
+  assert.equal(plan.next_step, 'upstream');
+  assert.equal(plan.question_budget, 2);
   assert.deepEqual(plan.required_fields, ['pregnancy_status']);
 });
 
@@ -127,6 +145,40 @@ test('safety engine blocks retinoid when pregnancy context is explicit in messag
 
   assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
   assert.ok(result.reasons.length > 0);
+});
+
+test('safety engine blocks CN pregnancy + retinoid wording consistently', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: '怀孕期间可以用A醇吗？',
+    profile: {},
+    language: 'CN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.ok(result.reasons.length > 0);
+});
+
+test('safety engine blocks CN pregnancy + hydroquinone wording consistently', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: '孕期可以用氢醌淡斑吗？',
+    profile: {},
+    language: 'CN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.ok(result.reasons.length > 0);
+});
+
+test('hard block allowlist keeps kb_v0 block level without downgrade', () => {
+  const out = safetyEngineInternal.applyHardBlockAllowlist({
+    id: 'kb_v0:TEST_BLOCK_RULE',
+    level: BLOCK_LEVEL.BLOCK,
+    reason: 'test',
+    reason_codes: ['test'],
+  });
+  assert.equal(out.level, BLOCK_LEVEL.BLOCK);
 });
 
 test('safety engine requires info when pregnancy unknown + retinoid', () => {
@@ -248,7 +300,7 @@ test('safety engine requires age info for unknown age + strong actives', () => {
   assert.ok(result.required_fields.includes('age_band') || result.required_questions.length > 0);
 });
 
-test('safety engine blocks infant/toddler + fragrance or essential oil', () => {
+test('safety engine warns infant/toddler + fragrance or essential oil', () => {
   const result = evaluateSafety({
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
     message: 'Can my toddler use a fragrance essential oil cream?',
@@ -256,7 +308,7 @@ test('safety engine blocks infant/toddler + fragrance or essential oil', () => {
     language: 'EN',
   });
 
-  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.equal(result.block_level, BLOCK_LEVEL.WARN);
 });
 
 test('epi calculator outputs bounded components and score', () => {

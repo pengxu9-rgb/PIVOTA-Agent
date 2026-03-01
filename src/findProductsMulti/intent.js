@@ -574,6 +574,10 @@ const BEAUTY_GENERAL_SIGNALS_ZH = [
   '出差護膚',
   '旅行护肤',
   '旅行護膚',
+  '香水',
+  '香氛',
+  '古龙',
+  '古龍',
 ];
 const BEAUTY_GENERAL_SIGNALS_EN = [
   'makeup',
@@ -586,24 +590,37 @@ const BEAUTY_GENERAL_SIGNALS_EN = [
   'date-night makeup',
   'travel skincare',
   'business trip skincare',
+  'perfume',
+  'fragrance',
+  'cologne',
+  'body mist',
 ];
 const BEAUTY_GENERAL_SIGNALS_ES = [
   'maquillaje',
   'rutina de belleza',
   'cuidado de la piel',
   'skincare',
+  'perfume',
+  'fragancia',
+  'colonia',
 ];
 const BEAUTY_GENERAL_SIGNALS_FR = [
   'maquillage',
   'routine beauté',
   'soin de la peau',
   'skincare',
+  'parfum',
+  'fragrance',
+  'eau de parfum',
 ];
 const BEAUTY_GENERAL_SIGNALS_JA = [
   'メイク',
   'メイクアップ',
   '化粧',
   'スキンケア',
+  '香水',
+  'フレグランス',
+  'コロン',
 ];
 
 function includesAny(haystack, needles) {
@@ -900,6 +917,10 @@ function classifyQueryClass({
     /预算|預算|以内|以內|以上|至少|不超过|不超過|无香|無香|防水|防风|防風|size|color|material|budget|under|above|at least|waterproof|windproof|fragrance[-\s]?free/i.test(
       lower,
     );
+  const hasDirectCategorySignal =
+    /香水|香氛|古龙|古龍|个护|個護|perfume|fragrance|cologne|body\s*mist|personal\s*care/i.test(
+      lower,
+    );
   const hasExploratorySignal =
     isBrowse ||
     /随便|隨便|whatever|anything|surprise me|random/i.test(lower);
@@ -908,6 +929,7 @@ function classifyQueryClass({
   if (hasGiftSignal) return 'gift';
   if (hasLookupToken && !hasMissionSignal && !hasScenarioSignal) return 'lookup';
   if (hasAttributeSignal && !hasMissionSignal && !hasScenarioSignal) return 'attribute';
+  if (hasDirectCategorySignal && !hasMissionSignal && !hasScenarioSignal) return 'category';
   if (hasMissionSignal) return 'mission';
   if (hasScenarioSignal) return 'scenario';
   if (hasExploratorySignal || scenarioName === 'browse' || scenarioName === 'discovery') {

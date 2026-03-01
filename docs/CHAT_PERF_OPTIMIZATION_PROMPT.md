@@ -1,6 +1,6 @@
 # Aurora Chatbox — Multi‑LLM Optimization Prompt (Performance + Routing + UX)
 
-Last updated: 2026-02-10
+Last updated: 2026-02-27
 
 Copy/paste this prompt into *multiple LLMs* to get independent, system-level proposals for improving Aurora chatbox reply correctness and performance.
 
@@ -26,6 +26,7 @@ Your job: propose **minimal‑risk, reversible** changes in an existing codebase
   - Chat entry: `src/auroraBff/routes.js` (`POST /v1/chat`)
   - Upstream LLM: `auroraChat()` in `src/auroraBff/auroraDecisionClient.js`
   - Profile + logs come from `src/auroraBff/memoryStore.js`
+  - `/v1/chat` external response contract is ChatCards v1 (`assistant_text/cards/follow_up_questions/suggested_quick_replies/ops/safety/telemetry`)
 
 ### Gating
 
@@ -65,7 +66,7 @@ More detail: `pivota-agent-backend/docs/CHATBOX_REPLY_LOGIC.md`
 
 3) **Session/profile snapshot sync hardened**
 - FE sends `session.profile` when local snapshot exists (not only after bootstrap)
-- BFF merges `session.profile` into server profile; more frequently echoes `env.session_patch.profile`
+- BFF merges `session.profile` into server profile; frontend consumes writes from ChatCards v1 `ops.profile_patch` / `ops.routine_patch`
 - Metrics:
   - `profile_context_missing_total{side=frontend|backend}`
   - `session_patch_profile_emitted_total{changed=true|false}`
@@ -150,4 +151,3 @@ Return:
 4) `Test Plan` (unit + integration)
 5) `Metrics` (new/updated; with labels)
 6) `Open Questions` (only if truly blocking)
-

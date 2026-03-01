@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const sharp = require('sharp');
 const { buildPhotoModulesCard } = require('../src/auroraBff/photoModulesV1');
 
@@ -108,6 +111,7 @@ test('skinmask fallback: model missing does not block photo_modules card generat
       DIAG_INGREDIENT_REC: 'false',
       DIAG_PRODUCT_REC: 'false',
       DIAG_SKINMASK_ENABLED: 'true',
+      DIAG_SKINMASK_BBOX_FALLBACK_ENABLED: 'true',
       DIAG_SKINMASK_MODEL_PATH: 'artifacts/__missing_skinmask_model__.onnx',
       DIAG_SKINMASK_TIMEOUT_MS: '300',
     },
@@ -123,7 +127,9 @@ test('skinmask fallback: model missing does not block photo_modules card generat
         requestId: 'skinmask_missing_model_case',
       });
 
-      assert.equal(inferred, null);
+      assert.ok(inferred && typeof inferred === 'object');
+      assert.equal(inferred.skinmask_source, 'diagnosis_bbox');
+      assert.equal(inferred.skinmask_fallback_reason, 'MODEL_MISSING');
       const card = buildPhotoModulesCard({
         requestId: 'skinmask_missing_model_case',
         analysis: buildAnalysisFixture(),
@@ -137,9 +143,12 @@ test('skinmask fallback: model missing does not block photo_modules card generat
       });
       assert.ok(card && card.card && card.card.type === 'photo_modules_v1');
       assert.equal(card.card.payload.used_photos, true);
+      assert.equal(card.card.payload.module_overlay_debug.skinmask_source, 'diagnosis_bbox');
+      assert.equal(card.card.payload.module_overlay_debug.skinmask_fallback_reason, 'MODEL_MISSING');
+      assert.equal(card.card.payload.module_overlay_debug.module_box_dynamic_applied, true);
       assert.equal(
         logger.calls.some(
-          (row) => row && row.payload && row.payload.fallback_reason === 'MODEL_MISSING' && row.message.includes('inference skipped'),
+          (row) => row && row.payload && row.payload.fallback_reason === 'MODEL_MISSING' && row.message.includes('fallback using diagnosis bbox'),
         ),
         true,
       );
@@ -155,7 +164,8 @@ test('skinmask fallback: inference exception still keeps used_photos card path h
       DIAG_INGREDIENT_REC: 'false',
       DIAG_PRODUCT_REC: 'false',
       DIAG_SKINMASK_ENABLED: 'true',
-      DIAG_SKINMASK_MODEL_PATH: 'artifacts/skinmask_v1.onnx',
+      DIAG_SKINMASK_BBOX_FALLBACK_ENABLED: 'true',
+      DIAG_SKINMASK_MODEL_PATH: __filename,
       DIAG_SKINMASK_TIMEOUT_MS: '300',
     },
     async () => {
@@ -174,7 +184,9 @@ test('skinmask fallback: inference exception still keeps used_photos card path h
           logger,
           requestId: 'skinmask_infer_exception_case',
         });
-        assert.equal(inferred, null);
+        assert.ok(inferred && typeof inferred === 'object');
+        assert.equal(inferred.skinmask_source, 'diagnosis_bbox');
+        assert.equal(inferred.skinmask_fallback_reason, 'ONNX_FAIL');
         const card = buildPhotoModulesCard({
           requestId: 'skinmask_infer_exception_case',
           analysis: buildAnalysisFixture(),
@@ -188,9 +200,12 @@ test('skinmask fallback: inference exception still keeps used_photos card path h
         });
         assert.ok(card && card.card && card.card.type === 'photo_modules_v1');
         assert.equal(card.card.payload.used_photos, true);
+        assert.equal(card.card.payload.module_overlay_debug.skinmask_source, 'diagnosis_bbox');
+        assert.equal(card.card.payload.module_overlay_debug.skinmask_fallback_reason, 'ONNX_FAIL');
+        assert.equal(card.card.payload.module_overlay_debug.module_box_dynamic_applied, true);
         assert.equal(
           logger.calls.some(
-            (row) => row && row.payload && row.payload.fallback_reason === 'ONNX_FAIL' && row.message.includes('inference failed'),
+            (row) => row && row.payload && row.payload.fallback_reason === 'ONNX_FAIL' && row.message.includes('fallback using diagnosis bbox'),
           ),
           true,
         );
@@ -199,4 +214,116 @@ test('skinmask fallback: inference exception still keeps used_photos card path h
       }
     },
   );
+});
+
+test('skinmask fallback: disabled mode still uses diagnosis bbox when available', async () => {
+  await withEnv(
+    {
+      DIAG_PHOTO_MODULES_CARD: 'true',
+      DIAG_OVERLAY_MODE: 'client',
+      DIAG_INGREDIENT_REC: 'false',
+      DIAG_PRODUCT_REC: 'false',
+      DIAG_SKINMASK_ENABLED: 'false',
+      DIAG_SKINMASK_BBOX_FALLBACK_ENABLED: 'true',
+      DIAG_SKINMASK_MODEL_PATH: 'artifacts/skinmask_v1.onnx',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { __internal } = require('../src/auroraBff/routes');
+      const logger = buildLogger();
+      const inferred = await __internal.maybeInferSkinMaskForPhotoModules({
+        imageBuffer: await makeFaceLikePng(),
+        diagnosisInternal: buildDiagnosisInternalFixture(),
+        logger,
+        requestId: 'skinmask_disabled_bbox_case',
+      });
+      assert.ok(inferred && typeof inferred === 'object');
+      assert.equal(inferred.skinmask_source, 'diagnosis_bbox');
+      assert.equal(inferred.skinmask_fallback_reason, 'DISABLED');
+
+      const card = buildPhotoModulesCard({
+        requestId: 'skinmask_disabled_bbox_case',
+        analysis: buildAnalysisFixture(),
+        usedPhotos: true,
+        photoQuality: { grade: 'degraded', reasons: ['fallback_test'] },
+        diagnosisInternal: buildDiagnosisInternalFixture(),
+        language: 'EN',
+        ingredientRecEnabled: false,
+        productRecEnabled: false,
+        skinMask: inferred,
+      });
+      assert.ok(card && card.card && card.card.type === 'photo_modules_v1');
+      assert.equal(card.card.payload.module_overlay_debug.skinmask_source, 'diagnosis_bbox');
+      assert.equal(card.card.payload.module_overlay_debug.skinmask_fallback_reason, 'DISABLED');
+      assert.equal(
+        logger.calls.some(
+          (row) => row && row.payload && row.payload.fallback_reason === 'DISABLED' && row.message.includes('fallback using diagnosis bbox'),
+        ),
+        true,
+      );
+    },
+  );
+});
+
+test('skinmask model bootstrap: downloads model from URL into cache path before inference', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-skinmask-bootstrap-'));
+  const cachePath = path.join(tmpDir, 'skinmask_v2.onnx');
+  try {
+    await withEnv(
+      {
+        DIAG_PHOTO_MODULES_CARD: 'true',
+        DIAG_OVERLAY_MODE: 'client',
+        DIAG_INGREDIENT_REC: 'false',
+        DIAG_PRODUCT_REC: 'false',
+        DIAG_SKINMASK_ENABLED: 'true',
+        DIAG_SKINMASK_BBOX_FALLBACK_ENABLED: 'true',
+        DIAG_SKINMASK_MODEL_PATH: 'https://example.com/models/skinmask_v2.onnx',
+        DIAG_SKINMASK_MODEL_CACHE_PATH: cachePath,
+        DIAG_SKINMASK_TIMEOUT_MS: '300',
+      },
+      async () => {
+        const moduleId = require.resolve('../src/auroraBff/routes');
+        delete require.cache[moduleId];
+        const { __internal } = require('../src/auroraBff/routes');
+        __internal.__resetSkinmaskModelBootstrapForTest();
+        let seenDownloadUrl = null;
+        let seenModelPath = null;
+        __internal.__setFetchSkinmaskModelBytesForTest(async ({ url }) => {
+          seenDownloadUrl = String(url || '');
+          return Buffer.from('fake-onnx-bytes');
+        });
+        __internal.__setInferSkinMaskOnFaceCropForTest(async ({ modelPath }) => {
+          seenModelPath = String(modelPath || '');
+          return {
+            ok: true,
+            skinmask_source: 'onnx',
+            bbox: { x: 0.12, y: 0.1, w: 0.76, h: 0.84 },
+            positive_ratio: 0.64,
+          };
+        });
+        try {
+          const inferred = await __internal.maybeInferSkinMaskForPhotoModules({
+            imageBuffer: await makeFaceLikePng(),
+            diagnosisInternal: buildDiagnosisInternalFixture(),
+            logger: buildLogger(),
+            requestId: 'skinmask_bootstrap_download_case',
+          });
+          assert.ok(inferred && typeof inferred === 'object');
+          assert.equal(inferred.ok, true);
+          assert.equal(inferred.skinmask_source, 'onnx');
+          assert.equal(seenDownloadUrl, 'https://example.com/models/skinmask_v2.onnx');
+          assert.equal(seenModelPath, cachePath);
+          assert.equal(fs.existsSync(cachePath), true);
+          assert.ok(fs.readFileSync(cachePath).length > 0);
+        } finally {
+          __internal.__resetInferSkinMaskOnFaceCropForTest();
+          __internal.__resetFetchSkinmaskModelBytesForTest();
+          __internal.__resetSkinmaskModelBootstrapForTest();
+        }
+      },
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

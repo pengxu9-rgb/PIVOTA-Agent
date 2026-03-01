@@ -1,6 +1,7 @@
 const request = require('supertest');
 
 jest.mock('axios', () => ({
+  defaults: {},
   post: jest.fn(),
 }));
 
@@ -83,4 +84,3 @@ describe('look replicator commerce invoke wrapper', () => {
     expect(res.body.error).toBe('UPSTREAM_UNREACHABLE');
   });
 });
-

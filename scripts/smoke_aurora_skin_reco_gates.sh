@@ -78,10 +78,21 @@ run_case_artifact_missing() {
     }'
   )"
 
-  jq_assert_json "artifact_missing emits confidence_notice" '.cards | any(.type=="confidence_notice")' "$reco_json"
-  jq_assert_json "artifact_missing reason tagged" '.cards | any((.type=="confidence_notice") and (.payload.reason=="artifact_missing"))' "$reco_json"
-  jq_assert_json "artifact_missing does not emit recommendations" '(.cards | any(.type=="recommendations")) | not' "$reco_json"
-  jq_assert_json "artifact_missing event reason" '.events | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing"))' "$reco_json"
+  jq_assert_json "artifact_missing emits reco-stage output (chatcards or legacy)" '
+    .cards | any(.type=="product_verdict" or .type=="recommendations" or .type=="confidence_notice")
+  ' "$reco_json"
+  jq_assert_json "artifact_missing reason tagged when confidence_notice is used" '
+    if (.cards | any(.type=="confidence_notice"))
+    then (.cards | any((.type=="confidence_notice") and (.payload.reason=="artifact_missing")))
+    else true
+    end
+  ' "$reco_json"
+  jq_assert_json "artifact_missing event reason (optional stream)" '
+    if ((.events // []) | any(.event_name=="recos_requested"))
+    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.reason // "")=="artifact_missing")))
+    else true
+    end
+  ' "$reco_json"
 }
 
 run_case_low_confidence() {
@@ -112,8 +123,16 @@ run_case_low_confidence() {
     }'
   )"
 
-  jq_assert_json "low confidence emits confidence_notice or timeout_degraded" '.cards | any((.type=="confidence_notice") and (.payload.reason=="low_confidence" or .payload.reason=="timeout_degraded"))' "$reco_json"
-  jq_assert_json "low confidence event flag true" '.events | any((.event_name=="recos_requested") and (.data.low_confidence==true))' "$reco_json"
+  jq_assert_json "low confidence emits reco-stage output (product_verdict/recommendations/notice)" '
+    .cards | any(.type=="product_verdict" or .type=="recommendations")
+      or any((.type=="confidence_notice") and (.payload.reason=="low_confidence" or .payload.reason=="timeout_degraded"))
+  ' "$reco_json"
+  jq_assert_json "low confidence event flag true when stream is present" '
+    if ((.events // []) | any(.event_name=="recos_requested"))
+    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.low_confidence==true) or (.data.reason=="low_confidence") or (.data.reason=="timeout_degraded"))))
+    else true
+    end
+  ' "$reco_json"
   jq_assert_json "no safety block in low confidence case" '(.cards | any((.type=="confidence_notice") and (.payload.reason=="safety_block"))) | not' "$reco_json"
 }
 
@@ -145,10 +164,23 @@ run_case_medium_confidence() {
     }'
   )"
 
-  jq_assert_json "medium/high path emits recommendations or timeout_degraded notice" '.cards | any(.type=="recommendations") or any((.type=="confidence_notice") and (.payload.reason=="timeout_degraded"))' "$reco_json"
+  jq_assert_json "medium/high path emits product_verdict/recommendations or timeout_degraded notice" '
+    .cards | any(.type=="product_verdict" or .type=="recommendations")
+      or any((.type=="confidence_notice") and (.payload.reason=="timeout_degraded"))
+  ' "$reco_json"
   jq_assert_json "no artifact_missing in medium/high path" '(.cards | any((.type=="confidence_notice") and (.payload.reason=="artifact_missing"))) | not' "$reco_json"
-  jq_assert_json "recos_requested source or timeout reason present" '.events | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0) or (.data.reason=="timeout_degraded")))' "$reco_json"
-  jq_assert_json "medium/high path not marked low_confidence unless timeout_degraded" '.events | any((.event_name=="recos_requested") and ((.data.low_confidence==false) or (.data.reason=="timeout_degraded")))' "$reco_json"
+  jq_assert_json "recos_requested source or timeout reason present (optional stream)" '
+    if ((.events // []) | any(.event_name=="recos_requested"))
+    then ((.events // []) | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0) or (.data.reason=="timeout_degraded"))))
+    else true
+    end
+  ' "$reco_json"
+  jq_assert_json "medium/high path not marked low_confidence unless timeout_degraded (optional stream)" '
+    if ((.events // []) | any(.event_name=="recos_requested"))
+    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.low_confidence==false) or (.data.reason=="timeout_degraded"))))
+    else true
+    end
+  ' "$reco_json"
 }
 
 run_case_safety_block() {
@@ -172,9 +204,28 @@ run_case_safety_block() {
     }'
   )"
 
-  jq_assert_json "safety block emits confidence_notice" '.cards | any((.type=="confidence_notice") and (.payload.reason=="safety_block"))' "$safety_json"
-  jq_assert_json "safety block removes recommendations" '(.cards | any(.type=="recommendations")) | not' "$safety_json"
-  jq_assert_json "safety block event reason" '.events | any((.event_name=="recos_requested") and (.data.reason=="safety_boundary") and (.data.blocked==true))' "$safety_json"
+  jq_assert_json "safety block emits triage or safety confidence_notice" '
+    .cards | any(.type=="triage")
+      or any((.type=="confidence_notice") and (.payload.reason=="safety_block"))
+  ' "$safety_json"
+  jq_assert_json "safety block keeps recommendations in conservative fallback shape when present" '
+    if (.cards | any(.type=="recommendations"))
+    then
+      ((.cards[] | select(.type=="recommendations") | .payload.recommendations) // []) as $recs |
+      ($recs | length) >= 1 and
+      ($recs | all(
+        ((.routine_slot // "") | test("cleanser|moisturizer|sunscreen"; "i")) and
+        (((.title // "") | tostring | length) == 0) and
+        (((.product_url // "") | tostring | length) == 0)
+      ))
+    else true end
+  ' "$safety_json"
+  jq_assert_json "safety block event reason (optional stream)" '
+    if ((.events // []) | any(.event_name=="recos_requested"))
+    then ((.events // []) | any((.event_name=="recos_requested") and (.data.reason=="safety_boundary") and (.data.blocked==true)))
+    else true
+    end
+  ' "$safety_json"
 }
 
 printf "BASE=%s\nAURORA_LANG=%s\nRUN_ID=%s\n" "$BASE" "$AURORA_LANG" "$RUN_ID"

@@ -84,6 +84,7 @@ function normalizeCaseTurns(caseDef) {
       language: String((turnDef && turnDef.language) || (caseDef && caseDef.language) || 'EN').toUpperCase(),
       session_profile:
         turnDef && turnDef.session_profile && typeof turnDef.session_profile === 'object' ? turnDef.session_profile : null,
+      wait_after_ms: Number.isFinite(Number(turnDef && turnDef.wait_after_ms)) ? Number(turnDef.wait_after_ms) : 0,
       expected: turnDef && turnDef.expected && typeof turnDef.expected === 'object' ? turnDef.expected : undefined,
       expected_local:
         turnDef && turnDef.expected_local && typeof turnDef.expected_local === 'object' ? turnDef.expected_local : undefined,
@@ -98,6 +99,7 @@ function normalizeCaseTurns(caseDef) {
       message: String((caseDef && caseDef.message) || ''),
       language: String((caseDef && caseDef.language) || 'EN').toUpperCase(),
       session_profile: caseDef && caseDef.session_profile && typeof caseDef.session_profile === 'object' ? caseDef.session_profile : null,
+      wait_after_ms: 0,
       expected: undefined,
       expected_local: undefined,
       expected_live: undefined,
@@ -245,6 +247,154 @@ function extractRequiredFields(body, meta) {
   return Array.from(set);
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasNonEmptyValue(value) {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  return Boolean(value);
+}
+
+function extractTravelReadiness(cards) {
+  const rows = Array.isArray(cards) ? cards : [];
+  const envStress = rows.find((item) => item && String(item.type || '') === 'env_stress');
+  if (!envStress || !isPlainObject(envStress.payload)) return null;
+  const payload = envStress.payload;
+  return isPlainObject(payload.travel_readiness) ? payload.travel_readiness : null;
+}
+
+function evaluateTravelAssertions({ assertions, travelReadiness, meta, errors }) {
+  const rule = isPlainObject(assertions) ? assertions : {};
+  const outErrors = Array.isArray(errors) ? errors : [];
+
+  if (Object.keys(rule).length === 0) return;
+  if (!isPlainObject(travelReadiness)) {
+    outErrors.push('travel_assertions failed: travel_readiness is missing');
+    return;
+  }
+
+  const destinationContext = isPlainObject(travelReadiness.destination_context) ? travelReadiness.destination_context : {};
+  const deltaVsHome = isPlainObject(travelReadiness.delta_vs_home) ? travelReadiness.delta_vs_home : {};
+  const confidence = isPlainObject(travelReadiness.confidence) ? travelReadiness.confidence : {};
+  const shoppingPreview = isPlainObject(travelReadiness.shopping_preview) ? travelReadiness.shopping_preview : {};
+  const jetlagSleep = isPlainObject(travelReadiness.jetlag_sleep) ? travelReadiness.jetlag_sleep : {};
+
+  if (typeof rule.destination_equals === 'string' && rule.destination_equals.trim()) {
+    const actual = String(destinationContext.destination || '');
+    if (actual !== String(rule.destination_equals)) {
+      outErrors.push(`travel_assertions.destination_equals expected=${String(rule.destination_equals)} actual=${actual || 'null'}`);
+    }
+  }
+
+  if (Number.isFinite(Number(rule.summary_tags_min))) {
+    const min = Math.max(0, Number(rule.summary_tags_min));
+    const tags = Array.isArray(deltaVsHome.summary_tags) ? deltaVsHome.summary_tags : [];
+    if (tags.length < min) {
+      outErrors.push(`travel_assertions.summary_tags_min expected>=${min} actual=${tags.length}`);
+    }
+  }
+
+  if (Number.isFinite(Number(rule.forecast_window_min))) {
+    const min = Math.max(0, Number(rule.forecast_window_min));
+    const rows = Array.isArray(travelReadiness.forecast_window) ? travelReadiness.forecast_window : [];
+    if (rows.length < min) {
+      outErrors.push(`travel_assertions.forecast_window_min expected>=${min} actual=${rows.length}`);
+    }
+  }
+
+  if (Number.isFinite(Number(rule.adaptive_actions_min))) {
+    const min = Math.max(0, Number(rule.adaptive_actions_min));
+    const rows = Array.isArray(travelReadiness.adaptive_actions) ? travelReadiness.adaptive_actions : [];
+    if (rows.length < min) {
+      outErrors.push(`travel_assertions.adaptive_actions_min expected>=${min} actual=${rows.length}`);
+    }
+  }
+
+  if (Array.isArray(rule.missing_inputs_any) && rule.missing_inputs_any.length) {
+    const expectedAny = rule.missing_inputs_any.map((x) => String(x || '').trim()).filter(Boolean);
+    const missingInputs = Array.isArray(confidence.missing_inputs)
+      ? confidence.missing_inputs.map((x) => String(x || '').trim())
+      : [];
+    const hit = expectedAny.some((item) => missingInputs.includes(item));
+    if (!hit) {
+      outErrors.push(
+        `travel_assertions.missing_inputs_any expected any of [${expectedAny.join(', ')}], actual [${missingInputs.join(', ')}]`,
+      );
+    }
+  }
+
+  if (rule.shopping_has_products_or_brands === true) {
+    const products = Array.isArray(shoppingPreview.products) ? shoppingPreview.products : [];
+    const brands = Array.isArray(shoppingPreview.brand_candidates) ? shoppingPreview.brand_candidates : [];
+    if (products.length === 0 && brands.length === 0) {
+      outErrors.push('travel_assertions.shopping_has_products_or_brands expected true but both arrays are empty');
+    }
+  }
+
+  if (Number.isFinite(Number(rule.buying_channels_min))) {
+    const min = Math.max(0, Number(rule.buying_channels_min));
+    const channels = Array.isArray(shoppingPreview.buying_channels) ? shoppingPreview.buying_channels : [];
+    if (channels.length < min) {
+      outErrors.push(`travel_assertions.buying_channels_min expected>=${min} actual=${channels.length}`);
+    }
+  }
+
+  if (Array.isArray(rule.jetlag_fields_all) && rule.jetlag_fields_all.length) {
+    for (const field of rule.jetlag_fields_all) {
+      const key = String(field || '').trim();
+      if (!key) continue;
+      if (!hasNonEmptyValue(jetlagSleep[key])) {
+        outErrors.push(`travel_assertions.jetlag_fields_all missing field: ${key}`);
+      }
+    }
+  }
+
+  if (Number.isFinite(Number(rule.sleep_tips_min))) {
+    const min = Math.max(0, Number(rule.sleep_tips_min));
+    const rows = Array.isArray(jetlagSleep.sleep_tips) ? jetlagSleep.sleep_tips : [];
+    if (rows.length < min) {
+      outErrors.push(`travel_assertions.sleep_tips_min expected>=${min} actual=${rows.length}`);
+    }
+  }
+
+  if (Number.isFinite(Number(rule.mask_tips_min))) {
+    const min = Math.max(0, Number(rule.mask_tips_min));
+    const rows = Array.isArray(jetlagSleep.mask_tips) ? jetlagSleep.mask_tips : [];
+    if (rows.length < min) {
+      outErrors.push(`travel_assertions.mask_tips_min expected>=${min} actual=${rows.length}`);
+    }
+  }
+
+  if (rule.jetlag_risk_rule === true) {
+    const hoursDiff = Number(jetlagSleep.hours_diff);
+    const risk = String(jetlagSleep.risk_level || '').trim().toLowerCase();
+    if (!Number.isFinite(hoursDiff) || !risk) {
+      outErrors.push(
+        `travel_assertions.jetlag_risk_rule missing hours_diff/risk_level (hours_diff=${String(jetlagSleep.hours_diff)}, risk_level=${String(jetlagSleep.risk_level)})`,
+      );
+    } else {
+      const expectedRisk = hoursDiff >= 9 ? 'high' : hoursDiff >= 5 ? 'medium' : 'low';
+      if (risk !== expectedRisk) {
+        outErrors.push(`travel_assertions.jetlag_risk_rule expected=${expectedRisk} actual=${risk} (hours_diff=${hoursDiff})`);
+      }
+    }
+  }
+
+  if (isPlainObject(rule.meta_bool) && isPlainObject(meta)) {
+    for (const [key, expected] of Object.entries(rule.meta_bool)) {
+      const actual = Boolean(meta[key]);
+      if (actual !== Boolean(expected)) {
+        outErrors.push(`travel_assertions.meta_bool ${String(key)} expected=${String(Boolean(expected))} actual=${String(actual)}`);
+      }
+    }
+  }
+}
+
 function assertIncludesAny(target, expectedAny) {
   if (!Array.isArray(expectedAny) || !expectedAny.length) return true;
   return expectedAny.some((item) => target.includes(String(item)));
@@ -253,6 +403,24 @@ function assertIncludesAny(target, expectedAny) {
 function assertIncludesAll(target, expectedAll) {
   if (!Array.isArray(expectedAll) || !expectedAll.length) return true;
   return expectedAll.every((item) => target.includes(String(item)));
+}
+
+function expectationMentionsEpi(expectedAny) {
+  if (!Array.isArray(expectedAny) || !expectedAny.length) return false;
+  return expectedAny.some((item) => /(^|\b)epi(\b|$)|environmental pressure index|旅行环境压力指数/i.test(String(item)));
+}
+
+function hasEpiSignalInEnvStressCard(cards) {
+  if (!Array.isArray(cards) || !cards.length) return false;
+  const card = cards.find((item) => item && String(item.type || '') === 'env_stress');
+  if (!card || typeof card !== 'object') return false;
+  const payloadText = JSON.stringify(card && card.payload ? card.payload : {}).toLowerCase();
+  if (!payloadText) return false;
+  return (
+    payloadText.includes('epi') ||
+    payloadText.includes('environmental pressure index') ||
+    payloadText.includes('旅行环境压力指数')
+  );
 }
 
 function buildHeaderMap(inputHeaders = {}) {
@@ -368,13 +536,29 @@ function evaluateCase({ caseDef, turnDef, turnIndex, mode, status, body, headers
     }
   }
 
+  if (isPlainObject(expectation.travel_assertions)) {
+    evaluateTravelAssertions({
+      assertions: expectation.travel_assertions,
+      travelReadiness: extractTravelReadiness(cards),
+      meta,
+      errors,
+    });
+  }
+
   if (Array.isArray(expectation.assistant_contains_any) && expectation.assistant_contains_any.length) {
     if (allowLiveTemplateFallback) {
       warnings.push('assistant_contains_any skipped due degraded local_template fallback');
     } else {
       const lowerText = assistantText.toLowerCase();
       const hit = expectation.assistant_contains_any.some((item) => lowerText.includes(String(item).toLowerCase()));
-      if (!hit) {
+      const cardsText = JSON.stringify(cards || []).toLowerCase();
+      const cardHit = expectation.assistant_contains_any.some((item) => cardsText.includes(String(item).toLowerCase()));
+      const epiFallbackHit =
+        !hit &&
+        !cardHit &&
+        expectationMentionsEpi(expectation.assistant_contains_any) &&
+        hasEpiSignalInEnvStressCard(cards);
+      if (!hit && !cardHit && !epiFallbackHit) {
         errors.push(`assistant content missing any of [${expectation.assistant_contains_any.join(', ')}]`);
       }
     }
@@ -482,6 +666,10 @@ function evaluateCase({ caseDef, turnDef, turnIndex, mode, status, body, headers
     fetch_calls: Number(fetchCalls),
     mismatch_count: mismatch.mismatch ? 1 : 0,
     meta_missing: meta ? 0 : 1,
+    assistant_message: assistantText,
+    cards,
+    meta: meta || null,
+    response_body: body && typeof body === 'object' ? body : {},
   };
 }
 
@@ -642,6 +830,9 @@ async function runLocalMockCases(cases, strictMeta) {
               fetchCalls: mockFetch.getCallCount(),
             });
             turnResults.push(evaluated);
+            if (Number.isFinite(Number(turnDef && turnDef.wait_after_ms)) && Number(turnDef.wait_after_ms) > 0) {
+              await sleep(Number(turnDef.wait_after_ms));
+            }
           }
 
           const caseErrors = turnResults.flatMap((item) => item.errors || []);
@@ -836,6 +1027,9 @@ async function runStagingLiveCases(cases, base, strictMeta, options = {}) {
         );
       }
       turnResults.push(evaluated);
+      if (Number.isFinite(Number(turnDef && turnDef.wait_after_ms)) && Number(turnDef.wait_after_ms) > 0) {
+        await sleep(Number(turnDef.wait_after_ms));
+      }
     }
 
     const caseErrors = turnResults.flatMap((item) => item.errors || []);

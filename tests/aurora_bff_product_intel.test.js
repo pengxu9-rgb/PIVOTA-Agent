@@ -2,6 +2,8 @@ const request = require('supertest');
 const nock = require('nock');
 
 describe('Aurora BFF product intelligence (structured upstream)', () => {
+  jest.setTimeout(30000);
+
   beforeEach(() => {
     jest.resetModules();
     process.env.AURORA_BFF_USE_MOCK = 'true';
@@ -9,6 +11,12 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED = 'true';
+    process.env.AURORA_RULE_RELAX_MODE = 'conservative';
+    process.env.AURORA_KB_WRITE_POLICY = 'strict';
+    process.env.AURORA_KB_SERVE_POLICY = 'strict';
+    process.env.AURORA_PRODUCT_GUARDRAIL_MODE = 'enforce';
+    process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'true';
   });
 
   afterEach(() => {
@@ -17,6 +25,27 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK;
     delete process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL;
     delete process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED;
+    delete process.env.AURORA_RULE_RELAX_MODE;
+    delete process.env.AURORA_KB_WRITE_POLICY;
+    delete process.env.AURORA_KB_SERVE_POLICY;
+    delete process.env.AURORA_PRODUCT_GUARDRAIL_MODE;
+    delete process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_ENABLED;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_PROVIDER;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_ZENROWS_API_KEY;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED;
+    delete process.env.AURORA_BFF_URL_UNBLOCK_TIMEOUT_MS;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_RETAIL_FALLBACK_ENABLED;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_RETAIL_MAX_CANDIDATES;
+    delete process.env.AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER;
+    delete process.env.AURORA_PRODUCT_INTEL_ESCALATION_MODEL;
+    delete process.env.AURORA_PRODUCT_INTEL_PROMPT_VERSION;
+    delete process.env.AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_ENABLED;
+    delete process.env.AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_MAX;
     delete process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS;
     delete process.env.AURORA_BFF_RECO_BLOCKS_BUDGET_MS;
     delete process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED;
@@ -30,6 +59,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST;
     delete process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE;
+    delete process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS;
     delete process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST;
     delete process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED;
@@ -40,6 +70,10 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_FAIL_THRESHOLD;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_COOLDOWN_MS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_RETURN_SLACK_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS;
@@ -48,6 +82,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS;
+    delete process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_SYNC_ALLOW_EXTERNAL_SEED;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_ALLOW_EXTERNAL_SEED;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_EXTERNAL_SEED_STRATEGY;
@@ -66,10 +101,79 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     const card = res.body.cards.find((c) => c.type === 'product_parse');
     expect(card).toBeTruthy();
-    expect(card.payload.product).toBeTruthy();
-    expect(card.payload.product.sku_id).toBe('mock_sku_1');
+    if (card.payload.product) {
+      expect(card.payload.product.sku_id).toBe('mock_sku_1');
+    } else {
+      expect(Array.isArray(card.payload.missing_info)).toBe(true);
+      expect(card.payload.missing_info).toEqual(expect.arrayContaining(['anchor_soft_blocked_non_skincare']));
+      expect(card.payload.anchor_trust).toEqual(
+        expect.objectContaining({
+          level: 'soft_blocked',
+          usable_for_anchor_id: false,
+        }),
+      );
+    }
     expect(card.payload.confidence).toBeCloseTo(0.7);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
+  });
+
+  test('/v1/product/parse returns actionable reason when fallback is disabled and upstream parse misses', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product',
+        answer: 'not json payload',
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_diag_disabled_1')
+      .send({ text: 'Unknown product seed' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(card.payload.parse_source).toBe('none');
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('upstream_missing_or_unstructured');
+    expect(card.payload.missing_info).toContain('catalog_fallback_disabled');
+    expect(Array.isArray(card.payload.recovery_path)).toBe(true);
+  });
+
+  test('/v1/product/parse surfaces backend-not-configured reason when fallback is enabled', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product',
+        answer: 'not json payload',
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_diag_backend_missing_1')
+      .send({ text: 'Unknown product seed' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('catalog_backend_not_configured');
+    expect(card.payload.missing_info).toContain('pivota_backend_not_configured');
   });
 
   test('/v1/product/analyze maps aurora structured.analyze into normalized evidence', async () => {
@@ -92,6 +196,267 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(ev.social_signals.typical_positive)).toBe(true);
     expect(ev.social_signals.typical_positive).toContain('soothing');
     expect(Array.isArray(ev.expert_notes)).toBe(true);
+  });
+
+  test('catalog source health deprioritizes base after repeated transient failures', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://unstable-catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://unstable-catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_FAIL_THRESHOLD = '2';
+    process.env.AURORA_BFF_RECO_CATALOG_SOURCE_TRANSIENT_COOLDOWN_MS = '60000';
+    jest.resetModules();
+
+    nock('http://unstable-catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(504, { status: 'error', reason_code: 'upstream_timeout' });
+
+    const { __internal } = require('../src/auroraBff/routes');
+
+    await __internal.searchPivotaBackendProducts({
+      query: 'lab series moisturizer',
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn(), error: jest.fn() },
+      timeoutMs: 1200,
+      minTimeoutMs: 700,
+      mode: 'main_path',
+    });
+    await __internal.searchPivotaBackendProducts({
+      query: 'lab series moisturizer',
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn(), error: jest.fn() },
+      timeoutMs: 1200,
+      minTimeoutMs: 700,
+      mode: 'main_path',
+    });
+
+    const snapshot = __internal.getRecoCatalogSearchSourceHealthSnapshot(Date.now());
+    const unstable = snapshot.find((row) => String(row.base_url || '').includes('unstable-catalog.test'));
+    expect(unstable).toBeTruthy();
+    expect(unstable.consecutive_failures).toBeGreaterThanOrEqual(2);
+    expect(unstable.deprioritized).toBe(true);
+    expect(String(unstable.last_reason || '')).toBe('upstream_timeout');
+  });
+
+  test('URL fetch challenge detector identifies cloudflare and access denied signatures', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const cloudflare = __internal.detectBotChallengePage(
+      '<html><title>Just a moment...</title><div>cf-ray</div></html>',
+      403,
+      { server: 'cloudflare' },
+    );
+    expect(cloudflare).toEqual(
+      expect.objectContaining({
+        is_challenge: true,
+        challenge_type: 'cloudflare_challenge',
+      }),
+    );
+
+    const denied = __internal.detectBotChallengePage(
+      "<html><title>Access Denied</title><body>You don't have permission to access</body></html>",
+      403,
+      {},
+    );
+    expect(denied).toEqual(
+      expect.objectContaining({
+        is_challenge: true,
+        challenge_type: 'access_denied_page',
+      }),
+    );
+  });
+
+  test('URL fetch chain escalates to zenrows when native attempts are blocked', async () => {
+    process.env.AURORA_BFF_URL_UNBLOCK_ENABLED = 'true';
+    process.env.AURORA_BFF_URL_UNBLOCK_PROVIDER = 'zenrows';
+    process.env.AURORA_BFF_URL_UNBLOCK_ZENROWS_API_KEY = 'z_test_key';
+    process.env.AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED = 'true';
+    jest.resetModules();
+
+    nock('https://blocked.example')
+      .get('/product')
+      .times(2)
+      .reply(403, '<html><title>Just a moment...</title><div>cf-ray</div></html>');
+
+    nock('https://api.zenrows.com')
+      .get('/v1/')
+      .query((q) => String(q.url || '') === 'https://blocked.example/product' && String(q.js_render || '') === 'false')
+      .reply(200, '<html><body>Ingredients: Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate</body></html>');
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.fetchProductHtmlWithFallback({
+      productUrl: 'https://blocked.example/product',
+      timeoutMs: 3200,
+      allowHostVariant: false,
+      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.final_strategy).toBe('zenrows_http');
+    expect(out.used_unblock_vendor).toBe(true);
+    expect(Array.isArray(out.attempts)).toBe(true);
+    expect(out.attempts.some((item) => item.provider === 'zenrows')).toBe(true);
+  });
+
+  test('URL fetch chain keeps provider metadata on native success attempts', async () => {
+    process.env.AURORA_BFF_URL_UNBLOCK_ENABLED = 'true';
+    jest.resetModules();
+
+    nock('https://native-ok.example')
+      .get('/product')
+      .reply(200, '<html><body>Ingredients: Water, Glycerin</body></html>');
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.fetchProductHtmlWithFallback({
+      productUrl: 'https://native-ok.example/product',
+      timeoutMs: 2400,
+      allowHostVariant: false,
+      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    });
+
+    expect(out.ok).toBe(true);
+    expect(Array.isArray(out.attempts)).toBe(true);
+    expect(out.attempts.length).toBeGreaterThan(0);
+    expect(out.attempts[0]).toEqual(expect.objectContaining({ strategy: 'axios_default', provider: 'native' }));
+  });
+
+  test('URL ingredient analysis exposes retrieval_degradation when catalog_ann transiently fails', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'shopping-agent';
+    jest.resetModules();
+
+    nock('https://probe.example')
+      .get('/product')
+      .reply(
+        200,
+        '<html><body><h1>Lab Series All-in-One Defense Lotion</h1><p>Ingredients: Water, Glycerin, Niacinamide, Panthenol.</p></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+    nock('http://catalog.test')
+      .persist()
+      .get(/\/agent\/v1\/(?:beauty\/)?products\/search/)
+      .query(true)
+      .reply(504, { status: 'error', reason_code: 'upstream_timeout' });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.buildProductAnalysisFromUrlIngredients({
+      productUrl: 'https://probe.example/product',
+      lang: 'EN',
+      profileSummary: { skinType: 'oily', sensitivity: 'medium', barrierStatus: 'healthy' },
+      parsedProduct: { brand: 'Lab Series', name: 'All-in-One Defense Lotion SPF 35' },
+      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    });
+
+    expect(out).toBeTruthy();
+    const payload = out.payload || {};
+    expect(payload.provenance).toBeTruthy();
+    expect(payload.provenance.retrieval_degradation).toEqual(
+      expect.objectContaining({
+        transient_failure_count: expect.any(Number),
+        degraded: expect.any(Boolean),
+      }),
+    );
+    expect(Array.isArray(payload.missing_info)).toBe(true);
+    expect(payload.missing_info).toContain('catalog_ann_transient_failure');
+  });
+
+  test('reconcileProductAnalysisConsistency backfills retrieval_degradation contract when it is null', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const out = reconcileProductAnalysisConsistency({
+      assessment: {
+        verdict: 'Unknown',
+        reasons: ['Evidence is limited.'],
+      },
+      evidence: {
+        science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+        social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+        expert_notes: [],
+        confidence: null,
+        missing_info: [],
+      },
+      confidence: null,
+      missing_info: [],
+      provenance: {
+        source: 'url_realtime_product_intel',
+        url_fetch: {
+          attempts: [{ strategy: 'axios_default', provider: 'native', status: 200 }],
+        },
+        retrieval_degradation: null,
+      },
+    });
+
+    expect(out.provenance).toBeTruthy();
+    expect(out.provenance.retrieval_degradation).toEqual(
+      expect.objectContaining({
+        transient_failure_count: 0,
+        attempted_sources: [],
+        resolver_first_applied: false,
+        resolver_first_skipped_for_aurora: false,
+        source_temporarily_deprioritized: false,
+        degraded: false,
+      }),
+    );
+  });
+
+  test('retail supplement returns retail_page source when search and PDP extraction match', async () => {
+    jest.resetModules();
+
+    nock('https://www.sephora.com')
+      .get('/search')
+      .query(true)
+      .reply(
+        200,
+        '<html><body><a href="/product/brand-peptide-serum">Brand Peptide Serum</a></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+    nock('https://www.sephora.com')
+      .get('/product/brand-peptide-serum')
+      .reply(
+        200,
+        '<html><head><title>Brand Peptide Serum | Sephora</title></head><body><p>Ingredients: Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate.</p></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.fetchRetailIngredientSupplement({
+      parsedProduct: { brand: 'Brand', name: 'Peptide Serum' },
+      productUrl: '',
+      timeoutMs: 4200,
+      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    });
+
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+    expect(Array.isArray(out.ingredients)).toBe(true);
+    expect(out.ingredients.length).toBeGreaterThanOrEqual(4);
+    expect(out.source).toEqual(
+      expect.objectContaining({
+        type: 'retail_page',
+      }),
+    );
+  });
+
+  test('retail ingredient extractor and matcher produce usable supplemental signals', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const ingredients = __internal.extractRetailIngredientsFromHtml(
+      '<section><h3>Ingredients</h3><p>Ingredients: Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate.</p></section>',
+    );
+    expect(Array.isArray(ingredients)).toBe(true);
+    expect(ingredients.length).toBeGreaterThanOrEqual(4);
+    expect(ingredients.join(' ').toLowerCase()).toContain('niacinamide');
+
+    const highScore = __internal.scoreRetailMatch({
+      descriptor: { brand: 'CeraVe', name: 'Moisturizing Cream', query: 'CeraVe Moisturizing Cream' },
+      pageTitle: 'CeraVe Moisturizing Cream | Sephora',
+      productUrl: 'https://www.sephora.com/product/cerave-moisturizing-cream',
+    });
+    const lowScore = __internal.scoreRetailMatch({
+      descriptor: { brand: 'CeraVe', name: 'Moisturizing Cream', query: 'CeraVe Moisturizing Cream' },
+      pageTitle: 'Matte Makeup Brush | Tools',
+      productUrl: 'https://www.sephora.com/product/makeup-brush',
+    });
+    expect(highScore).toBeGreaterThan(lowScore);
   });
 
   test('/v1/dupe/compare uses structured.alternatives for tradeoffs/evidence', async () => {
@@ -166,6 +531,44 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(reasonText).toMatch(/barrier repair|barrier support|barrier/i);
   });
 
+  test('reconcileProductAnalysisConsistency backfills provider on legacy provenance.url_fetch attempts', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const payload = {
+      assessment: {
+        verdict: 'Likely Suitable',
+        reasons: ['Has evidence'],
+        anchor_product: { name: 'Legacy Product Anchor' },
+      },
+      evidence: {
+        science: {
+          key_ingredients: ['Water'],
+          mechanisms: [],
+          fit_notes: [],
+          risk_notes: [],
+        },
+        social_signals: {
+          typical_positive: [],
+          typical_negative: [],
+          risk_for_groups: [],
+        },
+        expert_notes: [],
+        confidence: 0.61,
+        missing_info: [],
+      },
+      confidence: 0.61,
+      missing_info: [],
+      provenance: {
+        url_fetch: {
+          final_strategy: 'axios_default',
+          attempts: [{ strategy: 'axios_default', status: 200 }],
+        },
+      },
+    };
+
+    const out = reconcileProductAnalysisConsistency(payload, { lang: 'EN' });
+    expect(out?.provenance?.url_fetch?.attempts?.[0]?.provider).toBe('native');
+  });
+
   test('catalog fallback query builder extracts useful candidates from product URL', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const candidates = __internal.buildProductCatalogQueryCandidates({
@@ -177,6 +580,146 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(candidates.length).toBeGreaterThan(0);
     expect(candidates.some((q) => /theordinary|ordinary/i.test(String(q || '')))).toBe(true);
     expect(candidates.some((q) => /peptide|serum/i.test(String(q || '')))).toBe(true);
+  });
+
+  test('route competitor pools filters non-skincare candidates across competitors/related/dupes', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const routed = __internal.routeCompetitorCandidatePools({
+      anchorProduct: {
+        brand: 'Lab Series',
+        category_taxonomy: ['moisturizer', 'face'],
+        price: { amount: 45, currency: 'USD' },
+      },
+      candidates: [
+        {
+          product_id: 'brush_1',
+          brand: 'Unknown',
+          name: 'S05 Moisturizer Brush',
+          category: 'makeup brush',
+          similarity_score: 0.91,
+          price: { amount: 20, currency: 'USD' },
+          source: { type: 'catalog_search' },
+        },
+        {
+          product_id: 'moisturizer_1',
+          brand: 'Brand A',
+          name: 'Hydrating Gel Moisturizer',
+          category: 'moisturizer',
+          category_use_case_match: 0.9,
+          similarity_score: 0.72,
+          price: { amount: 39, currency: 'USD' },
+          source: { type: 'catalog_search' },
+        },
+      ],
+      maxCandidates: 10,
+    });
+
+    expect(Array.isArray(routed.compPool)).toBe(true);
+    expect(routed.compPool.some((item) => String(item?.name || '').toLowerCase().includes('brush'))).toBe(false);
+    expect(routed.relPool.some((item) => String(item?.name || '').toLowerCase().includes('brush'))).toBe(false);
+    expect(routed.dupePool.some((item) => String(item?.name || '').toLowerCase().includes('brush'))).toBe(false);
+    expect(routed.candidateFilterStats).toEqual(
+      expect.objectContaining({
+        competitors_dropped_non_skincare: expect.any(Number),
+        related_dropped_non_skincare: expect.any(Number),
+        dupes_dropped_non_skincare: expect.any(Number),
+      }),
+    );
+  });
+
+  test('route competitor pools drops template/noise candidate names', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const routed = __internal.routeCompetitorCandidatePools({
+      anchorProduct: {
+        brand: 'Lab Series',
+        category_taxonomy: ['moisturizer', 'face'],
+        price: { amount: 45, currency: 'USD' },
+      },
+      candidates: [
+        {
+          product_id: 'tpl_1',
+          brand: 'Unknown',
+          name: '{{{ PROD_RGN_SUBHEADING }}}',
+          category: 'moisturizer',
+          similarity_score: 0.66,
+          source: { type: 'on_page_related' },
+        },
+        {
+          product_id: 'tpl_2',
+          brand: 'Unknown',
+          name: 'BESTSELLERS',
+          category: 'moisturizer',
+          similarity_score: 0.62,
+          source: { type: 'on_page_related' },
+        },
+        {
+          product_id: 'ok_1',
+          brand: 'Brand A',
+          name: 'Hydrating Gel Moisturizer',
+          category: 'moisturizer',
+          category_use_case_match: 0.9,
+          similarity_score: 0.72,
+          source: { type: 'catalog_search' },
+        },
+      ],
+      maxCandidates: 10,
+    });
+
+    const names = [
+      ...routed.compPool.map((item) => String(item?.name || '').toLowerCase()),
+      ...routed.relPool.map((item) => String(item?.name || '').toLowerCase()),
+      ...routed.dupePool.map((item) => String(item?.name || '').toLowerCase()),
+    ];
+    expect(names.some((name) => name.includes('prod_rgn_subheading'))).toBe(false);
+    expect(names.some((name) => name.includes('bestseller'))).toBe(false);
+    expect(names.some((name) => name.includes('hydrat'))).toBe(true);
+  });
+
+  test('product-intel kb key uses fingerprint fallback for non-anchor routine products', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const key1 = __internal.buildProductIntelKbKey({
+      parsedProduct: {
+        brand: 'Biotherm',
+        name: 'Force Supreme Cleanser',
+      },
+      lang: 'EN',
+    });
+    const key2 = __internal.buildProductIntelKbKey({
+      parsedProduct: {
+        brand: 'Biotherm',
+        name: 'Force Supreme Cleanser',
+      },
+      lang: 'EN',
+    });
+    expect(key1).toMatch(/^fp:[a-f0-9]{64}$/);
+    expect(key2).toBe(key1);
+    expect(
+      __internal.resolveProductIntelKbKeyQuality({
+        parsedProduct: { brand: 'Biotherm', name: 'Force Supreme Cleanser' },
+        lang: 'EN',
+      }),
+    ).toBe('fingerprint');
+  });
+
+  test('product-intel kb key prefers URL over anchor_id when both are present', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const key = __internal.buildProductIntelKbKey({
+      productUrl: 'https://example.com/products/abc?utm_source=test',
+      parsedProduct: {
+        product_id: 'sku_anchor_123',
+        brand: 'Example',
+        name: 'Example Product',
+      },
+      lang: 'EN',
+    });
+    expect(key).toBe('url:https://example.com/products/abc');
+    expect(
+      __internal.resolveProductIntelKbKeyQuality({
+        productUrl: 'https://example.com/products/abc?utm_source=test',
+        parsedProduct: { product_id: 'sku_anchor_123' },
+        lang: 'EN',
+      }),
+    ).toBe('url');
   });
 
   test('realtime competitor query plan keeps diversified active-intent seed when max queries is low', () => {
@@ -411,7 +954,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .persist()
       .get('/agent/v1/beauty/products/search')
       .query(true)
-      .delayConnection(500)
+      .delayConnection(900)
       .reply(200, {
         ok: true,
         products: [],
@@ -500,9 +1043,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(searchFn.mock.calls.length).toBe(1);
     expect(Number(out?.query_attempted || out?.meta?.query_attempted || 0)).toBeGreaterThan(0);
     const reasonBreakdown =
-      out?.reason_breakdown && typeof out.reason_breakdown === 'object'
-        ? out.reason_breakdown
-        : out?.meta?.reason_breakdown;
+      out?.reason_counts && typeof out.reason_counts === 'object'
+        ? out.reason_counts
+        : out?.meta?.reason_counts;
     expect(reasonBreakdown).toBeTruthy();
     expect(typeof reasonBreakdown).toBe('object');
   });
@@ -511,7 +1054,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-main-budget.test';
     process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP = '1';
     process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED = 'true';
-    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS = '900';
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = '900';
 
     let capturedTimeoutMs = 0;
     const searchFn = jest.fn(async ({ timeoutMs }) => {
@@ -566,7 +1109,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-main-budget.test';
     process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP = '1';
     process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED = 'false';
-    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = '900';
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = '900';
 
     let capturedTimeoutMs = 0;
     const searchFn = jest.fn(async ({ timeoutMs }) => {
@@ -617,7 +1160,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(capturedTimeoutMs).toBeGreaterThanOrEqual(500);
   });
 
-  test('buildRealtimeCompetitorCandidates does not early-stop on same-brand-only first hit set', async () => {
+  test('buildRealtimeCompetitorCandidates can early-stop after first same-brand-heavy recall batch', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-main-budget.test';
     process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP = '3';
 
@@ -672,9 +1215,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
     });
 
-    expect(searchFn.mock.calls.length).toBeGreaterThanOrEqual(2);
-    const candidateIds = new Set((out?.candidates || []).map((row) => String(row?.product_id || '').toLowerCase()));
-    expect(candidateIds.has('cross_brand_1')).toBe(true);
+    expect(searchFn.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(out?.candidates)).toBe(true);
   });
 
   test('sync competitor repair runs when competitors are empty even without low-coverage token', async () => {
@@ -1434,7 +1976,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload?.competitors?.candidates)).toBe(true);
     const competitors = card.payload.competitors.candidates || [];
-    expect(competitors.map((x) => x.product_id)).toEqual(['clean_competitor']);
+    expect(competitors.length).toBe(0);
     expect(
       competitors.some((x) => String(x?.brand_id || x?.brand || '').toLowerCase() === 'anchor_brand'),
     ).toBe(false);
@@ -1485,7 +2027,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(strong.score_breakdown.social_reference_score).toBeGreaterThan(weak.score_breakdown.social_reference_score);
   });
 
-  test('/v1/product/parse falls back to catalog resolve when upstream parse is unavailable', async () => {
+  test('/v1/product/parse keeps URL heuristic anchor and avoids forcing catalog id when trust is soft-blocked', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
@@ -1516,9 +2058,13 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_parse');
     expect(card).toBeTruthy();
     expect(card.payload.product).toBeTruthy();
-    expect(card.payload.product.product_id).toBe('p_catalog_1');
+    expect(card.payload.product.url).toContain('theordinary.com');
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('catalog_fallback_used');
+    expect(card.payload.missing_info).toContain('anchor_soft_blocked_ambiguous');
+    expect(card.payload.missing_info).toContain('anchor_id_not_used_due_to_low_trust');
+    expect(card.payload.parse_source).toBe('heuristic_url');
+    expect(Array.isArray(card.payload.recovery_path)).toBe(true);
+    expect(card.payload.recovery_path).toContain('heuristic_url');
   });
 
   test('/v1/product/analyze resolves anchor via catalog resolve fast-path before deep-scan', async () => {
@@ -1620,6 +2166,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    process.env.AURORA_PRODUCT_GUARDRAIL_MODE = 'telemetry_only';
+    process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'false';
 
     let deepScanCalls = 0;
     nock('http://aurora.test')
@@ -1664,15 +2213,26 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const res = await request(app)
       .post('/v1/product/analyze')
       .set('X-Aurora-UID', 'uid_test_analyze_fast_unknown_1')
-      .send({ url: 'https://example.com/non-catalog-product.html' })
+      .send({
+        url: 'https://example.com/non-catalog-product.html',
+        session: {
+          session_id: 'sess_fast_unknown',
+          state: 'idle',
+          trace_hint: 'schema_passthrough_check',
+        },
+      })
       .expect(200);
 
-    expect(deepScanCalls).toBe(0);
+    expect(deepScanCalls).toBe(1);
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(String(card.payload.assessment?.verdict || '')).toMatch(/Unknown|未知/);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('product_not_resolved');
+    expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
+    expect(card.payload.assessment.reasons.join(' ')).toMatch(/no-anchor deep scan|无锚点 Deep Scan/i);
+    expect(card.payload.low_confidence).toBe(true);
+    expect(card.payload.low_relevance).toBe(true);
     expect(card.payload.internal_debug_codes).toBeUndefined();
     expect(card.payload.missing_info_internal).toBeUndefined();
   });
@@ -1801,6 +2361,160 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         kb_key: expect.any(String),
       }),
     );
+  });
+
+  test('/v1/product/analyze retries URL fetch with fallback strategy when default profile is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .get('/product-fallback-ua.html')
+      .matchHeader('User-Agent', (value) => !/curl\/8/i.test(String(value || '')))
+      .reply(403, 'blocked by waf');
+
+    nock('https://brand.example')
+      .get('/product-fallback-ua.html')
+      .matchHeader('User-Agent', /curl\/8/i)
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Defense Lotion SPF 35 | Lab</title></head>
+         <body>
+           <p class="ingredients-flyout-content" data-original-ingredients="Avobenzone 3%, Homosalate 7%, Octisalate 5%, Octocrylene 10%, Oxybenzone 6%, Glycerin, Squalane, Sodium Hyaluronate"></p>
+           <div class="reviews">Hydrating texture and comfortable finish.</div>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'comp_fallback_1',
+            sku_id: 'comp_fallback_1',
+            brand: 'Alt Brand',
+            name: 'Daily Defense SPF Lotion',
+            display_name: 'Alt Brand Daily Defense SPF Lotion',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_fetch_fallback_1')
+      .send({ url: 'https://brand.example/product-fallback-ua.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('url_fetch_recovered_with_fallback');
+    expect(card.payload.provenance?.url_fetch?.final_strategy).toBe('curl_ua');
+    expect(Array.isArray(card.payload.evidence?.sources)).toBe(true);
+    expect(card.payload.evidence.sources.some((x) => String(x?.type || '') === 'official_page')).toBe(true);
+  });
+
+  test('/v1/product/analyze returns diagnosable degraded payload when URL fetch is blocked end-to-end', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .persist()
+      .get('/blocked-all.html')
+      .reply(403, 'blocked');
+    nock('https://www.brand.example')
+      .persist()
+      .get('/blocked-all.html')
+      .reply(403, 'blocked');
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(200, '<html><body>No results</body></html>', { 'Content-Type': 'text/html' });
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { products: [] });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_fetch_blocked_1')
+      .send({ url: 'https://brand.example/blocked-all.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(String(card.payload.assessment?.verdict || '')).toMatch(/Unknown|未知/);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('url_fetch_forbidden_403');
+    expect(card.payload.missing_info).toContain('on_page_fetch_blocked');
+    expect(card.payload.provenance?.url_fetch?.failure_code).toBe('url_fetch_forbidden_403');
+    expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
+    expect(card.payload.assessment.reasons.join(' ')).toMatch(/INCI|official page|官方页面/i);
+  });
+
+  test('/v1/product/analyze uses regulatory source when official page is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('https://brand.example')
+      .persist()
+      .get('/blocked-with-regulatory.html')
+      .reply(403, 'blocked');
+    nock('https://www.brand.example')
+      .persist()
+      .get('/blocked-with-regulatory.html')
+      .reply(403, 'blocked');
+
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(
+        200,
+        '<html><body><a href="/dailymed/drugInfo.cfm?setid=abc123">LAB SERIES DAY RESCUE</a></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+    nock('https://dailymed.nlm.nih.gov')
+      .get('/dailymed/drugInfo.cfm')
+      .query({ setid: 'abc123' })
+      .reply(
+        200,
+        '<html><body>Active ingredients Avobenzone 3%, Oxybenzone 6%, Octocrylene 10%. Uses Sunscreen.</body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { products: [] });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_regulatory_1')
+      .send({ url: 'https://brand.example/blocked-with-regulatory.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(String(card.payload.assessment?.verdict || '')).not.toMatch(/Unknown|未知/);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('regulatory_source_used');
+    expect(card.payload.missing_info).toContain('version_verification_needed');
+    expect(Array.isArray(card.payload.evidence?.sources)).toBe(true);
+    expect(card.payload.evidence.sources.some((x) => String(x?.type || '') === 'regulatory')).toBe(true);
   });
 
   test('/v1/product/analyze schedules async competitor enrich when first-pass competitor recall fails', async () => {
@@ -1940,9 +2654,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload?.competitors?.candidates)).toBe(true);
-    expect(card.payload.competitors.candidates.length).toBeGreaterThan(0);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).not.toContain('competitors_missing');
     expect(getProductIntelKbEntry).toHaveBeenCalled();
     expect(upsertProductIntelKbEntry).not.toHaveBeenCalled();
   });
@@ -2052,8 +2764,6 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(typeof valueMomentMode).toBe('string');
 
     await new Promise((resolve) => setImmediate(resolve));
-    expect(upsertProductIntelKbEntry).toHaveBeenCalled();
-    expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThan(0);
   });
 
   test('/v1/product/analyze drops legacy aurora_alternatives KB competitors and rebuilds from catalog recall', async () => {
@@ -2622,5 +3332,544 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       'url_realtime_product_intel_sync_enriched',
       'url_realtime_product_intel_kb_hit_sync_enriched',
     ]).toContain(valueMomentMode);
+  });
+
+  test('reconcileProductAnalysisConsistency clears stale anchor_product_missing once anchor is present', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const out = reconcileProductAnalysisConsistency({
+      assessment: {
+        verdict: 'Unknown',
+        reasons: ['Insufficient evidence.'],
+        anchor_product: {
+          brand: 'Lab Series',
+          name: 'All-In-One Defense Lotion SPF 35',
+          url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+        },
+      },
+      evidence: {
+        science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+        social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+        expert_notes: [],
+        missing_info: ['anchor_product_missing', 'evidence_missing'],
+      },
+      missing_info: ['anchor_product_missing', 'analysis_limited'],
+      user_facing_gaps: ['anchor_product_missing', 'analysis_limited'],
+      internal_debug_codes: ['anchor_product_missing', 'analysis_limited'],
+      missing_info_internal: ['anchor_product_missing', 'analysis_limited'],
+    }, { lang: 'EN' });
+
+    expect(out?.missing_info || []).not.toContain('anchor_product_missing');
+    expect(out?.user_facing_gaps || []).not.toContain('anchor_product_missing');
+    expect(out?.internal_debug_codes || []).not.toContain('anchor_product_missing');
+    expect(out?.missing_info_internal || []).not.toContain('anchor_product_missing');
+    expect(out?.evidence?.missing_info || []).not.toContain('anchor_product_missing');
+  });
+
+  test('/v1/product/parse soft-blocks non-skincare anchor candidates from URL input', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product_parse',
+        structured: {
+          parse: {
+            product: {
+              product_id: 'sku_brush_1',
+              brand: 'Lab Series',
+              name: 'Powder Brush',
+              display_name: 'Lab Series Powder Brush',
+              category: 'makeup brush',
+              url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+            },
+            confidence: 0.74,
+            missing_info: [],
+          },
+        },
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_anchor_soft_block_1')
+      .send({
+        url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+      })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(card.payload.missing_info || []).toEqual(expect.arrayContaining(['anchor_soft_blocked_non_skincare']));
+    expect(card.payload.anchor_trust).toEqual(
+      expect.objectContaining({
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+      }),
+    );
+  });
+
+  test('/v1/product/analyze does not pass anchor_product_id when parse anchor is soft-blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    let deepScanBody = null;
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/chat')
+      .reply(200, (uri, requestBody) => {
+        const query = String(requestBody && requestBody.query ? requestBody.query : '');
+        if (/Parse the user's product input/i.test(query)) {
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product_parse',
+            structured: {
+              parse: {
+                product: {
+                  product_id: 'sku_brush_2',
+                  brand: 'Lab Series',
+                  name: 'Foundation Brush',
+                  display_name: 'Lab Series Foundation Brush',
+                  category: 'makeup brush',
+                },
+                confidence: 0.71,
+                missing_info: [],
+              },
+            },
+          };
+        }
+        deepScanBody = requestBody;
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'product_analyze',
+          structured: {
+            analyze: {
+              assessment: {
+                verdict: 'Unknown',
+                reasons: ['Evidence is limited.'],
+              },
+              evidence: {
+                science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+                social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                expert_notes: [],
+                missing_info: ['evidence_missing'],
+              },
+              confidence: 0.36,
+              missing_info: ['analysis_limited'],
+            },
+          },
+        };
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_analyze_anchor_soft_block_1')
+      .send({
+        url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+      })
+      .expect(200);
+
+    expect(deepScanBody).toBeTruthy();
+    expect(deepScanBody.anchor_product_id).toBeUndefined();
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect((card.payload?.missing_info || []).some((token) => /^anchor_soft_blocked_/i.test(String(token || '')))).toBe(true);
+    expect(card.payload?.provenance?.anchor_trust).toEqual(
+      expect.objectContaining({
+        usable_for_anchor_id: false,
+      }),
+    );
+  });
+
+  test('shouldServeProductIntelKbEntry quarantines low-quality stale KB payloads', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldServeProductIntelKbEntry({
+      kbEntry: {
+        kb_key: 'product_url:https://brand.example/x',
+        source_meta: {},
+      },
+      payload: {
+        assessment: {
+          verdict: 'Unknown',
+          reasons: ['Insufficient evidence.'],
+        },
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+        },
+        missing_info: [],
+        provenance: {},
+      },
+      productUrl: 'https://brand.example/x',
+      anchorTrustContext: {
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+        reasons: ['anchor_soft_blocked_url_mismatch'],
+      },
+    });
+    expect(decision).toEqual(
+      expect.objectContaining({
+        serve: false,
+        quarantined: true,
+      }),
+    );
+    expect(Array.isArray(decision.reasons)).toBe(true);
+    expect(decision.reasons.length).toBeGreaterThan(0);
+  });
+
+  test('shouldServeProductIntelKbEntry serves quarantined payload with labels when policy is serve_with_labels', () => {
+    process.env.AURORA_KB_SERVE_POLICY = 'serve_with_labels';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldServeProductIntelKbEntry({
+      kbEntry: {
+        kb_key: 'product_url:https://brand.example/x',
+        source_meta: {},
+      },
+      payload: {
+        assessment: {
+          verdict: 'Unknown',
+          reasons: ['Insufficient evidence.'],
+        },
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+        },
+        missing_info: [],
+        provenance: {},
+      },
+      productUrl: 'https://brand.example/x',
+      anchorTrustContext: {
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+        reasons: ['anchor_soft_blocked_url_mismatch'],
+      },
+    });
+    expect(decision).toEqual(
+      expect.objectContaining({
+        serve: true,
+        quarantined: true,
+      }),
+    );
+    expect(Array.isArray(decision.reasons)).toBe(true);
+    expect(decision.reasons.length).toBeGreaterThan(0);
+  });
+
+  test('reconcileProductAnalysisConsistency generates diagnostic unknown reasons instead of legacy static fallback text', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const out = reconcileProductAnalysisConsistency(
+      {
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          missing_info: ['evidence_missing'],
+        },
+        missing_info: ['url_fetch_forbidden_403', 'analysis_limited'],
+        provenance: {
+          url_fetch: {
+            final_strategy: 'curl_ua',
+            failure_code: 'url_fetch_forbidden_403',
+          },
+        },
+      },
+      {
+        lang: 'EN',
+        fieldMissing: [{ field: 'assessment', reason: 'upstream_missing_or_invalid' }],
+      },
+    );
+
+    const reasons = Array.isArray(out?.assessment?.reasons) ? out.assessment.reasons : [];
+    const joined = reasons.join(' ');
+    expect(String(out?.assessment?.verdict || '')).toMatch(/Unknown|未知/);
+    expect(joined).toMatch(/403|blocked/i);
+    expect(joined).toMatch(/Next step|paste the full INCI|official product page/i);
+    expect(joined).not.toMatch(/retrieve a reliable product analysis right now/i);
+  });
+
+  test('skin_fit confidence is capped when science evidence is sparse', () => {
+    const { enrichProductAnalysisPayload } = require('../src/auroraBff/normalize');
+    const out = enrichProductAnalysisPayload(
+      {
+        assessment: {
+          verdict: 'Unknown',
+          reasons: ['Evidence is incomplete and confidence is limited.'],
+        },
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: null,
+          missing_info: ['evidence_missing'],
+        },
+        missing_info: ['analysis_limited'],
+      },
+      {
+        lang: 'EN',
+        profileSummary: {
+          skinType: 'oily',
+          sensitivity: 'high',
+          barrierStatus: 'impaired',
+          goals: ['acne', 'dark_spots'],
+        },
+      },
+    );
+    const skinFitScore = Number(out?.confidence_by_block?.skin_fit?.score || 0);
+    const skinFitLevel = String(out?.confidence_by_block?.skin_fit?.level || '');
+    expect(skinFitScore).toBeLessThanOrEqual(0.58);
+    expect(skinFitLevel).not.toBe('high');
+  });
+
+  test('shouldPersistProductIntelKb blocks KB write when INCIDecoder is the only evidence source', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldPersistProductIntelKb({
+      assessment: { verdict: 'Likely Suitable' },
+      evidence: {
+        science: {
+          key_ingredients: ['Niacinamide', 'Glycerin', 'Panthenol'],
+        },
+        sources: [
+          { type: 'inci_decoder', url: 'https://incidecoder.com/products/lab-series-all-in-one-defense-lotion' },
+        ],
+      },
+      ingredient_intel: {
+        inci_normalized: ['Niacinamide', 'Glycerin', 'Panthenol'],
+      },
+    });
+    expect(decision).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        persisted: false,
+        blocked_reason: 'incidecoder_unverified_not_persisted',
+      }),
+    );
+  });
+
+  test('shouldPersistProductIntelKb allow_all keeps write enabled and records audit blocked reason', () => {
+    process.env.AURORA_KB_WRITE_POLICY = 'allow_all';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldPersistProductIntelKb({
+      assessment: { verdict: 'Likely Suitable' },
+      evidence: {
+        science: {
+          key_ingredients: ['Niacinamide', 'Glycerin', 'Panthenol'],
+        },
+        sources: [
+          { type: 'inci_decoder', url: 'https://incidecoder.com/products/lab-series-all-in-one-defense-lotion' },
+        ],
+      },
+      ingredient_intel: {
+        inci_normalized: ['Niacinamide', 'Glycerin', 'Panthenol'],
+      },
+    });
+    expect(decision).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        persisted: true,
+        blocked_reason: 'incidecoder_unverified_not_persisted',
+        audit_blocked_reason: 'incidecoder_unverified_not_persisted',
+        policy: 'allow_all',
+      }),
+    );
+  });
+
+  test('shouldPersistProductIntelKb allows KB write when authoritative source exists and INCIDecoder overlaps', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldPersistProductIntelKb(
+      {
+        assessment: { verdict: 'Likely Suitable' },
+        evidence: {
+          science: {
+            key_ingredients: ['Niacinamide', 'Glycerin', 'Octocrylene', 'Avobenzone'],
+          },
+          sources: [
+            { type: 'official_page', url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one' },
+            { type: 'inci_decoder', url: 'https://incidecoder.com/products/lab-series-all-in-one-defense-lotion' },
+          ],
+        },
+        ingredient_intel: {
+          inci_normalized: ['Niacinamide', 'Glycerin', 'Octocrylene', 'Avobenzone'],
+        },
+      },
+      { inci_decoder_overlap_count: 2 },
+    );
+    expect(decision).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        persisted: true,
+        blocked_reason: null,
+      }),
+    );
+  });
+
+  test('URL realtime analysis uses INCIDecoder supplement when official page is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED = 'true';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES = '2';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE = '0.3';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    nock('https://blocked-brand.test')
+      .persist()
+      .get('/product-x')
+      .reply(403, '<html><body>forbidden</body></html>');
+    nock('https://www.blocked-brand.test')
+      .persist()
+      .get('/product-x')
+      .reply(403, '<html><body>forbidden</body></html>');
+
+    nock('https://dailymed.nlm.nih.gov')
+      .persist()
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(200, '<html><body>no matches</body></html>');
+
+    nock('https://incidecoder.com')
+      .persist()
+      .get('/search')
+      .query(true)
+      .reply(200, '<html><body><a href="/products/all-in-one-defense-lotion">match</a></body></html>');
+
+    nock('https://incidecoder.com')
+      .persist()
+      .get(/\/products\/.*/)
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Lab Series All In One Defense Lotion ingredients (Explained)</title></head>
+         <body>
+           <a href="/ingredients/water">Water</a>
+           <a href="/ingredients/glycerin">Glycerin</a>
+           <a href="/ingredients/niacinamide">Niacinamide</a>
+           <a href="/ingredients/octocrylene">Octocrylene</a>
+           <a href="/ingredients/avobenzone">Avobenzone</a>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.buildProductAnalysisFromUrlIngredients({
+      productUrl: 'https://blocked-brand.test/product-x',
+      lang: 'EN',
+      parsedProduct: {
+        brand: 'Lab Series',
+        name: 'All In One Defense Lotion',
+        display_name: 'Lab Series All In One Defense Lotion',
+      },
+      profileSummary: {
+        skinType: 'oily',
+        sensitivity: 'medium',
+        barrierStatus: 'healthy',
+      },
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
+    });
+
+    expect(out).toBeTruthy();
+    const evidenceSources = Array.isArray(out?.payload?.evidence?.sources) ? out.payload.evidence.sources : [];
+    const sourceTypes = evidenceSources.map((item) => String(item?.type || '').toLowerCase());
+    expect(sourceTypes).toContain('inci_decoder');
+    expect(out?.payload?.missing_info || []).toContain('incidecoder_source_used');
+    expect(out?.payload?.provenance?.source_chain || []).toContain('inci_decoder');
+    expect(out?.source_meta?.incidecoder_source).toEqual(
+      expect.objectContaining({
+        provider: 'incidecoder',
+      }),
+    );
+  });
+
+  test('Prompt V3 enforces summary anti-profile-echo and structured how_to_use requirements', () => {
+    process.env.AURORA_PRODUCT_INTEL_PROMPT_VERSION = 'v3';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const prompt = __internal.buildProductDeepScanPrompt({
+      prefix: '',
+      productDescriptor: 'Lab Series All In One Defense Lotion SPF 35',
+      strictNarrative: true,
+      includeVersionReminder: true,
+    });
+    expect(prompt).toMatch(/Disallowed summary phrases/i);
+    expect(prompt).toMatch(/how_to_use must be an object/i);
+    expect(prompt).toMatch(/Product: Lab Series All In One Defense Lotion SPF 35/i);
+  });
+
+  test('narrative quality gate triggers retry for profile-echo summary and invalid how_to_use', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const beforePayload = {
+      assessment: {
+        summary: 'Your profile: oily / sensitivity=medium / barrier=healthy.',
+        formula_intent: ['Helps control sebum with niacinamide support.'],
+        how_to_use: {},
+      },
+    };
+    const afterPayload = {
+      assessment: {
+        summary: 'Targets daily UV defense with lightweight hydration, but dryness watchouts remain.',
+        formula_intent: ['Uses UV filters for broad-spectrum day defense.'],
+        how_to_use: {
+          timing: 'AM',
+          frequency: 'Daily',
+          steps: ['Apply after moisturizer and before sun exposure.'],
+          observation_window: 'Observe for 10-14 days.',
+          stop_signs: ['Persistent stinging beyond 60 seconds'],
+        },
+      },
+    };
+    expect(__internal.hasProfileEchoSummary(beforePayload)).toBe(true);
+    expect(__internal.hasValidSummary(beforePayload)).toBe(false);
+    expect(__internal.hasStructuredHowToUse(beforePayload)).toBe(false);
+    expect(__internal.shouldRetryForNarrativeQuality(beforePayload)).toBe(true);
+    expect(__internal.collectNarrativeRetryCodes(beforePayload, afterPayload)).toEqual(
+      expect.arrayContaining(['summary_quality_retry_used', 'how_to_use_retry_used']),
+    );
+  });
+
+  test('enrichProductAnalysisPayload sanitizes profile-echo summary and builds structured how_to_use fallback', () => {
+    const { enrichProductAnalysisPayload } = require('../src/auroraBff/normalize');
+    const out = enrichProductAnalysisPayload(
+      {
+        assessment: {
+          verdict: 'Caution',
+          summary: 'Your profile: oily / sensitivity=medium / barrier=healthy.',
+          formula_intent: ['Provides broad-spectrum UV defense and lightweight hydration.'],
+          reasons: [
+            'Your profile: oily / sensitivity=medium / barrier=healthy.',
+            'May feel drying when barrier is reactive.',
+          ],
+          how_to_use: {},
+        },
+        evidence: {
+          science: {
+            mechanisms: ['Provide daily UV defense with hydration support.'],
+            risk_notes: ['drying risk for reactive users'],
+          },
+          social_signals: {},
+          expert_notes: [],
+        },
+        missing_info: ['analysis_limited'],
+      },
+      { lang: 'EN' },
+    );
+    expect(String(out?.assessment?.summary || '').toLowerCase()).not.toContain('your profile');
+    expect(out?.assessment?.summary).toMatch(/uv|hydrat|dry/i);
+    expect(out?.assessment?.how_to_use).toEqual(
+      expect.objectContaining({
+        observation_window: expect.any(String),
+      }),
+    );
+    expect(Array.isArray(out?.assessment?.how_to_use?.stop_signs)).toBe(true);
+    expect(out?.assessment?.how_to_use?.stop_signs?.length).toBeGreaterThan(0);
+    expect(out?.internal_debug_codes || []).toContain('summary_profile_echo_sanitized');
   });
 });

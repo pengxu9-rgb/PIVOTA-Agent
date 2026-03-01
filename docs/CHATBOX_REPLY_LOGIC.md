@@ -1,6 +1,6 @@
 # Aurora Chatbox — Reply Logic, Integrations, and Card Triggers
 
-Last updated: 2026-02-10
+Last updated: 2026-02-27
 
 This doc is a **code-backed scan** of:
 
@@ -9,6 +9,11 @@ This doc is a **code-backed scan** of:
 - Which conditions activate which UI cards (and which are hidden)
 
 It is intended to debug issues like **“I asked for a brand’s products, but chat asks me for skin type again even though it was filled before.”**
+
+Contract baseline (important):
+
+- External `POST /v1/chat` response is **ChatCards Response Schema v1** (`assistant_text/cards/follow_up_questions/suggested_quick_replies/ops/safety/telemetry`).
+- Legacy envelope fields (`assistant_message/suggested_chips/session_patch/events`) may still exist internally in backend assembly steps, but are not the public `/v1/chat` contract.
 
 ---
 
@@ -122,7 +127,7 @@ If no local short-circuit triggers:
 
 - BFF builds a text prefix with `profile`, `recent_logs`, and `meta`
 - calls `auroraChat({ allow_recommendations: allowRecoCards, ... })`
-- clarification payload key is `clarification` (not `clarification_request`); when present, BFF turns the first remaining valid question into `suggested_chips`
+- clarification payload key is `clarification` (not `clarification_request`); when present, BFF turns the first remaining valid question into `follow_up_questions` / `suggested_quick_replies` (frontend may render them as chips)
 - strips recommendation cards when not allowed
 - derives additional cards from upstream `context`:
   - `env_stress` (from context or local fallback)
@@ -133,10 +138,10 @@ If no local short-circuit triggers:
 
 Source: `pivota-agent-backend/src/auroraBff/routes.js:10860+` and `routes.js:11000+`.
 
-### 1.7 Clarification Flow V2 session state (`pending_clarification`)
+### 1.7 Clarification Flow V2 state (`pending_clarification`)
 
 When `AURORA_CHAT_CLARIFICATION_FLOW_V2=true` and upstream returns multiple clarification questions, BFF stores
-`session_patch.state.pending_clarification` in canonical v1 shape:
+`pending_clarification` in canonical v1 shape (persisted in chat context; internal envelope may also carry it during assembly):
 
 ```json
 {
@@ -206,7 +211,7 @@ Even if the user filled `skinType` before, upstream may not see it when:
 
 Frontend behavior:
 
-- `applyEnvelope()` updates a local `profileSnapshot` whenever `env.session_patch.profile` is present (even if bootstrap was missing).
+- `applyChatResponseV1()` updates local profile snapshot from `ops.profile_patch` / `ops.routine_patch`.
 - `sendChat()` includes `session.profile` whenever `profileSnapshot` (or bootstrap profile) exists, via `buildChatSession()`.
   - Sources:
     - `pivota-aurora-chatbox/src/pages/BffChat.tsx:2918`
@@ -266,6 +271,12 @@ Source: `pivota-aurora-chatbox/src/pages/BffChat.tsx:1977`
 
 ### 4.2 UI renderable cards (chatbox)
 
+For `/v1/chat` ChatCards v1, primary card types are:
+
+- `product_verdict`, `compatibility`, `routine`, `triage`, `skin_status`, `effect_review`, `travel`, `nudge`
+
+The matrix below additionally includes legacy/non-chat tool cards still used by feature endpoints (`/v1/product/*`, `/v1/dupe/*`, `/v1/analysis/skin`, etc.).
+
 Below is the practical matrix for “what the user actually sees”:
 
 | Card type | Where rendered | How it activates (summary) |
@@ -322,4 +333,4 @@ Key sources:
    - Hash fallback emits `clarification_id_normalized_empty_total`.
 3) Session/profile snapshot syncing improved:
    - FE sends `session.profile` when available (`profileSnapshot` or bootstrap).
-   - BFF merges it and more frequently echoes `env.session_patch.profile` to keep the client snapshot stable.
+   - BFF merges it and exposes profile/routine writes via ChatCards v1 `ops.profile_patch` / `ops.routine_patch` (internally still assembled from envelope patches).

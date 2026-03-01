@@ -6,6 +6,7 @@ const {
   recordFieldMissingAdded,
   recordAntiTemplateViolation,
   recordActionableReply,
+  recordResponseSchemaViolation,
 } = require('./visionMetrics');
 const { applyProductAnalysisGapContract } = require('./normalize');
 
@@ -282,6 +283,9 @@ function buildEnvelope(ctx, input) {
     cards: Array.isArray(input && input.cards) ? input.cards : [],
     session_patch: (input && input.session_patch && typeof input.session_patch === 'object') ? input.session_patch : {},
     events: Array.isArray(input && input.events) ? input.events : [],
+    ...(isPlainObject(input && input.analysis_meta) ? { analysis_meta: input.analysis_meta } : {}),
+    ...(isPlainObject(input && input.recommendation_meta) ? { recommendation_meta: input.recommendation_meta } : {}),
+    ...(isPlainObject(input && input.reco_refresh_hint) ? { reco_refresh_hint: input.reco_refresh_hint } : {}),
   };
 
   clampSuggestedChips(envelope);
@@ -300,6 +304,13 @@ function buildEnvelope(ctx, input) {
 
   const parsed = V1ResponseEnvelopeSchema.safeParse(envelope);
   if (parsed.success) return parsed.data;
+
+  const firstIssue = parsed.error && Array.isArray(parsed.error.issues) ? parsed.error.issues[0] : null;
+  const issuePath = firstIssue && Array.isArray(firstIssue.path) ? firstIssue.path.join('.') : '';
+  recordResponseSchemaViolation({
+    reason: firstIssue && firstIssue.code ? String(firstIssue.code) : 'response_validation_failed',
+    path: issuePath || 'unknown',
+  });
 
   // Fall back to a minimal well-formed envelope (never crash the UI on schema drift).
   return {

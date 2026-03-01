@@ -17,6 +17,21 @@ The intent is to catch breakages in:
 - Bench (offline by default; LLM stages auto-skip if not configured):
   - `make bench REPEAT=30`
 
+## CI/Test Environment Baseline (Gemini Force Strategy)
+
+To keep CI behavior aligned with production provider routing:
+
+- Main gate (blocking):
+  - `AURORA_BFF_USE_MOCK=true`
+  - `AURORA_CHATCARDS_RESPONSE_CONTRACT=dual`
+  - `AURORA_DIAG_FORCE_GEMINI=true`
+  - Run: `npm run test:aurora-bff:unit`
+- Nightly compare (non-blocking):
+  - same as above, except `AURORA_DIAG_FORCE_GEMINI=false`
+  - Run: `npm run test:aurora-bff:unit`
+
+This dual-track setup keeps the production path stable while preventing the non-forced branch from drifting.
+
 ## What Counts as a Regression (Golden Fields)
 
 We pin **coarse, stable** fields only (avoid floating thresholds):

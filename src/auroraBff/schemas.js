@@ -109,6 +109,51 @@ const SessionPatchSchema = z
   })
   .passthrough();
 
+const AnalysisMetaSchema = z
+  .object({
+    detector_source: z.string().min(1),
+    llm_vision_called: z.boolean(),
+    llm_report_called: z.boolean(),
+    artifact_usable: z.boolean(),
+    degrade_reason: z.string().min(1).nullable().optional(),
+  })
+  .passthrough();
+
+const RecommendationMetaSchema = z
+  .object({
+    source_mode: z.enum(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only']),
+    used_recent_logs: z.boolean(),
+    used_itinerary: z.boolean(),
+    used_safety_flags: z.boolean(),
+    trigger_source: z.string().min(1).nullable().optional(),
+    recompute_from_profile_update: z.boolean().optional(),
+    llm_trace: z
+      .object({
+        template_id: z.string().min(1).optional(),
+        prompt_hash: z.string().min(1).optional(),
+        prompt_chars: z.number().int().min(0).optional(),
+        token_est: z.number().int().min(0).optional(),
+        latency_ms: z.number().int().min(0).nullable().optional(),
+        cache_hit: z.boolean().optional(),
+        provider: z.string().min(1).nullable().optional(),
+        model: z.string().min(1).nullable().optional(),
+      })
+      .passthrough()
+      .optional(),
+    env_source: z.string().min(1).nullable().optional(),
+    epi: z.number().finite().nullable().optional(),
+    active_trip_id: z.string().min(1).nullable().optional(),
+  })
+  .strict();
+
+const RecoRefreshHintSchema = z
+  .object({
+    should_refresh: z.boolean(),
+    reason: z.string().min(1),
+    effective_window_days: z.number().int().min(1).max(30),
+  })
+  .strict();
+
 const V1ResponseEnvelopeSchema = z
   .object({
     request_id: z.string().min(1),
@@ -118,6 +163,9 @@ const V1ResponseEnvelopeSchema = z
     cards: z.array(CardSchema),
     session_patch: SessionPatchSchema,
     events: z.array(z.record(z.string(), z.any())),
+    analysis_meta: AnalysisMetaSchema.optional(),
+    recommendation_meta: RecommendationMetaSchema.optional(),
+    reco_refresh_hint: RecoRefreshHintSchema.optional(),
   })
   .strict();
 
@@ -169,6 +217,62 @@ const V1ChatRequestSchema = z
   })
   .strict();
 
+const TravelPlanItemPatchSchema = z
+  .object({
+    trip_id: z.string().min(1).max(80).optional(),
+    destination: z.string().min(1).max(100),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+    itinerary: z.string().min(1).max(1200).optional(),
+    is_archived: z.boolean().optional(),
+    archived_at_ms: z.number().int().positive().optional(),
+    created_at_ms: z.number().int().positive().optional(),
+    updated_at_ms: z.number().int().positive().optional(),
+  })
+  .strict();
+
+const TravelPlanCreateSchema = z
+  .object({
+    destination: z.string().min(1).max(100),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+    itinerary: z.string().min(1).max(1200).optional(),
+  })
+  .strict();
+
+const TravelPlanUpdateSchema = z
+  .object({
+    destination: z.string().min(1).max(100).optional(),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+    itinerary: z.string().max(1200).optional(),
+    is_archived: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'At least one field is required',
+  });
+
+const TravelPlanListQuerySchema = z
+  .object({
+    include_archived: z
+      .preprocess((value) => {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value === 1;
+        if (typeof value === 'string') {
+          const token = value.trim().toLowerCase();
+          if (token === 'true' || token === '1' || token === 'yes' || token === 'y' || token === 'on') return true;
+          if (token === 'false' || token === '0' || token === 'no' || token === 'n' || token === 'off' || token === '') return false;
+        }
+        return value;
+      }, z.boolean())
+      .default(false),
+  })
+  .strict();
+
 const UserProfilePatchSchema = z
   .object({
     skinType: z.string().min(1).optional(),
@@ -184,6 +288,7 @@ const UserProfilePatchSchema = z
       .enum(['unknown', 'under_13', '13_17', '18_24', '25_34', '35_44', '45_54', '55_plus'])
       .optional(),
     pregnancy_status: z.enum(['unknown', 'not_pregnant', 'pregnant', 'trying']).optional(),
+    pregnancy_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     lactation_status: z.enum(['unknown', 'not_lactating', 'lactating']).optional(),
     high_risk_medications: z.array(z.string().min(1)).max(30).optional(),
     travel_plan: z
@@ -191,10 +296,18 @@ const UserProfilePatchSchema = z
         destination: z.string().min(1).optional(),
         start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        time_window: z
+          .enum(['today', 'tomorrow', 'this_week', 'next_week', 'this_month', 'next_month', 'weekend', 'unknown'])
+          .optional(),
         indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+        itinerary: z.string().min(1).max(1200).optional(),
+        trip_id: z.string().min(1).max(80).optional(),
+        created_at_ms: z.number().int().positive().optional(),
+        updated_at_ms: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),
+    travel_plans: z.array(TravelPlanItemPatchSchema).max(50).optional(),
     lang_pref: LanguageSchema.optional(),
   })
   .strict();
@@ -253,8 +366,10 @@ const ProductParseRequestSchema = z
   .object({
     text: z.string().min(1).optional(),
     url: z.string().url().optional(),
+    llm_provider: z.string().min(1).optional(),
+    llm_model: z.string().min(1).optional(),
   })
-  .strict();
+  .passthrough();
 
 const ProductAnalyzeRequestSchema = z
   .object({
@@ -262,8 +377,20 @@ const ProductAnalyzeRequestSchema = z
     url: z.string().url().optional(),
     name: z.string().min(1).optional(),
     force_refresh: z.boolean().optional(),
+    llm_provider: z.string().min(1).optional(),
+    llm_model: z.string().min(1).optional(),
+    session: z
+      .object({
+        session_id: z.string().min(1).optional(),
+        sessionId: z.string().min(1).optional(),
+        id: z.string().min(1).optional(),
+        next_state: z.string().min(1).optional(),
+        state: z.union([z.string().min(1), z.record(z.string(), z.any())]).optional(),
+      })
+      .passthrough()
+      .optional(),
   })
-  .strict();
+  .passthrough();
 
 const DupeCompareRequestSchema = z
   .object({
@@ -294,6 +421,16 @@ const RecoGenerateRequestSchema = z
   })
   .strict();
 
+const RecoAlternativesRequestSchema = z
+  .object({
+    product_input: z.string().min(1).max(240).optional(),
+    product: z.record(z.string(), z.any()).optional(),
+    anchor_product_id: z.string().min(1).max(180).optional(),
+    max_total: z.number().int().min(1).max(8).optional(),
+    include_debug: z.boolean().optional(),
+  })
+  .strict();
+
 const PhotosPresignRequestSchema = z
   .object({
     slot_id: z.string().min(1),
@@ -321,12 +458,12 @@ const SkinAnalysisRequestSchema = z
             slot_id: z.string().min(1),
             qc_status: z.string().min(1).optional(),
           })
-          .strict(),
+          .passthrough(),
       )
-      .max(4)
+      .max(12)
       .optional(),
   })
-  .strict();
+  .passthrough();
 
 const AuthStartRequestSchema = z
   .object({
@@ -550,6 +687,10 @@ module.exports = {
   SessionPatchSchema,
   V1ResponseEnvelopeSchema,
   V1ChatRequestSchema,
+  TravelPlanItemPatchSchema,
+  TravelPlanCreateSchema,
+  TravelPlanUpdateSchema,
+  TravelPlanListQuerySchema,
   UserProfilePatchSchema,
   TrackerLogSchema,
   RoutineSimulateRequestSchema,
@@ -560,6 +701,7 @@ module.exports = {
   DupeCompareRequestSchema,
   DupeSuggestRequestSchema,
   RecoGenerateRequestSchema,
+  RecoAlternativesRequestSchema,
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,
   SkinAnalysisRequestSchema,

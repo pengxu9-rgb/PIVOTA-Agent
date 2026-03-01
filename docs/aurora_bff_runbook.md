@@ -4,8 +4,11 @@ This document covers deploying and operating the Aurora BFF/Orchestrator inside 
 
 ## What it is
 
-- A stable `/v1/*` API surface for `aurora.pivota.cc` that returns a unified envelope:
-  - `assistant_message` + `suggested_chips` + `cards` + `session_patch` + `events`
+- A stable `/v1/*` API surface for `aurora.pivota.cc`:
+  - `POST /v1/chat` returns `ChatCards Response Schema v1`:
+    - `version` + `assistant_text` + `cards` + `follow_up_questions` + `suggested_quick_replies` + `ops` + `safety` + `telemetry`
+    - plus tracing fields `request_id` + `trace_id`
+  - Other `/v1/*` endpoints in this runbook continue to use the legacy envelope where documented.
 - Strong server-side gates:
   - **Diagnosis-first (Phase 0)**: blocks recommendations/offers when minimal profile is missing
   - **Recommendations gate**: blocks recommendation/offer/checkout cards unless explicitly triggered
@@ -90,6 +93,120 @@ Failure-code contract (for `analysis_summary.payload.photo_notice.failure_code`)
 - `AURORA_BFF_USE_MOCK=true` → mock Aurora + mock offers resolve (for offline/dev only)
 - `AURORA_BFF_INCLUDE_RAW_CONTEXT=true` → includes `aurora_context_raw` card in `/v1/chat`
 - `AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED=true` → emit full `conflict_heatmap` payload (otherwise placeholder-only)
+
+## Full Rollout Gate (No Canary)
+
+Current release strategy is **direct 100% rollout for internal traffic** (no gray/canary split).
+Use the aggressive policy set as the default release profile:
+
+- `AURORA_RULE_RELAX_MODE=aggressive`
+- `AURORA_KB_WRITE_POLICY=allow_all`
+- `AURORA_KB_SERVE_POLICY=serve_with_labels`
+- `AURORA_PRODUCT_GUARDRAIL_MODE=telemetry_only`
+- `AURORA_PRODUCT_STRICT_SKINCARE_FILTER=false` (optional explicit override)
+
+Before deploy, still verify baseline runtime safety envs on Railway:
+
+- `AURORA_BFF_USE_MOCK=false`
+- `AURORA_SKIN_VISION_ENABLED=true`
+- `AURORA_DIAG_FORCE_GEMINI=true`
+- `AURORA_CHATCARDS_RESPONSE_CONTRACT=dual`
+- `AURORA_PROFILE_V2_ENABLED=true`
+- `AURORA_QA_PLANNER_V1_ENABLED=true`
+- `AURORA_SAFETY_ENGINE_V1_ENABLED=true`
+- `AURORA_LOOP_BREAKER_V2_ENABLED=true`
+- `AURORA_DECISION_BASE_URL` reachable and correct
+- secrets configured: `OPENAI_API_KEY` / `GEMINI_API_KEY` / `AGENT_API_KEY`
+- keep rollout non-canary:
+  - `DIAG_CANARY_PERCENT=0`
+  - `AURORA_ROLLOUT_ENABLED=false` (preferred for full rollout), or set `AURORA_ROLLOUT_V2_WEATHER_PCT + AURORA_ROLLOUT_V2_SAFETY_PCT + AURORA_ROLLOUT_V2_CORE_PCT = 100`
+- if shadow verify is enabled in production:
+  - `DIAG_VERIFY_SHADOW_ENABLED=true`
+  - `DIAG_VERIFY_SHADOW_SAMPLE_RATE=1` (full shadow compare)
+  - `DIAG_VERIFY_MAX_CALLS_PER_MIN` and `DIAG_VERIFY_MAX_CALLS_PER_DAY` set to quota-safe caps
+  - `DIAG_GEMINI_VERIFY_HARD_CASE_PATH` points to persistent storage
+  - `ALLOW_GUARD_TEST=false`
+- UI event durability (no PostHog dependency):
+  - `AURORA_EVENTS_JSONL_SINK_DIR=/var/log/aurora-ui-events`
+
+Execution cadence:
+
+1. D0 config freeze with aggressive envs above.
+2. D0 deploy to 100% internal traffic.
+3. D0-D1 run 6-12h high-intensity observation window.
+4. D1 decide keep aggressive or selectively roll back.
+
+Pre-release hard gate commands:
+
+```bash
+make runtime-smoke
+bash scripts/smoke_aurora_skin_reco_gates.sh
+make photo-modules-prod-smoke
+make synthetic-matrix-prod MATRIX_CASES=120 MATRIX_CONCURRENCY=4
+```
+
+Pre-run sanity checks (to avoid local false failures):
+
+```bash
+# 1) Ensure required test deps are present.
+node -e "require.resolve('supertest'); console.log('supertest:ok')"
+
+# 2) Ensure key JS files are not cloud-placeholder/dataless.
+for f in src/auroraBff/routes.js src/auroraBff/photoModulesV1.js src/auroraBff/skinDiagnosisV1.js; do
+  xattr -p com.apple.fileprovider.dataless "$f" >/dev/null 2>&1 && { echo "dataless:$f"; exit 1; } || true
+done
+```
+
+Hard pass criteria:
+
+- schema violations = `0`
+- empty cards without notice = `0`
+- safety block with recommendation leakage = `0`
+- all runtime/smoke scripts PASS
+
+Stop-loss runbook (mandatory for 100% release):
+
+- Monitor in real time:
+  - success rate
+  - empty response rate
+  - low-confidence response rate
+  - KB write rate / KB hit rate
+  - p95 latency
+  - 5xx rate
+- Trigger rollback if any core metric degrades materially for 15-30 minutes continuously.
+- Rollback order:
+  1. `AURORA_RULE_RELAX_MODE=conservative`
+  2. `AURORA_PRODUCT_GUARDRAIL_MODE=enforce`
+- Keep telemetry on after rollback for root-cause analysis and stepwise recovery.
+
+## Response Meta Contract (Optional, backward-compatible)
+
+`/v1/analysis/skin` may include top-level `analysis_meta`:
+
+- `detector_source`
+- `llm_vision_called`
+- `llm_report_called`
+- `artifact_usable`
+- `degrade_reason`
+
+`/v1/chat` now returns ChatCards v1 top-level objects:
+
+- `ops` (`thread_ops/profile_patch/routine_patch/experiment_events`)
+- `safety` (`risk_level/red_flags/disclaimer`)
+- `telemetry` (`intent/intent_confidence/entities`)
+
+Legacy `/v1/chat` envelope fields are deprecated and no longer part of contract:
+
+- `assistant_message`
+- `suggested_chips`
+- `session_patch`
+- `events`
+
+`/v1/tracker/log` may include top-level `reco_refresh_hint`:
+
+- `should_refresh`
+- `reason`
+- `effective_window_days`
 
 ## PDP hotset prewarm (Winona/IPSA jitter control)
 
@@ -336,7 +453,7 @@ curl -sS -X POST "$BASE_URL/v1/chat" \
   -d '{"message":"Recommend a moisturizer"}' | jq .
 ```
 
-Expected: diagnosis-first response with chips, and **no** recommendation/offer cards.
+Expected: diagnosis-first response with follow-up/quick-reply guidance, and **no** recommendation/offer cards.
 
 ## UI telemetry (`/v1/events`)
 
@@ -348,14 +465,51 @@ The Aurora chat frontend can send **UI analytics** events to the BFF:
 
 ### Configuration (Railway env vars)
 
-The BFF supports **one** of these sinks (in priority order):
+The BFF supports these sinks (priority order):
 
-1) PostHog (recommended)
-   - `POSTHOG_API_KEY`
-   - `POSTHOG_HOST` (or `POSTHOG_URL`)
-2) JSONL sink (for debugging)
-   - `AURORA_EVENTS_JSONL_SINK_DIR=/tmp/...` (writes `aurora-ui-events-YYYY-MM-DD.jsonl`)
-3) Fallback: server logs (no persistence)
+1) JSONL sink (recommended)
+   - `AURORA_EVENTS_JSONL_SINK_DIR=/var/log/aurora-ui-events`
+   - writes `aurora-ui-events-YYYY-MM-DD.jsonl`
+2) Fallback: server logs (no persistence)
+
+If neither sink is configured, `/v1/events` still returns `204` but emits a warning that events are not durable.
+
+### ChatCards v1 关键事件（前端上报）
+
+主链路基础事件：
+
+- `intent_detected`
+- `aurora_tool_called`
+- `card_impression`
+- `card_action_click`
+- `thread_push` / `thread_pop` / `thread_update`
+- `memory_written`
+
+Triage / Nudge 细粒度事件：
+
+- `triage_stage_shown`
+  - 关键字段：`card_id`, `card_position`, `risk_level`, `recovery_window_hours`, `red_flag_count`, `action_point_count`
+- `triage_action_tap`
+  - 关键字段：`card_id`, `action_type`, `action_label`, `risk_level`, `recovery_window_hours`
+- `nudge_action_tap`
+  - 关键字段：`card_id`, `action_type`, `action_label`, `cadence_days`, `hint_count`
+
+### Ingredients incident replay template
+
+For a target `trace_id` / `request_id`, pull `/v1/chat` logs and summarize in one line:
+
+`入口 -> action -> intent -> gate -> card_types -> next_state`
+
+Fields to include in the query:
+
+- `action_id`
+- `trigger_source`
+- `intent_canonical`
+- `gate`
+- `card_types`
+- `next_state`
+- `client_state`
+- `agent_state`
 
 ### Quick verify (production)
 

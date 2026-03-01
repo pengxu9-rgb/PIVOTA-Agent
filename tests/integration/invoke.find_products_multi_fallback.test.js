@@ -1165,7 +1165,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
           body.payload.search.fast_mode === true &&
           body.payload.search.allow_stale_cache === false &&
           body.payload.search.allow_external_seed === true &&
-          String(body.payload.search.external_seed_strategy || '') === 'legacy' &&
+          String(body.payload.search.external_seed_strategy || '') === 'supplement_internal_first' &&
           String(body.metadata?.source || '') === 'aurora-bff'
         );
       })
