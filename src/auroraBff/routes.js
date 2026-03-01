@@ -29051,7 +29051,23 @@ function isIngredientRecoOptInAction(actionId, action) {
   const source = String(data.entry_source || data.trigger_source || '').trim().toLowerCase();
   if (source.includes('ingredient')) return true;
   const replyText = String(data.reply_text || '').trim().toLowerCase();
-  return /ingredient|ingredients|成分/.test(replyText);
+  if (/ingredient|ingredients|成分/.test(replyText)) return true;
+  const ingredientQuery = pickFirstTrimmed(
+    data.ingredient_query,
+    data.lookup_query,
+    data.ingredient,
+    data.inci,
+    data.ingredient_name,
+  );
+  if (ingredientQuery) return true;
+  if (
+    Array.isArray(data.ingredient_candidates) &&
+    data.ingredient_candidates.some((item) => Boolean(String(item || '').trim()))
+  ) {
+    return true;
+  }
+  const goal = pickFirstTrimmed(data.ingredient_goal, data.goal, data.target_goal, data.effect_goal);
+  return Boolean(goal);
 }
 
 function extractActionDataObject(action) {
