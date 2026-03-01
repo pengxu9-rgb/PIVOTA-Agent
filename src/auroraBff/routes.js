@@ -258,6 +258,11 @@ const {
   getProductIntelKbEntry,
   upsertProductIntelKbEntry,
 } = require('./productIntelKbStore');
+const {
+  buildIngredientResearchKbKey,
+  getIngredientResearchKbEntry,
+  upsertIngredientResearchKbEntry,
+} = require('./ingredientResearchKbStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   createArtifactId,
@@ -1766,6 +1771,7 @@ const dupeDeepscanCache = new Map();
 const photoBytesCache = new Map();
 const pdpPrefetchRecentMap = new Map();
 const recoRecentExposureState = new Map();
+const ingredientResearchWriteInFlight = new Set();
 let pdpHotsetPrewarmStarted = false;
 let pdpHotsetPrewarmInFlight = false;
 const pdpPrefetchStats = {
@@ -29078,6 +29084,70 @@ function buildIngredientLookupUpstreamPrompt({ query, language } = {}) {
   return `Ingredient lookup: ${target}. Give me a 1-minute ingredient report (benefits, evidence grade, watchouts, and risk by skin profile).`;
 }
 
+function normalizeIngredientCandidateList(raw, max = 6) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const text = String(item || '').trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function extractIngredientRecoContext(action) {
+  const data = extractActionDataObject(action);
+  if (!data) return null;
+  const goal = normalizeIngredientGoalToken(
+    (typeof data.ingredient_goal === 'string' && data.ingredient_goal) ||
+      (typeof data.goal === 'string' && data.goal) ||
+      '',
+  );
+  const sensitivity = normalizeIngredientSensitivityToken(
+    (typeof data.ingredient_sensitivity === 'string' && data.ingredient_sensitivity) ||
+      (typeof data.sensitivity === 'string' && data.sensitivity) ||
+      '',
+  );
+  const candidates = normalizeIngredientCandidateList(data.ingredient_candidates, 6);
+  if (!goal && !candidates.length && sensitivity === 'unknown') return null;
+  return {
+    goal: goal || '',
+    sensitivity,
+    candidates,
+  };
+}
+
+function buildIngredientRecoUpstreamPrompt({ language, context } = {}) {
+  const c = context && typeof context === 'object' ? context : {};
+  const goal = String(c.goal || '').trim();
+  const sensitivity = String(c.sensitivity || '').trim() || 'unknown';
+  const candidates = normalizeIngredientCandidateList(c.candidates, 6);
+  if (language === 'CN') {
+    return [
+      '请按“成分约束”做产品推荐，不要返回泛化推荐。',
+      goal ? `目标功效：${goal}` : '',
+      `敏感度：${sensitivity}`,
+      candidates.length ? `候选成分：${candidates.join('、')}` : '',
+      '要求：推荐结果需明确对应上述目标/成分；若无匹配结果，请返回空结果并解释原因。',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+  return [
+    'Generate product recommendations with hard ingredient constraints; avoid generic recommendations.',
+    goal ? `Goal: ${goal}` : '',
+    `Sensitivity: ${sensitivity}`,
+    candidates.length ? `Ingredient candidates: ${candidates.join(', ')}` : '',
+    'Rule: every recommendation must align with the goal/candidates; if no constrained match exists, return an explainable empty result.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 function normalizeIngredientGoalToken(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (!token) return '';
@@ -29817,6 +29887,90 @@ async function buildIngredientReportPayloadWithResearch({ language, query } = {}
   const basePayload = buildIngredientReportPayload({ language, query });
   const ingredientQuery = pickFirstTrimmed(query);
   if (!ingredientQuery) return basePayload;
+
+  const kbKey = buildIngredientResearchKbKey({ query: ingredientQuery, lang: language });
+  if (kbKey) {
+    try {
+      const kbEntry = await getIngredientResearchKbEntry({ query: ingredientQuery, lang: language });
+      if (kbEntry && isPlainObject(kbEntry.ingredient_profile_json)) {
+        const cachedPayload = kbEntry.ingredient_profile_json;
+        const cachedStatus = pickFirstTrimmed(kbEntry.status, cachedPayload.research_status, 'ready');
+        const cachedProvider = pickFirstTrimmed(kbEntry.provider, cachedPayload.research_provider);
+        const cachedUpdatedAtMs = Number(cachedPayload.updated_at_ms);
+        const updatedAtMs = Number.isFinite(cachedUpdatedAtMs)
+          ? cachedUpdatedAtMs
+          : kbEntry.updated_at
+            ? Date.parse(kbEntry.updated_at) || Date.now()
+            : Date.now();
+        recordAuroraIngredientsFlowMetric({ stage: 'kb_hit', hit: true });
+        return {
+          ...basePayload,
+          ...cachedPayload,
+          research_status: cachedStatus,
+          research_provider: cachedProvider || null,
+          research_attempts: Array.isArray(cachedPayload.research_attempts)
+            ? cachedPayload.research_attempts.slice(0, 3)
+            : [],
+          ...(pickFirstTrimmed(kbEntry.error_code, cachedPayload.research_error_code)
+            ? { research_error_code: pickFirstTrimmed(kbEntry.error_code, cachedPayload.research_error_code) }
+            : {}),
+          updated_at_ms: updatedAtMs,
+        };
+      }
+    } catch (err) {
+      // ignore cache read errors and continue on live research path
+    }
+  }
+
+  recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
+
+  const enqueueIngredientResearchKbPersist = ({
+    status = 'ready',
+    provider = null,
+    errorCode = null,
+    reportPayload = null,
+    researchAttempts = [],
+  } = {}) => {
+    if (!kbKey || !isPlainObject(reportPayload)) return null;
+    if (ingredientResearchWriteInFlight.has(kbKey)) return null;
+    ingredientResearchWriteInFlight.add(kbKey);
+    const jobId = `ing_research_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const runPersist = async () => {
+      try {
+        await upsertIngredientResearchKbEntry({
+          kb_key: kbKey,
+          query_norm: ingredientQuery,
+          lang: language,
+          status,
+          provider,
+          error_code: errorCode,
+          ingredient_profile_json: {
+            ...reportPayload,
+            research_status: status,
+            research_provider: provider || null,
+            research_attempts: Array.isArray(researchAttempts) ? researchAttempts.slice(0, 3) : [],
+            ...(errorCode ? { research_error_code: errorCode } : {}),
+            updated_at_ms: Number.isFinite(Number(reportPayload.updated_at_ms))
+              ? Number(reportPayload.updated_at_ms)
+              : Date.now(),
+          },
+          source_meta: {
+            route: 'ingredient_query_first',
+            query: ingredientQuery.slice(0, 180),
+            job_id: jobId,
+          },
+        });
+      } catch (_err) {
+        // Ignore KB write errors and keep response-path stable.
+      } finally {
+        ingredientResearchWriteInFlight.delete(kbKey);
+      }
+    };
+    const handle = setImmediate(runPersist);
+    if (handle && typeof handle.unref === 'function') handle.unref();
+    return jobId;
+  };
+
   if (!AURORA_INGREDIENT_LLM_REPORT_ENABLED) {
     return {
       ...basePayload,
@@ -29838,7 +29992,6 @@ async function buildIngredientReportPayloadWithResearch({ language, query } = {}
       provider: 'none',
       hit: false,
     });
-    recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
     return {
       ...basePayload,
       research_status: 'provider_unavailable',
@@ -29893,14 +30046,24 @@ async function buildIngredientReportPayloadWithResearch({ language, query } = {}
       hit: false,
     });
     recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: false });
-    recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
-    return {
+    const fallbackPayload = {
       ...basePayload,
       research_status: 'fallback',
       research_provider: finalProvider || null,
       research_attempts: researchAttempts.slice(0, 3),
       research_error_code: String(finalErrorCode || 'gemini_unknown').slice(0, 80),
       updated_at_ms: Date.now(),
+    };
+    const researchJobId = enqueueIngredientResearchKbPersist({
+      status: 'fallback',
+      provider: finalProvider || null,
+      errorCode: fallbackPayload.research_error_code || null,
+      reportPayload: fallbackPayload,
+      researchAttempts: researchAttempts.slice(0, 3),
+    });
+    return {
+      ...fallbackPayload,
+      ...(researchJobId ? { research_job_id: researchJobId } : {}),
     };
   }
 
@@ -29910,12 +30073,21 @@ async function buildIngredientReportPayloadWithResearch({ language, query } = {}
     hit: true,
   });
   recordAuroraIngredientsFlowMetric({ stage: 'research_completed', hit: true });
-  recordAuroraIngredientsFlowMetric({ stage: 'kb_hit', hit: true });
   const mergedPayload = mergeIngredientReportWithLlm(basePayload, successPayload, language);
-  return {
+  const finalPayload = {
     ...mergedPayload,
     research_provider: successProvider || null,
     research_attempts: researchAttempts.slice(0, 3),
+  };
+  const researchJobId = enqueueIngredientResearchKbPersist({
+    status: 'ready',
+    provider: successProvider || null,
+    reportPayload: finalPayload,
+    researchAttempts: researchAttempts.slice(0, 3),
+  });
+  return {
+    ...finalPayload,
+    ...(researchJobId ? { research_job_id: researchJobId } : {}),
   };
 }
 function messageContainsSpecificIngredientScienceTarget(message) {
@@ -30671,7 +30843,16 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   return { norm, suggestedChips };
 }
 
-async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger }) {
+async function generateProductRecommendations({
+  ctx,
+  profile,
+  recentLogs,
+  message,
+  includeAlternatives,
+  ingredientContext = null,
+  debug,
+  logger,
+}) {
   const profileSummary = summarizeProfileForContext(profile);
   const analysisSummary =
     profile && profile.lastAnalysis ? profile.lastAnalysis : null;
@@ -30684,6 +30865,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     trigger_source: ctx.trigger_source,
     action_id: 'chip.start.reco_products',
     intent: 'reco_products',
+    ...(ingredientContext && typeof ingredientContext === 'object' ? { ingredient_context: ingredientContext } : {}),
     ...(analysisSummary ? { analysis_summary: analysisSummary } : {}),
     ...(analysisSummaryAt ? { analysis_summary_at: analysisSummaryAt } : {}),
   });
@@ -30818,7 +31000,14 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   }
 
   const norm = normalizeRecoGenerate(mapped);
-  norm.payload = { ...norm.payload, intent: 'reco_products', profile: profileSummary || null };
+  norm.payload = {
+    ...norm.payload,
+    intent: 'reco_products',
+    profile: profileSummary || null,
+    ...(ingredientContext && typeof ingredientContext === 'object'
+      ? { ingredient_context: ingredientContext }
+      : {}),
+  };
   let recoSeedFilterInfo = {
     applied: false,
     seed_count_before: 0,
@@ -38944,6 +39133,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       const gateType = inferGateFromLegacyCardTypes(legacyCardTypes);
       const nextState = extractNextStateFromEnvelope(envelopeWithGuardrails);
       const hasIngredientAnswerCard = legacyCardTypes.some((type) => isIngredientAnswerCardType(type));
+      const sessionPatchMeta =
+        envelopeWithGuardrails &&
+        envelopeWithGuardrails.session_patch &&
+        typeof envelopeWithGuardrails.session_patch === 'object' &&
+        !Array.isArray(envelopeWithGuardrails.session_patch) &&
+        envelopeWithGuardrails.session_patch.meta &&
+        typeof envelopeWithGuardrails.session_patch.meta === 'object' &&
+        !Array.isArray(envelopeWithGuardrails.session_patch.meta)
+          ? envelopeWithGuardrails.session_patch.meta
+          : null;
+      const ingredientRouteSource =
+        pickFirstTrimmed(
+          sessionPatchMeta && sessionPatchMeta.ingredient_route_source,
+          ingredientReplayContext.route_source,
+        ) || null;
+      const ingredientQueryFirstApplied = Boolean(
+        sessionPatchMeta && sessionPatchMeta.ingredient_query_first_applied === true,
+      );
       const ingredientReplayRelevant = Boolean(
         ingredientReplayContext.intent_requested ||
           ingredientReplayContext.starter_action ||
@@ -38960,6 +39167,18 @@ function mountAuroraBffRoutes(app, { logger }) {
       );
       if (unwantedDiagnosis) {
         recordAuroraIngredientsFlowMetric({ stage: 'unwanted_diagnosis', hit: true });
+      }
+      const ingredientTextRouteDrift = Boolean(
+        ingredientQueryFirstApplied &&
+          ingredientRouteSource === 'text' &&
+          !hasIngredientAnswerCard &&
+          !(
+            gateType === 'diagnosis_gate' &&
+            ingredientReplayContext.diagnosis_optin
+          ),
+      );
+      if (ingredientTextRouteDrift) {
+        recordAuroraIngredientsFlowMetric({ stage: 'text_route_drift', hit: true });
       }
       const ingredientReplayLogNeeded = Boolean(
         ingredientReplayRelevant ||
@@ -38979,6 +39198,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate: gateType,
             card_types: legacyCardTypes.slice(0, 12),
             next_state: nextState,
+            route_source: ingredientRouteSource,
             client_state: clientStateForReplay || null,
             agent_state: agentStateForReplay || null,
           },
@@ -40285,6 +40505,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientGoalRequest = ingredientByGoalRequested
         ? extractIngredientGoalRequest(normalizedActionPayload)
         : { goal: '', sensitivity: 'unknown' };
+      const ingredientRecoContext = ingredientRecoOptInRequested
+        ? extractIngredientRecoContext(normalizedActionPayload)
+        : null;
       const ingredientActionData = extractActionDataObject(normalizedActionPayload);
       ingredientReplayContext = {
         intent_requested: Boolean(ingredientScienceIntentEffective),
@@ -40326,6 +40549,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       if (ingredientLookupRequested && !message && ingredientLookupQuery) {
         upstreamMessage = buildIngredientLookupUpstreamPrompt({ query: ingredientLookupQuery, language: ctx.lang });
+      }
+      if (ingredientRecoOptInRequested && ingredientRecoContext) {
+        upstreamMessage = buildIngredientRecoUpstreamPrompt({
+          language: ctx.lang,
+          context: ingredientRecoContext,
+        });
       }
       const conflictIntentRequested = looksLikeCompatibilityOrConflictQuestion(message);
       const hasFitCheckAnchor = hasPlannerAnchor;
@@ -40611,10 +40840,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         : '';
 
       if (ingredientLookupRequested && ingredientLookupTarget) {
-        const reportPayload = buildIngredientReportPayload({
+        const reportPayload = await buildIngredientReportPayloadWithResearch({
           language: ctx.lang,
           query: ingredientLookupTarget,
         });
+        const researchJobId = pickFirstTrimmed(reportPayload && reportPayload.research_job_id);
         const ingredientName =
           pickFirstTrimmed(
             reportPayload?.ingredient?.display_name,
@@ -40637,7 +40867,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           ],
           session_patch: attachIngredientRouteMetaToSessionPatch(
-            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+            {
+              ...(nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {}),
+              ...(researchJobId
+                ? {
+                    meta: {
+                      ingredient_research_job_id: researchJobId,
+                    },
+                  }
+                : {}),
+            },
             { routeSource: 'chip' },
           ),
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_lookup_report' })],
@@ -41458,6 +41697,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         !looksLikeCompatibilityOrConflictQuestion(message) &&
         !looksLikeWeatherOrEnvironmentQuestion(message);
       if (ingredientTextQueryFirstEligible) {
+        skipRoutineRulesFallback = true;
+      }
+      if (ingredientTextQueryFirstEligible) {
         recordAuroraIngredientsFlowMetric({ stage: 'text_query_routed', hit: true });
         const baseSessionPatch =
           nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
@@ -41466,10 +41708,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           routeSource: 'text',
         });
         if (ingredientLookupTargetFromText) {
-          const reportPayload = buildIngredientReportPayload({
+          const reportPayload = await buildIngredientReportPayloadWithResearch({
             language: ctx.lang,
             query: ingredientLookupTargetFromText,
           });
+          const researchJobId = pickFirstTrimmed(reportPayload && reportPayload.research_job_id);
           const ingredientName =
             pickFirstTrimmed(
               reportPayload?.ingredient?.display_name,
@@ -41491,7 +41734,20 @@ function mountAuroraBffRoutes(app, { logger }) {
                 payload: reportPayload,
               },
             ],
-            session_patch: sessionPatch,
+            session_patch: researchJobId
+              ? attachIngredientRouteMetaToSessionPatch(
+                  {
+                    ...sessionPatch,
+                    meta: {
+                      ...(sessionPatch && sessionPatch.meta && typeof sessionPatch.meta === 'object' && !Array.isArray(sessionPatch.meta)
+                        ? sessionPatch.meta
+                        : {}),
+                      ingredient_research_job_id: researchJobId,
+                    },
+                  },
+                  { queryFirstApplied: true, routeSource: 'text' },
+                )
+              : sessionPatch,
             events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_text_lookup_report' })],
           });
           return sendChatEnvelope(envelope);
@@ -42227,6 +42483,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               recentLogs,
               message,
               includeAlternatives,
+              ingredientContext: ingredientRecoOptInRequested ? ingredientRecoContext : null,
               debug: debugUpstream,
               logger,
             }),
@@ -42266,11 +42523,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         let matcherRecoCount = 0;
-        if (!llmPrimaryUsed) {
+        if (!llmPrimaryUsed && !ingredientRecoOptInRequested) {
           ({ matcherBundle, matcherPayload } = computeMatcherIfNeeded());
           matcherRecoCount = Array.isArray(matcherPayload?.recommendations) ? matcherPayload.recommendations.length : 0;
         }
-        if (!llmPrimaryUsed && matcherRecoCount > 0) {
+        if (!llmPrimaryUsed && !ingredientRecoOptInRequested && matcherRecoCount > 0) {
           norm = {
             payload: {
               ...matcherPayload,
@@ -42283,6 +42540,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           matcherFallbackUsed = true;
           recoSource = 'artifact_matcher_v1';
           recoTimeoutDegraded = false;
+        }
+        if (ingredientRecoOptInRequested && isPlainObject(norm?.payload)) {
+          const constrainedRecoCount = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations.length : 0;
+          if (constrainedRecoCount === 0) {
+            norm.payload = {
+              ...norm.payload,
+              products_empty_reason: 'ingredient_constraint_no_match',
+            };
+            norm.field_missing = mergeFieldMissing(norm.field_missing, [
+              { field: 'payload.recommendations', reason: 'ingredient_constraint_no_match' },
+            ]);
+          }
         }
         if (llmPrimaryUsed && isPlainObject(norm?.payload)) {
           norm.payload = {
@@ -44067,6 +44336,7 @@ const __internal = {
   sanitizeRecoCandidatesForUi,
   collectPurchasableFallbackQueries,
   buildPurchasableFallbackCandidates,
+  recoverPurchasableProductsFromQueries,
   recoverProductsWithLlmFallbackFromQueries,
   initLlmFallbackStageCounts,
   mergeLlmFallbackStageCounts,
