@@ -1,8 +1,5 @@
 # Pivota Shopping Agent
 
-> Archived backend mirror (read-only).  
-> Active backend source is `/Users/pengchydan/dev/Pivota-cursor-create-project-directory-structure-8344/PIVOTA-Agent-hotfix`.
-
 A unified gateway for AI-powered shopping experiences, integrating with Pivota Infrastructure, ACP (Agentic Commerce Protocol), and AP2 (Agent Payments Protocol).
 
 ## Overview
@@ -79,6 +76,18 @@ npm run demo:status
 - Use `npm run test:file -- <path>` to auto-route by runner:
   - `*.node.test.cjs` -> `node --test`
   - `*.test.js` / `*.test.ts` -> `jest`
+
+### Aurora Reco Production Probes
+
+- `npm run probe:aurora:reco:prod-manual`
+  - Runs reproducible production manual cases with isolated `aurora_uid/trace_id/brief_id`.
+  - Saves a full report under `reports/aurora_reco_prod_manual_suite_*.json`.
+- `npm run probe:aurora:reco:prompt-extract`
+  - Captures BFF-visible prompt traces (`prompt_hash/template_id/prompt_chars/token_est`) from live reco paths.
+  - Saves a report under `reports/aurora_reco_prompt_extract_*.json`.
+- `npm run probe:aurora:reco:baseline-snapshot`
+  - Fetches `/metrics` and snapshots key reco stability gauges.
+  - Saves a report under `reports/aurora_reco_baseline_snapshot_*.json`.
 
 ## API Reference
 
