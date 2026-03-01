@@ -17938,7 +17938,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
       const shouldFallback = primaryUnusable || primaryIrrelevant || primaryLowQualityNonempty;
       const forceInvokeFallbackForFragrance =
-        hasFragranceQuerySignal(queryText) && primaryUsableCount === 0;
+        hasFragranceQuerySignal(queryText) &&
+        (primaryUsableCount === 0 || primaryLowQualityNonempty);
       const primaryQualityGatePassed = !primaryLowQualityNonempty && primaryUsableCount > 0;
       const requestedLimit = Math.min(
         Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
