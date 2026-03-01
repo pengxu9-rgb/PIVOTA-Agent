@@ -41790,6 +41790,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let matcherBundle = null;
         let matcherPayload = null;
+        let matcherComputed = false;
         const artifactConfidenceLevel = artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low';
         const lowConfidenceArtifact = artifactConfidenceLevel === 'low';
         const artifactConfidenceScoreRaw = Number(
@@ -41800,7 +41801,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
 
-        if (AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact) {
+        const computeMatcherIfNeeded = () => {
+          if (matcherComputed) {
+            return { matcherBundle, matcherPayload };
+          }
+          matcherComputed = true;
+          if (!(AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact)) {
+            return { matcherBundle, matcherPayload };
+          }
           try {
             const artifactPayload = latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object'
               ? {
@@ -41829,7 +41837,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               'aurora bff: product matcher failed',
             );
           }
-        }
+          return { matcherBundle, matcherPayload };
+        };
 
         let norm = null;
         let upstreamDebug = null;
@@ -41885,7 +41894,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoSource = generatedPayloadSource || 'catalog_transient_fallback';
         }
 
-        const matcherRecoCount = Array.isArray(matcherPayload?.recommendations) ? matcherPayload.recommendations.length : 0;
+        let matcherRecoCount = 0;
+        if (!llmPrimaryUsed) {
+          ({ matcherBundle, matcherPayload } = computeMatcherIfNeeded());
+          matcherRecoCount = Array.isArray(matcherPayload?.recommendations) ? matcherPayload.recommendations.length : 0;
+        }
         if (!llmPrimaryUsed && matcherRecoCount > 0) {
           norm = {
             payload: {
@@ -41900,23 +41913,44 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoSource = 'artifact_matcher_v1';
           recoTimeoutDegraded = false;
         }
-        if (llmPrimaryUsed && isPlainObject(norm?.payload) && matcherBundle) {
-          const matcherConfidence =
-            matcherBundle.confidence && Number.isFinite(Number(matcherBundle.confidence.score))
-              ? Number(matcherBundle.confidence.score)
-              : null;
+        if (llmPrimaryUsed && isPlainObject(norm?.payload)) {
           norm.payload = {
             ...norm.payload,
             metadata: {
               ...(isPlainObject(norm.payload.metadata) ? norm.payload.metadata : {}),
               matcher_check_result: {
                 source: 'artifact_matcher_v1',
-                available: matcherRecoCount > 0,
-                recommendation_count: matcherRecoCount,
-                confidence: matcherConfidence,
+                pending: true,
+                available: false,
+                recommendation_count: 0,
+                confidence: null,
               },
             },
           };
+          if (AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact) {
+            const matcherHandle = setImmediate(() => {
+              const { matcherBundle: asyncMatcherBundle, matcherPayload: asyncMatcherPayload } = computeMatcherIfNeeded();
+              const asyncRecoCount = Array.isArray(asyncMatcherPayload?.recommendations)
+                ? asyncMatcherPayload.recommendations.length
+                : 0;
+              const asyncMatcherConfidence =
+                asyncMatcherBundle &&
+                asyncMatcherBundle.confidence &&
+                Number.isFinite(Number(asyncMatcherBundle.confidence.score))
+                  ? Number(asyncMatcherBundle.confidence.score)
+                  : null;
+              logger?.info(
+                {
+                  request_id: ctx.request_id,
+                  trace_id: ctx.trace_id,
+                  recommendation_count: asyncRecoCount,
+                  confidence: asyncMatcherConfidence,
+                },
+                'aurora bff: matcher check finished asynchronously',
+              );
+            });
+            if (matcherHandle && typeof matcherHandle.unref === 'function') matcherHandle.unref();
+          }
         }
         if (lowConfidenceArtifact && norm && norm.payload && typeof norm.payload === 'object') {
           const guarded = applyLowConfidenceRecoGuard(norm.payload);
