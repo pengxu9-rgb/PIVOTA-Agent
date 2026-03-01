@@ -2844,8 +2844,14 @@ function buildSearchRouteHealth({
   domainFilterDroppedExternal = 0,
   externalFillGateReason = null,
   semanticRetryApplied = false,
+  semanticRetryActualAttempted = false,
   semanticRetryQuery = null,
   semanticRetryHits = 0,
+  externalSeedQueryTimeout = false,
+  externalSeedSkipReason = null,
+  externalSeedCacheHit = false,
+  externalSeedRowsFetched = 0,
+  externalSeedRowsBuilt = 0,
   externalSeedBrandStrictRows = 0,
   externalSeedBrandRelevantRows = 0,
   externalSeedBroadFallbackUsed = false,
@@ -2859,6 +2865,8 @@ function buildSearchRouteHealth({
   supplementAttempted = false,
   supplementSkipReason = null,
   retryAttemptCount = 0,
+  fallbackAttemptCount = 0,
+  selectedFallbackAttempt = 0,
   finalReturnedCount = 0,
 }) {
   return {
@@ -2875,10 +2883,22 @@ function buildSearchRouteHealth({
     ),
     external_fill_gate_reason: externalFillGateReason ? String(externalFillGateReason) : null,
     semantic_retry_applied: Boolean(semanticRetryApplied),
+    semantic_retry_actual_attempted: Boolean(semanticRetryActualAttempted),
     semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
     semantic_retry_hits: Math.max(
       0,
       Number.isFinite(Number(semanticRetryHits)) ? Number(semanticRetryHits) : 0,
+    ),
+    external_seed_query_timeout: Boolean(externalSeedQueryTimeout),
+    external_seed_skip_reason: externalSeedSkipReason ? String(externalSeedSkipReason) : null,
+    external_seed_cache_hit: Boolean(externalSeedCacheHit),
+    external_seed_rows_fetched: Math.max(
+      0,
+      Number.isFinite(Number(externalSeedRowsFetched)) ? Number(externalSeedRowsFetched) : 0,
+    ),
+    external_seed_rows_built: Math.max(
+      0,
+      Number.isFinite(Number(externalSeedRowsBuilt)) ? Number(externalSeedRowsBuilt) : 0,
     ),
     external_seed_brand_strict_rows: Math.max(
       0,
@@ -2916,6 +2936,14 @@ function buildSearchRouteHealth({
     retry_attempt_count: Math.max(
       0,
       Number.isFinite(Number(retryAttemptCount)) ? Number(retryAttemptCount) : 0,
+    ),
+    fallback_attempt_count: Math.max(
+      0,
+      Number.isFinite(Number(fallbackAttemptCount)) ? Number(fallbackAttemptCount) : 0,
+    ),
+    selected_fallback_attempt: Math.max(
+      0,
+      Number.isFinite(Number(selectedFallbackAttempt)) ? Number(selectedFallbackAttempt) : 0,
     ),
     final_returned_count: Math.max(
       0,
@@ -3092,9 +3120,10 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   const semanticRetryQueryNormalized = normalizeSearchTextForMatch(
     String(semanticRetryQueryCandidate || '').trim(),
   );
-  const semanticRetryAppliedDerived = Boolean(
-    metadata.semantic_retry_applied === true ||
-      routeHealth.semantic_retry_applied === true ||
+  const semanticRetryActualAttemptedDerived = Boolean(
+    metadata.semantic_retry_actual_attempted === true ||
+      routeHealth.semantic_retry_actual_attempted === true ||
+      fallbackStrategy.secondary_actual_retry_attempted === true ||
       String(metadata?.proxy_search_fallback?.query_variant || '').trim() === 'semantic_retry' ||
       secondaryAttempts.length > 1 ||
       secondaryAttemptCount > 1 ||
@@ -3104,6 +3133,7 @@ function withSearchDiagnostics(body, diagnostics = {}) {
         semanticRetryQueryNormalized !== retryBaseQueryNormalized
       ),
   );
+  const semanticRetryAppliedDerived = semanticRetryActualAttemptedDerived;
   const semanticRetryQueryDerived = semanticRetryAppliedDerived ? semanticRetryQueryCandidate : null;
   const semanticRetryHitsDerived = intNonNegative(
     metadata.semantic_retry_hits != null
@@ -3167,8 +3197,33 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       ? routeHealth.external_fill_gate_reason
       : metadata.external_fill_gate_reason || null;
   routeHealth.semantic_retry_applied = semanticRetryAppliedDerived;
+  routeHealth.semantic_retry_actual_attempted = semanticRetryActualAttemptedDerived;
   routeHealth.semantic_retry_query = semanticRetryQueryDerived ? String(semanticRetryQueryDerived) : null;
   routeHealth.semantic_retry_hits = semanticRetryHitsDerived;
+  routeHealth.external_seed_query_timeout = Boolean(
+    routeHealth.external_seed_query_timeout != null
+      ? routeHealth.external_seed_query_timeout
+      : metadata.external_seed_query_timeout,
+  );
+  routeHealth.external_seed_skip_reason =
+    routeHealth.external_seed_skip_reason != null
+      ? String(routeHealth.external_seed_skip_reason || '').trim() || null
+      : String(metadata.external_seed_skip_reason || '').trim() || null;
+  routeHealth.external_seed_cache_hit = Boolean(
+    routeHealth.external_seed_cache_hit != null
+      ? routeHealth.external_seed_cache_hit
+      : metadata.external_seed_cache_hit,
+  );
+  routeHealth.external_seed_rows_fetched = intNonNegative(
+    routeHealth.external_seed_rows_fetched != null
+      ? routeHealth.external_seed_rows_fetched
+      : metadata.external_seed_rows_fetched,
+  );
+  routeHealth.external_seed_rows_built = intNonNegative(
+    routeHealth.external_seed_rows_built != null
+      ? routeHealth.external_seed_rows_built
+      : metadata.external_seed_rows_built,
+  );
   const fallbackReasonToken = String(
     routeHealth.fallback_reason != null ? routeHealth.fallback_reason : metadata.fallback_reason || '',
   )
@@ -3273,7 +3328,17 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   routeHealth.retry_attempt_count = Math.max(
     retryAttemptCountDerived,
     secondaryAttemptCount,
-    semanticRetryAppliedDerived ? 1 : 0,
+    semanticRetryActualAttemptedDerived ? 1 : 0,
+  );
+  routeHealth.fallback_attempt_count = Math.max(
+    intNonNegative(routeHealth.fallback_attempt_count),
+    intNonNegative(metadata.fallback_attempt_count),
+    secondaryAttemptCount,
+  );
+  routeHealth.selected_fallback_attempt = Math.max(
+    intNonNegative(routeHealth.selected_fallback_attempt),
+    intNonNegative(metadata.selected_fallback_attempt),
+    intNonNegative(fallbackStrategy.secondary_selected_attempt),
   );
   routeHealth.final_returned_count = Math.max(
     intNonNegative(
@@ -3300,8 +3365,14 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   metadata.domain_filter_dropped_external = routeHealth.domain_filter_dropped_external;
   metadata.external_fill_gate_reason = routeHealth.external_fill_gate_reason;
   metadata.semantic_retry_applied = routeHealth.semantic_retry_applied;
+  metadata.semantic_retry_actual_attempted = routeHealth.semantic_retry_actual_attempted;
   metadata.semantic_retry_query = routeHealth.semantic_retry_query;
   metadata.semantic_retry_hits = routeHealth.semantic_retry_hits;
+  metadata.external_seed_query_timeout = routeHealth.external_seed_query_timeout;
+  metadata.external_seed_skip_reason = routeHealth.external_seed_skip_reason;
+  metadata.external_seed_cache_hit = routeHealth.external_seed_cache_hit;
+  metadata.external_seed_rows_fetched = routeHealth.external_seed_rows_fetched;
+  metadata.external_seed_rows_built = routeHealth.external_seed_rows_built;
   metadata.external_seed_brand_strict_rows = routeHealth.external_seed_brand_strict_rows;
   metadata.external_seed_brand_relevant_rows = routeHealth.external_seed_brand_relevant_rows;
   metadata.external_seed_broad_fallback_used = routeHealth.external_seed_broad_fallback_used;
@@ -3315,6 +3386,8 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   metadata.supplement_attempted = routeHealth.supplement_attempted;
   metadata.supplement_skip_reason = routeHealth.supplement_skip_reason;
   metadata.retry_attempt_count = routeHealth.retry_attempt_count;
+  metadata.fallback_attempt_count = routeHealth.fallback_attempt_count;
+  metadata.selected_fallback_attempt = routeHealth.selected_fallback_attempt;
   metadata.final_returned_count = routeHealth.final_returned_count;
   metadata.fallback_reason = fallbackReason;
   if (existingSearchDecision) {
@@ -5067,7 +5140,22 @@ async function queryFindProductsMultiFallback({
   const fallbackDeadlineMs = Date.now() + totalFallbackBudgetMs;
 
   let selectedAttempt = null;
+  let selectedAttemptNo = 0;
   const attempts = [];
+  const rankFallbackAttempt = (attempt) => {
+    const statusOk = attempt && attempt.status >= 200 && attempt.status < 300;
+    const usableCount = Math.max(0, Number(attempt?.usableCount || 0) || 0);
+    const relevanceMatched = attempt?.relevanceMatched === true;
+    return {
+      statusOk,
+      usableCount,
+      relevanceMatched,
+      total:
+        (statusOk ? 100 : 0) +
+        (usableCount * 12) +
+        (relevanceMatched ? 8 : 0),
+    };
+  };
   for (let i = 0; i < candidateQueries.length; i += 1) {
     const remainingBudgetMs = Math.max(0, fallbackDeadlineMs - Date.now());
     if (remainingBudgetMs < 100) {
@@ -5112,16 +5200,17 @@ async function queryFindProductsMultiFallback({
 
     if (!selectedAttempt) {
       selectedAttempt = attempt;
+      selectedAttemptNo = i + 1;
     } else {
-      const selectedScore =
-        (selectedAttempt.status >= 200 && selectedAttempt.status < 300 ? 100 : 0) +
-        (selectedAttempt.relevanceMatched ? 50 : 0) +
-        Math.min(20, selectedAttempt.usableCount);
-      const candidateScore =
-        (attempt.status >= 200 && attempt.status < 300 ? 100 : 0) +
-        (attempt.relevanceMatched ? 50 : 0) +
-        Math.min(20, attempt.usableCount);
-      if (candidateScore > selectedScore) selectedAttempt = attempt;
+      const selectedRank = rankFallbackAttempt(selectedAttempt);
+      const candidateRank = rankFallbackAttempt(attempt);
+      const shouldReplaceByRecall =
+        candidateRank.statusOk &&
+        candidateRank.usableCount >= Math.max(1, selectedRank.usableCount + 2);
+      if (shouldReplaceByRecall || candidateRank.total > selectedRank.total) {
+        selectedAttempt = attempt;
+        selectedAttemptNo = i + 1;
+      }
     }
 
     if (attempt.relevanceMatched && attempt.usableCount > 0) {
@@ -5174,6 +5263,7 @@ async function queryFindProductsMultiFallback({
     usableCount: selectedAttempt.usableCount,
     relevanceMatched: selectedAttempt.relevanceMatched,
     selectedQuery: selectedAttempt.queryUsed,
+    selectedAttemptNo,
     semanticRetryApplied,
     semanticRetryQuery: semanticRetryApplied ? semanticRetrySelectedQuery || null : null,
     semanticRetryHits,
@@ -10174,6 +10264,25 @@ async function proxyAgentSearchToBackend(req, res) {
         : responseMetadata.retry_attempt_count,
       0,
     );
+    const fallbackAttemptCount = intNonNegative(
+      responseMetadata.fallback_attempt_count != null
+        ? responseMetadata.fallback_attempt_count
+        : fallbackStrategy?.secondary_attempt_count != null
+        ? fallbackStrategy.secondary_attempt_count
+        : fallbackStrategy?.secondary_attempts?.length,
+      retryAttemptCount,
+    );
+    const selectedFallbackAttempt = intNonNegative(
+      responseMetadata.selected_fallback_attempt != null
+        ? responseMetadata.selected_fallback_attempt
+        : fallbackStrategy?.secondary_selected_attempt,
+      0,
+    );
+    const semanticRetryActualAttempted = Boolean(
+      responseMetadata.semantic_retry_actual_attempted != null
+        ? responseMetadata.semantic_retry_actual_attempted
+        : fallbackStrategy?.secondary_actual_retry_attempted === true,
+    );
     const primaryQualityScore =
       Number.isFinite(Number(fallbackStrategy?.primary_quality_score)) &&
       Number(fallbackStrategy?.primary_quality_score) >= 0
@@ -10234,6 +10343,26 @@ async function proxyAgentSearchToBackend(req, res) {
         supplementAttempted,
         supplementSkipReason,
         retryAttemptCount,
+        fallbackAttemptCount,
+        selectedFallbackAttempt,
+        semanticRetryApplied:
+          responseMetadata.semantic_retry_applied != null
+            ? responseMetadata.semantic_retry_applied
+            : semanticRetryActualAttempted,
+        semanticRetryActualAttempted,
+        semanticRetryQuery: responseMetadata.semantic_retry_query || null,
+        semanticRetryHits: intNonNegative(responseMetadata.semantic_retry_hits, 0),
+        externalSeedQueryTimeout: Boolean(responseMetadata.external_seed_query_timeout),
+        externalSeedSkipReason: responseMetadata.external_seed_skip_reason || null,
+        externalSeedCacheHit: Boolean(responseMetadata.external_seed_cache_hit),
+        externalSeedRowsFetched: intNonNegative(responseMetadata.external_seed_rows_fetched, 0),
+        externalSeedRowsBuilt: intNonNegative(responseMetadata.external_seed_rows_built, 0),
+        externalFillGateReason: responseMetadata.external_fill_gate_reason || null,
+        querySemanticClass: responseMetadata.query_semantic_class || null,
+        domainFilterDroppedExternal: intNonNegative(
+          responseMetadata.domain_filter_dropped_external,
+          0,
+        ),
         finalReturnedCount: intNonNegative(
           responseMetadata.final_returned_count != null
             ? responseMetadata.final_returned_count
@@ -10736,9 +10865,21 @@ async function proxyAgentSearchToBackend(req, res) {
                   (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))
                 ),
             );
+            const fallbackUsableCount = Math.max(0, Number(fallback?.usableCount || 0) || 0);
+            const fallbackRecallImproved = fallbackUsableCount >= Math.max(
+              fallbackAdoptUsableThreshold,
+              primaryUsableCount + (primaryLowQualityNonempty ? 1 : 2),
+            );
             fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
             fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
             fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
+            fallbackStrategy.secondary_selected_attempt = Math.max(
+              0,
+              Number(fallback?.selectedAttemptNo || 0) || 0,
+            );
+            fallbackStrategy.secondary_actual_retry_attempted = Boolean(
+              fallback?.actualRetryAttempted,
+            );
             fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
               ? fallback.attempts.length
               : fallback
@@ -10751,8 +10892,11 @@ async function proxyAgentSearchToBackend(req, res) {
               fallback &&
               fallback.status >= 200 &&
               fallback.status < 300 &&
-              fallback.usableCount >= fallbackAdoptUsableThreshold &&
-              (primaryLowQualityNonempty ? fallback.usableCount > 0 : fallbackRelevant)
+              fallbackUsableCount >= fallbackAdoptUsableThreshold &&
+              (
+                (primaryLowQualityNonempty && (fallbackRecallImproved || fallbackRelevant)) ||
+                fallbackRelevant
+              )
             ) {
               fallbackStrategy.secondary_rejected_reason = null;
               fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
@@ -10802,13 +10946,7 @@ async function proxyAgentSearchToBackend(req, res) {
     const fallbackAttempts = Array.isArray(fallbackStrategy.secondary_attempts)
       ? fallbackStrategy.secondary_attempts
       : [];
-    const semanticRetryApplied =
-      fallbackAttempts.length > 1 ||
-      fallbackAttempts.some(
-        (attempt) =>
-          normalizeSearchTextForMatch(String(attempt?.query || '')) !==
-          normalizeSearchTextForMatch(String(queryText || '')),
-      );
+    const semanticRetryApplied = Boolean(fallbackStrategy.secondary_actual_retry_attempted);
     const semanticRetryQuery = semanticRetryApplied
       ? String(
           fallbackStrategy.secondary_selected_query ||
@@ -11113,6 +11251,13 @@ async function proxyAgentSearchToBackend(req, res) {
             fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
             fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
             fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
+            fallbackStrategy.secondary_selected_attempt = Math.max(
+              0,
+              Number(fallback?.selectedAttemptNo || 0) || 0,
+            );
+            fallbackStrategy.secondary_actual_retry_attempted = Boolean(
+              fallback?.actualRetryAttempted,
+            );
             fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
               ? fallback.attempts.length
               : fallback
@@ -18252,15 +18397,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : fallback
               ? [{ query: fallback.selectedQuery || queryText }]
               : [];
-            const fallbackSemanticRetryApplied = Boolean(
-              fallback?.actualRetryAttempted ||
-                fallbackAttempts.length > 1 ||
-                fallbackAttempts.some(
-                  (attempt) =>
-                    normalizeSearchTextForMatch(String(attempt?.query || '')) !==
-                    normalizeSearchTextForMatch(String(queryText || '')),
-                ),
-            );
+            const fallbackSemanticRetryApplied = Boolean(fallback?.actualRetryAttempted);
             semanticRetryApplied = fallbackSemanticRetryApplied;
             semanticRetryQuery = fallbackSemanticRetryApplied
               ? String(
@@ -18272,9 +18409,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             semanticRetryHits = Math.max(0, Number(fallback?.usableCount || 0) || 0);
             secondaryFallbackMeta = {
               attempt_count: fallbackAttempts.length,
+              selected_attempt: Math.max(0, Number(fallback?.selectedAttemptNo || 0) || 0),
               attempts: fallbackAttempts.slice(0, 3),
               selected_query: fallback?.selectedQuery || null,
               semantic_retry_applied: fallbackSemanticRetryApplied,
+              semantic_retry_actual_attempted: Boolean(fallback?.actualRetryAttempted),
               semantic_retry_query: semanticRetryQuery,
               semantic_retry_hits: Math.max(0, Number(fallback?.usableCount || 0) || 0),
             };
@@ -18284,17 +18423,29 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               primaryUsableCount,
               primaryIrrelevant,
             });
-	            if (
-	              fallback &&
-	              fallback.status >= 200 &&
-	              fallback.status < 300 &&
-	              fallback.usableCount >= fallbackAdoptUsableThreshold &&
-	              (
-	                primaryLowQualityNonempty ||
-	                (hasFragranceQuerySignal(queryText) && Number(fallback.usableCount || 0) > 0) ||
-	                isProxySearchFallbackRelevant(fallback.data, queryText)
-	              )
-	            ) {
+            const fallbackRelevant = Boolean(
+              fallback &&
+                (
+                  (hasFragranceQuerySignal(queryText) && Number(fallback?.usableCount || 0) > 0) ||
+                  isProxySearchFallbackRelevant(fallback.data, queryText)
+                ),
+            );
+            const fallbackUsableCount = Math.max(0, Number(fallback?.usableCount || 0) || 0);
+            const fallbackRecallImproved = fallbackUsableCount >= Math.max(
+              fallbackAdoptUsableThreshold,
+              primaryUsableCount + (primaryLowQualityNonempty ? 1 : 2),
+            );
+            if (
+              fallback &&
+              fallback.status >= 200 &&
+              fallback.status < 300 &&
+              fallbackUsableCount >= fallbackAdoptUsableThreshold &&
+              (
+                (primaryLowQualityNonempty && (fallbackRecallImproved || fallbackRelevant)) ||
+                (hasFragranceQuerySignal(queryText) && fallbackUsableCount > 0) ||
+                fallbackRelevant
+              )
+            ) {
               upstreamData = fallback.data;
               replacedByFallback = true;
             }
@@ -18444,12 +18595,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             0,
             Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
           );
+          const fallbackAttemptCount = retryAttemptCount;
+          const selectedFallbackAttempt = Math.max(
+            0,
+            Number(secondaryFallbackMeta?.selected_attempt || 0) || 0,
+          );
+          const semanticRetryActualAttempted = Boolean(
+            secondaryFallbackMeta?.semantic_retry_actual_attempted,
+          );
 	        upstreamData = {
 	          ...upstreamData,
 	          metadata: {
 	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
 	            search_stage_b: secondarySupplementMeta,
 	            semantic_retry_applied: Boolean(semanticRetryApplied),
+	            semantic_retry_actual_attempted: semanticRetryActualAttempted,
 	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
 	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
 	            primary_quality_gate_passed: primaryQualityGatePassed,
@@ -18461,10 +18621,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            internal_raw_count: routeHealthInternalCount,
 	            external_raw_count: routeHealthExternalCount,
 	            merged_pre_limit_count: mergedPreLimitCount,
-	            supplement_attempted: supplementAttempted,
-	            supplement_skip_reason: supplementSkipReason,
-	            retry_attempt_count: retryAttemptCount,
-              route_health: {
+		            supplement_attempted: supplementAttempted,
+		            supplement_skip_reason: supplementSkipReason,
+		            retry_attempt_count: retryAttemptCount,
+                fallback_attempt_count: fallbackAttemptCount,
+                selected_fallback_attempt: selectedFallbackAttempt,
+	              route_health: {
                 ...(
                   upstreamData?.metadata?.route_health &&
                   typeof upstreamData.metadata.route_health === 'object' &&
@@ -18472,9 +18634,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ? upstreamData.metadata.route_health
                     : {}
                 ),
-                semantic_retry_applied: Boolean(semanticRetryApplied),
-                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	                semantic_retry_applied: Boolean(semanticRetryApplied),
+                  semantic_retry_actual_attempted: semanticRetryActualAttempted,
+	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
                 primary_quality_gate_passed: primaryQualityGatePassed,
                 primary_quality_score:
                   Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -18484,11 +18647,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 internal_raw_count: routeHealthInternalCount,
                 external_raw_count: routeHealthExternalCount,
                 merged_pre_limit_count: mergedPreLimitCount,
-                supplement_attempted: supplementAttempted,
-                supplement_skip_reason: supplementSkipReason,
-                retry_attempt_count: retryAttemptCount,
-                final_returned_count: routeHealthProducts.length,
-              },
+	                supplement_attempted: supplementAttempted,
+	                supplement_skip_reason: supplementSkipReason,
+	                retry_attempt_count: retryAttemptCount,
+                  fallback_attempt_count: fallbackAttemptCount,
+                  selected_fallback_attempt: selectedFallbackAttempt,
+	                final_returned_count: routeHealthProducts.length,
+	              },
 	          },
 	        };
 	      } else if (
@@ -18513,13 +18678,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             0,
             Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
           );
+          const fallbackAttemptCount = retryAttemptCount;
+          const selectedFallbackAttempt = Math.max(
+            0,
+            Number(secondaryFallbackMeta?.selected_attempt || 0) || 0,
+          );
+          const semanticRetryActualAttempted = Boolean(
+            secondaryFallbackMeta?.semantic_retry_actual_attempted,
+          );
 	        upstreamData = {
 	          ...upstreamData,
 	          metadata: {
 	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
-	            semantic_retry_applied: Boolean(semanticRetryApplied),
-	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+		            semantic_retry_applied: Boolean(semanticRetryApplied),
+                semantic_retry_actual_attempted: semanticRetryActualAttempted,
+		            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+		            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
 	            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -18529,10 +18703,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            internal_raw_count: routeHealthInternalCount,
 	            external_raw_count: routeHealthExternalCount,
 	            merged_pre_limit_count: mergedPreLimitCount,
-	            supplement_attempted: supplementAttempted,
-	            supplement_skip_reason: supplementSkipReason,
-	            retry_attempt_count: retryAttemptCount,
-              route_health: {
+		            supplement_attempted: supplementAttempted,
+		            supplement_skip_reason: supplementSkipReason,
+		            retry_attempt_count: retryAttemptCount,
+                fallback_attempt_count: fallbackAttemptCount,
+                selected_fallback_attempt: selectedFallbackAttempt,
+	              route_health: {
                 ...(
                   upstreamData?.metadata?.route_health &&
                   typeof upstreamData.metadata.route_health === 'object' &&
@@ -18540,9 +18716,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ? upstreamData.metadata.route_health
                     : {}
                 ),
-                semantic_retry_applied: Boolean(semanticRetryApplied),
-                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	                semantic_retry_applied: Boolean(semanticRetryApplied),
+                  semantic_retry_actual_attempted: semanticRetryActualAttempted,
+	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
+	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
                 primary_quality_gate_passed: primaryQualityGatePassed,
                 primary_quality_score:
                   Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -18552,11 +18729,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 internal_raw_count: routeHealthInternalCount,
                 external_raw_count: routeHealthExternalCount,
                 merged_pre_limit_count: mergedPreLimitCount,
-                supplement_attempted: supplementAttempted,
-                supplement_skip_reason: supplementSkipReason,
-                retry_attempt_count: retryAttemptCount,
-                final_returned_count: routeHealthProducts.length,
-              },
+	                supplement_attempted: supplementAttempted,
+	                supplement_skip_reason: supplementSkipReason,
+	                retry_attempt_count: retryAttemptCount,
+                  fallback_attempt_count: fallbackAttemptCount,
+                  selected_fallback_attempt: selectedFallbackAttempt,
+	                final_returned_count: routeHealthProducts.length,
+	              },
 	          },
 	        };
 	      }
