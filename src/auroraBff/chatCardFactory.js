@@ -496,8 +496,11 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   const type = asString(card && card.type).toLowerCase();
   if (!type) return [];
 
-  if (type === 'product_analysis' || type === 'recommendations') {
+  if (type === 'product_analysis') {
     return [buildProductVerdictCard({ card, requestId, index, language })];
+  }
+  if (type === 'recommendations') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '产品推荐' : 'Recommendations' })];
   }
   if (type === 'routine_simulation' || type === 'conflict_heatmap') {
     return [buildCompatibilityCard({ card, requestId, index, language })];

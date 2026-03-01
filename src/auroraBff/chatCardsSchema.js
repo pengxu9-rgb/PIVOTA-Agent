@@ -1,6 +1,7 @@
 const { z } = require('zod');
 
 const CHAT_CARD_TYPES = [
+  'recommendations',
   'product_verdict',
   'compatibility',
   'routine',
