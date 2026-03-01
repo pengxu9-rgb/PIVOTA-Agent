@@ -121,10 +121,25 @@ const AnalysisMetaSchema = z
 
 const RecommendationMetaSchema = z
   .object({
-    source_mode: z.enum(['artifact_matcher', 'upstream_fallback', 'rules_only']),
+    source_mode: z.enum(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only']),
     used_recent_logs: z.boolean(),
     used_itinerary: z.boolean(),
     used_safety_flags: z.boolean(),
+    trigger_source: z.string().min(1).nullable().optional(),
+    recompute_from_profile_update: z.boolean().optional(),
+    llm_trace: z
+      .object({
+        template_id: z.string().min(1).optional(),
+        prompt_hash: z.string().min(1).optional(),
+        prompt_chars: z.number().int().min(0).optional(),
+        token_est: z.number().int().min(0).optional(),
+        latency_ms: z.number().int().min(0).nullable().optional(),
+        cache_hit: z.boolean().optional(),
+        provider: z.string().min(1).nullable().optional(),
+        model: z.string().min(1).nullable().optional(),
+      })
+      .passthrough()
+      .optional(),
     env_source: z.string().min(1).nullable().optional(),
     epi: z.number().finite().nullable().optional(),
     active_trip_id: z.string().min(1).nullable().optional(),
@@ -406,6 +421,16 @@ const RecoGenerateRequestSchema = z
   })
   .strict();
 
+const RecoAlternativesRequestSchema = z
+  .object({
+    product_input: z.string().min(1).max(240).optional(),
+    product: z.record(z.string(), z.any()).optional(),
+    anchor_product_id: z.string().min(1).max(180).optional(),
+    max_total: z.number().int().min(1).max(8).optional(),
+    include_debug: z.boolean().optional(),
+  })
+  .strict();
+
 const PhotosPresignRequestSchema = z
   .object({
     slot_id: z.string().min(1),
@@ -676,6 +701,7 @@ module.exports = {
   DupeCompareRequestSchema,
   DupeSuggestRequestSchema,
   RecoGenerateRequestSchema,
+  RecoAlternativesRequestSchema,
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,
   SkinAnalysisRequestSchema,
