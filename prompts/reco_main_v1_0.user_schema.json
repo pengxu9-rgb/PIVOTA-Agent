@@ -1,0 +1,92 @@
+{
+  "meta": {
+    "lang": "EN",
+    "intent": "reco_products",
+    "region": "US"
+  },
+  "profile": {
+    "skinType": null,
+    "sensitivity": null,
+    "barrierStatus": null,
+    "goals": [
+      "acne-control",
+      "low irritation"
+    ],
+    "contraindications": []
+  },
+  "global_status": {
+    "budget_known": false,
+    "itinerary_provided": false,
+    "recent_logs_provided": false
+  },
+  "candidates": [],
+  "task": {
+    "type": "product_picks_not_routine",
+    "max_recommendations": 5,
+    "ranking_priorities": [
+      "low irritation / barrier-safe",
+      "acne efficacy",
+      "balanced value in US"
+    ],
+    "default_policy_when_profile_missing": [
+      "prefer fragrance-free",
+      "avoid harsh alcohols and high-irritant leave-ons",
+      "prefer simpler formulas and barrier-friendly bases",
+      "prefer acne actives with lower irritation risk when possible"
+    ]
+  },
+  "output_schema": {
+    "recommendations": [
+      {
+        "step": "cleanser|treatment|moisturizer|sunscreen|other",
+        "score": "integer 0-100",
+        "sku": {
+          "brand": "string|null",
+          "name": "string|null",
+          "display_name": "string|null",
+          "sku_id": "string|null",
+          "product_id": "string|null",
+          "category": "string|null",
+          "price_usd": "number|null"
+        },
+        "reasons": [
+          "string (max 3)"
+        ],
+        "evidence_pack": {
+          "keyActives": [
+            "string"
+          ],
+          "sensitivityFlags": [
+            "string"
+          ],
+          "pairingRules": [
+            "string"
+          ]
+        },
+        "missing_info": [
+          "string"
+        ],
+        "warnings": [
+          "string"
+        ]
+      }
+    ],
+    "evidence": {},
+    "confidence": "number 0..1",
+    "missing_info": [
+      "string"
+    ],
+    "warnings": [
+      "string"
+    ]
+  },
+  "hard_rules": [
+    "Do not ask clarifying questions.",
+    "Do not output checkout links.",
+    "Do not repeat the same product_id or sku_id.",
+    "If candidates[] is non-empty, every recommendation must copy sku_id/product_id/brand/name from a candidate exactly.",
+    "At least one reason per item must reference the user's profile OR explicitly reference missing profile fields conservatively (e.g., 'skin type not provided').",
+    "If global_status.recent_logs_provided is false, add top-level warning 'recent_logs_missing' (only once, not per item).",
+    "If global_status.itinerary_provided is false, add top-level warning 'itinerary_unknown' (only once, not per item)."
+  ]
+}

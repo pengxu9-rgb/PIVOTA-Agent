@@ -71,7 +71,7 @@ npm run demo:status
 
 - Use Node 20 (`nvm use` reads `.nvmrc`).
 - Run tests only from this project root. Do not run tests from any `_deploy_tmp_*` directory.
-- Prefer a local non-cloud path (for example `~/dev/...`) instead of Desktop-managed sync folders.
+- Desktop workspace is blocked for tests/release. Use `~/dev/...` only.
 - Run `npm run test:preflight` before troubleshooting any test issue.
 - Use `npm run test:file -- <path>` to auto-route by runner:
   - `*.node.test.cjs` -> `node --test`

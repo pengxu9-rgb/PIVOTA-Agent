@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "lang": "EN",
+    "intent": "alternatives",
+    "region": "US"
+  },
+  "profile": {
+    "skinType": "Combo/Mixed",
+    "sensitivity": "Medium",
+    "barrierStatus": "Impaired",
+    "goals": [
+      "Hydration"
+    ]
+  },
+  "target_product": {
+    "brand": "La Roche-Posay",
+    "name": "Effaclar Duo",
+    "region_variant": "US|EU|unknown",
+    "known_actives": [],
+    "notes": null
+  },
+  "task": {
+    "max_alternatives": 6,
+    "mix": {
+      "dupe": 2,
+      "similar": 2,
+      "premium": 2
+    },
+    "bias": [
+      "prefer barrier-safe options for impaired barrier",
+      "avoid higher-irritation leave-ons if possible",
+      "match formulation intent and actives when known"
+    ]
+  },
+  "hard_rules": [
+    "If target_product.known_actives is empty and region_variant is unknown, do NOT assume the formula; reflect uncertainty via missing_info."
+  ],
+  "output_item_schema": {
+    "type": "dupe|similar|premium",
+    "product": {
+      "brand": "string|null",
+      "name": "string|null",
+      "product_id": "string|null",
+      "sku_id": "string|null"
+    },
+    "similarity_score": "integer 0-100",
+    "reasons": [
+      "string (max 2)"
+    ],
+    "tradeoffs": {
+      "pros": [
+        "string (max 2)"
+      ],
+      "cons": [
+        "string (max 2)"
+      ]
+    },
+    "evidence": {
+      "keyActives": [
+        "string"
+      ],
+      "sensitivityFlags": [
+        "string"
+      ]
+    },
+    "missing_info": [
+      "string"
+    ]
+  }
+}

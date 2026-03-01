@@ -1081,6 +1081,10 @@ async function auroraChat({
   debug,
   allow_recommendations,
   resume_context,
+  trace_id,
+  request_id,
+  prompt_hash,
+  prompt_template_id,
 } = {}) {
   const queryText = String(query || '');
   const resumePrefix = buildResumeContextPrefix(resume_context);
@@ -1101,8 +1105,23 @@ async function auroraChat({
   if (Array.isArray(messages) && messages.length) payload.messages = messages;
   if (typeof debug === 'boolean') payload.debug = debug;
   if (typeof allow_recommendations === 'boolean') payload.allow_recommendations = allow_recommendations;
+  if (trace_id) payload.parent_trace_id = trace_id;
+  if (request_id) payload.parent_request_id = request_id;
+  if (prompt_hash) payload.prompt_hash = prompt_hash;
+  if (prompt_template_id) payload.prompt_template_id = prompt_template_id;
+  const upstreamHeaders = {
+    ...(trace_id ? { 'X-Parent-Trace-Id': String(trace_id) } : {}),
+    ...(request_id ? { 'X-Parent-Request-Id': String(request_id) } : {}),
+    ...(prompt_hash ? { 'X-Prompt-Hash': String(prompt_hash) } : {}),
+    ...(prompt_template_id ? { 'X-Prompt-Template': String(prompt_template_id) } : {}),
+  };
   const normalizedRetries = Number.isFinite(Number(retries)) ? Math.max(0, Math.trunc(Number(retries))) : 1;
-  const resp = await postWithRetry(url, payload, { timeoutMs, retries: normalizedRetries, retryDelayMs: 250 });
+  const resp = await postWithRetry(url, payload, {
+    timeoutMs,
+    retries: normalizedRetries,
+    retryDelayMs: 250,
+    headers: Object.keys(upstreamHeaders).length ? upstreamHeaders : undefined,
+  });
   const data = resp && resp.data;
   return data && typeof data === 'object' ? data : { raw: data };
 }
