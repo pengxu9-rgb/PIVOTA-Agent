@@ -3276,16 +3276,7 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     ),
     bodyExternalCountForHealth,
   );
-  const externalSeedReturnedCount = Math.max(
-    intNonNegative(
-      routeHealth.external_seed_returned_count != null
-        ? routeHealth.external_seed_returned_count
-        : metadata.external_seed_returned_count != null
-        ? metadata.external_seed_returned_count
-        : metadata?.source_breakdown?.external_seed_count,
-    ),
-    bodyExternalCountForHealth,
-  );
+  const externalSeedReturnedCount = routeHealth.external_raw_count;
   routeHealth.external_seed_returned_count = externalSeedReturnedCount;
   routeHealth.merged_pre_limit_count = Math.max(
     routeHealth.merged_pre_limit_count != null
