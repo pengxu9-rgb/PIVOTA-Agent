@@ -138,6 +138,7 @@ const {
   DupeCompareRequestSchema,
   DupeSuggestRequestSchema,
   RecoGenerateRequestSchema,
+  RecoAlternativesRequestSchema,
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,
   SkinAnalysisRequestSchema,
@@ -322,6 +323,10 @@ const tokenizeStableResolverQuery =
 const AURORA_DECISION_BASE_URL = String(process.env.AURORA_DECISION_BASE_URL || '').replace(/\/$/, '');
 const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '')
   .replace(/\/$/, '');
+const RECO_PROMPTS_ROOT_DIR = path.resolve(__dirname, '../../prompts');
+const RECO_MAIN_PROMPT_TEMPLATE_ID = 'reco_main_v1_0';
+const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
+const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
 const CONFLICT_HEATMAP_V1_ENABLED = String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
@@ -18418,6 +18423,87 @@ function stableHashBase36(raw) {
   return BigInt(`0x${hex}`).toString(36);
 }
 
+function estimateTokenCountFromChars(value) {
+  const chars = String(value || '').length;
+  if (!chars) return 0;
+  return Math.max(1, Math.ceil(chars / 4));
+}
+
+function safeStructuredCloneJson(value) {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_err) {
+    return null;
+  }
+}
+
+function buildRecoPromptTrace({ templateId, query, latencyMs, cacheHit, provider = 'aurora', model = null, coverage = null } = {}) {
+  const queryText = String(query || '');
+  const hash = queryText ? crypto.createHash('sha1').update(queryText).digest('hex').slice(0, 16) : '';
+  return {
+    template_id: String(templateId || '').trim() || 'unknown',
+    prompt_hash: hash || null,
+    prompt_chars: queryText.length,
+    token_est: estimateTokenCountFromChars(queryText),
+    latency_ms: Number.isFinite(Number(latencyMs)) ? Math.max(0, Math.trunc(Number(latencyMs))) : null,
+    cache_hit: Boolean(cacheHit),
+    provider: String(provider || '').trim() || null,
+    model: String(model || '').trim() || null,
+    ...(coverage && typeof coverage === 'object' && !Array.isArray(coverage) ? { coverage } : {}),
+  };
+}
+
+function buildRecoInputCoverage({ profileSummary, recentLogs, requestText } = {}) {
+  const profileObj = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : {};
+  const goals = Array.isArray(profileObj.goals) ? profileObj.goals : [];
+  return {
+    has_skin_type: Boolean(String(profileObj.skinType || '').trim()),
+    has_sensitivity: Boolean(String(profileObj.sensitivity || '').trim()),
+    has_barrier_status: Boolean(String(profileObj.barrierStatus || '').trim()),
+    has_goals: goals.length > 0,
+    has_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+    has_request_text: Boolean(String(requestText || '').trim()),
+  };
+}
+
+function loadRecoPromptTemplateFile(fileName, { parseJson = false, fallback = '' } = {}) {
+  const key = `${parseJson ? 'json' : 'text'}:${String(fileName || '').trim()}`;
+  if (recoPromptTemplateCache.has(key)) return recoPromptTemplateCache.get(key);
+  const target = path.resolve(RECO_PROMPTS_ROOT_DIR, fileName);
+  let value = fallback;
+  try {
+    const raw = fs.readFileSync(target, 'utf8');
+    value = parseJson ? JSON.parse(raw) : raw;
+  } catch (_err) {
+    value = fallback;
+  }
+  recoPromptTemplateCache.set(key, value);
+  return value;
+}
+
+function normalizeRecoPromptLanguage(lang) {
+  return String(lang || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+}
+
+function normalizeRecoPromptRegion(profile) {
+  const raw = pickFirstTrimmed(profile && profile.region, profile && profile.country, 'US');
+  return raw || 'US';
+}
+
+function formatAuroraPromptQuery({ templateId, systemPrompt, userPayload } = {}) {
+  const promptSystem = String(systemPrompt || '').trim();
+  const payloadJson = JSON.stringify(userPayload && typeof userPayload === 'object' ? userPayload : {}, null, 2);
+  return [
+    `PROMPT_TEMPLATE_ID=${String(templateId || '').trim() || 'unknown'}`,
+    'SYSTEM_PROMPT:',
+    promptSystem,
+    'USER_PROMPT_JSON:',
+    payloadJson,
+    'OUTPUT_REQUIREMENT: Return only a valid JSON object that strictly follows the schema and hard rules.',
+  ].join('\n');
+}
+
 function normalizeClarificationField(raw) {
   const rawText = String(raw == null ? '' : raw).trim();
   const lowered = rawText.toLowerCase();
@@ -29413,77 +29499,226 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
   );
 }
 
-function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, ingredientContext }) {
-  const skinType = profile && typeof profile.skinType === 'string' ? profile.skinType : 'unknown';
-  const barrierStatus = mapBarrierStatus(profile && profile.barrierStatus);
-  const concerns = mapConcerns(profile && profile.goals);
-  const region = profile && typeof profile.region === 'string' && profile.region.trim() ? profile.region.trim() : 'US';
-  const budgetKnown = normalizeBudgetHint(profile && profile.budgetTier) || '';
-  const budget = budgetKnown || 'unknown';
-  const concernsStr = concerns.length ? concerns.join(', ') : 'none';
-  const replyLang = lang === 'CN' ? 'Chinese' : 'English';
-  const req = typeof requestText === 'string' ? requestText.trim() : '';
-  const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
-  const ingredientQuery =
-    normalizedIngredientContext && normalizedIngredientContext.query
-      ? String(normalizedIngredientContext.query).trim()
-      : '';
-  const ingredientGoal =
-    normalizedIngredientContext && normalizedIngredientContext.goal
-      ? String(normalizedIngredientContext.goal).trim()
-      : '';
-  const ingredientSensitivity =
-    normalizedIngredientContext && normalizedIngredientContext.sensitivity
-      ? String(normalizedIngredientContext.sensitivity).trim()
-      : '';
-  const ingredientCandidates = normalizeIngredientCandidateList(
-    normalizedIngredientContext && normalizedIngredientContext.candidates,
-    6,
-  );
-  const ingredientContextFields = [
-    ingredientQuery ? `query="${ingredientQuery}"` : '',
-    ingredientGoal ? `goal=${ingredientGoal}` : '',
-    ingredientSensitivity && ingredientSensitivity !== 'unknown' ? `sensitivity=${ingredientSensitivity}` : '',
-    ingredientCandidates.length ? `candidates=${ingredientCandidates.join(', ')}` : '',
-  ].filter(Boolean);
-  const ingredientContextRule = ingredientContextFields.length
-    ? `Ingredient context: ${ingredientContextFields.join('; ')}. ` +
-      'Prioritize products explicitly aligned with this ingredient context; if uncertain, return fewer items instead of unrelated picks.'
-    : '';
-  const budgetReasonRule = budgetKnown
-    ? 'If budget is known, include one reason that references budget fit.'
-    : 'If budget is unknown, do not ask budget in the first response; focus on efficacy/tolerance and balanced value.';
+function normalizeRecoPromptGoals(profile, requestText) {
+  const profileGoals = uniqCaseInsensitiveStrings(Array.isArray(profile && profile.goals) ? profile.goals : [], 6);
+  if (profileGoals.length) return profileGoals;
+  const text = String(requestText || '').trim().toLowerCase();
+  const derived = [];
+  if (/(acne|breakout|pore|oil|控痘|痘|闭口|粉刺|毛孔|出油)/.test(text)) derived.push('acne-control');
+  if (/(irritation|sensitive|barrier|redness|低刺激|敏感|屏障|泛红)/.test(text)) derived.push('low irritation');
+  if (/(dark spot|bright|tone|提亮|淡斑|暗沉)/.test(text)) derived.push('brightening');
+  if (/(aging|wrinkle|firm|抗老|抗衰|细纹)/.test(text)) derived.push('anti-aging');
+  if (/(hydrate|moist|dry|保湿|补水|干燥)/.test(text)) derived.push('hydration');
+  return uniqCaseInsensitiveStrings(derived, 6);
+}
 
-  return (
-    `User profile: skin type ${skinType}; barrier status: ${barrierStatus}; concerns: ${concernsStr}; region: ${region}; budget: ${budget}.\n` +
-    (req ? `User request: ${req}\n` : '') +
-    (ingredientContextRule ? `${ingredientContextRule}\n` : '') +
-    `Task: Generate skincare product picks (NOT a full AM/PM routine).\n` +
-    `Return ONLY a JSON object with keys: recommendations (array), evidence (object), confidence (0..1), missing_info (string[]), warnings (string[]).\n` +
-    `recommendations: up to 5 items, ranked.\n` +
-    `Each recommendation item MUST include:\n` +
-    `- slot: "other"\n` +
-    `- step: category label (cleanser/sunscreen/treatment/moisturizer/other)\n` +
-    `- score: integer 0..100 (fit score)\n` +
-    `- sku: {brand,name,display_name,sku_id,product_id,category,availability(string[]),price{usd,cny,unknown}}\n` +
-    `- reasons: string[] (max 4). Reasons must be end-user readable and user-specific.\n` +
-    `  - Include at least one reason that explicitly references the user's profile (skin type / sensitivity / barrier / goals).\n` +
-    `  - ${budgetReasonRule}\n` +
-    `  - If recent_logs were provided, include one reason that references the last 7 days trend; otherwise add warnings: "recent_logs_missing".\n` +
-    `  - If profile.itinerary (upcoming plan/travel context) is available, include one reason that references it.\n` +
-    `  - If upcoming plan/travel context is not available, add warnings: "itinerary_unknown" (do NOT guess).\n` +
-    `- evidence_pack: {keyActives,sensitivityFlags,pairingRules,comparisonNotes,citations} (omit unknown keys; do NOT fabricate).\n` +
-    `- missing_info: string[] (per-item; ONLY user-provided fields like budget_unknown)\n` +
-    `- warnings: string[] (per-item; quality signals like over_budget/price_unknown/recent_logs_missing)\n` +
-    `Rules:\n` +
-    `- Do NOT include checkout links.\n` +
-    `- Do NOT recommend the exact same sku_id/product_id twice.\n` +
-    `- If unsure, use null/unknown and list missing_info/warnings (do not fabricate).\n` +
-    (ingredientContextFields.length
-      ? '- Do not return recommendations that are unrelated to the ingredient context. If relevance is weak, reduce count and add warnings: "ingredient_context_sparse".\n'
-      : '') +
-    `- All free-text strings should be in ${replyLang}.\n`
-  );
+function normalizeRecoPromptContraindications(profile) {
+  const out = [];
+  const pushValues = (list) => {
+    for (const item of Array.isArray(list) ? list : []) {
+      const value = String(item || '').trim();
+      if (!value) continue;
+      out.push(value);
+      if (out.length >= 8) return;
+    }
+  };
+  if (profile && typeof profile === 'object') {
+    pushValues(profile.contraindications);
+    pushValues(profile.avoidIngredients);
+    pushValues(profile.avoid_ingredients);
+    pushValues(profile.allergies);
+  }
+  return uniqCaseInsensitiveStrings(out, 8);
+}
+
+function normalizeRecoPromptCandidates(candidates, region) {
+  const out = [];
+  const seen = new Set();
+  for (const row of Array.isArray(candidates) ? candidates : []) {
+    const item = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+    if (!item) continue;
+    const skuId = pickFirstTrimmed(item.sku_id, item.skuId);
+    const productId = pickFirstTrimmed(item.product_id, item.productId);
+    const brand = pickFirstTrimmed(item.brand);
+    const name = pickFirstTrimmed(item.name);
+    if (!skuId && !productId && !name) continue;
+    const dedupeKey = String(skuId || productId || `${brand}:${name}`).trim().toLowerCase();
+    if (!dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push({
+      sku_id: skuId || null,
+      product_id: productId || null,
+      brand: brand || null,
+      name: name || null,
+      display_name: pickFirstTrimmed(item.display_name, item.displayName, name) || null,
+      category: pickFirstTrimmed(item.category) || 'other',
+      price_usd: Number.isFinite(Number(item.price_usd))
+        ? Number(item.price_usd)
+        : Number.isFinite(Number(item.price))
+          ? Number(item.price)
+          : null,
+      keyActives: uniqCaseInsensitiveStrings(
+        Array.isArray(item.keyActives) ? item.keyActives : Array.isArray(item.key_actives) ? item.key_actives : [],
+        10,
+      ),
+      sensitivityFlags: uniqCaseInsensitiveStrings(
+        Array.isArray(item.sensitivityFlags) ? item.sensitivityFlags : Array.isArray(item.sensitivity_flags) ? item.sensitivity_flags : [],
+        10,
+      ),
+      availability_regions: uniqCaseInsensitiveStrings(
+        Array.isArray(item.availability_regions) ? item.availability_regions : [region],
+        5,
+      ),
+    });
+    if (out.length >= 30) break;
+  }
+  return out;
+}
+
+function buildRecoMainPromptPayload({
+  profile,
+  requestText,
+  lang,
+  globalStatus,
+  candidates,
+  ingredientContext,
+} = {}) {
+  const fallbackSchema = {
+    meta: { lang: 'EN', intent: 'reco_products', region: 'US' },
+    profile: { skinType: null, sensitivity: null, barrierStatus: null, goals: [], contraindications: [] },
+    global_status: { budget_known: false, itinerary_provided: false, recent_logs_provided: false },
+    candidates: [],
+    task: {
+      type: 'product_picks_not_routine',
+      max_recommendations: 5,
+      ranking_priorities: ['low irritation / barrier-safe', 'acne efficacy', 'balanced value in US'],
+      default_policy_when_profile_missing: [
+        'prefer fragrance-free',
+        'avoid harsh alcohols and high-irritant leave-ons',
+        'prefer simpler formulas and barrier-friendly bases',
+        'prefer acne actives with lower irritation risk when possible',
+      ],
+    },
+    output_schema: {
+      recommendations: [
+        {
+          step: 'cleanser|treatment|moisturizer|sunscreen|other',
+          score: 'integer 0-100',
+          sku: {
+            brand: 'string|null',
+            name: 'string|null',
+            display_name: 'string|null',
+            sku_id: 'string|null',
+            product_id: 'string|null',
+            category: 'string|null',
+            price_usd: 'number|null',
+          },
+          reasons: ['string (max 3)'],
+          evidence_pack: { keyActives: ['string'], sensitivityFlags: ['string'], pairingRules: ['string'] },
+          missing_info: ['string'],
+          warnings: ['string'],
+        },
+      ],
+      evidence: {},
+      confidence: 'number 0..1',
+      missing_info: ['string'],
+      warnings: ['string'],
+    },
+    hard_rules: [
+      'Do not ask clarifying questions.',
+      'Do not output checkout links.',
+      'Do not repeat the same product_id or sku_id.',
+      'If candidates[] is non-empty, every recommendation must copy sku_id/product_id/brand/name from a candidate exactly.',
+      "At least one reason per item must reference the user's profile OR explicitly reference missing profile fields conservatively (e.g., 'skin type not provided').",
+      "If global_status.recent_logs_provided is false, add top-level warning 'recent_logs_missing' (only once, not per item).",
+      "If global_status.itinerary_provided is false, add top-level warning 'itinerary_unknown' (only once, not per item).",
+    ],
+  };
+  const template = loadRecoPromptTemplateFile('reco_main_v1_0.user_schema.json', { parseJson: true, fallback: fallbackSchema });
+  const payload = safeStructuredCloneJson(template) || safeStructuredCloneJson(fallbackSchema) || {};
+  const profileObj = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
+  const region = normalizeRecoPromptRegion(profileObj);
+  const goals = normalizeRecoPromptGoals(profileObj, requestText);
+  const normalizedCandidates = normalizeRecoPromptCandidates(candidates, region);
+  const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
+  const ingredientContextPayload =
+    normalizedIngredientContext && typeof normalizedIngredientContext === 'object'
+      ? {
+        ...(pickFirstTrimmed(normalizedIngredientContext.query) ? { query: pickFirstTrimmed(normalizedIngredientContext.query) } : {}),
+        ...(pickFirstTrimmed(normalizedIngredientContext.goal) ? { goal: pickFirstTrimmed(normalizedIngredientContext.goal) } : {}),
+        ...(pickFirstTrimmed(normalizedIngredientContext.sensitivity) ? { sensitivity: pickFirstTrimmed(normalizedIngredientContext.sensitivity) } : {}),
+        ...(Array.isArray(normalizedIngredientContext.candidates)
+          ? { candidates: uniqCaseInsensitiveStrings(normalizedIngredientContext.candidates, 8) }
+          : {}),
+      }
+      : null;
+  const langCode = normalizeRecoPromptLanguage(lang);
+  const userRequest = String(requestText || '').trim();
+
+  payload.meta = {
+    ...(payload.meta && typeof payload.meta === 'object' ? payload.meta : {}),
+    lang: langCode,
+    intent: 'reco_products',
+    region,
+    ...(userRequest ? { request_text: userRequest.slice(0, 500) } : {}),
+    ...(ingredientContextPayload && Object.keys(ingredientContextPayload).length
+      ? { ingredient_context: ingredientContextPayload }
+      : {}),
+  };
+  payload.profile = {
+    ...(payload.profile && typeof payload.profile === 'object' ? payload.profile : {}),
+    skinType: pickFirstTrimmed(profileObj.skinType, profileObj.skin_type, profileObj.skin_type_text) || null,
+    sensitivity: pickFirstTrimmed(profileObj.sensitivity, profileObj.sensitivity_level) || null,
+    barrierStatus: pickFirstTrimmed(profileObj.barrierStatus, profileObj.barrier_status) || null,
+    goals,
+    contraindications: normalizeRecoPromptContraindications(profileObj),
+  };
+  payload.global_status = {
+    ...(payload.global_status && typeof payload.global_status === 'object' ? payload.global_status : {}),
+    budget_known: Boolean(globalStatus && globalStatus.budget_known),
+    itinerary_provided: Boolean(globalStatus && globalStatus.itinerary_provided),
+    recent_logs_provided: Boolean(globalStatus && globalStatus.recent_logs_provided),
+  };
+  if (ingredientContextPayload && Object.keys(ingredientContextPayload).length) {
+    const rules = Array.isArray(payload.hard_rules) ? payload.hard_rules.slice(0, 24) : [];
+    rules.push(
+      'Respect ingredient_context strictly: prioritize products aligned with ingredient query/goal/sensitivity; if weak relevance, return fewer items and add warnings.',
+    );
+    payload.hard_rules = uniqCaseInsensitiveStrings(rules, 24);
+  }
+  payload.candidates = normalizedCandidates;
+  return payload;
+}
+
+function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext }) {
+  const fallbackSystemPrompt = [
+    'You are a skincare product ranking engine.',
+    '',
+    'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
+    'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null and add to missing_info/warnings.',
+    'If candidates[] is provided and non-empty: you MUST select only from candidates[] (no new products).',
+    'Keep output concise: reasons max 3 per item, each reason <= 22 words.',
+    'If you cannot fill 5 items safely, return fewer items and lower confidence.',
+  ].join('\n');
+  const systemPrompt = loadRecoPromptTemplateFile('reco_main_v1_0.system.txt', {
+    parseJson: false,
+    fallback: fallbackSystemPrompt,
+  });
+  const payload = buildRecoMainPromptPayload({
+    profile,
+    requestText,
+    lang,
+    globalStatus,
+    candidates,
+    ingredientContext,
+  });
+  const promptBody = formatAuroraPromptQuery({
+    templateId: RECO_MAIN_PROMPT_TEMPLATE_ID,
+    systemPrompt,
+    userPayload: payload,
+  });
+  // Backward-compatible sentinel for existing mock/test detectors.
+  return `Task: Generate skincare product picks (NOT a full AM/PM routine).\n${promptBody}`;
 }
 
 function looksLikeRoutineRequest(message, action) {
@@ -32444,6 +32679,122 @@ function mergeFieldMissing(a, b) {
   return out;
 }
 
+function buildRecoAlternativesPromptPayload({
+  lang,
+  profileSnapshot,
+  productInput,
+  productObj,
+  maxTotal,
+  region,
+} = {}) {
+  const fallbackSchema = {
+    meta: { lang: 'EN', intent: 'alternatives', region: 'US' },
+    profile: { skinType: 'Combo/Mixed', sensitivity: 'Medium', barrierStatus: 'Impaired', goals: ['Hydration'] },
+    target_product: { brand: null, name: null, region_variant: 'unknown', known_actives: [], notes: null },
+    task: {
+      max_alternatives: 6,
+      mix: { dupe: 2, similar: 2, premium: 2 },
+      bias: [
+        'prefer barrier-safe options for impaired barrier',
+        'avoid higher-irritation leave-ons if possible',
+        'match formulation intent and actives when known',
+      ],
+    },
+    hard_rules: [
+      'If target_product.known_actives is empty and region_variant is unknown, do NOT assume the formula; reflect uncertainty via missing_info.',
+    ],
+    output_item_schema: {
+      type: 'dupe|similar|premium',
+      product: { brand: 'string|null', name: 'string|null', product_id: 'string|null', sku_id: 'string|null' },
+      similarity_score: 'integer 0-100',
+      reasons: ['string (max 2)'],
+      tradeoffs: { pros: ['string (max 2)'], cons: ['string (max 2)'] },
+      evidence: { keyActives: ['string'], sensitivityFlags: ['string'] },
+      missing_info: ['string'],
+    },
+  };
+  const template = loadRecoPromptTemplateFile('reco_alternatives_v1_0.user_schema.json', {
+    parseJson: true,
+    fallback: fallbackSchema,
+  });
+  const payload = safeStructuredCloneJson(template) || safeStructuredCloneJson(fallbackSchema) || {};
+  const profileObj = profileSnapshot && typeof profileSnapshot === 'object' && !Array.isArray(profileSnapshot) ? profileSnapshot : {};
+  const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
+  const knownActives = uniqCaseInsensitiveStrings(
+    Array.isArray(product.known_actives)
+      ? product.known_actives
+      : Array.isArray(product.keyActives)
+        ? product.keyActives
+        : Array.isArray(product.key_actives)
+          ? product.key_actives
+          : [],
+    12,
+  );
+  const brand = pickFirstTrimmed(product.brand, product.manufacturer) || null;
+  const name = pickFirstTrimmed(product.display_name, product.name, product.product_name, productInput) || null;
+  const regionVariant = pickFirstTrimmed(product.region_variant, product.regionVariant, 'unknown') || 'unknown';
+  const limit = Number.isFinite(Number(maxTotal)) ? Math.max(1, Math.min(8, Math.trunc(Number(maxTotal)))) : 6;
+  const langCode = normalizeRecoPromptLanguage(lang);
+
+  payload.meta = {
+    ...(payload.meta && typeof payload.meta === 'object' ? payload.meta : {}),
+    lang: langCode,
+    intent: 'alternatives',
+    region: String(region || 'US').trim() || 'US',
+  };
+  payload.profile = {
+    ...(payload.profile && typeof payload.profile === 'object' ? payload.profile : {}),
+    skinType: pickFirstTrimmed(profileObj.skinType, 'Combo/Mixed') || 'Combo/Mixed',
+    sensitivity: pickFirstTrimmed(profileObj.sensitivity, 'Medium') || 'Medium',
+    barrierStatus: pickFirstTrimmed(profileObj.barrierStatus, 'Impaired') || 'Impaired',
+    goals: uniqCaseInsensitiveStrings(Array.isArray(profileObj.goals) ? profileObj.goals : ['Hydration'], 4),
+  };
+  payload.target_product = {
+    ...(payload.target_product && typeof payload.target_product === 'object' ? payload.target_product : {}),
+    brand,
+    name,
+    region_variant: regionVariant,
+    known_actives: knownActives,
+    notes: productInput && name && productInput !== name ? String(productInput).slice(0, 180) : null,
+  };
+  payload.task = {
+    ...(payload.task && typeof payload.task === 'object' ? payload.task : {}),
+    max_alternatives: limit,
+  };
+  return payload;
+}
+
+function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput, productObj, maxTotal, region }) {
+  const fallbackSystemPrompt = [
+    'You are a skincare formulation comparison engine.',
+    '',
+    'Output MUST be a single valid JSON object with exactly one key: alternatives (array). No other keys.',
+    'Never invent product IDs/SKUs/prices/actives. If unknown, use null and add missing_info.',
+    'Similarity_score MUST be an integer 0-100.',
+    'No clarifying questions.',
+    'Keep each reasons array max 2 items, each <= 22 words.',
+  ].join('\n');
+  const systemPrompt = loadRecoPromptTemplateFile('reco_alternatives_v1_0.system.txt', {
+    parseJson: false,
+    fallback: fallbackSystemPrompt,
+  });
+  const payload = buildRecoAlternativesPromptPayload({
+    lang,
+    profileSnapshot,
+    productInput,
+    productObj,
+    maxTotal,
+    region,
+  });
+  const promptBody = formatAuroraPromptQuery({
+    templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+    systemPrompt,
+    userPayload: payload,
+  });
+  // Backward-compatible sentinel for existing mock/test detectors.
+  return `Task: Deep-scan this product and return alternatives (dupe/similar/premium).\n${promptBody}`;
+}
+
 async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, maxTotal, debug, logger }) {
   const inputText = String(productInput || '').trim();
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
@@ -32618,36 +32969,47 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
   let lastAlternativesRaw = [];
   let lastIntent = null;
   let lastError = null;
+  let lastLlmTrace = null;
   for (const attempt of attempts) {
     const profileSnapshot = buildProfileSnapshot(profileObj, {
       forceConservative: attempt.forceConservative,
     });
-    const profileSnapshotLine =
-      `Profile snapshot (already available, do not re-ask): skinType=${profileSnapshot.skinType}; ` +
-      `sensitivity=${profileSnapshot.sensitivity}; barrierStatus=${profileSnapshot.barrierStatus}; goals=${profileSnapshot.goals.join(', ')}`;
-    const fallbackAssumptionLine = profileSnapshot.assumptions_applied
-      ? 'Fallback assumption mode: profile may be incomplete; proceed now with conservative defaults and return best-effort alternatives.'
-      : '';
     const query =
       `${prefix}` +
-      `${profileSnapshotLine}\n` +
-      (fallbackAssumptionLine ? `${fallbackAssumptionLine}\n` : '') +
-      `Execution constraints:\n` +
-      `- Do NOT ask clarifying questions.\n` +
-      `- If some fields are missing, continue with general-audience assumptions and mark missing_info.\n` +
-      `- Return alternatives based on available evidence instead of blocking on additional intake.\n` +
-      `Task: Deep-scan this product and return alternatives (dupe/similar/premium) tailored to this user if possible.\n` +
-      `Return ONLY a JSON object with keys: alternatives (array).\n` +
-      `Each alternative item should include: product (object), similarity_score (0..1 or 0..100), tradeoffs (object), reasons (string[] max 2), evidence (object), missing_info (string[]).\n` +
-      `Reasons must be end-user readable and explain why this alternative is useful for THIS user's profile/logs/budget (do NOT guess missing info; use missing_info).\n` +
-      `Product: ${bestInput}\n` +
-      (productJson ? `Product JSON: ${productJson}\n` : '');
+      buildAuroraRecoAlternativesQuery({
+        lang: ctx.lang,
+        profileSnapshot,
+        productInput: bestInput,
+        productObj,
+        maxTotal,
+        region: normalizeRecoPromptRegion(profileSummary),
+      });
+    const traceCoverage = {
+      assumptions_applied: Boolean(profileSnapshot.assumptions_applied),
+      has_anchor_id: Boolean(anchor),
+      has_product_json: Boolean(productJson),
+      has_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+    };
+    const traceSeed = buildRecoPromptTrace({
+      templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+      query,
+      latencyMs: null,
+      cacheHit: false,
+      provider: 'aurora',
+      model: null,
+      coverage: traceCoverage,
+    });
+    const startedAtMs = Date.now();
     let upstream = null;
     try {
       upstream = await auroraChat({
         baseUrl: AURORA_DECISION_BASE_URL,
         query,
         timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+        trace_id: ctx.trace_id,
+        request_id: ctx.request_id,
+        prompt_hash: traceSeed.prompt_hash,
+        prompt_template_id: traceSeed.template_id,
         ...(anchor ? { anchor_product_id: anchor } : {}),
         allow_recommendations: true,
         resume_context: {
@@ -32670,8 +33032,20 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
           },
         },
       });
+      const llmTrace = {
+        ...traceSeed,
+        latency_ms: Date.now() - startedAtMs,
+        cache_hit: false,
+      };
+      lastLlmTrace = llmTrace;
     } catch (err) {
       lastError = err;
+      const llmTrace = {
+        ...traceSeed,
+        latency_ms: Date.now() - startedAtMs,
+        cache_hit: false,
+      };
+      lastLlmTrace = llmTrace;
       logger?.warn(
         {
           err: err && err.message ? err.message : String(err),
@@ -32684,6 +33058,8 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
         assumptions_applied: profileSnapshot.assumptions_applied,
         upstream_intent: null,
         error: err && err.message ? err.message : String(err),
+        llm_trace: llmTrace,
+        llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
         alternatives_raw_count: 0,
         alternatives_mapped_count: 0,
       });
@@ -32707,6 +33083,12 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
       lang: ctx.lang,
       maxTotal: maxTotal ?? 3,
     });
+    const llmTrace = {
+      ...traceSeed,
+      latency_ms: Date.now() - startedAtMs,
+      cache_hit: false,
+    };
+    lastLlmTrace = llmTrace;
     attemptDebug.push({
       attempt: attempt.id,
       assumptions_applied: profileSnapshot.assumptions_applied,
@@ -32716,6 +33098,8 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
         upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
           ? Object.keys(upstream.structured).slice(0, 24)
           : [],
+      llm_trace: llmTrace,
+      llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
       alternatives_raw_count: Array.isArray(alternativesRaw) ? alternativesRaw.length : 0,
       alternatives_mapped_count: Array.isArray(attemptMapped) ? attemptMapped.length : 0,
     });
@@ -32745,6 +33129,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
           },
         }
         : {}),
+      ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
     };
   }
 
@@ -32775,6 +33160,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
         },
       }
       : {}),
+    ...(lastLlmTrace ? { llm_trace: lastLlmTrace } : {}),
   };
 }
 
@@ -32992,6 +33378,7 @@ async function generateProductRecommendations({
   let upstream = null;
   let contextMeta = {};
   let upstreamFailureCode = '';
+  let llmLatencyMs = null;
 
   const catalogOut = await buildRecoGenerateFromCatalog({
     ctx,
@@ -33016,17 +33403,49 @@ async function generateProductRecommendations({
     : null;
 
   let answerJson = null;
+  const globalStatus = {
+    budget_known: Boolean(normalizeBudgetHint(profileSummary && profileSummary.budgetTier)),
+    itinerary_provided: Boolean(String(profileSummary && profileSummary.itinerary ? profileSummary.itinerary : '').trim()),
+    recent_logs_provided: Array.isArray(recentLogs) && recentLogs.length > 0,
+  };
   const query =
     `${prefix}` +
     buildAuroraProductRecommendationsQuery({
       profile: profileSummary || {},
       requestText: userAsk,
       lang: ctx.lang,
+      globalStatus,
+      candidates: [],
     });
+  const llmTraceCoverage = buildRecoInputCoverage({
+    profileSummary,
+    recentLogs,
+    requestText: userAsk,
+  });
+  const llmTraceSeed = buildRecoPromptTrace({
+    templateId: RECO_MAIN_PROMPT_TEMPLATE_ID,
+    query,
+    latencyMs: null,
+    cacheHit: false,
+    provider: 'aurora',
+    model: null,
+    coverage: llmTraceCoverage,
+  });
+  const llmStartedAtMs = Date.now();
 
   try {
-    upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: RECO_UPSTREAM_TIMEOUT_MS });
+    upstream = await auroraChat({
+      baseUrl: AURORA_DECISION_BASE_URL,
+      query,
+      timeoutMs: RECO_UPSTREAM_TIMEOUT_MS,
+      trace_id: ctx.trace_id,
+      request_id: ctx.request_id,
+      prompt_hash: llmTraceSeed.prompt_hash,
+      prompt_template_id: llmTraceSeed.template_id,
+    });
+    llmLatencyMs = Date.now() - llmStartedAtMs;
   } catch (err) {
+    llmLatencyMs = Date.now() - llmStartedAtMs;
     upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
     if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
       logger?.warn(
@@ -33039,6 +33458,11 @@ async function generateProductRecommendations({
       );
     }
   }
+  const llmTrace = {
+    ...llmTraceSeed,
+    latency_ms: llmLatencyMs,
+    cache_hit: false,
+  };
 
   const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
   const routine = contextObj ? contextObj.routine : null;
@@ -33162,6 +33586,9 @@ async function generateProductRecommendations({
       reco_catalog_debug: catalogDebug,
       reco_pdp_fast_fallback_reason: pdpFastFallbackReasonCode,
       ingredient_context: normalizedIngredientContext || null,
+      llm_structured_source: llmStructuredSource,
+      llm_prompt_trace: llmTrace,
+      llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
     }
     : null;
   const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
@@ -33401,10 +33828,11 @@ async function generateProductRecommendations({
       used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
       used_itinerary: Boolean(itinerary),
       used_safety_flags: false,
+      llm_trace: llmTrace,
     },
   };
 
-  return { norm, upstreamDebug, alternativesDebug, upstreamFailureCode };
+  return { norm, upstreamDebug, alternativesDebug, upstreamFailureCode, llmTrace };
 }
 
 function parseBoolQueryValue(value, fallback = false) {
@@ -37359,6 +37787,81 @@ function mountAuroraBffRoutes(app, { logger }) {
         events: [makeEvent(ctx, 'error', { code: err.code || 'RECO_GENERATE_FAILED' })],
       });
       return res.status(status).json(envelope);
+    }
+  });
+
+  app.post('/v1/reco/alternatives', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = RecoAlternativesRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          ok: false,
+          error: 'BAD_REQUEST',
+          details: parsed.error.format(),
+        });
+      }
+
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+      const productObj =
+        parsed.data.product && typeof parsed.data.product === 'object' && !Array.isArray(parsed.data.product)
+          ? parsed.data.product
+          : null;
+      const productInput = String(parsed.data.product_input || '').trim() || buildProductInputText(productObj, null);
+      const anchorId = String(parsed.data.anchor_product_id || '').trim() || extractAnchorIdFromProductLike(productObj);
+      const includeDebugFromHeader = coerceBoolean(req.get('X-Debug') ?? req.get('X-Aurora-Debug'));
+      const includeDebug = includeDebugFromHeader ?? Boolean(parsed.data.include_debug);
+      const maxTotal = Number.isFinite(Number(parsed.data.max_total))
+        ? Math.max(1, Math.min(8, Math.trunc(Number(parsed.data.max_total))))
+        : 6;
+
+      if (!productInput && !anchorId) {
+        return res.status(400).json({
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          ok: false,
+          error: 'PRODUCT_IDENTITY_MISSING',
+          field_missing: [{ field: 'product_input', reason: 'product_identity_missing' }],
+        });
+      }
+
+      const out = await fetchRecoAlternativesForProduct({
+        ctx,
+        profileSummary: summarizeProfileForContext(profile),
+        recentLogs,
+        productInput,
+        productObj,
+        anchorId,
+        maxTotal,
+        debug: includeDebug,
+        logger,
+      });
+
+      return res.json({
+        request_id: ctx.request_id,
+        trace_id: ctx.trace_id,
+        ok: out && out.ok !== false,
+        alternatives: Array.isArray(out && out.alternatives) ? out.alternatives : [],
+        field_missing: Array.isArray(out && out.field_missing) ? out.field_missing : [],
+        llm_trace: out && out.llm_trace && typeof out.llm_trace === 'object' ? out.llm_trace : null,
+        ...(includeDebug && out && out.debug && typeof out.debug === 'object' ? { debug: out.debug } : {}),
+      });
+    } catch (err) {
+      logger?.warn(
+        { err: err && err.message ? err.message : String(err), request_id: ctx.request_id, trace_id: ctx.trace_id },
+        'aurora bff: reco alternatives endpoint failed',
+      );
+      return res.status(500).json({
+        request_id: ctx.request_id,
+        trace_id: ctx.trace_id,
+        ok: false,
+        error: err && err.code ? err.code : 'RECO_ALTERNATIVES_FAILED',
+      });
     }
   });
 
