@@ -111,9 +111,16 @@ def _snapshot_from_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
     if photo_quality != effective_quality:
         raise AssertionError("quality_report.photo_quality must stay aligned with effective_quality")
 
-    for optional_bool_key in ["skin_force_vision_call_requested", "skin_force_vision_call_effective"]:
+    for optional_bool_key in [
+        "skin_force_vision_call_requested",
+        "skin_force_vision_call_effective",
+        "skin_model_fallback_used",
+    ]:
         if optional_bool_key in analysis_meta and not isinstance(analysis_meta.get(optional_bool_key), bool):
             raise AssertionError(f"analysis_meta.{optional_bool_key} must be bool when present")
+
+    if "skin_quality_decision_source" in analysis_meta and analysis_meta.get("skin_quality_decision_source") != "upload_qc_only":
+        raise AssertionError("analysis_meta.skin_quality_decision_source must be upload_qc_only when present")
 
     failure_codes = _uniq_str_list(list(photo_quality.get("reasons") or []))
     for fm in card.get("field_missing") or []:
@@ -155,7 +162,7 @@ def test_e2e_contract_analysis_skin_qc_fail_golden() -> None:
     snapshot = _snapshot_from_envelope(envelope)
 
     assert snapshot["quality_grade"] == "fail"
-    assert snapshot["analysis_source"] == "rule_based_with_photo_qc"
+    assert snapshot["analysis_source"] == "retake"
     assert snapshot["llm_called"] == {"vision": False, "report": False}
     assert snapshot["finding_types"] == []
 
