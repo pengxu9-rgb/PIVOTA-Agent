@@ -1701,6 +1701,17 @@ const RECO_ALTERNATIVES_SYNC_CIRCUIT_HALF_OPEN_PROBES = (() => {
   return Math.max(1, Math.min(3, v));
 })();
 
+const RECO_ALTERNATIVES_SYNC_CIRCUIT_PARTITION_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_PARTITION_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_ALTERNATIVES_SYNC_CIRCUIT_MAX_PARTITIONS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_MAX_PARTITIONS || 32);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 32;
+  return Math.max(2, Math.min(256, v));
+})();
+
 const RECO_ALTERNATIVES_REFRESH_DELAY_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_REFRESH_DELAY_MS || 1200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
@@ -2144,6 +2155,39 @@ const recoAlternativesSyncCircuitState = {
   last_reason: null,
   last_failure_at_ms: 0,
 };
+const recoAlternativesSyncCircuitPartitions = new Map();
+const recoAlternativesSyncCircuitPartitionOrder = [];
+
+function freshCircuitPartition() {
+  return {
+    state: 'closed',
+    opened_at_ms: 0,
+    window_started_at_ms: 0,
+    window_failures: 0,
+    half_open_probes: 0,
+    last_reason: null,
+    last_failure_at_ms: 0,
+  };
+}
+
+function getCircuitPartition(partitionKey) {
+  if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_PARTITION_ENABLED || !partitionKey) {
+    return recoAlternativesSyncCircuitState;
+  }
+  let p = recoAlternativesSyncCircuitPartitions.get(partitionKey);
+  if (!p) {
+    while (recoAlternativesSyncCircuitPartitions.size >= RECO_ALTERNATIVES_SYNC_CIRCUIT_MAX_PARTITIONS && recoAlternativesSyncCircuitPartitionOrder.length > 0) {
+      const oldest = recoAlternativesSyncCircuitPartitionOrder.shift();
+      recoAlternativesSyncCircuitPartitions.delete(oldest);
+    }
+    p = freshCircuitPartition();
+    recoAlternativesSyncCircuitPartitions.set(partitionKey, p);
+  }
+  const idx = recoAlternativesSyncCircuitPartitionOrder.indexOf(partitionKey);
+  if (idx !== -1) recoAlternativesSyncCircuitPartitionOrder.splice(idx, 1);
+  recoAlternativesSyncCircuitPartitionOrder.push(partitionKey);
+  return p;
+}
 let recoAlternativesAnchorPrecheckProbeInFlight = false;
 const photoBytesCache = new Map();
 const pdpPrefetchRecentMap = new Map();
@@ -2295,23 +2339,25 @@ function scheduleRecoAlternativesAnchorPrecheckProbe({
   if (probeHandle && typeof probeHandle.unref === 'function') probeHandle.unref();
 }
 
-function getRecoAlternativesSyncCircuitState(nowMs = Date.now()) {
+function getRecoAlternativesSyncCircuitState(nowMs = Date.now(), partitionKey = null) {
   if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED) return 'closed';
-  const state = String(recoAlternativesSyncCircuitState.state || 'closed');
+  const cs = getCircuitPartition(partitionKey);
+  const state = String(cs.state || 'closed');
   if (state === 'open') {
-    const openedAt = Number(recoAlternativesSyncCircuitState.opened_at_ms || 0);
+    const openedAt = Number(cs.opened_at_ms || 0);
     if (openedAt > 0 && nowMs - openedAt >= RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS) {
-      recoAlternativesSyncCircuitState.state = 'half_open';
-      recoAlternativesSyncCircuitState.half_open_probes = 0;
+      cs.state = 'half_open';
+      cs.half_open_probes = 0;
       return 'half_open';
     }
   }
   return state;
 }
 
-function getRecoAlternativesSyncCircuitSnapshot(nowMs = Date.now()) {
-  const state = getRecoAlternativesSyncCircuitState(nowMs);
-  const openedAt = Number(recoAlternativesSyncCircuitState.opened_at_ms || 0);
+function getRecoAlternativesSyncCircuitSnapshot(nowMs = Date.now(), partitionKey = null) {
+  const state = getRecoAlternativesSyncCircuitState(nowMs, partitionKey);
+  const cs = getCircuitPartition(partitionKey);
+  const openedAt = Number(cs.opened_at_ms || 0);
   const openUntilMs = state === 'open' && openedAt > 0
     ? openedAt + RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS
     : 0;
@@ -2319,64 +2365,68 @@ function getRecoAlternativesSyncCircuitSnapshot(nowMs = Date.now()) {
     state,
     open_until_ms: openUntilMs,
     remaining_open_ms: openUntilMs > nowMs ? openUntilMs - nowMs : 0,
-    window_failures: Number(recoAlternativesSyncCircuitState.window_failures || 0),
-    last_reason: recoAlternativesSyncCircuitState.last_reason || null,
-    last_failure_at_ms: Number(recoAlternativesSyncCircuitState.last_failure_at_ms || 0) || null,
+    window_failures: Number(cs.window_failures || 0),
+    last_reason: cs.last_reason || null,
+    last_failure_at_ms: Number(cs.last_failure_at_ms || 0) || null,
+    partition_key: partitionKey || null,
   };
 }
 
-function closeRecoAlternativesSyncCircuit() {
-  recoAlternativesSyncCircuitState.state = 'closed';
-  recoAlternativesSyncCircuitState.opened_at_ms = 0;
-  recoAlternativesSyncCircuitState.window_started_at_ms = Date.now();
-  recoAlternativesSyncCircuitState.window_failures = 0;
-  recoAlternativesSyncCircuitState.half_open_probes = 0;
+function closeRecoAlternativesSyncCircuit(partitionKey = null) {
+  const cs = getCircuitPartition(partitionKey);
+  cs.state = 'closed';
+  cs.opened_at_ms = 0;
+  cs.window_started_at_ms = Date.now();
+  cs.window_failures = 0;
+  cs.half_open_probes = 0;
 }
 
-function markRecoAlternativesSyncCircuitFailure(reason, nowMs = Date.now()) {
-  if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED) return getRecoAlternativesSyncCircuitSnapshot(nowMs);
-  const state = getRecoAlternativesSyncCircuitState(nowMs);
-  recoAlternativesSyncCircuitState.last_reason = String(reason || '').trim() || 'failure';
-  recoAlternativesSyncCircuitState.last_failure_at_ms = nowMs;
+function markRecoAlternativesSyncCircuitFailure(reason, nowMs = Date.now(), partitionKey = null) {
+  if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED) return getRecoAlternativesSyncCircuitSnapshot(nowMs, partitionKey);
+  const state = getRecoAlternativesSyncCircuitState(nowMs, partitionKey);
+  const cs = getCircuitPartition(partitionKey);
+  cs.last_reason = String(reason || '').trim() || 'failure';
+  cs.last_failure_at_ms = nowMs;
   if (state === 'half_open') {
-    recoAlternativesSyncCircuitState.state = 'open';
-    recoAlternativesSyncCircuitState.opened_at_ms = nowMs;
-    recoAlternativesSyncCircuitState.half_open_probes = 0;
-    return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+    cs.state = 'open';
+    cs.opened_at_ms = nowMs;
+    cs.half_open_probes = 0;
+    return getRecoAlternativesSyncCircuitSnapshot(nowMs, partitionKey);
   }
   if (state === 'open') {
-    recoAlternativesSyncCircuitState.opened_at_ms = nowMs;
-    return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+    cs.opened_at_ms = nowMs;
+    return getRecoAlternativesSyncCircuitSnapshot(nowMs, partitionKey);
   }
-  const windowStarted = Number(recoAlternativesSyncCircuitState.window_started_at_ms || 0);
+  const windowStarted = Number(cs.window_started_at_ms || 0);
   if (!windowStarted || nowMs - windowStarted > RECO_ALTERNATIVES_SYNC_CIRCUIT_WINDOW_MS) {
-    recoAlternativesSyncCircuitState.window_started_at_ms = nowMs;
-    recoAlternativesSyncCircuitState.window_failures = 0;
+    cs.window_started_at_ms = nowMs;
+    cs.window_failures = 0;
   }
-  recoAlternativesSyncCircuitState.window_failures = Number(recoAlternativesSyncCircuitState.window_failures || 0) + 1;
-  if (recoAlternativesSyncCircuitState.window_failures >= RECO_ALTERNATIVES_SYNC_CIRCUIT_FAIL_THRESHOLD) {
-    recoAlternativesSyncCircuitState.state = 'open';
-    recoAlternativesSyncCircuitState.opened_at_ms = nowMs;
-    recoAlternativesSyncCircuitState.half_open_probes = 0;
+  cs.window_failures = Number(cs.window_failures || 0) + 1;
+  if (cs.window_failures >= RECO_ALTERNATIVES_SYNC_CIRCUIT_FAIL_THRESHOLD) {
+    cs.state = 'open';
+    cs.opened_at_ms = nowMs;
+    cs.half_open_probes = 0;
   }
-  return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+  return getRecoAlternativesSyncCircuitSnapshot(nowMs, partitionKey);
 }
 
-function markRecoAlternativesSyncCircuitSuccess(nowMs = Date.now()) {
-  if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED) return getRecoAlternativesSyncCircuitSnapshot(nowMs);
-  const state = getRecoAlternativesSyncCircuitState(nowMs);
+function markRecoAlternativesSyncCircuitSuccess(nowMs = Date.now(), partitionKey = null) {
+  if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED) return getRecoAlternativesSyncCircuitSnapshot(nowMs, partitionKey);
+  const state = getRecoAlternativesSyncCircuitState(nowMs, partitionKey);
+  const cs = getCircuitPartition(partitionKey);
   if (state === 'half_open') {
-    recoAlternativesSyncCircuitState.half_open_probes = Number(recoAlternativesSyncCircuitState.half_open_probes || 0) + 1;
-    if (recoAlternativesSyncCircuitState.half_open_probes >= RECO_ALTERNATIVES_SYNC_CIRCUIT_HALF_OPEN_PROBES) {
-      closeRecoAlternativesSyncCircuit();
+    cs.half_open_probes = Number(cs.half_open_probes || 0) + 1;
+    if (cs.half_open_probes >= RECO_ALTERNATIVES_SYNC_CIRCUIT_HALF_OPEN_PROBES) {
+      closeRecoAlternativesSyncCircuit(partitionKey);
     }
   } else if (state === 'closed') {
-    recoAlternativesSyncCircuitState.window_started_at_ms = nowMs;
-    recoAlternativesSyncCircuitState.window_failures = 0;
+    cs.window_started_at_ms = nowMs;
+    cs.window_failures = 0;
   } else if (state === 'open') {
-    closeRecoAlternativesSyncCircuit();
+    closeRecoAlternativesSyncCircuit(partitionKey);
   }
-  return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+  return getRecoAlternativesSyncCircuitSnapshot(nowMs, partitionKey);
 }
 
 function getAuroraUidFromReq(req) {
@@ -34646,7 +34696,7 @@ async function fetchRecoAlternativesForProduct({
       failureClass: failureClass || (outcome === 'success' ? 'none' : 'unknown'),
     });
     if (!Object.prototype.hasOwnProperty.call(resultObj, 'circuit_state')) {
-      resultObj.circuit_state = getRecoAlternativesSyncCircuitSnapshot().state;
+      resultObj.circuit_state = getRecoAlternativesSyncCircuitSnapshot(Date.now(), circuitPartitionKey).state;
     }
     return resultObj;
   };
@@ -34661,11 +34711,14 @@ async function fetchRecoAlternativesForProduct({
   const asyncTimeoutOverrideMs = Number.isFinite(Number(opts.async_timeout_ms))
     ? Math.max(2000, Math.trunc(Number(opts.async_timeout_ms)))
     : null;
+  const circuitPartitionKey = RECO_ALTERNATIVES_SYNC_CIRCUIT_PARTITION_ENABLED
+    ? (anchorId ? 'anchor_only' : 'input_only')
+    : null;
   const buildNotInvokedLlmTrace = (errorClass, extra = null) => ({
     template_id: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
     status: 'not_invoked',
     error_class: String(errorClass || 'not_invoked').trim() || 'not_invoked',
-    circuit_state: getRecoAlternativesSyncCircuitSnapshot().state,
+    circuit_state: getRecoAlternativesSyncCircuitSnapshot(Date.now(), circuitPartitionKey).state,
     ...(extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : {}),
   });
   // Keep alternatives on a single upstream attempt to avoid timeout+retry amplification.
@@ -35357,7 +35410,7 @@ async function fetchRecoAlternativesForProduct({
     return true;
   };
 
-  const syncCircuitBefore = getRecoAlternativesSyncCircuitSnapshot();
+  const syncCircuitBefore = getRecoAlternativesSyncCircuitSnapshot(Date.now(), circuitPartitionKey);
   if (!forceSyncProbe && RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED && syncCircuitBefore.state === 'open') {
     recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
     const shouldRefresh = scheduleAlternativesAsyncRefresh();
@@ -35435,7 +35488,7 @@ async function fetchRecoAlternativesForProduct({
   let lastLlmTrace = null;
   let llmFailureClass = null;
   let lastProviderMeta = null;
-  let lastCircuitSnapshot = getRecoAlternativesSyncCircuitSnapshot();
+  let lastCircuitSnapshot = getRecoAlternativesSyncCircuitSnapshot(Date.now(), circuitPartitionKey);
 
   for (let i = 0; i < attempts.length; i += 1) {
     const attempt = attempts[i];
@@ -35587,9 +35640,9 @@ async function fetchRecoAlternativesForProduct({
         llmOutcome === 'queue_saturated' ||
         llmOutcome === 'provider_error'
       ) {
-        lastCircuitSnapshot = markRecoAlternativesSyncCircuitFailure(llmOutcome);
+        lastCircuitSnapshot = markRecoAlternativesSyncCircuitFailure(llmOutcome, Date.now(), circuitPartitionKey);
       } else if (llmOutcome === 'precheck_fail') {
-        lastCircuitSnapshot = getRecoAlternativesSyncCircuitSnapshot();
+        lastCircuitSnapshot = getRecoAlternativesSyncCircuitSnapshot(Date.now(), circuitPartitionKey);
       }
       logger?.warn(
         {
@@ -35671,7 +35724,7 @@ async function fetchRecoAlternativesForProduct({
     if (attemptMapped.length > 0) {
       recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'success' });
       llmFailureClass = null;
-      lastCircuitSnapshot = markRecoAlternativesSyncCircuitSuccess();
+      lastCircuitSnapshot = markRecoAlternativesSyncCircuitSuccess(Date.now(), circuitPartitionKey);
     } else if (isClarifyEmpty) {
       logger?.warn(
         {
