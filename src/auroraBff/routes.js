@@ -175,6 +175,9 @@ const {
   AuthVerifyRequestSchema,
   AuthPasswordSetRequestSchema,
   AuthPasswordLoginRequestSchema,
+  TravelPlanCreateSchema,
+  TravelPlanUpdateSchema,
+  TravelPlanListQuerySchema,
   RecoEmployeeFeedbackRequestSchema,
   RecoInterleaveClickRequestSchema,
   RecoAsyncUpdatesRequestSchema,
@@ -199,6 +202,11 @@ const {
   upsertIdentityLink,
   migrateGuestDataToUser,
 } = require('./memoryStore');
+const {
+  listTravelPlansForView,
+  normalizeTravelProfilePatch,
+  resolveTravelPlansState,
+} = require('./travelPlans');
 const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const {
   createOtpChallenge,
@@ -36040,6 +36048,43 @@ function parseIntQueryValue(value, fallback, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
+function isTravelDateRangeValid(startDate, endDate) {
+  const start = typeof startDate === 'string' ? startDate.trim() : '';
+  const end = typeof endDate === 'string' ? endDate.trim() : '';
+  if (!start || !end) return true;
+  return start <= end;
+}
+
+function findTravelPlanByTripId(plans, tripId) {
+  const id = String(tripId || '').trim();
+  if (!id) return null;
+  const list = Array.isArray(plans) ? plans : [];
+  return list.find((plan) => String(plan?.trip_id || '').trim() === id) || null;
+}
+
+function toTravelPlansStorageError(err) {
+  const { code, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
+  if (dbError) {
+    return {
+      status: 503,
+      body: {
+        error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : 'DB_UNAVAILABLE',
+        ...(code ? { code } : {}),
+      },
+    };
+  }
+  const status =
+    err && typeof err.status === 'number' && Number.isFinite(err.status) && err.status >= 400 && err.status < 600
+      ? err.status
+      : 500;
+  return {
+    status,
+    body: {
+      error: status >= 400 && status < 500 ? String(err?.code || 'BAD_REQUEST') : 'TRAVEL_PLANS_FAILED',
+    },
+  };
+}
+
 function normalizeBlockToken(value) {
   const token = String(value == null ? '' : value).trim().toLowerCase();
   if (token === 'competitors' || token === 'dupes' || token === 'related_products') return token;
@@ -42743,6 +42788,245 @@ function mountAuroraBffRoutes(app, { logger }) {
     }
   });
 
+  app.get('/v1/travel-plans', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = TravelPlanListQuerySchema.safeParse({
+        include_archived: req.query && Object.prototype.hasOwnProperty.call(req.query, 'include_archived')
+          ? req.query.include_archived
+          : undefined,
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'BAD_REQUEST', details: parsed.error.format() });
+      }
+
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
+      const out = listTravelPlansForView(profile, {
+        includeArchived: parsed.data.include_archived,
+        lang: ctx.lang,
+      });
+      return res.status(200).json(out);
+    } catch (err) {
+      const fail = toTravelPlansStorageError(err);
+      logger?.warn?.(
+        {
+          err: err && err.message ? err.message : String(err),
+          code: err && err.code ? err.code : null,
+          status: fail.status,
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+        },
+        'travel plans list failed',
+      );
+      return res.status(fail.status).json(fail.body);
+    }
+  });
+
+  app.post('/v1/travel-plans', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = TravelPlanCreateSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'BAD_REQUEST', details: parsed.error.format() });
+      }
+      if (!isTravelDateRangeValid(parsed.data.start_date, parsed.data.end_date)) {
+        return res.status(400).json({ error: 'BAD_REQUEST', details: { date_range: 'start_date_must_be_before_or_equal_end_date' } });
+      }
+
+      const nowMs = Date.now();
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
+      const baseProfile = profile && typeof profile === 'object' ? profile : {};
+      const baseState = resolveTravelPlansState(baseProfile, { nowMs });
+      const baseTripIds = new Set(
+        (Array.isArray(baseState.travel_plans) ? baseState.travel_plans : [])
+          .map((plan) => String(plan?.trip_id || '').trim())
+          .filter(Boolean),
+      );
+
+      const normalizedPatch = normalizeTravelProfilePatch({
+        baseProfile,
+        patch: {
+          travel_plans: [
+            {
+              destination: parsed.data.destination,
+              start_date: parsed.data.start_date,
+              end_date: parsed.data.end_date,
+              ...(Number.isFinite(Number(parsed.data.indoor_outdoor_ratio))
+                ? { indoor_outdoor_ratio: Number(parsed.data.indoor_outdoor_ratio) }
+                : {}),
+              ...(typeof parsed.data.itinerary === 'string' && parsed.data.itinerary.trim()
+                ? { itinerary: parsed.data.itinerary.trim() }
+                : {}),
+            },
+          ],
+        },
+        options: { nowMs },
+      });
+      const normalizedPlans = Array.isArray(normalizedPatch?.travel_plans) ? normalizedPatch.travel_plans : [];
+      const createdCandidate = normalizedPlans
+        .filter((plan) => !baseTripIds.has(String(plan?.trip_id || '').trim()))
+        .sort((a, b) => Number(b?.updated_at_ms || 0) - Number(a?.updated_at_ms || 0))[0] || null;
+      const createdTripId = String(createdCandidate?.trip_id || '').trim();
+
+      const updated = await upsertProfileForIdentity(
+        { auroraUid: identity.auroraUid, userId: identity.userId },
+        normalizedPatch,
+      );
+      const listOut = listTravelPlansForView(updated, { includeArchived: true, lang: ctx.lang, nowMs });
+      let createdPlan = createdTripId ? findTravelPlanByTripId(listOut.plans, createdTripId) : null;
+      if (!createdPlan) {
+        createdPlan = (Array.isArray(listOut.plans) ? listOut.plans : []).find((plan) =>
+          String(plan?.destination || '').trim() === String(parsed.data.destination || '').trim() &&
+          String(plan?.start_date || '').trim() === String(parsed.data.start_date || '').trim() &&
+          String(plan?.end_date || '').trim() === String(parsed.data.end_date || '').trim(),
+        ) || null;
+      }
+      if (!createdPlan && Array.isArray(listOut.plans) && listOut.plans.length > 0) {
+        createdPlan = listOut.plans[0];
+      }
+
+      return res.status(200).json({ plan: createdPlan || null });
+    } catch (err) {
+      const fail = toTravelPlansStorageError(err);
+      logger?.warn?.(
+        {
+          err: err && err.message ? err.message : String(err),
+          code: err && err.code ? err.code : null,
+          status: fail.status,
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+        },
+        'travel plans create failed',
+      );
+      return res.status(fail.status).json(fail.body);
+    }
+  });
+
+  app.patch('/v1/travel-plans/:trip_id', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const tripId = String(req?.params?.trip_id || '').trim();
+      if (!tripId) return res.status(400).json({ error: 'BAD_REQUEST' });
+
+      const parsed = TravelPlanUpdateSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'BAD_REQUEST', details: parsed.error.format() });
+      }
+
+      const nowMs = Date.now();
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
+      const baseProfile = profile && typeof profile === 'object' ? profile : {};
+      const state = resolveTravelPlansState(baseProfile, { nowMs });
+      const existing = findTravelPlanByTripId(state.travel_plans, tripId);
+      if (!existing) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+
+      const mergedPlan = {
+        ...existing,
+        ...parsed.data,
+        trip_id: existing.trip_id,
+        created_at_ms: Number(existing.created_at_ms || nowMs),
+        updated_at_ms: nowMs,
+      };
+      if (!isTravelDateRangeValid(mergedPlan.start_date, mergedPlan.end_date)) {
+        return res.status(400).json({ error: 'BAD_REQUEST', details: { date_range: 'start_date_must_be_before_or_equal_end_date' } });
+      }
+      if (parsed.data.is_archived === true) {
+        mergedPlan.is_archived = true;
+        mergedPlan.archived_at_ms = Math.max(Number(existing.archived_at_ms || 0), nowMs);
+      } else if (parsed.data.is_archived === false) {
+        mergedPlan.is_archived = false;
+        delete mergedPlan.archived_at_ms;
+      }
+
+      const normalizedPatch = normalizeTravelProfilePatch({
+        baseProfile,
+        patch: { travel_plans: [mergedPlan] },
+        options: { nowMs },
+      });
+      const updated = await upsertProfileForIdentity(
+        { auroraUid: identity.auroraUid, userId: identity.userId },
+        normalizedPatch,
+      );
+      const listOut = listTravelPlansForView(updated, { includeArchived: true, lang: ctx.lang, nowMs });
+      const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
+      if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+
+      return res.status(200).json({ plan: nextPlan });
+    } catch (err) {
+      const fail = toTravelPlansStorageError(err);
+      logger?.warn?.(
+        {
+          err: err && err.message ? err.message : String(err),
+          code: err && err.code ? err.code : null,
+          status: fail.status,
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+        },
+        'travel plans patch failed',
+      );
+      return res.status(fail.status).json(fail.body);
+    }
+  });
+
+  app.post('/v1/travel-plans/:trip_id/archive', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const tripId = String(req?.params?.trip_id || '').trim();
+      if (!tripId) return res.status(400).json({ error: 'BAD_REQUEST' });
+
+      const nowMs = Date.now();
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
+      const baseProfile = profile && typeof profile === 'object' ? profile : {};
+      const state = resolveTravelPlansState(baseProfile, { nowMs });
+      const existing = findTravelPlanByTripId(state.travel_plans, tripId);
+      if (!existing) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+
+      const archivedPlan = {
+        ...existing,
+        trip_id: existing.trip_id,
+        is_archived: true,
+        archived_at_ms: Math.max(Number(existing.archived_at_ms || 0), nowMs),
+        updated_at_ms: nowMs,
+      };
+
+      const normalizedPatch = normalizeTravelProfilePatch({
+        baseProfile,
+        patch: { travel_plans: [archivedPlan] },
+        options: { nowMs },
+      });
+      const updated = await upsertProfileForIdentity(
+        { auroraUid: identity.auroraUid, userId: identity.userId },
+        normalizedPatch,
+      );
+      const listOut = listTravelPlansForView(updated, { includeArchived: true, lang: ctx.lang, nowMs });
+      const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
+      if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+
+      return res.status(200).json({ plan: nextPlan });
+    } catch (err) {
+      const fail = toTravelPlansStorageError(err);
+      logger?.warn?.(
+        {
+          err: err && err.message ? err.message : String(err),
+          code: err && err.code ? err.code : null,
+          status: fail.status,
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+        },
+        'travel plans archive failed',
+      );
+      return res.status(fail.status).json(fail.body);
+    }
+  });
+
   app.get('/v1/session/bootstrap', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
@@ -47033,9 +47317,25 @@ function mountAuroraBffRoutes(app, { logger }) {
           ctx.trigger_source === 'action'
         )
       ) {
+        const mixedRecoRequested =
+          allowRecoCards &&
+          recoInteractionAllowed &&
+          !looksLikeIngredientScienceIntent(message, normalizedActionPayload) &&
+          !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+          !looksLikeSuitabilityRequest(message) &&
+          (
+            actionId === 'chip.start.reco_products' ||
+            actionId === 'chip_get_recos' ||
+            looksLikeRecommendationRequest(message)
+          );
         const scenario = extractWeatherScenario(message);
         let envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
         let advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
+        let routeFailureClass = '';
+        let mixedRecoFailureClass = '';
+        let mixedRecoCard = null;
+        let mixedRecoSource = '';
+        let mixedRecoLlmTrace = null;
         policyMeta.env_source = 'local_template';
         policyMeta.degraded = true;
 
@@ -47063,59 +47363,80 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? canonicalIntent.entities.date_range.end
               : '');
 
-          const weather = await getTravelWeather({
-            destination,
-            startDate,
-            endDate,
-          });
-          const epiPayload = buildEpiPayload({
-            weather,
-            profile,
-            language: ctx.lang,
-            userReportedConditions: { condition: message },
-          });
-          policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
-          policyMeta.degraded = policyMeta.env_source !== 'weather_api';
+          if (!String(destination || '').trim()) {
+            routeFailureClass = 'weather_destination_missing';
+          } else {
+            try {
+              const weather = await getTravelWeather({
+                destination,
+                startDate,
+                endDate,
+              });
+              const epiPayload = buildEpiPayload({
+                weather,
+                profile,
+                language: ctx.lang,
+                userReportedConditions: { condition: message },
+              });
+              policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
+              policyMeta.degraded = policyMeta.env_source !== 'weather_api';
+              if (policyMeta.degraded && weather && weather.reason) {
+                routeFailureClass = `weather_${String(weather.reason).trim().toLowerCase()}`;
+              }
 
-          const localEss = Number(envStressUi && envStressUi.ess);
-          envStressUi = {
-            ...(envStressUi || {}),
-            ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
-            epi: epiPayload.epi,
-            components: epiPayload.components,
-            reco_weights: epiPayload.reco_weights,
-            env_source: epiPayload.env_source,
-            travel_context: weather.date_range || null,
-          };
+              const localEss = Number(envStressUi && envStressUi.ess);
+              envStressUi = {
+                ...(envStressUi || {}),
+                ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
+                epi: epiPayload.epi,
+                components: epiPayload.components,
+                reco_weights: epiPayload.reco_weights,
+                env_source: epiPayload.env_source,
+                travel_context: weather.date_range || null,
+              };
 
-          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-          const destinationText =
-            weather && weather.location && weather.location.name
-              ? String(weather.location.name)
-              : String(destination || '');
-          const dateHint =
-            weather && weather.date_range && weather.date_range.start
-              ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
-              : '';
-          const epiLinesCn = [
-            `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
-            destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
-            '建议（AM）：',
-            ...epiPayload.strategy.am.map((line) => `- ${line}`),
-            '建议（PM）：',
-            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-          ].filter(Boolean);
-          const epiLinesEn = [
-            `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
-            destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
-            'AM strategy:',
-            ...epiPayload.strategy.am.map((line) => `- ${line}`),
-            'PM strategy:',
-            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-          ].filter(Boolean);
-          advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
+              const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+              const destinationText =
+                weather && weather.location && weather.location.name
+                  ? String(weather.location.name)
+                  : String(destination || '');
+              const dateHint =
+                weather && weather.date_range && weather.date_range.start
+                  ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
+                  : '';
+              const epiLinesCn = [
+                `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
+                destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
+                '建议（AM）：',
+                ...epiPayload.strategy.am.map((line) => `- ${line}`),
+                '建议（PM）：',
+                ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+                ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+              ].filter(Boolean);
+              const epiLinesEn = [
+                `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
+                destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
+                'AM strategy:',
+                ...epiPayload.strategy.am.map((line) => `- ${line}`),
+                'PM strategy:',
+                ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+                ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+              ].filter(Boolean);
+              advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
+            } catch (err) {
+              routeFailureClass = 'weather_live_exception';
+              policyMeta.env_source = 'local_template';
+              policyMeta.degraded = true;
+              logger?.warn(
+                {
+                  err: err && err.message ? err.message : String(err),
+                  request_id: ctx.request_id,
+                  trace_id: ctx.trace_id,
+                },
+                'aurora bff: travel/weather live fetch failed, degraded to local template',
+              );
+            }
+          }
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
@@ -47194,15 +47515,149 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         ];
 
+        if (mixedRecoRequested) {
+          try {
+            const mixedUpstreamReco = await withTimeout(
+              generateProductRecommendations({
+                ctx,
+                profile,
+                recentLogs,
+                message,
+                ingredientContext: null,
+                includeAlternatives: false,
+                debug: debugUpstream,
+                logger,
+              }),
+              Math.max(1800, Math.min(6000, AURORA_BFF_CHAT_RECO_BUDGET_MS)),
+              'AURORA_CHAT_MIXED_RECO_BUDGET_TIMEOUT',
+            );
+            const mixedNorm = mixedUpstreamReco && mixedUpstreamReco.norm ? mixedUpstreamReco.norm : null;
+            const mixedPayloadRaw =
+              mixedNorm && isPlainObject(mixedNorm.payload)
+                ? mixedNorm.payload
+                : null;
+            const mixedPayload = !debugUpstream && mixedPayloadRaw
+              ? stripInternalRefsDeep(mixedPayloadRaw)
+              : mixedPayloadRaw;
+            const hasMixedRecs = Array.isArray(mixedPayload && mixedPayload.recommendations)
+              ? mixedPayload.recommendations.length > 0
+              : false;
+            mixedRecoLlmTrace = isPlainObject(mixedUpstreamReco && mixedUpstreamReco.llmTrace)
+              ? mixedUpstreamReco.llmTrace
+              : isPlainObject(mixedPayload && mixedPayload.recommendation_meta && mixedPayload.recommendation_meta.llm_trace)
+                ? mixedPayload.recommendation_meta.llm_trace
+                : null;
+            if (hasMixedRecs && mixedPayload) {
+              mixedRecoCard = {
+                card_id: `reco_${ctx.request_id}`,
+                type: 'recommendations',
+                payload: mixedPayload,
+                ...(Array.isArray(mixedNorm && mixedNorm.field_missing) && mixedNorm.field_missing.length
+                  ? { field_missing: mixedNorm.field_missing.slice(0, 8) }
+                  : {}),
+              };
+              mixedRecoSource = String(mixedPayload.source || '').trim() || 'llm_primary_v1';
+            } else {
+              mixedRecoFailureClass = normalizeRecoFailureClass(
+                mixedUpstreamReco && mixedUpstreamReco.llmFailureClass
+                  ? mixedUpstreamReco.llmFailureClass
+                  : 'empty_structured',
+              );
+            }
+          } catch (err) {
+            const transientCode = classifyRecoUpstreamFailureCode(err);
+            if (err && err.code === 'AURORA_NOT_CONFIGURED') mixedRecoFailureClass = 'precheck_fail';
+            else if (err && err.code === 'AURORA_CHAT_MIXED_RECO_BUDGET_TIMEOUT') mixedRecoFailureClass = 'timeout';
+            else mixedRecoFailureClass = isTransientRecoUpstreamFailureCode(transientCode) ? 'timeout' : 'provider_error';
+            logger?.warn(
+              {
+                err: err && err.message ? err.message : String(err),
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                failure_class: mixedRecoFailureClass,
+              },
+              'aurora bff: mixed travel+reco inline generation degraded',
+            );
+          }
+        }
+        const mixedRecoTraceRef = buildRecoLlmTraceRef(mixedRecoLlmTrace);
+        if (mixedRecoRequested && mixedRecoCard) {
+          advice = `${advice}\n\n${
+            ctx.lang === 'CN'
+              ? '我已在同一轮补充了产品推荐卡。'
+              : 'I also included product recommendations in this same response.'
+          }`;
+        } else if (mixedRecoRequested && mixedRecoFailureClass) {
+          advice = `${advice}\n\n${
+            ctx.lang === 'CN'
+              ? '产品推荐本轮降级了（可重试）。'
+              : 'Product recommendations degraded in this turn (retry available).'
+          }`;
+        }
+
+        const routeFailureToken = routeFailureClass || mixedRecoFailureClass || null;
+        const cards = [];
+        if (envStressUi) {
+          cards.push({
+            card_id: `env_${ctx.request_id}`,
+            type: 'env_stress',
+            payload: {
+              ...envStressUi,
+              degraded: Boolean(policyMeta.degraded || routeFailureToken),
+              failure_class: routeFailureToken,
+              mixed_reco_requested: mixedRecoRequested,
+            },
+          });
+        }
+        if (mixedRecoCard) {
+          cards.push(mixedRecoCard);
+        }
+        if (mixedRecoRequested && !mixedRecoCard && mixedRecoFailureClass) {
+          cards.push({
+            card_id: `conf_${ctx.request_id}`,
+            type: 'confidence_notice',
+            payload: {
+              ...buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: mixedRecoFailureClass,
+                confidence: { score: 0.42, level: 'medium', rationale: ['mixed_travel_reco_degraded'] },
+                actions: ['retry_recommendations'],
+                details: [
+                  ctx.lang === 'CN'
+                    ? '旅行建议已返回；推荐卡本轮降级，可点击重试。'
+                    : 'Travel guidance is ready; recommendation card degraded this turn and can be retried.',
+                ],
+              }),
+              ...(mixedRecoLlmTrace ? { llm_trace: mixedRecoLlmTrace } : {}),
+            },
+          });
+        }
+
+        const events = [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })];
+        if (mixedRecoRequested) {
+          events.push(
+            makeEvent(ctx, 'recos_requested', {
+              explicit: true,
+              source: mixedRecoSource || 'mixed_travel_inline',
+              source_detail: 'mixed_travel_reco',
+              ...(mixedRecoFailureClass ? { failure_class: mixedRecoFailureClass } : {}),
+              ...(mixedRecoTraceRef ? { llm_trace_ref: mixedRecoTraceRef } : {}),
+            }),
+          );
+        }
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
-          cards: envStressUi
-            ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
-            : [],
+          cards,
           session_patch:
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-          events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
+          events,
+          telemetry: {
+            route_decision: mixedRecoRequested ? 'travel_then_reco' : 'travel_only',
+            route_failure_class: routeFailureToken,
+            mixed_reco_requested: mixedRecoRequested,
+          },
         });
         return sendChatEnvelope(envelope);
       }

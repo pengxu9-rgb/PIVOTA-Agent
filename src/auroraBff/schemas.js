@@ -154,6 +154,14 @@ const RecoRefreshHintSchema = z
   })
   .strict();
 
+const ResponseTelemetrySchema = z
+  .object({
+    route_decision: z.string().min(1).optional(),
+    route_failure_class: z.string().min(1).nullable().optional(),
+    mixed_reco_requested: z.boolean().optional(),
+  })
+  .passthrough();
+
 const V1ResponseEnvelopeSchema = z
   .object({
     request_id: z.string().min(1),
@@ -166,6 +174,7 @@ const V1ResponseEnvelopeSchema = z
     analysis_meta: AnalysisMetaSchema.optional(),
     recommendation_meta: RecommendationMetaSchema.optional(),
     reco_refresh_hint: RecoRefreshHintSchema.optional(),
+    telemetry: ResponseTelemetrySchema.optional(),
   })
   .strict();
 
