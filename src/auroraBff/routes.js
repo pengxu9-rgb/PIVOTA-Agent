@@ -2141,6 +2141,14 @@ const DUPE_DEEPSCAN_CACHE_TTL_MS = (() => {
 const dupeDeepscanCache = new Map();
 const recoAlternativesRefreshCache = new Map();
 const recoAlternativesRefreshInFlight = new Set();
+
+// #region agent log — debug-66edf8 in-memory ring buffer
+const _altDebugRing = [];
+function _altDebugLog(data) {
+  _altDebugRing.push({ ts: Date.now(), ...data });
+  if (_altDebugRing.length > 200) _altDebugRing.shift();
+}
+// #endregion
 const recoAlternativesAnchorPrecheckCircuitState = {
   open_until_ms: 0,
   last_reason: null,
@@ -34890,13 +34898,13 @@ async function fetchRecoAlternativesForProduct({
   });
 
   // #region agent log
-  fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:fetchRecoAlternatives:entry',message:'alt call entry',data:{refreshKey,anchor:anchor||null,bestInput:String(bestInput||'').slice(0,60),effectiveTimeoutMs:effectiveAlternativesTimeoutMs,asyncTimeoutMs:effectiveAsyncRefreshTimeoutMs,circuitState:getRecoAlternativesSyncCircuitSnapshot(Date.now(),circuitPartitionKey).state,preferRefreshCache,inFlightKeys:Array.from(recoAlternativesRefreshInFlight),cacheSize:recoAlternativesRefreshCache.size},timestamp:Date.now(),hypothesisId:'H3-H4'})}).catch(()=>{});
+  _altDebugLog({loc:'entry',refreshKey,anchor:anchor||null,syncTimeoutMs:effectiveAlternativesTimeoutMs,asyncTimeoutMs:effectiveAsyncRefreshTimeoutMs,circuitState:getRecoAlternativesSyncCircuitSnapshot(Date.now(),circuitPartitionKey).state,inFlight:recoAlternativesRefreshInFlight.size,cacheSize:recoAlternativesRefreshCache.size,hyp:'H3-H4'});
   // #endregion
 
   if (preferRefreshCache && refreshKey) {
     const cached = getRecoAlternativesRefreshCache(refreshKey);
     // #region agent log
-    fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:fetchRecoAlternatives:cacheCheck',message:'refresh cache check',data:{refreshKey,cacheHit:Boolean(cached&&Array.isArray(cached.alternatives)&&cached.alternatives.length),altCount:cached&&Array.isArray(cached.alternatives)?cached.alternatives.length:0},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    _altDebugLog({loc:'cacheCheck',refreshKey,hit:Boolean(cached&&Array.isArray(cached.alternatives)&&cached.alternatives.length),altCount:cached&&Array.isArray(cached.alternatives)?cached.alternatives.length:0,hyp:'H2'});
     // #endregion
     if (cached && Array.isArray(cached.alternatives) && cached.alternatives.length) {
       return finalizeAlternativesResult({
@@ -35486,7 +35494,7 @@ async function fetchRecoAlternativesForProduct({
     const refreshHandle = setTimeout(async () => {
       const asyncStartedAt = Date.now();
       // #region agent log
-      fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:asyncRefresh:start',message:'async refresh started',data:{refreshKey,timeoutMs:effectiveAsyncRefreshTimeoutMs,bestInput:String(bestInput||'').slice(0,60)},timestamp:Date.now(),hypothesisId:'H1-H4'})}).catch(()=>{});
+      _altDebugLog({loc:'asyncRefreshStart',refreshKey,timeoutMs:effectiveAsyncRefreshTimeoutMs,hyp:'H1-H4'});
       // #endregion
       try {
         const refreshed = await fetchRecoAlternativesForProduct({
@@ -35512,7 +35520,7 @@ async function fetchRecoAlternativesForProduct({
         });
         const gotAlts = Boolean(refreshed && Array.isArray(refreshed.alternatives) && refreshed.alternatives.length);
         // #region agent log
-        fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:asyncRefresh:result',message:'async refresh result',data:{refreshKey,elapsedMs:Date.now()-asyncStartedAt,gotAlts,altCount:gotAlts?(refreshed.alternatives||[]).length:0,sourceMode:refreshed&&refreshed.source_mode,failureClass:refreshed&&refreshed.failure_class,llmLatency:refreshed&&refreshed.llm_trace&&refreshed.llm_trace.latency_ms},timestamp:Date.now(),hypothesisId:'H1-H5'})}).catch(()=>{});
+        _altDebugLog({loc:'asyncRefreshResult',refreshKey,elapsedMs:Date.now()-asyncStartedAt,gotAlts,altCount:gotAlts?(refreshed.alternatives||[]).length:0,sourceMode:refreshed&&refreshed.source_mode,failureClass:refreshed&&refreshed.failure_class,llmLatency:refreshed&&refreshed.llm_trace&&refreshed.llm_trace.latency_ms,hyp:'H1-H5'});
         // #endregion
         if (gotAlts) {
           setRecoAlternativesRefreshCache(refreshKey, {
@@ -35522,7 +35530,7 @@ async function fetchRecoAlternativesForProduct({
         }
       } catch (refreshErr) {
         // #region agent log
-        fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:asyncRefresh:error',message:'async refresh threw',data:{refreshKey,elapsedMs:Date.now()-asyncStartedAt,error:refreshErr&&refreshErr.message},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        _altDebugLog({loc:'asyncRefreshError',refreshKey,elapsedMs:Date.now()-asyncStartedAt,error:refreshErr&&refreshErr.message,hyp:'H1'});
         // #endregion
       } finally {
         observeAuroraRecoAltStageLatency({ stage: 'async_refresh', latencyMs: Date.now() - asyncStartedAt });
@@ -37175,6 +37183,37 @@ function mountAuroraBffRoutes(app, { logger }) {
       ...gate.snapshot(),
     });
   });
+
+  // #region agent log — debug-66edf8 diagnostics endpoint
+  app.get('/v1/debug/alt-diag', (req, res) => {
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 100));
+    const logs = _altDebugRing.slice(-limit);
+    const asyncResults = logs.filter(e => e.loc === 'asyncRefreshResult');
+    const asyncErrors = logs.filter(e => e.loc === 'asyncRefreshError');
+    const entries = logs.filter(e => e.loc === 'entry');
+    const cacheHits = logs.filter(e => e.loc === 'cacheCheck' && e.hit);
+    const cacheMisses = logs.filter(e => e.loc === 'cacheCheck' && !e.hit);
+    return res.status(200).json({
+      ok: true,
+      summary: {
+        total_entries: entries.length,
+        cache_hits: cacheHits.length,
+        cache_misses: cacheMisses.length,
+        async_refresh_results: asyncResults.length,
+        async_refresh_errors: asyncErrors.length,
+        async_got_alts: asyncResults.filter(e => e.gotAlts).length,
+        async_failed: asyncResults.filter(e => !e.gotAlts).length,
+        async_latencies_ms: asyncResults.map(e => e.elapsedMs),
+        async_failure_classes: asyncResults.filter(e => !e.gotAlts).map(e => e.failureClass),
+        async_llm_latencies: asyncResults.map(e => e.llmLatency),
+        circuit_states_at_entry: entries.map(e => e.circuitState),
+        sync_timeouts_ms: entries.map(e => e.syncTimeoutMs),
+        async_timeouts_ms: entries.map(e => e.asyncTimeoutMs),
+      },
+      logs,
+    });
+  });
+  // #endregion
 
   app.get('/v1/ops/pdp-prefetch/state', (req, res) => {
     if (!AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY) {
