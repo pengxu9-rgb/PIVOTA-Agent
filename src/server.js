@@ -9467,7 +9467,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Credentials', 'true');
   }
 
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
 
   // Allow both legacy and newer header names used by clients (Creator UI / SDKs).
   // Also echo requested headers to avoid preflight failures when browsers add new ones.

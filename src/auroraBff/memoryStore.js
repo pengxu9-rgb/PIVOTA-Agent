@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { normalizeTravelProfilePatch } = require('./travelPlans');
 
 function parseRetentionDays() {
   const raw =
@@ -281,6 +282,8 @@ function mapProfileToDb(profilePatch) {
   const contraindications = Array.isArray(p.contraindications) ? p.contraindications : undefined;
   const currentRoutine = p.currentRoutine;
   const itinerary = p.itinerary;
+  const travelPlan = p.travel_plan;
+  const travelPlans = p.travel_plans;
   const safetyPromptState = p.safetyPromptState;
   const chatContext = p.chatContext;
 
@@ -293,6 +296,8 @@ function mapProfileToDb(profilePatch) {
     budget_tier: p.budgetTier,
     current_routine: currentRoutine !== undefined ? JSON.stringify(currentRoutine) : undefined,
     itinerary: itinerary !== undefined ? JSON.stringify(itinerary) : undefined,
+    travel_plan: travelPlan !== undefined ? JSON.stringify(travelPlan) : undefined,
+    travel_plans: travelPlans !== undefined ? JSON.stringify(travelPlans) : undefined,
     contraindications: contraindications ? JSON.stringify(contraindications) : undefined,
     safety_prompt_state: safetyPromptState,
     chat_context: chatContext !== undefined ? chatContext : undefined,
@@ -416,6 +421,11 @@ function mapProfileFromDb(row) {
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
     itinerary: row.itinerary || null,
+    travel_plan:
+      row.travel_plan && typeof row.travel_plan === 'object' && !Array.isArray(row.travel_plan)
+        ? row.travel_plan
+        : null,
+    travel_plans: Array.isArray(row.travel_plans) ? row.travel_plans : [],
     contraindications: Array.isArray(row.contraindications)
       ? row.contraindications
       : row.contraindications
@@ -459,6 +469,11 @@ function mapAccountProfileFromDb(row) {
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
     itinerary: row.itinerary || null,
+    travel_plan:
+      row.travel_plan && typeof row.travel_plan === 'object' && !Array.isArray(row.travel_plan)
+        ? row.travel_plan
+        : null,
+    travel_plans: Array.isArray(row.travel_plans) ? row.travel_plans : [],
     contraindications: Array.isArray(row.contraindications)
       ? row.contraindications
       : row.contraindications
@@ -500,6 +515,8 @@ function ensureEphemeralProfile({ kind, id }) {
           budgetTier: null,
           currentRoutine: null,
           itinerary: null,
+          travel_plan: null,
+          travel_plans: [],
           contraindications: [],
           chatContext: null,
           pregnancy_status: null,
@@ -524,6 +541,8 @@ function ensureEphemeralProfile({ kind, id }) {
           budgetTier: null,
           currentRoutine: null,
           itinerary: null,
+          travel_plan: null,
+          travel_plans: [],
           contraindications: [],
           chatContext: null,
           pregnancy_status: null,
@@ -567,6 +586,8 @@ function upsertEphemeralProfile({ kind, id }, profilePatch) {
     ...(p.budgetTier !== undefined ? { budgetTier: p.budgetTier } : {}),
     ...(p.currentRoutine !== undefined ? { currentRoutine: p.currentRoutine } : {}),
     ...(p.itinerary !== undefined ? { itinerary: p.itinerary } : {}),
+    ...(p.travel_plan !== undefined ? { travel_plan: p.travel_plan } : {}),
+    ...(p.travel_plans !== undefined ? { travel_plans: Array.isArray(p.travel_plans) ? p.travel_plans : [] } : {}),
     ...(p.contraindications !== undefined ? { contraindications: Array.isArray(p.contraindications) ? p.contraindications : [] } : {}),
     ...(p.chatContext !== undefined ? { chatContext: normalizeChatContext(p.chatContext) } : {}),
     ...(p.pregnancy_status !== undefined ? { pregnancy_status: p.pregnancy_status } : {}),
@@ -650,19 +671,21 @@ async function upsertUserProfile(auroraUid, profilePatch) {
     [uid],
   );
   const existing = existingRes.rows && existingRes.rows[0] ? existingRes.rows[0] : { aurora_uid: uid };
-  const patchDb = mapProfileToDb(profilePatch);
+  const existingProfile = mapProfileFromDb(existingRes.rows && existingRes.rows[0]) || {};
+  const normalizedPatch = normalizeTravelProfilePatch({ baseProfile: existingProfile, patch: profilePatch || {} });
+  const patchDb = mapProfileToDb(normalizedPatch);
 
   const merged = {
     ...existing,
     ...Object.fromEntries(Object.entries(patchDb).filter(([, v]) => v !== undefined)),
   };
   const shouldUpdateSafetyPromptState =
-    patchDb.safety_prompt_state !== undefined || profilePatchHasSafetyProfileFields(profilePatch);
+    patchDb.safety_prompt_state !== undefined || profilePatchHasSafetyProfileFields(normalizedPatch);
   if (shouldUpdateSafetyPromptState) {
     merged.safety_prompt_state = mergeSafetyPromptState(
       existing.safety_prompt_state,
       patchDb.safety_prompt_state,
-      profilePatch,
+      normalizedPatch,
     );
   }
 
@@ -678,13 +701,15 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         budget_tier,
         current_routine,
         itinerary,
+        travel_plan,
+        travel_plans,
         contraindications,
         chat_context,
         safety_prompt_state,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
       ON CONFLICT (aurora_uid) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -694,6 +719,8 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         budget_tier = EXCLUDED.budget_tier,
         current_routine = EXCLUDED.current_routine,
         itinerary = EXCLUDED.itinerary,
+        travel_plan = EXCLUDED.travel_plan,
+        travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
         chat_context = EXCLUDED.chat_context,
         safety_prompt_state = EXCLUDED.safety_prompt_state,
@@ -711,6 +738,8 @@ async function upsertUserProfile(auroraUid, profilePatch) {
       merged.budget_tier ?? null,
       normalizeJsonbParam(merged.current_routine ?? null),
       normalizeJsonbParam(merged.itinerary ?? null),
+      normalizeJsonbParam(merged.travel_plan ?? null),
+      normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
       normalizeJsonbParam(normalizeChatContext(merged.chat_context) ?? null),
       normalizeJsonbParam(merged.safety_prompt_state ?? null),
@@ -740,19 +769,21 @@ async function upsertAccountProfile(userId, profilePatch) {
     existingRes.rows && existingRes.rows[0]
       ? existingRes.rows[0]
       : { user_id: uid };
-  const patchDb = mapProfileToDb(profilePatch);
+  const existingProfile = mapAccountProfileFromDb(existingRes.rows && existingRes.rows[0]) || {};
+  const normalizedPatch = normalizeTravelProfilePatch({ baseProfile: existingProfile, patch: profilePatch || {} });
+  const patchDb = mapProfileToDb(normalizedPatch);
 
   const merged = {
     ...existing,
     ...Object.fromEntries(Object.entries(patchDb).filter(([, v]) => v !== undefined)),
   };
   const shouldUpdateSafetyPromptState =
-    patchDb.safety_prompt_state !== undefined || profilePatchHasSafetyProfileFields(profilePatch);
+    patchDb.safety_prompt_state !== undefined || profilePatchHasSafetyProfileFields(normalizedPatch);
   if (shouldUpdateSafetyPromptState) {
     merged.safety_prompt_state = mergeSafetyPromptState(
       existing.safety_prompt_state,
       patchDb.safety_prompt_state,
-      profilePatch,
+      normalizedPatch,
     );
   }
 
@@ -768,13 +799,15 @@ async function upsertAccountProfile(userId, profilePatch) {
         budget_tier,
         current_routine,
         itinerary,
+        travel_plan,
+        travel_plans,
         contraindications,
         chat_context,
         safety_prompt_state,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
       ON CONFLICT (user_id) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -784,6 +817,8 @@ async function upsertAccountProfile(userId, profilePatch) {
         budget_tier = EXCLUDED.budget_tier,
         current_routine = EXCLUDED.current_routine,
         itinerary = EXCLUDED.itinerary,
+        travel_plan = EXCLUDED.travel_plan,
+        travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
         chat_context = EXCLUDED.chat_context,
         safety_prompt_state = EXCLUDED.safety_prompt_state,
@@ -801,6 +836,8 @@ async function upsertAccountProfile(userId, profilePatch) {
       merged.budget_tier ?? null,
       normalizeJsonbParam(merged.current_routine ?? null),
       normalizeJsonbParam(merged.itinerary ?? null),
+      normalizeJsonbParam(merged.travel_plan ?? null),
+      normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
       normalizeJsonbParam(normalizeChatContext(merged.chat_context) ?? null),
       normalizeJsonbParam(merged.safety_prompt_state ?? null),
