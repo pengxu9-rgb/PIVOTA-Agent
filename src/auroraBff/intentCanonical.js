@@ -38,6 +38,10 @@ const ACTION_MAP = Object.freeze({
   'ingredient.optin_diagnosis': INTENT_ENUM.DIAGNOSIS_START,
   'ingredient_optin_diagnosis': INTENT_ENUM.DIAGNOSIS_START,
   'chip.start.diagnosis': INTENT_ENUM.DIAGNOSIS_START,
+  'chip.intake.upload_photos': INTENT_ENUM.DIAGNOSIS_START,
+  'chip.intake.skip_analysis': INTENT_ENUM.DIAGNOSIS_START,
+  'diag.upload_photo': INTENT_ENUM.DIAGNOSIS_START,
+  'diag.skip_photo_analyze': INTENT_ENUM.DIAGNOSIS_START,
 });
 
 const TRAVEL_CUE_RE =
