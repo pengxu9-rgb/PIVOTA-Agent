@@ -1706,6 +1706,21 @@ const RECO_ALTERNATIVES_SYNC_CIRCUIT_PARTITION_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
+const RECO_ALTERNATIVES_DIRECT_GEMINI_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_ALTERNATIVES_DIRECT_GEMINI || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_ALTERNATIVES_DIRECT_GEMINI_MODEL = String(
+  process.env.AURORA_BFF_RECO_ALTERNATIVES_GEMINI_MODEL || process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+).trim() || 'gemini-2.0-flash';
+
+const RECO_ALTERNATIVES_DIRECT_GEMINI_MAX_OUTPUT_TOKENS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_GEMINI_MAX_TOKENS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  return Math.max(256, Math.min(2048, v));
+})();
+
 const RECO_ALTERNATIVES_SYNC_CIRCUIT_MAX_PARTITIONS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_MAX_PARTITIONS || 32);
   const v = Number.isFinite(n) ? Math.trunc(n) : 32;
@@ -34700,6 +34715,74 @@ function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput,
   return `Task: Return alternatives JSON only (dupe/similar/premium), no clarify.\n${promptBody}`;
 }
 
+async function callDirectGeminiForAlternatives({
+  lang,
+  profileSnapshot,
+  productInput,
+  productObj,
+  maxTotal,
+  region,
+  candidates,
+  anchorId,
+  timeoutMs,
+}) {
+  const fallbackSystemPrompt = [
+    'You are a skincare product alternative generator.',
+    'Return ONLY a single JSON object with exactly one key: "alternatives".',
+    'Never ask clarifying questions. Never output "schema_version" or "parse".',
+    'Never invent product_id, sku_id, price, or actives. Use null and add missing_info if unknown.',
+    'alternatives length: 3 to 6; similarity integer 0..100; reasons max 2 items, each <= 22 words.',
+  ].join('\n');
+  const systemPrompt = loadRecoPromptTemplateFile('reco_alternatives_v1_1.system.txt', {
+    parseJson: false,
+    fallback: fallbackSystemPrompt,
+  });
+  const payload = buildRecoAlternativesPromptPayload({
+    lang,
+    profileSnapshot,
+    productInput,
+    productObj,
+    maxTotal,
+    region,
+    candidates,
+    anchorId,
+  });
+  const userPayload = formatAuroraPromptQuery({
+    templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+    systemPrompt,
+    userPayload: payload,
+  });
+  const userPrompt = `Task: Return alternatives JSON only (dupe/similar/premium), no clarify.\n${userPayload}`;
+  const result = await callGeminiJsonObject({
+    model: RECO_ALTERNATIVES_DIRECT_GEMINI_MODEL,
+    systemPrompt,
+    userPrompt,
+    timeoutMs: Number.isFinite(Number(timeoutMs)) ? Math.max(3000, Number(timeoutMs)) : 8000,
+    temperature: 0,
+    maxOutputTokens: RECO_ALTERNATIVES_DIRECT_GEMINI_MAX_OUTPUT_TOKENS,
+    routeTag: 'reco_alternatives_direct',
+    maxRetries: 0,
+  });
+  if (!result.ok) {
+    const err = new Error(`direct_gemini_failed: ${result.reason || 'unknown'}`);
+    err.code = 'DIRECT_GEMINI_FAILED';
+    err.directGeminiReason = result.reason;
+    err.directGeminiRawText = result.raw_text || null;
+    throw err;
+  }
+  return {
+    intent: 'alternatives',
+    structured: result.json && typeof result.json === 'object' && !Array.isArray(result.json)
+      ? result.json
+      : null,
+    answer: typeof result.json === 'object' ? JSON.stringify(result.json) : null,
+    cards: [],
+    _upstream_meta: { provider: 'gemini_direct', model: result.resolved_model },
+    _direct_gemini: true,
+    _direct_attempts: result.attempts,
+  };
+}
+
 function classifyAlternativesFailureCode(reason) {
   const token = String(reason || '').trim().toLowerCase();
   if (!token) return 'provider_error';
@@ -35657,27 +35740,47 @@ async function fetchRecoAlternativesForProduct({
     const startedAtMs = Date.now();
     let upstream = null;
     try {
-      upstream = await auroraChat({
-        baseUrl: AURORA_DECISION_BASE_URL,
-        query,
-        timeoutMs: effectiveAlternativesTimeoutMs,
-        retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
-        trace_id: ctx.trace_id,
-        request_id: ctx.request_id,
-        prompt_hash: traceSeed.prompt_hash,
-        prompt_template_id: traceSeed.template_id,
-        ...(anchor ? { anchor_product_id: anchor } : {}),
-        intent_hint: 'alternatives',
-        intent_contract: 'alternatives_strict_v1',
-        provider_contract: 'provider_error_v1',
-        require_provider_contract: true,
-        disallow_clarify: true,
-        no_clarify: true,
-        force_intent: 'alternatives',
-        required_structured_keys: ['alternatives'],
-        allow_recommendations: true,
-      });
+      // #region agent log
+      _altDebugLog({loc:'llmCallStart',runId:'post-fix',useDirectGemini:RECO_ALTERNATIVES_DIRECT_GEMINI_ENABLED,timeoutMs:effectiveAlternativesTimeoutMs,hyp:'H6'});
+      // #endregion
+      if (RECO_ALTERNATIVES_DIRECT_GEMINI_ENABLED) {
+        upstream = await callDirectGeminiForAlternatives({
+          lang: ctx.lang,
+          profileSnapshot,
+          productInput: bestInput,
+          productObj,
+          maxTotal: maxTotal ?? 3,
+          region: normalizeRecoPromptRegion(profileSummary),
+          candidates: alternativesCandidates,
+          anchorId: anchor,
+          timeoutMs: effectiveAlternativesTimeoutMs,
+        });
+      } else {
+        upstream = await auroraChat({
+          baseUrl: AURORA_DECISION_BASE_URL,
+          query,
+          timeoutMs: effectiveAlternativesTimeoutMs,
+          retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
+          trace_id: ctx.trace_id,
+          request_id: ctx.request_id,
+          prompt_hash: traceSeed.prompt_hash,
+          prompt_template_id: traceSeed.template_id,
+          ...(anchor ? { anchor_product_id: anchor } : {}),
+          intent_hint: 'alternatives',
+          intent_contract: 'alternatives_strict_v1',
+          provider_contract: 'provider_error_v1',
+          require_provider_contract: true,
+          disallow_clarify: true,
+          no_clarify: true,
+          force_intent: 'alternatives',
+          required_structured_keys: ['alternatives'],
+          allow_recommendations: true,
+        });
+      }
       const providerMeta = extractRecoUpstreamProviderMeta({ upstream });
+      // #region agent log
+      _altDebugLog({loc:'llmCallOk',runId:'post-fix',directGemini:Boolean(upstream&&upstream._direct_gemini),elapsedMs:Date.now()-startedAtMs,hasStructured:Boolean(upstream&&upstream.structured),hyp:'H6'});
+      // #endregion
       lastProviderMeta = providerMeta;
       recordAuroraRecoAltProvider({
         providerStatus: providerMeta.provider_status != null ? String(providerMeta.provider_status) : 'none',
@@ -37194,6 +37297,8 @@ function mountAuroraBffRoutes(app, { logger }) {
     const entries = logs.filter(e => e.loc === 'entry');
     const cacheHits = logs.filter(e => e.loc === 'cacheCheck' && e.hit);
     const cacheMisses = logs.filter(e => e.loc === 'cacheCheck' && !e.hit);
+    const llmOk = logs.filter(e => e.loc === 'llmCallOk');
+    const llmStart = logs.filter(e => e.loc === 'llmCallStart');
     return res.status(200).json({
       ok: true,
       summary: {
@@ -37210,6 +37315,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         circuit_states_at_entry: entries.map(e => e.circuitState),
         sync_timeouts_ms: entries.map(e => e.syncTimeoutMs),
         async_timeouts_ms: entries.map(e => e.asyncTimeoutMs),
+        direct_gemini_enabled: llmStart.length > 0 ? llmStart[0].useDirectGemini : null,
+        llm_calls_ok: llmOk.length,
+        llm_calls_direct_gemini: llmOk.filter(e => e.directGemini).length,
+        llm_ok_latencies_ms: llmOk.map(e => e.elapsedMs),
+        llm_ok_has_structured: llmOk.map(e => e.hasStructured),
       },
       logs,
     });
