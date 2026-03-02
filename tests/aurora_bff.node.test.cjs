@@ -1824,6 +1824,30 @@ test('Skin LLM policy: degraded calls only one model (configurable)', async () =
   }
 });
 
+test('Skin LLM policy: upload_qc_only mode forces pass dual-call and blocks non-pass', () => {
+  const base = {
+    hasPrimaryInput: true,
+    userRequestedPhoto: true,
+    visionAvailable: true,
+    reportAvailable: true,
+    detectorConfidenceLevel: 'high',
+    uncertainty: false,
+    qualitySourceMode: 'upload_qc_only',
+  };
+
+  const passVision = shouldCallLlm({ ...base, kind: 'vision', quality: { grade: 'pass', reasons: ['qc_passed'] } });
+  const passReport = shouldCallLlm({ ...base, kind: 'report', quality: { grade: 'pass', reasons: ['qc_passed'] } });
+  assert.equal(passVision.decision, 'call');
+  assert.equal(passReport.decision, 'call');
+
+  const degradedVision = shouldCallLlm({ ...base, kind: 'vision', quality: { grade: 'degraded', reasons: ['qc_degraded'] } });
+  const degradedReport = shouldCallLlm({ ...base, kind: 'report', quality: { grade: 'degraded', reasons: ['qc_degraded'] } });
+  assert.equal(degradedVision.decision, 'skip');
+  assert.equal(degradedReport.decision, 'skip');
+  assert.equal(degradedVision.reasons.includes('upload_qc_degraded_retake'), true);
+  assert.equal(degradedReport.reasons.includes('upload_qc_degraded_retake'), true);
+});
+
 test('Skin LLM policy: pass skips report when detector is confident', async () => {
   const base = {
     hasPrimaryInput: true,
@@ -8265,12 +8289,13 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
   assert.equal(card.payload?.quality_report?.effective_quality?.grade, 'fail');
   assert.equal(
     card.payload?.quality_report?.quality_merge_rule,
-    'effective = worse(upload_qc_status, analysis_photo_quality.grade)',
+    'effective = upload_qc_status (analysis_photo_quality is advisory only)',
   );
   assert.deepEqual(
     card.payload?.quality_report?.photo_quality || {},
     card.payload?.quality_report?.effective_quality || {},
   );
+  assert.equal(card.payload?.analysis_meta?.skin_quality_decision_source, 'upload_qc_only');
   assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
   assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
   assert.equal(Array.isArray(card.payload?.analysis?.features), true);
@@ -8412,14 +8437,21 @@ test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo q
           ? analysisResp.body.cards.find((c) => c && c.type === 'analysis_summary')
           : null;
         assert.ok(analysisCard);
-        assert.equal(analysisCard?.payload?.analysis_source, 'retake');
-        assert.equal(analysisCard?.payload?.used_photos, false);
-        assert.equal(Boolean(analysisCard?.payload?.photo_notice), false);
+        assert.notEqual(analysisCard?.payload?.analysis_source, 'retake');
+        assert.equal(analysisCard?.payload?.quality_report?.upload_qc_status, 'pass');
+        const visionReasons = Array.isArray(analysisCard?.payload?.quality_report?.llm?.vision?.reasons)
+          ? analysisCard.payload.quality_report.llm.vision.reasons
+          : [];
+        const reportReasons = Array.isArray(analysisCard?.payload?.quality_report?.llm?.report?.reasons)
+          ? analysisCard.payload.quality_report.llm.report.reasons
+          : [];
+        assert.equal(visionReasons.includes('photo_quality_fail_retake'), false);
+        assert.equal(reportReasons.includes('photo_quality_fail_retake'), false);
         const missing = Array.isArray(analysisCard?.field_missing) ? analysisCard.field_missing : [];
-        assert.equal(
-          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'photo_quality_fail'),
-          true,
-        );
+        if (Boolean(analysisCard?.payload?.photo_notice)) {
+          assert.equal(analysisCard?.payload?.photo_notice?.failure_code, 'diagnosis_failed');
+          assert.equal(missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'diagnosis_failed'), true);
+        }
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -8428,6 +8460,90 @@ test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo q
       }
     },
   );
+});
+
+test('/v1/analysis/skin: upload_qc degraded hard-blocks to retake (no LLM calls)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+    headers: { 'X-Aurora-UID': 'test_uid_qc_degraded', 'X-Trace-ID': 'trace_qc_degraded', 'X-Brief-ID': 'brief_qc_degraded', 'X-Lang': 'EN' },
+    body: {
+      use_photo: true,
+      currentRoutine: 'AM: cleanser + SPF. PM: cleanser + moisturizer.',
+      photos: [{ slot_id: 'daylight', photo_id: 'photo_qc_degraded', qc_status: 'degraded' }],
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const card = cards.find((c) => c && c.type === 'analysis_summary');
+  assert.ok(card);
+  assert.equal(card.payload?.analysis_source, 'retake');
+  assert.equal(card.payload?.quality_report?.upload_qc_status, 'degraded');
+  assert.equal(card.payload?.quality_report?.effective_quality?.grade, 'degraded');
+  assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
+  assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
+  assert.equal(card.payload?.analysis_meta?.skin_quality_decision_source, 'upload_qc_only');
 });
 
 test('/v1/analysis/skin: photo-only input is not hard-gated when routine/logs are missing', async () => {

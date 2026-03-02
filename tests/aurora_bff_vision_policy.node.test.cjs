@@ -521,7 +521,7 @@ test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN 
   );
 });
 
-test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade', async () => {
+test('/v1/analysis/skin: fail-grade remains retake-blocked even with force vision debug', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -562,10 +562,10 @@ test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade',
         assert.ok(card);
         const vision = card?.payload?.quality_report?.llm?.vision || {};
         const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
-        assert.equal(vision.decision, 'fallback');
-        assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED), true);
+        assert.equal(vision.decision, 'skip');
+        assert.equal(reasons.includes('photo_quality_fail_retake'), true);
         assert.equal(vision.upstream_status_code, null);
-        assert.notEqual(card?.payload?.analysis_source, 'retake');
+        assert.equal(card?.payload?.analysis_source, 'retake');
       } finally {
         delete require.cache[moduleId];
       }

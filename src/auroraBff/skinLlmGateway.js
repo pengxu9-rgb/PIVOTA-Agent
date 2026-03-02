@@ -356,6 +356,7 @@ async function callGeminiJson({
 } = {}) {
   const client = getGeminiClient();
   if (!client) {
+    const requestedModel = String(model || SKIN_VISION_MODEL_GEMINI).trim() || SKIN_VISION_MODEL_GEMINI;
     return {
       ok: false,
       reason: 'MISSING_GEMINI_KEY',
@@ -363,6 +364,11 @@ async function callGeminiJson({
       response_text: '',
       parsed: null,
       latency_ms: 0,
+      requested_model: requestedModel,
+      resolved_model: null,
+      attempted_models: [requestedModel],
+      model_fallback_used: false,
+      model_fallback_reason: null,
     };
   }
 

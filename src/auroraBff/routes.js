@@ -15461,7 +15461,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
             ? normalizeQualityState(diagnosisV1.quality)
             : normalizeQualityState({ grade: 'unknown', reasons: [] });
         const effectiveQuality = diagnosisV1 && diagnosisV1.quality
-          ? mergeQualityState(uploadQuality, analysisQuality, { extraPrefix: 'pixel_' })
+          ? uploadQuality
           : uploadQuality;
         return buildQualityReportSplit({
           uploadPhotoQuality: uploadQuality,
@@ -41162,6 +41162,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         let deterministicFallbackReason = null;
         let reportModelCalled = false;
         let reportModelErrored = false;
+        let visionResolvedModel = null;
+        let reportResolvedModel = null;
+        let skinModelFallbackUsed = false;
 
         let diagnosisPhoto = null;
         let diagnosisPhotoBytes = null;
@@ -41441,6 +41444,25 @@ function mountAuroraBffRoutes(app, { logger }) {
                 profiler,
               });
               visionRuntime = vision;
+              if (vision && typeof vision.resolved_model === 'string' && vision.resolved_model.trim()) {
+                visionResolvedModel = vision.resolved_model.trim();
+              } else if (vision && Array.isArray(vision.attempted_models) && vision.attempted_models.length) {
+                visionResolvedModel = String(vision.attempted_models[vision.attempted_models.length - 1] || '').trim() || null;
+              }
+              if (vision && vision.model_fallback_used) {
+                skinModelFallbackUsed = true;
+                const attempted = Array.isArray(vision.attempted_models) ? vision.attempted_models : [];
+                const fromModel = attempted.length ? attempted[0] : SKIN_VISION_MODEL_GEMINI;
+                const toModel = vision.resolved_model || (attempted.length ? attempted[attempted.length - 1] : null);
+                if (toModel) {
+                  recordAuroraSkinGeminiModelFallback({
+                    stage: 'vision',
+                    fromModel,
+                    toModel,
+                    reason: vision.model_fallback_reason || 'model_unavailable',
+                  });
+                }
+              }
               if (vision && vision.ok && vision.analysis) {
                 visionLayer = vision.analysis;
                 usedPhotos = true;
@@ -41483,7 +41505,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 const normalizedReason = normalizeVisionReason(gatewayReasonMap[String(vision.reason || '').trim().toUpperCase()] || vision.reason);
                 const visionErrorEvidence = sanitizeVisionErrorEvidence(vision.error_evidence, {
                   reason: normalizedReason,
-                  model: SKIN_VISION_MODEL_GEMINI,
+                  model: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
                   timeoutMs: SKIN_VISION_TIMEOUT_MS,
                 });
                 visionRuntime = {
@@ -41536,7 +41558,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push(`Skipped photo analysis: ${r.join('; ') || 'unknown reason'}`);
         }
 
-        if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && reportAvailable) {
+        if (!analysis && reportDecision.decision === 'call' && hasLlmPrimaryInput && reportAvailable) {
           reportModelCalled = true;
           const deterministicSeedForReportDto =
             userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality
@@ -41565,6 +41587,26 @@ function mountAuroraBffRoutes(app, { logger }) {
             promptVersion,
             profiler,
           });
+          if (reportResult && typeof reportResult.resolved_model === 'string' && reportResult.resolved_model.trim()) {
+            reportResolvedModel = reportResult.resolved_model.trim();
+          } else if (reportResult && Array.isArray(reportResult.attempted_models) && reportResult.attempted_models.length) {
+            reportResolvedModel =
+              String(reportResult.attempted_models[reportResult.attempted_models.length - 1] || '').trim() || null;
+          }
+          if (reportResult && reportResult.model_fallback_used) {
+            skinModelFallbackUsed = true;
+            const attempted = Array.isArray(reportResult.attempted_models) ? reportResult.attempted_models : [];
+            const fromModel = attempted.length ? attempted[0] : SKIN_REPORT_MODEL_GEMINI;
+            const toModel = reportResult.resolved_model || (attempted.length ? attempted[attempted.length - 1] : null);
+            if (toModel) {
+              recordAuroraSkinGeminiModelFallback({
+                stage: 'report',
+                fromModel,
+                toModel,
+                reason: reportResult.model_fallback_reason || 'model_unavailable',
+              });
+            }
+          }
           if (reportResult.retry && Number(reportResult.retry.attempted || 0) > 0) {
             recordAuroraSkinLlmRetry({
               stage: 'report',
@@ -41598,7 +41640,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
           }
         }
-        if (!analysis && reportDecision.decision === 'skip' && hasPrimaryInput) {
+        if (!analysis && reportDecision.decision === 'skip' && hasLlmPrimaryInput) {
           const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
           if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过报告模型：${r.join('；') || '原因未知'}`);
           else qualityReportReasons.push(`Skipped report model: ${r.join('; ') || 'unknown reason'}`);
@@ -41706,7 +41748,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             upstream_status_code: toNullableInt(visionRuntime.upstream_status_code),
             error_evidence: sanitizeVisionErrorEvidence(visionRuntime.error_evidence, {
               reason: runtimeReason,
-              model: SKIN_VISION_MODEL_GEMINI,
+              model: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
               timeoutMs: SKIN_VISION_TIMEOUT_MS,
             }),
             latency_ms: toNullableNumber(visionRuntime.latency_ms),
@@ -42098,6 +42140,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           skin_vision_model: SKIN_VISION_MODEL_GEMINI,
           skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+          skin_vision_model_resolved: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
+          skin_report_model_resolved: reportResolvedModel || SKIN_REPORT_MODEL_GEMINI,
+          skin_model_fallback_used: Boolean(skinModelFallbackUsed),
+          skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
           skin_force_vision_call_requested: skinForceVisionCallRequested,
           skin_force_vision_call_effective: skinForceVisionCallEffective,
           llm_vision_called: visionModelCalled,
@@ -42121,7 +42167,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const qualitySplit = buildQualityReportSplit({
           uploadPhotoQuality,
           analysisPhotoQuality,
-          effectivePhotoQuality: photoQuality,
+          effectivePhotoQuality: uploadPhotoQuality,
         });
         const visionDecisionPayload = (() => {
           const baseDecision = visionDecisionForReport || visionDecision;
@@ -42134,7 +42180,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ) {
             nextDecision.error_evidence = sanitizeVisionErrorEvidence(nextDecision.error_evidence, {
               reason: pickPrimaryVisionReason(nextDecision.reasons),
-              model: SKIN_VISION_MODEL_GEMINI,
+              model: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
               timeoutMs: SKIN_VISION_TIMEOUT_MS,
             });
           } else if (Object.prototype.hasOwnProperty.call(nextDecision, 'error_evidence')) {
@@ -42174,6 +42220,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_vision_model_resolved: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
+            skin_report_model_resolved: reportResolvedModel || SKIN_REPORT_MODEL_GEMINI,
+            skin_model_fallback_used: Boolean(skinModelFallbackUsed),
+            skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
             skin_force_vision_call_requested: skinForceVisionCallRequested,
             skin_force_vision_call_effective: skinForceVisionCallEffective,
             low_quality_tolerated: Boolean(
@@ -42658,6 +42708,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_vision_model_resolved: SKIN_VISION_MODEL_GEMINI,
+            skin_report_model_resolved: SKIN_REPORT_MODEL_GEMINI,
+            skin_model_fallback_used: false,
+            skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
             skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
             skin_force_vision_call_effective: Boolean(
               SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
@@ -42673,6 +42727,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             detector_source: 'baseline_low_confidence',
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_vision_model_resolved: SKIN_VISION_MODEL_GEMINI,
+            skin_report_model_resolved: SKIN_REPORT_MODEL_GEMINI,
+            skin_model_fallback_used: false,
+            skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
             skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
             skin_force_vision_call_effective: Boolean(
               SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
@@ -42718,6 +42776,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             detector_source: 'baseline_low_confidence',
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_vision_model_resolved: SKIN_VISION_MODEL_GEMINI,
+            skin_report_model_resolved: SKIN_REPORT_MODEL_GEMINI,
+            skin_model_fallback_used: false,
+            skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
             skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
             skin_force_vision_call_effective: Boolean(
               SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
