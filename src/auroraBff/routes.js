@@ -1627,9 +1627,7 @@ const RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS = (() => {
 })();
 
 const RECO_ALTERNATIVES_SYNC_FAILFAST_TIMEOUT_MS = (() => {
-  const n = Number(
-    process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_TIMEOUT_MS || process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 2800,
-  );
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_TIMEOUT_MS || 2800);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2800;
   const bounded = Math.max(2000, Math.min(20000, v));
   return Math.min(bounded, RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS);
@@ -35440,6 +35438,7 @@ async function fetchRecoAlternativesForProduct({
         baseUrl: AURORA_DECISION_BASE_URL,
         query,
         timeoutMs: effectiveAlternativesTimeoutMs,
+        retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
         trace_id: ctx.trace_id,
         request_id: ctx.request_id,
         prompt_hash: traceSeed.prompt_hash,
