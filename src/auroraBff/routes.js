@@ -32199,6 +32199,10 @@ function buildIngredientMinimalResearch({
       consider_separating: [],
       notes: [],
     },
+    formulation_notes: null,
+    regulatory_notes: null,
+    best_for: [],
+    caution_for: [],
     evidence: {
       grade: null,
       summary: lang === 'CN'
@@ -34814,7 +34818,9 @@ async function callDirectGeminiForAlternatives({
     const err = new Error(`direct_gemini_failed: ${result.reason || 'unknown'}`);
     err.code = 'DIRECT_GEMINI_FAILED';
     err.directGeminiReason = result.reason;
+    err.directGeminiDetail = result.detail || null;
     err.directGeminiRawText = result.raw_text || null;
+    err.directGeminiHttpStatus = result.provider_http_status || null;
     throw err;
   }
   return {
@@ -35851,7 +35857,7 @@ async function fetchRecoAlternativesForProduct({
       llmLatencyMs = llmTrace.latency_ms;
     } catch (err) {
       // #region agent log
-      _altDebugLog({loc:'llmCallError',runId:'post-fix',errMsg:err&&err.message?String(err.message).slice(0,300):null,errCode:err&&err.code,directGeminiReason:err&&err.directGeminiReason,directGeminiRawText:err&&err.directGeminiRawText?String(err.directGeminiRawText).slice(0,300):null,elapsedMs:Date.now()-startedAtMs,hyp:'H6'});
+      _altDebugLog({loc:'llmCallError',runId:'post-fix',errMsg:err&&err.message?String(err.message).slice(0,300):null,errCode:err&&err.code,directGeminiReason:err&&err.directGeminiReason,directGeminiDetail:err&&err.directGeminiDetail?String(err.directGeminiDetail).slice(0,300):null,directGeminiRawText:err&&err.directGeminiRawText?String(err.directGeminiRawText).slice(0,300):null,directGeminiHttpStatus:err&&err.directGeminiHttpStatus,elapsedMs:Date.now()-startedAtMs,hyp:'H6'});
       // #endregion
       lastError = err;
       const transientCode = classifyRecoUpstreamFailureCode(err);
@@ -37373,6 +37379,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         llm_errors: logs.filter(e => e.loc === 'llmCallError').map(e => ({
           errCode: e.errCode,
           directGeminiReason: e.directGeminiReason,
+          directGeminiDetail: e.directGeminiDetail,
+          directGeminiHttpStatus: e.directGeminiHttpStatus,
           errMsg: e.errMsg,
           directGeminiRawText: e.directGeminiRawText,
           elapsedMs: e.elapsedMs,
