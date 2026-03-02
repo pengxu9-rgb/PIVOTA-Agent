@@ -34867,24 +34867,45 @@ async function callDirectGeminiForAlternatives({
     userPayload: payload,
   });
   const userPrompt = `Task: Return alternatives JSON only (dupe/similar/premium), no clarify.\n${userPayload}`;
-  const result = await callGeminiJsonObject({
-    model: RECO_ALTERNATIVES_DIRECT_GEMINI_MODEL,
-    systemPrompt,
-    userPrompt,
-    timeoutMs: Number.isFinite(Number(timeoutMs)) ? Math.max(3000, Number(timeoutMs)) : 8000,
-    temperature: 0,
-    maxOutputTokens: RECO_ALTERNATIVES_DIRECT_GEMINI_MAX_OUTPUT_TOKENS,
-    routeTag: 'reco_alternatives_direct',
-    maxRetries: 2,
-    bypassCircuit: true,
-  });
-  if (!result.ok) {
-    const err = new Error(`direct_gemini_failed: ${result.reason || 'unknown'}`);
+  const effectiveTimeout = Number.isFinite(Number(timeoutMs)) ? Math.max(3000, Number(timeoutMs)) : 8000;
+  const modelsToTry = [RECO_ALTERNATIVES_DIRECT_GEMINI_MODEL];
+  const fallbackModel = String(process.env.AURORA_BFF_RECO_ALTERNATIVES_GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite').trim();
+  if (fallbackModel && fallbackModel !== RECO_ALTERNATIVES_DIRECT_GEMINI_MODEL) {
+    modelsToTry.push(fallbackModel);
+  }
+
+  let result = null;
+  let lastModelTried = null;
+  for (const modelId of modelsToTry) {
+    lastModelTried = modelId;
+    result = await callGeminiJsonObject({
+      model: modelId,
+      systemPrompt,
+      userPrompt,
+      timeoutMs: effectiveTimeout,
+      temperature: 0,
+      maxOutputTokens: RECO_ALTERNATIVES_DIRECT_GEMINI_MAX_OUTPUT_TOKENS,
+      routeTag: 'reco_alternatives_direct',
+      maxRetries: 1,
+      bypassCircuit: true,
+    });
+    if (result.ok) break;
+    const isTransient = result.provider_http_status === 503 || result.provider_http_status === 429 ||
+      (result.reason && (result.reason.includes('TIMEOUT') || result.reason.includes('timeout')));
+    if (!isTransient) break;
+    // #region agent log
+    _altDebugLog({loc:'modelFallback',model:modelId,nextModel:modelsToTry[modelsToTry.indexOf(modelId)+1]||null,reason:result.reason,httpStatus:result.provider_http_status,hyp:'H6-fallback'});
+    // #endregion
+  }
+
+  if (!result || !result.ok) {
+    const err = new Error(`direct_gemini_failed: ${result ? result.reason || 'unknown' : 'no_result'}`);
     err.code = 'DIRECT_GEMINI_FAILED';
-    err.directGeminiReason = result.reason;
-    err.directGeminiDetail = result.detail || null;
-    err.directGeminiRawText = result.raw_text || null;
-    err.directGeminiHttpStatus = result.provider_http_status || null;
+    err.directGeminiReason = result ? result.reason : 'no_result';
+    err.directGeminiDetail = result ? result.detail || null : null;
+    err.directGeminiRawText = result ? result.raw_text || null : null;
+    err.directGeminiHttpStatus = result ? result.provider_http_status || null : null;
+    err.directGeminiModel = lastModelTried;
     throw err;
   }
   return {
