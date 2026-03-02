@@ -576,7 +576,8 @@ test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade',
 test('/v1/analysis/skin: production disables force vision override and keeps degraded/report as policy skip', async () => {
   await withEnv(
     {
-      NODE_ENV: 'production',
+      NODE_ENV: undefined,
+      RAILWAY_ENVIRONMENT: 'production',
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: '',
       AURORA_SKIN_VISION_ENABLED: 'true',

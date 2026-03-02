@@ -1447,8 +1447,8 @@ const SKIN_VISION_RETRY_BASE_MS = Math.max(
 );
 const SKIN_VISION_FORCE_CALL = String(process.env.AURORA_SKIN_FORCE_VISION_CALL || '').toLowerCase() === 'true';
 const SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD = String(process.env.AURORA_SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD || '').toLowerCase() === 'true';
-const NODE_ENV_TOKEN = String(process.env.NODE_ENV || '').trim().toLowerCase();
-const IS_NODE_ENV_PRODUCTION = NODE_ENV_TOKEN === 'production';
+const SKIN_RUNTIME_ENV_TOKEN = String(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV || '').trim().toLowerCase();
+const IS_NODE_ENV_PRODUCTION = SKIN_RUNTIME_ENV_TOKEN === 'production';
 const PHOTO_UPLOAD_PROXY_MAX_BYTES = Math.max(
   1024 * 1024,
   Math.min(25 * 1024 * 1024, Number(process.env.AURORA_PHOTO_UPLOAD_MAX_BYTES || 10 * 1024 * 1024)),
