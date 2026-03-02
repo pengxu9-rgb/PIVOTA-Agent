@@ -706,8 +706,8 @@ const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI = String(
   process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro',
 ).trim() || 'gemini-3-pro';
 const AURORA_INGREDIENT_SYNC_MODEL_GEMINI = String(
-  process.env.AURORA_INGREDIENT_SYNC_MODEL_GEMINI || 'gemini-3-flash',
-).trim() || 'gemini-3-flash';
+  process.env.AURORA_INGREDIENT_SYNC_MODEL_GEMINI || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro',
+).trim() || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro';
 const AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS || 90000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
@@ -31399,6 +31399,24 @@ function normalizeIngredientResearchKey(raw) {
     .trim();
 }
 
+function normalizeIngredientResearchModel(rawModel = '') {
+  return String(rawModel || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '');
+}
+
+function buildIngredientResearchCooldownKey(queryOrNormalized = '', modelName = '') {
+  const queryKey = normalizeIngredientResearchKey(queryOrNormalized);
+  if (!queryKey) return '';
+  const modelKey = normalizeIngredientResearchModel(modelName);
+  return modelKey ? `${modelKey}::${queryKey}` : queryKey;
+}
+
+function ingredientModelTier(modelName = '') {
+  return /pro/i.test(String(modelName || '').trim()) ? 'pro' : 'flash';
+}
+
 function classifyIngredientProviderError(reason, detail = '') {
   const token = `${String(reason || '').trim()} ${String(detail || '').trim()}`.trim().toLowerCase();
   if (!token) return 'provider_unavailable';
@@ -31691,8 +31709,8 @@ function compactIngredientResearchCooldown(now = Date.now()) {
   }
 }
 
-function getIngredientResearchCooldownRemainingMs(queryOrNormalized = '') {
-  const key = normalizeIngredientResearchKey(queryOrNormalized);
+function getIngredientResearchCooldownRemainingMs(queryOrNormalized = '', modelName = '') {
+  const key = buildIngredientResearchCooldownKey(queryOrNormalized, modelName);
   if (!key) return 0;
   const now = Date.now();
   compactIngredientResearchCooldown(now);
@@ -31706,8 +31724,12 @@ function getIngredientResearchCooldownRemainingMs(queryOrNormalized = '') {
   return remaining;
 }
 
-function setIngredientResearchCooldown(queryOrNormalized = '', cooldownMs = AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS) {
-  const key = normalizeIngredientResearchKey(queryOrNormalized);
+function setIngredientResearchCooldown(
+  queryOrNormalized = '',
+  cooldownMs = AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS,
+  modelName = '',
+) {
+  const key = buildIngredientResearchCooldownKey(queryOrNormalized, modelName);
   if (!key) return 0;
   const ttl = Number.isFinite(Number(cooldownMs)) ? Math.trunc(Number(cooldownMs)) : AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS;
   const clamped = Math.max(1000, Math.min(10 * 60 * 1000, ttl));
@@ -32371,7 +32393,7 @@ async function runIngredientResearchSync({
   const providerAttempts = [];
   const startedAt = Date.now();
   const circuitState = getIngredientProviderCircuitState();
-  const cooldownRemainingMs = getIngredientResearchCooldownRemainingMs(normalizedQuery || query);
+  const cooldownRemainingMs = getIngredientResearchCooldownRemainingMs(normalizedQuery || query, resolvedModel);
   if (cooldownRemainingMs > 0) {
     recordAuroraIngredientProviderMetric({
       stage: 'final',
@@ -32550,7 +32572,7 @@ async function runIngredientResearchSync({
     recordAuroraIngredientsFlowMetric({ stage: 'invalid_json', hit: true });
   }
   if (finalErrorCode === 'gemini_rate_limited') {
-    setIngredientResearchCooldown(normalizedQuery || query);
+    setIngredientResearchCooldown(normalizedQuery || query, AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS, effectiveModel || resolvedModel);
   }
   if (afterCircuitState === 'open') {
     recordAuroraIngredientsFlowMetric({ stage: 'circuit_open', hit: true });
@@ -32599,10 +32621,11 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
   const key = normalizeIngredientResearchKey(query);
   if (!key) return null;
   const normalizedLanguage = language === 'CN' ? 'CN' : 'EN';
+  const asyncModel = pickFirstTrimmed(AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI, AURORA_INGREDIENT_SYNC_MODEL_GEMINI) || 'gemini-3-pro';
   const jobId = `ingr_${crypto.createHash('sha1').update(`${key}|${normalizedLanguage}`).digest('hex').slice(0, 20)}`;
   const existing = ingredientResearchCache.get(key);
   if (existing && existing.status === 'ready') return { key, status: 'ready', job_id: existing.job_id || jobId };
-  const cooldownRemainingMs = getIngredientResearchCooldownRemainingMs(key);
+  const cooldownRemainingMs = getIngredientResearchCooldownRemainingMs(key, asyncModel);
   if (cooldownRemainingMs > 0) {
     touchIngredientResearchCache(
       key,
@@ -32612,8 +32635,8 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
         normalized_query: key,
         job_id: existing && existing.job_id ? existing.job_id : jobId,
         provider: 'gemini',
-        resolved_model: AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
-        provider_model_tier: /pro/i.test(String(AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || '')) ? 'pro' : 'flash',
+        resolved_model: asyncModel,
+        provider_model_tier: ingredientModelTier(asyncModel),
         provider_circuit_state: getIngredientProviderCircuitState(),
         error_code: 'gemini_rate_limited',
         fallback_reason: 'rate_limit_cooldown',
@@ -32685,7 +32708,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
         schema_version: 'v2-lite',
         provider: syncResult && syncResult.provider ? syncResult.provider : 'gemini',
         resolved_model: syncResult && syncResult.resolved_model ? syncResult.resolved_model : AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
-        provider_model_tier: syncResult && syncResult.provider_model_tier ? syncResult.provider_model_tier : 'flash',
+        provider_model_tier: syncResult && syncResult.provider_model_tier ? syncResult.provider_model_tier : ingredientModelTier(AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI),
         provider_circuit_state: syncResult && syncResult.provider_circuit_state ? syncResult.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResult && syncResult.research_error_code ? syncResult.research_error_code : null,
         confidence_level: confidenceLevel,
@@ -33281,7 +33304,7 @@ async function buildIngredientReportPayloadWithResearch({
         status: syncRateLimited ? 'queued' : syncResearch && syncResearch.ok ? 'ready' : 'fallback',
         provider: syncResearch && syncResearch.provider ? syncResearch.provider : 'gemini',
         resolved_model: syncResearch && syncResearch.resolved_model ? syncResearch.resolved_model : AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
-        provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : 'flash',
+        provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : ingredientModelTier(AURORA_INGREDIENT_SYNC_MODEL_GEMINI),
         provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
         provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
@@ -45928,7 +45951,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               status: syncRateLimited ? 'queued' : syncResearch && syncResearch.ok ? 'ready' : 'fallback',
               provider: syncResearch && syncResearch.provider ? syncResearch.provider : 'gemini',
               resolved_model: syncResearch && syncResearch.resolved_model ? syncResearch.resolved_model : AURORA_INGREDIENT_SYNC_MODEL_GEMINI,
-              provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : 'flash',
+              provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : ingredientModelTier(AURORA_INGREDIENT_SYNC_MODEL_GEMINI),
               provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
               error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
               provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
