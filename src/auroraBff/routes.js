@@ -35803,6 +35803,9 @@ async function fetchRecoAlternativesForProduct({
       lastLlmTrace = llmTrace;
       llmLatencyMs = llmTrace.latency_ms;
     } catch (err) {
+      // #region agent log
+      _altDebugLog({loc:'llmCallError',runId:'post-fix',errMsg:err&&err.message?String(err.message).slice(0,300):null,errCode:err&&err.code,directGeminiReason:err&&err.directGeminiReason,directGeminiRawText:err&&err.directGeminiRawText?String(err.directGeminiRawText).slice(0,300):null,elapsedMs:Date.now()-startedAtMs,hyp:'H6'});
+      // #endregion
       lastError = err;
       const transientCode = classifyRecoUpstreamFailureCode(err);
       const providerMeta = extractRecoUpstreamProviderMeta({ error: err });
@@ -37320,6 +37323,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         llm_calls_direct_gemini: llmOk.filter(e => e.directGemini).length,
         llm_ok_latencies_ms: llmOk.map(e => e.elapsedMs),
         llm_ok_has_structured: llmOk.map(e => e.hasStructured),
+        llm_errors: logs.filter(e => e.loc === 'llmCallError').map(e => ({
+          errCode: e.errCode,
+          directGeminiReason: e.directGeminiReason,
+          errMsg: e.errMsg,
+          directGeminiRawText: e.directGeminiRawText,
+          elapsedMs: e.elapsedMs,
+        })),
       },
       logs,
     });
