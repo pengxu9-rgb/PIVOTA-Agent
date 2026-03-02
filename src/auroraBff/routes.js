@@ -31158,6 +31158,31 @@ const INGREDIENT_RECO_TOKEN_STOPWORDS = new Set([
   'the',
 ]);
 
+const INGREDIENT_INCI_ALIAS_MAP = {
+  'butyl methoxydibenzoylmethane': ['avobenzone', 'sunscreen', 'uv filter', 'spf', 'uva protection'],
+  'ethylhexyl methoxycinnamate': ['octinoxate', 'sunscreen', 'uv filter', 'spf'],
+  'octocrylene': ['sunscreen', 'uv filter', 'spf', 'photostabilizer'],
+  'homosalate': ['sunscreen', 'uv filter', 'spf'],
+  'ethylhexyl salicylate': ['octisalate', 'sunscreen', 'uv filter', 'spf'],
+  'phenylbenzimidazole sulfonic acid': ['ensulizole', 'sunscreen', 'uv filter'],
+  'bis-ethylhexyloxyphenol methoxyphenyl triazine': ['tinosorb s', 'sunscreen', 'uv filter'],
+  'diethylamino hydroxybenzoyl hexyl benzoate': ['uvinul a plus', 'sunscreen', 'uv filter'],
+  'zinc oxide': ['mineral sunscreen', 'physical uv filter', 'spf'],
+  'titanium dioxide': ['mineral sunscreen', 'physical uv filter', 'spf'],
+  'ascorbic acid': ['vitamin c', 'brightening', 'antioxidant'],
+  'tocopherol': ['vitamin e', 'antioxidant'],
+  'retinol': ['vitamin a', 'anti-aging', 'retinoid'],
+  'niacinamide': ['vitamin b3', 'nicotinamide', 'brightening'],
+  'hyaluronic acid': ['sodium hyaluronate', 'hydration', 'moisturizer'],
+  'salicylic acid': ['bha', 'acne', 'exfoliant'],
+  'glycolic acid': ['aha', 'exfoliant'],
+  'lactic acid': ['aha', 'exfoliant'],
+  'azelaic acid': ['acne', 'brightening', 'redness'],
+  'tranexamic acid': ['brightening', 'dark spots', 'hyperpigmentation'],
+  'ceramide np': ['ceramide', 'barrier repair', 'moisturizer'],
+  'panthenol': ['vitamin b5', 'soothing', 'barrier repair'],
+};
+
 function collectIngredientRecoConstraintTokens(context) {
   const normalizedContext = normalizeIngredientRecoContextValue(context);
   if (!normalizedContext) return [];
@@ -31182,7 +31207,21 @@ function collectIngredientRecoConstraintTokens(context) {
   for (const candidate of Array.isArray(normalizedContext.candidates) ? normalizedContext.candidates : []) {
     pushToken(candidate);
   }
-  return out.slice(0, 16);
+  const queryLower = String(normalizedContext.query || '').trim().toLowerCase();
+  const aliasEntries = INGREDIENT_INCI_ALIAS_MAP[queryLower];
+  if (aliasEntries) {
+    for (const alias of aliasEntries) {
+      pushToken(alias);
+    }
+  }
+  if (context && typeof context === 'object') {
+    const aliases = Array.isArray(context.aliases) ? context.aliases : [];
+    for (const alias of aliases) {
+      pushToken(alias);
+    }
+    if (context.category) pushToken(context.category);
+  }
+  return out.slice(0, 24);
 }
 
 const INGREDIENT_RECO_IRRELEVANT_CATEGORIES = new Set([
@@ -33036,6 +33075,18 @@ function sanitizeIngredientResearchOutput(raw, { query = '', language = 'EN', so
   };
 }
 
+function hasMinimumResearchSubstance(research) {
+  if (!research || typeof research !== 'object') return false;
+  const ing = research.ingredient && typeof research.ingredient === 'object' ? research.ingredient : {};
+  const hasIdentity = Boolean(
+    (ing.what_it_is && String(ing.what_it_is).trim().length > 10) ||
+    (research.overview && String(research.overview).trim().length > 20)
+  );
+  const hasBenefits = Array.isArray(research.benefits) && research.benefits.length > 0 &&
+    research.benefits.some((b) => b && String(b.concern || '').trim() && String(b.concern || '').trim() !== 'general');
+  return hasIdentity && hasBenefits;
+}
+
 function extractResearchObjectFromRawText(rawText) {
   const raw = String(rawText || '').trim();
   if (!raw) return null;
@@ -33178,31 +33229,33 @@ async function runIngredientResearchSync({
         language,
         sources,
       });
-      providerAttempts.push({
-        provider,
-        outcome: 'ok',
-        reason_code: null,
-        latency_ms: latencyMs,
-      });
-      recordAuroraIngredientProviderMetric({ stage: 'attempt', provider, outcome: 'ok' });
-      recordAuroraIngredientProviderMetric({ stage: 'final', provider, outcome: 'ok' });
-      updateIngredientProviderCircuit({ outcome: 'ok' });
-      return {
-        ok: true,
-        provider,
-        resolved_model: effectiveModel,
-        provider_model_tier: effectiveModelTier,
-        provider_circuit_state: getIngredientProviderCircuitState(),
-        research: parsed,
-        provider_attempts: providerAttempts,
-        prompt_meta: {
-          prompt_version: prompt.promptVersion,
-          prompt_hash: prompt.promptHash,
-          input_chars: prompt.inputChars,
-          output_chars: JSON.stringify(parsed).length,
-        },
-        provider_http_status: finalProviderHttpStatus,
-      };
+      if (hasMinimumResearchSubstance(parsed)) {
+        providerAttempts.push({
+          provider,
+          outcome: 'ok',
+          reason_code: null,
+          latency_ms: latencyMs,
+        });
+        recordAuroraIngredientProviderMetric({ stage: 'attempt', provider, outcome: 'ok' });
+        recordAuroraIngredientProviderMetric({ stage: 'final', provider, outcome: 'ok' });
+        updateIngredientProviderCircuit({ outcome: 'ok' });
+        return {
+          ok: true,
+          provider,
+          resolved_model: effectiveModel,
+          provider_model_tier: effectiveModelTier,
+          provider_circuit_state: getIngredientProviderCircuitState(),
+          research: parsed,
+          provider_attempts: providerAttempts,
+          prompt_meta: {
+            prompt_version: prompt.promptVersion,
+            prompt_hash: prompt.promptHash,
+            input_chars: prompt.inputChars,
+            output_chars: JSON.stringify(parsed).length,
+          },
+          provider_http_status: finalProviderHttpStatus,
+        };
+      }
     }
     const reasonCode = classifyIngredientProviderError(resp && resp.reason, resp && resp.detail, attemptHttpStatus);
     const recoveredParsed = resp && typeof resp.raw_text === 'string'
@@ -33212,7 +33265,7 @@ async function runIngredientResearchSync({
         sources,
       })
       : null;
-    if (recoveredParsed && typeof recoveredParsed === 'object' && !Array.isArray(recoveredParsed)) {
+    if (recoveredParsed && typeof recoveredParsed === 'object' && !Array.isArray(recoveredParsed) && hasMinimumResearchSubstance(recoveredParsed)) {
       providerAttempts.push({
         provider,
         outcome: 'ok',
@@ -33667,7 +33720,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     'medium',
   );
   const researchStatusRaw = String(researchObj && researchObj.status ? researchObj.status : '').trim().toLowerCase();
-  const researchStatus =
+  let researchStatus =
     researchStatusRaw === 'ready' ||
     researchStatusRaw === 'queued' ||
     researchStatusRaw === 'error' ||
@@ -33675,7 +33728,11 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     researchStatusRaw === 'fallback'
       ? researchStatusRaw
       : 'none';
-  const researchReady = researchStatus === 'ready' ? researchObj : null;
+  let researchReady = researchStatus === 'ready' ? researchObj : null;
+  if (researchReady && !hasMinimumResearchSubstance(researchReady)) {
+    researchReady = null;
+    researchStatus = 'fallback';
+  }
 
   const library = {
     niacinamide: {
@@ -34023,7 +34080,7 @@ async function buildIngredientReportPayloadWithResearch({
       sensitivity: sensitivity || null,
       profileSummary: isPlainObject(profileSummary) ? profileSummary : null,
       sources: Array.isArray(sources) ? sources : [],
-      modelOverride: AURORA_INGREDIENT_SYNC_MODEL_GEMINI,
+      modelOverride: AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
       logger,
     });
     const syncPayload = asResearchObject(syncResearch && syncResearch.research) || null;
@@ -47448,7 +47505,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             sensitivity: lookupSensitivity || null,
             profileSummary: profileSummaryForResearch,
             sources: [],
-            modelOverride: AURORA_INGREDIENT_SYNC_MODEL_GEMINI,
+            modelOverride: AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
             logger,
           });
           recordIngredientProviderCallMetric({
@@ -50183,6 +50240,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (constrained.keptCount === 0) {
             norm.payload = {
               ...norm.payload,
+              recommendations: [],
               products_empty_reason: 'ingredient_constraint_no_match',
             };
             norm.field_missing = mergeFieldMissing(norm.field_missing, [
