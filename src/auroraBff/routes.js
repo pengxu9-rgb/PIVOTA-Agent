@@ -1712,7 +1712,7 @@ const RECO_ALTERNATIVES_DIRECT_GEMINI_ENABLED = (() => {
 })();
 
 const RECO_ALTERNATIVES_DIRECT_GEMINI_MODEL = String(
-  process.env.AURORA_BFF_RECO_ALTERNATIVES_GEMINI_MODEL || process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  process.env.AURORA_BFF_RECO_ALTERNATIVES_GEMINI_MODEL || 'gemini-2.0-flash',
 ).trim() || 'gemini-2.0-flash';
 
 const RECO_ALTERNATIVES_DIRECT_GEMINI_MAX_OUTPUT_TOKENS = (() => {
@@ -33108,6 +33108,9 @@ async function runIngredientResearchSync({
   modelOverride = '',
   logger = null,
 } = {}) {
+  // #region agent log
+  console.log('[ingredient-debug] runIngredientResearchSync entry', { query: String(query || '').slice(0, 60), modelOverride: String(modelOverride || '').slice(0, 40) });
+  // #endregion
   const provider = 'gemini';
   const providerRoute = 'ingredient';
   const resolvedModel = pickFirstTrimmed(modelOverride, AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI) || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI;
@@ -33315,56 +33318,68 @@ async function runIngredientResearchSync({
     /pro/i.test(String(effectiveModel || '')) &&
     Date.now() - startedAt < AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS - 1500
   ) {
-    const flashModel = AURORA_INGREDIENT_SYNC_MODEL_GEMINI;
-    const flashBudgetMs = Math.max(1200, AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS - (Date.now() - startedAt) - 200);
-    const flashResp = await callGeminiJsonObjectImpl({
-      model: flashModel,
-      systemPrompt: prompt.systemPrompt,
-      userPrompt: prompt.userPrompt,
-      timeoutMs: flashBudgetMs,
-      temperature: 0.3,
-      maxOutputTokens: 2000,
-      responseJsonSchema: prompt.responseJsonSchema,
-      allowDiagForceModel: false,
-      routeTag: providerRoute,
-    });
-    const flashAttemptModel = pickFirstTrimmed(flashResp && flashResp.resolved_model, flashModel);
-    if (flashAttemptModel) {
-      effectiveModel = flashAttemptModel;
-      effectiveModelTier = 'flash';
-    }
-    const flashParsed = flashResp && flashResp.ok && flashResp.json && typeof flashResp.json === 'object' && !Array.isArray(flashResp.json)
-      ? sanitizeIngredientResearchOutput(flashResp.json, { query, language, sources })
-      : null;
-    const flashRecovered = !flashParsed && flashResp && typeof flashResp.raw_text === 'string'
-      ? sanitizeIngredientResearchOutput(extractResearchObjectFromRawText(flashResp.raw_text), { query, language, sources })
-      : null;
-    const flashResult = flashParsed || flashRecovered;
-    if (flashResult && hasMinimumResearchSubstance(flashResult)) {
-      providerAttempts.push({
-        provider,
-        outcome: 'ok',
-        reason_code: flashParsed ? 'flash_fallback' : 'flash_fallback_recovered',
-        latency_ms: Math.max(0, Date.now() - startedAt),
+    try {
+      const flashModel = AURORA_INGREDIENT_SYNC_MODEL_GEMINI;
+      const flashBudgetMs = Math.max(1200, AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS - (Date.now() - startedAt) - 200);
+      // #region agent log
+      console.log('[ingredient-debug] flash fallback attempt', { query: String(query || '').slice(0, 60), flashModel, flashBudgetMs, proError: finalErrorCode });
+      // #endregion
+      const flashResp = await callGeminiJsonObjectImpl({
+        model: flashModel,
+        systemPrompt: prompt.systemPrompt,
+        userPrompt: prompt.userPrompt,
+        timeoutMs: flashBudgetMs,
+        temperature: 0.3,
+        maxOutputTokens: 2000,
+        responseJsonSchema: prompt.responseJsonSchema,
+        allowDiagForceModel: false,
+        routeTag: providerRoute,
       });
-      recordAuroraIngredientProviderMetric({ stage: 'final', provider, outcome: 'ok' });
-      updateIngredientProviderCircuit({ outcome: 'ok' });
-      return {
-        ok: true,
-        provider,
-        resolved_model: effectiveModel,
-        provider_model_tier: effectiveModelTier,
-        provider_circuit_state: getIngredientProviderCircuitState(),
-        research: flashResult,
-        provider_attempts: providerAttempts,
-        prompt_meta: {
-          prompt_version: prompt.promptVersion,
-          prompt_hash: prompt.promptHash,
-          input_chars: prompt.inputChars,
-          output_chars: JSON.stringify(flashResult).length,
-        },
-        provider_http_status: finalProviderHttpStatus,
-      };
+      const flashAttemptModel = pickFirstTrimmed(flashResp && flashResp.resolved_model, flashModel);
+      if (flashAttemptModel) {
+        effectiveModel = flashAttemptModel;
+        effectiveModelTier = 'flash';
+      }
+      // #region agent log
+      console.log('[ingredient-debug] flash fallback response', { ok: flashResp && flashResp.ok, hasJson: Boolean(flashResp && flashResp.json), hasRawText: Boolean(flashResp && flashResp.raw_text), reason: flashResp && flashResp.reason });
+      // #endregion
+      const flashParsed = flashResp && flashResp.ok && flashResp.json && typeof flashResp.json === 'object' && !Array.isArray(flashResp.json)
+        ? sanitizeIngredientResearchOutput(flashResp.json, { query, language, sources })
+        : null;
+      const flashRecovered = !flashParsed && flashResp && typeof flashResp.raw_text === 'string'
+        ? sanitizeIngredientResearchOutput(extractResearchObjectFromRawText(flashResp.raw_text), { query, language, sources })
+        : null;
+      const flashResult = flashParsed || flashRecovered;
+      if (flashResult && hasMinimumResearchSubstance(flashResult)) {
+        providerAttempts.push({
+          provider,
+          outcome: 'ok',
+          reason_code: flashParsed ? 'flash_fallback' : 'flash_fallback_recovered',
+          latency_ms: Math.max(0, Date.now() - startedAt),
+        });
+        recordAuroraIngredientProviderMetric({ stage: 'final', provider, outcome: 'ok' });
+        updateIngredientProviderCircuit({ outcome: 'ok' });
+        return {
+          ok: true,
+          provider,
+          resolved_model: effectiveModel,
+          provider_model_tier: effectiveModelTier,
+          provider_circuit_state: getIngredientProviderCircuitState(),
+          research: flashResult,
+          provider_attempts: providerAttempts,
+          prompt_meta: {
+            prompt_version: prompt.promptVersion,
+            prompt_hash: prompt.promptHash,
+            input_chars: prompt.inputChars,
+            output_chars: JSON.stringify(flashResult).length,
+          },
+          provider_http_status: finalProviderHttpStatus,
+        };
+      }
+    } catch (flashErr) {
+      // #region agent log
+      console.error('[ingredient-debug] flash fallback crashed', { error: String(flashErr && flashErr.message || flashErr).slice(0, 200), query: String(query || '').slice(0, 60) });
+      // #endregion
     }
   }
 
