@@ -720,13 +720,13 @@ const AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS = (() => {
   return Math.max(3000, Math.min(30000, v));
 })();
 const AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 8000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 5000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
   return Math.max(1500, Math.min(18000, v));
 })();
 const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 16000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 16000;
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 10000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
   return Math.max(3000, Math.min(30000, v));
 })();
 const AURORA_INGREDIENT_SYNC_RETRIES = (() => {
