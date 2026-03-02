@@ -158,6 +158,10 @@ const auroraSkinLlmRetrySuccessCounter = new Map();
 const auroraSkinMainlineProviderCounter = new Map();
 const auroraSkinFallbackDeterministicCounter = new Map();
 const auroraSkinShadowVerifyIsolatedWriteCounter = new Map();
+const auroraSkinQualityDecisionSourceCounter = new Map();
+const auroraSkinLlmForcedCallCounter = new Map();
+const auroraSkinRetakeBlockCounter = new Map();
+const auroraSkinGeminiModelFallbackCounter = new Map();
 const auroraIngredientsFlowCounter = new Map();
 const auroraIngredientProviderCounter = new Map();
 const ingredientProviderCallCounter = new Map();
@@ -682,6 +686,25 @@ function normalizeAuroraLlmCallOutcome(outcome) {
     return token;
   }
   return 'skip';
+}
+
+function normalizeAuroraSkinQualityDecisionSource(source) {
+  const token = cleanMetricToken(source, 'unknown');
+  if (token === 'upload_qc_only') return token;
+  return 'unknown';
+}
+
+function normalizeAuroraSkinRetakeBlockReason(reason) {
+  const token = cleanMetricToken(reason, 'unknown');
+  if (token === 'upload_qc_pass') return token;
+  if (token === 'upload_qc_degraded' || token === 'upload_qc_fail' || token === 'upload_qc_unknown') return token;
+  return 'unknown';
+}
+
+function normalizeAuroraSkinModelFallbackReason(reason) {
+  const token = cleanMetricToken(reason, 'unknown');
+  if (token === 'model_unavailable' || token === 'model_not_found' || token === 'model_unsupported') return token;
+  return token || 'unknown';
 }
 
 function normalizeAuroraRecoLlmStage(stage) {
@@ -2218,6 +2241,56 @@ function recordAuroraSkinShadowVerifyIsolatedWrite({ status, delta } = {}) {
   );
 }
 
+function recordAuroraSkinQualityDecisionSource({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinQualityDecisionSourceCounter,
+    { source: normalizeAuroraSkinQualityDecisionSource(source) },
+    amount,
+  );
+}
+
+function recordAuroraSkinLlmForcedCall({ stage, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinLlmForcedCallCounter,
+    {
+      stage: normalizeAuroraLlmStage(stage),
+      reason: cleanMetricToken(reason, 'unknown'),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinRetakeBlock({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinRetakeBlockCounter,
+    {
+      reason: normalizeAuroraSkinRetakeBlockReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinGeminiModelFallback({ stage, fromModel, toModel, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinGeminiModelFallbackCounter,
+    {
+      stage: normalizeAuroraLlmStage(stage),
+      from_model: cleanMetricToken(fromModel, 'unknown'),
+      to_model: cleanMetricToken(toModel, 'unknown'),
+      reason: normalizeAuroraSkinModelFallbackReason(reason),
+    },
+    amount,
+  );
+}
+
 function recordAuroraIngredientsFlowMetric({ stage, outcome, hit, delta, provider } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -3232,6 +3305,22 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
+  lines.push('# HELP aurora_skin_quality_decision_source_total Total quality routing decision source counts in skin analysis.');
+  lines.push('# TYPE aurora_skin_quality_decision_source_total counter');
+  renderCounter(lines, 'aurora_skin_quality_decision_source_total', auroraSkinQualityDecisionSourceCounter);
+
+  lines.push('# HELP aurora_skin_llm_forced_call_total Total forced LLM calls by stage and reason.');
+  lines.push('# TYPE aurora_skin_llm_forced_call_total counter');
+  renderCounter(lines, 'aurora_skin_llm_forced_call_total', auroraSkinLlmForcedCallCounter);
+
+  lines.push('# HELP aurora_skin_retake_block_total Total retake blocks by upload QC reason.');
+  lines.push('# TYPE aurora_skin_retake_block_total counter');
+  renderCounter(lines, 'aurora_skin_retake_block_total', auroraSkinRetakeBlockCounter);
+
+  lines.push('# HELP aurora_skin_gemini_model_fallback_total Total Gemini model ladder fallbacks for skin analysis.');
+  lines.push('# TYPE aurora_skin_gemini_model_fallback_total counter');
+  renderCounter(lines, 'aurora_skin_gemini_model_fallback_total', auroraSkinGeminiModelFallbackCounter);
+
   lines.push('# HELP aurora_reco_llm_call_total Total recommendation LLM call decisions grouped by stage and outcome.');
   lines.push('# TYPE aurora_reco_llm_call_total counter');
   renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
@@ -3605,6 +3694,10 @@ function resetVisionMetrics() {
   auroraSkinMainlineProviderCounter.clear();
   auroraSkinFallbackDeterministicCounter.clear();
   auroraSkinShadowVerifyIsolatedWriteCounter.clear();
+  auroraSkinQualityDecisionSourceCounter.clear();
+  auroraSkinLlmForcedCallCounter.clear();
+  auroraSkinRetakeBlockCounter.clear();
+  auroraSkinGeminiModelFallbackCounter.clear();
   auroraIngredientsFlowCounter.clear();
   auroraIngredientProviderCounter.clear();
   ingredientProviderCallCounter.clear();
@@ -3795,6 +3888,10 @@ function snapshotVisionMetrics() {
     },
     auroraSkinAnalysisRealModel: Array.from(auroraSkinAnalysisRealModelCounter.entries()),
     auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
+    auroraSkinQualityDecisionSource: Array.from(auroraSkinQualityDecisionSourceCounter.entries()),
+    auroraSkinLlmForcedCall: Array.from(auroraSkinLlmForcedCallCounter.entries()),
+    auroraSkinRetakeBlock: Array.from(auroraSkinRetakeBlockCounter.entries()),
+    auroraSkinGeminiModelFallback: Array.from(auroraSkinGeminiModelFallbackCounter.entries()),
     auroraRecoLlmCall: Array.from(auroraRecoLlmCallCounter.entries()),
     recoAlternativesBudgetExhaustedTotal,
     recoAlternativesTimeoutTotal,
@@ -3928,6 +4025,10 @@ module.exports = {
   recordAuroraSkinMainlineProvider,
   recordAuroraSkinFallbackDeterministic,
   recordAuroraSkinShadowVerifyIsolatedWrite,
+  recordAuroraSkinQualityDecisionSource,
+  recordAuroraSkinLlmForcedCall,
+  recordAuroraSkinRetakeBlock,
+  recordAuroraSkinGeminiModelFallback,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
   recordIngredientProviderCallMetric,

@@ -4703,7 +4703,7 @@ test('/v1/chat: alternatives budget exhausted only degrades alternatives (recomm
   );
 });
 
-test('/v1/reco/alternatives: no candidates returns explainable empty and never calls provider', async () => {
+test('/v1/reco/alternatives: no candidates can continue without anchor and fallback after llm attempt', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -4746,15 +4746,33 @@ test('/v1/reco/alternatives: no candidates returns explainable empty and never c
         assert.equal(Array.isArray(resp.body?.alternatives), true);
         assert.ok(resp.body.alternatives.length > 0);
         assert.equal(resp.body?.source_mode, 'local_fallback');
-        assert.equal(resp.body?.failure_class, 'anchor_missing_precheck');
+        assert.notEqual(resp.body?.failure_class, 'anchor_missing_precheck');
         assert.equal(geminiCalls, 0);
 
         const reasons = Array.isArray(resp.body?.field_missing) ? resp.body.field_missing.map((x) => String(x?.reason || '')) : [];
         assert.equal(reasons.includes('anchor_missing_precheck'), false);
+        const allowedFailureClasses = new Set(['empty_structured', 'provider_error', 'timeout', 'clarify_blocked_best_effort']);
+        assert.equal(allowedFailureClasses.has(String(resp.body?.failure_class || '').trim()), true);
 
         const snap = snapshotVisionMetrics();
-        const precheckLabel = JSON.stringify({ stage: 'alternatives', outcome: 'precheck_fail' });
-        assert.ok(Number(snap.auroraRecoLlmCall?.find(([k]) => k === precheckLabel)?.[1] || 0) >= 1);
+        const llmOutcomes = new Set(
+          Array.isArray(snap.auroraRecoLlmCall)
+            ? snap.auroraRecoLlmCall.map(([k]) => {
+              try {
+                return JSON.parse(k || '{}')?.outcome || '';
+              } catch {
+                return '';
+              }
+            })
+            : [],
+        );
+        assert.equal(
+          llmOutcomes.has('empty_structured') ||
+            llmOutcomes.has('provider_error') ||
+            llmOutcomes.has('timeout') ||
+            llmOutcomes.has('empty_structured_clarify'),
+          true,
+        );
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();

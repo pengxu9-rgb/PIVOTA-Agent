@@ -96,6 +96,7 @@ function shouldCallLlm({
   quality,
   hasPrimaryInput,
   userRequestedPhoto,
+  qualitySourceMode,
   detectorConfidenceLevel,
   uncertainty,
   visionAvailable,
@@ -108,6 +109,7 @@ function shouldCallLlm({
   const confidence = normalizeToken(detectorConfidenceLevel);
   const uncertainFlag = typeof uncertainty === 'boolean' ? uncertainty : null;
   const degradeMode = normalizeToken(degradedMode) || 'report';
+  const qualitySource = normalizeToken(qualitySourceMode) || 'legacy';
 
   const reasons = [];
   let downgrade_confidence = false;
@@ -122,6 +124,21 @@ function shouldCallLlm({
       const rawReason = String(visionUnavailabilityReason || '').trim();
       const normalizedReason = rawReason && /^VISION_[A-Z0-9_]+$/.test(rawReason) ? rawReason : 'vision_unavailable';
       return { decision: 'skip', reasons: [normalizedReason], downgrade_confidence: false };
+    }
+
+    if (qualitySource === 'upload_qc_only') {
+      if (q === 'pass') {
+        return { decision: 'call', reasons: ['upload_qc_pass'], downgrade_confidence: false };
+      }
+      if (q === 'degraded') {
+        return { decision: 'skip', reasons: ['upload_qc_degraded_retake'], downgrade_confidence: true };
+      }
+      if (q === 'unknown') {
+        return { decision: 'skip', reasons: ['upload_qc_unknown_retake'], downgrade_confidence: true };
+      }
+      if (q === 'fail') {
+        return { decision: 'skip', reasons: ['photo_quality_fail_retake'], downgrade_confidence: true };
+      }
     }
 
     if (q === 'fail') return { decision: 'skip', reasons: ['photo_quality_fail_retake'], downgrade_confidence: true };
@@ -147,6 +164,21 @@ function shouldCallLlm({
 
   if (k === 'report') {
     if (!reportAvailable) return { decision: 'skip', reasons: ['report_unavailable'], downgrade_confidence: false };
+
+    if (qualitySource === 'upload_qc_only' && userRequestedPhoto) {
+      if (q === 'pass') {
+        return { decision: 'call', reasons: ['upload_qc_pass'], downgrade_confidence: false };
+      }
+      if (q === 'degraded') {
+        return { decision: 'skip', reasons: ['upload_qc_degraded_retake'], downgrade_confidence: true };
+      }
+      if (q === 'unknown') {
+        return { decision: 'skip', reasons: ['upload_qc_unknown_retake'], downgrade_confidence: true };
+      }
+      if (q === 'fail') {
+        return { decision: 'skip', reasons: ['photo_quality_fail_retake'], downgrade_confidence: true };
+      }
+    }
 
     if (q === 'fail') {
       return { decision: 'skip', reasons: ['photo_quality_fail_retake'], downgrade_confidence: true };
@@ -222,6 +254,9 @@ const REASON_TEXT = Object.freeze({
     detector_uncertain: 'Signals are uncertain; calling an LLM to explain / arbitrate.',
     photo_fetch_failed_force_report: 'Photo upload passed but image bytes were unavailable; forcing report LLM for conservative guidance.',
     photo_upload_force_report: 'Photo upload detected; forcing report LLM for a consolidated explanation.',
+    upload_qc_pass: 'Upload QC passed: forcing Vision + Report calls in QC-only mode.',
+    upload_qc_degraded_retake: 'Upload QC is degraded: block LLM calls and ask for a retake.',
+    upload_qc_unknown_retake: 'Upload QC is unknown: block LLM calls and ask for a retake.',
     quality_pass: 'Photo quality passed.',
     vision_missing_key: 'Photo model key is missing.',
     vision_disabled_by_flag: 'Photo model is disabled by feature flag.',
@@ -251,6 +286,9 @@ const REASON_TEXT = Object.freeze({
     detector_uncertain: '信号不确定：调用模型做解释/仲裁。',
     photo_fetch_failed_force_report: '照片上传通过但图像字节不可用：强制调用报告模型给出保守建议。',
     photo_upload_force_report: '检测到用户上传照片：强制调用报告模型做汇总解释。',
+    upload_qc_pass: '上传质检通过：QC-only 模式下强制调用 Vision + Report。',
+    upload_qc_degraded_retake: '上传质检为 degraded：阻断 LLM 调用并建议重拍。',
+    upload_qc_unknown_retake: '上传质检为 unknown：阻断 LLM 调用并建议重拍。',
     quality_pass: '照片质量通过。',
     vision_missing_key: '照片模型密钥缺失。',
     vision_disabled_by_flag: '照片模型被开关禁用。',
