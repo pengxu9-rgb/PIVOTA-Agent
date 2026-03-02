@@ -731,6 +731,12 @@ const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI = String(
 const AURORA_INGREDIENT_SYNC_MODEL_GEMINI = String(
   process.env.AURORA_INGREDIENT_SYNC_MODEL_GEMINI || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro',
 ).trim() || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro';
+const AURORA_QA_MODEL_GEMINI = String(
+  process.env.AURORA_QA_MODEL_GEMINI || 'gemini-3-flash',
+).trim() || 'gemini-3-flash';
+const AURORA_RECO_FALLBACK_MODEL_GEMINI = String(
+  process.env.AURORA_RECO_FALLBACK_MODEL_GEMINI || 'gemini-3-flash',
+).trim() || 'gemini-3-flash';
 const AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS || 90000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
@@ -13697,11 +13703,12 @@ async function callDualQaProvider({ provider, systemPrompt, userPrompt, timeoutM
     });
   }
   return callGeminiJsonObjectImpl({
-    model: ANALYSIS_STORY_MODEL_GEMINI,
+    model: AURORA_QA_MODEL_GEMINI,
     systemPrompt,
     userPrompt,
     timeoutMs,
     temperature: 0,
+    allowDiagForceModel: false,
     routeTag: 'qa',
   });
 }
@@ -23923,7 +23930,7 @@ async function recoverProductsWithLlmFallbackFromQueries({
     let llmResp = null;
     try {
       llmResp = await callGeminiJsonObjectImpl({
-        model: AURORA_DIAG_FORCE_GEMINI_MODEL,
+        model: AURORA_RECO_FALLBACK_MODEL_GEMINI,
         systemPrompt:
           'You are a strict skincare product selector. Output STRICT JSON only. Never invent URLs. Only use context product candidates.',
         userPrompt: buildProductLookupLlmFallbackPrompt({
@@ -23935,6 +23942,7 @@ async function recoverProductsWithLlmFallbackFromQueries({
         temperature: 0.2,
         maxOutputTokens: 400,
         responseJsonSchema: buildProductRetrieverJsonSchema(Math.max(2, targetMax - out.products.length)),
+        allowDiagForceModel: false,
         routeTag: 'reco_fallback',
       });
     } catch (err) {
