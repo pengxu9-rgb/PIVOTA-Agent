@@ -101,6 +101,13 @@ function summarizeEnvelope(resp) {
         eventObj.event_type
       ),
     );
+  const eventDataFrom = (eventObj) =>
+    asObject(
+      eventObj && (
+        eventObj.data ||
+        eventObj.event_data
+      ),
+    ) || {};
   const eventNames = rootEvents
     .map((e) => eventNameFrom(e))
     .filter(Boolean);
@@ -110,7 +117,7 @@ function summarizeEnvelope(resp) {
     .filter(Boolean);
   const mergedEventNames = [...eventNames, ...experimentEventNames];
   const recoRequestedEvent = [...rootEvents, ...experimentEvents].find((e) => eventNameFrom(e) === 'recos_requested');
-  const recoRequestedData = asObject(recoRequestedEvent && recoRequestedEvent.data) || {};
+  const recoRequestedData = eventDataFrom(recoRequestedEvent);
   const confidencePayload = asObject(confidenceCard && confidenceCard.payload) || {};
   const debugPayload = asObject(debugCard && debugCard.payload) || {};
   return {

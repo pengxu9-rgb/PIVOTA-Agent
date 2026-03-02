@@ -2,11 +2,10 @@
   "schema_version": "aurora.skin.e2e_contract_golden.v1",
   "case_id": "analysis_skin_qc_fail",
   "snapshot": {
-    "analysis_source": "rule_based_with_photo_qc",
+    "analysis_source": "retake",
     "quality_grade": "fail",
     "upload_qc_status": "fail",
     "failure_codes": [
-      "no_usable_photo",
       "qc_failed"
     ],
     "llm_called": {

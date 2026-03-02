@@ -15,6 +15,7 @@ const GEMINI_API_KEY = String(
 ).trim();
 
 const DEFAULT_SKIN_GEMINI_MODEL = 'gemini-3-pro';
+const DEFAULT_SKIN_GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash';
 const SKIN_VISION_MODEL_GEMINI =
   String(
     process.env.AURORA_SKIN_VISION_MODEL_GEMINI ||
@@ -36,6 +37,44 @@ const SKIN_LLM_TIMEOUT_MS = Math.max(2000, Math.min(30000, Number(process.env.AU
 
 let geminiClient = null;
 let geminiInitFailed = false;
+
+function uniqModels(models = []) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of models) {
+    const model = String(raw || '').trim();
+    if (!model) continue;
+    const key = model.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(model);
+  }
+  return out;
+}
+
+function parseModelLadderEnv(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  return uniqModels(text.split(',').map((item) => String(item || '').trim()));
+}
+
+function buildGeminiModelLadder({ primaryModel, fallbackModel, envOverride } = {}) {
+  const fromEnv = parseModelLadderEnv(envOverride);
+  if (fromEnv.length) return fromEnv;
+  return uniqModels([primaryModel, fallbackModel || DEFAULT_SKIN_GEMINI_FALLBACK_MODEL]);
+}
+
+const SKIN_VISION_MODEL_LADDER = buildGeminiModelLadder({
+  primaryModel: SKIN_VISION_MODEL_GEMINI,
+  fallbackModel: DEFAULT_SKIN_GEMINI_FALLBACK_MODEL,
+  envOverride: process.env.AURORA_SKIN_VISION_MODEL_LADDER,
+});
+
+const SKIN_REPORT_MODEL_LADDER = buildGeminiModelLadder({
+  primaryModel: SKIN_REPORT_MODEL_GEMINI,
+  fallbackModel: DEFAULT_SKIN_GEMINI_FALLBACK_MODEL,
+  envOverride: process.env.AURORA_SKIN_REPORT_MODEL_LADDER,
+});
 
 function isGeminiSkinGatewayAvailable() {
   return Boolean(GEMINI_API_KEY);
@@ -247,6 +286,33 @@ function classifyGeminiError(err) {
   };
 }
 
+function isGeminiModelUnavailableError(err, classified) {
+  const c = classified && typeof classified === 'object' ? classified : {};
+  if (String(c.reason || '').trim().toUpperCase() !== 'UPSTREAM_4XX') return false;
+  const statusCode = Number(c.upstream_status_code);
+  if (Number.isFinite(statusCode) && statusCode >= 400 && statusCode < 500 && statusCode !== 400 && statusCode !== 404) {
+    return false;
+  }
+
+  const message = String(err && err.message ? err.message : '').toLowerCase();
+  const code = String(err && (err.code || err.errorCode) ? err.code || err.errorCode : '').toLowerCase();
+  const providerCode = String(
+    c &&
+      c.error_evidence &&
+      c.error_evidence.provider_error_code
+      ? c.error_evidence.provider_error_code
+      : '',
+  ).toLowerCase();
+
+  const modelPattern =
+    /(model|models\/|generatecontent|generatetext|not found|unsupported|unavailable|unknown|invalid argument|invalid model)/i;
+  const versionPattern = /(api version|for api version|publisher model|not available)/i;
+  if (modelPattern.test(message) && (message.includes('model') || versionPattern.test(message))) return true;
+  if (providerCode && /(not_found|invalid_argument|unsupported|model)/i.test(providerCode)) return true;
+  if (code && /(not_found|invalid_argument|unsupported|model)/i.test(code)) return true;
+  return false;
+}
+
 function validateSkinAnalysisContent(layer, { lang } = {}) {
   const locale = String(lang || '').trim().toLowerCase();
   const isZh = locale === 'cn' || locale === 'zh' || locale === 'zh-cn';
@@ -279,6 +345,7 @@ function validateSkinAnalysisContent(layer, { lang } = {}) {
 
 async function callGeminiJson({
   model,
+  modelLadder,
   systemInstruction,
   userText,
   imageBuffer,
@@ -289,6 +356,7 @@ async function callGeminiJson({
 } = {}) {
   const client = getGeminiClient();
   if (!client) {
+    const requestedModel = String(model || SKIN_VISION_MODEL_GEMINI).trim() || SKIN_VISION_MODEL_GEMINI;
     return {
       ok: false,
       reason: 'MISSING_GEMINI_KEY',
@@ -296,79 +364,131 @@ async function callGeminiJson({
       response_text: '',
       parsed: null,
       latency_ms: 0,
+      requested_model: requestedModel,
+      resolved_model: null,
+      attempted_models: [requestedModel],
+      model_fallback_used: false,
+      model_fallback_reason: null,
     };
   }
 
   const startedAt = Date.now();
-  const modelName = String(model || SKIN_VISION_MODEL_GEMINI);
-  const request = {
-    model: modelName,
-    systemInstruction: {
-      parts: [{ text: String(systemInstruction || '').trim() }],
-    },
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          ...(Buffer.isBuffer(imageBuffer) && imageBuffer.length
-            ? [
-                {
-                  inlineData: {
-                    mimeType: 'image/jpeg',
-                    data: imageBuffer.toString('base64'),
-                  },
-                },
-              ]
-            : []),
-          { text: String(userText || '').trim() },
-        ],
-      },
-    ],
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: sanitizeGeminiResponseSchema(responseSchema),
-      temperature: 0.1,
-      topP: 0.8,
-      candidateCount: 1,
-      maxOutputTokens: 700,
-    },
-  };
+  const requestedModel = String(model || SKIN_VISION_MODEL_GEMINI).trim() || SKIN_VISION_MODEL_GEMINI;
+  const attemptModels = (() => {
+    if (Array.isArray(modelLadder) && modelLadder.length) return uniqModels(modelLadder);
+    return [requestedModel];
+  })();
+  const attemptedModels = [];
+  let lastFailure = null;
 
-  try {
-    const invoke = () => withTimeout(client.models.generateContent(request), timeoutMs || SKIN_LLM_TIMEOUT_MS);
-    const resp =
-      profiler && typeof profiler.timeLlmCall === 'function'
-        ? await profiler.timeLlmCall({ provider: 'gemini', model: modelName, kind }, invoke)
-        : await invoke();
-    const text = await extractTextFromGeminiResponse(resp);
-    const jsonOnly = unwrapCodeFence(text);
-    const parsed = parseJsonOnlyObject(jsonOnly);
-    return {
-      ok: true,
-      reason: null,
-      upstream_status_code: null,
-      response_text: text,
-      parsed,
-      latency_ms: Date.now() - startedAt,
+  for (let idx = 0; idx < attemptModels.length; idx += 1) {
+    const modelName = attemptModels[idx];
+    attemptedModels.push(modelName);
+    const request = {
+      model: modelName,
+      systemInstruction: {
+        parts: [{ text: String(systemInstruction || '').trim() }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            ...(Buffer.isBuffer(imageBuffer) && imageBuffer.length
+              ? [
+                  {
+                    inlineData: {
+                      mimeType: 'image/jpeg',
+                      data: imageBuffer.toString('base64'),
+                    },
+                  },
+                ]
+              : []),
+            { text: String(userText || '').trim() },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: sanitizeGeminiResponseSchema(responseSchema),
+        temperature: 0.1,
+        topP: 0.8,
+        candidateCount: 1,
+        maxOutputTokens: 700,
+      },
     };
-  } catch (err) {
-    const classified = classifyGeminiError(err);
-    if (classified && classified.error_evidence && typeof classified.error_evidence === 'object') {
-      classified.error_evidence.timeout_ms = Number.isFinite(Number(timeoutMs))
-        ? Math.max(0, Math.trunc(Number(timeoutMs)))
-        : SKIN_LLM_TIMEOUT_MS;
-      classified.error_evidence.model = modelName;
+
+    try {
+      const invoke = () => withTimeout(client.models.generateContent(request), timeoutMs || SKIN_LLM_TIMEOUT_MS);
+      const resp =
+        profiler && typeof profiler.timeLlmCall === 'function'
+          ? await profiler.timeLlmCall({ provider: 'gemini', model: modelName, kind }, invoke)
+          : await invoke();
+      const text = await extractTextFromGeminiResponse(resp);
+      const jsonOnly = unwrapCodeFence(text);
+      const parsed = parseJsonOnlyObject(jsonOnly);
+      return {
+        ok: true,
+        reason: null,
+        upstream_status_code: null,
+        response_text: text,
+        parsed,
+        latency_ms: Date.now() - startedAt,
+        requested_model: requestedModel,
+        resolved_model: modelName,
+        attempted_models: attemptedModels.slice(),
+        model_fallback_used: idx > 0,
+        model_fallback_reason: idx > 0 ? 'model_unavailable' : null,
+      };
+    } catch (err) {
+      const classified = classifyGeminiError(err);
+      if (classified && classified.error_evidence && typeof classified.error_evidence === 'object') {
+        classified.error_evidence.timeout_ms = Number.isFinite(Number(timeoutMs))
+          ? Math.max(0, Math.trunc(Number(timeoutMs)))
+          : SKIN_LLM_TIMEOUT_MS;
+        classified.error_evidence.model = modelName;
+      }
+      const canFallbackModel =
+        idx < attemptModels.length - 1 && isGeminiModelUnavailableError(err, classified);
+      if (canFallbackModel) {
+        lastFailure = {
+          reason: classified.reason,
+          upstream_status_code: classified.upstream_status_code,
+          error_evidence: classified.error_evidence || null,
+          model_fallback_reason: 'model_unavailable',
+        };
+        continue;
+      }
+      return {
+        ok: false,
+        reason: classified.reason,
+        upstream_status_code: classified.upstream_status_code,
+        error_evidence: classified.error_evidence || null,
+        response_text: '',
+        parsed: null,
+        latency_ms: Date.now() - startedAt,
+        requested_model: requestedModel,
+        resolved_model: null,
+        attempted_models: attemptedModels.slice(),
+        model_fallback_used: idx > 0,
+        model_fallback_reason: idx > 0 ? 'model_unavailable' : null,
+      };
     }
-    return {
-      ok: false,
-      reason: classified.reason,
-      upstream_status_code: classified.upstream_status_code,
-      error_evidence: classified.error_evidence || null,
-      response_text: '',
-      parsed: null,
-      latency_ms: Date.now() - startedAt,
-    };
   }
+
+  return {
+    ok: false,
+    reason: lastFailure && lastFailure.reason ? lastFailure.reason : 'UPSTREAM_4XX',
+    upstream_status_code: lastFailure ? lastFailure.upstream_status_code : null,
+    error_evidence: lastFailure ? lastFailure.error_evidence : null,
+    response_text: '',
+    parsed: null,
+    latency_ms: Date.now() - startedAt,
+    requested_model: requestedModel,
+    resolved_model: null,
+    attempted_models: attemptedModels.slice(),
+    model_fallback_used: attemptedModels.length > 1,
+    model_fallback_reason: 'model_unavailable',
+  };
 }
 
 async function runGeminiVisionStrategy({
@@ -397,6 +517,7 @@ async function runGeminiVisionStrategy({
   const bundle = buildSkinVisionPromptBundle({ language, dto: visionDto, promptVersion });
   const response = await callGeminiJson({
     model: SKIN_VISION_MODEL_GEMINI,
+    modelLadder: SKIN_VISION_MODEL_LADDER,
     systemInstruction: bundle.systemInstruction,
     userText: bundle.userPrompt,
     imageBuffer,
@@ -419,6 +540,10 @@ async function runGeminiVisionStrategy({
       latency_ms: response.latency_ms,
       prompt_version: bundle.promptVersion,
       input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+      resolved_model: response.resolved_model || null,
+      attempted_models: Array.isArray(response.attempted_models) ? response.attempted_models : [SKIN_VISION_MODEL_GEMINI],
+      model_fallback_used: Boolean(response.model_fallback_used),
+      model_fallback_reason: response.model_fallback_reason || null,
     };
   }
 
@@ -436,6 +561,10 @@ async function runGeminiVisionStrategy({
       prompt_version: bundle.promptVersion,
       input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
       validation_errors: validation.errors,
+      resolved_model: response.resolved_model || null,
+      attempted_models: Array.isArray(response.attempted_models) ? response.attempted_models : [SKIN_VISION_MODEL_GEMINI],
+      model_fallback_used: Boolean(response.model_fallback_used),
+      model_fallback_reason: response.model_fallback_reason || null,
     };
   }
 
@@ -450,6 +579,10 @@ async function runGeminiVisionStrategy({
     latency_ms: response.latency_ms,
     prompt_version: bundle.promptVersion,
     input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+    resolved_model: response.resolved_model || null,
+    attempted_models: Array.isArray(response.attempted_models) ? response.attempted_models : [SKIN_VISION_MODEL_GEMINI],
+    model_fallback_used: Boolean(response.model_fallback_used),
+    model_fallback_reason: response.model_fallback_reason || null,
   };
 }
 
@@ -467,6 +600,7 @@ async function runGeminiReportStrategy({
     const userPrompt = revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt;
     return await callGeminiJson({
       model: SKIN_REPORT_MODEL_GEMINI,
+      modelLadder: SKIN_REPORT_MODEL_LADDER,
       systemInstruction: bundle.systemInstruction,
       userText: userPrompt,
       imageBuffer: null,
@@ -505,6 +639,10 @@ async function runGeminiReportStrategy({
         latency_ms: second.latency_ms,
         prompt_version: bundle.promptVersion,
         input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+        resolved_model: second.resolved_model || null,
+        attempted_models: Array.isArray(second.attempted_models) ? second.attempted_models : [SKIN_REPORT_MODEL_GEMINI],
+        model_fallback_used: Boolean(second.model_fallback_used),
+        model_fallback_reason: second.model_fallback_reason || null,
       };
     }
 
@@ -527,6 +665,10 @@ async function runGeminiReportStrategy({
       input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
       validation_errors: secondValidation.errors,
       safety_violations: secondSafety.violations,
+      resolved_model: second.resolved_model || null,
+      attempted_models: Array.isArray(second.attempted_models) ? second.attempted_models : [SKIN_REPORT_MODEL_GEMINI],
+      model_fallback_used: Boolean(second.model_fallback_used),
+      model_fallback_reason: second.model_fallback_reason || null,
     };
   }
 
@@ -542,6 +684,10 @@ async function runGeminiReportStrategy({
     latency_ms: first.latency_ms,
     prompt_version: bundle.promptVersion,
     input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+    resolved_model: first.resolved_model || null,
+    attempted_models: Array.isArray(first.attempted_models) ? first.attempted_models : [SKIN_REPORT_MODEL_GEMINI],
+    model_fallback_used: Boolean(first.model_fallback_used),
+    model_fallback_reason: first.model_fallback_reason || null,
   };
 }
 
@@ -549,6 +695,8 @@ module.exports = {
   SKIN_MODEL_GEMINI,
   SKIN_VISION_MODEL_GEMINI,
   SKIN_REPORT_MODEL_GEMINI,
+  SKIN_VISION_MODEL_LADDER,
+  SKIN_REPORT_MODEL_LADDER,
   SKIN_LLM_TIMEOUT_MS,
   isGeminiSkinGatewayAvailable,
   validateSkinAnalysisContent,
@@ -556,5 +704,7 @@ module.exports = {
   runGeminiReportStrategy,
   sanitizeGeminiResponseSchema,
   classifyGeminiError,
+  buildGeminiModelLadder,
+  isGeminiModelUnavailableError,
   toStatusCode,
 };

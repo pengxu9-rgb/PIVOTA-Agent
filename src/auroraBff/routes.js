@@ -91,6 +91,10 @@ const {
   recordAuroraSkinMainlineProvider,
   recordAuroraSkinFallbackDeterministic,
   recordAuroraSkinShadowVerifyIsolatedWrite,
+  recordAuroraSkinQualityDecisionSource,
+  recordAuroraSkinLlmForcedCall,
+  recordAuroraSkinRetakeBlock,
+  recordAuroraSkinGeminiModelFallback,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
   recordIngredientProviderCallMetric,
@@ -14162,7 +14166,8 @@ const QUALITY_GRADE_ORDER = Object.freeze({
   degraded: 2,
   fail: 3,
 });
-const QUALITY_MERGE_RULE_TEXT = 'effective = worse(upload_qc_status, analysis_photo_quality.grade)';
+const QUALITY_MERGE_RULE_TEXT = 'effective = upload_qc_status (analysis_photo_quality is advisory only)';
+const SKIN_QUALITY_DECISION_SOURCE = 'upload_qc_only';
 
 function normalizeContractQualityGrade(grade) {
   const token = String(grade || '')
@@ -14245,10 +14250,10 @@ function sanitizeVisionErrorEvidence(rawEvidence, { reason, model, timeoutMs, re
 function buildQualityReportSplit({ uploadPhotoQuality, analysisPhotoQuality, effectivePhotoQuality } = {}) {
   const upload = normalizeQualityState(uploadPhotoQuality);
   const analysis = normalizeQualityState(analysisPhotoQuality);
-  const merged = mergeQualityState(upload, analysis);
-  const effectiveObj = effectivePhotoQuality && typeof effectivePhotoQuality === 'object' && !Array.isArray(effectivePhotoQuality)
-    ? normalizeQualityState(effectivePhotoQuality)
-    : merged;
+  const effectiveObj =
+    effectivePhotoQuality && typeof effectivePhotoQuality === 'object' && !Array.isArray(effectivePhotoQuality)
+      ? normalizeQualityState(effectivePhotoQuality)
+      : normalizeQualityState(upload);
   return {
     upload_qc_status: upload.grade,
     analysis_photo_quality: analysis,
@@ -15456,7 +15461,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
             ? normalizeQualityState(diagnosisV1.quality)
             : normalizeQualityState({ grade: 'unknown', reasons: [] });
         const effectiveQuality = diagnosisV1 && diagnosisV1.quality
-          ? mergeQualityState(uploadQuality, analysisQuality, { extraPrefix: 'pixel_' })
+          ? uploadQuality
           : uploadQuality;
         return buildQualityReportSplit({
           uploadPhotoQuality: uploadQuality,
@@ -34221,9 +34226,10 @@ async function fetchRecoAlternativesForProduct({
   const disableAsyncRefresh = opts.disable_async_refresh === true;
   const skipAnchorPrecheck = opts.skip_anchor_precheck === true;
   const preferRefreshCache = opts.prefer_refresh_cache !== false;
+  // Keep alternatives on a single upstream attempt to avoid timeout+retry amplification.
   const maxLlmAttempts = Number.isFinite(Number(opts.max_llm_attempts))
-    ? Math.max(1, Math.min(2, Math.trunc(Number(opts.max_llm_attempts))))
-    : 2;
+    ? Math.max(1, Math.min(1, Math.trunc(Number(opts.max_llm_attempts))))
+    : 1;
   const budgetDeadlineMs = budget && Number.isFinite(Number(budget.deadline_ms))
     ? Math.trunc(Number(budget.deadline_ms))
     : null;
@@ -34696,7 +34702,9 @@ async function fetchRecoAlternativesForProduct({
         Boolean(bestInput) &&
         (isDbPrecheckReason(precheckReasonCode) ||
           precheckReasonCode === 'upstream_timeout' ||
-          precheckReasonCode === 'rate_limited');
+          precheckReasonCode === 'rate_limited' ||
+          precheckReasonCode === 'no_candidates' ||
+          precheckReasonCode === 'not_found');
       anchorPrecheck = {
         resolved: Boolean(resolvedAnchor),
         reason: resolvedAnchor ? 'resolved' : precheckReasonCode,
@@ -34977,11 +34985,9 @@ async function fetchRecoAlternativesForProduct({
         alternatives_mapped_count: 0,
         failure_class: llmOutcome,
       });
-      if (llmOutcome === 'timeout' || llmOutcome === 'provider_error') {
-        if (attempts.length < maxLlmAttempts) {
-          attempts.push({ id: 'transient_retry', forceConservative: false });
-          continue;
-        }
+      if ((llmOutcome === 'timeout' || llmOutcome === 'provider_error') && attempts.length < maxLlmAttempts) {
+        attempts.push({ id: 'transient_retry', forceConservative: false });
+        continue;
       }
       break;
     }
@@ -41118,6 +41124,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           parsed.data.use_photo === true || (parsed.data.use_photo == null && photosProvided);
         const hasPhotoPrimaryInput = Boolean(userRequestedPhoto && photosProvided);
         const hasLlmPrimaryInput = hasPrimaryInput || hasPhotoPrimaryInput;
+        const effectiveQualityForRouting =
+          hasPhotoPrimaryInput
+            ? normalizeQualityState(uploadPhotoQuality)
+            : normalizeQualityState({ grade: 'pass', reasons: ['no_photo'] });
+        photoQuality = normalizeQualityState(effectiveQualityForRouting);
+        recordAuroraSkinQualityDecisionSource({ source: SKIN_QUALITY_DECISION_SOURCE });
         const skinForceVisionCallRequested = Boolean(SKIN_VISION_FORCE_CALL);
         const skinForceVisionCallEffective = Boolean(
           skinForceVisionCallRequested && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
@@ -41150,6 +41162,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         let deterministicFallbackReason = null;
         let reportModelCalled = false;
         let reportModelErrored = false;
+        let visionResolvedModel = null;
+        let reportResolvedModel = null;
+        let skinModelFallbackUsed = false;
 
         let diagnosisPhoto = null;
         let diagnosisPhotoBytes = null;
@@ -41172,8 +41187,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push('LLM kill switch is enabled: skipping all model calls for this request.');
         }
 
-        if (hasPhotoPrimaryInput && (photoQuality.grade !== 'fail' || AURORA_RULE_RELAX_AGGRESSIVE)) {
-          const candidates = photoQuality.grade === 'pass' ? passedPhotos : degradedPhotos.length ? degradedPhotos : passedPhotos;
+        if (hasPhotoPrimaryInput && effectiveQualityForRouting.grade === 'pass') {
+          const candidates = passedPhotos.length ? passedPhotos : degradedPhotos;
           diagnosisPhoto = chooseVisionPhoto(candidates);
           if (!diagnosisPhoto) {
             analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'no_usable_photo' });
@@ -41225,24 +41240,22 @@ function mountAuroraBffRoutes(app, { logger }) {
 		                const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
 		                if (dq && typeof dq.grade === 'string') {
                     analysisPhotoQuality = normalizeQualityState(dq);
-                    photoQuality = mergeQualityState(uploadPhotoQuality, analysisPhotoQuality, { extraPrefix: 'pixel_' });
                   }
                 if (dq && dq.grade === 'fail') {
-                  if (ctx.lang === 'CN') qualityReportReasons.push('照片像素质量未通过（模糊/光照/白平衡/覆盖不足等）；为避免误判我会建议重拍。');
+                  if (ctx.lang === 'CN') qualityReportReasons.push('像素质检提示 fail（模糊/光照/白平衡/覆盖不足等）；仅作提示，不改变主链路判定。');
                   else
                     qualityReportReasons.push(
-                      'Pixel-level photo quality did not pass (blur/lighting/WB/coverage); recommending a retake to avoid wrong guesses.',
+                      'Pixel-level quality flagged fail (blur/lighting/WB/coverage); advisory only and does not alter QC-only routing.',
                     );
                 } else if (dq && dq.grade === 'degraded') {
-                  if (ctx.lang === 'CN') qualityReportReasons.push('照片质量一般：我会更保守，并减少/避免无效模型调用。');
-                  else qualityReportReasons.push('Photo quality is degraded: keeping conclusions conservative and reducing unnecessary model calls.');
+                  if (ctx.lang === 'CN') qualityReportReasons.push('像素质检提示 degraded：仅作提示，不改变 QC-only 主链路。');
+                  else qualityReportReasons.push('Pixel-level quality flagged degraded: advisory only; QC-only routing remains unchanged.');
                 }
 	              } else if (diag && !diag.ok) {
 	                const reason = String(diag.reason || 'diagnosis_failed');
-	                analysisPhotoQuality = mergeQualityState(analysisPhotoQuality, { grade: 'fail', reasons: [reason] });
-	                photoQuality = mergeQualityState(uploadPhotoQuality, analysisPhotoQuality, { extraPrefix: 'pixel_' });
-                if (ctx.lang === 'CN') qualityReportReasons.push(`照片检测未能稳定完成（${reason}）；为避免误判建议重拍。`);
-                else qualityReportReasons.push(`Photo checks could not complete reliably (${reason}); recommending a retake to avoid wrong guesses.`);
+	                analysisPhotoQuality = mergeQualityState(analysisPhotoQuality, { grade: 'fail', reasons: [reason], }, { extraPrefix: 'pixel_' });
+                if (ctx.lang === 'CN') qualityReportReasons.push(`像素检测未稳定完成（${reason}）；保留为 advisory，不改变 QC-only 主链路。`);
+                else qualityReportReasons.push(`Pixel-level checks did not complete (${reason}); advisory only and does not change QC-only routing.`);
                 if (!analysisFieldMissing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'diagnosis_failed')) {
                   analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'diagnosis_failed' });
                 }
@@ -41254,9 +41267,29 @@ function mountAuroraBffRoutes(app, { logger }) {
         const qualityForReport = userRequestedPhoto && photosProvided ? photoQuality : normalizeQualityState({ grade: 'pass', reasons: ['no_photo'] });
         const policyDetectorConfidenceLevel = diagnosisPolicy ? diagnosisPolicy.detector_confidence_level : detectorConfidence.level;
         const policyUncertainty = diagnosisPolicy ? diagnosisPolicy.uncertainty : null;
+        const uploadQcRetakeBlock = Boolean(
+          hasPhotoPrimaryInput &&
+            (effectiveQualityForRouting.grade === 'degraded' ||
+              effectiveQualityForRouting.grade === 'fail' ||
+              effectiveQualityForRouting.grade === 'unknown'),
+        );
+        const uploadQcRetakeReason =
+          effectiveQualityForRouting.grade === 'degraded'
+            ? 'upload_qc_degraded'
+            : effectiveQualityForRouting.grade === 'fail'
+              ? 'upload_qc_fail'
+              : 'upload_qc_unknown';
+        const uploadQcRetakeDecisionReason =
+          effectiveQualityForRouting.grade === 'degraded'
+            ? 'upload_qc_degraded_retake'
+            : effectiveQualityForRouting.grade === 'fail'
+              ? 'photo_quality_fail_retake'
+              : 'upload_qc_unknown_retake';
 
         let visionDecision = rollout.llmKillSwitch
           ? { decision: 'skip', reasons: ['llm_kill_switch'], downgrade_confidence: true }
+          : uploadQcRetakeBlock
+            ? { decision: 'skip', reasons: [uploadQcRetakeDecisionReason], downgrade_confidence: true }
           : forceVisionCall
             ? { decision: 'call', reasons: ['force_vision_call'], downgrade_confidence: true }
             : shouldCallLlm({
@@ -41264,6 +41297,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 quality: photoQuality,
                 hasPrimaryInput: hasLlmPrimaryInput,
                 userRequestedPhoto,
+                qualitySourceMode: SKIN_QUALITY_DECISION_SOURCE,
                 detectorConfidenceLevel: policyDetectorConfidenceLevel,
                 uncertainty: policyUncertainty,
                 visionAvailable,
@@ -41273,17 +41307,35 @@ function mountAuroraBffRoutes(app, { logger }) {
               });
         let reportDecision = rollout.llmKillSwitch
           ? { decision: 'skip', reasons: ['llm_kill_switch'], downgrade_confidence: true }
+          : uploadQcRetakeBlock
+            ? { decision: 'skip', reasons: [uploadQcRetakeDecisionReason], downgrade_confidence: true }
           : shouldCallLlm({
               kind: 'report',
               quality: qualityForReport,
               hasPrimaryInput: hasLlmPrimaryInput,
               userRequestedPhoto,
+              qualitySourceMode: SKIN_QUALITY_DECISION_SOURCE,
               detectorConfidenceLevel: policyDetectorConfidenceLevel,
               uncertainty: policyUncertainty,
               visionAvailable,
               reportAvailable,
               degradedMode: SKIN_DEGRADED_MODE,
             });
+        if (uploadQcRetakeBlock) {
+          recordAuroraSkinRetakeBlock({ reason: uploadQcRetakeReason });
+          if (ctx.lang === 'CN') {
+            qualityReportReasons.push('上传质检未通过 pass：本次直接进入重拍阻断，不调用 Vision/Report。');
+          } else {
+            qualityReportReasons.push('Upload QC is not pass: this request is hard-blocked to retake (no Vision/Report calls).');
+          }
+        } else if (hasPhotoPrimaryInput && effectiveQualityForRouting.grade === 'pass') {
+          if (visionDecision.decision === 'call') {
+            recordAuroraSkinLlmForcedCall({ stage: 'vision', reason: 'upload_qc_pass' });
+          }
+          if (reportDecision.decision === 'call') {
+            recordAuroraSkinLlmForcedCall({ stage: 'report', reason: 'upload_qc_pass' });
+          }
+        }
         const forceReportOnPhotoFetchFailure = Boolean(
             !rollout.llmKillSwitch &&
             userRequestedPhoto &&
@@ -41307,24 +41359,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
-        if (
-          shouldSkipVisionForDegradedReportMode({
-            forceVisionCall,
-            userRequestedPhoto,
-            photosProvided,
-            degradedMode: SKIN_DEGRADED_MODE,
-            effectivePhotoQuality: photoQuality,
-            reportDecision,
-          })
-        ) {
-          visionDecision = {
-            decision: 'skip',
-            reasons: ['degraded_mode_report'],
-            downgrade_confidence: true,
-          };
-          if (ctx.lang === 'CN') qualityReportReasons.push('质量降级且已启用 report 模式：主链路跳过 vision，直接输出保守策略。');
-          else qualityReportReasons.push('Quality is degraded in report mode: mainline skips vision and keeps guidance conservative.');
-        }
         let analysis = null;
         let retakeFallbackAnalysis = null;
         if (hasPhotoPrimaryInput && !hasPrimaryInput) {
@@ -41337,44 +41371,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
 
-        if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && !forceVisionCall && !AURORA_RULE_RELAX_AGGRESSIVE) {
-          retakeFallbackAnalysis = profiler.timeSync('detector', () => buildRetakeSkinAnalysis({ language: ctx.lang, photoQuality }), {
+        if (uploadQcRetakeBlock) {
+          retakeFallbackAnalysis = profiler.timeSync(
+            'detector',
+            () => buildRetakeSkinAnalysis({ language: ctx.lang, photoQuality: effectiveQualityForRouting }),
+            {
             kind: 'retake',
-          });
-          if (ctx.lang === 'CN') qualityReportReasons.push('照片质量未通过：我不会调用 AI 做皮肤结论，避免误判；建议按提示重拍。');
-          else qualityReportReasons.push('Photo quality failed: skipping all AI analysis to avoid guessy results; please retake.');
-        } else if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && forceVisionCall) {
-          if (ctx.lang === 'CN') qualityReportReasons.push('已开启调试强制：即使质量判定失败也会尝试继续调用照片模型。');
-          else qualityReportReasons.push('Force-vision debug enabled: attempting photo model call despite fail-grade quality.');
-        }
-
-        if (!analysis && visionDecision.decision === 'call') {
-          if (
-            shouldSkipVisionForDegradedReportMode({
-              forceVisionCall,
-              userRequestedPhoto,
-              photosProvided,
-              degradedMode: SKIN_DEGRADED_MODE,
-              effectivePhotoQuality: photoQuality,
-              reportDecision,
-            })
-          ) {
-            visionDecision = {
-              decision: 'skip',
-              reasons: ['degraded_mode_report'],
-              downgrade_confidence: true,
-            };
-          }
+            },
+          );
+          if (ctx.lang === 'CN') qualityReportReasons.push('上传质检不是 pass：本次直接阻断并建议重拍。');
+          else qualityReportReasons.push('Upload QC is not pass: this request is blocked and asks for a retake.');
         }
         if (!analysis && visionDecision.decision === 'call') {
-          const allowLowQualityVision = AURORA_RULE_RELAX_AGGRESSIVE && userRequestedPhoto && photosProvided;
-          const candidates = photoQuality.grade === 'pass'
-            ? passedPhotos
-            : degradedPhotos.length
-              ? degradedPhotos
-              : forceVisionCall || allowLowQualityVision
-                ? [...passedPhotos, ...degradedPhotos, ...failedPhotos]
-                : passedPhotos;
+          const candidates = passedPhotos.length ? passedPhotos : [...degradedPhotos, ...failedPhotos];
           const chosen = chooseVisionPhoto(candidates);
           if (!chosen) {
             analysisFieldMissing.push({ field: 'photos', reason: photosProvided ? 'no_usable_photo' : 'no_photo_uploaded' });
@@ -41435,6 +41444,25 @@ function mountAuroraBffRoutes(app, { logger }) {
                 profiler,
               });
               visionRuntime = vision;
+              if (vision && typeof vision.resolved_model === 'string' && vision.resolved_model.trim()) {
+                visionResolvedModel = vision.resolved_model.trim();
+              } else if (vision && Array.isArray(vision.attempted_models) && vision.attempted_models.length) {
+                visionResolvedModel = String(vision.attempted_models[vision.attempted_models.length - 1] || '').trim() || null;
+              }
+              if (vision && vision.model_fallback_used) {
+                skinModelFallbackUsed = true;
+                const attempted = Array.isArray(vision.attempted_models) ? vision.attempted_models : [];
+                const fromModel = attempted.length ? attempted[0] : SKIN_VISION_MODEL_GEMINI;
+                const toModel = vision.resolved_model || (attempted.length ? attempted[attempted.length - 1] : null);
+                if (toModel) {
+                  recordAuroraSkinGeminiModelFallback({
+                    stage: 'vision',
+                    fromModel,
+                    toModel,
+                    reason: vision.model_fallback_reason || 'model_unavailable',
+                  });
+                }
+              }
               if (vision && vision.ok && vision.analysis) {
                 visionLayer = vision.analysis;
                 usedPhotos = true;
@@ -41477,7 +41505,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 const normalizedReason = normalizeVisionReason(gatewayReasonMap[String(vision.reason || '').trim().toUpperCase()] || vision.reason);
                 const visionErrorEvidence = sanitizeVisionErrorEvidence(vision.error_evidence, {
                   reason: normalizedReason,
-                  model: SKIN_VISION_MODEL_GEMINI,
+                  model: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
                   timeoutMs: SKIN_VISION_TIMEOUT_MS,
                 });
                 visionRuntime = {
@@ -41530,7 +41558,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push(`Skipped photo analysis: ${r.join('; ') || 'unknown reason'}`);
         }
 
-        if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && reportAvailable) {
+        if (!analysis && reportDecision.decision === 'call' && hasLlmPrimaryInput && reportAvailable) {
           reportModelCalled = true;
           const deterministicSeedForReportDto =
             userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality
@@ -41559,6 +41587,26 @@ function mountAuroraBffRoutes(app, { logger }) {
             promptVersion,
             profiler,
           });
+          if (reportResult && typeof reportResult.resolved_model === 'string' && reportResult.resolved_model.trim()) {
+            reportResolvedModel = reportResult.resolved_model.trim();
+          } else if (reportResult && Array.isArray(reportResult.attempted_models) && reportResult.attempted_models.length) {
+            reportResolvedModel =
+              String(reportResult.attempted_models[reportResult.attempted_models.length - 1] || '').trim() || null;
+          }
+          if (reportResult && reportResult.model_fallback_used) {
+            skinModelFallbackUsed = true;
+            const attempted = Array.isArray(reportResult.attempted_models) ? reportResult.attempted_models : [];
+            const fromModel = attempted.length ? attempted[0] : SKIN_REPORT_MODEL_GEMINI;
+            const toModel = reportResult.resolved_model || (attempted.length ? attempted[attempted.length - 1] : null);
+            if (toModel) {
+              recordAuroraSkinGeminiModelFallback({
+                stage: 'report',
+                fromModel,
+                toModel,
+                reason: reportResult.model_fallback_reason || 'model_unavailable',
+              });
+            }
+          }
           if (reportResult.retry && Number(reportResult.retry.attempted || 0) > 0) {
             recordAuroraSkinLlmRetry({
               stage: 'report',
@@ -41592,7 +41640,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
           }
         }
-        if (!analysis && reportDecision.decision === 'skip' && hasPrimaryInput) {
+        if (!analysis && reportDecision.decision === 'skip' && hasLlmPrimaryInput) {
           const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
           if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过报告模型：${r.join('；') || '原因未知'}`);
           else qualityReportReasons.push(`Skipped report model: ${r.join('; ') || 'unknown reason'}`);
@@ -41700,7 +41748,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             upstream_status_code: toNullableInt(visionRuntime.upstream_status_code),
             error_evidence: sanitizeVisionErrorEvidence(visionRuntime.error_evidence, {
               reason: runtimeReason,
-              model: SKIN_VISION_MODEL_GEMINI,
+              model: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
               timeoutMs: SKIN_VISION_TIMEOUT_MS,
             }),
             latency_ms: toNullableNumber(visionRuntime.latency_ms),
@@ -42092,6 +42140,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           skin_vision_model: SKIN_VISION_MODEL_GEMINI,
           skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+          skin_vision_model_resolved: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
+          skin_report_model_resolved: reportResolvedModel || SKIN_REPORT_MODEL_GEMINI,
+          skin_model_fallback_used: Boolean(skinModelFallbackUsed),
+          skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
           skin_force_vision_call_requested: skinForceVisionCallRequested,
           skin_force_vision_call_effective: skinForceVisionCallEffective,
           llm_vision_called: visionModelCalled,
@@ -42115,7 +42167,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const qualitySplit = buildQualityReportSplit({
           uploadPhotoQuality,
           analysisPhotoQuality,
-          effectivePhotoQuality: photoQuality,
+          effectivePhotoQuality: uploadPhotoQuality,
         });
         const visionDecisionPayload = (() => {
           const baseDecision = visionDecisionForReport || visionDecision;
@@ -42128,7 +42180,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ) {
             nextDecision.error_evidence = sanitizeVisionErrorEvidence(nextDecision.error_evidence, {
               reason: pickPrimaryVisionReason(nextDecision.reasons),
-              model: SKIN_VISION_MODEL_GEMINI,
+              model: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
               timeoutMs: SKIN_VISION_TIMEOUT_MS,
             });
           } else if (Object.prototype.hasOwnProperty.call(nextDecision, 'error_evidence')) {
@@ -42168,6 +42220,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_vision_model_resolved: visionResolvedModel || SKIN_VISION_MODEL_GEMINI,
+            skin_report_model_resolved: reportResolvedModel || SKIN_REPORT_MODEL_GEMINI,
+            skin_model_fallback_used: Boolean(skinModelFallbackUsed),
+            skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
             skin_force_vision_call_requested: skinForceVisionCallRequested,
             skin_force_vision_call_effective: skinForceVisionCallEffective,
             low_quality_tolerated: Boolean(
@@ -42652,6 +42708,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_vision_model_resolved: SKIN_VISION_MODEL_GEMINI,
+            skin_report_model_resolved: SKIN_REPORT_MODEL_GEMINI,
+            skin_model_fallback_used: false,
+            skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
             skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
             skin_force_vision_call_effective: Boolean(
               SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
@@ -42667,6 +42727,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             detector_source: 'baseline_low_confidence',
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_vision_model_resolved: SKIN_VISION_MODEL_GEMINI,
+            skin_report_model_resolved: SKIN_REPORT_MODEL_GEMINI,
+            skin_model_fallback_used: false,
+            skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
             skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
             skin_force_vision_call_effective: Boolean(
               SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
@@ -42712,6 +42776,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             detector_source: 'baseline_low_confidence',
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_vision_model_resolved: SKIN_VISION_MODEL_GEMINI,
+            skin_report_model_resolved: SKIN_REPORT_MODEL_GEMINI,
+            skin_model_fallback_used: false,
+            skin_quality_decision_source: SKIN_QUALITY_DECISION_SOURCE,
             skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
             skin_force_vision_call_effective: Boolean(
               SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
@@ -49106,7 +49174,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
                 ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
                 failure_class: 'timeout',
-                ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
+                llm_trace_ref: llmTraceRef || 'not_invoked',
               }),
             ],
           });
@@ -49354,8 +49422,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
               low_confidence: lowConfidenceArtifact,
               confidence_level: artifactConfidenceLevel,
-              ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
-              ...(llmFailureClass ? { failure_class: llmFailureClass } : {}),
+              llm_trace_ref: llmTraceRef || 'not_invoked',
+              failure_class: llmFailureClass || null,
               kb_write_status: kbWriteStatus,
               ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
               ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
