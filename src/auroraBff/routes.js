@@ -19221,13 +19221,20 @@ function buildRecoEntryChips(language) {
       chip_id: 'chip.intake.upload_photos',
       label: lang === 'CN' ? '上传 daylight + indoor_white' : 'Upload daylight + indoor_white',
       kind: 'quick_reply',
-      data: {},
+      data: {
+        action_id: 'diag.upload_photo',
+        trigger_source: 'action',
+        client_action: 'open_camera',
+      },
     },
     {
       chip_id: 'chip.intake.skip_analysis',
       label: lang === 'CN' ? '先用低置信度方案' : 'Use low-confidence baseline',
       kind: 'quick_reply',
-      data: {},
+      data: {
+        action_id: 'diag.skip_photo_analyze',
+        trigger_source: 'action',
+      },
     },
   ];
 }
@@ -47671,8 +47678,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           normalizeAgentState(requestedTransition.requested_next_state) === 'DIAG_PROFILE') ||
         looksLikeDiagnosisStart(message),
       );
+      const diagnosisSkipPhotoAnalyzeRequested = Boolean(
+        actionId === 'diag.skip_photo_analyze' ||
+        actionId === 'diag_skip_photo_analyze' ||
+        actionId === 'chip.intake.skip_analysis',
+      );
       const diagnosisFlowContinuationAllowed = Boolean(
         !diagnosisEntryRequested &&
+        !diagnosisSkipPhotoAnalyzeRequested &&
         !recommendationEntryRequested &&
         !evaluateIntent &&
         !ingredientScienceIntentEffective &&
@@ -48887,6 +48900,84 @@ function mountAuroraBffRoutes(app, { logger }) {
           ingredientResearchPollRequested ||
           ingredientTextTrigger
         );
+      if (diagnosisSkipPhotoAnalyzeRequested) {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const profileSummaryForSkip = summarizeChatProfileForContext(profile);
+        const baselineAnalysis = buildLowConfidenceBaselineSkinAnalysis({
+          profile: profileSummaryForSkip || profile,
+          language: ctx.lang,
+        });
+        const skipReasonText =
+          lang === 'CN'
+            ? '当前为低置信初步分析；补充照片（自然光 + 室内白光）可提升准确度。'
+            : 'This is a low-confidence baseline; adding daylight + indoor-white photos will improve accuracy.';
+        const skipPayload = {
+          analysis: baselineAnalysis,
+          low_confidence: true,
+          photos_provided: false,
+          photo_qc: [],
+          used_photos: false,
+          analysis_source: 'baseline_low_confidence',
+          quality_report: {
+            photo_quality: { grade: 'unknown', reasons: ['photo_skipped_by_user'] },
+            detector_confidence: 0,
+            degraded_mode: SKIN_DEGRADED_MODE,
+            llm: {
+              vision: { decision: 'skip', reasons: ['photo_skipped_by_user'] },
+              report: { decision: 'skip', reasons: ['photo_skipped_by_user'] },
+            },
+            reasons: [skipReasonText],
+          },
+          recommendation_ready: false,
+          photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+          analysis_meta: {
+            gate_relax_mode: AURORA_RULE_RELAX_MODE,
+            low_quality_tolerated: false,
+          },
+        };
+        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S5_ANALYSIS_SUMMARY' : undefined;
+        const sessionPatch = nextState ? { next_state: nextState } : {};
+        if (profileSummaryForSkip) sessionPatch.profile = profileSummaryForSkip;
+        logger?.info({ kind: 'metric', name: 'diag_photo_choice_skip_tap_total', value: 1 }, 'metric');
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            lang === 'CN'
+              ? '已按"先不上传"返回低置信初步分析。你可以随时补图，我会基于照片升级准确度。'
+              : "I returned a low-confidence baseline since you chose to skip photos for now. You can add photos anytime to upgrade accuracy.",
+          ),
+          suggested_chips: buildRecoEntryChips(ctx.lang),
+          cards: [
+            {
+              card_id: `analysis_${ctx.request_id}`,
+              type: 'analysis_summary',
+              payload: skipPayload,
+            },
+            {
+              card_id: `conf_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: 'low_confidence',
+                confidence: { score: 0.4, level: 'low', rationale: ['photo_skipped_by_user'] },
+                actions: ['upload_daylight_and_indoor_white', 'update_current_routine'],
+                details: [skipReasonText],
+              }),
+            },
+          ],
+          session_patch: sessionPatch,
+          events: [
+            makeEvent(ctx, 'value_moment', {
+              kind: 'skin_analysis',
+              used_photos: false,
+              analysis_source: 'baseline_low_confidence',
+              reason: 'photo_skipped_by_user',
+            }),
+            makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_skip_photo_analyze' }),
+          ],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
       if (
         (diagnosisEntryRequested || (inDiagnosisState && diagnosisFlowContinuationAllowed)) &&
         !ingredientDiagnosisRouteGuardActive
@@ -48928,7 +49019,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? '已收到你的肤况信息。要不要再上传一张照片让我更准？你也可以先跳过照片，我会给一份低置信度的安全基线。'
             : "Got it — I saved your skin profile. Want to upload a photo for a more accurate analysis? You can also skip photos and I’ll give a low-confidence, safe baseline first.";
 
-        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'DIAG_PHOTO_OPTIN' : undefined;
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(prompt),
           suggested_chips: [
@@ -48936,13 +49027,20 @@ function mountAuroraBffRoutes(app, { logger }) {
               chip_id: 'chip.intake.upload_photos',
               label: lang === 'CN' ? '上传照片（更准）' : 'Upload a photo (more accurate)',
               kind: 'quick_reply',
-              data: {},
+              data: {
+                action_id: 'diag.upload_photo',
+                trigger_source: 'action',
+                client_action: 'open_camera',
+              },
             },
             {
               chip_id: 'chip.intake.skip_analysis',
               label: lang === 'CN' ? '跳过照片（低置信度）' : 'Skip photo (low confidence)',
               kind: 'quick_reply',
-              data: {},
+              data: {
+                action_id: 'diag.skip_photo_analyze',
+                trigger_source: 'action',
+              },
             },
             {
               chip_id: 'chip_keep_chatting',

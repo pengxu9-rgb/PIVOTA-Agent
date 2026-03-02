@@ -208,9 +208,66 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(false);
-    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.intake.upload_photos')).toBe(true);
-    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.intake.skip_analysis')).toBe(true);
+    const chips = res.body.suggested_quick_replies || res.body.suggested_chips || [];
+    expect(res.body.cards.every((c) => c.type !== 'diagnosis_gate')).toBe(true);
+    const upload = chips.find((c) => (c.id || c.chip_id) === 'chip.intake.upload_photos');
+    const skip = chips.find((c) => (c.id || c.chip_id) === 'chip.intake.skip_analysis');
+    expect(Boolean(upload)).toBe(true);
+    expect(Boolean(skip)).toBe(true);
+    const uploadMeta = upload.metadata || upload.data || {};
+    expect(uploadMeta.action_id).toBe('diag.upload_photo');
+    expect(uploadMeta.trigger_source).toBe('action');
+    expect(uploadMeta.client_action).toBe('open_camera');
+    const skipMeta = skip.metadata || skip.data || {};
+    expect(skipMeta.action_id).toBe('diag.skip_photo_analyze');
+    expect(skipMeta.trigger_source).toBe('action');
+  });
+
+  test('Diagnosis: diag.skip_photo_analyze from DIAG_PHOTO_OPTIN returns low-confidence analysis (no diagnosis_gate loop)', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_diag_skip_photo_1')
+      .set('X-Lang', 'EN')
+      .send({
+        client_state: 'DIAG_PHOTO_OPTIN',
+        action: {
+          action_id: 'diag.skip_photo_analyze',
+          kind: 'chip',
+          data: {},
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    expect(res.body.cards.every((c) => c.type !== 'diagnosis_gate')).toBe(true);
+    const hasAnalysisCard = res.body.cards.some(
+      (c) =>
+        c.type === 'analysis_summary' ||
+        c.type === 'analysis_story_v2' ||
+        c.type === 'skin_status' ||
+        c.type === 'confidence_notice' ||
+        c.type === 'nudge',
+    );
+    expect(hasAnalysisCard).toBe(true);
+  });
+
+  test('Diagnosis: chip.intake.upload_photos is recognized by state machine as valid transition', () => {
+    const { canonicalizeChipId, deriveRequestedTransitionFromAction } = require('../src/auroraBff/agentStateMachine');
+
+    const result = deriveRequestedTransitionFromAction({
+      fromState: 'DIAG_PROFILE',
+      actionId: 'chip.intake.upload_photos',
+    });
+    expect(result).not.toBeNull();
+    expect(result.requested_next_state).toBe('DIAG_PHOTO_OPTIN');
+
+    const skipResult = deriveRequestedTransitionFromAction({
+      fromState: 'DIAG_PROFILE',
+      actionId: 'chip.intake.skip_analysis',
+    });
+    expect(skipResult).not.toBeNull();
+    expect(skipResult.requested_next_state).toBe('DIAG_ANALYSIS_SUMMARY');
   });
 
   test('Routine: initial request returns recommendations with optional budget optimization', async () => {

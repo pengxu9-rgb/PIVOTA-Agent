@@ -13,6 +13,8 @@ const CHIP_ALIASES = {
   'chip.start.reco_products': 'chip_get_recos',
   'chip.start.routine': 'chip_get_recos',
   'chip.action.reco_routine': 'chip_get_recos',
+  'chip.intake.upload_photos': 'chip_intake_upload_photos',
+  'chip.intake.skip_analysis': 'chip_intake_skip_analysis',
 };
 
 function normalizeAgentState(raw) {
