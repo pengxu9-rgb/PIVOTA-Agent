@@ -112,6 +112,8 @@ const {
   recordPromptContractMismatch,
   recordAuroraRecoAltPrecheck,
   observeAuroraRecoAltStageLatency,
+  recordAuroraRecoAltOutcome,
+  recordAuroraRecoAltProvider,
   recordAuroraRecoEntrySource,
   recordAuroraRecoKbWrite,
   recordAuroraProfileAutoPatch,
@@ -1624,11 +1626,26 @@ const RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS = (() => {
   return Math.max(3000, Math.min(15000, v));
 })();
 
-const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 6500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 6500;
+const RECO_ALTERNATIVES_SYNC_FAILFAST_TIMEOUT_MS = (() => {
+  const n = Number(
+    process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_TIMEOUT_MS || process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 2800,
+  );
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2800;
   const bounded = Math.max(2000, Math.min(20000, v));
   return Math.min(bounded, RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS);
+})();
+
+const RECO_ALTERNATIVES_ASYNC_TIMEOUT_HARD_CAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_ASYNC_TIMEOUT_HARD_CAP_MS || 15000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 15000;
+  return Math.max(3000, Math.min(30000, v));
+})();
+
+const RECO_ALTERNATIVES_ASYNC_REFRESH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_ASYNC_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  const bounded = Math.max(3000, Math.min(30000, v));
+  return Math.min(bounded, RECO_ALTERNATIVES_ASYNC_TIMEOUT_HARD_CAP_MS);
 })();
 
 const RECO_ALTERNATIVES_ANCHOR_PRECHECK_TIMEOUT_MS = (() => {
@@ -1654,6 +1671,35 @@ const RECO_ALTERNATIVES_ANCHOR_PRECHECK_PROBE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHOR_PRECHECK_PROBE_TIMEOUT_MS || 350);
   const v = Number.isFinite(n) ? Math.trunc(n) : 350;
   return Math.max(150, Math.min(2000, v));
+})();
+
+const RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_ALTERNATIVES_SYNC_CIRCUIT_WINDOW_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_WINDOW_MS || 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 60 * 1000;
+  return Math.max(5000, Math.min(10 * 60 * 1000, v));
+})();
+
+const RECO_ALTERNATIVES_SYNC_CIRCUIT_FAIL_THRESHOLD = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_FAIL_THRESHOLD || 5);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5;
+  return Math.max(2, Math.min(20, v));
+})();
+
+const RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS || 30 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 30 * 1000;
+  return Math.max(1000, Math.min(10 * 60 * 1000, v));
+})();
+
+const RECO_ALTERNATIVES_SYNC_CIRCUIT_HALF_OPEN_PROBES = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_HALF_OPEN_PROBES || 1);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  return Math.max(1, Math.min(3, v));
 })();
 
 const RECO_ALTERNATIVES_REFRESH_DELAY_MS = (() => {
@@ -2090,6 +2136,15 @@ const recoAlternativesAnchorPrecheckCircuitState = {
   last_reason: null,
   last_failure_at_ms: 0,
 };
+const recoAlternativesSyncCircuitState = {
+  state: 'closed',
+  opened_at_ms: 0,
+  window_started_at_ms: 0,
+  window_failures: 0,
+  half_open_probes: 0,
+  last_reason: null,
+  last_failure_at_ms: 0,
+};
 let recoAlternativesAnchorPrecheckProbeInFlight = false;
 const photoBytesCache = new Map();
 const pdpPrefetchRecentMap = new Map();
@@ -2239,6 +2294,90 @@ function scheduleRecoAlternativesAnchorPrecheckProbe({
     }
   }, 0);
   if (probeHandle && typeof probeHandle.unref === 'function') probeHandle.unref();
+}
+
+function getRecoAlternativesSyncCircuitState(nowMs = Date.now()) {
+  if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED) return 'closed';
+  const state = String(recoAlternativesSyncCircuitState.state || 'closed');
+  if (state === 'open') {
+    const openedAt = Number(recoAlternativesSyncCircuitState.opened_at_ms || 0);
+    if (openedAt > 0 && nowMs - openedAt >= RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS) {
+      recoAlternativesSyncCircuitState.state = 'half_open';
+      recoAlternativesSyncCircuitState.half_open_probes = 0;
+      return 'half_open';
+    }
+  }
+  return state;
+}
+
+function getRecoAlternativesSyncCircuitSnapshot(nowMs = Date.now()) {
+  const state = getRecoAlternativesSyncCircuitState(nowMs);
+  const openedAt = Number(recoAlternativesSyncCircuitState.opened_at_ms || 0);
+  const openUntilMs = state === 'open' && openedAt > 0
+    ? openedAt + RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS
+    : 0;
+  return {
+    state,
+    open_until_ms: openUntilMs,
+    remaining_open_ms: openUntilMs > nowMs ? openUntilMs - nowMs : 0,
+    window_failures: Number(recoAlternativesSyncCircuitState.window_failures || 0),
+    last_reason: recoAlternativesSyncCircuitState.last_reason || null,
+    last_failure_at_ms: Number(recoAlternativesSyncCircuitState.last_failure_at_ms || 0) || null,
+  };
+}
+
+function closeRecoAlternativesSyncCircuit() {
+  recoAlternativesSyncCircuitState.state = 'closed';
+  recoAlternativesSyncCircuitState.opened_at_ms = 0;
+  recoAlternativesSyncCircuitState.window_started_at_ms = Date.now();
+  recoAlternativesSyncCircuitState.window_failures = 0;
+  recoAlternativesSyncCircuitState.half_open_probes = 0;
+}
+
+function markRecoAlternativesSyncCircuitFailure(reason, nowMs = Date.now()) {
+  if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED) return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+  const state = getRecoAlternativesSyncCircuitState(nowMs);
+  recoAlternativesSyncCircuitState.last_reason = String(reason || '').trim() || 'failure';
+  recoAlternativesSyncCircuitState.last_failure_at_ms = nowMs;
+  if (state === 'half_open') {
+    recoAlternativesSyncCircuitState.state = 'open';
+    recoAlternativesSyncCircuitState.opened_at_ms = nowMs;
+    recoAlternativesSyncCircuitState.half_open_probes = 0;
+    return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+  }
+  if (state === 'open') {
+    recoAlternativesSyncCircuitState.opened_at_ms = nowMs;
+    return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+  }
+  const windowStarted = Number(recoAlternativesSyncCircuitState.window_started_at_ms || 0);
+  if (!windowStarted || nowMs - windowStarted > RECO_ALTERNATIVES_SYNC_CIRCUIT_WINDOW_MS) {
+    recoAlternativesSyncCircuitState.window_started_at_ms = nowMs;
+    recoAlternativesSyncCircuitState.window_failures = 0;
+  }
+  recoAlternativesSyncCircuitState.window_failures = Number(recoAlternativesSyncCircuitState.window_failures || 0) + 1;
+  if (recoAlternativesSyncCircuitState.window_failures >= RECO_ALTERNATIVES_SYNC_CIRCUIT_FAIL_THRESHOLD) {
+    recoAlternativesSyncCircuitState.state = 'open';
+    recoAlternativesSyncCircuitState.opened_at_ms = nowMs;
+    recoAlternativesSyncCircuitState.half_open_probes = 0;
+  }
+  return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+}
+
+function markRecoAlternativesSyncCircuitSuccess(nowMs = Date.now()) {
+  if (!RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED) return getRecoAlternativesSyncCircuitSnapshot(nowMs);
+  const state = getRecoAlternativesSyncCircuitState(nowMs);
+  if (state === 'half_open') {
+    recoAlternativesSyncCircuitState.half_open_probes = Number(recoAlternativesSyncCircuitState.half_open_probes || 0) + 1;
+    if (recoAlternativesSyncCircuitState.half_open_probes >= RECO_ALTERNATIVES_SYNC_CIRCUIT_HALF_OPEN_PROBES) {
+      closeRecoAlternativesSyncCircuit();
+    }
+  } else if (state === 'closed') {
+    recoAlternativesSyncCircuitState.window_started_at_ms = nowMs;
+    recoAlternativesSyncCircuitState.window_failures = 0;
+  } else if (state === 'open') {
+    closeRecoAlternativesSyncCircuit();
+  }
+  return getRecoAlternativesSyncCircuitSnapshot(nowMs);
 }
 
 function getAuroraUidFromReq(req) {
@@ -18613,6 +18752,150 @@ function isTransientRecoUpstreamFailureCode(code) {
     token === 'DNS'
   );
 }
+
+function toFiniteNonNegativeInt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.trunc(n));
+}
+
+function pickFirstFiniteNumber(...values) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function extractRecoUpstreamProviderMeta({ upstream, error } = {}) {
+  const source = upstream && typeof upstream === 'object' && !Array.isArray(upstream)
+    ? upstream
+    : error && typeof error.responseBody === 'object' && error.responseBody && !Array.isArray(error.responseBody)
+      ? error.responseBody
+      : null;
+  const upstreamContract = source && source._upstream_meta && typeof source._upstream_meta === 'object' && !Array.isArray(source._upstream_meta)
+    ? source._upstream_meta
+    : error && error.upstreamMeta && typeof error.upstreamMeta === 'object' && !Array.isArray(error.upstreamMeta)
+      ? error.upstreamMeta
+      : null;
+  const nested = source && source.meta && typeof source.meta === 'object' && !Array.isArray(source.meta) ? source.meta : null;
+  const providerMeta = source && source.provider_meta && typeof source.provider_meta === 'object' && !Array.isArray(source.provider_meta)
+    ? source.provider_meta
+    : source && source.provider && typeof source.provider === 'object' && !Array.isArray(source.provider)
+      ? source.provider
+      : null;
+  const providerStatusRaw = pickFirstFiniteNumber(
+    source && source.provider_status,
+    source && source.provider_status_code,
+    upstreamContract && upstreamContract.provider_status,
+    nested && nested.provider_status,
+    nested && nested.provider_status_code,
+    providerMeta && providerMeta.status,
+    providerMeta && providerMeta.status_code,
+    error && error.status,
+  );
+  const providerStatus = Number.isFinite(providerStatusRaw) ? Math.max(0, Math.trunc(providerStatusRaw)) : null;
+  const providerErrorCode = pickFirstTrimmed(
+    source && source.provider_error_code,
+    source && source.error_code,
+    upstreamContract && upstreamContract.provider_error_code,
+    nested && nested.provider_error_code,
+    nested && nested.error_code,
+    providerMeta && providerMeta.error_code,
+    providerMeta && providerMeta.code,
+    source && source.violation_code,
+  );
+  const retryAfterMs = toFiniteNonNegativeInt(
+    pickFirstFiniteNumber(
+      source && source.retry_after_ms,
+      upstreamContract && upstreamContract.retry_after_ms,
+      nested && nested.retry_after_ms,
+      providerMeta && providerMeta.retry_after_ms,
+      providerMeta && providerMeta.retry_after,
+    ),
+  );
+  const queueWaitMs = toFiniteNonNegativeInt(
+    pickFirstFiniteNumber(
+      source && source.queue_wait_ms,
+      upstreamContract && upstreamContract.queue_wait_ms,
+      nested && nested.queue_wait_ms,
+      providerMeta && providerMeta.queue_wait_ms,
+      providerMeta && providerMeta.queue_ms,
+    ),
+  );
+  const providerLatencyMs = toFiniteNonNegativeInt(
+    pickFirstFiniteNumber(
+      source && source.provider_latency_ms,
+      upstreamContract && upstreamContract.provider_latency_ms,
+      nested && nested.provider_latency_ms,
+      providerMeta && providerMeta.latency_ms,
+    ),
+  );
+  const upstreamRequestId = pickFirstTrimmed(
+    source && source.upstream_request_id,
+    upstreamContract && upstreamContract.upstream_request_id,
+    source && source.request_id,
+    nested && nested.upstream_request_id,
+    providerMeta && providerMeta.request_id,
+  );
+  const provider = pickFirstTrimmed(
+    source && source.provider_name,
+    nested && nested.provider,
+    providerMeta && providerMeta.name,
+    source && source.provider,
+  );
+  const model = pickFirstTrimmed(
+    source && source.model,
+    source && source.provider_model,
+    nested && nested.model,
+    providerMeta && providerMeta.model,
+  );
+  return {
+    provider_status: providerStatus,
+    provider_error_code: providerErrorCode || null,
+    retry_after_ms: retryAfterMs,
+    queue_wait_ms: queueWaitMs,
+    provider_latency_ms: providerLatencyMs,
+    upstream_request_id: upstreamRequestId || null,
+    provider: provider || null,
+    model: model || null,
+  };
+}
+
+function classifyRecoAlternativesFailureClass({
+  err,
+  transientCode,
+  providerMeta,
+  hasStructured = false,
+  mappedCount = 0,
+  upstreamIntent = '',
+  defaultCode = 'provider_error',
+} = {}) {
+  const intentToken = String(upstreamIntent || '').trim().toLowerCase();
+  if (intentToken === 'clarify' && Number(mappedCount || 0) <= 0) return 'empty_structured_clarify';
+  if (!err && hasStructured && Number(mappedCount || 0) <= 0) return 'empty_structured';
+  const providerStatus = Number(providerMeta && providerMeta.provider_status);
+  const providerErrorCode = String(providerMeta && providerMeta.provider_error_code || '').trim().toLowerCase();
+  const queueWaitMs = Number(providerMeta && providerMeta.queue_wait_ms);
+  if (providerStatus === 429 || providerErrorCode.includes('rate') || providerErrorCode.includes('quota')) {
+    return 'provider_rate_limited';
+  }
+  if (
+    (Number.isFinite(queueWaitMs) && queueWaitMs >= 3000) ||
+    providerErrorCode.includes('queue') ||
+    providerErrorCode.includes('overload') ||
+    providerErrorCode.includes('throttle') ||
+    providerErrorCode.includes('backpressure') ||
+    providerErrorCode.includes('busy')
+  ) {
+    return 'queue_saturated';
+  }
+  if (isTransientRecoUpstreamFailureCode(transientCode) || String(defaultCode || '').trim().toLowerCase() === 'timeout') {
+    return 'provider_timeout';
+  }
+  if (String(defaultCode || '').trim().toLowerCase() === 'precheck_fail') return 'precheck_fail';
+  return 'provider_error';
+}
 function inferCardGuardReasonFromEvents(events) {
   const rows = Array.isArray(events) ? events : [];
   for (const evt of rows) {
@@ -18935,10 +19218,15 @@ function normalizeRecoFailureClass(value) {
   const token = String(value || '').trim().toLowerCase();
   if (
     token === 'timeout' ||
+    token === 'provider_timeout' ||
+    token === 'provider_rate_limited' ||
+    token === 'queue_saturated' ||
     token === 'provider_error' ||
     token === 'policy_skip' ||
     token === 'precheck_fail' ||
-    token === 'empty_structured'
+    token === 'empty_structured' ||
+    token === 'empty_structured_clarify' ||
+    token === 'local_fallback_only'
   ) {
     return token;
   }
@@ -27625,6 +27913,9 @@ function mapResolveFailureCode({ resolveBody, statusCode, error, detailed = fals
   if (explicit) return explicit;
 
   const sourcePriority = [
+    'rate_limited',
+    'upstream_timeout',
+    'no_candidates',
     'db_not_configured',
     'db_query_timeout',
     'db_unreachable',
@@ -27632,9 +27923,6 @@ function mapResolveFailureCode({ resolveBody, statusCode, error, detailed = fals
     'db_auth_failed',
     'products_cache_missing',
     'db_error',
-    'rate_limited',
-    'upstream_timeout',
-    'no_candidates',
   ];
   if (reason === 'no_candidates' || reason === 'low_confidence' || reason === 'empty_query') return toOutput('no_candidates');
   if (reason === 'rate_limited' || reason === 'upstream_status_429') return toOutput('rate_limited');
@@ -27647,6 +27935,18 @@ function mapResolveFailureCode({ resolveBody, statusCode, error, detailed = fals
     .map((r) => normalizeResolveReasonCodeDetailed(r, ''))
     .filter(Boolean);
   if (sourceNormalized.length) {
+    const hasNoCandidates = sourceNormalized.includes('no_candidates');
+    const hasDbOnly = sourceNormalized.every(
+      (code) =>
+        code === 'db_error' ||
+        code === 'db_not_configured' ||
+        code === 'db_query_timeout' ||
+        code === 'db_unreachable' ||
+        code === 'db_schema_mismatch' ||
+        code === 'db_auth_failed' ||
+        code === 'products_cache_missing',
+    );
+    if (hasNoCandidates && !hasDbOnly) return toOutput('no_candidates');
     for (const candidate of sourcePriority) {
       if (sourceNormalized.includes(candidate)) return toOutput(candidate);
     }
@@ -34278,11 +34578,14 @@ async function fetchRecoAlternativesForProduct({
   let mapLatencyMs = null;
   let fallbackLatencyMs = null;
   const finalizeAlternativesResult = (result) => {
+    const resultObj = result && typeof result === 'object' && !Array.isArray(result)
+      ? { ...result }
+      : { ok: false, alternatives: [], failure_class: 'unknown' };
     if (Number.isFinite(Number(precheckLatencyMs))) {
       observeAuroraRecoAltStageLatency({ stage: 'precheck', latencyMs: Number(precheckLatencyMs) });
     }
     if (Number.isFinite(Number(llmLatencyMs))) {
-      observeAuroraRecoAltStageLatency({ stage: 'llm', latencyMs: Number(llmLatencyMs) });
+      observeAuroraRecoAltStageLatency({ stage: 'llm_sync', latencyMs: Number(llmLatencyMs) });
     }
     if (Number.isFinite(Number(mapLatencyMs))) {
       observeAuroraRecoAltStageLatency({ stage: 'map', latencyMs: Number(mapLatencyMs) });
@@ -34291,7 +34594,21 @@ async function fetchRecoAlternativesForProduct({
       observeAuroraRecoAltStageLatency({ stage: 'fallback', latencyMs: Number(fallbackLatencyMs) });
     }
     observeAuroraRecoAltStageLatency({ stage: 'total', latencyMs: Date.now() - totalStartedAt });
-    return result;
+    const sourceMode = String(resultObj.source_mode || '').trim().toLowerCase();
+    const failureClass = String(resultObj.failure_class || '').trim().toLowerCase();
+    const outcome = resultObj.ok === true
+      ? (sourceMode === 'llm' ? 'success' : sourceMode === 'local_fallback' ? 'fallback' : 'skipped')
+      : sourceMode === 'budget_skip'
+        ? 'skipped'
+        : 'failed';
+    recordAuroraRecoAltOutcome({
+      outcome,
+      failureClass: failureClass || (outcome === 'success' ? 'none' : 'unknown'),
+    });
+    if (!Object.prototype.hasOwnProperty.call(resultObj, 'circuit_state')) {
+      resultObj.circuit_state = getRecoAlternativesSyncCircuitSnapshot().state;
+    }
+    return resultObj;
   };
 
   const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
@@ -34299,6 +34616,18 @@ async function fetchRecoAlternativesForProduct({
   const disableAsyncRefresh = opts.disable_async_refresh === true;
   const skipAnchorPrecheck = opts.skip_anchor_precheck === true;
   const preferRefreshCache = opts.prefer_refresh_cache !== false;
+  const forceSyncProbe = opts.force_sync_probe === true;
+  const timeoutOverrideMs = Number.isFinite(Number(opts.timeout_ms)) ? Math.max(1200, Math.trunc(Number(opts.timeout_ms))) : null;
+  const asyncTimeoutOverrideMs = Number.isFinite(Number(opts.async_timeout_ms))
+    ? Math.max(2000, Math.trunc(Number(opts.async_timeout_ms)))
+    : null;
+  const buildNotInvokedLlmTrace = (errorClass, extra = null) => ({
+    template_id: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+    status: 'not_invoked',
+    error_class: String(errorClass || 'not_invoked').trim() || 'not_invoked',
+    circuit_state: getRecoAlternativesSyncCircuitSnapshot().state,
+    ...(extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : {}),
+  });
   // Keep alternatives on a single upstream attempt to avoid timeout+retry amplification.
   const maxLlmAttempts = Number.isFinite(Number(opts.max_llm_attempts))
     ? Math.max(1, Math.min(1, Math.trunc(Number(opts.max_llm_attempts))))
@@ -34306,11 +34635,16 @@ async function fetchRecoAlternativesForProduct({
   const budgetDeadlineMs = budget && Number.isFinite(Number(budget.deadline_ms))
     ? Math.trunc(Number(budget.deadline_ms))
     : null;
-  const alternativesBudgetCapMs = Math.max(
+  const alternativesSyncBudgetCapMs = Math.max(
     1200,
-    Math.min(RECO_ALTERNATIVES_TIMEOUT_MS, AURORA_BFF_CHAT_RECO_BUDGET_MS - RECO_ALTERNATIVES_OVERHEAD_MS),
+    Math.min(RECO_ALTERNATIVES_SYNC_FAILFAST_TIMEOUT_MS, AURORA_BFF_CHAT_RECO_BUDGET_MS - RECO_ALTERNATIVES_OVERHEAD_MS),
   );
-  let effectiveAlternativesTimeoutMs = alternativesBudgetCapMs;
+  let effectiveAlternativesTimeoutMs = timeoutOverrideMs
+    ? Math.min(timeoutOverrideMs, alternativesSyncBudgetCapMs)
+    : alternativesSyncBudgetCapMs;
+  const effectiveAsyncRefreshTimeoutMs = asyncTimeoutOverrideMs
+    ? Math.min(asyncTimeoutOverrideMs, RECO_ALTERNATIVES_ASYNC_REFRESH_TIMEOUT_MS)
+    : RECO_ALTERNATIVES_ASYNC_REFRESH_TIMEOUT_MS;
   if (Number.isFinite(budgetDeadlineMs)) {
     const remainingMs = budgetDeadlineMs - Date.now();
     const safeRemainingMs = remainingMs - RECO_ALTERNATIVES_OVERHEAD_MS;
@@ -34326,6 +34660,7 @@ async function fetchRecoAlternativesForProduct({
         refresh_after_ms: 0,
         failure_class: 'budget_exhausted',
         attempt_count: 0,
+        llm_trace: buildNotInvokedLlmTrace('budget_exhausted'),
         ...(debug
           ? {
             debug: {
@@ -34337,7 +34672,7 @@ async function fetchRecoAlternativesForProduct({
           : {}),
       });
     }
-    effectiveAlternativesTimeoutMs = Math.max(1200, Math.min(alternativesBudgetCapMs, Math.trunc(safeRemainingMs)));
+    effectiveAlternativesTimeoutMs = Math.max(1200, Math.min(alternativesSyncBudgetCapMs, Math.trunc(safeRemainingMs)));
   }
 
   const inputText = String(productInput || '').trim();
@@ -34395,6 +34730,7 @@ async function fetchRecoAlternativesForProduct({
       refresh_after_ms: 0,
       failure_class: 'precheck_fail',
       attempt_count: 0,
+      llm_trace: buildNotInvokedLlmTrace('precheck_fail'),
     });
   }
 
@@ -34819,6 +35155,7 @@ async function fetchRecoAlternativesForProduct({
             refresh_after_ms: 0,
             failure_class: 'anchor_missing_precheck',
             attempt_count: 0,
+            llm_trace: buildNotInvokedLlmTrace('anchor_missing_precheck'),
             ...(debug ? { debug: { input: bestInput.slice(0, 200), anchor_id: null, anchor_precheck: anchorPrecheck, attempts: [] } } : {}),
           });
         }
@@ -34835,6 +35172,7 @@ async function fetchRecoAlternativesForProduct({
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
+          llm_trace: buildNotInvokedLlmTrace('anchor_missing_precheck'),
           ...(debug
             ? {
               debug: {
@@ -34883,6 +35221,7 @@ async function fetchRecoAlternativesForProduct({
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
+          llm_trace: buildNotInvokedLlmTrace('anchor_missing_precheck'),
           ...(debug
             ? {
               debug: {
@@ -34905,6 +35244,7 @@ async function fetchRecoAlternativesForProduct({
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
+          llm_trace: buildNotInvokedLlmTrace('anchor_missing_precheck'),
           ...(debug
             ? {
               debug: {
@@ -34932,6 +35272,118 @@ async function fetchRecoAlternativesForProduct({
     action_id: 'chip.action.dupe_compare',
   });
 
+  const scheduleAlternativesAsyncRefresh = () => {
+    if (disableAsyncRefresh) return false;
+    if (!refreshKey || recoAlternativesRefreshInFlight.has(refreshKey)) return false;
+    recoAlternativesRefreshInFlight.add(refreshKey);
+    const refreshHandle = setTimeout(async () => {
+      const asyncStartedAt = Date.now();
+      try {
+        const refreshed = await fetchRecoAlternativesForProduct({
+          ctx,
+          profileSummary,
+          recentLogs,
+          productInput: bestInput,
+          productObj,
+          anchorId: anchor,
+          maxTotal,
+          debug: false,
+          logger,
+          options: {
+            disable_fallback: true,
+            disable_async_refresh: true,
+            skip_anchor_precheck: true,
+            prefer_refresh_cache: false,
+            max_llm_attempts: 1,
+            force_sync_probe: true,
+            timeout_ms: effectiveAsyncRefreshTimeoutMs,
+            async_timeout_ms: effectiveAsyncRefreshTimeoutMs,
+          },
+        });
+        if (refreshed && Array.isArray(refreshed.alternatives) && refreshed.alternatives.length) {
+          setRecoAlternativesRefreshCache(refreshKey, {
+            alternatives: refreshed.alternatives.slice(0, Math.max(1, Math.min(8, Number(maxTotal) || 6))),
+            llm_trace: refreshed.llm_trace || null,
+          });
+        }
+      } catch {
+        // ignore refresh worker failure
+      } finally {
+        observeAuroraRecoAltStageLatency({ stage: 'async_refresh', latencyMs: Date.now() - asyncStartedAt });
+        recoAlternativesRefreshInFlight.delete(refreshKey);
+      }
+    }, RECO_ALTERNATIVES_REFRESH_DELAY_MS);
+    if (refreshHandle && typeof refreshHandle.unref === 'function') refreshHandle.unref();
+    return true;
+  };
+
+  const syncCircuitBefore = getRecoAlternativesSyncCircuitSnapshot();
+  if (!forceSyncProbe && RECO_ALTERNATIVES_SYNC_CIRCUIT_ENABLED && syncCircuitBefore.state === 'open') {
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'policy_skip' });
+    const shouldRefresh = scheduleAlternativesAsyncRefresh();
+    if (!disableFallback) {
+      const fallbackStartedAt = Date.now();
+      const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'local_fallback_only' });
+      fallbackLatencyMs = Date.now() - fallbackStartedAt;
+      return finalizeAlternativesResult({
+        ok: true,
+        alternatives: localFallback.alternatives,
+        field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'circuit_open' }],
+        source_mode: 'local_fallback',
+        fallback_source: localFallback.fallback_source,
+        refresh_pending: shouldRefresh,
+        refresh_after_ms: shouldRefresh ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
+        failure_class: 'local_fallback_only',
+        attempt_count: 0,
+        llm_trace: {
+          template_id: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+          status: 'not_invoked',
+          error_class: 'policy_skip',
+          circuit_state: syncCircuitBefore.state,
+        },
+        ...(debug
+          ? {
+            debug: {
+              input: bestInput.slice(0, 200),
+              anchor_id: anchor || null,
+              anchor_precheck: anchorPrecheck,
+              circuit_state: syncCircuitBefore,
+              attempts: [],
+            },
+          }
+          : {}),
+      });
+    }
+    return finalizeAlternativesResult({
+      ok: false,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'circuit_open' }],
+      source_mode: 'llm',
+      fallback_source: 'none',
+      refresh_pending: shouldRefresh,
+      refresh_after_ms: shouldRefresh ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
+      failure_class: 'local_fallback_only',
+      attempt_count: 0,
+      llm_trace: {
+        template_id: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+        status: 'not_invoked',
+        error_class: 'policy_skip',
+        circuit_state: syncCircuitBefore.state,
+      },
+      ...(debug
+        ? {
+          debug: {
+            input: bestInput.slice(0, 200),
+            anchor_id: anchor || null,
+            anchor_precheck: anchorPrecheck,
+            circuit_state: syncCircuitBefore,
+            attempts: [],
+          },
+        }
+        : {}),
+    });
+  }
+
   const attempts = [{ id: 'primary', forceConservative: false }];
   const attemptDebug = [];
   let mapped = [];
@@ -34942,6 +35394,8 @@ async function fetchRecoAlternativesForProduct({
   let lastError = null;
   let lastLlmTrace = null;
   let llmFailureClass = null;
+  let lastProviderMeta = null;
+  let lastCircuitSnapshot = getRecoAlternativesSyncCircuitSnapshot();
 
   for (let i = 0; i < attempts.length; i += 1) {
     const attempt = attempts[i];
@@ -34989,7 +35443,10 @@ async function fetchRecoAlternativesForProduct({
         ...(anchor ? { anchor_product_id: anchor } : {}),
         intent_hint: 'alternatives',
         intent_contract: 'alternatives_strict_v1',
+        provider_contract: 'provider_error_v1',
+        require_provider_contract: true,
         disallow_clarify: true,
+        no_clarify: true,
         force_intent: 'alternatives',
         required_structured_keys: ['alternatives'],
         allow_recommendations: true,
@@ -35013,36 +35470,92 @@ async function fetchRecoAlternativesForProduct({
           },
         },
       });
+      const providerMeta = extractRecoUpstreamProviderMeta({ upstream });
+      lastProviderMeta = providerMeta;
+      recordAuroraRecoAltProvider({
+        providerStatus: providerMeta.provider_status != null ? String(providerMeta.provider_status) : 'none',
+        errorCode: providerMeta.provider_error_code || 'none',
+      });
       const llmTrace = {
         ...traceSeed,
         latency_ms: Date.now() - startedAtMs,
         cache_hit: false,
+        provider: providerMeta.provider || traceSeed.provider,
+        model: providerMeta.model || traceSeed.model,
+        provider_status: providerMeta.provider_status,
+        provider_error_code: providerMeta.provider_error_code,
+        retry_after_ms: providerMeta.retry_after_ms,
+        queue_wait_ms: providerMeta.queue_wait_ms,
+        provider_latency_ms: providerMeta.provider_latency_ms,
+        upstream_request_id: providerMeta.upstream_request_id,
+        circuit_state: lastCircuitSnapshot.state,
       };
       lastLlmTrace = llmTrace;
       llmLatencyMs = llmTrace.latency_ms;
     } catch (err) {
       lastError = err;
       const transientCode = classifyRecoUpstreamFailureCode(err);
-      const llmOutcome =
-        err && err.code === 'AURORA_NOT_CONFIGURED'
-          ? 'precheck_fail'
-          : isTransientRecoUpstreamFailureCode(transientCode)
-            ? 'timeout'
-            : 'provider_error';
+      const providerMeta = extractRecoUpstreamProviderMeta({ error: err });
+      lastProviderMeta = providerMeta;
+      recordAuroraRecoAltProvider({
+        providerStatus:
+          providerMeta.provider_status != null
+            ? String(providerMeta.provider_status)
+            : isTransientRecoUpstreamFailureCode(transientCode)
+              ? 'timeout'
+              : 'none',
+        errorCode: providerMeta.provider_error_code || 'none',
+      });
+      const llmOutcome = classifyRecoAlternativesFailureClass({
+        err,
+        transientCode,
+        providerMeta,
+        defaultCode: err && err.code === 'AURORA_NOT_CONFIGURED' ? 'precheck_fail' : '',
+      });
       llmFailureClass = llmOutcome;
-      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: llmOutcome });
+      const llmMetricOutcome = llmOutcome === 'provider_rate_limited'
+        ? 'provider_rate_limited'
+        : llmOutcome === 'provider_timeout'
+          ? 'provider_timeout'
+          : llmOutcome === 'queue_saturated'
+            ? 'queue_saturated'
+            : llmOutcome === 'precheck_fail'
+              ? 'precheck_fail'
+              : 'provider_error';
+      recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: llmMetricOutcome });
       const llmTrace = {
         ...traceSeed,
         latency_ms: Date.now() - startedAtMs,
         cache_hit: false,
         error_class: llmOutcome,
+        provider: providerMeta.provider || traceSeed.provider,
+        model: providerMeta.model || traceSeed.model,
+        provider_status: providerMeta.provider_status,
+        provider_error_code: providerMeta.provider_error_code,
+        retry_after_ms: providerMeta.retry_after_ms,
+        queue_wait_ms: providerMeta.queue_wait_ms,
+        provider_latency_ms: providerMeta.provider_latency_ms,
+        upstream_request_id: providerMeta.upstream_request_id,
+        circuit_state: lastCircuitSnapshot.state,
       };
       lastLlmTrace = llmTrace;
       llmLatencyMs = llmTrace.latency_ms;
+      if (
+        llmOutcome === 'provider_timeout' ||
+        llmOutcome === 'provider_rate_limited' ||
+        llmOutcome === 'queue_saturated' ||
+        llmOutcome === 'provider_error'
+      ) {
+        lastCircuitSnapshot = markRecoAlternativesSyncCircuitFailure(llmOutcome);
+      } else if (llmOutcome === 'precheck_fail') {
+        lastCircuitSnapshot = getRecoAlternativesSyncCircuitSnapshot();
+      }
       logger?.warn(
         {
           err: err && err.message ? err.message : String(err),
           attempt: attempt.id,
+          provider_status: providerMeta.provider_status,
+          provider_error_code: providerMeta.provider_error_code,
         },
         'aurora bff: alternatives upstream failed',
       );
@@ -35058,7 +35571,7 @@ async function fetchRecoAlternativesForProduct({
         alternatives_mapped_count: 0,
         failure_class: llmOutcome,
       });
-      if ((llmOutcome === 'timeout' || llmOutcome === 'provider_error') && attempts.length < maxLlmAttempts) {
+      if ((llmOutcome === 'provider_timeout' || llmOutcome === 'provider_error') && attempts.length < maxLlmAttempts) {
         attempts.push({ id: 'transient_retry', forceConservative: false });
         continue;
       }
@@ -35095,10 +35608,20 @@ async function fetchRecoAlternativesForProduct({
       maxTotal: maxTotal ?? 3,
     });
     mapLatencyMs = Date.now() - mapStartedAtMs;
+    const providerMeta = lastProviderMeta || extractRecoUpstreamProviderMeta({ upstream });
     const llmTrace = {
       ...traceSeed,
       latency_ms: Date.now() - startedAtMs,
       cache_hit: false,
+      provider: providerMeta.provider || traceSeed.provider,
+      model: providerMeta.model || traceSeed.model,
+      provider_status: providerMeta.provider_status,
+      provider_error_code: providerMeta.provider_error_code,
+      retry_after_ms: providerMeta.retry_after_ms,
+      queue_wait_ms: providerMeta.queue_wait_ms,
+      provider_latency_ms: providerMeta.provider_latency_ms,
+      upstream_request_id: providerMeta.upstream_request_id,
+      circuit_state: lastCircuitSnapshot.state,
     };
     lastLlmTrace = llmTrace;
     llmLatencyMs = llmTrace.latency_ms;
@@ -35107,6 +35630,7 @@ async function fetchRecoAlternativesForProduct({
     if (attemptMapped.length > 0) {
       recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'success' });
       llmFailureClass = null;
+      lastCircuitSnapshot = markRecoAlternativesSyncCircuitSuccess();
     } else if (isClarifyEmpty) {
       logger?.warn(
         {
@@ -35290,49 +35814,14 @@ async function fetchRecoAlternativesForProduct({
   });
   fallbackLatencyMs = Date.now() - fallbackStartedAt;
   const shouldRefresh =
-    !disableAsyncRefresh &&
-    Boolean(anchor) &&
     Boolean(refreshKey) &&
-    (llmFailureClass === 'timeout' ||
+    (llmFailureClass === 'provider_timeout' ||
+      llmFailureClass === 'provider_rate_limited' ||
+      llmFailureClass === 'queue_saturated' ||
       llmFailureClass === 'provider_error' ||
       llmFailureClass === 'empty_structured' ||
       lastError);
-  if (shouldRefresh && !recoAlternativesRefreshInFlight.has(refreshKey)) {
-    recoAlternativesRefreshInFlight.add(refreshKey);
-    const refreshHandle = setTimeout(async () => {
-      try {
-        const refreshed = await fetchRecoAlternativesForProduct({
-          ctx,
-          profileSummary,
-          recentLogs,
-          productInput: bestInput,
-          productObj,
-          anchorId: anchor,
-          maxTotal,
-          debug: false,
-          logger,
-          options: {
-            disable_fallback: true,
-            disable_async_refresh: true,
-            skip_anchor_precheck: true,
-            prefer_refresh_cache: false,
-            max_llm_attempts: 1,
-          },
-        });
-        if (refreshed && Array.isArray(refreshed.alternatives) && refreshed.alternatives.length) {
-          setRecoAlternativesRefreshCache(refreshKey, {
-            alternatives: refreshed.alternatives.slice(0, Math.max(1, Math.min(8, Number(maxTotal) || 6))),
-            llm_trace: refreshed.llm_trace || null,
-          });
-        }
-      } catch {
-        // ignore refresh worker failure
-      } finally {
-        recoAlternativesRefreshInFlight.delete(refreshKey);
-      }
-    }, RECO_ALTERNATIVES_REFRESH_DELAY_MS);
-    if (refreshHandle && typeof refreshHandle.unref === 'function') refreshHandle.unref();
-  }
+  const refreshScheduled = shouldRefresh ? scheduleAlternativesAsyncRefresh() : false;
 
   return finalizeAlternativesResult({
     ok: true,
@@ -35340,8 +35829,8 @@ async function fetchRecoAlternativesForProduct({
     field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: fallbackReason }],
     source_mode: 'local_fallback',
     fallback_source: localFallback.fallback_source,
-    refresh_pending: shouldRefresh,
-    refresh_after_ms: shouldRefresh ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
+    refresh_pending: refreshScheduled,
+    refresh_after_ms: refreshScheduled ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
     failure_class: llmFailureClass || (lastError ? 'provider_error' : 'empty_structured'),
     attempt_count: attemptDebug.length,
     ...(debug
@@ -40181,6 +40670,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         prompt_contract_issues: Array.isArray(out && out.prompt_contract_issues) ? out.prompt_contract_issues : [],
         no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,
         timeout_root_cause: out && out.timeout_root_cause ? String(out.timeout_root_cause) : null,
+        circuit_state: out && typeof out.circuit_state === 'string' ? out.circuit_state : null,
+        upstream_request_id:
+          out && typeof out.upstream_request_id === 'string'
+            ? out.upstream_request_id
+            : out && out.llm_trace && typeof out.llm_trace === 'object' && typeof out.llm_trace.upstream_request_id === 'string'
+              ? out.llm_trace.upstream_request_id
+              : null,
         llm_trace: out && out.llm_trace && typeof out.llm_trace === 'object' ? out.llm_trace : null,
         ...(includeDebug && out && out.debug && typeof out.debug === 'object' ? { debug: out.debug } : {}),
       });
@@ -40198,6 +40694,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         source_mode: 'local_fallback',
         failure_class: 'endpoint_exception',
         attempt_count: 0,
+        circuit_state: getRecoAlternativesSyncCircuitSnapshot().state,
         llm_trace: {
           template_id: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
           status: 'not_invoked',
