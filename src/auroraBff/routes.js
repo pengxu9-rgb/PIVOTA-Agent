@@ -32526,18 +32526,19 @@ async function upsertIngredientResearchKbEntrySafe({
 const INGREDIENT_RESEARCH_V2_LITE_JSON_SCHEMA = Object.freeze({
   type: 'object',
   additionalProperties: false,
-  required: ['schema_version', 'ingredient', 'overview', 'benefits', 'safety', 'usage', 'confidence', 'evidence'],
+  required: ['schema_version', 'ingredient', 'overview', 'benefits', 'safety', 'usage', 'formulation_notes', 'regulatory_notes', 'best_for', 'caution_for', 'confidence', 'evidence'],
   properties: {
     schema_version: { type: 'string', enum: ['v2-lite'] },
     ingredient: {
       type: 'object',
       additionalProperties: false,
-      required: ['inci', 'display_name', 'aliases', 'what_it_is'],
+      required: ['inci', 'display_name', 'aliases', 'what_it_is', 'category'],
       properties: {
         inci: { type: 'string' },
         display_name: { type: 'string' },
         aliases: { type: 'array', maxItems: 8, items: { type: 'string' } },
         what_it_is: { type: 'string' },
+        category: { type: 'string' },
       },
     },
     overview: { type: 'string' },
@@ -32591,6 +32592,10 @@ const INGREDIENT_RESEARCH_V2_LITE_JSON_SCHEMA = Object.freeze({
         notes: { type: 'array', maxItems: 4, items: { type: 'string' } },
       },
     },
+    formulation_notes: { type: ['string', 'null'] },
+    regulatory_notes: { type: ['string', 'null'] },
+    best_for: { type: 'array', maxItems: 3, items: { type: 'string' } },
+    caution_for: { type: 'array', maxItems: 3, items: { type: 'string' } },
     confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
     evidence: {
       type: 'object',
@@ -32694,7 +32699,7 @@ function buildIngredientResearchPrompts({
     'No medical diagnosis or treatment instructions.',
     'If evidence is insufficient or a field is not applicable, use null or [].',
     'IMPORTANT: You MUST populate every field with substantive content. Never skip fields.',
-    'The "what_it_is", "overview", and "benefits" fields are essential — always provide them.',
+    'The "what_it_is", "overview", "benefits", and "category" fields are essential — always provide them.',
   ].join('\n');
 
   const userPrompt = [
@@ -32703,7 +32708,7 @@ function buildIngredientResearchPrompts({
     '',
     'Hard rules:',
     '1) Output JSON only, matching the schema EXACTLY. No extra keys.',
-    '2) Do NOT mention other ingredients. Do NOT provide medical diagnosis or treatment.',
+    '2) Focus on the queried ingredient. You MAY reference other ingredients briefly when explaining pairing, separating, formulation stability, or comparative context. Do NOT provide medical diagnosis or treatment.',
     '3) If unsure, use null or [] (never output the literal string "unknown").',
     '',
     'Limits:',
@@ -32711,10 +32716,16 @@ function buildIngredientResearchPrompts({
     '- safety.watchouts: max 3 items',
     '- usage.notes: max 4 items',
     '- evidence.citations: max 2 items',
-    '- String fields: 1-2 concise sentences each. overview/evidence.summary: 2-3 sentences.',
-    '- what_it_is: REQUIRED, explain what the ingredient is in 1-2 sentences.',
+    '- String fields: 2-3 concise sentences each. overview/evidence.summary: 3-4 sentences.',
+    '- what_it_is: REQUIRED, explain what the ingredient is, its functional type, and mechanism in 2-3 sentences.',
+    '- category: REQUIRED, identify the functional category (e.g. "UV filter", "antioxidant", "humectant", "retinoid", "exfoliant", "emollient", "preservative", "surfactant", "peptide", "brightening agent").',
+    '- formulation_notes: note any formulation concerns (e.g. photostability, pH sensitivity, encapsulation needs). null if none.',
+    '- regulatory_notes: note concentration limits or regional regulatory differences if well-known. null if none.',
+    '- best_for: list up to 3 skin types or personas this ingredient is best for.',
+    '- caution_for: list up to 3 skin types or conditions that should be cautious with this ingredient.',
     '',
     'Allowed values:',
+    '- benefits[].concern: a skin concern or protective function (e.g. "UVA protection", "brightening", "acne", "anti-aging", "hydration", "barrier support")',
     '- benefits[].strength: 0 | 1 | 2 | 3',
     '- safety.irritation_risk: "low" | "medium" | "high" | null',
     '- safety.watchouts[].likelihood: "rare" | "uncommon" | "common" | null',
@@ -32722,9 +32733,10 @@ function buildIngredientResearchPrompts({
     '- confidence: "low" | "medium" | "high"',
     '- evidence.grade: "A" | "B" | "C" | null',
     '',
-    'Evidence & citations rule (NO hallucinations):',
-    '- You may ONLY include citations that come from context.sources (exact title/url/year/source).',
-    '- If context.sources is missing or empty, set evidence.grade=null and evidence.citations=[].',
+    'Evidence & citations rule:',
+    '- If context.sources is provided and non-empty, prefer those (exact title/url/year/source).',
+    '- Otherwise, you may cite well-known authoritative sources (peer-reviewed journals, regulatory databases like CosIng/FDA/EWG, established dermatology references like DermNet NZ, Paula\'s Choice). Only cite sources you are confident exist.',
+    '- Set evidence.grade based on overall evidence quality for this ingredient (A = strong/guideline-level, B = moderate, C = limited).',
     '',
     'Schema (arrays may be empty):',
     '{',
@@ -32733,7 +32745,8 @@ function buildIngredientResearchPrompts({
     '    "inci": "",',
     '    "display_name": "",',
     '    "aliases": [],',
-    '    "what_it_is": ""',
+    '    "what_it_is": "",',
+    '    "category": ""',
     '  },',
     '  "overview": "",',
     '  "benefits": [],',
@@ -32750,6 +32763,10 @@ function buildIngredientResearchPrompts({
     '    "consider_separating": [],',
     '    "notes": []',
     '  },',
+    '  "formulation_notes": null,',
+    '  "regulatory_notes": null,',
+    '  "best_for": [],',
+    '  "caution_for": [],',
     '  "confidence": "low",',
     '  "evidence": {',
     '    "grade": null,',
@@ -32761,7 +32778,7 @@ function buildIngredientResearchPrompts({
     'Item shapes (use only if applicable):',
     '- benefits[] item: { "concern": "", "strength": 0, "what_it_means": "" }',
     '- safety.watchouts[] item: { "issue": "", "likelihood": null, "what_to_do": "" }',
-    '- evidence.citations[] item (MUST match a context.sources entry): { "title": "", "url": "", "year": null, "source": "" }',
+    '- evidence.citations[] item: { "title": "", "url": "", "year": null, "source": "" }',
     '',
     `context=${JSON.stringify(userContext)}`,
     '',
@@ -32871,9 +32888,11 @@ function sanitizeIngredientResearchOutput(raw, { query = '', language = 'EN', so
     }))
     .filter((row) => row.title || row.url)
     .filter((row) => {
-      if (!normalizedSources.length) return false;
-      const key = `${String(row.title || '').trim().toLowerCase()}::${String(row.url || '').trim().toLowerCase()}`;
-      return allowedCitationKeys.has(key);
+      if (normalizedSources.length) {
+        const key = `${String(row.title || '').trim().toLowerCase()}::${String(row.url || '').trim().toLowerCase()}`;
+        return allowedCitationKeys.has(key);
+      }
+      return Boolean(row.title && row.url);
     })
     .slice(0, 2);
 
@@ -32924,17 +32943,31 @@ function sanitizeIngredientResearchOutput(raw, { query = '', language = 'EN', so
     verdictNode.one_liner,
   );
 
+  const ingredientCategory = pickFirstTrimmed(
+    ingredientNode.category,
+    parsed.category,
+  );
+  const formulationNotes = pickFirstTrimmed(
+    parsed.formulation_notes,
+    parsed.formulationNotes,
+  );
+  const regulatoryNotes = pickFirstTrimmed(
+    parsed.regulatory_notes,
+    parsed.regulatoryNotes,
+  );
+
   return {
     schema_version: 'v2-lite',
     ingredient: {
       inci: String(ingredientNode.inci || query || '').trim().slice(0, 120),
       display_name: String(ingredientNode.display_name || ingredientNode.displayName || query || '').trim().slice(0, 120),
       aliases: asResearchStringArray(ingredientNode.aliases, 8),
-      what_it_is: String(whatItIs || '').trim().slice(0, 200),
+      what_it_is: String(whatItIs || '').trim().slice(0, 400),
+      category: String(ingredientCategory || '').trim().slice(0, 80) || null,
     },
     overview: String(pickFirstTrimmed(parsed.overview, verdictNode.one_liner) || '')
       .trim()
-      .slice(0, 320),
+      .slice(0, 500),
     benefits: (Array.isArray(parsed.benefits) ? parsed.benefits : [])
       .map((row) => asResearchObject(row))
       .filter(Boolean)
@@ -32973,20 +33006,22 @@ function sanitizeIngredientResearchOutput(raw, { query = '', language = 'EN', so
       ),
       notes: asResearchStringArray(usageSource.notes, 4),
     },
+    formulation_notes: String(formulationNotes || '').trim().slice(0, 400) || null,
+    regulatory_notes: String(regulatoryNotes || '').trim().slice(0, 300) || null,
+    best_for: asResearchStringArray(parsed.best_for || parsed.bestFor, 3),
+    caution_for: asResearchStringArray(parsed.caution_for || parsed.cautionFor, 3),
     confidence: normalizeIngredientConfidenceLevel(parsed.confidence, 'low'),
     evidence: {
-      grade: normalizedSources.length
-        ? ['A', 'B', 'C'].includes(String(evidenceNode.grade || '').trim().toUpperCase())
-          ? String(evidenceNode.grade || '').trim().toUpperCase()
-          : null
+      grade: ['A', 'B', 'C'].includes(String(evidenceNode.grade || '').trim().toUpperCase())
+        ? String(evidenceNode.grade || '').trim().toUpperCase()
         : null,
-      summary: String(evidenceNode.summary || '').trim().slice(0, 320),
+      summary: String(evidenceNode.summary || '').trim().slice(0, 400),
       citations,
     },
     top_products: topProducts,
     what_it_is: String(whatItIs || '')
       .trim()
-      .slice(0, 300),
+      .slice(0, 400),
   };
 }
 
@@ -33111,7 +33146,7 @@ async function runIngredientResearchSync({
       userPrompt: prompt.userPrompt,
       timeoutMs: callTimeoutMs,
       temperature: 0.3,
-      maxOutputTokens: 1400,
+      maxOutputTokens: 2000,
       responseJsonSchema: prompt.responseJsonSchema,
       allowDiagForceModel: false,
       routeTag: providerRoute,
@@ -33747,13 +33782,13 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     category: lang === 'CN' ? '成分查询' : 'Ingredient lookup',
     one_liner:
       lang === 'CN'
-        ? `这是关于 ${inputName} 的快速成分概览；如需更高准确度，可补充目标与敏感度。`
-        : `Here is a quick ingredient snapshot for ${inputName}; add goal/sensitivity for more precise matching.`,
+        ? `${inputName} 的基础信息；增强分析将提供更多详情。`
+        : `Basic information for ${inputName}; enhanced analysis will provide more detail.`,
     benefits: [
       {
-        concern: 'hydration',
+        concern: 'general',
         strength: 1,
-        what_it_means: lang === 'CN' ? '可提供基础方向判断，建议结合肤况验证。' : 'Provides baseline directional guidance; validate with your skin context.',
+        what_it_means: lang === 'CN' ? '详细信息生成中；补充目标与敏感度可获得个性化评估。' : 'Detailed information pending; add your goal and sensitivity for a personalized assessment.',
       },
     ],
     watchouts: [
@@ -33831,7 +33866,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     ...topProductsByTier.premium.map((name) => ({ name, price_tier: 'premium' })),
   ].slice(0, 6);
   const oneLiner = pickFirstTrimmed(
-    String(researchReady && researchReady.overview ? researchReady.overview : '').slice(0, 260),
+    String(researchReady && researchReady.overview ? researchReady.overview : '').slice(0, 500),
     picked.one_liner,
   );
   const confidence = (() => {
@@ -33878,7 +33913,10 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
         researchReady && researchReady.what_it_is,
         researchReady && researchReady.overview,
       ) || null,
-      category: picked.category,
+      category: pickFirstTrimmed(
+        researchIngredient.category,
+        researchReady && researchReady.ingredient && researchReady.ingredient.category,
+      ) || picked.category,
     },
     verdict: {
       one_liner: oneLiner,
@@ -33904,12 +33942,20 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     },
     watchouts,
     use_cases: [],
+    formulation_notes: pickFirstTrimmed(
+      researchReady && researchReady.formulation_notes,
+    ) || null,
+    regulatory_notes: pickFirstTrimmed(
+      researchReady && researchReady.regulatory_notes,
+    ) || null,
+    best_for: asResearchStringArray(researchReady && researchReady.best_for, 3),
+    caution_for: asResearchStringArray(researchReady && researchReady.caution_for, 3),
     top_products: topProducts,
     top_products_tiers: topProductsByTier,
     evidence: {
       summary:
         pickFirstTrimmed(
-          String(researchEvidence.summary || '').slice(0, 320),
+          String(researchEvidence.summary || '').slice(0, 400),
           lang === 'CN'
             ? '基于公开皮肤学共识生成的快速摘要，适合做第一步筛选。'
             : 'Quick summary based on common dermatology consensus for first-pass screening.',
@@ -34762,6 +34808,7 @@ async function callDirectGeminiForAlternatives({
     maxOutputTokens: RECO_ALTERNATIVES_DIRECT_GEMINI_MAX_OUTPUT_TOKENS,
     routeTag: 'reco_alternatives_direct',
     maxRetries: 0,
+    bypassCircuit: true,
   });
   if (!result.ok) {
     const err = new Error(`direct_gemini_failed: ${result.reason || 'unknown'}`);

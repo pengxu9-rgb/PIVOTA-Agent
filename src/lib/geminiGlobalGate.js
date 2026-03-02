@@ -306,19 +306,22 @@ function createGeminiGlobalGate({
     );
   }
 
-  async function withGate(route, fn) {
+  async function withGate(route, fn, { bypassCircuit = false } = {}) {
     const startedAt = Date.now();
-    const probe = circuit.beginProbeIfAllowed();
-    if (!probe.allowed) {
-      metrics.record({ route, status: 'circuit_open', latencyMs: 0 });
-      throw new GeminiGateError('CIRCUIT_OPEN', `Gemini global circuit open (reason=${probe.reason})`);
+    let probe = null;
+    if (!bypassCircuit) {
+      probe = circuit.beginProbeIfAllowed();
+      if (!probe.allowed) {
+        metrics.record({ route, status: 'circuit_open', latencyMs: 0 });
+        throw new GeminiGateError('CIRCUIT_OPEN', `Gemini global circuit open (reason=${probe.reason})`);
+      }
     }
 
     const gotToken = bucket.take();
     if (!gotToken) {
       const waited = await bucket.waitForToken(3000);
       if (!waited) {
-        if (probe.probe) circuit.endProbe();
+        if (probe && probe.probe) circuit.endProbe();
         metrics.record({ route, status: 'rate_limited', latencyMs: Date.now() - startedAt });
         throw new GeminiGateError('GLOBAL_RATE_LIMITED', 'Gemini global rate limit exceeded');
       }
@@ -327,22 +330,22 @@ function createGeminiGlobalGate({
     const release = await semaphore.acquire();
     try {
       const result = await fn();
-      circuit.recordSuccess();
+      if (!bypassCircuit) circuit.recordSuccess();
       metrics.record({ route, status: 'success', latencyMs: Date.now() - startedAt });
       return result;
     } catch (err) {
       if (is429OrRateLimit(err)) {
-        circuit.recordFailure();
+        if (!bypassCircuit) circuit.recordFailure();
         metrics.record({ route, status: 'rate_limited', latencyMs: Date.now() - startedAt });
       } else if (isTimeout(err)) {
         metrics.record({ route, status: 'timeout', latencyMs: Date.now() - startedAt });
       } else {
-        circuit.recordFailure();
+        if (!bypassCircuit) circuit.recordFailure();
         metrics.record({ route, status: 'error', latencyMs: Date.now() - startedAt });
       }
       throw err;
     } finally {
-      if (probe.probe) circuit.endProbe();
+      if (probe && probe.probe) circuit.endProbe();
       release();
     }
   }
