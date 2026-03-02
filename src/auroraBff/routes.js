@@ -34889,8 +34889,15 @@ async function fetchRecoAlternativesForProduct({
     maxTotal,
   });
 
+  // #region agent log
+  fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:fetchRecoAlternatives:entry',message:'alt call entry',data:{refreshKey,anchor:anchor||null,bestInput:String(bestInput||'').slice(0,60),effectiveTimeoutMs:effectiveAlternativesTimeoutMs,asyncTimeoutMs:effectiveAsyncRefreshTimeoutMs,circuitState:getRecoAlternativesSyncCircuitSnapshot(Date.now(),circuitPartitionKey).state,preferRefreshCache,inFlightKeys:Array.from(recoAlternativesRefreshInFlight),cacheSize:recoAlternativesRefreshCache.size},timestamp:Date.now(),hypothesisId:'H3-H4'})}).catch(()=>{});
+  // #endregion
+
   if (preferRefreshCache && refreshKey) {
     const cached = getRecoAlternativesRefreshCache(refreshKey);
+    // #region agent log
+    fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:fetchRecoAlternatives:cacheCheck',message:'refresh cache check',data:{refreshKey,cacheHit:Boolean(cached&&Array.isArray(cached.alternatives)&&cached.alternatives.length),altCount:cached&&Array.isArray(cached.alternatives)?cached.alternatives.length:0},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     if (cached && Array.isArray(cached.alternatives) && cached.alternatives.length) {
       return finalizeAlternativesResult({
         ok: true,
@@ -35478,6 +35485,9 @@ async function fetchRecoAlternativesForProduct({
     recoAlternativesRefreshInFlight.add(refreshKey);
     const refreshHandle = setTimeout(async () => {
       const asyncStartedAt = Date.now();
+      // #region agent log
+      fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:asyncRefresh:start',message:'async refresh started',data:{refreshKey,timeoutMs:effectiveAsyncRefreshTimeoutMs,bestInput:String(bestInput||'').slice(0,60)},timestamp:Date.now(),hypothesisId:'H1-H4'})}).catch(()=>{});
+      // #endregion
       try {
         const refreshed = await fetchRecoAlternativesForProduct({
           ctx,
@@ -35500,14 +35510,20 @@ async function fetchRecoAlternativesForProduct({
             async_timeout_ms: effectiveAsyncRefreshTimeoutMs,
           },
         });
-        if (refreshed && Array.isArray(refreshed.alternatives) && refreshed.alternatives.length) {
+        const gotAlts = Boolean(refreshed && Array.isArray(refreshed.alternatives) && refreshed.alternatives.length);
+        // #region agent log
+        fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:asyncRefresh:result',message:'async refresh result',data:{refreshKey,elapsedMs:Date.now()-asyncStartedAt,gotAlts,altCount:gotAlts?(refreshed.alternatives||[]).length:0,sourceMode:refreshed&&refreshed.source_mode,failureClass:refreshed&&refreshed.failure_class,llmLatency:refreshed&&refreshed.llm_trace&&refreshed.llm_trace.latency_ms},timestamp:Date.now(),hypothesisId:'H1-H5'})}).catch(()=>{});
+        // #endregion
+        if (gotAlts) {
           setRecoAlternativesRefreshCache(refreshKey, {
             alternatives: refreshed.alternatives.slice(0, Math.max(1, Math.min(8, Number(maxTotal) || 6))),
             llm_trace: refreshed.llm_trace || null,
           });
         }
-      } catch {
-        // ignore refresh worker failure
+      } catch (refreshErr) {
+        // #region agent log
+        fetch('http://127.0.0.1:7321/ingest/b932d703-918a-43c9-b609-0509a50f7ac8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'66edf8'},body:JSON.stringify({sessionId:'66edf8',location:'routes.js:asyncRefresh:error',message:'async refresh threw',data:{refreshKey,elapsedMs:Date.now()-asyncStartedAt,error:refreshErr&&refreshErr.message},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
       } finally {
         observeAuroraRecoAltStageLatency({ stage: 'async_refresh', latencyMs: Date.now() - asyncStartedAt });
         recoAlternativesRefreshInFlight.delete(refreshKey);
