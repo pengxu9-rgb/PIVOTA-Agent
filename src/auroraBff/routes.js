@@ -35546,25 +35546,6 @@ async function fetchRecoAlternativesForProduct({
         force_intent: 'alternatives',
         required_structured_keys: ['alternatives'],
         allow_recommendations: true,
-        resume_context: {
-          enabled: true,
-          template_version: 'v2',
-          flow_id: 'alternatives',
-          include_history: true,
-          clarification_history: [
-            { question_id: 'skin_type', option: profileSnapshot.skinType },
-            { question_id: 'sensitivity', option: profileSnapshot.sensitivity },
-            { question_id: 'barrier_status', option: profileSnapshot.barrierStatus },
-            { question_id: 'goals', option: profileSnapshot.goals[0] || 'Hydration' },
-          ],
-          resume_user_text: `Find dupe/similar/premium alternatives for ${bestInput}`,
-          known_profile_fields: {
-            skinType: profileSnapshot.skinType,
-            sensitivity: profileSnapshot.sensitivity,
-            barrierStatus: profileSnapshot.barrierStatus,
-            goals: profileSnapshot.goals,
-          },
-        },
       });
       const providerMeta = extractRecoUpstreamProviderMeta({ upstream });
       lastProviderMeta = providerMeta;
