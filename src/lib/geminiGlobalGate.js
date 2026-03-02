@@ -306,6 +306,13 @@ function createGeminiGlobalGate({
     );
   }
 
+  function isTransientOverload(err) {
+    if (!err) return false;
+    const status = Number(err.status || err.statusCode || 0);
+    const msg = String(err.message || '').toLowerCase();
+    return status === 503 || msg.includes('503') || msg.includes('unavailable') || msg.includes('high demand');
+  }
+
   async function withGate(route, fn, { bypassCircuit = false } = {}) {
     const startedAt = Date.now();
     let probe = null;
@@ -339,6 +346,8 @@ function createGeminiGlobalGate({
         metrics.record({ route, status: 'rate_limited', latencyMs: Date.now() - startedAt });
       } else if (isTimeout(err)) {
         metrics.record({ route, status: 'timeout', latencyMs: Date.now() - startedAt });
+      } else if (isTransientOverload(err)) {
+        metrics.record({ route, status: 'overloaded', latencyMs: Date.now() - startedAt });
       } else {
         if (!bypassCircuit) circuit.recordFailure();
         metrics.record({ route, status: 'error', latencyMs: Date.now() - startedAt });

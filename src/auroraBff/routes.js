@@ -34811,7 +34811,7 @@ async function callDirectGeminiForAlternatives({
     temperature: 0,
     maxOutputTokens: RECO_ALTERNATIVES_DIRECT_GEMINI_MAX_OUTPUT_TOKENS,
     routeTag: 'reco_alternatives_direct',
-    maxRetries: 0,
+    maxRetries: 2,
     bypassCircuit: true,
   });
   if (!result.ok) {
