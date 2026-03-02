@@ -24750,7 +24750,15 @@ async function sanitizeRecoCandidatesForUi(
         }
       }
 
-      if (kept.length === 0 && AURORA_PURCHASABLE_FALLBACK_ENABLED && typeof fallbackCandidateBuilder === 'function') {
+      const llmDemotedToExternalCtas = externalSearchCtas.filter(
+        (cta) => cta && (
+          String(cta.reason || '').includes('missing_openable_url') ||
+          String(cta.reason || '').includes('open_contract_only') ||
+          String(cta.reason || '').includes('non_https')
+        ),
+      ).length;
+      const skipCatalogFallback = llmDemotedToExternalCtas > 0;
+      if (kept.length === 0 && !skipCatalogFallback && AURORA_PURCHASABLE_FALLBACK_ENABLED && typeof fallbackCandidateBuilder === 'function') {
         const recoveryQueries = collectPurchasableFallbackQueries({
           payload,
           recommendationRows: recs,
@@ -24785,7 +24793,7 @@ async function sanitizeRecoCandidatesForUi(
         }
       }
 
-      if (kept.length === 0 && AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) {
+      if (kept.length === 0 && !skipCatalogFallback && AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) {
         const llmQueries = collectPurchasableFallbackQueries({
           payload,
           recommendationRows: recs,
@@ -25884,7 +25892,7 @@ async function applyProductIntelGuardrailsToEnvelope({
     qaContext,
     fallbackCandidateBuilder: AURORA_PURCHASABLE_FALLBACK_ENABLED ? buildPurchasableFallbackCandidates : null,
     allowExternalSeedSupplement: AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true,
-    externalSeedStrategy: 'supplement_internal_first',
+    externalSeedStrategy: 'on_empty_only',
     allowResolverExternalRecommendations: true,
     logger,
   });
@@ -26197,7 +26205,7 @@ async function applyRecommendationOutputGuardrailsForRoute({
     qaContext,
     fallbackCandidateBuilder: AURORA_PURCHASABLE_FALLBACK_ENABLED ? buildPurchasableFallbackCandidates : null,
     allowExternalSeedSupplement: AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true,
-    externalSeedStrategy: 'supplement_internal_first',
+    externalSeedStrategy: 'on_empty_only',
     logger,
   });
   const lookupMeta = isPlainObject(sanitized.lookup_meta) ? sanitized.lookup_meta : {};
