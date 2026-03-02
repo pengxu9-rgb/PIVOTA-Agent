@@ -572,3 +572,60 @@ test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade',
     },
   );
 });
+
+test('/v1/analysis/skin: production disables force vision override and keeps degraded/report as policy skip', async () => {
+  await withEnv(
+    {
+      NODE_ENV: 'production',
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_SKIN_VISION_ENABLED: 'true',
+      AURORA_SKIN_DEGRADED_MODE: 'report',
+      AURORA_SKIN_FORCE_VISION_CALL: 'true',
+      AURORA_SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD: 'false',
+      AURORA_SKIN_GEMINI_API_KEY: undefined,
+      GEMINI_API_KEY: undefined,
+      OPENAI_API_KEY: undefined,
+      PIVOTA_BACKEND_BASE_URL: '',
+      PIVOTA_BACKEND_AGENT_API_KEY: '',
+    },
+    async () => {
+      resetVisionMetrics();
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      try {
+        const { mountAuroraBffRoutes } = mod;
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_force_vision_prod_off',
+            'X-Trace-ID': 'trace_force_vision_prod_off',
+            'X-Brief-ID': 'brief_force_vision_prod_off',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'AM cleanser + SPF; PM cleanser + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_force_vision_prod_off', qc_status: 'degraded' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        assert.ok(card);
+
+        const visionDecision = String(card?.payload?.quality_report?.llm?.vision?.decision || '');
+        assert.equal(visionDecision, 'skip');
+        assert.equal(resp.body?.analysis_meta?.skin_force_vision_call_requested, true);
+        assert.equal(resp.body?.analysis_meta?.skin_force_vision_call_effective, false);
+        assert.equal(card?.payload?.analysis_meta?.skin_force_vision_call_requested, true);
+        assert.equal(card?.payload?.analysis_meta?.skin_force_vision_call_effective, false);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});

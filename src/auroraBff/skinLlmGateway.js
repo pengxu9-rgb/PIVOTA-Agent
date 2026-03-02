@@ -118,13 +118,50 @@ function clampText(value, maxLen = 500) {
   return `${text.slice(0, Math.max(1, maxLen - 3))}...`;
 }
 
+function sanitizeGeminiResponseSchema(schema) {
+  if (Array.isArray(schema)) return schema.map((item) => sanitizeGeminiResponseSchema(item));
+  if (!schema || typeof schema !== 'object') return schema;
+  const out = {};
+  for (const [key, value] of Object.entries(schema)) {
+    // Gemini responseSchema currently rejects this keyword in nested items.
+    if (key === 'additionalProperties') continue;
+    out[key] = sanitizeGeminiResponseSchema(value);
+  }
+  return out;
+}
+
+function toStatusCodeFromMessage(error) {
+  const text = String((error && error.message) || '').trim();
+  if (!text) return null;
+  const patterns = [
+    /got\s+status:\s*(\d{3})/i,
+    /\bstatus(?:\s*code)?\s*[=:]\s*(\d{3})\b/i,
+    /\bhttp\s*(\d{3})\b/i,
+    /\b(\d{3})\s*(?:bad request|unauthorized|forbidden|not found|too many requests|internal server error|service unavailable)\b/i,
+  ];
+  for (const pattern of patterns) {
+    const matched = text.match(pattern);
+    if (!matched || matched.length < 2) continue;
+    const num = Number(matched[1]);
+    if (Number.isFinite(num) && num >= 100 && num <= 599) return Math.trunc(num);
+  }
+  return null;
+}
+
 function toStatusCode(error) {
-  const candidates = [error && error.status, error && error.statusCode, error && error.response && error.response.status];
+  const candidates = [
+    error && error.status,
+    error && error.statusCode,
+    error && error.response && error.response.status,
+    error && error.response && error.response.data && error.response.data.status,
+    error && error.response && error.response.data && error.response.data.code,
+    error && error.response && error.response.data && error.response.data.error && error.response.data.error.code,
+  ];
   for (const value of candidates) {
     const num = Number(value);
     if (Number.isFinite(num) && num > 0) return Math.trunc(num);
   }
-  return null;
+  return toStatusCodeFromMessage(error);
 }
 
 function getHeaderValue(headers, keyCandidates = []) {
@@ -140,17 +177,33 @@ function getHeaderValue(headers, keyCandidates = []) {
 
 function classifyGeminiError(err) {
   if (!err) return { reason: 'UNKNOWN', upstream_status_code: null, error_evidence: null };
-  const code = String(err.code || '').trim().toUpperCase();
+  const codeRaw =
+    trimOrNull(err.code) ||
+    trimOrNull(err.errorCode) ||
+    trimOrNull(err && err.response && err.response.data && err.response.data.error && err.response.data.error.status) ||
+    trimOrNull(err && err.response && err.response.data && err.response.data.error && err.response.data.error.code) ||
+    trimOrNull(err && err.response && err.response.data && err.response.data.code) ||
+    null;
+  const code = String(codeRaw || '').trim().toUpperCase();
   const status = toStatusCode(err);
   const message = String(err.message || '').toLowerCase();
   const responseHeaders = err && err.response && err.response.headers ? err.response.headers : null;
   const rootHeaders = err && err.headers ? err.headers : null;
   const headers = responseHeaders || rootHeaders;
+  const grpcStatusRaw =
+    trimOrNull(err && err.grpc_status) ||
+    trimOrNull(err && err.grpcStatus) ||
+    trimOrNull(err && err.response && err.response.data && err.response.data.error && err.response.data.error.status) ||
+    null;
   const evidenceBase = {
     reason_normalized: 'VISION_UNKNOWN',
     http_status: status,
-    grpc_status: /^[A-Z_]+$/.test(code) ? code : null,
-    provider_error_code: trimOrNull(code || err.code || err.errorCode),
+    grpc_status: /^[A-Z_]+$/.test(String(grpcStatusRaw || '').toUpperCase())
+      ? String(grpcStatusRaw).toUpperCase()
+      : /^[A-Z_]+$/.test(code)
+        ? code
+        : null,
+    provider_error_code: trimOrNull(codeRaw),
     provider_error_message: clampText(err && err.message),
     provider_request_id: getHeaderValue(headers, ['x-request-id', 'x-goog-request-id', 'request-id']),
     provider_trace: getHeaderValue(headers, ['traceparent', 'x-cloud-trace-context', 'x-b3-traceid', 'x-trace-id']),
@@ -273,7 +326,7 @@ async function callGeminiJson({
     ],
     config: {
       responseMimeType: 'application/json',
-      responseSchema,
+      responseSchema: sanitizeGeminiResponseSchema(responseSchema),
       temperature: 0.1,
       topP: 0.8,
       candidateCount: 1,
@@ -501,4 +554,7 @@ module.exports = {
   validateSkinAnalysisContent,
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
+  sanitizeGeminiResponseSchema,
+  classifyGeminiError,
+  toStatusCode,
 };
