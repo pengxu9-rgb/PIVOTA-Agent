@@ -1628,8 +1628,8 @@ const RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS = (() => {
 })();
 
 const RECO_ALTERNATIVES_SYNC_FAILFAST_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_TIMEOUT_MS || 2800);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2800;
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_TIMEOUT_MS || 4500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4500;
   const bounded = Math.max(2000, Math.min(20000, v));
   return Math.min(bounded, RECO_ALTERNATIVES_TIMEOUT_HARD_CAP_MS);
 })();
@@ -1684,14 +1684,14 @@ const RECO_ALTERNATIVES_SYNC_CIRCUIT_WINDOW_MS = (() => {
 })();
 
 const RECO_ALTERNATIVES_SYNC_CIRCUIT_FAIL_THRESHOLD = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_FAIL_THRESHOLD || 5);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 5;
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_FAIL_THRESHOLD || 8);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8;
   return Math.max(2, Math.min(20, v));
 })();
 
 const RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS || 30 * 1000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 30 * 1000;
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_SYNC_CIRCUIT_OPEN_MS || 15 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 15 * 1000;
   return Math.max(1000, Math.min(10 * 60 * 1000, v));
 })();
 
@@ -35161,7 +35161,8 @@ async function fetchRecoAlternativesForProduct({
   };
 
   let anchorPrecheck = null;
-  if (!anchor && !skipAnchorPrecheck) {
+  const skipPrecheckForInputOnly = !anchor && bestInput && !anchorId;
+  if (!anchor && !skipAnchorPrecheck && !skipPrecheckForInputOnly) {
     if (isRecoAlternativesAnchorPrecheckCircuitOpen()) {
       precheckLatencyMs = 0;
       const reason = String(recoAlternativesAnchorPrecheckCircuitState.last_reason || '').trim() || 'circuit_open';
@@ -35354,8 +35355,17 @@ async function fetchRecoAlternativesForProduct({
       }
     }
     }
-  } else if (anchor || skipAnchorPrecheck) {
-    recordAuroraRecoAltPrecheck({ outcome: 'skipped', reason: anchor ? 'anchor_supplied' : 'cache_hit' });
+  } else if (anchor || skipAnchorPrecheck || skipPrecheckForInputOnly) {
+    const skipReason = anchor ? 'anchor_supplied' : skipPrecheckForInputOnly ? 'input_only_bypass' : 'cache_hit';
+    recordAuroraRecoAltPrecheck({ outcome: 'skipped', reason: skipReason });
+    if (skipPrecheckForInputOnly) {
+      refreshKey = makeRecoAlternativesRefreshKey({
+        anchorId: null,
+        productInput: bestInput,
+        lang: ctx.lang,
+        maxTotal,
+      });
+    }
   }
 
   const prefix = buildContextPrefix({
