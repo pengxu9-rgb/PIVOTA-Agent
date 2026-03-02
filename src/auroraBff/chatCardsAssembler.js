@@ -210,15 +210,24 @@ function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = 
       required: true,
     });
   } else if (source.length > 0) {
-    followUpQuestions.push({
-      id: `fup_${Date.now()}`,
-      question:
-        language === 'CN'
-          ? '你希望我下一步怎么继续？'
-          : 'How should I continue for the next step?',
-      options: source.slice(0, isRoutine ? 3 : 2),
-      required: false,
+    const quickReplyKeys = new Set(
+      quickReplies.map((row) => `${asString(row.id).toLowerCase()}::${asString(row.label).toLowerCase()}`),
+    );
+    const remainingOptions = source.filter((row) => {
+      const key = `${asString(row.id).toLowerCase()}::${asString(row.label).toLowerCase()}`;
+      return !quickReplyKeys.has(key);
     });
+    if (remainingOptions.length > 0) {
+      followUpQuestions.push({
+        id: `fup_${Date.now()}`,
+        question:
+          language === 'CN'
+            ? '你希望我下一步怎么继续？'
+            : 'How should I continue for the next step?',
+        options: remainingOptions.slice(0, isRoutine ? 3 : 2),
+        required: false,
+      });
+    }
   }
 
   return {
