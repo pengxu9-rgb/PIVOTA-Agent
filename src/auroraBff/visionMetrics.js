@@ -160,6 +160,10 @@ const auroraSkinFallbackDeterministicCounter = new Map();
 const auroraSkinShadowVerifyIsolatedWriteCounter = new Map();
 const auroraIngredientsFlowCounter = new Map();
 const auroraIngredientProviderCounter = new Map();
+const ingredientProviderCallCounter = new Map();
+const ingredientUserActionCounter = new Map();
+const geminiRateLimitedCounter = new Map();
+const timeoutRootCauseCounter = new Map();
 const auroraIngredientsFirstAnswerLatency = {
   count: 0,
   sum: 0,
@@ -608,6 +612,51 @@ function normalizeAuroraIngredientProvider(provider) {
 function normalizeAuroraIngredientProviderOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'unknown');
   return token || 'unknown';
+}
+
+function normalizeIngredientProviderCallStage(stage) {
+  const token = cleanMetricToken(stage, 'sync');
+  if (token === 'sync' || token === 'poll') return token;
+  return 'sync';
+}
+
+function normalizeIngredientProviderCallOutcome(outcome) {
+  return cleanMetricToken(outcome, 'unknown');
+}
+
+function normalizeIngredientUserAction(action) {
+  const token = cleanMetricToken(action, 'lookup');
+  if (token === 'lookup' || token === 'poll') return token;
+  return 'lookup';
+}
+
+function normalizeGeminiRateLimitedRoute(route) {
+  const token = cleanMetricToken(route, 'unknown');
+  if (
+    token === 'ingredient' ||
+    token === 'diagnosis' ||
+    token === 'reco_fallback' ||
+    token === 'qa' ||
+    token === 'shadow' ||
+    token === 'prelabel'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeTimeoutRootCause(routeCause) {
+  const token = cleanMetricToken(routeCause, 'unknown');
+  if (
+    token === 'budget_exceeded' ||
+    token === 'provider_timeout' ||
+    token === 'rate_limited' ||
+    token === 'network' ||
+    token === 'unknown'
+  ) {
+    return token;
+  }
+  return 'unknown';
 }
 
 function normalizeAuroraAnalysisSource(source) {
@@ -2204,6 +2253,52 @@ function recordAuroraIngredientProviderMetric({ stage, provider, outcome, delta 
   );
 }
 
+function recordIngredientProviderCallMetric({ stage, outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    ingredientProviderCallCounter,
+    {
+      stage: normalizeIngredientProviderCallStage(stage),
+      outcome: normalizeIngredientProviderCallOutcome(outcome),
+    },
+    amount,
+  );
+}
+
+function recordIngredientUserActionMetric({ action, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    ingredientUserActionCounter,
+    { action: normalizeIngredientUserAction(action) },
+    amount,
+  );
+}
+
+function recordGeminiRateLimitedMetric({ route, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    geminiRateLimitedCounter,
+    { route: normalizeGeminiRateLimitedRoute(route) },
+    amount,
+  );
+}
+
+function recordTimeoutRootCauseMetric({ route, cause, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    timeoutRootCauseCounter,
+    {
+      route: normalizeGeminiRateLimitedRoute(route),
+      cause: normalizeTimeoutRootCause(cause),
+    },
+    amount,
+  );
+}
+
 function observeAuroraIngredientsFirstAnswerLatency({ latencyMs } = {}) {
   const latency = Number(latencyMs);
   if (!Number.isFinite(latency) || latency < 0) return;
@@ -3103,6 +3198,22 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_ingredient_provider_total counter');
   renderCounter(lines, 'aurora_ingredient_provider_total', auroraIngredientProviderCounter);
 
+  lines.push('# HELP ingredient_provider_call_total Ingredient provider call count by stage and outcome.');
+  lines.push('# TYPE ingredient_provider_call_total counter');
+  renderCounter(lines, 'ingredient_provider_call_total', ingredientProviderCallCounter);
+
+  lines.push('# HELP ingredient_user_action_total Ingredient user action count by action type.');
+  lines.push('# TYPE ingredient_user_action_total counter');
+  renderCounter(lines, 'ingredient_user_action_total', ingredientUserActionCounter);
+
+  lines.push('# HELP gemini_rate_limited_total Total Gemini 429/rate-limited events by route.');
+  lines.push('# TYPE gemini_rate_limited_total counter');
+  renderCounter(lines, 'gemini_rate_limited_total', geminiRateLimitedCounter);
+
+  lines.push('# HELP timeout_root_cause_total Timeout/degradation root cause counters by route and cause.');
+  lines.push('# TYPE timeout_root_cause_total counter');
+  renderCounter(lines, 'timeout_root_cause_total', timeoutRootCauseCounter);
+
   lines.push('# HELP ingredients_first_answer_latency_ms Ingredient first-answer latency measured from ui events.');
   lines.push('# TYPE ingredients_first_answer_latency_ms histogram');
   for (const bucket of LATENCY_BUCKETS_MS) {
@@ -3245,6 +3356,8 @@ function renderVisionMetricsPrometheus() {
     stage: 'attempt',
     provider: 'gemini',
   });
+  const ingredientProviderCallsTotal = counterValueByLabels(ingredientProviderCallCounter, {});
+  const ingredientUserActionsTotal = counterValueByLabels(ingredientUserActionCounter, {});
 
   lines.push('# HELP aurora_skin_reco_generated_rate reco_generated / reco_request.');
   lines.push('# TYPE aurora_skin_reco_generated_rate gauge');
@@ -3311,6 +3424,10 @@ function renderVisionMetricsPrometheus() {
   lines.push(
     `ingredient_research_error_rate ${ingredientResearchRequested > 0 ? ingredientResearchError / ingredientResearchRequested : 0}`,
   );
+
+  lines.push('# HELP ingredient_calls_per_user_action ingredient_provider_call_total / ingredient_user_action_total.');
+  lines.push('# TYPE ingredient_calls_per_user_action gauge');
+  lines.push(`ingredient_calls_per_user_action ${ingredientUserActionsTotal > 0 ? ingredientProviderCallsTotal / ingredientUserActionsTotal : 0}`);
 
   lines.push('# HELP gemini_circuit_open_rate ingredient provider circuit-open events / gemini attempts.');
   lines.push('# TYPE gemini_circuit_open_rate gauge');
@@ -3490,6 +3607,10 @@ function resetVisionMetrics() {
   auroraSkinShadowVerifyIsolatedWriteCounter.clear();
   auroraIngredientsFlowCounter.clear();
   auroraIngredientProviderCounter.clear();
+  ingredientProviderCallCounter.clear();
+  ingredientUserActionCounter.clear();
+  geminiRateLimitedCounter.clear();
+  timeoutRootCauseCounter.clear();
   auroraIngredientsFirstAnswerLatency.count = 0;
   auroraIngredientsFirstAnswerLatency.sum = 0;
   for (const key of auroraIngredientsFirstAnswerLatency.buckets.keys()) {
@@ -3663,6 +3784,10 @@ function snapshotVisionMetrics() {
     auroraSkinShadowVerifyIsolatedWrite: Array.from(auroraSkinShadowVerifyIsolatedWriteCounter.entries()),
     auroraIngredientsFlow: Array.from(auroraIngredientsFlowCounter.entries()),
     auroraIngredientProvider: Array.from(auroraIngredientProviderCounter.entries()),
+    ingredientProviderCall: Array.from(ingredientProviderCallCounter.entries()),
+    ingredientUserAction: Array.from(ingredientUserActionCounter.entries()),
+    geminiRateLimited: Array.from(geminiRateLimitedCounter.entries()),
+    timeoutRootCause: Array.from(timeoutRootCauseCounter.entries()),
     auroraIngredientsFirstAnswerLatency: {
       count: auroraIngredientsFirstAnswerLatency.count,
       sum: auroraIngredientsFirstAnswerLatency.sum,
@@ -3805,6 +3930,10 @@ module.exports = {
   recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
+  recordIngredientProviderCallMetric,
+  recordIngredientUserActionMetric,
+  recordGeminiRateLimitedMetric,
+  recordTimeoutRootCauseMetric,
   observeAuroraIngredientsFirstAnswerLatency,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,

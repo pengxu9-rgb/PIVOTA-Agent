@@ -45997,6 +45997,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (rateLimit.blocked) {
           routeReasons.push(rateLimit.reason || 'rate_limited');
           recordAuroraIngredientsFlowMetric({ stage: 'rate_limited', hit: true });
+          recordTimeoutRootCauseMetric({ route: 'ingredient', cause: 'rate_limited' });
         }
 
         let researchCache = getIngredientResearchCache(target);
