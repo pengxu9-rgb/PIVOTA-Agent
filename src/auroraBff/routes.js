@@ -100,6 +100,8 @@ const {
   recordIngredientProviderCallMetric,
   recordIngredientUserActionMetric,
   recordGeminiRateLimitedMetric,
+  recordGeminiModelNotFoundMetric,
+  recordIngredientCooldownAppliedMetric,
   recordTimeoutRootCauseMetric,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
@@ -13512,6 +13514,7 @@ async function callGeminiJsonObject({
   } catch (err) {
     const reason = err && err.code ? String(err.code) : 'gemini_error';
     const detail = err && err.message ? String(err.message) : null;
+    const providerHttpStatus = parseProviderHttpStatus(reason, detail, err && err.status);
     const normalizedRoute = String(routeTag || '').trim().toLowerCase();
     const lowerErrorToken = `${reason} ${detail || ''}`.toLowerCase();
     if (
@@ -13539,6 +13542,7 @@ async function callGeminiJsonObject({
       reason,
       detail,
       resolved_model: resolvedModel,
+      provider_http_status: providerHttpStatus,
     };
   }
 }
@@ -31481,9 +31485,36 @@ function ingredientModelTier(modelName = '') {
   return /pro/i.test(String(modelName || '').trim()) ? 'pro' : 'flash';
 }
 
-function classifyIngredientProviderError(reason, detail = '') {
+function parseProviderHttpStatus(reason = '', detail = '', explicitStatus = null) {
+  const explicit = Number(explicitStatus);
+  if (Number.isFinite(explicit) && explicit >= 100 && explicit <= 599) return Math.trunc(explicit);
+  const token = `${String(reason || '').trim()} ${String(detail || '').trim()}`.trim();
+  if (!token) return null;
+  const matched =
+    token.match(/\bstatus\s*[:=]?\s*([1-5]\d{2})\b/i) ||
+    token.match(/\bcode\s*[:=]?\s*([1-5]\d{2})\b/i) ||
+    token.match(/"code"\s*:\s*([1-5]\d{2})/i) ||
+    token.match(/\b([1-5]\d{2})\b/);
+  if (!matched) return null;
+  const parsed = Number(matched[1]);
+  if (!Number.isFinite(parsed) || parsed < 100 || parsed > 599) return null;
+  return Math.trunc(parsed);
+}
+
+function classifyIngredientProviderError(reason, detail = '', providerHttpStatus = null) {
   const token = `${String(reason || '').trim()} ${String(detail || '').trim()}`.trim().toLowerCase();
+  const status = parseProviderHttpStatus(reason, detail, providerHttpStatus);
   if (!token) return 'provider_unavailable';
+  if (
+    status === 404 ||
+    token.includes('not found') ||
+    token.includes('model not found') ||
+    token.includes('unsupported for generatecontent') ||
+    token.includes('not supported for generatecontent') ||
+    token.includes('unsupported model')
+  ) {
+    return 'gemini_model_not_found';
+  }
   if (
     token.includes('timeout') ||
     token.includes('deadline') ||
@@ -31492,8 +31523,12 @@ function classifyIngredientProviderError(reason, detail = '') {
   ) {
     return 'gemini_timeout';
   }
-  if (token.includes('rate') || token.includes('quota') || token.includes('429')) return 'gemini_rate_limited';
+  if (status === 429 || /\brate[_\s-]?limited\b|\btoo[_\s-]?many[_\s-]?requests\b|\bquota\b|\b429\b/.test(token)) {
+    return 'gemini_rate_limited';
+  }
   if (
+    status === 401 ||
+    status === 403 ||
     token.includes('auth') ||
     token.includes('key') ||
     token.includes('permission') ||
@@ -31516,6 +31551,7 @@ function classifyIngredientProviderError(reason, detail = '') {
   ) {
     return 'gemini_network';
   }
+  if (status >= 500 && status <= 599) return 'gemini_upstream_5xx';
   if (
     token.includes('5xx') ||
     token.includes('500') ||
@@ -31535,8 +31571,11 @@ function mapIngredientErrorToTimeoutRootCause(errorCode = '', fallbackReason = '
   const token = String(errorCode || '').trim().toLowerCase();
   const fallback = String(fallbackReason || '').trim().toLowerCase();
   if (token === 'gemini_rate_limited' || fallback === 'rate_limit_cooldown') return 'rate_limited';
+  if (token === 'gemini_model_not_found') return 'provider_unavailable';
   if (token === 'gemini_timeout') return fallback === 'budget_exceeded' ? 'budget_exceeded' : 'provider_timeout';
   if (token === 'gemini_network') return 'network';
+  if (token === 'gemini_upstream_5xx') return 'provider_timeout';
+  if (token === 'gemini_auth' || token === 'provider_unavailable') return 'provider_unavailable';
   return 'unknown';
 }
 
@@ -32465,11 +32504,13 @@ async function runIngredientResearchSync({
   let effectiveModel = resolvedModel;
   let effectiveModelTier = modelTier;
   const providerAttempts = [];
+  let finalProviderHttpStatus = null;
   const startedAt = Date.now();
   const circuitState = getIngredientProviderCircuitState();
   const cooldownRemainingMs = getIngredientResearchCooldownRemainingMs(normalizedQuery || query, resolvedModel);
   if (cooldownRemainingMs > 0) {
     recordGeminiRateLimitedMetric({ route: providerRoute });
+    recordIngredientCooldownAppliedMetric({ reasonCode: 'rate_limit_cooldown' });
     recordTimeoutRootCauseMetric({ route: providerRoute, cause: 'rate_limited' });
     recordAuroraIngredientProviderMetric({
       stage: 'final',
@@ -32494,6 +32535,7 @@ async function runIngredientResearchSync({
       prompt_meta: null,
       fallback_reason: 'rate_limit_cooldown',
       timeout_root_cause: 'rate_limited',
+      provider_http_status: null,
       rate_limit_cooldown_ms: cooldownRemainingMs,
     };
   }
@@ -32524,6 +32566,7 @@ async function runIngredientResearchSync({
       provider_attempts: providerAttempts,
       prompt_meta: null,
       fallback_reason: reason,
+      provider_http_status: null,
     };
   }
   const prompt = buildIngredientResearchPrompts({
@@ -32561,9 +32604,13 @@ async function runIngredientResearchSync({
     });
     const latencyMs = Math.max(0, Date.now() - callStartedAt);
     const attemptModel = pickFirstTrimmed(resp && resp.resolved_model, effectiveModel);
+    const attemptHttpStatus = parseProviderHttpStatus(resp && resp.reason, resp && resp.detail, resp && resp.provider_http_status);
     if (attemptModel) {
       effectiveModel = attemptModel;
       effectiveModelTier = /pro/i.test(String(attemptModel || '')) ? 'pro' : 'flash';
+    }
+    if (Number.isFinite(Number(attemptHttpStatus))) {
+      finalProviderHttpStatus = Math.trunc(Number(attemptHttpStatus));
     }
     if (resp && resp.ok && resp.json && typeof resp.json === 'object' && !Array.isArray(resp.json)) {
       const parsed = sanitizeIngredientResearchOutput(resp.json, {
@@ -32594,9 +32641,10 @@ async function runIngredientResearchSync({
           input_chars: prompt.inputChars,
           output_chars: JSON.stringify(parsed).length,
         },
+        provider_http_status: finalProviderHttpStatus,
       };
     }
-    const reasonCode = classifyIngredientProviderError(resp && resp.reason, resp && resp.detail);
+    const reasonCode = classifyIngredientProviderError(resp && resp.reason, resp && resp.detail, attemptHttpStatus);
     const recoveredParsed = resp && typeof resp.raw_text === 'string'
       ? sanitizeIngredientResearchOutput(extractResearchObjectFromRawText(resp.raw_text), {
         query,
@@ -32628,6 +32676,7 @@ async function runIngredientResearchSync({
           input_chars: prompt.inputChars,
           output_chars: String(resp.raw_text || '').length,
         },
+        provider_http_status: finalProviderHttpStatus,
       };
     }
     providerAttempts.push({
@@ -32636,6 +32685,7 @@ async function runIngredientResearchSync({
       reason_code: reasonCode,
       reason_raw: pickFirstTrimmed(resp && resp.reason, null),
       detail_raw: pickFirstTrimmed(resp && resp.detail, null),
+      provider_http_status: Number.isFinite(Number(attemptHttpStatus)) ? Math.trunc(Number(attemptHttpStatus)) : null,
       resolved_model: attemptModel || effectiveModel || null,
       latency_ms: latencyMs,
     });
@@ -32657,7 +32707,11 @@ async function runIngredientResearchSync({
   }
   if (finalErrorCode === 'gemini_rate_limited') {
     setIngredientResearchCooldown(normalizedQuery || query, AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS, effectiveModel || resolvedModel);
+    recordIngredientCooldownAppliedMetric({ reasonCode: finalErrorCode });
     recordGeminiRateLimitedMetric({ route: providerRoute });
+  }
+  if (finalErrorCode === 'gemini_model_not_found') {
+    recordGeminiModelNotFoundMetric({ route: providerRoute, model: effectiveModel || resolvedModel });
   }
   if (finalTimeoutRootCause === 'unknown') {
     finalTimeoutRootCause = mapIngredientErrorToTimeoutRootCause(finalErrorCode, finalFallbackReason);
@@ -32682,6 +32736,7 @@ async function runIngredientResearchSync({
       provider_model_tier: effectiveModelTier,
       provider_circuit_state: afterCircuitState,
       research_error_code: finalErrorCode,
+      provider_http_status: finalProviderHttpStatus,
       timeout_root_cause: finalTimeoutRootCause,
       attempts: providerAttempts,
     },
@@ -32704,6 +32759,7 @@ async function runIngredientResearchSync({
     },
     fallback_reason: finalFallbackReason || finalErrorCode,
     timeout_root_cause: finalTimeoutRootCause,
+    provider_http_status: finalProviderHttpStatus,
   };
 }
 
@@ -32804,6 +32860,9 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
         provider_circuit_state: syncResult && syncResult.provider_circuit_state ? syncResult.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResult && syncResult.research_error_code ? syncResult.research_error_code : null,
         timeout_root_cause: syncResult && syncResult.timeout_root_cause ? syncResult.timeout_root_cause : null,
+        provider_http_status: Number.isFinite(Number(syncResult && syncResult.provider_http_status))
+          ? Math.trunc(Number(syncResult.provider_http_status))
+          : null,
         confidence_level: confidenceLevel,
         ingredient: {
           inci: String(ingredient.inci || query || '').slice(0, 120),
@@ -33035,6 +33094,12 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     metaObj.research_error_code,
     researchObj && (researchObj.error_code || researchObj.error),
   );
+  const providerHttpStatusCandidate = [metaObj.provider_http_status, researchObj && researchObj.provider_http_status].find(
+    (value) => value !== null && value !== undefined && String(value).trim() !== '',
+  );
+  const providerHttpStatus = Number.isFinite(Number(providerHttpStatusCandidate))
+    ? Math.trunc(Number(providerHttpStatusCandidate))
+    : null;
   const timeoutRootCause = pickFirstTrimmed(
     metaObj.timeout_root_cause,
     researchObj && researchObj.timeout_root_cause,
@@ -33274,6 +33339,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     research_status: researchStatus,
     research_provider: researchProvider || null,
     research_error_code: researchErrorCode || null,
+    provider_http_status: providerHttpStatus,
     timeout_root_cause: timeoutRootCause || null,
     normalized_query: normalizedQuery || null,
     route_decision_reasons: routeDecisionReasons,
@@ -33406,6 +33472,9 @@ async function buildIngredientReportPayloadWithResearch({
         provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
         timeout_root_cause: syncResearch && syncResearch.timeout_root_cause ? syncResearch.timeout_root_cause : null,
+        provider_http_status: Number.isFinite(Number(syncResearch && syncResearch.provider_http_status))
+          ? Math.trunc(Number(syncResearch.provider_http_status))
+          : null,
         provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
         normalized_query: normalizedQuery,
         rate_limit_cooldown_ms: Number.isFinite(Number(syncResearch && syncResearch.rate_limit_cooldown_ms))
@@ -33445,6 +33514,10 @@ async function buildIngredientReportPayloadWithResearch({
       research_error_code: pickFirstTrimmed(
         metaObj.research_error_code,
         resolvedResearch && (resolvedResearch.error_code || resolvedResearch.error),
+      ),
+      provider_http_status: pickFirstTrimmed(
+        metaObj.provider_http_status,
+        resolvedResearch && resolvedResearch.provider_http_status,
       ),
       timeout_root_cause: pickFirstTrimmed(
         metaObj.timeout_root_cause,
@@ -46443,6 +46516,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
               error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
               timeout_root_cause: syncResearch && syncResearch.timeout_root_cause ? syncResearch.timeout_root_cause : null,
+              provider_http_status: Number.isFinite(Number(syncResearch && syncResearch.provider_http_status))
+                ? Math.trunc(Number(syncResearch.provider_http_status))
+                : null,
               provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
               normalized_query: normalizedQuery,
               rate_limit_cooldown_ms: Number.isFinite(Number(syncResearch && syncResearch.rate_limit_cooldown_ms))
@@ -46516,6 +46592,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             resolved_model: resolvedResearch && resolvedResearch.resolved_model,
             research_provider: resolvedResearch && resolvedResearch.provider,
             research_error_code: resolvedResearch && (resolvedResearch.error_code || resolvedResearch.error),
+            provider_http_status: resolvedResearch && resolvedResearch.provider_http_status,
             timeout_root_cause: resolvedResearch && resolvedResearch.timeout_root_cause,
           },
         });

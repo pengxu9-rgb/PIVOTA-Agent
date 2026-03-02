@@ -4071,6 +4071,58 @@ test('ingredient research: gemini failure surfaces gemini_* error code and is no
   );
 });
 
+test('ingredient research: model-not-found maps to gemini_model_not_found and does not start cooldown', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'off',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_SYNC_MODEL_GEMINI: 'gemini-3-pro',
+      AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI: 'gemini-3-pro',
+      AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS: '90000',
+    },
+    async () => {
+      const { moduleId, __internal } = loadRouteInternals();
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: false,
+            reason: 'gemini_error',
+            detail:
+              'got status: 404 Not Found. {"error":{"code":404,"message":"models/gemini-3-pro is not found for API version v1beta, or is not supported for generateContent.","status":"NOT_FOUND"}}',
+            provider_http_status: 404,
+          };
+        });
+
+        const first = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'octocrylene',
+        });
+        const second = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'octocrylene',
+        });
+
+        assert.equal(first.research_error_code, 'gemini_model_not_found');
+        assert.equal(first.timeout_root_cause, 'provider_unavailable');
+        assert.equal(first.provider_http_status, 404);
+        assert.equal(second.research_error_code, 'gemini_model_not_found');
+        assert.equal(geminiCalls, 2);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('ingredient research: request uses no ingredient-specific timeout', async () => {
   return withEnv(
     {
