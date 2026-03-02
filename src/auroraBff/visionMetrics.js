@@ -167,6 +167,8 @@ const auroraIngredientProviderCounter = new Map();
 const ingredientProviderCallCounter = new Map();
 const ingredientUserActionCounter = new Map();
 const geminiRateLimitedCounter = new Map();
+const geminiModelNotFoundCounter = new Map();
+const ingredientCooldownAppliedCounter = new Map();
 const timeoutRootCauseCounter = new Map();
 const auroraIngredientsFirstAnswerLatency = {
   count: 0,
@@ -647,6 +649,16 @@ function normalizeGeminiRateLimitedRoute(route) {
     return token;
   }
   return 'unknown';
+}
+
+function normalizeGeminiModelName(model) {
+  const token = cleanMetricToken(model, 'unknown');
+  return token || 'unknown';
+}
+
+function normalizeIngredientCooldownReason(reasonCode) {
+  const token = cleanMetricToken(reasonCode, 'unknown');
+  return token || 'unknown';
 }
 
 function normalizeTimeoutRootCause(routeCause) {
@@ -2359,6 +2371,29 @@ function recordGeminiRateLimitedMetric({ route, delta } = {}) {
   );
 }
 
+function recordGeminiModelNotFoundMetric({ route, model, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    geminiModelNotFoundCounter,
+    {
+      route: normalizeGeminiRateLimitedRoute(route),
+      model: normalizeGeminiModelName(model),
+    },
+    amount,
+  );
+}
+
+function recordIngredientCooldownAppliedMetric({ reasonCode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    ingredientCooldownAppliedCounter,
+    { reason_code: normalizeIngredientCooldownReason(reasonCode) },
+    amount,
+  );
+}
+
 function recordTimeoutRootCauseMetric({ route, cause, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -3283,6 +3318,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE gemini_rate_limited_total counter');
   renderCounter(lines, 'gemini_rate_limited_total', geminiRateLimitedCounter);
 
+  lines.push('# HELP gemini_model_not_found_total Total Gemini model-not-found events by route and model.');
+  lines.push('# TYPE gemini_model_not_found_total counter');
+  renderCounter(lines, 'gemini_model_not_found_total', geminiModelNotFoundCounter);
+
+  lines.push('# HELP ingredient_cooldown_applied_total Total ingredient cooldown applications by reason code.');
+  lines.push('# TYPE ingredient_cooldown_applied_total counter');
+  renderCounter(lines, 'ingredient_cooldown_applied_total', ingredientCooldownAppliedCounter);
+
   lines.push('# HELP timeout_root_cause_total Timeout/degradation root cause counters by route and cause.');
   lines.push('# TYPE timeout_root_cause_total counter');
   renderCounter(lines, 'timeout_root_cause_total', timeoutRootCauseCounter);
@@ -3703,6 +3746,8 @@ function resetVisionMetrics() {
   ingredientProviderCallCounter.clear();
   ingredientUserActionCounter.clear();
   geminiRateLimitedCounter.clear();
+  geminiModelNotFoundCounter.clear();
+  ingredientCooldownAppliedCounter.clear();
   timeoutRootCauseCounter.clear();
   auroraIngredientsFirstAnswerLatency.count = 0;
   auroraIngredientsFirstAnswerLatency.sum = 0;
@@ -3880,6 +3925,8 @@ function snapshotVisionMetrics() {
     ingredientProviderCall: Array.from(ingredientProviderCallCounter.entries()),
     ingredientUserAction: Array.from(ingredientUserActionCounter.entries()),
     geminiRateLimited: Array.from(geminiRateLimitedCounter.entries()),
+    geminiModelNotFound: Array.from(geminiModelNotFoundCounter.entries()),
+    ingredientCooldownApplied: Array.from(ingredientCooldownAppliedCounter.entries()),
     timeoutRootCause: Array.from(timeoutRootCauseCounter.entries()),
     auroraIngredientsFirstAnswerLatency: {
       count: auroraIngredientsFirstAnswerLatency.count,
@@ -4034,6 +4081,8 @@ module.exports = {
   recordIngredientProviderCallMetric,
   recordIngredientUserActionMetric,
   recordGeminiRateLimitedMetric,
+  recordGeminiModelNotFoundMetric,
+  recordIngredientCooldownAppliedMetric,
   recordTimeoutRootCauseMetric,
   observeAuroraIngredientsFirstAnswerLatency,
   recordAuroraSkinAnalysisRealModel,
