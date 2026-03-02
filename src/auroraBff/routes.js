@@ -13700,7 +13700,7 @@ async function callGeminiJsonObject({
               temperature,
               responseMimeType: 'application/json',
               ...(Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
-                ? { maxOutputTokens: Math.max(64, Math.min(2048, Math.trunc(Number(maxOutputTokens)))) }
+                ? { maxOutputTokens: Math.max(64, Math.min(4096, Math.trunc(Number(maxOutputTokens)))) }
                 : {}),
               ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && responseJsonSchema && typeof responseJsonSchema === 'object'
                 ? { responseJsonSchema }
@@ -32575,7 +32575,8 @@ function buildIngredientResearchPrompts({
     'Follow the requested schema exactly: no extra keys.',
     'No medical diagnosis or treatment instructions.',
     'If evidence is insufficient or a field is not applicable, use null or [].',
-    'Be brief.',
+    'IMPORTANT: You MUST populate every field with substantive content. Never skip fields.',
+    'The "what_it_is", "overview", and "benefits" fields are essential — always provide them.',
   ].join('\n');
 
   const userPrompt = [
@@ -32587,12 +32588,13 @@ function buildIngredientResearchPrompts({
     '2) Do NOT mention other ingredients. Do NOT provide medical diagnosis or treatment.',
     '3) If unsure, use null or [] (never output the literal string "unknown").',
     '',
-    'Limits (to control latency):',
+    'Limits:',
     '- benefits: max 3 items',
     '- safety.watchouts: max 3 items',
     '- usage.notes: max 4 items',
     '- evidence.citations: max 2 items',
-    '- Keep each string field brief (ideally <= 20 words; overview/evidence.summary <= 40 words).',
+    '- String fields: 1-2 concise sentences each. overview/evidence.summary: 2-3 sentences.',
+    '- what_it_is: REQUIRED, explain what the ingredient is in 1-2 sentences.',
     '',
     'Allowed values:',
     '- benefits[].strength: 0 | 1 | 2 | 3',
@@ -32991,7 +32993,7 @@ async function runIngredientResearchSync({
       userPrompt: prompt.userPrompt,
       timeoutMs: callTimeoutMs,
       temperature: 0.3,
-      maxOutputTokens: 700,
+      maxOutputTokens: 1400,
       responseJsonSchema: prompt.responseJsonSchema,
       allowDiagForceModel: false,
       routeTag: providerRoute,
