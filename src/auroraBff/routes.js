@@ -13102,6 +13102,7 @@ async function buildPurchasableFallbackCandidates({
       primaryReason === 'budget_exhausted'
     );
 
+  const SUPPLEMENT_INTERNAL_MIN_THRESHOLD = 2;
   let supplemental = null;
   if (allowExternalSeed) {
     const strategy = String(externalSeedStrategy || '').trim().toLowerCase();
@@ -13109,8 +13110,8 @@ async function buildPurchasableFallbackCandidates({
       !primaryTransientFailure &&
       (
         primaryProducts.length === 0 ||
-        strategy.includes('supplement') ||
-        strategy.includes('fallback')
+        (strategy.includes('supplement') && primaryProducts.length < SUPPLEMENT_INTERNAL_MIN_THRESHOLD) ||
+        (strategy.includes('fallback') && primaryProducts.length === 0)
       );
     if (shouldSupplement) {
       supplemental = await runSearch({
@@ -13154,7 +13155,19 @@ async function buildPurchasableFallbackCandidates({
     });
   };
   for (const product of primaryProducts) pushProduct(product, 'catalog');
-  for (const product of supplementalProducts) pushProduct(product, 'external_seed');
+  const queryTokens = q.toLowerCase().split(/\s+/).filter((t) => t.length >= 3);
+  for (const product of supplementalProducts) {
+    if (queryTokens.length > 0) {
+      const productText = [
+        pickFirstString(product.name, product.title, product.display_name),
+        pickFirstString(product.category, product.category_name, product.product_type),
+        pickFirstString(product.brand, product.brand_name),
+      ].join(' ').toLowerCase();
+      const hasRelevance = queryTokens.some((token) => productText.includes(token));
+      if (!hasRelevance) continue;
+    }
+    pushProduct(product, 'external_seed');
+  }
 
   const selectedSource =
     merged.length === 0
@@ -26698,21 +26711,40 @@ function summarizeProfileForAnswer(profile, lang) {
 }
 
 function pickRecoNames(payload, max = 3) {
-  const recos = Array.isArray(payload && payload.recommendations) ? payload.recommendations : [];
   const out = [];
   const seen = new Set();
-  for (const r of recos) {
-    if (!r || typeof r !== 'object') continue;
+  const pushName = (r) => {
+    if (!r || typeof r !== 'object') return;
     const sku = isPlainObject(r.sku) ? r.sku : isPlainObject(r.product) ? r.product : null;
-    const brand = typeof sku?.brand === 'string' ? sku.brand.trim() : '';
-    const name = typeof sku?.name === 'string' ? sku.name.trim() : '';
+    const brand = typeof sku?.brand === 'string' ? sku.brand.trim()
+      : typeof r?.brand === 'string' ? r.brand.trim() : '';
+    const name = typeof sku?.name === 'string' ? sku.name.trim()
+      : typeof sku?.display_name === 'string' ? sku.display_name.trim()
+      : typeof r?.name === 'string' ? r.name.trim()
+      : typeof r?.display_name === 'string' ? r.display_name.trim() : '';
     const title = [brand, name].filter(Boolean).join(' ').trim() || (typeof r.title === 'string' ? r.title.trim() : '');
-    if (!title) continue;
+    if (!title) return;
     const key = title.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) return;
     seen.add(key);
     out.push(title);
+  };
+  const recos = Array.isArray(payload && payload.recommendations) ? payload.recommendations : [];
+  for (const r of recos) {
     if (out.length >= max) break;
+    pushName(r);
+  }
+  if (out.length < max) {
+    const fallbackSources = [
+      Array.isArray(payload && payload.products) ? payload.products : [],
+      Array.isArray(payload && payload.ingredient_products) ? payload.ingredient_products : [],
+    ];
+    for (const source of fallbackSources) {
+      for (const r of source) {
+        if (out.length >= max) break;
+        pushName(r);
+      }
+    }
   }
   return out;
 }
@@ -26762,11 +26794,24 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
 
   if (route === 'reco') {
     const names = pickRecoNames(p, 3);
-    const topNames = names.length ? names : [lang === 'CN' ? '温和修护类精华' : 'gentle barrier-support serum'];
+    if (!names.length) {
+      if (lang === 'CN') {
+        return [
+          `目标与前提：${profileLine}`,
+          '已按你的成分分析生成了针对性建议，详情见下方卡片。',
+          '如补充肤质、敏感度、当前 routine，我可以给出更完整的个性化推荐。',
+        ].join('\n');
+      }
+      return [
+        `Goal & context: ${profileLine}`,
+        'Based on your ingredient analysis, targeted suggestions are shown in the card below.',
+        'Add skin type, sensitivity, or current routine for a fuller personalized shortlist.',
+      ].join('\n');
+    }
     if (lang === 'CN') {
       return [
         `目标与前提：${profileLine}`,
-        `本轮优先结果：${topNames.join('、')}。`,
+        `本轮优先结果：${names.join('、')}。`,
         '已按“低刺激/屏障友好 + 目标功效 + 可得性”完成产品重排。',
         '如补充肤质、敏感度、当前 routine，我会自动重算并给出更个性化排序。',
       ].join('\n');
@@ -26774,7 +26819,7 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
 
     return [
       `Goal & context: ${profileLine}`,
-      `Top picks this round: ${topNames.join(', ')}.`,
+      `Top picks this round: ${names.join(', ')}.`,
       'Ranked by low-irritation fit, efficacy for your goal, and practical availability.',
       'Add skin type, sensitivity, or current routine and I will auto-recompute a tighter ranking.',
     ].join('\n');
@@ -31102,6 +31147,41 @@ function collectIngredientRecoConstraintTokens(context) {
   return out.slice(0, 16);
 }
 
+const INGREDIENT_RECO_IRRELEVANT_CATEGORIES = new Set([
+  'lip', 'lipstick', 'lip gloss', 'lip balm', 'lip liner',
+  'mascara', 'eyeliner', 'eyeshadow', 'eye liner',
+  'nail', 'nail polish',
+  'fragrance', 'perfume', 'cologne',
+  'hair', 'shampoo', 'conditioner', 'hair dye',
+  'makeup', 'foundation', 'concealer', 'blush', 'bronzer', 'powder',
+  'body wash', 'deodorant',
+]);
+
+function isIrrelevantCategoryForSkinGoal(categoryRaw) {
+  const cat = ingredient_query_normalize(categoryRaw);
+  if (!cat) return false;
+  for (const blocked of INGREDIENT_RECO_IRRELEVANT_CATEGORIES) {
+    if (cat.includes(blocked)) return true;
+  }
+  return false;
+}
+
+function extractRecoRelevantFields(row) {
+  if (!row || typeof row !== 'object') return '';
+  const sku = row.sku && typeof row.sku === 'object' ? row.sku : null;
+  const parts = [
+    row.name, row.title, row.display_name, row.displayName,
+    sku && sku.name, sku && sku.display_name,
+    row.category, row.category_name, row.product_type,
+    sku && sku.category, sku && sku.product_type,
+    ...(Array.isArray(row.key_ingredients) ? row.key_ingredients : []),
+    ...(Array.isArray(sku && sku.key_ingredients) ? sku.key_ingredients : []),
+    ...(Array.isArray(row.benefit_tags) ? row.benefit_tags : []),
+    row.slot, row.step,
+  ];
+  return ingredient_query_normalize(parts.filter(Boolean).join(' '));
+}
+
 function applyIngredientRecoConstraint(payload, context) {
   const base = isPlainObject(payload) ? { ...payload } : {};
   const recommendations = Array.isArray(base.recommendations) ? base.recommendations : [];
@@ -31117,9 +31197,16 @@ function applyIngredientRecoConstraint(payload, context) {
   }
   const kept = [];
   for (const row of recommendations) {
-    const serialized = ingredient_query_normalize(JSON.stringify(row || {}));
-    if (!serialized) continue;
-    if (tokens.some((token) => serialized.includes(token))) {
+    const sku = row && typeof row === 'object' && row.sku && typeof row.sku === 'object' ? row.sku : null;
+    const categoryRaw = pickFirstString(
+      row && row.category, row && row.category_name, row && row.product_type,
+      sku && sku.category, sku && sku.product_type,
+    );
+    if (isIrrelevantCategoryForSkinGoal(categoryRaw)) continue;
+
+    const relevantText = extractRecoRelevantFields(row);
+    if (!relevantText) continue;
+    if (tokens.some((token) => relevantText.includes(token))) {
       kept.push(row);
     }
   }
@@ -49808,7 +49895,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
           ? norm.payload.recommendations.length > 0
           : false;
-        if (!hasRecs && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
+        const hasFallbackProducts = !hasRecs && isPlainObject(norm && norm.payload) && (
+          (Array.isArray(norm.payload.products) && norm.payload.products.length > 0) ||
+          (Array.isArray(norm.payload.ingredient_products) && norm.payload.ingredient_products.length > 0)
+        );
+        if (!hasRecs && !hasFallbackProducts && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
           recoTimeoutDegraded = true;
         }
         if (recoTimeoutDegraded) {
@@ -49882,7 +49973,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (hasRecs) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
         }
-        const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+        const nextState = (hasRecs || hasFallbackProducts) && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
         const promptContractOkFromTrace =
           isPlainObject(upstreamDebug && upstreamDebug.llm_prompt_trace)
             ? upstreamDebug.llm_prompt_trace.prompt_contract_ok !== false
@@ -49929,9 +50020,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
           profile,
         });
-        const recoUnavailableLead = ctx.lang === 'CN'
-          ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
-          : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
+        const recoFallbackLead = ctx.lang === 'CN'
+          ? '根据你的成分分析，我先给你拉了几款针对性产品建议。如有更多肤质/敏感度信息，我可以给出更完整的推荐清单。'
+          : 'Based on your ingredient analysis, here are targeted product suggestions. Add skin type or sensitivity details for a more complete personalized shortlist.';
 
         const assistantTextRaw = hasRecs
           ? (recoAssistantBase ||
@@ -49940,15 +50031,15 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ? '我已经把核心结果整理成结构化卡片（见下方）。'
                 : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
               : 'I summarized the key results into structured cards below.'))
-          : (recoAssistantBase
-            ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
+          : hasFallbackProducts
+            ? (recoAssistantBase || recoFallbackLead)
             : (ctx.lang === 'CN'
               ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
-              : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
+              : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I'll continue.");
         const safetyWarnText =
           safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.WARN ? buildSafetyNoticeText(safetyDecision) : '';
         const refinementTail =
-          hasRecs
+          (hasRecs || hasFallbackProducts)
             ? (ctx.lang === 'CN'
               ? '如你愿意，可继续补充肤质/敏感度/当前 routine；我会基于本次上下文自动重算并优化推荐。'
               : 'If you want, add skin type/sensitivity/current routine and I will automatically re-run recommendations with your latest context.')
