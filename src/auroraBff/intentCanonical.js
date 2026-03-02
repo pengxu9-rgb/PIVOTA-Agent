@@ -271,6 +271,9 @@ function inferCanonicalIntent({ message, actionId, actionLabel, language } = {})
       isRecommendationLikeText(text) ||
       /\b(shop|buy)\b/i.test(text) ||
       /(购物|购买|产品|精华|面霜|防晒|乳液|护肤流程)/.test(text);
+    const hasStrongRecoTransactionCue =
+      /\b(what|which|recommend|buy|use|get|need|want|should i)\b/i.test(text) ||
+      /(推荐|买|购买|要|想要|需要).{0,24}(产品|护肤品|防晒|洁面|精华|面霜|乳液)/.test(text);
     const hasScienceCue =
       isIngredientScienceLikeText(text) ||
       /\b(citation|citations|journal|journals)\b/i.test(text);
@@ -279,6 +282,14 @@ function inferCanonicalIntent({ message, actionId, actionLabel, language } = {})
         intent: INTENT_ENUM.INGREDIENT_SCIENCE,
         source: 'kb_v0_concept_match',
         confidence: 0.82,
+        entities: {},
+      };
+    }
+    if (hasRecoCue && (hasStrongRecoTransactionCue || !hasScienceCue)) {
+      return {
+        intent: INTENT_ENUM.RECO_PRODUCTS,
+        source: 'heuristic_reco_transactional',
+        confidence: hasStrongRecoTransactionCue ? 0.84 : 0.76,
         entities: {},
       };
     }

@@ -7162,6 +7162,105 @@ test('/v1/chat: weather question short-circuits to env_stress (trigger_source=te
   assert.equal(vm?.data?.scenario, 'snow');
 });
 
+test('/v1/chat: mixed travel + product ask returns env_stress and recommendations in the same turn', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const headers = {
+        'X-Aurora-UID': `test_uid_mixed_travel_reco_${Date.now()}`,
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      };
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'I need products for my trip to dry cold weather.',
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.equal(cards.some((card) => card && card.type === 'env_stress'), true);
+      assert.equal(
+        cards.some((card) => card && (card.type === 'recommendations' || card.type === 'confidence_notice')),
+        true,
+      );
+      assert.equal(resp.body?.telemetry?.route_decision, 'travel_then_reco');
+
+      const recoEvt = (resp.body?.events || []).find((evt) => evt && evt.event_name === 'recos_requested');
+      assert.ok(recoEvt);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
+test('/v1/chat: weather question without destination degrades to 200 (no CHAT_FAILED)', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_KB_FAIL_MODE: 'closed',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const headers = {
+        'X-Aurora-UID': `test_uid_weather_missing_destination_${Date.now()}`,
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      };
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'How should I care for skin when weather is dry and cold today?',
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.equal(cards.some((card) => card && card.type === 'error'), false);
+      const envStress = cards.find((card) => card && card.type === 'env_stress');
+      assert.ok(envStress);
+      assert.equal(envStress?.payload?.failure_class, 'weather_destination_missing');
+      assert.equal(resp.body?.telemetry?.route_failure_class, 'weather_destination_missing');
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('/v1/chat: chip.start.reco_products with force_route bypasses weather short-circuit', async () => {
   await withEnv(
     {
