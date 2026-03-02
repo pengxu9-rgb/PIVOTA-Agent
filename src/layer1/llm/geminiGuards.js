@@ -1,3 +1,5 @@
+const { getGeminiGlobalGate, GeminiGateError } = require('../../lib/geminiGlobalGate');
+
 function parseEnvInt(v, fallback) {
   const n = Number.parseInt(String(v ?? ""), 10);
   if (!Number.isFinite(n)) return fallback;
@@ -152,28 +154,31 @@ function createGeminiGuards({
   const circuit = createCircuitBreaker({ failThreshold: circuitFailThreshold, cooldownMs: circuitCooldownMs, now });
 
   async function withGuards(kind, fn) {
-    const probe = circuit.beginProbeIfAllowed();
-    if (!probe.allowed) {
-      throw new GeminiGuardError("CIRCUIT_OPEN", `Gemini circuit open (reason=${probe.reason})`);
-    }
+    const globalGate = getGeminiGlobalGate();
+    return globalGate.withGate(kind || 'layer1_llm', async () => {
+      const probe = circuit.beginProbeIfAllowed();
+      if (!probe.allowed) {
+        throw new GeminiGuardError("CIRCUIT_OPEN", `Gemini circuit open (reason=${probe.reason})`);
+      }
 
-    if (!bucket.take()) {
-      if (probe.probe) circuit.endProbe();
-      throw new GeminiGuardError("RATE_LIMITED", "Gemini rate limit exceeded");
-    }
+      if (!bucket.take()) {
+        if (probe.probe) circuit.endProbe();
+        throw new GeminiGuardError("RATE_LIMITED", "Gemini rate limit exceeded");
+      }
 
-    const release = await semaphore.acquire();
-    try {
-      const out = await fn();
-      circuit.recordSuccess();
-      return out;
-    } catch (err) {
-      circuit.recordFailure();
-      throw err;
-    } finally {
-      if (probe.probe) circuit.endProbe();
-      release();
-    }
+      const release = await semaphore.acquire();
+      try {
+        const out = await fn();
+        circuit.recordSuccess();
+        return out;
+      } catch (err) {
+        circuit.recordFailure();
+        throw err;
+      } finally {
+        if (probe.probe) circuit.endProbe();
+        release();
+      }
+    });
   }
 
   return {

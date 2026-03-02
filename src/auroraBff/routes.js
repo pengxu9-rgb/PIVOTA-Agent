@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { z } = require('zod');
+const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const { createStageProfiler } = require('./skinAnalysisProfiling');
@@ -719,14 +720,14 @@ const AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS = (() => {
   return Math.max(3000, Math.min(30000, v));
 })();
 const AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 4000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
-  return Math.max(1500, Math.min(15000, v));
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  return Math.max(1500, Math.min(18000, v));
 })();
 const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 10000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
-  return Math.max(3000, Math.min(20000, v));
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 16000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 16000;
+  return Math.max(3000, Math.min(30000, v));
 })();
 const AURORA_INGREDIENT_SYNC_RETRIES = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_SYNC_RETRIES || 0);
@@ -734,17 +735,17 @@ const AURORA_INGREDIENT_SYNC_RETRIES = (() => {
   return Math.max(0, Math.min(1, v));
 })();
 const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI = String(
-  process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro',
-).trim() || 'gemini-3-pro';
+  process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3.1-pro-preview',
+).trim() || 'gemini-3.1-pro-preview';
 const AURORA_INGREDIENT_SYNC_MODEL_GEMINI = String(
-  process.env.AURORA_INGREDIENT_SYNC_MODEL_GEMINI || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro',
-).trim() || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro';
+  process.env.AURORA_INGREDIENT_SYNC_MODEL_GEMINI || 'gemini-3-flash-preview',
+).trim() || 'gemini-3-flash-preview';
 const AURORA_QA_MODEL_GEMINI = String(
-  process.env.AURORA_QA_MODEL_GEMINI || 'gemini-3-flash',
-).trim() || 'gemini-3-flash';
+  process.env.AURORA_QA_MODEL_GEMINI || 'gemini-3-flash-preview',
+).trim() || 'gemini-3-flash-preview';
 const AURORA_RECO_FALLBACK_MODEL_GEMINI = String(
-  process.env.AURORA_RECO_FALLBACK_MODEL_GEMINI || 'gemini-3-flash',
-).trim() || 'gemini-3-flash';
+  process.env.AURORA_RECO_FALLBACK_MODEL_GEMINI || 'gemini-3-flash-preview',
+).trim() || 'gemini-3-flash-preview';
 const AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS || 90000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
@@ -1439,11 +1440,11 @@ const ANALYSIS_STORY_MODEL_GEMINI =
 const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
   1200,
-  Math.min(12000, Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 5000)),
+  Math.min(15000, Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 8000)),
 );
 const PRODUCT_INTEL_DUAL_QA_TIMEOUT_MS = Math.max(
   800,
-  Math.min(10000, Number(process.env.AURORA_PRODUCT_RELEVANCE_DUAL_LLM_TIMEOUT_MS || 2500)),
+  Math.min(12000, Number(process.env.AURORA_PRODUCT_RELEVANCE_DUAL_LLM_TIMEOUT_MS || 6000)),
 );
 const PRODUCT_INTEL_DUAL_QA_CACHE_TTL_MS = Math.max(
   1000,
@@ -13476,13 +13477,15 @@ function getOpenAIClient() {
 let geminiClient;
 let geminiClientInitFailed = false;
 function getGeminiClient() {
-  if (!GEMINI_API_KEY) return { client: null, init_error: VisionUnavailabilityReason.VISION_MISSING_KEY };
+  const globalGate = getGeminiGlobalGate();
+  const effectiveKey = globalGate.getApiKey() || GEMINI_API_KEY;
+  if (!effectiveKey) return { client: null, init_error: VisionUnavailabilityReason.VISION_MISSING_KEY };
   if (geminiClient) return { client: geminiClient, init_error: null };
   if (geminiClientInitFailed) return { client: null, init_error: VisionUnavailabilityReason.VISION_UNKNOWN };
 
   try {
     const { GoogleGenAI } = require('@google/genai');
-    geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    geminiClient = new GoogleGenAI({ apiKey: effectiveKey });
     return { client: geminiClient, init_error: null };
   } catch (_err) {
     geminiClientInitFailed = true;
@@ -13587,16 +13590,29 @@ async function callOpenAiJsonObject({
 }
 let callOpenAiJsonObjectImpl = callOpenAiJsonObject;
 
+function isGeminiRetryableError(err) {
+  if (!err) return false;
+  const msg = String(err.message || '').toLowerCase();
+  const code = String(err.code || '').toLowerCase();
+  return (
+    msg.includes('429') || msg.includes('rate limit') || msg.includes('resource exhausted') ||
+    msg.includes('503') || msg.includes('timeout') || msg.includes('timed out') ||
+    msg.includes('econnreset') || msg.includes('etimedout') ||
+    code.includes('rate_limited') || code.includes('global_rate_limited')
+  );
+}
+
 async function callGeminiJsonObject({
   model,
   systemPrompt,
   userPrompt,
-  timeoutMs = 3000,
+  timeoutMs = 8000,
   temperature = 0,
   maxOutputTokens = null,
   responseJsonSchema = null,
   allowDiagForceModel = true,
   routeTag = '',
+  maxRetries = 2,
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -13609,79 +13625,97 @@ async function callGeminiJsonObject({
     allowDiagForceModel && AURORA_DIAG_FORCE_GEMINI
       ? AURORA_DIAG_FORCE_GEMINI_MODEL
       : model || ANALYSIS_STORY_MODEL_GEMINI;
-  try {
-    const resp = await withTimeout(
-      gemini.client.models.generateContent({
-        model: resolvedModel,
-        contents: [
-          {
-            role: 'user',
-            parts: [
+
+  const maxAttempts = Math.max(1, Math.min(4, 1 + (Number.isFinite(maxRetries) ? maxRetries : 2)));
+  let lastErr = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const globalGate = getGeminiGlobalGate();
+      const resp = await globalGate.withGate(routeTag || 'gemini_json', () =>
+        withTimeout(
+          gemini.client.models.generateContent({
+            model: resolvedModel,
+            contents: [
               {
-                text: `${String(systemPrompt || 'Return strict JSON only.')}\n\n${String(userPrompt || '')}`,
+                role: 'user',
+                parts: [
+                  {
+                    text: `${String(systemPrompt || 'Return strict JSON only.')}\n\n${String(userPrompt || '')}`,
+                  },
+                ],
               },
             ],
-          },
-        ],
-        config: {
-          temperature,
-          responseMimeType: 'application/json',
-          ...(Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
-            ? { maxOutputTokens: Math.max(64, Math.min(2048, Math.trunc(Number(maxOutputTokens)))) }
-            : {}),
-          ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && responseJsonSchema && typeof responseJsonSchema === 'object'
-            ? { responseJsonSchema }
-            : {}),
-        },
-      }),
-      timeoutMs,
-      'GEMINI_JSON_TIMEOUT',
-    );
-    const text = await extractTextFromGeminiResponse(resp);
-    const parsed = parseJsonOnlyObject(unwrapCodeFence(text));
-    if (!parsed || typeof parsed !== 'object') {
-      return {
-        ok: false,
-        reason: 'gemini_json_invalid',
-        raw_text: typeof text === 'string' ? text : null,
-        resolved_model: resolvedModel,
-      };
+            config: {
+              temperature,
+              responseMimeType: 'application/json',
+              ...(Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
+                ? { maxOutputTokens: Math.max(64, Math.min(2048, Math.trunc(Number(maxOutputTokens)))) }
+                : {}),
+              ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && responseJsonSchema && typeof responseJsonSchema === 'object'
+                ? { responseJsonSchema }
+                : {}),
+            },
+          }),
+          timeoutMs,
+          'GEMINI_JSON_TIMEOUT',
+        ),
+      );
+      const text = await extractTextFromGeminiResponse(resp);
+      const parsed = parseJsonOnlyObject(unwrapCodeFence(text));
+      if (!parsed || typeof parsed !== 'object') {
+        return {
+          ok: false,
+          reason: 'gemini_json_invalid',
+          raw_text: typeof text === 'string' ? text : null,
+          resolved_model: resolvedModel,
+          attempts: attempt + 1,
+        };
+      }
+      return { ok: true, json: parsed, resolved_model: resolvedModel, attempts: attempt + 1 };
+    } catch (err) {
+      lastErr = err;
+      const canRetry = attempt < maxAttempts - 1 && isGeminiRetryableError(err);
+      if (!canRetry) break;
+      const backoffMs = Math.min(4000, 500 * Math.pow(2, attempt)) + Math.floor(Math.random() * 200);
+      await new Promise((r) => setTimeout(r, backoffMs));
     }
-    return { ok: true, json: parsed, resolved_model: resolvedModel };
-  } catch (err) {
-    const reason = err && err.code ? String(err.code) : 'gemini_error';
-    const detail = err && err.message ? String(err.message) : null;
-    const providerHttpStatus = parseProviderHttpStatus(reason, detail, err && err.status);
-    const normalizedRoute = String(routeTag || '').trim().toLowerCase();
-    const lowerErrorToken = `${reason} ${detail || ''}`.toLowerCase();
-    if (
-      normalizedRoute &&
-      normalizedRoute !== 'ingredient' &&
-      (lowerErrorToken.includes('429') || lowerErrorToken.includes('rate') || lowerErrorToken.includes('quota'))
-    ) {
-      recordGeminiRateLimitedMetric({ route: normalizedRoute });
-      recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'rate_limited' });
-    } else if (
-      normalizedRoute &&
-      normalizedRoute !== 'ingredient' &&
-      (lowerErrorToken.includes('timeout') || lowerErrorToken.includes('timed out') || lowerErrorToken.includes('abort'))
-    ) {
-      recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'provider_timeout' });
-    } else if (
-      normalizedRoute &&
-      normalizedRoute !== 'ingredient' &&
-      (lowerErrorToken.includes('network') || lowerErrorToken.includes('socket') || lowerErrorToken.includes('econn') || lowerErrorToken.includes('dns'))
-    ) {
-      recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'network' });
-    }
-    return {
-      ok: false,
-      reason,
-      detail,
-      resolved_model: resolvedModel,
-      provider_http_status: providerHttpStatus,
-    };
   }
+
+  const err = lastErr;
+  const reason = err && err.code ? String(err.code) : 'gemini_error';
+  const detail = err && err.message ? String(err.message) : null;
+  const providerHttpStatus = parseProviderHttpStatus(reason, detail, err && err.status);
+  const normalizedRoute = String(routeTag || '').trim().toLowerCase();
+  const lowerErrorToken = `${reason} ${detail || ''}`.toLowerCase();
+  if (
+    normalizedRoute &&
+    normalizedRoute !== 'ingredient' &&
+    (lowerErrorToken.includes('429') || lowerErrorToken.includes('rate') || lowerErrorToken.includes('quota'))
+  ) {
+    recordGeminiRateLimitedMetric({ route: normalizedRoute });
+    recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'rate_limited' });
+  } else if (
+    normalizedRoute &&
+    normalizedRoute !== 'ingredient' &&
+    (lowerErrorToken.includes('timeout') || lowerErrorToken.includes('timed out') || lowerErrorToken.includes('abort'))
+  ) {
+    recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'provider_timeout' });
+  } else if (
+    normalizedRoute &&
+    normalizedRoute !== 'ingredient' &&
+    (lowerErrorToken.includes('network') || lowerErrorToken.includes('socket') || lowerErrorToken.includes('econn') || lowerErrorToken.includes('dns'))
+  ) {
+    recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'network' });
+  }
+  return {
+    ok: false,
+    reason,
+    detail,
+    resolved_model: resolvedModel,
+    provider_http_status: providerHttpStatus,
+    attempts: maxAttempts,
+  };
 }
 let callGeminiJsonObjectImpl = callGeminiJsonObject;
 
@@ -15927,33 +15961,37 @@ async function runGeminiVisionSkinAnalysis({
     baseDelayMs: SKIN_VISION_RETRY_BASE_MS,
     classifyError: classifyVisionProviderFailure,
     operation: async () => {
-      const callGemini = async () =>
-        withVisionTimeout(
-          gemini.client.models.generateContent({
-            model: SKIN_VISION_MODEL_GEMINI,
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: 'image/jpeg',
-                      data: optimized.toString('base64'),
+      const callGemini = async () => {
+        const globalGate = getGeminiGlobalGate();
+        return globalGate.withGate('skin_vision_direct', () =>
+          withVisionTimeout(
+            gemini.client.models.generateContent({
+              model: SKIN_VISION_MODEL_GEMINI,
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: 'image/jpeg',
+                        data: optimized.toString('base64'),
+                      },
                     },
-                  },
-                  {
-                    text: promptBase,
-                  },
-                ],
+                    {
+                      text: promptBase,
+                    },
+                  ],
+                },
+              ],
+              config: {
+                temperature: 0.2,
+                responseMimeType: 'application/json',
               },
-            ],
-            config: {
-              temperature: 0.2,
-              responseMimeType: 'application/json',
-            },
-          }),
-          SKIN_VISION_TIMEOUT_MS,
+            }),
+            SKIN_VISION_TIMEOUT_MS,
+          ),
         );
+      };
 
       const resp =
         profiler && typeof profiler.timeLlmCall === 'function'
@@ -33074,7 +33112,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
   const key = normalizeIngredientResearchKey(query);
   if (!key) return null;
   const normalizedLanguage = language === 'CN' ? 'CN' : 'EN';
-  const asyncModel = pickFirstTrimmed(AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI, AURORA_INGREDIENT_SYNC_MODEL_GEMINI) || 'gemini-3-pro';
+  const asyncModel = pickFirstTrimmed(AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI, AURORA_INGREDIENT_SYNC_MODEL_GEMINI) || 'gemini-3.1-pro-preview';
   const jobId = `ingr_${crypto.createHash('sha1').update(`${key}|${normalizedLanguage}`).digest('hex').slice(0, 20)}`;
   const existing = ingredientResearchCache.get(key);
   if (existing && existing.status === 'ready') return { key, status: 'ready', job_id: existing.job_id || jobId };
@@ -36939,7 +36977,46 @@ function mountAuroraBffRoutes(app, { logger }) {
     const visionMetrics = String(renderVisionMetricsPrometheus() || '');
     const recoMetrics = renderRecoPdpFallbackMetricsPrometheus();
     const qualityMetrics = renderChatQualityMetricsPrometheus();
-    return res.status(200).send(`${visionMetrics}${recoMetrics}${qualityMetrics}`);
+
+    const gate = getGeminiGlobalGate();
+    const gateSnap = gate.snapshot();
+    const m = gateSnap.metrics;
+    const gateLines = [
+      `# HELP gemini_gate_rpm Current requests per minute through global gate`,
+      `# TYPE gemini_gate_rpm gauge`,
+      `gemini_gate_rpm ${m.rpm}`,
+      `# HELP gemini_gate_rate_limited_total Rate limited requests in last 60s`,
+      `# TYPE gemini_gate_rate_limited_total gauge`,
+      `gemini_gate_rate_limited_total ${m.rate_limited}`,
+      `# HELP gemini_gate_timed_out_total Timed out requests in last 60s`,
+      `# TYPE gemini_gate_timed_out_total gauge`,
+      `gemini_gate_timed_out_total ${m.timed_out}`,
+      `# HELP gemini_gate_succeeded_total Successful requests in last 60s`,
+      `# TYPE gemini_gate_succeeded_total gauge`,
+      `gemini_gate_succeeded_total ${m.succeeded}`,
+      `# HELP gemini_gate_avg_latency_ms Average latency in last 60s`,
+      `# TYPE gemini_gate_avg_latency_ms gauge`,
+      `gemini_gate_avg_latency_ms ${m.avg_latency_ms}`,
+      `# HELP gemini_gate_circuit_open Whether circuit breaker is open`,
+      `# TYPE gemini_gate_circuit_open gauge`,
+      `gemini_gate_circuit_open ${gateSnap.gate.circuitOpen ? 1 : 0}`,
+    ];
+    for (const [route, stats] of Object.entries(m.by_route || {})) {
+      gateLines.push(`gemini_gate_route_total{route="${route}"} ${stats.total}`);
+      gateLines.push(`gemini_gate_route_rate_limited{route="${route}"} ${stats.rate_limited}`);
+      gateLines.push(`gemini_gate_route_timeout{route="${route}"} ${stats.timeout}`);
+      gateLines.push(`gemini_gate_route_success{route="${route}"} ${stats.success}`);
+    }
+    const gateMetrics = gateLines.join('\n') + '\n';
+    return res.status(200).send(`${visionMetrics}${recoMetrics}${qualityMetrics}${gateMetrics}`);
+  });
+
+  app.get('/v1/gemini/status', (req, res) => {
+    const gate = getGeminiGlobalGate();
+    return res.status(200).json({
+      ok: true,
+      ...gate.snapshot(),
+    });
   });
 
   app.get('/v1/ops/pdp-prefetch/state', (req, res) => {

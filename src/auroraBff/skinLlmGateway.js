@@ -9,6 +9,7 @@ const {
   buildSkinVisionPromptBundle,
   buildSkinReportPromptBundle,
 } = require('./skinLlmPrompts');
+const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 
 const GEMINI_API_KEY = String(
   process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
@@ -81,12 +82,14 @@ function isGeminiSkinGatewayAvailable() {
 }
 
 function getGeminiClient() {
-  if (!GEMINI_API_KEY) return null;
+  const globalGate = getGeminiGlobalGate();
+  const effectiveKey = globalGate.getApiKey() || GEMINI_API_KEY;
+  if (!effectiveKey) return null;
   if (geminiClient) return geminiClient;
   if (geminiInitFailed) return null;
   try {
     const { GoogleGenAI } = require('@google/genai');
-    geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    geminiClient = new GoogleGenAI({ apiKey: effectiveKey });
     return geminiClient;
   } catch (_err) {
     geminiInitFailed = true;
@@ -418,7 +421,10 @@ async function callGeminiJson({
     };
 
     try {
-      const invoke = () => withTimeout(client.models.generateContent(request), timeoutMs || SKIN_LLM_TIMEOUT_MS);
+      const globalGate = getGeminiGlobalGate();
+      const invoke = () => globalGate.withGate(kind || 'skin_llm', () =>
+        withTimeout(client.models.generateContent(request), timeoutMs || SKIN_LLM_TIMEOUT_MS),
+      );
       const resp =
         profiler && typeof profiler.timeLlmCall === 'function'
           ? await profiler.timeLlmCall({ provider: 'gemini', model: modelName, kind }, invoke)
