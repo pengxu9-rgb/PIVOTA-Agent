@@ -34837,8 +34837,9 @@ async function fetchRecoAlternativesForProduct({
     1200,
     Math.min(RECO_ALTERNATIVES_SYNC_FAILFAST_TIMEOUT_MS, AURORA_BFF_CHAT_RECO_BUDGET_MS - RECO_ALTERNATIVES_OVERHEAD_MS),
   );
+  // forceSyncProbe = async-worker path: use the full timeout override, not capped by the sync budget.
   let effectiveAlternativesTimeoutMs = timeoutOverrideMs
-    ? Math.min(timeoutOverrideMs, alternativesSyncBudgetCapMs)
+    ? (forceSyncProbe ? timeoutOverrideMs : Math.min(timeoutOverrideMs, alternativesSyncBudgetCapMs))
     : alternativesSyncBudgetCapMs;
   const effectiveAsyncRefreshTimeoutMs = asyncTimeoutOverrideMs
     ? Math.min(asyncTimeoutOverrideMs, RECO_ALTERNATIVES_ASYNC_REFRESH_TIMEOUT_MS)
@@ -34898,7 +34899,7 @@ async function fetchRecoAlternativesForProduct({
   });
 
   // #region agent log
-  _altDebugLog({loc:'entry',refreshKey,anchor:anchor||null,syncTimeoutMs:effectiveAlternativesTimeoutMs,asyncTimeoutMs:effectiveAsyncRefreshTimeoutMs,circuitState:getRecoAlternativesSyncCircuitSnapshot(Date.now(),circuitPartitionKey).state,inFlight:recoAlternativesRefreshInFlight.size,cacheSize:recoAlternativesRefreshCache.size,hyp:'H3-H4'});
+  _altDebugLog({loc:'entry',runId:'post-fix',refreshKey,anchor:anchor||null,syncTimeoutMs:effectiveAlternativesTimeoutMs,asyncTimeoutMs:effectiveAsyncRefreshTimeoutMs,forceSyncProbe,circuitState:getRecoAlternativesSyncCircuitSnapshot(Date.now(),circuitPartitionKey).state,inFlight:recoAlternativesRefreshInFlight.size,cacheSize:recoAlternativesRefreshCache.size,hyp:'H3-H4'});
   // #endregion
 
   if (preferRefreshCache && refreshKey) {
@@ -35494,7 +35495,7 @@ async function fetchRecoAlternativesForProduct({
     const refreshHandle = setTimeout(async () => {
       const asyncStartedAt = Date.now();
       // #region agent log
-      _altDebugLog({loc:'asyncRefreshStart',refreshKey,timeoutMs:effectiveAsyncRefreshTimeoutMs,hyp:'H1-H4'});
+      _altDebugLog({loc:'asyncRefreshStart',runId:'post-fix',refreshKey,timeoutMs:effectiveAsyncRefreshTimeoutMs,hyp:'H1-H4'});
       // #endregion
       try {
         const refreshed = await fetchRecoAlternativesForProduct({
@@ -35520,7 +35521,7 @@ async function fetchRecoAlternativesForProduct({
         });
         const gotAlts = Boolean(refreshed && Array.isArray(refreshed.alternatives) && refreshed.alternatives.length);
         // #region agent log
-        _altDebugLog({loc:'asyncRefreshResult',refreshKey,elapsedMs:Date.now()-asyncStartedAt,gotAlts,altCount:gotAlts?(refreshed.alternatives||[]).length:0,sourceMode:refreshed&&refreshed.source_mode,failureClass:refreshed&&refreshed.failure_class,llmLatency:refreshed&&refreshed.llm_trace&&refreshed.llm_trace.latency_ms,hyp:'H1-H5'});
+        _altDebugLog({loc:'asyncRefreshResult',runId:'post-fix',refreshKey,elapsedMs:Date.now()-asyncStartedAt,gotAlts,altCount:gotAlts?(refreshed.alternatives||[]).length:0,sourceMode:refreshed&&refreshed.source_mode,failureClass:refreshed&&refreshed.failure_class,llmLatency:refreshed&&refreshed.llm_trace&&refreshed.llm_trace.latency_ms,hyp:'H1-H5'});
         // #endregion
         if (gotAlts) {
           setRecoAlternativesRefreshCache(refreshKey, {
