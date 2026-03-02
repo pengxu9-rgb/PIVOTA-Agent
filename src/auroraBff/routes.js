@@ -721,7 +721,7 @@ const AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS = (() => {
 const AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 4000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
-  return Math.max(1500, Math.min(8000, v));
+  return Math.max(1500, Math.min(15000, v));
 })();
 const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 10000);
@@ -31801,6 +31801,14 @@ function parseProviderHttpStatus(reason = '', detail = '', explicitStatus = null
   return Math.trunc(parsed);
 }
 
+function toNullableHttpStatus(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const status = Math.trunc(parsed);
+  if (status < 100 || status > 599) return null;
+  return status;
+}
+
 function classifyIngredientProviderError(reason, detail = '', providerHttpStatus = null) {
   const token = `${String(reason || '').trim()} ${String(detail || '').trim()}`.trim().toLowerCase();
   const status = parseProviderHttpStatus(reason, detail, providerHttpStatus);
@@ -32904,14 +32912,14 @@ async function runIngredientResearchSync({
     });
     const latencyMs = Math.max(0, Date.now() - callStartedAt);
     const attemptModel = pickFirstTrimmed(resp && resp.resolved_model, effectiveModel);
-    const attemptHttpStatus = parseProviderHttpStatus(resp && resp.reason, resp && resp.detail, resp && resp.provider_http_status);
+    const attemptHttpStatus = toNullableHttpStatus(
+      parseProviderHttpStatus(resp && resp.reason, resp && resp.detail, resp && resp.provider_http_status),
+    );
     if (attemptModel) {
       effectiveModel = attemptModel;
       effectiveModelTier = /pro/i.test(String(attemptModel || '')) ? 'pro' : 'flash';
     }
-    if (Number.isFinite(Number(attemptHttpStatus))) {
-      finalProviderHttpStatus = Math.trunc(Number(attemptHttpStatus));
-    }
+    if (attemptHttpStatus != null) finalProviderHttpStatus = attemptHttpStatus;
     if (resp && resp.ok && resp.json && typeof resp.json === 'object' && !Array.isArray(resp.json)) {
       const parsed = sanitizeIngredientResearchOutput(resp.json, {
         query,
@@ -32985,7 +32993,7 @@ async function runIngredientResearchSync({
       reason_code: reasonCode,
       reason_raw: pickFirstTrimmed(resp && resp.reason, null),
       detail_raw: pickFirstTrimmed(resp && resp.detail, null),
-      provider_http_status: Number.isFinite(Number(attemptHttpStatus)) ? Math.trunc(Number(attemptHttpStatus)) : null,
+      provider_http_status: attemptHttpStatus != null ? attemptHttpStatus : null,
       resolved_model: attemptModel || effectiveModel || null,
       latency_ms: latencyMs,
     });
@@ -33160,9 +33168,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
         provider_circuit_state: syncResult && syncResult.provider_circuit_state ? syncResult.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResult && syncResult.research_error_code ? syncResult.research_error_code : null,
         timeout_root_cause: syncResult && syncResult.timeout_root_cause ? syncResult.timeout_root_cause : null,
-        provider_http_status: Number.isFinite(Number(syncResult && syncResult.provider_http_status))
-          ? Math.trunc(Number(syncResult.provider_http_status))
-          : null,
+        provider_http_status: toNullableHttpStatus(syncResult && syncResult.provider_http_status),
         confidence_level: confidenceLevel,
         ingredient: {
           inci: String(ingredient.inci || query || '').slice(0, 120),
@@ -33772,9 +33778,7 @@ async function buildIngredientReportPayloadWithResearch({
         provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
         timeout_root_cause: syncResearch && syncResearch.timeout_root_cause ? syncResearch.timeout_root_cause : null,
-        provider_http_status: Number.isFinite(Number(syncResearch && syncResearch.provider_http_status))
-          ? Math.trunc(Number(syncResearch.provider_http_status))
-          : null,
+        provider_http_status: toNullableHttpStatus(syncResearch && syncResearch.provider_http_status),
         provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
         normalized_query: normalizedQuery,
         rate_limit_cooldown_ms: Number.isFinite(Number(syncResearch && syncResearch.rate_limit_cooldown_ms))
@@ -47013,9 +47017,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
               error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
               timeout_root_cause: syncResearch && syncResearch.timeout_root_cause ? syncResearch.timeout_root_cause : null,
-              provider_http_status: Number.isFinite(Number(syncResearch && syncResearch.provider_http_status))
-                ? Math.trunc(Number(syncResearch.provider_http_status))
-                : null,
+              provider_http_status: toNullableHttpStatus(syncResearch && syncResearch.provider_http_status),
               provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
               normalized_query: normalizedQuery,
               rate_limit_cooldown_ms: Number.isFinite(Number(syncResearch && syncResearch.rate_limit_cooldown_ms))
