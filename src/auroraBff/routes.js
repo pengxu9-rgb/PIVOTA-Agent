@@ -93,6 +93,10 @@ const {
   recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
+  recordIngredientProviderCallMetric,
+  recordIngredientUserActionMetric,
+  recordGeminiRateLimitedMetric,
+  recordTimeoutRootCauseMetric,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
@@ -652,6 +656,12 @@ const AURORA_INGREDIENT_RESEARCH_ASYNC_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_INGREDIENT_SINGLE_CALL_MODE = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_SINGLE_CALL_MODE || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const INGREDIENT_ROUTE_V2_ENABLED = (() => {
   const raw = String(process.env.INGREDIENT_ROUTE_V2_ENABLED || 'true')
     .trim()
@@ -701,6 +711,11 @@ const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 10000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
   return Math.max(3000, Math.min(20000, v));
+})();
+const AURORA_INGREDIENT_SYNC_RETRIES = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_RETRIES || 0);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 0;
+  return Math.max(0, Math.min(1, v));
 })();
 const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI = String(
   process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro',
@@ -1431,6 +1446,9 @@ const SKIN_VISION_RETRY_BASE_MS = Math.max(
   Math.min(2000, Number(process.env.AURORA_SKIN_VISION_RETRY_BASE_MS || 250)),
 );
 const SKIN_VISION_FORCE_CALL = String(process.env.AURORA_SKIN_FORCE_VISION_CALL || '').toLowerCase() === 'true';
+const SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD = String(process.env.AURORA_SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD || '').toLowerCase() === 'true';
+const NODE_ENV_TOKEN = String(process.env.NODE_ENV || '').trim().toLowerCase();
+const IS_NODE_ENV_PRODUCTION = NODE_ENV_TOKEN === 'production';
 const PHOTO_UPLOAD_PROXY_MAX_BYTES = Math.max(
   1024 * 1024,
   Math.min(25 * 1024 * 1024, Number(process.env.AURORA_PHOTO_UPLOAD_MAX_BYTES || 10 * 1024 * 1024)),
@@ -13421,6 +13439,7 @@ async function callGeminiJsonObject({
   maxOutputTokens = null,
   responseJsonSchema = null,
   allowDiagForceModel = true,
+  routeTag = '',
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -13473,10 +13492,34 @@ async function callGeminiJsonObject({
     }
     return { ok: true, json: parsed, resolved_model: resolvedModel };
   } catch (err) {
+    const reason = err && err.code ? String(err.code) : 'gemini_error';
+    const detail = err && err.message ? String(err.message) : null;
+    const normalizedRoute = String(routeTag || '').trim().toLowerCase();
+    const lowerErrorToken = `${reason} ${detail || ''}`.toLowerCase();
+    if (
+      normalizedRoute &&
+      normalizedRoute !== 'ingredient' &&
+      (lowerErrorToken.includes('429') || lowerErrorToken.includes('rate') || lowerErrorToken.includes('quota'))
+    ) {
+      recordGeminiRateLimitedMetric({ route: normalizedRoute });
+      recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'rate_limited' });
+    } else if (
+      normalizedRoute &&
+      normalizedRoute !== 'ingredient' &&
+      (lowerErrorToken.includes('timeout') || lowerErrorToken.includes('timed out') || lowerErrorToken.includes('abort'))
+    ) {
+      recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'provider_timeout' });
+    } else if (
+      normalizedRoute &&
+      normalizedRoute !== 'ingredient' &&
+      (lowerErrorToken.includes('network') || lowerErrorToken.includes('socket') || lowerErrorToken.includes('econn') || lowerErrorToken.includes('dns'))
+    ) {
+      recordTimeoutRootCauseMetric({ route: normalizedRoute, cause: 'network' });
+    }
     return {
       ok: false,
-      reason: err && err.code ? String(err.code) : 'gemini_error',
-      detail: err && err.message ? String(err.message) : null,
+      reason,
+      detail,
       resolved_model: resolvedModel,
     };
   }
@@ -13651,6 +13694,7 @@ async function callDualQaProvider({ provider, systemPrompt, userPrompt, timeoutM
     userPrompt,
     timeoutMs,
     temperature: 0,
+    routeTag: 'qa',
   });
 }
 let callDualQaProviderImpl = callDualQaProvider;
@@ -14209,13 +14253,11 @@ function shouldSkipVisionForDegradedReportMode({
   photosProvided,
   degradedMode,
   effectivePhotoQuality,
-  visionDecision,
   reportDecision,
 } = {}) {
   if (forceVisionCall) return false;
   if (!userRequestedPhoto || !photosProvided) return false;
   if (String(degradedMode || '').trim().toLowerCase() !== 'report') return false;
-  if (!visionDecision || String(visionDecision.decision || '').trim().toLowerCase() !== 'call') return false;
   if (!reportDecision || String(reportDecision.decision || '').trim().toLowerCase() !== 'call') return false;
   const grade = normalizeContractQualityGrade(effectivePhotoQuality && effectivePhotoQuality.grade);
   if (grade !== 'degraded' && grade !== 'unknown') return false;
@@ -23885,6 +23927,7 @@ async function recoverProductsWithLlmFallbackFromQueries({
         temperature: 0.2,
         maxOutputTokens: 400,
         responseJsonSchema: buildProductRetrieverJsonSchema(Math.max(2, targetMax - out.products.length)),
+        routeTag: 'reco_fallback',
       });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err), query: q }, 'aurora bff: llm fallback query failed');
@@ -31467,6 +31510,15 @@ function classifyIngredientProviderError(reason, detail = '') {
   return 'gemini_unknown';
 }
 
+function mapIngredientErrorToTimeoutRootCause(errorCode = '', fallbackReason = '') {
+  const token = String(errorCode || '').trim().toLowerCase();
+  const fallback = String(fallbackReason || '').trim().toLowerCase();
+  if (token === 'gemini_rate_limited' || fallback === 'rate_limit_cooldown') return 'rate_limited';
+  if (token === 'gemini_timeout') return fallback === 'budget_exceeded' ? 'budget_exceeded' : 'provider_timeout';
+  if (token === 'gemini_network') return 'network';
+  return 'unknown';
+}
+
 function extractFirstJsonObjectFromText(text) {
   const raw = String(text || '');
   if (!raw) return null;
@@ -32386,6 +32438,7 @@ async function runIngredientResearchSync({
   logger = null,
 } = {}) {
   const provider = 'gemini';
+  const providerRoute = 'ingredient';
   const resolvedModel = pickFirstTrimmed(modelOverride, AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI) || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI;
   const modelTier = /pro/i.test(String(resolvedModel || '')) ? 'pro' : 'flash';
   let effectiveModel = resolvedModel;
@@ -32395,6 +32448,8 @@ async function runIngredientResearchSync({
   const circuitState = getIngredientProviderCircuitState();
   const cooldownRemainingMs = getIngredientResearchCooldownRemainingMs(normalizedQuery || query, resolvedModel);
   if (cooldownRemainingMs > 0) {
+    recordGeminiRateLimitedMetric({ route: providerRoute });
+    recordTimeoutRootCauseMetric({ route: providerRoute, cause: 'rate_limited' });
     recordAuroraIngredientProviderMetric({
       stage: 'final',
       provider,
@@ -32417,6 +32472,7 @@ async function runIngredientResearchSync({
       provider_attempts: providerAttempts,
       prompt_meta: null,
       fallback_reason: 'rate_limit_cooldown',
+      timeout_root_cause: 'rate_limited',
       rate_limit_cooldown_ms: cooldownRemainingMs,
     };
   }
@@ -32457,12 +32513,16 @@ async function runIngredientResearchSync({
     profileSummary,
     sources,
   });
-  const maxAttempts = 2;
+  const maxAttempts = 1 + AURORA_INGREDIENT_SYNC_RETRIES;
   let finalErrorCode = 'provider_unavailable';
+  let finalTimeoutRootCause = 'unknown';
+  let finalFallbackReason = '';
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const remainingBudget = AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS - (Date.now() - startedAt);
     if (remainingBudget <= 200) {
       finalErrorCode = 'gemini_timeout';
+      finalTimeoutRootCause = 'budget_exceeded';
+      finalFallbackReason = 'budget_exceeded';
       break;
     }
     const callTimeoutMs = Math.max(800, Math.min(AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS, remainingBudget));
@@ -32476,6 +32536,7 @@ async function runIngredientResearchSync({
       maxOutputTokens: 700,
       responseJsonSchema: prompt.responseJsonSchema,
       allowDiagForceModel: false,
+      routeTag: providerRoute,
     });
     const latencyMs = Math.max(0, Date.now() - callStartedAt);
     const attemptModel = pickFirstTrimmed(resp && resp.resolved_model, effectiveModel);
@@ -32559,7 +32620,9 @@ async function runIngredientResearchSync({
     });
     recordAuroraIngredientProviderMetric({ stage: 'attempt', provider, outcome: reasonCode });
     finalErrorCode = reasonCode;
-    const shouldRetry = reasonCode === 'gemini_network' && attempt === 0;
+    finalTimeoutRootCause = mapIngredientErrorToTimeoutRootCause(reasonCode);
+    if (!finalFallbackReason) finalFallbackReason = reasonCode;
+    const shouldRetry = reasonCode === 'gemini_network' && attempt + 1 < maxAttempts;
     if (!shouldRetry) break;
   }
   const afterCircuitState = updateIngredientProviderCircuit({ outcome: 'error' });
@@ -32573,7 +32636,12 @@ async function runIngredientResearchSync({
   }
   if (finalErrorCode === 'gemini_rate_limited') {
     setIngredientResearchCooldown(normalizedQuery || query, AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS, effectiveModel || resolvedModel);
+    recordGeminiRateLimitedMetric({ route: providerRoute });
   }
+  if (finalTimeoutRootCause === 'unknown') {
+    finalTimeoutRootCause = mapIngredientErrorToTimeoutRootCause(finalErrorCode, finalFallbackReason);
+  }
+  recordTimeoutRootCauseMetric({ route: providerRoute, cause: finalTimeoutRootCause });
   if (afterCircuitState === 'open') {
     recordAuroraIngredientsFlowMetric({ stage: 'circuit_open', hit: true });
   }
@@ -32593,6 +32661,7 @@ async function runIngredientResearchSync({
       provider_model_tier: effectiveModelTier,
       provider_circuit_state: afterCircuitState,
       research_error_code: finalErrorCode,
+      timeout_root_cause: finalTimeoutRootCause,
       attempts: providerAttempts,
     },
     'aurora bff: ingredient sync research fallback',
@@ -32612,7 +32681,8 @@ async function runIngredientResearchSync({
       input_chars: prompt.inputChars,
       output_chars: 0,
     },
-    fallback_reason: finalErrorCode,
+    fallback_reason: finalFallbackReason || finalErrorCode,
+    timeout_root_cause: finalTimeoutRootCause,
   };
 }
 
@@ -32640,6 +32710,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
         provider_circuit_state: getIngredientProviderCircuitState(),
         error_code: 'gemini_rate_limited',
         fallback_reason: 'rate_limit_cooldown',
+        timeout_root_cause: 'rate_limited',
         rate_limit_cooldown_ms: cooldownRemainingMs,
         updated_at_ms: Date.now(),
       },
@@ -32711,6 +32782,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
         provider_model_tier: syncResult && syncResult.provider_model_tier ? syncResult.provider_model_tier : ingredientModelTier(AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI),
         provider_circuit_state: syncResult && syncResult.provider_circuit_state ? syncResult.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResult && syncResult.research_error_code ? syncResult.research_error_code : null,
+        timeout_root_cause: syncResult && syncResult.timeout_root_cause ? syncResult.timeout_root_cause : null,
         confidence_level: confidenceLevel,
         ingredient: {
           inci: String(ingredient.inci || query || '').slice(0, 120),
@@ -32910,7 +32982,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   const providerModelTier = pickFirstTrimmed(
     metaObj.provider_model_tier,
     researchObj && researchObj.provider_model_tier,
-    'flash',
+    ingredientModelTier(AURORA_INGREDIENT_SYNC_MODEL_GEMINI),
   );
   const resolvedModel = pickFirstTrimmed(
     metaObj.resolved_model,
@@ -32941,6 +33013,10 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   const researchErrorCode = pickFirstTrimmed(
     metaObj.research_error_code,
     researchObj && (researchObj.error_code || researchObj.error),
+  );
+  const timeoutRootCause = pickFirstTrimmed(
+    metaObj.timeout_root_cause,
+    researchObj && researchObj.timeout_root_cause,
   );
   const confidenceLevelFromResearch = normalizeIngredientConfidenceLevel(
     researchObj && (researchObj.confidence_level || researchObj.confidence),
@@ -33177,6 +33253,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     research_status: researchStatus,
     research_provider: researchProvider || null,
     research_error_code: researchErrorCode || null,
+    timeout_root_cause: timeoutRootCause || null,
     normalized_query: normalizedQuery || null,
     route_decision_reasons: routeDecisionReasons,
     route_rule_version: routeRuleVersion,
@@ -33307,6 +33384,7 @@ async function buildIngredientReportPayloadWithResearch({
         provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : ingredientModelTier(AURORA_INGREDIENT_SYNC_MODEL_GEMINI),
         provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
+        timeout_root_cause: syncResearch && syncResearch.timeout_root_cause ? syncResearch.timeout_root_cause : null,
         provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
         normalized_query: normalizedQuery,
         rate_limit_cooldown_ms: Number.isFinite(Number(syncResearch && syncResearch.rate_limit_cooldown_ms))
@@ -33346,6 +33424,10 @@ async function buildIngredientReportPayloadWithResearch({
       research_error_code: pickFirstTrimmed(
         metaObj.research_error_code,
         resolvedResearch && (resolvedResearch.error_code || resolvedResearch.error),
+      ),
+      timeout_root_cause: pickFirstTrimmed(
+        metaObj.timeout_root_cause,
+        resolvedResearch && resolvedResearch.timeout_root_cause,
       ),
     },
   });
@@ -40983,7 +41065,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           parsed.data.use_photo === true || (parsed.data.use_photo == null && photosProvided);
         const hasPhotoPrimaryInput = Boolean(userRequestedPhoto && photosProvided);
         const hasLlmPrimaryInput = hasPrimaryInput || hasPhotoPrimaryInput;
-        const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasLlmPrimaryInput);
+        const skinForceVisionCallRequested = Boolean(SKIN_VISION_FORCE_CALL);
+        const skinForceVisionCallEffective = Boolean(
+          skinForceVisionCallRequested && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
+        );
+        const forceVisionCall = Boolean(skinForceVisionCallEffective && userRequestedPhoto && photosProvided && hasLlmPrimaryInput);
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
         const selectedVisionProvider = {
           provider: 'gemini',
@@ -41175,7 +41261,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             photosProvided,
             degradedMode: SKIN_DEGRADED_MODE,
             effectivePhotoQuality: photoQuality,
-            visionDecision,
             reportDecision,
           })
         ) {
@@ -41210,6 +41295,24 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push('Force-vision debug enabled: attempting photo model call despite fail-grade quality.');
         }
 
+        if (!analysis && visionDecision.decision === 'call') {
+          if (
+            shouldSkipVisionForDegradedReportMode({
+              forceVisionCall,
+              userRequestedPhoto,
+              photosProvided,
+              degradedMode: SKIN_DEGRADED_MODE,
+              effectivePhotoQuality: photoQuality,
+              reportDecision,
+            })
+          ) {
+            visionDecision = {
+              decision: 'skip',
+              reasons: ['degraded_mode_report'],
+              downgrade_confidence: true,
+            };
+          }
+        }
         if (!analysis && visionDecision.decision === 'call') {
           const allowLowQualityVision = AURORA_RULE_RELAX_AGGRESSIVE && userRequestedPhoto && photosProvided;
           const candidates = photoQuality.grade === 'pass'
@@ -41936,6 +42039,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           skin_vision_model: SKIN_VISION_MODEL_GEMINI,
           skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+          skin_force_vision_call_requested: skinForceVisionCallRequested,
+          skin_force_vision_call_effective: skinForceVisionCallEffective,
           llm_vision_called: visionModelCalled,
           llm_report_called: reportModelCalled,
           artifact_usable: Boolean(artifactGate && artifactGate.ok),
@@ -42010,6 +42115,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_force_vision_call_requested: skinForceVisionCallRequested,
+            skin_force_vision_call_effective: skinForceVisionCallEffective,
             low_quality_tolerated: Boolean(
               AURORA_RULE_RELAX_AGGRESSIVE &&
                 userRequestedPhoto &&
@@ -42492,6 +42599,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
+            skin_force_vision_call_effective: Boolean(
+              SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
+            ),
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
           },
         };
@@ -42503,6 +42614,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             detector_source: 'baseline_low_confidence',
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
+            skin_force_vision_call_effective: Boolean(
+              SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
+            ),
             llm_vision_called: false,
             llm_report_called: false,
             artifact_usable: false,
@@ -42544,6 +42659,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             detector_source: 'baseline_low_confidence',
             skin_vision_model: SKIN_VISION_MODEL_GEMINI,
             skin_report_model: SKIN_REPORT_MODEL_GEMINI,
+            skin_force_vision_call_requested: Boolean(SKIN_VISION_FORCE_CALL),
+            skin_force_vision_call_effective: Boolean(
+              SKIN_VISION_FORCE_CALL && (!IS_NODE_ENV_PRODUCTION || SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD),
+            ),
             llm_vision_called: false,
             llm_report_called: false,
             artifact_usable: false,
@@ -45846,6 +45965,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       } = {}) => {
         const target = String(lookupTarget || '').trim().slice(0, 120);
         if (!target) return null;
+        const providerCallStage = reasonTag === 'ingredient_research_poll' ? 'poll' : 'sync';
         const normalizedQuery = normalizeIngredientResearchKey(target);
         const entityMatch = ingredientEntityMatchFromText(target, ctx.lang);
         const routeReasons = Array.isArray(explicitRouteReasons)
@@ -45921,6 +46041,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
           !rateLimit.blocked
         ) {
+          recordIngredientUserActionMetric({ action: providerCallStage === 'poll' ? 'poll' : 'lookup' });
           const profileSummaryForResearch =
             profile && typeof profile === 'object'
               ? {
@@ -45940,6 +46061,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             modelOverride: AURORA_INGREDIENT_SYNC_MODEL_GEMINI,
             logger,
           });
+          recordIngredientProviderCallMetric({
+            stage: providerCallStage,
+            outcome: syncResearch && syncResearch.ok
+              ? 'ok'
+              : pickFirstTrimmed(syncResearch && syncResearch.research_error_code, 'error'),
+          });
           const syncPayload = asResearchObject(syncResearch && syncResearch.research) || null;
           if (syncPayload) {
             const syncRateLimited =
@@ -45954,6 +46081,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : ingredientModelTier(AURORA_INGREDIENT_SYNC_MODEL_GEMINI),
               provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
               error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
+              timeout_root_cause: syncResearch && syncResearch.timeout_root_cause ? syncResearch.timeout_root_cause : null,
               provider_attempts: Array.isArray(syncResearch && syncResearch.provider_attempts) ? syncResearch.provider_attempts.slice(0, 3) : [],
               normalized_query: normalizedQuery,
               rate_limit_cooldown_ms: Number.isFinite(Number(syncResearch && syncResearch.rate_limit_cooldown_ms))
@@ -45995,7 +46123,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         const shouldQueueResearch = !readyAfterSync && !INGREDIENT_KB_ONLY_MODE && AURORA_INGREDIENT_LLM_REPORT_ENABLED;
-        const researchJob = shouldQueueResearch
+        const queueAllowed = shouldQueueResearch && !AURORA_INGREDIENT_SINGLE_CALL_MODE;
+        if (shouldQueueResearch && !queueAllowed) {
+          routeReasons.push('single_call_mode_no_async_queue');
+        }
+        const researchJob = queueAllowed
           ? enqueueIngredientResearchJob({
             query: target,
             language: ctx.lang,
@@ -46023,6 +46155,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             resolved_model: resolvedResearch && resolvedResearch.resolved_model,
             research_provider: resolvedResearch && resolvedResearch.provider,
             research_error_code: resolvedResearch && (resolvedResearch.error_code || resolvedResearch.error),
+            timeout_root_cause: resolvedResearch && resolvedResearch.timeout_root_cause,
           },
         });
         const ingredientName = pickFirstTrimmed(
@@ -46034,12 +46167,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           ctx.lang === 'CN'
             ? reportPayload.research_status === 'queued'
               ? reportPayload.research_error_code === 'gemini_rate_limited'
-                ? `已先返回 ${ingredientName} 的快速结论。当前增强研究排队中（上游限流），可稍后点击“刷新增强结果”。`
+                ? `已先返回 ${ingredientName} 的快速结论。当前上游限流，请点击“刷新增强结果”立即重试。`
                 : `已先返回 ${ingredientName} 的快速结论，增强证据生成中。`
               : `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
             : reportPayload.research_status === 'queued'
               ? reportPayload.research_error_code === 'gemini_rate_limited'
-                ? `Returning a quick brief for ${ingredientName}; enhanced research is queued due to upstream rate limiting. Tap refresh shortly.`
+                ? `Returning a quick brief for ${ingredientName}; upstream is rate-limited. Tap refresh to retry now.`
                 : `Returning a quick brief for ${ingredientName}; enhanced evidence is generating.`
               : `I generated a 1-minute ingredient report for ${ingredientName}.`;
         let sessionPatch = attachIngredientRouteMetaToSessionPatch(
@@ -46516,7 +46649,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           queryFirstApplied: ingredientTextTrigger,
           reasonTag: 'ingredient_research_poll',
           explicitRouteReasons: ['research_poll', ...ingredientRouteDecisionReasons],
-          skipRateLimit: true,
         });
         if (envelope) return sendChatEnvelope(envelope);
       }

@@ -160,6 +160,17 @@ test('shouldSkipVisionForDegradedReportMode: skips only in degraded report mode 
     });
     assert.equal(shouldSkip, true);
 
+    const shouldSkipEvenWhenVisionDecisionAlreadySkip = __internal.shouldSkipVisionForDegradedReportMode({
+      forceVisionCall: false,
+      userRequestedPhoto: true,
+      photosProvided: true,
+      degradedMode: 'report',
+      effectivePhotoQuality: { grade: 'degraded', reasons: ['pixel_white_balance_unstable'] },
+      visionDecision: { decision: 'skip', reasons: ['degraded_skip_vision'] },
+      reportDecision: { decision: 'call', reasons: ['degraded_mode_report'] },
+    });
+    assert.equal(shouldSkipEvenWhenVisionDecisionAlreadySkip, true);
+
     const shouldNotSkipForced = __internal.shouldSkipVisionForDegradedReportMode({
       forceVisionCall: true,
       userRequestedPhoto: true,
@@ -4134,6 +4145,89 @@ test('/v1/chat: ingredient.lookup returns queued on gemini rate limit and avoids
         assert.equal(payload.resolved_model, 'gemini-sync-flash-test');
         assert.equal(payload.provider_model_tier, 'flash');
         assert.equal(geminiCalls, 1);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: ingredient single-call mode disables implicit async queue; poll stays explicit one-call retry', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_INGREDIENT_RESEARCH_ASYNC_ENABLED: 'true',
+      AURORA_INGREDIENT_SINGLE_CALL_MODE: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_SYNC_MODEL_GEMINI: 'gemini-3-pro',
+      AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI: 'gemini-3-pro',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: false,
+            reason: 'GEMINI_JSON_TIMEOUT',
+            detail: 'timed out after 4000ms',
+          };
+        });
+
+        const app = express();
+        app.use(express.json());
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const headers = {
+          'X-Aurora-UID': 'test_uid_ingr_single_call_mode',
+          'X-Trace-ID': 'test_trace_ingr_single_call_mode',
+          'X-Brief-ID': 'test_brief_ingr_single_call_mode',
+          'X-Lang': 'EN',
+        };
+
+        const lookupResp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'BUTYLOCTYL',
+            action_id: 'ingredient.lookup',
+            action_data: {
+              query: 'BUTYLOCTYL',
+              ingredient_query: 'BUTYLOCTYL',
+              entry_source: 'ingredient_hub_chip',
+            },
+            language: 'EN',
+          });
+        assert.equal(lookupResp.statusCode, 200);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        assert.equal(geminiCalls, 1);
+
+        const pollResp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action_id: 'ingredient.research.poll',
+            action_data: {
+              ingredient_query: 'BUTYLOCTYL',
+              normalized_query: 'butyloctyl',
+              entry_source: 'ingredient_report',
+            },
+            language: 'EN',
+          });
+        assert.equal(pollResp.statusCode, 200);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        assert.equal(geminiCalls, 2);
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];

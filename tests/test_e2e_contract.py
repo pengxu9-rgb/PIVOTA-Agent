@@ -90,6 +90,7 @@ def _snapshot_from_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
 
     payload = card.get("payload") or {}
     quality_report = payload.get("quality_report") or {}
+    analysis_meta = payload.get("analysis_meta") or {}
     photo_quality = quality_report.get("photo_quality") or {}
     effective_quality = quality_report.get("effective_quality") or {}
     llm = quality_report.get("llm") or {}
@@ -109,6 +110,10 @@ def _snapshot_from_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
             raise AssertionError(f"quality_report missing required key: {key}")
     if photo_quality != effective_quality:
         raise AssertionError("quality_report.photo_quality must stay aligned with effective_quality")
+
+    for optional_bool_key in ["skin_force_vision_call_requested", "skin_force_vision_call_effective"]:
+        if optional_bool_key in analysis_meta and not isinstance(analysis_meta.get(optional_bool_key), bool):
+            raise AssertionError(f"analysis_meta.{optional_bool_key} must be bool when present")
 
     failure_codes = _uniq_str_list(list(photo_quality.get("reasons") or []))
     for fm in card.get("field_missing") or []:
