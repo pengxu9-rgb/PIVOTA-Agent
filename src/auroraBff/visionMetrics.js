@@ -180,6 +180,8 @@ const auroraSkinLlmCallCounter = new Map();
 const auroraRecoLlmCallCounter = new Map();
 const auroraRecoAltPrecheckCounter = new Map();
 const auroraRecoAltStageLatencyByStage = new Map();
+const auroraRecoAltOutcomeCounter = new Map();
+const auroraRecoAltProviderCounter = new Map();
 let recoAlternativesBudgetExhaustedTotal = 0;
 let recoAlternativesTimeoutTotal = 0;
 let recoAlternativesEmptyTotal = 0;
@@ -736,7 +738,10 @@ function normalizeAuroraRecoLlmCallOutcome(outcome) {
     token === 'provider_error' ||
     token === 'timeout' ||
     token === 'empty_structured' ||
-    token === 'empty_structured_clarify'
+    token === 'empty_structured_clarify' ||
+    token === 'provider_rate_limited' ||
+    token === 'provider_timeout' ||
+    token === 'queue_saturated'
   ) {
     return token;
   }
@@ -776,8 +781,58 @@ function normalizeAuroraRecoAltPrecheckReason(reason) {
 
 function normalizeAuroraRecoAltStage(stage) {
   const token = cleanMetricToken(stage, 'total');
-  if (token === 'precheck' || token === 'llm' || token === 'map' || token === 'fallback' || token === 'total') return token;
+  if (
+    token === 'precheck' ||
+    token === 'llm' ||
+    token === 'llm_sync' ||
+    token === 'map' ||
+    token === 'fallback' ||
+    token === 'async_refresh' ||
+    token === 'total'
+  ) {
+    return token;
+  }
   return 'total';
+}
+
+function normalizeAuroraRecoAltOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'failed');
+  if (token === 'success' || token === 'fallback' || token === 'failed' || token === 'skipped') return token;
+  return 'failed';
+}
+
+function normalizeAuroraRecoAltFailureClass(failureClass) {
+  const token = cleanMetricToken(failureClass, 'unknown');
+  if (
+    token === 'none' ||
+    token === 'provider_rate_limited' ||
+    token === 'provider_timeout' ||
+    token === 'queue_saturated' ||
+    token === 'empty_structured_clarify' ||
+    token === 'empty_structured' ||
+    token === 'precheck_fail' ||
+    token === 'policy_skip' ||
+    token === 'clarify_blocked_best_effort' ||
+    token === 'local_fallback_only' ||
+    token === 'provider_error' ||
+    token === 'endpoint_exception' ||
+    token === 'budget_exhausted' ||
+    token === 'anchor_missing_precheck'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeAuroraRecoAltProviderStatus(providerStatus) {
+  const token = cleanMetricToken(providerStatus, 'none');
+  if (token === 'none' || token === 'timeout' || token === 'network') return token;
+  if (/^\d{3}$/.test(token)) return token;
+  return 'unknown';
+}
+
+function normalizeAuroraRecoAltProviderErrorCode(errorCode) {
+  return cleanMetricToken(errorCode, 'none');
 }
 
 function normalizeAuroraRecoEntrySource(source) {
@@ -2517,6 +2572,32 @@ function observeAuroraRecoAltStageLatency({ stage, latencyMs } = {}) {
   }
 }
 
+function recordAuroraRecoAltOutcome({ outcome, failureClass, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoAltOutcomeCounter,
+    {
+      outcome: normalizeAuroraRecoAltOutcome(outcome),
+      failure_class: normalizeAuroraRecoAltFailureClass(failureClass),
+    },
+    amount,
+  );
+}
+
+function recordAuroraRecoAltProvider({ providerStatus, errorCode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoAltProviderCounter,
+    {
+      provider_status: normalizeAuroraRecoAltProviderStatus(providerStatus),
+      error_code: normalizeAuroraRecoAltProviderErrorCode(errorCode),
+    },
+    amount,
+  );
+}
+
 function recordAuroraRecoEntrySource({ source, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -3402,6 +3483,14 @@ function renderVisionMetricsPrometheus() {
     lines.push(`aurora_reco_alt_stage_latency_ms_count{stage="${escapePromValue(stage)}"} ${state.count}`);
   }
 
+  lines.push('# HELP aurora_reco_alt_outcome_total Total alternatives pipeline outcomes grouped by outcome and failure class.');
+  lines.push('# TYPE aurora_reco_alt_outcome_total counter');
+  renderCounter(lines, 'aurora_reco_alt_outcome_total', auroraRecoAltOutcomeCounter);
+
+  lines.push('# HELP aurora_reco_alt_provider_total Total alternatives upstream provider responses grouped by provider status and error code.');
+  lines.push('# TYPE aurora_reco_alt_provider_total counter');
+  renderCounter(lines, 'aurora_reco_alt_provider_total', auroraRecoAltProviderCounter);
+
   lines.push('# HELP aurora_reco_entry_source_total Total recommendation entry counts by request source detail.');
   lines.push('# TYPE aurora_reco_entry_source_total counter');
   renderCounter(lines, 'aurora_reco_entry_source_total', auroraRecoEntrySourceCounter);
@@ -3763,6 +3852,8 @@ function resetVisionMetrics() {
   promptContractMismatchTotal = 0;
   auroraRecoAltPrecheckCounter.clear();
   auroraRecoAltStageLatencyByStage.clear();
+  auroraRecoAltOutcomeCounter.clear();
+  auroraRecoAltProviderCounter.clear();
   auroraRecoEntrySourceCounter.clear();
   auroraRecoKbWriteCounter.clear();
   auroraProfileAutoPatchCounter.clear();
@@ -3951,6 +4042,8 @@ function snapshotVisionMetrics() {
       sum: state.sum,
       buckets: Array.from(state.buckets.entries()),
     })),
+    auroraRecoAltOutcome: Array.from(auroraRecoAltOutcomeCounter.entries()),
+    auroraRecoAltProvider: Array.from(auroraRecoAltProviderCounter.entries()),
     auroraRecoEntrySource: Array.from(auroraRecoEntrySourceCounter.entries()),
     auroraRecoKbWrite: Array.from(auroraRecoKbWriteCounter.entries()),
     auroraProfileAutoPatch: Array.from(auroraProfileAutoPatchCounter.entries()),
@@ -4094,6 +4187,8 @@ module.exports = {
   recordPromptContractMismatch,
   recordAuroraRecoAltPrecheck,
   observeAuroraRecoAltStageLatency,
+  recordAuroraRecoAltOutcome,
+  recordAuroraRecoAltProvider,
   recordAuroraRecoEntrySource,
   recordAuroraRecoKbWrite,
   recordAuroraProfileAutoPatch,

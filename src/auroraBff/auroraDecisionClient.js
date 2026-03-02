@@ -11,6 +11,97 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function toFiniteInt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
+function parseRetryAfterMs(headers) {
+  const raw = headers && typeof headers === 'object'
+    ? headers['retry-after'] || headers['Retry-After']
+    : null;
+  if (raw == null) return null;
+  const num = Number(raw);
+  if (Number.isFinite(num)) {
+    // HTTP Retry-After seconds, but tolerate ms-scale values too.
+    return num > 1000 ? Math.max(0, Math.trunc(num)) : Math.max(0, Math.trunc(num * 1000));
+  }
+  const ts = Date.parse(String(raw));
+  if (Number.isFinite(ts)) return Math.max(0, ts - Date.now());
+  return null;
+}
+
+function extractUpstreamContract(body, headers = null, fallbackStatus = null) {
+  const obj = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const meta = obj.meta && typeof obj.meta === 'object' && !Array.isArray(obj.meta) ? obj.meta : {};
+  const provider = obj.provider && typeof obj.provider === 'object' && !Array.isArray(obj.provider) ? obj.provider : {};
+  const providerMeta =
+    obj.provider_meta && typeof obj.provider_meta === 'object' && !Array.isArray(obj.provider_meta)
+      ? obj.provider_meta
+      : {};
+  const providerStatus =
+    toFiniteInt(
+      obj.provider_status ??
+      obj.provider_status_code ??
+      meta.provider_status ??
+      meta.provider_status_code ??
+      providerMeta.provider_status ??
+      providerMeta.provider_status_code ??
+      provider.status ??
+      provider.status_code ??
+      fallbackStatus,
+    );
+  const providerErrorCode =
+    String(
+      obj.provider_error_code ??
+      obj.error_code ??
+      meta.provider_error_code ??
+      meta.error_code ??
+      providerMeta.provider_error_code ??
+      providerMeta.error_code ??
+      provider.error_code ??
+      provider.code ??
+      '',
+    ).trim() || null;
+  const retryAfterMs =
+    toFiniteInt(
+      obj.retry_after_ms ??
+      meta.retry_after_ms ??
+      providerMeta.retry_after_ms ??
+      provider.retry_after_ms,
+    ) ?? parseRetryAfterMs(headers);
+  const queueWaitMs = toFiniteInt(
+    obj.queue_wait_ms ??
+    meta.queue_wait_ms ??
+    providerMeta.queue_wait_ms ??
+    provider.queue_wait_ms,
+  );
+  const providerLatencyMs = toFiniteInt(
+    obj.provider_latency_ms ??
+    meta.provider_latency_ms ??
+    providerMeta.provider_latency_ms ??
+    provider.latency_ms,
+  );
+  const upstreamRequestId =
+    String(
+      obj.upstream_request_id ??
+      obj.request_id ??
+      meta.upstream_request_id ??
+      providerMeta.upstream_request_id ??
+      provider.request_id ??
+      '',
+    ).trim() || null;
+  return {
+    provider_status: providerStatus,
+    provider_error_code: providerErrorCode,
+    retry_after_ms: retryAfterMs,
+    queue_wait_ms: queueWaitMs,
+    provider_latency_ms: providerLatencyMs,
+    upstream_request_id: upstreamRequestId,
+  };
+}
+
 async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs, headers } = {}) {
   const maxRetries = Number.isFinite(retries) ? retries : 1;
   const delayMs = Number.isFinite(retryDelayMs) ? retryDelayMs : 200;
@@ -33,9 +124,29 @@ async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs, head
       const err = new Error(`Upstream status ${resp.status}`);
       err.status = resp.status;
       err.responseBody = resp.data;
+      err.responseHeaders = resp.headers;
+      err.upstreamMeta = extractUpstreamContract(resp.data, resp.headers, resp.status);
       throw err;
     } catch (err) {
       lastErr = err;
+      if (!err.upstreamMeta) {
+        const responseStatus = err && err.response && Number.isFinite(Number(err.response.status))
+          ? Number(err.response.status)
+          : err && Number.isFinite(Number(err.status))
+            ? Number(err.status)
+            : null;
+        const responseBody = err && err.responseBody
+          ? err.responseBody
+          : err && err.response && err.response.data
+            ? err.response.data
+            : null;
+        const responseHeaders = err && err.responseHeaders
+          ? err.responseHeaders
+          : err && err.response && err.response.headers
+            ? err.response.headers
+            : null;
+        err.upstreamMeta = extractUpstreamContract(responseBody, responseHeaders, responseStatus);
+      }
       const status = err && err.status;
       const shouldRetry = (status == null || status >= 500) && attempt < maxRetries;
       if (shouldRetry) {
@@ -1083,6 +1194,8 @@ async function auroraChat({
   disallow_clarify,
   no_clarify,
   force_intent,
+  provider_contract,
+  require_provider_contract,
   required_structured_keys,
   messages,
   debug,
@@ -1111,6 +1224,8 @@ async function auroraChat({
   if (anchor_product_url) payload.anchor_product_url = anchor_product_url;
   if (intent_hint) payload.intent_hint = intent_hint;
   if (intent_contract) payload.intent_contract = intent_contract;
+  if (provider_contract) payload.provider_contract = provider_contract;
+  if (typeof require_provider_contract === 'boolean') payload.require_provider_contract = require_provider_contract;
   if (typeof disallow_clarify === 'boolean') payload.disallow_clarify = disallow_clarify;
   if (typeof no_clarify === 'boolean') payload.no_clarify = no_clarify;
   if (force_intent) payload.force_intent = force_intent;
@@ -1128,6 +1243,10 @@ async function auroraChat({
     ...(trace_id ? { 'X-Parent-Trace-Id': String(trace_id) } : {}),
     ...(request_id ? { 'X-Parent-Request-Id': String(request_id) } : {}),
     ...(intent_contract ? { 'X-Intent-Contract': String(intent_contract) } : {}),
+    ...(provider_contract ? { 'X-Provider-Contract': String(provider_contract) } : {}),
+    ...(typeof require_provider_contract === 'boolean'
+      ? { 'X-Require-Provider-Contract': require_provider_contract ? 'true' : 'false' }
+      : {}),
     ...(force_intent ? { 'X-Force-Intent': String(force_intent) } : {}),
     ...(prompt_hash ? { 'X-Prompt-Hash': String(prompt_hash) } : {}),
     ...(prompt_template_id ? { 'X-Prompt-Template': String(prompt_template_id) } : {}),
@@ -1140,7 +1259,17 @@ async function auroraChat({
     headers: Object.keys(upstreamHeaders).length ? upstreamHeaders : undefined,
   });
   const data = resp && resp.data;
-  return data && typeof data === 'object' ? data : { raw: data };
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const contract = extractUpstreamContract(data, resp && resp.headers, resp && resp.status);
+    return {
+      ...data,
+      _upstream_meta: contract,
+    };
+  }
+  return {
+    raw: data,
+    _upstream_meta: extractUpstreamContract(null, resp && resp.headers, resp && resp.status),
+  };
 }
 
 module.exports = {

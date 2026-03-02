@@ -4827,7 +4827,15 @@ test('/v1/reco/alternatives: no candidates can continue without anchor and fallb
 
         const reasons = Array.isArray(resp.body?.field_missing) ? resp.body.field_missing.map((x) => String(x?.reason || '')) : [];
         assert.equal(reasons.includes('anchor_missing_precheck'), false);
-        const allowedFailureClasses = new Set(['empty_structured', 'provider_error', 'timeout', 'clarify_blocked_best_effort']);
+        const allowedFailureClasses = new Set([
+          'empty_structured',
+          'provider_error',
+          'provider_timeout',
+          'provider_rate_limited',
+          'queue_saturated',
+          'clarify_blocked_best_effort',
+          'local_fallback_only',
+        ]);
         assert.equal(allowedFailureClasses.has(String(resp.body?.failure_class || '').trim()), true);
 
         const snap = snapshotVisionMetrics();
@@ -4845,7 +4853,9 @@ test('/v1/reco/alternatives: no candidates can continue without anchor and fallb
         assert.equal(
           llmOutcomes.has('empty_structured') ||
             llmOutcomes.has('provider_error') ||
-            llmOutcomes.has('timeout') ||
+            llmOutcomes.has('provider_timeout') ||
+            llmOutcomes.has('provider_rate_limited') ||
+            llmOutcomes.has('queue_saturated') ||
             llmOutcomes.has('empty_structured_clarify'),
           true,
         );
