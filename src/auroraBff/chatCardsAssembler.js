@@ -156,7 +156,6 @@ function buildSafetyDisclaimer({ riskLevel, language }) {
 
 function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = '' } = {}) {
   const chips = envelope && Array.isArray(envelope.suggested_chips) ? envelope.suggested_chips : [];
-  const cards = asArray(envelope && envelope.cards);
   const source = asArray(chips)
     .map((chip) => {
       if (!isPlainObject(chip)) return null;
@@ -173,26 +172,19 @@ function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = 
       };
     })
     .filter(Boolean);
+  const dedupedSource = [];
+  const seenReplyIds = new Set();
+  for (const item of source) {
+    const key = asString(item && item.id).toLowerCase();
+    if (!key || seenReplyIds.has(key)) continue;
+    seenReplyIds.add(key);
+    dedupedSource.push(item);
+  }
 
   const isRoutine = String(intent || '').toLowerCase() === 'routine';
   const questionLimit = isRoutine ? 3 : 2;
-  const quickReplies = source.slice(0, 8);
+  const quickReplies = dedupedSource.slice(0, 8);
   const followUpQuestions = [];
-  const cardTypeSet = new Set(
-    cards
-      .map((card) => asString(card && card.type).toLowerCase())
-      .filter(Boolean),
-  );
-  const hasStrongGuideCard =
-    AURORA_CARD_FIRST_DEDUPE_V1 &&
-    (
-      cardTypeSet.has('analysis_summary') ||
-      cardTypeSet.has('skin_status') ||
-      cardTypeSet.has('routine') ||
-      cardTypeSet.has('analysis_story_v2') ||
-      cardTypeSet.has('confidence_notice') ||
-      cardTypeSet.has('diagnosis_gate')
-    );
 
   const sessionPatch = isPlainObject(envelope && envelope.session_patch) ? envelope.session_patch : {};
   const pending = isPlainObject(sessionPatch.pending_clarification) ? sessionPatch.pending_clarification : null;
@@ -232,18 +224,10 @@ function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = 
       options: pendingOptions.slice(0, isRoutine ? 3 : 2),
       required: true,
     });
-  } else if (source.length > 0 && !hasStrongGuideCard) {
-    followUpQuestions.push({
-      id: `fup_${Date.now()}`,
-      question:
-        language === 'CN'
-          ? '你希望我下一步怎么继续？'
-          : 'How should I continue for the next step?',
-      options: source.slice(0, isRoutine ? 3 : 2),
-      required: false,
-    });
   }
 
+  // In chatcards v1, follow-up questions are only for pending clarifications.
+  // Do not mirror quick replies into follow_up_questions, or clients can render duplicate CTAs.
   return {
     quickReplies,
     followUpQuestions: followUpQuestions.slice(0, questionLimit),
