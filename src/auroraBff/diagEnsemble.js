@@ -2,8 +2,6 @@ const OpenAI = require('openai');
 const { z } = require('zod');
 const { extractJsonObject, parseJsonOnlyObject } = require('./jsonExtract');
 const { persistPseudoLabelArtifacts } = require('./pseudoLabelFactory');
-const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
-const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 const {
   normalizeQualityFeatures,
   calibrateConfidence,
@@ -1339,9 +1337,7 @@ async function runGeminiProvider({
   }
 
   const qualityGrade = String(photoQuality?.grade || 'unknown').toLowerCase();
-  const globalGate = getGeminiGlobalGate();
-  const effectiveKey = globalGate.getApiKey() || apiKey;
-  const ai = new GoogleGenAI({ apiKey: effectiveKey });
+  const ai = new GoogleGenAI({ apiKey });
   const prompt = buildGeminiPrompt({ language, profileSummary, qualityGrade });
   const request = {
     model,
@@ -1369,12 +1365,10 @@ async function runGeminiProvider({
   const attempts = Math.max(1, retries + 1);
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await globalGate.withGate('diag_ensemble', () =>
-        withTimeout(
-          ai.models.generateContent(request),
-          safeTotalTimeoutMs,
-          { code: 'ETIMEDOUT_TOTAL', timeoutStage: 'total' },
-        ),
+      const response = await withTimeout(
+        ai.models.generateContent(request),
+        safeTotalTimeoutMs,
+        { code: 'ETIMEDOUT_TOTAL', timeoutStage: 'total' },
       );
       const upstreamRequestId = extractUpstreamRequestIdFromResult(response);
       const text = extractTextFromGeminiResponse(response);
