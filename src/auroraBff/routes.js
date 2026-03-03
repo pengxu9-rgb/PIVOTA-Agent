@@ -28436,6 +28436,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
               'aurora bff: deepening LLM call failed, falling back to template',
             );
+            logger?.info(
+              { kind: 'metric', name: 'aurora.skin.deepening_llm_miss', value: 1, phase, reason: 'EXCEPTION' },
+              'aurora bff: deepening LLM exception miss',
+            );
           }
         }
 

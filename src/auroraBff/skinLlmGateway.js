@@ -480,7 +480,7 @@ async function runGeminiDeepeningNarrative({
     ? parsed.deepening_options.map((v) => String(v || '').trim()).filter(Boolean).slice(0, 6)
     : null;
 
-  if (!narrative || !reasoning || !deepening_question) {
+  if (!narrative || !reasoning || !deepening_question || !deepening_options) {
     return {
       ok: false,
       reason: 'INCOMPLETE_RESPONSE',
