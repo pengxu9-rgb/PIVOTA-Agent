@@ -8,7 +8,29 @@ const {
 const {
   buildSkinVisionPromptBundle,
   buildSkinReportPromptBundle,
+  buildSkinDeepeningPromptBundle,
+  summarizeRoutineActives,
 } = require('./skinLlmPrompts');
+
+const SkinDeepeningNarrativeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    narrative: { type: 'string', maxLength: 500 },
+    reasoning: {
+      type: 'array',
+      maxItems: 4,
+      items: { type: 'string', maxLength: 220 },
+    },
+    deepening_question: { type: 'string', maxLength: 180 },
+    deepening_options: {
+      type: 'array',
+      maxItems: 6,
+      items: { type: 'string', maxLength: 100 },
+    },
+  },
+  required: ['narrative', 'reasoning', 'deepening_question', 'deepening_options'],
+};
 
 const GEMINI_API_KEY = String(
   process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
@@ -397,6 +419,90 @@ async function runGeminiReportStrategy({
   };
 }
 
+const DEEPENING_LLM_TIMEOUT_MS = Math.max(2000, Math.min(12000, Number(process.env.AURORA_SKIN_DEEPENING_LLM_TIMEOUT_MS || 7000)));
+
+async function runGeminiDeepeningNarrative({
+  profile,
+  phase,
+  photoChoice,
+  productsSubmitted,
+  reactions,
+  routineCandidate,
+  language,
+  timeoutMs,
+} = {}) {
+  const client = getGeminiClient();
+  if (!client) {
+    return { ok: false, reason: 'MISSING_GEMINI_KEY', narrative: null, reasoning: null, deepening_question: null, deepening_options: null };
+  }
+
+  const dto = {
+    profile: profile && typeof profile === 'object' ? profile : {},
+    phase: String(phase || 'photo_optin'),
+    photo_choice: String(photoChoice || 'unknown'),
+    products_submitted: Boolean(productsSubmitted),
+    reactions: Array.isArray(reactions) ? reactions.filter((v) => typeof v === 'string' && v.trim()).slice(0, 6) : [],
+    routine_actives: summarizeRoutineActives(routineCandidate),
+  };
+
+  const bundle = buildSkinDeepeningPromptBundle({ language, dto });
+
+  const response = await callGeminiJson({
+    systemInstruction: bundle.systemInstruction,
+    userText: bundle.userPrompt,
+    imageBuffer: null,
+    responseSchema: SkinDeepeningNarrativeSchema,
+    timeoutMs: timeoutMs || DEEPENING_LLM_TIMEOUT_MS,
+    kind: 'skin_deepening_narrative',
+  });
+
+  if (!response.ok || !response.parsed) {
+    return {
+      ok: false,
+      reason: response.reason || 'PARSE_FAILED',
+      narrative: null,
+      reasoning: null,
+      deepening_question: null,
+      deepening_options: null,
+      latency_ms: response.latency_ms,
+    };
+  }
+
+  const parsed = response.parsed;
+  const narrative = typeof parsed.narrative === 'string' && parsed.narrative.trim() ? parsed.narrative.trim() : null;
+  const reasoning = Array.isArray(parsed.reasoning) && parsed.reasoning.length
+    ? parsed.reasoning.map((v) => String(v || '').trim()).filter(Boolean).slice(0, 4)
+    : null;
+  const deepening_question = typeof parsed.deepening_question === 'string' && parsed.deepening_question.trim()
+    ? parsed.deepening_question.trim()
+    : null;
+  const deepening_options = Array.isArray(parsed.deepening_options) && parsed.deepening_options.length
+    ? parsed.deepening_options.map((v) => String(v || '').trim()).filter(Boolean).slice(0, 6)
+    : null;
+
+  if (!narrative || !reasoning || !deepening_question) {
+    return {
+      ok: false,
+      reason: 'INCOMPLETE_RESPONSE',
+      narrative: null,
+      reasoning: null,
+      deepening_question: null,
+      deepening_options: null,
+      latency_ms: response.latency_ms,
+    };
+  }
+
+  return {
+    ok: true,
+    reason: null,
+    narrative,
+    reasoning,
+    deepening_question,
+    deepening_options,
+    latency_ms: response.latency_ms,
+  };
+}
+
 module.exports = {
   SKIN_MODEL_GEMINI,
   SKIN_LLM_TIMEOUT_MS,
@@ -404,4 +510,5 @@ module.exports = {
   validateSkinAnalysisContent,
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
+  runGeminiDeepeningNarrative,
 };

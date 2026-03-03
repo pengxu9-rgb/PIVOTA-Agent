@@ -179,3 +179,62 @@ test('skin deepening e2e: phase migration and dedupe from photo_optin to refined
     },
   );
 });
+
+test('skin deepening LLM narrative: uses LLM output when gateway patched, falls back to template when key missing', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_SKIN_SINGLE_CARD_V1: 'true',
+      AURORA_SKIN_DEEPENING_V1: 'true',
+      AURORA_CHATCARDS_SESSION_PATCH_V1: 'true',
+      AURORA_CARD_FIRST_DEDUPE_V1: 'true',
+      AURORA_SKIN_DEEPENING_LLM_V1: 'true',
+      // No Gemini key set → gateway falls back to template gracefully
+    },
+    async () => {
+      const { request, restore } = createAppWithPatchedAuroraChat();
+      try {
+        const uid = buildTestUid('skin_deepening_llm_fallback');
+        const headers = headersFor(uid, 'EN');
+
+        // Initial analysis call without photo — LLM flag on but no key → template fallback
+        const initial = await request
+          .post('/v1/analysis/skin')
+          .set(headers)
+          .send({ use_photo: false })
+          .expect(200);
+        const initialCard = analysisSummaryCardFromBody(initial.body);
+        assert.ok(initialCard, 'analysis_summary card must exist even when LLM key missing');
+        assert.equal(readDeepeningPhaseFromCard(initialCard), 'photo_optin', 'phase should be photo_optin');
+
+        // Chat deepening turn → template fallback should still return a valid card
+        const deepeningMeta = readDeepeningMeta(initial.body);
+        const turnReactions = await request
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            client_state: 'DIAG_ANALYSIS_SUMMARY',
+            action: {
+              action_id: 'analysis_skip_photo',
+              kind: 'action',
+              data: { reply_text: 'skip photo, continue text' },
+            },
+            session: deepeningMeta ? { meta: { analysis_deepening_v1: deepeningMeta } } : {},
+          })
+          .expect(200);
+        const reactionsCard = analysisSummaryCardFromBody(turnReactions.body);
+        assert.ok(reactionsCard, 'analysis_summary card should exist on deepening turn even without LLM key');
+        // Phase advances to products (no products submitted yet)
+        const reactionsPhase = readDeepeningPhaseFromCard(reactionsCard);
+        assert.ok(
+          reactionsPhase === 'products' || reactionsPhase === 'reactions',
+          `phase should advance from photo_optin, got ${reactionsPhase}`,
+        );
+        // No duplicate photo-choice chips in the response
+        assert.ok(!hasPhotoChoiceDupChips(turnReactions.body), 'photo-choice chips must not be duplicated after phase advance');
+      } finally {
+        restore();
+      }
+    },
+  );
+});

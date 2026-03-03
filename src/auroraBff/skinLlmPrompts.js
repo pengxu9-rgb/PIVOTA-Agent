@@ -190,11 +190,91 @@ function buildSkinReportPrompt({
   return `${bundle.systemInstruction}\n${bundle.userPrompt}`;
 }
 
+function buildSkinDeepeningPromptBundle({ language, dto } = {}) {
+  const lang = normalizeLang(language);
+  const d = dto && typeof dto === 'object' ? dto : {};
+  const profileStr = JSON.stringify(d.profile || {});
+  const phaseStr = String(d.phase || 'photo_optin');
+  const photoChoice = String(d.photo_choice || 'unknown');
+  const productsSubmitted = Boolean(d.products_submitted);
+  const reactionsStr = Array.isArray(d.reactions) && d.reactions.length ? d.reactions.join(', ') : '';
+  const routineActives = Array.isArray(d.routine_actives) && d.routine_actives.length ? d.routine_actives.join(', ') : '';
+
+  if (lang === 'zh-CN') {
+    const phaseGuideCn = {
+      photo_optin:
+        '当前阶段 = photo_optin。在 narrative 中总结用户皮肤类型与目标，给出初步专业评估，并自然引导是否愿意上传照片做深度分析。deepening_question 必须问是否愿意上传自拍。',
+      products:
+        '当前阶段 = products。在 narrative 中展示你对其皮肤状态的判断，并引导用户分享 AM/PM 护肤产品清单。deepening_question 询问当前在用哪些步骤/产品。',
+      reactions:
+        '当前阶段 = reactions。基于其已有信息给出具体护肤建议，再追问最近使用后的皮肤反应。deepening_options 必须包含 6 个具体可选反应（干燥加重/皮肤紧绷/刺痛或灼热/泛红加重/新爆痘/无明显不适）。',
+      refined:
+        '当前阶段 = refined。基于反应反馈给出针对性微调方案，确认 7 天执行计划，并提供第 3 天 / 第 7 天回检提示。',
+    };
+    const guide = phaseGuideCn[phaseStr] || phaseGuideCn.photo_optin;
+
+    return {
+      promptVersion: 'skin_deepening_v1',
+      systemInstruction:
+        'Role: 你是亲切、专业的护肤顾问，擅长基于用户皮肤信息给出个性化、可执行的护肤建议。' +
+        '安全规则：禁止疾病诊断（玫瑰痤疮/湿疹/牛皮癣等）、禁止处方药名称、禁止治疗宣称、禁止品牌或具体产品推荐。' +
+        '风格：温暖、直接，避免泛化模板话术，必须针对用户实际档案说明原因。Language: 简体中文。',
+      userPrompt:
+        `task: 根据以下用户皮肤档案与深挖阶段，生成个性化护肤深挖回复。\n` +
+        `${guide}\n` +
+        `profile: ${profileStr}\n` +
+        `photo_choice: ${photoChoice}\n` +
+        `products_submitted: ${productsSubmitted}\n` +
+        (routineActives ? `routine_actives: ${routineActives}\n` : '') +
+        (reactionsStr ? `reactions_so_far: ${reactionsStr}\n` : '') +
+        `\noutput_rules:\n` +
+        `- narrative: 2-3 句个性化开场（必须提及用户档案中的具体信息如皮肤类型/目标），禁止泛化.\n` +
+        `- reasoning: 3-4 条具体可执行建议，按「原因 → 注意细节 → 修复路径 → 阶段提示」顺序，每条 ≤ 100 字.\n` +
+        `- deepening_question: 针对当前阶段的自然追问（≤ 60 字）.\n` +
+        `- deepening_options: 2-6 个具体选项（每项 ≤ 40 字），与 deepening_question 匹配.`,
+    };
+  }
+
+  const phaseGuideEn = {
+    photo_optin:
+      'Current phase = photo_optin. In narrative: summarize user skin type + goals, give initial professional read, naturally invite a selfie for deeper analysis. deepening_question must ask about uploading a photo.',
+    products:
+      'Current phase = products. In narrative: show your read on their skin state, then invite them to share AM/PM product list. deepening_question asks about current routine steps/products.',
+    reactions:
+      'Current phase = reactions. Give concrete advice based on available info, then ask about recent post-use skin reactions. deepening_options must include 6 specific reactions (dryness/tightness/stinging-burning/increased redness/new breakouts/no noticeable discomfort).',
+    refined:
+      'Current phase = refined. Based on reaction feedback, give targeted adjustments, confirm 7-day plan, and include day-3/day-7 check-in reminders.',
+  };
+  const guide = phaseGuideEn[phaseStr] || phaseGuideEn.photo_optin;
+
+  return {
+    promptVersion: 'skin_deepening_v1',
+    systemInstruction:
+      'Role: You are a warm, professional skincare advisor specializing in evidence-based cosmetic skincare. ' +
+      'Safety rules: no disease diagnosis (rosacea/eczema/psoriasis), no prescription drug names, no treatment claims, no brand or specific product names. ' +
+      'Style: warm, direct, specific — avoid generic template language, always ground advice in the user\'s actual profile. Language: English (US).',
+    userPrompt:
+      `task: Generate a personalized skin deepening narrative for the current conversation phase.\n` +
+      `${guide}\n` +
+      `profile: ${profileStr}\n` +
+      `photo_choice: ${photoChoice}\n` +
+      `products_submitted: ${productsSubmitted}\n` +
+      (routineActives ? `routine_actives: ${routineActives}\n` : '') +
+      (reactionsStr ? `reactions_so_far: ${reactionsStr}\n` : '') +
+      `\noutput_rules:\n` +
+      `- narrative: 2-3 personalized sentences (must reference specific profile info like skin type/goals), no generic language.\n` +
+      `- reasoning: 3-4 specific actionable lines following Cause → Watchout → Repair path → Phase tip, each ≤ 100 chars.\n` +
+      `- deepening_question: Natural next question for this phase (≤ 60 chars).\n` +
+      `- deepening_options: 2-6 specific options (each ≤ 40 chars) matching the deepening_question.`,
+  };
+}
+
 module.exports = {
   buildSkinVisionPrompt,
   buildSkinReportPrompt,
   buildSkinVisionPromptBundle,
   buildSkinReportPromptBundle,
+  buildSkinDeepeningPromptBundle,
   pickDetectorCandidates,
   summarizeRoutineActives,
 };
