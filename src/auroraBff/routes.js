@@ -739,11 +739,11 @@ const AURORA_INGREDIENT_SYNC_RETRIES = (() => {
   return Math.max(0, Math.min(1, v));
 })();
 const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI = String(
-  process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3.1-pro-preview',
-).trim() || 'gemini-3.1-pro-preview';
+  process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3.1-flash',
+).trim() || 'gemini-3.1-flash';
 const AURORA_INGREDIENT_SYNC_MODEL_GEMINI = String(
-  process.env.AURORA_INGREDIENT_SYNC_MODEL_GEMINI || 'gemini-3-flash-preview',
-).trim() || 'gemini-3-flash-preview';
+  process.env.AURORA_INGREDIENT_SYNC_MODEL_GEMINI || 'gemini-3.1-flash',
+).trim() || 'gemini-3.1-flash';
 const AURORA_QA_MODEL_GEMINI = String(
   process.env.AURORA_QA_MODEL_GEMINI || 'gemini-3-flash-preview',
 ).trim() || 'gemini-3-flash-preview';
@@ -33468,7 +33468,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
   const key = normalizeIngredientResearchKey(query);
   if (!key) return null;
   const normalizedLanguage = language === 'CN' ? 'CN' : 'EN';
-  const asyncModel = pickFirstTrimmed(AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI, AURORA_INGREDIENT_SYNC_MODEL_GEMINI) || 'gemini-3.1-pro-preview';
+  const asyncModel = pickFirstTrimmed(AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI, AURORA_INGREDIENT_SYNC_MODEL_GEMINI) || 'gemini-3.1-flash';
   const jobId = `ingr_${crypto.createHash('sha1').update(`${key}|${normalizedLanguage}`).digest('hex').slice(0, 20)}`;
   const existing = ingredientResearchCache.get(key);
   if (existing && existing.status === 'ready') return { key, status: 'ready', job_id: existing.job_id || jobId };
