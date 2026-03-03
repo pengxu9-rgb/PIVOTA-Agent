@@ -18504,13 +18504,18 @@ function buildRecoEntryChips(language) {
       chip_id: 'chip.intake.upload_photos',
       label: lang === 'CN' ? '上传 daylight + indoor_white' : 'Upload daylight + indoor_white',
       kind: 'quick_reply',
-      data: {},
+      data: {
+        action_id: 'chip.intake.upload_photos',
+        client_action: 'open_camera',
+      },
     },
     {
       chip_id: 'chip.intake.skip_analysis',
       label: lang === 'CN' ? '先用低置信度方案' : 'Use low-confidence baseline',
       kind: 'quick_reply',
-      data: {},
+      data: {
+        action_id: 'chip.intake.skip_analysis',
+      },
     },
   ];
 }
@@ -46878,13 +46883,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               chip_id: 'chip.intake.upload_photos',
               label: lang === 'CN' ? '上传照片（更准）' : 'Upload a photo (more accurate)',
               kind: 'quick_reply',
-              data: {},
+              data: {
+                action_id: 'chip.intake.upload_photos',
+                client_action: 'open_camera',
+              },
             },
             {
               chip_id: 'chip.intake.skip_analysis',
               label: lang === 'CN' ? '跳过照片（低置信度）' : 'Skip photo (low confidence)',
               kind: 'quick_reply',
-              data: {},
+              data: {
+                action_id: 'chip.intake.skip_analysis',
+              },
             },
             {
               chip_id: 'chip_keep_chatting',
