@@ -348,31 +348,22 @@ test('P2-1 contract schema accepts reason enum coverage fixtures', () => {
   const reasons = ['artifact_missing', 'low_confidence', 'safety_block', 'timeout_degraded'];
   for (const reason of reasons) {
     const fixture = {
-      version: '1.0',
       request_id: `req_${reason}`,
       trace_id: `trace_${reason}`,
-      assistant_text: `Confidence notice: ${reason}`,
+      assistant_message: null,
+      suggested_chips: [],
       cards: [
         {
-          id: `card_${reason}`,
+          card_id: `card_${reason}`,
           type: 'confidence_notice',
-          priority: 2,
-          title: 'Confidence notice',
-          tags: [],
-          sections: [],
-          actions: [],
           payload: {
             reason,
             actions: reason === 'safety_block' ? [] : ['retry'],
           },
         },
       ],
-      follow_up_questions: [],
-      suggested_quick_replies: [],
       session_patch: {},
-      ops: { thread_ops: [], profile_patch: [], routine_patch: [], experiment_events: [] },
-      safety: { risk_level: 'none', red_flags: [], disclaimer: '' },
-      telemetry: { intent: 'unknown', intent_confidence: 0, entities: [] },
+      events: [],
     };
     assertEnvelopeValid(fixture);
   }
