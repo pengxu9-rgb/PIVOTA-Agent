@@ -18798,8 +18798,8 @@ function buildConfidenceNoticeCardPayload({
   const messageByReason = {
     artifact_missing:
       lang === 'CN'
-        ? '还没有可用的诊断结果，请先上传照片或先做一次低置信度分析。'
-        : 'No diagnosis artifact is available yet. Please upload photos or run a low-confidence baseline analysis first.',
+        ? '当前还没有完整结构化推荐结果；我仍可继续按你当前上下文推荐。上传照片仅用于提升精准度（可选）。'
+        : 'A full structured recommendation is not ready yet; I can still continue from your current context. Photo upload is optional for higher precision.',
     low_confidence:
       lang === 'CN'
         ? '当前诊断置信度较低，已降级为温和基础方案。建议补拍 daylight + indoor_white 提升准确度。'
@@ -18810,8 +18810,8 @@ function buildConfidenceNoticeCardPayload({
         : 'Potential medical risk signals detected, so product recommendations are blocked.',
     timeout_degraded:
       lang === 'CN'
-        ? '系统响应超时，已降级为保守方案。请稍后重试，或先补充照片/当前护肤流程。'
-        : 'The system hit a timeout and switched to a conservative fallback. Please retry shortly, or add photos/current routine details first.',
+        ? '系统响应超时，已降级为保守方案。请稍后重试，或补充当前护肤流程以提升精准度（可选）。'
+        : 'The system hit a timeout and switched to a conservative fallback. Please retry shortly, or add current-routine details to improve precision (optional).',
     default:
       lang === 'CN' ? '当前建议已按保守模式输出。' : 'Current guidance is running in conservative mode.',
   };
@@ -19047,16 +19047,30 @@ function ensureNonEmptyChatCardsEnvelope({ envelope, ctx, language } = {}) {
 
   const reason = inferCardGuardReasonFromEvents(baseEnvelope.events);
   const isTimeout = reason === 'timeout_degraded';
+  const isIngredientDrivenReco = (Array.isArray(baseEnvelope.events) ? baseEnvelope.events : []).some((evt) => {
+    if (!evt || typeof evt !== 'object' || Array.isArray(evt)) return false;
+    if (String(evt.event_name || '').trim().toLowerCase() !== 'recos_requested') return false;
+    const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? evt.data : {};
+    const sourceDetail = String(data.source_detail || '').trim().toLowerCase();
+    if (sourceDetail === 'ingredient_driven') return true;
+    return Boolean(String(data.ingredient_query || '').trim());
+  });
   const noticeActions = isTimeout
-    ? ['retry_recommendations', 'upload_daylight_and_indoor_white', 'update_current_routine']
-    : ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'];
+    ? ['retry_recommendations', 'update_current_routine']
+    : isIngredientDrivenReco
+      ? ['retry_recommendations', 'set_product_category', 'update_current_routine']
+      : ['retry_recommendations', 'set_product_category', 'update_current_routine'];
   const assistantText = (language === 'CN')
     ? (isTimeout
-      ? '推荐结果暂时超时，我已切到保守降级方案。你可以稍后重试，或先补充照片与当前护肤流程。'
-      : '当前没有可用推荐卡片，我先给你保守降级路径。请先上传照片或先跑低置信度分析。')
+      ? '推荐结果暂时超时，我已切到保守降级方案。你可以稍后重试，或补充当前护肤流程提升精准度。'
+      : isIngredientDrivenReco
+        ? '我会继续沿用你当前成分上下文做推荐。可直接告诉我品类（洁面/精华/面霜/防晒）或预算；上传照片仅用于提升精准度（可选）。'
+        : '当前没有可用推荐卡片，我先给你保守降级路径。你可以直接告诉我品类（洁面/精华/面霜/防晒）和预算，我继续推荐。')
     : (isTimeout
-      ? 'Recommendation output timed out, so I switched to a conservative degraded path. Please retry shortly, or add photos/current routine first.'
-      : 'No usable recommendation cards were produced, so I’m returning a conservative recovery path. Please upload photos or run low-confidence baseline first.');
+      ? 'Recommendation output timed out, so I switched to a conservative degraded path. Retry shortly, or add current routine details to improve precision.'
+      : isIngredientDrivenReco
+        ? 'I will continue recommendations using your current ingredient context. Tell me preferred category (cleanser/serum/moisturizer/sunscreen) or budget; photo upload is optional for better precision.'
+        : 'No usable recommendation cards were produced, so I’m returning a conservative recovery path. Tell me your preferred category and budget, and I will continue.');
   const confidenceNode = isTimeout
     ? { score: 0.35, level: 'low', rationale: ['empty_cards_guard_timeout_degraded'] }
     : { score: 0, level: 'low', rationale: ['empty_cards_guard_artifact_missing'] };
@@ -36629,6 +36643,26 @@ async function generateProductRecommendations({
 }) {
   const profileSummary = summarizeProfileForContext(profile);
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
+  const ingredientContextQuery = pickFirstTrimmed(
+    normalizedIngredientContext && normalizedIngredientContext.query,
+    normalizedIngredientContext && normalizedIngredientContext.ingredient_query,
+  );
+  const ingredientContextGoal = normalizeIngredientGoalToken(
+    pickFirstTrimmed(
+      normalizedIngredientContext && normalizedIngredientContext.goal,
+      normalizedIngredientContext && normalizedIngredientContext.ingredient_goal,
+    ),
+  );
+  const ingredientContextSensitivity = normalizeIngredientSensitivityToken(
+    pickFirstTrimmed(
+      normalizedIngredientContext && normalizedIngredientContext.sensitivity,
+      normalizedIngredientContext && normalizedIngredientContext.ingredient_sensitivity,
+    ),
+  );
+  const ingredientContextCandidates = normalizeIngredientCandidateList(
+    normalizedIngredientContext && normalizedIngredientContext.candidates,
+    6,
+  );
   const analysisSummary =
     profile && profile.lastAnalysis ? profile.lastAnalysis : null;
   const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
@@ -36644,8 +36678,33 @@ async function generateProductRecommendations({
     ...(analysisSummary ? { analysis_summary: analysisSummary } : {}),
     ...(analysisSummaryAt ? { analysis_summary_at: analysisSummaryAt } : {}),
   });
+  const rawUserAsk = String(message || '').trim();
+  const genericRecoAsk = /^(see related products(\s*\(optional\))?|get (product )?recommendations?|continue( with)? product recommendations?|继续产品推荐|给我产品推荐|获取产品推荐)$/i.test(
+    rawUserAsk,
+  );
+  const hasIngredientRecoContext = Boolean(ingredientContextQuery || ingredientContextGoal || ingredientContextCandidates.length > 0);
+  const contextBackfilledUserAsk =
+    ctx.lang === 'CN'
+      ? [
+          ingredientContextQuery ? `基于成分：${ingredientContextQuery}` : '',
+          ingredientContextGoal ? `目标：${ingredientContextGoal}` : '',
+          ingredientContextSensitivity ? `敏感度：${ingredientContextSensitivity}` : '',
+          ingredientContextCandidates.length ? `候选成分：${ingredientContextCandidates.join('、')}` : '',
+          '请直接给出可购产品推荐，并优先与上述成分上下文相关。',
+        ]
+          .filter(Boolean)
+          .join('；')
+      : [
+          ingredientContextQuery ? `Ingredient context: ${ingredientContextQuery}` : '',
+          ingredientContextGoal ? `Goal: ${ingredientContextGoal}` : '',
+          ingredientContextSensitivity ? `Sensitivity: ${ingredientContextSensitivity}` : '',
+          ingredientContextCandidates.length ? `Ingredient candidates: ${ingredientContextCandidates.join(', ')}` : '',
+          'Recommend purchasable skincare products aligned with this ingredient context first.',
+        ]
+          .filter(Boolean)
+          .join(' ');
   const userAsk =
-    String(message || '').trim() ||
+    (hasIngredientRecoContext && (genericRecoAsk || !rawUserAsk) ? contextBackfilledUserAsk : rawUserAsk) ||
     (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
   const normalizedRecoTriggerSource = normalizeRecoSourceDetail(
     pickFirstTrimmed(recoTriggerSource, ctx && ctx.trigger_source, 'text'),
@@ -50345,6 +50404,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoTimeoutDegraded = false;
         }
         if (ingredientRecoOptInRequested && isPlainObject(norm?.payload)) {
+          const preConstraintRecommendations = Array.isArray(norm.payload.recommendations)
+            ? norm.payload.recommendations.slice(0, 16)
+            : [];
           const constrained = applyIngredientRecoConstraint(norm.payload, recoIngredientContext);
           if (constrained.constrained) {
             norm.payload = constrained.payload;
@@ -50363,13 +50425,35 @@ function mountAuroraBffRoutes(app, { logger }) {
             ]);
           }
           if (constrained.keptCount === 0) {
+            const safeFallbackRecommendations = preConstraintRecommendations
+              .filter((row) => {
+                const sku = row && typeof row === 'object' && row.sku && typeof row.sku === 'object' ? row.sku : null;
+                const categoryRaw = pickFirstString(
+                  row && row.category,
+                  row && row.category_name,
+                  row && row.product_type,
+                  sku && sku.category,
+                  sku && sku.product_type,
+                );
+                return !isIrrelevantCategoryForSkinGoal(categoryRaw);
+              })
+              .slice(0, 8);
+            const usedContextFallback = safeFallbackRecommendations.length > 0;
             norm.payload = {
               ...norm.payload,
-              recommendations: [],
-              products_empty_reason: 'ingredient_constraint_no_match',
+              recommendations: usedContextFallback ? safeFallbackRecommendations : [],
+              products_empty_reason: usedContextFallback ? 'ingredient_exact_match_unavailable' : 'ingredient_constraint_no_match',
+              no_result_reason: usedContextFallback ? 'ingredient_exact_match_unavailable' : 'ingredient_constraint_no_match',
+              reco_reason_codes: [
+                ...(Array.isArray(norm.payload.reco_reason_codes) ? norm.payload.reco_reason_codes : []),
+                usedContextFallback ? 'ingredient_context_fallback' : 'ingredient_constraint_no_match',
+              ],
             };
             norm.field_missing = mergeFieldMissing(norm.field_missing, [
-              { field: 'payload.recommendations', reason: 'ingredient_constraint_no_match' },
+              {
+                field: 'payload.recommendations',
+                reason: usedContextFallback ? 'ingredient_context_fallback' : 'ingredient_constraint_no_match',
+              },
             ]);
           }
         }
