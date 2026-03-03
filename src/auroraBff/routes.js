@@ -19309,7 +19309,7 @@ function mergeFieldMissing(a, b) {
   return out;
 }
 
-async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, maxTotal, debug, logger }) {
+async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, maxTotal, debug, logger, ingredientContext = null }) {
   const inputText = String(productInput || '').trim();
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
   const anchor = anchorId ? String(anchorId).trim() : '';
@@ -19493,10 +19493,17 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     const fallbackAssumptionLine = profileSnapshot.assumptions_applied
       ? 'Fallback assumption mode: profile may be incomplete; proceed now with conservative defaults and return best-effort alternatives.'
       : '';
+    const normalizedIngCtx = normalizeIngredientRecoContextValue(ingredientContext);
+    const ingredientConstraintLine = normalizedIngCtx
+      ? `Ingredient constraint (hard-lock): The user found this product via ingredient "${normalizedIngCtx.query || ''}". ` +
+        `Prioritize alternatives that also contain or functionally relate to this ingredient. ` +
+        `Do NOT drift to generic profile-goal matches when this constraint is set.\n`
+      : '';
     const query =
       `${prefix}` +
       `${profileSnapshotLine}\n` +
       (fallbackAssumptionLine ? `${fallbackAssumptionLine}\n` : '') +
+      (ingredientConstraintLine || '') +
       `Execution constraints:\n` +
       `- Do NOT ask clarifying questions.\n` +
       `- If some fields are missing, continue with general-audience assumptions and mark missing_info.\n` +
@@ -20635,6 +20642,61 @@ function mountAuroraBffRoutes(app, { logger }) {
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err), request_id: ctx.request_id }, 'aurora bff: label queue fetch failed');
       return res.status(500).json({ ok: false, error: 'LABEL_QUEUE_FAILED' });
+    }
+  });
+
+  app.post('/v1/reco/alternatives', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = RecoAlternativesRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({ ok: false, error: 'BAD_REQUEST', details: parsed.error.format() });
+      }
+      if (!parsed.data.product_input && !parsed.data.anchor_product_id && !parsed.data.product) {
+        return res.status(400).json({ ok: false, error: 'BAD_REQUEST', details: 'One of product_input, anchor_product_id, or product is required.' });
+      }
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+      const profileSummary = summarizeProfileForContext(profile);
+      const ingredientContext = parsed.data.ingredient_context
+        ? normalizeIngredientRecoContextValue(parsed.data.ingredient_context)
+        : null;
+      const out = await fetchRecoAlternativesForProduct({
+        ctx,
+        profileSummary,
+        recentLogs,
+        productInput: parsed.data.product_input || null,
+        productObj: parsed.data.product || null,
+        anchorId: parsed.data.anchor_product_id || null,
+        maxTotal: parsed.data.max_total || 6,
+        debug: Boolean(parsed.data.include_debug),
+        logger,
+        ingredientContext,
+      });
+      const alternatives = Array.isArray(out.alternatives) ? out.alternatives : [];
+      const noResultReason =
+        !alternatives.length && Array.isArray(out.field_missing) && out.field_missing.length
+          ? String(out.field_missing[0]?.reason || 'unknown')
+          : null;
+      return res.status(200).json({
+        request_id: ctx.request_id,
+        trace_id: ctx.trace_id,
+        ok: out.ok !== false,
+        alternatives,
+        alternatives_candidate_count: alternatives.length,
+        alternatives_selected_count: alternatives.length,
+        no_result_reason: noResultReason,
+        details_action_triggered: false,
+        alternatives_action_triggered: true,
+        ...(Array.isArray(out.field_missing) && out.field_missing.length ? { field_missing: out.field_missing.slice(0, 8) } : {}),
+        ...(parsed.data.include_debug && out.debug ? { llm_trace: out.debug } : {}),
+      });
+    } catch (err) {
+      const status = err.status || 500;
+      logger?.warn?.({ err: err?.message || String(err), request_id: ctx.request_id }, 'aurora bff: reco alternatives failed');
+      return res.status(status).json({ ok: false, error: err.code || 'RECO_ALTERNATIVES_FAILED' });
     }
   });
 
