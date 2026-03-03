@@ -30832,6 +30832,28 @@ function ingredient_query_normalize(raw) {
     .trim();
 }
 
+function escapeRegexForIngredientToken(raw) {
+  return String(raw || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function ingredientContainsAliasToken(normalizedText, token) {
+  const normalized = ingredient_query_normalize(normalizedText);
+  const aliasToken = ingredient_query_normalize(token);
+  if (!normalized || !aliasToken) return false;
+  if (normalized === aliasToken) return true;
+
+  const asciiWord = /^[a-z0-9]+$/.test(aliasToken);
+  if (asciiWord) {
+    // Short ASCII aliases (e.g. "ha", "bp", "vc") must match full tokens only.
+    const words = normalized.split(/\s+/).filter(Boolean);
+    if (aliasToken.length <= 3) return words.includes(aliasToken);
+    const boundary = new RegExp(`(?:^|\\s)${escapeRegexForIngredientToken(aliasToken)}(?:\\s|$)`, 'i');
+    return boundary.test(normalized);
+  }
+
+  return normalized.includes(aliasToken);
+}
+
 function ingredientEntityDisplayName(entityKey, language = 'EN') {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const row = INGREDIENT_ENTITY_DICT.find((entry) => entry && entry.key === entityKey);
@@ -30870,7 +30892,7 @@ function ingredientEntityMatchFromText(raw, language = 'EN') {
       ingredient_query_normalize(row.canonical_cn),
       ...((Array.isArray(row.aliases) ? row.aliases : []).map((alias) => ingredient_query_normalize(alias))),
     ].filter(Boolean);
-    if (aliasSet.some((token) => token && normalized.includes(token))) {
+    if (aliasSet.some((token) => ingredientContainsAliasToken(normalized, token))) {
       return {
         normalized_query: normalized,
         entity_key: row.key,
@@ -46502,31 +46524,39 @@ function mountAuroraBffRoutes(app, { logger }) {
         let advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
         policyMeta.env_source = 'local_template';
         policyMeta.degraded = true;
+        const profileTravelPlan =
+          profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+            ? profile.travel_plan
+            : Array.isArray(profile && profile.travel_plans)
+              ? (profile.travel_plans.find((item) => item && typeof item === 'object' && !Array.isArray(item)) || null)
+              : null;
+        const canonicalEntities =
+          canonicalIntent && canonicalIntent.entities && typeof canonicalIntent.entities === 'object'
+            ? canonicalIntent.entities
+            : {};
+        const destination =
+          (profileTravelPlan && typeof profileTravelPlan.destination === 'string' && profileTravelPlan.destination.trim()) ||
+          (typeof canonicalEntities.destination === 'string' && canonicalEntities.destination.trim()) ||
+          '';
+        const startDate =
+          (profileTravelPlan && typeof profileTravelPlan.start_date === 'string' && profileTravelPlan.start_date.trim()) ||
+          (canonicalEntities.date_range &&
+          typeof canonicalEntities.date_range === 'object' &&
+          typeof canonicalEntities.date_range.start === 'string'
+            ? canonicalEntities.date_range.start
+            : '');
+        const endDate =
+          (profileTravelPlan && typeof profileTravelPlan.end_date === 'string' && profileTravelPlan.end_date.trim()) ||
+          (canonicalEntities.date_range &&
+          typeof canonicalEntities.date_range === 'object' &&
+          typeof canonicalEntities.date_range.end === 'string'
+            ? canonicalEntities.date_range.end
+            : '');
+        const missingTravelFields = [];
+        if (!destination) missingTravelFields.push('travel_plan.destination');
+        if (!startDate || !endDate) missingTravelFields.push('travel_plan.date_range');
 
         if (effectiveChatFlags.travel_weather_live_v1) {
-          const travelPlan =
-            profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
-              ? profile.travel_plan
-              : null;
-          const destination =
-            (travelPlan && typeof travelPlan.destination === 'string' && travelPlan.destination.trim()) ||
-            (canonicalIntent.entities && canonicalIntent.entities.destination) ||
-            '';
-          const startDate =
-            (travelPlan && typeof travelPlan.start_date === 'string' && travelPlan.start_date.trim()) ||
-            (canonicalIntent.entities &&
-            canonicalIntent.entities.date_range &&
-            typeof canonicalIntent.entities.date_range.start === 'string'
-              ? canonicalIntent.entities.date_range.start
-              : '');
-          const endDate =
-            (travelPlan && typeof travelPlan.end_date === 'string' && travelPlan.end_date.trim()) ||
-            (canonicalIntent.entities &&
-            canonicalIntent.entities.date_range &&
-            typeof canonicalIntent.entities.date_range.end === 'string'
-              ? canonicalIntent.entities.date_range.end
-              : '');
-
           const weather = await getTravelWeather({
             destination,
             startDate,
@@ -46586,31 +46616,34 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (safetyText) advice = `${safetyText}\n\n${advice}`;
         }
 
-        if (
+        const plannerMissing =
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED &&
           plannerDecision &&
           Array.isArray(plannerDecision.required_fields) &&
           plannerDecision.required_fields.length > 0
-        ) {
-          const missing = plannerDecision.required_fields;
-          const asksDestination = missing.includes('travel_plan.destination');
-          const asksDates = missing.includes('travel_plan.start_date') || missing.includes('travel_plan.end_date');
+            ? plannerDecision.required_fields
+            : [];
+        const missingUnion = new Set([...missingTravelFields, ...plannerMissing]);
+        const forceTravelContextAsk = !effectiveChatFlags.travel_weather_live_v1;
+        const asksDestination = forceTravelContextAsk || missingUnion.has('travel_plan.destination');
+        const asksDates =
+          forceTravelContextAsk ||
+          missingUnion.has('travel_plan.date_range') ||
+          missingUnion.has('travel_plan.start_date') ||
+          missingUnion.has('travel_plan.end_date');
+        if (asksDestination || asksDates) {
           const followup =
             ctx.lang === 'CN'
               ? asksDestination && asksDates
                 ? '补充一下目的地和出行日期，我可以把策略细化到行程窗口。'
                 : asksDestination
                   ? '补充一下目的地，我可以把策略细化到当地环境。'
-                  : asksDates
-                    ? '补充一下出行日期，我可以按行程窗口细化策略。'
-                    : '补充一个旅行细节，我可以继续细化。'
+                  : '补充一下出行日期，我可以按行程窗口细化策略。'
               : asksDestination && asksDates
                 ? 'Share destination + travel dates and I can refine this to your trip window.'
                 : asksDestination
                   ? 'Share your destination and I can tune this to local conditions.'
-                  : asksDates
-                    ? 'Share travel dates and I can tune this to your trip window.'
-                    : 'Share one extra travel detail and I can refine this further.';
+                  : 'Share travel dates and I can tune this to your trip window.';
           advice = `${advice}\n\n${followup}`;
         }
 
