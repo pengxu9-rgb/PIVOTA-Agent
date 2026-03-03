@@ -10,6 +10,8 @@ function normalizeText(value, maxLen = 220) {
 }
 
 function toNumber(value) {
+  if (value == null) return null;
+  if (typeof value === 'string' && !value.trim()) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -117,8 +119,11 @@ function formatMetricPair({ labelCn, labelEn, metric, language }) {
     const destinationText = formatNumber(destination, precision);
     const deltaText = formatSignedNumber(delta, precision);
     const unitSuffix = unit || '';
-    const deltaLabel = t(language, '变化', 'Delta');
-    return `${label}: ${homeText}${unitSuffix} -> ${destinationText}${unitSuffix} (${deltaLabel} ${deltaText}${unitSuffix})`;
+    if (deltaText != null) {
+      const deltaLabel = t(language, '变化', 'Delta');
+      return `${label}: ${homeText}${unitSuffix} -> ${destinationText}${unitSuffix} (${deltaLabel} ${deltaText}${unitSuffix})`;
+    }
+    return `${label}: ${homeText}${unitSuffix} -> ${destinationText}${unitSuffix}`;
   }
 
   if (destination != null) {
@@ -204,7 +209,7 @@ function buildAlertsSection({ language, travelReadiness }) {
 
   if (!lines.length) {
     return {
-      lines: [t(language, '当前无官方预警。', 'No official weather alert currently.')],
+      lines: [],
       hasOfficialAlerts: false,
     };
   }
@@ -677,6 +682,174 @@ function buildProductLines({ language, foci, travelReadiness }) {
   return uniqueStrings(lines, 5);
 }
 
+const SEASONAL_ALERTS = Object.freeze([
+  { city: 'tokyo', monthStart: 2, monthEnd: 4, cn: '东京/关东 2-4 月为杉树花粉（sugi）季节，皮肤可能更易敏感/发痒。', en: 'Tokyo/Kanto is typically in cedar (sugi) pollen season around Feb-Apr, which can make skin feel itchier/reactive.' },
+  { city: 'osaka', monthStart: 2, monthEnd: 4, cn: '大阪 2-4 月为杉树花粉季节，皮肤可能更易敏感。', en: 'Osaka is in cedar pollen season around Feb-Apr; skin may feel more reactive.' },
+  { city: 'kyoto', monthStart: 2, monthEnd: 4, cn: '京都 2-4 月为杉树花粉季节，皮肤可能更易敏感。', en: 'Kyoto is in cedar pollen season around Feb-Apr; skin may feel more reactive.' },
+  { city: 'bangkok', monthStart: 3, monthEnd: 5, cn: '曼谷 3-5 月为极端高温期（最高可达 40°C），防晒和补水至关重要。', en: 'Bangkok hits extreme heat in Mar-May (up to 40C); sunscreen and hydration are critical.' },
+  { city: 'beijing', monthStart: 3, monthEnd: 5, cn: '北京 3-5 月沙尘天气频繁，空气质量可能较差，清洁+屏障修护更重要。', en: 'Beijing sees sandstorms in Mar-May; air quality can worsen, making cleansing + barrier support more important.' },
+  { city: 'london', monthStart: 5, monthEnd: 7, cn: '伦敦 5-7 月花粉季，草类花粉可能引发皮肤敏感。', en: 'London grass pollen season runs May-Jul; this can trigger skin sensitivity.' },
+  { city: 'paris', monthStart: 5, monthEnd: 7, cn: '巴黎 5-7 月为草类花粉季节。', en: 'Paris grass pollen season peaks May-Jul.' },
+  { city: 'seoul', monthStart: 3, monthEnd: 5, cn: '首尔 3-5 月为花粉+黄沙季节，注意敏感和清洁。', en: 'Seoul sees pollen + yellow dust in Mar-May; watch for sensitivity and cleanse thoroughly.' },
+]);
+
+function buildSeasonalContextLines({ language, destination, startDate }) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const dest = normalizeText(destination, 140).toLowerCase();
+  if (!dest) return [];
+
+  const parsed = parseIsoDateToken(startDate);
+  const month = parsed ? parsed.getUTCMonth() + 1 : null;
+
+  const lines = [];
+  for (const entry of SEASONAL_ALERTS) {
+    if (!dest.includes(entry.city)) continue;
+    if (month != null && (month < entry.monthStart || month > entry.monthEnd)) continue;
+    lines.push(t(lang, entry.cn, entry.en));
+    if (lines.length >= 2) break;
+  }
+  return lines;
+}
+
+function buildFlightDayPlanLines({ language, travelReadiness }) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const jetlag = isPlainObject(travelReadiness && travelReadiness.jetlag_sleep)
+    ? travelReadiness.jetlag_sleep
+    : {};
+  const hoursDiff = toNumber(jetlag.hours_diff);
+  const riskLevel = normalizeText(jetlag.risk_level, 24).toLowerCase();
+
+  const lines = [];
+  lines.push(t(lang,
+    '登机前：涂保湿+薄封层（唇部/鼻翼），机舱空气极干。',
+    'Before boarding: apply moisturizer + a thin occlusive on lips/nostrils (cabin air is brutal).',
+  ));
+  lines.push(t(lang,
+    '机上：跳过酸/维A；可补涂润唇膏+护手霜；喷雾需配合保湿封住水分（单独喷雾反而更干）。',
+    'On the plane: skip acids/retinoids; reapply lip balm + hand cream; facial mist only if you seal it with moisturizer (mist alone dries faster).',
+  ));
+
+  if (riskLevel === 'high' || (hoursDiff != null && hoursDiff >= 8)) {
+    lines.push(t(lang,
+      '落地前 48 小时进入"屏障模式"（极简护肤），让皮肤适应新环境后再恢复活性。',
+      'First 48 hours after landing: go "barrier mode" (simple routine) while your skin adjusts before resuming actives.',
+    ));
+  } else {
+    lines.push(t(lang,
+      '落地当晚以补水修护为主，次日按皮肤反应决定是否恢复活性。',
+      'On arrival night: focus on hydration + recovery; resume actives next day based on how skin responds.',
+    ));
+  }
+
+  const sleepTips = Array.isArray(jetlag.sleep_tips) ? jetlag.sleep_tips : [];
+  for (const tip of sleepTips.slice(0, 1)) {
+    const tipText = normalizeText(tip, 220);
+    if (tipText) lines.push(tipText);
+  }
+
+  return uniqueStrings(lines, 4);
+}
+
+function buildActiveHandlingLines({ language, travelReadiness }) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const personalFocus = Array.isArray(travelReadiness && travelReadiness.personal_focus)
+    ? travelReadiness.personal_focus
+    : [];
+  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
+    ? travelReadiness.delta_vs_home
+    : {};
+  const summaryTags = Array.isArray(delta.summary_tags) ? delta.summary_tags : [];
+  const isWindy = summaryTags.includes('windier');
+  const hasPollen = summaryTags.includes('pollen') || summaryTags.includes('seasonal_allergen');
+
+  const lines = [];
+  lines.push(t(lang,
+    '旅行期间不要提高活性浓度或频次。',
+    'Don\'t increase active strength or frequency on the trip.',
+  ));
+
+  if (isWindy || hasPollen || personalFocus.some((f) => /barrier|屏障/i.test(normalizeText(f && f.focus, 80)))) {
+    lines.push(t(lang,
+      '考虑将活性频次降低约 30-50%（如每晚改隔天），风+花粉季更容易刺激。',
+      'Consider reducing active frequency by ~30-50% (e.g. every other night); wind + pollen season can make irritation more likely.',
+    ));
+  } else {
+    lines.push(t(lang,
+      '可考虑将活性频次降低约 30%，旅行中皮肤适应力下降。',
+      'Consider reducing active frequency by ~30% during travel; skin adaptability is lower.',
+    ));
+  }
+
+  lines.push(t(lang,
+    '如果出现刺痛/紧绷：暂停活性 2-3 晚，专注补水+保湿。',
+    'If you get stinging/tightness: pause actives for 2-3 nights and focus on hydration + moisturizer.',
+  ));
+
+  return uniqueStrings(lines, 3);
+}
+
+function buildPackingListLines({ language, travelReadiness }) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
+    ? travelReadiness.delta_vs_home
+    : {};
+  const uvDestination = toNumber(delta?.uv?.destination);
+  const humidityDelta = toNumber(delta?.humidity?.delta);
+
+  const items = [];
+  items.push(t(lang, '温和洁面（或卸妆膏+温和洁面）', 'Gentle cleanser (or cleansing balm + gentle cleanser)'));
+  items.push(t(lang, '补水精华/化妆水', 'Hydrating serum/essence'));
+
+  if (humidityDelta != null && humidityDelta <= -8) {
+    items.push(t(lang, '你的保湿霜 + 一支封层（或厚重晚霜）', 'Your moisturizer + a small occlusive (or heavier night cream)'));
+  } else {
+    items.push(t(lang, '你的保湿霜', 'Your moisturizer'));
+  }
+
+  if (uvDestination != null && uvDestination >= 6) {
+    items.push(t(lang, '防晒 SPF50+（加便携补涂装：防晒棒/气垫/散粉）', 'SPF50+ sunscreen (+ portable reapply format: stick/cushion/powder SPF)'));
+  } else {
+    items.push(t(lang, '防晒 SPF30-50', 'SPF 30-50 sunscreen'));
+  }
+
+  items.push(t(lang, '润唇膏 + 护手霜', 'Lip balm + hand cream'));
+  items.push(t(lang, '（可选）痘痘贴——旅行突发很好用', 'Optional: pimple patches (great for travel flare-ups)'));
+
+  return uniqueStrings(items, 6);
+}
+
+function buildTroubleshootingLines({ language, travelReadiness }) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
+    ? travelReadiness.delta_vs_home
+    : {};
+  const summaryTags = Array.isArray(delta.summary_tags) ? delta.summary_tags : [];
+
+  const lines = [];
+  lines.push(t(lang,
+    '紧绷、脱皮、刺痛：减少清洁次数，加一层补水层，晚间用更厚的保湿霜封住。',
+    'Tight, flaky, stinging: cleanse less, add a hydrating layer, seal with a richer moisturizer at night.',
+  ));
+  lines.push(t(lang,
+    '比平时更多闭口/粉刺：保持防晒但换更轻薄的保湿，确保晚间彻底卸除防晒。',
+    'More clogged pores than usual: keep sunscreen but switch to lighter moisturizer + make sure you\'re truly removing SPF at night.',
+  ));
+
+  if (summaryTags.includes('windier') || summaryTags.includes('colder')) {
+    lines.push(t(lang,
+      '泛红/痒（风+寒冷）：精简步骤，暂停活性，专注温和补水+修护屏障。',
+      'Red/itchy patches (wind + cold): simplify routine, pause actives, and prioritize bland hydration/barrier steps.',
+    ));
+  } else {
+    lines.push(t(lang,
+      '泛红/痒：精简步骤，暂停活性，专注温和补水+修护屏障。',
+      'Red/itchy patches: simplify routine, pause actives, and prioritize bland hydration/barrier steps.',
+    ));
+  }
+
+  return uniqueStrings(lines, 3);
+}
+
 function buildReplySignature({ foci, travelReadiness, homeRegion }) {
   const destinationContext = isPlainObject(travelReadiness && travelReadiness.destination_context)
     ? travelReadiness.destination_context
@@ -821,16 +994,37 @@ function composeTravelReply({
       : '';
   const forecastLines = buildForecastLines({ language: lang, travelReadiness: readiness });
   const alertsSection = buildAlertsSection({ language: lang, travelReadiness: readiness });
+
+  const seasonalContextLines = buildSeasonalContextLines({
+    language: lang,
+    destination: destinationLabel,
+    startDate: destinationContext.start_date,
+  });
+  const flightDayPlanLines = buildFlightDayPlanLines({ language: lang, travelReadiness: readiness });
+  const activeHandlingLines = buildActiveHandlingLines({ language: lang, travelReadiness: readiness });
+  const packingListLines = buildPackingListLines({ language: lang, travelReadiness: readiness });
+  const troubleshootingLines = buildTroubleshootingLines({ language: lang, travelReadiness: readiness });
+
   const qualitySections = [];
   if (comparisonLines.length) qualitySections.push('answer_delta');
   if (actionLines.length) qualitySections.push('actions');
   if (phasedPlanLines.length) qualitySections.push('phased_plan');
   if (productLines.length) qualitySections.push('products');
+  if (flightDayPlanLines.length) qualitySections.push('flight_day');
+  if (activeHandlingLines.length) qualitySections.push('active_handling');
+  if (packingListLines.length) qualitySections.push('packing_list');
+  if (troubleshootingLines.length) qualitySections.push('troubleshooting');
   if (alertsSection.lines.length) qualitySections.push('alerts');
 
   const text = [
     directAnswer,
     contextLine,
+    seasonalContextLines.length
+      ? [
+        t(lang, '季节/环境提醒：', 'Seasonal / environmental notes:'),
+        ...seasonalContextLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
     forecastLines.length
       ? [
         t(lang, '逐日天气：', 'Daily forecast:'),
@@ -846,8 +1040,20 @@ function composeTravelReply({
     baselineGapLine,
     actionLines.length
       ? [
-        t(lang, '执行动作：', 'Actions:'),
+        t(lang, '护肤调整建议：', 'Adjusted routine guidance:'),
         ...actionLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
+    flightDayPlanLines.length
+      ? [
+        t(lang, '飞行日计划：', 'Flight day plan:'),
+        ...flightDayPlanLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
+    activeHandlingLines.length
+      ? [
+        t(lang, '活性成分管理：', 'How to handle actives:'),
+        ...activeHandlingLines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
     phasedPlanLines.length
@@ -856,10 +1062,22 @@ function composeTravelReply({
         ...phasedPlanLines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
+    packingListLines.length
+      ? [
+        t(lang, '旅行护肤清单：', 'Mini travel kit to pack:'),
+        ...packingListLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
     productLines.length
       ? [
         t(lang, '产品与准备：', 'Products and prep:'),
         ...productLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
+    troubleshootingLines.length
+      ? [
+        t(lang, '应急处理：', 'Quick troubleshooting:'),
+        ...troubleshootingLines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
     alertsSection.lines.length
@@ -895,5 +1113,10 @@ module.exports = {
     detectTravelFoci,
     buildReplySignature,
     formatMetricPair,
+    buildSeasonalContextLines,
+    buildFlightDayPlanLines,
+    buildActiveHandlingLines,
+    buildPackingListLines,
+    buildTroubleshootingLines,
   },
 };

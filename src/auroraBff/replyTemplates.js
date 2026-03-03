@@ -549,7 +549,28 @@ function hasUnsafeClaim(text) {
 }
 
 function looksDuplicativeForEnv(text) {
-  return /(\bess\b|\btier\b|\bradar\b|雷达|分层数值)/i.test(safeString(text));
+  const raw = safeString(text);
+  if (/(\bess\b|\btier\b|\bradar\b|雷达|分层数值)/i.test(raw)) return true;
+  return false;
+}
+
+function looksLikeRichTravelReply(text) {
+  const raw = safeString(text);
+  if (!raw) return false;
+  const markers = [
+    /\b(daily forecast|key deltas|phased plan|flight day|packing|troubleshoot)/i,
+    /(逐日天气|关键差异|分阶段|飞行日|旅行护肤清单|应急处理)/,
+    /\b(adjusted routine|how to handle actives|mini travel kit|seasonal)/i,
+    /(护肤调整|活性成分管理|季节)/,
+  ];
+  let hitCount = 0;
+  for (const marker of markers) {
+    if (marker.test(raw)) hitCount += 1;
+    if (hitCount >= 2) return true;
+  }
+  const bulletCount = countBullets(raw);
+  if (bulletCount >= 6 && raw.length > 400) return true;
+  return false;
 }
 
 function looksDuplicativeForReco(text) {
@@ -559,7 +580,7 @@ function looksDuplicativeForReco(text) {
   return bulletCount >= 6;
 }
 
-function enforceMessageLimits(message, { allowMarkdown }) {
+function enforceMessageLimits(message, { allowMarkdown, richTravelReply = false }) {
   const msg = normalizeAssistantMessage(message);
   if (!msg) return null;
   let format = msg.format;
@@ -570,6 +591,10 @@ function enforceMessageLimits(message, { allowMarkdown }) {
     content = stripMarkdownToText(content);
   }
 
+  const maxBullets = richTravelReply ? 40 : 6;
+  const maxMarkdownLen = richTravelReply ? 3200 : 520;
+  const maxTextLen = richTravelReply ? 2400 : 280;
+
   if (format === 'markdown') {
     const lines = content.split(/\r?\n/);
     let bulletSeen = 0;
@@ -578,14 +603,14 @@ function enforceMessageLimits(message, { allowMarkdown }) {
       const isBullet = /^\s*([-*]|\d+\.)\s+/.test(line.trim());
       if (isBullet) {
         bulletSeen += 1;
-        if (bulletSeen > 6) continue;
+        if (bulletSeen > maxBullets) continue;
       }
       kept.push(line);
     }
     content = kept.join('\n').trim();
-    if (content.length > 520) content = `${content.slice(0, 519).trim()}…`;
+    if (content.length > maxMarkdownLen) content = `${content.slice(0, maxMarkdownLen - 1).trim()}…`;
   } else {
-    if (content.length > 280) content = `${content.slice(0, 279).trim()}…`;
+    if (content.length > maxTextLen) content = `${content.slice(0, maxTextLen - 1).trim()}…`;
   }
 
   return { role: 'assistant', format, content };
@@ -747,11 +772,19 @@ function applyReplyTemplates({ envelope, ctx } = {}) {
   const existingText = safeString(currentMessage && currentMessage.content);
   const existingFormat = safeString(currentMessage && currentMessage.format).trim().toLowerCase();
   const allowMarkdown = templateId === 'env_weather_qa.standard' || templateId === 'recommendations_output.standard';
+  const isRichTravel = looksLikeRichTravelReply(existingText);
 
   const violations = [];
   if (!currentMessage) violations.push('missing_message');
   if (pendingNeedsSingleQuestion && countQuestionMarks(existingText) !== 1) violations.push('pending_multi_question');
   if (hasUnsafeClaim(existingText)) violations.push('unsafe_claim');
+
+  if (isRichTravel && templateId === 'env_weather_qa.standard') {
+    const onlyNonCritical = violations.every((v) => v === 'pending_multi_question');
+    if (violations.length === 0 || onlyNonCritical) {
+      violations.length = 0;
+    }
+  }
 
   let replacedByTemplate = false;
   if (violations.length > 0 && normalizeAssistantMessage(rendered.assistant_message)) {
@@ -764,7 +797,7 @@ function applyReplyTemplates({ envelope, ctx } = {}) {
 
   let finalizedMessage = null;
   if (replacedByTemplate) {
-    finalizedMessage = enforceMessageLimits(env.assistant_message, { allowMarkdown });
+    finalizedMessage = enforceMessageLimits(env.assistant_message, { allowMarkdown, richTravelReply: false });
     if (finalizedMessage && hasUnsafeClaim(finalizedMessage.content)) {
       finalizedMessage = {
         role: 'assistant',
@@ -785,6 +818,9 @@ function applyReplyTemplates({ envelope, ctx } = {}) {
     }
   } else {
     finalizedMessage = normalizeAssistantMessage(env.assistant_message);
+    if (finalizedMessage && isRichTravel) {
+      finalizedMessage = enforceMessageLimits(finalizedMessage, { allowMarkdown: true, richTravelReply: true });
+    }
   }
   if (finalizedMessage) env.assistant_message = finalizedMessage;
 

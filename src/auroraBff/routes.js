@@ -260,7 +260,11 @@ const { getAuroraKbV0, getAuroraKbFailMode } = require('./kbV0/loader');
 const { resolveQaPlan } = require('./qaPlanner');
 const { BLOCK_LEVEL, evaluateSafety } = require('./safetyEngineV1');
 const { getTravelWeather } = require('./weatherAdapter');
+const { getTravelAlerts } = require('./travelAlertsProvider');
 const { buildEpiPayload } = require('./epiCalculator');
+const { buildTravelReadiness } = require('./travelReadinessBuilder');
+const { composeTravelReply } = require('./travelReplyComposer');
+const { calibrateTravelReadinessWithLlm } = require('./travelLlmCalibrator');
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
@@ -399,6 +403,16 @@ const AURORA_TRAVEL_WEATHER_LIVE_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED = (() => {
+  const raw = String(
+    process.env.AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED ||
+      process.env.AURORA_TRAVEL_LLM_CALIBRATION_V1 ||
+      'false',
+  )
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_LOOP_BREAKER_V2_ENABLED = (() => {
   const raw = String(process.env.AURORA_LOOP_BREAKER_V2_ENABLED || 'false')
     .trim()
@@ -447,6 +461,7 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
   safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
   travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
+  travel_llm_calibration_v1: AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED,
   loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
   chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
 });
@@ -26712,6 +26727,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
+        travel_llm_calibration_v1: Boolean(effectiveChatFlags.travel_llm_calibration_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       },
@@ -26736,6 +26752,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
+        travel_llm_calibration_v1: Boolean(effectiveChatFlags.travel_llm_calibration_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       };
@@ -28166,6 +28183,37 @@ function mountAuroraBffRoutes(app, { logger }) {
             startDate,
             endDate,
           });
+          let travelAlerts = [];
+          try {
+            const travelAlertsResult = await getTravelAlerts({
+              destination:
+                (weather &&
+                  weather.location &&
+                  typeof weather.location.name === 'string' &&
+                  weather.location.name.trim()) ||
+                destination,
+              destinationCountry:
+                (weather &&
+                  weather.location &&
+                  ((typeof weather.location.country_code === 'string' && weather.location.country_code.trim()) ||
+                    (typeof weather.location.country === 'string' && weather.location.country.trim()))) ||
+                '',
+              language: ctx.lang,
+              timeoutMs: 1800,
+            });
+            if (
+              travelAlertsResult &&
+              travelAlertsResult.source === 'official_api' &&
+              Array.isArray(travelAlertsResult.alerts)
+            ) {
+              travelAlerts = travelAlertsResult.alerts;
+            }
+          } catch (travelAlertErr) {
+            logger?.warn(
+              { err: travelAlertErr && (travelAlertErr.code || travelAlertErr.message), request_id: ctx.request_id },
+              'aurora bff: travel alerts fetch failed, using no alerts',
+            );
+          }
           const epiPayload = buildEpiPayload({
             weather,
             profile,
@@ -28176,6 +28224,66 @@ function mountAuroraBffRoutes(app, { logger }) {
           policyMeta.degraded = policyMeta.env_source !== 'weather_api';
 
           const localEss = Number(envStressUi && envStressUi.ess);
+
+          const homeWeatherForReadiness =
+            profile && typeof profile.home_weather === 'object' && !Array.isArray(profile.home_weather)
+              ? profile.home_weather
+              : null;
+          let travelReadiness = buildTravelReadiness({
+            language: ctx.lang,
+            profile,
+            recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
+            destination,
+            startDate,
+            endDate,
+            destinationWeather: weather,
+            homeWeather: homeWeatherForReadiness,
+            travelAlerts,
+            epiPayload,
+            recommendationCandidates: [],
+          });
+
+          if (effectiveChatFlags.travel_llm_calibration_v1) {
+            try {
+              const calibrationResult = await calibrateTravelReadinessWithLlm({
+                openaiClient: getOpenAIClient(),
+                language: ctx.lang,
+                travelLlmInput: {
+                  destination,
+                  start_date: startDate,
+                  end_date: endDate,
+                  weather_summary: weather && weather.summary,
+                  profile_summary: {
+                    skinType: profile && profile.skinType,
+                    sensitivity: profile && profile.sensitivity,
+                    barrierStatus: profile && profile.barrierStatus,
+                    goals: profile && profile.goals,
+                  },
+                },
+                baseTravelReadiness: travelReadiness,
+                timeoutMs: 2500,
+                logger,
+              });
+              if (calibrationResult && calibrationResult.used && calibrationResult.travel_readiness) {
+                travelReadiness = calibrationResult.travel_readiness;
+              }
+            } catch (calibErr) {
+              logger?.warn(
+                { err: calibErr && (calibErr.code || calibErr.message), request_id: ctx.request_id },
+                'aurora bff: travel llm calibration failed, using base readiness',
+              );
+            }
+          }
+
+          const travelReply = composeTravelReply({
+            message,
+            language: ctx.lang,
+            travelReadiness,
+            destination,
+            homeRegion: (profile && profile.region) || '',
+            envSource: epiPayload.env_source,
+          });
+
           envStressUi = {
             ...(envStressUi || {}),
             ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
@@ -28184,36 +28292,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             reco_weights: epiPayload.reco_weights,
             env_source: epiPayload.env_source,
             travel_context: weather.date_range || null,
+            travel_readiness: travelReadiness,
           };
 
-          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-          const destinationText =
-            weather && weather.location && weather.location.name
-              ? String(weather.location.name)
-              : String(destination || '');
-          const dateHint =
-            weather && weather.date_range && weather.date_range.start
-              ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
-              : '';
-          const epiLinesCn = [
-            `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
-            destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
-            '建议（AM）：',
-            ...epiPayload.strategy.am.map((line) => `- ${line}`),
-            '建议（PM）：',
-            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-          ].filter(Boolean);
-          const epiLinesEn = [
-            `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
-            destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
-            'AM strategy:',
-            ...epiPayload.strategy.am.map((line) => `- ${line}`),
-            'PM strategy:',
-            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-          ].filter(Boolean);
-          advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
+          advice = travelReply.text;
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);

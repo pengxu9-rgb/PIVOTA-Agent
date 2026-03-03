@@ -145,6 +145,7 @@ function normalizeGlobalFlags(flags) {
     qa_planner_v1: Boolean(src.qa_planner_v1),
     safety_engine_v1: Boolean(src.safety_engine_v1),
     travel_weather_live_v1: Boolean(src.travel_weather_live_v1),
+    travel_llm_calibration_v1: Boolean(src.travel_llm_calibration_v1),
     loop_breaker_v2: Boolean(src.loop_breaker_v2),
     chat_response_meta: Boolean(src.chat_response_meta),
   };
@@ -157,6 +158,7 @@ function capabilityFlagsForVariant(variant) {
       qa_planner_v1: true,
       safety_engine_v1: true,
       travel_weather_live_v1: true,
+      travel_llm_calibration_v1: true,
       loop_breaker_v2: true,
     };
   }
@@ -166,6 +168,7 @@ function capabilityFlagsForVariant(variant) {
       qa_planner_v1: true,
       safety_engine_v1: true,
       travel_weather_live_v1: false,
+      travel_llm_calibration_v1: false,
       loop_breaker_v2: true,
     };
   }
@@ -175,6 +178,7 @@ function capabilityFlagsForVariant(variant) {
       qa_planner_v1: true,
       safety_engine_v1: false,
       travel_weather_live_v1: false,
+      travel_llm_calibration_v1: false,
       loop_breaker_v2: true,
     };
   }
@@ -183,6 +187,7 @@ function capabilityFlagsForVariant(variant) {
     qa_planner_v1: false,
     safety_engine_v1: false,
     travel_weather_live_v1: false,
+    travel_llm_calibration_v1: false,
     loop_breaker_v2: false,
   };
 }
@@ -224,6 +229,8 @@ function computeAuroraChatRolloutContext({ req, ctx, body, identity, globalFlags
       qa_planner_v1: globals.qa_planner_v1 && capabilityFlags.qa_planner_v1,
       safety_engine_v1: globals.safety_engine_v1 && capabilityFlags.safety_engine_v1,
       travel_weather_live_v1: globals.travel_weather_live_v1 && capabilityFlags.travel_weather_live_v1,
+      travel_llm_calibration_v1:
+        globals.travel_llm_calibration_v1 && capabilityFlags.travel_llm_calibration_v1,
       loop_breaker_v2: globals.loop_breaker_v2 && capabilityFlags.loop_breaker_v2,
       chat_response_meta: globals.chat_response_meta || rolloutApplied,
     }
