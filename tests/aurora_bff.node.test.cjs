@@ -4152,7 +4152,7 @@ test('ingredient research: request uses no ingredient-specific timeout', async (
           query: 'octocrylene',
         });
         assert.equal(payload.research_status, 'ready');
-        assert.equal(seenTimeout, 4000);
+        assert.equal(seenTimeout, 8000);
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];
