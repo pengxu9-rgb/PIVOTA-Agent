@@ -10,7 +10,6 @@ const SNAPSHOT_AGE_BUCKETS_SEC = Object.freeze([60, 300, 1800, 3600, 21600, 8640
 const callsCounter = new Map();
 const failCounter = new Map();
 const fallbackCounter = new Map();
-const skippedCounter = new Map();
 const latencyByProvider = new Map();
 const ensembleProviderCalls = new Map();
 const ensembleProviderFails = new Map();
@@ -98,19 +97,6 @@ const recoInterleaveWinCounter = new Map();
 const recoExplorationSlotCounter = new Map();
 const recoAsyncUpdateCounter = new Map();
 const recoAsyncUpdateChangedItemsCounter = new Map();
-const recoContextUsedCounter = new Map();
-const travelPlanSelectionCounter = new Map();
-const auroraTravelLlmCallCounter = new Map();
-const auroraTravelKbHitCounter = new Map();
-const auroraTravelKbWriteCounter = new Map();
-const auroraTravelResponseSourceCounter = new Map();
-const auroraTravelWeatherSourceCounter = new Map();
-const auroraTravelForecastSourceCounter = new Map();
-const auroraTravelAlertSourceCounter = new Map();
-const auroraTravelBaselineIntegrityCounter = new Map();
-const auroraTravelResponseQualityCounter = new Map();
-const auroraTravelReplyModeCounter = new Map();
-const auroraTravelEnvCardEmittedCounter = new Map();
 const prelabelRequestsCounter = new Map();
 const prelabelSuccessCounter = new Map();
 const prelabelInvalidJsonCounter = new Map();
@@ -158,57 +144,10 @@ const auroraSkinLlmRetrySuccessCounter = new Map();
 const auroraSkinMainlineProviderCounter = new Map();
 const auroraSkinFallbackDeterministicCounter = new Map();
 const auroraSkinShadowVerifyIsolatedWriteCounter = new Map();
-const auroraSkinQualityDecisionSourceCounter = new Map();
-const auroraSkinLlmForcedCallCounter = new Map();
-const auroraSkinRetakeBlockCounter = new Map();
-const auroraSkinGeminiModelFallbackCounter = new Map();
-const auroraIngredientsFlowCounter = new Map();
-const auroraIngredientProviderCounter = new Map();
-const ingredientProviderCallCounter = new Map();
-const ingredientUserActionCounter = new Map();
-const geminiRateLimitedCounter = new Map();
-const geminiModelNotFoundCounter = new Map();
-const ingredientCooldownAppliedCounter = new Map();
-const timeoutRootCauseCounter = new Map();
-const auroraIngredientsFirstAnswerLatency = {
-  count: 0,
-  sum: 0,
-  buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
-};
-const ingredientSyncAttemptCounter = new Map();
-const ingredientAsyncEnqueuedCounter = new Map();
-const ingredientSyncLatencyHistogram = {
-  count: 0,
-  sum: 0,
-  buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
-};
-const auroraSkinAnalysisRealModelCounter = new Map();
-const auroraSkinLlmCallCounter = new Map();
-const auroraRecoLlmCallCounter = new Map();
-const auroraRecoAltPrecheckCounter = new Map();
-const auroraRecoAltStageLatencyByStage = new Map();
-const auroraRecoAltOutcomeCounter = new Map();
-const auroraRecoAltProviderCounter = new Map();
-let recoAlternativesBudgetExhaustedTotal = 0;
-let recoAlternativesTimeoutTotal = 0;
-let recoAlternativesEmptyTotal = 0;
-let promptContractMismatchTotal = 0;
-const auroraRecoEntrySourceCounter = new Map();
-const auroraRecoKbWriteCounter = new Map();
-const auroraProfileAutoPatchCounter = new Map();
-const auroraRecoContextUsedCounter = new Map();
-const responseSchemaViolationCounter = new Map();
 const auroraKbV0LoaderErrorCounter = new Map();
 const auroraKbV0RuleMatchCounter = new Map();
 const auroraKbV0LegacyFallbackCounter = new Map();
 const auroraKbV0ClimateFallbackCounter = new Map();
-const fpmClarifyReasonCounter = new Map();
-const fpmRepeatedSlotClarifyCounter = new Map();
-const fpmContextFailOpenCounter = new Map();
-const fpmProductsAfterClarifyCounter = new Map();
-let fpmProductsAfterClarifySeen = 0;
-let fpmProductsAfterClarifyHit = 0;
-let fpmProductsAfterClarifyRateGauge = 0;
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -254,7 +193,7 @@ function normalizeDeviceClass(deviceClass) {
 
 function normalizeInputHashPrefix(inputHashPrefix) {
   const token = cleanMetricToken(inputHashPrefix, 'none');
-  return token.slice(0, 8) || 'none';
+  return token.slice(0, 16) || 'none';
 }
 
 function normalizeIssueType(issueType) {
@@ -288,7 +227,7 @@ function normalizeSuppressedReason(reason) {
 
 function normalizeSkinmaskFallbackReason(reason) {
   const token = cleanMetricToken(reason, 'onnx_fail').toUpperCase();
-  if (token === 'DISABLED' || token === 'MODEL_MISSING' || token === 'TIMEOUT' || token === 'ONNX_FAIL') return token;
+  if (token === 'MODEL_MISSING' || token === 'TIMEOUT' || token === 'ONNX_FAIL') return token;
   return 'ONNX_FAIL';
 }
 
@@ -556,7 +495,18 @@ function normalizeAuroraSkinFlowStage(stage) {
     token === 'reco_safety_block' ||
     token === 'reco_timeout_degraded' ||
     token === 'reco_output_guard_fallback' ||
-    token === 'reco_prompt_contract_mismatch'
+    token === 'reco_prompt_contract_mismatch' ||
+    token === 'reco_alternatives_budget_exhausted' ||
+    token === 'reco_alternatives_timeout' ||
+    token === 'reco_alternatives_empty' ||
+    token === 'ingredient_kb_hit' ||
+    token === 'ingredient_kb_miss' ||
+    token === 'ingredient_kb_read_failed' ||
+    token === 'ingredient_kb_write_failed' ||
+    token === 'ingredient_research_requested' ||
+    token === 'ingredient_research_completed' ||
+    token === 'ingredient_research_fallback' ||
+    token === 'empty_section_prevented'
   ) {
     return token;
   }
@@ -567,375 +517,6 @@ function normalizeAuroraSkinFlowOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'hit');
   if (token === 'hit' || token === 'miss') return token;
   return 'hit';
-}
-
-function normalizeAuroraIngredientsFlowStage(stage) {
-  const token = cleanMetricToken(stage, 'unknown');
-  if (
-    token === 'entry_opened' ||
-    token === 'text_query_routed' ||
-    token === 'text_route_drift' ||
-    token === 'mode_selected' ||
-    token === 'answer_served' ||
-    token === 'text_query_routed' ||
-    token === 'text_route_drift' ||
-    token === 'kb_hit' ||
-    token === 'kb_miss' ||
-    token === 'kb_updated' ||
-    token === 'research_requested' ||
-    token === 'research_completed' ||
-    token === 'research_provider_attempt' ||
-    token === 'research_provider_final' ||
-    token === 'research_error' ||
-    token === 'invalid_json' ||
-    token === 'empty_section_prevented' ||
-    token === 'duplicate_job_dedup' ||
-    token === 'rate_limited' ||
-    token === 'circuit_open' ||
-    token === 'card_render_drop' ||
-    token === 'optin_diagnosis' ||
-    token === 'reco_optin' ||
-    token === 'unwanted_diagnosis'
-  ) {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeAuroraIngredientsFlowOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'hit');
-  if (token === 'hit' || token === 'miss') return token;
-  return 'hit';
-}
-
-function normalizeAuroraIngredientsFlowProvider(provider) {
-  return cleanMetricToken(provider, 'unknown');
-}
-
-function normalizeAuroraIngredientProviderStage(stage) {
-  const token = cleanMetricToken(stage, 'attempt');
-  if (token === 'attempt' || token === 'final') return token;
-  return 'attempt';
-}
-
-function normalizeAuroraIngredientProvider(provider) {
-  const token = cleanMetricToken(provider, 'gemini');
-  if (token === 'gemini' || token === 'openai') return token;
-  return 'gemini';
-}
-
-function normalizeAuroraIngredientProviderOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'unknown');
-  return token || 'unknown';
-}
-
-function normalizeIngredientProviderCallStage(stage) {
-  const token = cleanMetricToken(stage, 'sync');
-  if (token === 'sync' || token === 'poll') return token;
-  return 'sync';
-}
-
-function normalizeIngredientProviderCallOutcome(outcome) {
-  return cleanMetricToken(outcome, 'unknown');
-}
-
-function normalizeIngredientSyncAttemptOutcome(outcome) {
-  return cleanMetricToken(outcome, 'unknown');
-}
-
-function normalizeIngredientAsyncEnqueuedSource(source) {
-  const token = cleanMetricToken(source, 'sync');
-  if (token === 'sync' || token === 'poll') return token;
-  return 'sync';
-}
-
-function normalizeIngredientUserAction(action) {
-  const token = cleanMetricToken(action, 'lookup');
-  if (token === 'lookup' || token === 'poll') return token;
-  return 'lookup';
-}
-
-function normalizeGeminiRateLimitedRoute(route) {
-  const token = cleanMetricToken(route, 'unknown');
-  if (
-    token === 'ingredient' ||
-    token === 'diagnosis' ||
-    token === 'reco_fallback' ||
-    token === 'qa' ||
-    token === 'shadow' ||
-    token === 'prelabel'
-  ) {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeGeminiModelName(model) {
-  const token = cleanMetricToken(model, 'unknown');
-  return token || 'unknown';
-}
-
-function normalizeIngredientCooldownReason(reasonCode) {
-  const token = cleanMetricToken(reasonCode, 'unknown');
-  return token || 'unknown';
-}
-
-function normalizeTimeoutRootCause(routeCause) {
-  const token = cleanMetricToken(routeCause, 'unknown');
-  if (
-    token === 'budget_exceeded' ||
-    token === 'provider_timeout' ||
-    token === 'rate_limited' ||
-    token === 'network' ||
-    token === 'unknown'
-  ) {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeAuroraAnalysisSource(source) {
-  return cleanMetricToken(source, 'unknown');
-}
-
-function normalizeAuroraLlmStage(stage) {
-  const token = cleanMetricToken(stage, 'vision');
-  if (token === 'vision' || token === 'report') return token;
-  return 'vision';
-}
-
-function normalizeAuroraLlmCallOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'skip');
-  if (
-    token === 'call' ||
-    token === 'skip' ||
-    token === 'error' ||
-    token === 'policy_skip' ||
-    token === 'precheck_fail' ||
-    token === 'provider_error'
-  ) {
-    return token;
-  }
-  return 'skip';
-}
-
-function normalizeAuroraSkinQualityDecisionSource(source) {
-  const token = cleanMetricToken(source, 'unknown');
-  if (token === 'upload_qc_only') return token;
-  return 'unknown';
-}
-
-function normalizeAuroraSkinRetakeBlockReason(reason) {
-  const token = cleanMetricToken(reason, 'unknown');
-  if (token === 'upload_qc_pass') return token;
-  if (token === 'upload_qc_degraded' || token === 'upload_qc_fail' || token === 'upload_qc_unknown') return token;
-  return 'unknown';
-}
-
-function normalizeAuroraSkinModelFallbackReason(reason) {
-  const token = cleanMetricToken(reason, 'unknown');
-  if (token === 'model_unavailable' || token === 'model_not_found' || token === 'model_unsupported') return token;
-  return token || 'unknown';
-}
-
-function normalizeAuroraRecoLlmStage(stage) {
-  const token = cleanMetricToken(stage, 'main');
-  if (token === 'main' || token === 'alternatives') return token;
-  return 'main';
-}
-
-function normalizeAuroraRecoLlmCallOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'provider_error');
-  if (
-    token === 'success' ||
-    token === 'policy_skip' ||
-    token === 'precheck_fail' ||
-    token === 'budget_exhausted' ||
-    token === 'prompt_contract_mismatch' ||
-    token === 'provider_error' ||
-    token === 'timeout' ||
-    token === 'empty_structured' ||
-    token === 'empty_structured_clarify' ||
-    token === 'provider_rate_limited' ||
-    token === 'provider_timeout' ||
-    token === 'queue_saturated'
-  ) {
-    return token;
-  }
-  return 'provider_error';
-}
-
-function normalizeAuroraRecoAltPrecheckOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'failed');
-  if (token === 'resolved' || token === 'skipped' || token === 'failed' || token === 'error') return token;
-  return 'failed';
-}
-
-function normalizeAuroraRecoAltPrecheckReason(reason) {
-  const token = cleanMetricToken(reason, 'unknown');
-  if (
-    token === 'resolved' ||
-    token === 'cache_hit' ||
-    token === 'circuit_open' ||
-    token === 'anchor_supplied' ||
-    token === 'anchor_missing_precheck' ||
-    token === 'db_not_configured' ||
-    token === 'db_query_timeout' ||
-    token === 'db_unreachable' ||
-    token === 'db_schema_mismatch' ||
-    token === 'db_auth_failed' ||
-    token === 'products_cache_missing' ||
-    token === 'db_error' ||
-    token === 'upstream_timeout' ||
-    token === 'rate_limited' ||
-    token === 'no_candidates' ||
-    token === 'error'
-  ) {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeAuroraRecoAltStage(stage) {
-  const token = cleanMetricToken(stage, 'total');
-  if (
-    token === 'precheck' ||
-    token === 'llm' ||
-    token === 'llm_sync' ||
-    token === 'map' ||
-    token === 'fallback' ||
-    token === 'async_refresh' ||
-    token === 'total'
-  ) {
-    return token;
-  }
-  return 'total';
-}
-
-function normalizeAuroraRecoAltOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'failed');
-  if (token === 'success' || token === 'fallback' || token === 'failed' || token === 'skipped') return token;
-  return 'failed';
-}
-
-function normalizeAuroraRecoAltFailureClass(failureClass) {
-  const token = cleanMetricToken(failureClass, 'unknown');
-  if (
-    token === 'none' ||
-    token === 'provider_rate_limited' ||
-    token === 'provider_timeout' ||
-    token === 'queue_saturated' ||
-    token === 'empty_structured_clarify' ||
-    token === 'empty_structured' ||
-    token === 'precheck_fail' ||
-    token === 'policy_skip' ||
-    token === 'clarify_blocked_best_effort' ||
-    token === 'local_fallback_only' ||
-    token === 'provider_error' ||
-    token === 'endpoint_exception' ||
-    token === 'budget_exhausted' ||
-    token === 'anchor_missing_precheck'
-  ) {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeAuroraRecoAltProviderStatus(providerStatus) {
-  const token = cleanMetricToken(providerStatus, 'none');
-  if (token === 'none' || token === 'timeout' || token === 'network') return token;
-  if (/^\d{3}$/.test(token)) return token;
-  return 'unknown';
-}
-
-function normalizeAuroraRecoAltProviderErrorCode(errorCode) {
-  return cleanMetricToken(errorCode, 'none');
-}
-
-function normalizeAuroraRecoEntrySource(source) {
-  const token = cleanMetricToken(source, 'goal_driven');
-  if (token === 'goal_driven' || token === 'ingredient_driven' || token === 'profile_refine_rerun') return token;
-  return 'goal_driven';
-}
-
-function normalizeAuroraRecoKbWriteSource(source) {
-  const token = cleanMetricToken(source, 'llm_primary');
-  if (token === 'llm_primary' || token === 'artifact_matcher' || token === 'rules_only') return token;
-  return 'llm_primary';
-}
-
-function normalizeAuroraRecoKbWriteOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'attempted');
-  if (
-    token === 'attempted' ||
-    token === 'persisted' ||
-    token === 'quarantined' ||
-    token === 'skipped' ||
-    token === 'error'
-  ) {
-    return token;
-  }
-  return 'attempted';
-}
-
-function normalizeAuroraProfileAutoPatchField(field) {
-  const token = cleanMetricToken(field, 'unknown');
-  if (
-    token === 'skintype' ||
-    token === 'sensitivity' ||
-    token === 'barrierstatus' ||
-    token === 'goals' ||
-    token === 'currentroutine' ||
-    token === 'recentlogs'
-  ) {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeAuroraProfileAutoPatchOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'applied');
-  if (
-    token === 'applied' ||
-    token === 'persisted' ||
-    token === 'persist_error' ||
-    token === 'corrected' ||
-    token === 'skipped'
-  ) {
-    return token;
-  }
-  return 'applied';
-}
-
-function normalizeAuroraRecoContextSignal(signal) {
-  const token = cleanMetricToken(signal, 'recent_logs');
-  if (token === 'recent_logs' || token === 'itinerary' || token === 'safety') return token;
-  return 'recent_logs';
-}
-
-function normalizeSchemaViolationReason(reason) {
-  return cleanMetricToken(reason, 'response_validation_failed');
-}
-
-function normalizeSchemaViolationPath(path) {
-  return cleanMetricToken(path, 'unknown_path');
-}
-
-function normalizeFpmClarifyReason(reasonCode) {
-  const token = cleanMetricToken(reasonCode, 'unknown').toUpperCase();
-  return token || 'UNKNOWN';
-}
-
-function normalizeFpmSlot(slot) {
-  const token = cleanMetricToken(slot, 'unknown');
-  if (token === 'scenario' || token === 'category' || token === 'budget' || token === 'brand') {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeFpmProductsAfterClarifyOutcome(hasProducts) {
-  return hasProducts ? 'hit' : 'miss';
 }
 
 function normalizeAuroraKbV0Reason(reason) {
@@ -950,111 +531,6 @@ function normalizeAuroraKbV0RuleSource(source) {
 
 function normalizeAuroraKbV0RuleLevel(level) {
   return cleanMetricToken(level, 'unknown');
-}
-
-function normalizeRecoContextSignal(signal) {
-  const token = cleanMetricToken(signal, 'unknown');
-  if (token === 'active_trip' || token === 'home_region_weather' || token === 'climate_fallback') return token;
-  return 'unknown';
-}
-
-function normalizeTravelPlanSelectionMode(mode) {
-  const token = cleanMetricToken(mode, 'none');
-  if (token === 'in_range' || token === 'nearest_upcoming' || token === 'none') return token;
-  return 'none';
-}
-
-function normalizeAuroraTravelLlmOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'skip_no_client');
-  if (
-    token === 'call' ||
-    token === 'skip_no_client' ||
-    token === 'skip_disabled' ||
-    token === 'timeout' ||
-    token === 'error'
-  ) {
-    return token;
-  }
-  return 'error';
-}
-
-function normalizeAuroraTravelKbHitMode(mode) {
-  const token = cleanMetricToken(mode, 'miss');
-  if (token === 'hit' || token === 'miss') return token;
-  return 'miss';
-}
-
-function normalizeAuroraTravelKbWriteOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'skip');
-  if (token === 'queued' || token === 'success' || token === 'skip' || token === 'error') return token;
-  return 'skip';
-}
-
-function normalizeAuroraTravelKbWriteReason(reason) {
-  return cleanMetricToken(reason, 'unknown');
-}
-
-function normalizeAuroraTravelResponseSource(source) {
-  const token = cleanMetricToken(source, 'rules_only');
-  if (token === 'llm_enriched' || token === 'rules_only') return token;
-  return 'rules_only';
-}
-
-function normalizeAuroraTravelWeatherSource(source) {
-  const token = cleanMetricToken(source, 'climate_fallback');
-  if (token === 'weather_api' || token === 'climate_fallback') return token;
-  return 'climate_fallback';
-}
-
-function normalizeAuroraTravelWeatherReason(reason) {
-  const token = cleanMetricToken(reason, 'unknown');
-  if (
-    token === 'live_ok' ||
-    token === 'live_timeout' ||
-    token === 'live_http_error' ||
-    token === 'geocode_failed' ||
-    token === 'live_disabled' ||
-    token === 'live_error'
-  ) {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeAuroraTravelForecastSource(source) {
-  const token = cleanMetricToken(source, 'climate_fallback');
-  if (token === 'weather_api' || token === 'climate_fallback') return token;
-  return 'climate_fallback';
-}
-
-function normalizeAuroraTravelAlertSource(source) {
-  const token = cleanMetricToken(source, 'none');
-  if (token === 'official_api' || token === 'none' || token === 'degraded') return token;
-  return 'none';
-}
-
-function normalizeAuroraTravelBaselineIntegrity(status) {
-  const token = cleanMetricToken(status, 'ok');
-  if (token === 'ok' || token === 'missing' || token === 'invalid_zero_coercion') return token;
-  return 'ok';
-}
-
-function normalizeAuroraTravelResponseQualitySection(section) {
-  const token = cleanMetricToken(section, 'unknown');
-  if (token === 'answer_delta' || token === 'actions' || token === 'products' || token === 'alerts') return token;
-  return 'unknown';
-}
-
-function normalizeAuroraTravelReplyMode(mode) {
-  const token = cleanMetricToken(mode, 'fallback');
-  if (token === 'focused' || token === 'fallback' || token === 'followup_text_only') return token;
-  return 'fallback';
-}
-
-function normalizeAuroraTravelEnvCardTurn(turn) {
-  const token = cleanMetricToken(turn, 'first_turn');
-  if (token === 'first_turn' || token === 'followup') return token;
-  return 'first_turn';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -1498,142 +974,6 @@ function recordRecoAsyncUpdate({ block, result, mode, changedCount = 0, delta } 
   }
 }
 
-function recordRecoContextUsed({ signal, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    recoContextUsedCounter,
-    { signal: normalizeRecoContextSignal(signal) },
-    amount,
-  );
-}
-
-function recordTravelPlanSelection({ mode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    travelPlanSelectionCounter,
-    { mode: normalizeTravelPlanSelectionMode(mode) },
-    amount,
-  );
-}
-
-function recordAuroraTravelLlmCall({ outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelLlmCallCounter,
-    { outcome: normalizeAuroraTravelLlmOutcome(outcome) },
-    amount,
-  );
-}
-
-function recordAuroraTravelKbHit({ mode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelKbHitCounter,
-    { mode: normalizeAuroraTravelKbHitMode(mode) },
-    amount,
-  );
-}
-
-function recordAuroraTravelKbWrite({ outcome, reason, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelKbWriteCounter,
-    {
-      outcome: normalizeAuroraTravelKbWriteOutcome(outcome),
-      reason: normalizeAuroraTravelKbWriteReason(reason),
-    },
-    amount,
-  );
-}
-
-function recordAuroraTravelResponseSource({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelResponseSourceCounter,
-    { source: normalizeAuroraTravelResponseSource(source) },
-    amount,
-  );
-}
-
-function recordAuroraTravelWeatherSource({ source, reason, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelWeatherSourceCounter,
-    {
-      source: normalizeAuroraTravelWeatherSource(source),
-      reason: normalizeAuroraTravelWeatherReason(reason),
-    },
-    amount,
-  );
-}
-
-function recordAuroraTravelForecastSource({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelForecastSourceCounter,
-    { source: normalizeAuroraTravelForecastSource(source) },
-    amount,
-  );
-}
-
-function recordAuroraTravelAlertSource({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelAlertSourceCounter,
-    { source: normalizeAuroraTravelAlertSource(source) },
-    amount,
-  );
-}
-
-function recordAuroraTravelBaselineIntegrity({ status, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelBaselineIntegrityCounter,
-    { status: normalizeAuroraTravelBaselineIntegrity(status) },
-    amount,
-  );
-}
-
-function recordAuroraTravelResponseQuality({ section, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelResponseQualityCounter,
-    { section: normalizeAuroraTravelResponseQualitySection(section) },
-    amount,
-  );
-}
-
-function recordAuroraTravelReplyMode({ mode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelReplyModeCounter,
-    { mode: normalizeAuroraTravelReplyMode(mode) },
-    amount,
-  );
-}
-
-function recordAuroraTravelEnvCardEmitted({ turn, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelEnvCardEmittedCounter,
-    { turn: normalizeAuroraTravelEnvCardTurn(turn) },
-    amount,
-  );
-}
-
 function clampRatio01(value, fallback = 0) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -1884,19 +1224,6 @@ function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
   }
 
   const reasonList = Array.isArray(reasons) ? reasons : [];
-  if (safeDecision === 'skip') {
-    const skipReasons = Array.from(
-      new Set(
-        reasonList
-          .map((reason) => cleanMetricToken(reason, 'unknown'))
-          .filter(Boolean),
-      ),
-    );
-    if (!skipReasons.length) skipReasons.push('unknown');
-    for (const reason of skipReasons.slice(0, 4)) {
-      incCounter(skippedCounter, { provider: safeProvider, reason }, 1);
-    }
-  }
   const normalizedReasons = Array.from(
     new Set(
       reasonList
@@ -2325,449 +1652,6 @@ function recordAuroraSkinShadowVerifyIsolatedWrite({ status, delta } = {}) {
   );
 }
 
-function recordAuroraSkinQualityDecisionSource({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraSkinQualityDecisionSourceCounter,
-    { source: normalizeAuroraSkinQualityDecisionSource(source) },
-    amount,
-  );
-}
-
-function recordAuroraSkinLlmForcedCall({ stage, reason, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraSkinLlmForcedCallCounter,
-    {
-      stage: normalizeAuroraLlmStage(stage),
-      reason: cleanMetricToken(reason, 'unknown'),
-    },
-    amount,
-  );
-}
-
-function recordAuroraSkinRetakeBlock({ reason, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraSkinRetakeBlockCounter,
-    {
-      reason: normalizeAuroraSkinRetakeBlockReason(reason),
-    },
-    amount,
-  );
-}
-
-function recordAuroraSkinGeminiModelFallback({ stage, fromModel, toModel, reason, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraSkinGeminiModelFallbackCounter,
-    {
-      stage: normalizeAuroraLlmStage(stage),
-      from_model: cleanMetricToken(fromModel, 'unknown'),
-      to_model: cleanMetricToken(toModel, 'unknown'),
-      reason: normalizeAuroraSkinModelFallbackReason(reason),
-    },
-    amount,
-  );
-}
-
-function recordAuroraIngredientsFlowMetric({ stage, outcome, hit, delta, provider } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  const normalizedOutcome =
-    typeof outcome === 'string'
-      ? normalizeAuroraIngredientsFlowOutcome(outcome)
-      : normalizeAuroraIngredientsFlowOutcome(hit === false ? 'miss' : 'hit');
-  const labels = {
-    stage: normalizeAuroraIngredientsFlowStage(stage),
-    outcome: normalizedOutcome,
-  };
-  if (provider != null && String(provider || '').trim()) {
-    labels.provider = normalizeAuroraIngredientsFlowProvider(provider);
-  }
-  incCounter(
-    auroraIngredientsFlowCounter,
-    labels,
-    amount,
-  );
-}
-
-function recordAuroraIngredientProviderMetric({ stage, provider, outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraIngredientProviderCounter,
-    {
-      stage: normalizeAuroraIngredientProviderStage(stage),
-      provider: normalizeAuroraIngredientProvider(provider),
-      outcome: normalizeAuroraIngredientProviderOutcome(outcome),
-    },
-    amount,
-  );
-}
-
-function recordIngredientProviderCallMetric({ stage, outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    ingredientProviderCallCounter,
-    {
-      stage: normalizeIngredientProviderCallStage(stage),
-      outcome: normalizeIngredientProviderCallOutcome(outcome),
-    },
-    amount,
-  );
-}
-
-function recordIngredientSyncAttemptMetric({ outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    ingredientSyncAttemptCounter,
-    { outcome: normalizeIngredientSyncAttemptOutcome(outcome) },
-    amount,
-  );
-}
-
-function observeIngredientSyncLatency({ latencyMs } = {}) {
-  const latency = Number(latencyMs);
-  if (!Number.isFinite(latency) || latency < 0) return;
-  ingredientSyncLatencyHistogram.count += 1;
-  ingredientSyncLatencyHistogram.sum += latency;
-  for (const bucket of LATENCY_BUCKETS_MS) {
-    if (latency <= bucket) {
-      ingredientSyncLatencyHistogram.buckets.set(
-        bucket,
-        (ingredientSyncLatencyHistogram.buckets.get(bucket) || 0) + 1,
-      );
-    }
-  }
-}
-
-function recordIngredientAsyncEnqueuedMetric({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    ingredientAsyncEnqueuedCounter,
-    { source: normalizeIngredientAsyncEnqueuedSource(source) },
-    amount,
-  );
-}
-
-function recordIngredientUserActionMetric({ action, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    ingredientUserActionCounter,
-    { action: normalizeIngredientUserAction(action) },
-    amount,
-  );
-}
-
-function recordGeminiRateLimitedMetric({ route, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    geminiRateLimitedCounter,
-    { route: normalizeGeminiRateLimitedRoute(route) },
-    amount,
-  );
-}
-
-function recordGeminiModelNotFoundMetric({ route, model, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    geminiModelNotFoundCounter,
-    {
-      route: normalizeGeminiRateLimitedRoute(route),
-      model: normalizeGeminiModelName(model),
-    },
-    amount,
-  );
-}
-
-function recordIngredientCooldownAppliedMetric({ reasonCode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    ingredientCooldownAppliedCounter,
-    { reason_code: normalizeIngredientCooldownReason(reasonCode) },
-    amount,
-  );
-}
-
-function recordTimeoutRootCauseMetric({ route, cause, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    timeoutRootCauseCounter,
-    {
-      route: normalizeGeminiRateLimitedRoute(route),
-      cause: normalizeTimeoutRootCause(cause),
-    },
-    amount,
-  );
-}
-
-function observeAuroraIngredientsFirstAnswerLatency({ latencyMs } = {}) {
-  const latency = Number(latencyMs);
-  if (!Number.isFinite(latency) || latency < 0) return;
-  auroraIngredientsFirstAnswerLatency.count += 1;
-  auroraIngredientsFirstAnswerLatency.sum += latency;
-  for (const bucket of LATENCY_BUCKETS_MS) {
-    if (latency <= bucket) {
-      auroraIngredientsFirstAnswerLatency.buckets.set(
-        bucket,
-        (auroraIngredientsFirstAnswerLatency.buckets.get(bucket) || 0) + 1,
-      );
-    }
-  }
-}
-
-function recordAuroraSkinAnalysisRealModel({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraSkinAnalysisRealModelCounter,
-    { source: normalizeAuroraAnalysisSource(source) },
-    amount,
-  );
-}
-
-function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraSkinLlmCallCounter,
-    {
-      stage: normalizeAuroraLlmStage(stage),
-      outcome: normalizeAuroraLlmCallOutcome(outcome),
-    },
-    amount,
-  );
-}
-
-function recordAuroraRecoLlmCall({ stage, outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraRecoLlmCallCounter,
-    {
-      stage: normalizeAuroraRecoLlmStage(stage),
-      outcome: normalizeAuroraRecoLlmCallOutcome(outcome),
-    },
-    amount,
-  );
-}
-
-function recordRecoAlternativesBudgetExhausted({ delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  recoAlternativesBudgetExhaustedTotal += amount;
-}
-
-function recordRecoAlternativesTimeout({ delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  recoAlternativesTimeoutTotal += amount;
-}
-
-function recordRecoAlternativesEmpty({ delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  recoAlternativesEmptyTotal += amount;
-}
-
-function recordPromptContractMismatch({ delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  promptContractMismatchTotal += amount;
-}
-
-function recordAuroraRecoAltPrecheck({ outcome, reason, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraRecoAltPrecheckCounter,
-    {
-      outcome: normalizeAuroraRecoAltPrecheckOutcome(outcome),
-      reason: normalizeAuroraRecoAltPrecheckReason(reason),
-    },
-    amount,
-  );
-}
-
-function observeAuroraRecoAltStageLatency({ stage, latencyMs } = {}) {
-  const latency = Number(latencyMs);
-  if (!Number.isFinite(latency) || latency < 0) return;
-  const stageKey = normalizeAuroraRecoAltStage(stage);
-  let state = auroraRecoAltStageLatencyByStage.get(stageKey);
-  if (!state) {
-    state = {
-      count: 0,
-      sum: 0,
-      buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
-    };
-    auroraRecoAltStageLatencyByStage.set(stageKey, state);
-  }
-  state.count += 1;
-  state.sum += latency;
-  for (const bucket of LATENCY_BUCKETS_MS) {
-    if (latency <= bucket) {
-      state.buckets.set(bucket, (state.buckets.get(bucket) || 0) + 1);
-    }
-  }
-}
-
-function recordAuroraRecoAltOutcome({ outcome, failureClass, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraRecoAltOutcomeCounter,
-    {
-      outcome: normalizeAuroraRecoAltOutcome(outcome),
-      failure_class: normalizeAuroraRecoAltFailureClass(failureClass),
-    },
-    amount,
-  );
-}
-
-function recordAuroraRecoAltProvider({ providerStatus, errorCode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraRecoAltProviderCounter,
-    {
-      provider_status: normalizeAuroraRecoAltProviderStatus(providerStatus),
-      error_code: normalizeAuroraRecoAltProviderErrorCode(errorCode),
-    },
-    amount,
-  );
-}
-
-function recordAuroraRecoEntrySource({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraRecoEntrySourceCounter,
-    {
-      source: normalizeAuroraRecoEntrySource(source),
-    },
-    amount,
-  );
-}
-
-function recordAuroraRecoKbWrite({ source, outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraRecoKbWriteCounter,
-    {
-      source: normalizeAuroraRecoKbWriteSource(source),
-      outcome: normalizeAuroraRecoKbWriteOutcome(outcome),
-    },
-    amount,
-  );
-}
-
-function recordAuroraProfileAutoPatch({ field, outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraProfileAutoPatchCounter,
-    {
-      field: normalizeAuroraProfileAutoPatchField(field),
-      outcome: normalizeAuroraProfileAutoPatchOutcome(outcome),
-    },
-    amount,
-  );
-}
-
-function recordAuroraRecoContextUsed({ signal, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraRecoContextUsedCounter,
-    {
-      signal: normalizeAuroraRecoContextSignal(signal),
-    },
-    amount,
-  );
-}
-
-function recordFpmClarifyReason({ reasonCode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    fpmClarifyReasonCounter,
-    {
-      reason_code: normalizeFpmClarifyReason(reasonCode),
-    },
-    amount,
-  );
-}
-
-function recordFpmRepeatedSlotClarify({ slot, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    fpmRepeatedSlotClarifyCounter,
-    {
-      slot: normalizeFpmSlot(slot),
-    },
-    amount,
-  );
-}
-
-function recordFpmContextFailOpen({ delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    fpmContextFailOpenCounter,
-    {
-      mode: 'enabled',
-    },
-    amount,
-  );
-}
-
-function recordFpmProductsAfterClarify({ hasProducts, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  const outcome = normalizeFpmProductsAfterClarifyOutcome(Boolean(hasProducts));
-  incCounter(
-    fpmProductsAfterClarifyCounter,
-    {
-      outcome,
-    },
-    amount,
-  );
-  fpmProductsAfterClarifySeen += amount;
-  if (outcome === 'hit') fpmProductsAfterClarifyHit += amount;
-  fpmProductsAfterClarifyRateGauge =
-    fpmProductsAfterClarifySeen > 0
-      ? fpmProductsAfterClarifyHit / fpmProductsAfterClarifySeen
-      : 0;
-}
-
-function recordResponseSchemaViolation({ reason, path, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    responseSchemaViolationCounter,
-    {
-      reason: normalizeSchemaViolationReason(reason),
-      path: normalizeSchemaViolationPath(path),
-    },
-    amount,
-  );
-}
-
 function recordAuroraKbV0LoaderError({ reason } = {}) {
   incCounter(
     auroraKbV0LoaderErrorCounter,
@@ -2846,10 +1730,6 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP vision_calls_total Total number of vision pipeline decisions.');
   lines.push('# TYPE vision_calls_total counter');
   renderCounter(lines, 'vision_calls_total', callsCounter);
-
-  lines.push('# HELP vision_skipped_total Total number of vision policy skips grouped by reason.');
-  lines.push('# TYPE vision_skipped_total counter');
-  renderCounter(lines, 'vision_skipped_total', skippedCounter);
 
   lines.push('# HELP vision_fail_total Total number of vision failures grouped by reason.');
   lines.push('# TYPE vision_fail_total counter');
@@ -3143,58 +2023,6 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE reco_async_update_items_changed_count counter');
   renderCounter(lines, 'reco_async_update_items_changed_count', recoAsyncUpdateChangedItemsCounter);
 
-  lines.push('# HELP aurora_reco_context_used_total Recommendation context usage by signal.');
-  lines.push('# TYPE aurora_reco_context_used_total counter');
-  renderCounter(lines, 'aurora_reco_context_used_total', recoContextUsedCounter);
-
-  lines.push('# HELP aurora_travel_plan_selection_total Travel plan selection mode distribution.');
-  lines.push('# TYPE aurora_travel_plan_selection_total counter');
-  renderCounter(lines, 'aurora_travel_plan_selection_total', travelPlanSelectionCounter);
-
-  lines.push('# HELP aurora_travel_llm_call_total Total travel LLM calibration outcomes.');
-  lines.push('# TYPE aurora_travel_llm_call_total counter');
-  renderCounter(lines, 'aurora_travel_llm_call_total', auroraTravelLlmCallCounter);
-
-  lines.push('# HELP aurora_travel_kb_hit_total Total travel KB lookup hit/miss counts.');
-  lines.push('# TYPE aurora_travel_kb_hit_total counter');
-  renderCounter(lines, 'aurora_travel_kb_hit_total', auroraTravelKbHitCounter);
-
-  lines.push('# HELP aurora_travel_kb_write_total Total travel KB write queue/upsert outcomes.');
-  lines.push('# TYPE aurora_travel_kb_write_total counter');
-  renderCounter(lines, 'aurora_travel_kb_write_total', auroraTravelKbWriteCounter);
-
-  lines.push('# HELP aurora_travel_response_source_total Travel response source split.');
-  lines.push('# TYPE aurora_travel_response_source_total counter');
-  renderCounter(lines, 'aurora_travel_response_source_total', auroraTravelResponseSourceCounter);
-
-  lines.push('# HELP aurora_travel_weather_source_total Travel weather source and fallback reasons.');
-  lines.push('# TYPE aurora_travel_weather_source_total counter');
-  renderCounter(lines, 'aurora_travel_weather_source_total', auroraTravelWeatherSourceCounter);
-
-  lines.push('# HELP aurora_travel_forecast_source_total Travel forecast source split.');
-  lines.push('# TYPE aurora_travel_forecast_source_total counter');
-  renderCounter(lines, 'aurora_travel_forecast_source_total', auroraTravelForecastSourceCounter);
-
-  lines.push('# HELP aurora_travel_alert_source_total Travel alert source split.');
-  lines.push('# TYPE aurora_travel_alert_source_total counter');
-  renderCounter(lines, 'aurora_travel_alert_source_total', auroraTravelAlertSourceCounter);
-
-  lines.push('# HELP aurora_travel_baseline_integrity_total Travel baseline integrity status.');
-  lines.push('# TYPE aurora_travel_baseline_integrity_total counter');
-  renderCounter(lines, 'aurora_travel_baseline_integrity_total', auroraTravelBaselineIntegrityCounter);
-
-  lines.push('# HELP aurora_travel_response_quality_total Travel response quality section coverage.');
-  lines.push('# TYPE aurora_travel_response_quality_total counter');
-  renderCounter(lines, 'aurora_travel_response_quality_total', auroraTravelResponseQualityCounter);
-
-  lines.push('# HELP aurora_travel_reply_mode_total Travel reply mode split.');
-  lines.push('# TYPE aurora_travel_reply_mode_total counter');
-  renderCounter(lines, 'aurora_travel_reply_mode_total', auroraTravelReplyModeCounter);
-
-  lines.push('# HELP aurora_travel_env_card_emitted_total Travel env card emission count by turn.');
-  lines.push('# TYPE aurora_travel_env_card_emitted_total counter');
-  renderCounter(lines, 'aurora_travel_env_card_emitted_total', auroraTravelEnvCardEmittedCounter);
-
   lines.push('# HELP reco_competitors_same_brand_rate Last observed same-brand rate in competitors block.');
   lines.push('# TYPE reco_competitors_same_brand_rate gauge');
   lines.push(`reco_competitors_same_brand_rate ${recoCompetitorsSameBrandRateGauge}`);
@@ -3431,176 +2259,6 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_shadow_verify_isolated_write_total counter');
   renderCounter(lines, 'aurora_skin_shadow_verify_isolated_write_total', auroraSkinShadowVerifyIsolatedWriteCounter);
 
-  lines.push('# HELP aurora_ingredients_flow_total Aurora ingredients query-first flow counters by stage and outcome.');
-  lines.push('# TYPE aurora_ingredients_flow_total counter');
-  renderCounter(lines, 'aurora_ingredients_flow_total', auroraIngredientsFlowCounter);
-
-  lines.push('# HELP aurora_ingredient_provider_total Aurora ingredient research provider attempts/finals by provider and outcome.');
-  lines.push('# TYPE aurora_ingredient_provider_total counter');
-  renderCounter(lines, 'aurora_ingredient_provider_total', auroraIngredientProviderCounter);
-
-  lines.push('# HELP ingredient_provider_call_total Ingredient provider call count by stage and outcome.');
-  lines.push('# TYPE ingredient_provider_call_total counter');
-  renderCounter(lines, 'ingredient_provider_call_total', ingredientProviderCallCounter);
-
-  lines.push('# HELP ingredient_sync_attempt_count Total ingredient sync attempts by outcome.');
-  lines.push('# TYPE ingredient_sync_attempt_count counter');
-  renderCounter(lines, 'ingredient_sync_attempt_count', ingredientSyncAttemptCounter);
-
-  lines.push('# HELP ingredient_sync_latency_ms Ingredient sync call latency histogram.');
-  lines.push('# TYPE ingredient_sync_latency_ms histogram');
-  for (const bucket of LATENCY_BUCKETS_MS) {
-    const le = bucket === Infinity ? '+Inf' : String(bucket);
-    const value = ingredientSyncLatencyHistogram.buckets.get(bucket) || 0;
-    lines.push(`ingredient_sync_latency_ms_bucket{le="${le}"} ${value}`);
-  }
-  lines.push(`ingredient_sync_latency_ms_sum ${ingredientSyncLatencyHistogram.sum}`);
-  lines.push(`ingredient_sync_latency_ms_count ${ingredientSyncLatencyHistogram.count}`);
-
-  lines.push('# HELP ingredient_async_enqueued_total Total ingredient async jobs enqueued by source stage.');
-  lines.push('# TYPE ingredient_async_enqueued_total counter');
-  renderCounter(lines, 'ingredient_async_enqueued_total', ingredientAsyncEnqueuedCounter);
-
-  lines.push('# HELP ingredient_user_action_total Ingredient user action count by action type.');
-  lines.push('# TYPE ingredient_user_action_total counter');
-  renderCounter(lines, 'ingredient_user_action_total', ingredientUserActionCounter);
-
-  lines.push('# HELP gemini_rate_limited_total Total Gemini 429/rate-limited events by route.');
-  lines.push('# TYPE gemini_rate_limited_total counter');
-  renderCounter(lines, 'gemini_rate_limited_total', geminiRateLimitedCounter);
-
-  lines.push('# HELP gemini_model_not_found_total Total Gemini model-not-found events by route and model.');
-  lines.push('# TYPE gemini_model_not_found_total counter');
-  renderCounter(lines, 'gemini_model_not_found_total', geminiModelNotFoundCounter);
-
-  lines.push('# HELP ingredient_cooldown_applied_total Total ingredient cooldown applications by reason code.');
-  lines.push('# TYPE ingredient_cooldown_applied_total counter');
-  renderCounter(lines, 'ingredient_cooldown_applied_total', ingredientCooldownAppliedCounter);
-
-  lines.push('# HELP timeout_root_cause_total Timeout/degradation root cause counters by route and cause.');
-  lines.push('# TYPE timeout_root_cause_total counter');
-  renderCounter(lines, 'timeout_root_cause_total', timeoutRootCauseCounter);
-
-  lines.push('# HELP ingredients_first_answer_latency_ms Ingredient first-answer latency measured from ui events.');
-  lines.push('# TYPE ingredients_first_answer_latency_ms histogram');
-  for (const bucket of LATENCY_BUCKETS_MS) {
-    const le = bucket === Infinity ? '+Inf' : String(bucket);
-    const value = auroraIngredientsFirstAnswerLatency.buckets.get(bucket) || 0;
-    lines.push(`ingredients_first_answer_latency_ms_bucket{le="${le}"} ${value}`);
-  }
-  lines.push(`ingredients_first_answer_latency_ms_sum ${auroraIngredientsFirstAnswerLatency.sum}`);
-  lines.push(`ingredients_first_answer_latency_ms_count ${auroraIngredientsFirstAnswerLatency.count}`);
-
-  lines.push('# HELP aurora_skin_analysis_real_model_total Total completed skin analyses grouped by detector/model source.');
-  lines.push('# TYPE aurora_skin_analysis_real_model_total counter');
-  renderCounter(lines, 'aurora_skin_analysis_real_model_total', auroraSkinAnalysisRealModelCounter);
-
-  lines.push('# HELP aurora_skin_llm_call_total Total skin analysis LLM call decisions grouped by stage and outcome.');
-  lines.push('# TYPE aurora_skin_llm_call_total counter');
-  renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
-
-  lines.push('# HELP aurora_skin_quality_decision_source_total Total quality routing decision source counts in skin analysis.');
-  lines.push('# TYPE aurora_skin_quality_decision_source_total counter');
-  renderCounter(lines, 'aurora_skin_quality_decision_source_total', auroraSkinQualityDecisionSourceCounter);
-
-  lines.push('# HELP aurora_skin_llm_forced_call_total Total forced LLM calls by stage and reason.');
-  lines.push('# TYPE aurora_skin_llm_forced_call_total counter');
-  renderCounter(lines, 'aurora_skin_llm_forced_call_total', auroraSkinLlmForcedCallCounter);
-
-  lines.push('# HELP aurora_skin_retake_block_total Total retake blocks by upload QC reason.');
-  lines.push('# TYPE aurora_skin_retake_block_total counter');
-  renderCounter(lines, 'aurora_skin_retake_block_total', auroraSkinRetakeBlockCounter);
-
-  lines.push('# HELP aurora_skin_gemini_model_fallback_total Total Gemini model ladder fallbacks for skin analysis.');
-  lines.push('# TYPE aurora_skin_gemini_model_fallback_total counter');
-  renderCounter(lines, 'aurora_skin_gemini_model_fallback_total', auroraSkinGeminiModelFallbackCounter);
-
-  lines.push('# HELP aurora_reco_llm_call_total Total recommendation LLM call decisions grouped by stage and outcome.');
-  lines.push('# TYPE aurora_reco_llm_call_total counter');
-  renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
-
-  lines.push('# HELP reco_alternatives_budget_exhausted_total Total alternatives calls skipped because remaining budget was insufficient.');
-  lines.push('# TYPE reco_alternatives_budget_exhausted_total counter');
-  lines.push(`reco_alternatives_budget_exhausted_total ${recoAlternativesBudgetExhaustedTotal}`);
-
-  lines.push('# HELP reco_alternatives_timeout_total Total alternatives calls that timed out.');
-  lines.push('# TYPE reco_alternatives_timeout_total counter');
-  lines.push(`reco_alternatives_timeout_total ${recoAlternativesTimeoutTotal}`);
-
-  lines.push('# HELP reco_alternatives_empty_total Total alternatives calls that returned empty product selections.');
-  lines.push('# TYPE reco_alternatives_empty_total counter');
-  lines.push(`reco_alternatives_empty_total ${recoAlternativesEmptyTotal}`);
-
-  lines.push('# HELP prompt_contract_mismatch_total Total blocked calls due to prompt contract mismatch.');
-  lines.push('# TYPE prompt_contract_mismatch_total counter');
-  lines.push(`prompt_contract_mismatch_total ${promptContractMismatchTotal}`);
-
-  lines.push('# HELP aurora_reco_alt_precheck_total Total alternatives anchor precheck outcomes grouped by outcome and reason.');
-  lines.push('# TYPE aurora_reco_alt_precheck_total counter');
-  renderCounter(lines, 'aurora_reco_alt_precheck_total', auroraRecoAltPrecheckCounter);
-
-  lines.push('# HELP aurora_reco_alt_stage_latency_ms Alternatives pipeline stage latency histogram by stage.');
-  lines.push('# TYPE aurora_reco_alt_stage_latency_ms histogram');
-  for (const [stage, state] of Array.from(auroraRecoAltStageLatencyByStage.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
-    for (const bucket of LATENCY_BUCKETS_MS) {
-      const le = bucket === Infinity ? '+Inf' : String(bucket);
-      const value = state.buckets.get(bucket) || 0;
-      lines.push(
-        `aurora_reco_alt_stage_latency_ms_bucket{stage="${escapePromValue(stage)}",le="${le}"} ${value}`,
-      );
-    }
-    lines.push(`aurora_reco_alt_stage_latency_ms_sum{stage="${escapePromValue(stage)}"} ${state.sum}`);
-    lines.push(`aurora_reco_alt_stage_latency_ms_count{stage="${escapePromValue(stage)}"} ${state.count}`);
-  }
-
-  lines.push('# HELP aurora_reco_alt_outcome_total Total alternatives pipeline outcomes grouped by outcome and failure class.');
-  lines.push('# TYPE aurora_reco_alt_outcome_total counter');
-  renderCounter(lines, 'aurora_reco_alt_outcome_total', auroraRecoAltOutcomeCounter);
-
-  lines.push('# HELP aurora_reco_alt_provider_total Total alternatives upstream provider responses grouped by provider status and error code.');
-  lines.push('# TYPE aurora_reco_alt_provider_total counter');
-  renderCounter(lines, 'aurora_reco_alt_provider_total', auroraRecoAltProviderCounter);
-
-  lines.push('# HELP aurora_reco_entry_source_total Total recommendation entry counts by request source detail.');
-  lines.push('# TYPE aurora_reco_entry_source_total counter');
-  renderCounter(lines, 'aurora_reco_entry_source_total', auroraRecoEntrySourceCounter);
-
-  lines.push('# HELP aurora_reco_kb_write_total Total recommendation KB write attempts grouped by source and outcome.');
-  lines.push('# TYPE aurora_reco_kb_write_total counter');
-  renderCounter(lines, 'aurora_reco_kb_write_total', auroraRecoKbWriteCounter);
-
-  lines.push('# HELP aurora_profile_autopatch_total Auto profile patch field updates and outcomes from free-text extraction.');
-  lines.push('# TYPE aurora_profile_autopatch_total counter');
-  renderCounter(lines, 'aurora_profile_autopatch_total', auroraProfileAutoPatchCounter);
-
-  lines.push('# HELP aurora_reco_context_used_total Total recommendation responses that used specific user-context signals.');
-  lines.push('# TYPE aurora_reco_context_used_total counter');
-  renderCounter(lines, 'aurora_reco_context_used_total', auroraRecoContextUsedCounter);
-
-  lines.push('# HELP aurora_schema_violation_total Total response schema violations observed before fallback envelope output.');
-  lines.push('# TYPE aurora_schema_violation_total counter');
-  renderCounter(lines, 'aurora_schema_violation_total', responseSchemaViolationCounter);
-
-  lines.push('# HELP fpm_clarify_reason_total Total find_products_multi clarification reason counts.');
-  lines.push('# TYPE fpm_clarify_reason_total counter');
-  renderCounter(lines, 'fpm_clarify_reason_total', fpmClarifyReasonCounter);
-
-  lines.push('# HELP fpm_repeated_slot_clarify_total Total blocked repeated slot clarifications for find_products_multi.');
-  lines.push('# TYPE fpm_repeated_slot_clarify_total counter');
-  renderCounter(lines, 'fpm_repeated_slot_clarify_total', fpmRepeatedSlotClarifyCounter);
-
-  lines.push('# HELP fpm_context_fail_open_total Total context fail-open activations for find_products_multi.');
-  lines.push('# TYPE fpm_context_fail_open_total counter');
-  renderCounter(lines, 'fpm_context_fail_open_total', fpmContextFailOpenCounter);
-
-  lines.push('# HELP fpm_products_after_clarify_total Total find_products_multi outcomes after prior clarify turns.');
-  lines.push('# TYPE fpm_products_after_clarify_total counter');
-  renderCounter(lines, 'fpm_products_after_clarify_total', fpmProductsAfterClarifyCounter);
-
-  lines.push('# HELP fpm_products_after_clarify_rate Ratio of product-returned outcomes after prior clarify turns.');
-  lines.push('# TYPE fpm_products_after_clarify_rate gauge');
-  lines.push(`fpm_products_after_clarify_rate ${fpmProductsAfterClarifyRateGauge}`);
-
   lines.push('# HELP aurora_kb_v0_loader_error_total Total KB v0 loader errors by reason.');
   lines.push('# TYPE aurora_kb_v0_loader_error_total counter');
   renderCounter(lines, 'aurora_kb_v0_loader_error_total', auroraKbV0LoaderErrorCounter);
@@ -3627,28 +2285,6 @@ function renderVisionMetricsPrometheus() {
   const artifactCreated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'artifact_created', outcome: 'hit' });
   const ingredientPlans = counterValueByLabels(auroraSkinFlowCounter, { stage: 'ingredient_plan', outcome: 'hit' });
   const analysisTimeoutDegraded = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_timeout_degraded', outcome: 'hit' });
-  const ingredientEntries = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'entry_opened', outcome: 'hit' });
-  const ingredientAnswers = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'answer_served', outcome: 'hit' });
-  const ingredientTextQueryRouted = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'text_query_routed', outcome: 'hit' });
-  const ingredientTextRouteDrift = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'text_route_drift', outcome: 'hit' });
-  const ingredientKbHit = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'kb_hit', outcome: 'hit' });
-  const ingredientKbMiss = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'kb_miss', outcome: 'hit' });
-  const ingredientResearchRequested = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_requested', outcome: 'hit' });
-  const ingredientResearchCompleted = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_completed', outcome: 'hit' });
-  const ingredientResearchError = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_error', outcome: 'hit' });
-  const ingredientInvalidJson = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'invalid_json', outcome: 'hit' });
-  const ingredientEmptySectionPrevented = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'empty_section_prevented', outcome: 'hit' });
-  const ingredientDuplicateJobDedup = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'duplicate_job_dedup', outcome: 'hit' });
-  const ingredientCircuitOpen = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'circuit_open', outcome: 'hit' });
-  const ingredientCardRenderDrop = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'card_render_drop', outcome: 'hit' });
-  const ingredientRecoOptin = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'reco_optin', outcome: 'hit' });
-  const ingredientUnwantedDiagnosis = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'unwanted_diagnosis', outcome: 'hit' });
-  const ingredientProviderAttemptGemini = counterValueByLabels(auroraIngredientProviderCounter, {
-    stage: 'attempt',
-    provider: 'gemini',
-  });
-  const ingredientProviderCallsTotal = counterValueByLabels(ingredientProviderCallCounter, {});
-  const ingredientUserActionsTotal = counterValueByLabels(ingredientUserActionCounter, {});
 
   lines.push('# HELP aurora_skin_reco_generated_rate reco_generated / reco_request.');
   lines.push('# TYPE aurora_skin_reco_generated_rate gauge');
@@ -3682,66 +2318,6 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_analysis_timeout_degraded_rate gauge');
   lines.push(`aurora_skin_analysis_timeout_degraded_rate ${analysisRequests > 0 ? analysisTimeoutDegraded / analysisRequests : 0}`);
 
-  lines.push('# HELP ingredients_unwanted_diagnosis_rate unwanted diagnosis gate responses / ingredients entries.');
-  lines.push('# TYPE ingredients_unwanted_diagnosis_rate gauge');
-  lines.push(`ingredients_unwanted_diagnosis_rate ${ingredientEntries > 0 ? ingredientUnwantedDiagnosis / ingredientEntries : 0}`);
-
-  lines.push('# HELP ingredients_to_reco_optin_rate ingredient-path reco opt-ins / ingredients entries.');
-  lines.push('# TYPE ingredients_to_reco_optin_rate gauge');
-  lines.push(`ingredients_to_reco_optin_rate ${ingredientEntries > 0 ? ingredientRecoOptin / ingredientEntries : 0}`);
-
-  lines.push('# HELP ingredients_text_route_drift_rate ingredient text-route drifts / ingredient text query-first routed.');
-  lines.push('# TYPE ingredients_text_route_drift_rate gauge');
-  lines.push(
-    `ingredients_text_route_drift_rate ${ingredientTextQueryRouted > 0 ? ingredientTextRouteDrift / ingredientTextQueryRouted : 0}`,
-  );
-
-  lines.push('# HELP ingredient_kb_hit_rate ingredient KB hit / (hit + miss).');
-  lines.push('# TYPE ingredient_kb_hit_rate gauge');
-  lines.push(`ingredient_kb_hit_rate ${ingredientKbHit + ingredientKbMiss > 0 ? ingredientKbHit / (ingredientKbHit + ingredientKbMiss) : 0}`);
-
-  lines.push('# HELP ingredient_card_render_drop_rate ingredient card render drops / ingredient answers.');
-  lines.push('# TYPE ingredient_card_render_drop_rate gauge');
-  lines.push(`ingredient_card_render_drop_rate ${ingredientAnswers > 0 ? ingredientCardRenderDrop / ingredientAnswers : 0}`);
-
-  lines.push('# HELP ingredient_research_completion_rate ingredient deep-research completed / requested.');
-  lines.push('# TYPE ingredient_research_completion_rate gauge');
-  lines.push(
-    `ingredient_research_completion_rate ${ingredientResearchRequested > 0 ? ingredientResearchCompleted / ingredientResearchRequested : 0}`,
-  );
-
-  lines.push('# HELP ingredient_research_error_rate ingredient deep-research errors / requested.');
-  lines.push('# TYPE ingredient_research_error_rate gauge');
-  lines.push(
-    `ingredient_research_error_rate ${ingredientResearchRequested > 0 ? ingredientResearchError / ingredientResearchRequested : 0}`,
-  );
-
-  lines.push('# HELP ingredient_calls_per_user_action ingredient_provider_call_total / ingredient_user_action_total.');
-  lines.push('# TYPE ingredient_calls_per_user_action gauge');
-  lines.push(`ingredient_calls_per_user_action ${ingredientUserActionsTotal > 0 ? ingredientProviderCallsTotal / ingredientUserActionsTotal : 0}`);
-
-  lines.push('# HELP gemini_circuit_open_rate ingredient provider circuit-open events / gemini attempts.');
-  lines.push('# TYPE gemini_circuit_open_rate gauge');
-  lines.push(
-    `gemini_circuit_open_rate ${ingredientProviderAttemptGemini > 0 ? ingredientCircuitOpen / ingredientProviderAttemptGemini : 0}`,
-  );
-
-  lines.push('# HELP invalid_json_rate ingredient invalid-json fallbacks / ingredient research requested.');
-  lines.push('# TYPE invalid_json_rate gauge');
-  lines.push(`invalid_json_rate ${ingredientResearchRequested > 0 ? ingredientInvalidJson / ingredientResearchRequested : 0}`);
-
-  lines.push('# HELP empty_section_prevented_rate ingredient minimal-card preventions / ingredient answers.');
-  lines.push('# TYPE empty_section_prevented_rate gauge');
-  lines.push(
-    `empty_section_prevented_rate ${ingredientAnswers > 0 ? ingredientEmptySectionPrevented / ingredientAnswers : 0}`,
-  );
-
-  lines.push('# HELP duplicate_job_dedup_rate ingredient deduped async research jobs / ingredient KB misses.');
-  lines.push('# TYPE duplicate_job_dedup_rate gauge');
-  lines.push(
-    `duplicate_job_dedup_rate ${ingredientKbMiss > 0 ? ingredientDuplicateJobDedup / ingredientKbMiss : 0}`,
-  );
-
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
   const rateKeys = new Set([
@@ -3762,7 +2338,6 @@ function renderVisionMetricsPrometheus() {
 
 function resetVisionMetrics() {
   callsCounter.clear();
-  skippedCounter.clear();
   failCounter.clear();
   fallbackCounter.clear();
   latencyByProvider.clear();
@@ -3838,19 +2413,6 @@ function resetVisionMetrics() {
   recoExplorationSlotCounter.clear();
   recoAsyncUpdateCounter.clear();
   recoAsyncUpdateChangedItemsCounter.clear();
-  recoContextUsedCounter.clear();
-  travelPlanSelectionCounter.clear();
-  auroraTravelLlmCallCounter.clear();
-  auroraTravelKbHitCounter.clear();
-  auroraTravelKbWriteCounter.clear();
-  auroraTravelResponseSourceCounter.clear();
-  auroraTravelWeatherSourceCounter.clear();
-  auroraTravelForecastSourceCounter.clear();
-  auroraTravelAlertSourceCounter.clear();
-  auroraTravelBaselineIntegrityCounter.clear();
-  auroraTravelResponseQualityCounter.clear();
-  auroraTravelReplyModeCounter.clear();
-  auroraTravelEnvCardEmittedCounter.clear();
   prelabelRequestsCounter.clear();
   prelabelSuccessCounter.clear();
   prelabelInvalidJsonCounter.clear();
@@ -3896,53 +2458,6 @@ function resetVisionMetrics() {
   auroraSkinMainlineProviderCounter.clear();
   auroraSkinFallbackDeterministicCounter.clear();
   auroraSkinShadowVerifyIsolatedWriteCounter.clear();
-  auroraSkinQualityDecisionSourceCounter.clear();
-  auroraSkinLlmForcedCallCounter.clear();
-  auroraSkinRetakeBlockCounter.clear();
-  auroraSkinGeminiModelFallbackCounter.clear();
-  auroraIngredientsFlowCounter.clear();
-  auroraIngredientProviderCounter.clear();
-  ingredientProviderCallCounter.clear();
-  ingredientSyncAttemptCounter.clear();
-  ingredientAsyncEnqueuedCounter.clear();
-  ingredientSyncLatencyHistogram.count = 0;
-  ingredientSyncLatencyHistogram.sum = 0;
-  for (const key of ingredientSyncLatencyHistogram.buckets.keys()) {
-    ingredientSyncLatencyHistogram.buckets.set(key, 0);
-  }
-  ingredientUserActionCounter.clear();
-  geminiRateLimitedCounter.clear();
-  geminiModelNotFoundCounter.clear();
-  ingredientCooldownAppliedCounter.clear();
-  timeoutRootCauseCounter.clear();
-  auroraIngredientsFirstAnswerLatency.count = 0;
-  auroraIngredientsFirstAnswerLatency.sum = 0;
-  for (const key of auroraIngredientsFirstAnswerLatency.buckets.keys()) {
-    auroraIngredientsFirstAnswerLatency.buckets.set(key, 0);
-  }
-  auroraSkinAnalysisRealModelCounter.clear();
-  auroraSkinLlmCallCounter.clear();
-  auroraRecoLlmCallCounter.clear();
-  recoAlternativesBudgetExhaustedTotal = 0;
-  recoAlternativesTimeoutTotal = 0;
-  recoAlternativesEmptyTotal = 0;
-  promptContractMismatchTotal = 0;
-  auroraRecoAltPrecheckCounter.clear();
-  auroraRecoAltStageLatencyByStage.clear();
-  auroraRecoAltOutcomeCounter.clear();
-  auroraRecoAltProviderCounter.clear();
-  auroraRecoEntrySourceCounter.clear();
-  auroraRecoKbWriteCounter.clear();
-  auroraProfileAutoPatchCounter.clear();
-  auroraRecoContextUsedCounter.clear();
-  responseSchemaViolationCounter.clear();
-  fpmClarifyReasonCounter.clear();
-  fpmRepeatedSlotClarifyCounter.clear();
-  fpmContextFailOpenCounter.clear();
-  fpmProductsAfterClarifyCounter.clear();
-  fpmProductsAfterClarifySeen = 0;
-  fpmProductsAfterClarifyHit = 0;
-  fpmProductsAfterClarifyRateGauge = 0;
   auroraKbV0LoaderErrorCounter.clear();
   auroraKbV0RuleMatchCounter.clear();
   auroraKbV0LegacyFallbackCounter.clear();
@@ -3952,7 +2467,6 @@ function resetVisionMetrics() {
 function snapshotVisionMetrics() {
   return {
     calls: Array.from(callsCounter.entries()),
-    skips: Array.from(skippedCounter.entries()),
     fails: Array.from(failCounter.entries()),
     fallbacks: Array.from(fallbackCounter.entries()),
     latencyProviders: Array.from(latencyByProvider.keys()),
@@ -4028,19 +2542,6 @@ function snapshotVisionMetrics() {
     recoExplorationSlot: Array.from(recoExplorationSlotCounter.entries()),
     recoAsyncUpdate: Array.from(recoAsyncUpdateCounter.entries()),
     recoAsyncUpdateChangedItems: Array.from(recoAsyncUpdateChangedItemsCounter.entries()),
-    recoContextUsed: Array.from(recoContextUsedCounter.entries()),
-    travelPlanSelection: Array.from(travelPlanSelectionCounter.entries()),
-    auroraTravelLlmCall: Array.from(auroraTravelLlmCallCounter.entries()),
-    auroraTravelKbHit: Array.from(auroraTravelKbHitCounter.entries()),
-    auroraTravelKbWrite: Array.from(auroraTravelKbWriteCounter.entries()),
-    auroraTravelResponseSource: Array.from(auroraTravelResponseSourceCounter.entries()),
-    auroraTravelWeatherSource: Array.from(auroraTravelWeatherSourceCounter.entries()),
-    auroraTravelForecastSource: Array.from(auroraTravelForecastSourceCounter.entries()),
-    auroraTravelAlertSource: Array.from(auroraTravelAlertSourceCounter.entries()),
-    auroraTravelBaselineIntegrity: Array.from(auroraTravelBaselineIntegrityCounter.entries()),
-    auroraTravelResponseQuality: Array.from(auroraTravelResponseQualityCounter.entries()),
-    auroraTravelReplyMode: Array.from(auroraTravelReplyModeCounter.entries()),
-    auroraTravelEnvCardEmitted: Array.from(auroraTravelEnvCardEmittedCounter.entries()),
     prelabelRequests: Array.from(prelabelRequestsCounter.entries()),
     prelabelSuccess: Array.from(prelabelSuccessCounter.entries()),
     prelabelInvalidJson: Array.from(prelabelInvalidJsonCounter.entries()),
@@ -4088,56 +2589,6 @@ function snapshotVisionMetrics() {
     auroraSkinMainlineProvider: Array.from(auroraSkinMainlineProviderCounter.entries()),
     auroraSkinFallbackDeterministic: Array.from(auroraSkinFallbackDeterministicCounter.entries()),
     auroraSkinShadowVerifyIsolatedWrite: Array.from(auroraSkinShadowVerifyIsolatedWriteCounter.entries()),
-    auroraIngredientsFlow: Array.from(auroraIngredientsFlowCounter.entries()),
-    auroraIngredientProvider: Array.from(auroraIngredientProviderCounter.entries()),
-    ingredientProviderCall: Array.from(ingredientProviderCallCounter.entries()),
-    ingredientSyncAttempt: Array.from(ingredientSyncAttemptCounter.entries()),
-    ingredientAsyncEnqueued: Array.from(ingredientAsyncEnqueuedCounter.entries()),
-    ingredientSyncLatency: {
-      count: ingredientSyncLatencyHistogram.count,
-      sum: ingredientSyncLatencyHistogram.sum,
-      buckets: Array.from(ingredientSyncLatencyHistogram.buckets.entries()),
-    },
-    ingredientUserAction: Array.from(ingredientUserActionCounter.entries()),
-    geminiRateLimited: Array.from(geminiRateLimitedCounter.entries()),
-    geminiModelNotFound: Array.from(geminiModelNotFoundCounter.entries()),
-    ingredientCooldownApplied: Array.from(ingredientCooldownAppliedCounter.entries()),
-    timeoutRootCause: Array.from(timeoutRootCauseCounter.entries()),
-    auroraIngredientsFirstAnswerLatency: {
-      count: auroraIngredientsFirstAnswerLatency.count,
-      sum: auroraIngredientsFirstAnswerLatency.sum,
-      buckets: Array.from(auroraIngredientsFirstAnswerLatency.buckets.entries()),
-    },
-    auroraSkinAnalysisRealModel: Array.from(auroraSkinAnalysisRealModelCounter.entries()),
-    auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
-    auroraSkinQualityDecisionSource: Array.from(auroraSkinQualityDecisionSourceCounter.entries()),
-    auroraSkinLlmForcedCall: Array.from(auroraSkinLlmForcedCallCounter.entries()),
-    auroraSkinRetakeBlock: Array.from(auroraSkinRetakeBlockCounter.entries()),
-    auroraSkinGeminiModelFallback: Array.from(auroraSkinGeminiModelFallbackCounter.entries()),
-    auroraRecoLlmCall: Array.from(auroraRecoLlmCallCounter.entries()),
-    recoAlternativesBudgetExhaustedTotal,
-    recoAlternativesTimeoutTotal,
-    recoAlternativesEmptyTotal,
-    promptContractMismatchTotal,
-    auroraRecoAltPrecheck: Array.from(auroraRecoAltPrecheckCounter.entries()),
-    auroraRecoAltStageLatency: Array.from(auroraRecoAltStageLatencyByStage.entries()).map(([stage, state]) => ({
-      stage,
-      count: state.count,
-      sum: state.sum,
-      buckets: Array.from(state.buckets.entries()),
-    })),
-    auroraRecoAltOutcome: Array.from(auroraRecoAltOutcomeCounter.entries()),
-    auroraRecoAltProvider: Array.from(auroraRecoAltProviderCounter.entries()),
-    auroraRecoEntrySource: Array.from(auroraRecoEntrySourceCounter.entries()),
-    auroraRecoKbWrite: Array.from(auroraRecoKbWriteCounter.entries()),
-    auroraProfileAutoPatch: Array.from(auroraProfileAutoPatchCounter.entries()),
-    auroraRecoContextUsed: Array.from(auroraRecoContextUsedCounter.entries()),
-    responseSchemaViolations: Array.from(responseSchemaViolationCounter.entries()),
-    fpmClarifyReason: Array.from(fpmClarifyReasonCounter.entries()),
-    fpmRepeatedSlotClarify: Array.from(fpmRepeatedSlotClarifyCounter.entries()),
-    fpmContextFailOpen: Array.from(fpmContextFailOpenCounter.entries()),
-    fpmProductsAfterClarify: Array.from(fpmProductsAfterClarifyCounter.entries()),
-    fpmProductsAfterClarifyRateGauge,
     auroraKbV0LoaderError: Array.from(auroraKbV0LoaderErrorCounter.entries()),
     auroraKbV0RuleMatch: Array.from(auroraKbV0RuleMatchCounter.entries()),
     auroraKbV0LegacyFallback: Array.from(auroraKbV0LegacyFallbackCounter.entries()),
@@ -4183,19 +2634,6 @@ module.exports = {
   recordRecoInterleaveWin,
   recordRecoExplorationSlot,
   recordRecoAsyncUpdate,
-  recordRecoContextUsed,
-  recordTravelPlanSelection,
-  recordAuroraTravelLlmCall,
-  recordAuroraTravelKbHit,
-  recordAuroraTravelKbWrite,
-  recordAuroraTravelResponseSource,
-  recordAuroraTravelWeatherSource,
-  recordAuroraTravelForecastSource,
-  recordAuroraTravelAlertSource,
-  recordAuroraTravelBaselineIntegrity,
-  recordAuroraTravelResponseQuality,
-  recordAuroraTravelReplyMode,
-  recordAuroraTravelEnvCardEmitted,
   setRecoGuardrailRates,
   recordPrelabelRequest,
   recordPrelabelSuccess,
@@ -4249,42 +2687,6 @@ module.exports = {
   recordAuroraSkinMainlineProvider,
   recordAuroraSkinFallbackDeterministic,
   recordAuroraSkinShadowVerifyIsolatedWrite,
-  recordAuroraSkinQualityDecisionSource,
-  recordAuroraSkinLlmForcedCall,
-  recordAuroraSkinRetakeBlock,
-  recordAuroraSkinGeminiModelFallback,
-  recordAuroraIngredientsFlowMetric,
-  recordAuroraIngredientProviderMetric,
-  recordIngredientProviderCallMetric,
-  recordIngredientSyncAttemptMetric,
-  observeIngredientSyncLatency,
-  recordIngredientAsyncEnqueuedMetric,
-  recordIngredientUserActionMetric,
-  recordGeminiRateLimitedMetric,
-  recordGeminiModelNotFoundMetric,
-  recordIngredientCooldownAppliedMetric,
-  recordTimeoutRootCauseMetric,
-  observeAuroraIngredientsFirstAnswerLatency,
-  recordAuroraSkinAnalysisRealModel,
-  recordAuroraSkinLlmCall,
-  recordAuroraRecoLlmCall,
-  recordRecoAlternativesBudgetExhausted,
-  recordRecoAlternativesTimeout,
-  recordRecoAlternativesEmpty,
-  recordPromptContractMismatch,
-  recordAuroraRecoAltPrecheck,
-  observeAuroraRecoAltStageLatency,
-  recordAuroraRecoAltOutcome,
-  recordAuroraRecoAltProvider,
-  recordAuroraRecoEntrySource,
-  recordAuroraRecoKbWrite,
-  recordAuroraProfileAutoPatch,
-  recordAuroraRecoContextUsed,
-  recordResponseSchemaViolation,
-  recordFpmClarifyReason,
-  recordFpmRepeatedSlotClarify,
-  recordFpmContextFailOpen,
-  recordFpmProductsAfterClarify,
   recordAuroraKbV0LoaderError,
   recordAuroraKbV0RuleMatch,
   recordAuroraKbV0LegacyFallback,

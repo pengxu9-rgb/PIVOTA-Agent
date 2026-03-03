@@ -1,6 +1,13 @@
 const { ChatCardsResponseSchema } = require('./chatCardsSchema');
 const { mapLegacyCardToSpecCards } = require('./chatCardFactory');
 
+const AURORA_CARD_FIRST_DEDUPE_V1 = (() => {
+  const raw = String(process.env.AURORA_CARD_FIRST_DEDUPE_V1 || 'true')
+    .trim()
+    .toLowerCase();
+  return raw !== 'false' && raw !== '0' && raw !== 'off';
+})();
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -149,6 +156,7 @@ function buildSafetyDisclaimer({ riskLevel, language }) {
 
 function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = '' } = {}) {
   const chips = envelope && Array.isArray(envelope.suggested_chips) ? envelope.suggested_chips : [];
+  const cards = asArray(envelope && envelope.cards);
   const source = asArray(chips)
     .map((chip) => {
       if (!isPlainObject(chip)) return null;
@@ -170,6 +178,21 @@ function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = 
   const questionLimit = isRoutine ? 3 : 2;
   const quickReplies = source.slice(0, 8);
   const followUpQuestions = [];
+  const cardTypeSet = new Set(
+    cards
+      .map((card) => asString(card && card.type).toLowerCase())
+      .filter(Boolean),
+  );
+  const hasStrongGuideCard =
+    AURORA_CARD_FIRST_DEDUPE_V1 &&
+    (
+      cardTypeSet.has('analysis_summary') ||
+      cardTypeSet.has('skin_status') ||
+      cardTypeSet.has('routine') ||
+      cardTypeSet.has('analysis_story_v2') ||
+      cardTypeSet.has('confidence_notice') ||
+      cardTypeSet.has('diagnosis_gate')
+    );
 
   const sessionPatch = isPlainObject(envelope && envelope.session_patch) ? envelope.session_patch : {};
   const pending = isPlainObject(sessionPatch.pending_clarification) ? sessionPatch.pending_clarification : null;
@@ -209,25 +232,16 @@ function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = 
       options: pendingOptions.slice(0, isRoutine ? 3 : 2),
       required: true,
     });
-  } else if (source.length > 0) {
-    const quickReplyKeys = new Set(
-      quickReplies.map((row) => `${asString(row.id).toLowerCase()}::${asString(row.label).toLowerCase()}`),
-    );
-    const remainingOptions = source.filter((row) => {
-      const key = `${asString(row.id).toLowerCase()}::${asString(row.label).toLowerCase()}`;
-      return !quickReplyKeys.has(key);
+  } else if (source.length > 0 && !hasStrongGuideCard) {
+    followUpQuestions.push({
+      id: `fup_${Date.now()}`,
+      question:
+        language === 'CN'
+          ? '你希望我下一步怎么继续？'
+          : 'How should I continue for the next step?',
+      options: source.slice(0, isRoutine ? 3 : 2),
+      required: false,
     });
-    if (remainingOptions.length > 0) {
-      followUpQuestions.push({
-        id: `fup_${Date.now()}`,
-        question:
-          language === 'CN'
-            ? '你希望我下一步怎么继续？'
-            : 'How should I continue for the next step?',
-        options: remainingOptions.slice(0, isRoutine ? 3 : 2),
-        required: false,
-      });
-    }
   }
 
   return {
@@ -398,6 +412,7 @@ function buildChatCardsResponse({
     cards,
     follow_up_questions: followUpQuestions,
     suggested_quick_replies: quickReplies,
+    session_patch: isPlainObject(base.session_patch) ? base.session_patch : {},
     ops,
     safety: {
       risk_level: riskLevel,

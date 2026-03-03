@@ -96,44 +96,6 @@ test('vision failure mapping: timeout / 429 / 4xx / 5xx / schema', () => {
   assert.equal(grpcUnauthenticated.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
 });
 
-test('vision failure mapping emits actionable error evidence', () => {
-  const longMessage = `upstream overloaded ${'x'.repeat(800)}`;
-  const err = {
-    status: 503,
-    code: 'UNAVAILABLE',
-    message: longMessage,
-    response: {
-      status: 503,
-      headers: {
-        'x-goog-request-id': 'req_vision_123',
-        traceparent: '00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01',
-      },
-      data: {
-        error: {
-          code: 'UNAVAILABLE',
-          message: longMessage,
-        },
-      },
-    },
-  };
-  const mapped = classifyVisionProviderFailure(err, {
-    timeoutMs: 12000,
-    region: 'us-central1',
-    model: 'gemini-3-pro',
-  });
-  assert.equal(mapped.reason, VisionUnavailabilityReason.VISION_UPSTREAM_5XX);
-  assert.equal(mapped.status_code, 503);
-  assert.equal(mapped.error_code, 'UNAVAILABLE');
-  assert.equal(typeof mapped.error_evidence, 'object');
-  assert.equal(mapped.error_evidence.http_status, 503);
-  assert.equal(mapped.error_evidence.provider_request_id, 'req_vision_123');
-  assert.equal(mapped.error_evidence.region, 'us-central1');
-  assert.equal(mapped.error_evidence.model, 'gemini-3-pro');
-  assert.equal(mapped.error_evidence.reason_normalized, VisionUnavailabilityReason.VISION_UPSTREAM_5XX);
-  assert.equal(typeof mapped.error_evidence.provider_error_message, 'string');
-  assert.equal(mapped.error_evidence.provider_error_message.length <= 500, true);
-});
-
 test('vision retry policy: only retry retryable reasons', async () => {
   let transientAttempts = 0;
   const transient = await executeVisionWithRetry({
@@ -168,8 +130,6 @@ test('vision retry policy: only retry retryable reasons', async () => {
   assert.equal(nonRetryAttempts, 1);
   assert.equal(nonRetry.retry.attempted, 0);
   assert.equal(nonRetry.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
-  assert.equal(typeof nonRetry.error_evidence, 'object');
-  assert.equal(nonRetry.error_evidence.reason_normalized, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
 
   assert.equal(shouldRetryVision(VisionUnavailabilityReason.VISION_TIMEOUT), true);
   assert.equal(shouldRetryVision(VisionUnavailabilityReason.VISION_UPSTREAM_5XX), true);
@@ -315,8 +275,7 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
 
         const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
         assert.ok(card);
-        const visionDecision = String(card?.payload?.quality_report?.llm?.vision?.decision || '');
-        assert.equal(['skip', 'fallback'].includes(visionDecision), true);
+        assert.equal(card?.payload?.quality_report?.llm?.vision?.decision, 'fallback');
         assert.equal(
           Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons) &&
             card.payload.quality_report.llm.vision.reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
@@ -334,24 +293,21 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
           assert.equal(Array.isArray(card?.payload?.analysis?.next_action_card?.retake_guide), true);
           assert.equal(Array.isArray(card?.payload?.analysis?.next_action_card?.ask_3_questions), true);
         } else {
-          assert.ok(card?.payload?.analysis);
+          assert.equal(
+            Array.isArray(card?.payload?.analysis?.takeaways)
+              ? card.payload.analysis.takeaways.some((item) => item && item.source === 'photo')
+              : false,
+            true,
+          );
         }
-        assert.match(
-          String(card?.payload?.analysis?.photo_notice || ''),
-          /(temporarily unavailable|couldn'?t analyze your photo|photo not analyzed)/i,
-        );
+        assert.match(String(card?.payload?.analysis?.photo_notice || ''), /temporarily unavailable/i);
 
         const expectedProvider = String(mod.__internal.resolveVisionProviderSelection().provider || '').trim() || 'gemini';
         const metrics = await request.get('/metrics').expect(200);
         const body = String(metrics.text || '');
-        assert.match(body, new RegExp(`vision_calls_total\\{provider="${expectedProvider}",decision="${visionDecision}"\\}\\s+1`));
-        if (visionDecision === 'skip') {
-          assert.match(body, new RegExp(`vision_skipped_total\\{provider="${expectedProvider}",reason="vision_missing_key"\\}\\s+1`));
-        }
-        assert.match(body, new RegExp(`vision_fail_total\\{provider="${expectedProvider}",reason="VISION_MISSING_KEY"\\}\\s+1`));
-        if (visionDecision === 'fallback') {
-          assert.match(body, new RegExp(`vision_fallback_total\\{provider="${expectedProvider}",reason="VISION_MISSING_KEY"\\}\\s+1`));
-        }
+        assert.match(body, new RegExp(`vision_calls_total\\{provider="${expectedProvider}",decision="fallback"\\}\\s+1`));
+        assert.match(body, new RegExp(`vision_fallback_total\\{provider="${expectedProvider}",reason="VISION_MISSING_KEY"\\}\\s+1`));
+        assert.match(body, new RegExp(`vision_fallback_total\\{provider="${expectedProvider}",reason="VISION_CV_FALLBACK_USED"\\}\\s+1`));
       } finally {
         axios.get = originalGet;
         delete require.cache[moduleId];
@@ -441,8 +397,6 @@ test('/v1/analysis/skin: forced gemini with missing key reports gemini reason an
         const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
         assert.ok(card);
         assert.equal(card?.payload?.quality_report?.llm?.vision?.provider, 'gemini');
-        const visionDecision = String(card?.payload?.quality_report?.llm?.vision?.decision || '');
-        assert.equal(['skip', 'fallback'].includes(visionDecision), true);
         assert.equal(
           Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons) &&
             card.payload.quality_report.llm.vision.reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
@@ -451,14 +405,8 @@ test('/v1/analysis/skin: forced gemini with missing key reports gemini reason an
 
         const metrics = await request.get('/metrics').expect(200);
         const body = String(metrics.text || '');
-        assert.match(body, new RegExp(`vision_calls_total\\{provider="gemini",decision="${visionDecision}"\\}\\s+1`));
-        if (visionDecision === 'skip') {
-          assert.match(body, /vision_skipped_total\{provider="gemini",reason="vision_missing_key"\}\s+1/);
-        }
-        assert.match(body, /vision_fail_total\{provider="gemini",reason="VISION_MISSING_KEY"\}\s+1/);
-        if (visionDecision === 'fallback') {
-          assert.match(body, /vision_fallback_total\{provider="gemini",reason="VISION_MISSING_KEY"\}\s+1/);
-        }
+        assert.match(body, /vision_calls_total\{provider="gemini",decision="fallback"\}\s+1/);
+        assert.match(body, /vision_fallback_total\{provider="gemini",reason="VISION_MISSING_KEY"\}\s+1/);
       } finally {
         axios.get = originalGet;
         delete require.cache[moduleId];
@@ -511,9 +459,9 @@ test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN 
         const vision = card?.payload?.quality_report?.llm?.vision || {};
         const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
         assert.equal(vision.decision, 'skip');
-        assert.ok(reasons.length >= 0);
+        assert.equal(reasons.includes('photo_quality_fail_retake'), true);
         assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_UNKNOWN), false);
-        assert.equal(typeof card?.payload?.analysis?.photo_notice, 'string');
+        assert.equal(String(card?.payload?.analysis?.photo_notice || '').toLowerCase().includes('temporarily unavailable'), false);
       } finally {
         delete require.cache[moduleId];
       }
@@ -521,7 +469,7 @@ test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN 
   );
 });
 
-test('/v1/analysis/skin: fail-grade remains retake-blocked even with force vision debug', async () => {
+test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -562,68 +510,10 @@ test('/v1/analysis/skin: fail-grade remains retake-blocked even with force visio
         assert.ok(card);
         const vision = card?.payload?.quality_report?.llm?.vision || {};
         const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
-        assert.equal(vision.decision, 'skip');
-        assert.equal(reasons.includes('photo_quality_fail_retake'), true);
+        assert.equal(vision.decision, 'fallback');
+        assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED), true);
         assert.equal(vision.upstream_status_code, null);
-        assert.equal(card?.payload?.analysis_source, 'retake');
-      } finally {
-        delete require.cache[moduleId];
-      }
-    },
-  );
-});
-
-test('/v1/analysis/skin: production disables force vision override and keeps degraded/report as policy skip', async () => {
-  await withEnv(
-    {
-      NODE_ENV: undefined,
-      RAILWAY_ENVIRONMENT: 'production',
-      AURORA_BFF_USE_MOCK: 'false',
-      AURORA_DECISION_BASE_URL: '',
-      AURORA_SKIN_VISION_ENABLED: 'true',
-      AURORA_SKIN_DEGRADED_MODE: 'report',
-      AURORA_SKIN_FORCE_VISION_CALL: 'true',
-      AURORA_SKIN_ALLOW_FORCE_VISION_CALL_IN_PROD: 'false',
-      AURORA_SKIN_GEMINI_API_KEY: undefined,
-      GEMINI_API_KEY: undefined,
-      OPENAI_API_KEY: undefined,
-      PIVOTA_BACKEND_BASE_URL: '',
-      PIVOTA_BACKEND_AGENT_API_KEY: '',
-    },
-    async () => {
-      resetVisionMetrics();
-      const { moduleId, mod } = loadAuroraRoutesModule();
-      try {
-        const { mountAuroraBffRoutes } = mod;
-        const app = express();
-        app.use(express.json({ limit: '2mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
-
-        const request = supertest(app);
-        const resp = await request
-          .post('/v1/analysis/skin')
-          .set({
-            'X-Aurora-UID': 'uid_force_vision_prod_off',
-            'X-Trace-ID': 'trace_force_vision_prod_off',
-            'X-Brief-ID': 'brief_force_vision_prod_off',
-            'X-Lang': 'EN',
-          })
-          .send({
-            use_photo: true,
-            currentRoutine: 'AM cleanser + SPF; PM cleanser + moisturizer',
-            photos: [{ slot_id: 'daylight', photo_id: 'photo_force_vision_prod_off', qc_status: 'degraded' }],
-          })
-          .expect(200);
-
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
-        assert.ok(card);
-
-        const visionDecision = String(card?.payload?.quality_report?.llm?.vision?.decision || '');
-        assert.equal(visionDecision, 'skip');
-        assert.equal(resp.body?.analysis_meta?.skin_force_vision_call_requested, true);
-        assert.equal(resp.body?.analysis_meta?.skin_force_vision_call_effective, false);
-        assert.equal(card?.payload?.analysis_meta?.skin_force_vision_call_requested, true);
-        assert.equal(card?.payload?.analysis_meta?.skin_force_vision_call_effective, false);
+        assert.notEqual(card?.payload?.analysis_source, 'retake');
       } finally {
         delete require.cache[moduleId];
       }
