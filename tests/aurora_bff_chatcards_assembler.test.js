@@ -57,22 +57,73 @@ describe('chatCardsAssembler safety mapping', () => {
     expect(out.safety.risk_level).toBe('low');
   });
 
-  test('does not duplicate quick replies into follow-up question options', () => {
+  test('does not synthesize follow_up_questions from suggested_chips', () => {
     const out = buildChatCardsResponse({
       envelope: makeEnvelope({
         suggested_chips: [
-          { chip_id: 'chip.intake.upload_photos', label: 'Upload a photo (more accurate)', kind: 'quick_reply' },
-          { chip_id: 'chip.intake.skip_analysis', label: 'Skip photo (low confidence)', kind: 'quick_reply' },
-          { chip_id: 'chip_keep_chatting', label: 'Just keep chatting', kind: 'quick_reply' },
+          {
+            chip_id: 'chip.intake.upload_photos',
+            label: 'Upload a photo (more accurate)',
+            kind: 'quick_reply',
+            data: { reply_text: 'Upload a photo (more accurate)' },
+          },
+          {
+            chip_id: 'chip.intake.skip_analysis',
+            label: 'Skip photo (low confidence)',
+            kind: 'quick_reply',
+            data: { reply_text: 'Skip photo (low confidence)' },
+          },
+          {
+            chip_id: 'chip.intake.upload_photos',
+            label: 'Upload a photo (more accurate)',
+            kind: 'quick_reply',
+            data: { reply_text: 'Upload a photo (more accurate)' },
+          },
         ],
       }),
       ctx: makeCtx(),
-      safetyDecision: null,
+      intent: 'skin_diagnosis',
     });
 
     expect(Array.isArray(out.suggested_quick_replies)).toBe(true);
-    expect(out.suggested_quick_replies.length).toBe(3);
+    expect(out.suggested_quick_replies.map((item) => item.id)).toEqual([
+      'chip.intake.upload_photos',
+      'chip.intake.skip_analysis',
+    ]);
     expect(Array.isArray(out.follow_up_questions)).toBe(true);
     expect(out.follow_up_questions).toHaveLength(0);
+  });
+
+  test('keeps pending clarification follow-up questions and enforces option bounds', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        session_patch: {
+          pending_clarification: {
+            current: {
+              id: 'skin_type',
+              question: 'Which skin type fits you best?',
+              options: [
+                { id: 'oily', label: 'Oily', value: 'oily' },
+                { id: 'dry', label: 'Dry', value: 'dry' },
+                { id: 'combo', label: 'Combination', value: 'combination' },
+              ],
+            },
+          },
+        },
+      }),
+      ctx: makeCtx(),
+      intent: 'skin_diagnosis',
+    });
+
+    expect(Array.isArray(out.follow_up_questions)).toBe(true);
+    expect(out.follow_up_questions).toHaveLength(1);
+    expect(out.follow_up_questions[0]).toMatchObject({
+      id: 'skin_type',
+      question: 'Which skin type fits you best?',
+      required: true,
+    });
+    expect(Array.isArray(out.follow_up_questions[0].options)).toBe(true);
+    expect(out.follow_up_questions[0].options).toHaveLength(2);
+    expect(out.follow_up_questions[0].options.map((item) => item.id)).toEqual(['oily', 'dry']);
   });
 });
