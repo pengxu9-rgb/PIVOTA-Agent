@@ -27915,6 +27915,99 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // Local env-stress short-circuit: answer weather/environment questions without upstream.
       // Only for user-typed text (including text_explicit). Chips/actions should keep their intended routing.
+      const triggerAllowsTravelPrompt =
+        ctx.trigger_source === 'text' ||
+        ctx.trigger_source === 'text_explicit' ||
+        ctx.trigger_source === 'chip' ||
+        ctx.trigger_source === 'action';
+      const buildTravelMissingFieldsEnvelope = ({
+        asksDestination,
+        asksDates,
+        invalidDateRange = false,
+        missingFields = [],
+      }) => {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const askText = (() => {
+          if (lang === 'CN') {
+            if (invalidDateRange) {
+              return '旅行日期格式需要修正：开始日期不能晚于结束日期。修正后我才能继续做旅行护肤分析。';
+            }
+            if (asksDestination && asksDates) {
+              return '为了继续旅行护肤分析，我需要你先补全两个信息：目的地 + 出行日期（开始-结束）。';
+            }
+            if (asksDestination) {
+              return '为了继续旅行护肤分析，请先补充目的地。';
+            }
+            if (asksDates) {
+              return '为了继续旅行护肤分析，请先补充出行日期（开始-结束）。没有日期我无法继续分析。';
+            }
+            return '我还缺少旅行信息，补全后才能继续分析。';
+          }
+          if (invalidDateRange) {
+            return 'Please fix your travel dates first: `start_date` must be on or before `end_date`. I cannot continue travel analysis until this is corrected.';
+          }
+          if (asksDestination && asksDates) {
+            return 'To continue travel skincare analysis, I need two details first: destination and travel dates (start-end).';
+          }
+          if (asksDestination) {
+            return 'To continue travel skincare analysis, please share your destination first.';
+          }
+          if (asksDates) {
+            return 'To continue travel skincare analysis, please share your travel dates (start-end). I cannot proceed without dates.';
+          }
+          return 'I need one more travel detail before I can continue analysis.';
+        })();
+        const chips = [
+          ...(asksDestination
+            ? [
+              {
+                chip_id: 'chip.travel.destination',
+                label: lang === 'CN' ? '填写目的地' : 'Add destination',
+                kind: 'quick_reply',
+                data: { reply_text: lang === 'CN' ? '我的目的地是' : 'My destination is' },
+              },
+            ]
+            : []),
+          ...(asksDates || invalidDateRange
+            ? [
+              {
+                chip_id: 'chip.travel.dates',
+                label: lang === 'CN' ? '填写出行日期' : 'Add travel dates',
+                kind: 'quick_reply',
+                data: { reply_text: lang === 'CN' ? '出行日期是' : 'My travel dates are' },
+              },
+            ]
+            : []),
+        ];
+        const baseEnvStressUi = buildEnvStressUiModelFromLocal({
+          profile,
+          recentLogs,
+          message,
+          language: ctx.lang,
+        });
+        const envStressUi = baseEnvStressUi && typeof baseEnvStressUi === 'object'
+          ? {
+            ...baseEnvStressUi,
+            notes: [
+              ...(Array.isArray(baseEnvStressUi.notes) ? baseEnvStressUi.notes : []),
+              ...(missingFields.length
+                ? [lang === 'CN' ? `缺少旅行字段：${missingFields.join(', ')}` : `Missing travel fields: ${missingFields.join(', ')}`]
+                : []),
+            ],
+          }
+          : null;
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(askText),
+          suggested_chips: chips,
+          cards: envStressUi
+            ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
+            : [],
+          session_patch: {},
+          events: [makeEvent(ctx, 'travel_planning_gate', { missing_fields: missingFields.slice(0, 4) })],
+        });
+        return sendChatEnvelope(envelope);
+      };
+
       if (
         plannerDecision &&
         (
@@ -27925,50 +28018,65 @@ function mountAuroraBffRoutes(app, { logger }) {
         Array.isArray(plannerDecision.required_fields) &&
         plannerDecision.required_fields.length > 0
       ) {
-        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
         const fields = plannerDecision.required_fields;
         const asksDestination = fields.includes('travel_plan.destination');
         const asksDates = fields.includes('travel_plan.start_date') || fields.includes('travel_plan.end_date');
-        const askText = (() => {
-          if (lang === 'CN') {
-            if (asksDestination && asksDates) return '为了给你做旅行护肤方案，我先要两个信息：目的地 + 出行日期。';
-            if (asksDestination) return '为了给你做旅行护肤方案，请先告诉我目的地。';
-            if (asksDates) return '为了给你做旅行护肤方案，请先告诉我出行日期（开始-结束）。';
-            return '我先补一个旅行信息，再给你更精准方案。';
-          }
-          if (asksDestination && asksDates) return 'For a travel skincare plan, I need two quick details first: destination and travel dates.';
-          if (asksDestination) return 'For a travel skincare plan, please share your destination first.';
-          if (asksDates) return 'For a travel skincare plan, please share your travel dates (start-end).';
-          return 'I need one quick travel detail before I continue.';
-        })();
-        const chips = [
-          {
-            chip_id: 'chip.travel.destination',
-            label: lang === 'CN' ? '目的地：东京' : 'Destination: Tokyo',
-            kind: 'quick_reply',
-            data: { reply_text: lang === 'CN' ? '目的地东京' : 'Destination Tokyo' },
-          },
-          {
-            chip_id: 'chip.travel.dates',
-            label: lang === 'CN' ? '日期：2026-03-01 到 2026-03-05' : 'Dates: 2026-03-01 to 2026-03-05',
-            kind: 'quick_reply',
-            data: { reply_text: '2026-03-01 to 2026-03-05' },
-          },
-          {
-            chip_id: 'chip.travel.climate_mode',
-            label: lang === 'CN' ? '无法查天气，按气候模式' : 'No weather, use climate mode',
-            kind: 'quick_reply',
-            data: { reply_text: lang === 'CN' ? '按炎热潮湿气候给我方案' : 'Plan for hot and humid climate mode' },
-          },
-        ];
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(askText),
-          suggested_chips: chips,
-          cards: [],
-          session_patch: {},
-          events: [makeEvent(ctx, 'travel_planning_gate', { missing_fields: fields.slice(0, 4) })],
+        return buildTravelMissingFieldsEnvelope({
+          asksDestination,
+          asksDates,
+          missingFields: fields,
         });
-        return sendChatEnvelope(envelope);
+      }
+
+      // Defensive fallback: even if planner does not emit ask-step, never continue travel analysis
+      // without required destination + date range.
+      if (
+        triggerAllowsTravelPrompt &&
+        (
+          canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+          extractWeatherScenario(message) === 'travel'
+        )
+      ) {
+        const travelPlan =
+          profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+            ? profile.travel_plan
+            : null;
+        const destination =
+          (travelPlan && typeof travelPlan.destination === 'string' && travelPlan.destination.trim()) ||
+          (canonicalIntent.entities && canonicalIntent.entities.destination) ||
+          '';
+        const startDate =
+          (travelPlan && typeof travelPlan.start_date === 'string' && travelPlan.start_date.trim()) ||
+          (canonicalIntent.entities &&
+          canonicalIntent.entities.date_range &&
+          typeof canonicalIntent.entities.date_range.start === 'string'
+            ? canonicalIntent.entities.date_range.start
+            : '');
+        const endDate =
+          (travelPlan && typeof travelPlan.end_date === 'string' && travelPlan.end_date.trim()) ||
+          (canonicalIntent.entities &&
+          canonicalIntent.entities.date_range &&
+          typeof canonicalIntent.entities.date_range.end === 'string'
+            ? canonicalIntent.entities.date_range.end
+            : '');
+        const hasDestination = Boolean(String(destination || '').trim());
+        const hasStartDate = Boolean(String(startDate || '').trim());
+        const hasEndDate = Boolean(String(endDate || '').trim());
+        const invalidDateRange = hasStartDate && hasEndDate && !isTravelDateRangeValid(startDate, endDate);
+        const missingFields = [
+          ...(hasDestination ? [] : ['travel_plan.destination']),
+          ...(hasStartDate ? [] : ['travel_plan.start_date']),
+          ...(hasEndDate ? [] : ['travel_plan.end_date']),
+          ...(invalidDateRange ? ['travel_plan.date_range'] : []),
+        ];
+        if (missingFields.length > 0) {
+          return buildTravelMissingFieldsEnvelope({
+            asksDestination: !hasDestination,
+            asksDates: !hasStartDate || !hasEndDate,
+            invalidDateRange,
+            missingFields,
+          });
+        }
       }
 
       if (
@@ -27977,12 +28085,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
           canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV
         ) &&
-        (
-          ctx.trigger_source === 'text' ||
-          ctx.trigger_source === 'text_explicit' ||
-          ctx.trigger_source === 'chip' ||
-          ctx.trigger_source === 'action'
-        )
+        triggerAllowsTravelPrompt
       ) {
         const scenario = extractWeatherScenario(message);
         let envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
