@@ -121,6 +121,22 @@
       "allowed_states": ["IDLE_CHAT", "RETURN_WELCOME"],
       "next_state": "ROUTINE_INTAKE",
       "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_intake_upload_photos",
+      "label_en": "Upload a photo (more accurate)",
+      "label_cn": "上传照片（更准）",
+      "allowed_states": ["DIAG_PROFILE", "DIAG_PHOTO_OPTIN"],
+      "next_state": "DIAG_PHOTO_OPTIN",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_intake_skip_analysis",
+      "label_en": "Skip photo (low confidence)",
+      "label_cn": "跳过照片（低置信度）",
+      "allowed_states": ["DIAG_PROFILE", "DIAG_PHOTO_OPTIN"],
+      "next_state": "DIAG_ANALYSIS_SUMMARY",
+      "analytics_event": "ui_chip_clicked"
     }
   ]
 }

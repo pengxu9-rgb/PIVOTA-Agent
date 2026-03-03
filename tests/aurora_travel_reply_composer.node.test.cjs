@@ -107,6 +107,9 @@ test('travelReplyComposer surfaces baseline gap when home weather baseline is un
   assert.equal(result.reply_mode, 'focused');
   assert.match(result.text, /Home region: San Francisco, CA -> Destination: Paris/);
   assert.match(result.text, /Home baseline is unavailable/i);
+  assert.match(result.text, /Humidity: 76%/i);
+  assert.doesNotMatch(result.text, /0%\s*->\s*76%/i);
+  assert.doesNotMatch(result.text, /0C\s*->\s*11C/i);
   assert.equal(result.home_baseline_available, false);
 });
 
@@ -149,6 +152,47 @@ test('travelReplyComposer surfaces alert action hint when alerts exist', () => {
 
   assert.match(result.text, /Official alerts:/i);
   assert.match(result.text, /Keep informed and avoid flood-prone routes\./i);
+});
+
+test('travelReplyComposer trace fixture: Tokyo request keeps destination-only deltas and avoids unsupported no-alert claim', () => {
+  const result = composeTravelReply({
+    message:
+      'Please adjust my skincare based on this travel plan. Destination: tokyo. Dates: 2026-03-12 to 2026-03-17.',
+    language: 'EN',
+    travelReadiness: {
+      destination_context: {
+        destination: 'Tokyo',
+        start_date: '2026-03-12',
+        end_date: '2026-03-17',
+        env_source: 'climate_fallback',
+        epi: 62,
+      },
+      delta_vs_home: {
+        temperature: { home: null, destination: 14, delta: null, unit: 'C' },
+        humidity: { home: null, destination: 58, delta: null, unit: '%' },
+        uv: { home: null, destination: 6, delta: null, unit: '' },
+        summary_tags: ['baseline_unavailable'],
+        baseline_status: 'baseline_unavailable',
+      },
+      forecast_window: [
+        { date: '2026-03-12', temp_low_c: 6, temp_high_c: 14, condition_text: 'Cloudy', precip_mm: 0.6 },
+      ],
+      alerts: [],
+      adaptive_actions: [],
+      personal_focus: [{ focus: 'Stability first', what_to_do: 'Keep routine simple for first 48 hours.' }],
+      jetlag_sleep: { hours_diff: 8, risk_level: 'high' },
+      shopping_preview: { products: [{ name: 'Barrier Cream' }] },
+    },
+    destination: 'Tokyo',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'climate_fallback',
+  });
+
+  assert.match(result.text, /Destination: Tokyo \(2026-03-12 -> 2026-03-17\)/);
+  assert.match(result.text, /Humidity: 58%/i);
+  assert.doesNotMatch(result.text, /0%\s*->/i);
+  assert.doesNotMatch(result.text, /0C\s*->/i);
+  assert.doesNotMatch(result.text, /No official weather alert currently/i);
 });
 
 test('travelReplyComposer avoids unsupported temperature-swing claim in humidity-only follow-up', () => {

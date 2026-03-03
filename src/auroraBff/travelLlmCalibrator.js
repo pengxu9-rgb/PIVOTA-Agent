@@ -27,6 +27,8 @@ function normalizeText(value, maxLen = 220) {
 }
 
 function normalizeNumber(value) {
+  if (value == null) return null
+  if (typeof value === 'string' && !value.trim()) return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
 }

@@ -56,4 +56,23 @@ describe('chatCardsAssembler safety mapping', () => {
 
     expect(out.safety.risk_level).toBe('low');
   });
+
+  test('does not duplicate quick replies into follow-up question options', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        suggested_chips: [
+          { chip_id: 'chip.intake.upload_photos', label: 'Upload a photo (more accurate)', kind: 'quick_reply' },
+          { chip_id: 'chip.intake.skip_analysis', label: 'Skip photo (low confidence)', kind: 'quick_reply' },
+          { chip_id: 'chip_keep_chatting', label: 'Just keep chatting', kind: 'quick_reply' },
+        ],
+      }),
+      ctx: makeCtx(),
+      safetyDecision: null,
+    });
+
+    expect(Array.isArray(out.suggested_quick_replies)).toBe(true);
+    expect(out.suggested_quick_replies.length).toBe(3);
+    expect(Array.isArray(out.follow_up_questions)).toBe(true);
+    expect(out.follow_up_questions).toHaveLength(0);
+  });
 });

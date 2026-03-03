@@ -10,6 +10,8 @@ function normalizeText(value, maxLen = 220) {
 }
 
 function toNumber(value, fallback = null) {
+  if (value == null) return fallback;
+  if (typeof value === 'string' && !value.trim()) return fallback;
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 }

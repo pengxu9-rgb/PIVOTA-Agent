@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "lang": "EN",
+    "intent": "alternatives",
+    "region": "US",
+    "no_clarify": true,
+    "force_intent": "alternatives"
+  },
+  "profile": {
+    "skinType": "Combo/Mixed",
+    "sensitivity": "Medium",
+    "barrierStatus": "Impaired",
+    "goals": [
+      "Hydration"
+    ]
+  },
+  "target": {
+    "anchor_id": "string|null",
+    "product_json": {
+      "brand": "string|null",
+      "name": "string|null",
+      "region_variant": "US|EU|unknown|null",
+      "known_actives": "string[]",
+      "notes": "string|null"
+    }
+  },
+  "execution": {
+    "continue_without_anchor": true,
+    "max_alternatives": 6,
+    "bias": [
+      "prioritize ingredient and user context relevance first",
+      "prefer lower irritation options when equivalent",
+      "prefer purchasable candidates with clear PDP"
+    ]
+  },
+  "output_schema": {
+    "products_item": {
+      "id": "string (must exist in context.candidates)",
+      "why": "string <= 180 chars"
+    }
+  },
+  "hard_rules": [
+    "Return exactly {\"products\": [...]} with no other keys.",
+    "Only choose IDs from context.candidates.",
+    "Never invent product names, IDs, or URLs.",
+    "Never ask questions.",
+    "If no valid candidates, return {\"products\": []}.",
+    "Never output schema_version/parse.",
+    "Keep outputs concise and latency-safe."
+  ]
+}

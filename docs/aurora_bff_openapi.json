@@ -248,6 +248,78 @@
             "items": { "$ref": "#/components/schemas/UiEventV0" }
           }
         }
+      },
+      "SimpleErrorResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" },
+          "details": {
+            "anyOf": [
+              { "type": "object", "additionalProperties": true },
+              { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+              { "type": "string" }
+            ]
+          },
+          "code": { "type": "string" }
+        }
+      },
+      "TravelPlan": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trip_id", "destination", "start_date", "end_date", "status"],
+        "properties": {
+          "trip_id": { "type": "string" },
+          "destination": { "type": "string" },
+          "start_date": { "type": "string", "format": "date" },
+          "end_date": { "type": "string", "format": "date" },
+          "indoor_outdoor_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+          "itinerary": { "type": "string" },
+          "created_at_ms": { "type": "integer", "minimum": 0 },
+          "updated_at_ms": { "type": "integer", "minimum": 0 },
+          "is_archived": { "type": "boolean" },
+          "archived_at_ms": { "type": "integer", "minimum": 0 },
+          "status": { "type": "string", "enum": ["in_trip", "upcoming", "completed", "archived"] },
+          "days_to_start": { "type": "integer" },
+          "days_to_end": { "type": "integer" },
+          "prep_checklist": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "TravelPlansListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["plans", "summary"],
+        "properties": {
+          "plans": { "type": "array", "items": { "$ref": "#/components/schemas/TravelPlan" } },
+          "summary": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["active_trip_id", "counts"],
+            "properties": {
+              "active_trip_id": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+              "counts": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["in_trip", "upcoming", "completed", "archived"],
+                "properties": {
+                  "in_trip": { "type": "integer", "minimum": 0 },
+                  "upcoming": { "type": "integer", "minimum": 0 },
+                  "completed": { "type": "integer", "minimum": 0 },
+                  "archived": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        }
+      },
+      "TravelPlanSingleResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["plan"],
+        "properties": {
+          "plan": { "anyOf": [{ "$ref": "#/components/schemas/TravelPlan" }, { "type": "null" }] }
+        }
       }
     },
     "parameters": {
@@ -737,6 +809,223 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/travel-plans": {
+      "get": {
+        "summary": "List travel plans",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TravelPlansListResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request (MISSING_AURORA_UID or BAD_REQUEST)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage unavailable (DB_NOT_CONFIGURED or DB_SCHEMA_NOT_READY or DB_UNAVAILABLE)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a travel plan",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["destination", "start_date", "end_date"],
+                "properties": {
+                  "destination": { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "start_date": { "type": "string", "format": "date" },
+                  "end_date": { "type": "string", "format": "date" },
+                  "indoor_outdoor_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "itinerary": { "type": "string", "maxLength": 1200 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TravelPlanSingleResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request (MISSING_AURORA_UID or BAD_REQUEST)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage unavailable (DB_NOT_CONFIGURED or DB_SCHEMA_NOT_READY or DB_UNAVAILABLE)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/travel-plans/{trip_id}": {
+      "patch": {
+        "summary": "Update a travel plan",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" },
+          { "name": "trip_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "destination": { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "start_date": { "type": "string", "format": "date" },
+                  "end_date": { "type": "string", "format": "date" },
+                  "indoor_outdoor_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "itinerary": { "type": "string", "maxLength": 1200 },
+                  "is_archived": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TravelPlanSingleResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request (MISSING_AURORA_UID or BAD_REQUEST)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found (PLAN_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage unavailable (DB_NOT_CONFIGURED or DB_SCHEMA_NOT_READY or DB_UNAVAILABLE)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/travel-plans/{trip_id}/archive": {
+      "post": {
+        "summary": "Archive a travel plan",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" },
+          { "name": "trip_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TravelPlanSingleResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request (MISSING_AURORA_UID or BAD_REQUEST)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found (PLAN_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage unavailable (DB_NOT_CONFIGURED or DB_SCHEMA_NOT_READY or DB_UNAVAILABLE)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleErrorResponse" }
               }
             }
           }

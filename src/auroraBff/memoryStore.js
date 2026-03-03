@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { normalizeTravelProfilePatch } = require('./travelPlans');
 
 function parseRetentionDays() {
   const raw =
@@ -24,7 +25,6 @@ const EPHEMERAL_MAX_IDENTITIES = (() => {
 const ephemeral = {
   profiles: new Map(),
   logs: new Map(),
-  experiments: new Map(),
   identityLinks: new Map(),
   shadowVerifyRuns: new Map(),
 };
@@ -45,16 +45,6 @@ function profileKeyFor({ kind, id }) {
   const uid = String(id || '').trim();
   if (!uid) return null;
   return `${k}:${uid}`;
-}
-
-function isPlainObject(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function experimentKeyFor({ kind, id }) {
-  const base = profileKeyFor({ kind, id });
-  if (!base) return null;
-  return `${base}:experiments`;
 }
 
 function normalizeAuroraUid(auroraUid) {
@@ -88,14 +78,6 @@ function coerceIsoDate(value) {
   return raw;
 }
 
-function normalizeOptionalIsoDate(value) {
-  if (value == null) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  return raw;
-}
-
 function resolveNextStateFromSessionPatch(patch) {
   const p = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : null;
   if (!p) return null;
@@ -117,132 +99,6 @@ function applySessionPatchNextState(persistedState, patch) {
   const next = resolveNextStateFromSessionPatch(patch);
   if (!next) return { ...base };
   return { ...base, next_state: next };
-}
-
-function sanitizeMedicationList(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => String(item || '').trim())
-    .filter(Boolean)
-    .slice(0, 30);
-}
-
-function normalizeSafetyPromptState(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const askedRaw =
-    value.asked_once_fields && typeof value.asked_once_fields === 'object' && !Array.isArray(value.asked_once_fields)
-      ? value.asked_once_fields
-      : {};
-  const profileRaw =
-    value.profile_fields && typeof value.profile_fields === 'object' && !Array.isArray(value.profile_fields)
-      ? value.profile_fields
-      : {};
-
-  const askedOnce = {};
-  for (const [rawKey, rawValue] of Object.entries(askedRaw)) {
-    const key = String(rawKey || '').trim();
-    if (!key || rawValue !== true) continue;
-    askedOnce[key] = true;
-  }
-
-  const pregnancyStatus =
-    typeof profileRaw.pregnancy_status === 'string' && profileRaw.pregnancy_status.trim()
-      ? profileRaw.pregnancy_status.trim()
-      : null;
-  const pregnancyDueDate = normalizeOptionalIsoDate(profileRaw.pregnancy_due_date);
-  const ageBand =
-    typeof profileRaw.age_band === 'string' && profileRaw.age_band.trim()
-      ? profileRaw.age_band.trim()
-      : null;
-  const highRiskMedications = sanitizeMedicationList(profileRaw.high_risk_medications);
-
-  const askedAtRaw = Number(value.asked_at_ms);
-  const askedAt = Number.isFinite(askedAtRaw) ? Math.max(0, Math.trunc(askedAtRaw)) : null;
-
-  const hasAsked = Object.keys(askedOnce).length > 0;
-  const hasProfile = Boolean(pregnancyStatus || pregnancyDueDate || ageBand || highRiskMedications.length > 0);
-  if (!hasAsked && !hasProfile && !askedAt) return null;
-
-  return {
-    asked_once_fields: askedOnce,
-    asked_at_ms: askedAt,
-    profile_fields: {
-      ...(pregnancyStatus ? { pregnancy_status: pregnancyStatus } : {}),
-      ...(pregnancyDueDate ? { pregnancy_due_date: pregnancyDueDate } : {}),
-      ...(ageBand ? { age_band: ageBand } : {}),
-      ...(highRiskMedications.length ? { high_risk_medications: highRiskMedications } : {}),
-    },
-  };
-}
-
-function profilePatchHasSafetyProfileFields(profilePatch) {
-  const patch = profilePatch && typeof profilePatch === 'object' ? profilePatch : null;
-  if (!patch) return false;
-  return (
-    Object.prototype.hasOwnProperty.call(patch, 'pregnancy_status') ||
-    Object.prototype.hasOwnProperty.call(patch, 'pregnancy_due_date') ||
-    Object.prototype.hasOwnProperty.call(patch, 'age_band') ||
-    Object.prototype.hasOwnProperty.call(patch, 'high_risk_medications')
-  );
-}
-
-function mergeSafetyPromptState(baseState, patchState, profilePatch) {
-  const base = normalizeSafetyPromptState(baseState);
-  const patch = patchState === undefined ? null : normalizeSafetyPromptState(patchState);
-
-  const next = {
-    asked_once_fields: {
-      ...((base && base.asked_once_fields) || {}),
-      ...((patch && patch.asked_once_fields) || {}),
-    },
-    asked_at_ms:
-      patch && Number.isFinite(Number(patch.asked_at_ms))
-        ? Math.max(0, Math.trunc(Number(patch.asked_at_ms)))
-        : base && Number.isFinite(Number(base.asked_at_ms))
-          ? Math.max(0, Math.trunc(Number(base.asked_at_ms)))
-          : null,
-    profile_fields: {
-      ...((base && base.profile_fields) || {}),
-      ...((patch && patch.profile_fields) || {}),
-    },
-  };
-
-  const p = profilePatch && typeof profilePatch === 'object' ? profilePatch : null;
-  if (p) {
-    if (typeof p.pregnancy_status === 'string' && p.pregnancy_status.trim()) {
-      const nextStatus = p.pregnancy_status.trim();
-      next.profile_fields.pregnancy_status = nextStatus;
-      if (
-        nextStatus !== 'pregnant' &&
-        !Object.prototype.hasOwnProperty.call(p, 'pregnancy_due_date')
-      ) {
-        delete next.profile_fields.pregnancy_due_date;
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(p, 'pregnancy_due_date')) {
-      const dueDate = normalizeOptionalIsoDate(p.pregnancy_due_date);
-      if (dueDate) next.profile_fields.pregnancy_due_date = dueDate;
-      else delete next.profile_fields.pregnancy_due_date;
-    }
-    if (typeof p.age_band === 'string' && p.age_band.trim()) {
-      next.profile_fields.age_band = p.age_band.trim();
-    }
-    if (Object.prototype.hasOwnProperty.call(p, 'high_risk_medications')) {
-      const meds = sanitizeMedicationList(p.high_risk_medications);
-      if (meds.length > 0) next.profile_fields.high_risk_medications = meds;
-      else delete next.profile_fields.high_risk_medications;
-    }
-  }
-
-  const hasAsked = Object.keys(next.asked_once_fields).length > 0;
-  const hasProfile =
-    Boolean(next.profile_fields.pregnancy_status) ||
-    Boolean(next.profile_fields.pregnancy_due_date) ||
-    Boolean(next.profile_fields.age_band) ||
-    (Array.isArray(next.profile_fields.high_risk_medications) && next.profile_fields.high_risk_medications.length > 0);
-  if (!hasAsked && !hasProfile && !next.asked_at_ms) return null;
-  if (hasAsked && !next.asked_at_ms) next.asked_at_ms = Date.now();
-  return next;
 }
 
 async function ensureUserProfileRow(auroraUid) {
@@ -281,8 +137,8 @@ function mapProfileToDb(profilePatch) {
   const contraindications = Array.isArray(p.contraindications) ? p.contraindications : undefined;
   const currentRoutine = p.currentRoutine;
   const itinerary = p.itinerary;
-  const safetyPromptState = p.safetyPromptState;
-  const chatContext = p.chatContext;
+  const travelPlan = p.travel_plan;
+  const travelPlans = p.travel_plans;
 
   return {
     skin_type: p.skinType,
@@ -293,9 +149,9 @@ function mapProfileToDb(profilePatch) {
     budget_tier: p.budgetTier,
     current_routine: currentRoutine !== undefined ? JSON.stringify(currentRoutine) : undefined,
     itinerary: itinerary !== undefined ? JSON.stringify(itinerary) : undefined,
+    travel_plan: travelPlan !== undefined ? JSON.stringify(travelPlan) : undefined,
+    travel_plans: travelPlans !== undefined ? JSON.stringify(travelPlans) : undefined,
     contraindications: contraindications ? JSON.stringify(contraindications) : undefined,
-    safety_prompt_state: safetyPromptState,
-    chat_context: chatContext !== undefined ? chatContext : undefined,
     lang_pref: p.lang_pref,
   };
 }
@@ -321,91 +177,8 @@ function normalizeJsonbParam(value) {
   }
 }
 
-function normalizeChatContext(value) {
-  if (!isPlainObject(value)) return null;
-  return value;
-}
-
-function normalizeExperimentEvent(event) {
-  if (!isPlainObject(event)) return null;
-  const eventTypeRaw =
-    event.event_type ||
-    event.eventType ||
-    event.type ||
-    event.name ||
-    event.event_name ||
-    '';
-  const eventType = String(eventTypeRaw || '').trim().slice(0, 120) || 'experiment_event';
-  const timestampMsRaw = Number(
-    event.timestamp_ms != null ? event.timestamp_ms : event.timestampMs != null ? event.timestampMs : Date.now(),
-  );
-  const timestampMs = Number.isFinite(timestampMsRaw)
-    ? Math.max(0, Math.trunc(timestampMsRaw))
-    : Date.now();
-  const requestId =
-    typeof event.request_id === 'string' && event.request_id.trim()
-      ? event.request_id.trim().slice(0, 128)
-      : null;
-  const traceId =
-    typeof event.trace_id === 'string' && event.trace_id.trim()
-      ? event.trace_id.trim().slice(0, 128)
-      : null;
-  const payloadSource = isPlainObject(event.payload)
-    ? event.payload
-    : isPlainObject(event.event_data)
-      ? event.event_data
-      : {};
-  const payload = {
-    ...payloadSource,
-    ...(requestId ? { request_id: requestId } : {}),
-    ...(traceId ? { trace_id: traceId } : {}),
-    timestamp_ms: timestampMs,
-  };
-  return {
-    event_type: eventType,
-    event_data: payload,
-    timestamp_ms: timestampMs,
-    request_id: requestId,
-    trace_id: traceId,
-  };
-}
-
-function mapExperimentRowFromDb(row) {
-  if (!row) return null;
-  const eventData = isPlainObject(row.event_data) ? row.event_data : {};
-  const eventType =
-    typeof row.event_type === 'string' && row.event_type.trim() ? row.event_type.trim() : 'experiment_event';
-  const ts = row.event_ts ? new Date(row.event_ts).getTime() : Number(eventData.timestamp_ms) || Date.now();
-  return {
-    id: row.id,
-    event_type: eventType,
-    event_data: eventData,
-    timestamp_ms: Number.isFinite(Number(ts)) ? Math.max(0, Math.trunc(Number(ts))) : Date.now(),
-    request_id:
-      typeof row.request_id === 'string' && row.request_id.trim()
-        ? row.request_id.trim()
-        : typeof eventData.request_id === 'string'
-          ? eventData.request_id
-          : null,
-    trace_id:
-      typeof row.trace_id === 'string' && row.trace_id.trim()
-        ? row.trace_id.trim()
-        : typeof eventData.trace_id === 'string'
-          ? eventData.trace_id
-          : null,
-  };
-}
-
 function mapProfileFromDb(row) {
   if (!row) return null;
-  const safetyPromptState = normalizeSafetyPromptState(row.safety_prompt_state);
-  const safetyProfile =
-    safetyPromptState &&
-    safetyPromptState.profile_fields &&
-    typeof safetyPromptState.profile_fields === 'object' &&
-    !Array.isArray(safetyPromptState.profile_fields)
-      ? safetyPromptState.profile_fields
-      : {};
   return {
     aurora_uid: row.aurora_uid,
     skinType: row.skin_type || null,
@@ -416,24 +189,20 @@ function mapProfileFromDb(row) {
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
     itinerary: row.itinerary || null,
+    travel_plan:
+      row.travel_plan && typeof row.travel_plan === 'object' && !Array.isArray(row.travel_plan)
+        ? row.travel_plan
+        : null,
+    travel_plans: Array.isArray(row.travel_plans) ? row.travel_plans : [],
     contraindications: Array.isArray(row.contraindications)
       ? row.contraindications
       : row.contraindications
         ? row.contraindications
         : [],
-    chatContext: normalizeChatContext(row.chat_context),
     lastAnalysis: row.last_analysis || null,
     lastAnalysisAt: row.last_analysis_at ? new Date(row.last_analysis_at).toISOString() : null,
     lastAnalysisLang: row.last_analysis_lang || null,
     lang_pref: row.lang_pref || null,
-    pregnancy_status: typeof safetyProfile.pregnancy_status === 'string' ? safetyProfile.pregnancy_status : null,
-    pregnancy_due_date:
-      typeof safetyProfile.pregnancy_due_date === 'string'
-        ? normalizeOptionalIsoDate(safetyProfile.pregnancy_due_date)
-        : null,
-    age_band: typeof safetyProfile.age_band === 'string' ? safetyProfile.age_band : null,
-    high_risk_medications: sanitizeMedicationList(safetyProfile.high_risk_medications),
-    safetyPromptState,
     updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
     created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
   };
@@ -441,14 +210,6 @@ function mapProfileFromDb(row) {
 
 function mapAccountProfileFromDb(row) {
   if (!row) return null;
-  const safetyPromptState = normalizeSafetyPromptState(row.safety_prompt_state);
-  const safetyProfile =
-    safetyPromptState &&
-    safetyPromptState.profile_fields &&
-    typeof safetyPromptState.profile_fields === 'object' &&
-    !Array.isArray(safetyPromptState.profile_fields)
-      ? safetyPromptState.profile_fields
-      : {};
   return {
     user_id: row.user_id,
     skinType: row.skin_type || null,
@@ -459,24 +220,20 @@ function mapAccountProfileFromDb(row) {
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
     itinerary: row.itinerary || null,
+    travel_plan:
+      row.travel_plan && typeof row.travel_plan === 'object' && !Array.isArray(row.travel_plan)
+        ? row.travel_plan
+        : null,
+    travel_plans: Array.isArray(row.travel_plans) ? row.travel_plans : [],
     contraindications: Array.isArray(row.contraindications)
       ? row.contraindications
       : row.contraindications
         ? row.contraindications
         : [],
-    chatContext: normalizeChatContext(row.chat_context),
     lastAnalysis: row.last_analysis || null,
     lastAnalysisAt: row.last_analysis_at ? new Date(row.last_analysis_at).toISOString() : null,
     lastAnalysisLang: row.last_analysis_lang || null,
     lang_pref: row.lang_pref || null,
-    pregnancy_status: typeof safetyProfile.pregnancy_status === 'string' ? safetyProfile.pregnancy_status : null,
-    pregnancy_due_date:
-      typeof safetyProfile.pregnancy_due_date === 'string'
-        ? normalizeOptionalIsoDate(safetyProfile.pregnancy_due_date)
-        : null,
-    age_band: typeof safetyProfile.age_band === 'string' ? safetyProfile.age_band : null,
-    high_risk_medications: sanitizeMedicationList(safetyProfile.high_risk_medications),
-    safetyPromptState,
     updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
     created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
   };
@@ -500,13 +257,9 @@ function ensureEphemeralProfile({ kind, id }) {
           budgetTier: null,
           currentRoutine: null,
           itinerary: null,
+          travel_plan: null,
+          travel_plans: [],
           contraindications: [],
-          chatContext: null,
-          pregnancy_status: null,
-          pregnancy_due_date: null,
-          age_band: null,
-          high_risk_medications: [],
-          safetyPromptState: null,
           lastAnalysis: null,
           lastAnalysisAt: null,
           lastAnalysisLang: null,
@@ -524,13 +277,9 @@ function ensureEphemeralProfile({ kind, id }) {
           budgetTier: null,
           currentRoutine: null,
           itinerary: null,
+          travel_plan: null,
+          travel_plans: [],
           contraindications: [],
-          chatContext: null,
-          pregnancy_status: null,
-          pregnancy_due_date: null,
-          age_band: null,
-          high_risk_medications: [],
-          safetyPromptState: null,
           lastAnalysis: null,
           lastAnalysisAt: null,
           lastAnalysisLang: null,
@@ -548,14 +297,6 @@ function upsertEphemeralProfile({ kind, id }, profilePatch) {
   const existing = ensureEphemeralProfile({ kind, id });
   if (!existing) return null;
   const p = profilePatch || {};
-  const mergedSafetyPromptState = mergeSafetyPromptState(existing.safetyPromptState, p.safetyPromptState, p);
-  const safetyProfile =
-    mergedSafetyPromptState &&
-    mergedSafetyPromptState.profile_fields &&
-    typeof mergedSafetyPromptState.profile_fields === 'object' &&
-    !Array.isArray(mergedSafetyPromptState.profile_fields)
-      ? mergedSafetyPromptState.profile_fields
-      : {};
 
   const next = {
     ...existing,
@@ -567,26 +308,10 @@ function upsertEphemeralProfile({ kind, id }, profilePatch) {
     ...(p.budgetTier !== undefined ? { budgetTier: p.budgetTier } : {}),
     ...(p.currentRoutine !== undefined ? { currentRoutine: p.currentRoutine } : {}),
     ...(p.itinerary !== undefined ? { itinerary: p.itinerary } : {}),
+    ...(p.travel_plan !== undefined ? { travel_plan: p.travel_plan } : {}),
+    ...(p.travel_plans !== undefined ? { travel_plans: Array.isArray(p.travel_plans) ? p.travel_plans : [] } : {}),
     ...(p.contraindications !== undefined ? { contraindications: Array.isArray(p.contraindications) ? p.contraindications : [] } : {}),
-    ...(p.chatContext !== undefined ? { chatContext: normalizeChatContext(p.chatContext) } : {}),
-    ...(p.pregnancy_status !== undefined ? { pregnancy_status: p.pregnancy_status } : {}),
-    ...(p.pregnancy_due_date !== undefined ? { pregnancy_due_date: normalizeOptionalIsoDate(p.pregnancy_due_date) } : {}),
-    ...(p.age_band !== undefined ? { age_band: p.age_band } : {}),
-    ...(p.high_risk_medications !== undefined ? { high_risk_medications: sanitizeMedicationList(p.high_risk_medications) } : {}),
-    ...(mergedSafetyPromptState !== undefined ? { safetyPromptState: mergedSafetyPromptState } : {}),
     ...(p.lang_pref !== undefined ? { lang_pref: p.lang_pref } : {}),
-    ...(p.pregnancy_status === undefined && typeof safetyProfile.pregnancy_status === 'string'
-      ? { pregnancy_status: safetyProfile.pregnancy_status }
-      : {}),
-    ...(p.pregnancy_due_date === undefined && typeof safetyProfile.pregnancy_due_date === 'string'
-      ? { pregnancy_due_date: normalizeOptionalIsoDate(safetyProfile.pregnancy_due_date) }
-      : {}),
-    ...(p.age_band === undefined && typeof safetyProfile.age_band === 'string'
-      ? { age_band: safetyProfile.age_band }
-      : {}),
-    ...(p.high_risk_medications === undefined && Array.isArray(safetyProfile.high_risk_medications)
-      ? { high_risk_medications: sanitizeMedicationList(safetyProfile.high_risk_medications) }
-      : {}),
     updated_at: isoTs(),
   };
 
@@ -637,7 +362,11 @@ async function getAccountProfile(userId) {
 async function upsertUserProfile(auroraUid, profilePatch) {
   const uid = normalizeAuroraUid(auroraUid);
   if (!uid) return null;
-  if (persistenceDisabled()) return upsertEphemeralProfile({ kind: 'guest', id: uid }, profilePatch);
+  if (persistenceDisabled()) {
+    const existingProfile = ensureEphemeralProfile({ kind: 'guest', id: uid }) || {};
+    const normalizedPatch = normalizeTravelProfilePatch({ baseProfile: existingProfile, patch: profilePatch || {} });
+    return upsertEphemeralProfile({ kind: 'guest', id: uid }, normalizedPatch);
+  }
 
   await ensureUserProfileRow(uid);
   const existingRes = await query(
@@ -650,21 +379,14 @@ async function upsertUserProfile(auroraUid, profilePatch) {
     [uid],
   );
   const existing = existingRes.rows && existingRes.rows[0] ? existingRes.rows[0] : { aurora_uid: uid };
-  const patchDb = mapProfileToDb(profilePatch);
+  const existingProfile = mapProfileFromDb(existingRes.rows && existingRes.rows[0]) || {};
+  const normalizedPatch = normalizeTravelProfilePatch({ baseProfile: existingProfile, patch: profilePatch || {} });
+  const patchDb = mapProfileToDb(normalizedPatch);
 
   const merged = {
     ...existing,
     ...Object.fromEntries(Object.entries(patchDb).filter(([, v]) => v !== undefined)),
   };
-  const shouldUpdateSafetyPromptState =
-    patchDb.safety_prompt_state !== undefined || profilePatchHasSafetyProfileFields(profilePatch);
-  if (shouldUpdateSafetyPromptState) {
-    merged.safety_prompt_state = mergeSafetyPromptState(
-      existing.safety_prompt_state,
-      patchDb.safety_prompt_state,
-      profilePatch,
-    );
-  }
 
   await query(
     `
@@ -678,9 +400,9 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         budget_tier,
         current_routine,
         itinerary,
+        travel_plan,
+        travel_plans,
         contraindications,
-        chat_context,
-        safety_prompt_state,
         lang_pref,
         updated_at
       )
@@ -694,9 +416,9 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         budget_tier = EXCLUDED.budget_tier,
         current_routine = EXCLUDED.current_routine,
         itinerary = EXCLUDED.itinerary,
+        travel_plan = EXCLUDED.travel_plan,
+        travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
-        chat_context = EXCLUDED.chat_context,
-        safety_prompt_state = EXCLUDED.safety_prompt_state,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
         deleted_at = NULL
@@ -711,9 +433,9 @@ async function upsertUserProfile(auroraUid, profilePatch) {
       merged.budget_tier ?? null,
       normalizeJsonbParam(merged.current_routine ?? null),
       normalizeJsonbParam(merged.itinerary ?? null),
+      normalizeJsonbParam(merged.travel_plan ?? null),
+      normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
-      normalizeJsonbParam(normalizeChatContext(merged.chat_context) ?? null),
-      normalizeJsonbParam(merged.safety_prompt_state ?? null),
       merged.lang_pref ?? null,
     ],
   );
@@ -724,7 +446,11 @@ async function upsertUserProfile(auroraUid, profilePatch) {
 async function upsertAccountProfile(userId, profilePatch) {
   const uid = normalizeUserId(userId);
   if (!uid) return null;
-  if (persistenceDisabled()) return upsertEphemeralProfile({ kind: 'account', id: uid }, profilePatch);
+  if (persistenceDisabled()) {
+    const existingProfile = ensureEphemeralProfile({ kind: 'account', id: uid }) || {};
+    const normalizedPatch = normalizeTravelProfilePatch({ baseProfile: existingProfile, patch: profilePatch || {} });
+    return upsertEphemeralProfile({ kind: 'account', id: uid }, normalizedPatch);
+  }
 
   await ensureAccountProfileRow(uid);
   const existingRes = await query(
@@ -740,21 +466,14 @@ async function upsertAccountProfile(userId, profilePatch) {
     existingRes.rows && existingRes.rows[0]
       ? existingRes.rows[0]
       : { user_id: uid };
-  const patchDb = mapProfileToDb(profilePatch);
+  const existingProfile = mapAccountProfileFromDb(existingRes.rows && existingRes.rows[0]) || {};
+  const normalizedPatch = normalizeTravelProfilePatch({ baseProfile: existingProfile, patch: profilePatch || {} });
+  const patchDb = mapProfileToDb(normalizedPatch);
 
   const merged = {
     ...existing,
     ...Object.fromEntries(Object.entries(patchDb).filter(([, v]) => v !== undefined)),
   };
-  const shouldUpdateSafetyPromptState =
-    patchDb.safety_prompt_state !== undefined || profilePatchHasSafetyProfileFields(profilePatch);
-  if (shouldUpdateSafetyPromptState) {
-    merged.safety_prompt_state = mergeSafetyPromptState(
-      existing.safety_prompt_state,
-      patchDb.safety_prompt_state,
-      profilePatch,
-    );
-  }
 
   await query(
     `
@@ -768,9 +487,9 @@ async function upsertAccountProfile(userId, profilePatch) {
         budget_tier,
         current_routine,
         itinerary,
+        travel_plan,
+        travel_plans,
         contraindications,
-        chat_context,
-        safety_prompt_state,
         lang_pref,
         updated_at
       )
@@ -784,9 +503,9 @@ async function upsertAccountProfile(userId, profilePatch) {
         budget_tier = EXCLUDED.budget_tier,
         current_routine = EXCLUDED.current_routine,
         itinerary = EXCLUDED.itinerary,
+        travel_plan = EXCLUDED.travel_plan,
+        travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
-        chat_context = EXCLUDED.chat_context,
-        safety_prompt_state = EXCLUDED.safety_prompt_state,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
         deleted_at = NULL
@@ -801,9 +520,9 @@ async function upsertAccountProfile(userId, profilePatch) {
       merged.budget_tier ?? null,
       normalizeJsonbParam(merged.current_routine ?? null),
       normalizeJsonbParam(merged.itinerary ?? null),
+      normalizeJsonbParam(merged.travel_plan ?? null),
+      normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
-      normalizeJsonbParam(normalizeChatContext(merged.chat_context) ?? null),
-      normalizeJsonbParam(merged.safety_prompt_state ?? null),
       merged.lang_pref ?? null,
     ],
   );
@@ -1083,23 +802,6 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
       const acct = ephemeral.profiles.get(accountKey);
       if (guest && !acct) touchEphemeral(ephemeral.profiles, accountKey, { ...guest, user_id: user });
     }
-    const guestExperimentKey = experimentKeyFor({ kind: 'guest', id: uid });
-    const accountExperimentKey = experimentKeyFor({ kind: 'account', id: user });
-    if (guestExperimentKey && accountExperimentKey) {
-      const guestEvents = Array.isArray(ephemeral.experiments.get(guestExperimentKey))
-        ? ephemeral.experiments.get(guestExperimentKey)
-        : [];
-      const accountEvents = Array.isArray(ephemeral.experiments.get(accountExperimentKey))
-        ? ephemeral.experiments.get(accountExperimentKey)
-        : [];
-      if (guestEvents.length > 0) {
-        touchEphemeral(
-          ephemeral.experiments,
-          accountExperimentKey,
-          [...guestEvents, ...accountEvents].slice(0, 200),
-        );
-      }
-    }
     return { ok: true, migrated: false };
   }
 
@@ -1122,31 +824,25 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
     if (!accountProfile || !accountProfile.budgetTier) patch.budgetTier = guestProfile.budgetTier;
     if (!accountProfile || accountProfile.currentRoutine == null) patch.currentRoutine = guestProfile.currentRoutine;
     if (!accountProfile || accountProfile.itinerary == null) patch.itinerary = guestProfile.itinerary;
-    if (!accountProfile || !isPlainObject(accountProfile.chatContext)) patch.chatContext = guestProfile.chatContext;
+    if (
+      (!accountProfile || !Array.isArray(accountProfile.travel_plans) || accountProfile.travel_plans.length === 0) &&
+      Array.isArray(guestProfile.travel_plans) &&
+      guestProfile.travel_plans.length
+    ) {
+      patch.travel_plans = guestProfile.travel_plans;
+    }
+    if (
+      (!accountProfile || !accountProfile.travel_plan) &&
+      guestProfile.travel_plan &&
+      typeof guestProfile.travel_plan === 'object' &&
+      !Array.isArray(guestProfile.travel_plan)
+    ) {
+      patch.travel_plan = guestProfile.travel_plan;
+    }
     if ((!accountProfile || !Array.isArray(accountProfile.contraindications) || accountProfile.contraindications.length === 0) && Array.isArray(guestProfile.contraindications) && guestProfile.contraindications.length) {
       patch.contraindications = guestProfile.contraindications;
     }
     if (!accountProfile || !accountProfile.lang_pref) patch.lang_pref = guestProfile.lang_pref;
-    if ((!accountProfile || !accountProfile.pregnancy_status) && guestProfile.pregnancy_status) {
-      patch.pregnancy_status = guestProfile.pregnancy_status;
-    }
-    if ((!accountProfile || !accountProfile.age_band) && guestProfile.age_band) {
-      patch.age_band = guestProfile.age_band;
-    }
-    if (
-      (!accountProfile || !Array.isArray(accountProfile.high_risk_medications) || accountProfile.high_risk_medications.length === 0) &&
-      Array.isArray(guestProfile.high_risk_medications) &&
-      guestProfile.high_risk_medications.length > 0
-    ) {
-      patch.high_risk_medications = guestProfile.high_risk_medications;
-    }
-    if (guestProfile.safetyPromptState && typeof guestProfile.safetyPromptState === 'object') {
-      patch.safetyPromptState = mergeSafetyPromptState(
-        accountProfile && accountProfile.safetyPromptState ? accountProfile.safetyPromptState : null,
-        guestProfile.safetyPromptState,
-        patch,
-      );
-    }
   }
 
   if (Object.keys(patch).length) {
@@ -1200,27 +896,6 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
     }
   }
 
-  try {
-    const guestEvents = await query(
-      `
-        SELECT *
-        FROM aurora_user_experiment_logs
-        WHERE aurora_uid = $1
-        ORDER BY event_ts ASC
-        LIMIT 200
-      `,
-      [uid],
-    );
-    for (const row of guestEvents.rows || []) {
-      const evt = mapExperimentRowFromDb(row);
-      if (!evt) continue;
-      // eslint-disable-next-line no-await-in-loop
-      await appendExperimentEventForIdentity({ auroraUid: uid, userId: user }, evt);
-    }
-  } catch {
-    // Best-effort migration; ignore failures.
-  }
-
   return { ok: true, migrated: true };
 }
 
@@ -1252,143 +927,6 @@ async function upsertSkinLogForIdentity({ auroraUid, userId }, log) {
   const identity = identityFromRequest({ auroraUid, userId });
   if (identity.user_id) return await upsertAccountSkinLog(identity.user_id, log);
   return await upsertSkinLog(identity.aurora_uid, log);
-}
-
-async function getChatContextForIdentity({ auroraUid, userId }) {
-  const identity = identityFromRequest({ auroraUid, userId });
-  if (!identity.user_id && !identity.aurora_uid) return null;
-  const profile = await getProfileForIdentity({ auroraUid, userId });
-  return normalizeChatContext(profile && profile.chatContext ? profile.chatContext : null);
-}
-
-async function upsertChatContextForIdentity({ auroraUid, userId }, chatContext) {
-  const normalized = normalizeChatContext(chatContext);
-  if (!normalized) return null;
-  const identity = identityFromRequest({ auroraUid, userId });
-  if (!identity.user_id && !identity.aurora_uid) return null;
-  if (identity.user_id) {
-    return await upsertAccountProfile(identity.user_id, { chatContext: normalized });
-  }
-  return await upsertUserProfile(identity.aurora_uid, { chatContext: normalized });
-}
-
-async function appendExperimentEventForIdentity({ auroraUid, userId }, event) {
-  const identity = identityFromRequest({ auroraUid, userId });
-  const normalized = normalizeExperimentEvent(event);
-  if (!normalized) return null;
-  if (!identity.user_id && !identity.aurora_uid) return null;
-
-  if (persistenceDisabled()) {
-    const kind = identity.user_id ? 'account' : 'guest';
-    const id = identity.user_id || identity.aurora_uid;
-    if (!id) return null;
-    const key = experimentKeyFor({ kind, id });
-    if (!key) return null;
-    const existing = Array.isArray(ephemeral.experiments.get(key)) ? ephemeral.experiments.get(key) : [];
-    const row = {
-      id: `${id}_${normalized.timestamp_ms}_${existing.length + 1}`,
-      event_type: normalized.event_type,
-      event_data: normalized.event_data,
-      timestamp_ms: normalized.timestamp_ms,
-      request_id: normalized.request_id,
-      trace_id: normalized.trace_id,
-    };
-    touchEphemeral(ephemeral.experiments, key, [row, ...existing].slice(0, 200));
-    return row;
-  }
-
-  if (identity.user_id) {
-    await ensureAccountProfileRow(identity.user_id);
-    const res = await query(
-      `
-        INSERT INTO aurora_account_experiment_logs (
-          user_id,
-          event_type,
-          event_data,
-          event_ts,
-          request_id,
-          trace_id
-        )
-        VALUES ($1,$2,$3::jsonb,to_timestamp($4::double precision / 1000.0),$5,$6)
-        RETURNING *
-      `,
-      [
-        identity.user_id,
-        normalized.event_type,
-        normalizeJsonbParam(normalized.event_data),
-        normalized.timestamp_ms,
-        normalized.request_id,
-        normalized.trace_id,
-      ],
-    );
-    return mapExperimentRowFromDb(res.rows && res.rows[0]);
-  }
-
-  await ensureUserProfileRow(identity.aurora_uid);
-  const res = await query(
-    `
-      INSERT INTO aurora_user_experiment_logs (
-        aurora_uid,
-        event_type,
-        event_data,
-        event_ts,
-        request_id,
-        trace_id
-      )
-      VALUES ($1,$2,$3::jsonb,to_timestamp($4::double precision / 1000.0),$5,$6)
-      RETURNING *
-    `,
-    [
-      identity.aurora_uid,
-      normalized.event_type,
-      normalizeJsonbParam(normalized.event_data),
-      normalized.timestamp_ms,
-      normalized.request_id,
-      normalized.trace_id,
-    ],
-  );
-  return mapExperimentRowFromDb(res.rows && res.rows[0]);
-}
-
-async function listExperimentEventsForIdentity({ auroraUid, userId }, limit = 20) {
-  const identity = identityFromRequest({ auroraUid, userId });
-  if (!identity.user_id && !identity.aurora_uid) return [];
-  const n = Math.max(1, Math.min(200, Number(limit) || 20));
-  if (persistenceDisabled()) {
-    const kind = identity.user_id ? 'account' : 'guest';
-    const id = identity.user_id || identity.aurora_uid;
-    if (!id) return [];
-    const key = experimentKeyFor({ kind, id });
-    if (!key) return [];
-    const rows = Array.isArray(ephemeral.experiments.get(key)) ? ephemeral.experiments.get(key) : [];
-    return rows.slice(0, n);
-  }
-
-  if (identity.user_id) {
-    const res = await query(
-      `
-        SELECT *
-        FROM aurora_account_experiment_logs
-        WHERE user_id = $1
-        ORDER BY event_ts DESC, id DESC
-        LIMIT $2
-      `,
-      [identity.user_id, n],
-    );
-    return (res.rows || []).map(mapExperimentRowFromDb).filter(Boolean);
-  }
-
-  const res = await query(
-    `
-      SELECT *
-      FROM aurora_user_experiment_logs
-      WHERE aurora_uid = $1
-      ORDER BY event_ts DESC, id DESC
-      LIMIT $2
-    `,
-    [identity.aurora_uid, n],
-  );
-  return (res.rows || []).map(mapExperimentRowFromDb).filter(Boolean);
 }
 
 async function saveLastAnalysisForIdentity({ auroraUid, userId }, { analysis, lang }) {
@@ -1649,13 +1187,9 @@ async function deleteIdentityData({ auroraUid, userId }) {
   if (persistenceDisabled()) {
     if (identity.user_id) {
       const accountKey = profileKeyFor({ kind: 'account', id: identity.user_id });
-      const accountExperimentKey = experimentKeyFor({ kind: 'account', id: identity.user_id });
       if (accountKey) {
         ephemeral.profiles.delete(accountKey);
         ephemeral.logs.delete(`${accountKey}:logs`);
-      }
-      if (accountExperimentKey) {
-        ephemeral.experiments.delete(accountExperimentKey);
       }
       for (const [k, v] of Array.from(ephemeral.identityLinks.entries())) {
         if (v === identity.user_id) ephemeral.identityLinks.delete(k);
@@ -1664,13 +1198,9 @@ async function deleteIdentityData({ auroraUid, userId }) {
 
     if (identity.aurora_uid) {
       const guestKey = profileKeyFor({ kind: 'guest', id: identity.aurora_uid });
-      const guestExperimentKey = experimentKeyFor({ kind: 'guest', id: identity.aurora_uid });
       if (guestKey) {
         ephemeral.profiles.delete(guestKey);
         ephemeral.logs.delete(`${guestKey}:logs`);
-      }
-      if (guestExperimentKey) {
-        ephemeral.experiments.delete(guestExperimentKey);
       }
       ephemeral.identityLinks.delete(identity.aurora_uid);
     }
@@ -1713,10 +1243,6 @@ module.exports = {
   upsertProfileForIdentity,
   getRecentSkinLogsForIdentity,
   upsertSkinLogForIdentity,
-  getChatContextForIdentity,
-  upsertChatContextForIdentity,
-  appendExperimentEventForIdentity,
-  listExperimentEventsForIdentity,
   saveLastAnalysisForIdentity,
   saveShadowVerifyForIdentity,
   appendShadowIdToLastAnalysisForIdentity,

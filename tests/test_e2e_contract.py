@@ -90,10 +90,37 @@ def _snapshot_from_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
 
     payload = card.get("payload") or {}
     quality_report = payload.get("quality_report") or {}
+    analysis_meta = payload.get("analysis_meta") or {}
     photo_quality = quality_report.get("photo_quality") or {}
+    effective_quality = quality_report.get("effective_quality") or {}
     llm = quality_report.get("llm") or {}
     vision = llm.get("vision") or {}
     report = llm.get("report") or {}
+
+    required_quality_keys = [
+        "upload_qc_status",
+        "analysis_photo_quality",
+        "effective_quality",
+        "quality_merge_rule",
+        "quality_reasons",
+        "photo_quality",
+    ]
+    for key in required_quality_keys:
+        if key not in quality_report:
+            raise AssertionError(f"quality_report missing required key: {key}")
+    if photo_quality != effective_quality:
+        raise AssertionError("quality_report.photo_quality must stay aligned with effective_quality")
+
+    for optional_bool_key in [
+        "skin_force_vision_call_requested",
+        "skin_force_vision_call_effective",
+        "skin_model_fallback_used",
+    ]:
+        if optional_bool_key in analysis_meta and not isinstance(analysis_meta.get(optional_bool_key), bool):
+            raise AssertionError(f"analysis_meta.{optional_bool_key} must be bool when present")
+
+    if "skin_quality_decision_source" in analysis_meta and analysis_meta.get("skin_quality_decision_source") != "upload_qc_only":
+        raise AssertionError("analysis_meta.skin_quality_decision_source must be upload_qc_only when present")
 
     failure_codes = _uniq_str_list(list(photo_quality.get("reasons") or []))
     for fm in card.get("field_missing") or []:
@@ -104,6 +131,7 @@ def _snapshot_from_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "analysis_source": payload.get("analysis_source"),
         "quality_grade": photo_quality.get("grade"),
+        "upload_qc_status": quality_report.get("upload_qc_status"),
         "failure_codes": failure_codes,
         "llm_called": {
             "vision": vision.get("decision") == "call",
@@ -134,7 +162,7 @@ def test_e2e_contract_analysis_skin_qc_fail_golden() -> None:
     snapshot = _snapshot_from_envelope(envelope)
 
     assert snapshot["quality_grade"] == "fail"
-    assert snapshot["analysis_source"] == "rule_based_with_photo_qc"
+    assert snapshot["analysis_source"] == "retake"
     assert snapshot["llm_called"] == {"vision": False, "report": False}
     assert snapshot["finding_types"] == []
 

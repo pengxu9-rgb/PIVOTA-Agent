@@ -146,6 +146,46 @@ test('normalizeClarificationField: maps common skinType ids (ASCII/CN) to canoni
   }
 });
 
+test('shouldSkipVisionForDegradedReportMode: skips only in degraded report mode without force flag', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const shouldSkip = __internal.shouldSkipVisionForDegradedReportMode({
+      forceVisionCall: false,
+      userRequestedPhoto: true,
+      photosProvided: true,
+      degradedMode: 'report',
+      effectivePhotoQuality: { grade: 'degraded', reasons: ['pixel_white_balance_unstable'] },
+      visionDecision: { decision: 'call', reasons: ['quality_pass'] },
+      reportDecision: { decision: 'call', reasons: ['degraded_mode_report'] },
+    });
+    assert.equal(shouldSkip, true);
+
+    const shouldSkipEvenWhenVisionDecisionAlreadySkip = __internal.shouldSkipVisionForDegradedReportMode({
+      forceVisionCall: false,
+      userRequestedPhoto: true,
+      photosProvided: true,
+      degradedMode: 'report',
+      effectivePhotoQuality: { grade: 'degraded', reasons: ['pixel_white_balance_unstable'] },
+      visionDecision: { decision: 'skip', reasons: ['degraded_skip_vision'] },
+      reportDecision: { decision: 'call', reasons: ['degraded_mode_report'] },
+    });
+    assert.equal(shouldSkipEvenWhenVisionDecisionAlreadySkip, true);
+
+    const shouldNotSkipForced = __internal.shouldSkipVisionForDegradedReportMode({
+      forceVisionCall: true,
+      userRequestedPhoto: true,
+      photosProvided: true,
+      degradedMode: 'report',
+      effectivePhotoQuality: { grade: 'degraded', reasons: ['pixel_white_balance_unstable'] },
+      visionDecision: { decision: 'call', reasons: ['quality_pass'] },
+      reportDecision: { decision: 'call', reasons: ['degraded_mode_report'] },
+    });
+    assert.equal(shouldNotSkipForced, false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('normalizeClarificationField: never returns empty; falls back to stable hash + emits metric', () => {
   resetVisionMetrics();
 
@@ -1782,6 +1822,30 @@ test('Skin LLM policy: degraded calls only one model (configurable)', async () =
     const report = profiler.report();
     assert.equal(report.llm_summary.calls, 1);
   }
+});
+
+test('Skin LLM policy: upload_qc_only mode forces pass dual-call and blocks non-pass', () => {
+  const base = {
+    hasPrimaryInput: true,
+    userRequestedPhoto: true,
+    visionAvailable: true,
+    reportAvailable: true,
+    detectorConfidenceLevel: 'high',
+    uncertainty: false,
+    qualitySourceMode: 'upload_qc_only',
+  };
+
+  const passVision = shouldCallLlm({ ...base, kind: 'vision', quality: { grade: 'pass', reasons: ['qc_passed'] } });
+  const passReport = shouldCallLlm({ ...base, kind: 'report', quality: { grade: 'pass', reasons: ['qc_passed'] } });
+  assert.equal(passVision.decision, 'call');
+  assert.equal(passReport.decision, 'call');
+
+  const degradedVision = shouldCallLlm({ ...base, kind: 'vision', quality: { grade: 'degraded', reasons: ['qc_degraded'] } });
+  const degradedReport = shouldCallLlm({ ...base, kind: 'report', quality: { grade: 'degraded', reasons: ['qc_degraded'] } });
+  assert.equal(degradedVision.decision, 'skip');
+  assert.equal(degradedReport.decision, 'skip');
+  assert.equal(degradedVision.reasons.includes('upload_qc_degraded_retake'), true);
+  assert.equal(degradedReport.reasons.includes('upload_qc_degraded_retake'), true);
 });
 
 test('Skin LLM policy: pass skips report when detector is confident', async () => {
@@ -4007,6 +4071,58 @@ test('ingredient research: gemini failure surfaces gemini_* error code and is no
   );
 });
 
+test('ingredient research: model-not-found maps to gemini_model_not_found and does not start cooldown', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'off',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_SYNC_MODEL_GEMINI: 'gemini-3-pro',
+      AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI: 'gemini-3-pro',
+      AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS: '90000',
+    },
+    async () => {
+      const { moduleId, __internal } = loadRouteInternals();
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: false,
+            reason: 'gemini_error',
+            detail:
+              'got status: 404 Not Found. {"error":{"code":404,"message":"models/gemini-3-pro is not found for API version v1beta, or is not supported for generateContent.","status":"NOT_FOUND"}}',
+            provider_http_status: 404,
+          };
+        });
+
+        const first = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'octocrylene',
+        });
+        const second = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'octocrylene',
+        });
+
+        assert.equal(first.research_error_code, 'gemini_model_not_found');
+        assert.equal(first.timeout_root_cause, 'provider_unavailable');
+        assert.equal(first.provider_http_status, 404);
+        assert.equal(second.research_error_code, 'gemini_model_not_found');
+        assert.equal(geminiCalls, 2);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('ingredient research: request uses no ingredient-specific timeout', async () => {
   return withEnv(
     {
@@ -4036,7 +4152,213 @@ test('ingredient research: request uses no ingredient-specific timeout', async (
           query: 'octocrylene',
         });
         assert.equal(payload.research_status, 'ready');
-        assert.equal(seenTimeout, 4000);
+        assert.equal(seenTimeout, 8000);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: ingredient.lookup returns queued on gemini rate limit and avoids same-request re-hit', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_SYNC_MODEL_GEMINI: 'gemini-sync-flash-test',
+      AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI: 'gemini-3-pro',
+      AURORA_INGREDIENT_RATE_LIMIT_COOLDOWN_MS: '90000',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: false,
+            reason: '429',
+            detail: 'rate limit exceeded',
+          };
+        });
+
+        const app = express();
+        app.use(express.json());
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set('X-Aurora-UID', 'test_uid_ingr_lookup_rate_limit')
+          .set('X-Trace-ID', 'test_trace_ingr_lookup_rate_limit')
+          .set('X-Brief-ID', 'test_brief_ingr_lookup_rate_limit')
+          .set('X-Lang', 'EN')
+          .send({
+            message: 'BUTYLOCTYL',
+            action_id: 'ingredient.lookup',
+            action_data: {
+              query: 'BUTYLOCTYL',
+              ingredient_query: 'BUTYLOCTYL',
+              entry_source: 'ingredient_hub_chip',
+            },
+            language: 'EN',
+          });
+
+        assert.equal(resp.statusCode, 200);
+        const payload = resp.body && resp.body.cards && resp.body.cards[0] && resp.body.cards[0].payload;
+        assert.ok(payload);
+        assert.equal(payload.research_status, 'queued');
+        assert.equal(payload.research_error_code, 'gemini_rate_limited');
+        assert.equal(payload.resolved_model, 'gemini-sync-flash-test');
+        assert.equal(payload.provider_model_tier, 'flash');
+        assert.equal(geminiCalls, 1);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: ingredient single-call mode disables implicit async queue; poll stays explicit one-call retry', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_INGREDIENT_RESEARCH_ASYNC_ENABLED: 'true',
+      AURORA_INGREDIENT_SINGLE_CALL_MODE: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_SYNC_MODEL_GEMINI: 'gemini-3-pro',
+      AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI: 'gemini-3-pro',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: false,
+            reason: 'GEMINI_JSON_TIMEOUT',
+            detail: 'timed out after 4000ms',
+          };
+        });
+
+        const app = express();
+        app.use(express.json());
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const headers = {
+          'X-Aurora-UID': 'test_uid_ingr_single_call_mode',
+          'X-Trace-ID': 'test_trace_ingr_single_call_mode',
+          'X-Brief-ID': 'test_brief_ingr_single_call_mode',
+          'X-Lang': 'EN',
+        };
+
+        const lookupResp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'BUTYLOCTYL',
+            action_id: 'ingredient.lookup',
+            action_data: {
+              query: 'BUTYLOCTYL',
+              ingredient_query: 'BUTYLOCTYL',
+              entry_source: 'ingredient_hub_chip',
+            },
+            language: 'EN',
+          });
+        assert.equal(lookupResp.statusCode, 200);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        assert.equal(geminiCalls, 1);
+
+        const pollResp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action_id: 'ingredient.research.poll',
+            action_data: {
+              ingredient_query: 'BUTYLOCTYL',
+              normalized_query: 'butyloctyl',
+              entry_source: 'ingredient_report',
+            },
+            language: 'EN',
+          });
+        assert.equal(pollResp.statusCode, 200);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        assert.equal(geminiCalls, 2);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('ingredient research: sync path uses dedicated sync model override', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_SYNC_MODEL_GEMINI: 'gemini-sync-flash-test',
+      AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI: 'gemini-3-pro',
+    },
+    async () => {
+      const { moduleId, __internal } = loadRouteInternals();
+      let seenModel = '';
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+          seenModel = String(args.model || '');
+          return {
+            ok: true,
+            json: {
+              ingredient: {
+                inci: 'Octocrylene',
+                display_name: 'Octocrylene',
+                aliases: [],
+                what_it_is: 'UV filter',
+              },
+              overview: 'A UV filter used in sunscreen systems.',
+              benefits: [{ concern: 'uv_protection', strength: 2, what_it_means: 'Adds UVB coverage.' }],
+              safety: { irritation_risk: 'medium', watchouts: [] },
+              usage: { time: 'AM', frequency: 'daily', avoid: [], routine_step: 'sunscreen', pair_well: [], consider_separating: [], notes: [] },
+              confidence: 'medium',
+              evidence: { grade: null, summary: 'Mock summary.', citations: [] },
+              schema_version: 'v2-lite',
+            },
+          };
+        });
+        const payload = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'octocrylene',
+        });
+        assert.equal(payload.research_status, 'ready');
+        assert.equal(payload.resolved_model, 'gemini-sync-flash-test');
+        assert.equal(payload.provider_model_tier, 'flash');
+        assert.equal(seenModel, 'gemini-sync-flash-test');
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];
@@ -4310,7 +4632,7 @@ test('/v1/chat: ingredient reco opt-in first query already carries ingredient_co
       assert.equal(resp.status, 200);
       assert.equal(capturedQueries.length > 0, true);
       const firstQuery = capturedQueries[0];
-      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_0/i);
+      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_1/i);
       assert.match(firstQuery, /SYSTEM_PROMPT:/i);
       assert.match(firstQuery, /USER_PROMPT_JSON:/i);
       assert.match(firstQuery, /"ingredient_context"\s*:/i);
@@ -4437,17 +4759,17 @@ test('reco prompt contract: query must contain template/system/user blocks and h
     const expectedHash = crypto.createHash('sha1').update(String(query || '')).digest('hex').slice(0, 16);
     const okResult = __internal.validateRecoPromptContract({
       query,
-      expectedTemplateId: 'reco_main_v1_0',
+      expectedTemplateId: 'reco_main_v1_1',
       expectedPromptHash: expectedHash,
     });
     assert.equal(okResult.ok, true);
     assert.equal(Array.isArray(okResult.issues), true);
     assert.equal(okResult.issues.length, 0);
-    assert.equal(okResult.template_id, 'reco_main_v1_0');
+    assert.equal(okResult.template_id, 'reco_main_v1_1');
 
     const badResult = __internal.validateRecoPromptContract({
       query: String(query || '').replace('USER_PROMPT_JSON:', 'USER_PROMPT_BLOCK:'),
-      expectedTemplateId: 'reco_main_v1_0',
+      expectedTemplateId: 'reco_main_v1_1',
       expectedPromptHash: expectedHash,
     });
     assert.equal(badResult.ok, false);
@@ -4555,7 +4877,7 @@ test('/v1/chat: alternatives budget exhausted only degrades alternatives (recomm
   );
 });
 
-test('/v1/reco/alternatives: no candidates returns explainable empty and never calls provider', async () => {
+test('/v1/reco/alternatives: no candidates can continue without anchor and fallback after llm attempt', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -4598,15 +4920,43 @@ test('/v1/reco/alternatives: no candidates returns explainable empty and never c
         assert.equal(Array.isArray(resp.body?.alternatives), true);
         assert.ok(resp.body.alternatives.length > 0);
         assert.equal(resp.body?.source_mode, 'local_fallback');
-        assert.equal(resp.body?.failure_class, 'anchor_missing_precheck');
+        assert.notEqual(resp.body?.failure_class, 'anchor_missing_precheck');
         assert.equal(geminiCalls, 0);
 
         const reasons = Array.isArray(resp.body?.field_missing) ? resp.body.field_missing.map((x) => String(x?.reason || '')) : [];
         assert.equal(reasons.includes('anchor_missing_precheck'), false);
+        const allowedFailureClasses = new Set([
+          'empty_structured',
+          'provider_error',
+          'provider_timeout',
+          'provider_rate_limited',
+          'queue_saturated',
+          'clarify_blocked_best_effort',
+          'local_fallback_only',
+        ]);
+        assert.equal(allowedFailureClasses.has(String(resp.body?.failure_class || '').trim()), true);
 
         const snap = snapshotVisionMetrics();
-        const precheckLabel = JSON.stringify({ stage: 'alternatives', outcome: 'precheck_fail' });
-        assert.ok(Number(snap.auroraRecoLlmCall?.find(([k]) => k === precheckLabel)?.[1] || 0) >= 1);
+        const llmOutcomes = new Set(
+          Array.isArray(snap.auroraRecoLlmCall)
+            ? snap.auroraRecoLlmCall.map(([k]) => {
+              try {
+                return JSON.parse(k || '{}')?.outcome || '';
+              } catch {
+                return '';
+              }
+            })
+            : [],
+        );
+        assert.equal(
+          llmOutcomes.has('empty_structured') ||
+            llmOutcomes.has('provider_error') ||
+            llmOutcomes.has('provider_timeout') ||
+            llmOutcomes.has('provider_rate_limited') ||
+            llmOutcomes.has('queue_saturated') ||
+            llmOutcomes.has('empty_structured_clarify'),
+          true,
+        );
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
@@ -7014,6 +7364,105 @@ test('/v1/chat: weather question short-circuits to env_stress (trigger_source=te
   assert.equal(vm?.data?.scenario, 'snow');
 });
 
+test('/v1/chat: mixed travel + product ask returns env_stress and recommendations in the same turn', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const headers = {
+        'X-Aurora-UID': `test_uid_mixed_travel_reco_${Date.now()}`,
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      };
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'I need products for my trip to dry cold weather.',
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.equal(cards.some((card) => card && card.type === 'env_stress'), true);
+      assert.equal(
+        cards.some((card) => card && (card.type === 'recommendations' || card.type === 'confidence_notice')),
+        true,
+      );
+      assert.equal(resp.body?.telemetry?.route_decision, 'travel_then_reco');
+
+      const recoEvt = (resp.body?.events || []).find((evt) => evt && evt.event_name === 'recos_requested');
+      assert.ok(recoEvt);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
+test('/v1/chat: weather question without destination degrades to 200 (no CHAT_FAILED)', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_KB_FAIL_MODE: 'closed',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const headers = {
+        'X-Aurora-UID': `test_uid_weather_missing_destination_${Date.now()}`,
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      };
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'How should I care for skin when weather is dry and cold today?',
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.equal(cards.some((card) => card && card.type === 'error'), false);
+      const envStress = cards.find((card) => card && card.type === 'env_stress');
+      assert.ok(envStress);
+      assert.equal(envStress?.payload?.failure_class, 'weather_destination_missing');
+      assert.equal(resp.body?.telemetry?.route_failure_class, 'weather_destination_missing');
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('/v1/chat: chip.start.reco_products with force_route bypasses weather short-circuit', async () => {
   await withEnv(
     {
@@ -7088,7 +7537,7 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
   await withEnv(
     {
       AURORA_QA_PLANNER_V1_ENABLED: 'true',
-      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
       AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
       AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -7096,97 +7545,161 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
     },
     async () => {
       const moduleId = require.resolve('../src/auroraBff/routes');
+      const weatherAdapterModuleId = require.resolve('../src/auroraBff/weatherAdapter');
+      const travelAlertsProviderModuleId = require.resolve('../src/auroraBff/travelAlertsProvider');
       delete require.cache[moduleId];
+      delete require.cache[weatherAdapterModuleId];
+      delete require.cache[travelAlertsProviderModuleId];
+      const weatherAdapter = require('../src/auroraBff/weatherAdapter');
+      const travelAlertsProvider = require('../src/auroraBff/travelAlertsProvider');
+      const originalGetTravelWeather = weatherAdapter.getTravelWeather;
+      const originalGetTravelAlerts = travelAlertsProvider.getTravelAlerts;
+      weatherAdapter.getTravelWeather = async () => ({
+        ok: true,
+        source: 'weather_api',
+        reason: null,
+        destination: 'Paris',
+        date_range: { start: '2026-03-10', end: '2026-03-15' },
+        location: {
+          name: 'Paris',
+          latitude: 48.8566,
+          longitude: 2.3522,
+          timezone: 'Europe/Paris',
+          country: 'France',
+          country_code: 'FR',
+          admin1: 'Ile-de-France',
+        },
+        summary: {
+          temperature_max_c: 13,
+          temperature_min_c: 7,
+          temp_swing_c: 6,
+          uv_index_max: 4,
+          humidity_mean: 68,
+          precipitation_mm: 2.2,
+          wind_kph_max: 24,
+          days_count: 6,
+        },
+        forecast_window: [
+          { date: '2026-03-10', temp_low_c: 7, temp_high_c: 12, humidity_mean: 70, uv_max: 3, precip_mm: 2.1, wind_kph: 22, condition_text: 'Cloudy' },
+          { date: '2026-03-11', temp_low_c: 8, temp_high_c: 13, humidity_mean: 67, uv_max: 4, precip_mm: 1.4, wind_kph: 20, condition_text: 'Showers' },
+          { date: '2026-03-12', temp_low_c: 7, temp_high_c: 12, humidity_mean: 69, uv_max: 4, precip_mm: 2.5, wind_kph: 21, condition_text: 'Rain' },
+          { date: '2026-03-13', temp_low_c: 6, temp_high_c: 11, humidity_mean: 66, uv_max: 3, precip_mm: 1.1, wind_kph: 19, condition_text: 'Cloudy' },
+          { date: '2026-03-14', temp_low_c: 7, temp_high_c: 13, humidity_mean: 68, uv_max: 4, precip_mm: 1.6, wind_kph: 24, condition_text: 'Windy' },
+          { date: '2026-03-15', temp_low_c: 8, temp_high_c: 13, humidity_mean: 70, uv_max: 4, precip_mm: 2.0, wind_kph: 23, condition_text: 'Showers' },
+        ],
+      });
+      travelAlertsProvider.getTravelAlerts = async () => ({
+        source: 'none',
+        reason: 'unsupported_country',
+        alerts: [],
+        provider: 'none',
+        domain: null,
+        data_freshness_utc: '2026-03-01T00:00:00.000Z',
+      });
+
       const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
 
-      const app = express();
-      app.use(express.json({ limit: '1mb' }));
-      mountAuroraBffRoutes(app, { logger: null });
+        const uid = `test_uid_env_readiness_${Date.now()}`;
+        const headers = {
+          'X-Aurora-UID': uid,
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        };
 
-      const uid = `test_uid_env_readiness_${Date.now()}`;
-      const headers = {
-        'X-Aurora-UID': uid,
-        'X-Trace-ID': 'test_trace',
-        'X-Brief-ID': 'test_brief',
-        'X-Lang': 'EN',
-      };
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headers)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['pores'],
+            region: 'San Francisco, CA',
+            travel_plans: [
+              {
+                destination: 'Paris',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            ],
+          })
+          .expect(200);
 
-      await supertest(app)
-        .post('/v1/profile/update')
-        .set(headers)
-        .send({
-          skinType: 'oily',
-          sensitivity: 'low',
-          barrierStatus: 'healthy',
-          goals: ['pores'],
-          region: 'San Francisco, CA',
-          travel_plans: [
-            {
-              destination: 'Paris',
-              start_date: '2026-03-10',
-              end_date: '2026-03-15',
-            },
-          ],
-        })
-        .expect(200);
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'How is weather there? Will it be humid?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
 
-      const resp = await supertest(app)
-        .post('/v1/chat')
-        .set(headers)
-        .send({
-          message: 'How is weather there? Will it be humid?',
-          session: { state: 'idle' },
-          language: 'EN',
-        })
-        .expect(200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const envStress = cards.find((c) => c && c.type === 'env_stress') || null;
+        assert.ok(envStress);
+        assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
+        assert.ok(envStress?.payload?.travel_readiness);
+        assert.equal(Array.isArray(envStress?.payload?.travel_readiness?.forecast_window), true);
+        assert.equal(Array.isArray(envStress?.payload?.travel_readiness?.alerts), true);
 
-      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-      const envStress = cards.find((c) => c && c.type === 'env_stress') || null;
-      assert.ok(envStress);
-      assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
-      assert.equal(envStress?.payload?.travel_readiness, undefined);
-      assert.match(String(resp.body?.assistant_message?.content || ''), /destination|travel dates/i);
+        const assistantText = String(resp.body?.assistant_message?.content || '');
+        assert.match(assistantText, /Daily forecast:/i);
+        assert.match(assistantText, /Flight day plan:/i);
+        assert.doesNotMatch(assistantText, /Environmental Pressure Index \(EPI\)/i);
 
-      const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
-      assert.equal(types.includes('diagnosis_gate'), false);
-      assert.equal(types.includes('gate_notice'), false);
+        const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+        assert.equal(types.includes('diagnosis_gate'), false);
+        assert.equal(types.includes('gate_notice'), false);
 
-      const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
-      const chipIds = chips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : ''));
-      assert.ok(chipIds.includes('tpl.action.env.am_pm'));
-      assert.ok(chipIds.includes('chip.start.reco_products'));
+        const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+        const chipIds = chips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : ''));
+        assert.ok(chipIds.includes('tpl.action.env.am_pm'));
+        assert.ok(chipIds.includes('chip.start.reco_products'));
 
-      const topMeta = resp.body?.meta || {};
-      assert.equal(topMeta.env_source, 'local_template');
-      assert.equal(topMeta.degraded, true);
-      assert.equal(topMeta.travel_kb_hit, undefined);
-      assert.equal(topMeta.travel_kb_write_queued, undefined);
+        const topMeta = resp.body?.meta || {};
+        assert.equal(topMeta.env_source, 'weather_api');
+        assert.equal(topMeta.degraded, false);
+        assert.equal(topMeta.travel_kb_hit, undefined);
+        assert.equal(topMeta.travel_kb_write_queued, undefined);
 
-      const firstAssistant = String(resp.body?.assistant_message?.content || '');
-      const followupSessionState =
-        resp.body?.session_patch?.state && typeof resp.body.session_patch.state === 'object' && !Array.isArray(resp.body.session_patch.state)
-          ? { ...resp.body.session_patch.state }
-          : {};
-      const respFollow = await supertest(app)
-        .post('/v1/chat')
-        .set(headers)
-        .send({
-          message: 'What about temperature then?',
-          session: { state: followupSessionState },
-          language: 'EN',
-        })
-        .expect(200);
+        const firstAssistant = String(resp.body?.assistant_message?.content || '');
+        const followupSessionState =
+          resp.body?.session_patch?.state && typeof resp.body.session_patch.state === 'object' && !Array.isArray(resp.body.session_patch.state)
+            ? { ...resp.body.session_patch.state }
+            : {};
+        const respFollow = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'What about temperature then?',
+            session: { state: followupSessionState },
+            language: 'EN',
+          })
+          .expect(200);
 
-      const secondAssistant = String(respFollow.body?.assistant_message?.content || '');
-      assert.equal(secondAssistant.length > 0, true);
-      const followMeta = respFollow.body?.meta || {};
-      assert.equal(followMeta.env_source, 'local_template');
-      assert.equal(followMeta.degraded, true);
-      assert.equal(followMeta.loop_count >= 0, true);
-      const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
-      assert.equal(followCards.some((c) => c && c.type === 'env_stress'), true);
-
-      delete require.cache[moduleId];
+        const secondAssistant = String(respFollow.body?.assistant_message?.content || '');
+        assert.equal(secondAssistant.length > 0, true);
+        assert.notEqual(secondAssistant, firstAssistant);
+        const followMeta = respFollow.body?.meta || {};
+        assert.equal(followMeta.env_source, 'weather_api');
+        assert.equal(followMeta.degraded, false);
+        assert.equal(followMeta.loop_count >= 0, true);
+        const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
+        const followEnvStress = followCards.find((c) => c && c.type === 'env_stress') || null;
+        assert.ok(followEnvStress?.payload?.travel_readiness);
+      } finally {
+        weatherAdapter.getTravelWeather = originalGetTravelWeather;
+        travelAlertsProvider.getTravelAlerts = originalGetTravelAlerts;
+        delete require.cache[moduleId];
+        delete require.cache[weatherAdapterModuleId];
+        delete require.cache[travelAlertsProviderModuleId];
+      }
     },
   );
 });
@@ -7995,6 +8508,18 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
 
   assert.equal(card.payload.analysis_source, 'retake');
   assert.equal(card.payload?.quality_report?.photo_quality?.grade, 'fail');
+  assert.equal(card.payload?.quality_report?.upload_qc_status, 'fail');
+  assert.equal(card.payload?.quality_report?.analysis_photo_quality?.grade, 'unknown');
+  assert.equal(card.payload?.quality_report?.effective_quality?.grade, 'fail');
+  assert.equal(
+    card.payload?.quality_report?.quality_merge_rule,
+    'effective = upload_qc_status (analysis_photo_quality is advisory only)',
+  );
+  assert.deepEqual(
+    card.payload?.quality_report?.photo_quality || {},
+    card.payload?.quality_report?.effective_quality || {},
+  );
+  assert.equal(card.payload?.analysis_meta?.skin_quality_decision_source, 'upload_qc_only');
   assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
   assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
   assert.equal(Array.isArray(card.payload?.analysis?.features), true);
@@ -8136,14 +8661,21 @@ test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo q
           ? analysisResp.body.cards.find((c) => c && c.type === 'analysis_summary')
           : null;
         assert.ok(analysisCard);
-        assert.equal(analysisCard?.payload?.analysis_source, 'retake');
-        assert.equal(analysisCard?.payload?.used_photos, false);
-        assert.equal(Boolean(analysisCard?.payload?.photo_notice), false);
+        assert.notEqual(analysisCard?.payload?.analysis_source, 'retake');
+        assert.equal(analysisCard?.payload?.quality_report?.upload_qc_status, 'pass');
+        const visionReasons = Array.isArray(analysisCard?.payload?.quality_report?.llm?.vision?.reasons)
+          ? analysisCard.payload.quality_report.llm.vision.reasons
+          : [];
+        const reportReasons = Array.isArray(analysisCard?.payload?.quality_report?.llm?.report?.reasons)
+          ? analysisCard.payload.quality_report.llm.report.reasons
+          : [];
+        assert.equal(visionReasons.includes('photo_quality_fail_retake'), false);
+        assert.equal(reportReasons.includes('photo_quality_fail_retake'), false);
         const missing = Array.isArray(analysisCard?.field_missing) ? analysisCard.field_missing : [];
-        assert.equal(
-          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'photo_quality_fail'),
-          true,
-        );
+        if (Boolean(analysisCard?.payload?.photo_notice)) {
+          assert.equal(analysisCard?.payload?.photo_notice?.failure_code, 'diagnosis_failed');
+          assert.equal(missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'diagnosis_failed'), true);
+        }
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -8152,6 +8684,90 @@ test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo q
       }
     },
   );
+});
+
+test('/v1/analysis/skin: upload_qc degraded hard-blocks to retake (no LLM calls)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+    headers: { 'X-Aurora-UID': 'test_uid_qc_degraded', 'X-Trace-ID': 'trace_qc_degraded', 'X-Brief-ID': 'brief_qc_degraded', 'X-Lang': 'EN' },
+    body: {
+      use_photo: true,
+      currentRoutine: 'AM: cleanser + SPF. PM: cleanser + moisturizer.',
+      photos: [{ slot_id: 'daylight', photo_id: 'photo_qc_degraded', qc_status: 'degraded' }],
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const card = cards.find((c) => c && c.type === 'analysis_summary');
+  assert.ok(card);
+  assert.equal(card.payload?.analysis_source, 'retake');
+  assert.equal(card.payload?.quality_report?.upload_qc_status, 'degraded');
+  assert.equal(card.payload?.quality_report?.effective_quality?.grade, 'degraded');
+  assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
+  assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
+  assert.equal(card.payload?.analysis_meta?.skin_quality_decision_source, 'upload_qc_only');
 });
 
 test('/v1/analysis/skin: photo-only input is not hard-gated when routine/logs are missing', async () => {

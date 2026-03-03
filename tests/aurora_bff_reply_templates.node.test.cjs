@@ -71,6 +71,69 @@ test('replyTemplates: env_stress renders markdown with bullet budget', () => {
   assert.ok(String(content || '').length <= 520);
 });
 
+test('replyTemplates: rich travel reply is preserved under env template and not clamped to legacy limits', () => {
+  const richText = [
+    'Home region: San Francisco -> Destination: Tokyo (2026-03-12 -> 2026-03-17)',
+    '',
+    'Daily forecast:',
+    '- 2026-03-12 · 6C to 14C · Cloudy',
+    '- 2026-03-13 · 5C to 13C · Rain',
+    '',
+    'Adjusted routine guidance:',
+    ...Array.from({ length: 10 }).map(
+      (_, idx) =>
+        `- Step ${idx + 1}: keep hydration-first routine and avoid aggressive actives until skin is stable after travel transitions.`,
+    ),
+    '',
+    'Flight day plan:',
+    '- Before boarding: moisturizer + lip protection.',
+    '- On flight: avoid strong acids and reapply lip balm.',
+    '- First 48 hours: barrier mode before reintroducing actives.',
+  ].join('\n');
+
+  const envelope = makeEnvelope({
+    assistant_message: { role: 'assistant', format: 'markdown', content: richText },
+    cards: [{ card_id: 'env_2', type: 'env_stress', payload: { ess: 66, tier: 'high' } }],
+  });
+
+  const out = applyReplyTemplates({ envelope, ctx: { lang: 'EN' } });
+  const msg = out && out.assistant_message ? out.assistant_message : null;
+  const content = String(msg && msg.content ? msg.content : '');
+
+  assert.equal(msg && msg.format, 'markdown');
+  assert.match(content, /Daily forecast:/i);
+  assert.match(content, /Flight day plan:/i);
+  assert.ok(bulletCount(content) > 6);
+  assert.ok(bulletCount(content) <= 40);
+  assert.ok(content.length > 520);
+  assert.ok(content.length <= 3200);
+});
+
+test('replyTemplates: rich travel reply uses expanded 3200-char and 40-bullet limits', () => {
+  const richLongText = [
+    'Home region: SF -> Destination: Tokyo',
+    'Daily forecast:',
+    ...Array.from({ length: 60 }).map(
+      (_, idx) =>
+        `- Checklist ${idx + 1}: keep hydration, barrier recovery, sunscreen reapply, and simplify active cadence to reduce irritation risk during travel.`,
+    ),
+    'Quick troubleshooting:',
+    '- Tight/stinging: pause actives for 2-3 nights.',
+  ].join('\n');
+
+  const envelope = makeEnvelope({
+    assistant_message: { role: 'assistant', format: 'markdown', content: richLongText },
+    cards: [{ card_id: 'env_3', type: 'env_stress', payload: { ess: 70, tier: 'high' } }],
+  });
+
+  const out = applyReplyTemplates({ envelope, ctx: { lang: 'EN' } });
+  const content = String(out?.assistant_message?.content || '');
+
+  assert.ok(bulletCount(content) <= 40);
+  assert.ok(content.length <= 3200);
+  assert.match(content, /Daily forecast:/i);
+});
+
 test('replyTemplates: recommendations enforce RECO_RESULTS with actionable next-step chips', () => {
   const envelope = makeEnvelope({
     cards: [

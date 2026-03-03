@@ -92,9 +92,32 @@ function summarizeEnvelope(resp) {
     const pathToken = asString(pdpOpen && pdpOpen.path).trim().toLowerCase();
     return pathToken === 'external';
   }).length;
-  const eventNames = asArray(root.events).map((e) => asString(e && e.name)).filter(Boolean);
-  const recoRequestedEvent = asArray(root.events).find((e) => asString(e && e.name) === 'recos_requested');
-  const recoRequestedData = asObject(recoRequestedEvent && recoRequestedEvent.data) || {};
+  const rootEvents = asArray(root.events);
+  const eventNameFrom = (eventObj) =>
+    asString(
+      eventObj && (
+        eventObj.event_name ||
+        eventObj.name ||
+        eventObj.event_type
+      ),
+    );
+  const eventDataFrom = (eventObj) =>
+    asObject(
+      eventObj && (
+        eventObj.data ||
+        eventObj.event_data
+      ),
+    ) || {};
+  const eventNames = rootEvents
+    .map((e) => eventNameFrom(e))
+    .filter(Boolean);
+  const experimentEvents = asArray(asObject(root.ops)?.experiment_events);
+  const experimentEventNames = experimentEvents
+    .map((e) => eventNameFrom(e))
+    .filter(Boolean);
+  const mergedEventNames = [...eventNames, ...experimentEventNames];
+  const recoRequestedEvent = [...rootEvents, ...experimentEvents].find((e) => eventNameFrom(e) === 'recos_requested');
+  const recoRequestedData = eventDataFrom(recoRequestedEvent);
   const confidencePayload = asObject(confidenceCard && confidenceCard.payload) || {};
   const debugPayload = asObject(debugCard && debugCard.payload) || {};
   return {
@@ -110,7 +133,7 @@ function summarizeEnvelope(resp) {
     confidence_notice_reason: asString(confidencePayload.reason) || null,
     recos_requested_source: asString(recoRequestedData.source) || null,
     recos_requested_source_detail: asString(recoRequestedData.source_detail) || null,
-    event_names: eventNames,
+    event_names: mergedEventNames,
     llm_trace: asObject(recoMeta.llm_trace) || null,
     debug_prompt_trace: asObject(debugPayload.llm_prompt_trace) || null,
   };

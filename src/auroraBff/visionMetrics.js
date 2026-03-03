@@ -97,19 +97,6 @@ const recoInterleaveWinCounter = new Map();
 const recoExplorationSlotCounter = new Map();
 const recoAsyncUpdateCounter = new Map();
 const recoAsyncUpdateChangedItemsCounter = new Map();
-const recoContextUsedCounter = new Map();
-const travelPlanSelectionCounter = new Map();
-const auroraTravelLlmCallCounter = new Map();
-const auroraTravelKbHitCounter = new Map();
-const auroraTravelKbWriteCounter = new Map();
-const auroraTravelResponseSourceCounter = new Map();
-const auroraTravelWeatherSourceCounter = new Map();
-const auroraTravelForecastSourceCounter = new Map();
-const auroraTravelAlertSourceCounter = new Map();
-const auroraTravelBaselineIntegrityCounter = new Map();
-const auroraTravelResponseQualityCounter = new Map();
-const auroraTravelReplyModeCounter = new Map();
-const auroraTravelEnvCardEmittedCounter = new Map();
 const prelabelRequestsCounter = new Map();
 const prelabelSuccessCounter = new Map();
 const prelabelInvalidJsonCounter = new Map();
@@ -187,13 +174,6 @@ const auroraKbV0LoaderErrorCounter = new Map();
 const auroraKbV0RuleMatchCounter = new Map();
 const auroraKbV0LegacyFallbackCounter = new Map();
 const auroraKbV0ClimateFallbackCounter = new Map();
-const fpmClarifyReasonCounter = new Map();
-const fpmRepeatedSlotClarifyCounter = new Map();
-const fpmContextFailOpenCounter = new Map();
-const fpmProductsAfterClarifyCounter = new Map();
-let fpmProductsAfterClarifySeen = 0;
-let fpmProductsAfterClarifyHit = 0;
-let fpmProductsAfterClarifyRateGauge = 0;
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -239,7 +219,7 @@ function normalizeDeviceClass(deviceClass) {
 
 function normalizeInputHashPrefix(inputHashPrefix) {
   const token = cleanMetricToken(inputHashPrefix, 'none');
-  return token.slice(0, 8) || 'none';
+  return token.slice(0, 16) || 'none';
 }
 
 function normalizeIssueType(issueType) {
@@ -273,7 +253,7 @@ function normalizeSuppressedReason(reason) {
 
 function normalizeSkinmaskFallbackReason(reason) {
   const token = cleanMetricToken(reason, 'onnx_fail').toUpperCase();
-  if (token === 'DISABLED' || token === 'MODEL_MISSING' || token === 'TIMEOUT' || token === 'ONNX_FAIL') return token;
+  if (token === 'MODEL_MISSING' || token === 'TIMEOUT' || token === 'ONNX_FAIL') return token;
   return 'ONNX_FAIL';
 }
 
@@ -541,7 +521,18 @@ function normalizeAuroraSkinFlowStage(stage) {
     token === 'reco_safety_block' ||
     token === 'reco_timeout_degraded' ||
     token === 'reco_output_guard_fallback' ||
-    token === 'reco_prompt_contract_mismatch'
+    token === 'reco_prompt_contract_mismatch' ||
+    token === 'reco_alternatives_budget_exhausted' ||
+    token === 'reco_alternatives_timeout' ||
+    token === 'reco_alternatives_empty' ||
+    token === 'ingredient_kb_hit' ||
+    token === 'ingredient_kb_miss' ||
+    token === 'ingredient_kb_read_failed' ||
+    token === 'ingredient_kb_write_failed' ||
+    token === 'ingredient_research_requested' ||
+    token === 'ingredient_research_completed' ||
+    token === 'ingredient_research_fallback' ||
+    token === 'empty_section_prevented'
   ) {
     return token;
   }
@@ -791,111 +782,6 @@ function normalizeAuroraKbV0RuleSource(source) {
 
 function normalizeAuroraKbV0RuleLevel(level) {
   return cleanMetricToken(level, 'unknown');
-}
-
-function normalizeRecoContextSignal(signal) {
-  const token = cleanMetricToken(signal, 'unknown');
-  if (token === 'active_trip' || token === 'home_region_weather' || token === 'climate_fallback') return token;
-  return 'unknown';
-}
-
-function normalizeTravelPlanSelectionMode(mode) {
-  const token = cleanMetricToken(mode, 'none');
-  if (token === 'in_range' || token === 'nearest_upcoming' || token === 'none') return token;
-  return 'none';
-}
-
-function normalizeAuroraTravelLlmOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'skip_no_client');
-  if (
-    token === 'call' ||
-    token === 'skip_no_client' ||
-    token === 'skip_disabled' ||
-    token === 'timeout' ||
-    token === 'error'
-  ) {
-    return token;
-  }
-  return 'error';
-}
-
-function normalizeAuroraTravelKbHitMode(mode) {
-  const token = cleanMetricToken(mode, 'miss');
-  if (token === 'hit' || token === 'miss') return token;
-  return 'miss';
-}
-
-function normalizeAuroraTravelKbWriteOutcome(outcome) {
-  const token = cleanMetricToken(outcome, 'skip');
-  if (token === 'queued' || token === 'success' || token === 'skip' || token === 'error') return token;
-  return 'skip';
-}
-
-function normalizeAuroraTravelKbWriteReason(reason) {
-  return cleanMetricToken(reason, 'unknown');
-}
-
-function normalizeAuroraTravelResponseSource(source) {
-  const token = cleanMetricToken(source, 'rules_only');
-  if (token === 'llm_enriched' || token === 'rules_only') return token;
-  return 'rules_only';
-}
-
-function normalizeAuroraTravelWeatherSource(source) {
-  const token = cleanMetricToken(source, 'climate_fallback');
-  if (token === 'weather_api' || token === 'climate_fallback') return token;
-  return 'climate_fallback';
-}
-
-function normalizeAuroraTravelWeatherReason(reason) {
-  const token = cleanMetricToken(reason, 'unknown');
-  if (
-    token === 'live_ok' ||
-    token === 'live_timeout' ||
-    token === 'live_http_error' ||
-    token === 'geocode_failed' ||
-    token === 'live_disabled' ||
-    token === 'live_error'
-  ) {
-    return token;
-  }
-  return 'unknown';
-}
-
-function normalizeAuroraTravelForecastSource(source) {
-  const token = cleanMetricToken(source, 'climate_fallback');
-  if (token === 'weather_api' || token === 'climate_fallback') return token;
-  return 'climate_fallback';
-}
-
-function normalizeAuroraTravelAlertSource(source) {
-  const token = cleanMetricToken(source, 'none');
-  if (token === 'official_api' || token === 'none' || token === 'degraded') return token;
-  return 'none';
-}
-
-function normalizeAuroraTravelBaselineIntegrity(status) {
-  const token = cleanMetricToken(status, 'ok');
-  if (token === 'ok' || token === 'missing' || token === 'invalid_zero_coercion') return token;
-  return 'ok';
-}
-
-function normalizeAuroraTravelResponseQualitySection(section) {
-  const token = cleanMetricToken(section, 'unknown');
-  if (token === 'answer_delta' || token === 'actions' || token === 'products' || token === 'alerts') return token;
-  return 'unknown';
-}
-
-function normalizeAuroraTravelReplyMode(mode) {
-  const token = cleanMetricToken(mode, 'fallback');
-  if (token === 'focused' || token === 'fallback' || token === 'followup_text_only') return token;
-  return 'fallback';
-}
-
-function normalizeAuroraTravelEnvCardTurn(turn) {
-  const token = cleanMetricToken(turn, 'first_turn');
-  if (token === 'first_turn' || token === 'followup') return token;
-  return 'first_turn';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -1337,142 +1223,6 @@ function recordRecoAsyncUpdate({ block, result, mode, changedCount = 0, delta } 
       safeChanged,
     );
   }
-}
-
-function recordRecoContextUsed({ signal, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    recoContextUsedCounter,
-    { signal: normalizeRecoContextSignal(signal) },
-    amount,
-  );
-}
-
-function recordTravelPlanSelection({ mode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    travelPlanSelectionCounter,
-    { mode: normalizeTravelPlanSelectionMode(mode) },
-    amount,
-  );
-}
-
-function recordAuroraTravelLlmCall({ outcome, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelLlmCallCounter,
-    { outcome: normalizeAuroraTravelLlmOutcome(outcome) },
-    amount,
-  );
-}
-
-function recordAuroraTravelKbHit({ mode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelKbHitCounter,
-    { mode: normalizeAuroraTravelKbHitMode(mode) },
-    amount,
-  );
-}
-
-function recordAuroraTravelKbWrite({ outcome, reason, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelKbWriteCounter,
-    {
-      outcome: normalizeAuroraTravelKbWriteOutcome(outcome),
-      reason: normalizeAuroraTravelKbWriteReason(reason),
-    },
-    amount,
-  );
-}
-
-function recordAuroraTravelResponseSource({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelResponseSourceCounter,
-    { source: normalizeAuroraTravelResponseSource(source) },
-    amount,
-  );
-}
-
-function recordAuroraTravelWeatherSource({ source, reason, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelWeatherSourceCounter,
-    {
-      source: normalizeAuroraTravelWeatherSource(source),
-      reason: normalizeAuroraTravelWeatherReason(reason),
-    },
-    amount,
-  );
-}
-
-function recordAuroraTravelForecastSource({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelForecastSourceCounter,
-    { source: normalizeAuroraTravelForecastSource(source) },
-    amount,
-  );
-}
-
-function recordAuroraTravelAlertSource({ source, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelAlertSourceCounter,
-    { source: normalizeAuroraTravelAlertSource(source) },
-    amount,
-  );
-}
-
-function recordAuroraTravelBaselineIntegrity({ status, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelBaselineIntegrityCounter,
-    { status: normalizeAuroraTravelBaselineIntegrity(status) },
-    amount,
-  );
-}
-
-function recordAuroraTravelResponseQuality({ section, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelResponseQualityCounter,
-    { section: normalizeAuroraTravelResponseQualitySection(section) },
-    amount,
-  );
-}
-
-function recordAuroraTravelReplyMode({ mode, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelReplyModeCounter,
-    { mode: normalizeAuroraTravelReplyMode(mode) },
-    amount,
-  );
-}
-
-function recordAuroraTravelEnvCardEmitted({ turn, delta } = {}) {
-  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
-  if (amount <= 0) return;
-  incCounter(
-    auroraTravelEnvCardEmittedCounter,
-    { turn: normalizeAuroraTravelEnvCardTurn(turn) },
-    amount,
-  );
 }
 
 function clampRatio01(value, fallback = 0) {
@@ -2812,58 +2562,6 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE reco_async_update_items_changed_count counter');
   renderCounter(lines, 'reco_async_update_items_changed_count', recoAsyncUpdateChangedItemsCounter);
 
-  lines.push('# HELP aurora_reco_context_used_total Recommendation context usage by signal.');
-  lines.push('# TYPE aurora_reco_context_used_total counter');
-  renderCounter(lines, 'aurora_reco_context_used_total', recoContextUsedCounter);
-
-  lines.push('# HELP aurora_travel_plan_selection_total Travel plan selection mode distribution.');
-  lines.push('# TYPE aurora_travel_plan_selection_total counter');
-  renderCounter(lines, 'aurora_travel_plan_selection_total', travelPlanSelectionCounter);
-
-  lines.push('# HELP aurora_travel_llm_call_total Total travel LLM calibration outcomes.');
-  lines.push('# TYPE aurora_travel_llm_call_total counter');
-  renderCounter(lines, 'aurora_travel_llm_call_total', auroraTravelLlmCallCounter);
-
-  lines.push('# HELP aurora_travel_kb_hit_total Total travel KB lookup hit/miss counts.');
-  lines.push('# TYPE aurora_travel_kb_hit_total counter');
-  renderCounter(lines, 'aurora_travel_kb_hit_total', auroraTravelKbHitCounter);
-
-  lines.push('# HELP aurora_travel_kb_write_total Total travel KB write queue/upsert outcomes.');
-  lines.push('# TYPE aurora_travel_kb_write_total counter');
-  renderCounter(lines, 'aurora_travel_kb_write_total', auroraTravelKbWriteCounter);
-
-  lines.push('# HELP aurora_travel_response_source_total Travel response source split.');
-  lines.push('# TYPE aurora_travel_response_source_total counter');
-  renderCounter(lines, 'aurora_travel_response_source_total', auroraTravelResponseSourceCounter);
-
-  lines.push('# HELP aurora_travel_weather_source_total Travel weather source and fallback reasons.');
-  lines.push('# TYPE aurora_travel_weather_source_total counter');
-  renderCounter(lines, 'aurora_travel_weather_source_total', auroraTravelWeatherSourceCounter);
-
-  lines.push('# HELP aurora_travel_forecast_source_total Travel forecast source split.');
-  lines.push('# TYPE aurora_travel_forecast_source_total counter');
-  renderCounter(lines, 'aurora_travel_forecast_source_total', auroraTravelForecastSourceCounter);
-
-  lines.push('# HELP aurora_travel_alert_source_total Travel alert source split.');
-  lines.push('# TYPE aurora_travel_alert_source_total counter');
-  renderCounter(lines, 'aurora_travel_alert_source_total', auroraTravelAlertSourceCounter);
-
-  lines.push('# HELP aurora_travel_baseline_integrity_total Travel baseline integrity status.');
-  lines.push('# TYPE aurora_travel_baseline_integrity_total counter');
-  renderCounter(lines, 'aurora_travel_baseline_integrity_total', auroraTravelBaselineIntegrityCounter);
-
-  lines.push('# HELP aurora_travel_response_quality_total Travel response quality section coverage.');
-  lines.push('# TYPE aurora_travel_response_quality_total counter');
-  renderCounter(lines, 'aurora_travel_response_quality_total', auroraTravelResponseQualityCounter);
-
-  lines.push('# HELP aurora_travel_reply_mode_total Travel reply mode split.');
-  lines.push('# TYPE aurora_travel_reply_mode_total counter');
-  renderCounter(lines, 'aurora_travel_reply_mode_total', auroraTravelReplyModeCounter);
-
-  lines.push('# HELP aurora_travel_env_card_emitted_total Travel env card emission count by turn.');
-  lines.push('# TYPE aurora_travel_env_card_emitted_total counter');
-  renderCounter(lines, 'aurora_travel_env_card_emitted_total', auroraTravelEnvCardEmittedCounter);
-
   lines.push('# HELP reco_competitors_same_brand_rate Last observed same-brand rate in competitors block.');
   lines.push('# TYPE reco_competitors_same_brand_rate gauge');
   lines.push(`reco_competitors_same_brand_rate ${recoCompetitorsSameBrandRateGauge}`);
@@ -3228,26 +2926,6 @@ function renderVisionMetricsPrometheus() {
   const artifactCreated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'artifact_created', outcome: 'hit' });
   const ingredientPlans = counterValueByLabels(auroraSkinFlowCounter, { stage: 'ingredient_plan', outcome: 'hit' });
   const analysisTimeoutDegraded = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_timeout_degraded', outcome: 'hit' });
-  const ingredientEntries = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'entry_opened', outcome: 'hit' });
-  const ingredientAnswers = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'answer_served', outcome: 'hit' });
-  const ingredientTextQueryRouted = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'text_query_routed', outcome: 'hit' });
-  const ingredientTextRouteDrift = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'text_route_drift', outcome: 'hit' });
-  const ingredientKbHit = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'kb_hit', outcome: 'hit' });
-  const ingredientKbMiss = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'kb_miss', outcome: 'hit' });
-  const ingredientResearchRequested = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_requested', outcome: 'hit' });
-  const ingredientResearchCompleted = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_completed', outcome: 'hit' });
-  const ingredientResearchError = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'research_error', outcome: 'hit' });
-  const ingredientInvalidJson = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'invalid_json', outcome: 'hit' });
-  const ingredientEmptySectionPrevented = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'empty_section_prevented', outcome: 'hit' });
-  const ingredientDuplicateJobDedup = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'duplicate_job_dedup', outcome: 'hit' });
-  const ingredientCircuitOpen = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'circuit_open', outcome: 'hit' });
-  const ingredientCardRenderDrop = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'card_render_drop', outcome: 'hit' });
-  const ingredientRecoOptin = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'reco_optin', outcome: 'hit' });
-  const ingredientUnwantedDiagnosis = counterValueByLabels(auroraIngredientsFlowCounter, { stage: 'unwanted_diagnosis', outcome: 'hit' });
-  const ingredientProviderAttemptGemini = counterValueByLabels(auroraIngredientProviderCounter, {
-    stage: 'attempt',
-    provider: 'gemini',
-  });
 
   lines.push('# HELP aurora_skin_reco_generated_rate reco_generated / reco_request.');
   lines.push('# TYPE aurora_skin_reco_generated_rate gauge');
@@ -3280,62 +2958,6 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP aurora_skin_analysis_timeout_degraded_rate analysis_timeout_degraded / analysis_request.');
   lines.push('# TYPE aurora_skin_analysis_timeout_degraded_rate gauge');
   lines.push(`aurora_skin_analysis_timeout_degraded_rate ${analysisRequests > 0 ? analysisTimeoutDegraded / analysisRequests : 0}`);
-
-  lines.push('# HELP ingredients_unwanted_diagnosis_rate unwanted diagnosis gate responses / ingredients entries.');
-  lines.push('# TYPE ingredients_unwanted_diagnosis_rate gauge');
-  lines.push(`ingredients_unwanted_diagnosis_rate ${ingredientEntries > 0 ? ingredientUnwantedDiagnosis / ingredientEntries : 0}`);
-
-  lines.push('# HELP ingredients_to_reco_optin_rate ingredient-path reco opt-ins / ingredients entries.');
-  lines.push('# TYPE ingredients_to_reco_optin_rate gauge');
-  lines.push(`ingredients_to_reco_optin_rate ${ingredientEntries > 0 ? ingredientRecoOptin / ingredientEntries : 0}`);
-
-  lines.push('# HELP ingredients_text_route_drift_rate ingredient text-route drifts / ingredient text query-first routed.');
-  lines.push('# TYPE ingredients_text_route_drift_rate gauge');
-  lines.push(
-    `ingredients_text_route_drift_rate ${ingredientTextQueryRouted > 0 ? ingredientTextRouteDrift / ingredientTextQueryRouted : 0}`,
-  );
-
-  lines.push('# HELP ingredient_kb_hit_rate ingredient KB hit / (hit + miss).');
-  lines.push('# TYPE ingredient_kb_hit_rate gauge');
-  lines.push(`ingredient_kb_hit_rate ${ingredientKbHit + ingredientKbMiss > 0 ? ingredientKbHit / (ingredientKbHit + ingredientKbMiss) : 0}`);
-
-  lines.push('# HELP ingredient_card_render_drop_rate ingredient card render drops / ingredient answers.');
-  lines.push('# TYPE ingredient_card_render_drop_rate gauge');
-  lines.push(`ingredient_card_render_drop_rate ${ingredientAnswers > 0 ? ingredientCardRenderDrop / ingredientAnswers : 0}`);
-
-  lines.push('# HELP ingredient_research_completion_rate ingredient deep-research completed / requested.');
-  lines.push('# TYPE ingredient_research_completion_rate gauge');
-  lines.push(
-    `ingredient_research_completion_rate ${ingredientResearchRequested > 0 ? ingredientResearchCompleted / ingredientResearchRequested : 0}`,
-  );
-
-  lines.push('# HELP ingredient_research_error_rate ingredient deep-research errors / requested.');
-  lines.push('# TYPE ingredient_research_error_rate gauge');
-  lines.push(
-    `ingredient_research_error_rate ${ingredientResearchRequested > 0 ? ingredientResearchError / ingredientResearchRequested : 0}`,
-  );
-
-  lines.push('# HELP gemini_circuit_open_rate ingredient provider circuit-open events / gemini attempts.');
-  lines.push('# TYPE gemini_circuit_open_rate gauge');
-  lines.push(
-    `gemini_circuit_open_rate ${ingredientProviderAttemptGemini > 0 ? ingredientCircuitOpen / ingredientProviderAttemptGemini : 0}`,
-  );
-
-  lines.push('# HELP invalid_json_rate ingredient invalid-json fallbacks / ingredient research requested.');
-  lines.push('# TYPE invalid_json_rate gauge');
-  lines.push(`invalid_json_rate ${ingredientResearchRequested > 0 ? ingredientInvalidJson / ingredientResearchRequested : 0}`);
-
-  lines.push('# HELP empty_section_prevented_rate ingredient minimal-card preventions / ingredient answers.');
-  lines.push('# TYPE empty_section_prevented_rate gauge');
-  lines.push(
-    `empty_section_prevented_rate ${ingredientAnswers > 0 ? ingredientEmptySectionPrevented / ingredientAnswers : 0}`,
-  );
-
-  lines.push('# HELP duplicate_job_dedup_rate ingredient deduped async research jobs / ingredient KB misses.');
-  lines.push('# TYPE duplicate_job_dedup_rate gauge');
-  lines.push(
-    `duplicate_job_dedup_rate ${ingredientKbMiss > 0 ? ingredientDuplicateJobDedup / ingredientKbMiss : 0}`,
-  );
 
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
@@ -3432,19 +3054,6 @@ function resetVisionMetrics() {
   recoExplorationSlotCounter.clear();
   recoAsyncUpdateCounter.clear();
   recoAsyncUpdateChangedItemsCounter.clear();
-  recoContextUsedCounter.clear();
-  travelPlanSelectionCounter.clear();
-  auroraTravelLlmCallCounter.clear();
-  auroraTravelKbHitCounter.clear();
-  auroraTravelKbWriteCounter.clear();
-  auroraTravelResponseSourceCounter.clear();
-  auroraTravelWeatherSourceCounter.clear();
-  auroraTravelForecastSourceCounter.clear();
-  auroraTravelAlertSourceCounter.clear();
-  auroraTravelBaselineIntegrityCounter.clear();
-  auroraTravelResponseQualityCounter.clear();
-  auroraTravelReplyModeCounter.clear();
-  auroraTravelEnvCardEmittedCounter.clear();
   prelabelRequestsCounter.clear();
   prelabelSuccessCounter.clear();
   prelabelInvalidJsonCounter.clear();
@@ -3606,19 +3215,6 @@ function snapshotVisionMetrics() {
     recoExplorationSlot: Array.from(recoExplorationSlotCounter.entries()),
     recoAsyncUpdate: Array.from(recoAsyncUpdateCounter.entries()),
     recoAsyncUpdateChangedItems: Array.from(recoAsyncUpdateChangedItemsCounter.entries()),
-    recoContextUsed: Array.from(recoContextUsedCounter.entries()),
-    travelPlanSelection: Array.from(travelPlanSelectionCounter.entries()),
-    auroraTravelLlmCall: Array.from(auroraTravelLlmCallCounter.entries()),
-    auroraTravelKbHit: Array.from(auroraTravelKbHitCounter.entries()),
-    auroraTravelKbWrite: Array.from(auroraTravelKbWriteCounter.entries()),
-    auroraTravelResponseSource: Array.from(auroraTravelResponseSourceCounter.entries()),
-    auroraTravelWeatherSource: Array.from(auroraTravelWeatherSourceCounter.entries()),
-    auroraTravelForecastSource: Array.from(auroraTravelForecastSourceCounter.entries()),
-    auroraTravelAlertSource: Array.from(auroraTravelAlertSourceCounter.entries()),
-    auroraTravelBaselineIntegrity: Array.from(auroraTravelBaselineIntegrityCounter.entries()),
-    auroraTravelResponseQuality: Array.from(auroraTravelResponseQualityCounter.entries()),
-    auroraTravelReplyMode: Array.from(auroraTravelReplyModeCounter.entries()),
-    auroraTravelEnvCardEmitted: Array.from(auroraTravelEnvCardEmittedCounter.entries()),
     prelabelRequests: Array.from(prelabelRequestsCounter.entries()),
     prelabelSuccess: Array.from(prelabelSuccessCounter.entries()),
     prelabelInvalidJson: Array.from(prelabelInvalidJsonCounter.entries()),
@@ -3739,19 +3335,6 @@ module.exports = {
   recordRecoInterleaveWin,
   recordRecoExplorationSlot,
   recordRecoAsyncUpdate,
-  recordRecoContextUsed,
-  recordTravelPlanSelection,
-  recordAuroraTravelLlmCall,
-  recordAuroraTravelKbHit,
-  recordAuroraTravelKbWrite,
-  recordAuroraTravelResponseSource,
-  recordAuroraTravelWeatherSource,
-  recordAuroraTravelForecastSource,
-  recordAuroraTravelAlertSource,
-  recordAuroraTravelBaselineIntegrity,
-  recordAuroraTravelResponseQuality,
-  recordAuroraTravelReplyMode,
-  recordAuroraTravelEnvCardEmitted,
   setRecoGuardrailRates,
   recordPrelabelRequest,
   recordPrelabelSuccess,

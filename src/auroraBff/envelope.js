@@ -286,6 +286,7 @@ function buildEnvelope(ctx, input) {
     ...(isPlainObject(input && input.analysis_meta) ? { analysis_meta: input.analysis_meta } : {}),
     ...(isPlainObject(input && input.recommendation_meta) ? { recommendation_meta: input.recommendation_meta } : {}),
     ...(isPlainObject(input && input.reco_refresh_hint) ? { reco_refresh_hint: input.reco_refresh_hint } : {}),
+    ...(isPlainObject(input && input.telemetry) ? { telemetry: input.telemetry } : {}),
   };
 
   clampSuggestedChips(envelope);

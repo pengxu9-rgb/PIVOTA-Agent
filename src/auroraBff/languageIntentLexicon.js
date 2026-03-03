@@ -46,6 +46,14 @@ const RECOMMENDATION_CUES = [
   /(怎么买|购买|下单|链接)/,
 ];
 
+const RECO_TRANSACTIONAL_CUES = [
+  /\b(buy|use|get|pick|choose|shop|try)\b/i,
+  /\b(i|we)\s*(want|need|would like|wanna|am looking for|are looking for)\b/i,
+  /\bwhat\b.{0,24}\bproducts?\b.{0,24}\b(should i|to)\b.{0,12}\b(buy|use|get)\b/i,
+  /\bwhich\b.{0,24}\b(products?|sunscreen|cleanser|serum|moisturizer|toner)\b.{0,24}\b(should i|to)\b.{0,12}\b(buy|use|get)\b/i,
+  /(我|我们).{0,12}(想|要|需要).{0,20}(买|用|选).{0,20}(产品|护肤品|防晒|洁面|精华|面霜|乳液)/,
+];
+
 const SUITABILITY_CUES = [
   /\bis (this|it).{0,40}\b(good|okay|safe|suitable|right)\b/i,
   /\bcan i use\b/i,
@@ -87,6 +95,8 @@ function isRecommendationLikeText(text) {
   const scienceOnlyIntent = isIngredientScienceLikeText(raw);
   const askingProducts = hasProductCue(raw) || hasAny(raw, RECOMMENDATION_CUES);
   if (scienceOnlyIntent && !askingProducts) return false;
+  const hasTransactionalProductIntent = hasProductCue(raw) && hasAny(raw, RECO_TRANSACTIONAL_CUES);
+  if (hasTransactionalProductIntent) return true;
 
   return (
     hasAny(raw, RECOMMENDATION_CUES) ||

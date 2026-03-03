@@ -506,10 +506,7 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
     return [buildCompatibilityCard({ card, requestId, index, language })];
   }
   if (type === 'analysis_summary') {
-    return [
-      buildSkinStatusCard({ card, requestId, index, language }),
-      buildRoutineCard({ card, requestId, index: index + 100, language }),
-    ];
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '肤况总结' : 'Skin summary' })];
   }
   if (type === 'confidence_notice') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '置信度提示' : 'Confidence notice' })];

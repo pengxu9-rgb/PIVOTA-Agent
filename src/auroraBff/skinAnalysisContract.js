@@ -1,4 +1,32 @@
 const CONFIDENCE_VALUES = Object.freeze(['pretty_sure', 'somewhat_sure', 'not_sure']);
+const DEEPENING_PHASE_VALUES = Object.freeze(['photo_optin', 'products', 'reactions', 'refined']);
+
+const EvidenceRefItemSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    id: { type: 'string', maxLength: 40 },
+    title: { type: 'string', maxLength: 120 },
+    url: { type: 'string', maxLength: 300 },
+    why_relevant: { type: 'string', maxLength: 220 },
+  },
+  required: ['id', 'title', 'url'],
+};
+
+const DeepeningSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    phase: { type: 'string', enum: DEEPENING_PHASE_VALUES.slice() },
+    next_phase: { type: 'string', enum: DEEPENING_PHASE_VALUES.slice() },
+    question: { type: 'string', maxLength: 180 },
+    options: {
+      type: 'array',
+      maxItems: 8,
+      items: { type: 'string', maxLength: 80 },
+    },
+  },
+};
 
 const SkinFeatureItemSchema = {
   type: 'object',
@@ -29,6 +57,17 @@ const SkinFinalContractSchema = {
       items: { type: 'string', maxLength: 60 },
     },
     routine_expert: { type: 'string', maxLength: 200 },
+    reasoning: {
+      type: 'array',
+      maxItems: 4,
+      items: { type: 'string', maxLength: 220 },
+    },
+    deepening: DeepeningSchema,
+    evidence_refs: {
+      type: 'array',
+      maxItems: 6,
+      items: EvidenceRefItemSchema,
+    },
   },
   required: [
     'features',
@@ -68,6 +107,17 @@ const SkinReportStrategySchema = {
       items: { type: 'string', maxLength: 60 },
     },
     routine_expert: { type: 'string', maxLength: 200 },
+    reasoning: {
+      type: 'array',
+      maxItems: 4,
+      items: { type: 'string', maxLength: 220 },
+    },
+    deepening: DeepeningSchema,
+    evidence_refs: {
+      type: 'array',
+      maxItems: 6,
+      items: EvidenceRefItemSchema,
+    },
   },
   required: ['strategy', 'needs_risk_check', 'primary_question', 'conditional_followups', 'routine_expert'],
 };
@@ -118,6 +168,60 @@ function normalizeFollowups(raw) {
     if (out.length >= 3) break;
   }
   return out;
+}
+
+function normalizeReasoning(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const item of list) {
+    const text = clampText(item, 220);
+    if (!text) continue;
+    out.push(text);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+function normalizeEvidenceRefs(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const id = clampText(item.id, 40);
+    const title = clampText(item.title, 120);
+    const url = clampText(item.url, 300);
+    const whyRelevant = clampText(item.why_relevant, 220);
+    if (!id || !title || !url) continue;
+    out.push({
+      id,
+      title,
+      url,
+      ...(whyRelevant ? { why_relevant: whyRelevant } : {}),
+    });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+function normalizeDeepening(raw) {
+  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!node) return null;
+  const phase = clampText(node.phase, 30).toLowerCase();
+  const nextPhase = clampText(node.next_phase, 30).toLowerCase();
+  const question = clampText(node.question, 180);
+  const options = [];
+  for (const item of Array.isArray(node.options) ? node.options : []) {
+    const text = clampText(item, 80);
+    if (!text) continue;
+    options.push(text);
+    if (options.length >= 8) break;
+  }
+  const normalized = {};
+  if (DEEPENING_PHASE_VALUES.includes(phase)) normalized.phase = phase;
+  if (DEEPENING_PHASE_VALUES.includes(nextPhase)) normalized.next_phase = nextPhase;
+  if (question) normalized.question = question;
+  if (options.length) normalized.options = options;
+  return Object.keys(normalized).length ? normalized : null;
 }
 
 function normalizeLang(lang) {
@@ -233,7 +337,16 @@ function validateReportStrategy(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
   const errors = [];
   if (!p) return { ok: false, errors: ['/ must be object'] };
-  const allowed = new Set(['strategy', 'needs_risk_check', 'primary_question', 'conditional_followups', 'routine_expert']);
+  const allowed = new Set([
+    'strategy',
+    'needs_risk_check',
+    'primary_question',
+    'conditional_followups',
+    'routine_expert',
+    'reasoning',
+    'deepening',
+    'evidence_refs',
+  ]);
   for (const key of Object.keys(p)) {
     if (!allowed.has(key)) errors.push(`/${key} is not allowed`);
   }
@@ -253,6 +366,61 @@ function validateReportStrategy(payload) {
   }
   if (typeof p.routine_expert !== 'string') errors.push('/routine_expert must be string');
   if (typeof p.routine_expert === 'string' && p.routine_expert.length > 200) errors.push('/routine_expert exceeds 200 chars');
+  if (p.reasoning != null && !Array.isArray(p.reasoning)) errors.push('/reasoning must be array');
+  if (Array.isArray(p.reasoning)) {
+    if (p.reasoning.length > 4) errors.push('/reasoning max 4 items');
+    for (let i = 0; i < p.reasoning.length; i += 1) {
+      const item = p.reasoning[i];
+      if (typeof item !== 'string') errors.push(`/reasoning/${i} must be string`);
+      if (typeof item === 'string' && item.length > 220) errors.push(`/reasoning/${i} exceeds 220 chars`);
+    }
+  }
+  if (p.deepening != null) {
+    if (!p.deepening || typeof p.deepening !== 'object' || Array.isArray(p.deepening)) {
+      errors.push('/deepening must be object');
+    } else {
+      if (p.deepening.phase != null) {
+        const phase = String(p.deepening.phase || '').trim().toLowerCase();
+        if (!DEEPENING_PHASE_VALUES.includes(phase)) errors.push('/deepening/phase invalid');
+      }
+      if (p.deepening.next_phase != null) {
+        const nextPhase = String(p.deepening.next_phase || '').trim().toLowerCase();
+        if (!DEEPENING_PHASE_VALUES.includes(nextPhase)) errors.push('/deepening/next_phase invalid');
+      }
+      if (p.deepening.question != null && (typeof p.deepening.question !== 'string' || p.deepening.question.length > 180)) {
+        errors.push('/deepening/question invalid');
+      }
+      if (p.deepening.options != null && !Array.isArray(p.deepening.options)) errors.push('/deepening/options must be array');
+      if (Array.isArray(p.deepening.options)) {
+        if (p.deepening.options.length > 8) errors.push('/deepening/options max 8 items');
+        for (let i = 0; i < p.deepening.options.length; i += 1) {
+          const item = p.deepening.options[i];
+          if (typeof item !== 'string') errors.push(`/deepening/options/${i} must be string`);
+          if (typeof item === 'string' && item.length > 80) errors.push(`/deepening/options/${i} exceeds 80 chars`);
+        }
+      }
+    }
+  }
+  if (p.evidence_refs != null && !Array.isArray(p.evidence_refs)) errors.push('/evidence_refs must be array');
+  if (Array.isArray(p.evidence_refs)) {
+    if (p.evidence_refs.length > 6) errors.push('/evidence_refs max 6 items');
+    for (let i = 0; i < p.evidence_refs.length; i += 1) {
+      const item = p.evidence_refs[i];
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        errors.push(`/evidence_refs/${i} must be object`);
+        continue;
+      }
+      if (typeof item.id !== 'string' || !item.id.trim()) errors.push(`/evidence_refs/${i}/id must be non-empty string`);
+      if (typeof item.title !== 'string' || !item.title.trim()) errors.push(`/evidence_refs/${i}/title must be non-empty string`);
+      if (typeof item.url !== 'string' || !item.url.trim()) errors.push(`/evidence_refs/${i}/url must be non-empty string`);
+      if (typeof item.id === 'string' && item.id.length > 40) errors.push(`/evidence_refs/${i}/id exceeds 40 chars`);
+      if (typeof item.title === 'string' && item.title.length > 120) errors.push(`/evidence_refs/${i}/title exceeds 120 chars`);
+      if (typeof item.url === 'string' && item.url.length > 300) errors.push(`/evidence_refs/${i}/url exceeds 300 chars`);
+      if (item.why_relevant != null && (typeof item.why_relevant !== 'string' || item.why_relevant.length > 220)) {
+        errors.push(`/evidence_refs/${i}/why_relevant invalid`);
+      }
+    }
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -260,7 +428,17 @@ function validateFinalContract(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
   const errors = [];
   if (!p) return { ok: false, errors: ['/ must be object'] };
-  const allowed = new Set(['features', 'strategy', 'needs_risk_check', 'primary_question', 'conditional_followups', 'routine_expert']);
+  const allowed = new Set([
+    'features',
+    'strategy',
+    'needs_risk_check',
+    'primary_question',
+    'conditional_followups',
+    'routine_expert',
+    'reasoning',
+    'deepening',
+    'evidence_refs',
+  ]);
   for (const key of Object.keys(p)) {
     if (!allowed.has(key)) errors.push(`/${key} is not allowed`);
   }
@@ -281,6 +459,61 @@ function validateFinalContract(payload) {
   }
   if (typeof p.routine_expert !== 'string') errors.push('/routine_expert must be string');
   if (typeof p.routine_expert === 'string' && p.routine_expert.length > 200) errors.push('/routine_expert exceeds 200 chars');
+  if (p.reasoning != null && !Array.isArray(p.reasoning)) errors.push('/reasoning must be array');
+  if (Array.isArray(p.reasoning)) {
+    if (p.reasoning.length > 4) errors.push('/reasoning max 4 items');
+    for (let i = 0; i < p.reasoning.length; i += 1) {
+      const item = p.reasoning[i];
+      if (typeof item !== 'string') errors.push(`/reasoning/${i} must be string`);
+      if (typeof item === 'string' && item.length > 220) errors.push(`/reasoning/${i} exceeds 220 chars`);
+    }
+  }
+  if (p.deepening != null) {
+    if (!p.deepening || typeof p.deepening !== 'object' || Array.isArray(p.deepening)) {
+      errors.push('/deepening must be object');
+    } else {
+      if (p.deepening.phase != null) {
+        const phase = String(p.deepening.phase || '').trim().toLowerCase();
+        if (!DEEPENING_PHASE_VALUES.includes(phase)) errors.push('/deepening/phase invalid');
+      }
+      if (p.deepening.next_phase != null) {
+        const nextPhase = String(p.deepening.next_phase || '').trim().toLowerCase();
+        if (!DEEPENING_PHASE_VALUES.includes(nextPhase)) errors.push('/deepening/next_phase invalid');
+      }
+      if (p.deepening.question != null && (typeof p.deepening.question !== 'string' || p.deepening.question.length > 180)) {
+        errors.push('/deepening/question invalid');
+      }
+      if (p.deepening.options != null && !Array.isArray(p.deepening.options)) errors.push('/deepening/options must be array');
+      if (Array.isArray(p.deepening.options)) {
+        if (p.deepening.options.length > 8) errors.push('/deepening/options max 8 items');
+        for (let i = 0; i < p.deepening.options.length; i += 1) {
+          const item = p.deepening.options[i];
+          if (typeof item !== 'string') errors.push(`/deepening/options/${i} must be string`);
+          if (typeof item === 'string' && item.length > 80) errors.push(`/deepening/options/${i} exceeds 80 chars`);
+        }
+      }
+    }
+  }
+  if (p.evidence_refs != null && !Array.isArray(p.evidence_refs)) errors.push('/evidence_refs must be array');
+  if (Array.isArray(p.evidence_refs)) {
+    if (p.evidence_refs.length > 6) errors.push('/evidence_refs max 6 items');
+    for (let i = 0; i < p.evidence_refs.length; i += 1) {
+      const item = p.evidence_refs[i];
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        errors.push(`/evidence_refs/${i} must be object`);
+        continue;
+      }
+      if (typeof item.id !== 'string' || !item.id.trim()) errors.push(`/evidence_refs/${i}/id must be non-empty string`);
+      if (typeof item.title !== 'string' || !item.title.trim()) errors.push(`/evidence_refs/${i}/title must be non-empty string`);
+      if (typeof item.url !== 'string' || !item.url.trim()) errors.push(`/evidence_refs/${i}/url must be non-empty string`);
+      if (typeof item.id === 'string' && item.id.length > 40) errors.push(`/evidence_refs/${i}/id exceeds 40 chars`);
+      if (typeof item.title === 'string' && item.title.length > 120) errors.push(`/evidence_refs/${i}/title exceeds 120 chars`);
+      if (typeof item.url === 'string' && item.url.length > 300) errors.push(`/evidence_refs/${i}/url exceeds 300 chars`);
+      if (item.why_relevant != null && (typeof item.why_relevant !== 'string' || item.why_relevant.length > 220)) {
+        errors.push(`/evidence_refs/${i}/why_relevant invalid`);
+      }
+    }
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -322,6 +555,9 @@ function finalizeSkinAnalysisContract({ factLayer, reportLayer, quality, lang, d
     primary_question: clampText(report.primary_question || fallback.primary_question, 60),
     conditional_followups: normalizeFollowups(report.conditional_followups || fallback.conditional_followups),
     routine_expert: clampText(report.routine_expert || fallback.routine_expert, 200),
+    reasoning: normalizeReasoning(report.reasoning || fallback.reasoning),
+    deepening: normalizeDeepening(report.deepening || fallback.deepening),
+    evidence_refs: normalizeEvidenceRefs(report.evidence_refs || fallback.evidence_refs),
   };
 
   const resolved = isPoor ? buildPoorPhotoTemplate({ lang }) : safeBase;
@@ -335,12 +571,17 @@ function finalizeSkinAnalysisContract({ factLayer, reportLayer, quality, lang, d
   if (!resolved.primary_question) resolved.primary_question = '';
   if (!Array.isArray(resolved.conditional_followups)) resolved.conditional_followups = [];
   if (!resolved.routine_expert) resolved.routine_expert = '';
+  if (!Array.isArray(resolved.reasoning)) resolved.reasoning = [];
+  if (!Array.isArray(resolved.evidence_refs)) resolved.evidence_refs = [];
 
   resolved.features = normalizeFeatures(resolved.features, { minItems: 2, maxItems: 4, conservative: isPoor });
   resolved.conditional_followups = normalizeFollowups(resolved.conditional_followups);
   resolved.strategy = clampText(resolved.strategy, 700);
   resolved.primary_question = clampText(resolved.primary_question, 60);
   resolved.routine_expert = clampText(resolved.routine_expert, 200);
+  resolved.reasoning = normalizeReasoning(resolved.reasoning);
+  resolved.deepening = normalizeDeepening(resolved.deepening);
+  resolved.evidence_refs = normalizeEvidenceRefs(resolved.evidence_refs);
   resolved.needs_risk_check = Boolean(resolved.needs_risk_check);
 
   const check = validateFinalContract(resolved);
@@ -354,6 +595,9 @@ function finalizeSkinAnalysisContract({ factLayer, reportLayer, quality, lang, d
       primary_question: clampText(fallback.primary_question, 60),
       conditional_followups: normalizeFollowups(fallback.conditional_followups),
       routine_expert: clampText(fallback.routine_expert, 200),
+      reasoning: normalizeReasoning(fallback.reasoning),
+      deepening: normalizeDeepening(fallback.deepening),
+      evidence_refs: normalizeEvidenceRefs(fallback.evidence_refs),
     };
     while (fallbackContract.features.length < 2) {
       fallbackContract.features.push({
@@ -364,6 +608,9 @@ function finalizeSkinAnalysisContract({ factLayer, reportLayer, quality, lang, d
     if (!fallbackContract.primary_question) fallbackContract.primary_question = '';
     if (!fallbackContract.routine_expert) fallbackContract.routine_expert = '';
     fallbackContract.conditional_followups = normalizeFollowups(fallbackContract.conditional_followups);
+    fallbackContract.reasoning = normalizeReasoning(fallbackContract.reasoning);
+    fallbackContract.deepening = normalizeDeepening(fallbackContract.deepening);
+    fallbackContract.evidence_refs = normalizeEvidenceRefs(fallbackContract.evidence_refs);
     return {
       ...fallbackContract,
       ask_3_questions: deriveAsk3Questions(fallbackContract.primary_question, fallbackContract.conditional_followups),
@@ -392,6 +639,9 @@ function mergeFinalContractIntoAnalysis({ analysis, finalContract } = {}) {
     conditional_followups: Array.isArray(contract.conditional_followups) ? contract.conditional_followups : [],
     routine_expert: typeof contract.routine_expert === 'string' ? contract.routine_expert : '',
     ask_3_questions: Array.isArray(contract.ask_3_questions) ? contract.ask_3_questions : deriveAsk3Questions('', []),
+    reasoning: Array.isArray(contract.reasoning) ? contract.reasoning : [],
+    deepening: contract.deepening && typeof contract.deepening === 'object' && !Array.isArray(contract.deepening) ? contract.deepening : null,
+    evidence_refs: Array.isArray(contract.evidence_refs) ? contract.evidence_refs : [],
   };
 }
 

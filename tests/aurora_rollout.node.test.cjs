@@ -72,6 +72,7 @@ test('rollout disabled preserves global flags (no forced legacy downgrade)', () 
           qa_planner_v1: true,
           safety_engine_v1: true,
           travel_weather_live_v1: false,
+          travel_llm_calibration_v1: true,
           loop_breaker_v2: true,
           chat_response_meta: false,
         },
@@ -84,6 +85,7 @@ test('rollout disabled preserves global flags (no forced legacy downgrade)', () 
       assert.equal(out.effective_flags.qa_planner_v1, true);
       assert.equal(out.effective_flags.safety_engine_v1, true);
       assert.equal(out.effective_flags.travel_weather_live_v1, false);
+      assert.equal(out.effective_flags.travel_llm_calibration_v1, true);
       assert.equal(out.effective_flags.loop_breaker_v2, true);
       assert.equal(out.policy_version, 'aurora_chat_v2_p0');
     },
@@ -143,6 +145,7 @@ test('forced variant applies capability gating when rollout split is active', ()
           qa_planner_v1: true,
           safety_engine_v1: true,
           travel_weather_live_v1: true,
+          travel_llm_calibration_v1: true,
           loop_breaker_v2: true,
           chat_response_meta: false,
         },
@@ -156,7 +159,41 @@ test('forced variant applies capability gating when rollout split is active', ()
       assert.equal(out.effective_flags.loop_breaker_v2, true);
       assert.equal(out.effective_flags.safety_engine_v1, false);
       assert.equal(out.effective_flags.travel_weather_live_v1, false);
+      assert.equal(out.effective_flags.travel_llm_calibration_v1, false);
       assert.equal(out.effective_flags.chat_response_meta, true);
+    },
+  );
+});
+
+test('forced weather variant keeps travel_llm_calibration_v1 when globally enabled', () => {
+  return withEnv(
+    {
+      NODE_ENV: 'development',
+      AURORA_ROLLOUT_ENABLED: 'true',
+      AURORA_ROLLOUT_V2_CORE_PCT: '5',
+      AURORA_ROLLOUT_V2_SAFETY_PCT: '1',
+      AURORA_ROLLOUT_V2_WEATHER_PCT: '1',
+    },
+    () => {
+      const out = computeAuroraChatRolloutContext({
+        req: makeReq({ 'x-aurora-force-variant': 'v2_weather' }),
+        ctx: { request_id: 'r3' },
+        body: { session: { session_id: 'sess_3' } },
+        globalFlags: {
+          profile_v2: true,
+          qa_planner_v1: true,
+          safety_engine_v1: true,
+          travel_weather_live_v1: true,
+          travel_llm_calibration_v1: true,
+          loop_breaker_v2: true,
+          chat_response_meta: false,
+        },
+        policyVersion: 'aurora_chat_v2_p0',
+      });
+
+      assert.equal(out.variant, ROLLOUT_VARIANT.V2_WEATHER);
+      assert.equal(out.effective_flags.travel_weather_live_v1, true);
+      assert.equal(out.effective_flags.travel_llm_calibration_v1, true);
     },
   );
 });

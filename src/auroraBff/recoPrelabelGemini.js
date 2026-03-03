@@ -146,7 +146,7 @@ const prelabelRateBucket = createTokenBucket(
 async function callGeminiPrelabel({
   systemPrompt,
   userPrompt,
-  timeoutMs = 5000,
+  timeoutMs = 8000,
   model = process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-2.0-flash',
   logger,
 } = {}) {
@@ -164,7 +164,9 @@ async function callGeminiPrelabel({
   const release = await prelabelSemaphore.acquire();
   const startedAt = Date.now();
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const globalGate = getGeminiGlobalGate();
+    const effectiveKey = globalGate.getApiKey() || apiKey;
+    const ai = new GoogleGenAI({ apiKey: effectiveKey });
     const request = {
       model: normalizeModel(model),
       systemInstruction: {
@@ -186,7 +188,9 @@ async function callGeminiPrelabel({
     let lastErr = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
-        const resp = await withTimeout(ai.models.generateContent(request), timeoutMs);
+        const resp = await globalGate.withGate('reco_prelabel', () =>
+          withTimeout(ai.models.generateContent(request), timeoutMs),
+        );
         const text = await extractTextFromGeminiResponse(resp);
         return {
           ok: true,
