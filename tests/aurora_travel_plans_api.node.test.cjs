@@ -96,6 +96,17 @@ test('/v1/travel-plans: create -> list -> archive flow', async () => {
   }
 });
 
+test('/v1/travel-plans: missing X-Aurora-UID returns MISSING_AURORA_UID (not route 404)', async () => {
+  const { app, moduleId, memoryStoreId } = buildApp();
+  try {
+    const resp = await supertest(app).get('/v1/travel-plans').expect(400);
+    assert.equal(resp.body?.error, 'MISSING_AURORA_UID');
+  } finally {
+    delete require.cache[moduleId];
+    delete require.cache[memoryStoreId];
+  }
+});
+
 test('/v1/travel-plans/:trip_id: patch keeps created_at_ms and updates fields', async () => {
   const { app, moduleId, memoryStoreId } = buildApp();
   const uid = `travel_patch_${Date.now()}`;
@@ -133,6 +144,36 @@ test('/v1/travel-plans/:trip_id: patch keeps created_at_ms and updates fields', 
     assert.equal(updated.itinerary, 'Mostly indoor conference with short outdoor commute.');
     assert.equal(Number(updated.created_at_ms || 0), createdAtMs);
     assert.ok(Number(updated.updated_at_ms || 0) >= createdAtMs);
+  } finally {
+    delete require.cache[moduleId];
+    delete require.cache[memoryStoreId];
+  }
+});
+
+test('/v1/travel-plans/:trip_id: empty patch body returns BAD_REQUEST (route hit sentinel)', async () => {
+  const { app, moduleId, memoryStoreId } = buildApp();
+  const uid = `travel_empty_patch_${Date.now()}`;
+  const headers = buildHeaders(uid);
+  try {
+    const createResp = await supertest(app)
+      .post('/v1/travel-plans')
+      .set(headers)
+      .send({
+        destination: 'Seoul',
+        start_date: '2099-04-10',
+        end_date: '2099-04-12',
+      })
+      .expect(200);
+
+    const tripId = String(createResp.body?.plan?.trip_id || '');
+    assert.ok(tripId);
+
+    const patchResp = await supertest(app)
+      .patch(`/v1/travel-plans/${encodeURIComponent(tripId)}`)
+      .set(headers)
+      .send({})
+      .expect(400);
+    assert.equal(patchResp.body?.error, 'BAD_REQUEST');
   } finally {
     delete require.cache[moduleId];
     delete require.cache[memoryStoreId];

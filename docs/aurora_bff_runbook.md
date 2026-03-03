@@ -208,6 +208,40 @@ Legacy `/v1/chat` envelope fields are deprecated and no longer part of contract:
 - `reason`
 - `effective_window_days`
 
+## Travel-Plans Probe Semantics (Expected)
+
+Quick probes:
+
+```bash
+BASE_URL='https://pivota-agent-production.up.railway.app'
+UID='aurora_uid_probe'
+
+# Missing UID: auth/header validation should fail first.
+curl -i "$BASE_URL/v1/travel-plans"
+
+# Route exists + normal list path.
+curl -i "$BASE_URL/v1/travel-plans" -H "X-Aurora-UID: $UID"
+
+# Route exists + empty patch body validation.
+curl -i -X PATCH "$BASE_URL/v1/travel-plans/trip_fake_for_probe" \
+  -H "Content-Type: application/json" \
+  -H "X-Aurora-UID: $UID" \
+  -d '{}'
+
+# Route exists + semantic not-found for archive.
+curl -i -X POST "$BASE_URL/v1/travel-plans/trip_fake_for_probe/archive" \
+  -H "Content-Type: application/json" \
+  -H "X-Aurora-UID: $UID" \
+  -d '{}'
+```
+
+Expected results:
+
+- Missing `X-Aurora-UID` on `GET /v1/travel-plans` returns `400` with `error=MISSING_AURORA_UID` (not route missing).
+- Empty body on `PATCH /v1/travel-plans/:trip_id` returns `400` with `error=BAD_REQUEST` (handler reached).
+- Fake id on `POST /v1/travel-plans/:trip_id/archive` returns `404` with `error=PLAN_NOT_FOUND`.
+- `404` should only represent true not-found semantics (`PLAN_NOT_FOUND`) or absent routes, not missing UID.
+
 ## PDP hotset prewarm (Winona/IPSA jitter control)
 
 Use this block to reduce first-screen/backfill jitter on hot PDPs (for example Winona/IPSA).
