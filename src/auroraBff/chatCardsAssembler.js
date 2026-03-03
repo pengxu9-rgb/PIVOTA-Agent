@@ -1,13 +1,6 @@
 const { ChatCardsResponseSchema } = require('./chatCardsSchema');
 const { mapLegacyCardToSpecCards } = require('./chatCardFactory');
 
-const AURORA_CARD_FIRST_DEDUPE_V1 = (() => {
-  const raw = String(process.env.AURORA_CARD_FIRST_DEDUPE_V1 || 'true')
-    .trim()
-    .toLowerCase();
-  return raw !== 'false' && raw !== '0' && raw !== 'off';
-})();
-
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -156,7 +149,6 @@ function buildSafetyDisclaimer({ riskLevel, language }) {
 
 function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = '' } = {}) {
   const chips = envelope && Array.isArray(envelope.suggested_chips) ? envelope.suggested_chips : [];
-  const cards = asArray(envelope && envelope.cards);
   const source = asArray(chips)
     .map((chip) => {
       if (!isPlainObject(chip)) return null;
