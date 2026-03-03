@@ -7439,7 +7439,7 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
   await withEnv(
     {
       AURORA_QA_PLANNER_V1_ENABLED: 'true',
-      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
       AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
       AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -7447,97 +7447,161 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
     },
     async () => {
       const moduleId = require.resolve('../src/auroraBff/routes');
+      const weatherAdapterModuleId = require.resolve('../src/auroraBff/weatherAdapter');
+      const travelAlertsProviderModuleId = require.resolve('../src/auroraBff/travelAlertsProvider');
       delete require.cache[moduleId];
+      delete require.cache[weatherAdapterModuleId];
+      delete require.cache[travelAlertsProviderModuleId];
+      const weatherAdapter = require('../src/auroraBff/weatherAdapter');
+      const travelAlertsProvider = require('../src/auroraBff/travelAlertsProvider');
+      const originalGetTravelWeather = weatherAdapter.getTravelWeather;
+      const originalGetTravelAlerts = travelAlertsProvider.getTravelAlerts;
+      weatherAdapter.getTravelWeather = async () => ({
+        ok: true,
+        source: 'weather_api',
+        reason: null,
+        destination: 'Paris',
+        date_range: { start: '2026-03-10', end: '2026-03-15' },
+        location: {
+          name: 'Paris',
+          latitude: 48.8566,
+          longitude: 2.3522,
+          timezone: 'Europe/Paris',
+          country: 'France',
+          country_code: 'FR',
+          admin1: 'Ile-de-France',
+        },
+        summary: {
+          temperature_max_c: 13,
+          temperature_min_c: 7,
+          temp_swing_c: 6,
+          uv_index_max: 4,
+          humidity_mean: 68,
+          precipitation_mm: 2.2,
+          wind_kph_max: 24,
+          days_count: 6,
+        },
+        forecast_window: [
+          { date: '2026-03-10', temp_low_c: 7, temp_high_c: 12, humidity_mean: 70, uv_max: 3, precip_mm: 2.1, wind_kph: 22, condition_text: 'Cloudy' },
+          { date: '2026-03-11', temp_low_c: 8, temp_high_c: 13, humidity_mean: 67, uv_max: 4, precip_mm: 1.4, wind_kph: 20, condition_text: 'Showers' },
+          { date: '2026-03-12', temp_low_c: 7, temp_high_c: 12, humidity_mean: 69, uv_max: 4, precip_mm: 2.5, wind_kph: 21, condition_text: 'Rain' },
+          { date: '2026-03-13', temp_low_c: 6, temp_high_c: 11, humidity_mean: 66, uv_max: 3, precip_mm: 1.1, wind_kph: 19, condition_text: 'Cloudy' },
+          { date: '2026-03-14', temp_low_c: 7, temp_high_c: 13, humidity_mean: 68, uv_max: 4, precip_mm: 1.6, wind_kph: 24, condition_text: 'Windy' },
+          { date: '2026-03-15', temp_low_c: 8, temp_high_c: 13, humidity_mean: 70, uv_max: 4, precip_mm: 2.0, wind_kph: 23, condition_text: 'Showers' },
+        ],
+      });
+      travelAlertsProvider.getTravelAlerts = async () => ({
+        source: 'none',
+        reason: 'unsupported_country',
+        alerts: [],
+        provider: 'none',
+        domain: null,
+        data_freshness_utc: '2026-03-01T00:00:00.000Z',
+      });
+
       const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
 
-      const app = express();
-      app.use(express.json({ limit: '1mb' }));
-      mountAuroraBffRoutes(app, { logger: null });
+        const uid = `test_uid_env_readiness_${Date.now()}`;
+        const headers = {
+          'X-Aurora-UID': uid,
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        };
 
-      const uid = `test_uid_env_readiness_${Date.now()}`;
-      const headers = {
-        'X-Aurora-UID': uid,
-        'X-Trace-ID': 'test_trace',
-        'X-Brief-ID': 'test_brief',
-        'X-Lang': 'EN',
-      };
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headers)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['pores'],
+            region: 'San Francisco, CA',
+            travel_plans: [
+              {
+                destination: 'Paris',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            ],
+          })
+          .expect(200);
 
-      await supertest(app)
-        .post('/v1/profile/update')
-        .set(headers)
-        .send({
-          skinType: 'oily',
-          sensitivity: 'low',
-          barrierStatus: 'healthy',
-          goals: ['pores'],
-          region: 'San Francisco, CA',
-          travel_plans: [
-            {
-              destination: 'Paris',
-              start_date: '2026-03-10',
-              end_date: '2026-03-15',
-            },
-          ],
-        })
-        .expect(200);
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'How is weather there? Will it be humid?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
 
-      const resp = await supertest(app)
-        .post('/v1/chat')
-        .set(headers)
-        .send({
-          message: 'How is weather there? Will it be humid?',
-          session: { state: 'idle' },
-          language: 'EN',
-        })
-        .expect(200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const envStress = cards.find((c) => c && c.type === 'env_stress') || null;
+        assert.ok(envStress);
+        assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
+        assert.ok(envStress?.payload?.travel_readiness);
+        assert.equal(Array.isArray(envStress?.payload?.travel_readiness?.forecast_window), true);
+        assert.equal(Array.isArray(envStress?.payload?.travel_readiness?.alerts), true);
 
-      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-      const envStress = cards.find((c) => c && c.type === 'env_stress') || null;
-      assert.ok(envStress);
-      assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
-      assert.equal(envStress?.payload?.travel_readiness, undefined);
-      assert.match(String(resp.body?.assistant_message?.content || ''), /destination|travel dates/i);
+        const assistantText = String(resp.body?.assistant_message?.content || '');
+        assert.match(assistantText, /Daily forecast:/i);
+        assert.match(assistantText, /Flight day plan:/i);
+        assert.doesNotMatch(assistantText, /Environmental Pressure Index \(EPI\)/i);
 
-      const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
-      assert.equal(types.includes('diagnosis_gate'), false);
-      assert.equal(types.includes('gate_notice'), false);
+        const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+        assert.equal(types.includes('diagnosis_gate'), false);
+        assert.equal(types.includes('gate_notice'), false);
 
-      const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
-      const chipIds = chips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : ''));
-      assert.ok(chipIds.includes('tpl.action.env.am_pm'));
-      assert.ok(chipIds.includes('chip.start.reco_products'));
+        const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+        const chipIds = chips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : ''));
+        assert.ok(chipIds.includes('tpl.action.env.am_pm'));
+        assert.ok(chipIds.includes('chip.start.reco_products'));
 
-      const topMeta = resp.body?.meta || {};
-      assert.equal(topMeta.env_source, 'local_template');
-      assert.equal(topMeta.degraded, true);
-      assert.equal(topMeta.travel_kb_hit, undefined);
-      assert.equal(topMeta.travel_kb_write_queued, undefined);
+        const topMeta = resp.body?.meta || {};
+        assert.equal(topMeta.env_source, 'weather_api');
+        assert.equal(topMeta.degraded, false);
+        assert.equal(topMeta.travel_kb_hit, undefined);
+        assert.equal(topMeta.travel_kb_write_queued, undefined);
 
-      const firstAssistant = String(resp.body?.assistant_message?.content || '');
-      const followupSessionState =
-        resp.body?.session_patch?.state && typeof resp.body.session_patch.state === 'object' && !Array.isArray(resp.body.session_patch.state)
-          ? { ...resp.body.session_patch.state }
-          : {};
-      const respFollow = await supertest(app)
-        .post('/v1/chat')
-        .set(headers)
-        .send({
-          message: 'What about temperature then?',
-          session: { state: followupSessionState },
-          language: 'EN',
-        })
-        .expect(200);
+        const firstAssistant = String(resp.body?.assistant_message?.content || '');
+        const followupSessionState =
+          resp.body?.session_patch?.state && typeof resp.body.session_patch.state === 'object' && !Array.isArray(resp.body.session_patch.state)
+            ? { ...resp.body.session_patch.state }
+            : {};
+        const respFollow = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'What about temperature then?',
+            session: { state: followupSessionState },
+            language: 'EN',
+          })
+          .expect(200);
 
-      const secondAssistant = String(respFollow.body?.assistant_message?.content || '');
-      assert.equal(secondAssistant.length > 0, true);
-      const followMeta = respFollow.body?.meta || {};
-      assert.equal(followMeta.env_source, 'local_template');
-      assert.equal(followMeta.degraded, true);
-      assert.equal(followMeta.loop_count >= 0, true);
-      const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
-      assert.equal(followCards.some((c) => c && c.type === 'env_stress'), true);
-
-      delete require.cache[moduleId];
+        const secondAssistant = String(respFollow.body?.assistant_message?.content || '');
+        assert.equal(secondAssistant.length > 0, true);
+        assert.notEqual(secondAssistant, firstAssistant);
+        const followMeta = respFollow.body?.meta || {};
+        assert.equal(followMeta.env_source, 'weather_api');
+        assert.equal(followMeta.degraded, false);
+        assert.equal(followMeta.loop_count >= 0, true);
+        const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
+        const followEnvStress = followCards.find((c) => c && c.type === 'env_stress') || null;
+        assert.ok(followEnvStress?.payload?.travel_readiness);
+      } finally {
+        weatherAdapter.getTravelWeather = originalGetTravelWeather;
+        travelAlertsProvider.getTravelAlerts = originalGetTravelAlerts;
+        delete require.cache[moduleId];
+        delete require.cache[weatherAdapterModuleId];
+        delete require.cache[travelAlertsProviderModuleId];
+      }
     },
   );
 });
