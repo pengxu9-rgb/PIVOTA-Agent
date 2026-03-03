@@ -51,6 +51,13 @@ function normalizeMatchStatus(value) {
   return 'llm_only'
 }
 
+function normalizeProductSource(value) {
+  const token = String(value || '').trim().toLowerCase()
+  if (token === 'catalog' || token === 'rule_fallback' || token === 'llm_generated') return token
+  if (token === 'llm_only') return 'llm_generated'
+  return 'llm_generated'
+}
+
 function normalizeBrandCandidates(value) {
   if (!Array.isArray(value)) return []
   const out = []
@@ -171,6 +178,7 @@ function normalizeShoppingPreview(value) {
       brand: normalizeText(row.brand, 80) || null,
       category: normalizeText(row.category, 80) || null,
       reasons: normalizeStringArray(row.reasons, 4, 120),
+      product_source: normalizeProductSource(row.product_source),
       price: normalizeNumber(row.price),
       currency: normalizeText(row.currency, 12) || null,
     })
@@ -399,7 +407,7 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     '    "personal_focus": [{"focus":"", "why":"", "what_to_do":""}],\n' +
     '    "jetlag_sleep": {...optional},\n' +
     '    "shopping_preview": {\n' +
-    '      "products": [{"name":"", "brand":"", "category":"", "reasons":[]}],\n' +
+    '      "products": [{"name":"", "brand":"", "category":"", "reasons":[], "product_source":"llm_generated"}],\n' +
     '      "brand_candidates": [{"brand":"", "match_status":"kb_verified|catalog_verified|llm_only", "reason":""}],\n' +
     '      "buying_channels": ["beauty_retail|pharmacy|department_store|duty_free|ecommerce"],\n' +
     '      "city_hint": "",\n' +

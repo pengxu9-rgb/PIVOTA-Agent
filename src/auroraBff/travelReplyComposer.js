@@ -870,6 +870,43 @@ function buildReplySignature({ foci, travelReadiness, homeRegion }) {
   return signatureParts.join('|').toLowerCase();
 }
 
+function buildTravelTextBrief({
+  language,
+  directAnswer,
+  contextLine,
+  comparisonLines,
+  actionLines,
+  climateFallbackLine,
+  envSourceLine,
+  alertsSection,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const summary = [];
+  summary.push(normalizeText(directAnswer, 260));
+  summary.push(normalizeText(contextLine, 240));
+
+  const keyDeltaLine = uniqueStrings(comparisonLines, 2).join(' · ');
+  if (keyDeltaLine) {
+    summary.push(t(lang, `关键差异：${keyDeltaLine}`, `Key deltas: ${keyDeltaLine}`));
+  }
+
+  const nextAction = uniqueStrings(actionLines, 1)[0];
+  if (nextAction) {
+    summary.push(t(lang, `优先动作：${nextAction}`, `Priority action: ${nextAction}`));
+  }
+
+  if (alertsSection && Array.isArray(alertsSection.lines) && alertsSection.lines.length) {
+    const alert = uniqueStrings(alertsSection.lines, 1)[0];
+    if (alert) {
+      summary.push(t(lang, `预警提示：${alert}`, `Alert: ${alert}`));
+    }
+  }
+
+  if (climateFallbackLine) summary.push(normalizeText(climateFallbackLine, 220));
+  if (envSourceLine) summary.push(normalizeText(envSourceLine, 140));
+  return uniqueStrings(summary, 7).join('\n\n');
+}
+
 function composeTravelReply({
   message,
   language = 'EN',
@@ -887,6 +924,18 @@ function composeTravelReply({
   if (!readiness) {
     return {
       text: t(lang, '我先按当前可得信息给你旅行护肤建议。', 'I will start with a practical travel skincare plan using currently available data.'),
+      text_brief: t(lang, '我先按当前可得信息给你旅行护肤建议。', 'I will start with a practical travel skincare plan using currently available data.'),
+      structured_sections: {
+        seasonal_context: [],
+        key_deltas: [],
+        routine_adjustments: [],
+        flight_day_plan: [],
+        active_handling: [],
+        phased_plan: [],
+        packing_list: [],
+        product_guidance: [],
+        troubleshooting: [],
+      },
       focus: FOCUS_ENUM.GENERAL,
       foci: [FOCUS_ENUM.GENERAL],
       reply_mode: 'fallback',
@@ -1093,9 +1142,32 @@ function composeTravelReply({
     .join('\n\n');
 
   const mode = comparisonLines.length || actionLines.length || productLines.length ? 'focused' : 'fallback';
+  const structuredSections = {
+    seasonal_context: uniqueStrings(seasonalContextLines, 6),
+    key_deltas: uniqueStrings([...comparisonLines, ...(baselineGapLine ? [baselineGapLine] : [])], 6),
+    routine_adjustments: uniqueStrings(actionLines, 6),
+    flight_day_plan: uniqueStrings(flightDayPlanLines, 6),
+    active_handling: uniqueStrings(activeHandlingLines, 6),
+    phased_plan: uniqueStrings(phasedPlanLines, 6),
+    packing_list: uniqueStrings(packingListLines, 8),
+    product_guidance: uniqueStrings(productLines, 6),
+    troubleshooting: uniqueStrings(troubleshootingLines, 6),
+  };
+  const textBrief = buildTravelTextBrief({
+    language: lang,
+    directAnswer,
+    contextLine,
+    comparisonLines: [...structuredSections.key_deltas],
+    actionLines,
+    climateFallbackLine,
+    envSourceLine,
+    alertsSection,
+  });
 
   return {
     text,
+    text_brief: textBrief || text,
+    structured_sections: structuredSections,
     focus: focusToken || FOCUS_ENUM.GENERAL,
     foci,
     reply_mode: mode,

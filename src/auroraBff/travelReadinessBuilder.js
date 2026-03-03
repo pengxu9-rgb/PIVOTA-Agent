@@ -381,6 +381,7 @@ function normalizePreviewProducts(recommendationCandidates, language) {
       brand: normalizeText(sku.brand, 80) || null,
       category: normalizeText(row.step, 80) || null,
       reasons,
+      product_source: 'catalog',
       price: null,
       currency: null,
     });
@@ -417,6 +418,7 @@ function normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, language) {
         brand: null,
         category,
         reasons,
+        product_source: 'rule_fallback',
         price: null,
         currency: null,
       });

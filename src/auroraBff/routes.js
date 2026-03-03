@@ -278,7 +278,11 @@ const {
   resolveGateDecision,
 } = require('./gatePolicyRegistry');
 const { getTravelWeather } = require('./weatherAdapter');
+const { getTravelAlerts } = require('./travelAlertsProvider');
 const { buildEpiPayload } = require('./epiCalculator');
+const { buildTravelReadiness } = require('./travelReadinessBuilder');
+const { composeTravelReply } = require('./travelReplyComposer');
+const { calibrateTravelReadinessWithLlm } = require('./travelLlmCalibrator');
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
@@ -418,6 +422,16 @@ const AURORA_SAFETY_ENGINE_V1_ENABLED = (() => {
 })();
 const AURORA_TRAVEL_WEATHER_LIVE_ENABLED = (() => {
   const raw = String(process.env.AURORA_TRAVEL_WEATHER_LIVE_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED = (() => {
+  const raw = String(
+    process.env.AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED ||
+      process.env.AURORA_TRAVEL_LLM_CALIBRATION_V1 ||
+      'false',
+  )
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -1038,6 +1052,7 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
   safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
   travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
+  travel_llm_calibration_v1: AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED,
   loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
   chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
   router_dst_patch_v1: AURORA_ROUTER_DST_PATCH_V1_ENABLED,
@@ -5248,6 +5263,13 @@ function stripHtmlToText(value) {
     .trim();
 }
 
+function normalizeText(value, maxLen = 220) {
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  if (!text) return '';
+  return text.slice(0, maxLen);
+}
+
 function uniqCaseInsensitiveStrings(items, max = 80) {
   const out = [];
   const seen = new Set();
@@ -5261,6 +5283,10 @@ function uniqCaseInsensitiveStrings(items, max = 80) {
     if (out.length >= max) break;
   }
   return out;
+}
+
+function uniqueStrings(items, max = 80) {
+  return uniqCaseInsensitiveStrings(items, max);
 }
 
 function splitInciList(raw) {
@@ -18482,6 +18508,194 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   sessionPatch.state = state;
 }
 
+function sanitizeTravelReadinessForSession(raw = {}) {
+  if (!isPlainObject(raw)) return null;
+  const source = raw;
+  const out = {};
+
+  if (isPlainObject(source.destination_context)) {
+    const ctx = source.destination_context;
+    const destination_context = {
+      ...(normalizeText(ctx.destination, 120) ? { destination: normalizeText(ctx.destination, 120) } : {}),
+      ...(normalizeText(ctx.start_date, 24) ? { start_date: normalizeText(ctx.start_date, 24) } : {}),
+      ...(normalizeText(ctx.end_date, 24) ? { end_date: normalizeText(ctx.end_date, 24) } : {}),
+      ...(normalizeText(ctx.env_source, 48) ? { env_source: normalizeText(ctx.env_source, 48) } : {}),
+      ...(coerceNumber(ctx.epi) != null ? { epi: coerceNumber(ctx.epi) } : {}),
+    };
+    if (Object.keys(destination_context).length) out.destination_context = destination_context;
+  }
+
+  if (isPlainObject(source.delta_vs_home)) {
+    const delta = source.delta_vs_home;
+    const summary_tags = asStringArray(delta.summary_tags, 8);
+    out.delta_vs_home = {
+      ...(isPlainObject(delta.temperature) ? { temperature: delta.temperature } : {}),
+      ...(isPlainObject(delta.humidity) ? { humidity: delta.humidity } : {}),
+      ...(isPlainObject(delta.uv) ? { uv: delta.uv } : {}),
+      ...(isPlainObject(delta.wind) ? { wind: delta.wind } : {}),
+      ...(isPlainObject(delta.precip) ? { precip: delta.precip } : {}),
+      ...(summary_tags.length ? { summary_tags } : {}),
+      ...(normalizeText(delta.baseline_status, 48) ? { baseline_status: normalizeText(delta.baseline_status, 48) } : {}),
+    };
+  }
+
+  const sectionKeys = [
+    'seasonal_context',
+    'key_deltas',
+    'routine_adjustments',
+    'flight_day_plan',
+    'active_handling',
+    'phased_plan',
+    'packing_list',
+    'product_guidance',
+    'troubleshooting',
+  ];
+  if (isPlainObject(source.structured_sections)) {
+    const sections = {};
+    for (const key of sectionKeys) {
+      const rows = asStringArray(source.structured_sections[key], key === 'packing_list' ? 8 : 6);
+      if (rows.length) sections[key] = rows;
+    }
+    if (Object.keys(sections).length) out.structured_sections = sections;
+  }
+
+  if (Array.isArray(source.reco_bundle)) {
+    const reco_bundle = source.reco_bundle
+      .filter((row) => isPlainObject(row))
+      .map((row) => ({
+        trigger: normalizeText(row.trigger, 120) || null,
+        action: normalizeText(row.action, 240) || null,
+        ingredient_logic: normalizeText(row.ingredient_logic, 220) || null,
+        product_types: asStringArray(row.product_types, 4),
+        reapply_rule: normalizeText(row.reapply_rule, 220) || null,
+      }))
+      .filter((row) => row.trigger || row.action || row.product_types.length > 0)
+      .slice(0, 4);
+    if (reco_bundle.length) out.reco_bundle = reco_bundle;
+  }
+
+  if (isPlainObject(source.shopping_preview)) {
+    const preview = source.shopping_preview;
+    const products = (Array.isArray(preview.products) ? preview.products : [])
+      .filter((row) => isPlainObject(row))
+      .map((row) => ({
+        rank: coerceNumber(row.rank),
+        product_id: normalizeText(row.product_id, 120) || null,
+        name: normalizeText(row.name, 140),
+        brand: normalizeText(row.brand, 80) || null,
+        category: normalizeText(row.category, 80) || null,
+        reasons: asStringArray(row.reasons, 4),
+        product_source: normalizeText(row.product_source, 32) || null,
+        match_status: normalizeText(row.match_status, 32) || null,
+      }))
+      .filter((row) => row.name)
+      .slice(0, 4);
+    const shopping_preview = {
+      ...(products.length ? { products } : {}),
+      ...(asStringArray(preview.buying_channels, 6).length
+        ? { buying_channels: asStringArray(preview.buying_channels, 6) }
+        : {}),
+      ...(normalizeText(preview.city_hint, 120) ? { city_hint: normalizeText(preview.city_hint, 120) } : {}),
+      ...(normalizeText(preview.note, 220) ? { note: normalizeText(preview.note, 220) } : {}),
+    };
+    if (Object.keys(shopping_preview).length) out.shopping_preview = shopping_preview;
+  }
+
+  return Object.keys(out).length ? out : null;
+}
+
+function extractLastTravelReadinessFromSession(session) {
+  if (!isPlainObject(session)) return null;
+  const state = isPlainObject(session.state) ? session.state : null;
+  if (!state) return null;
+  return sanitizeTravelReadinessForSession(state.last_travel_readiness || state.latest_travel_readiness);
+}
+
+function appendLastTravelReadinessToSessionPatch(sessionPatch, travelReadiness) {
+  if (!isPlainObject(sessionPatch)) return;
+  const normalized = sanitizeTravelReadinessForSession(travelReadiness);
+  if (!normalized) return;
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  state.last_travel_readiness = normalized;
+  state.latest_travel_readiness = normalized;
+  sessionPatch.state = state;
+}
+
+function buildTravelFallbackRecoPayload({ travelReadiness, language = 'EN' } = {}) {
+  const readiness = sanitizeTravelReadinessForSession(travelReadiness);
+  if (!readiness) return null;
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const recommendations = [];
+  const seen = new Set();
+
+  const push = ({ name, brand = '', reasons = [], productId = null, productSource = 'rule_fallback' } = {}) => {
+    const title = [brand, name].filter(Boolean).join(' ').trim() || String(name || '').trim();
+    if (!title) return;
+    const key = title.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    recommendations.push({
+      title,
+      reasons: asStringArray(reasons, 4),
+      product_source: productSource,
+      source: 'travel_context_fallback',
+      sku: {
+        product_id: normalizeText(productId, 120) || null,
+        name: normalizeText(name, 140) || null,
+        brand: normalizeText(brand, 80) || null,
+      },
+    });
+  };
+
+  const previewProducts =
+    readiness.shopping_preview && Array.isArray(readiness.shopping_preview.products)
+      ? readiness.shopping_preview.products
+      : [];
+  for (const product of previewProducts) {
+    if (!isPlainObject(product)) continue;
+    push({
+      name: product.name,
+      brand: product.brand,
+      reasons: product.reasons,
+      productId: product.product_id,
+      productSource: normalizeText(product.product_source, 32) || 'rule_fallback',
+    });
+    if (recommendations.length >= 3) break;
+  }
+
+  if (recommendations.length < 3) {
+    const recoBundle = Array.isArray(readiness.reco_bundle) ? readiness.reco_bundle : [];
+    for (const row of recoBundle) {
+      if (!isPlainObject(row)) continue;
+      const reasons = [row.action, row.ingredient_logic].filter(Boolean);
+      const productTypes = asStringArray(row.product_types, 4);
+      for (const productType of productTypes) {
+        push({
+          name: productType,
+          reasons,
+          productSource: 'rule_fallback',
+        });
+        if (recommendations.length >= 3) break;
+      }
+      if (recommendations.length >= 3) break;
+    }
+  }
+
+  if (!recommendations.length) return null;
+  return {
+    source: 'travel_context_fallback',
+    recommendations_count: recommendations.length,
+    recommendation_meta: {
+      source_mode: 'travel_context_fallback',
+      summary:
+        lang === 'CN'
+          ? '基于最近一次旅行环境上下文生成。'
+          : 'Generated from the latest travel environment context.',
+    },
+    recommendations,
+  };
+}
+
 function buildIngredientPlanCard(plan, requestId) {
   return {
     card_id: `ing_plan_${requestId}`,
@@ -26512,15 +26726,63 @@ function buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language
   ess = clamp0to100(ess);
 
   const tier = ess <= 30 ? 'Low' : ess <= 60 ? 'Medium' : 'High';
+  const tierDescription = (() => {
+    if (lang === 'CN') {
+      if (tier === 'High') return '高压力：更容易干燥/刺痛，优先修护屏障与防晒。';
+      if (tier === 'Medium') return '中等压力：可能轻度干燥或不稳定，建议保湿修护并稳定防晒。';
+      return '低压力：维持基础保湿与日常防晒即可。';
+    }
+    if (tier === 'High') return 'High stress: irritation and dryness risk is elevated; prioritize barrier support and SPF.';
+    if (tier === 'Medium') return 'Medium stress: expect mild dryness/instability; keep barrier support and daily SPF.';
+    return 'Low stress: maintain baseline hydration and daily SPF.';
+  })();
 
   const barrierScore = barrier === 'impaired' || barrier === 'damaged' ? 80 : barrier === 'healthy' || barrier === 'stable' ? 20 : 40;
   const weatherScore = scenario === 'snow' || scenario === 'cold' || scenario === 'dry' || scenario === 'wind' ? 70 : scenario === 'rain' || scenario === 'humid' ? 45 : scenario === 'travel' ? 55 : 35;
   const uvScore = scenario === 'uv' || scenario === 'snow' ? 65 : 30;
+  const barrierDrivers = uniqueStrings(
+    [
+      barrier ? `Barrier: ${barrier}` : '',
+      sensitivity ? `Sensitivity: ${sensitivity}` : '',
+    ],
+    3,
+  );
+  const weatherDrivers = uniqueStrings(
+    [
+      scenario && scenario !== 'unknown' ? `Scenario: ${scenario}` : '',
+      /wind|snow|cold|dry/.test(scenario)
+        ? lang === 'CN'
+          ? '风冷/干燥上升'
+          : 'Wind/cold/dry load increased'
+        : '',
+      /humid|rain/.test(scenario)
+        ? lang === 'CN'
+          ? '湿热/降雨变化'
+          : 'Humidity/rain shift'
+        : '',
+    ],
+    3,
+  );
+  const uvDrivers = uniqueStrings(
+    [
+      scenario === 'uv' || scenario === 'snow'
+        ? lang === 'CN'
+          ? 'UV 暴露偏高'
+          : 'UV exposure is elevated'
+        : '',
+      /sun|uv|日晒|紫外线/i.test(String(message || ''))
+        ? lang === 'CN'
+          ? '用户提到日晒/UV'
+          : 'User mentioned sun/UV'
+        : '',
+    ],
+    3,
+  );
 
   const radar = [
-    { axis: 'Barrier', value: clamp0to100(barrierScore) },
-    { axis: 'Weather', value: clamp0to100(weatherScore) },
-    { axis: 'UV', value: clamp0to100(uvScore) },
+    { axis: 'Barrier', value: clamp0to100(barrierScore), drivers: barrierDrivers },
+    { axis: 'Weather', value: clamp0to100(weatherScore), drivers: weatherDrivers },
+    { axis: 'UV', value: clamp0to100(uvScore), drivers: uvDrivers },
   ];
 
   const missing = [];
@@ -26538,6 +26800,7 @@ function buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language
     schema_version: 'aurora.ui.env_stress.v1',
     ess,
     tier,
+    tier_description: tierDescription,
     radar,
     notes: notes.slice(0, 4),
   };
@@ -42900,6 +43163,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
+        travel_llm_calibration_v1: Boolean(effectiveChatFlags.travel_llm_calibration_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       },
@@ -43001,6 +43265,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
+        travel_llm_calibration_v1: Boolean(effectiveChatFlags.travel_llm_calibration_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       };
@@ -46561,12 +46826,45 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (!destination) missingTravelFields.push('travel_plan.destination');
         if (!startDate || !endDate) missingTravelFields.push('travel_plan.date_range');
 
+        let travelReadiness = null;
         if (effectiveChatFlags.travel_weather_live_v1) {
           const weather = await getTravelWeather({
             destination,
             startDate,
             endDate,
           });
+          let travelAlerts = [];
+          try {
+            const travelAlertsResult = await getTravelAlerts({
+              destination:
+                (weather &&
+                  weather.location &&
+                  typeof weather.location.name === 'string' &&
+                  weather.location.name.trim()) ||
+                destination,
+              destinationCountry:
+                (weather &&
+                  weather.location &&
+                  ((typeof weather.location.country_code === 'string' && weather.location.country_code.trim()) ||
+                    (typeof weather.location.country === 'string' && weather.location.country.trim()))) ||
+                '',
+              language: ctx.lang,
+              timeoutMs: 1800,
+            });
+            if (
+              travelAlertsResult &&
+              travelAlertsResult.source === 'official_api' &&
+              Array.isArray(travelAlertsResult.alerts)
+            ) {
+              travelAlerts = travelAlertsResult.alerts;
+            }
+          } catch (travelAlertErr) {
+            logger?.warn(
+              { err: travelAlertErr && (travelAlertErr.code || travelAlertErr.message), request_id: ctx.request_id },
+              'aurora bff: travel alerts fetch failed, using no alerts',
+            );
+          }
+
           const epiPayload = buildEpiPayload({
             weather,
             profile,
@@ -46576,7 +46874,119 @@ function mountAuroraBffRoutes(app, { logger }) {
           policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
           policyMeta.degraded = policyMeta.env_source !== 'weather_api';
 
+          const homeWeatherForReadiness =
+            profile && typeof profile.home_weather === 'object' && !Array.isArray(profile.home_weather)
+              ? profile.home_weather
+              : null;
+          travelReadiness = buildTravelReadiness({
+            language: ctx.lang,
+            profile,
+            recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
+            destination,
+            startDate,
+            endDate,
+            destinationWeather: weather,
+            homeWeather: homeWeatherForReadiness,
+            travelAlerts,
+            epiPayload,
+            recommendationCandidates: [],
+          });
+
+          if (effectiveChatFlags.travel_llm_calibration_v1) {
+            try {
+              const calibrationResult = await calibrateTravelReadinessWithLlm({
+                openaiClient: getOpenAIClient(),
+                language: ctx.lang,
+                travelLlmInput: {
+                  destination,
+                  start_date: startDate,
+                  end_date: endDate,
+                  weather_summary: weather && weather.summary,
+                  profile_summary: {
+                    skinType: profile && profile.skinType,
+                    sensitivity: profile && profile.sensitivity,
+                    barrierStatus: profile && profile.barrierStatus,
+                    goals: profile && profile.goals,
+                  },
+                },
+                baseTravelReadiness: travelReadiness,
+                timeoutMs: 2500,
+                logger,
+              });
+              if (calibrationResult && calibrationResult.used && calibrationResult.travel_readiness) {
+                travelReadiness = calibrationResult.travel_readiness;
+              }
+            } catch (calibErr) {
+              logger?.warn(
+                { err: calibErr && (calibErr.code || calibErr.message), request_id: ctx.request_id },
+                'aurora bff: travel llm calibration failed, using base readiness',
+              );
+            }
+          }
+
+          const travelReply = composeTravelReply({
+            message,
+            language: ctx.lang,
+            travelReadiness,
+            destination,
+            homeRegion: (profile && profile.region) || '',
+            envSource: epiPayload.env_source,
+          });
+
+          if (isPlainObject(travelReadiness) && isPlainObject(travelReply.structured_sections)) {
+            travelReadiness = {
+              ...travelReadiness,
+              structured_sections: travelReply.structured_sections,
+            };
+          }
+
           const localEss = Number(envStressUi && envStressUi.ess);
+          const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
+            ? travelReadiness.delta_vs_home
+            : {};
+          const weatherSummary = isPlainObject(weather && weather.summary) ? weather.summary : {};
+          const weatherDrivers = uniqueStrings(
+            [
+              Number.isFinite(Number(weatherSummary.temperature_max_c)) ? `Temp: ${Math.round(Number(weatherSummary.temperature_max_c) * 10) / 10}°C` : '',
+              Number.isFinite(Number(weatherSummary.humidity_mean)) ? `Humidity: ${Math.round(Number(weatherSummary.humidity_mean) * 10) / 10}%` : '',
+              Number.isFinite(Number(weatherSummary.wind_kph_max)) ? `Wind: ${Math.round(Number(weatherSummary.wind_kph_max) * 10) / 10} kph` : '',
+            ],
+            3,
+          );
+          const uvDrivers = uniqueStrings(
+            [
+              Number.isFinite(Number(weatherSummary.uv_index_max))
+                ? `UV index: ${Math.round(Number(weatherSummary.uv_index_max) * 10) / 10}`
+                : '',
+              Array.isArray(delta.summary_tags) && delta.summary_tags.includes('higher_uv')
+                ? 'Higher UV vs home'
+                : '',
+            ],
+            2,
+          );
+          const barrierDrivers = uniqueStrings(
+            [
+              Array.isArray(delta.summary_tags) && delta.summary_tags.includes('drier')
+                ? 'Drier than home'
+                : '',
+              Array.isArray(delta.summary_tags) && delta.summary_tags.includes('colder')
+                ? 'Colder than home'
+                : '',
+              normalizeText(profile && profile.barrierStatus, 40)
+                ? `Barrier: ${normalizeText(profile && profile.barrierStatus, 40)}`
+                : '',
+            ],
+            3,
+          );
+          const radarWithDrivers = (Array.isArray(envStressUi && envStressUi.radar) ? envStressUi.radar : []).map((row) => {
+            if (!isPlainObject(row)) return row;
+            const axis = String(row.axis || '').trim().toLowerCase();
+            if (axis === 'weather') return { ...row, drivers: weatherDrivers };
+            if (axis === 'uv') return { ...row, drivers: uvDrivers };
+            if (axis === 'barrier') return { ...row, drivers: barrierDrivers };
+            return row;
+          });
+
           envStressUi = {
             ...(envStressUi || {}),
             ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
@@ -46585,36 +46995,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             reco_weights: epiPayload.reco_weights,
             env_source: epiPayload.env_source,
             travel_context: weather.date_range || null,
+            travel_readiness: travelReadiness,
+            tier_description:
+              normalizeText(envStressUi && envStressUi.tier_description, 220) ||
+              (ctx.lang === 'CN'
+                ? '环境压力越高，越需要加强屏障修护与防晒。'
+                : 'Higher environment stress means more barrier support and sun protection are needed.'),
+            radar: radarWithDrivers,
           };
-
-          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-          const destinationText =
-            weather && weather.location && weather.location.name
-              ? String(weather.location.name)
-              : String(destination || '');
-          const dateHint =
-            weather && weather.date_range && weather.date_range.start
-              ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
-              : '';
-          const epiLinesCn = [
-            `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
-            destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
-            '建议（AM）：',
-            ...epiPayload.strategy.am.map((line) => `- ${line}`),
-            '建议（PM）：',
-            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-          ].filter(Boolean);
-          const epiLinesEn = [
-            `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
-            destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
-            'AM strategy:',
-            ...epiPayload.strategy.am.map((line) => `- ${line}`),
-            'PM strategy:',
-            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-          ].filter(Boolean);
-          advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
+          advice = normalizeText(travelReply && travelReply.text_brief, 1400) || travelReply.text || advice;
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
@@ -46629,10 +47018,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? plannerDecision.required_fields
             : [];
         const missingUnion = new Set([...missingTravelFields, ...plannerMissing]);
-        const forceTravelContextAsk = !effectiveChatFlags.travel_weather_live_v1;
-        const asksDestination = forceTravelContextAsk || missingUnion.has('travel_plan.destination');
+        const asksDestination = missingUnion.has('travel_plan.destination');
         const asksDates =
-          forceTravelContextAsk ||
           missingUnion.has('travel_plan.date_range') ||
           missingUnion.has('travel_plan.start_date') ||
           missingUnion.has('travel_plan.end_date');
@@ -46696,14 +47083,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         ];
 
+        const sessionPatch =
+          nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
+        appendLastTravelReadinessToSessionPatch(sessionPatch, travelReadiness);
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
           cards: envStressUi
             ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
             : [],
-          session_patch:
-            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          session_patch: sessionPatch,
           events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
         });
         return sendChatEnvelope(envelope);
@@ -47962,9 +48351,45 @@ function mountAuroraBffRoutes(app, { logger }) {
             if (matcherHandle && typeof matcherHandle.unref === 'function') matcherHandle.unref();
           }
         }
-        const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
+        let hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
           ? norm.payload.recommendations.length > 0
           : false;
+        let usedTravelFallback = false;
+        let travelFallbackReadiness = null;
+        if (!hasRecs) {
+          const lastTravelReadiness = extractLastTravelReadinessFromSession(parsed.data.session);
+          const travelFallbackPayload = buildTravelFallbackRecoPayload({
+            travelReadiness: lastTravelReadiness,
+            language: ctx.lang,
+          });
+          if (isPlainObject(travelFallbackPayload)) {
+            const preservedFieldMissing = Array.isArray(norm?.field_missing) ? norm.field_missing : [];
+            norm = {
+              payload: {
+                ...travelFallbackPayload,
+                intent: 'reco_products',
+                profile: summarizeProfileForContext(profile),
+              },
+              field_missing: preservedFieldMissing,
+            };
+            hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
+            if (hasRecs) {
+              usedTravelFallback = true;
+              travelFallbackReadiness = lastTravelReadiness;
+              recoSource = 'travel_context_fallback';
+              recoTimeoutDegraded = false;
+              logger?.info(
+                {
+                  request_id: ctx.request_id,
+                  trace_id: ctx.trace_id,
+                  recommendations_count: norm.payload.recommendations.length,
+                  upstream_failure_code: upstreamFailureCode || null,
+                },
+                'aurora bff: recommendations fallback generated from travel context',
+              );
+            }
+          }
+        }
         if (!hasRecs && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
           recoTimeoutDegraded = true;
         }
@@ -48065,7 +48490,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
           payload.recommendation_meta = {
             ...metaExisting,
-            source_mode: llmPrimaryUsed ? 'llm_primary' : matcherFallbackUsed ? 'artifact_matcher' : 'rules_only',
+            source_mode: usedTravelFallback
+              ? 'travel_context_fallback'
+              : llmPrimaryUsed
+                ? 'llm_primary'
+                : matcherFallbackUsed
+                  ? 'artifact_matcher'
+                  : 'rules_only',
             trigger_source: normalizeRecoSourceDetail(recoEntrySourceDetail),
             recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
@@ -48089,14 +48520,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         const recoUnavailableLead = ctx.lang === 'CN'
           ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
           : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
+        const travelFallbackLead = ctx.lang === 'CN'
+          ? '我已基于你最近一次旅行环境上下文先给出可执行的购买建议。'
+          : 'I generated actionable product picks from your latest travel environment context.';
 
         const assistantTextRaw = hasRecs
-          ? (recoAssistantBase ||
-            (ctx.lang === 'CN'
-              ? profileScore >= 3
-                ? '我已经把核心结果整理成结构化卡片（见下方）。'
-                : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
-              : 'I summarized the key results into structured cards below.'))
+          ? (usedTravelFallback
+            ? (recoAssistantBase
+              ? `${travelFallbackLead}\n\n${recoAssistantBase}`
+              : travelFallbackLead)
+            : (recoAssistantBase ||
+              (ctx.lang === 'CN'
+                ? profileScore >= 3
+                  ? '我已经把核心结果整理成结构化卡片（见下方）。'
+                  : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
+                : 'I summarized the key results into structured cards below.')))
           : (recoAssistantBase
             ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
             : (ctx.lang === 'CN'
@@ -48152,16 +48590,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           };
         }
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
-          appendLatestRecoContextToSessionPatch(sessionPatch, {
-            intent: 'reco_products',
-            source_detail: recoEntrySourceDetail,
-            trigger_source: ctx.trigger_source,
-            action_id: actionId || '',
-            message: recoRequestMessage,
-            include_alternatives: includeAlternatives === true,
-            ingredient_query: recoContextIngredientQuery || '',
-            goal: recoContextGoal || '',
-          });
+        appendLatestRecoContextToSessionPatch(sessionPatch, {
+          intent: 'reco_products',
+          source_detail: recoEntrySourceDetail,
+          trigger_source: ctx.trigger_source,
+          action_id: actionId || '',
+          message: recoRequestMessage,
+          include_alternatives: includeAlternatives === true,
+          ingredient_query: recoContextIngredientQuery || '',
+          goal: recoContextGoal || '',
+        });
+        appendLastTravelReadinessToSessionPatch(sessionPatch, travelFallbackReadiness);
 
         const baseRecoRunContext = {
           request_id: ctx.request_id,
@@ -48279,6 +48718,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               confidence_level: artifactConfidenceLevel,
               ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
               ...(llmFailureClass ? { failure_class: llmFailureClass } : {}),
+              ...(usedTravelFallback ? { fallback_from: 'travel_context' } : {}),
+              ...((usedTravelFallback && upstreamFailureCode) ? { upstream_failure_code: upstreamFailureCode } : {}),
               kb_write_status: kbWriteStatus,
               ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
               ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),

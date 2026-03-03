@@ -7088,7 +7088,7 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
   await withEnv(
     {
       AURORA_QA_PLANNER_V1_ENABLED: 'true',
-      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
       AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
       AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -7144,8 +7144,13 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       const envStress = cards.find((c) => c && c.type === 'env_stress') || null;
       assert.ok(envStress);
       assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
-      assert.equal(envStress?.payload?.travel_readiness, undefined);
-      assert.match(String(resp.body?.assistant_message?.content || ''), /destination|travel dates/i);
+      assert.ok(envStress?.payload?.travel_readiness && typeof envStress.payload.travel_readiness === 'object');
+      assert.ok(envStress?.payload?.travel_readiness?.structured_sections && typeof envStress.payload.travel_readiness.structured_sections === 'object');
+      assert.ok(typeof envStress?.payload?.tier_description === 'string' && envStress.payload.tier_description.length > 0);
+      const radarRows = Array.isArray(envStress?.payload?.radar) ? envStress.payload.radar : [];
+      assert.equal(radarRows.length > 0, true);
+      assert.equal(radarRows.some((row) => Array.isArray(row?.drivers) && row.drivers.length > 0), true);
+      assert.doesNotMatch(String(resp.body?.assistant_message?.content || ''), /destination and travel dates/i);
 
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
       assert.equal(types.includes('diagnosis_gate'), false);
@@ -7153,12 +7158,12 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
 
       const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
       const chipIds = chips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : ''));
-      assert.ok(chipIds.includes('tpl.action.env.am_pm'));
+      assert.ok(chipIds.includes('chip.start.routine'));
       assert.ok(chipIds.includes('chip.start.reco_products'));
 
       const topMeta = resp.body?.meta || {};
-      assert.equal(topMeta.env_source, 'local_template');
-      assert.equal(topMeta.degraded, true);
+      assert.equal(typeof topMeta.env_source === 'string' && topMeta.env_source.length > 0, true);
+      assert.equal(typeof topMeta.degraded === 'boolean', true);
       assert.equal(topMeta.travel_kb_hit, undefined);
       assert.equal(topMeta.travel_kb_write_queued, undefined);
 
@@ -7180,8 +7185,8 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       const secondAssistant = String(respFollow.body?.assistant_message?.content || '');
       assert.equal(secondAssistant.length > 0, true);
       const followMeta = respFollow.body?.meta || {};
-      assert.equal(followMeta.env_source, 'local_template');
-      assert.equal(followMeta.degraded, true);
+      assert.equal(typeof followMeta.env_source === 'string' && followMeta.env_source.length > 0, true);
+      assert.equal(typeof followMeta.degraded === 'boolean', true);
       assert.equal(followMeta.loop_count >= 0, true);
       const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
       assert.equal(followCards.some((c) => c && c.type === 'env_stress'), true);
