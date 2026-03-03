@@ -175,6 +175,13 @@ const auroraIngredientsFirstAnswerLatency = {
   sum: 0,
   buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
 };
+const ingredientSyncAttemptCounter = new Map();
+const ingredientAsyncEnqueuedCounter = new Map();
+const ingredientSyncLatencyHistogram = {
+  count: 0,
+  sum: 0,
+  buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
+};
 const auroraSkinAnalysisRealModelCounter = new Map();
 const auroraSkinLlmCallCounter = new Map();
 const auroraRecoLlmCallCounter = new Map();
@@ -630,6 +637,16 @@ function normalizeIngredientProviderCallStage(stage) {
 
 function normalizeIngredientProviderCallOutcome(outcome) {
   return cleanMetricToken(outcome, 'unknown');
+}
+
+function normalizeIngredientSyncAttemptOutcome(outcome) {
+  return cleanMetricToken(outcome, 'unknown');
+}
+
+function normalizeIngredientAsyncEnqueuedSource(source) {
+  const token = cleanMetricToken(source, 'sync');
+  if (token === 'sync' || token === 'poll') return token;
+  return 'sync';
 }
 
 function normalizeIngredientUserAction(action) {
@@ -2406,6 +2423,41 @@ function recordIngredientProviderCallMetric({ stage, outcome, delta } = {}) {
   );
 }
 
+function recordIngredientSyncAttemptMetric({ outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    ingredientSyncAttemptCounter,
+    { outcome: normalizeIngredientSyncAttemptOutcome(outcome) },
+    amount,
+  );
+}
+
+function observeIngredientSyncLatency({ latencyMs } = {}) {
+  const latency = Number(latencyMs);
+  if (!Number.isFinite(latency) || latency < 0) return;
+  ingredientSyncLatencyHistogram.count += 1;
+  ingredientSyncLatencyHistogram.sum += latency;
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    if (latency <= bucket) {
+      ingredientSyncLatencyHistogram.buckets.set(
+        bucket,
+        (ingredientSyncLatencyHistogram.buckets.get(bucket) || 0) + 1,
+      );
+    }
+  }
+}
+
+function recordIngredientAsyncEnqueuedMetric({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    ingredientAsyncEnqueuedCounter,
+    { source: normalizeIngredientAsyncEnqueuedSource(source) },
+    amount,
+  );
+}
+
 function recordIngredientUserActionMetric({ action, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -3391,6 +3443,24 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE ingredient_provider_call_total counter');
   renderCounter(lines, 'ingredient_provider_call_total', ingredientProviderCallCounter);
 
+  lines.push('# HELP ingredient_sync_attempt_count Total ingredient sync attempts by outcome.');
+  lines.push('# TYPE ingredient_sync_attempt_count counter');
+  renderCounter(lines, 'ingredient_sync_attempt_count', ingredientSyncAttemptCounter);
+
+  lines.push('# HELP ingredient_sync_latency_ms Ingredient sync call latency histogram.');
+  lines.push('# TYPE ingredient_sync_latency_ms histogram');
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    const le = bucket === Infinity ? '+Inf' : String(bucket);
+    const value = ingredientSyncLatencyHistogram.buckets.get(bucket) || 0;
+    lines.push(`ingredient_sync_latency_ms_bucket{le="${le}"} ${value}`);
+  }
+  lines.push(`ingredient_sync_latency_ms_sum ${ingredientSyncLatencyHistogram.sum}`);
+  lines.push(`ingredient_sync_latency_ms_count ${ingredientSyncLatencyHistogram.count}`);
+
+  lines.push('# HELP ingredient_async_enqueued_total Total ingredient async jobs enqueued by source stage.');
+  lines.push('# TYPE ingredient_async_enqueued_total counter');
+  renderCounter(lines, 'ingredient_async_enqueued_total', ingredientAsyncEnqueuedCounter);
+
   lines.push('# HELP ingredient_user_action_total Ingredient user action count by action type.');
   lines.push('# TYPE ingredient_user_action_total counter');
   renderCounter(lines, 'ingredient_user_action_total', ingredientUserActionCounter);
@@ -3833,6 +3903,13 @@ function resetVisionMetrics() {
   auroraIngredientsFlowCounter.clear();
   auroraIngredientProviderCounter.clear();
   ingredientProviderCallCounter.clear();
+  ingredientSyncAttemptCounter.clear();
+  ingredientAsyncEnqueuedCounter.clear();
+  ingredientSyncLatencyHistogram.count = 0;
+  ingredientSyncLatencyHistogram.sum = 0;
+  for (const key of ingredientSyncLatencyHistogram.buckets.keys()) {
+    ingredientSyncLatencyHistogram.buckets.set(key, 0);
+  }
   ingredientUserActionCounter.clear();
   geminiRateLimitedCounter.clear();
   geminiModelNotFoundCounter.clear();
@@ -4014,6 +4091,13 @@ function snapshotVisionMetrics() {
     auroraIngredientsFlow: Array.from(auroraIngredientsFlowCounter.entries()),
     auroraIngredientProvider: Array.from(auroraIngredientProviderCounter.entries()),
     ingredientProviderCall: Array.from(ingredientProviderCallCounter.entries()),
+    ingredientSyncAttempt: Array.from(ingredientSyncAttemptCounter.entries()),
+    ingredientAsyncEnqueued: Array.from(ingredientAsyncEnqueuedCounter.entries()),
+    ingredientSyncLatency: {
+      count: ingredientSyncLatencyHistogram.count,
+      sum: ingredientSyncLatencyHistogram.sum,
+      buckets: Array.from(ingredientSyncLatencyHistogram.buckets.entries()),
+    },
     ingredientUserAction: Array.from(ingredientUserActionCounter.entries()),
     geminiRateLimited: Array.from(geminiRateLimitedCounter.entries()),
     geminiModelNotFound: Array.from(geminiModelNotFoundCounter.entries()),
@@ -4172,6 +4256,9 @@ module.exports = {
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
   recordIngredientProviderCallMetric,
+  recordIngredientSyncAttemptMetric,
+  observeIngredientSyncLatency,
+  recordIngredientAsyncEnqueuedMetric,
   recordIngredientUserActionMetric,
   recordGeminiRateLimitedMetric,
   recordGeminiModelNotFoundMetric,

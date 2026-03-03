@@ -100,6 +100,9 @@ const {
   recordAuroraIngredientProviderMetric,
   recordIngredientProviderCallMetric,
   recordIngredientUserActionMetric,
+  recordIngredientSyncAttemptMetric,
+  observeIngredientSyncLatency,
+  recordIngredientAsyncEnqueuedMetric,
   recordGeminiRateLimitedMetric,
   recordGeminiModelNotFoundMetric,
   recordIngredientCooldownAppliedMetric,
@@ -720,14 +723,15 @@ const AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS = (() => {
   return Math.max(3000, Math.min(30000, v));
 })();
 const AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 5000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
-  return Math.max(1500, Math.min(18000, v));
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 7000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 7000;
+  // Keep sync lookup bounded so chatbox 15s timeout can reliably receive first packet.
+  return Math.max(1500, Math.min(8000, v));
 })();
 const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 10000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
-  return Math.max(3000, Math.min(30000, v));
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 9000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
+  return Math.max(3000, Math.min(10000, v));
 })();
 const AURORA_INGREDIENT_SYNC_RETRIES = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_SYNC_RETRIES || 0);
@@ -33106,6 +33110,8 @@ async function runIngredientResearchSync({
   profileSummary = null,
   sources = [],
   modelOverride = '',
+  outerRetries = AURORA_INGREDIENT_SYNC_RETRIES,
+  providerMaxRetries = 0,
   logger = null,
 } = {}) {
   // #region agent log
@@ -33113,7 +33119,7 @@ async function runIngredientResearchSync({
   // #endregion
   const provider = 'gemini';
   const providerRoute = 'ingredient';
-  const resolvedModel = pickFirstTrimmed(modelOverride, AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI) || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI;
+  const resolvedModel = pickFirstTrimmed(modelOverride, AURORA_INGREDIENT_SYNC_MODEL_GEMINI) || AURORA_INGREDIENT_SYNC_MODEL_GEMINI;
   const modelTier = /pro/i.test(String(resolvedModel || '')) ? 'pro' : 'flash';
   let effectiveModel = resolvedModel;
   let effectiveModelTier = modelTier;
@@ -33191,7 +33197,13 @@ async function runIngredientResearchSync({
     profileSummary,
     sources,
   });
-  const maxAttempts = 1 + AURORA_INGREDIENT_SYNC_RETRIES;
+  const normalizedOuterRetries = Number.isFinite(Number(outerRetries))
+    ? Math.max(0, Math.min(1, Math.trunc(Number(outerRetries))))
+    : AURORA_INGREDIENT_SYNC_RETRIES;
+  const normalizedProviderMaxRetries = Number.isFinite(Number(providerMaxRetries))
+    ? Math.max(0, Math.min(1, Math.trunc(Number(providerMaxRetries))))
+    : 0;
+  const maxAttempts = 1 + normalizedOuterRetries;
   let finalErrorCode = 'provider_unavailable';
   let finalTimeoutRootCause = 'unknown';
   let finalFallbackReason = '';
@@ -33215,6 +33227,7 @@ async function runIngredientResearchSync({
       responseJsonSchema: prompt.responseJsonSchema,
       allowDiagForceModel: false,
       routeTag: providerRoute,
+      maxRetries: normalizedProviderMaxRetries,
     });
     const latencyMs = Math.max(0, Date.now() - callStartedAt);
     const attemptModel = pickFirstTrimmed(resp && resp.resolved_model, effectiveModel);
@@ -34154,7 +34167,9 @@ async function buildIngredientReportPayloadWithResearch({
       sensitivity: sensitivity || null,
       profileSummary: isPlainObject(profileSummary) ? profileSummary : null,
       sources: Array.isArray(sources) ? sources : [],
-      modelOverride: AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
+      modelOverride: AURORA_INGREDIENT_SYNC_MODEL_GEMINI,
+      outerRetries: 0,
+      providerMaxRetries: 0,
       logger,
     });
     const syncPayload = asResearchObject(syncResearch && syncResearch.research) || null;
@@ -34165,9 +34180,9 @@ async function buildIngredientReportPayloadWithResearch({
           'gemini_rate_limited';
       const syncState = {
         ...syncPayload,
-        status: syncRateLimited ? 'queued' : syncResearch && syncResearch.ok ? 'ready' : 'fallback',
+        status: syncResearch && syncResearch.ok ? 'ready' : 'queued',
         provider: syncResearch && syncResearch.provider ? syncResearch.provider : 'gemini',
-        resolved_model: syncResearch && syncResearch.resolved_model ? syncResearch.resolved_model : AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
+        resolved_model: syncResearch && syncResearch.resolved_model ? syncResearch.resolved_model : AURORA_INGREDIENT_SYNC_MODEL_GEMINI,
         provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : ingredientModelTier(AURORA_INGREDIENT_SYNC_MODEL_GEMINI),
         provider_circuit_state: syncResearch && syncResearch.provider_circuit_state ? syncResearch.provider_circuit_state : getIngredientProviderCircuitState(),
         error_code: syncResearch && syncResearch.research_error_code ? syncResearch.research_error_code : null,
@@ -34207,7 +34222,7 @@ async function buildIngredientReportPayloadWithResearch({
       route_rule_version: pickFirstTrimmed(metaObj.route_rule_version, INGREDIENT_ROUTE_RULE_VERSION),
       provider_model_tier: pickFirstTrimmed(metaObj.provider_model_tier, resolvedResearch && resolvedResearch.provider_model_tier),
       provider_circuit_state: pickFirstTrimmed(metaObj.provider_circuit_state, resolvedResearch && resolvedResearch.provider_circuit_state),
-      resolved_model: pickFirstTrimmed(metaObj.resolved_model, resolvedResearch && resolvedResearch.resolved_model, AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI),
+      resolved_model: pickFirstTrimmed(metaObj.resolved_model, resolvedResearch && resolvedResearch.resolved_model, AURORA_INGREDIENT_SYNC_MODEL_GEMINI),
       research_provider: pickFirstTrimmed(metaObj.research_provider, resolvedResearch && resolvedResearch.provider),
       research_error_code: pickFirstTrimmed(
         metaObj.research_error_code,
@@ -47578,6 +47593,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let syncResearch = null;
         if (
           !researchReady &&
+          providerCallStage !== 'poll' &&
           INGREDIENT_ROUTE_V2_ENABLED &&
           !INGREDIENT_LEGACY_PATH_ENABLED &&
           AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
@@ -47592,6 +47608,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 concerns: Array.isArray(profile.goals) ? profile.goals.slice(0, 4) : [],
               }
               : null;
+          const syncStartedAtMs = Date.now();
           syncResearch = await runIngredientResearchSync({
             query: target,
             normalizedQuery,
@@ -47600,8 +47617,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             sensitivity: lookupSensitivity || null,
             profileSummary: profileSummaryForResearch,
             sources: [],
-            modelOverride: AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI,
+            modelOverride: AURORA_INGREDIENT_SYNC_MODEL_GEMINI,
+            outerRetries: 0,
+            providerMaxRetries: 0,
             logger,
+          });
+          const syncLatencyMs = Math.max(0, Date.now() - syncStartedAtMs);
+          observeIngredientSyncLatency({ latencyMs: syncLatencyMs });
+          recordIngredientSyncAttemptMetric({
+            outcome: syncResearch && syncResearch.ok
+              ? 'ok'
+              : pickFirstTrimmed(syncResearch && syncResearch.research_error_code, 'error'),
           });
           recordIngredientProviderCallMetric({
             stage: providerCallStage,
@@ -47617,7 +47643,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 'gemini_rate_limited';
             const syncState = {
               ...syncPayload,
-              status: syncRateLimited ? 'queued' : syncResearch && syncResearch.ok ? 'ready' : 'fallback',
+              status: syncResearch && syncResearch.ok ? 'ready' : 'queued',
               provider: syncResearch && syncResearch.provider ? syncResearch.provider : 'gemini',
               resolved_model: syncResearch && syncResearch.resolved_model ? syncResearch.resolved_model : AURORA_INGREDIENT_SYNC_MODEL_GEMINI,
               provider_model_tier: syncResearch && syncResearch.provider_model_tier ? syncResearch.provider_model_tier : ingredientModelTier(AURORA_INGREDIENT_SYNC_MODEL_GEMINI),
@@ -47650,7 +47676,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               touchIngredientResearchCache(normalizedQuery, syncState, { persist: true, logger });
               routeReasons.push('sync_research_hit');
             } else if (!syncRateLimited) {
-              routeReasons.push('sync_research_fallback');
+              routeReasons.push('sync_research_queued');
               recordAuroraIngredientsFlowMetric({ stage: 'empty_section_prevented', hit: true });
             }
           }
@@ -47665,7 +47691,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
         }
 
-        const shouldQueueResearch = !readyAfterSync && !INGREDIENT_KB_ONLY_MODE && AURORA_INGREDIENT_LLM_REPORT_ENABLED;
+        const shouldQueueResearch =
+          !readyAfterSync &&
+          providerCallStage !== 'poll' &&
+          !INGREDIENT_KB_ONLY_MODE &&
+          AURORA_INGREDIENT_LLM_REPORT_ENABLED;
         const queueAllowed = shouldQueueResearch && !AURORA_INGREDIENT_SINGLE_CALL_MODE;
         if (shouldQueueResearch && !queueAllowed) {
           routeReasons.push('single_call_mode_no_async_queue');
@@ -47683,6 +47713,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null;
         if (researchJob && researchJob.status === 'queued') {
           recordAuroraIngredientsFlowMetric({ stage: 'research_requested', hit: true });
+          recordIngredientAsyncEnqueuedMetric({ source: providerCallStage });
         }
 
         const reportPayload = buildIngredientReportPayload({
