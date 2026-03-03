@@ -34802,6 +34802,7 @@ function buildRecoAlternativesPromptPayload({
   profileSnapshot,
   productInput,
   productObj,
+  ingredientContext,
   maxTotal,
   region,
   candidates = [],
@@ -34824,10 +34825,16 @@ function buildRecoAlternativesPromptPayload({
         'match formulation intent and known actives when available',
       ],
     },
-    output_schema: {},
+    output_schema: {
+      products_item: {
+        id: 'string',
+        why: 'string <= 180 chars',
+      },
+    },
     hard_rules: [
-      'Return exactly {"alternatives": [...]} with no other keys.',
-      'Never output schema_version/parse.',
+      'Return exactly {"products":[{"id":"","why":""}]} with no other keys.',
+      'Only choose ids from context.candidates.',
+      'Never invent product names, URLs, or ids.',
       'Never ask questions.',
     ],
   };
@@ -34884,6 +34891,17 @@ function buildRecoAlternativesPromptPayload({
       notes: String(productInput || '').trim().slice(0, 180) || null,
     },
   };
+  const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
+  if (normalizedIngredientContext) {
+    payload.ingredient_context = {
+      ...(normalizedIngredientContext.query ? { query: normalizedIngredientContext.query } : {}),
+      ...(normalizedIngredientContext.goal ? { goal: normalizedIngredientContext.goal } : {}),
+      ...(normalizedIngredientContext.sensitivity ? { sensitivity: normalizedIngredientContext.sensitivity } : {}),
+      ...(Array.isArray(normalizedIngredientContext.candidates) && normalizedIngredientContext.candidates.length
+        ? { candidates: normalizedIngredientContext.candidates.slice(0, 8) }
+        : {}),
+    };
+  }
   payload.execution = {
     ...(payload.execution && typeof payload.execution === 'object' ? payload.execution : {}),
     continue_without_anchor: true,
@@ -34900,14 +34918,24 @@ function buildRecoAlternativesPromptPayload({
   return payload;
 }
 
-function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput, productObj, maxTotal, region, candidates, anchorId }) {
+function buildAuroraRecoAlternativesQuery({
+  lang,
+  profileSnapshot,
+  productInput,
+  productObj,
+  ingredientContext,
+  maxTotal,
+  region,
+  candidates,
+  anchorId,
+}) {
   const fallbackSystemPrompt = [
     'You are a skincare product alternative generator.',
     '',
-    'Return ONLY a single JSON object with exactly one key: "alternatives".',
+    'Return ONLY a single JSON object with exactly one key: "products".',
     'Never ask clarifying questions and never output "schema_version" or "parse".',
-    'Never invent product_id, sku_id, price, or actives. If unknown, use null and add missing_info.',
-    'alternatives length: 3 to 6; similarity integer 0..100; reasons max 2 items, each <= 22 words.',
+    'Only choose ids from context.candidates; never invent product_id, sku_id, name, or URL.',
+    'products length: 0 to 6; each item must have {id, why}.',
   ].join('\n');
   const systemPrompt = loadRecoPromptTemplateFile('reco_alternatives_v1_1.system.txt', {
     parseJson: false,
@@ -34918,6 +34946,7 @@ function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput,
     profileSnapshot,
     productInput,
     productObj,
+    ingredientContext,
     maxTotal,
     region,
     candidates,
@@ -34928,7 +34957,7 @@ function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput,
     systemPrompt,
     userPayload: payload,
   });
-  return `Task: Return alternatives JSON only (dupe/similar/premium), no clarify.\n${promptBody}`;
+  return `Task: Select alternatives from candidates only and return JSON products only.\n${promptBody}`;
 }
 
 async function callDirectGeminiForAlternatives({
@@ -34936,6 +34965,7 @@ async function callDirectGeminiForAlternatives({
   profileSnapshot,
   productInput,
   productObj,
+  ingredientContext,
   maxTotal,
   region,
   candidates,
@@ -34944,10 +34974,10 @@ async function callDirectGeminiForAlternatives({
 }) {
   const fallbackSystemPrompt = [
     'You are a skincare product alternative generator.',
-    'Return ONLY a single JSON object with exactly one key: "alternatives".',
+    'Return ONLY a single JSON object with exactly one key: "products".',
     'Never ask clarifying questions. Never output "schema_version" or "parse".',
-    'Never invent product_id, sku_id, price, or actives. Use null and add missing_info if unknown.',
-    'alternatives length: 3 to 6; similarity integer 0..100; reasons max 2 items, each <= 22 words.',
+    'Only choose ids from context.candidates; never invent product_id, sku_id, name, or URL.',
+    'products length: 0 to 6; each item must have {id, why} and why must be brief.',
   ].join('\n');
   const systemPrompt = loadRecoPromptTemplateFile('reco_alternatives_v1_1.system.txt', {
     parseJson: false,
@@ -34958,6 +34988,7 @@ async function callDirectGeminiForAlternatives({
     profileSnapshot,
     productInput,
     productObj,
+    ingredientContext,
     maxTotal,
     region,
     candidates,
@@ -34968,7 +34999,7 @@ async function callDirectGeminiForAlternatives({
     systemPrompt,
     userPayload: payload,
   });
-  const userPrompt = `Task: Return alternatives JSON only (dupe/similar/premium), no clarify.\n${userPayload}`;
+  const userPrompt = `Task: Select alternatives from context.candidates only and return products JSON only.\n${userPayload}`;
   const effectiveTimeout = Number.isFinite(Number(timeoutMs)) ? Math.max(3000, Number(timeoutMs)) : 8000;
   const modelsToTry = [RECO_ALTERNATIVES_DIRECT_GEMINI_MODEL];
   const fallbackModel = String(process.env.AURORA_BFF_RECO_ALTERNATIVES_GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite').trim();
@@ -34985,10 +35016,11 @@ async function callDirectGeminiForAlternatives({
       systemPrompt,
       userPrompt,
       timeoutMs: effectiveTimeout,
-      temperature: 0,
-      maxOutputTokens: RECO_ALTERNATIVES_DIRECT_GEMINI_MAX_OUTPUT_TOKENS,
+      temperature: 0.2,
+      maxOutputTokens: 400,
+      responseJsonSchema: buildRecoAlternativesSchema(maxTotal ?? 6),
       routeTag: 'reco_alternatives_direct',
-      maxRetries: 1,
+      maxRetries: 0,
       bypassCircuit: true,
     });
     if (result.ok) break;
@@ -35010,12 +35042,54 @@ async function callDirectGeminiForAlternatives({
     err.directGeminiModel = lastModelTried;
     throw err;
   }
+  const candidateRows = (Array.isArray(candidates) ? candidates : [])
+    .map((row) => (row && typeof row === 'object' && !Array.isArray(row) ? row : null))
+    .filter(Boolean);
+  const candidateById = new Map(
+    candidateRows
+      .map((row) => [String(row.id || '').trim().toLowerCase(), row])
+      .filter(([key]) => Boolean(key)),
+  );
+  const selectedRows = Array.isArray(result.json && result.json.products) ? result.json.products : [];
+  const alternatives = selectedRows
+    .map((row, idx) => {
+      const selection = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+      if (!selection) return null;
+      const id = String(selection.id || '').trim().toLowerCase();
+      if (!id || !candidateById.has(id)) return null;
+      const candidate = candidateById.get(id);
+      const why = String(selection.why || '').trim();
+      return {
+        kind: 'similar',
+        product: {
+          ...(candidate.product_id ? { product_id: candidate.product_id } : {}),
+          ...(candidate.sku_id ? { sku_id: candidate.sku_id } : {}),
+          ...(candidate.brand ? { brand: candidate.brand } : {}),
+          name: candidate.name,
+          ...(candidate.category ? { category: candidate.category } : {}),
+          ...(candidate.pdp_url ? { pdp_url: candidate.pdp_url, url: candidate.pdp_url } : {}),
+        },
+        similarity_score: Number.isFinite(Number(candidate.similarity_score))
+          ? Number(candidate.similarity_score)
+          : Math.max(55, 85 - idx * 6),
+        reasons: uniqCaseInsensitiveStrings(
+          [
+            why,
+            ...asStringArray(candidate.signals),
+          ],
+          2,
+        ),
+        tradeoffs: [],
+        evidence: {},
+        missing_info: [],
+      };
+    })
+    .filter(Boolean)
+    .slice(0, Math.max(1, Math.min(8, Number(maxTotal) || 6)));
   return {
     intent: 'alternatives',
-    structured: result.json && typeof result.json === 'object' && !Array.isArray(result.json)
-      ? result.json
-      : null,
-    answer: typeof result.json === 'object' ? JSON.stringify(result.json) : null,
+    structured: { alternatives },
+    answer: JSON.stringify({ alternatives }),
     cards: [],
     _upstream_meta: { provider: 'gemini_direct', model: result.resolved_model },
     _direct_gemini: true,
@@ -35084,6 +35158,8 @@ async function fetchRecoAlternativesForProduct({
   productInput,
   productObj,
   anchorId,
+  ingredientContext,
+  candidatePool,
   maxTotal,
   debug,
   logger,
@@ -35095,6 +35171,7 @@ async function fetchRecoAlternativesForProduct({
   let llmLatencyMs = null;
   let mapLatencyMs = null;
   let fallbackLatencyMs = null;
+  let alternativesCandidateCount = 0;
   const finalizeAlternativesResult = (result) => {
     const resultObj = result && typeof result === 'object' && !Array.isArray(result)
       ? { ...result }
@@ -35125,6 +35202,12 @@ async function fetchRecoAlternativesForProduct({
     });
     if (!Object.prototype.hasOwnProperty.call(resultObj, 'circuit_state')) {
       resultObj.circuit_state = getRecoAlternativesSyncCircuitSnapshot(Date.now(), circuitPartitionKey).state;
+    }
+    if (!Object.prototype.hasOwnProperty.call(resultObj, 'alternatives_candidate_count')) {
+      resultObj.alternatives_candidate_count = Math.max(0, Math.trunc(Number(alternativesCandidateCount) || 0));
+    }
+    if (!Object.prototype.hasOwnProperty.call(resultObj, 'alternatives_selected_count')) {
+      resultObj.alternatives_selected_count = Array.isArray(resultObj.alternatives) ? resultObj.alternatives.length : 0;
     }
     return resultObj;
   };
@@ -35409,10 +35492,28 @@ async function fetchRecoAlternativesForProduct({
     return fromCards;
   };
   const alternativesCandidates = buildRecoAlternativesCandidatePool({
+    sharedCandidates: Array.isArray(candidatePool) ? candidatePool : [],
     productObj,
     anchorId: anchor || '',
     maxCandidates: 16,
   });
+  alternativesCandidateCount = alternativesCandidates.length;
+  if (!alternativesCandidates.length) {
+    recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
+    return finalizeAlternativesResult({
+      ok: true,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'candidate_pool_empty' }],
+      source_mode: 'local_fallback',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      no_result_reason: 'candidate_pool_empty',
+      failure_class: 'candidate_pool_empty',
+      attempt_count: 0,
+      llm_trace: buildNotInvokedLlmTrace('candidate_pool_empty'),
+    });
+  }
 
   const mapFallbackCandidateToAlternative = (row, kind = 'similar') => {
     const candidate = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
@@ -35828,6 +35929,8 @@ async function fetchRecoAlternativesForProduct({
           productInput: bestInput,
           productObj,
           anchorId: anchor,
+          ingredientContext,
+          candidatePool: alternativesCandidates,
           maxTotal,
           debug: false,
           logger,
@@ -35957,6 +36060,7 @@ async function fetchRecoAlternativesForProduct({
         profileSnapshot,
         productInput: bestInput,
         productObj,
+        ingredientContext,
         maxTotal,
         region: normalizeRecoPromptRegion(profileSummary),
         candidates: alternativesCandidates,
@@ -35989,6 +36093,7 @@ async function fetchRecoAlternativesForProduct({
           profileSnapshot,
           productInput: bestInput,
           productObj,
+          ingredientContext,
           maxTotal: maxTotal ?? 3,
           region: normalizeRecoPromptRegion(profileSummary),
           candidates: alternativesCandidates,
@@ -36413,7 +36518,15 @@ async function fetchRecoAlternativesForProduct({
 }
 
 
-async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, recentLogs, recommendations, debug, logger }) {
+async function enrichRecommendationsWithAlternatives({
+  ctx,
+  profileSummary,
+  recentLogs,
+  recommendations,
+  ingredientContext = null,
+  debug,
+  logger,
+}) {
   const recos = Array.isArray(recommendations) ? recommendations : [];
   const maxProducts = RECO_ALTERNATIVES_MAX_PRODUCTS;
   if (!recos.length || maxProducts <= 0) return { recommendations: recos, field_missing: [] };
@@ -36502,6 +36615,7 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
       productInput: t.inputText,
       productObj: t.productObj,
       anchorId: t.anchorId,
+      ingredientContext,
       candidatePool: t.candidatePool,
       budget: alternativesBudget,
       debug,
@@ -41315,6 +41429,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const maxTotal = Number.isFinite(Number(parsed.data.max_total))
         ? Math.max(1, Math.min(8, Math.trunc(Number(parsed.data.max_total))))
         : 6;
+      const ingredientContext = normalizeIngredientRecoContextValue(parsed.data.ingredient_context);
 
       if (!productInput && !anchorId) {
         return res.status(400).json({
@@ -41333,15 +41448,35 @@ function mountAuroraBffRoutes(app, { logger }) {
         productInput,
         productObj,
         anchorId,
+        ingredientContext,
         maxTotal,
         debug: includeDebug,
         logger,
       });
+      logger?.info(
+        {
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          details_action_triggered: false,
+          alternatives_action_triggered: true,
+          ingredient_context_present: Boolean(ingredientContext),
+          no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,
+          alternatives_candidate_count: Number.isFinite(Number(out && out.alternatives_candidate_count))
+            ? Math.max(0, Math.trunc(Number(out && out.alternatives_candidate_count)))
+            : 0,
+          alternatives_selected_count: Number.isFinite(Number(out && out.alternatives_selected_count))
+            ? Math.max(0, Math.trunc(Number(out && out.alternatives_selected_count)))
+            : 0,
+        },
+        'aurora bff: reco alternatives resolved',
+      );
 
       return res.json({
         request_id: ctx.request_id,
         trace_id: ctx.trace_id,
         ok: out && out.ok !== false,
+        details_action_triggered: false,
+        alternatives_action_triggered: true,
         alternatives: Array.isArray(out && out.alternatives) ? out.alternatives : [],
         field_missing: Array.isArray(out && out.field_missing) ? out.field_missing : [],
         source_mode: out && typeof out.source_mode === 'string' ? out.source_mode : 'llm',
@@ -41353,6 +41488,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         prompt_contract_ok: out && out.prompt_contract_ok !== false,
         prompt_contract_issues: Array.isArray(out && out.prompt_contract_issues) ? out.prompt_contract_issues : [],
         no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,
+        alternatives_candidate_count: Number.isFinite(Number(out && out.alternatives_candidate_count))
+          ? Math.max(0, Math.trunc(Number(out && out.alternatives_candidate_count)))
+          : 0,
+        alternatives_selected_count: Number.isFinite(Number(out && out.alternatives_selected_count))
+          ? Math.max(0, Math.trunc(Number(out && out.alternatives_selected_count)))
+          : 0,
         timeout_root_cause: out && out.timeout_root_cause ? String(out.timeout_root_cause) : null,
         circuit_state: out && typeof out.circuit_state === 'string' ? out.circuit_state : null,
         upstream_request_id:
@@ -41373,6 +41514,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         request_id: ctx.request_id,
         trace_id: ctx.trace_id,
         ok: false,
+        details_action_triggered: false,
+        alternatives_action_triggered: true,
         alternatives: [],
         field_missing: [{ field: 'alternatives', reason: 'endpoint_exception' }],
         source_mode: 'local_fallback',
@@ -49745,10 +49888,26 @@ function mountAuroraBffRoutes(app, { logger }) {
         !looksLikeSuitabilityRequest(message) &&
         !looksLikeCompatibilityOrConflictQuestion(message) &&
         !looksLikeWeatherOrEnvironmentQuestion(message);
+      const ingredientContextPresentForReco = Boolean(
+        ingredientRecoContext &&
+          (
+            pickFirstTrimmed(
+              ingredientRecoContext.query,
+              ingredientRecoContext.ingredient_query,
+              ingredientRecoContext.goal,
+              ingredientRecoContext.ingredient_goal,
+            ) ||
+            (Array.isArray(ingredientRecoContext.candidates) && ingredientRecoContext.candidates.length > 0)
+          ),
+      );
       const ingredientDrivenRecommendationRequested =
         ingredientRecoOptInRequested ||
         ingredientLookupRequested ||
-        ingredientByGoalRequested;
+        ingredientByGoalRequested ||
+        (
+          normalizeIngredientActionId(actionId) === 'chip.start.reco_products' &&
+          ingredientContextPresentForReco
+        );
       const recoEntrySourceDetail = shouldAutoRerunRecommendationsFromProfilePatch
         ? 'profile_refine_rerun'
         : ingredientDrivenRecommendationRequested
@@ -50403,10 +50562,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoSource = 'artifact_matcher_v1';
           recoTimeoutDegraded = false;
         }
-        if (ingredientRecoOptInRequested && isPlainObject(norm?.payload)) {
-          const preConstraintRecommendations = Array.isArray(norm.payload.recommendations)
-            ? norm.payload.recommendations.slice(0, 16)
-            : [];
+        if (ingredientDrivenRecommendationRequested && isPlainObject(norm?.payload)) {
           const constrained = applyIngredientRecoConstraint(norm.payload, recoIngredientContext);
           if (constrained.constrained) {
             norm.payload = constrained.payload;
@@ -50425,36 +50581,45 @@ function mountAuroraBffRoutes(app, { logger }) {
             ]);
           }
           if (constrained.keptCount === 0) {
-            const safeFallbackRecommendations = preConstraintRecommendations
-              .filter((row) => {
-                const sku = row && typeof row === 'object' && row.sku && typeof row.sku === 'object' ? row.sku : null;
-                const categoryRaw = pickFirstString(
-                  row && row.category,
-                  row && row.category_name,
-                  row && row.product_type,
-                  sku && sku.category,
-                  sku && sku.product_type,
-                );
-                return !isIrrelevantCategoryForSkinGoal(categoryRaw);
-              })
-              .slice(0, 8);
-            const usedContextFallback = safeFallbackRecommendations.length > 0;
             norm.payload = {
               ...norm.payload,
-              recommendations: usedContextFallback ? safeFallbackRecommendations : [],
-              products_empty_reason: usedContextFallback ? 'ingredient_exact_match_unavailable' : 'ingredient_constraint_no_match',
-              no_result_reason: usedContextFallback ? 'ingredient_exact_match_unavailable' : 'ingredient_constraint_no_match',
-              reco_reason_codes: [
+              recommendations: [],
+              products_empty_reason: 'ingredient_constraint_no_match',
+              no_result_reason: 'ingredient_constraint_no_match',
+              reco_reason_codes: uniqCaseInsensitiveStrings([
                 ...(Array.isArray(norm.payload.reco_reason_codes) ? norm.payload.reco_reason_codes : []),
-                usedContextFallback ? 'ingredient_context_fallback' : 'ingredient_constraint_no_match',
-              ],
+                'ingredient_constraint_no_match',
+              ], 12),
             };
             norm.field_missing = mergeFieldMissing(norm.field_missing, [
               {
                 field: 'payload.recommendations',
-                reason: usedContextFallback ? 'ingredient_context_fallback' : 'ingredient_constraint_no_match',
+                reason: 'ingredient_constraint_no_match',
               },
             ]);
+            logger?.info(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                ingredient_context_present: ingredientContextPresentForReco,
+                constraint_match_summary: {
+                  total: Number(constrained.totalCount || 0),
+                  matched: Number(constrained.keptCount || 0),
+                  dropped: Number(constrained.droppedCount || 0),
+                },
+                no_result_reason: 'ingredient_constraint_no_match',
+              },
+              'aurora bff: strict ingredient constraint produced no recommendation matches',
+            );
+          }
+          if (isPlainObject(norm.payload)) {
+            norm.payload = {
+              ...norm.payload,
+              recommendation_meta: {
+                ...(isPlainObject(norm.payload.recommendation_meta) ? norm.payload.recommendation_meta : {}),
+                ingredient_context_present: ingredientContextPresentForReco,
+              },
+            };
           }
         }
         if (llmPrimaryUsed && isPlainObject(norm?.payload)) {
@@ -51066,6 +51231,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary,
             recentLogs,
             recommendations: basePayload.recommendations,
+            ingredientContext: recoIngredientContext,
             logger,
           });
           const nextCard = {

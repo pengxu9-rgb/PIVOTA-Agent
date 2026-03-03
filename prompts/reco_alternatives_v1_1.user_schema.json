@@ -27,52 +27,25 @@
   "execution": {
     "continue_without_anchor": true,
     "max_alternatives": 6,
-    "mix": {
-      "dupe": 2,
-      "similar": 2,
-      "premium": 2
-    },
     "bias": [
-      "barrier-safe first (impaired barrier)",
-      "lower irritation options preferred",
-      "match formulation intent and known actives when available"
+      "prioritize ingredient and user context relevance first",
+      "prefer lower irritation options when equivalent",
+      "prefer purchasable candidates with clear PDP"
     ]
   },
   "output_schema": {
-    "alternatives_item": {
-      "kind": "dupe|similar|premium",
-      "product": {
-        "brand": "string|null",
-        "name": "string|null",
-        "product_id": "string|null",
-        "sku_id": "string|null"
-      },
-      "similarity": "int 0..100",
-      "reasons": "string[] (max 2)",
-      "tradeoffs": "string[] (max 3)",
-      "evidence": {
-        "science": {
-          "key_ingredients": "string[]",
-          "mechanisms": "string[]",
-          "fit_notes": "string[]",
-          "risk_notes": "string[]"
-        },
-        "social_signals": {
-          "typical_positive": "string[]",
-          "typical_negative": "string[]",
-          "risk_for_groups": "string[]"
-        },
-        "expert_notes": "string[]",
-        "confidence": "number 0..1",
-        "missing_info": "string[]"
-      },
-      "missing_info": "string[]"
+    "products_item": {
+      "id": "string (must exist in context.candidates)",
+      "why": "string <= 180 chars"
     }
   },
   "hard_rules": [
-    "Return exactly {\"alternatives\": [...]} with no other keys.",
-    "Never output schema_version/parse.",
+    "Return exactly {\"products\": [...]} with no other keys.",
+    "Only choose IDs from context.candidates.",
+    "Never invent product names, IDs, or URLs.",
     "Never ask questions.",
-    "If target.anchor_id is null AND target.product_json has no actives/variant, still output best-effort but add missing_info like 'target_formula_unknown'."
+    "If no valid candidates, return {\"products\": []}.",
+    "Never output schema_version/parse.",
+    "Keep outputs concise and latency-safe."
   ]
 }

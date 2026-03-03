@@ -434,6 +434,7 @@ const RecoAlternativesRequestSchema = z
   .object({
     product_input: z.string().min(1).max(240).optional(),
     product: z.record(z.string(), z.any()).optional(),
+    ingredient_context: z.record(z.string(), z.any()).optional(),
     anchor_product_id: z.string().min(1).max(180).optional(),
     max_total: z.number().int().min(1).max(8).optional(),
     include_debug: z.boolean().optional(),
