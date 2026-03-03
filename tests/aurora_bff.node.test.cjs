@@ -4045,6 +4045,104 @@ test('ingredient research: request uses no ingredient-specific timeout', async (
   );
 });
 
+test('ingredient report deterministic: known ingredient includes stable key and ingredient-level personalization', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'false',
+    },
+    async () => {
+      const { moduleId, __internal } = loadRouteInternals();
+      try {
+        const payload = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'BEHENYL ALCOHOL',
+        });
+        assert.equal(payload.schema_version, 'aurora.ingredient_report.v2-lite');
+        assert.equal(payload.ingredient?.key, 'behenyl_alcohol');
+        assert.equal(payload.verdict?.personalization_basis, 'ingredient');
+        assert.equal(payload.report_state?.mode, 'deterministic');
+        assert.equal(payload.report_state?.status, 'partial');
+        assert.equal(Array.isArray(payload.benefits), true);
+        assert.equal(payload.benefits.length > 0, true);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('ingredient report deterministic: unknown ingredient falls back to family profile with non-generic one-liner', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'false',
+    },
+    async () => {
+      const { moduleId, __internal } = loadRouteInternals();
+      try {
+        const payload = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'Ethylhexyl XYZ Ester',
+        });
+        assert.equal(payload.schema_version, 'aurora.ingredient_report.v2-lite');
+        assert.equal(payload.verdict?.personalization_basis, 'ingredient_family');
+        assert.equal(payload.report_state?.mode, 'deterministic');
+        assert.equal(typeof payload.verdict?.one_liner, 'string');
+        assert.match(String(payload.verdict?.one_liner || ''), /Ethylhexyl XYZ Ester/i);
+        assert.equal(Array.isArray(payload.report_state?.missing_sections), true);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('ingredient report hybrid: timeout fallback still returns pending personalized baseline', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+    },
+    async () => {
+      const { moduleId, __internal } = loadRouteInternals();
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'GEMINI_JSON_TIMEOUT',
+          detail: 'timed out after 9000ms',
+        }));
+        const payload = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: 'Octocrylene',
+        });
+        assert.equal(payload.research_status, 'fallback');
+        assert.equal(payload.report_state?.status, 'pending');
+        assert.equal(payload.report_state?.reason_code, 'timeout');
+        assert.equal(
+          payload.verdict?.personalization_basis === 'ingredient' ||
+            payload.verdict?.personalization_basis === 'ingredient_family' ||
+            payload.verdict?.personalization_basis === 'mixed',
+          true,
+        );
+        assert.equal(Array.isArray(payload.benefits), true);
+        assert.equal(payload.benefits.length > 0, true);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: ingredient.lookup uses research path and second lookup can hit in-memory KB cache', async () => {
   return withEnv(
     {

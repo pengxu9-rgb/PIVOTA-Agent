@@ -93,6 +93,7 @@ const {
   recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
+  recordIngredientReportMetric,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
@@ -719,6 +720,24 @@ const AURORA_INGREDIENT_LOOKUP_IP_PER_MIN = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_LOOKUP_IP_PER_MIN || 30);
   const v = Number.isFinite(n) ? Math.trunc(n) : 30;
   return Math.max(5, Math.min(240, v));
+})();
+const INGREDIENT_REPORT_HYBRID_ENABLED = (() => {
+  const raw = String(process.env.INGREDIENT_REPORT_HYBRID_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const INGREDIENT_REPORT_PENDING_UI_ENABLED = (() => {
+  const raw = String(process.env.INGREDIENT_REPORT_PENDING_UI_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const INGREDIENT_REPORT_DISABLE_GENERIC_BLOCK = (() => {
+  const raw = String(process.env.INGREDIENT_REPORT_DISABLE_GENERIC_BLOCK || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const INGREDIENT_ROUTE_RULE_VERSION = String(
   process.env.INGREDIENT_ROUTE_RULE_VERSION || 'ingredient_route_v2_lite_20260301',
@@ -1353,9 +1372,8 @@ const PIVOTA_BACKEND_AGENT_API_KEY = String(
     '',
 ).trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
-const GEMINI_API_KEY = String(
-  process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-).trim();
+const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
+const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
 const SKIN_VISION_PROVIDER = (() => {
@@ -30057,7 +30075,8 @@ function looksLikeIngredientScienceIntent(message, action) {
     idText === 'chip_start_ingredients_entry' ||
     idText === 'ingredient.lookup' ||
     idText === 'ingredient.by_goal' ||
-    idText === 'ingredient.research.poll'
+    idText === 'ingredient.research.poll' ||
+    idText === 'ingredient.report.refresh'
   ) {
     return true;
   }
@@ -30096,7 +30115,8 @@ function isIngredientDiagnosisOptInAction(actionId) {
 }
 
 function isIngredientResearchPollAction(actionId) {
-  return normalizeIngredientActionId(actionId) === 'ingredient.research.poll';
+  const id = normalizeIngredientActionId(actionId);
+  return id === 'ingredient.research.poll' || id === 'ingredient.report.refresh';
 }
 
 function isIngredientRecoOptInAction(actionId, action) {
@@ -30422,6 +30442,13 @@ function buildIngredientReportQuickReplyChips({ language, reportPayload } = {}) 
     reportPayload && reportPayload.ingredient && reportPayload.ingredient.inci,
   );
   const researchStatus = String(reportPayload && reportPayload.research_status ? reportPayload.research_status : '').trim().toLowerCase();
+  const reportStatus = String(
+    reportPayload && reportPayload.report_state && reportPayload.report_state.status
+      ? reportPayload.report_state.status
+      : '',
+  )
+    .trim()
+    .toLowerCase();
   const normalizedQuery = pickFirstTrimmed(reportPayload && reportPayload.normalized_query, ingredientQuery);
   if (ingredientQuery) {
     const chipId = 'chip.start.ingredients.reco';
@@ -30439,7 +30466,16 @@ function buildIngredientReportQuickReplyChips({ language, reportPayload } = {}) 
       });
     }
   }
-  if ((researchStatus === 'queued' || researchStatus === 'fallback' || researchStatus === 'error') && normalizedQuery) {
+  if (
+    (
+      reportStatus === 'pending' ||
+      researchStatus === 'queued' ||
+      researchStatus === 'fallback' ||
+      researchStatus === 'error' ||
+      researchStatus === 'provider_unavailable'
+    ) &&
+    normalizedQuery
+  ) {
     const chipId = 'chip.start.ingredients.research_poll';
     if (!seen.has(chipId)) {
       seen.add(chipId);
@@ -30448,7 +30484,7 @@ function buildIngredientReportQuickReplyChips({ language, reportPayload } = {}) 
         label: lang === 'CN' ? '刷新增强结果' : 'Refresh enhanced result',
         kind: 'quick_reply',
         data: {
-          action_id: 'ingredient.research.poll',
+          action_id: 'ingredient.report.refresh',
           ingredient_query: String(ingredientQuery || '').slice(0, 120),
           normalized_query: String(normalizedQuery || '').slice(0, 120),
           entry_source: 'ingredient_report',
@@ -30750,48 +30786,39 @@ async function enrichIngredientGoalMatchPayload({
 }
 
 const INGREDIENT_ENTITY_DICT = Object.freeze([
-  {
-    key: 'niacinamide',
-    canonical_en: 'niacinamide',
-    canonical_cn: '烟酰胺',
-    aliases: ['nicotinamide', 'vitamin b3', '维生素b3', '维b3'],
-  },
-  {
-    key: 'retinol',
-    canonical_en: 'retinol',
-    canonical_cn: 'A醇/维A类',
-    aliases: ['retinoid', 'vitamin a', '视黄醇', 'a醇', '维a', '维甲醇'],
-  },
-  {
-    key: 'azelaic_acid',
-    canonical_en: 'azelaic acid',
-    canonical_cn: '壬二酸',
-    aliases: ['azelaic', 'azelic acid'],
-  },
-  {
-    key: 'vitamin_c',
-    canonical_en: 'vitamin c',
-    canonical_cn: '维生素C',
-    aliases: ['ascorbic acid', 'ascorbic', 'vc', '维c', '抗坏血酸'],
-  },
-  {
-    key: 'salicylic_acid',
-    canonical_en: 'salicylic acid',
-    canonical_cn: '水杨酸',
-    aliases: ['bha', 'beta hydroxy acid'],
-  },
-  {
-    key: 'octocrylene',
-    canonical_en: 'octocrylene',
-    canonical_cn: '奥克立林',
-    aliases: ['octocrileno'],
-  },
-  {
-    key: 'butyloctyl_salicylate',
-    canonical_en: 'butyloctyl salicylate',
-    canonical_cn: '辛基水杨酸丁酯',
-    aliases: ['butyloctyl salicylate'],
-  },
+  { key: 'niacinamide', canonical_en: 'niacinamide', canonical_cn: '烟酰胺', family: 'vitamin', aliases: ['nicotinamide', 'vitamin b3', '维生素b3', '维b3'] },
+  { key: 'retinol', canonical_en: 'retinol', canonical_cn: 'A醇/维A类', family: 'retinoid', aliases: ['retinoid', 'vitamin a', '视黄醇', 'a醇', '维a', '维甲醇'] },
+  { key: 'tretinoin', canonical_en: 'tretinoin', canonical_cn: '维A酸', family: 'retinoid', aliases: ['retinoic acid', 'retin-a', '维甲酸'] },
+  { key: 'adapalene', canonical_en: 'adapalene', canonical_cn: '阿达帕林', family: 'retinoid', aliases: ['differin'] },
+  { key: 'azelaic_acid', canonical_en: 'azelaic acid', canonical_cn: '壬二酸', family: 'exfoliant', aliases: ['azelaic', 'azelic acid'] },
+  { key: 'salicylic_acid', canonical_en: 'salicylic acid', canonical_cn: '水杨酸', family: 'bha', aliases: ['bha', 'beta hydroxy acid'] },
+  { key: 'glycolic_acid', canonical_en: 'glycolic acid', canonical_cn: '果酸', family: 'aha', aliases: ['aha', 'alpha hydroxy acid', '甘醇酸'] },
+  { key: 'lactic_acid', canonical_en: 'lactic acid', canonical_cn: '乳酸', family: 'aha', aliases: [] },
+  { key: 'mandelic_acid', canonical_en: 'mandelic acid', canonical_cn: '杏仁酸', family: 'aha', aliases: [] },
+  { key: 'vitamin_c', canonical_en: 'vitamin c', canonical_cn: '维生素C', family: 'antioxidant', aliases: ['ascorbic acid', 'ascorbic', 'vc', '维c', '抗坏血酸'] },
+  { key: 'benzoyl_peroxide', canonical_en: 'benzoyl peroxide', canonical_cn: '过氧化苯甲酰', family: 'acne_active', aliases: ['bpo', 'bp'] },
+  { key: 'glycerin', canonical_en: 'glycerin', canonical_cn: '甘油', family: 'humectant', aliases: ['glycerol', '丙三醇'] },
+  { key: 'hyaluronic_acid', canonical_en: 'hyaluronic acid', canonical_cn: '透明质酸', family: 'humectant', aliases: ['ha', 'sodium hyaluronate', '玻尿酸'] },
+  { key: 'panthenol', canonical_en: 'panthenol', canonical_cn: '泛醇', family: 'humectant', aliases: ['provitamin b5', 'dexpanthenol', '维生素b5'] },
+  { key: 'ceramide_np', canonical_en: 'ceramide np', canonical_cn: '神经酰胺NP', family: 'ceramide', aliases: ['ceramide', 'ceramides', '神经酰胺'] },
+  { key: 'squalane', canonical_en: 'squalane', canonical_cn: '角鲨烷', family: 'oil_emollient', aliases: ['squalene'] },
+  { key: 'dimethicone', canonical_en: 'dimethicone', canonical_cn: '聚二甲基硅氧烷', family: 'silicone', aliases: ['dimethicone', '硅油'] },
+  { key: 'behenyl_alcohol', canonical_en: 'behenyl alcohol', canonical_cn: '山嵛醇', family: 'fatty_alcohol', aliases: ['docosanol'] },
+  { key: 'cetyl_alcohol', canonical_en: 'cetyl alcohol', canonical_cn: '鲸蜡醇', family: 'fatty_alcohol', aliases: ['cetanol'] },
+  { key: 'stearyl_alcohol', canonical_en: 'stearyl alcohol', canonical_cn: '硬脂醇', family: 'fatty_alcohol', aliases: [] },
+  { key: 'cetearyl_alcohol', canonical_en: 'cetearyl alcohol', canonical_cn: '鲸蜡硬脂醇', family: 'fatty_alcohol', aliases: [] },
+  { key: 'zinc_oxide', canonical_en: 'zinc oxide', canonical_cn: '氧化锌', family: 'mineral_filter', aliases: ['zno'] },
+  { key: 'titanium_dioxide', canonical_en: 'titanium dioxide', canonical_cn: '二氧化钛', family: 'mineral_filter', aliases: ['tio2'] },
+  { key: 'avobenzone', canonical_en: 'avobenzone', canonical_cn: '阿伏苯宗', family: 'uv_filter', aliases: ['butyl methoxydibenzoylmethane', 'parsol 1789'] },
+  { key: 'octocrylene', canonical_en: 'octocrylene', canonical_cn: '奥克立林', family: 'uv_filter', aliases: ['octocrileno'] },
+  { key: 'octisalate', canonical_en: 'octisalate', canonical_cn: '水杨酸乙基己酯', family: 'uv_filter', aliases: ['ethylhexyl salicylate'] },
+  { key: 'homosalate', canonical_en: 'homosalate', canonical_cn: '胡莫柳酯', family: 'uv_filter', aliases: [] },
+  { key: 'butyloctyl_salicylate', canonical_en: 'butyloctyl salicylate', canonical_cn: '辛基水杨酸丁酯', family: 'uv_filter', aliases: [] },
+  { key: 'phenoxyethanol', canonical_en: 'phenoxyethanol', canonical_cn: '苯氧乙醇', family: 'preservative', aliases: [] },
+  { key: 'ethylhexylglycerin', canonical_en: 'ethylhexylglycerin', canonical_cn: '乙基己基甘油', family: 'preservative', aliases: [] },
+  { key: 'tranexamic_acid', canonical_en: 'tranexamic acid', canonical_cn: '传明酸', family: 'brightening', aliases: ['tranexamic', '氨甲环酸'] },
+  { key: 'arbutin', canonical_en: 'arbutin', canonical_cn: '熊果苷', family: 'brightening', aliases: ['alpha arbutin', 'α-熊果苷'] },
+  { key: 'allantoin', canonical_en: 'allantoin', canonical_cn: '尿囊素', family: 'humectant', aliases: [] },
 ]);
 
 function ingredient_query_normalize(raw) {
@@ -30881,6 +30908,41 @@ function ingredientEntityMatchFromText(raw, language = 'EN') {
 function normalizeIngredientLookupToken(raw) {
   const match = ingredientEntityMatchFromText(raw);
   return match.entity_key || '';
+}
+
+function inferIngredientFamilyFromText(raw) {
+  const normalized = ingredient_query_normalize(raw);
+  if (!normalized) return '';
+  const rules = [
+    { family: 'fatty_alcohol', pattern: /(cetyl alcohol|stearyl alcohol|cetearyl alcohol|behenyl alcohol|fatty alcohol)/i },
+    { family: 'humectant', pattern: /(hyaluronic acid|sodium hyaluronate|glycerin|glycerol|panthenol|allantoin|urea|betaine)/i },
+    { family: 'uv_filter', pattern: /(avobenzone|octocrylene|octisalate|homosalate|ethylhexyl salicylate|uv filter|sunscreen)/i },
+    { family: 'mineral_filter', pattern: /(zinc oxide|titanium dioxide|physical sunscreen|mineral sunscreen)/i },
+    { family: 'preservative', pattern: /(phenoxyethanol|paraben|chlorphenesin|sodium benzoate|potassium sorbate|ethylhexylglycerin)/i },
+    { family: 'retinoid', pattern: /(retinol|retinoid|retinal|tretinoin|adapalene|retinyl)/i },
+    { family: 'bha', pattern: /(salicylic acid|\bbha\b|beta hydroxy)/i },
+    { family: 'aha', pattern: /(glycolic acid|lactic acid|mandelic acid|\baha\b|alpha hydroxy)/i },
+    { family: 'acne_active', pattern: /(benzoyl peroxide|\bbpo\b)/i },
+    { family: 'brightening', pattern: /(tranexamic acid|arbutin|alpha arbutin|氨甲环酸|熊果苷)/i },
+    { family: 'oil_emollient', pattern: /(squalane|squalene|ester|triglyceride)/i },
+    { family: 'silicone', pattern: /(dimethicone|siloxane|cyclopentasiloxane|silicone)/i },
+  ];
+  for (const rule of rules) {
+    if (rule.pattern.test(normalized)) return rule.family;
+  }
+  return '';
+}
+
+function buildIngredientStableKey({ query = '', entityKey = '' } = {}) {
+  const normalizedEntity = String(entityKey || '').trim().toLowerCase();
+  if (normalizedEntity) return normalizedEntity.slice(0, 80);
+  const normalizedQuery = normalizeIngredientResearchKey(query);
+  if (!normalizedQuery) return 'unknown';
+  const key = normalizedQuery
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  return (key || 'unknown').slice(0, 80);
 }
 
 function mapIngredientLookupTokenToQuery(token, language = 'EN') {
@@ -32306,6 +32368,40 @@ function normalizeIngredientLikelihood(raw) {
   return null;
 }
 
+function normalizeIngredientReportReasonCode({ researchStatus = '', researchErrorCode = '', researchReady = false } = {}) {
+  if (researchReady) return 'none';
+  if (INGREDIENT_KB_ONLY_MODE) return 'kb_only';
+  const status = String(researchStatus || '').trim().toLowerCase();
+  const code = String(researchErrorCode || '').trim().toLowerCase();
+  if (status === 'queued' || status === 'pending') return 'insufficient_evidence';
+  if (/timeout/.test(code)) return 'timeout';
+  if (/provider|auth|network|rate|quota|circuit|gemini_/.test(code) || status === 'provider_unavailable') {
+    return 'provider_unavailable';
+  }
+  if (/insufficient|empty|missing|limited|fallback/.test(code) || status === 'fallback' || status === 'error') {
+    return 'insufficient_evidence';
+  }
+  return 'none';
+}
+
+function buildIngredientReportFingerprint(payload) {
+  const obj = asResearchObject(payload) || {};
+  const verdict = asResearchObject(obj.verdict) || {};
+  const oneLiner = pickFirstTrimmed(verdict.one_liner, obj.overview) || '';
+  const benefits = Array.isArray(obj.benefits) ? obj.benefits : [];
+  const benefitLines = [];
+  for (const row of benefits) {
+    const item = asResearchObject(row) || {};
+    const text = pickFirstTrimmed(item.what_it_means, item.concern);
+    if (!text) continue;
+    benefitLines.push(String(text).toLowerCase().slice(0, 120));
+    if (benefitLines.length >= 3) break;
+  }
+  const raw = [String(oneLiner).toLowerCase().slice(0, 240), ...benefitLines].join('||').trim();
+  if (!raw) return '';
+  return crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16);
+}
+
 function buildIngredientReportPayload({ language, query, research = null, meta = null } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const token = normalizeIngredientLookupToken(query);
@@ -32361,9 +32457,12 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     researchStatusRaw === 'queued' ||
     researchStatusRaw === 'error' ||
     researchStatusRaw === 'skipped' ||
-    researchStatusRaw === 'fallback'
+    researchStatusRaw === 'fallback' ||
+    researchStatusRaw === 'provider_unavailable' ||
+    researchStatusRaw === 'disabled'
       ? researchStatusRaw
       : 'none';
+  const normalizedResearchStatus = researchStatus === 'skipped' ? 'disabled' : researchStatus;
   const researchReady = researchStatus === 'ready' ? researchObj : null;
 
   const library = {
@@ -32473,9 +32572,709 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
       pair_well: lang === 'CN' ? ['防晒', '维E/阿魏酸体系'] : ['Sunscreen', 'Vitamin E/Ferulic systems'],
       separate: lang === 'CN' ? ['与高刺激活性同频堆叠时注意耐受'] : ['Watch tolerance when layering with stronger actives'],
     },
+    salicylic_acid: {
+      inci: 'Salicylic Acid',
+      display_name: lang === 'CN' ? '水杨酸' : 'Salicylic Acid',
+      aliases: ['BHA'],
+      category: lang === 'CN' ? 'BHA 角质管理' : 'BHA exfoliant',
+      one_liner: lang === 'CN'
+        ? '水杨酸是脂溶性BHA，可深入毛孔疏通堵塞，适合油性/痘痘肌。'
+        : 'Salicylic acid is an oil-soluble BHA that penetrates pores to reduce congestion; well-suited for oily/acne-prone skin.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'acne', strength: 3, what_it_means: '对黑头闭口和炎性痘痘有较强支持。' }, { concern: 'texture', strength: 2, what_it_means: '改善毛孔堵塞引起的粗糙感。' }]
+        : [{ concern: 'acne', strength: 3, what_it_means: 'Strong support for blackheads, clogged pores, and inflammatory acne.' }, { concern: 'texture', strength: 2, what_it_means: 'Improves rough texture from pore congestion.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '干燥/脱皮', likelihood: 'common', what_to_do: '先低频并加强保湿，敏感肌先试用低浓度。' }]
+        : [{ issue: 'Dryness/peeling', likelihood: 'common', what_to_do: 'Start low-frequency with moisturizer; sensitive skin should try low strength first.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '保湿霜'] : ['Niacinamide', 'Moisturizer'],
+      separate: lang === 'CN' ? ['与其他酸类或A醇同晚叠加时注意耐受'] : ['Avoid stacking with other acids or retinoids on the same night'],
+    },
+    tretinoin: {
+      inci: 'Tretinoin',
+      display_name: lang === 'CN' ? '维A酸' : 'Tretinoin',
+      aliases: ['Retinoic acid', 'Retin-A'],
+      category: lang === 'CN' ? '处方级抗老活性' : 'Prescription retinoid',
+      one_liner: lang === 'CN'
+        ? '维A酸（处方级）是抗老金标准活性，刺激管理是使用关键。'
+        : 'Tretinoin is a prescription-grade gold-standard retinoid for anti-aging; irritation management is critical.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'fine-lines', strength: 3, what_it_means: '最强临床证据的抗皱活性之一。' }, { concern: 'texture', strength: 3, what_it_means: '显著促进表皮更新与肤质改善。' }]
+        : [{ concern: 'fine-lines', strength: 3, what_it_means: 'One of the strongest clinically supported anti-wrinkle actives.' }, { concern: 'texture', strength: 3, what_it_means: 'Significantly promotes epidermal renewal and texture improvement.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '刺激/干燥/光敏', likelihood: 'common', what_to_do: '需医嘱使用，低频起步并严格防晒。' }]
+        : [{ issue: 'Irritation/dryness/photosensitivity', likelihood: 'common', what_to_do: 'Use under guidance; start low-frequency with strict sun protection.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '保湿霜', '防晒'] : ['Ceramides', 'Rich moisturizer', 'Sunscreen'],
+      separate: lang === 'CN' ? ['所有去角质酸、高浓维C'] : ['All exfoliating acids, high-strength vitamin C'],
+    },
+    adapalene: {
+      inci: 'Adapalene',
+      display_name: lang === 'CN' ? '阿达帕林' : 'Adapalene',
+      aliases: ['Differin'],
+      category: lang === 'CN' ? '第三代维A类' : 'Third-generation retinoid',
+      one_liner: lang === 'CN'
+        ? '阿达帕林对痘痘与抗老均有支持，刺激性低于传统维A酸。'
+        : 'Adapalene supports both acne and anti-aging goals with lower irritation potential than tretinoin.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'acne', strength: 3, what_it_means: '对炎性痘痘与闭口有较强证据支持。' }, { concern: 'fine-lines', strength: 2, what_it_means: '兼具一定抗老效果。' }]
+        : [{ concern: 'acne', strength: 3, what_it_means: 'Strong evidence for inflammatory acne and comedones.' }, { concern: 'fine-lines', strength: 2, what_it_means: 'Also provides moderate anti-aging support.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '干燥/刺激（比维A酸轻）', likelihood: 'common', what_to_do: '夜间使用，搭配保湿和防晒。' }]
+        : [{ issue: 'Dryness/irritation (milder than tretinoin)', likelihood: 'common', what_to_do: 'Use at night; pair with moisturizer and daytime SPF.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '保湿霜'] : ['Niacinamide', 'Moisturizer'],
+      separate: lang === 'CN' ? ['过氧化苯甲酰同涂层、其他酸类'] : ['Benzoyl peroxide in same layer, other acids'],
+    },
+    glycolic_acid: {
+      inci: 'Glycolic Acid',
+      display_name: lang === 'CN' ? '果酸/甘醇酸' : 'Glycolic Acid',
+      aliases: ['AHA'],
+      category: lang === 'CN' ? 'AHA 角质管理' : 'AHA exfoliant',
+      one_liner: lang === 'CN'
+        ? '果酸是最常用的AHA，分子小渗透快，对暗沉与纹理管理有较强支持。'
+        : 'Glycolic acid is the most common AHA with small molecular size for effective texture and dullness management.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'texture', strength: 3, what_it_means: '有效改善粗糙与暗沉。' }, { concern: 'brightening', strength: 2, what_it_means: '促进角质更新从而提亮肤色。' }]
+        : [{ concern: 'texture', strength: 3, what_it_means: 'Effectively improves roughness and dullness.' }, { concern: 'brightening', strength: 2, what_it_means: 'Promotes cell turnover to brighten skin tone.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '刺激/光敏', likelihood: 'common', what_to_do: '低浓度起步，隔天使用并配合防晒。' }]
+        : [{ issue: 'Irritation/photosensitivity', likelihood: 'common', what_to_do: 'Start low-strength, use every other day, and always apply SPF.' }],
+      pair_well: lang === 'CN' ? ['保湿霜', '防晒'] : ['Moisturizer', 'Sunscreen'],
+      separate: lang === 'CN' ? ['维A类和其他酸类同晚叠加'] : ['Retinoids and other acids on the same night'],
+    },
+    lactic_acid: {
+      inci: 'Lactic Acid',
+      display_name: lang === 'CN' ? '乳酸' : 'Lactic Acid',
+      aliases: [],
+      category: lang === 'CN' ? 'AHA 温和去角质' : 'Gentle AHA exfoliant',
+      one_liner: lang === 'CN'
+        ? '乳酸是温和型AHA，兼具去角质与保湿支持，适合敏感肌起步。'
+        : 'Lactic acid is a gentler AHA that also supports hydration, making it suitable for sensitive skin.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'texture', strength: 2, what_it_means: '温和去角质改善粗糙。' }, { concern: 'hydration', strength: 2, what_it_means: '可辅助维持角质层含水量。' }]
+        : [{ concern: 'texture', strength: 2, what_it_means: 'Gently exfoliates to improve roughness.' }, { concern: 'hydration', strength: 2, what_it_means: 'Helps maintain stratum corneum hydration.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '轻微刺痛/光敏', likelihood: 'uncommon', what_to_do: '低频起步并搭配防晒。' }]
+        : [{ issue: 'Mild sting/photosensitivity', likelihood: 'uncommon', what_to_do: 'Start low-frequency and use with sunscreen.' }],
+      pair_well: lang === 'CN' ? ['透明质酸', '保湿霜'] : ['Hyaluronic acid', 'Moisturizer'],
+      separate: lang === 'CN' ? ['维A和高浓度酸类'] : ['Retinoids and high-strength acids'],
+    },
+    mandelic_acid: {
+      inci: 'Mandelic Acid',
+      display_name: lang === 'CN' ? '杏仁酸' : 'Mandelic Acid',
+      aliases: [],
+      category: lang === 'CN' ? 'AHA 温和去角质' : 'Gentle AHA exfoliant',
+      one_liner: lang === 'CN'
+        ? '杏仁酸分子偏大，渗透温和，适合色沉与敏感肌的入门去角质。'
+        : 'Mandelic acid has a larger molecular size for gentler penetration; good for pigmentation and sensitive starters.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'brightening', strength: 2, what_it_means: '对色沉与痘印管理有温和支持。' }, { concern: 'texture', strength: 2, what_it_means: '改善表面粗糙感。' }]
+        : [{ concern: 'brightening', strength: 2, what_it_means: 'Gentle support for pigmentation and post-acne marks.' }, { concern: 'texture', strength: 2, what_it_means: 'Improves surface roughness.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '轻微脱皮', likelihood: 'uncommon', what_to_do: '隔天使用并搭配保湿。' }]
+        : [{ issue: 'Mild flaking', likelihood: 'uncommon', what_to_do: 'Use every other day with moisturizer.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '保湿霜'] : ['Niacinamide', 'Moisturizer'],
+      separate: lang === 'CN' ? ['其他酸类同晚叠加'] : ['Other acids on the same night'],
+    },
+    benzoyl_peroxide: {
+      inci: 'Benzoyl Peroxide',
+      display_name: lang === 'CN' ? '过氧化苯甲酰' : 'Benzoyl Peroxide',
+      aliases: ['BPO'],
+      category: lang === 'CN' ? '抗菌祛痘活性' : 'Antibacterial acne active',
+      one_liner: lang === 'CN'
+        ? '过氧化苯甲酰通过杀菌机制控制痘痘，是非处方祛痘的核心选项之一。'
+        : 'Benzoyl peroxide kills acne-causing bacteria and is a core OTC acne treatment option.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'acne', strength: 3, what_it_means: '强效杀灭痤疮丙酸杆菌，减少炎性痘。' }]
+        : [{ concern: 'acne', strength: 3, what_it_means: 'Potent bactericidal action against C. acnes; reduces inflammatory lesions.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '干燥/漂白衣物/刺激', likelihood: 'common', what_to_do: '从2.5%低浓度短接触开始，避免接触织物。' }]
+        : [{ issue: 'Dryness/bleaching fabrics/irritation', likelihood: 'common', what_to_do: 'Start 2.5% short-contact; keep away from fabrics.' }],
+      pair_well: lang === 'CN' ? ['保湿霜'] : ['Moisturizer'],
+      separate: lang === 'CN' ? ['维A类（可分AM/PM）'] : ['Retinoids (can split AM/PM)'],
+    },
+    glycerin: {
+      inci: 'Glycerin',
+      display_name: lang === 'CN' ? '甘油' : 'Glycerin',
+      aliases: ['Glycerol'],
+      category: lang === 'CN' ? '保湿吸水剂' : 'Humectant',
+      one_liner: lang === 'CN'
+        ? '甘油是最经典的保湿成分之一，安全性极高，几乎适合所有肤质。'
+        : 'Glycerin is one of the most established humectants with excellent safety; suitable for virtually all skin types.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 3, what_it_means: '从环境吸水并稳定角质层水合。' }]
+        : [{ concern: 'hydration', strength: 3, what_it_means: 'Draws moisture from the environment and stabilizes stratum corneum hydration.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '极干燥环境下可能反拔水', likelihood: 'rare', what_to_do: '搭配封闭性保湿产品。' }]
+        : [{ issue: 'May draw moisture from skin in very dry climates', likelihood: 'rare', what_to_do: 'Pair with an occlusive layer.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '角鲨烷'] : ['Ceramides', 'Squalane'],
+      separate: [],
+    },
+    hyaluronic_acid: {
+      inci: 'Hyaluronic Acid',
+      display_name: lang === 'CN' ? '透明质酸' : 'Hyaluronic Acid',
+      aliases: ['HA', 'Sodium hyaluronate'],
+      category: lang === 'CN' ? '保湿吸水剂' : 'Humectant',
+      one_liner: lang === 'CN'
+        ? '透明质酸可迅速提升皮肤含水感，不同分子量有不同渗透深度。'
+        : 'Hyaluronic acid rapidly boosts skin hydration; different molecular weights penetrate to varying depths.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 3, what_it_means: '即时提升肤感含水量与弹性感。' }]
+        : [{ concern: 'hydration', strength: 3, what_it_means: 'Instantly improves perceived hydration and plumpness.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '干燥环境下效果下降', likelihood: 'uncommon', what_to_do: '配合封闭保湿层锁水。' }]
+        : [{ issue: 'Less effective in very dry climates', likelihood: 'uncommon', what_to_do: 'Seal with an occlusive moisturizer.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '保湿霜'] : ['Niacinamide', 'Moisturizer'],
+      separate: [],
+    },
+    panthenol: {
+      inci: 'Panthenol',
+      display_name: lang === 'CN' ? '泛醇' : 'Panthenol',
+      aliases: ['Provitamin B5', 'Dexpanthenol'],
+      category: lang === 'CN' ? '舒缓修护保湿' : 'Soothing + hydration support',
+      one_liner: lang === 'CN'
+        ? '泛醇（维B5前体）在保湿、舒缓和屏障修护方面有广泛支持。'
+        : 'Panthenol (provitamin B5) is widely supported for hydration, soothing, and barrier repair.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '增强皮肤含水感和柔软度。' }, { concern: 'barrier-support', strength: 2, what_it_means: '辅助屏障修复并减少泛红。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Enhances skin hydration and softness.' }, { concern: 'barrier-support', strength: 2, what_it_means: 'Supports barrier repair and reduces redness.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '极少数人有轻微致敏', likelihood: 'rare', what_to_do: '出现红疹则停用。' }]
+        : [{ issue: 'Very rare sensitivity', likelihood: 'rare', what_to_do: 'Discontinue if rash appears.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '神经酰胺'] : ['Niacinamide', 'Ceramides'],
+      separate: [],
+    },
+    ceramide_np: {
+      inci: 'Ceramide NP',
+      display_name: lang === 'CN' ? '神经酰胺NP' : 'Ceramide NP',
+      aliases: ['Ceramides'],
+      category: lang === 'CN' ? '屏障修护脂质' : 'Barrier lipid',
+      one_liner: lang === 'CN'
+        ? '神经酰胺是皮肤屏障的核心脂质，补充可加强屏障完整性。'
+        : 'Ceramides are a key lipid in the skin barrier; supplementing can strengthen barrier integrity.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'barrier-support', strength: 3, what_it_means: '直接补充屏障核心脂质。' }, { concern: 'hydration', strength: 2, what_it_means: '减少经皮水分流失。' }]
+        : [{ concern: 'barrier-support', strength: 3, what_it_means: 'Directly replenishes core barrier lipids.' }, { concern: 'hydration', strength: 2, what_it_means: 'Reduces transepidermal water loss.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '几乎无已知风险', likelihood: 'rare', what_to_do: '适合所有肤质长期使用。' }]
+        : [{ issue: 'Virtually no known risks', likelihood: 'rare', what_to_do: 'Suitable for all skin types for long-term use.' }],
+      pair_well: lang === 'CN' ? ['胆固醇', '脂肪酸', '甘油'] : ['Cholesterol', 'Fatty acids', 'Glycerin'],
+      separate: [],
+    },
+    squalane: {
+      inci: 'Squalane',
+      display_name: lang === 'CN' ? '角鲨烷' : 'Squalane',
+      aliases: [],
+      category: lang === 'CN' ? '亲肤油脂柔润剂' : 'Lightweight oil emollient',
+      one_liner: lang === 'CN'
+        ? '角鲨烷是亲肤性强的轻质油脂，可增强保湿但不易闷痘。'
+        : 'Squalane is a lightweight, skin-identical oil that boosts moisture without heavy pore-clogging risk.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '提供封闭层减少水分蒸发。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Provides an occlusive layer to reduce moisture loss.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '极少数人不耐受', likelihood: 'rare', what_to_do: '油性/闷痘肌可先局部试用。' }]
+        : [{ issue: 'Very rare intolerance', likelihood: 'rare', what_to_do: 'Oily/congestion-prone skin should patch test first.' }],
+      pair_well: lang === 'CN' ? ['保湿精华', '神经酰胺'] : ['Hydrating serums', 'Ceramides'],
+      separate: [],
+    },
+    dimethicone: {
+      inci: 'Dimethicone',
+      display_name: lang === 'CN' ? '聚二甲基硅氧烷' : 'Dimethicone',
+      aliases: [],
+      category: lang === 'CN' ? '硅基柔肤剂' : 'Silicone emollient',
+      one_liner: lang === 'CN'
+        ? '聚二甲基硅氧烷形成保护膜减少水分流失，改善肤感与滑顺度。'
+        : 'Dimethicone forms a protective film that reduces water loss and improves skin feel and smoothness.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '封闭性减少经皮水分丢失。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Occlusive function reduces transepidermal water loss.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '部分人觉得闷/堵塞', likelihood: 'uncommon', what_to_do: '闷痘倾向可选轻薄配方。' }]
+        : [{ issue: 'Some feel heaviness/clogging', likelihood: 'uncommon', what_to_do: 'Choose lighter formulas if congestion-prone.' }],
+      pair_well: lang === 'CN' ? ['防晒', '底妆'] : ['Sunscreen', 'Makeup primers'],
+      separate: [],
+    },
+    behenyl_alcohol: {
+      inci: 'Behenyl Alcohol',
+      display_name: lang === 'CN' ? '山嵛醇' : 'Behenyl Alcohol',
+      aliases: ['Docosanol'],
+      category: lang === 'CN' ? '脂肪醇柔润剂' : 'Fatty alcohol emollient',
+      one_liner: lang === 'CN'
+        ? '山嵛醇属于脂肪醇类柔润剂，主要改善肤感与减少水分流失。'
+        : 'Behenyl alcohol is a fatty alcohol emollient used to improve slip and reduce transepidermal water loss.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '帮助配方形成柔润封层，减少干燥。' }, { concern: 'barrier-support', strength: 1, what_it_means: '可提升肤感并减少紧绷。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Adds emollient glide and supports moisture retention.' }, { concern: 'barrier-support', strength: 1, what_it_means: 'Can improve comfort in drier routines.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '极少数人闷痘感', likelihood: 'uncommon', what_to_do: '关注肤感变化并调整用量。' }]
+        : [{ issue: 'Occasional heavy feel/clogging', likelihood: 'uncommon', what_to_do: 'Adjust texture and amount if congestion appears.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '甘油'] : ['Ceramides', 'Glycerin'],
+      separate: [],
+    },
+    cetyl_alcohol: {
+      inci: 'Cetyl Alcohol',
+      display_name: lang === 'CN' ? '鲸蜡醇' : 'Cetyl Alcohol',
+      aliases: [],
+      category: lang === 'CN' ? '脂肪醇柔润剂' : 'Fatty alcohol emollient',
+      one_liner: lang === 'CN'
+        ? '鲸蜡醇是常用脂肪醇，作为乳化/增稠辅助并改善涂抹感。'
+        : 'Cetyl alcohol is a common fatty alcohol used as emulsifier/thickener that improves spreadability.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '提供柔润封闭层。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Provides emollient occlusion.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '少数人闷痘', likelihood: 'uncommon', what_to_do: '闷痘肌可选更轻薄质地。' }]
+        : [{ issue: 'Occasional congestion', likelihood: 'uncommon', what_to_do: 'Switch to lighter textures if clogging appears.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '甘油'] : ['Ceramides', 'Glycerin'],
+      separate: [],
+    },
+    stearyl_alcohol: {
+      inci: 'Stearyl Alcohol',
+      display_name: lang === 'CN' ? '硬脂醇' : 'Stearyl Alcohol',
+      aliases: [],
+      category: lang === 'CN' ? '脂肪醇柔润剂' : 'Fatty alcohol emollient',
+      one_liner: lang === 'CN'
+        ? '硬脂醇用于增稠与柔润，改善乳霜质感。'
+        : 'Stearyl alcohol is a fatty alcohol that acts as thickener/emollient in cream formulations.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '增强配方封闭性。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Enhances formula occlusion.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '少数人闷痘', likelihood: 'uncommon', what_to_do: '选择更轻薄配方。' }]
+        : [{ issue: 'Occasional congestion', likelihood: 'uncommon', what_to_do: 'Choose lighter formulas.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺'] : ['Ceramides'],
+      separate: [],
+    },
+    cetearyl_alcohol: {
+      inci: 'Cetearyl Alcohol',
+      display_name: lang === 'CN' ? '鲸蜡硬脂醇' : 'Cetearyl Alcohol',
+      aliases: [],
+      category: lang === 'CN' ? '脂肪醇柔润剂' : 'Fatty alcohol emollient',
+      one_liner: lang === 'CN'
+        ? '鲸蜡硬脂醇是鲸蜡醇和硬脂醇的混合物，广泛用于乳化与增稠。'
+        : 'Cetearyl alcohol is a blend of cetyl and stearyl alcohol, widely used as emulsifier and thickener.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '柔润并稳定乳液质地。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Conditions and stabilizes emulsion texture.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '少数人闷痘', likelihood: 'uncommon', what_to_do: '选轻薄质地产品。' }]
+        : [{ issue: 'Occasional congestion', likelihood: 'uncommon', what_to_do: 'Choose lightweight formulas.' }],
+      pair_well: lang === 'CN' ? ['甘油'] : ['Glycerin'],
+      separate: [],
+    },
+    zinc_oxide: {
+      inci: 'Zinc Oxide',
+      display_name: lang === 'CN' ? '氧化锌' : 'Zinc Oxide',
+      aliases: ['ZnO'],
+      category: lang === 'CN' ? '物理防晒剂' : 'Mineral UV filter',
+      one_liner: lang === 'CN'
+        ? '氧化锌是广谱物理防晒剂，兼具舒缓特性，适合敏感肌。'
+        : 'Zinc oxide is a broad-spectrum mineral filter with soothing properties; well-suited for sensitive skin.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 3, what_it_means: '广谱UVA/UVB防护。' }]
+        : [{ concern: 'photoprotection', strength: 3, what_it_means: 'Broad-spectrum UVA/UVB protection.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '泛白/肤感偏厚', likelihood: 'common', what_to_do: '选择微粒化/调色配方。' }]
+        : [{ issue: 'White cast/heavy feel', likelihood: 'common', what_to_do: 'Choose micronized or tinted formulas.' }],
+      pair_well: lang === 'CN' ? ['保湿精华'] : ['Hydrating serum'],
+      separate: [],
+    },
+    titanium_dioxide: {
+      inci: 'Titanium Dioxide',
+      display_name: lang === 'CN' ? '二氧化钛' : 'Titanium Dioxide',
+      aliases: ['TiO2'],
+      category: lang === 'CN' ? '物理防晒剂' : 'Mineral UV filter',
+      one_liner: lang === 'CN'
+        ? '二氧化钛偏向UVB防护，常与氧化锌搭配做广谱物理防晒。'
+        : 'Titanium dioxide primarily covers UVB; often paired with zinc oxide for broad-spectrum mineral protection.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 3, what_it_means: '物理遮挡UVB射线。' }]
+        : [{ concern: 'photoprotection', strength: 3, what_it_means: 'Physical UVB ray blockage.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '泛白/UVA覆盖偏弱', likelihood: 'common', what_to_do: '搭配氧化锌或化学滤剂补全UVA。' }]
+        : [{ issue: 'White cast/weaker UVA coverage', likelihood: 'common', what_to_do: 'Combine with zinc oxide or chemical filters for full UVA coverage.' }],
+      pair_well: lang === 'CN' ? ['氧化锌'] : ['Zinc oxide'],
+      separate: [],
+    },
+    avobenzone: {
+      inci: 'Avobenzone',
+      display_name: lang === 'CN' ? '阿伏苯宗' : 'Avobenzone',
+      aliases: ['Parsol 1789'],
+      category: lang === 'CN' ? '化学防晒剂' : 'Chemical UV filter',
+      one_liner: lang === 'CN'
+        ? '阿伏苯宗是核心UVA滤剂，需搭配稳定剂（如奥克立林）防降解。'
+        : 'Avobenzone is a key UVA filter; needs stabilizers (e.g. octocrylene) to prevent degradation.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 3, what_it_means: '核心UVA-I防护。' }]
+        : [{ concern: 'photoprotection', strength: 3, what_it_means: 'Core UVA-I protection coverage.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '光不稳定/眼周刺激', likelihood: 'common', what_to_do: '选含稳定体系的配方并避开眼周。' }]
+        : [{ issue: 'Photo-unstable/eye area sting', likelihood: 'common', what_to_do: 'Choose formulas with stabilizers and avoid eye contour.' }],
+      pair_well: lang === 'CN' ? ['奥克立林', '抗氧化精华'] : ['Octocrylene', 'Antioxidant serum'],
+      separate: [],
+    },
+    octocrylene: {
+      inci: 'Octocrylene',
+      display_name: lang === 'CN' ? '奥克立林' : 'Octocrylene',
+      aliases: [],
+      category: lang === 'CN' ? '化学防晒剂/稳定剂' : 'Chemical UV filter / stabilizer',
+      one_liner: lang === 'CN'
+        ? '奥克立林兼具UVB防护和阿伏苯宗稳定功能，是防晒配方常见搭档。'
+        : 'Octocrylene provides UVB protection and stabilizes avobenzone; a common sunscreen formula partner.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 2, what_it_means: '辅助UVB防护并稳定其他滤剂。' }]
+        : [{ concern: 'photoprotection', strength: 2, what_it_means: 'Assists UVB coverage and stabilizes other filters.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '少数人眼周刺激', likelihood: 'uncommon', what_to_do: '避开眼周区域。' }]
+        : [{ issue: 'Occasional eye-area irritation', likelihood: 'uncommon', what_to_do: 'Avoid eye contour area.' }],
+      pair_well: lang === 'CN' ? ['阿伏苯宗'] : ['Avobenzone'],
+      separate: [],
+    },
+    octisalate: {
+      inci: 'Octisalate',
+      display_name: lang === 'CN' ? '水杨酸乙基己酯' : 'Octisalate',
+      aliases: ['Ethylhexyl salicylate'],
+      category: lang === 'CN' ? '化学防晒剂' : 'Chemical UV filter',
+      one_liner: lang === 'CN'
+        ? '水杨酸乙基己酯主要覆盖UVB中段，常作为配方中的辅助滤剂。'
+        : 'Octisalate covers mid-range UVB and is commonly used as a supporting filter in sunscreen formulas.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 2, what_it_means: '辅助UVB防护。' }]
+        : [{ concern: 'photoprotection', strength: 2, what_it_means: 'Supporting UVB protection.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '少数人轻微刺激', likelihood: 'uncommon', what_to_do: '如有不适可更换防晒产品。' }]
+        : [{ issue: 'Mild irritation in some users', likelihood: 'uncommon', what_to_do: 'Switch sunscreen if discomfort appears.' }],
+      pair_well: lang === 'CN' ? ['阿伏苯宗', '奥克立林'] : ['Avobenzone', 'Octocrylene'],
+      separate: [],
+    },
+    homosalate: {
+      inci: 'Homosalate',
+      display_name: lang === 'CN' ? '胡莫柳酯' : 'Homosalate',
+      aliases: [],
+      category: lang === 'CN' ? '化学防晒剂' : 'Chemical UV filter',
+      one_liner: lang === 'CN'
+        ? '胡莫柳酯是UVB辅助滤剂，常与其他滤剂搭配以达到目标SPF。'
+        : 'Homosalate is a UVB helper filter often combined with others to reach target SPF.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 2, what_it_means: '辅助UVB覆盖。' }]
+        : [{ concern: 'photoprotection', strength: 2, what_it_means: 'Assists UVB coverage.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '偶发轻微刺激', likelihood: 'uncommon', what_to_do: '刺激明显时更换配方。' }]
+        : [{ issue: 'Occasional mild irritation', likelihood: 'uncommon', what_to_do: 'Switch formula if irritation is notable.' }],
+      pair_well: lang === 'CN' ? ['阿伏苯宗'] : ['Avobenzone'],
+      separate: [],
+    },
+    butyloctyl_salicylate: {
+      inci: 'Butyloctyl Salicylate',
+      display_name: lang === 'CN' ? '辛基水杨酸丁酯' : 'Butyloctyl Salicylate',
+      aliases: [],
+      category: lang === 'CN' ? '防晒增效剂' : 'Sunscreen booster / emollient',
+      one_liner: lang === 'CN'
+        ? '辛基水杨酸丁酯作为防晒增效剂与柔润剂，改善防晒产品肤感。'
+        : 'Butyloctyl salicylate acts as a sunscreen booster and emollient, improving product feel and efficacy.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 1, what_it_means: '增强防晒配方整体效能和肤感。' }]
+        : [{ concern: 'photoprotection', strength: 1, what_it_means: 'Enhances overall sunscreen performance and skin feel.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '刺激极少见', likelihood: 'rare', what_to_do: '几乎无需特别注意。' }]
+        : [{ issue: 'Irritation is very rare', likelihood: 'rare', what_to_do: 'No special precautions needed.' }],
+      pair_well: lang === 'CN' ? ['各类防晒滤剂'] : ['Various UV filters'],
+      separate: [],
+    },
+    phenoxyethanol: {
+      inci: 'Phenoxyethanol',
+      display_name: lang === 'CN' ? '苯氧乙醇' : 'Phenoxyethanol',
+      aliases: [],
+      category: lang === 'CN' ? '防腐体系' : 'Preservative system',
+      one_liner: lang === 'CN'
+        ? '苯氧乙醇是广泛使用的化妆品防腐剂，核心价值是配方稳定与安全保存。'
+        : 'Phenoxyethanol is a widely used cosmetic preservative; its core value is formula stability and safe shelf life.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'formula_stability', strength: 2, what_it_means: '帮助产品在使用周期内维持微生物安全。' }]
+        : [{ concern: 'formula_stability', strength: 2, what_it_means: 'Maintains microbial safety throughout the product use period.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '敏感肌偶发刺激', likelihood: 'uncommon', what_to_do: '先局部试用并观察反应。' }]
+        : [{ issue: 'Occasional sensitivity reaction', likelihood: 'uncommon', what_to_do: 'Patch-test and monitor tolerance.' }],
+      pair_well: [],
+      separate: [],
+    },
+    ethylhexylglycerin: {
+      inci: 'Ethylhexylglycerin',
+      display_name: lang === 'CN' ? '乙基己基甘油' : 'Ethylhexylglycerin',
+      aliases: [],
+      category: lang === 'CN' ? '防腐增效剂/柔肤剂' : 'Preservative booster / skin conditioner',
+      one_liner: lang === 'CN'
+        ? '乙基己基甘油既辅助防腐又提供柔肤感，在配方中通常配合苯氧乙醇。'
+        : 'Ethylhexylglycerin boosts preservative activity while providing skin conditioning, often paired with phenoxyethanol.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'formula_stability', strength: 1, what_it_means: '增强防腐体系效能。' }]
+        : [{ concern: 'formula_stability', strength: 1, what_it_means: 'Enhances preservative system efficacy.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '几乎无刺激风险', likelihood: 'rare', what_to_do: '无需特别注意。' }]
+        : [{ issue: 'Almost no irritation risk', likelihood: 'rare', what_to_do: 'No special precautions needed.' }],
+      pair_well: lang === 'CN' ? ['苯氧乙醇'] : ['Phenoxyethanol'],
+      separate: [],
+    },
+    tranexamic_acid: {
+      inci: 'Tranexamic Acid',
+      display_name: lang === 'CN' ? '传明酸' : 'Tranexamic Acid',
+      aliases: ['Tranexamic'],
+      category: lang === 'CN' ? '提亮/淡斑' : 'Brightening / depigmentation',
+      one_liner: lang === 'CN'
+        ? '传明酸对色沉和黄褐斑有证据支持，耐受性通常较好。'
+        : 'Tranexamic acid has evidence for hyperpigmentation and melasma support with generally good tolerance.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'brightening', strength: 2, what_it_means: '对黄褐斑和炎症后色沉有辅助作用。' }]
+        : [{ concern: 'brightening', strength: 2, what_it_means: 'Can support melasma and post-inflammatory hyperpigmentation.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '极少见不良反应', likelihood: 'rare', what_to_do: '如有异常即停用。' }]
+        : [{ issue: 'Very rare adverse reactions', likelihood: 'rare', what_to_do: 'Discontinue if unusual reactions occur.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '维C', '防晒'] : ['Niacinamide', 'Vitamin C', 'Sunscreen'],
+      separate: [],
+    },
+    arbutin: {
+      inci: 'Arbutin',
+      display_name: lang === 'CN' ? '熊果苷' : 'Arbutin',
+      aliases: ['Alpha-arbutin'],
+      category: lang === 'CN' ? '提亮/抑制色素' : 'Brightening / tyrosinase inhibitor',
+      one_liner: lang === 'CN'
+        ? '熊果苷通过抑制酪氨酸酶来减少色素生成，α-熊果苷效率更高。'
+        : 'Arbutin reduces pigment production by inhibiting tyrosinase; alpha-arbutin is more effective.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'brightening', strength: 2, what_it_means: '温和抑制黑色素合成。' }]
+        : [{ concern: 'brightening', strength: 2, what_it_means: 'Gently inhibits melanin synthesis.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '效果需长期坚持', likelihood: null, what_to_do: '持续使用 8-12 周评估效果。' }]
+        : [{ issue: 'Results require consistent use', likelihood: null, what_to_do: 'Continue for 8-12 weeks before evaluating.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺', '防晒'] : ['Niacinamide', 'Sunscreen'],
+      separate: [],
+    },
+    allantoin: {
+      inci: 'Allantoin',
+      display_name: lang === 'CN' ? '尿囊素' : 'Allantoin',
+      aliases: [],
+      category: lang === 'CN' ? '舒缓修护' : 'Soothing / skin protectant',
+      one_liner: lang === 'CN'
+        ? '尿囊素以舒缓和促进角质正常化著称，广泛用于敏感修护产品。'
+        : 'Allantoin is known for soothing and promoting keratin normalization; widely used in sensitive skin products.',
+      benefits: lang === 'CN'
+        ? [{ concern: 'barrier-support', strength: 2, what_it_means: '舒缓受损皮肤并辅助修护。' }]
+        : [{ concern: 'barrier-support', strength: 2, what_it_means: 'Soothes compromised skin and supports repair.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '几乎无已知风险', likelihood: 'rare', what_to_do: '适合所有肤质。' }]
+        : [{ issue: 'Virtually no known risks', likelihood: 'rare', what_to_do: 'Suitable for all skin types.' }],
+      pair_well: lang === 'CN' ? ['泛醇', '神经酰胺'] : ['Panthenol', 'Ceramides'],
+      separate: [],
+    },
   };
 
-  const picked = library[token] || {
+  const entityRow = token ? INGREDIENT_ENTITY_DICT.find((entry) => entry && entry.key === token) : null;
+  const familyKey = entityRow && entityRow.family
+    ? String(entityRow.family).trim().toLowerCase()
+    : inferIngredientFamilyFromText(inputName);
+
+  const familyProfiles = {
+    retinoid: {
+      category: lang === 'CN' ? '维A类活性' : 'Retinoid active',
+      one_liner: lang === 'CN' ? `${inputName} 属于维A类，通常用于抗老与纹理管理。` : `${inputName} is a retinoid, typically used for anti-aging and texture improvement.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'fine-lines', strength: 3, what_it_means: '长期可改善细纹与质地。' }]
+        : [{ concern: 'fine-lines', strength: 3, what_it_means: 'Long-term support for fine lines and texture.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '刺激/干燥', likelihood: 'common', what_to_do: '低频起步，搭配保湿防晒。' }]
+        : [{ issue: 'Irritation/dryness', likelihood: 'common', what_to_do: 'Start low-frequency with moisturizer and SPF.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '保湿霜'] : ['Ceramides', 'Moisturizer'],
+      separate: lang === 'CN' ? ['其他酸类同晚叠加'] : ['Other acids on the same night'],
+    },
+    aha: {
+      category: lang === 'CN' ? 'AHA 角质管理' : 'AHA exfoliant',
+      one_liner: lang === 'CN' ? `${inputName} 属于AHA果酸类，对纹理与暗沉有去角质支持。` : `${inputName} is an AHA exfoliant that supports texture and dullness through chemical exfoliation.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'texture', strength: 2, what_it_means: '促进角质更新改善粗糙。' }]
+        : [{ concern: 'texture', strength: 2, what_it_means: 'Promotes cell turnover to improve roughness.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '光敏/刺激', likelihood: 'common', what_to_do: '低频配合防晒使用。' }]
+        : [{ issue: 'Photosensitivity/irritation', likelihood: 'common', what_to_do: 'Use low-frequency with sunscreen.' }],
+      pair_well: lang === 'CN' ? ['保湿霜', '防晒'] : ['Moisturizer', 'Sunscreen'],
+      separate: lang === 'CN' ? ['维A类和其他酸类'] : ['Retinoids and other acids'],
+    },
+    bha: {
+      category: lang === 'CN' ? 'BHA 角质管理' : 'BHA exfoliant',
+      one_liner: lang === 'CN' ? `${inputName} 属于BHA类，油溶性可深入毛孔疏通。` : `${inputName} is a BHA that is oil-soluble and can penetrate into pores for decongestion.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'acne', strength: 3, what_it_means: '疏通毛孔堵塞。' }]
+        : [{ concern: 'acne', strength: 3, what_it_means: 'Decongests pores effectively.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '干燥/脱皮', likelihood: 'common', what_to_do: '低频搭配保湿。' }]
+        : [{ issue: 'Dryness/peeling', likelihood: 'common', what_to_do: 'Start low-frequency with moisturizer.' }],
+      pair_well: lang === 'CN' ? ['烟酰胺'] : ['Niacinamide'],
+      separate: lang === 'CN' ? ['其他酸类'] : ['Other acids'],
+    },
+    humectant: {
+      category: lang === 'CN' ? '保湿吸水剂' : 'Humectant',
+      one_liner: lang === 'CN' ? `${inputName} 主要负责吸水保湿，适合作为护肤基础层。` : `${inputName} mainly supports hydration retention as a foundational ingredient.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '提升皮肤含水感。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Improves skin hydration feel.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '干燥环境下可能不足', likelihood: 'uncommon', what_to_do: '搭配封闭型保湿。' }]
+        : [{ issue: 'May be insufficient in dry climates', likelihood: 'uncommon', what_to_do: 'Pair with occlusive moisturizer.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺', '角鲨烷'] : ['Ceramides', 'Squalane'],
+      separate: [],
+    },
+    fatty_alcohol: {
+      category: lang === 'CN' ? '脂肪醇柔润剂' : 'Fatty alcohol emollient',
+      one_liner: lang === 'CN' ? `${inputName} 属于脂肪醇柔润剂，改善肤感与减少水分流失。` : `${inputName} is a fatty alcohol emollient that improves texture and reduces moisture loss.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '柔润封闭减少干燥。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Emollient occlusion reduces dryness.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '少数人闷痘', likelihood: 'uncommon', what_to_do: '选轻薄质地。' }]
+        : [{ issue: 'Occasional congestion', likelihood: 'uncommon', what_to_do: 'Choose lighter textures.' }],
+      pair_well: lang === 'CN' ? ['神经酰胺'] : ['Ceramides'],
+      separate: [],
+    },
+    uv_filter: {
+      category: lang === 'CN' ? '化学防晒剂' : 'Chemical UV filter',
+      one_liner: lang === 'CN' ? `${inputName} 是防晒体系的一部分，关注整体配方的防护力与肤感。` : `${inputName} is part of the sunscreen system; focus on overall formula protection and feel.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 2, what_it_means: '辅助日间光防护。' }]
+        : [{ concern: 'photoprotection', strength: 2, what_it_means: 'Supports daytime UV protection.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '眼周刺激', likelihood: 'uncommon', what_to_do: '避开眼周。' }]
+        : [{ issue: 'Eye-area irritation', likelihood: 'uncommon', what_to_do: 'Avoid eye contour.' }],
+      pair_well: lang === 'CN' ? ['抗氧化精华'] : ['Antioxidant serum'],
+      separate: [],
+    },
+    mineral_filter: {
+      category: lang === 'CN' ? '物理防晒剂' : 'Mineral UV filter',
+      one_liner: lang === 'CN' ? `${inputName} 属于物理防晒剂，通过物理遮挡UV射线，适合敏感肌。` : `${inputName} is a mineral UV filter that physically blocks UV rays; suitable for sensitive skin.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'photoprotection', strength: 3, what_it_means: '物理屏障式UV防护。' }]
+        : [{ concern: 'photoprotection', strength: 3, what_it_means: 'Physical barrier UV protection.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '泛白/质感偏厚', likelihood: 'common', what_to_do: '选微粒化配方。' }]
+        : [{ issue: 'White cast/heavy texture', likelihood: 'common', what_to_do: 'Choose micronized formulas.' }],
+      pair_well: lang === 'CN' ? ['保湿精华'] : ['Hydrating serum'],
+      separate: [],
+    },
+    preservative: {
+      category: lang === 'CN' ? '防腐体系' : 'Preservative system',
+      one_liner: lang === 'CN' ? `${inputName} 主要用于配方防腐保存，核心价值是微生物安全。` : `${inputName} is used for preservation; its core value is microbial safety rather than treatment effects.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'formula_stability', strength: 2, what_it_means: '维持产品保质安全。' }]
+        : [{ concern: 'formula_stability', strength: 2, what_it_means: 'Maintains product shelf-life safety.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '敏感肌偶发刺激', likelihood: 'uncommon', what_to_do: '先局部试用。' }]
+        : [{ issue: 'Occasional sensitivity', likelihood: 'uncommon', what_to_do: 'Patch-test first.' }],
+      pair_well: [],
+      separate: [],
+    },
+    ceramide: {
+      category: lang === 'CN' ? '屏障修护脂质' : 'Barrier lipid',
+      one_liner: lang === 'CN' ? `${inputName} 属于神经酰胺类，直接补充皮肤屏障核心脂质。` : `${inputName} is a ceramide-type lipid that directly replenishes skin barrier components.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'barrier-support', strength: 3, what_it_means: '补充屏障脂质。' }]
+        : [{ concern: 'barrier-support', strength: 3, what_it_means: 'Replenishes barrier lipids.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '几乎无风险', likelihood: 'rare', what_to_do: '适合所有肤质。' }]
+        : [{ issue: 'Virtually no risks', likelihood: 'rare', what_to_do: 'Suitable for all skin types.' }],
+      pair_well: lang === 'CN' ? ['胆固醇', '脂肪酸'] : ['Cholesterol', 'Fatty acids'],
+      separate: [],
+    },
+    antioxidant: {
+      category: lang === 'CN' ? '抗氧化' : 'Antioxidant',
+      one_liner: lang === 'CN' ? `${inputName} 具有抗氧化支持，可辅助减轻自由基损伤。` : `${inputName} provides antioxidant support to help reduce free radical damage.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'brightening', strength: 2, what_it_means: '抗氧化辅助提亮。' }, { concern: 'firmness', strength: 2, what_it_means: '辅助胶原保护。' }]
+        : [{ concern: 'brightening', strength: 2, what_it_means: 'Antioxidant-assisted brightening.' }, { concern: 'firmness', strength: 2, what_it_means: 'Supports collagen protection.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '稳定性/刺激', likelihood: 'uncommon', what_to_do: '注意配方稳定性和耐受。' }]
+        : [{ issue: 'Stability/irritation', likelihood: 'uncommon', what_to_do: 'Monitor formula stability and tolerance.' }],
+      pair_well: lang === 'CN' ? ['防晒'] : ['Sunscreen'],
+      separate: [],
+    },
+    brightening: {
+      category: lang === 'CN' ? '提亮/淡斑' : 'Brightening / depigmentation',
+      one_liner: lang === 'CN' ? `${inputName} 用于辅助提亮和色素管理。` : `${inputName} is used to support brightening and pigmentation management.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'brightening', strength: 2, what_it_means: '辅助管理色沉。' }]
+        : [{ concern: 'brightening', strength: 2, what_it_means: 'Supports pigmentation management.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '需长期坚持', likelihood: null, what_to_do: '持续使用 8-12 周评估。' }]
+        : [{ issue: 'Requires consistent use', likelihood: null, what_to_do: 'Use 8-12 weeks before evaluating.' }],
+      pair_well: lang === 'CN' ? ['防晒', '烟酰胺'] : ['Sunscreen', 'Niacinamide'],
+      separate: [],
+    },
+    oil_emollient: {
+      category: lang === 'CN' ? '亲肤油脂柔润剂' : 'Oil emollient',
+      one_liner: lang === 'CN' ? `${inputName} 提供封闭保湿和柔润感。` : `${inputName} provides occlusive moisture retention and emollient feel.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '封闭层减少水分蒸发。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Occlusive layer reduces water evaporation.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '油性肌可能闷痘', likelihood: 'uncommon', what_to_do: '先局部试用。' }]
+        : [{ issue: 'May clog for oily skin', likelihood: 'uncommon', what_to_do: 'Patch test first.' }],
+      pair_well: lang === 'CN' ? ['保湿精华'] : ['Hydrating serum'],
+      separate: [],
+    },
+    silicone: {
+      category: lang === 'CN' ? '硅基柔肤剂' : 'Silicone emollient',
+      one_liner: lang === 'CN' ? `${inputName} 形成保护膜减少水分流失并改善肤感。` : `${inputName} forms a protective film to reduce water loss and improve skin feel.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'hydration', strength: 2, what_it_means: '封闭性保湿支持。' }]
+        : [{ concern: 'hydration', strength: 2, what_it_means: 'Occlusive moisture support.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '部分人觉得闷', likelihood: 'uncommon', what_to_do: '选轻薄配方。' }]
+        : [{ issue: 'Some feel heaviness', likelihood: 'uncommon', what_to_do: 'Choose lighter formulas.' }],
+      pair_well: lang === 'CN' ? ['防晒'] : ['Sunscreen'],
+      separate: [],
+    },
+    acne_active: {
+      category: lang === 'CN' ? '抗痘活性' : 'Acne active',
+      one_liner: lang === 'CN' ? `${inputName} 是活性祛痘成分，需关注刺激管理。` : `${inputName} is an active acne treatment ingredient; irritation management is important.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'acne', strength: 3, what_it_means: '对痘痘有较强针对性。' }]
+        : [{ concern: 'acne', strength: 3, what_it_means: 'Targeted support for acne concerns.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '干燥/刺激', likelihood: 'common', what_to_do: '低浓度起步配合保湿。' }]
+        : [{ issue: 'Dryness/irritation', likelihood: 'common', what_to_do: 'Start low concentration with moisturizer.' }],
+      pair_well: lang === 'CN' ? ['保湿霜'] : ['Moisturizer'],
+      separate: lang === 'CN' ? ['其他高刺激活性'] : ['Other strong actives'],
+    },
+    exfoliant: {
+      category: lang === 'CN' ? '去角质活性' : 'Exfoliating active',
+      one_liner: lang === 'CN' ? `${inputName} 用于角质管理和纹理改善。` : `${inputName} supports exfoliation and texture improvement.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'texture', strength: 2, what_it_means: '改善粗糙感。' }]
+        : [{ concern: 'texture', strength: 2, what_it_means: 'Improves roughness.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '屏障负担', likelihood: 'common', what_to_do: '控制频率。' }]
+        : [{ issue: 'Barrier stress', likelihood: 'common', what_to_do: 'Control frequency.' }],
+      pair_well: lang === 'CN' ? ['保湿修护'] : ['Barrier moisturizer'],
+      separate: lang === 'CN' ? ['维A同晚叠加'] : ['Retinoids on the same night'],
+    },
+    vitamin: {
+      category: lang === 'CN' ? '维生素类活性' : 'Vitamin active',
+      one_liner: lang === 'CN' ? `${inputName} 属于维生素类成分，多功能护肤支持。` : `${inputName} is a vitamin-class ingredient with multi-functional skincare support.`,
+      benefits: lang === 'CN'
+        ? [{ concern: 'barrier-support', strength: 2, what_it_means: '多功能屏障与肤况支持。' }]
+        : [{ concern: 'barrier-support', strength: 2, what_it_means: 'Multi-functional barrier and skin condition support.' }],
+      watchouts: lang === 'CN'
+        ? [{ issue: '因具体成分而异', likelihood: 'uncommon', what_to_do: '按具体成分调整频率。' }]
+        : [{ issue: 'Varies by specific vitamin', likelihood: 'uncommon', what_to_do: 'Adjust frequency by specific ingredient.' }],
+      pair_well: lang === 'CN' ? ['保湿霜'] : ['Moisturizer'],
+      separate: [],
+    },
+  };
+
+  const familyFallback = familyKey && familyProfiles[familyKey] ? familyProfiles[familyKey] : null;
+
+  const picked = library[token] || (familyFallback ? {
+    inci: inputName,
+    display_name: inputName,
+    aliases: entityRow && Array.isArray(entityRow.aliases) ? entityRow.aliases : [],
+    ...familyFallback,
+  } : {
     inci: inputName,
     display_name: inputName,
     aliases: [],
@@ -32500,7 +33299,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     ],
     pair_well: [],
     separate: [],
-  };
+  });
 
   const researchIngredient = asResearchObject(researchReady && researchReady.ingredient) || {};
   const researchSafety = asResearchObject(researchReady && researchReady.safety) || {};
@@ -32538,9 +33337,20 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     }))
     .filter((row) => row.title || row.url)
     .slice(0, 8);
-  const evidenceGradeFallback = token ? 'A' : null;
+  const isLibraryHit = Boolean(library[token]);
+  const isFamilyHit = Boolean(familyFallback);
+  const ingredientKey = buildIngredientStableKey({
+    query: inputName,
+    entityKey: token,
+  });
+  const evidenceGradeFallback = isLibraryHit ? 'B' : isFamilyHit ? 'B' : null;
   const evidenceGrade = normalizeIngredientEvidenceGrade(researchEvidence.grade, evidenceGradeFallback);
-  const irritationRiskFallback = token === 'retinol' || token === 'vitamin_c' ? 'medium' : token ? 'low' : null;
+  const commonIrritationFamilies = ['retinoid', 'aha', 'bha', 'acne_active', 'exfoliant'];
+  const irritationRiskFallback = isLibraryHit
+    ? (commonIrritationFamilies.includes(familyKey) ? 'medium' : 'low')
+    : isFamilyHit
+      ? (commonIrritationFamilies.includes(familyKey) ? 'medium' : 'low')
+      : null;
   const irritationRisk = normalizeIngredientIrritationRisk(researchSafety.irritation_risk, irritationRiskFallback);
   const benefits = researchBenefits.length ? researchBenefits : picked.benefits;
   const watchouts = researchWatchouts.length ? researchWatchouts : picked.watchouts;
@@ -32569,8 +33379,28 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     String(researchReady && researchReady.overview ? researchReady.overview : '').slice(0, 260),
     picked.one_liner,
   );
+  const shouldMarkPending = Boolean(
+    INGREDIENT_REPORT_PENDING_UI_ENABLED &&
+      INGREDIENT_REPORT_HYBRID_ENABLED &&
+      !researchReady &&
+      !INGREDIENT_KB_ONLY_MODE &&
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED,
+  );
+  const reportStatus = researchReady
+    ? 'ready'
+    : shouldMarkPending
+      ? 'pending'
+      : normalizedResearchStatus === 'error' && !INGREDIENT_REPORT_DISABLE_GENERIC_BLOCK
+        ? 'failed'
+        : 'partial';
+  const reportMode = researchReady ? (isLibraryHit ? 'hybrid' : 'llm_enriched') : 'deterministic';
+  const reportReasonCode = normalizeIngredientReportReasonCode({
+    researchStatus: normalizedResearchStatus,
+    researchErrorCode,
+    researchReady: Boolean(researchReady),
+  });
   const confidence = (() => {
-    if (!researchReady) return token ? 0.8 : 0.55;
+    if (!researchReady) return isLibraryHit ? 0.72 : isFamilyHit ? 0.64 : 0.56;
     let base = 0.7;
     if (evidenceGrade === 'A') base = 0.9;
     else if (evidenceGrade === 'B') base = 0.82;
@@ -32579,11 +33409,37 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     if (researchCitations.length === 0) base -= 0.08;
     return Math.max(0.5, Math.min(0.95, Number(base.toFixed(2))));
   })();
+  const sections = [
+    { id: 'benefits', title: lang === 'CN' ? '功效' : 'Benefits', status: benefits.length ? 'ready' : reportStatus === 'pending' ? 'pending' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
+    { id: 'how_to_use', title: lang === 'CN' ? '使用方法' : 'How to use', status: (isLibraryHit || isFamilyHit || notes.length || pairWell.length || separate.length) ? 'ready' : reportStatus === 'pending' ? 'pending' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
+    { id: 'watchouts', title: lang === 'CN' ? '注意事项' : 'Watchouts', status: watchouts.length ? 'ready' : reportStatus === 'pending' ? 'pending' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
+    { id: 'evidence', title: lang === 'CN' ? '证据' : 'Evidence', status: researchCitations.length ? 'ready' : reportStatus === 'pending' ? 'pending' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
+  ];
+  const missingSections = sections.filter((section) => section.status !== 'ready').map((section) => section.id);
+  const completionScore = (() => {
+    const readyCount = sections.filter((section) => section.status === 'ready').length;
+    const base = sections.length > 0 ? readyCount / sections.length : 0;
+    if (reportStatus === 'ready') return 1;
+    if (reportStatus === 'pending') return Math.max(0.62, Number(base.toFixed(2)));
+    if (reportStatus === 'partial') return Math.max(0.55, Number(base.toFixed(2)));
+    return Math.max(0.4, Number(base.toFixed(2)));
+  })();
+  const personalizationBasis = researchReady
+    ? isLibraryHit
+      ? 'mixed'
+      : isFamilyHit
+        ? 'ingredient_family'
+        : 'ingredient'
+    : isLibraryHit
+      ? 'ingredient'
+      : isFamilyHit
+        ? 'ingredient_family'
+        : 'ingredient';
 
   return {
     schema_version: 'aurora.ingredient_report.v2-lite',
     locale: lang === 'CN' ? 'zh-CN' : 'en-US',
-    research_status: researchStatus,
+    research_status: normalizedResearchStatus,
     research_provider: researchProvider || null,
     research_error_code: researchErrorCode || null,
     normalized_query: normalizedQuery || null,
@@ -32599,6 +33455,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     provider_circuit_state: providerCircuitState || 'closed',
     research_attempts: providerAttempts,
     ingredient: {
+      key: ingredientKey,
       inci: pickFirstTrimmed(researchIngredient.inci, picked.inci, inputName),
       display_name: pickFirstTrimmed(researchIngredient.display_name, picked.display_name, inputName),
       aliases: asResearchStringArray(researchIngredient.aliases, 8).length
@@ -32620,6 +33477,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
       time_to_results: token || researchReady ? '4-8w' : null,
       confidence,
       confidence_level: confidenceLevelFromResearch || (confidence >= 0.85 ? 'high' : confidence >= 0.65 ? 'medium' : 'low'),
+      personalization_basis: personalizationBasis,
     },
     confidence: confidenceLevelFromResearch || (confidence >= 0.85 ? 'high' : confidence >= 0.65 ? 'medium' : 'low'),
     benefits,
@@ -32628,8 +33486,8 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
       avoid: asResearchStringArray(researchUsage.avoid, 8),
     },
     how_to_use: {
-      frequency: String(researchUsage.frequency || '').trim().toLowerCase() || (token === 'retinol' ? '3-4x/week' : 'daily'),
-      routine_step: String(researchUsage.routine_step || '').trim().toLowerCase() || (token === 'retinol' ? 'cream' : 'serum'),
+      frequency: String(researchUsage.frequency || '').trim().toLowerCase() || (commonIrritationFamilies.includes(familyKey) ? '3-4x/week' : 'daily'),
+      routine_step: String(researchUsage.routine_step || '').trim().toLowerCase() || (familyKey === 'fatty_alcohol' || familyKey === 'ceramide' ? 'cream' : familyKey === 'uv_filter' || familyKey === 'mineral_filter' ? 'sunscreen' : 'serum'),
       pair_well: pairWell,
       consider_separating: separate,
       notes,
@@ -32649,6 +33507,15 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
       citations: researchCitations,
       show_citations_by_default: researchCitations.length > 0,
     },
+    report_state: {
+      mode: reportMode,
+      status: reportStatus,
+      completion_score: completionScore,
+      missing_sections: missingSections,
+      reason_code: reportReasonCode,
+      family_key: familyKey || null,
+    },
+    sections,
     updated_at_ms: Number.isFinite(Number(researchReady && researchReady.updated_at_ms))
       ? Math.trunc(Number(researchReady && researchReady.updated_at_ms))
       : null,
@@ -32665,6 +33532,116 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
       },
     ],
   };
+}
+
+function enrichIngredientReportCardsInEnvelope(envelope, { language = 'EN', logger = null } = {}) {
+  if (!envelope || typeof envelope !== 'object') return envelope;
+  const cards = Array.isArray(envelope.cards) ? envelope.cards : [];
+  let enriched = false;
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    if (!card || typeof card !== 'object') continue;
+    if (String(card.type || '').trim().toLowerCase() !== 'aurora_ingredient_report') continue;
+    const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : null;
+    if (!payload) continue;
+    const schemaVersion = String(payload.schema_version || '').trim().toLowerCase();
+    if (schemaVersion === 'aurora.ingredient_report.v2-lite') {
+      const existing = payload;
+      const hasDeterministicContent = Boolean(
+        existing.verdict &&
+        existing.verdict.evidence_grade &&
+        existing.verdict.evidence_grade !== 'unknown' &&
+        existing.verdict.irritation_risk &&
+        existing.verdict.irritation_risk !== 'unknown',
+      );
+      if (hasDeterministicContent) continue;
+      const ingredientInci = pickFirstTrimmed(
+        existing.ingredient && existing.ingredient.inci,
+        existing.ingredient && existing.ingredient.display_name,
+        existing.normalized_query,
+      );
+      if (!ingredientInci) continue;
+      const lang = language === 'CN' ? 'CN' : 'EN';
+      const deterministicPayload = buildIngredientReportPayload({
+        language: lang,
+        query: ingredientInci,
+        research: existing.research_status ? { status: existing.research_status } : null,
+        meta: {
+          normalized_query: existing.normalized_query || null,
+          route_decision_reasons: Array.isArray(existing.route_decision_reasons) ? existing.route_decision_reasons : [],
+          route_rule_version: existing.route_rule_version || null,
+          provider_model_tier: existing.provider_model_tier || null,
+          provider_circuit_state: existing.provider_circuit_state || null,
+          research_provider: existing.research_provider || null,
+          research_error_code: existing.research_error_code || null,
+        },
+      });
+      if (!deterministicPayload) continue;
+      const detVerdict = deterministicPayload.verdict || {};
+      const detHasContent = Boolean(
+        detVerdict.evidence_grade && detVerdict.evidence_grade !== 'unknown',
+      );
+      if (!detHasContent && !deterministicPayload.benefits?.length) continue;
+      const mergedPayload = { ...existing };
+      if (detVerdict.evidence_grade && detVerdict.evidence_grade !== 'unknown') {
+        mergedPayload.verdict = {
+          ...(mergedPayload.verdict || {}),
+          one_liner: pickFirstTrimmed(detVerdict.one_liner, mergedPayload.verdict && mergedPayload.verdict.one_liner),
+          evidence_grade: detVerdict.evidence_grade,
+          irritation_risk: detVerdict.irritation_risk || mergedPayload.verdict?.irritation_risk || null,
+          time_to_results: detVerdict.time_to_results || mergedPayload.verdict?.time_to_results || null,
+          confidence: detVerdict.confidence != null ? detVerdict.confidence : mergedPayload.verdict?.confidence,
+          confidence_level: detVerdict.confidence_level || mergedPayload.verdict?.confidence_level || 'low',
+          top_benefits: (deterministicPayload.benefits || []).map((b) => b && b.what_it_means).filter(Boolean).slice(0, 3),
+          personalization_basis: detVerdict.personalization_basis || mergedPayload.verdict?.personalization_basis,
+        };
+      }
+      if (deterministicPayload.ingredient) {
+        mergedPayload.ingredient = {
+          ...(mergedPayload.ingredient || {}),
+          category: deterministicPayload.ingredient.category || mergedPayload.ingredient?.category,
+          what_it_is: deterministicPayload.ingredient.what_it_is || mergedPayload.ingredient?.what_it_is || null,
+          aliases: (deterministicPayload.ingredient.aliases || []).length
+            ? deterministicPayload.ingredient.aliases
+            : mergedPayload.ingredient?.aliases || [],
+        };
+      }
+      if (deterministicPayload.benefits && deterministicPayload.benefits.length) {
+        mergedPayload.benefits = deterministicPayload.benefits;
+      }
+      if (deterministicPayload.watchouts && deterministicPayload.watchouts.length) {
+        mergedPayload.watchouts = deterministicPayload.watchouts;
+      }
+      if (deterministicPayload.how_to_use) {
+        mergedPayload.how_to_use = deterministicPayload.how_to_use;
+      }
+      if (deterministicPayload.evidence) {
+        mergedPayload.evidence = {
+          ...(mergedPayload.evidence || {}),
+          summary: deterministicPayload.evidence.summary || mergedPayload.evidence?.summary,
+        };
+      }
+      if (deterministicPayload.report_state) {
+        mergedPayload.report_state = deterministicPayload.report_state;
+      }
+      if (deterministicPayload.sections) {
+        mergedPayload.sections = deterministicPayload.sections;
+      }
+      if (deterministicPayload.confidence) {
+        mergedPayload.confidence = deterministicPayload.confidence;
+      }
+      cards[i] = { ...card, payload: mergedPayload };
+      enriched = true;
+      if (logger) {
+        logger.info(
+          { ingredient: ingredientInci, enrichment: 'deterministic_overlay' },
+          'aurora bff: enriched LLM ingredient report with deterministic data',
+        );
+      }
+    }
+  }
+  if (!enriched) return envelope;
+  return { ...envelope, cards };
 }
 
 async function buildIngredientReportPayloadWithResearch({
@@ -32688,7 +33665,8 @@ async function buildIngredientReportPayloadWithResearch({
     !(resolvedResearch && resolvedResearch.status === 'ready') &&
     INGREDIENT_ROUTE_V2_ENABLED &&
     !INGREDIENT_LEGACY_PATH_ENABLED &&
-    AURORA_INGREDIENT_LLM_REPORT_ENABLED
+    AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
+    INGREDIENT_REPORT_HYBRID_ENABLED
   ) {
     const syncResearch = await runIngredientResearchSync({
       query: ingredientQuery,
@@ -42765,6 +43743,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         return out.slice(0, 16);
       })();
 
+      const enrichedEnvelope = enrichIngredientReportCardsInEnvelope(envelopeWithGuardrails, {
+        language: ctx.lang,
+        logger,
+      });
+      if (enrichedEnvelope !== envelopeWithGuardrails && enrichedEnvelope.cards) {
+        envelopeWithGuardrails.cards = enrichedEnvelope.cards;
+      }
+
       const chatCardsResponse = buildChatCardsResponse({
         envelope: envelopeWithGuardrails,
         ctx,
@@ -44531,6 +45517,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           INGREDIENT_ROUTE_V2_ENABLED &&
           !INGREDIENT_LEGACY_PATH_ENABLED &&
           AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
+          INGREDIENT_REPORT_HYBRID_ENABLED &&
           !rateLimit.blocked
         ) {
           const profileSummaryForResearch =
@@ -44593,7 +45580,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
         }
 
-        const shouldQueueResearch = !readyAfterSync && !INGREDIENT_KB_ONLY_MODE && AURORA_INGREDIENT_LLM_REPORT_ENABLED;
+        const shouldQueueResearch =
+          !readyAfterSync &&
+          !INGREDIENT_KB_ONLY_MODE &&
+          AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
+          INGREDIENT_REPORT_HYBRID_ENABLED;
         const researchJob = shouldQueueResearch
           ? enqueueIngredientResearchJob({
             query: target,
@@ -44623,6 +45614,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             research_error_code: resolvedResearch && (resolvedResearch.error_code || resolvedResearch.error),
           },
         });
+        const reportState = asResearchObject(reportPayload && reportPayload.report_state) || {};
+        const reportMode = String(reportState.mode || '').trim().toLowerCase() || 'deterministic';
+        const reportStatus = String(reportState.status || '').trim().toLowerCase() || 'partial';
+        const reportReasonCode = String(reportState.reason_code || '').trim().toLowerCase() || 'none';
+        const genericFallback = reportMode === 'deterministic' && reportReasonCode === 'none' && !String(reportState.family_key || '').trim();
+        recordIngredientReportMetric({
+          mode: reportMode,
+          status: reportStatus,
+          reasonCode: reportReasonCode,
+          pending: reportStatus === 'pending',
+          genericFallback,
+          fingerprint: buildIngredientReportFingerprint(reportPayload),
+        });
         const ingredientName = pickFirstTrimmed(
           reportPayload && reportPayload.ingredient && reportPayload.ingredient.display_name,
           reportPayload && reportPayload.ingredient && reportPayload.ingredient.inci,
@@ -44630,10 +45634,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         ) || target;
         const assistantText =
           ctx.lang === 'CN'
-            ? reportPayload.research_status === 'queued'
+            ? reportStatus === 'pending'
               ? `已先返回 ${ingredientName} 的快速结论，增强证据生成中。`
               : `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
-            : reportPayload.research_status === 'queued'
+            : reportStatus === 'pending'
               ? `Returning a quick brief for ${ingredientName}; enhanced evidence is generating.`
               : `I generated a 1-minute ingredient report for ${ingredientName}.`;
         let sessionPatch = attachIngredientRouteMetaToSessionPatch(
@@ -47358,6 +48362,33 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (historyForPrefix.length) {
         recordClarificationHistorySent({ count: historyForPrefix.length });
       }
+      const ingredientHintForPrefix = (() => {
+        const msg = String(upstreamMessage || '').trim();
+        if (!msg) return null;
+        const entityMatch = ingredientEntityMatchFromText(msg);
+        if (!entityMatch || !entityMatch.entity_key) return null;
+        const token = entityMatch.entity_key;
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const reportPayload = buildIngredientReportPayload({ language: lang, query: msg, research: null, meta: {} });
+        if (!reportPayload || !reportPayload.ingredient) return null;
+        const picked = reportPayload;
+        const parts = [
+          `[Ingredient KB context for "${picked.ingredient.display_name || picked.ingredient.inci}"]`,
+          picked.ingredient.category ? `Category: ${picked.ingredient.category}` : null,
+          picked.verdict && picked.verdict.one_liner ? `Summary: ${picked.verdict.one_liner}` : null,
+          picked.verdict && picked.verdict.evidence_grade ? `Evidence grade: ${picked.verdict.evidence_grade}` : null,
+          picked.verdict && picked.verdict.irritation_risk ? `Irritation risk: ${picked.verdict.irritation_risk}` : null,
+          Array.isArray(picked.benefits) && picked.benefits.length
+            ? `Benefits: ${picked.benefits.map((b) => `${b.concern} (S${b.strength}): ${b.what_it_means}`).join('; ')}`
+            : null,
+          Array.isArray(picked.watchouts) && picked.watchouts.length
+            ? `Watchouts: ${picked.watchouts.map((w) => `${w.issue} (${w.likelihood || 'unknown'}): ${w.what_to_do}`).join('; ')}`
+            : null,
+          picked.how_to_use ? `Frequency: ${picked.how_to_use.frequency}, Step: ${picked.how_to_use.routine_step}` : null,
+          '[Use this KB data for accurate ingredient-specific answers. Generate a detailed aurora_ingredient_report card with v2-lite schema using this data.]',
+        ].filter(Boolean);
+        return parts.join('\n');
+      })();
       const prefix = buildContextPrefix({
         profile: profileSummary,
         recentLogs,
@@ -47368,6 +48399,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         action_id: normalizedActionPayload && typeof normalizedActionPayload === 'object' ? normalizedActionPayload.action_id : null,
         clarification_id: clarificationId,
         ...(historyForPrefix.length ? { clarification_history: historyForPrefix } : {}),
+        ...(ingredientHintForPrefix ? { ingredient_kb_context: ingredientHintForPrefix } : {}),
       });
       const query = `${prefix}${upstreamMessage || '(no message)'}`;
       const isResumeUpstreamCall = Boolean(
@@ -48730,7 +49762,9 @@ const __internal = {
   buildAuroraProductRecommendationsQuery,
   applyIngredientRecoConstraint,
   generateProductRecommendations,
+  buildIngredientReportPayload,
   buildIngredientReportPayloadWithResearch,
+  enrichIngredientReportCardsInEnvelope,
   initLlmFallbackStageCounts,
   mergeLlmFallbackStageCounts,
   deriveProductsEmptyReason,

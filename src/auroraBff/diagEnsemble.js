@@ -9,6 +9,7 @@ const {
   smoothSeverity,
   loadCalibrationRuntime,
 } = require('./diagCalibration');
+const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 
 const CANONICAL_SCHEMA_VERSION = 'aurora.diagnosis_canonical.v1';
 const CANONICAL_TYPES = Object.freeze([
@@ -1263,9 +1264,7 @@ async function runGeminiProvider({
   model,
 } = {}) {
   const startedAt = Date.now();
-  const apiKey = String(
-    process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-  ).trim();
+  const apiKey = resolveAuroraGeminiKey('AURORA_DIAG_GEMINI_API_KEY');
   const qualityFeatures = buildQualityFeatureSnapshot(photoQuality);
   const imageBytesLen = Buffer.isBuffer(imageBuffer) ? imageBuffer.length : 0;
   const requestPayloadBytesLen = imageBytesLen > 0 ? Math.ceil((imageBytesLen / 3)) * 4 : 0;

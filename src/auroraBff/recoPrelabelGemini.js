@@ -1,4 +1,5 @@
 const { GoogleGenAI } = require('@google/genai');
+const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 
 function toInt(value, fallback, min, max) {
   const n = Number(value);
@@ -149,9 +150,7 @@ async function callGeminiPrelabel({
   model = process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-2.0-flash',
   logger,
 } = {}) {
-  const apiKey = String(
-    process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-  ).trim();
+  const apiKey = resolveAuroraGeminiKey('AURORA_RECO_GEMINI_API_KEY');
   if (!apiKey) {
     const err = new Error('MISSING_GEMINI_KEY');
     err.code = 'MISSING_GEMINI_KEY';

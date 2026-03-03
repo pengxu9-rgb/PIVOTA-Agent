@@ -9,10 +9,9 @@ const {
   buildSkinVisionPromptBundle,
   buildSkinReportPromptBundle,
 } = require('./skinLlmPrompts');
+const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 
-const GEMINI_API_KEY = String(
-  process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-).trim();
+const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 
 const SKIN_MODEL_GEMINI =
   String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
