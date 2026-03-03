@@ -1000,6 +1000,9 @@ const AURORA_INGREDIENT_LLM_REPORT_ENABLED = (() => {
 })();
 const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI =
   String(process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro').trim() || 'gemini-3-pro';
+const AURORA_INGREDIENT_SYNC_MODEL_GEMINI =
+  String(process.env.AURORA_INGREDIENT_SYNC_MODEL_GEMINI || AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI).trim() ||
+  AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI;
 const AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS || 8000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
@@ -18693,6 +18696,8 @@ function ingredientBuildMinimalReportPayload({
   researchErrorCode = '',
   routeDecisionReasons = [],
   resolvedModel = null,
+  timeoutRootCause = undefined,
+  providerHttpStatus = undefined,
 } = {}) {
   const q = ingredientNormalizeQuery(query) || 'ingredient';
   const isCN = String(language || '').toUpperCase() === 'CN';
@@ -18767,6 +18772,8 @@ function ingredientBuildMinimalReportPayload({
       },
     ],
     ...(researchErrorCode ? { research_error_code: researchErrorCode } : {}),
+    ...(timeoutRootCause ? { timeout_root_cause: timeoutRootCause } : {}),
+    ...(Number.isFinite(providerHttpStatus) ? { provider_http_status: Number(providerHttpStatus) } : {}),
     top_products: [],
     updated_at_ms: Date.now(),
     normalized_query: q,
@@ -18826,10 +18833,29 @@ function ingredientBuildResearchPrompt({ query, language, goal, sensitivity, pro
 }
 
 function ingredientMapGeminiReason(reason, detail) {
-  const token = String(reason || detail || '').trim().toLowerCase();
+  const token = `${String(reason || '')} ${String(detail || '')}`.trim().toLowerCase();
   if (!token) return 'gemini_unknown';
   if (token.includes('timeout')) return 'gemini_timeout';
-  if (token.includes('rate') || token.includes('429') || token.includes('resource exhausted')) return 'gemini_rate_limited';
+  if (
+    token.includes('rate limit') ||
+    token.includes('rate_limit') ||
+    token.includes('rate-limited') ||
+    token.includes('rate_limited') ||
+    token.includes('429') ||
+    token.includes('resource exhausted') ||
+    token.includes('quota')
+  ) {
+    return 'gemini_rate_limited';
+  }
+  if (
+    token.includes('model_not_found') ||
+    token.includes('status":"not_found"') ||
+    token.includes('status: not_found') ||
+    (token.includes('models/') && token.includes('not found')) ||
+    (token.includes('404') && token.includes('not found') && token.includes('model'))
+  ) {
+    return 'gemini_model_not_found';
+  }
   if (token.includes('auth') || token.includes('api key') || token.includes('permission') || token.includes('401') || token.includes('403')) return 'gemini_auth';
   if (token.includes('invalid_json') || token.includes('json')) return 'gemini_invalid_json';
   if (token.includes('network') || token.includes('econn') || token.includes('enotfound')) return 'gemini_network';
@@ -19030,7 +19056,7 @@ async function buildIngredientReportPayloadWithResearch({
 } = {}) {
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
   const normalizedQuery = ingredientNormalizeQuery(query);
-  const resolvedModel = AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI;
+  const resolvedModel = AURORA_INGREDIENT_SYNC_MODEL_GEMINI;
   if (!normalizedQuery) {
     return ingredientBuildMinimalReportPayload({
       query: '',
@@ -19128,8 +19154,12 @@ async function buildIngredientReportPayloadWithResearch({
     return ingredientBuildMinimalReportPayload({
       query: normalizedQuery,
       language: lang,
-      researchStatus: 'fallback',
+      researchStatus: errorCode === 'gemini_rate_limited' ? 'queued' : 'fallback',
       researchErrorCode: errorCode,
+      ...(errorCode === 'gemini_model_not_found' ? { timeoutRootCause: 'provider_unavailable' } : {}),
+      ...(Number.isFinite(providerResult && providerResult.provider_http_status)
+        ? { providerHttpStatus: providerResult.provider_http_status }
+        : {}),
       routeDecisionReasons,
       resolvedModel,
     });
