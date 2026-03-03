@@ -3,6 +3,7 @@ const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
 const { buildRequestContext } = require('./requestContext');
+const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const { createStageProfiler } = require('./skinAnalysisProfiling');
 const { runSkinDiagnosisV1, summarizeDiagnosisForPolicy, buildSkinAnalysisFromDiagnosisV1 } = require('./skinDiagnosisV1');
@@ -1000,9 +1001,9 @@ const AURORA_INGREDIENT_LLM_REPORT_ENABLED = (() => {
 const AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI =
   String(process.env.AURORA_INGREDIENT_RESEARCH_MODEL_GEMINI || 'gemini-3-pro').trim() || 'gemini-3-pro';
 const AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS || 4000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
-  return Math.max(1200, Math.min(10000, v));
+  const n = Number(process.env.AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  return Math.max(1200, Math.min(12000, v));
 })();
 const AURORA_INGREDIENT_ROUTE_RULE_VERSION = String(
   process.env.AURORA_INGREDIENT_ROUTE_RULE_VERSION || 'ingredient_route_v3_query_first_gemini3pro',
@@ -26855,8 +26856,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         recordAuroraSkinFlowMetric({ stage: 'reco_output_guard_fallback', hit: true });
       }
       emitAudit(guarded.envelope, templateCtx, { logger });
-      if (statusCode >= 400) return res.status(statusCode).json(guarded.envelope);
-      return res.json(guarded.envelope);
+      let chatCardsOut = guarded.envelope;
+      if (statusCode < 400) {
+        try {
+          chatCardsOut = buildChatCardsResponse({
+            envelope: guarded.envelope,
+            ctx,
+            intent: policyMeta && policyMeta.intent_canonical,
+            safetyDecision: typeof safetyDecision !== 'undefined' ? safetyDecision : null,
+          });
+        } catch (assemblerErr) {
+          logger?.error({ err: assemblerErr && assemblerErr.message }, 'aurora bff: buildChatCardsResponse threw');
+        }
+      }
+      if (statusCode >= 400) return res.status(statusCode).json(chatCardsOut);
+      return res.json(chatCardsOut);
     };
 
     try {

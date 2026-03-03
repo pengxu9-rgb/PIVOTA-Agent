@@ -1,17 +1,25 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pivota.local/schemas/aurora_chat_envelope.schema.json",
+  "description": "ChatCards v1 is the authoritative /v1/chat response protocol. Legacy envelope fields (assistant_message, suggested_chips, events) are no longer emitted.",
   "type": "object",
   "required": [
+    "version",
     "request_id",
     "trace_id",
-    "assistant_message",
-    "suggested_chips",
+    "assistant_text",
     "cards",
-    "session_patch",
-    "events"
+    "follow_up_questions",
+    "suggested_quick_replies",
+    "ops",
+    "safety",
+    "telemetry"
   ],
   "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0"
+    },
     "request_id": {
       "type": "string",
       "minLength": 1
@@ -20,26 +28,17 @@
       "type": "string",
       "minLength": 1
     },
-    "assistant_message": {
-      "type": [
-        "object",
-        "null"
-      ]
-    },
-    "suggested_chips": {
-      "type": "array"
+    "assistant_text": {
+      "type": "string"
     },
     "cards": {
       "type": "array",
+      "maxItems": 3,
       "items": {
         "type": "object",
-        "required": [
-          "card_id",
-          "type",
-          "payload"
-        ],
+        "required": ["id", "type", "title"],
         "properties": {
-          "card_id": {
+          "id": {
             "type": "string",
             "minLength": 1
           },
@@ -48,7 +47,23 @@
             "minLength": 1
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "sections": {
+            "type": "array"
+          },
+          "actions": {
+            "type": "array"
           },
           "payload": {
             "type": "object"
@@ -57,20 +72,50 @@
         "additionalProperties": true
       }
     },
+    "follow_up_questions": {
+      "type": "array",
+      "maxItems": 3
+    },
+    "suggested_quick_replies": {
+      "type": "array",
+      "maxItems": 8
+    },
     "session_patch": {
       "type": "object"
     },
-    "events": {
-      "type": "array"
+    "ops": {
+      "type": "object",
+      "required": ["thread_ops", "profile_patch", "routine_patch", "experiment_events"],
+      "properties": {
+        "thread_ops": { "type": "array" },
+        "profile_patch": { "type": "array" },
+        "routine_patch": { "type": "array" },
+        "experiment_events": { "type": "array" }
+      }
     },
-    "meta": {
-      "type": [
-        "object",
-        "null"
-      ]
+    "safety": {
+      "type": "object",
+      "required": ["risk_level", "red_flags", "disclaimer"],
+      "properties": {
+        "risk_level": {
+          "type": "string",
+          "enum": ["none", "low", "medium", "high"]
+        },
+        "red_flags": { "type": "array" },
+        "disclaimer": { "type": "string" }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "required": ["intent", "intent_confidence", "entities"],
+      "properties": {
+        "intent": { "type": "string" },
+        "intent_confidence": { "type": "number" },
+        "entities": { "type": "array" }
+      }
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "if": {
@@ -78,14 +123,8 @@
           "cards": {
             "contains": {
               "type": "object",
-              "properties": {
-                "type": {
-                  "const": "confidence_notice"
-                }
-              },
-              "required": [
-                "type"
-              ]
+              "properties": { "type": { "const": "confidence_notice" } },
+              "required": ["type"]
             }
           }
         }
@@ -95,36 +134,18 @@
           "cards": {
             "contains": {
               "type": "object",
-              "required": [
-                "type",
-                "payload"
-              ],
+              "required": ["type", "payload"],
               "properties": {
-                "type": {
-                  "const": "confidence_notice"
-                },
+                "type": { "const": "confidence_notice" },
                 "payload": {
                   "type": "object",
-                  "required": [
-                    "reason",
-                    "actions"
-                  ],
+                  "required": ["reason", "actions"],
                   "properties": {
                     "reason": {
                       "type": "string",
-                      "enum": [
-                        "artifact_missing",
-                        "low_confidence",
-                        "safety_block",
-                        "timeout_degraded"
-                      ]
+                      "enum": ["artifact_missing", "low_confidence", "safety_block", "timeout_degraded"]
                     },
-                    "actions": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
+                    "actions": { "type": "array" }
                   },
                   "additionalProperties": true
                 }
@@ -141,14 +162,8 @@
           "cards": {
             "contains": {
               "type": "object",
-              "properties": {
-                "type": {
-                  "const": "recommendations"
-                }
-              },
-              "required": [
-                "type"
-              ]
+              "properties": { "type": { "const": "recommendations" } },
+              "required": ["type"]
             }
           }
         }
@@ -158,23 +173,16 @@
           "cards": {
             "contains": {
               "type": "object",
-              "required": [
-                "type",
-                "payload"
-              ],
+              "required": ["type", "payload"],
               "properties": {
-                "type": {
-                  "const": "recommendations"
-                },
+                "type": { "const": "recommendations" },
                 "payload": {
                   "type": "object",
-                  "required": [
-                    "recommendations"
-                  ],
+                  "required": ["recommendations"],
                   "properties": {
                     "recommendations": {
                       "type": "array",
-                      "description": "In low/medium confidence context, treatment/high-irritation entries must be removed by server-side policy and validator checks."
+                      "description": "In low/medium confidence context, treatment/high-irritation entries must be removed by server-side policy."
                     }
                   },
                   "additionalProperties": true
