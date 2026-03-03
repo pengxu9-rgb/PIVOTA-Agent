@@ -435,7 +435,7 @@ const AURORA_CARD_FIRST_DEDUPE_V1 = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_SKIN_DEEPENING_LLM_V1 = (() => {
-  const raw = String(process.env.AURORA_SKIN_DEEPENING_LLM_V1 || 'true')
+  const raw = String(process.env.AURORA_SKIN_DEEPENING_LLM_V1 || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -1059,7 +1059,7 @@ const RECO_UPSTREAM_TIMEOUT_MS = (() => {
   const bounded = Math.max(3000, Math.min(22000, v));
   return Math.min(bounded, RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS);
 })();
-const RECO_MAIN_PROMPT_TEMPLATE_ID = String(process.env.AURORA_RECO_MAIN_PROMPT_TEMPLATE_ID || 'reco_main_v1_0').trim() || 'reco_main_v1_0';
+const RECO_MAIN_PROMPT_TEMPLATE_ID = String(process.env.AURORA_RECO_MAIN_PROMPT_TEMPLATE_ID || 'reco_main_v1_1').trim() || 'reco_main_v1_1';
 const AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH = (() => {
   const raw = String(process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH || 'false')
     .trim()
@@ -28708,10 +28708,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
+      const normalizedActionIdForRecoGuard = String(actionId || '').trim().toLowerCase();
       const isExplicitRecoChipAction =
-        actionId === 'chip.start.reco_products' ||
-        actionId === 'chip_get_recos' ||
-        actionId === 'chip.action.reco_routine';
+        normalizedActionIdForRecoGuard === 'chip.start.reco_products' ||
+        normalizedActionIdForRecoGuard === 'chip_get_recos' ||
+        normalizedActionIdForRecoGuard === 'chip.action.reco_routine';
       const shouldRunIngredientLookup =
         INGREDIENT_ROUTE_V2_ENABLED &&
         !isExplicitRecoChipAction &&
