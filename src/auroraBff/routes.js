@@ -167,6 +167,7 @@ const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
 const { sampleHardCase, deleteHardCasesForIdentity } = require('./hardCaseSampler');
+const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 const {
   V1ChatRequestSchema,
   UserProfilePatchSchema,
@@ -1409,9 +1410,7 @@ const PIVOTA_BACKEND_AGENT_API_KEY = String(
     '',
 ).trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
-const GEMINI_API_KEY = String(
-  process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-).trim();
+const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
 const SKIN_VISION_PROVIDER = (() => {

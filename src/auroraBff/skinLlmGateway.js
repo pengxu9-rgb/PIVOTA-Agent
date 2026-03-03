@@ -10,10 +10,9 @@ const {
   buildSkinReportPromptBundle,
 } = require('./skinLlmPrompts');
 const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
+const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 
-const GEMINI_API_KEY = String(
-  process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-).trim();
+const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 
 const DEFAULT_SKIN_GEMINI_MODEL = 'gemini-3-pro';
 const DEFAULT_SKIN_GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash';
