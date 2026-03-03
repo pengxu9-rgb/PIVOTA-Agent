@@ -16,6 +16,7 @@ const {
 const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
+  runGeminiDeepeningNarrative,
   isGeminiSkinGatewayAvailable,
 } = require('./skinLlmGateway');
 const {
@@ -154,6 +155,7 @@ const {
   RecoEmployeeFeedbackRequestSchema,
   RecoInterleaveClickRequestSchema,
   RecoAsyncUpdatesRequestSchema,
+  RecoAlternativesRequestSchema,
   InternalPrelabelRequestSchema,
   PrelabelSuggestionsQuerySchema,
   LabelQueueQuerySchema,
@@ -420,6 +422,12 @@ const AURORA_CHATCARDS_SESSION_PATCH_V1 = (() => {
 })();
 const AURORA_CARD_FIRST_DEDUPE_V1 = (() => {
   const raw = String(process.env.AURORA_CARD_FIRST_DEDUPE_V1 || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_SKIN_DEEPENING_LLM_V1 = (() => {
+  const raw = String(process.env.AURORA_SKIN_DEEPENING_LLM_V1 || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -28103,6 +28111,50 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
 
+        let llmNarrative = null;
+        if (AURORA_SKIN_DEEPENING_LLM_V1 && isGeminiSkinGatewayAvailable()) {
+          try {
+            const llmResult = await runGeminiDeepeningNarrative({
+              profile: profileSummaryForAnalysis,
+              phase,
+              photoChoice,
+              productsSubmitted,
+              reactions,
+              routineCandidate,
+              language: ctx.lang,
+            });
+            if (llmResult.ok) {
+              llmNarrative = llmResult.narrative;
+              if (Array.isArray(llmResult.reasoning) && llmResult.reasoning.length) {
+                analysisForCard.reasoning = llmResult.reasoning;
+              }
+              if (llmResult.deepening_question && analysisForCard.deepening && typeof analysisForCard.deepening === 'object') {
+                analysisForCard.deepening = {
+                  ...analysisForCard.deepening,
+                  question: llmResult.deepening_question,
+                  ...(Array.isArray(llmResult.deepening_options) && llmResult.deepening_options.length
+                    ? { options: llmResult.deepening_options }
+                    : {}),
+                };
+              }
+              logger?.info(
+                { kind: 'metric', name: 'aurora.skin.deepening_llm_hit', value: 1, phase, latency_ms: llmResult.latency_ms },
+                'aurora bff: deepening LLM narrative generated',
+              );
+            } else {
+              logger?.info(
+                { kind: 'metric', name: 'aurora.skin.deepening_llm_miss', value: 1, phase, reason: llmResult.reason },
+                'aurora bff: deepening LLM skipped, using template fallback',
+              );
+            }
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: deepening LLM call failed, falling back to template',
+            );
+          }
+        }
+
         const lowConfidence = !productsSubmitted && photoChoice !== 'uploaded';
         const sessionPatch = {
           next_state: 'S5_ANALYSIS_SUMMARY',
@@ -28134,9 +28186,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
 
-        const assistantSummary = Array.isArray(analysisForCard.reasoning) && analysisForCard.reasoning.length
-          ? String(analysisForCard.reasoning[0] || '').trim()
-          : '';
+        const assistantSummary = llmNarrative ||
+          (Array.isArray(analysisForCard.reasoning) && analysisForCard.reasoning.length
+            ? String(analysisForCard.reasoning[0] || '').trim()
+            : '');
         const deepeningQuestion =
           analysisForCard.deepening && typeof analysisForCard.deepening === 'object'
             ? String(analysisForCard.deepening.question || '').trim()
@@ -28367,8 +28420,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
+      const isExplicitRecoChipAction =
+        actionId === 'chip.start.reco_products' ||
+        actionId === 'chip_get_recos' ||
+        actionId === 'chip.action.reco_routine';
       const shouldRunIngredientLookup =
         INGREDIENT_ROUTE_V2_ENABLED &&
+        !isExplicitRecoChipAction &&
         (
           ingredientLookupAction ||
           ingredientPollAction ||
