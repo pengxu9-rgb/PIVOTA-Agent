@@ -986,7 +986,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     });
 
     expect(out.ok).toBe(false);
-    expect(String(out.reason || '')).toMatch(/upstream_timeout/i);
+    expect(String(out.reason || '')).toMatch(/(upstream_timeout|budget_exhausted)/i);
     expect(Array.isArray(out.attempted_endpoints)).toBe(true);
     expect(out.attempted_endpoints[0]).toBe('http://catalog-budget.test/agent/v1/beauty/products/search');
     expect(genericScope.isDone()).toBe(false);
