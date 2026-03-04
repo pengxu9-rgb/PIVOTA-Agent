@@ -380,6 +380,73 @@ function buildSyntheticForecastWindow({ startDate, endDate, summary, maxDays = 7
   return rows;
 }
 
+function buildDefaultSummaryForMonth(monthRaw) {
+  const month = Number(monthRaw) || new Date().getUTCMonth() + 1;
+  const coldSeason = month <= 2 || month >= 11;
+  const hotSeason = month >= 6 && month <= 9;
+  return {
+    temperature_max_c: hotSeason ? 30 : coldSeason ? 8 : 22,
+    temperature_min_c: hotSeason ? 24 : coldSeason ? 1 : 14,
+    temp_swing_c: hotSeason ? 7 : coldSeason ? 11 : 8,
+    uv_index_max: hotSeason ? 8 : 5,
+    humidity_mean: hotSeason ? 72 : 50,
+    precipitation_mm: hotSeason ? 2.6 : 1.2,
+    wind_kph_max: coldSeason ? 24 : 18,
+    days_count: 5,
+  };
+}
+
+function buildStaticClimateFallback({ destination, startDate, endDate, reason } = {}) {
+  const name = String(destination || '').trim();
+  const { start, end } = clampDateRange(startDate, endDate);
+  const month = Number((start || '').slice(5, 7)) || new Date().getUTCMonth() + 1;
+  const metricReason = String(reason || 'unknown').trim().toLowerCase() || 'unknown';
+  const summary = buildDefaultSummaryForMonth(month);
+  const forecastWindow = buildSyntheticForecastWindow({
+    startDate: start,
+    endDate: end,
+    summary,
+  });
+
+  return {
+    ok: true,
+    source: 'climate_fallback',
+    destination: name || null,
+    reason: metricReason,
+    date_range: { start, end },
+    location: { name: name || null, latitude: null, longitude: null, timezone: null },
+    summary,
+    forecast_window: forecastWindow,
+    data_freshness_utc: new Date().toISOString(),
+    days_covered: forecastWindow.length,
+    raw: {
+      climate_profile: {
+        region_id: null,
+        archetype: null,
+        month_bucket: nearestMonthBucket(month),
+        archetype_selected_by: 'static_default',
+      },
+    },
+  };
+}
+
+function safeClimateFallback(args = {}) {
+  try {
+    return climateFallback(args);
+  } catch (err) {
+    const fallback = buildStaticClimateFallback(args);
+    const fallbackError = String((err && err.message) || err || '').trim();
+    if (!fallbackError) return fallback;
+    return {
+      ...fallback,
+      raw: {
+        ...(fallback.raw || {}),
+        fallback_error: fallbackError.slice(0, 220),
+      },
+    };
+  }
+}
+
 function climateFallback({ destination, startDate, endDate, reason, userLocale } = {}) {
   const name = String(destination || '').trim();
   const { start, end } = clampDateRange(startDate, endDate);
@@ -388,20 +455,7 @@ function climateFallback({ destination, startDate, endDate, reason, userLocale }
   const metricReason = String(reason || 'unknown').trim().toLowerCase() || 'unknown';
   recordAuroraKbV0ClimateFallback({ reason: metricReason });
 
-  const defaultSummary = (() => {
-    const coldSeason = month <= 2 || month >= 11;
-    const hotSeason = month >= 6 && month <= 9;
-    return {
-      temperature_max_c: hotSeason ? 30 : coldSeason ? 8 : 22,
-      temperature_min_c: hotSeason ? 24 : coldSeason ? 1 : 14,
-      temp_swing_c: hotSeason ? 7 : coldSeason ? 11 : 8,
-      uv_index_max: hotSeason ? 8 : 5,
-      humidity_mean: hotSeason ? 72 : 50,
-      precipitation_mm: hotSeason ? 2.6 : 1.2,
-      wind_kph_max: coldSeason ? 24 : 18,
-      days_count: 5,
-    };
-  })();
+  const defaultSummary = buildDefaultSummaryForMonth(month);
 
   const summary = selected
     ? (() => {
@@ -466,82 +520,98 @@ async function getTravelWeather({
 } = {}) {
   const name = String(destination || '').trim();
   const { start, end } = clampDateRange(startDate, endDate);
-  if (!name) {
-    return climateFallback({
-      destination: '',
-      startDate: start,
-      endDate: end,
-      reason: 'destination_missing',
-      userLocale,
-    });
-  }
-  const dateRange = { start, end };
-
-  if (typeof fetchImpl !== 'function') {
-    return {
-      ...climateFallback({ destination: name, startDate: start, endDate: end, reason: 'fetch_unavailable', userLocale }),
-      reason: 'fetch_unavailable',
-    };
-  }
-
-  const geoUrl = `${OPEN_METEO_GEOCODE_URL}?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
-  const geocode = await callJson(geoUrl, fetchImpl, geocodeTimeoutMs);
-  if (!geocode.ok) {
-    return {
-      ...climateFallback({ destination: name, startDate: start, endDate: end, reason: `geocode_${geocode.reason || 'failed'}`, userLocale }),
-      reason: `geocode_${geocode.reason || 'failed'}`,
-    };
-  }
-
-  const result = Array.isArray(geocode.data && geocode.data.results) ? geocode.data.results[0] : null;
-  const lat = Number(result && result.latitude);
-  const lon = Number(result && result.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    return {
-      ...climateFallback({ destination: name, startDate: start, endDate: end, reason: 'geocode_no_results', userLocale }),
-      reason: 'geocode_no_results',
-    };
-  }
-
-  const forecastUrl = `${OPEN_METEO_FORECAST_URL}?latitude=${lat}&longitude=${lon}` +
-    `&daily=temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean,weather_code` +
-    `&timezone=auto&start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`;
-
-  const forecast = await callJson(forecastUrl, fetchImpl, forecastTimeoutMs);
-  if (!forecast.ok || !forecast.data || typeof forecast.data !== 'object') {
-    return {
-      ...climateFallback({ destination: name, startDate: start, endDate: end, reason: `forecast_${forecast.reason || 'failed'}`, userLocale }),
-      reason: `forecast_${forecast.reason || 'failed'}`,
-    };
-  }
-
-  const summary = buildWeatherSummary(forecast.data.daily || {});
-  const forecastWindow = buildForecastWindow(forecast.data.daily || {});
-
-  return {
-    ok: true,
-    source: 'weather_api',
-    reason: null,
+  const fallback = (reason) => safeClimateFallback({
     destination: name,
-    date_range: dateRange,
-    location: {
-      name: String(result.name || name),
-      latitude: lat,
-      longitude: lon,
-      timezone: String(forecast.data.timezone || result.timezone || ''),
-      country: String(result.country || ''),
-      country_code: String(result.country_code || ''),
-      admin1: String(result.admin1 || ''),
-    },
-    summary,
-    forecast_window: forecastWindow,
-    data_freshness_utc: new Date().toISOString(),
-    days_covered: forecastWindow.length,
-    raw: {
-      daily: forecast.data.daily || null,
-      generationtime_ms: forecast.data.generationtime_ms || null,
-    },
-  };
+    startDate: start,
+    endDate: end,
+    reason,
+    userLocale,
+  });
+
+  try {
+    if (!name) {
+      return safeClimateFallback({
+        destination: '',
+        startDate: start,
+        endDate: end,
+        reason: 'destination_missing',
+        userLocale,
+      });
+    }
+    const dateRange = { start, end };
+
+    if (typeof fetchImpl !== 'function') {
+      return {
+        ...fallback('fetch_unavailable'),
+        reason: 'fetch_unavailable',
+      };
+    }
+
+    const geoUrl = `${OPEN_METEO_GEOCODE_URL}?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
+    const geocode = await callJson(geoUrl, fetchImpl, geocodeTimeoutMs);
+    if (!geocode.ok) {
+      return {
+        ...fallback(`geocode_${geocode.reason || 'failed'}`),
+        reason: `geocode_${geocode.reason || 'failed'}`,
+      };
+    }
+
+    const result = Array.isArray(geocode.data && geocode.data.results) ? geocode.data.results[0] : null;
+    const lat = Number(result && result.latitude);
+    const lon = Number(result && result.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return {
+        ...fallback('geocode_no_results'),
+        reason: 'geocode_no_results',
+      };
+    }
+
+    const forecastUrl = `${OPEN_METEO_FORECAST_URL}?latitude=${lat}&longitude=${lon}` +
+      `&daily=temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean,weather_code` +
+      `&timezone=auto&start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`;
+
+    const forecast = await callJson(forecastUrl, fetchImpl, forecastTimeoutMs);
+    if (!forecast.ok || !forecast.data || typeof forecast.data !== 'object') {
+      return {
+        ...fallback(`forecast_${forecast.reason || 'failed'}`),
+        reason: `forecast_${forecast.reason || 'failed'}`,
+      };
+    }
+
+    const summary = buildWeatherSummary(forecast.data.daily || {});
+    const forecastWindow = buildForecastWindow(forecast.data.daily || {});
+
+    return {
+      ok: true,
+      source: 'weather_api',
+      reason: null,
+      destination: name,
+      date_range: dateRange,
+      location: {
+        name: String(result.name || name),
+        latitude: lat,
+        longitude: lon,
+        timezone: String(forecast.data.timezone || result.timezone || ''),
+        country: String(result.country || ''),
+        country_code: String(result.country_code || ''),
+        admin1: String(result.admin1 || ''),
+      },
+      summary,
+      forecast_window: forecastWindow,
+      data_freshness_utc: new Date().toISOString(),
+      days_covered: forecastWindow.length,
+      raw: {
+        daily: forecast.data.daily || null,
+        generationtime_ms: forecast.data.generationtime_ms || null,
+      },
+    };
+  } catch (err) {
+    const fallbackReason = err && err.name === 'AbortError' ? 'unexpected_abort' : 'unexpected_exception';
+    return {
+      ...fallback(fallbackReason),
+      reason: fallbackReason,
+    };
+  }
 }
 
 module.exports = {
