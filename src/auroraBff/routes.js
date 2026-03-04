@@ -46988,6 +46988,21 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
         const researchReady = Boolean(researchCache && researchCache.status === 'ready');
+        const deferInlineSyncForKnownEntity = Boolean(
+          entityMatch &&
+            entityMatch.entity_key &&
+            entityMatch.entity_match_type === 'exact',
+        );
+        if (
+          !researchReady &&
+          deferInlineSyncForKnownEntity &&
+          INGREDIENT_ROUTE_V2_ENABLED &&
+          !INGREDIENT_LEGACY_PATH_ENABLED &&
+          AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
+          !rateLimit.blocked
+        ) {
+          routeReasons.push('sync_research_deferred_known_entity');
+        }
         let resolvedResearch = researchCache || null;
         let syncResearch = null;
         if (
@@ -46995,7 +47010,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           INGREDIENT_ROUTE_V2_ENABLED &&
           !INGREDIENT_LEGACY_PATH_ENABLED &&
           AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
-          !rateLimit.blocked
+          !rateLimit.blocked &&
+          !deferInlineSyncForKnownEntity
         ) {
           const profileSummaryForResearch =
             profile && typeof profile === 'object'
@@ -47073,18 +47089,47 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraIngredientsFlowMetric({ stage: 'research_requested', hit: true });
         }
 
+        const reportResearch =
+          !readyAfterSync &&
+          deferInlineSyncForKnownEntity &&
+          researchJob &&
+          researchJob.status === 'queued'
+            ? researchJob
+            : resolvedResearch || researchJob || null;
+        const reportResearchObj = asResearchObject(reportResearch) || {};
+        const reportProviderModelTier = pickFirstTrimmed(
+          reportResearchObj.provider_model_tier,
+          resolvedResearch && resolvedResearch.provider_model_tier,
+        );
+        const reportProviderCircuitState = pickFirstTrimmed(
+          reportResearchObj.provider_circuit_state,
+          resolvedResearch && resolvedResearch.provider_circuit_state,
+        );
+        const reportResearchProvider = pickFirstTrimmed(
+          reportResearchObj.provider,
+          resolvedResearch && resolvedResearch.provider,
+        );
+        const reportResearchErrorCode =
+          reportResearchObj.status === 'queued'
+            ? null
+            : pickFirstTrimmed(
+              reportResearchObj.error_code,
+              reportResearchObj.error,
+              resolvedResearch && resolvedResearch.error_code,
+              resolvedResearch && resolvedResearch.error,
+            );
         const reportPayload = buildIngredientReportPayload({
           language: ctx.lang,
           query: target,
-          research: resolvedResearch || researchJob || null,
+          research: reportResearch,
           meta: {
             normalized_query: normalizedQuery,
             route_decision_reasons: routeReasons.slice(0, 12),
             route_rule_version: INGREDIENT_ROUTE_RULE_VERSION,
-            provider_model_tier: resolvedResearch && resolvedResearch.provider_model_tier,
-            provider_circuit_state: resolvedResearch && resolvedResearch.provider_circuit_state,
-            research_provider: resolvedResearch && resolvedResearch.provider,
-            research_error_code: resolvedResearch && (resolvedResearch.error_code || resolvedResearch.error),
+            provider_model_tier: reportProviderModelTier,
+            provider_circuit_state: reportProviderCircuitState,
+            research_provider: reportResearchProvider,
+            research_error_code: reportResearchErrorCode,
           },
         });
         const ingredientName = pickFirstTrimmed(
