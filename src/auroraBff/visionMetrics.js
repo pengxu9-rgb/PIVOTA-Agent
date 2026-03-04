@@ -97,6 +97,8 @@ const recoInterleaveWinCounter = new Map();
 const recoExplorationSlotCounter = new Map();
 const recoAsyncUpdateCounter = new Map();
 const recoAsyncUpdateChangedItemsCounter = new Map();
+const auroraRecoLlmCallCounter = new Map();
+let recoAlternativesBudgetExhaustedTotal = 0;
 const prelabelRequestsCounter = new Map();
 const prelabelSuccessCounter = new Map();
 const prelabelInvalidJsonCounter = new Map();
@@ -479,6 +481,24 @@ function normalizeRecoPriceBand(priceBand) {
 function normalizeRecoAsyncResult(result) {
   const token = cleanMetricToken(result, 'unknown');
   if (token === 'applied' || token === 'skipped' || token === 'noop' || token === 'error') return token;
+  return 'unknown';
+}
+
+function normalizeAuroraRecoLlmOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'unknown');
+  if (
+    token === 'success' ||
+    token === 'empty_structured' ||
+    token === 'empty_structured_clarify' ||
+    token === 'provider_error' ||
+    token === 'provider_timeout' ||
+    token === 'provider_rate_limited' ||
+    token === 'queue_saturated' ||
+    token === 'local_fallback_only' ||
+    token === 'budget_exhausted'
+  ) {
+    return token;
+  }
   return 'unknown';
 }
 
@@ -972,6 +992,26 @@ function recordRecoAsyncUpdate({ block, result, mode, changedCount = 0, delta } 
       safeChanged,
     );
   }
+}
+
+function recordAuroraRecoLlmCall({ outcome, provider, source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoLlmCallCounter,
+    {
+      outcome: normalizeAuroraRecoLlmOutcome(outcome),
+      provider: cleanMetricToken(provider, 'aurora_chat'),
+      source: cleanMetricToken(source, 'alternatives'),
+    },
+    amount,
+  );
+}
+
+function recordRecoAlternativesBudgetExhausted({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  recoAlternativesBudgetExhaustedTotal += amount;
 }
 
 function clampRatio01(value, fallback = 0) {
@@ -2023,6 +2063,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE reco_async_update_items_changed_count counter');
   renderCounter(lines, 'reco_async_update_items_changed_count', recoAsyncUpdateChangedItemsCounter);
 
+  lines.push('# HELP aurora_reco_llm_call_total Aurora reco alternatives LLM/local fallback outcomes.');
+  lines.push('# TYPE aurora_reco_llm_call_total counter');
+  renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
+
+  lines.push('# HELP reco_alternatives_budget_exhausted_total Alternatives stage skipped due to budget guard.');
+  lines.push('# TYPE reco_alternatives_budget_exhausted_total counter');
+  lines.push(`reco_alternatives_budget_exhausted_total ${recoAlternativesBudgetExhaustedTotal}`);
+
   lines.push('# HELP reco_competitors_same_brand_rate Last observed same-brand rate in competitors block.');
   lines.push('# TYPE reco_competitors_same_brand_rate gauge');
   lines.push(`reco_competitors_same_brand_rate ${recoCompetitorsSameBrandRateGauge}`);
@@ -2413,6 +2461,8 @@ function resetVisionMetrics() {
   recoExplorationSlotCounter.clear();
   recoAsyncUpdateCounter.clear();
   recoAsyncUpdateChangedItemsCounter.clear();
+  auroraRecoLlmCallCounter.clear();
+  recoAlternativesBudgetExhaustedTotal = 0;
   prelabelRequestsCounter.clear();
   prelabelSuccessCounter.clear();
   prelabelInvalidJsonCounter.clear();
@@ -2542,6 +2592,8 @@ function snapshotVisionMetrics() {
     recoExplorationSlot: Array.from(recoExplorationSlotCounter.entries()),
     recoAsyncUpdate: Array.from(recoAsyncUpdateCounter.entries()),
     recoAsyncUpdateChangedItems: Array.from(recoAsyncUpdateChangedItemsCounter.entries()),
+    auroraRecoLlmCall: Array.from(auroraRecoLlmCallCounter.entries()),
+    recoAlternativesBudgetExhaustedTotal,
     prelabelRequests: Array.from(prelabelRequestsCounter.entries()),
     prelabelSuccess: Array.from(prelabelSuccessCounter.entries()),
     prelabelInvalidJson: Array.from(prelabelInvalidJsonCounter.entries()),
@@ -2634,6 +2686,8 @@ module.exports = {
   recordRecoInterleaveWin,
   recordRecoExplorationSlot,
   recordRecoAsyncUpdate,
+  recordAuroraRecoLlmCall,
+  recordRecoAlternativesBudgetExhausted,
   setRecoGuardrailRates,
   recordPrelabelRequest,
   recordPrelabelSuccess,

@@ -103,6 +103,8 @@ const {
   recordRecoInterleaveWin,
   recordRecoExplorationSlot,
   recordRecoAsyncUpdate,
+  recordAuroraRecoLlmCall,
+  recordRecoAlternativesBudgetExhausted,
   setRecoGuardrailRates,
   recordPrelabelRequest,
   recordPrelabelSuccess,
@@ -130,6 +132,9 @@ const { applyReplyTemplates } = require('./replyTemplates');
 const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
+const { createSkillRequestContext } = require('./skills/contracts');
+const { runDiagnosisOrchestrator } = require('./diagnosisOrchestrator');
+const { evaluatePolicySafetyGuard } = require('./policySafetyGuard');
 const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
@@ -1031,6 +1036,11 @@ const AURORA_BFF_CHAT_RECO_BUDGET_MS = (() => {
   const n = Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 9000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
   return Math.max(1000, Math.min(60000, v));
+})();
+const RECO_ALTERNATIVES_OVERHEAD_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  return Math.max(0, Math.min(12000, v));
 })();
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
@@ -9211,7 +9221,16 @@ function normalizePhotoQcStatus(rawStatus) {
     .trim()
     .toLowerCase();
   if (!token) return '';
-  if (token === 'passed' || token === 'pass' || token === 'ok' || token === 'success' || token === 'succeeded') {
+  if (
+    token === 'passed' ||
+    token === 'pass' ||
+    token === 'ok' ||
+    token === 'success' ||
+    token === 'succeeded' ||
+    token === 'done' ||
+    token === 'complete' ||
+    token === 'completed'
+  ) {
     return 'passed';
   }
   if (token === 'degraded' || token === 'warn' || token === 'warning' || token === 'low') {
@@ -9242,6 +9261,103 @@ function resolvePhotoQcStatus(payload) {
     if (normalized) return normalized;
   }
   return null;
+}
+
+function isPendingQcAdvice(advice) {
+  const node = advice && typeof advice === 'object' && !Array.isArray(advice) ? advice : null;
+  if (!node) return false;
+  const summary = String(node.summary || '').trim().toLowerCase();
+  if (summary && /(pending|processing|in progress|queue|等待|处理中|排队)/i.test(summary)) return true;
+  const suggestions = Array.isArray(node.suggestions) ? node.suggestions : [];
+  return suggestions.some((line) => /(pending|processing|in progress|queue|等待|处理中|排队)/i.test(String(line || '').toLowerCase()));
+}
+
+function buildDefaultQcAdvice({ qcStatus, language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const status = normalizePhotoQcStatus(qcStatus) || '';
+  if (status === 'passed') {
+    return lang === 'CN'
+      ? { summary: '照片质量检查通过。', suggestions: ['你可以继续进行照片分析。'] }
+      : { summary: 'Photo quality check passed.', suggestions: ['You can continue to photo analysis.'] };
+  }
+  if (status === 'degraded') {
+    return lang === 'CN'
+      ? { summary: '照片质量可用，但建议补拍以提升准确度。', suggestions: ['尽量在自然光或室内白光下拍摄正脸。'] }
+      : { summary: 'Photo quality is usable, but a retake can improve accuracy.', suggestions: ['Retake in daylight or indoor white light with a clear frontal face.'] };
+  }
+  if (status === 'failed') {
+    return lang === 'CN'
+      ? { summary: '照片质量未通过检查。', suggestions: ['请重拍：清晰对焦、无遮挡、光线充足。'] }
+      : { summary: 'Photo quality check failed.', suggestions: ['Please retake: clear focus, no obstruction, and adequate lighting.'] };
+  }
+  return lang === 'CN'
+    ? { summary: '照片质量检查进行中。', suggestions: ['请稍等片刻后重试。'] }
+    : { summary: 'Photo quality check is in progress.', suggestions: ['Please retry shortly.'] };
+}
+
+function harmonizePhotoQcCardPayload(payload, { language } = {}) {
+  const base = payload && typeof payload === 'object' && !Array.isArray(payload) ? { ...payload } : {};
+  const qcNodeRaw = base.qc && typeof base.qc === 'object' && !Array.isArray(base.qc) ? { ...base.qc } : {};
+  const normalizedStatus =
+    normalizePhotoQcStatus(base.qc_status) ||
+    normalizePhotoQcStatus(qcNodeRaw.qc_status) ||
+    normalizePhotoQcStatus(qcNodeRaw.status) ||
+    normalizePhotoQcStatus(qcNodeRaw.state);
+
+  if (normalizedStatus) {
+    base.qc_status = normalizedStatus;
+    qcNodeRaw.qc_status = normalizedStatus;
+    if (normalizedStatus === 'passed') {
+      qcNodeRaw.state = 'done';
+      if (!qcNodeRaw.advice || isPendingQcAdvice(qcNodeRaw.advice)) {
+        qcNodeRaw.advice = buildDefaultQcAdvice({ qcStatus: normalizedStatus, language });
+      }
+      delete base.qc_pending;
+    } else if (normalizedStatus === 'degraded') {
+      if (!qcNodeRaw.state) qcNodeRaw.state = 'done';
+      if (!qcNodeRaw.advice || isPendingQcAdvice(qcNodeRaw.advice)) {
+        qcNodeRaw.advice = buildDefaultQcAdvice({ qcStatus: normalizedStatus, language });
+      }
+    } else if (normalizedStatus === 'failed') {
+      qcNodeRaw.state = 'done';
+      if (!qcNodeRaw.advice || isPendingQcAdvice(qcNodeRaw.advice)) {
+        qcNodeRaw.advice = buildDefaultQcAdvice({ qcStatus: normalizedStatus, language });
+      }
+    }
+  }
+
+  if (Object.keys(qcNodeRaw).length) base.qc = qcNodeRaw;
+  return base;
+}
+
+function stripEvidenceRefsDeep(value) {
+  if (Array.isArray(value)) return value.map((item) => stripEvidenceRefsDeep(item));
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, row] of Object.entries(value)) {
+    const token = String(key || '').trim().toLowerCase();
+    if (token === 'evidence_refs' || token === 'evidencerefs') continue;
+    out[key] = stripEvidenceRefsDeep(row);
+  }
+  return out;
+}
+
+function looksLikeExplicitProductAskForEnv(message, language) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  if (String(language || '').toUpperCase() === 'CN') {
+    return /(产品|单品|购买|买|推荐.*产品)/.test(text);
+  }
+  return /\b(product|products|item|items|buy|purchase|shopping|recommend\s+products?)\b/i.test(text);
+}
+
+function looksLikeTravelContextWeatherQuestion(message, language) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  if (String(language || '').toUpperCase() === 'CN') {
+    return /(旅行|出行|目的地|行程|航班|那边|那里|当地)/.test(text);
+  }
+  return /\b(trip|travel|destination|itinerary|flight|there|over there|at destination)\b/i.test(text);
 }
 
 function hasNonEmptyRoutineInput(routineCandidate) {
@@ -18051,6 +18167,22 @@ function parsePromptTemplateIdFromQuery(query) {
   return String(match[1]).trim();
 }
 
+function shouldSkipVisionForDegradedReportMode({
+  forceVisionCall,
+  userRequestedPhoto,
+  photosProvided,
+  degradedMode,
+  effectivePhotoQuality,
+  reportDecision,
+} = {}) {
+  if (Boolean(forceVisionCall)) return false;
+  if (!Boolean(userRequestedPhoto) || !Boolean(photosProvided)) return false;
+  if (String(degradedMode || '').trim().toLowerCase() !== 'report') return false;
+  const grade = String((effectivePhotoQuality && effectivePhotoQuality.grade) || '').trim().toLowerCase();
+  if (grade !== 'degraded') return false;
+  return String((reportDecision && reportDecision.decision) || '').trim().toLowerCase() === 'call';
+}
+
 function validateRecoPromptContract({ query, expectedTemplateId = '', expectedPromptHash = '' } = {}) {
   const text = String(query || '');
   const issues = [];
@@ -18561,7 +18693,7 @@ function ingredientExtractLiteralFromMessage(message) {
   if (!stripped || stripped.length > 80) return '';
   const words = stripped.split(/\s+/).filter(Boolean);
   if (words.length > 6) return '';
-  const enChemLike = /(acid|amide|ate|ene|one|ol|yl|retin|niacin|ceramide|peptide|salicyl|azelaic|tranexamic|octocrylene|butyloctyl)/i.test(stripped);
+  const enChemLike = /(acid|amide|retin|retinal|retinol|niacin|ceramide|peptide|salicyl|azelaic|tranexamic|octocrylene|butyloctyl|adapalene|tretinoin|benzoyl|tocopherol)/i.test(stripped);
   const cnChemLike = /(酸|酰胺|醇|肽|酯|维c|烟酰胺|神经酰胺|视黄醇|壬二酸|水杨酸)/.test(stripped);
   if (/\b(science|evidence|mechanism|ingredient|skincare|goal)\b/i.test(stripped) && !enChemLike) return '';
   if (/(成分科学|证据|机制|原理|护肤|功效)/.test(stripped) && !cnChemLike) return '';
@@ -18613,7 +18745,7 @@ function ingredientIsLikelyLookupText(message) {
   if (/(成分|功效|安全|机制|证据|刺激)/.test(raw)) return true;
   const words = raw.split(/\s+/).filter(Boolean);
   if (words.length > 5) return false;
-  if (/[a-z]/i.test(raw) && /(acid|amide|ate|ene|one|ol|yl|retin|niacin|ceramide|peptide|salicyl|azelaic|tranexamic|octocrylene|butyloctyl)/i.test(raw)) return true;
+  if (/[a-z]/i.test(raw) && /(acid|amide|retin|retinal|retinol|niacin|ceramide|peptide|salicyl|azelaic|tranexamic|octocrylene|butyloctyl|adapalene|tretinoin|benzoyl|tocopherol)/i.test(raw)) return true;
   if (/[\u4e00-\u9fff]/.test(raw) && /(酸|酰胺|醇|肽|酯|维c|烟酰胺|神经酰胺|视黄醇|壬二酸|水杨酸)/.test(raw)) return true;
   return false;
 }
@@ -19356,12 +19488,168 @@ function mergeFieldMissing(a, b) {
   return out;
 }
 
+function classifyRecoAlternativesFailureClassFromError(err) {
+  const status = Number(err && (err.status || (err.response && err.response.status)));
+  if (status === 429) return 'provider_rate_limited';
+  if (Number.isFinite(status) && status >= 500) return 'provider_error';
+  if (Number.isFinite(status) && status >= 400) return 'provider_error';
+
+  const upstreamMeta = err && err.upstreamMeta && typeof err.upstreamMeta === 'object' ? err.upstreamMeta : {};
+  const providerStatus = Number(upstreamMeta.provider_status);
+  if (providerStatus === 429) return 'provider_rate_limited';
+  if (Number.isFinite(providerStatus) && providerStatus >= 500) return 'provider_error';
+  if (Number.isFinite(providerStatus) && providerStatus >= 400) return 'provider_error';
+
+  const providerErrorCode = String(upstreamMeta.provider_error_code || '').trim().toLowerCase();
+  if (providerErrorCode.includes('rate') || providerErrorCode.includes('quota') || providerErrorCode.includes('throttle')) {
+    return 'provider_rate_limited';
+  }
+  if (providerErrorCode.includes('queue') || providerErrorCode.includes('busy') || providerErrorCode.includes('saturated')) {
+    return 'queue_saturated';
+  }
+
+  const code = String(err && err.code || '').trim().toUpperCase();
+  const message = String(err && err.message || '').trim().toLowerCase();
+  if (
+    code === 'ETIMEDOUT' ||
+    code === 'ECONNABORTED' ||
+    code === 'UND_ERR_SOCKET' ||
+    message.includes('timeout')
+  ) {
+    return 'provider_timeout';
+  }
+  if (message.includes('rate limit') || message.includes('too many requests') || message.includes('quota')) {
+    return 'provider_rate_limited';
+  }
+  if (message.includes('queue') || message.includes('saturated') || message.includes('busy')) {
+    return 'queue_saturated';
+  }
+  return 'provider_error';
+}
+
+function buildRecoAlternativesLocalFallback({
+  language,
+  productInput,
+  productObj,
+  anchorId,
+  profileSummary,
+  maxTotal,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const max = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const productName =
+    pickFirstTrimmed(
+      productObj && productObj.name,
+      productObj && productObj.display_name,
+      productObj && productObj.product_name,
+      productInput,
+      anchorId,
+    ) || (lang === 'CN' ? '当前产品' : 'Current product');
+  const brandName = pickFirstTrimmed(
+    productObj && productObj.brand,
+    productObj && productObj.brand_name,
+    productObj && productObj.brandName,
+  );
+  const category = pickFirstTrimmed(productObj && productObj.category, productObj && productObj.type) || (lang === 'CN' ? '护肤品' : 'Skincare');
+  const goals = Array.isArray(profileSummary && profileSummary.goals) ? profileSummary.goals.filter(Boolean).slice(0, 2) : [];
+  const goalHint = goals.length ? goals.join(', ') : lang === 'CN' ? '当前目标' : 'your current goals';
+
+  const templates = [
+    {
+      kind: 'similar',
+      suffix: lang === 'CN' ? '同类型低刺激替代' : 'Gentle similar option',
+      similarity_score: 0.74,
+      reasons: [
+        lang === 'CN'
+          ? `优先匹配你的目标（${goalHint}）并保持温和耐受。`
+          : `Prioritizes your goals (${goalHint}) while staying gentle.`,
+        lang === 'CN'
+          ? `与「${productName}」定位相近，便于平滑替换。`
+          : `Positioned close to "${productName}" for an easier swap.`,
+      ],
+      tradeoffs: [
+        lang === 'CN' ? '强功效速度可能更慢，但刺激风险更低。' : 'May act slower, but typically with lower irritation risk.',
+      ],
+    },
+    {
+      kind: 'dupe',
+      suffix: lang === 'CN' ? '预算友好替代' : 'Budget-friendly dupe',
+      similarity_score: 0.68,
+      reasons: [
+        lang === 'CN'
+          ? '保留核心使用场景，降低入手门槛。'
+          : 'Keeps a similar use case with a lower entry cost.',
+      ],
+      tradeoffs: [
+        lang === 'CN' ? '肤感与包装体验可能略有差异。' : 'Texture and packaging experience may differ.',
+      ],
+    },
+    {
+      kind: 'premium',
+      suffix: lang === 'CN' ? '进阶替代' : 'Premium alternative',
+      similarity_score: 0.62,
+      reasons: [
+        lang === 'CN'
+          ? '在温和前提下提供更进阶的活性组合。'
+          : 'Offers a more advanced active blend with conservative safety.',
+      ],
+      tradeoffs: [
+        lang === 'CN' ? '建议先低频试用并观察耐受。' : 'Start low-frequency and monitor tolerance first.',
+      ],
+    },
+  ];
+
+  return templates.slice(0, max).map((tpl, idx) => ({
+    kind: tpl.kind,
+    product: {
+      product_id: `local_alt_${idx + 1}`,
+      ...(brandName ? { brand: brandName } : {}),
+      name: `${productName} - ${tpl.suffix}`,
+      category,
+    },
+    similarity_score: tpl.similarity_score,
+    tradeoffs: tpl.tradeoffs,
+    reasons: tpl.reasons,
+    evidence: {},
+    missing_info: ['local_fallback_only'],
+  }));
+}
+
 async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, maxTotal, debug, logger, ingredientContext = null }) {
   const inputText = String(productInput || '').trim();
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
   const anchor = anchorId ? String(anchorId).trim() : '';
   const bestInput = inputText || anchor;
   if (!bestInput) return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }] };
+  if (!anchor && (!productObj || typeof productObj !== 'object' || Array.isArray(productObj))) {
+    const localFallback = buildRecoAlternativesLocalFallback({
+      language: ctx.lang,
+      productInput: bestInput,
+      productObj,
+      anchorId: anchor,
+      profileSummary,
+      maxTotal,
+    });
+    recordAuroraRecoLlmCall({ outcome: 'empty_structured', provider: 'local', source: 'alternatives' });
+    return {
+      ok: true,
+      alternatives: localFallback,
+      source_mode: 'local_fallback',
+      failure_class: 'local_fallback_only',
+      field_missing: [{ field: 'alternatives', reason: 'local_fallback_only' }],
+      ...(debug
+        ? {
+          debug: {
+            input: bestInput.slice(0, 200),
+            anchor_id: null,
+            source_mode: 'local_fallback',
+            failure_class: 'local_fallback_only',
+            reason: 'no_anchor_or_structured_product',
+          },
+        }
+        : {}),
+    };
+  }
 
   const normalizeAlternativesSkinType = (raw) => {
     const token = String(raw || '').trim().toLowerCase();
@@ -19649,10 +19937,22 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
   }
 
   if (lastError && !mapped.length) {
+    const failureClass = classifyRecoAlternativesFailureClassFromError(lastError);
+    const localFallback = buildRecoAlternativesLocalFallback({
+      language: ctx.lang,
+      productInput: bestInput,
+      productObj,
+      anchorId: anchor,
+      profileSummary,
+      maxTotal,
+    });
+    recordAuroraRecoLlmCall({ outcome: failureClass, provider: 'aurora_chat', source: 'alternatives' });
     return {
-      ok: false,
-      alternatives: [],
-      field_missing: [{ field: 'alternatives', reason: 'upstream_error' }],
+      ok: true,
+      alternatives: localFallback,
+      source_mode: 'local_fallback',
+      failure_class: failureClass,
+      field_missing: [{ field: 'alternatives', reason: failureClass }],
       ...(debug
         ? {
           debug: {
@@ -19660,6 +19960,8 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
             anchor_id: anchor || null,
             product_json_preview: productJson ? productJson.slice(0, 300) : null,
             error: lastError && lastError.message ? lastError.message : String(lastError),
+            source_mode: 'local_fallback',
+            failure_class: failureClass,
             attempts: attemptDebug,
           },
         }
@@ -19667,12 +19969,55 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     };
   }
 
+  if (!mapped.length) {
+    const failureClass = lastIntent === 'clarify' ? 'empty_structured_clarify' : 'empty_structured';
+    const localFallback = buildRecoAlternativesLocalFallback({
+      language: ctx.lang,
+      productInput: bestInput,
+      productObj,
+      anchorId: anchor,
+      profileSummary,
+      maxTotal,
+    });
+    recordAuroraRecoLlmCall({ outcome: failureClass, provider: 'aurora_chat', source: 'alternatives' });
+    return {
+      ok: true,
+      alternatives: localFallback,
+      source_mode: 'local_fallback',
+      failure_class: failureClass,
+      field_missing: [{ field: 'alternatives', reason: failureClass }],
+      ...(debug
+        ? {
+          debug: {
+            input: bestInput.slice(0, 200),
+            anchor_id: anchor || null,
+            product_json_preview: productJson ? productJson.slice(0, 300) : null,
+            upstream_intent: lastIntent,
+            source_mode: 'local_fallback',
+            failure_class: failureClass,
+            extracted_answer_json_keys:
+              lastAnswerJson && typeof lastAnswerJson === 'object' && !Array.isArray(lastAnswerJson)
+                ? Object.keys(lastAnswerJson).slice(0, 24)
+                : [],
+            extracted_structured_keys:
+              lastStructured && typeof lastStructured === 'object' && !Array.isArray(lastStructured)
+                ? Object.keys(lastStructured).slice(0, 24)
+                : [],
+            alternatives_raw_count: Array.isArray(lastAlternativesRaw) ? lastAlternativesRaw.length : 0,
+            alternatives_mapped_count: mapped.length,
+            attempts: attemptDebug,
+          },
+        }
+        : {}),
+    };
+  }
+
+  recordAuroraRecoLlmCall({ outcome: 'success', provider: 'aurora_chat', source: 'alternatives' });
   return {
     ok: true,
     alternatives: mapped,
-    field_missing: mapped.length
-      ? []
-      : [{ field: 'alternatives', reason: lastStructured ? 'upstream_missing_or_empty' : 'upstream_missing_or_unstructured' }],
+    source_mode: 'llm_primary',
+    field_missing: [],
     ...(debug
       ? {
         debug: {
@@ -19680,6 +20025,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
           anchor_id: anchor || null,
           product_json_preview: productJson ? productJson.slice(0, 300) : null,
           upstream_intent: lastIntent,
+          source_mode: 'llm_primary',
           extracted_answer_json_keys:
             lastAnswerJson && typeof lastAnswerJson === 'object' && !Array.isArray(lastAnswerJson)
               ? Object.keys(lastAnswerJson).slice(0, 24)
@@ -19701,6 +20047,28 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
   const recos = Array.isArray(recommendations) ? recommendations : [];
   const maxProducts = RECO_ALTERNATIVES_MAX_PRODUCTS;
   if (!recos.length || maxProducts <= 0) return { recommendations: recos, field_missing: [] };
+
+  if (AURORA_BFF_CHAT_RECO_BUDGET_MS <= RECO_ALTERNATIVES_OVERHEAD_MS) {
+    recordAuroraSkinFlowMetric({ stage: 'reco_alternatives_budget_exhausted', hit: true });
+    recordRecoAlternativesBudgetExhausted({ delta: 1 });
+    recordAuroraRecoLlmCall({ outcome: 'budget_exhausted', provider: 'budget_guard', source: 'alternatives' });
+    return {
+      recommendations: recos,
+      field_missing: [{ field: 'recommendations[].alternatives', reason: 'alternatives_budget_exhausted' }],
+      ...(debug
+        ? {
+          debug: [
+            {
+              stage: 'alternatives_budget_guard',
+              budget_ms: AURORA_BFF_CHAT_RECO_BUDGET_MS,
+              overhead_ms: RECO_ALTERNATIVES_OVERHEAD_MS,
+              reason: 'alternatives_budget_exhausted',
+            },
+          ],
+        }
+        : {}),
+    };
+  }
 
   if (!AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
     return { recommendations: recos, field_missing: [{ field: 'recommendations[].alternatives', reason: 'aurora_not_configured' }] };
@@ -20764,11 +21132,19 @@ function mountAuroraBffRoutes(app, { logger }) {
         !alternatives.length && Array.isArray(out.field_missing) && out.field_missing.length
           ? String(out.field_missing[0]?.reason || 'unknown')
           : null;
+      const sourceMode =
+        typeof out.source_mode === 'string' && out.source_mode.trim()
+          ? out.source_mode.trim()
+          : alternatives.length
+            ? 'llm_primary'
+            : 'unknown';
       return res.status(200).json({
         request_id: ctx.request_id,
         trace_id: ctx.trace_id,
         ok: out.ok !== false,
         alternatives,
+        source_mode: sourceMode,
+        ...(out.failure_class ? { failure_class: String(out.failure_class).trim() } : {}),
         alternatives_candidate_count: alternatives.length,
         alternatives_selected_count: alternatives.length,
         no_result_reason: noResultReason,
@@ -24141,7 +24517,33 @@ function mountAuroraBffRoutes(app, { logger }) {
         nextPollMs = typeof qcResp.data.next_poll_ms === 'number' ? qcResp.data.next_poll_ms : nextPollMs;
       }
 
-      const payload = {
+      try {
+        const photoSkillContext = createSkillRequestContext({
+          req,
+          ctx,
+          stage: 'photo_upload_confirm',
+        });
+        await runDiagnosisOrchestrator({
+          requestContext: photoSkillContext,
+          logger,
+          mode: 'photo_capture_quality',
+          input: {
+            photoCaptureQuality: {
+              photoId: uploadId,
+              slotId,
+              qcStatus,
+              userRequestedPhoto: true,
+            },
+          },
+        });
+      } catch (skillErr) {
+        logger?.warn(
+          { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+          'aurora bff: photo upload skill orchestration failed',
+        );
+      }
+
+      const rawPayload = {
         photo_id: uploadId,
         slot_id: slotId,
         qc_status: qcStatus,
@@ -24149,6 +24551,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ...(typeof nextPollMs === 'number' ? { next_poll_ms: nextPollMs } : {}),
         ...(!qcStatus && lastQcData ? { qc_pending: true } : {}),
       };
+      const payload = harmonizePhotoQcCardPayload(rawPayload, { language: ctx.lang });
 
       try {
         const uploadBuffer = fs.readFileSync(fileEntry.path);
@@ -24163,7 +24566,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const fieldMissing = [];
-      if (!qcStatus) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
+      if (!payload.qc_status) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
 
       const photoConfirmCard = {
         card_id: `confirm_${ctx.request_id}`,
@@ -24235,7 +24638,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (USE_AURORA_BFF_MOCK) {
         const qcStatus = 'passed';
-        const payload = { ...parsed.data, qc_status: qcStatus };
+        const payload = harmonizePhotoQcCardPayload({ ...parsed.data, qc_status: qcStatus }, { language: ctx.lang });
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
@@ -24345,16 +24748,43 @@ function mountAuroraBffRoutes(app, { logger }) {
         nextPollMs = typeof qcResp.data.next_poll_ms === 'number' ? qcResp.data.next_poll_ms : nextPollMs;
       }
 
-      const payload = {
+      try {
+        const photoSkillContext = createSkillRequestContext({
+          req,
+          ctx,
+          stage: 'photo_confirm',
+        });
+        await runDiagnosisOrchestrator({
+          requestContext: photoSkillContext,
+          logger,
+          mode: 'photo_capture_quality',
+          input: {
+            photoCaptureQuality: {
+              photoId: uploadId,
+              slotId: parsed.data.slot_id || null,
+              qcStatus,
+              userRequestedPhoto: true,
+            },
+          },
+        });
+      } catch (skillErr) {
+        logger?.warn(
+          { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+          'aurora bff: photo confirm skill orchestration failed',
+        );
+      }
+
+      const rawPayload = {
         ...parsed.data,
         qc_status: qcStatus,
         ...(qc ? { qc } : {}),
         ...(typeof nextPollMs === 'number' ? { next_poll_ms: nextPollMs } : {}),
         ...(!qcStatus && lastQcData ? { qc_pending: true } : {}),
       };
+      const payload = harmonizePhotoQcCardPayload(rawPayload, { language: ctx.lang });
 
       const fieldMissing = [];
-      if (!qcStatus) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
+      if (!payload.qc_status) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
 
       const photoConfirmCard = {
         card_id: `confirm_${ctx.request_id}`,
@@ -24446,6 +24876,16 @@ function mountAuroraBffRoutes(app, { logger }) {
       const identity = await resolveIdentity(req, ctx);
       const runOnce = async ({ pipelineVersion, persistLastAnalysis, shadowRun } = {}) => {
         const profiler = createStageProfiler();
+        const skillRequestContext = createSkillRequestContext({
+          req,
+          ctx,
+          stage: 'analysis_skin',
+          featureFlags: {
+            photo_modules_v1: DIAG_PHOTO_MODULES_CARD,
+            ingredient_reco_v1: DIAG_INGREDIENT_REC,
+            product_reco_v1: DIAG_PRODUCT_REC,
+          },
+        });
         profiler.skip('face', 'not_implemented');
         profiler.skip('skin_roi', 'not_implemented');
 
@@ -24542,7 +24982,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           else degradedPhotos.push(entry);
         }
         const photosProvided = photosSubmittedCount > 0;
-        let photoQuality = classifyPhotoQuality(photos);
+        const uploadPhotoQuality = classifyPhotoQuality(photos);
+        let analysisPhotoQuality = { grade: 'unknown', reasons: ['not_run'] };
+        const effectivePhotoQuality = {
+          grade: String(uploadPhotoQuality && uploadPhotoQuality.grade ? uploadPhotoQuality.grade : 'unknown')
+            .trim()
+            .toLowerCase() || 'unknown',
+          reasons: Array.isArray(uploadPhotoQuality && uploadPhotoQuality.reasons)
+            ? uploadPhotoQuality.reasons.slice(0, 10)
+            : [],
+        };
+        const skinQualityDecisionSource = 'upload_qc_only';
+        const qualityMergeRule = 'effective = upload_qc_status (analysis_photo_quality is advisory only)';
+        const photoQuality = effectivePhotoQuality;
 
         let profileSummary = summarizeProfileForContext(profile);
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
@@ -24577,12 +25029,34 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         profiler.end('quality', { kind: 'memory', has_routine: hasRoutine, logs_n: recentLogsSummary.length });
 
-        // "Dual input" policy: photos optional, routine strongly recommended.
-        // Treat missing routine as low-confidence and fall back to a baseline when no other primary signals exist.
-        const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0;
-
         const userRequestedPhoto =
           parsed.data.use_photo === true || (parsed.data.use_photo == null && photosProvided);
+        // Photo-only analysis is allowed: uploaded photos count as a valid primary signal.
+        const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0 || (userRequestedPhoto && photosProvided);
+        try {
+          await runDiagnosisOrchestrator({
+            requestContext: skillRequestContext,
+            logger,
+            mode: 'analysis_preflight',
+            input: {
+              skinStateSelection: {
+                profile: profileSummary || profile || {},
+                selections: parsed.data,
+                requiredFields: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+                message: parsed.data.message || '',
+              },
+              photoCaptureQuality: {
+                photos,
+                userRequestedPhoto,
+              },
+            },
+          });
+        } catch (skillErr) {
+          logger?.warn(
+            { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+            'aurora bff: analysis preflight skill orchestration failed',
+          );
+        }
         const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasPrimaryInput);
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
         const selectedVisionProvider = {
@@ -24678,24 +25152,52 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
 
 	            if (diagnosisPhotoBytes) {
-	              const diag = await runSkinDiagnosisV1({
-	                imageBuffer: diagnosisPhotoBytes,
-	                language: ctx.lang,
-	                profileSummary,
-	                recentLogsSummary,
-	                profiler,
-                  qualityGateConfig,
-                  severityThresholdsOverrides,
-	              });
-	              if (diag && diag.ok && diag.diagnosis) {
-	                diagnosisV1 = diag.diagnosis;
-	                diagnosisV1Internal = diag.internal || null;
-	                diagnosisPolicy = summarizeDiagnosisForPolicy(diagnosisV1);
+                let diagSkillResult = null;
+                try {
+                  const photoSkillRuns = await runDiagnosisOrchestrator({
+                    requestContext: skillRequestContext,
+                    logger,
+                    mode: 'analysis_photo',
+                    input: {
+                      photoSkinAnalysis: {
+                        imageBuffer: diagnosisPhotoBytes,
+                        language: ctx.lang,
+                        profileSummary,
+                        recentLogsSummary,
+                        profiler,
+                        qualityGateConfig,
+                        severityThresholdsOverrides,
+                      },
+                    },
+                  });
+                  diagSkillResult =
+                    photoSkillRuns &&
+                    photoSkillRuns.skills &&
+                    photoSkillRuns.skills.photo_skin_analysis
+                      ? photoSkillRuns.skills.photo_skin_analysis
+                      : null;
+                } catch (skillErr) {
+                  logger?.warn(
+                    { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+                    'aurora bff: photo skin analysis skill orchestration failed',
+                  );
+                }
+
+		              if (diagSkillResult && diagSkillResult.ok && diagSkillResult.data && diagSkillResult.data.diagnosis) {
+		                diagnosisV1 = diagSkillResult.data.diagnosis;
+		                diagnosisV1Internal = diagSkillResult.data.diagnosis_internal || null;
+	                diagnosisPolicy =
+                    diagSkillResult.data.diagnosis_policy || summarizeDiagnosisForPolicy(diagnosisV1);
 	                usedPhotos = true;
 	                shadowVerifyPhotoBytes = diagnosisPhotoBytes;
-	                const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
-	                if (dq && typeof dq.grade === 'string') photoQuality = mergePhotoQuality(photoQuality, dq, { extraPrefix: 'pixel_' });
-                if (dq && dq.grade === 'fail') {
+		                const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
+		                if (dq) {
+		                  analysisPhotoQuality = {
+		                    grade: String(dq.grade || 'unknown').trim().toLowerCase() || 'unknown',
+		                    reasons: Array.isArray(dq.reasons) ? dq.reasons.slice(0, 10) : [],
+		                  };
+		                }
+	                if (dq && dq.grade === 'fail') {
                   if (ctx.lang === 'CN') qualityReportReasons.push('照片像素质量未通过（模糊/光照/白平衡/覆盖不足等）；为避免误判我会建议重拍。');
                   else
                     qualityReportReasons.push(
@@ -24705,11 +25207,14 @@ function mountAuroraBffRoutes(app, { logger }) {
                   if (ctx.lang === 'CN') qualityReportReasons.push('照片质量一般：我会更保守，并减少/避免无效模型调用。');
                   else qualityReportReasons.push('Photo quality is degraded: keeping conclusions conservative and reducing unnecessary model calls.');
                 }
-              } else if (diag && !diag.ok) {
-                const reason = String(diag.reason || 'diagnosis_failed');
-                photoQuality = mergePhotoQuality(photoQuality, { grade: 'fail', reasons: [reason] }, { extraPrefix: 'pixel_' });
-                if (ctx.lang === 'CN') qualityReportReasons.push(`照片检测未能稳定完成（${reason}）；为避免误判建议重拍。`);
-                else qualityReportReasons.push(`Photo checks could not complete reliably (${reason}); recommending a retake to avoid wrong guesses.`);
+              } else {
+                const reason = String(
+                  (diagSkillResult && diagSkillResult.error && diagSkillResult.error.code) ||
+                  'diagnosis_failed',
+                ).toLowerCase();
+	                analysisPhotoQuality = { grade: 'fail', reasons: [`pixel_${reason}`] };
+	                if (ctx.lang === 'CN') qualityReportReasons.push(`照片检测未能稳定完成（${reason}）；为避免误判建议重拍。`);
+	                else qualityReportReasons.push(`Photo checks could not complete reliably (${reason}); recommending a retake to avoid wrong guesses.`);
                 if (!analysisFieldMissing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'diagnosis_failed')) {
                   analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'diagnosis_failed' });
                 }
@@ -24718,7 +25223,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
 
-        const qualityForReport = userRequestedPhoto && photosProvided ? photoQuality : { grade: 'pass', reasons: ['no_photo'] };
+        const qualityForReport = userRequestedPhoto && photosProvided ? effectivePhotoQuality : { grade: 'pass', reasons: ['no_photo'] };
         const policyDetectorConfidenceLevel = diagnosisPolicy ? diagnosisPolicy.detector_confidence_level : detectorConfidence.level;
         const policyUncertainty = diagnosisPolicy ? diagnosisPolicy.uncertainty : null;
 
@@ -24728,9 +25233,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? { decision: 'call', reasons: ['force_vision_call'], downgrade_confidence: true }
             : shouldCallLlm({
                 kind: 'vision',
-                quality: photoQuality,
+                quality: effectivePhotoQuality,
                 hasPrimaryInput,
                 userRequestedPhoto,
+                qualitySourceMode: 'upload_qc_only',
                 detectorConfidenceLevel: policyDetectorConfidenceLevel,
                 uncertainty: policyUncertainty,
                 visionAvailable,
@@ -24745,6 +25251,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               quality: qualityForReport,
               hasPrimaryInput,
               userRequestedPhoto,
+              qualitySourceMode: 'upload_qc_only',
               detectorConfidenceLevel: policyDetectorConfidenceLevel,
               uncertainty: policyUncertainty,
               visionAvailable,
@@ -24759,20 +25266,24 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push('You provided a photo, but I’m missing routine/recent logs; returning a low-risk baseline first.');
         }
 
-        if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && !forceVisionCall) {
-          analysis = profiler.timeSync('detector', () => buildRetakeSkinAnalysis({ language: ctx.lang, photoQuality }), {
+        const effectiveQualityGrade = String(effectivePhotoQuality.grade || '').trim().toLowerCase();
+        if (userRequestedPhoto && photosProvided && (effectiveQualityGrade === 'fail' || effectiveQualityGrade === 'degraded') && !forceVisionCall) {
+          analysis = profiler.timeSync('detector', () => buildRetakeSkinAnalysis({ language: ctx.lang, photoQuality: effectivePhotoQuality }), {
             kind: 'retake',
           });
           analysisSource = 'retake';
-          if (ctx.lang === 'CN') qualityReportReasons.push('照片质量未通过：我不会调用 AI 做皮肤结论，避免误判；建议按提示重拍。');
+          if (effectiveQualityGrade === 'degraded') {
+            if (ctx.lang === 'CN') qualityReportReasons.push('上传质检显示照片质量一般：本次不调用模型，建议按提示重拍。');
+            else qualityReportReasons.push('Upload QC is degraded: skipping model calls for this turn and recommending a retake.');
+          } else if (ctx.lang === 'CN') qualityReportReasons.push('照片质量未通过：我不会调用 AI 做皮肤结论，避免误判；建议按提示重拍。');
           else qualityReportReasons.push('Photo quality failed: skipping all AI analysis to avoid guessy results; please retake.');
-        } else if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && forceVisionCall) {
+        } else if (userRequestedPhoto && photosProvided && (effectiveQualityGrade === 'fail' || effectiveQualityGrade === 'degraded') && forceVisionCall) {
           if (ctx.lang === 'CN') qualityReportReasons.push('已开启调试强制：即使质量判定失败也会尝试继续调用照片模型。');
           else qualityReportReasons.push('Force-vision debug enabled: attempting photo model call despite fail-grade quality.');
         }
 
         if (!analysis && visionDecision.decision === 'call') {
-          const candidates = photoQuality.grade === 'pass'
+          const candidates = effectivePhotoQuality.grade === 'pass'
             ? passedPhotos
             : degradedPhotos.length
               ? degradedPhotos
@@ -25158,6 +25669,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             photoFailureCode,
             photosProvided,
           });
+          if (photoNotUsed && photoFailureCode && analysis && typeof analysis === 'object') {
+            analysis = stripEvidenceRefsDeep(analysis);
+          }
           geometrySanitizer =
             analysis && analysis.__geometry_sanitizer && typeof analysis.__geometry_sanitizer === 'object'
               ? analysis.__geometry_sanitizer
@@ -25174,6 +25688,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               deterministicFallback: analysis,
             });
             analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract: locked });
+            if (photoNotUsed && photoFailureCode && analysis && typeof analysis === 'object') {
+              analysis = stripEvidenceRefsDeep(analysis);
+            }
           }
         }
 
@@ -25230,20 +25747,72 @@ function mountAuroraBffRoutes(app, { logger }) {
           requestId: ctx.request_id,
         });
 
-        const photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
-          requestId: ctx.request_id,
-          analysis,
-          usedPhotos,
-          photoQuality,
-          photoNotice:
-            photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
-              ? photoNotice.message
-              : visionPhotoNoticeMessage,
-          diagnosisInternal: diagnosisV1Internal,
-          profileSummary,
-          language: ctx.lang,
-          skinMask: photoModulesSkinMask,
-        });
+        let photoModulesCard = null;
+        try {
+          const finalizeSkills = await runDiagnosisOrchestrator({
+            requestContext: skillRequestContext,
+            logger,
+            mode: 'analysis_regions',
+            input: {
+              photoRegionSelection: {
+                requestId: ctx.request_id,
+                analysis,
+                usedPhotos,
+                photoQuality,
+                photoNotice:
+                  photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
+                    ? photoNotice.message
+                    : visionPhotoNoticeMessage,
+                diagnosisInternal: diagnosisV1Internal,
+                profileSummary,
+                language: ctx.lang,
+                skinMask: photoModulesSkinMask,
+                options: {
+                  enabled: DIAG_PHOTO_MODULES_CARD,
+                  overlayMode: DIAG_OVERLAY_MODE,
+                  ingredientRecEnabled: DIAG_INGREDIENT_REC,
+                  productRecEnabled: DIAG_PRODUCT_REC,
+                  productRecMinCitations: DIAG_PRODUCT_REC_MIN_CITATIONS,
+                  productRecMinEvidenceGrade: DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE,
+                  productRecRepairOnlyWhenDegraded: DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED,
+                  internalTestMode: INTERNAL_TEST_MODE,
+                  ingredientKbArtifactPath: DIAG_INGREDIENT_KB_V2_PATH,
+                  productCatalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                },
+              },
+            },
+          });
+          const regionSelection =
+            finalizeSkills &&
+            finalizeSkills.skills &&
+            finalizeSkills.skills.photo_region_selection &&
+            finalizeSkills.skills.photo_region_selection.ok &&
+            finalizeSkills.skills.photo_region_selection.data
+              ? finalizeSkills.skills.photo_region_selection.data
+              : null;
+          photoModulesCard = regionSelection && regionSelection.photo_modules_card ? regionSelection.photo_modules_card : null;
+        } catch (skillErr) {
+          logger?.warn(
+            { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+            'aurora bff: photo region selection skill orchestration failed',
+          );
+        }
+        if (!photoModulesCard) {
+          photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
+            requestId: ctx.request_id,
+            analysis,
+            usedPhotos,
+            photoQuality,
+            photoNotice:
+              photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
+                ? photoNotice.message
+                : visionPhotoNoticeMessage,
+            diagnosisInternal: diagnosisV1Internal,
+            profileSummary,
+            language: ctx.lang,
+            skinMask: photoModulesSkinMask,
+          });
+        }
 
         if (analysis && persistLastAnalysis) {
           try {
@@ -25346,29 +25915,112 @@ function mountAuroraBffRoutes(app, { logger }) {
             reactions: [],
           });
         }
+        if (photoNotUsed && photoFailureCode && analysis && typeof analysis === 'object') {
+          analysis = stripEvidenceRefsDeep(analysis);
+        }
 
         profiler.start('render', { kind: 'envelope' });
-        const analysisSummaryPayload = {
-          analysis,
-          low_confidence: analysisSource === 'baseline_low_confidence',
-          photos_provided: photosProvided,
-          photo_qc: photoQcParts,
-          used_photos: usedPhotos,
-          analysis_source: renderedAnalysisSource,
-          ...(photoNotice ? { photo_notice: photoNotice } : {}),
-          quality_report: {
-            photo_quality: { grade: photoQuality.grade, reasons: photoQuality.reasons },
-            detector_confidence: detectorConfidence,
-            ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
-            degraded_mode: SKIN_DEGRADED_MODE,
-            llm: { vision: visionDecisionForReport || visionDecision, report: reportDecision },
-            ...(llmInputHashPrefix ? { input_hash_prefix: llmInputHashPrefix } : {}),
-            reasons: qualityReportReasons.slice(0, 8),
+        const normalizedAnalysisPhotoQuality = {
+          grade: String(analysisPhotoQuality && analysisPhotoQuality.grade ? analysisPhotoQuality.grade : 'unknown')
+            .trim()
+            .toLowerCase() || 'unknown',
+          reasons: Array.isArray(analysisPhotoQuality && analysisPhotoQuality.reasons)
+            ? analysisPhotoQuality.reasons.slice(0, 10)
+            : [],
+        };
+        const normalizedEffectiveQuality = {
+          grade: String(effectivePhotoQuality && effectivePhotoQuality.grade ? effectivePhotoQuality.grade : 'unknown')
+            .trim()
+            .toLowerCase() || 'unknown',
+          reasons: Array.isArray(effectivePhotoQuality && effectivePhotoQuality.reasons)
+            ? effectivePhotoQuality.reasons.slice(0, 10)
+            : [],
+        };
+        const analysisMetaPayload = {
+          skin_quality_decision_source: skinQualityDecisionSource,
+        };
+        const qualityReportPayload = {
+          photo_quality: normalizedEffectiveQuality,
+          upload_qc_status: normalizedEffectiveQuality.grade,
+          analysis_photo_quality: normalizedAnalysisPhotoQuality,
+          effective_quality: normalizedEffectiveQuality,
+          quality_merge_rule: qualityMergeRule,
+          detector_confidence: detectorConfidence,
+          ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
+          degraded_mode: SKIN_DEGRADED_MODE,
+          llm: { vision: visionDecisionForReport || visionDecision, report: reportDecision },
+          ...(llmInputHashPrefix ? { input_hash_prefix: llmInputHashPrefix } : {}),
+          reasons: qualityReportReasons.slice(0, 8),
+        };
+
+        let analysisSummaryPayload = null;
+        try {
+          const summarySkills = await runDiagnosisOrchestrator({
+            requestContext: skillRequestContext,
+            logger,
+            mode: 'analysis_summary',
+            input: {
+              analysisSummaryBuilder: {
+                analysis,
+                lowConfidence: analysisSource === 'baseline_low_confidence',
+                photosProvided,
+                photoQc: photoQcParts,
+                usedPhotos,
+                analysisSource: renderedAnalysisSource,
+                photoNotice: photoNotice || null,
+                qualityReport: qualityReportPayload,
+                diagnosisArtifact,
+                ingredientPlan,
+                recommendationReady: Boolean(recommendationReady),
+                photoPipelineEnabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+              },
+            },
+          });
+          const summaryBuilderResult =
+            summarySkills &&
+            summarySkills.skills &&
+            summarySkills.skills.analysis_summary_builder &&
+            summarySkills.skills.analysis_summary_builder.ok &&
+            summarySkills.skills.analysis_summary_builder.data
+              ? summarySkills.skills.analysis_summary_builder.data
+              : null;
+          analysisSummaryPayload =
+            summaryBuilderResult &&
+            summaryBuilderResult.payload &&
+            typeof summaryBuilderResult.payload === 'object'
+              ? summaryBuilderResult.payload
+              : null;
+        } catch (skillErr) {
+          logger?.warn(
+            { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+            'aurora bff: analysis summary builder skill orchestration failed',
+          );
+        }
+        if (!analysisSummaryPayload) {
+          analysisSummaryPayload = {
+            analysis,
+            low_confidence: analysisSource === 'baseline_low_confidence',
+            photos_provided: photosProvided,
+            photo_qc: photoQcParts,
+            used_photos: usedPhotos,
+            analysis_source: renderedAnalysisSource,
+            ...(photoNotice ? { photo_notice: photoNotice } : {}),
+            quality_report: qualityReportPayload,
+            ...(diagnosisArtifact ? { diagnosis_artifact: diagnosisArtifact } : {}),
+            ...(ingredientPlan ? { ingredient_plan: ingredientPlan } : {}),
+            recommendation_ready: Boolean(recommendationReady),
+            photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+            analysis_meta: analysisMetaPayload,
+          };
+        }
+        analysisSummaryPayload = {
+          ...analysisSummaryPayload,
+          analysis_meta: {
+            ...(analysisSummaryPayload && analysisSummaryPayload.analysis_meta && typeof analysisSummaryPayload.analysis_meta === 'object'
+              ? analysisSummaryPayload.analysis_meta
+              : {}),
+            ...analysisMetaPayload,
           },
-          ...(diagnosisArtifact ? { diagnosis_artifact: diagnosisArtifact } : {}),
-          ...(ingredientPlan ? { ingredient_plan: ingredientPlan } : {}),
-          recommendation_ready: Boolean(recommendationReady),
-          photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
         };
 
         const sessionPatch = { next_state: 'S5_ANALYSIS_SUMMARY' };
@@ -25736,26 +26388,76 @@ function mountAuroraBffRoutes(app, { logger }) {
         const timeoutReasonText = ctx.lang === 'CN'
           ? '分析超时，已降级为低置信度基础方案。'
           : 'Analysis timed out and was downgraded to a low-confidence baseline.';
-        const timeoutPayload = {
-          analysis: degradedAnalysis,
-          low_confidence: true,
-          photos_provided: Boolean(parsed.data && parsed.data.use_photo),
-          photo_qc: [],
-          used_photos: false,
-          analysis_source: 'baseline_low_confidence',
-          quality_report: {
-            photo_quality: { grade: 'unknown', reasons: ['analysis_budget_timeout'] },
-            detector_confidence: 0,
-            degraded_mode: SKIN_DEGRADED_MODE,
-            llm: {
-              vision: { decision: 'skip', reasons: ['analysis_budget_timeout'] },
-              report: { decision: 'skip', reasons: ['analysis_budget_timeout'] },
+        let timeoutPayload = null;
+        try {
+          const timeoutSkill = await runDiagnosisOrchestrator({
+            requestContext: createSkillRequestContext({
+              req,
+              ctx,
+              stage: 'analysis_timeout_degraded',
+            }),
+            logger,
+            mode: 'analysis_timeout',
+            input: {
+              analysisSummaryBuilder: {
+                analysis: degradedAnalysis,
+                lowConfidence: true,
+                photosProvided: Boolean(parsed.data && parsed.data.use_photo),
+                photoQc: [],
+                usedPhotos: false,
+                analysisSource: 'baseline_low_confidence',
+                qualityReport: {
+                  photo_quality: { grade: 'unknown', reasons: ['analysis_budget_timeout'] },
+                  detector_confidence: 0,
+                  degraded_mode: SKIN_DEGRADED_MODE,
+                  llm: {
+                    vision: { decision: 'skip', reasons: ['analysis_budget_timeout'] },
+                    report: { decision: 'skip', reasons: ['analysis_budget_timeout'] },
+                  },
+                  reasons: [timeoutReasonText],
+                },
+                recommendationReady: false,
+                photoPipelineEnabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+              },
             },
-            reasons: [timeoutReasonText],
-          },
-          recommendation_ready: false,
-          photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
-        };
+          });
+          timeoutPayload =
+            timeoutSkill &&
+            timeoutSkill.skills &&
+            timeoutSkill.skills.analysis_summary_builder &&
+            timeoutSkill.skills.analysis_summary_builder.ok &&
+            timeoutSkill.skills.analysis_summary_builder.data &&
+            timeoutSkill.skills.analysis_summary_builder.data.payload
+              ? timeoutSkill.skills.analysis_summary_builder.data.payload
+              : null;
+        } catch (skillErr) {
+          logger?.warn(
+            { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+            'aurora bff: timeout summary skill orchestration failed',
+          );
+        }
+        if (!timeoutPayload) {
+          timeoutPayload = {
+            analysis: degradedAnalysis,
+            low_confidence: true,
+            photos_provided: Boolean(parsed.data && parsed.data.use_photo),
+            photo_qc: [],
+            used_photos: false,
+            analysis_source: 'baseline_low_confidence',
+            quality_report: {
+              photo_quality: { grade: 'unknown', reasons: ['analysis_budget_timeout'] },
+              detector_confidence: 0,
+              degraded_mode: SKIN_DEGRADED_MODE,
+              llm: {
+                vision: { decision: 'skip', reasons: ['analysis_budget_timeout'] },
+                report: { decision: 'skip', reasons: ['analysis_budget_timeout'] },
+              },
+              reasons: [timeoutReasonText],
+            },
+            recommendation_ready: false,
+            photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+          };
+        }
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
@@ -27269,21 +27971,34 @@ function mountAuroraBffRoutes(app, { logger }) {
         (derivedTransitionFromText
           ? { trigger_source: 'text_explicit', trigger_id: derivedTransitionFromText.trigger_id, requested_next_state: derivedTransitionFromText.requested_next_state }
           : null);
+      const requestedTransitionSource =
+        requestedTransitionFromBody
+          ? 'body'
+          : derivedTransitionFromAction
+            ? 'action'
+            : derivedTransitionFromText
+              ? 'text_derived'
+              : 'none';
 
       let agentState = clientAgentState;
       if (requestedTransition) {
         const triggerSource = String(requestedTransition.trigger_source || '').trim();
         const triggerId = String(requestedTransition.trigger_id || '').trim();
         const requestedNextState = normalizeAgentState(requestedTransition.requested_next_state);
+        const softIgnoreRequestedTransition = requestedTransitionSource === 'text_derived';
+        let transitionEligibleForValidation = true;
 
         if (triggerSource === 'text_explicit') {
           const inferred = inferTextExplicitTransition(message, ctx.lang);
           if (!inferred || inferred.requested_next_state !== requestedNextState) {
-            const envelope = buildEnvelope(ctx, {
-              assistant_message: makeAssistantMessage(
-                ctx.lang === 'CN'
-                  ? '当前请求的状态跳转不合法（text_explicit 未命中显式短语）。'
-                  : 'Requested state transition rejected (text_explicit did not match allowlist).',
+            if (softIgnoreRequestedTransition) {
+              transitionEligibleForValidation = false;
+            } else {
+              const envelope = buildEnvelope(ctx, {
+                assistant_message: makeAssistantMessage(
+                  ctx.lang === 'CN'
+                    ? '当前请求的状态跳转不合法（text_explicit 未命中显式短语）。'
+                    : 'Requested state transition rejected (text_explicit did not match allowlist).',
               ),
               suggested_chips: [],
               cards: [
@@ -27296,51 +28011,56 @@ function mountAuroraBffRoutes(app, { logger }) {
                   },
                 },
               ],
-              session_patch: {},
-              events: [makeEvent(ctx, 'error', { code: 'STATE_TRANSITION_REJECTED', reason: 'TEXT_EXPLICIT_NOT_ALLOWED' })],
-            });
-            return sendChatEnvelope(envelope, 400);
+                session_patch: {},
+                events: [makeEvent(ctx, 'error', { code: 'STATE_TRANSITION_REJECTED', reason: 'TEXT_EXPLICIT_NOT_ALLOWED' })],
+              });
+              return sendChatEnvelope(envelope, 400);
+            }
           }
         }
 
-        const validation = validateRequestedTransition({
-          fromState: clientAgentState,
-          triggerSource,
-          triggerId,
-          requestedNextState,
-        });
-
-        if (!validation.ok) {
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(
-              ctx.lang === 'CN'
-                ? '当前请求的状态跳转不合法（状态机硬规则拒绝）。'
-                : 'Requested state transition rejected (state machine hard rule).',
-            ),
-            suggested_chips: [],
-            cards: [
-              {
-                card_id: `err_${ctx.request_id}`,
-                type: 'error',
-                payload: {
-                  error: 'STATE_TRANSITION_REJECTED',
-                  details: {
-                    reason: validation.reason,
-                    from_state: clientAgentState,
-                    requested_next_state: requestedNextState,
-                    trigger_source: triggerSource,
-                    trigger_id: triggerId,
-                  },
-                },
-              },
-            ],
-            session_patch: {},
-            events: [makeEvent(ctx, 'error', { code: 'STATE_TRANSITION_REJECTED', reason: validation.reason })],
+        if (transitionEligibleForValidation) {
+          const validation = validateRequestedTransition({
+            fromState: clientAgentState,
+            triggerSource,
+            triggerId,
+            requestedNextState,
           });
-          return sendChatEnvelope(envelope, 400);
-        }
 
-        agentState = validation.next_state;
+          if (!validation.ok) {
+            if (!softIgnoreRequestedTransition) {
+              const envelope = buildEnvelope(ctx, {
+                assistant_message: makeAssistantMessage(
+                  ctx.lang === 'CN'
+                    ? '当前请求的状态跳转不合法（状态机硬规则拒绝）。'
+                    : 'Requested state transition rejected (state machine hard rule).',
+                ),
+                suggested_chips: [],
+                cards: [
+                  {
+                    card_id: `err_${ctx.request_id}`,
+                    type: 'error',
+                    payload: {
+                      error: 'STATE_TRANSITION_REJECTED',
+                      details: {
+                        reason: validation.reason,
+                        from_state: clientAgentState,
+                        requested_next_state: requestedNextState,
+                        trigger_source: triggerSource,
+                        trigger_id: triggerId,
+                      },
+                    },
+                  },
+                ],
+                session_patch: {},
+                events: [makeEvent(ctx, 'error', { code: 'STATE_TRANSITION_REJECTED', reason: validation.reason })],
+              });
+              return sendChatEnvelope(envelope, 400);
+            }
+          } else {
+            agentState = validation.next_state;
+          }
+        }
       }
 
       const recoInteractionAllowed = recommendationsAllowed({
@@ -27563,6 +28283,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           events: [
             makeEvent(ctx, 'anchor_collection_waiting_input', { intent: canonicalIntent.intent }),
             makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent || INTENT_ENUM.EVALUATE_PRODUCT, question: firstQuestion }),
+            makeEvent(ctx, 'gate_advisory_inline', { gate_id: 'fit_check_anchor_gate' }),
           ],
         });
         return sendChatEnvelope(envelope);
@@ -27587,6 +28308,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           events: [
             makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'fit_check_anchor_required' }),
             makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent || INTENT_ENUM.EVALUATE_PRODUCT, question: firstQuestion }),
+            makeEvent(ctx, 'gate_advisory_inline', { gate_id: 'fit_check_anchor_gate' }),
           ],
         });
         return sendChatEnvelope(envelope);
@@ -27964,6 +28686,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ctx.trigger_source === 'text_explicit' ||
         ctx.trigger_source === 'chip' ||
         ctx.trigger_source === 'action';
+      const explicitProductAskForEnv = looksLikeExplicitProductAskForEnv(message, ctx.lang);
       const buildTravelMissingFieldsEnvelope = ({
         asksDestination,
         asksDates,
@@ -27971,6 +28694,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         missingFields = [],
       }) => {
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const failureClass = invalidDateRange
+          ? 'weather_date_range_invalid'
+          : asksDestination
+            ? 'weather_destination_missing'
+            : asksDates
+              ? 'weather_dates_missing'
+              : 'weather_context_missing';
         const askText = (() => {
           if (lang === 'CN') {
             if (invalidDateRange) {
@@ -28022,6 +28752,17 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             ]
             : []),
+          {
+            chip_id: 'chip.start.reco_products',
+            label: lang === 'CN' ? '推荐防护产品' : 'Recommend protective products',
+            kind: 'quick_reply',
+            data: {
+              reply_text:
+                lang === 'CN'
+                  ? '我应该用什么类型的防护产品？'
+                  : 'What protective products should I use for this weather?',
+            },
+          },
         ];
         const baseEnvStressUi = buildEnvStressUiModelFromLocal({
           profile,
@@ -28032,6 +28773,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const envStressUi = baseEnvStressUi && typeof baseEnvStressUi === 'object'
           ? {
             ...baseEnvStressUi,
+            failure_class: failureClass,
             notes: [
               ...(Array.isArray(baseEnvStressUi.notes) ? baseEnvStressUi.notes : []),
               ...(missingFields.length
@@ -28040,6 +28782,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             ],
           }
           : null;
+        policyMeta.route_decision = 'travel_missing_fields';
+        policyMeta.route_failure_class = failureClass;
+        policyMeta.env_source = 'local_template';
+        policyMeta.degraded = true;
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(askText),
           suggested_chips: chips,
@@ -28047,12 +28793,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
             : [],
           session_patch: {},
-          events: [makeEvent(ctx, 'travel_planning_gate', { missing_fields: missingFields.slice(0, 4) })],
+          events: [makeEvent(ctx, 'travel_planning_gate', { missing_fields: missingFields.slice(0, 4), failure_class: failureClass })],
+          telemetry: {
+            route_decision: 'travel_missing_fields',
+            route_failure_class: failureClass,
+          },
         });
         return sendChatEnvelope(envelope);
       };
 
       if (
+        !explicitProductAskForEnv &&
         plannerDecision &&
         (
           canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
@@ -28076,13 +28827,20 @@ function mountAuroraBffRoutes(app, { logger }) {
       // without required destination + date range.
       if (
         triggerAllowsTravelPrompt &&
+        !explicitProductAskForEnv &&
         (
           canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
-          extractWeatherScenario(message) === 'travel'
+          extractWeatherScenario(message) === 'travel' ||
+          (
+            looksLikeTravelContextWeatherQuestion(message, ctx.lang)
+          )
         )
       ) {
+        const allowStoredTravelPlan =
+          canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+          extractWeatherScenario(message) === 'travel';
         const travelPlan =
-          profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+          allowStoredTravelPlan && profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
             ? profile.travel_plan
             : null;
         const destination =
@@ -28138,8 +28896,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         policyMeta.degraded = true;
 
         if (effectiveChatFlags.travel_weather_live_v1) {
+          const allowStoredTravelPlan =
+            canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+            extractWeatherScenario(message) === 'travel';
           const travelPlan =
-            profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+            allowStoredTravelPlan && profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
               ? profile.travel_plan
               : null;
           const destination =
@@ -28160,6 +28921,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             typeof canonicalIntent.entities.date_range.end === 'string'
               ? canonicalIntent.entities.date_range.end
               : '');
+          const missingDestinationForWeather = !String(destination || '').trim();
 
           const weather = await getTravelWeather({
             destination,
@@ -28185,6 +28947,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             env_source: epiPayload.env_source,
             travel_context: weather.date_range || null,
           };
+          if (missingDestinationForWeather) {
+            envStressUi.failure_class = 'weather_destination_missing';
+            policyMeta.route_failure_class = 'weather_destination_missing';
+          }
 
           const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
           const destinationText =
@@ -28264,15 +29030,95 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         ];
 
+        const cards = envStressUi
+          ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
+          : [];
+        const events = [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })];
+        const shouldAttachRecoFromEnv =
+          allowRecoCards &&
+          explicitProductAskForEnv;
+        let routeDecision = shouldAttachRecoFromEnv ? 'travel_then_reco' : 'travel_only';
+
+        if (shouldAttachRecoFromEnv) {
+          events.push(makeEvent(ctx, 'recos_requested', { explicit: true, source: 'travel_env' }));
+          try {
+            const upstreamReco = await withTimeout(
+              generateProductRecommendations({
+                ctx,
+                profile,
+                recentLogs,
+                message,
+                includeAlternatives,
+                debug: debugUpstream,
+                logger,
+              }),
+              AURORA_BFF_CHAT_RECO_BUDGET_MS,
+              'AURORA_CHAT_RECO_BUDGET_TIMEOUT',
+            );
+            const norm = upstreamReco && upstreamReco.norm ? upstreamReco.norm : null;
+            const payloadRaw = norm && norm.payload && typeof norm.payload === 'object' ? norm.payload : null;
+            const payload = payloadRaw && !debugUpstream ? stripInternalRefsDeep(payloadRaw) : payloadRaw;
+            const recos = Array.isArray(payload && payload.recommendations) ? payload.recommendations : [];
+            if (payload && recos.length > 0) {
+              cards.push({
+                card_id: `reco_${ctx.request_id}`,
+                type: 'recommendations',
+                payload,
+                ...(norm && Array.isArray(norm.field_missing) && norm.field_missing.length
+                  ? { field_missing: norm.field_missing.slice(0, 8) }
+                  : {}),
+              });
+            } else {
+              cards.push({
+                card_id: `conf_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: 'timeout_degraded',
+                  confidence: { score: 0.45, level: 'low', rationale: ['travel_then_reco_empty'] },
+                  actions: ['retry_recommendations'],
+                  details: [ctx.lang === 'CN' ? '旅行天气建议已返回，商品推荐暂不可用。' : 'Travel advice returned, but product recommendations are temporarily unavailable.'],
+                }),
+              });
+            }
+          } catch (recoErr) {
+            logger?.warn(
+              {
+                err: recoErr && recoErr.message ? recoErr.message : String(recoErr),
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+              },
+              'aurora bff: travel env mixed reco degraded',
+            );
+            cards.push({
+              card_id: `conf_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: 'timeout_degraded',
+                confidence: { score: 0.4, level: 'low', rationale: ['travel_then_reco_timeout'] },
+                actions: ['retry_recommendations'],
+                details: [ctx.lang === 'CN' ? '旅行天气建议已返回，推荐阶段超时。' : 'Travel advice returned, but the recommendation stage timed out.'],
+              }),
+            });
+          }
+        }
+        policyMeta.route_decision = routeDecision;
+        if (envStressUi && envStressUi.failure_class) {
+          policyMeta.route_failure_class = envStressUi.failure_class;
+        }
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
-          cards: envStressUi
-            ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
-            : [],
+          cards,
           session_patch:
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-          events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
+          events,
+          telemetry: {
+            route_decision: routeDecision,
+            ...(envStressUi && envStressUi.failure_class ? { route_failure_class: envStressUi.failure_class } : {}),
+          },
         });
         return sendChatEnvelope(envelope);
       }
@@ -28662,7 +29508,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
+      const ingredientRoutingBlockedByPendingResume = Boolean(forceUpstreamAfterPendingAbandon);
+
+      if (!ingredientRoutingBlockedByPendingResume && ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(
             buildSafetyNoticeText(safetyDecision) ||
@@ -28703,7 +29551,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return sendChatEnvelope(envelope);
       }
-      if (ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO) {
+      if (!ingredientRoutingBlockedByPendingResume && ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO) {
         const safetyQuestions = Array.isArray(safetyDecision.required_questions) ? safetyDecision.required_questions : [];
         const firstQuestion = safetyQuestions[0] || (ctx.lang === 'CN' ? '请先补充一个关键安全信息。' : 'Please provide one key safety detail first.');
         const asksPregnancy = /pregnan|怀孕|备孕/i.test(firstQuestion);
@@ -28771,7 +29619,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ingredientIsLikelyLookupText(message)
         );
 
-      if (INGREDIENT_ROUTE_V2_ENABLED && ingredientOptinDiagnosisAction) {
+      if (INGREDIENT_ROUTE_V2_ENABLED && !ingredientRoutingBlockedByPendingResume && ingredientOptinDiagnosisAction) {
         const diagnosisPrompt = buildDiagnosisPrompt(ctx.lang);
         const diagnosisChips = buildDiagnosisChips(ctx.lang);
         const routeDecisionReasons = ['ingredient_optin_diagnosis', 'diagnosis_gate_allowed'];
@@ -28814,7 +29662,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (INGREDIENT_ROUTE_V2_ENABLED && ingredientByGoalAction) {
+      if (INGREDIENT_ROUTE_V2_ENABLED && !ingredientRoutingBlockedByPendingResume && ingredientByGoalAction) {
         const goal = String(ingredientActionData.goal || ingredientActionData.target_goal || '').trim().toLowerCase() || 'barrier';
         const sensitivity = String(ingredientActionData.sensitivity || '').trim().toLowerCase() || 'unknown';
         const routeDecisionReasons = ['ingredient_by_goal_action', `goal:${goal}`, `sensitivity:${sensitivity}`];
@@ -28862,6 +29710,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         normalizedActionIdForRecoGuard === 'chip.action.reco_routine';
       const shouldRunIngredientLookup =
         INGREDIENT_ROUTE_V2_ENABLED &&
+        !ingredientRoutingBlockedByPendingResume &&
         !isExplicitRecoChipAction &&
         (
           ingredientLookupAction ||
@@ -28917,6 +29766,67 @@ function mountAuroraBffRoutes(app, { logger }) {
           routeSource: ingredientLookupAction || ingredientPollAction ? 'chip' : 'text',
           logger,
         });
+        try {
+          const ingredientGoalFromReport =
+            (reportPayload &&
+              reportPayload.verdict &&
+              Array.isArray(reportPayload.verdict.top_benefits) &&
+              reportPayload.verdict.top_benefits[0]) ||
+            ingredientActionData.goal ||
+            'redness';
+          const ingredientIdForProductSkill =
+            (reportPayload &&
+              reportPayload.ingredient &&
+              (reportPayload.ingredient.inci || reportPayload.ingredient.display_name)) ||
+            ingredientTextQuery;
+          await runDiagnosisOrchestrator({
+            requestContext: createSkillRequestContext({
+              req,
+              ctx,
+              stage: 'chat_ingredient_lookup',
+            }),
+            logger,
+            mode: 'chat_ingredient_lookup',
+            input: {
+              ingredientRecommendation: {
+                issues: [{ issue_type: ingredientGoalFromReport }],
+                language: ctx.lang,
+                barrierStatus: profile && profile.barrierStatus ? profile.barrierStatus : null,
+                sensitivity: profile && profile.sensitivity ? profile.sensitivity : null,
+                market: profile && profile.region ? profile.region : 'US',
+                contraindications: profile && profile.contraindications ? profile.contraindications : [],
+                internalTestMode: INTERNAL_TEST_MODE,
+              },
+              productRecommendation: {
+                mode: 'ingredient_neutral',
+                input: {
+                  moduleId: `ingredient_lookup_${ctx.request_id}`,
+                  ingredientId: ingredientIdForProductSkill,
+                  ingredientName: ingredientTextQuery,
+                  issueType: ingredientGoalFromReport,
+                  market: profile && profile.region ? profile.region : 'US',
+                  lang: ctx.lang,
+                  riskTier:
+                    String(profile && profile.sensitivity || '').trim().toLowerCase() === 'high'
+                      ? 'sensitive'
+                      : 'low',
+                  qualityGrade: 'degraded',
+                  minCitations: DIAG_PRODUCT_REC_MIN_CITATIONS,
+                  minEvidenceGrade: DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE,
+                  repairOnlyWhenDegraded: DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED,
+                  internalTestMode: INTERNAL_TEST_MODE,
+                  artifactPath: DIAG_INGREDIENT_KB_V2_PATH,
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                },
+              },
+            },
+          });
+        } catch (skillErr) {
+          logger?.warn(
+            { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+            'aurora bff: ingredient lookup skill orchestration failed',
+          );
+        }
         const assistantText = String(reportPayload?.verdict?.one_liner || '').trim() ||
           (ctx.lang === 'CN'
             ? `我已生成 ${ingredientTextQuery} 的 1 分钟成分摘要。`
@@ -28952,7 +29862,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (INGREDIENT_ROUTE_V2_ENABLED && ingredientEntryAction) {
+      if (INGREDIENT_ROUTE_V2_ENABLED && !ingredientRoutingBlockedByPendingResume && ingredientEntryAction) {
         const routeDecisionReasons = ['ingredient_entry_action', 'query_first_hub'];
         const hubPayload = ingredientBuildHubPayload(ctx.lang, routeDecisionReasons);
         const assistantText = ctx.lang === 'CN'
@@ -28984,7 +29894,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      if (INGREDIENT_ROUTE_V2_ENABLED && ingredientScienceIntent && !INGREDIENT_LEGACY_PATH_ENABLED) {
+      if (INGREDIENT_ROUTE_V2_ENABLED && !ingredientRoutingBlockedByPendingResume && ingredientScienceIntent && !INGREDIENT_LEGACY_PATH_ENABLED) {
         const routeDecisionReasons = ['ingredient_science_text', 'fallback_hub'];
         const hubPayload = ingredientBuildHubPayload(ctx.lang, routeDecisionReasons);
         const envelope = buildEnvelope(ctx, {
@@ -29515,6 +30425,24 @@ function mountAuroraBffRoutes(app, { logger }) {
           profile,
           language: ctx.lang,
         });
+        const preRecoGuardDecision = evaluatePolicySafetyGuard({
+          phase: 'chat_reco_pre_artifact',
+          safetyDecision,
+          boundaryDecision: safety,
+          confidenceLevel: 'medium',
+        });
+        if (preRecoGuardDecision.reason !== 'none') {
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              reason: preRecoGuardDecision.reason,
+              blocked: preRecoGuardDecision.blocked,
+              require_info: preRecoGuardDecision.require_info,
+            },
+            'aurora bff: policy safety guard decision',
+          );
+        }
         if (safety.block) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.safety_block_rate', value: 1 }, 'metric');
           recordAuroraSkinFlowMetric({ stage: 'reco_safety_block', hit: true });
@@ -29574,6 +30502,25 @@ function mountAuroraBffRoutes(app, { logger }) {
             : latestArtifact;
 
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
+        const recoGateDecision = evaluatePolicySafetyGuard({
+          phase: 'chat_reco',
+          safetyDecision,
+          artifactGate,
+          confidenceLevel: artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low',
+        });
+        if (recoGateDecision.reason !== 'none') {
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              reason: recoGateDecision.reason,
+              blocked: recoGateDecision.blocked,
+              degrade: recoGateDecision.degrade,
+              confidence_level: recoGateDecision.confidence_level,
+            },
+            'aurora bff: recommendation guard decision',
+          );
+        }
         if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !recoActionBypassDiagnosis) {
           const chips = buildRecoEntryChips(ctx.lang);
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
@@ -29643,6 +30590,100 @@ function mountAuroraBffRoutes(app, { logger }) {
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
               'aurora bff: ingredient plan lookup/build failed',
+            );
+          }
+        }
+        let ingredientSkillOutput = null;
+        try {
+          const artifactIssues = Array.isArray(
+            latestArtifact &&
+            latestArtifact.artifact_json &&
+            latestArtifact.artifact_json.concerns,
+          )
+            ? latestArtifact.artifact_json.concerns
+            : Array.isArray(latestArtifact && latestArtifact.concerns)
+              ? latestArtifact.concerns
+              : [];
+          const ingredientSkills = await runDiagnosisOrchestrator({
+            requestContext: createSkillRequestContext({
+              req,
+              ctx,
+              stage: 'chat_reco_ingredient',
+            }),
+            logger,
+            mode: 'chat_reco_ingredient',
+            input: {
+              ingredientRecommendation: {
+                issues: artifactIssues.map((row) =>
+                  row && typeof row === 'object'
+                    ? { issue_type: row.id || row.issue_type || row.type || null }
+                    : row,
+                ),
+                language: ctx.lang,
+                barrierStatus: profile && profile.barrierStatus ? profile.barrierStatus : null,
+                sensitivity: profile && profile.sensitivity ? profile.sensitivity : null,
+                market: profile && profile.region ? profile.region : 'US',
+                contraindications: profile && profile.contraindications ? profile.contraindications : [],
+                internalTestMode: INTERNAL_TEST_MODE,
+              },
+            },
+          });
+          ingredientSkillOutput =
+            ingredientSkills &&
+            ingredientSkills.skills &&
+            ingredientSkills.skills.ingredient_recommendation &&
+            ingredientSkills.skills.ingredient_recommendation.ok &&
+            ingredientSkills.skills.ingredient_recommendation.data
+              ? ingredientSkills.skills.ingredient_recommendation.data
+              : null;
+        } catch (skillErr) {
+          logger?.warn(
+            { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+            'aurora bff: ingredient recommendation skills failed',
+          );
+        }
+
+        if (ingredientSkillOutput && Array.isArray(ingredientSkillOutput.actions_flat) && ingredientSkillOutput.actions_flat.length) {
+          try {
+            await runDiagnosisOrchestrator({
+              requestContext: createSkillRequestContext({
+                req,
+                ctx,
+                stage: 'chat_reco_product',
+              }),
+              logger,
+              mode: 'chat_reco_product',
+              input: {
+                productRecommendation: {
+                  mode: 'module',
+                  input: {
+                    moduleId: `chat_reco_${ctx.request_id}`,
+                    issues: (Array.isArray(ingredientSkillOutput.issue_types) ? ingredientSkillOutput.issue_types : []).map((issueType) => ({
+                      issue_type: issueType,
+                      severity_0_4: 2,
+                    })),
+                    actions: ingredientSkillOutput.actions_flat,
+                    market: profile && profile.region ? profile.region : 'US',
+                    lang: ctx.lang,
+                    riskTier:
+                      String(profile && profile.sensitivity || '').trim().toLowerCase() === 'high'
+                        ? 'sensitive'
+                        : 'low',
+                    qualityGrade: 'degraded',
+                    minCitations: DIAG_PRODUCT_REC_MIN_CITATIONS,
+                    minEvidenceGrade: DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE,
+                    repairOnlyWhenDegraded: DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED,
+                    internalTestMode: INTERNAL_TEST_MODE,
+                    artifactPath: DIAG_INGREDIENT_KB_V2_PATH,
+                    catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                  },
+                },
+              },
+            });
+          } catch (skillErr) {
+            logger?.warn(
+              { err: skillErr && skillErr.message ? skillErr.message : String(skillErr) },
+              'aurora bff: product recommendation skills failed',
             );
           }
         }
@@ -30946,6 +31987,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         // Always keep assistant_message end-user readable; internal kb:* refs belong in debug payloads only.
         stripInternalRefs: true,
       });
+      const rawAnswerText = String(answer || '').trim();
+      const compressedOverlongTemplate =
+        looksLikeGenericStructuredNotice(safeAnswer) &&
+        rawAnswerText.length > 600 &&
+        (/\bpart\s*\d+\s*:/i.test(rawAnswerText) ||
+          /\b(budget analysis|am\s*\(|pm\s*\(|am\s*:|pm\s*:)\b/i.test(rawAnswerText) ||
+          /(^|\n)#+\s*(am|pm|budget|safety)\b/i.test(rawAnswerText));
 
       const routeCards = [...(Array.isArray(derivedCards) ? derivedCards : []), ...(Array.isArray(cards) ? cards : [])];
       const routeHintFromCards = inferRouteFromCards(routeCards);
@@ -30962,7 +32010,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           profile,
         });
         const shouldUpgrade =
-          looksLikeGenericStructuredNotice(safeAnswer) ||
+          (!compressedOverlongTemplate && looksLikeGenericStructuredNotice(safeAnswer)) ||
           !isRouteStructuredAnswer(safeAnswer, routeHint.route);
         if (shouldUpgrade && routeStructured) safeAnswer = routeStructured;
       }
@@ -31171,6 +32219,7 @@ const __internal = {
   isSignedUrlExpiredSignal,
   setPhotoBytesCache,
   getPhotoBytesCache,
+  shouldSkipVisionForDegradedReportMode,
   buildLowConfidenceBaselineSkinAnalysis,
   buildRuleBasedSkinAnalysis,
   normalizeSkinAnalysisFromLLM,
