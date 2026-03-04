@@ -805,6 +805,7 @@ function buildLowConfidencePlan({ artifact, profile, overallConfidence } = {}) {
     { ingredient_id: 'sunscreen_filters', role: 'hero', priority: 95 },
   ].map((item) => ({
     ...item,
+    ingredient_name: resolveIngredientName(item.ingredient_id),
     usage_guidance: normalizeIngredientGuidance(item.ingredient_id),
     confidence: buildConfidence(Math.min(0.72, overallConfidence.score + 0.12), ['low_confidence_gentle_only']),
     evidence,
@@ -812,6 +813,7 @@ function buildLowConfidencePlan({ artifact, profile, overallConfidence } = {}) {
 
   const avoid = ['retinol', 'salicylic_acid', 'benzoyl_peroxide'].map((ingredientId) => ({
     ingredient_id: ingredientId,
+    ingredient_name: resolveIngredientName(ingredientId),
     reason: ['Low-confidence mode: avoid high-irritation actives until better evidence is available.'],
     severity: 'avoid',
     confidence: buildConfidence(0.82, ['low_confidence_safety_guard']),
@@ -936,6 +938,7 @@ function buildIngredientPlan({ artifact, profile } = {}) {
       );
       return {
         ingredient_id: ingredientId,
+        ingredient_name: resolveIngredientName(ingredientId),
         role: target.role,
         priority: computedPriority,
         usage_guidance: normalizeIngredientGuidance(ingredientId),
@@ -949,6 +952,7 @@ function buildIngredientPlan({ artifact, profile } = {}) {
   const avoid = Array.from(avoidMap.values())
     .map((item) => ({
       ingredient_id: item.ingredient_id,
+      ingredient_name: resolveIngredientName(item.ingredient_id),
       reason: Array.from(new Set(item.reason.map((raw) => String(raw || '').trim()).filter(Boolean))).slice(0, 4),
       severity: item.severity,
       confidence: buildConfidence(Math.min(0.95, overallConfidence.score * 0.85 + 0.1), ['rule_based_avoid']),

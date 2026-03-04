@@ -2,7 +2,8 @@
   "meta": {
     "lang": "EN",
     "intent": "reco_products",
-    "region": "US"
+    "region": "US",
+    "task_mode": "goal_based_products|ingredient_filtered_products|ingredient_lookup_no_candidates"
   },
   "profile": {
     "skinType": null,
@@ -20,6 +21,8 @@
     "recent_logs_provided": false
   },
   "candidates": [],
+  "ingredient_candidates": ["ingredient name strings for reasoning context only"],
+  "product_candidates": ["product objects to select from when task_mode is ingredient_filtered_products"],
   "task": {
     "type": "product_picks_not_routine",
     "max_recommendations": 5,
@@ -68,7 +71,8 @@
         ],
         "warnings": [
           "string"
-        ]
+        ],
+        "match_verified": "boolean (true only if ingredient presence is confirmed, false if pending/unknown)"
       }
     ],
     "evidence": {},
@@ -84,7 +88,9 @@
     "Do not ask clarifying questions.",
     "Do not output checkout links.",
     "Do not repeat the same product_id or sku_id.",
-    "If candidates[] is non-empty, every recommendation must copy sku_id/product_id/brand/name from a candidate exactly.",
+    "If candidates[] or product_candidates[] is non-empty, every recommendation must copy sku_id/product_id/brand/name from a candidate exactly.",
+    "If task_mode is 'ingredient_lookup_no_candidates' or (task_mode is 'ingredient_filtered_products' and product_candidates is empty), output recommendations: [] with confidence: 0.",
+    "ingredient_candidates[] contains ingredient names for reasoning — NEVER treat them as product names or product IDs.",
     "At least one reason per item must reference the user's profile OR explicitly reference missing profile fields conservatively (e.g., 'skin type not provided').",
     "If global_status.recent_logs_provided is false, add top-level warning 'recent_logs_missing' (only once, not per item).",
     "If global_status.itinerary_provided is false, add top-level warning 'itinerary_unknown' (only once, not per item)."

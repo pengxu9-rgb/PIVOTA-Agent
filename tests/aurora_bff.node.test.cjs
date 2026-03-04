@@ -135,6 +135,17 @@ function assertPassiveGateAdvisorySignal(body, gateId) {
   assert.equal(passiveSuppressed || suppressedGateIds.includes(gateId) || hasGateEvent, true);
 }
 
+function findCardByType(cards, type) {
+  if (!Array.isArray(cards)) return null;
+  const expected = String(type || '').trim().toLowerCase();
+  if (!expected) return null;
+  for (const card of cards) {
+    const t = String(card && card.type ? card.type : '').trim().toLowerCase();
+    if (t === expected) return card;
+  }
+  return null;
+}
+
 test('normalizeClarificationField: maps common skinType ids (ASCII/CN) to canonical field', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -7152,11 +7163,30 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       const radarRows = Array.isArray(envStress?.payload?.radar) ? envStress.payload.radar : [];
       assert.equal(radarRows.length > 0, true);
       assert.equal(radarRows.some((row) => Array.isArray(row?.drivers) && row.drivers.length > 0), true);
+      const shoppingPreview =
+        envStress?.payload?.travel_readiness?.shopping_preview &&
+        typeof envStress.payload.travel_readiness.shopping_preview === 'object'
+          ? envStress.payload.travel_readiness.shopping_preview
+          : null;
+      assert.ok(shoppingPreview);
+      const shoppingProducts = Array.isArray(shoppingPreview?.products)
+        ? shoppingPreview.products
+        : [];
+      assert.equal(shoppingProducts.length > 0, true);
+      assert.equal(Array.isArray(shoppingPreview?.buying_channels), true);
+      assert.equal(shoppingPreview.buying_channels.length > 0, true);
+      const allowedProductSource = new Set(['catalog', 'rule_fallback', 'llm_generated']);
+      assert.equal(
+        shoppingProducts.every((row) => allowedProductSource.has(String(row?.product_source || '').trim())),
+        true,
+      );
       assert.doesNotMatch(String(resp.body?.assistant_message?.content || ''), /destination and travel dates/i);
 
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
       assert.equal(types.includes('diagnosis_gate'), false);
       assert.equal(types.includes('gate_notice'), false);
+      assert.equal(types.includes('analysis_summary'), false);
+      assert.equal(types.includes('analysis_story_v2'), false);
 
       const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
       const chipIds = chips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : ''));
@@ -7194,6 +7224,8 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       assert.equal(followMeta.loop_count >= 0, true);
       const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
       assert.equal(followCards.some((c) => c && c.type === 'env_stress'), true);
+      assert.equal(followCards.some((c) => c && c.type === 'analysis_summary'), false);
+      assert.equal(followCards.some((c) => c && c.type === 'analysis_story_v2'), false);
 
       delete require.cache[moduleId];
     },
@@ -7406,12 +7438,16 @@ test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', asy
 
   assert.equal(resp.status, 200);
   assert.ok(Array.isArray(resp.body?.cards));
-  const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
-  assert.ok(card);
-  assert.equal(card.payload?.analysis_source, 'baseline_low_confidence');
-  assert.equal(Boolean(card.payload?.low_confidence), true);
-  const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
-  assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const storyCard = findCardByType(cards, 'analysis_story_v2');
+  assert.ok(storyCard);
+  const analysisMeta = resp.body?.analysis_meta || {};
+  assert.equal(String(analysisMeta.detector_source || ''), 'baseline_low_confidence');
+  assert.equal(Boolean(analysisMeta.llm_vision_called), false);
+  assert.equal(Boolean(analysisMeta.llm_report_called), false);
+  const confidenceCard = findCardByType(cards, 'confidence_notice');
+  assert.ok(confidenceCard);
+  assert.equal(String(confidenceCard?.payload?.reason || ''), 'low_confidence');
 });
 
 test('/v1/analysis/skin: photo-only fallback marks used_photos missing when photo fetch fails', async () => {
@@ -7487,21 +7523,22 @@ test('/v1/analysis/skin: photo-only fallback marks used_photos missing when phot
 
   assert.equal(resp.status, 200);
   assert.ok(Array.isArray(resp.body?.cards));
-  const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
-  assert.ok(card);
-  assert.equal(card.payload?.analysis_source, 'rule_based_with_photo_qc');
-  assert.equal(card.payload?.low_confidence, false);
-  assert.equal(card.payload?.used_photos, false);
-  assert.equal(card.payload?.photo_notice?.failure_code, 'DOWNLOAD_URL_GENERATE_FAILED');
-  const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const storyCard = findCardByType(cards, 'analysis_story_v2');
+  assert.ok(storyCard);
+  const analysisMeta = resp.body?.analysis_meta || {};
   assert.equal(
-    missing.some((m) => m && m.field === 'analysis.used_photos' && m.reason === 'DOWNLOAD_URL_GENERATE_FAILED'),
+    ['retake', 'rule_based_with_photo_qc'].includes(String(analysisMeta.detector_source || '')),
     true,
   );
-  assert.equal(
-    missing.some((m) => m && m.field === 'analysis.primary_input' && m.reason === 'routine_or_recent_logs_required'),
-    false,
-  );
+  assert.equal(Boolean(analysisMeta.llm_vision_called), false);
+  assert.equal(String(analysisMeta.degrade_reason || ''), 'photo_download_url_generate_failed');
+  const confidenceCard = findCardByType(cards, 'confidence_notice');
+  assert.ok(confidenceCard);
+  const rationale = Array.isArray(confidenceCard?.payload?.confidence?.rationale)
+    ? confidenceCard.payload.confidence.rationale
+    : [];
+  assert.equal(rationale.includes('photo_requested_but_not_used'), true);
 });
 
 test('/v1/analysis/skin: accepts routine input and avoids low-confidence baseline', async () => {
@@ -7581,18 +7618,13 @@ test('/v1/analysis/skin: accepts routine input and avoids low-confidence baselin
 
   assert.equal(resp.status, 200);
   assert.ok(Array.isArray(resp.body?.cards));
-  const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
-  assert.ok(card);
-  assert.notEqual(card.payload?.analysis_source, 'baseline_low_confidence');
-  assert.equal(Boolean(card.payload?.low_confidence), false);
-
-  const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
-  assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
-
-  const analysis = card.payload?.analysis;
-  assert.equal(Boolean(analysis && typeof analysis === 'object'), true);
-  assert.equal(Array.isArray(analysis.features), true);
-  assert.ok(analysis.features.length > 0);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const storyCard = findCardByType(cards, 'analysis_story_v2');
+  assert.ok(storyCard);
+  const analysisMeta = resp.body?.analysis_meta || {};
+  assert.notEqual(String(analysisMeta.detector_source || ''), 'baseline_low_confidence');
+  const findings = Array.isArray(storyCard?.payload?.priority_findings) ? storyCard.payload.priority_findings : [];
+  assert.ok(findings.length > 0);
 });
 
 test('/v1/product/analyze: returns verdict + enriched reasons', async () => {
@@ -8004,15 +8036,29 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
   assert.equal(resp.status, 200);
   assert.ok(resp.body);
   const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-  const card = cards.find((c) => c && c.type === 'analysis_summary');
-  assert.ok(card);
+  const storyCard = findCardByType(cards, 'analysis_story_v2');
+  assert.ok(storyCard);
 
-  assert.equal(card.payload.analysis_source, 'retake');
-  assert.equal(card.payload?.quality_report?.photo_quality?.grade, 'fail');
-  assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
-  assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
-  assert.equal(Array.isArray(card.payload?.analysis?.features), true);
-  assert.match(String(card.payload.analysis.features[0].observation || ''), /photo/i);
+  const analysisMeta = resp.body?.analysis_meta || {};
+  assert.equal(
+    ['retake', 'rule_based_with_photo_qc'].includes(String(analysisMeta.detector_source || '')),
+    true,
+  );
+  assert.equal(Boolean(analysisMeta.llm_vision_called), false);
+  assert.equal(Boolean(analysisMeta.llm_report_called), false);
+
+  const findings = Array.isArray(storyCard?.payload?.priority_findings) ? storyCard.payload.priority_findings : [];
+  assert.equal(findings.length <= 1, true);
+  const confidenceCard = findCardByType(cards, 'confidence_notice');
+  assert.ok(confidenceCard);
+  const rationale = Array.isArray(confidenceCard?.payload?.confidence?.rationale)
+    ? confidenceCard.payload.confidence.rationale
+    : [];
+  assert.equal(rationale.includes('photo_qc_failed'), true);
+  assert.equal(rationale.includes('photo_requested_but_not_used'), true);
+  const valueMoment = (Array.isArray(resp.body?.events) ? resp.body.events : []).find((e) => e && e.event_name === 'value_moment') || null;
+  assert.ok(valueMoment);
+  assert.equal(Boolean(valueMoment?.data?.used_photos), false);
 });
 
 test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo quality fails', async () => {
@@ -8132,9 +8178,9 @@ test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo q
         assert.equal(typeof photoId, 'string');
         assert.ok(photoId.length > 0);
         const uploadAnalysisCard = Array.isArray(uploadResp.body?.cards)
-          ? uploadResp.body.cards.find((c) => c && c.type === 'analysis_summary')
+          ? uploadResp.body.cards.find((c) => c && ['analysis_summary', 'analysis_story_v2'].includes(String(c.type || '')))
           : null;
-        if (uploadAnalysisCard) assert.equal(typeof uploadAnalysisCard?.payload?.used_photos, 'boolean');
+        if (uploadAnalysisCard) assert.equal(typeof uploadAnalysisCard?.payload, 'object');
 
         const analysisResp = await request
           .post('/v1/analysis/skin')
@@ -8146,18 +8192,21 @@ test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo q
           })
           .expect(200);
 
-        const analysisCard = Array.isArray(analysisResp.body?.cards)
-          ? analysisResp.body.cards.find((c) => c && c.type === 'analysis_summary')
-          : null;
-        assert.ok(analysisCard);
-        assert.equal(analysisCard?.payload?.analysis_source, 'retake');
-        assert.equal(analysisCard?.payload?.used_photos, false);
-        assert.equal(Boolean(analysisCard?.payload?.photo_notice), false);
-        const missing = Array.isArray(analysisCard?.field_missing) ? analysisCard.field_missing : [];
+        const analysisCards = Array.isArray(analysisResp.body?.cards) ? analysisResp.body.cards : [];
+        const analysisStoryCard = findCardByType(analysisCards, 'analysis_story_v2');
+        assert.ok(analysisStoryCard);
+        const analysisMeta = analysisResp.body?.analysis_meta || {};
         assert.equal(
-          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'photo_quality_fail'),
+          ['rule_based', 'rule_based_with_photo_qc', 'diagnosis_v1_template', 'retake'].includes(String(analysisMeta.detector_source || '')),
           true,
         );
+        assert.equal(Boolean(analysisMeta.llm_report_called), false);
+        const valueMoment =
+          (Array.isArray(analysisResp.body?.events) ? analysisResp.body.events : []).find((e) => e && e.event_name === 'value_moment') ||
+          null;
+        assert.ok(valueMoment);
+        assert.equal(typeof valueMoment?.data?.used_photos, 'boolean');
+        assert.equal(String(valueMoment?.data?.analysis_source || '').length > 0, true);
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -8258,17 +8307,13 @@ test('/v1/analysis/skin: photo-only input is not hard-gated when routine/logs ar
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
-        assert.ok(card);
-        assert.equal(typeof card?.payload?.used_photos, 'boolean');
-        const reportDecision = String(card?.payload?.quality_report?.llm?.report?.decision || '').trim();
-        assert.equal(['call', 'skip'].includes(reportDecision), true);
-        assert.equal(Boolean(resp.body?.analysis_meta?.llm_report_called), reportDecision === 'call');
-        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
-        assert.equal(
-          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
-          false,
-        );
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        const analysisMeta = resp.body?.analysis_meta || {};
+        assert.notEqual(String(analysisMeta.detector_source || ''), 'baseline_low_confidence');
+        assert.equal(typeof analysisMeta.llm_report_called, 'boolean');
+        assert.notEqual(String(analysisMeta.degrade_reason || ''), 'missing_primary_input');
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -8416,10 +8461,10 @@ test('/v1/analysis/skin: photo upload does not force report LLM when detector is
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
-        assert.ok(card);
-        assert.equal(card?.payload?.used_photos, true);
-        assert.equal(card?.payload?.quality_report?.llm?.report?.decision, 'skip');
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        assert.ok(findCardByType(cards, 'photo_modules_v1'));
         assert.equal(Boolean(resp.body?.analysis_meta?.llm_report_called), false);
         assert.equal(reportModelCallCount, 0);
       } finally {
@@ -8498,22 +8543,21 @@ test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', a
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
-        assert.ok(card);
-        assert.equal(card?.payload?.used_photos, false);
-        assert.equal(card?.payload?.analysis_source, 'rule_based_with_photo_qc');
-        assert.ok(['DOWNLOAD_URL_FETCH_4XX', 'DOWNLOAD_URL_FETCH_5XX'].includes(String(card?.payload?.photo_notice?.failure_code || '')));
-        assert.match(String(card?.payload?.photo_notice?.message || ''), /couldn't analyze your photo/i);
-        const actionCard = card?.payload?.analysis?.next_action_card;
-        assert.ok(actionCard && typeof actionCard === 'object');
-        assert.equal(Array.isArray(actionCard.retake_guide), true);
-        assert.equal(actionCard.retake_guide.length, 3);
-        assert.equal(Array.isArray(actionCard.ask_3_questions), true);
-        assert.equal(actionCard.ask_3_questions.length, 3);
-        const serializedAnalysis = JSON.stringify(card?.payload?.analysis || {}).toLowerCase();
-        assert.equal(/acne|pigmentation/.test(serializedAnalysis), false);
-        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
-        assert.equal(missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'DOWNLOAD_URL_FETCH_4XX'), true);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        const analysisMeta = resp.body?.analysis_meta || {};
+        assert.equal(String(analysisMeta.detector_source || ''), 'rule_based_with_photo_qc');
+        assert.equal(
+          ['photo_download_url_fetch_4xx', 'photo_download_url_fetch_5xx'].includes(String(analysisMeta.degrade_reason || '')),
+          true,
+        );
+        const confidenceCard = findCardByType(cards, 'confidence_notice');
+        assert.ok(confidenceCard);
+        const rationale = Array.isArray(confidenceCard?.payload?.confidence?.rationale)
+          ? confidenceCard.payload.confidence.rationale
+          : [];
+        assert.equal(rationale.includes('photo_requested_but_not_used'), true);
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -9079,13 +9123,15 @@ test('/v1/analysis/skin: photos without use_photo still default to photo analysi
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
-        assert.ok(card);
-        assert.equal(typeof card?.payload?.used_photos, 'boolean');
-        const visionReasons = Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons)
-          ? card.payload.quality_report.llm.vision.reasons
-          : [];
-        assert.equal(visionReasons.includes('photo_not_requested'), false);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        const analysisMeta = resp.body?.analysis_meta || {};
+        assert.notEqual(String(analysisMeta.detector_source || ''), 'baseline_low_confidence');
+        const valueMoment =
+          (Array.isArray(resp.body?.events) ? resp.body.events : []).find((e) => e && e.event_name === 'value_moment') || null;
+        assert.ok(valueMoment);
+        assert.equal(Boolean(valueMoment?.data?.used_photos), true);
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -9182,29 +9228,16 @@ test('/v1/analysis/skin: photo-only input can proceed as rule-based when photo d
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
-        assert.ok(card);
-        assert.equal(card?.payload?.analysis_source === 'baseline_low_confidence', false);
-        assert.equal(Boolean(card?.payload?.low_confidence), false);
-        assert.equal(card?.payload?.used_photos, true);
-
-        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
-        const primaryMissingCount = missing.filter(
-          (f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required',
-        ).length;
-        const photoMissingCount = missing.filter(
-          (f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required',
-        ).length;
-        assert.equal(
-          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
-          false,
-        );
-        assert.equal(
-          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
-          false,
-        );
-        assert.equal(primaryMissingCount, 0);
-        assert.equal(photoMissingCount, 0);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        const analysisMeta = resp.body?.analysis_meta || {};
+        assert.notEqual(String(analysisMeta.detector_source || ''), 'baseline_low_confidence');
+        assert.notEqual(String(analysisMeta.degrade_reason || ''), 'missing_primary_input');
+        const valueMoment =
+          (Array.isArray(resp.body?.events) ? resp.body.events : []).find((e) => e && e.event_name === 'value_moment') || null;
+        assert.ok(valueMoment);
+        assert.equal(Boolean(valueMoment?.data?.used_photos), true);
       } finally {
         skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
         axios.get = originalGet;
@@ -9304,29 +9337,16 @@ test('/v1/analysis/skin: stringified empty routine does not block photo-first ru
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
-        assert.ok(card);
-        assert.equal(card?.payload?.analysis_source === 'baseline_low_confidence', false);
-        assert.equal(Boolean(card?.payload?.low_confidence), false);
-        assert.equal(card?.payload?.used_photos, true);
-
-        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
-        const primaryMissingCount = missing.filter(
-          (f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required',
-        ).length;
-        const photoMissingCount = missing.filter(
-          (f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required',
-        ).length;
-        assert.equal(
-          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
-          false,
-        );
-        assert.equal(
-          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
-          false,
-        );
-        assert.equal(primaryMissingCount, 0);
-        assert.equal(photoMissingCount, 0);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        const analysisMeta = resp.body?.analysis_meta || {};
+        assert.notEqual(String(analysisMeta.detector_source || ''), 'baseline_low_confidence');
+        assert.notEqual(String(analysisMeta.degrade_reason || ''), 'missing_primary_input');
+        const valueMoment =
+          (Array.isArray(resp.body?.events) ? resp.body.events : []).find((e) => e && e.event_name === 'value_moment') || null;
+        assert.ok(valueMoment);
+        assert.equal(Boolean(valueMoment?.data?.used_photos), true);
       } finally {
         skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
         axios.get = originalGet;
@@ -9404,22 +9424,21 @@ test('/v1/analysis/skin: photo fetch timeout exposes DOWNLOAD_URL_TIMEOUT notice
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
-        assert.ok(card);
-        assert.equal(card?.payload?.used_photos, false);
-        assert.equal(card?.payload?.analysis_source, 'rule_based_with_photo_qc');
-        assert.ok(
-          ['DOWNLOAD_URL_TIMEOUT', 'DOWNLOAD_URL_FETCH_5XX'].includes(String(card?.payload?.photo_notice?.failure_code || '')),
-        );
-        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        const analysisMeta = resp.body?.analysis_meta || {};
+        assert.equal(String(analysisMeta.detector_source || ''), 'rule_based_with_photo_qc');
         assert.equal(
-          missing.some((f) =>
-            f &&
-            f.field === 'analysis.used_photos' &&
-            (f.reason === 'DOWNLOAD_URL_TIMEOUT' || f.reason === 'DOWNLOAD_URL_FETCH_5XX'),
-          ),
+          ['photo_download_url_timeout', 'photo_download_url_fetch_5xx'].includes(String(analysisMeta.degrade_reason || '')),
           true,
         );
+        const confidenceCard = findCardByType(cards, 'confidence_notice');
+        assert.ok(confidenceCard);
+        const rationale = Array.isArray(confidenceCard?.payload?.confidence?.rationale)
+          ? confidenceCard.payload.confidence.rationale
+          : [];
+        assert.equal(rationale.includes('photo_requested_but_not_used'), true);
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;

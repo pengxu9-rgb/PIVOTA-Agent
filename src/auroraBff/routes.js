@@ -26,11 +26,14 @@ const {
   inferDetectorConfidence,
   shouldCallLlm,
   downgradeSkinAnalysisConfidence,
+  humanizeLlmReasons,
   applyConfidenceCaps,
   detectInsufficientVisualDetail,
-  enforceQualityNarrative,
-  humanizeLlmReasons,
 } = require('./skinLlmPolicy');
+const {
+  normalizeReportFailureReason,
+  deriveSkinDegradeMeta,
+} = require('./skinDegradeMeta');
 const { dedupeAndCapOutput } = require('./chatCardFactory');
 const {
   VisionUnavailabilityReason,
@@ -97,7 +100,6 @@ const {
   recordAuroraSkinShadowVerifyIsolatedWrite,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
-  recordIngredientReportMetric,
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
@@ -175,9 +177,6 @@ const {
   AuthVerifyRequestSchema,
   AuthPasswordSetRequestSchema,
   AuthPasswordLoginRequestSchema,
-  TravelPlanCreateSchema,
-  TravelPlanUpdateSchema,
-  TravelPlanListQuerySchema,
   RecoEmployeeFeedbackRequestSchema,
   RecoInterleaveClickRequestSchema,
   RecoAsyncUpdatesRequestSchema,
@@ -202,11 +201,6 @@ const {
   upsertIdentityLink,
   migrateGuestDataToUser,
 } = require('./memoryStore');
-const {
-  listTravelPlansForView,
-  normalizeTravelProfilePatch,
-  resolveTravelPlansState,
-} = require('./travelPlans');
 const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const {
   createOtpChallenge,
@@ -291,11 +285,7 @@ const {
   resolveGateDecision,
 } = require('./gatePolicyRegistry');
 const { getTravelWeather } = require('./weatherAdapter');
-const { getTravelAlerts } = require('./travelAlertsProvider');
 const { buildEpiPayload } = require('./epiCalculator');
-const { buildTravelReadiness } = require('./travelReadinessBuilder');
-const { composeTravelReply } = require('./travelReplyComposer');
-const { calibrateTravelReadinessWithLlm } = require('./travelLlmCalibrator');
 const { runTravelPipeline } = require('./travelSkills/contracts');
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
@@ -436,16 +426,6 @@ const AURORA_SAFETY_ENGINE_V1_ENABLED = (() => {
 })();
 const AURORA_TRAVEL_WEATHER_LIVE_ENABLED = (() => {
   const raw = String(process.env.AURORA_TRAVEL_WEATHER_LIVE_ENABLED || 'false')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
-const AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED = (() => {
-  const raw = String(
-    process.env.AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED ||
-      process.env.AURORA_TRAVEL_LLM_CALIBRATION_V1 ||
-      'false',
-  )
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -749,24 +729,6 @@ const AURORA_INGREDIENT_LOOKUP_IP_PER_MIN = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 30;
   return Math.max(5, Math.min(240, v));
 })();
-const INGREDIENT_REPORT_HYBRID_ENABLED = (() => {
-  const raw = String(process.env.INGREDIENT_REPORT_HYBRID_ENABLED || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
-const INGREDIENT_REPORT_PENDING_UI_ENABLED = (() => {
-  const raw = String(process.env.INGREDIENT_REPORT_PENDING_UI_ENABLED || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
-const INGREDIENT_REPORT_DISABLE_GENERIC_BLOCK = (() => {
-  const raw = String(process.env.INGREDIENT_REPORT_DISABLE_GENERIC_BLOCK || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
 const INGREDIENT_ROUTE_RULE_VERSION = String(
   process.env.INGREDIENT_ROUTE_RULE_VERSION || 'ingredient_route_v2_lite_20260301',
 ).trim();
@@ -1066,7 +1028,6 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
   safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
   travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
-  travel_llm_calibration_v1: AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED,
   loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
   chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
   router_dst_patch_v1: AURORA_ROUTER_DST_PATCH_V1_ENABLED,
@@ -5277,13 +5238,6 @@ function stripHtmlToText(value) {
     .trim();
 }
 
-function normalizeText(value, maxLen = 220) {
-  if (typeof value !== 'string') return '';
-  const text = value.trim();
-  if (!text) return '';
-  return text.slice(0, maxLen);
-}
-
 function uniqCaseInsensitiveStrings(items, max = 80) {
   const out = [];
   const seen = new Set();
@@ -5297,10 +5251,6 @@ function uniqCaseInsensitiveStrings(items, max = 80) {
     if (out.length >= max) break;
   }
   return out;
-}
-
-function uniqueStrings(items, max = 80) {
-  return uniqCaseInsensitiveStrings(items, max);
 }
 
 function splitInciList(raw) {
@@ -12507,6 +12457,14 @@ function normalizeIngredientRecoContextValue(raw) {
           : [],
     8,
   );
+  const productCandidatesRaw = Array.isArray(raw.product_candidates)
+    ? raw.product_candidates
+    : Array.isArray(raw.productCandidates)
+      ? raw.productCandidates
+      : [];
+  const productCandidates = productCandidatesRaw
+    .filter((p) => p && typeof p === 'object' && !Array.isArray(p))
+    .slice(0, 12);
   const source = pickFirstTrimmed(raw.source, raw.entry_source, raw.trigger_source, raw.route_source);
   const updatedRaw = Number(raw.updated_at_ms || raw.updatedAtMs || 0);
   if (!query && !goal && candidates.length === 0) return null;
@@ -12514,6 +12472,8 @@ function normalizeIngredientRecoContextValue(raw) {
     ...(query ? { query: String(query).slice(0, 120) } : {}),
     ...(goal ? { goal } : {}),
     ...(candidates.length ? { candidates } : {}),
+    ...(candidates.length ? { ingredient_candidates: candidates } : {}),
+    ...(productCandidates.length ? { product_candidates: productCandidates } : {}),
     sensitivity: sensitivity || 'unknown',
     ...(source ? { source: String(source).slice(0, 48) } : {}),
   };
@@ -12535,12 +12495,17 @@ function mergeIngredientRecoContextValue(base, patch) {
     ],
     8,
   );
+  const mergedProductCandidates = [
+    ...(Array.isArray(right.product_candidates) ? right.product_candidates : []),
+    ...(Array.isArray(left.product_candidates) ? left.product_candidates : []),
+  ].filter((p) => p && typeof p === 'object' && !Array.isArray(p)).slice(0, 12);
   return {
     ...left,
     ...right,
     query: right.query || left.query || '',
     goal: right.goal || left.goal || '',
-    ...(mergedCandidates.length ? { candidates: mergedCandidates } : {}),
+    ...(mergedCandidates.length ? { candidates: mergedCandidates, ingredient_candidates: mergedCandidates } : {}),
+    ...(mergedProductCandidates.length ? { product_candidates: mergedProductCandidates } : {}),
     sensitivity: right.sensitivity || left.sensitivity || 'unknown',
     source: right.source || left.source || '',
     updated_at_ms: Math.max(
@@ -15183,8 +15148,33 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     });
   }
 
+  const effectivePhotoQuality = {
+    grade: String(diagnosisV1?.quality?.grade || photoQuality?.grade || 'unknown').toLowerCase(),
+    reasons:
+      Array.isArray(diagnosisV1?.quality?.reasons) && diagnosisV1.quality.reasons.length
+        ? diagnosisV1.quality.reasons
+        : Array.isArray(photoQuality?.reasons)
+          ? photoQuality.reasons
+          : [],
+    metrics: diagnosisV1?.quality?.metrics || photoQuality?.metrics || {},
+  };
+  const qualityObj = buildQualityObject(effectivePhotoQuality);
+
+  const cappedAnalysis = analysis ? applyConfidenceCaps(analysis, qualityObj.grade) : analysis;
+  const dedupedAnalysis = cappedAnalysis ? dedupeAndCapOutput(cappedAnalysis) : cappedAnalysis;
+  let enrichedAnalysis = dedupedAnalysis ? {
+    ...dedupedAnalysis,
+    quality: qualityObj,
+    findings: Array.isArray(dedupedAnalysis.findings) ? dedupedAnalysis.findings : [],
+    guidance_brief: Array.isArray(dedupedAnalysis.guidance_brief) ? dedupedAnalysis.guidance_brief : [],
+    insufficient_visual_detail: Boolean(dedupedAnalysis.insufficient_visual_detail) || detectInsufficientVisualDetail(Array.isArray(dedupedAnalysis.findings) ? dedupedAnalysis.findings : []),
+  } : dedupedAnalysis;
+  if (analysisSource === 'retake') {
+    enrichedAnalysis = ensureRetakeFeatureObservation(enrichedAnalysis, { language });
+  }
+
   const payload = {
-    analysis,
+    analysis: enrichedAnalysis,
     low_confidence: analysisSource === 'baseline_low_confidence',
     photos_provided: true,
     photo_qc: [`${slot}:${qc}`],
@@ -15192,15 +15182,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     analysis_source: !usedPhotos && analysisSource !== 'retake' ? 'rule_based_with_photo_qc' : analysisSource,
     ...(photoNotice ? { photo_notice: photoNotice } : {}),
     quality_report: {
-      photo_quality: {
-        grade: String(diagnosisV1?.quality?.grade || photoQuality?.grade || 'unknown').toLowerCase(),
-        reasons:
-          Array.isArray(diagnosisV1?.quality?.reasons) && diagnosisV1.quality.reasons.length
-            ? diagnosisV1.quality.reasons
-            : Array.isArray(photoQuality?.reasons)
-              ? photoQuality.reasons
-              : [],
-      },
+      photo_quality: { grade: effectivePhotoQuality.grade, reasons: effectivePhotoQuality.reasons },
       detector_confidence: detectorConfidence,
       degraded_mode: SKIN_DEGRADED_MODE,
       llm: {
@@ -17932,6 +17914,40 @@ function buildRetakeSkinAnalysis({ language, photoQuality } = {}) {
   };
 }
 
+function ensureRetakeFeatureObservation(analysis, { language = 'EN' } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const base = analysis && typeof analysis === 'object' && !Array.isArray(analysis) ? { ...analysis } : null;
+  if (!base) return analysis;
+  const rows = Array.isArray(base.features) ? base.features : [];
+  const normalized = rows
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const observation = String(item.observation || '').trim();
+      if (!observation) return null;
+      const confidence =
+        item.confidence === 'pretty_sure' || item.confidence === 'somewhat_sure' || item.confidence === 'not_sure'
+          ? item.confidence
+          : 'somewhat_sure';
+      return { observation, confidence };
+    })
+    .filter(Boolean);
+  if (normalized.length > 0) {
+    return { ...base, features: normalized.slice(0, 6) };
+  }
+  return {
+    ...base,
+    features: [
+      {
+        observation:
+          lang === 'CN'
+            ? 'Photo quality did not pass this turn, so I will not infer skin findings until a retake is uploaded.'
+            : 'Photo quality did not pass this turn, so I will not infer skin findings until a retake is uploaded.',
+        confidence: 'pretty_sure',
+      },
+    ],
+  };
+}
+
 function confidenceLevelFromScoreV1(score) {
   const n = Number(score);
   if (!Number.isFinite(n)) return 'low';
@@ -18522,194 +18538,6 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   sessionPatch.state = state;
 }
 
-function sanitizeTravelReadinessForSession(raw = {}) {
-  if (!isPlainObject(raw)) return null;
-  const source = raw;
-  const out = {};
-
-  if (isPlainObject(source.destination_context)) {
-    const ctx = source.destination_context;
-    const destination_context = {
-      ...(normalizeText(ctx.destination, 120) ? { destination: normalizeText(ctx.destination, 120) } : {}),
-      ...(normalizeText(ctx.start_date, 24) ? { start_date: normalizeText(ctx.start_date, 24) } : {}),
-      ...(normalizeText(ctx.end_date, 24) ? { end_date: normalizeText(ctx.end_date, 24) } : {}),
-      ...(normalizeText(ctx.env_source, 48) ? { env_source: normalizeText(ctx.env_source, 48) } : {}),
-      ...(coerceNumber(ctx.epi) != null ? { epi: coerceNumber(ctx.epi) } : {}),
-    };
-    if (Object.keys(destination_context).length) out.destination_context = destination_context;
-  }
-
-  if (isPlainObject(source.delta_vs_home)) {
-    const delta = source.delta_vs_home;
-    const summary_tags = asStringArray(delta.summary_tags, 8);
-    out.delta_vs_home = {
-      ...(isPlainObject(delta.temperature) ? { temperature: delta.temperature } : {}),
-      ...(isPlainObject(delta.humidity) ? { humidity: delta.humidity } : {}),
-      ...(isPlainObject(delta.uv) ? { uv: delta.uv } : {}),
-      ...(isPlainObject(delta.wind) ? { wind: delta.wind } : {}),
-      ...(isPlainObject(delta.precip) ? { precip: delta.precip } : {}),
-      ...(summary_tags.length ? { summary_tags } : {}),
-      ...(normalizeText(delta.baseline_status, 48) ? { baseline_status: normalizeText(delta.baseline_status, 48) } : {}),
-    };
-  }
-
-  const sectionKeys = [
-    'seasonal_context',
-    'key_deltas',
-    'routine_adjustments',
-    'flight_day_plan',
-    'active_handling',
-    'phased_plan',
-    'packing_list',
-    'product_guidance',
-    'troubleshooting',
-  ];
-  if (isPlainObject(source.structured_sections)) {
-    const sections = {};
-    for (const key of sectionKeys) {
-      const rows = asStringArray(source.structured_sections[key], key === 'packing_list' ? 8 : 6);
-      if (rows.length) sections[key] = rows;
-    }
-    if (Object.keys(sections).length) out.structured_sections = sections;
-  }
-
-  if (Array.isArray(source.reco_bundle)) {
-    const reco_bundle = source.reco_bundle
-      .filter((row) => isPlainObject(row))
-      .map((row) => ({
-        trigger: normalizeText(row.trigger, 120) || null,
-        action: normalizeText(row.action, 240) || null,
-        ingredient_logic: normalizeText(row.ingredient_logic, 220) || null,
-        product_types: asStringArray(row.product_types, 4),
-        reapply_rule: normalizeText(row.reapply_rule, 220) || null,
-      }))
-      .filter((row) => row.trigger || row.action || row.product_types.length > 0)
-      .slice(0, 4);
-    if (reco_bundle.length) out.reco_bundle = reco_bundle;
-  }
-
-  if (isPlainObject(source.shopping_preview)) {
-    const preview = source.shopping_preview;
-    const products = (Array.isArray(preview.products) ? preview.products : [])
-      .filter((row) => isPlainObject(row))
-      .map((row) => ({
-        rank: coerceNumber(row.rank),
-        product_id: normalizeText(row.product_id, 120) || null,
-        name: normalizeText(row.name, 140),
-        brand: normalizeText(row.brand, 80) || null,
-        category: normalizeText(row.category, 80) || null,
-        reasons: asStringArray(row.reasons, 4),
-        product_source: normalizeText(row.product_source, 32) || null,
-        match_status: normalizeText(row.match_status, 32) || null,
-      }))
-      .filter((row) => row.name)
-      .slice(0, 4);
-    const shopping_preview = {
-      ...(products.length ? { products } : {}),
-      ...(asStringArray(preview.buying_channels, 6).length
-        ? { buying_channels: asStringArray(preview.buying_channels, 6) }
-        : {}),
-      ...(normalizeText(preview.city_hint, 120) ? { city_hint: normalizeText(preview.city_hint, 120) } : {}),
-      ...(normalizeText(preview.note, 220) ? { note: normalizeText(preview.note, 220) } : {}),
-    };
-    if (Object.keys(shopping_preview).length) out.shopping_preview = shopping_preview;
-  }
-
-  return Object.keys(out).length ? out : null;
-}
-
-function extractLastTravelReadinessFromSession(session) {
-  if (!isPlainObject(session)) return null;
-  const state = isPlainObject(session.state) ? session.state : null;
-  if (!state) return null;
-  return sanitizeTravelReadinessForSession(state.last_travel_readiness || state.latest_travel_readiness);
-}
-
-function appendLastTravelReadinessToSessionPatch(sessionPatch, travelReadiness) {
-  if (!isPlainObject(sessionPatch)) return;
-  const normalized = sanitizeTravelReadinessForSession(travelReadiness);
-  if (!normalized) return;
-  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
-  state.last_travel_readiness = normalized;
-  state.latest_travel_readiness = normalized;
-  sessionPatch.state = state;
-}
-
-function buildTravelFallbackRecoPayload({ travelReadiness, language = 'EN' } = {}) {
-  const readiness = sanitizeTravelReadinessForSession(travelReadiness);
-  if (!readiness) return null;
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const recommendations = [];
-  const seen = new Set();
-
-  const push = ({ name, brand = '', reasons = [], productId = null, productSource = 'rule_fallback' } = {}) => {
-    const title = [brand, name].filter(Boolean).join(' ').trim() || String(name || '').trim();
-    if (!title) return;
-    const key = title.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    recommendations.push({
-      title,
-      reasons: asStringArray(reasons, 4),
-      product_source: productSource,
-      source: 'travel_context_fallback',
-      sku: {
-        product_id: normalizeText(productId, 120) || null,
-        name: normalizeText(name, 140) || null,
-        brand: normalizeText(brand, 80) || null,
-      },
-    });
-  };
-
-  const previewProducts =
-    readiness.shopping_preview && Array.isArray(readiness.shopping_preview.products)
-      ? readiness.shopping_preview.products
-      : [];
-  for (const product of previewProducts) {
-    if (!isPlainObject(product)) continue;
-    push({
-      name: product.name,
-      brand: product.brand,
-      reasons: product.reasons,
-      productId: product.product_id,
-      productSource: normalizeText(product.product_source, 32) || 'rule_fallback',
-    });
-    if (recommendations.length >= 3) break;
-  }
-
-  if (recommendations.length < 3) {
-    const recoBundle = Array.isArray(readiness.reco_bundle) ? readiness.reco_bundle : [];
-    for (const row of recoBundle) {
-      if (!isPlainObject(row)) continue;
-      const reasons = [row.action, row.ingredient_logic].filter(Boolean);
-      const productTypes = asStringArray(row.product_types, 4);
-      for (const productType of productTypes) {
-        push({
-          name: productType,
-          reasons,
-          productSource: 'rule_fallback',
-        });
-        if (recommendations.length >= 3) break;
-      }
-      if (recommendations.length >= 3) break;
-    }
-  }
-
-  if (!recommendations.length) return null;
-  return {
-    source: 'travel_context_fallback',
-    recommendations_count: recommendations.length,
-    recommendation_meta: {
-      source_mode: 'travel_context_fallback',
-      summary:
-        lang === 'CN'
-          ? '基于最近一次旅行环境上下文生成。'
-          : 'Generated from the latest travel environment context.',
-    },
-    recommendations,
-  };
-}
-
 function buildIngredientPlanCard(plan, requestId) {
   return {
     card_id: `ing_plan_${requestId}`,
@@ -18732,18 +18560,13 @@ function buildRecoEntryChips(language) {
       chip_id: 'chip.intake.upload_photos',
       label: lang === 'CN' ? '上传 daylight + indoor_white' : 'Upload daylight + indoor_white',
       kind: 'quick_reply',
-      data: {
-        action_id: 'chip.intake.upload_photos',
-        client_action: 'open_camera',
-      },
+      data: {},
     },
     {
       chip_id: 'chip.intake.skip_analysis',
       label: lang === 'CN' ? '先用低置信度方案' : 'Use low-confidence baseline',
       kind: 'quick_reply',
-      data: {
-        action_id: 'chip.intake.skip_analysis',
-      },
+      data: {},
     },
   ];
 }
@@ -25224,10 +25047,15 @@ async function applyAnalysisStoryAndRoutineSoftGate(
           type: 'analysis_story_v2',
           payload: storyPayload,
         };
-    list = list.filter((card) => !(isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2'));
+    list = list.filter((card) => {
+      if (!isPlainObject(card)) return true;
+      const type = String(card.type || '').trim().toLowerCase();
+      return type !== 'analysis_story_v2' && type !== 'analysis_summary';
+    });
     const photoModulesIdx = list.findIndex((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'photo_modules_v1');
     const insertIndex = photoModulesIdx >= 0 ? photoModulesIdx + 1 : 0;
     list.splice(insertIndex, 0, storyCard);
+    list = list.filter((c) => !(isPlainObject(c) && String(c.type || '').trim().toLowerCase() === 'analysis_summary'));
   }
 
   if (!AURORA_ROUTINE_SOFT_GATE_DELAY_RECO) return list;
@@ -26002,6 +25830,57 @@ function isRoutineContractIntent(intent) {
   );
 }
 
+function isTravelOrEnvIntent(intent) {
+  const value = String(intent || '').trim().toLowerCase();
+  return (
+    value === String(INTENT_ENUM.TRAVEL_PLANNING || '').trim().toLowerCase() ||
+    value === String(INTENT_ENUM.WEATHER_ENV || '').trim().toLowerCase()
+  );
+}
+
+function isTravelOrEnvCard(card) {
+  if (!isPlainObject(card)) return false;
+  const type = String(card.type || '').trim().toLowerCase();
+  if (!type) return false;
+  if (type === 'travel' || type === 'env_stress' || type === 'environment_stress') return true;
+  if (type.includes('travel') || type.includes('env_stress') || type.includes('environment_stress')) return true;
+
+  const payload = getCardPayload(card);
+  if (!isPlainObject(payload)) return false;
+  const schema = String(payload.schema_version || payload.schema || '').trim().toLowerCase();
+  if (schema.includes('env_stress') || schema.includes('travel')) return true;
+  if (isPlainObject(payload.travel_readiness)) return true;
+
+  const sections = Array.isArray(payload.sections)
+    ? payload.sections
+    : Array.isArray(card.sections)
+      ? card.sections
+      : [];
+  return sections.some((section) => {
+    if (!isPlainObject(section)) return false;
+    const kind = String(section.kind || section.type || '').trim().toLowerCase();
+    if (kind.includes('travel')) return true;
+    if (kind.includes('env_stress') || kind.includes('environment_stress')) return true;
+    if (isPlainObject(section.env_payload)) {
+      const envSchema = String(section.env_payload.schema_version || '').trim().toLowerCase();
+      if (envSchema.includes('env_stress') || envSchema.includes('travel')) return true;
+    }
+    return false;
+  });
+}
+
+function suppressAnalysisCardsForTravelEnvTurn(cards, { canonicalIntent } = {}) {
+  const list = Array.isArray(cards) ? cards : [];
+  if (!list.length) return list;
+  const suppressByIntent = isTravelOrEnvIntent(canonicalIntent);
+  const suppressByCards = list.some((card) => isTravelOrEnvCard(card));
+  if (!suppressByIntent && !suppressByCards) return list;
+  return list.filter((card) => {
+    const type = String(card && card.type ? card.type : '').trim().toLowerCase();
+    return type !== 'analysis_summary' && type !== 'analysis_story_v2';
+  });
+}
+
 function buildRoutineRulesOnlyFallbackCardsForChat({ ctx, message, profile, recentLogs, language, reason } = {}) {
   const expert = buildRulesOnlyRoutineExpertFromContext({ message, profile, recentLogs, language });
   const noticeReason = String(reason || '').trim().toLowerCase() === 'timeout_degraded' ? 'timeout_degraded' : 'default';
@@ -26378,6 +26257,248 @@ function titleCase(value) {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+function normalizeEnvStressTier(tierRaw, essRaw = null) {
+  const token = String(tierRaw || '').trim().toLowerCase();
+  if (token === 'low') return 'Low';
+  if (token === 'medium' || token === 'med') return 'Medium';
+  if (token === 'high') return 'High';
+  const ess = coerceNumber(essRaw);
+  if (ess == null) return 'Medium';
+  if (ess <= 30) return 'Low';
+  if (ess <= 60) return 'Medium';
+  return 'High';
+}
+
+function buildEnvStressTierDescription({ language, tier, ess } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const tierLabel = normalizeEnvStressTier(tier, ess);
+  const essText = Number.isFinite(Number(ess)) ? `${Math.round(Number(ess))}` : null;
+  if (lang === 'CN') {
+    if (tierLabel === 'High') return essText ? `环境压力高（ESS ${essText}），先稳屏障并降低活性叠加。` : '环境压力高，先稳屏障并降低活性叠加。';
+    if (tierLabel === 'Low') return essText ? `环境压力低（ESS ${essText}），可维持当前节奏并观察波动。` : '环境压力低，可维持当前节奏并观察波动。';
+    return essText ? `环境压力中等（ESS ${essText}），建议维持保守节奏并按日调整。` : '环境压力中等，建议维持保守节奏并按日调整。';
+  }
+  if (tierLabel === 'High') return essText ? `High environmental stress (ESS ${essText}). Stabilize barrier first and avoid stacking strong actives.` : 'High environmental stress. Stabilize barrier first and avoid stacking strong actives.';
+  if (tierLabel === 'Low') return essText ? `Low environmental stress (ESS ${essText}). Maintain routine and monitor for swings.` : 'Low environmental stress. Maintain routine and monitor for swings.';
+  return essText ? `Medium environmental stress (ESS ${essText}). Keep a conservative routine and adjust day by day.` : 'Medium environmental stress. Keep a conservative routine and adjust day by day.';
+}
+
+function buildDefaultTravelReadiness({ language, tier, ess, notes = [] } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const tierLabel = normalizeEnvStressTier(tier, ess);
+  const score = Number.isFinite(Number(ess)) ? Math.max(0, Math.min(100, Math.round(Number(ess)))) : null;
+  const summaryLine = buildEnvStressTierDescription({ language: lang, tier: tierLabel, ess: score });
+  const sectionNotes = (Array.isArray(notes) ? notes : []).map((item) => String(item || '').trim()).filter(Boolean).slice(0, 3);
+  return {
+    level: tierLabel.toLowerCase(),
+    ...(score != null ? { score } : {}),
+    structured_sections: {
+      at_a_glance: [summaryLine].filter(Boolean),
+      am:
+        lang === 'CN'
+          ? ['温和清洁 + 防晒，减少同早叠加刺激活性。']
+          : ['Gentle cleanse + sunscreen, avoid stacking strong AM actives.'],
+      pm:
+        lang === 'CN'
+          ? ['以修护保湿为主，强活性先降频。']
+          : ['Prioritize barrier hydration at night and reduce strong-active frequency.'],
+      notes: sectionNotes,
+    },
+    shopping_preview: buildDefaultShoppingPreview({ language: lang }),
+  };
+}
+
+function buildDefaultShoppingPreview({ language, destination, uvComponent, humidityComponent } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const destinationText = String(destination || '').trim();
+  const cityHint = destinationText ? destinationText.slice(0, 120) : null;
+  const uv = Number.isFinite(Number(uvComponent)) ? Number(uvComponent) : null;
+  const humidity = Number.isFinite(Number(humidityComponent)) ? Number(humidityComponent) : null;
+  const highUv = uv != null && uv >= 0.45;
+  const humidScenario = humidity != null && humidity >= 0.5;
+
+  const products = [
+    {
+      rank: 1,
+      product_id: null,
+      name: lang === 'CN' ? (highUv ? '高倍广谱防晒（SPF50+）' : '广谱防晒（SPF30+）') : highUv ? 'Broad-spectrum sunscreen (SPF50+)' : 'Broad-spectrum sunscreen (SPF30+)',
+      brand: null,
+      category: lang === 'CN' ? '防晒' : 'sunscreen',
+      reasons: [
+        lang === 'CN' ? '按旅行环境压力优先保障日间光防护。' : 'Prioritize UV protection for travel exposure.',
+      ],
+      product_source: 'rule_fallback',
+      price: null,
+      currency: null,
+    },
+    {
+      rank: 2,
+      product_id: null,
+      name: lang === 'CN'
+        ? (humidScenario ? '轻薄保湿凝胶霜' : '屏障修护面霜')
+        : humidScenario ? 'Light gel-cream moisturizer' : 'Barrier-repair moisturizer',
+      brand: null,
+      category: lang === 'CN' ? '保湿' : 'moisturizer',
+      reasons: [
+        lang === 'CN'
+          ? (humidScenario ? '湿热场景优先轻薄保湿，减少闷感。' : '温差/干燥场景优先稳定屏障水分。')
+          : humidScenario
+            ? 'Use lighter hydration in humid conditions to reduce congestion load.'
+            : 'Support barrier hydration during dry or high-swing weather.',
+      ],
+      product_source: 'rule_fallback',
+      price: null,
+      currency: null,
+    },
+    {
+      rank: 3,
+      product_id: null,
+      name: lang === 'CN' ? '温和洁面（低刺激）' : 'Gentle low-irritation cleanser',
+      brand: null,
+      category: lang === 'CN' ? '洁面' : 'cleanser',
+      reasons: [
+        lang === 'CN'
+          ? '旅行期优先降低刺激，保持可持续执行。'
+          : 'Keep cleansing low-irritation to maintain tolerance during travel.',
+      ],
+      product_source: 'rule_fallback',
+      price: null,
+      currency: null,
+    },
+  ];
+
+  return {
+    products,
+    buying_channels: ['beauty_retail', 'pharmacy', 'department_store', 'duty_free', 'ecommerce'],
+    city_hint: cityHint,
+    note:
+      lang === 'CN'
+        ? '当前为规则化旅行预览，后续可按具体预算/品牌偏好细化。'
+        : 'Rule-based travel preview; refine by budget and brand preferences in the next step.',
+  };
+}
+
+function buildEpiRadarRows({ language, epiPayload, weather } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const components = epiPayload && typeof epiPayload === 'object' && epiPayload.components && typeof epiPayload.components === 'object'
+    ? epiPayload.components
+    : {};
+  const summary = weather && typeof weather === 'object' && weather.summary && typeof weather.summary === 'object'
+    ? weather.summary
+    : {};
+  const componentPercent = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, Math.round(n * 100)));
+  };
+  const fmtMetric = (value, digits = 1) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    const factor = 10 ** digits;
+    return Math.round(n * factor) / factor;
+  };
+  const uvMax = fmtMetric(summary.uv_index_max);
+  const humidity = fmtMetric(summary.humidity_mean);
+  const tempSwing = fmtMetric(summary.temp_swing_c);
+  const wind = fmtMetric(summary.wind_kph_max);
+  const rows = [
+    {
+      axis: 'UV',
+      value: componentPercent(components.uv),
+      drivers: [
+        lang === 'CN'
+          ? `UV 指数峰值：${uvMax != null ? uvMax : 'N/A'}`
+          : `UV max: ${uvMax != null ? uvMax : 'N/A'}`,
+      ],
+    },
+    {
+      axis: 'Humidity',
+      value: componentPercent(components.humidity),
+      drivers: [
+        lang === 'CN'
+          ? `平均湿度：${humidity != null ? `${humidity}%` : 'N/A'}`
+          : `Mean humidity: ${humidity != null ? `${humidity}%` : 'N/A'}`,
+      ],
+    },
+    {
+      axis: 'Temp swing',
+      value: componentPercent(components.temp_swing),
+      drivers: [
+        lang === 'CN'
+          ? `昼夜温差：${tempSwing != null ? `${tempSwing}°C` : 'N/A'}`
+          : `Daily temp swing: ${tempSwing != null ? `${tempSwing}°C` : 'N/A'}`,
+      ],
+    },
+    {
+      axis: 'Wind',
+      value: componentPercent(components.wind),
+      drivers: [
+        lang === 'CN'
+          ? `最大风速：${wind != null ? `${wind} km/h` : 'N/A'}`
+          : `Wind max: ${wind != null ? `${wind} km/h` : 'N/A'}`,
+      ],
+    },
+    {
+      axis: 'Pollution',
+      value: componentPercent(components.pollution),
+      drivers: [
+        lang === 'CN'
+          ? '污染风险：按环境代理指标估计'
+          : 'Pollution risk: estimated via environment proxy',
+      ],
+    },
+  ];
+  return rows;
+}
+
+function buildTravelReadinessFromEpi({ language, tier, ess, epiPayload, weather } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const tierLabel = normalizeEnvStressTier(tier, ess);
+  const score = Number.isFinite(Number(ess)) ? Math.max(0, Math.min(100, Math.round(Number(ess)))) : null;
+  const strategy = epiPayload && typeof epiPayload === 'object' && epiPayload.strategy && typeof epiPayload.strategy === 'object'
+    ? epiPayload.strategy
+    : {};
+  const components = epiPayload && typeof epiPayload === 'object' && epiPayload.components && typeof epiPayload.components === 'object'
+    ? epiPayload.components
+    : {};
+  const weatherObj = weather && typeof weather === 'object' ? weather : {};
+  const location = weatherObj.location && typeof weatherObj.location === 'object' ? weatherObj.location : {};
+  const dateRange = weatherObj.date_range && typeof weatherObj.date_range === 'object' ? weatherObj.date_range : {};
+  const whereLine = (() => {
+    const destination = String(location.name || '').trim();
+    const start = String(dateRange.start || '').trim();
+    const end = String(dateRange.end || '').trim();
+    if (!destination && !start && !end) return '';
+    if (lang === 'CN') {
+      if (destination && start && end) return `目的地：${destination}（${start} -> ${end}）`;
+      if (destination) return `目的地：${destination}`;
+      if (start && end) return `行程窗口：${start} -> ${end}`;
+      return `行程窗口：${start || end}`;
+    }
+    if (destination && start && end) return `Destination: ${destination} (${start} -> ${end})`;
+    if (destination) return `Destination: ${destination}`;
+    if (start && end) return `Trip window: ${start} -> ${end}`;
+    return `Trip window: ${start || end}`;
+  })();
+  return {
+    level: tierLabel.toLowerCase(),
+    ...(score != null ? { score } : {}),
+    source: String(epiPayload && epiPayload.env_source ? epiPayload.env_source : weatherObj.source || 'user_reported_conditions'),
+    structured_sections: {
+      at_a_glance: [whereLine, buildEnvStressTierDescription({ language: lang, tier: tierLabel, ess: score })].filter(Boolean),
+      am: Array.isArray(strategy.am) ? strategy.am.slice(0, 6) : [],
+      pm: Array.isArray(strategy.pm) ? strategy.pm.slice(0, 6) : [],
+      notes: Array.isArray(strategy.notes) ? strategy.notes.slice(0, 6) : [],
+    },
+    shopping_preview: buildDefaultShoppingPreview({
+      language: lang,
+      destination: location.name,
+      uvComponent: components.uv,
+      humidityComponent: components.humidity,
+    }),
+  };
+}
+
 function buildEnvStressUiModelFromUpstream(value, { language } = {}) {
   if (!isPlainObject(value)) return null;
   const schema = typeof value.schema_version === 'string' ? value.schema_version : '';
@@ -26387,7 +26508,7 @@ function buildEnvStressUiModelFromUpstream(value, { language } = {}) {
 
   const essRaw = coerceNumber(value.ess);
   const ess = essRaw == null ? null : clamp0to100(essRaw);
-  const tier = typeof value.tier === 'string' ? value.tier.trim() || null : null;
+  const tier = normalizeEnvStressTier(typeof value.tier === 'string' ? value.tier.trim() : '', ess);
 
   const contributors = Array.isArray(value.contributors) ? value.contributors : [];
   const weights = contributors.map((c) => {
@@ -26407,7 +26528,15 @@ function buildEnvStressUiModelFromUpstream(value, { language } = {}) {
     if (!axisRaw) continue;
     const w = weightSum > 0 ? (weights[i] ?? 0) / denom : 1 / denom;
     const v = ess == null ? 0 : clamp0to100(Math.round(ess * w));
-    radar.push({ axis: titleCase(axisRaw).slice(0, 40), value: v });
+    const rowDrivers = [];
+    const note = typeof c.note === 'string' ? c.note.trim() : '';
+    if (note) rowDrivers.push(note.slice(0, 140));
+    rowDrivers.push(
+      language === 'CN'
+        ? `权重占比约 ${Math.max(1, Math.round(w * 100))}%`
+        : `Weight contribution about ${Math.max(1, Math.round(w * 100))}%`,
+    );
+    radar.push({ axis: titleCase(axisRaw).slice(0, 40), value: v, drivers: rowDrivers.slice(0, 3) });
     if (radar.length >= 8) break;
   }
 
@@ -26434,8 +26563,10 @@ function buildEnvStressUiModelFromUpstream(value, { language } = {}) {
     schema_version: 'aurora.ui.env_stress.v1',
     ess,
     tier,
+    tier_description: buildEnvStressTierDescription({ language, tier, ess }),
     radar,
     notes,
+    travel_readiness: buildDefaultTravelReadiness({ language, tier, ess, notes }),
   };
 }
 
@@ -26739,64 +26870,40 @@ function buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language
   ess += bumpMap[scenario] ?? 6;
   ess = clamp0to100(ess);
 
-  const tier = ess <= 30 ? 'Low' : ess <= 60 ? 'Medium' : 'High';
-  const tierDescription = (() => {
-    if (lang === 'CN') {
-      if (tier === 'High') return '高压力：更容易干燥/刺痛，优先修护屏障与防晒。';
-      if (tier === 'Medium') return '中等压力：可能轻度干燥或不稳定，建议保湿修护并稳定防晒。';
-      return '低压力：维持基础保湿与日常防晒即可。';
-    }
-    if (tier === 'High') return 'High stress: irritation and dryness risk is elevated; prioritize barrier support and SPF.';
-    if (tier === 'Medium') return 'Medium stress: expect mild dryness/instability; keep barrier support and daily SPF.';
-    return 'Low stress: maintain baseline hydration and daily SPF.';
-  })();
+  const tier = normalizeEnvStressTier('', ess);
 
   const barrierScore = barrier === 'impaired' || barrier === 'damaged' ? 80 : barrier === 'healthy' || barrier === 'stable' ? 20 : 40;
   const weatherScore = scenario === 'snow' || scenario === 'cold' || scenario === 'dry' || scenario === 'wind' ? 70 : scenario === 'rain' || scenario === 'humid' ? 45 : scenario === 'travel' ? 55 : 35;
   const uvScore = scenario === 'uv' || scenario === 'snow' ? 65 : 30;
-  const barrierDrivers = uniqueStrings(
-    [
-      barrier ? `Barrier: ${barrier}` : '',
-      sensitivity ? `Sensitivity: ${sensitivity}` : '',
-    ],
-    3,
-  );
-  const weatherDrivers = uniqueStrings(
-    [
-      scenario && scenario !== 'unknown' ? `Scenario: ${scenario}` : '',
-      /wind|snow|cold|dry/.test(scenario)
-        ? lang === 'CN'
-          ? '风冷/干燥上升'
-          : 'Wind/cold/dry load increased'
-        : '',
-      /humid|rain/.test(scenario)
-        ? lang === 'CN'
-          ? '湿热/降雨变化'
-          : 'Humidity/rain shift'
-        : '',
-    ],
-    3,
-  );
-  const uvDrivers = uniqueStrings(
-    [
-      scenario === 'uv' || scenario === 'snow'
-        ? lang === 'CN'
-          ? 'UV 暴露偏高'
-          : 'UV exposure is elevated'
-        : '',
-      /sun|uv|日晒|紫外线/i.test(String(message || ''))
-        ? lang === 'CN'
-          ? '用户提到日晒/UV'
-          : 'User mentioned sun/UV'
-        : '',
-    ],
-    3,
-  );
 
   const radar = [
-    { axis: 'Barrier', value: clamp0to100(barrierScore), drivers: barrierDrivers },
-    { axis: 'Weather', value: clamp0to100(weatherScore), drivers: weatherDrivers },
-    { axis: 'UV', value: clamp0to100(uvScore), drivers: uvDrivers },
+    {
+      axis: 'Barrier',
+      value: clamp0to100(barrierScore),
+      drivers: [
+        barrier
+          ? (lang === 'CN' ? `屏障状态：${barrier}` : `Barrier status: ${barrier}`)
+          : (lang === 'CN' ? '屏障状态未完整填写' : 'Barrier status not fully specified'),
+      ],
+    },
+    {
+      axis: 'Weather',
+      value: clamp0to100(weatherScore),
+      drivers: [
+        scenario && scenario !== 'unknown'
+          ? (lang === 'CN' ? `场景推断：${scenario}` : `Scenario inferred: ${scenario}`)
+          : (lang === 'CN' ? '按环境提问触发默认天气压力' : 'Default weather stress profile applied'),
+      ],
+    },
+    {
+      axis: 'UV',
+      value: clamp0to100(uvScore),
+      drivers: [
+        scenario === 'uv' || scenario === 'snow'
+          ? (lang === 'CN' ? '日晒/反射暴露偏高' : 'Potentially elevated UV/reflection exposure')
+          : (lang === 'CN' ? 'UV 风险按通用场景估计' : 'UV risk estimated from generic scenario'),
+      ],
+    },
   ];
 
   const missing = [];
@@ -26814,9 +26921,10 @@ function buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language
     schema_version: 'aurora.ui.env_stress.v1',
     ess,
     tier,
-    tier_description: tierDescription,
+    tier_description: buildEnvStressTierDescription({ language: lang, tier, ess }),
     radar,
     notes: notes.slice(0, 4),
+    travel_readiness: buildDefaultTravelReadiness({ language: lang, tier, ess, notes }),
   };
 }
 
@@ -30357,8 +30465,7 @@ function looksLikeIngredientScienceIntent(message, action) {
     idText === 'chip_start_ingredients_entry' ||
     idText === 'ingredient.lookup' ||
     idText === 'ingredient.by_goal' ||
-    idText === 'ingredient.research.poll' ||
-    idText === 'ingredient.report.refresh'
+    idText === 'ingredient.research.poll'
   ) {
     return true;
   }
@@ -30397,8 +30504,7 @@ function isIngredientDiagnosisOptInAction(actionId) {
 }
 
 function isIngredientResearchPollAction(actionId) {
-  const id = normalizeIngredientActionId(actionId);
-  return id === 'ingredient.research.poll' || id === 'ingredient.report.refresh';
+  return normalizeIngredientActionId(actionId) === 'ingredient.research.poll';
 }
 
 function isIngredientRecoOptInAction(actionId, action) {
@@ -30489,13 +30595,23 @@ function buildIngredientRecoUpstreamPrompt({ language, context } = {}) {
   const c = context && typeof context === 'object' ? context : {};
   const goal = String(c.goal || '').trim();
   const sensitivity = String(c.sensitivity || '').trim() || 'unknown';
-  const candidates = normalizeIngredientCandidateList(c.candidates, 6);
+  const ingredientCandidates = normalizeIngredientCandidateList(
+    c.ingredient_candidates || c.candidates, 6,
+  );
+  const productCandidates = Array.isArray(c.product_candidates) ? c.product_candidates : [];
+  const productCandidateNames = productCandidates
+    .map((p) => pickFirstTrimmed(p.display_name, p.name, p.brand))
+    .filter(Boolean)
+    .slice(0, 8);
   if (language === 'CN') {
     return [
       '请按“成分约束”做产品推荐，不要返回泛化推荐。',
       goal ? `目标功效：${goal}` : '',
       `敏感度：${sensitivity}`,
-      candidates.length ? `候选成分：${candidates.join('、')}` : '',
+      ingredientCandidates.length ? `候选成分（仅用于推理）：${ingredientCandidates.join('、')}` : '',
+      productCandidateNames.length
+        ? `产品候选（只能从中选择）：${productCandidateNames.join('、')}`
+        : '产品候选：无——请返回空推荐结果。',
       '要求：推荐结果需明确对应上述目标/成分；若无匹配结果，请返回空结果并解释原因。',
     ]
       .filter(Boolean)
@@ -30505,7 +30621,12 @@ function buildIngredientRecoUpstreamPrompt({ language, context } = {}) {
     'Generate product recommendations with hard ingredient constraints; avoid generic recommendations.',
     goal ? `Goal: ${goal}` : '',
     `Sensitivity: ${sensitivity}`,
-    candidates.length ? `Ingredient candidates: ${candidates.join(', ')}` : '',
+    ingredientCandidates.length
+      ? `Ingredient candidates (for reasoning only, NOT product names): ${ingredientCandidates.join(', ')}`
+      : '',
+    productCandidateNames.length
+      ? `Product candidates (select ONLY from these): ${productCandidateNames.join(', ')}`
+      : 'Product candidates: NONE — return empty recommendations with an explanation.',
     'Rule: every recommendation must align with the goal/candidates; if no constrained match exists, return an explainable empty result.',
   ]
     .filter(Boolean)
@@ -30551,7 +30672,15 @@ function collectIngredientRecoConstraintTokens(context) {
     }
   };
   pushToken(normalizedContext.query || '');
-  for (const candidate of Array.isArray(normalizedContext.candidates) ? normalizedContext.candidates : []) {
+  const allCandidates = [
+    ...(Array.isArray(normalizedContext.ingredient_candidates) ? normalizedContext.ingredient_candidates : []),
+    ...(Array.isArray(normalizedContext.candidates) ? normalizedContext.candidates : []),
+  ];
+  const seenCandidates = new Set();
+  for (const candidate of allCandidates) {
+    const key = String(candidate || '').trim().toLowerCase();
+    if (seenCandidates.has(key)) continue;
+    seenCandidates.add(key);
     pushToken(candidate);
   }
   return out.slice(0, 16);
@@ -30724,18 +30853,26 @@ function buildIngredientReportQuickReplyChips({ language, reportPayload } = {}) 
     reportPayload && reportPayload.ingredient && reportPayload.ingredient.inci,
   );
   const researchStatus = String(reportPayload && reportPayload.research_status ? reportPayload.research_status : '').trim().toLowerCase();
-  const reportStatus = String(
-    reportPayload && reportPayload.report_state && reportPayload.report_state.status
-      ? reportPayload.report_state.status
-      : '',
-  )
-    .trim()
-    .toLowerCase();
   const normalizedQuery = pickFirstTrimmed(reportPayload && reportPayload.normalized_query, ingredientQuery);
   if (ingredientQuery) {
     const chipId = 'chip.start.ingredients.reco';
     if (!seen.has(chipId)) {
       seen.add(chipId);
+      const verifiedProducts = [];
+      const topProducts = Array.isArray(reportPayload && reportPayload.top_products) ? reportPayload.top_products : [];
+      const kbProducts = Array.isArray(reportPayload && reportPayload.products_from_kb) ? reportPayload.products_from_kb : [];
+      for (const p of [...topProducts, ...kbProducts]) {
+        if (!p || typeof p !== 'object' || Array.isArray(p)) continue;
+        const name = pickFirstTrimmed(p.display_name, p.name, p.product_name);
+        if (!name) continue;
+        verifiedProducts.push({
+          ...(p.product_id ? { product_id: p.product_id } : {}),
+          ...(p.sku_id ? { sku_id: p.sku_id } : {}),
+          name,
+          ...(p.brand ? { brand: p.brand } : {}),
+        });
+        if (verifiedProducts.length >= 8) break;
+      }
       out.push({
         chip_id: chipId,
         label: lang === 'CN' ? '看相关产品（可选）' : 'See related products (optional)',
@@ -30744,20 +30881,12 @@ function buildIngredientReportQuickReplyChips({ language, reportPayload } = {}) 
           action_id: 'chip.start.reco_products',
           entry_source: 'ingredient_report',
           ingredient_query: String(ingredientQuery).slice(0, 120),
+          ...(verifiedProducts.length ? { product_candidates: verifiedProducts } : {}),
         },
       });
     }
   }
-  if (
-    (
-      reportStatus === 'pending' ||
-      researchStatus === 'queued' ||
-      researchStatus === 'fallback' ||
-      researchStatus === 'error' ||
-      researchStatus === 'provider_unavailable'
-    ) &&
-    normalizedQuery
-  ) {
+  if ((researchStatus === 'queued' || researchStatus === 'fallback' || researchStatus === 'error') && normalizedQuery) {
     const chipId = 'chip.start.ingredients.research_poll';
     if (!seen.has(chipId)) {
       seen.add(chipId);
@@ -30766,7 +30895,7 @@ function buildIngredientReportQuickReplyChips({ language, reportPayload } = {}) 
         label: lang === 'CN' ? '刷新增强结果' : 'Refresh enhanced result',
         kind: 'quick_reply',
         data: {
-          action_id: 'ingredient.report.refresh',
+          action_id: 'ingredient.research.poll',
           ingredient_query: String(ingredientQuery || '').slice(0, 120),
           normalized_query: String(normalizedQuery || '').slice(0, 120),
           entry_source: 'ingredient_report',
@@ -31114,33 +31243,23 @@ function ingredient_query_normalize(raw) {
     .trim();
 }
 
-function escapeRegexForIngredientToken(raw) {
-  return String(raw || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function ingredientContainsAliasToken(normalizedText, token) {
-  const normalized = ingredient_query_normalize(normalizedText);
-  const aliasToken = ingredient_query_normalize(token);
-  if (!normalized || !aliasToken) return false;
-  if (normalized === aliasToken) return true;
-
-  const asciiWord = /^[a-z0-9]+$/.test(aliasToken);
-  if (asciiWord) {
-    // Short ASCII aliases (e.g. "ha", "bp", "vc") must match full tokens only.
-    const words = normalized.split(/\s+/).filter(Boolean);
-    if (aliasToken.length <= 3) return words.includes(aliasToken);
-    const boundary = new RegExp(`(?:^|\\s)${escapeRegexForIngredientToken(aliasToken)}(?:\\s|$)`, 'i');
-    return boundary.test(normalized);
-  }
-
-  return normalized.includes(aliasToken);
-}
-
 function ingredientEntityDisplayName(entityKey, language = 'EN') {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const row = INGREDIENT_ENTITY_DICT.find((entry) => entry && entry.key === entityKey);
   if (!row) return '';
   return lang === 'CN' ? String(row.canonical_cn || '').trim() : String(row.canonical_en || '').trim();
+}
+
+function ingredientAliasTokenMatches(normalized, token) {
+  const haystack = String(normalized || '').trim();
+  const needle = String(token || '').trim();
+  if (!haystack || !needle) return false;
+  if (!/[a-z0-9]/i.test(needle)) return haystack.includes(needle);
+  if (needle.length <= 3) {
+    const boundaryRegex = new RegExp(`(^|[^a-z0-9])${escapeRegExp(needle)}($|[^a-z0-9])`, 'i');
+    return boundaryRegex.test(haystack);
+  }
+  return haystack.includes(needle);
 }
 
 function ingredientEntityMatchFromText(raw, language = 'EN') {
@@ -31174,7 +31293,7 @@ function ingredientEntityMatchFromText(raw, language = 'EN') {
       ingredient_query_normalize(row.canonical_cn),
       ...((Array.isArray(row.aliases) ? row.aliases : []).map((alias) => ingredient_query_normalize(alias))),
     ].filter(Boolean);
-    if (aliasSet.some((token) => ingredientContainsAliasToken(normalized, token))) {
+    if (aliasSet.some((token) => ingredientAliasTokenMatches(normalized, token))) {
       return {
         normalized_query: normalized,
         entity_key: row.key,
@@ -31212,41 +31331,6 @@ function ingredientEntityMatchFromText(raw, language = 'EN') {
 function normalizeIngredientLookupToken(raw) {
   const match = ingredientEntityMatchFromText(raw);
   return match.entity_key || '';
-}
-
-function inferIngredientFamilyFromText(raw) {
-  const normalized = ingredient_query_normalize(raw);
-  if (!normalized) return '';
-  const rules = [
-    { family: 'fatty_alcohol', pattern: /(cetyl alcohol|stearyl alcohol|cetearyl alcohol|behenyl alcohol|fatty alcohol)/i },
-    { family: 'humectant', pattern: /(hyaluronic acid|sodium hyaluronate|glycerin|glycerol|panthenol|allantoin|urea|betaine)/i },
-    { family: 'uv_filter', pattern: /(avobenzone|octocrylene|octisalate|homosalate|ethylhexyl salicylate|uv filter|sunscreen)/i },
-    { family: 'mineral_filter', pattern: /(zinc oxide|titanium dioxide|physical sunscreen|mineral sunscreen)/i },
-    { family: 'preservative', pattern: /(phenoxyethanol|paraben|chlorphenesin|sodium benzoate|potassium sorbate|ethylhexylglycerin)/i },
-    { family: 'retinoid', pattern: /(retinol|retinoid|retinal|tretinoin|adapalene|retinyl)/i },
-    { family: 'bha', pattern: /(salicylic acid|\bbha\b|beta hydroxy)/i },
-    { family: 'aha', pattern: /(glycolic acid|lactic acid|mandelic acid|\baha\b|alpha hydroxy)/i },
-    { family: 'acne_active', pattern: /(benzoyl peroxide|\bbpo\b)/i },
-    { family: 'brightening', pattern: /(tranexamic acid|arbutin|alpha arbutin|氨甲环酸|熊果苷)/i },
-    { family: 'oil_emollient', pattern: /(squalane|squalene|ester|triglyceride)/i },
-    { family: 'silicone', pattern: /(dimethicone|siloxane|cyclopentasiloxane|silicone)/i },
-  ];
-  for (const rule of rules) {
-    if (rule.pattern.test(normalized)) return rule.family;
-  }
-  return '';
-}
-
-function buildIngredientStableKey({ query = '', entityKey = '' } = {}) {
-  const normalizedEntity = String(entityKey || '').trim().toLowerCase();
-  if (normalizedEntity) return normalizedEntity.slice(0, 80);
-  const normalizedQuery = normalizeIngredientResearchKey(query);
-  if (!normalizedQuery) return 'unknown';
-  const key = normalizedQuery
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .toLowerCase();
-  return (key || 'unknown').slice(0, 80);
 }
 
 function mapIngredientLookupTokenToQuery(token, language = 'EN') {
@@ -32672,38 +32756,34 @@ function normalizeIngredientLikelihood(raw) {
   return null;
 }
 
-function normalizeIngredientReportReasonCode({ researchStatus = '', researchErrorCode = '', researchReady = false } = {}) {
-  if (researchReady) return 'none';
-  if (INGREDIENT_KB_ONLY_MODE) return 'kb_only';
-  const status = String(researchStatus || '').trim().toLowerCase();
-  const code = String(researchErrorCode || '').trim().toLowerCase();
-  if (status === 'queued' || status === 'pending') return 'insufficient_evidence';
-  if (/timeout/.test(code)) return 'timeout';
-  if (/provider|auth|network|rate|quota|circuit|gemini_/.test(code) || status === 'provider_unavailable') {
-    return 'provider_unavailable';
-  }
-  if (/insufficient|empty|missing|limited|fallback/.test(code) || status === 'fallback' || status === 'error') {
-    return 'insufficient_evidence';
-  }
-  return 'none';
+function normalizeIngredientSlugKey(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[’‘`´]/g, "'")
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 96);
 }
 
-function buildIngredientReportFingerprint(payload) {
-  const obj = asResearchObject(payload) || {};
-  const verdict = asResearchObject(obj.verdict) || {};
-  const oneLiner = pickFirstTrimmed(verdict.one_liner, obj.overview) || '';
-  const benefits = Array.isArray(obj.benefits) ? obj.benefits : [];
-  const benefitLines = [];
-  for (const row of benefits) {
-    const item = asResearchObject(row) || {};
-    const text = pickFirstTrimmed(item.what_it_means, item.concern);
-    if (!text) continue;
-    benefitLines.push(String(text).toLowerCase().slice(0, 120));
-    if (benefitLines.length >= 3) break;
-  }
-  const raw = [String(oneLiner).toLowerCase().slice(0, 240), ...benefitLines].join('||').trim();
-  if (!raw) return '';
-  return crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16);
+function inferIngredientFamilyKeyFromInputName(inputName) {
+  const text = ingredient_query_normalize(inputName);
+  if (!text) return '';
+  if (/(retinoid|retinol|retinal|tretinoin|adapalene|retin-?a|vitamin a|维a|a醇|维甲酸|维a酸)/.test(text)) return 'retinoid';
+  if (/(salicylic|bha|beta hydroxy|水杨酸)/.test(text)) return 'bha';
+  if (/(glycolic|lactic|mandelic|aha|alpha hydroxy|果酸|甘醇酸|乙醇酸|乳酸|杏仁酸)/.test(text)) return 'aha';
+  if (/(benzoyl peroxide|bpo|azelaic|壬二酸|过氧化苯甲酰)/.test(text)) return 'acne_active';
+  if (/(zinc oxide|titanium dioxide|zno|tio2|氧化锌|二氧化钛)/.test(text)) return 'mineral_filter';
+  if (/(avobenzone|octocrylene|octisalate|homosalate|sunscreen filter|uv filter|防晒剂)/.test(text)) return 'uv_filter';
+  if (/(ceramide|神经酰胺)/.test(text)) return 'ceramide';
+  if (/(hyaluronic|glycerin|glycerol|panthenol|urea|sodium pca|透明质酸|玻尿酸|甘油|泛醇)/.test(text)) return 'humectant';
+  if (/(siloxane|silicone|dimethicone|cyclopentasiloxane|硅氧烷|硅油)/.test(text)) return 'silicone';
+  if (/(behenyl|cetyl|stearyl|cetearyl|fatty alcohol|脂肪醇|醇)/.test(text)) return 'fatty_alcohol';
+  if (/(ester|triglyceride|squalane|squalene|oil|butter|caprylic|capric|ethylhexyl)/.test(text)) return 'oil_emollient';
+  if (/(tranexamic|arbutin|kojic|alpha-arbutin|熊果苷|传明酸|氨甲环酸|曲酸)/.test(text)) return 'brightening';
+  if (/(vitamin|tocopherol|ascorb|niacinamide|维生素|抗坏血酸|烟酰胺)/.test(text)) return 'vitamin';
+  if (/(acid|peel|exfoliant|去角质)/.test(text)) return 'exfoliant';
+  return '';
 }
 
 function buildIngredientReportPayload({ language, query, research = null, meta = null } = {}) {
@@ -32761,12 +32841,9 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     researchStatusRaw === 'queued' ||
     researchStatusRaw === 'error' ||
     researchStatusRaw === 'skipped' ||
-    researchStatusRaw === 'fallback' ||
-    researchStatusRaw === 'provider_unavailable' ||
-    researchStatusRaw === 'disabled'
+    researchStatusRaw === 'fallback'
       ? researchStatusRaw
       : 'none';
-  const normalizedResearchStatus = researchStatus === 'skipped' ? 'disabled' : researchStatus;
   const researchReady = researchStatus === 'ready' ? researchObj : null;
 
   const library = {
@@ -33372,9 +33449,9 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   };
 
   const entityRow = token ? INGREDIENT_ENTITY_DICT.find((entry) => entry && entry.key === token) : null;
-  const familyKey = entityRow && entityRow.family
-    ? String(entityRow.family).trim().toLowerCase()
-    : inferIngredientFamilyFromText(inputName);
+  const inferredFamilyKey = inferIngredientFamilyKeyFromInputName(inputName);
+  const familyKeyFromEntity = entityRow && entityRow.family ? String(entityRow.family).trim().toLowerCase() : '';
+  const familyKey = familyKeyFromEntity || inferredFamilyKey;
 
   const familyProfiles = {
     retinoid: {
@@ -33643,10 +33720,38 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     .slice(0, 8);
   const isLibraryHit = Boolean(library[token]);
   const isFamilyHit = Boolean(familyFallback);
-  const ingredientKey = buildIngredientStableKey({
-    query: inputName,
-    entityKey: token,
-  });
+  const ingredientKey = token || normalizeIngredientSlugKey(normalizedQuery || inputName);
+  const providerAttemptTimedOut = providerAttempts.some((row) => /timeout/i.test(String(row && row.reason_code ? row.reason_code : '')));
+  const researchTimeout = researchStatus === 'fallback' && (/timeout/i.test(String(researchErrorCode || '')) || providerAttemptTimedOut);
+  const reportMode =
+    researchReady || researchStatus === 'queued' || researchStatus === 'fallback'
+      ? 'hybrid'
+      : 'deterministic';
+  const reportStatus =
+    researchReady
+      ? 'ready'
+      : researchStatus === 'queued' || researchTimeout
+        ? 'pending'
+        : 'partial';
+  const reportReasonCode =
+    researchReady
+      ? 'research_ready'
+      : researchTimeout
+        ? 'timeout'
+        : researchStatus === 'queued'
+          ? 'research_queued'
+          : isLibraryHit
+            ? 'library_hit'
+            : isFamilyHit
+              ? 'family_match'
+              : researchStatus === 'fallback'
+                ? 'fallback'
+                : 'generic_fallback';
+  const personalizationBasis = researchReady
+    ? 'mixed'
+    : isFamilyHit && !isLibraryHit
+      ? 'ingredient_family'
+      : 'ingredient';
   const evidenceGradeFallback = isLibraryHit ? 'B' : isFamilyHit ? 'B' : null;
   const evidenceGrade = normalizeIngredientEvidenceGrade(researchEvidence.grade, evidenceGradeFallback);
   const commonIrritationFamilies = ['retinoid', 'aha', 'bha', 'acne_active', 'exfoliant'];
@@ -33683,28 +33788,8 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     String(researchReady && researchReady.overview ? researchReady.overview : '').slice(0, 260),
     picked.one_liner,
   );
-  const shouldMarkPending = Boolean(
-    INGREDIENT_REPORT_PENDING_UI_ENABLED &&
-      INGREDIENT_REPORT_HYBRID_ENABLED &&
-      !researchReady &&
-      !INGREDIENT_KB_ONLY_MODE &&
-      AURORA_INGREDIENT_LLM_REPORT_ENABLED,
-  );
-  const reportStatus = researchReady
-    ? 'ready'
-    : shouldMarkPending
-      ? 'pending'
-      : normalizedResearchStatus === 'error' && !INGREDIENT_REPORT_DISABLE_GENERIC_BLOCK
-        ? 'failed'
-        : 'partial';
-  const reportMode = researchReady ? (isLibraryHit ? 'hybrid' : 'llm_enriched') : 'deterministic';
-  const reportReasonCode = normalizeIngredientReportReasonCode({
-    researchStatus: normalizedResearchStatus,
-    researchErrorCode,
-    researchReady: Boolean(researchReady),
-  });
   const confidence = (() => {
-    if (!researchReady) return isLibraryHit ? 0.72 : isFamilyHit ? 0.64 : 0.56;
+    if (!researchReady) return isLibraryHit ? 0.8 : isFamilyHit ? 0.68 : 0.55;
     let base = 0.7;
     if (evidenceGrade === 'A') base = 0.9;
     else if (evidenceGrade === 'B') base = 0.82;
@@ -33713,37 +33798,11 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     if (researchCitations.length === 0) base -= 0.08;
     return Math.max(0.5, Math.min(0.95, Number(base.toFixed(2))));
   })();
-  const sections = [
-    { id: 'benefits', title: lang === 'CN' ? '功效' : 'Benefits', status: benefits.length ? 'ready' : reportStatus === 'pending' ? 'pending' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
-    { id: 'how_to_use', title: lang === 'CN' ? '使用方法' : 'How to use', status: (isLibraryHit || isFamilyHit || notes.length || pairWell.length || separate.length) ? 'ready' : reportStatus === 'pending' ? 'pending' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
-    { id: 'watchouts', title: lang === 'CN' ? '注意事项' : 'Watchouts', status: watchouts.length ? 'ready' : reportStatus === 'pending' ? 'pending' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
-    { id: 'evidence', title: lang === 'CN' ? '证据' : 'Evidence', status: researchCitations.length ? 'ready' : reportStatus === 'pending' ? 'pending' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
-  ];
-  const missingSections = sections.filter((section) => section.status !== 'ready').map((section) => section.id);
-  const completionScore = (() => {
-    const readyCount = sections.filter((section) => section.status === 'ready').length;
-    const base = sections.length > 0 ? readyCount / sections.length : 0;
-    if (reportStatus === 'ready') return 1;
-    if (reportStatus === 'pending') return Math.max(0.62, Number(base.toFixed(2)));
-    if (reportStatus === 'partial') return Math.max(0.55, Number(base.toFixed(2)));
-    return Math.max(0.4, Number(base.toFixed(2)));
-  })();
-  const personalizationBasis = researchReady
-    ? isLibraryHit
-      ? 'mixed'
-      : isFamilyHit
-        ? 'ingredient_family'
-        : 'ingredient'
-    : isLibraryHit
-      ? 'ingredient'
-      : isFamilyHit
-        ? 'ingredient_family'
-        : 'ingredient';
 
   return {
     schema_version: 'aurora.ingredient_report.v2-lite',
     locale: lang === 'CN' ? 'zh-CN' : 'en-US',
-    research_status: normalizedResearchStatus,
+    research_status: researchStatus,
     research_provider: researchProvider || null,
     research_error_code: researchErrorCode || null,
     normalized_query: normalizedQuery || null,
@@ -33759,7 +33818,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     provider_circuit_state: providerCircuitState || 'closed',
     research_attempts: providerAttempts,
     ingredient: {
-      key: ingredientKey,
+      key: ingredientKey || null,
       inci: pickFirstTrimmed(researchIngredient.inci, picked.inci, inputName),
       display_name: pickFirstTrimmed(researchIngredient.display_name, picked.display_name, inputName),
       aliases: asResearchStringArray(researchIngredient.aliases, 8).length
@@ -33814,12 +33873,25 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     report_state: {
       mode: reportMode,
       status: reportStatus,
-      completion_score: completionScore,
-      missing_sections: missingSections,
+      completion_score: researchReady ? 0.95 : reportStatus === 'pending' ? 0.7 : isLibraryHit ? 0.82 : isFamilyHit ? 0.6 : 0.3,
+      missing_sections: (() => {
+        const missing = [];
+        if (!researchReady) {
+          if (reportStatus === 'pending') missing.push('evidence', 'top_products');
+          else if (!isLibraryHit && !isFamilyHit) missing.push('benefits', 'watchouts', 'evidence');
+          else if (!researchCitations.length) missing.push('evidence');
+        }
+        return missing;
+      })(),
       reason_code: reportReasonCode,
       family_key: familyKey || null,
     },
-    sections,
+    sections: [
+      { id: 'benefits', title: lang === 'CN' ? '功效' : 'Benefits', status: benefits.length ? 'ready' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
+      { id: 'how_to_use', title: lang === 'CN' ? '使用方法' : 'How to use', status: isLibraryHit || isFamilyHit ? 'ready' : 'pending', source: 'kb' },
+      { id: 'watchouts', title: lang === 'CN' ? '注意事项' : 'Watchouts', status: watchouts.length ? 'ready' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
+      { id: 'evidence', title: lang === 'CN' ? '证据' : 'Evidence', status: researchCitations.length ? 'ready' : 'pending', source: researchReady ? 'hybrid' : 'kb' },
+    ],
     updated_at_ms: Number.isFinite(Number(researchReady && researchReady.updated_at_ms))
       ? Math.trunc(Number(researchReady && researchReady.updated_at_ms))
       : null,
@@ -33903,6 +33975,7 @@ function enrichIngredientReportCardsInEnvelope(envelope, { language = 'EN', logg
       if (deterministicPayload.ingredient) {
         mergedPayload.ingredient = {
           ...(mergedPayload.ingredient || {}),
+          key: deterministicPayload.ingredient.key || mergedPayload.ingredient?.key || null,
           category: deterministicPayload.ingredient.category || mergedPayload.ingredient?.category,
           what_it_is: deterministicPayload.ingredient.what_it_is || mergedPayload.ingredient?.what_it_is || null,
           aliases: (deterministicPayload.ingredient.aliases || []).length
@@ -33969,8 +34042,7 @@ async function buildIngredientReportPayloadWithResearch({
     !(resolvedResearch && resolvedResearch.status === 'ready') &&
     INGREDIENT_ROUTE_V2_ENABLED &&
     !INGREDIENT_LEGACY_PATH_ENABLED &&
-    AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
-    INGREDIENT_REPORT_HYBRID_ENABLED
+    AURORA_INGREDIENT_LLM_REPORT_ENABLED
   ) {
     const syncResearch = await runIngredientResearchSync({
       query: ingredientQuery,
@@ -35936,43 +36008,6 @@ function parseIntQueryValue(value, fallback, min, max) {
   const n = Number(value);
   const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
   return Math.max(min, Math.min(max, v));
-}
-
-function isTravelDateRangeValid(startDate, endDate) {
-  const start = typeof startDate === 'string' ? startDate.trim() : '';
-  const end = typeof endDate === 'string' ? endDate.trim() : '';
-  if (!start || !end) return true;
-  return start <= end;
-}
-
-function findTravelPlanByTripId(plans, tripId) {
-  const id = String(tripId || '').trim();
-  if (!id) return null;
-  const list = Array.isArray(plans) ? plans : [];
-  return list.find((plan) => String(plan && plan.trip_id ? plan.trip_id : '').trim() === id) || null;
-}
-
-function toTravelPlansStorageError(err) {
-  const { code, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
-  if (dbError) {
-    return {
-      status: 503,
-      body: {
-        error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : 'DB_UNAVAILABLE',
-        ...(code ? { code } : {}),
-      },
-    };
-  }
-  const status =
-    err && typeof err.status === 'number' && Number.isFinite(err.status) && err.status >= 400 && err.status < 600
-      ? err.status
-      : 500;
-  return {
-    status,
-    body: {
-      error: status >= 400 && status < 500 ? String((err && err.code) || 'BAD_REQUEST') : 'TRAVEL_PLANS_FAILED',
-    },
-  };
 }
 
 function normalizeBlockToken(value) {
@@ -41016,6 +41051,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let deterministicFallbackReason = null;
         let reportModelCalled = false;
         let reportModelErrored = false;
+        let reportModelErrorReason = null;
 
         let diagnosisPhoto = null;
         let diagnosisPhotoBytes = null;
@@ -41131,7 +41167,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         const qualityForReport = userRequestedPhoto && photosProvided ? photoQuality : { grade: 'pass', reasons: ['no_photo'] };
-        const qualityObject = buildQualityObject(qualityForReport);
         const policyDetectorConfidenceLevel = diagnosisPolicy ? diagnosisPolicy.detector_confidence_level : detectorConfidence.level;
         const policyUncertainty = diagnosisPolicy ? diagnosisPolicy.uncertainty : null;
 
@@ -41263,7 +41298,6 @@ function mountAuroraBffRoutes(app, { logger }) {
               const visionDto = buildVisionSignalsDto({
                 lang: ctx.lang,
                 photoQuality,
-                qualityObject,
                 profileSummary,
                 diagnosisPolicy,
                 factLayer: factLayerSeed,
@@ -41382,7 +41416,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary,
             routineCandidate: hasRoutine ? routineCandidate : null,
             photoQuality: qualityForReport,
-            qualityObject,
             factLayer: factLayerForReport,
             imageBuffer: diagnosisPhotoBytes || shadowVerifyPhotoBytes || null,
           });
@@ -41413,19 +41446,21 @@ function mountAuroraBffRoutes(app, { logger }) {
             reportLayer = reportResult.layer;
             analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
           } else {
-            const reportFailure = reportResult.reason || 'report_output_invalid';
-            deterministicFallbackReason = deterministicFallbackReason || reportFailure;
+            const reportFailureRaw = reportResult.reason || 'report_output_invalid';
+            const reportFailureReason = normalizeReportFailureReason(reportFailureRaw) || 'UNKNOWN';
+            deterministicFallbackReason = deterministicFallbackReason || reportFailureRaw;
             reportModelErrored = true;
+            reportModelErrorReason = reportFailureReason;
             if (reportResult.schema_violation) {
               recordAuroraSkinLlmSchemaViolation({
                 stage: 'report',
                 provider: 'gemini',
-                reason: reportFailure,
+                reason: reportFailureReason,
                 inputHashPrefix: llmInputHashPrefix,
               });
             }
-            if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailure}）；我会退回到确定性基线。`);
-            else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
+            if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailureReason}）；我会退回到确定性基线。`);
+            else qualityReportReasons.push(`Report model output was unstable (${reportFailureReason}); falling back to deterministic baseline.`);
           }
         }
         if (!analysis && reportDecision.decision === 'skip' && hasPrimaryInput) {
@@ -41569,9 +41604,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           photosProvided &&
           (photoQuality.grade === 'degraded' || photoQuality.grade === 'unknown') &&
           analysisSource !== 'retake';
-        if (analysis && mustDowngrade) {
-          analysis = downgradeSkinAnalysisConfidence(analysis, { language: ctx.lang, qualityObject });
-        }
+        if (analysis && mustDowngrade) analysis = downgradeSkinAnalysisConfidence(analysis, { language: ctx.lang, qualityObject: buildQualityObject(photoQuality) });
         if (analysis && diagnosisV1 && usedPhotos) {
           analysis = mergePhotoFindingsIntoAnalysis({
             analysis,
@@ -41651,24 +41684,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             });
             analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract: locked });
           }
-          analysis = applyConfidenceCaps(analysis, qualityObject.grade);
-          analysis = enforceQualityNarrative(analysis, { language: ctx.lang, qualityObject });
-          const findingsForDetail = Array.isArray(analysis && analysis.findings) ? analysis.findings : [];
-          analysis = {
-            ...analysis,
-            quality: {
-              ...qualityObject,
-              ...(analysis && analysis.quality && typeof analysis.quality === 'object' ? analysis.quality : {}),
-              ...(analysis && typeof analysis.quality_message === 'string' && analysis.quality_message.trim()
-                ? { message: analysis.quality_message.trim() }
-                : {}),
-            },
-            insufficient_visual_detail:
-              typeof analysis?.insufficient_visual_detail === 'boolean'
-                ? analysis.insufficient_visual_detail
-                : detectInsufficientVisualDetail(findingsForDetail),
-          };
-          analysis = dedupeAndCapOutput(analysis);
         }
 
         let renderedAnalysisSource = analysisSource;
@@ -41921,20 +41936,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraSkinLlmCall({ stage: 'report', outcome: reportLlmOutcome });
         }
 
-        const degradeReason = (() => {
-          if (renderedAnalysisSource === 'baseline_low_confidence') return 'baseline_low_confidence';
-          if (renderedAnalysisSource === 'retake') return 'photo_quality_fail';
-          if (renderedAnalysisSource === 'rule_based_with_photo_qc') {
-            if (photoFailureCode === 'MISSING_PRIMARY_INPUT') return 'missing_primary_input';
-            if (photoFailureCode) return `photo_${String(photoFailureCode).trim().toLowerCase()}`;
-            return 'photo_qc_degraded';
-          }
-          if (visionDecisionForReport && visionDecisionForReport.decision === 'fallback') {
-            return normalizeVisionReason(pickPrimaryVisionReason(visionDecisionForReport.reasons)) || 'vision_fallback';
-          }
-          if (reportModelErrored) return 'report_model_error';
-          return null;
-        })();
+        const degradeMeta = deriveSkinDegradeMeta({
+          renderedAnalysisSource,
+          photoFailureCode,
+          visionDecisionForReport,
+          reportModelErrored,
+          reportModelErrorReason,
+        });
+        const degradeReason = degradeMeta.degradeReason;
         const analysisMeta = {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           llm_vision_called: visionModelCalled,
@@ -41948,6 +41957,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               String(photoQuality && photoQuality.grade || '').trim().toLowerCase() === 'fail',
           ),
           ...(degradeReason ? { degrade_reason: degradeReason } : {}),
+          ...(degradeMeta.visionFailureReason ? { vision_failure_reason: degradeMeta.visionFailureReason } : {}),
+          ...(degradeMeta.reportFailureReason ? { report_failure_reason: degradeMeta.reportFailureReason } : {}),
         };
         const lowConfidenceFromPhotoQuality = Boolean(
           userRequestedPhoto &&
@@ -41957,8 +41968,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         const lowConfidenceSummary = analysisSource === 'baseline_low_confidence' || lowConfidenceFromPhotoQuality;
 
         profiler.start('render', { kind: 'envelope' });
+        const chatQualityObj = buildQualityObject(photoQuality);
+        const chatCappedAnalysis = analysis ? applyConfidenceCaps(analysis, chatQualityObj.grade) : analysis;
+        const chatDedupedAnalysis = chatCappedAnalysis ? dedupeAndCapOutput(chatCappedAnalysis) : chatCappedAnalysis;
+        let chatEnrichedAnalysis = chatDedupedAnalysis ? {
+          ...chatDedupedAnalysis,
+          quality: chatQualityObj,
+          findings: Array.isArray(chatDedupedAnalysis.findings) ? chatDedupedAnalysis.findings : [],
+          guidance_brief: Array.isArray(chatDedupedAnalysis.guidance_brief) ? chatDedupedAnalysis.guidance_brief : [],
+          insufficient_visual_detail: Boolean(chatDedupedAnalysis.insufficient_visual_detail) || detectInsufficientVisualDetail(Array.isArray(chatDedupedAnalysis.findings) ? chatDedupedAnalysis.findings : []),
+        } : chatDedupedAnalysis;
+        if (renderedAnalysisSource === 'retake') {
+          chatEnrichedAnalysis = ensureRetakeFeatureObservation(chatEnrichedAnalysis, { language: ctx.lang });
+        }
         const analysisSummaryPayload = {
-          analysis,
+          analysis: chatEnrichedAnalysis,
           low_confidence: lowConfidenceSummary,
           photos_provided: photosProvided,
           photo_qc: photoQcParts,
@@ -42575,285 +42599,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         events: [makeEvent(ctx, 'error', { code: err.code || 'ANALYSIS_FAILED' })],
       });
       return res.status(status).json(envelope);
-    }
-  });
-
-  app.get('/v1/travel-plans', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const parsed = TravelPlanListQuerySchema.safeParse({
-        include_archived:
-          req.query && Object.prototype.hasOwnProperty.call(req.query, 'include_archived')
-            ? req.query.include_archived
-            : undefined,
-      });
-      if (!parsed.success) {
-        return res.status(400).json({ error: 'BAD_REQUEST', details: parsed.error.format() });
-      }
-
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-      const out = listTravelPlansForView(profile, {
-        includeArchived: parsed.data.include_archived,
-        lang: ctx.lang,
-      });
-      return res.status(200).json(out);
-    } catch (err) {
-      const fail = toTravelPlansStorageError(err);
-      logger?.warn?.(
-        {
-          err: err && err.message ? err.message : String(err),
-          code: err && err.code ? err.code : null,
-          status: fail.status,
-          request_id: ctx.request_id,
-          trace_id: ctx.trace_id,
-        },
-        'travel plans list failed',
-      );
-      return res.status(fail.status).json(fail.body);
-    }
-  });
-
-  app.get('/v1/travel-plans/:trip_id', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const tripId = String((req && req.params && req.params.trip_id) || '').trim();
-      if (!tripId) return res.status(400).json({ error: 'BAD_REQUEST' });
-
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-      const listOut = listTravelPlansForView(profile, {
-        includeArchived: true,
-        lang: ctx.lang,
-      });
-      const plan = findTravelPlanByTripId(listOut.plans, tripId);
-      if (!plan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
-
-      return res.status(200).json({ plan, summary: listOut.summary });
-    } catch (err) {
-      const fail = toTravelPlansStorageError(err);
-      logger?.warn?.(
-        {
-          err: err && err.message ? err.message : String(err),
-          code: err && err.code ? err.code : null,
-          status: fail.status,
-          request_id: ctx.request_id,
-          trace_id: ctx.trace_id,
-        },
-        'travel plans get failed',
-      );
-      return res.status(fail.status).json(fail.body);
-    }
-  });
-
-  app.post('/v1/travel-plans', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const parsed = TravelPlanCreateSchema.safeParse(req.body || {});
-      if (!parsed.success) {
-        return res.status(400).json({ error: 'BAD_REQUEST', details: parsed.error.format() });
-      }
-      if (!isTravelDateRangeValid(parsed.data.start_date, parsed.data.end_date)) {
-        return res.status(400).json({ error: 'BAD_REQUEST', details: { date_range: 'start_date_must_be_before_or_equal_end_date' } });
-      }
-
-      const nowMs = Date.now();
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-      const baseProfile = profile && typeof profile === 'object' ? profile : {};
-      const baseState = resolveTravelPlansState(baseProfile, { nowMs });
-      const baseTripIds = new Set(
-        (Array.isArray(baseState.travel_plans) ? baseState.travel_plans : [])
-          .map((plan) => String((plan && plan.trip_id) || '').trim())
-          .filter(Boolean),
-      );
-
-      const normalizedPatch = normalizeTravelProfilePatch({
-        baseProfile,
-        patch: {
-          travel_plans: [
-            {
-              destination: parsed.data.destination,
-              start_date: parsed.data.start_date,
-              end_date: parsed.data.end_date,
-              ...(Number.isFinite(Number(parsed.data.indoor_outdoor_ratio))
-                ? { indoor_outdoor_ratio: Number(parsed.data.indoor_outdoor_ratio) }
-                : {}),
-              ...(typeof parsed.data.itinerary === 'string' && parsed.data.itinerary.trim()
-                ? { itinerary: parsed.data.itinerary.trim() }
-                : {}),
-            },
-          ],
-        },
-        options: { nowMs },
-      });
-
-      const normalizedPlans = Array.isArray(normalizedPatch && normalizedPatch.travel_plans)
-        ? normalizedPatch.travel_plans
-        : [];
-      const createdCandidate =
-        normalizedPlans
-          .filter((plan) => !baseTripIds.has(String((plan && plan.trip_id) || '').trim()))
-          .sort((a, b) => Number((b && b.updated_at_ms) || 0) - Number((a && a.updated_at_ms) || 0))[0] || null;
-      const createdTripId = String((createdCandidate && createdCandidate.trip_id) || '').trim();
-
-      const updated = await upsertProfileForIdentity(
-        { auroraUid: identity.auroraUid, userId: identity.userId },
-        normalizedPatch,
-      );
-      const listOut = listTravelPlansForView(updated, { includeArchived: true, lang: ctx.lang, nowMs });
-      let createdPlan = createdTripId ? findTravelPlanByTripId(listOut.plans, createdTripId) : null;
-      if (!createdPlan) {
-        createdPlan =
-          (Array.isArray(listOut.plans) ? listOut.plans : []).find(
-            (plan) =>
-              String((plan && plan.destination) || '').trim() === String(parsed.data.destination || '').trim() &&
-              String((plan && plan.start_date) || '').trim() === String(parsed.data.start_date || '').trim() &&
-              String((plan && plan.end_date) || '').trim() === String(parsed.data.end_date || '').trim(),
-          ) || null;
-      }
-      if (!createdPlan && Array.isArray(listOut.plans) && listOut.plans.length > 0) {
-        createdPlan = listOut.plans[0];
-      }
-
-      return res.status(200).json({ plan: createdPlan || null, summary: listOut.summary });
-    } catch (err) {
-      const fail = toTravelPlansStorageError(err);
-      logger?.warn?.(
-        {
-          err: err && err.message ? err.message : String(err),
-          code: err && err.code ? err.code : null,
-          status: fail.status,
-          request_id: ctx.request_id,
-          trace_id: ctx.trace_id,
-        },
-        'travel plans create failed',
-      );
-      return res.status(fail.status).json(fail.body);
-    }
-  });
-
-  app.patch('/v1/travel-plans/:trip_id', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const tripId = String((req && req.params && req.params.trip_id) || '').trim();
-      if (!tripId) return res.status(400).json({ error: 'BAD_REQUEST' });
-
-      const parsed = TravelPlanUpdateSchema.safeParse(req.body || {});
-      if (!parsed.success) {
-        return res.status(400).json({ error: 'BAD_REQUEST', details: parsed.error.format() });
-      }
-
-      const nowMs = Date.now();
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-      const baseProfile = profile && typeof profile === 'object' ? profile : {};
-      const state = resolveTravelPlansState(baseProfile, { nowMs });
-      const existing = findTravelPlanByTripId(state.travel_plans, tripId);
-      if (!existing) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
-
-      const mergedPlan = {
-        ...existing,
-        ...parsed.data,
-        trip_id: existing.trip_id,
-        created_at_ms: Number(existing.created_at_ms || nowMs),
-        updated_at_ms: nowMs,
-      };
-      if (!isTravelDateRangeValid(mergedPlan.start_date, mergedPlan.end_date)) {
-        return res.status(400).json({ error: 'BAD_REQUEST', details: { date_range: 'start_date_must_be_before_or_equal_end_date' } });
-      }
-      if (parsed.data.is_archived === true) {
-        mergedPlan.is_archived = true;
-        mergedPlan.archived_at_ms = Math.max(Number(existing.archived_at_ms || 0), nowMs);
-      } else if (parsed.data.is_archived === false) {
-        mergedPlan.is_archived = false;
-        delete mergedPlan.archived_at_ms;
-      }
-
-      const normalizedPatch = normalizeTravelProfilePatch({
-        baseProfile,
-        patch: { travel_plans: [mergedPlan] },
-        options: { nowMs },
-      });
-      const updated = await upsertProfileForIdentity(
-        { auroraUid: identity.auroraUid, userId: identity.userId },
-        normalizedPatch,
-      );
-      const listOut = listTravelPlansForView(updated, { includeArchived: true, lang: ctx.lang, nowMs });
-      const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
-      if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
-
-      return res.status(200).json({ plan: nextPlan, summary: listOut.summary });
-    } catch (err) {
-      const fail = toTravelPlansStorageError(err);
-      logger?.warn?.(
-        {
-          err: err && err.message ? err.message : String(err),
-          code: err && err.code ? err.code : null,
-          status: fail.status,
-          request_id: ctx.request_id,
-          trace_id: ctx.trace_id,
-        },
-        'travel plans patch failed',
-      );
-      return res.status(fail.status).json(fail.body);
-    }
-  });
-
-  app.post('/v1/travel-plans/:trip_id/archive', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const tripId = String((req && req.params && req.params.trip_id) || '').trim();
-      if (!tripId) return res.status(400).json({ error: 'BAD_REQUEST' });
-
-      const nowMs = Date.now();
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-      const baseProfile = profile && typeof profile === 'object' ? profile : {};
-      const state = resolveTravelPlansState(baseProfile, { nowMs });
-      const existing = findTravelPlanByTripId(state.travel_plans, tripId);
-      if (!existing) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
-
-      const archivedPlan = {
-        ...existing,
-        trip_id: existing.trip_id,
-        is_archived: true,
-        archived_at_ms: Math.max(Number(existing.archived_at_ms || 0), nowMs),
-        updated_at_ms: nowMs,
-      };
-
-      const normalizedPatch = normalizeTravelProfilePatch({
-        baseProfile,
-        patch: { travel_plans: [archivedPlan] },
-        options: { nowMs },
-      });
-      const updated = await upsertProfileForIdentity(
-        { auroraUid: identity.auroraUid, userId: identity.userId },
-        normalizedPatch,
-      );
-      const listOut = listTravelPlansForView(updated, { includeArchived: true, lang: ctx.lang, nowMs });
-      const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
-      if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
-
-      return res.status(200).json({ plan: nextPlan, summary: listOut.summary });
-    } catch (err) {
-      const fail = toTravelPlansStorageError(err);
-      logger?.warn?.(
-        {
-          err: err && err.message ? err.message : String(err),
-          code: err && err.code ? err.code : null,
-          status: fail.status,
-          request_id: ctx.request_id,
-          trace_id: ctx.trace_id,
-        },
-        'travel plans archive failed',
-      );
-      return res.status(fail.status).json(fail.body);
     }
   });
 
@@ -43516,7 +43261,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
-        travel_llm_calibration_v1: Boolean(effectiveChatFlags.travel_llm_calibration_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       },
@@ -43618,7 +43362,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
-        travel_llm_calibration_v1: Boolean(effectiveChatFlags.travel_llm_calibration_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       };
@@ -44214,6 +43957,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         guardrailResult && guardrailResult.envelope && typeof guardrailResult.envelope === 'object'
           ? { ...guardrailResult.envelope }
           : envelopeWithContract;
+      if (envelopeWithGuardrails && typeof envelopeWithGuardrails === 'object' && !Array.isArray(envelopeWithGuardrails)) {
+        const currentCards = Array.isArray(envelopeWithGuardrails.cards) ? envelopeWithGuardrails.cards : [];
+        const suppressedCards = suppressAnalysisCardsForTravelEnvTurn(currentCards, {
+          canonicalIntent: policyMeta.intent_canonical || canonicalIntentForResponse.intent,
+        });
+        if (suppressedCards.length !== currentCards.length) {
+          envelopeWithGuardrails.cards = suppressedCards;
+        }
+      }
       if (guardrailResult && (guardrailResult.dropped > 0 || guardrailResult.externalized > 0)) {
         const events = Array.isArray(envelopeWithGuardrails.events) ? envelopeWithGuardrails.events.slice(0, 96) : [];
         events.push(
@@ -46201,7 +45953,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           INGREDIENT_ROUTE_V2_ENABLED &&
           !INGREDIENT_LEGACY_PATH_ENABLED &&
           AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
-          INGREDIENT_REPORT_HYBRID_ENABLED &&
           !rateLimit.blocked
         ) {
           const profileSummaryForResearch =
@@ -46264,11 +46015,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
         }
 
-        const shouldQueueResearch =
-          !readyAfterSync &&
-          !INGREDIENT_KB_ONLY_MODE &&
-          AURORA_INGREDIENT_LLM_REPORT_ENABLED &&
-          INGREDIENT_REPORT_HYBRID_ENABLED;
+        const shouldQueueResearch = !readyAfterSync && !INGREDIENT_KB_ONLY_MODE && AURORA_INGREDIENT_LLM_REPORT_ENABLED;
         const researchJob = shouldQueueResearch
           ? enqueueIngredientResearchJob({
             query: target,
@@ -46298,19 +46045,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             research_error_code: resolvedResearch && (resolvedResearch.error_code || resolvedResearch.error),
           },
         });
-        const reportState = asResearchObject(reportPayload && reportPayload.report_state) || {};
-        const reportMode = String(reportState.mode || '').trim().toLowerCase() || 'deterministic';
-        const reportStatus = String(reportState.status || '').trim().toLowerCase() || 'partial';
-        const reportReasonCode = String(reportState.reason_code || '').trim().toLowerCase() || 'none';
-        const genericFallback = reportMode === 'deterministic' && reportReasonCode === 'none' && !String(reportState.family_key || '').trim();
-        recordIngredientReportMetric({
-          mode: reportMode,
-          status: reportStatus,
-          reasonCode: reportReasonCode,
-          pending: reportStatus === 'pending',
-          genericFallback,
-          fingerprint: buildIngredientReportFingerprint(reportPayload),
-        });
         const ingredientName = pickFirstTrimmed(
           reportPayload && reportPayload.ingredient && reportPayload.ingredient.display_name,
           reportPayload && reportPayload.ingredient && reportPayload.ingredient.inci,
@@ -46318,10 +46052,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         ) || target;
         const assistantText =
           ctx.lang === 'CN'
-            ? reportStatus === 'pending'
+            ? reportPayload.research_status === 'queued'
               ? `已先返回 ${ingredientName} 的快速结论，增强证据生成中。`
               : `已为你生成 ${ingredientName} 的 1-minute 成分报告。`
-            : reportStatus === 'pending'
+            : reportPayload.research_status === 'queued'
               ? `Returning a quick brief for ${ingredientName}; enhanced evidence is generating.`
               : `I generated a 1-minute ingredient report for ${ingredientName}.`;
         let sessionPatch = attachIngredientRouteMetaToSessionPatch(
@@ -47186,44 +46920,24 @@ function mountAuroraBffRoutes(app, { logger }) {
         let advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
         policyMeta.env_source = 'local_template';
         policyMeta.degraded = true;
-        const profileTravelPlan =
+        const travelPlanForSkills =
           profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
             ? profile.travel_plan
-            : Array.isArray(profile && profile.travel_plans)
-              ? (profile.travel_plans.find((item) => item && typeof item === 'object' && !Array.isArray(item)) || null)
-              : null;
-        const canonicalEntities =
+            : null;
+        const canonicalTravelEntities =
           canonicalIntent && canonicalIntent.entities && typeof canonicalIntent.entities === 'object'
             ? canonicalIntent.entities
             : {};
-        const destination =
-          (profileTravelPlan && typeof profileTravelPlan.destination === 'string' && profileTravelPlan.destination.trim()) ||
-          (typeof canonicalEntities.destination === 'string' && canonicalEntities.destination.trim()) ||
-          '';
-        const startDate =
-          (profileTravelPlan && typeof profileTravelPlan.start_date === 'string' && profileTravelPlan.start_date.trim()) ||
-          (canonicalEntities.date_range &&
-          typeof canonicalEntities.date_range === 'object' &&
-          typeof canonicalEntities.date_range.start === 'string'
-            ? canonicalEntities.date_range.start
-            : '');
-        const endDate =
-          (profileTravelPlan && typeof profileTravelPlan.end_date === 'string' && profileTravelPlan.end_date.trim()) ||
-          (canonicalEntities.date_range &&
-          typeof canonicalEntities.date_range === 'object' &&
-          typeof canonicalEntities.date_range.end === 'string'
-            ? canonicalEntities.date_range.end
-            : '');
-        const missingTravelFields = [];
-        if (!destination) missingTravelFields.push('travel_plan.destination');
-        if (!startDate || !endDate) missingTravelFields.push('travel_plan.date_range');
-
-        let travelReadiness = null;
         const hasTravelContextForSkills = Boolean(
           canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
-          destination ||
-          startDate ||
-          endDate,
+          (travelPlanForSkills && String(travelPlanForSkills.destination || '').trim()) ||
+          String(canonicalTravelEntities.destination || '').trim() ||
+          (canonicalTravelEntities.date_range &&
+            typeof canonicalTravelEntities.date_range === 'object' &&
+            (
+              String(canonicalTravelEntities.date_range.start || '').trim() ||
+              String(canonicalTravelEntities.date_range.end || '').trim()
+            )),
         );
         if (hasTravelContextForSkills) {
           let travelPipelineOut = null;
@@ -47293,7 +47007,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ) {
               envStressUi.travel_readiness = travelPipelineOut.travel_readiness;
             }
-            travelReadiness =
+            const travelReadiness =
               envStressUi &&
               typeof envStressUi.travel_readiness === 'object' &&
               !Array.isArray(envStressUi.travel_readiness)
@@ -47387,7 +47101,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               sessionMeta.travel_followup = travelPipelineOut.travel_followup_state;
             }
             sessionPatch.meta = sessionMeta;
-            appendLastTravelReadinessToSessionPatch(sessionPatch, travelReadiness);
+            if (travelReadiness) {
+              sessionPatch.last_travel_readiness = {
+                destination: travelReadiness.destination_context?.destination || null,
+                start_date: travelReadiness.destination_context?.start_date || null,
+                end_date: travelReadiness.destination_context?.end_date || null,
+                reco_bundle: Array.isArray(travelReadiness.reco_bundle) ? travelReadiness.reco_bundle.slice(0, 5) : [],
+                shopping_preview: travelReadiness.shopping_preview || null,
+              };
+            }
 
             const envelope = buildEnvelope(ctx, {
               assistant_message: makeChatAssistantMessage(advice, 'markdown'),
@@ -47433,43 +47155,34 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         if (effectiveChatFlags.travel_weather_live_v1) {
+          const travelPlan =
+            profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+              ? profile.travel_plan
+              : null;
+          const destination =
+            (travelPlan && typeof travelPlan.destination === 'string' && travelPlan.destination.trim()) ||
+            (canonicalIntent.entities && canonicalIntent.entities.destination) ||
+            '';
+          const startDate =
+            (travelPlan && typeof travelPlan.start_date === 'string' && travelPlan.start_date.trim()) ||
+            (canonicalIntent.entities &&
+            canonicalIntent.entities.date_range &&
+            typeof canonicalIntent.entities.date_range.start === 'string'
+              ? canonicalIntent.entities.date_range.start
+              : '');
+          const endDate =
+            (travelPlan && typeof travelPlan.end_date === 'string' && travelPlan.end_date.trim()) ||
+            (canonicalIntent.entities &&
+            canonicalIntent.entities.date_range &&
+            typeof canonicalIntent.entities.date_range.end === 'string'
+              ? canonicalIntent.entities.date_range.end
+              : '');
+
           const weather = await getTravelWeather({
             destination,
             startDate,
             endDate,
           });
-          let travelAlerts = [];
-          try {
-            const travelAlertsResult = await getTravelAlerts({
-              destination:
-                (weather &&
-                  weather.location &&
-                  typeof weather.location.name === 'string' &&
-                  weather.location.name.trim()) ||
-                destination,
-              destinationCountry:
-                (weather &&
-                  weather.location &&
-                  ((typeof weather.location.country_code === 'string' && weather.location.country_code.trim()) ||
-                    (typeof weather.location.country === 'string' && weather.location.country.trim()))) ||
-                '',
-              language: ctx.lang,
-              timeoutMs: 1800,
-            });
-            if (
-              travelAlertsResult &&
-              travelAlertsResult.source === 'official_api' &&
-              Array.isArray(travelAlertsResult.alerts)
-            ) {
-              travelAlerts = travelAlertsResult.alerts;
-            }
-          } catch (travelAlertErr) {
-            logger?.warn(
-              { err: travelAlertErr && (travelAlertErr.code || travelAlertErr.message), request_id: ctx.request_id },
-              'aurora bff: travel alerts fetch failed, using no alerts',
-            );
-          }
-
           const epiPayload = buildEpiPayload({
             weather,
             profile,
@@ -47479,168 +47192,90 @@ function mountAuroraBffRoutes(app, { logger }) {
           policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
           policyMeta.degraded = policyMeta.env_source !== 'weather_api';
 
-          const homeWeatherForReadiness =
-            profile && typeof profile.home_weather === 'object' && !Array.isArray(profile.home_weather)
-              ? profile.home_weather
-              : null;
-          travelReadiness = buildTravelReadiness({
-            language: ctx.lang,
-            profile,
-            recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
-            destination,
-            startDate,
-            endDate,
-            destinationWeather: weather,
-            homeWeather: homeWeatherForReadiness,
-            travelAlerts,
-            epiPayload,
-            recommendationCandidates: [],
-          });
-
-          if (effectiveChatFlags.travel_llm_calibration_v1) {
-            try {
-              const calibrationResult = await calibrateTravelReadinessWithLlm({
-                openaiClient: getOpenAIClient(),
-                language: ctx.lang,
-                travelLlmInput: {
-                  destination,
-                  start_date: startDate,
-                  end_date: endDate,
-                  weather_summary: weather && weather.summary,
-                  profile_summary: {
-                    skinType: profile && profile.skinType,
-                    sensitivity: profile && profile.sensitivity,
-                    barrierStatus: profile && profile.barrierStatus,
-                    goals: profile && profile.goals,
-                  },
-                },
-                baseTravelReadiness: travelReadiness,
-                timeoutMs: 2500,
-                logger,
-              });
-              if (calibrationResult && calibrationResult.used && calibrationResult.travel_readiness) {
-                travelReadiness = calibrationResult.travel_readiness;
-              }
-            } catch (calibErr) {
-              logger?.warn(
-                { err: calibErr && (calibErr.code || calibErr.message), request_id: ctx.request_id },
-                'aurora bff: travel llm calibration failed, using base readiness',
-              );
-            }
-          }
-
-          const travelReply = composeTravelReply({
-            message,
-            language: ctx.lang,
-            travelReadiness,
-            destination,
-            homeRegion: (profile && profile.region) || '',
-            envSource: epiPayload.env_source,
-          });
-
-          if (isPlainObject(travelReadiness) && isPlainObject(travelReply.structured_sections)) {
-            travelReadiness = {
-              ...travelReadiness,
-              structured_sections: travelReply.structured_sections,
-            };
-          }
-
           const localEss = Number(envStressUi && envStressUi.ess);
-          const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-            ? travelReadiness.delta_vs_home
-            : {};
-          const weatherSummary = isPlainObject(weather && weather.summary) ? weather.summary : {};
-          const weatherDrivers = uniqueStrings(
-            [
-              Number.isFinite(Number(weatherSummary.temperature_max_c)) ? `Temp: ${Math.round(Number(weatherSummary.temperature_max_c) * 10) / 10}°C` : '',
-              Number.isFinite(Number(weatherSummary.humidity_mean)) ? `Humidity: ${Math.round(Number(weatherSummary.humidity_mean) * 10) / 10}%` : '',
-              Number.isFinite(Number(weatherSummary.wind_kph_max)) ? `Wind: ${Math.round(Number(weatherSummary.wind_kph_max) * 10) / 10} kph` : '',
-            ],
-            3,
-          );
-          const uvDrivers = uniqueStrings(
-            [
-              Number.isFinite(Number(weatherSummary.uv_index_max))
-                ? `UV index: ${Math.round(Number(weatherSummary.uv_index_max) * 10) / 10}`
-                : '',
-              Array.isArray(delta.summary_tags) && delta.summary_tags.includes('higher_uv')
-                ? 'Higher UV vs home'
-                : '',
-            ],
-            2,
-          );
-          const barrierDrivers = uniqueStrings(
-            [
-              Array.isArray(delta.summary_tags) && delta.summary_tags.includes('drier')
-                ? 'Drier than home'
-                : '',
-              Array.isArray(delta.summary_tags) && delta.summary_tags.includes('colder')
-                ? 'Colder than home'
-                : '',
-              normalizeText(profile && profile.barrierStatus, 40)
-                ? `Barrier: ${normalizeText(profile && profile.barrierStatus, 40)}`
-                : '',
-            ],
-            3,
-          );
-          const radarWithDrivers = (Array.isArray(envStressUi && envStressUi.radar) ? envStressUi.radar : []).map((row) => {
-            if (!isPlainObject(row)) return row;
-            const axis = String(row.axis || '').trim().toLowerCase();
-            if (axis === 'weather') return { ...row, drivers: weatherDrivers };
-            if (axis === 'uv') return { ...row, drivers: uvDrivers };
-            if (axis === 'barrier') return { ...row, drivers: barrierDrivers };
-            return row;
+          const fusedEss = Number.isFinite(localEss) ? localEss : epiPayload.epi;
+          const fusedTier = normalizeEnvStressTier(envStressUi && envStressUi.tier, fusedEss);
+          const epiRadar = buildEpiRadarRows({ language: ctx.lang, epiPayload, weather });
+          const travelReadiness = buildTravelReadinessFromEpi({
+            language: ctx.lang,
+            tier: fusedTier,
+            ess: fusedEss,
+            epiPayload,
+            weather,
           });
-
           envStressUi = {
             ...(envStressUi || {}),
-            ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
+            ess: fusedEss,
+            tier: fusedTier,
+            tier_description: buildEnvStressTierDescription({ language: ctx.lang, tier: fusedTier, ess: fusedEss }),
+            radar: epiRadar.length ? epiRadar : Array.isArray(envStressUi && envStressUi.radar) ? envStressUi.radar : [],
+            travel_readiness: travelReadiness,
             epi: epiPayload.epi,
             components: epiPayload.components,
             reco_weights: epiPayload.reco_weights,
             env_source: epiPayload.env_source,
             travel_context: weather.date_range || null,
-            travel_readiness: travelReadiness,
-            tier_description:
-              normalizeText(envStressUi && envStressUi.tier_description, 220) ||
-              (ctx.lang === 'CN'
-                ? '环境压力越高，越需要加强屏障修护与防晒。'
-                : 'Higher environment stress means more barrier support and sun protection are needed.'),
-            radar: radarWithDrivers,
           };
-          advice = normalizeText(travelReply && travelReply.text_brief, 1400) || travelReply.text || advice;
+
+          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+          const destinationText =
+            weather && weather.location && weather.location.name
+              ? String(weather.location.name)
+              : String(destination || '');
+          const dateHint =
+            weather && weather.date_range && weather.date_range.start
+              ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
+              : '';
+          const epiLinesCn = [
+            `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
+            destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
+            '建议（AM）：',
+            ...epiPayload.strategy.am.map((line) => `- ${line}`),
+            '建议（PM）：',
+            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+          ].filter(Boolean);
+          const epiLinesEn = [
+            `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
+            destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
+            'AM strategy:',
+            ...epiPayload.strategy.am.map((line) => `- ${line}`),
+            'PM strategy:',
+            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+          ].filter(Boolean);
+          advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
           if (safetyText) advice = `${safetyText}\n\n${advice}`;
         }
 
-        const plannerMissing =
+        if (
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED &&
           plannerDecision &&
           Array.isArray(plannerDecision.required_fields) &&
           plannerDecision.required_fields.length > 0
-            ? plannerDecision.required_fields
-            : [];
-        const missingUnion = new Set([...missingTravelFields, ...plannerMissing]);
-        const asksDestination = missingUnion.has('travel_plan.destination');
-        const asksDates =
-          missingUnion.has('travel_plan.date_range') ||
-          missingUnion.has('travel_plan.start_date') ||
-          missingUnion.has('travel_plan.end_date');
-        if (asksDestination || asksDates) {
+        ) {
+          const missing = plannerDecision.required_fields;
+          const asksDestination = missing.includes('travel_plan.destination');
+          const asksDates = missing.includes('travel_plan.start_date') || missing.includes('travel_plan.end_date');
           const followup =
             ctx.lang === 'CN'
               ? asksDestination && asksDates
                 ? '补充一下目的地和出行日期，我可以把策略细化到行程窗口。'
                 : asksDestination
                   ? '补充一下目的地，我可以把策略细化到当地环境。'
-                  : '补充一下出行日期，我可以按行程窗口细化策略。'
+                  : asksDates
+                    ? '补充一下出行日期，我可以按行程窗口细化策略。'
+                    : '补充一个旅行细节，我可以继续细化。'
               : asksDestination && asksDates
                 ? 'Share destination + travel dates and I can refine this to your trip window.'
                 : asksDestination
                   ? 'Share your destination and I can tune this to local conditions.'
-                  : 'Share travel dates and I can tune this to your trip window.';
+                  : asksDates
+                    ? 'Share travel dates and I can tune this to your trip window.'
+                    : 'Share one extra travel detail and I can refine this further.';
           advice = `${advice}\n\n${followup}`;
         }
 
@@ -47688,16 +47323,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         ];
 
-        const sessionPatch =
-          nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
-        appendLastTravelReadinessToSessionPatch(sessionPatch, travelReadiness);
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
           cards: envStressUi
             ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
             : [],
-          session_patch: sessionPatch,
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
           events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
         });
         return sendChatEnvelope(envelope);
@@ -47877,18 +47510,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               chip_id: 'chip.intake.upload_photos',
               label: lang === 'CN' ? '上传照片（更准）' : 'Upload a photo (more accurate)',
               kind: 'quick_reply',
-              data: {
-                action_id: 'chip.intake.upload_photos',
-                client_action: 'open_camera',
-              },
+              data: {},
             },
             {
               chip_id: 'chip.intake.skip_analysis',
               label: lang === 'CN' ? '跳过照片（低置信度）' : 'Skip photo (low confidence)',
               kind: 'quick_reply',
-              data: {
-                action_id: 'chip.intake.skip_analysis',
-              },
+              data: {},
             },
             {
               chip_id: 'chip_keep_chatting',
@@ -48465,6 +48093,9 @@ function mountAuroraBffRoutes(app, { logger }) {
                   )) || [],
                 8,
               ),
+              product_candidates: Array.isArray(
+                ingredientActionData && (ingredientActionData.product_candidates || ingredientActionData.productCandidates),
+              ) ? (ingredientActionData.product_candidates || ingredientActionData.productCandidates).slice(0, 12) : [],
               sensitivity: pickFirstTrimmed(
                 ingredientActionData && ingredientActionData.ingredient_sensitivity,
                 ingredientActionData && ingredientActionData.ingredientSensitivity,
@@ -48496,6 +48127,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         const recoContextSensitivity = pickFirstTrimmed(
           recoIngredientContext && (recoIngredientContext.sensitivity || recoIngredientContext.ingredient_sensitivity),
         );
+        const recoIngredientCandidates = Array.isArray(recoIngredientContext?.candidates) ? recoIngredientContext.candidates : [];
+        const recoProductCandidates = Array.isArray(
+          ingredientActionData?.product_candidates || ingredientActionData?.productCandidates,
+        ) ? (ingredientActionData.product_candidates || ingredientActionData.productCandidates) : [];
+        const recoTaskMode = ingredientRecoOptInRequested
+          ? (recoProductCandidates.length > 0
+            ? 'ingredient_filtered_products'
+            : recoIngredientCandidates.length > 0
+              ? 'ingredient_filtered_products'
+              : 'ingredient_lookup_no_candidates')
+          : 'goal_based_products';
         recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
         recordAuroraRecoEntrySource({ source: recoEntrySourceDetail });
         const recoSafetyGate = resolveSafetyGateActionV2({
@@ -48917,6 +48559,52 @@ function mountAuroraBffRoutes(app, { logger }) {
             ]);
           }
         }
+        if (recoTaskMode === 'ingredient_lookup_no_candidates' && isPlainObject(norm?.payload)) {
+          norm.payload = {
+            ...norm.payload,
+            recommendations: [],
+            products_empty_reason: norm.payload.products_empty_reason || 'ingredient_no_verified_candidates',
+            recommendation_confidence_score: 0,
+            recommendation_confidence_level: 'low',
+            task_mode: recoTaskMode,
+            empty_match_actions: [
+              {
+                action_id: 'broaden_to_goal',
+                label: ctx.lang === 'CN' ? '扩展到目标推荐' : 'Broaden to goal-based products',
+              },
+              {
+                action_id: 'check_product_inci',
+                label: ctx.lang === 'CN' ? '查看某产品INCI表' : 'Check a product INCI',
+              },
+              {
+                action_id: 'search_category',
+                label: ctx.lang === 'CN' ? '按品类搜索' : 'Search within a category',
+              },
+            ],
+          };
+          norm.field_missing = mergeFieldMissing(norm.field_missing, [
+            { field: 'payload.recommendations', reason: 'ingredient_no_verified_candidates' },
+          ]);
+        }
+        if (recoTaskMode.startsWith('ingredient_') && isPlainObject(norm?.payload)) {
+          const ingredientQueryForFilter = ingredient_query_normalize(recoContextIngredientQuery || '');
+          if (ingredientQueryForFilter && isPlainObject(norm.payload.evidence) && isPlainObject(norm.payload.evidence.science)) {
+            const rawKeyIngredients = Array.isArray(norm.payload.evidence.science.key_ingredients)
+              ? norm.payload.evidence.science.key_ingredients
+              : [];
+            const filteredKeyIngredients = rawKeyIngredients.filter((item) => {
+              const lower = String(item || '').trim().toLowerCase();
+              return lower.includes(ingredientQueryForFilter) || ingredientQueryForFilter.includes(lower);
+            });
+            norm.payload.evidence.science.key_ingredients = filteredKeyIngredients;
+          }
+          norm.payload.ingredient_evidence = {
+            query: recoContextIngredientQuery || '',
+            task_mode: recoTaskMode,
+            ingredient_candidates: recoIngredientCandidates,
+            product_candidates_count: recoProductCandidates.length,
+          };
+        }
         if (llmPrimaryUsed && isPlainObject(norm?.payload)) {
           norm.payload = {
             ...norm.payload,
@@ -48956,45 +48644,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             if (matcherHandle && typeof matcherHandle.unref === 'function') matcherHandle.unref();
           }
         }
-        let hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
+        const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
           ? norm.payload.recommendations.length > 0
           : false;
-        let usedTravelFallback = false;
-        let travelFallbackReadiness = null;
-        if (!hasRecs) {
-          const lastTravelReadiness = extractLastTravelReadinessFromSession(parsed.data.session);
-          const travelFallbackPayload = buildTravelFallbackRecoPayload({
-            travelReadiness: lastTravelReadiness,
-            language: ctx.lang,
-          });
-          if (isPlainObject(travelFallbackPayload)) {
-            const preservedFieldMissing = Array.isArray(norm?.field_missing) ? norm.field_missing : [];
-            norm = {
-              payload: {
-                ...travelFallbackPayload,
-                intent: 'reco_products',
-                profile: summarizeProfileForContext(profile),
-              },
-              field_missing: preservedFieldMissing,
-            };
-            hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
-            if (hasRecs) {
-              usedTravelFallback = true;
-              travelFallbackReadiness = lastTravelReadiness;
-              recoSource = 'travel_context_fallback';
-              recoTimeoutDegraded = false;
-              logger?.info(
-                {
-                  request_id: ctx.request_id,
-                  trace_id: ctx.trace_id,
-                  recommendations_count: norm.payload.recommendations.length,
-                  upstream_failure_code: upstreamFailureCode || null,
-                },
-                'aurora bff: recommendations fallback generated from travel context',
-              );
-            }
-          }
-        }
         if (!hasRecs && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
           recoTimeoutDegraded = true;
         }
@@ -49089,19 +48741,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         let kbWriteStatus = 'skipped';
         let kbQuarantineReasons = [];
         if (isPlainObject(payload)) {
-          payload.recommendation_confidence_level = artifactConfidenceLevel;
-          if (artifactConfidenceScore != null) payload.recommendation_confidence_score = artifactConfidenceScore;
+          const noCandidatesMode =
+            recoTaskMode === 'ingredient_lookup_no_candidates'
+            || String(payload.products_empty_reason || '').trim() === 'ingredient_no_verified_candidates';
+          payload.recommendation_confidence_level = noCandidatesMode ? 'low' : artifactConfidenceLevel;
+          if (noCandidatesMode) {
+            payload.recommendation_confidence_score = 0;
+          } else if (artifactConfidenceScore != null) {
+            payload.recommendation_confidence_score = artifactConfidenceScore;
+          }
           payload.source = String(payload.source || '').trim() || recoSource;
           const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
           payload.recommendation_meta = {
             ...metaExisting,
-            source_mode: usedTravelFallback
-              ? 'travel_context_fallback'
-              : llmPrimaryUsed
-                ? 'llm_primary'
-                : matcherFallbackUsed
-                  ? 'artifact_matcher'
-                  : 'rules_only',
+            task_mode: recoTaskMode,
+            source_mode: llmPrimaryUsed ? 'llm_primary' : matcherFallbackUsed ? 'artifact_matcher' : 'rules_only',
             trigger_source: normalizeRecoSourceDetail(recoEntrySourceDetail),
             recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
@@ -49125,21 +48779,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         const recoUnavailableLead = ctx.lang === 'CN'
           ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
           : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
-        const travelFallbackLead = ctx.lang === 'CN'
-          ? '我已基于你最近一次旅行环境上下文先给出可执行的购买建议。'
-          : 'I generated actionable product picks from your latest travel environment context.';
 
         const assistantTextRaw = hasRecs
-          ? (usedTravelFallback
-            ? (recoAssistantBase
-              ? `${travelFallbackLead}\n\n${recoAssistantBase}`
-              : travelFallbackLead)
-            : (recoAssistantBase ||
-              (ctx.lang === 'CN'
-                ? profileScore >= 3
-                  ? '我已经把核心结果整理成结构化卡片（见下方）。'
-                  : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
-                : 'I summarized the key results into structured cards below.')))
+          ? (recoAssistantBase ||
+            (ctx.lang === 'CN'
+              ? profileScore >= 3
+                ? '我已经把核心结果整理成结构化卡片（见下方）。'
+                : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
+              : 'I summarized the key results into structured cards below.'))
           : (recoAssistantBase
             ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
             : (ctx.lang === 'CN'
@@ -49159,6 +48806,28 @@ function mountAuroraBffRoutes(app, { logger }) {
           seed: ctx.request_id,
         });
         const finalAssistantText = [safetyWarnText, assistantText, refinementTail].filter(Boolean).join('\n\n');
+
+        if (recoTaskMode.startsWith('ingredient_')) {
+          logger?.info(
+            {
+              kind: 'metric',
+              name: 'aurora.ingredient_reco.flow_summary',
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              task_mode: recoTaskMode,
+              ingredient_query: recoContextIngredientQuery || null,
+              ingredient_candidates_count: recoIngredientCandidates.length,
+              product_candidates_count: recoProductCandidates.length,
+              constraint_match_summary: isPlainObject(payload) ? payload.constraint_match_summary : null,
+              products_empty_reason: isPlainObject(payload) ? payload.products_empty_reason : null,
+              recommendations_count: isPlainObject(payload) && Array.isArray(payload.recommendations) ? payload.recommendations.length : 0,
+              matcher_pending: isPlainObject(payload) && isPlainObject(payload.metadata) ? payload.metadata.matcher_check_result?.pending : null,
+              confidence_score: isPlainObject(payload) ? payload.recommendation_confidence_score : null,
+              confidence_level: isPlainObject(payload) ? payload.recommendation_confidence_level : null,
+            },
+            'aurora bff: ingredient reco flow summary',
+          );
+        }
 
         const cards = [
           {
@@ -49195,17 +48864,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           };
         }
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
-        appendLatestRecoContextToSessionPatch(sessionPatch, {
-          intent: 'reco_products',
-          source_detail: recoEntrySourceDetail,
-          trigger_source: ctx.trigger_source,
-          action_id: actionId || '',
-          message: recoRequestMessage,
-          include_alternatives: includeAlternatives === true,
-          ingredient_query: recoContextIngredientQuery || '',
-          goal: recoContextGoal || '',
-        });
-        appendLastTravelReadinessToSessionPatch(sessionPatch, travelFallbackReadiness);
+          appendLatestRecoContextToSessionPatch(sessionPatch, {
+            intent: 'reco_products',
+            source_detail: recoEntrySourceDetail,
+            trigger_source: ctx.trigger_source,
+            action_id: actionId || '',
+            message: recoRequestMessage,
+            include_alternatives: includeAlternatives === true,
+            ingredient_query: recoContextIngredientQuery || '',
+            goal: recoContextGoal || '',
+          });
 
         const baseRecoRunContext = {
           request_id: ctx.request_id,
@@ -49323,8 +48991,6 @@ function mountAuroraBffRoutes(app, { logger }) {
               confidence_level: artifactConfidenceLevel,
               ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
               ...(llmFailureClass ? { failure_class: llmFailureClass } : {}),
-              ...(usedTravelFallback ? { fallback_from: 'travel_context' } : {}),
-              ...((usedTravelFallback && upstreamFailureCode) ? { upstream_failure_code: upstreamFailureCode } : {}),
               kb_write_status: kbWriteStatus,
               ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
               ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
@@ -50648,6 +50314,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           ctx.lang === 'CN'
             ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
             : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+      }
+
+      const travelSuppressedCards = suppressAnalysisCardsForTravelEnvTurn(assembledCards, {
+        canonicalIntent: canonicalIntent && canonicalIntent.intent,
+      });
+      if (travelSuppressedCards.length !== assembledCards.length) {
+        assembledCards.length = 0;
+        assembledCards.push(...travelSuppressedCards);
       }
 
       const pendingForTemplate =

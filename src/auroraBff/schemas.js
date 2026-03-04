@@ -116,6 +116,8 @@ const AnalysisMetaSchema = z
     llm_report_called: z.boolean(),
     artifact_usable: z.boolean(),
     degrade_reason: z.string().min(1).nullable().optional(),
+    vision_failure_reason: z.string().min(1).nullable().optional(),
+    report_failure_reason: z.string().min(1).nullable().optional(),
   })
   .passthrough();
 
