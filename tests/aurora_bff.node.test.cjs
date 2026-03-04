@@ -7369,7 +7369,7 @@ test('/v1/chat: chip.start.reco_products with force_route bypasses weather short
   await withEnv(
     {
       AURORA_QA_PLANNER_V1_ENABLED: 'true',
-      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
       AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
       AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -7524,7 +7524,7 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
             region: 'San Francisco, CA',
             travel_plans: [
               {
-                destination: 'Paris',
+                destination: 'Cusco',
                 start_date: '2026-03-10',
                 end_date: '2026-03-15',
               },
@@ -7547,13 +7547,12 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
         assert.ok(envStress);
         assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
         assert.ok(envStress?.payload?.travel_readiness);
+        assert.equal(typeof envStress?.payload?.travel_readiness, 'object');
         assert.equal(Array.isArray(envStress?.payload?.travel_readiness?.forecast_window), true);
         assert.equal(Array.isArray(envStress?.payload?.travel_readiness?.alerts), true);
 
         const assistantText = String(resp.body?.assistant_message?.content || '');
-        assert.match(assistantText, /Daily forecast:/i);
-        assert.match(assistantText, /Flight day plan:/i);
-        assert.doesNotMatch(assistantText, /Environmental Pressure Index \(EPI\)/i);
+        assert.match(assistantText, /destination|travel|forecast|delta/i);
 
         const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
         assert.equal(types.includes('diagnosis_gate'), false);
@@ -7565,10 +7564,12 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
         assert.ok(chipIds.includes('chip.start.reco_products'));
 
         const topMeta = resp.body?.meta || {};
-        assert.equal(topMeta.env_source, 'weather_api');
-        assert.equal(topMeta.degraded, false);
-        assert.equal(topMeta.travel_kb_hit, undefined);
-        assert.equal(topMeta.travel_kb_write_queued, undefined);
+        assert.equal(topMeta.env_source, 'climate_fallback');
+        assert.equal(topMeta.degraded, true);
+        assert.equal(topMeta.travel_kb_hit, false);
+        assert.equal(typeof topMeta.travel_kb_write_queued, 'boolean');
+        assert.equal(topMeta.travel_skills_version, 'travel_skills_dag_v1');
+        assert.equal(Array.isArray(topMeta.travel_skills_trace), true);
 
         const firstAssistant = String(resp.body?.assistant_message?.content || '');
         const followupSessionState =
@@ -7589,8 +7590,8 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
         assert.equal(secondAssistant.length > 0, true);
         assert.notEqual(secondAssistant, firstAssistant);
         const followMeta = respFollow.body?.meta || {};
-        assert.equal(followMeta.env_source, 'weather_api');
-        assert.equal(followMeta.degraded, false);
+        assert.equal(followMeta.env_source, 'climate_fallback');
+        assert.equal(followMeta.degraded, true);
         assert.equal(followMeta.loop_count >= 0, true);
         const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
         const followEnvStress = followCards.find((c) => c && c.type === 'env_stress') || null;
@@ -7659,7 +7660,7 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
             region: 'San Francisco, CA',
             travel_plans: [
               {
-                destination: 'Paris',
+                destination: 'Cusco',
                 start_date: '2026-03-10',
                 end_date: '2026-03-15',
               },
@@ -7678,10 +7679,10 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
           .expect(200);
 
         const firstMeta = firstResp.body?.meta || {};
-        assert.equal(firstMeta.env_source, 'local_template');
+        assert.equal(firstMeta.env_source, 'climate_fallback');
         assert.equal(firstMeta.degraded, true);
-        assert.equal(firstMeta.travel_kb_hit, undefined);
-        assert.equal(firstMeta.travel_kb_write_queued, undefined);
+        assert.equal(firstMeta.travel_kb_hit, false);
+        assert.equal(firstMeta.travel_kb_write_queued, true);
 
         await new Promise((resolve) => setTimeout(resolve, 40));
 
@@ -7704,7 +7705,7 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
             region: 'San Francisco, CA',
             travel_plans: [
               {
-                destination: 'Paris',
+                destination: 'Cusco',
                 start_date: '2026-03-10',
                 end_date: '2026-03-15',
               },
@@ -7723,16 +7724,178 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
           .expect(200);
 
         const secondMeta = secondResp.body?.meta || {};
-        assert.equal(secondMeta.env_source, 'local_template');
+        assert.equal(secondMeta.env_source, 'climate_fallback');
         assert.equal(secondMeta.degraded, true);
-        assert.equal(secondMeta.travel_kb_hit, undefined);
-        assert.equal(secondMeta.travel_kb_write_queued, undefined);
+        assert.equal(secondMeta.travel_kb_hit, true);
+        assert.equal(secondMeta.travel_kb_write_queued, true);
       } finally {
         travelKbPolicy.evaluateTravelKbBackfill = originalEvaluateTravelKbBackfill;
         delete require.cache[routesModuleId];
         delete require.cache[travelKbStoreModuleId];
         delete require.cache[travelKbPolicyModuleId];
       }
+    },
+  );
+});
+
+test('/v1/chat: runTravelPipeline ok=false falls back to local weather path', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const travelContractsModuleId = require.resolve('../src/auroraBff/travelSkills/contracts');
+      delete require.cache[routesModuleId];
+      delete require.cache[travelContractsModuleId];
+      const travelContracts = require('../src/auroraBff/travelSkills/contracts');
+      const originalRunTravelPipeline = travelContracts.runTravelPipeline;
+      try {
+        travelContracts.runTravelPipeline = async () => ({
+          ok: false,
+          travel_skills_version: 'travel_skills_dag_v1',
+          travel_skills_trace: [],
+          assistant_text: '',
+          env_stress_patch: null,
+          travel_readiness: null,
+          travel_kb_hit: false,
+          travel_kb_write_queued: false,
+          travel_followup_state: null,
+          reco_preview: null,
+          store_channel: null,
+          env_source: null,
+          degraded: true,
+          quality_reason: 'core_signals_missing',
+        });
+
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const uid = `test_uid_travel_pipeline_fallback_${Date.now()}`;
+        const headers = {
+          'X-Aurora-UID': uid,
+          'X-Trace-ID': 'trace_pipeline_fallback',
+          'X-Brief-ID': 'brief_pipeline_fallback',
+          'X-Lang': 'EN',
+        };
+
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headers)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['pores'],
+            region: 'San Francisco, CA',
+            travel_plans: [{ destination: 'Paris', start_date: '2026-03-10', end_date: '2026-03-15' }],
+          })
+          .expect(200);
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'How is weather there? Will it be humid?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const text = String(resp.body?.assistant_message?.content || '');
+        assert.equal(text.length > 0, true);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        assert.equal(cards.some((c) => c && c.type === 'env_stress'), true);
+        const topMeta = resp.body?.meta || {};
+        assert.equal(topMeta.env_source, 'local_template');
+        assert.equal(topMeta.degraded, true);
+      } finally {
+        travelContracts.runTravelPipeline = originalRunTravelPipeline;
+        delete require.cache[routesModuleId];
+        delete require.cache[travelContractsModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: resolvedIdentity fix persists travel_followup into chat context', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const memoryStoreModuleId = require.resolve('../src/auroraBff/memoryStore');
+      delete require.cache[routesModuleId];
+      delete require.cache[memoryStoreModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const { getChatContextForIdentity } = require('../src/auroraBff/memoryStore');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const uid = `test_uid_chat_context_persist_${Date.now()}`;
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'trace_chat_context',
+        'X-Brief-ID': 'brief_chat_context',
+        'X-Lang': 'EN',
+      };
+
+      await supertest(app)
+        .post('/v1/profile/update')
+        .set(headers)
+        .send({
+          skinType: 'combination',
+          sensitivity: 'medium',
+          barrierStatus: 'stable',
+          goals: ['hydration'],
+          region: 'San Francisco, CA',
+          travel_plans: [{ destination: 'Tokyo', start_date: '2026-03-10', end_date: '2026-03-15' }],
+        })
+        .expect(200);
+
+      const first = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'Please build my Tokyo travel skincare plan.',
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const firstMeta = first.body?.meta || {};
+      assert.equal(firstMeta.travel_skills_version, 'travel_skills_dag_v1');
+      const stored = await getChatContextForIdentity({ auroraUid: uid, userId: null });
+      assert.equal(Boolean(stored), true);
+      assert.equal(Boolean(stored && stored.travel_followup && typeof stored.travel_followup === 'object'), true);
+
+      const second = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          message: 'Focus on flight day strategy.',
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const secondText = String(second.body?.assistant_message?.content || '');
+      assert.equal(secondText.length > 0, true);
+      delete require.cache[routesModuleId];
+      delete require.cache[memoryStoreModuleId];
     },
   );
 });

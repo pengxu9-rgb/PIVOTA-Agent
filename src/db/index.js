@@ -1,6 +1,19 @@
-const { Pool } = require('pg');
-
 let pool = null;
+let poolCtor = null;
+let poolCtorResolved = false;
+
+function getPoolConstructor() {
+  if (poolCtorResolved) return poolCtor;
+  poolCtorResolved = true;
+  try {
+    // Load lazily so local/unit environments without `pg` can still run non-DB paths.
+    const mod = require('pg');
+    poolCtor = mod && typeof mod.Pool === 'function' ? mod.Pool : null;
+  } catch (_err) {
+    poolCtor = null;
+  }
+  return poolCtor;
+}
 
 function shouldUseSsl(databaseUrl) {
   if (process.env.DB_SSL === 'true') return true;
@@ -14,6 +27,8 @@ function shouldUseSsl(databaseUrl) {
 function getPool() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) return null;
+  const Pool = getPoolConstructor();
+  if (!Pool) return null;
   if (!pool) {
     const useSsl = shouldUseSsl(databaseUrl);
     pool = new Pool({
@@ -33,7 +48,7 @@ function getPool() {
 async function query(text, params) {
   const p = getPool();
   if (!p) {
-    const err = new Error('DATABASE_URL not configured');
+    const err = new Error('DATABASE_URL not configured or pg driver unavailable');
     err.code = 'NO_DATABASE';
     throw err;
   }
@@ -43,7 +58,7 @@ async function query(text, params) {
 async function withClient(fn) {
   const p = getPool();
   if (!p) {
-    const err = new Error('DATABASE_URL not configured');
+    const err = new Error('DATABASE_URL not configured or pg driver unavailable');
     err.code = 'NO_DATABASE';
     throw err;
   }

@@ -28,6 +28,10 @@ const {
   humanizeLlmReasons,
 } = require('./skinLlmPolicy');
 const {
+  normalizeReportFailureReason,
+  deriveSkinDegradeMeta,
+} = require('./skinDegradeMeta');
+const {
   VisionUnavailabilityReason,
   classifyVisionAvailability,
   classifyVisionProviderFailure,
@@ -119,6 +123,7 @@ const {
   recordAuroraCompBackfillEnqueued,
   recordAuroraCompBackfillDedupDrop,
   observeAuroraCompSnapshotAgeSeconds,
+  recordAuroraTravelEnvCardEmitted,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
 const {
@@ -169,6 +174,9 @@ const {
   upsertProfileForIdentity,
   upsertSkinLogForIdentity,
   getRecentSkinLogsForIdentity,
+  getChatContextForIdentity,
+  upsertChatContextForIdentity,
+  appendExperimentEventForIdentity,
   saveLastAnalysisForIdentity,
   saveShadowVerifyForIdentity,
   appendShadowIdToLastAnalysisForIdentity,
@@ -260,11 +268,11 @@ const { getAuroraKbV0, getAuroraKbFailMode } = require('./kbV0/loader');
 const { resolveQaPlan } = require('./qaPlanner');
 const { BLOCK_LEVEL, evaluateSafety } = require('./safetyEngineV1');
 const { getTravelWeather } = require('./weatherAdapter');
-const { getTravelAlerts } = require('./travelAlertsProvider');
 const { buildEpiPayload } = require('./epiCalculator');
 const { buildTravelReadiness } = require('./travelReadinessBuilder');
 const { composeTravelReply } = require('./travelReplyComposer');
 const { calibrateTravelReadinessWithLlm } = require('./travelLlmCalibrator');
+const { runTravelPipeline } = require('./travelSkills/contracts');
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
@@ -403,16 +411,6 @@ const AURORA_TRAVEL_WEATHER_LIVE_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
-const AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED = (() => {
-  const raw = String(
-    process.env.AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED ||
-      process.env.AURORA_TRAVEL_LLM_CALIBRATION_V1 ||
-      'false',
-  )
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
 const AURORA_LOOP_BREAKER_V2_ENABLED = (() => {
   const raw = String(process.env.AURORA_LOOP_BREAKER_V2_ENABLED || 'false')
     .trim()
@@ -461,7 +459,6 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
   safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
   travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
-  travel_llm_calibration_v1: AURORA_TRAVEL_LLM_CALIBRATION_V1_ENABLED,
   loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
   chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
 });
@@ -14745,11 +14742,37 @@ function buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language
   const weatherScore = scenario === 'snow' || scenario === 'cold' || scenario === 'dry' || scenario === 'wind' ? 70 : scenario === 'rain' || scenario === 'humid' ? 45 : scenario === 'travel' ? 55 : 35;
   const uvScore = scenario === 'uv' || scenario === 'snow' ? 65 : 30;
 
+  const barrierDrivers = [];
+  if (barrier) barrierDrivers.push(lang === 'CN' ? `屏障：${barrier}` : `Barrier: ${barrier}`);
+  if (sensitivity) barrierDrivers.push(lang === 'CN' ? `敏感度：${sensitivity}` : `Sensitivity: ${sensitivity}`);
+  if (!barrierDrivers.length) barrierDrivers.push(lang === 'CN' ? '屏障状态未知' : 'Barrier status unknown');
+
+  const weatherDrivers = [];
+  if (scenario && scenario !== 'unknown') weatherDrivers.push(lang === 'CN' ? `场景：${scenario}` : `Scenario: ${scenario}`);
+  if (!weatherDrivers.length) weatherDrivers.push(lang === 'CN' ? '无具体天气数据' : 'No specific weather data');
+
+  const uvDrivers = [];
+  if (scenario === 'uv') uvDrivers.push(lang === 'CN' ? 'UV 指数偏高' : 'UV index elevated');
+  else if (scenario === 'snow') uvDrivers.push(lang === 'CN' ? '雪面反射增强 UV' : 'Snow reflection boosts UV');
+  else uvDrivers.push(lang === 'CN' ? 'UV 风险基线' : 'Baseline UV risk');
+
   const radar = [
-    { axis: 'Barrier', value: clamp0to100(barrierScore) },
-    { axis: 'Weather', value: clamp0to100(weatherScore) },
-    { axis: 'UV', value: clamp0to100(uvScore) },
+    { axis: 'Barrier', value: clamp0to100(barrierScore), drivers: barrierDrivers },
+    { axis: 'Weather', value: clamp0to100(weatherScore), drivers: weatherDrivers },
+    { axis: 'UV', value: clamp0to100(uvScore), drivers: uvDrivers },
   ];
+
+  const tierDescriptions = {
+    Low: lang === 'CN'
+      ? 'Low：当前环境对皮肤压力较小，保持基础护肤即可。'
+      : 'Low: minimal environment stress — maintain your usual routine.',
+    Medium: lang === 'CN'
+      ? 'Medium：预期轻度干燥/刺激，建议加强保湿 + 每日防晒。'
+      : 'Medium: expect mild dryness/irritation — prioritize moisturizer + daily SPF.',
+    High: lang === 'CN'
+      ? 'High：环境压力较大，需强化屏障修护 + 高倍防晒 + 减少活性。'
+      : 'High: significant stress — reinforce barrier support + high SPF + reduce actives.',
+  };
 
   const missing = [];
   if (!String(profile && profile.sensitivity ? profile.sensitivity : '').trim()) missing.push('profile.sensitivity');
@@ -14766,6 +14789,7 @@ function buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language
     schema_version: 'aurora.ui.env_stress.v1',
     ess,
     tier,
+    tier_description: tierDescriptions[tier] || tierDescriptions.Medium,
     radar,
     notes: notes.slice(0, 4),
   };
@@ -24624,6 +24648,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         let llmInputHash = null;
         let llmInputHashPrefix = null;
         let deterministicFallbackReason = null;
+        let reportModelCalled = false;
+        let reportModelErrored = false;
+        let reportModelErrorReason = null;
 
 	        let diagnosisPhoto = null;
 	        let diagnosisPhotoBytes = null;
@@ -24939,6 +24966,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && reportAvailable) {
+          reportModelCalled = true;
           const deterministicSeedForReportDto =
             userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality
               ? buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language: ctx.lang, profileSummary })
@@ -24984,18 +25012,21 @@ function mountAuroraBffRoutes(app, { logger }) {
             reportLayer = reportResult.layer;
             analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
           } else {
-            const reportFailure = reportResult.reason || 'report_output_invalid';
-            deterministicFallbackReason = deterministicFallbackReason || reportFailure;
+            const reportFailureRaw = reportResult.reason || 'report_output_invalid';
+            const reportFailureReason = normalizeReportFailureReason(reportFailureRaw) || 'UNKNOWN';
+            deterministicFallbackReason = deterministicFallbackReason || reportFailureRaw;
+            reportModelErrored = true;
+            reportModelErrorReason = reportFailureReason;
             if (reportResult.schema_violation) {
               recordAuroraSkinLlmSchemaViolation({
                 stage: 'report',
                 provider: 'gemini',
-                reason: reportFailure,
+                reason: reportFailureReason,
                 inputHashPrefix: llmInputHashPrefix,
               });
             }
-            if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailure}）；我会退回到确定性基线。`);
-            else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
+            if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailureReason}）；我会退回到确定性基线。`);
+            else qualityReportReasons.push(`Report model output was unstable (${reportFailureReason}); falling back to deterministic baseline.`);
           }
         }
         if (!analysis && reportDecision.decision === 'skip' && hasPrimaryInput) {
@@ -25275,6 +25306,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let ingredientPlan = null;
         let recommendationReady = false;
         let latestArtifactId = null;
+        let artifactGate = null;
         if (analysis && AURORA_DIAG_ARTIFACT_ENABLED && persistLastAnalysis) {
           try {
             const artifactCandidate = buildDiagnosisArtifactV1({
@@ -25331,7 +25363,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               recordAuroraSkinFlowMetric({ stage: 'ingredient_plan', hit: Boolean(ingredientPlan) });
             }
 
-            const artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
+            artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
             recommendationReady = Boolean(artifactGate && artifactGate.ok && artifactGate.confidence_level !== 'low');
           } catch (err) {
             logger?.warn(
@@ -25340,6 +25372,24 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
+
+        const visionModelCalled = Boolean(visionRuntime);
+        const degradeMeta = deriveSkinDegradeMeta({
+          renderedAnalysisSource,
+          photoFailureCode,
+          visionDecisionForReport,
+          reportModelErrored,
+          reportModelErrorReason,
+        });
+        const analysisMeta = {
+          detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
+          llm_vision_called: visionModelCalled,
+          llm_report_called: reportModelCalled,
+          artifact_usable: Boolean(artifactGate && artifactGate.ok),
+          ...(degradeMeta.degradeReason ? { degrade_reason: degradeMeta.degradeReason } : {}),
+          ...(degradeMeta.visionFailureReason ? { vision_failure_reason: degradeMeta.visionFailureReason } : {}),
+          ...(degradeMeta.reportFailureReason ? { report_failure_reason: degradeMeta.reportFailureReason } : {}),
+        };
 
         if (analysis && AURORA_SKIN_DEEPENING_V1) {
           const productsSubmitted = hasNonEmptyRoutineInput(routineCandidate);
@@ -25426,6 +25476,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
           suggested_chips: [],
+          analysis_meta: analysisMeta,
           cards: [
             {
               card_id: `analysis_${ctx.request_id}`,
@@ -26727,7 +26778,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
-        travel_llm_calibration_v1: Boolean(effectiveChatFlags.travel_llm_calibration_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       },
@@ -26735,6 +26785,11 @@ function mountAuroraBffRoutes(app, { logger }) {
     };
     let plannerSessionStatePatch = null;
     let latestClarificationId = null;
+    let profile = null;
+    let recentLogs = [];
+    let chatContext = null;
+    let resolvedIdentity = { auroraUid: null, userId: null };
+    let safetyDecision = null;
     const refreshPolicyMetaRollout = () => {
       effectiveChatFlags = rolloutContext.effective_flags || effectiveChatFlags;
       shouldAttachPolicyMeta = Boolean(effectiveChatFlags.chat_response_meta);
@@ -26752,7 +26807,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
-        travel_llm_calibration_v1: Boolean(effectiveChatFlags.travel_llm_calibration_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       };
@@ -26792,7 +26846,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       out.events = events;
       return out;
     };
-    const sendChatEnvelope = (envelope, statusCode = 200) => {
+    const sendChatEnvelope = async (envelope, statusCode = 200) => {
       const withLlmMeta = applyLlmMetaToEnvelope(envelope);
       const withPolicyMeta = (() => {
         if (!shouldAttachPolicyMeta) return withLlmMeta;
@@ -26916,6 +26970,75 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger?.error({ err: assemblerErr && assemblerErr.message }, 'aurora bff: buildChatCardsResponse threw');
         }
       }
+      if (
+        resolvedIdentity &&
+        (resolvedIdentity.auroraUid || resolvedIdentity.userId) &&
+        guarded.envelope &&
+        typeof guarded.envelope === 'object' &&
+        !Array.isArray(guarded.envelope)
+      ) {
+        const sessionPatch =
+          guarded.envelope.session_patch &&
+          typeof guarded.envelope.session_patch === 'object' &&
+          !Array.isArray(guarded.envelope.session_patch)
+            ? guarded.envelope.session_patch
+            : {};
+        const sessionMeta =
+          sessionPatch.meta &&
+          typeof sessionPatch.meta === 'object' &&
+          !Array.isArray(sessionPatch.meta)
+            ? sessionPatch.meta
+            : {};
+        const travelFollowupFromPatch =
+          sessionMeta.travel_followup &&
+          typeof sessionMeta.travel_followup === 'object' &&
+          !Array.isArray(sessionMeta.travel_followup)
+            ? sessionMeta.travel_followup
+            : null;
+        const baseContext =
+          chatContext && typeof chatContext === 'object' && !Array.isArray(chatContext)
+            ? { ...chatContext }
+            : {};
+        const nextContext = {
+          ...baseContext,
+          ...(Object.prototype.hasOwnProperty.call(sessionPatch, 'pending_clarification')
+            ? { pending_clarification: sessionPatch.pending_clarification }
+            : {}),
+          ...(travelFollowupFromPatch ? { travel_followup: travelFollowupFromPatch } : {}),
+          updated_at_ms: Date.now(),
+        };
+        if (Object.keys(nextContext).length > 0) {
+          chatContext = nextContext;
+          try {
+            await upsertChatContextForIdentity(
+              { auroraUid: resolvedIdentity.auroraUid, userId: resolvedIdentity.userId },
+              chatContext,
+            );
+          } catch (err) {
+            logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist chat context');
+          }
+        }
+      }
+
+      if (
+        resolvedIdentity &&
+        (resolvedIdentity.auroraUid || resolvedIdentity.userId) &&
+        chatCardsOut &&
+        chatCardsOut.ops &&
+        Array.isArray(chatCardsOut.ops.experiment_events)
+      ) {
+        for (const evt of chatCardsOut.ops.experiment_events.slice(0, 8)) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            await appendExperimentEventForIdentity(
+              { auroraUid: resolvedIdentity.auroraUid, userId: resolvedIdentity.userId },
+              evt,
+            );
+          } catch (err) {
+            logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to append experiment event');
+          }
+        }
+      }
       if (statusCode >= 400) return res.status(statusCode).json(chatCardsOut);
       return res.json(chatCardsOut);
     };
@@ -26944,6 +27067,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       );
 
       const identity = await resolveIdentity(req, ctx);
+      resolvedIdentity = {
+        auroraUid: identity.auroraUid || null,
+        userId: identity.userId || null,
+      };
       rolloutContext = computeAuroraChatRolloutContext({
         req,
         ctx,
@@ -26955,12 +27082,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       refreshPolicyMetaRollout();
 
       // Best-effort context injection.
-      let profile = null;
-      let recentLogs = [];
+      profile = null;
+      recentLogs = [];
+      chatContext = null;
       let storageContextLoadFailed = false;
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
+        chatContext = await getChatContextForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
       } catch (err) {
         storageContextLoadFailed = true;
         logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
@@ -26977,6 +27106,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       if (profilePatchFromSession) {
         profile = { ...(profile || {}), ...profilePatchFromSession };
+      }
+      if (!chatContext && profile && typeof profile === 'object' && profile.chatContext && typeof profile.chatContext === 'object') {
+        chatContext = profile.chatContext;
       }
 
       const normalizedActionPayload = (() => {
@@ -27182,7 +27314,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         return out;
       })();
-      const safetyDecision =
+      safetyDecision =
         effectiveChatFlags.safety_engine_v1
           ? evaluateSafety({
             intent: canonicalIntent.intent,
@@ -28151,8 +28283,243 @@ function mountAuroraBffRoutes(app, { logger }) {
         const scenario = extractWeatherScenario(message);
         let envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
         let advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
+        let travelReadiness = null;
         policyMeta.env_source = 'local_template';
         policyMeta.degraded = true;
+
+        const travelPlanForSkills =
+          profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+            ? profile.travel_plan
+            : null;
+        const canonicalTravelEntities =
+          canonicalIntent && canonicalIntent.entities && typeof canonicalIntent.entities === 'object'
+            ? canonicalIntent.entities
+            : {};
+        const hasTravelContextForSkills = Boolean(
+          canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+          (travelPlanForSkills && String(travelPlanForSkills.destination || '').trim()) ||
+          String(canonicalTravelEntities.destination || '').trim() ||
+          (canonicalTravelEntities.date_range &&
+            typeof canonicalTravelEntities.date_range === 'object' &&
+            (
+              String(canonicalTravelEntities.date_range.start || '').trim() ||
+              String(canonicalTravelEntities.date_range.end || '').trim()
+            )),
+        );
+
+        if (hasTravelContextForSkills) {
+          let travelPipelineOut = null;
+          try {
+            travelPipelineOut = await runTravelPipeline({
+              message,
+              language: ctx.lang,
+              profile,
+              recentLogs,
+              canonicalIntent,
+              plannerDecision,
+              chatContext,
+              travelWeatherLiveEnabled: Boolean(effectiveChatFlags.travel_weather_live_v1),
+              openaiClient: getOpenAIClient(),
+              logger,
+              nowMs: Date.now(),
+              userLocale: templateCtx.accept_language || '',
+              hasSafetyConflict: Boolean(
+                safetyDecision &&
+                  safetyDecision.block_level &&
+                  safetyDecision.block_level !== BLOCK_LEVEL.INFO,
+              ),
+            });
+          } catch (err) {
+            logger?.warn(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                err: err && (err.code || err.message) ? err.code || err.message : String(err),
+              },
+              'aurora bff: travel skills pipeline failed, fallback to local weather path',
+            );
+          }
+
+          if (travelPipelineOut && travelPipelineOut.ok) {
+            advice =
+              typeof travelPipelineOut.assistant_text === 'string' && travelPipelineOut.assistant_text.trim()
+                ? String(travelPipelineOut.assistant_text).trim()
+                : advice;
+            policyMeta.env_source = travelPipelineOut.env_source || 'local_template';
+            policyMeta.degraded = Boolean(travelPipelineOut.degraded);
+
+            if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
+              const safetyText = buildSafetyNoticeText(safetyDecision);
+              if (safetyText) advice = `${safetyText}\n\n${advice}`;
+            }
+
+            const pipelinePatch =
+              travelPipelineOut.env_stress_patch &&
+              typeof travelPipelineOut.env_stress_patch === 'object' &&
+              !Array.isArray(travelPipelineOut.env_stress_patch)
+                ? travelPipelineOut.env_stress_patch
+                : {};
+            const localEss = Number(envStressUi && envStressUi.ess);
+            const pipelineEpi = Number(pipelinePatch.epi);
+            envStressUi = {
+              ...(envStressUi || {}),
+              ...pipelinePatch,
+              schema_version: 'aurora.ui.env_stress.v1',
+              ess: Number.isFinite(localEss) ? localEss : Number.isFinite(pipelineEpi) ? pipelineEpi : null,
+            };
+            if (
+              !envStressUi.travel_readiness &&
+              travelPipelineOut.travel_readiness &&
+              typeof travelPipelineOut.travel_readiness === 'object' &&
+              !Array.isArray(travelPipelineOut.travel_readiness)
+            ) {
+              envStressUi.travel_readiness = travelPipelineOut.travel_readiness;
+            }
+            travelReadiness =
+              envStressUi && typeof envStressUi.travel_readiness === 'object' && !Array.isArray(envStressUi.travel_readiness)
+                ? envStressUi.travel_readiness
+                : null;
+
+            const priorFollowup =
+              chatContext && typeof chatContext === 'object' && !Array.isArray(chatContext)
+                ? chatContext.travel_followup || chatContext.travelFollowup
+                : null;
+            recordAuroraTravelEnvCardEmitted({
+              turn:
+                priorFollowup &&
+                typeof priorFollowup === 'object' &&
+                !Array.isArray(priorFollowup)
+                  ? 'followup'
+                  : 'first_turn',
+            });
+
+            const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+            const scenarioHint =
+              scenario === 'snow'
+                ? { cn: '雪天', en: 'snowy weather' }
+                : scenario === 'rain'
+                  ? { cn: '雨天', en: 'rainy weather' }
+                  : scenario === 'uv'
+                    ? { cn: '日晒/高 UV', en: 'high UV' }
+                    : scenario === 'humid'
+                      ? { cn: '潮湿闷热', en: 'humid weather' }
+                      : scenario === 'dry'
+                        ? { cn: '干燥天气', en: 'dry air' }
+                        : scenario === 'cold'
+                          ? { cn: '寒冷天气', en: 'cold weather' }
+                          : scenario === 'wind'
+                            ? { cn: '大风天气', en: 'windy weather' }
+                            : scenario === 'travel'
+                              ? { cn: '旅行/飞行', en: 'travel' }
+                              : { cn: '这个天气', en: 'these conditions' };
+            const suggestedChips = [
+              {
+                chip_id: 'chip.start.routine',
+                label: lang === 'CN' ? '生成 AM/PM 护肤流程' : 'Build an AM/PM routine',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    lang === 'CN'
+                      ? `帮我按${scenarioHint.cn}生成 AM/PM 护肤流程`
+                      : `Build an AM/PM routine for ${scenarioHint.en}`,
+                },
+              },
+              {
+                chip_id: 'chip.start.reco_products',
+                label: lang === 'CN' ? '推荐防护产品' : 'Recommend protective products',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    lang === 'CN'
+                      ? `${scenarioHint.cn}我应该用什么类型的防护产品？`
+                      : `What protective products should I use for ${scenarioHint.en}?`,
+                },
+              },
+            ];
+            if (travelPipelineOut.store_channel) {
+              suggestedChips.push({
+                chip_id: 'chip.travel.store_channel',
+                label: lang === 'CN' ? '继续查渠道/有货' : 'Check stores/offers',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    lang === 'CN'
+                      ? '帮我看看具体渠道和有货情况'
+                      : 'Can you check channel availability and offers?',
+                },
+              });
+            }
+
+            const sessionPatch =
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
+            const sessionMeta =
+              sessionPatch.meta && typeof sessionPatch.meta === 'object' && !Array.isArray(sessionPatch.meta)
+                ? { ...sessionPatch.meta }
+                : {};
+            sessionMeta.travel_skills_version = travelPipelineOut.travel_skills_version || 'travel_skills_dag_v1';
+            sessionMeta.travel_skills_trace = Array.isArray(travelPipelineOut.travel_skills_trace)
+              ? travelPipelineOut.travel_skills_trace.slice(0, 24)
+              : [];
+            sessionMeta.travel_kb_hit = Boolean(travelPipelineOut.travel_kb_hit);
+            sessionMeta.travel_kb_write_queued = Boolean(travelPipelineOut.travel_kb_write_queued);
+            if (
+              travelPipelineOut.travel_followup_state &&
+              typeof travelPipelineOut.travel_followup_state === 'object' &&
+              !Array.isArray(travelPipelineOut.travel_followup_state)
+            ) {
+              sessionMeta.travel_followup = travelPipelineOut.travel_followup_state;
+            }
+            sessionPatch.meta = sessionMeta;
+            if (travelReadiness) {
+              sessionPatch.last_travel_readiness = {
+                destination: travelReadiness.destination_context?.destination || null,
+                start_date: travelReadiness.destination_context?.start_date || null,
+                end_date: travelReadiness.destination_context?.end_date || null,
+                reco_bundle: Array.isArray(travelReadiness.reco_bundle) ? travelReadiness.reco_bundle.slice(0, 5) : [],
+                shopping_preview: travelReadiness.shopping_preview || null,
+              };
+            }
+
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeChatAssistantMessage(advice, 'markdown'),
+              suggested_chips: suggestedChips,
+              cards: envStressUi
+                ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
+                : [],
+              session_patch: sessionPatch,
+              events: [
+                makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario }),
+                makeEvent(ctx, 'travel_skills_trace', {
+                  version: travelPipelineOut.travel_skills_version || 'travel_skills_dag_v1',
+                  skills_count: Array.isArray(travelPipelineOut.travel_skills_trace)
+                    ? travelPipelineOut.travel_skills_trace.length
+                    : 0,
+                }),
+              ],
+            });
+            envelope.meta = {
+              ...(envelope.meta && typeof envelope.meta === 'object' && !Array.isArray(envelope.meta) ? envelope.meta : {}),
+              travel_skills_version: travelPipelineOut.travel_skills_version || 'travel_skills_dag_v1',
+              travel_skills_trace: Array.isArray(travelPipelineOut.travel_skills_trace)
+                ? travelPipelineOut.travel_skills_trace.slice(0, 24)
+                : [],
+              travel_kb_hit: Boolean(travelPipelineOut.travel_kb_hit),
+              travel_kb_write_queued: Boolean(travelPipelineOut.travel_kb_write_queued),
+            };
+            return sendChatEnvelope(envelope);
+          }
+
+          if (travelPipelineOut && travelPipelineOut.ok === false) {
+            logger?.warn(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                quality_reason: travelPipelineOut.quality_reason || null,
+              },
+              'aurora bff: travel skills pipeline returned ok=false, fallback to local weather path',
+            );
+          }
+        }
 
         if (effectiveChatFlags.travel_weather_live_v1) {
           const travelPlan =
@@ -28183,37 +28550,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             startDate,
             endDate,
           });
-          let travelAlerts = [];
-          try {
-            const travelAlertsResult = await getTravelAlerts({
-              destination:
-                (weather &&
-                  weather.location &&
-                  typeof weather.location.name === 'string' &&
-                  weather.location.name.trim()) ||
-                destination,
-              destinationCountry:
-                (weather &&
-                  weather.location &&
-                  ((typeof weather.location.country_code === 'string' && weather.location.country_code.trim()) ||
-                    (typeof weather.location.country === 'string' && weather.location.country.trim()))) ||
-                '',
-              language: ctx.lang,
-              timeoutMs: 1800,
-            });
-            if (
-              travelAlertsResult &&
-              travelAlertsResult.source === 'official_api' &&
-              Array.isArray(travelAlertsResult.alerts)
-            ) {
-              travelAlerts = travelAlertsResult.alerts;
-            }
-          } catch (travelAlertErr) {
-            logger?.warn(
-              { err: travelAlertErr && (travelAlertErr.code || travelAlertErr.message), request_id: ctx.request_id },
-              'aurora bff: travel alerts fetch failed, using no alerts',
-            );
-          }
           const epiPayload = buildEpiPayload({
             weather,
             profile,
@@ -28229,7 +28565,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             profile && typeof profile.home_weather === 'object' && !Array.isArray(profile.home_weather)
               ? profile.home_weather
               : null;
-          let travelReadiness = buildTravelReadiness({
+          travelReadiness = buildTravelReadiness({
             language: ctx.lang,
             profile,
             recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
@@ -28238,7 +28574,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             endDate,
             destinationWeather: weather,
             homeWeather: homeWeatherForReadiness,
-            travelAlerts,
+            travelAlerts: [],
             epiPayload,
             recommendationCandidates: [],
           });
@@ -28284,6 +28620,43 @@ function mountAuroraBffRoutes(app, { logger }) {
             envSource: epiPayload.env_source,
           });
 
+          if (travelReply.structured_sections && typeof travelReply.structured_sections === 'object') {
+            travelReadiness = {
+              ...travelReadiness,
+              structured_sections: travelReply.structured_sections,
+            };
+          }
+
+          const travelDelta = travelReadiness && travelReadiness.delta_vs_home;
+          const weatherSummary = weather && weather.summary;
+          if (Array.isArray(envStressUi && envStressUi.radar) && travelDelta) {
+            envStressUi.radar = envStressUi.radar.map((item) => {
+              if (item.axis === 'Weather') {
+                const drivers = [];
+                if (weatherSummary && typeof weatherSummary.temperature_max_c === 'number') {
+                  drivers.push(`Temp: ${Math.round(weatherSummary.temperature_max_c * 10) / 10}°C`);
+                }
+                if (weatherSummary && typeof weatherSummary.humidity_mean === 'number') {
+                  drivers.push(`Humidity: ${Math.round(weatherSummary.humidity_mean * 10) / 10}%`);
+                }
+                if (weatherSummary && typeof weatherSummary.wind_kph_max === 'number') {
+                  drivers.push(`Wind: ${Math.round(weatherSummary.wind_kph_max * 10) / 10} kph`);
+                }
+                return { ...item, drivers: drivers.length ? drivers : item.drivers };
+              }
+              if (item.axis === 'UV') {
+                const drivers = [];
+                if (weatherSummary && typeof weatherSummary.uv_index_max === 'number') {
+                  const uvVal = Math.round(weatherSummary.uv_index_max * 10) / 10;
+                  const uvLabel = uvVal >= 8 ? 'very high' : uvVal >= 6 ? 'high' : uvVal >= 3 ? 'moderate' : 'low';
+                  drivers.push(`UV index: ${uvVal} (${uvLabel})`);
+                }
+                return { ...item, drivers: drivers.length ? drivers : item.drivers };
+              }
+              return item;
+            });
+          }
+
           envStressUi = {
             ...(envStressUi || {}),
             ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
@@ -28295,7 +28668,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             travel_readiness: travelReadiness,
           };
 
-          advice = travelReply.text;
+          advice = travelReply.text_brief || travelReply.text;
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
@@ -28346,14 +28719,26 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         ];
 
+        const travelSessionPatch = {
+          ...(nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {}),
+        };
+        if (travelReadiness) {
+          travelSessionPatch.last_travel_readiness = {
+            destination: travelReadiness.destination_context?.destination || null,
+            start_date: travelReadiness.destination_context?.start_date || null,
+            end_date: travelReadiness.destination_context?.end_date || null,
+            reco_bundle: Array.isArray(travelReadiness.reco_bundle) ? travelReadiness.reco_bundle.slice(0, 5) : [],
+            shopping_preview: travelReadiness.shopping_preview || null,
+          };
+        }
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
           cards: envStressUi
             ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
             : [],
-          session_patch:
-            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          session_patch: travelSessionPatch,
           events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
         });
         return sendChatEnvelope(envelope);
@@ -29914,9 +30299,59 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
           profile,
         });
-        const recoUnavailableLead = ctx.lang === 'CN'
-          ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
-          : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
+        const sessionTravelContext =
+          parsed.data.session &&
+          typeof parsed.data.session === 'object' &&
+          !Array.isArray(parsed.data.session) &&
+          parsed.data.session.last_travel_readiness &&
+          typeof parsed.data.session.last_travel_readiness === 'object'
+            ? parsed.data.session.last_travel_readiness
+            : null;
+        const hasTravelContext = Boolean(
+          sessionTravelContext ||
+          (profile && profile.travel_plan && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)),
+        );
+
+        const recoUnavailableLead = hasTravelContext
+          ? (ctx.lang === 'CN'
+            ? '当前商品库暂未收录完整的旅行防护产品，以下是基于 AI 分析的推荐方案（仅供参考，未经商品库验证）。'
+            : "Our catalog doesn't have a full travel protection shortlist yet. Here are AI-suggested products based on your trip conditions (not catalog-verified).")
+          : (ctx.lang === 'CN'
+            ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
+            : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.");
+
+
+        let travelFallbackProductLines = '';
+        if (!hasRecs && hasTravelContext && sessionTravelContext) {
+          const travelRecoBundle = Array.isArray(sessionTravelContext.reco_bundle) ? sessionTravelContext.reco_bundle : [];
+          const travelShoppingProducts =
+            sessionTravelContext.shopping_preview &&
+            typeof sessionTravelContext.shopping_preview === 'object' &&
+            Array.isArray(sessionTravelContext.shopping_preview.products)
+              ? sessionTravelContext.shopping_preview.products
+              : [];
+          const productNames = travelShoppingProducts
+            .map((p) => {
+              if (!p || typeof p !== 'object') return '';
+              const n = typeof p.name === 'string' ? p.name.trim() : '';
+              const b = typeof p.brand === 'string' ? p.brand.trim() : '';
+              return b ? b + ' ' + n : n;
+            })
+            .filter(Boolean)
+            .slice(0, 3);
+          const bundleActions = travelRecoBundle
+            .map((row) => (row && typeof row.action === 'string' ? row.action.trim() : ''))
+            .filter(Boolean)
+            .slice(0, 3);
+          const dest = typeof sessionTravelContext.destination === 'string' ? sessionTravelContext.destination.trim() : '';
+          const fallbackLines = [];
+          if (dest) fallbackLines.push(ctx.lang === 'CN' ? '旅行目的地：' + dest : 'Destination: ' + dest);
+          if (productNames.length) {
+            fallbackLines.push(ctx.lang === 'CN' ? '建议单品：' + productNames.join(' / ') : 'Suggested products: ' + productNames.join(' / '));
+          }
+          for (const a of bundleActions) fallbackLines.push('- ' + a);
+          travelFallbackProductLines = fallbackLines.join('\n');
+        }
 
         const assistantTextRaw = hasRecs
           ? lowConfidenceArtifact
@@ -29929,11 +30364,13 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ? '我已经把核心结果整理成结构化卡片（见下方）。'
                   : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
                 : 'I summarized the key results into structured cards below.'))
-          : (recoAssistantBase
-            ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
-            : (ctx.lang === 'CN'
-              ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
-              : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
+          : travelFallbackProductLines
+            ? `${recoUnavailableLead}\n\n${travelFallbackProductLines}`
+            : (recoAssistantBase
+              ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
+              : (ctx.lang === 'CN'
+                ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
+                : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I'll continue."));
         const safetyWarnText =
           safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.WARN ? buildSafetyNoticeText(safetyDecision) : '';
         const assistantText = addEmotionalPreambleToAssistantText(assistantTextRaw, {

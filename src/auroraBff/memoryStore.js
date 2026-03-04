@@ -25,6 +25,7 @@ const EPHEMERAL_MAX_IDENTITIES = (() => {
 const ephemeral = {
   profiles: new Map(),
   logs: new Map(),
+  experiments: new Map(),
   identityLinks: new Map(),
   shadowVerifyRuns: new Map(),
 };
@@ -45,6 +46,16 @@ function profileKeyFor({ kind, id }) {
   const uid = String(id || '').trim();
   if (!uid) return null;
   return `${k}:${uid}`;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function experimentKeyFor({ kind, id }) {
+  const base = profileKeyFor({ kind, id });
+  if (!base) return null;
+  return `${base}:experiments`;
 }
 
 function normalizeAuroraUid(auroraUid) {
@@ -139,6 +150,7 @@ function mapProfileToDb(profilePatch) {
   const itinerary = p.itinerary;
   const travelPlan = p.travel_plan;
   const travelPlans = p.travel_plans;
+  const chatContext = p.chatContext;
 
   return {
     skin_type: p.skinType,
@@ -152,6 +164,7 @@ function mapProfileToDb(profilePatch) {
     travel_plan: travelPlan !== undefined ? JSON.stringify(travelPlan) : undefined,
     travel_plans: travelPlans !== undefined ? JSON.stringify(travelPlans) : undefined,
     contraindications: contraindications ? JSON.stringify(contraindications) : undefined,
+    chat_context: chatContext !== undefined ? chatContext : undefined,
     lang_pref: p.lang_pref,
   };
 }
@@ -177,6 +190,79 @@ function normalizeJsonbParam(value) {
   }
 }
 
+function normalizeChatContext(value) {
+  if (!isPlainObject(value)) return null;
+  return value;
+}
+
+function normalizeExperimentEvent(event) {
+  if (!isPlainObject(event)) return null;
+  const eventTypeRaw =
+    event.event_type ||
+    event.eventType ||
+    event.type ||
+    event.name ||
+    event.event_name ||
+    '';
+  const eventType = String(eventTypeRaw || '').trim().slice(0, 120) || 'experiment_event';
+  const timestampMsRaw = Number(
+    event.timestamp_ms != null ? event.timestamp_ms : event.timestampMs != null ? event.timestampMs : Date.now(),
+  );
+  const timestampMs = Number.isFinite(timestampMsRaw) ? Math.max(0, Math.trunc(timestampMsRaw)) : Date.now();
+  const requestId =
+    typeof event.request_id === 'string' && event.request_id.trim()
+      ? event.request_id.trim().slice(0, 128)
+      : null;
+  const traceId =
+    typeof event.trace_id === 'string' && event.trace_id.trim()
+      ? event.trace_id.trim().slice(0, 128)
+      : null;
+  const payloadSource = isPlainObject(event.payload)
+    ? event.payload
+    : isPlainObject(event.event_data)
+      ? event.event_data
+      : {};
+  const payload = {
+    ...payloadSource,
+    ...(requestId ? { request_id: requestId } : {}),
+    ...(traceId ? { trace_id: traceId } : {}),
+    timestamp_ms: timestampMs,
+  };
+  return {
+    event_type: eventType,
+    event_data: payload,
+    timestamp_ms: timestampMs,
+    request_id: requestId,
+    trace_id: traceId,
+  };
+}
+
+function mapExperimentRowFromDb(row) {
+  if (!row) return null;
+  const eventData = isPlainObject(row.event_data) ? row.event_data : {};
+  const eventType =
+    typeof row.event_type === 'string' && row.event_type.trim() ? row.event_type.trim() : 'experiment_event';
+  const ts = row.event_ts ? new Date(row.event_ts).getTime() : Number(eventData.timestamp_ms) || Date.now();
+  return {
+    id: row.id,
+    event_type: eventType,
+    event_data: eventData,
+    timestamp_ms: Number.isFinite(Number(ts)) ? Math.max(0, Math.trunc(Number(ts))) : Date.now(),
+    request_id:
+      typeof row.request_id === 'string' && row.request_id.trim()
+        ? row.request_id.trim()
+        : typeof eventData.request_id === 'string'
+          ? eventData.request_id
+          : null,
+    trace_id:
+      typeof row.trace_id === 'string' && row.trace_id.trim()
+        ? row.trace_id.trim()
+        : typeof eventData.trace_id === 'string'
+          ? eventData.trace_id
+          : null,
+  };
+}
+
 function mapProfileFromDb(row) {
   if (!row) return null;
   return {
@@ -199,6 +285,7 @@ function mapProfileFromDb(row) {
       : row.contraindications
         ? row.contraindications
         : [],
+    chatContext: normalizeChatContext(row.chat_context),
     lastAnalysis: row.last_analysis || null,
     lastAnalysisAt: row.last_analysis_at ? new Date(row.last_analysis_at).toISOString() : null,
     lastAnalysisLang: row.last_analysis_lang || null,
@@ -230,6 +317,7 @@ function mapAccountProfileFromDb(row) {
       : row.contraindications
         ? row.contraindications
         : [],
+    chatContext: normalizeChatContext(row.chat_context),
     lastAnalysis: row.last_analysis || null,
     lastAnalysisAt: row.last_analysis_at ? new Date(row.last_analysis_at).toISOString() : null,
     lastAnalysisLang: row.last_analysis_lang || null,
@@ -260,6 +348,7 @@ function ensureEphemeralProfile({ kind, id }) {
           travel_plan: null,
           travel_plans: [],
           contraindications: [],
+          chatContext: null,
           lastAnalysis: null,
           lastAnalysisAt: null,
           lastAnalysisLang: null,
@@ -280,6 +369,7 @@ function ensureEphemeralProfile({ kind, id }) {
           travel_plan: null,
           travel_plans: [],
           contraindications: [],
+          chatContext: null,
           lastAnalysis: null,
           lastAnalysisAt: null,
           lastAnalysisLang: null,
@@ -311,6 +401,7 @@ function upsertEphemeralProfile({ kind, id }, profilePatch) {
     ...(p.travel_plan !== undefined ? { travel_plan: p.travel_plan } : {}),
     ...(p.travel_plans !== undefined ? { travel_plans: Array.isArray(p.travel_plans) ? p.travel_plans : [] } : {}),
     ...(p.contraindications !== undefined ? { contraindications: Array.isArray(p.contraindications) ? p.contraindications : [] } : {}),
+    ...(p.chatContext !== undefined ? { chatContext: normalizeChatContext(p.chatContext) } : {}),
     ...(p.lang_pref !== undefined ? { lang_pref: p.lang_pref } : {}),
     updated_at: isoTs(),
   };
@@ -403,10 +494,11 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         travel_plan,
         travel_plans,
         contraindications,
+        chat_context,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
       ON CONFLICT (aurora_uid) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -419,6 +511,7 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         travel_plan = EXCLUDED.travel_plan,
         travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
+        chat_context = EXCLUDED.chat_context,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
         deleted_at = NULL
@@ -436,6 +529,7 @@ async function upsertUserProfile(auroraUid, profilePatch) {
       normalizeJsonbParam(merged.travel_plan ?? null),
       normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
+      normalizeJsonbParam(normalizeChatContext(merged.chat_context) ?? null),
       merged.lang_pref ?? null,
     ],
   );
@@ -490,10 +584,11 @@ async function upsertAccountProfile(userId, profilePatch) {
         travel_plan,
         travel_plans,
         contraindications,
+        chat_context,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
       ON CONFLICT (user_id) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -506,6 +601,7 @@ async function upsertAccountProfile(userId, profilePatch) {
         travel_plan = EXCLUDED.travel_plan,
         travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
+        chat_context = EXCLUDED.chat_context,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
         deleted_at = NULL
@@ -523,6 +619,7 @@ async function upsertAccountProfile(userId, profilePatch) {
       normalizeJsonbParam(merged.travel_plan ?? null),
       normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
+      normalizeJsonbParam(normalizeChatContext(merged.chat_context) ?? null),
       merged.lang_pref ?? null,
     ],
   );
@@ -842,6 +939,12 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
     if ((!accountProfile || !Array.isArray(accountProfile.contraindications) || accountProfile.contraindications.length === 0) && Array.isArray(guestProfile.contraindications) && guestProfile.contraindications.length) {
       patch.contraindications = guestProfile.contraindications;
     }
+    if (
+      (!accountProfile || !normalizeChatContext(accountProfile.chatContext)) &&
+      normalizeChatContext(guestProfile.chatContext)
+    ) {
+      patch.chatContext = normalizeChatContext(guestProfile.chatContext);
+    }
     if (!accountProfile || !accountProfile.lang_pref) patch.lang_pref = guestProfile.lang_pref;
   }
 
@@ -896,6 +999,27 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
     }
   }
 
+  try {
+    const guestEvents = await query(
+      `
+        SELECT *
+        FROM aurora_user_experiment_logs
+        WHERE aurora_uid = $1
+        ORDER BY event_ts ASC
+        LIMIT 200
+      `,
+      [uid],
+    );
+    for (const row of guestEvents.rows || []) {
+      const evt = mapExperimentRowFromDb(row);
+      if (!evt) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await appendExperimentEventForIdentity({ auroraUid: uid, userId: user }, evt);
+    }
+  } catch {
+    // Best-effort migration; ignore failures.
+  }
+
   return { ok: true, migrated: true };
 }
 
@@ -927,6 +1051,100 @@ async function upsertSkinLogForIdentity({ auroraUid, userId }, log) {
   const identity = identityFromRequest({ auroraUid, userId });
   if (identity.user_id) return await upsertAccountSkinLog(identity.user_id, log);
   return await upsertSkinLog(identity.aurora_uid, log);
+}
+
+async function getChatContextForIdentity({ auroraUid, userId }) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  if (!identity.user_id && !identity.aurora_uid) return null;
+  const profile = await getProfileForIdentity({ auroraUid, userId });
+  return normalizeChatContext(profile && profile.chatContext ? profile.chatContext : null);
+}
+
+async function upsertChatContextForIdentity({ auroraUid, userId }, chatContext) {
+  const normalized = normalizeChatContext(chatContext);
+  if (!normalized) return null;
+  const identity = identityFromRequest({ auroraUid, userId });
+  if (!identity.user_id && !identity.aurora_uid) return null;
+  if (identity.user_id) return await upsertAccountProfile(identity.user_id, { chatContext: normalized });
+  return await upsertUserProfile(identity.aurora_uid, { chatContext: normalized });
+}
+
+async function appendExperimentEventForIdentity({ auroraUid, userId }, event) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const normalized = normalizeExperimentEvent(event);
+  if (!normalized) return null;
+  if (!identity.user_id && !identity.aurora_uid) return null;
+
+  if (persistenceDisabled()) {
+    const kind = identity.user_id ? 'account' : 'guest';
+    const id = identity.user_id || identity.aurora_uid;
+    if (!id) return null;
+    const key = experimentKeyFor({ kind, id });
+    if (!key) return null;
+    const existing = Array.isArray(ephemeral.experiments.get(key)) ? ephemeral.experiments.get(key) : [];
+    const row = {
+      id: `${id}_${normalized.timestamp_ms}_${existing.length + 1}`,
+      event_type: normalized.event_type,
+      event_data: normalized.event_data,
+      timestamp_ms: normalized.timestamp_ms,
+      request_id: normalized.request_id,
+      trace_id: normalized.trace_id,
+    };
+    touchEphemeral(ephemeral.experiments, key, [row, ...existing].slice(0, 200));
+    return row;
+  }
+
+  if (identity.user_id) {
+    await ensureAccountProfileRow(identity.user_id);
+    const res = await query(
+      `
+        INSERT INTO aurora_account_experiment_logs (
+          user_id,
+          event_type,
+          event_data,
+          event_ts,
+          request_id,
+          trace_id
+        )
+        VALUES ($1,$2,$3::jsonb,to_timestamp($4::double precision / 1000.0),$5,$6)
+        RETURNING *
+      `,
+      [
+        identity.user_id,
+        normalized.event_type,
+        normalizeJsonbParam(normalized.event_data),
+        normalized.timestamp_ms,
+        normalized.request_id,
+        normalized.trace_id,
+      ],
+    );
+    return mapExperimentRowFromDb(res.rows && res.rows[0]);
+  }
+
+  await ensureUserProfileRow(identity.aurora_uid);
+  const res = await query(
+    `
+      INSERT INTO aurora_user_experiment_logs (
+        aurora_uid,
+        event_type,
+        event_data,
+        event_ts,
+        request_id,
+        trace_id
+      )
+      VALUES ($1,$2,$3::jsonb,to_timestamp($4::double precision / 1000.0),$5,$6)
+      RETURNING *
+    `,
+    [
+      identity.aurora_uid,
+      normalized.event_type,
+      normalizeJsonbParam(normalized.event_data),
+      normalized.timestamp_ms,
+      normalized.request_id,
+      normalized.trace_id,
+    ],
+  );
+  return mapExperimentRowFromDb(res.rows && res.rows[0]);
 }
 
 async function saveLastAnalysisForIdentity({ auroraUid, userId }, { analysis, lang }) {
@@ -1190,6 +1408,7 @@ async function deleteIdentityData({ auroraUid, userId }) {
       if (accountKey) {
         ephemeral.profiles.delete(accountKey);
         ephemeral.logs.delete(`${accountKey}:logs`);
+        ephemeral.experiments.delete(`${accountKey}:experiments`);
       }
       for (const [k, v] of Array.from(ephemeral.identityLinks.entries())) {
         if (v === identity.user_id) ephemeral.identityLinks.delete(k);
@@ -1201,6 +1420,7 @@ async function deleteIdentityData({ auroraUid, userId }) {
       if (guestKey) {
         ephemeral.profiles.delete(guestKey);
         ephemeral.logs.delete(`${guestKey}:logs`);
+        ephemeral.experiments.delete(`${guestKey}:experiments`);
       }
       ephemeral.identityLinks.delete(identity.aurora_uid);
     }
@@ -1243,6 +1463,9 @@ module.exports = {
   upsertProfileForIdentity,
   getRecentSkinLogsForIdentity,
   upsertSkinLogForIdentity,
+  getChatContextForIdentity,
+  upsertChatContextForIdentity,
+  appendExperimentEventForIdentity,
   saveLastAnalysisForIdentity,
   saveShadowVerifyForIdentity,
   appendShadowIdToLastAnalysisForIdentity,

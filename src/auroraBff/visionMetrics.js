@@ -97,6 +97,17 @@ const recoInterleaveWinCounter = new Map();
 const recoExplorationSlotCounter = new Map();
 const recoAsyncUpdateCounter = new Map();
 const recoAsyncUpdateChangedItemsCounter = new Map();
+const auroraTravelLlmCallCounter = new Map();
+const auroraTravelKbHitCounter = new Map();
+const auroraTravelKbWriteCounter = new Map();
+const auroraTravelResponseSourceCounter = new Map();
+const auroraTravelWeatherSourceCounter = new Map();
+const auroraTravelForecastSourceCounter = new Map();
+const auroraTravelAlertSourceCounter = new Map();
+const auroraTravelBaselineIntegrityCounter = new Map();
+const auroraTravelResponseQualityCounter = new Map();
+const auroraTravelReplyModeCounter = new Map();
+const auroraTravelEnvCardEmittedCounter = new Map();
 const prelabelRequestsCounter = new Map();
 const prelabelSuccessCounter = new Map();
 const prelabelInvalidJsonCounter = new Map();
@@ -531,6 +542,98 @@ function normalizeAuroraKbV0RuleSource(source) {
 
 function normalizeAuroraKbV0RuleLevel(level) {
   return cleanMetricToken(level, 'unknown');
+}
+
+function normalizeAuroraTravelLlmOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'skip_no_client');
+  if (
+    token === 'call' ||
+    token === 'skip_no_client' ||
+    token === 'skip_disabled' ||
+    token === 'skip_conditions_not_matched' ||
+    token === 'timeout' ||
+    token === 'error'
+  ) {
+    return token;
+  }
+  return 'error';
+}
+
+function normalizeAuroraTravelKbHitMode(mode) {
+  const token = cleanMetricToken(mode, 'miss');
+  if (token === 'hit' || token === 'miss') return token;
+  return 'miss';
+}
+
+function normalizeAuroraTravelKbWriteOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'skip');
+  if (token === 'queued' || token === 'success' || token === 'skip' || token === 'error') return token;
+  return 'skip';
+}
+
+function normalizeAuroraTravelKbWriteReason(reason) {
+  return cleanMetricToken(reason, 'unknown');
+}
+
+function normalizeAuroraTravelResponseSource(source) {
+  const token = cleanMetricToken(source, 'rules_only');
+  if (token === 'llm_enriched' || token === 'rules_only') return token;
+  return 'rules_only';
+}
+
+function normalizeAuroraTravelWeatherSource(source) {
+  const token = cleanMetricToken(source, 'climate_fallback');
+  if (token === 'weather_api' || token === 'climate_fallback') return token;
+  return 'climate_fallback';
+}
+
+function normalizeAuroraTravelWeatherReason(reason) {
+  const token = cleanMetricToken(reason, 'unknown');
+  if (
+    token === 'live_ok' ||
+    token === 'live_timeout' ||
+    token === 'live_http_error' ||
+    token === 'geocode_failed' ||
+    token === 'live_disabled' ||
+    token === 'live_error'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeAuroraTravelForecastSource(source) {
+  const token = cleanMetricToken(source, 'climate_fallback');
+  if (token === 'weather_api' || token === 'climate_fallback') return token;
+  return 'climate_fallback';
+}
+
+function normalizeAuroraTravelAlertSource(source) {
+  const token = cleanMetricToken(source, 'none');
+  if (token === 'none' || token === 'official' || token === 'degraded') return token;
+  return 'none';
+}
+
+function normalizeAuroraTravelBaselineIntegrity(status) {
+  const token = cleanMetricToken(status, 'missing');
+  if (token === 'ok' || token === 'missing') return token;
+  return 'missing';
+}
+
+function normalizeAuroraTravelResponseQualitySection(section) {
+  return cleanMetricToken(section, 'unknown');
+}
+
+function normalizeAuroraTravelReplyMode(mode) {
+  const token = cleanMetricToken(mode, 'fallback');
+  if (token === 'first_turn' || token === 'followup' || token === 'fallback') return token;
+  return 'fallback';
+}
+
+function normalizeAuroraTravelEnvCardTurn(turn) {
+  const token = cleanMetricToken(turn, 'first_turn');
+  if (token === 'first_turn' || token === 'followup') return token;
+  return 'first_turn';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -1688,6 +1791,122 @@ function recordAuroraKbV0ClimateFallback({ reason } = {}) {
   );
 }
 
+function recordAuroraTravelLlmCall({ outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelLlmCallCounter,
+    { outcome: normalizeAuroraTravelLlmOutcome(outcome) },
+    amount,
+  );
+}
+
+function recordAuroraTravelKbHit({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelKbHitCounter,
+    { mode: normalizeAuroraTravelKbHitMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraTravelKbWrite({ outcome, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelKbWriteCounter,
+    {
+      outcome: normalizeAuroraTravelKbWriteOutcome(outcome),
+      reason: normalizeAuroraTravelKbWriteReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraTravelResponseSource({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelResponseSourceCounter,
+    { source: normalizeAuroraTravelResponseSource(source) },
+    amount,
+  );
+}
+
+function recordAuroraTravelWeatherSource({ source, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelWeatherSourceCounter,
+    {
+      source: normalizeAuroraTravelWeatherSource(source),
+      reason: normalizeAuroraTravelWeatherReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraTravelForecastSource({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelForecastSourceCounter,
+    { source: normalizeAuroraTravelForecastSource(source) },
+    amount,
+  );
+}
+
+function recordAuroraTravelAlertSource({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelAlertSourceCounter,
+    { source: normalizeAuroraTravelAlertSource(source) },
+    amount,
+  );
+}
+
+function recordAuroraTravelBaselineIntegrity({ status, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelBaselineIntegrityCounter,
+    { status: normalizeAuroraTravelBaselineIntegrity(status) },
+    amount,
+  );
+}
+
+function recordAuroraTravelResponseQuality({ section, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelResponseQualityCounter,
+    { section: normalizeAuroraTravelResponseQualitySection(section) },
+    amount,
+  );
+}
+
+function recordAuroraTravelReplyMode({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelReplyModeCounter,
+    { mode: normalizeAuroraTravelReplyMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraTravelEnvCardEmitted({ turn, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelEnvCardEmittedCounter,
+    { turn: normalizeAuroraTravelEnvCardTurn(turn) },
+    amount,
+  );
+}
+
 function escapePromValue(value) {
   return String(value == null ? '' : value)
     .replace(/\\/g, '\\\\')
@@ -2275,6 +2494,50 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_kb_v0_climate_fallback_total counter');
   renderCounter(lines, 'aurora_kb_v0_climate_fallback_total', auroraKbV0ClimateFallbackCounter);
 
+  lines.push('# HELP aurora_travel_llm_call_total Total travel LLM calibration calls by outcome.');
+  lines.push('# TYPE aurora_travel_llm_call_total counter');
+  renderCounter(lines, 'aurora_travel_llm_call_total', auroraTravelLlmCallCounter);
+
+  lines.push('# HELP aurora_travel_kb_hit_total Total travel KB reads by hit/miss.');
+  lines.push('# TYPE aurora_travel_kb_hit_total counter');
+  renderCounter(lines, 'aurora_travel_kb_hit_total', auroraTravelKbHitCounter);
+
+  lines.push('# HELP aurora_travel_kb_write_total Total travel KB write outcomes.');
+  lines.push('# TYPE aurora_travel_kb_write_total counter');
+  renderCounter(lines, 'aurora_travel_kb_write_total', auroraTravelKbWriteCounter);
+
+  lines.push('# HELP aurora_travel_response_source_total Travel response source distribution.');
+  lines.push('# TYPE aurora_travel_response_source_total counter');
+  renderCounter(lines, 'aurora_travel_response_source_total', auroraTravelResponseSourceCounter);
+
+  lines.push('# HELP aurora_travel_weather_source_total Travel weather source distribution.');
+  lines.push('# TYPE aurora_travel_weather_source_total counter');
+  renderCounter(lines, 'aurora_travel_weather_source_total', auroraTravelWeatherSourceCounter);
+
+  lines.push('# HELP aurora_travel_forecast_source_total Travel forecast source distribution.');
+  lines.push('# TYPE aurora_travel_forecast_source_total counter');
+  renderCounter(lines, 'aurora_travel_forecast_source_total', auroraTravelForecastSourceCounter);
+
+  lines.push('# HELP aurora_travel_alert_source_total Travel alert source distribution.');
+  lines.push('# TYPE aurora_travel_alert_source_total counter');
+  renderCounter(lines, 'aurora_travel_alert_source_total', auroraTravelAlertSourceCounter);
+
+  lines.push('# HELP aurora_travel_baseline_integrity_total Travel baseline integrity status.');
+  lines.push('# TYPE aurora_travel_baseline_integrity_total counter');
+  renderCounter(lines, 'aurora_travel_baseline_integrity_total', auroraTravelBaselineIntegrityCounter);
+
+  lines.push('# HELP aurora_travel_response_quality_total Travel response quality section counters.');
+  lines.push('# TYPE aurora_travel_response_quality_total counter');
+  renderCounter(lines, 'aurora_travel_response_quality_total', auroraTravelResponseQualityCounter);
+
+  lines.push('# HELP aurora_travel_reply_mode_total Travel reply mode counters.');
+  lines.push('# TYPE aurora_travel_reply_mode_total counter');
+  renderCounter(lines, 'aurora_travel_reply_mode_total', auroraTravelReplyModeCounter);
+
+  lines.push('# HELP aurora_travel_env_card_emitted_total Travel env card emission by turn type.');
+  lines.push('# TYPE aurora_travel_env_card_emitted_total counter');
+  renderCounter(lines, 'aurora_travel_env_card_emitted_total', auroraTravelEnvCardEmittedCounter);
+
   const recoRequests = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_request', outcome: 'hit' });
   const recoGenerated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_generated', outcome: 'hit' });
   const recoLowConfidence = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_low_confidence', outcome: 'hit' });
@@ -2462,6 +2725,17 @@ function resetVisionMetrics() {
   auroraKbV0RuleMatchCounter.clear();
   auroraKbV0LegacyFallbackCounter.clear();
   auroraKbV0ClimateFallbackCounter.clear();
+  auroraTravelLlmCallCounter.clear();
+  auroraTravelKbHitCounter.clear();
+  auroraTravelKbWriteCounter.clear();
+  auroraTravelResponseSourceCounter.clear();
+  auroraTravelWeatherSourceCounter.clear();
+  auroraTravelForecastSourceCounter.clear();
+  auroraTravelAlertSourceCounter.clear();
+  auroraTravelBaselineIntegrityCounter.clear();
+  auroraTravelResponseQualityCounter.clear();
+  auroraTravelReplyModeCounter.clear();
+  auroraTravelEnvCardEmittedCounter.clear();
 }
 
 function snapshotVisionMetrics() {
@@ -2593,6 +2867,17 @@ function snapshotVisionMetrics() {
     auroraKbV0RuleMatch: Array.from(auroraKbV0RuleMatchCounter.entries()),
     auroraKbV0LegacyFallback: Array.from(auroraKbV0LegacyFallbackCounter.entries()),
     auroraKbV0ClimateFallback: Array.from(auroraKbV0ClimateFallbackCounter.entries()),
+    auroraTravelLlmCall: Array.from(auroraTravelLlmCallCounter.entries()),
+    auroraTravelKbHit: Array.from(auroraTravelKbHitCounter.entries()),
+    auroraTravelKbWrite: Array.from(auroraTravelKbWriteCounter.entries()),
+    auroraTravelResponseSource: Array.from(auroraTravelResponseSourceCounter.entries()),
+    auroraTravelWeatherSource: Array.from(auroraTravelWeatherSourceCounter.entries()),
+    auroraTravelForecastSource: Array.from(auroraTravelForecastSourceCounter.entries()),
+    auroraTravelAlertSource: Array.from(auroraTravelAlertSourceCounter.entries()),
+    auroraTravelBaselineIntegrity: Array.from(auroraTravelBaselineIntegrityCounter.entries()),
+    auroraTravelResponseQuality: Array.from(auroraTravelResponseQualityCounter.entries()),
+    auroraTravelReplyMode: Array.from(auroraTravelReplyModeCounter.entries()),
+    auroraTravelEnvCardEmitted: Array.from(auroraTravelEnvCardEmittedCounter.entries()),
   };
 }
 
@@ -2691,6 +2976,17 @@ module.exports = {
   recordAuroraKbV0RuleMatch,
   recordAuroraKbV0LegacyFallback,
   recordAuroraKbV0ClimateFallback,
+  recordAuroraTravelLlmCall,
+  recordAuroraTravelKbHit,
+  recordAuroraTravelKbWrite,
+  recordAuroraTravelResponseSource,
+  recordAuroraTravelWeatherSource,
+  recordAuroraTravelForecastSource,
+  recordAuroraTravelAlertSource,
+  recordAuroraTravelBaselineIntegrity,
+  recordAuroraTravelResponseQuality,
+  recordAuroraTravelReplyMode,
+  recordAuroraTravelEnvCardEmitted,
   recordSkinmaskEnabled,
   recordSkinmaskFallback,
   observeSkinmaskInferLatency,
