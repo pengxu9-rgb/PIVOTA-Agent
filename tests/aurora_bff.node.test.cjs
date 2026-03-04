@@ -4228,6 +4228,80 @@ test('/v1/chat: known ingredient lookup defers inline sync and avoids fallback s
   );
 });
 
+test('/v1/chat: sync timeout with queued async research returns queued status instead of fallback', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: false,
+            reason: 'GEMINI_JSON_TIMEOUT',
+            detail: 'timed out after 9000ms',
+          };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({
+            'X-Aurora-UID': 'test_uid_sync_timeout_queue_preferred',
+            'X-Trace-ID': 'test_trace_sync_timeout_queue_preferred',
+            'X-Brief-ID': 'test_brief_sync_timeout_queue_preferred',
+            'X-Lang': 'EN',
+          })
+          .send({
+            action: {
+              action_id: 'ingredient.lookup',
+              kind: 'action',
+              data: {
+                ingredient_query: `octocrylene_lookup_${Date.now()}`,
+                entry_source: 'ingredient_hub',
+              },
+            },
+            language: 'EN',
+          });
+
+        assert.equal(resp.status, 200);
+        const report = Array.isArray(resp.body?.cards)
+          ? resp.body.cards.find((card) => card && card.type === 'aurora_ingredient_report')
+          : null;
+        assert.ok(report);
+        const payload = report?.payload || {};
+        assert.ok(geminiCalls >= 1);
+        assert.equal(payload.research_status, 'queued');
+        assert.equal(payload.research_error_code, null);
+        assert.equal(payload.report_state?.status, 'pending');
+        assert.equal(payload.report_state?.reason_code, 'research_queued');
+        const reasons = Array.isArray(payload.route_decision_reasons) ? payload.route_decision_reasons : [];
+        assert.equal(reasons.includes('sync_research_fallback'), false);
+        assert.equal(reasons.includes('sync_research_queued_after_fallback'), true);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: ingredient.lookup uses research path and second lookup can hit in-memory KB cache', async () => {
   return withEnv(
     {

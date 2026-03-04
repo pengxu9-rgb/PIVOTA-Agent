@@ -47410,11 +47410,29 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraIngredientsFlowMetric({ stage: 'research_requested', hit: true });
         }
 
-        const reportResearch =
+        const fallbackResearchPresent = Boolean(
+          routeReasons.includes('sync_research_fallback') ||
+          (resolvedResearch && String(resolvedResearch.status || '').trim().toLowerCase() === 'fallback'),
+        );
+        const preferQueuedResearchForResponse = Boolean(
           !readyAfterSync &&
-          deferInlineSyncForKnownEntity &&
-          researchJob &&
-          researchJob.status === 'queued'
+            researchJob &&
+            researchJob.status === 'queued' &&
+            (deferInlineSyncForKnownEntity || fallbackResearchPresent),
+        );
+        if (preferQueuedResearchForResponse && fallbackResearchPresent) {
+          const prunedReasons = routeReasons.filter((reason) => String(reason || '').trim() !== 'sync_research_fallback');
+          if (prunedReasons.length !== routeReasons.length) {
+            routeReasons.length = 0;
+            routeReasons.push(...prunedReasons);
+          }
+          if (!routeReasons.includes('sync_research_queued_after_fallback')) {
+            routeReasons.push('sync_research_queued_after_fallback');
+          }
+        }
+
+        const reportResearch =
+          preferQueuedResearchForResponse
             ? researchJob
             : resolvedResearch || researchJob || null;
         const reportResearchObj = asResearchObject(reportResearch) || {};
