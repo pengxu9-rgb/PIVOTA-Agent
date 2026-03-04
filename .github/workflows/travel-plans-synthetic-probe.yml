@@ -1,0 +1,50 @@
+name: Travel Plans Synthetic Probe
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Aurora BFF base URL"
+        required: false
+        default: "https://pivota-agent-production.up.railway.app"
+
+concurrency:
+  group: travel-plans-synthetic-probe
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ inputs.base_url || vars.AURORA_BFF_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run travel plans synthetic probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$BASE_URL" bash scripts/travel_plans_synthetic_probe.sh
+
+      - name: Notify on-call webhook (failure only)
+        if: failure()
+        shell: bash
+        env:
+          ONCALL_WEBHOOK_URL: ${{ secrets.TRAVEL_PLANS_ONCALL_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ONCALL_WEBHOOK_URL:-}" ]]; then
+            echo "SKIP: TRAVEL_PLANS_ONCALL_WEBHOOK_URL not configured"
+            exit 0
+          fi
+          payload="$(jq -n \
+            --arg title 'travel_plans_synthetic_probe_failed' \
+            --arg repo '${{ github.repository }}' \
+            --arg run_url '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+            --arg sha '${{ github.sha }}' \
+            '{title:$title, repo:$repo, run_url:$run_url, sha:$sha}')"
+          curl -sS -X POST "$ONCALL_WEBHOOK_URL" -H 'Content-Type: application/json' --data "$payload" >/dev/null
+          echo "PASS: on-call webhook notified"

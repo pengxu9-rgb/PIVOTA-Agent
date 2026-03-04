@@ -99,6 +99,8 @@ const recoAsyncUpdateCounter = new Map();
 const recoAsyncUpdateChangedItemsCounter = new Map();
 const recoContextUsedCounter = new Map();
 const travelPlanSelectionCounter = new Map();
+const auroraRoute404Counter = new Map();
+const auroraTravelPlansNonJsonCounter = new Map();
 const auroraTravelLlmCallCounter = new Map();
 const auroraTravelKbHitCounter = new Map();
 const auroraTravelKbWriteCounter = new Map();
@@ -805,6 +807,29 @@ function normalizeTravelPlanSelectionMode(mode) {
   return 'none';
 }
 
+function normalizeAuroraRoutePath(route) {
+  const token = String(route || '').trim();
+  if (
+    token === '/v1/travel-plans' ||
+    token === '/v1/travel-plans/:trip_id' ||
+    token === '/v1/travel-plans/:trip_id/archive'
+  ) {
+    return token;
+  }
+  return '/v1/travel-plans';
+}
+
+function normalizeHttpStatusFamily(status) {
+  const n = Number(status);
+  if (!Number.isFinite(n) || n <= 0) return 'unknown';
+  if (n >= 100 && n < 200) return '1xx';
+  if (n >= 200 && n < 300) return '2xx';
+  if (n >= 300 && n < 400) return '3xx';
+  if (n >= 400 && n < 500) return '4xx';
+  if (n >= 500 && n < 600) return '5xx';
+  return 'unknown';
+}
+
 function normalizeAuroraTravelLlmOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'skip_no_client');
   if (
@@ -1356,6 +1381,29 @@ function recordTravelPlanSelection({ mode, delta } = {}) {
   incCounter(
     travelPlanSelectionCounter,
     { mode: normalizeTravelPlanSelectionMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraRoute404({ route, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRoute404Counter,
+    { route: normalizeAuroraRoutePath(route) },
+    amount,
+  );
+}
+
+function recordAuroraTravelPlansNonJson({ route, status, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelPlansNonJsonCounter,
+    {
+      route: normalizeAuroraRoutePath(route),
+      status_family: normalizeHttpStatusFamily(status),
+    },
     amount,
   );
 }
@@ -2821,6 +2869,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_travel_plan_selection_total counter');
   renderCounter(lines, 'aurora_travel_plan_selection_total', travelPlanSelectionCounter);
 
+  lines.push('# HELP aurora_route_404_total Route-level 404 counters for protected aurora endpoints.');
+  lines.push('# TYPE aurora_route_404_total counter');
+  renderCounter(lines, 'aurora_route_404_total', auroraRoute404Counter);
+
+  lines.push('# HELP aurora_travel_plans_non_json_total Non-JSON responses on travel plans routes.');
+  lines.push('# TYPE aurora_travel_plans_non_json_total counter');
+  renderCounter(lines, 'aurora_travel_plans_non_json_total', auroraTravelPlansNonJsonCounter);
+
   lines.push('# HELP aurora_travel_llm_call_total Total travel LLM calibration outcomes.');
   lines.push('# TYPE aurora_travel_llm_call_total counter');
   renderCounter(lines, 'aurora_travel_llm_call_total', auroraTravelLlmCallCounter);
@@ -3435,6 +3491,8 @@ function resetVisionMetrics() {
   recoAsyncUpdateChangedItemsCounter.clear();
   recoContextUsedCounter.clear();
   travelPlanSelectionCounter.clear();
+  auroraRoute404Counter.clear();
+  auroraTravelPlansNonJsonCounter.clear();
   auroraTravelLlmCallCounter.clear();
   auroraTravelKbHitCounter.clear();
   auroraTravelKbWriteCounter.clear();
@@ -3609,6 +3667,8 @@ function snapshotVisionMetrics() {
     recoAsyncUpdateChangedItems: Array.from(recoAsyncUpdateChangedItemsCounter.entries()),
     recoContextUsed: Array.from(recoContextUsedCounter.entries()),
     travelPlanSelection: Array.from(travelPlanSelectionCounter.entries()),
+    auroraRoute404: Array.from(auroraRoute404Counter.entries()),
+    auroraTravelPlansNonJson: Array.from(auroraTravelPlansNonJsonCounter.entries()),
     auroraTravelLlmCall: Array.from(auroraTravelLlmCallCounter.entries()),
     auroraTravelKbHit: Array.from(auroraTravelKbHitCounter.entries()),
     auroraTravelKbWrite: Array.from(auroraTravelKbWriteCounter.entries()),
@@ -3742,6 +3802,8 @@ module.exports = {
   recordRecoAsyncUpdate,
   recordRecoContextUsed,
   recordTravelPlanSelection,
+  recordAuroraRoute404,
+  recordAuroraTravelPlansNonJson,
   recordAuroraTravelLlmCall,
   recordAuroraTravelKbHit,
   recordAuroraTravelKbWrite,

@@ -184,6 +184,10 @@ const getAuroraPdpPrefetchStateSnapshot =
   typeof auroraBffInternal.getPdpPrefetchStateSnapshot === 'function'
     ? auroraBffInternal.getPdpPrefetchStateSnapshot
     : null;
+const getAuroraRequiredRouteContractsHealth =
+  typeof auroraBffInternal.getRequiredRouteContractsHealth === 'function'
+    ? auroraBffInternal.getRequiredRouteContractsHealth
+    : null;
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
@@ -9555,6 +9559,10 @@ const healthRouteHandler = (req, res) => {
   const minSellable = Math.max(Number(process.env.HEALTHZ_MIN_SELLABLE_PRODUCTS || 20) || 20, 0);
   const includeCacheStats = process.env.HEALTHZ_INCLUDE_CACHE_STATS === 'true';
   const auroraStartupCritical = AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady;
+  const requiredRoutesHealth =
+    typeof getAuroraRequiredRouteContractsHealth === 'function'
+      ? getAuroraRequiredRouteContractsHealth()
+      : null;
 
   const creatorIdForStats = process.env.HEALTHZ_CACHE_STATS_CREATOR_ID || 'nina-studio';
   const creatorConfig = getCreatorConfig(creatorIdForStats);
@@ -9580,6 +9588,14 @@ const healthRouteHandler = (req, res) => {
     aurora_routes_ready: auroraRoutesReady,
     aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
     aurora_routes_error: auroraRoutesLoadError,
+    required_routes_ok:
+      requiredRoutesHealth && Object.prototype.hasOwnProperty.call(requiredRoutesHealth, 'ok')
+        ? Boolean(requiredRoutesHealth.ok)
+        : null,
+    missing_routes:
+      requiredRoutesHealth && Array.isArray(requiredRoutesHealth.missing_routes)
+        ? requiredRoutesHealth.missing_routes
+        : [],
     modes: {
       mock: USE_MOCK,
       hybrid: USE_HYBRID,
@@ -9662,6 +9678,14 @@ const healthRouteHandler = (req, res) => {
         aurora_routes_ready: auroraRoutesReady,
         aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
         aurora_routes_error: auroraRoutesLoadError,
+        required_routes_ok:
+          requiredRoutesHealth && Object.prototype.hasOwnProperty.call(requiredRoutesHealth, 'ok')
+            ? Boolean(requiredRoutesHealth.ok)
+            : null,
+        missing_routes:
+          requiredRoutesHealth && Array.isArray(requiredRoutesHealth.missing_routes)
+            ? requiredRoutesHealth.missing_routes
+            : [],
         version: {
           service: SERVICE_NAME,
           commit: SERVICE_GIT_SHA_SHORT,

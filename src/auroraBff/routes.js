@@ -201,6 +201,11 @@ const {
   upsertIdentityLink,
   migrateGuestDataToUser,
 } = require('./memoryStore');
+const {
+  TRAVEL_PLANS_REQUIRED_ROUTE_CONTRACTS,
+  assertRequiredRouteContracts,
+} = require('./requiredRouteContracts');
+const { mountTravelPlansRoutes } = require('./routes/travelPlansRoutes');
 const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const {
   createOtpChallenge,
@@ -36265,6 +36270,18 @@ function preflightAuroraKbV0ForStartup({ logger } = {}) {
   }
 }
 
+let requiredRouteContractsHealth = Object.freeze({
+  checked: false,
+  ok: false,
+  scope: 'travel_plans',
+  required_routes: TRAVEL_PLANS_REQUIRED_ROUTE_CONTRACTS.map((item) => ({ ...item })),
+  missing_routes: TRAVEL_PLANS_REQUIRED_ROUTE_CONTRACTS.map((item) => ({ ...item })),
+});
+
+function getRequiredRouteContractsHealth() {
+  return requiredRouteContractsHealth;
+}
+
 function mountAuroraBffRoutes(app, { logger }) {
   preflightAuroraKbV0ForStartup({ logger });
   startPdpHotsetPrewarmLoop({ logger });
@@ -42601,6 +42618,39 @@ function mountAuroraBffRoutes(app, { logger }) {
       return res.status(status).json(envelope);
     }
   });
+
+  mountTravelPlansRoutes(app, {
+    logger,
+    requireAuroraUid,
+    resolveIdentity,
+    classifyStorageError,
+  });
+
+  try {
+    requiredRouteContractsHealth = Object.freeze({
+      checked: true,
+      ...assertRequiredRouteContracts(app, TRAVEL_PLANS_REQUIRED_ROUTE_CONTRACTS, {
+        scope: 'travel_plans',
+      }),
+    });
+  } catch (err) {
+    requiredRouteContractsHealth = Object.freeze({
+      checked: true,
+      ok: false,
+      scope: 'travel_plans',
+      required_routes: TRAVEL_PLANS_REQUIRED_ROUTE_CONTRACTS.map((item) => ({ ...item })),
+      missing_routes: Array.isArray(err && err.missing_routes) ? err.missing_routes : [],
+    });
+    logger?.error?.(
+      {
+        err: err && err.message ? err.message : String(err),
+        code: err && err.code ? err.code : null,
+        missing_routes: requiredRouteContractsHealth.missing_routes,
+      },
+      'aurora bff: required route contracts check failed',
+    );
+    throw err;
+  }
 
   app.get('/v1/session/bootstrap', async (req, res) => {
     const ctx = buildRequestContext(req, {});
@@ -50444,6 +50494,7 @@ const __internal = {
   buildPrelabelKbKey,
   parseBoolQueryValue,
   parseIntQueryValue,
+  getRequiredRouteContractsHealth,
   mapSuggestionForResponse,
   generatePrelabelsForAnchor,
   loadSuggestionsForAnchor,

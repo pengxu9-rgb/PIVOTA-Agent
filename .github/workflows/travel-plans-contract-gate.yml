@@ -1,0 +1,52 @@
+name: Travel Plans Contract Gate
+
+on:
+  pull_request:
+    paths:
+      - "src/auroraBff/routes.js"
+      - "src/auroraBff/routes/**"
+      - "src/auroraBff/requiredRouteContracts.js"
+      - "src/auroraBff/travelPlans.js"
+      - "src/auroraBff/schemas.js"
+      - "src/auroraBff/memoryStore.js"
+      - "tests/aurora_routes_contract.node.test.cjs"
+      - "tests/aurora_travel_plans_api.node.test.cjs"
+      - "tests/server_cors_patch.node.test.cjs"
+      - ".github/workflows/travel-plans-contract-gate.yml"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch: {}
+
+concurrency:
+  group: travel-plans-contract-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  travel_plans_contract_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Test preflight
+        run: npm run test:preflight
+
+      - name: Travel plans contract + API tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          AURORA_BFF_USE_MOCK=true AURORA_CHAT_RESPONSE_FORMAT=legacy \
+            node --test \
+              tests/aurora_routes_contract.node.test.cjs \
+              tests/aurora_travel_plans_api.node.test.cjs \
+              tests/server_cors_patch.node.test.cjs
