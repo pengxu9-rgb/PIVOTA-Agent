@@ -1611,31 +1611,86 @@ function normalizePlatformName(raw) {
   return raw;
 }
 
+function normalizeIngredientNameToken(raw) {
+  return String(raw || '').replace(/\s+/g, ' ').trim();
+}
+
+function isLikelyInvalidIngredientHeadingToken(raw) {
+  const text = normalizeIngredientNameToken(raw);
+  if (!text) return true;
+  if (text.length < 2 || text.length > 120) return true;
+  if (/^key ingredients?[:\s]?/i.test(text)) return true;
+  if (/^active ingredients?[:\s]?/i.test(text)) return true;
+  if (/^other ingredients?[:\s]?/i.test(text)) return true;
+  if (/^ingredients?[:\s]?/i.test(text)) return true;
+  if (/^full ingredients?[:\s]?/i.test(text)) return true;
+  if (/^inactive ingredients?[:\s]?/i.test(text)) return true;
+  if (/^contains[:\s]?/i.test(text)) return true;
+  if (/^directions[:\s]?/i.test(text)) return true;
+  if (/^warning[:\s]?/i.test(text)) return true;
+  if (/^note[:\s]?/i.test(text)) return true;
+  if (/[:\uff1a]$/.test(text)) return true;
+  return false;
+}
+
 function inferIngredientFunctions(name, contextText) {
-  const token = `${String(name || '').toLowerCase()} ${String(contextText || '').toLowerCase()}`;
+  const ingredient = normalizeIngredientNameToken(name).toLowerCase();
+  const context = String(contextText || '').toLowerCase();
   const out = [];
-  if (/\bniacinamide\b|烟酰胺/.test(token)) out.push('barrier_support', 'oil_control', 'tone_evening');
-  if (/\b(retinol|retinal|adapalene|tretinoin)\b|维a/.test(token)) out.push('retinoid', 'texture_refine');
-  if (/\b(hyaluronic|sodium hyaluronate|glycerin|panthenol|urea|betaine)\b|玻尿酸|甘油/.test(token)) {
+  if (/\bniacinamide\b|烟酰胺/.test(ingredient)) out.push('barrier_support', 'oil_control', 'tone_evening');
+  if (/\b(retinol|retinal|adapalene|tretinoin)\b|维a/.test(ingredient)) out.push('retinoid', 'texture_refine');
+  if (/\b(hyaluronic|sodium hyaluronate|glycerin|panthenol|urea|betaine)\b|玻尿酸|甘油/.test(ingredient)) {
     out.push('humectant_hydration');
   }
-  if (/\b(ceramide|cholesterol|fatty acid)\b|神经酰胺/.test(token)) out.push('barrier_lipid_support');
-  if (/\b(salicylic|bha|aha|pha|glycolic|lactic|mandelic)\b|果酸|水杨酸/.test(token)) out.push('exfoliation');
-  if (/\b(vitamin c|ascorbic|ascorbyl)\b|维c/.test(token)) out.push('antioxidant_brightening');
-  if (/\b(peptide)\b|肽/.test(token)) out.push('peptide_support');
+  if (/\b(ceramide|cholesterol|fatty acid)\b|神经酰胺/.test(ingredient)) out.push('barrier_lipid_support');
+  if (/\b(salicylic|bha|aha|pha|glycolic|lactic|mandelic)\b|果酸|水杨酸/.test(ingredient)) out.push('exfoliation');
+  if (/\b(vitamin c|ascorbic|ascorbyl)\b|维c/.test(ingredient)) out.push('antioxidant_brightening');
+  if (/\b(peptide)\b|肽/.test(ingredient)) out.push('peptide_support');
+  if (!out.length) {
+    if (/\bbarrier|repair|屏障/.test(context)) out.push('barrier_support');
+    if (/\bhydrat|moisture|保湿|补水/.test(context)) out.push('humectant_hydration');
+    if (/\bbright|tone|dark spot|提亮|淡斑/.test(context)) out.push('tone_evening');
+  }
   return uniqueStrings(out).slice(0, 4);
 }
 
 function inferIngredientRisks(name, contextText) {
-  const token = `${String(name || '').toLowerCase()} ${String(contextText || '').toLowerCase()}`;
+  const ingredient = normalizeIngredientNameToken(name).toLowerCase();
+  const context = String(contextText || '').toLowerCase();
   const out = [];
-  if (/\birritat|stinging|burn|high_irritation|刺激|刺痛|泛红/.test(token)) out.push('irritant');
-  if (/\ballerg|敏感|过敏/.test(token)) out.push('allergen');
-  if (/\b(fragrance|parfum|essential oil|limonene|linalool|citral)\b|香精|精油/.test(token)) out.push('fragrance');
-  if (/\b(retinol|retinal|adapalene|tretinoin)\b|维a/.test(token)) out.push('retinoid');
-  if (/\b(salicylic|bha|aha|pha|glycolic|lactic|mandelic)\b|果酸|水杨酸/.test(token)) out.push('exfoliating_acid');
-  if (/\bcomedo|pore clog|闷痘|爆痘/.test(token)) out.push('comedogenic_risk');
+  const hasRiskCarrier = /\b(fragrance|parfum|essential oil|limonene|linalool|citral|retinol|retinal|adapalene|tretinoin|salicylic|glycolic|lactic|mandelic|bha|aha|pha|alcohol denat|benzyl alcohol|menthol)\b|香精|精油|维a|果酸|水杨酸/.test(ingredient);
+  if (/\b(fragrance|parfum|essential oil|limonene|linalool|citral|benzyl alcohol)\b|香精|精油/.test(ingredient)) out.push('fragrance');
+  if (/\b(retinol|retinal|adapalene|tretinoin)\b|维a/.test(ingredient)) out.push('retinoid');
+  if (/\b(salicylic|bha|aha|pha|glycolic|lactic|mandelic)\b|果酸|水杨酸/.test(ingredient)) out.push('exfoliating_acid');
+  if (/\balcohol denat|denatured alcohol|menthol\b/.test(ingredient)) out.push('irritant');
+  if (/\b(linalool|limonene|citral|geraniol|eugenol)\b/.test(ingredient)) out.push('allergen');
+  if (/\b(comedo|pore clog|isopropyl myristate|coconut oil)\b|闷痘|爆痘/.test(ingredient)) out.push('comedogenic_risk');
+  if (hasRiskCarrier && /\birritat|stinging|burn|high_irritation|刺激|刺痛|泛红/.test(context)) out.push('irritant');
+  if (hasRiskCarrier && /\ballerg|敏感|过敏/.test(context)) out.push('allergen');
   return uniqueStrings(out).slice(0, 5);
+}
+
+function inferIngredientRationale(name, mechanisms = [], fitNotes = []) {
+  const ingredient = normalizeIngredientNameToken(name);
+  const token = ingredient.toLowerCase();
+  const lines = uniqueStrings([...(Array.isArray(mechanisms) ? mechanisms : []), ...(Array.isArray(fitNotes) ? fitNotes : [])]);
+  const pick = (re) => lines.find((line) => re.test(String(line || '').toLowerCase()));
+  if (/\b(peptide|tripeptide|tetrapeptide|hexapeptide|pentapeptide)\b/.test(token)) {
+    return pick(/\b(peptide|firm|fine lines?|wrinkle)\b/) || '';
+  }
+  if (/\b(hyaluronate|hyaluronic|glycerin|urea|betaine|sodium pca)\b/.test(token)) {
+    return pick(/\b(hydrat|humect|moisture|water)\b/) || '';
+  }
+  if (/\b(ceramide|cholesterol|fatty acid|panthenol|allantoin|centella|madecassoside)\b/.test(token)) {
+    return pick(/\b(barrier|repair|soothing|tolerance)\b/) || '';
+  }
+  if (/\b(niacinamide|ascorbic|vitamin c|tranexamic|kojic|arbutin|licorice)\b/.test(token)) {
+    return pick(/\b(bright|tone|spot|even)\b/) || '';
+  }
+  if (/\b(retinol|retinal|adapalene|tretinoin|salicylic|glycolic|lactic|mandelic|aha|bha|pha)\b/.test(token)) {
+    return pick(/\b(exfol|texture|turnover|renew|retino)\b/) || '';
+  }
+  return lines[0] || '';
 }
 
 const PRICE_BAND_ENUM = new Set(['budget', 'mid', 'premium', 'luxury', 'unknown']);
@@ -1785,7 +1840,11 @@ function buildIngredientIntelBlock(payload, { generatedAt = new Date().toISOStri
   const p = asPlainObject(payload) || {};
   const ev = asPlainObject(p.evidence) || {};
   const science = asPlainObject(ev.science) || {};
-  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const keyIngredients = uniqueStrings(
+    asStringArray(science.key_ingredients ?? science.keyIngredients)
+      .map((name) => normalizeIngredientNameToken(name))
+      .filter((name) => !isLikelyInvalidIngredientHeadingToken(name)),
+  );
   const mechanisms = asStringArray(science.mechanisms);
   const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
   const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
@@ -1804,15 +1863,16 @@ function buildIngredientIntelBlock(payload, { generatedAt = new Date().toISOStri
     suitability_tags: [],
   }));
 
-  const actives = keyIngredients.slice(0, 8).map((name, idx) => ({
-    name,
-    rationale: truncateText(
-      mechanisms[idx] ||
-        fitNotes[idx] ||
-        `Evidence-derived active from science.key_ingredients (${name}).`,
-      180,
-    ),
-  }));
+  const actives = keyIngredients.slice(0, 8).map((name) => {
+    const rationale = inferIngredientRationale(name, mechanisms, fitNotes);
+    return {
+      name,
+      rationale: truncateText(
+        rationale || `Evidence-derived active from science.key_ingredients (${name}).`,
+        180,
+      ),
+    };
+  });
 
   const redFlags = uniqueStrings([
     ...riskNotes.map((r) => humanizeRiskLine(r, 'EN')),

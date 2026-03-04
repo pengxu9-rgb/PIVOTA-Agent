@@ -6488,10 +6488,46 @@ function extractOnPageRelatedProducts(html, { baseUrl, anchorName = '', max = 4 
     'home',
   ]);
   const productPathLike = /(product|serum|cream|moistur|cleanser|toner|mask|spf|sunscreen|retinol|niacinamide|peptide)/i;
+  const genericProductTokens = new Set([
+    'moisturizer',
+    'moisturize',
+    'skincare',
+    'spf',
+    'sunscreen',
+    'serum',
+    'cleanser',
+    'toner',
+    'mask',
+    'lotion',
+    'cream',
+  ]);
+  const explicitGenericProductNames = new Set([
+    'moisturizer',
+    'moisturizer spf',
+    'moisturizer/spf',
+    'skincare moisturizer',
+    'skincare moisturize',
+    'spf',
+    'sunscreen',
+    'serum',
+    'cleanser',
+    'toner',
+    'mask',
+  ]);
+  const tokenizeName = (value) => String(value || '').trim().toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const isGenericProductName = (value) => {
+    const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!normalized) return true;
+    if (explicitGenericProductNames.has(normalized)) return true;
+    const tokens = tokenizeName(normalized);
+    if (!tokens.length) return true;
+    return tokens.length <= 3 && tokens.every((token) => genericProductTokens.has(token));
+  };
   const anchorKey = String(anchorName || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+  const anchorTokens = tokenizeName(anchorKey);
 
   const seen = new Set();
   const out = [];
@@ -6561,6 +6597,10 @@ function extractOnPageRelatedProducts(html, { baseUrl, anchorName = '', max = 4 
       m = re.exec(source);
       continue;
     }
+    if (isGenericProductName(nameKey)) {
+      m = re.exec(source);
+      continue;
+    }
     if (generic.has(nameKey) || /^skip to /i.test(name) || /^contact us$/i.test(name)) {
       m = re.exec(source);
       continue;
@@ -6572,6 +6612,15 @@ function extractOnPageRelatedProducts(html, { baseUrl, anchorName = '', max = 4 
     if (seen.has(nameKey)) {
       m = re.exec(source);
       continue;
+    }
+    const nameTokens = tokenizeName(nameKey);
+    if (anchorTokens.length && nameTokens.length) {
+      const overlap = nameTokens.filter((token) => anchorTokens.includes(token)).length;
+      const similarity = overlap / Math.max(anchorTokens.length, nameTokens.length);
+      if (similarity >= 0.8) {
+        m = re.exec(source);
+        continue;
+      }
     }
     seen.add(nameKey);
     out.push({ name, url: absUrl });
@@ -8563,6 +8612,10 @@ function isLikelyNoiseCompetitorName(name) {
   if (/^skip to\b/i.test(text)) return true;
   if (/^(contact us|home|menu|search|my account|sign in|footer|header|bestsellers?|new arrivals?)$/i.test(text)) return true;
   if (/\b(skip to main content|skip to footer content|contact us)\b/i.test(text)) return true;
+  if (/^(moisturizer(?:\s*\/\s*spf)?|skincare moisturize|skincare moisturizer|spf|sunscreen|serum|cleanser|toner|mask)$/i.test(text)) return true;
+  const genericTokens = text.split(/[^a-z0-9]+/).filter(Boolean);
+  const genericLexicon = new Set(['moisturizer', 'moisturize', 'skincare', 'spf', 'sunscreen', 'serum', 'cleanser', 'toner', 'mask', 'lotion', 'cream']);
+  if (genericTokens.length > 0 && genericTokens.length <= 3 && genericTokens.every((token) => genericLexicon.has(token))) return true;
   const symbolChars = (text.match(/[^a-z0-9\u4e00-\u9fff\s]/g) || []).length;
   if (symbolChars / Math.max(1, text.length) > 0.35) return true;
   return false;
@@ -12229,14 +12282,18 @@ async function buildProductAnalysisFromUrlIngredients({
     6,
   );
 
-  const raw = {
-    assessment: {
-      verdict,
-      reasons,
-      summary: reasons[0] || '',
-      ingredient_confidence_tier: ingredientConfidenceTier,
-      anchor_product: anchorProduct,
-    },
+	  const raw = {
+	    assessment: {
+	      verdict,
+	      reasons,
+	      summary: selectAssessmentSummary({
+	        summary: reasons[0] || '',
+	        reasons,
+	        fallbacks: [fitNotes[0], mechanisms[0]],
+	      }),
+	      ingredient_confidence_tier: ingredientConfidenceTier,
+	      anchor_product: anchorProduct,
+	    },
     evidence: {
       science: {
         key_ingredients: keyIngredients,
@@ -36497,11 +36554,111 @@ function inferProductTypeFromPayload(payload) {
   return classifyProductType({ name, url, inciList });
 }
 
+function isDataQualityDiagnosticLine(line) {
+  const text = String(line || '').trim();
+  if (!text) return false;
+  if (/official[-\s]?page\s+inci\s+extraction\s+was\s+blocked/i.test(text)) return true;
+  if (/incidecoder|regulatory source|retail pdp/i.test(text)) return true;
+  if (/cross-?check with package inci|version verification|version_verification_needed/i.test(text)) return true;
+  if (/ingredient-source consistency is limited/i.test(text)) return true;
+  if (/^i extracted the inci list directly from the product page/i.test(text)) return true;
+  if (/官网成分抓取受限|监管源|零售页补充|需与包装\s*inci\s*复核|版本核对|成分证据一致度偏低/.test(text)) return true;
+  return false;
+}
+
+function isFitSignalLine(line) {
+  const text = String(line || '').trim();
+  if (!text) return false;
+  if (/^(fit signal|fit:|匹配点[:：]?|适配信号[:：]?)/i.test(text)) return true;
+  if (/lower irritation exposure|acne\/comedone control|oil control and low-clog|dry-skin context/i.test(text.toLowerCase())) return true;
+  if (/油皮场景|干皮场景|敏感\/屏障不稳/.test(text)) return true;
+  return false;
+}
+
+function selectAssessmentSummary({ summary = '', reasons = [], fallbacks = [] } = {}) {
+  const candidates = uniqCaseInsensitiveStrings(
+    [
+      summary,
+      ...asStringArray(reasons, 12),
+      ...asStringArray(fallbacks, 8),
+    ],
+    16,
+  )
+    .map((line) => String(line || '').trim())
+    .filter(Boolean);
+  for (const line of candidates) {
+    if (isDataQualityDiagnosticLine(line)) continue;
+    if (isFitSignalLine(line)) continue;
+    if (/^detected key ingredients[:：]/i.test(line)) continue;
+    if (/^how to use[:：]/i.test(line)) continue;
+    return line;
+  }
+  for (const line of candidates) {
+    if (isDataQualityDiagnosticLine(line)) continue;
+    if (/^detected key ingredients[:：]/i.test(line)) continue;
+    if (/^how to use[:：]/i.test(line)) continue;
+    return line;
+  }
+  return '';
+}
+
+function reconcileInciStatusWithProvenance(payload) {
+  if (!isPlainObject(payload)) return payload;
+  const p = { ...payload };
+  const provenance = isPlainObject(p.provenance) ? p.provenance : null;
+  const evidence = isPlainObject(p.evidence) ? p.evidence : null;
+  const missingCodes = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(p.missing_info, 40),
+      ...asStringArray(evidence?.missing_info, 40),
+    ],
+    60,
+  ).map((item) => String(item || '').trim().toLowerCase()).filter(Boolean);
+  const provenanceConsensusTier = String(provenance?.ingredient_consensus?.confidence_tier || '').trim().toLowerCase();
+  const versionVerificationNeeded = missingCodes.includes('version_verification_needed');
+
+  const inferred = deriveInciStatusFromPayloadSignals(p);
+  const base = isPlainObject(p.inci_status)
+    ? { ...p.inci_status }
+    : (isPlainObject(inferred) ? { ...inferred } : null);
+  if (!base) return p;
+
+  const normalizeTier = (raw) => {
+    const token = String(raw || '').trim().toLowerCase();
+    if (token === 'med') return 'medium';
+    if (token === 'high' || token === 'medium' || token === 'low') return token;
+    return '';
+  };
+  let tier = normalizeTier(base.consensus_tier);
+  if (provenanceConsensusTier === 'low') tier = 'low';
+  else if (!tier && provenanceConsensusTier === 'medium') tier = 'medium';
+  else if (!tier && provenanceConsensusTier === 'high') tier = 'high';
+
+  const verificationRequired = Boolean(base.verification_required)
+    || tier === 'low'
+    || versionVerificationNeeded;
+  const next = {
+    ...base,
+    ...(tier ? { consensus_tier: tier } : {}),
+    verification_required: verificationRequired,
+  };
+  if (!Array.isArray(next.sources) && Array.isArray(inferred?.sources) && inferred.sources.length) {
+    next.sources = inferred.sources;
+  }
+  if (!Number.isFinite(Number(next.total_ingredients)) && Number.isFinite(Number(inferred?.total_ingredients))) {
+    next.total_ingredients = Number(inferred.total_ingredients);
+  }
+  p.inci_status = next;
+  return p;
+}
+
 function deriveInciStatusFromPayloadSignals(payload) {
   if (!isPlainObject(payload)) return null;
-  if (isPlainObject(payload.inci_status)) return payload.inci_status;
+  if (isPlainObject(payload.inci_status) && !isPlainObject(payload.provenance)) return payload.inci_status;
   const evidence = isPlainObject(payload.evidence) ? payload.evidence : null;
   const science = isPlainObject(evidence?.science) ? evidence.science : null;
+  const provenance = isPlainObject(payload.provenance) ? payload.provenance : null;
+  const ingredientConsensus = isPlainObject(provenance?.ingredient_consensus) ? provenance.ingredient_consensus : null;
   const gapCodes = uniqCaseInsensitiveStrings(
     [
       ...asStringArray(payload.missing_info),
@@ -36521,8 +36678,25 @@ function deriveInciStatusFromPayloadSignals(payload) {
     }))
     .filter((item) => item.type || item.url)
     .slice(0, 8);
+
+  const sourceTypes = new Set(sourceRows.map((row) => String(row.type || '').trim().toLowerCase()).filter(Boolean));
+  const hasInciDecoderSource = sourceTypes.has('inci_decoder');
+  const hasAuthoritativeSource = sourceTypes.has('official_page') || sourceTypes.has('regulatory');
+  const hasRetailSource = sourceTypes.has('retail_page');
+  const incidecoderOnly = hasInciDecoderSource && !hasAuthoritativeSource && !hasRetailSource;
+
+  const mergedCodes = uniqCaseInsensitiveStrings(
+    [
+      ...normalizedCodes,
+      ...(hasInciDecoderSource ? ['incidecoder_source_used'] : []),
+      ...(sourceTypes.has('regulatory') ? ['regulatory_source_used'] : []),
+      ...(sourceTypes.has('retail_page') ? ['retail_source_used'] : []),
+    ],
+    60,
+  ).map((code) => String(code || '').trim().toLowerCase()).filter(Boolean);
+
   const hasSourceSignal = sourceRows.some((row) => ['official_page', 'regulatory', 'retail_page', 'inci_decoder'].includes(row.type));
-  const hasGapSignal = normalizedCodes.some((code) =>
+  const hasGapSignal = mergedCodes.some((code) =>
     code.includes('on_page_fetch_blocked') ||
     code.includes('regulatory_source_used') ||
     code.includes('retail_source_used') ||
@@ -36530,21 +36704,32 @@ function deriveInciStatusFromPayloadSignals(payload) {
   );
   if (!hasSourceSignal && !hasGapSignal) return null;
 
-  const keyIngredients = uniqCaseInsensitiveStrings(
+  const keyIngredients = canonicalizeIngredientCandidates(
     [
       ...asStringArray(science?.key_ingredients ?? science?.keyIngredients, 80),
       ...asStringArray(science?.actives, 80),
     ],
-    120,
+    { max: 120 },
   );
-  const hasAuthoritativeSource = sourceRows.some((row) => row.type === 'official_page' || row.type === 'regulatory');
-  const confidenceTier = hasAuthoritativeSource && keyIngredients.length >= 6
+  const provenanceTierRaw = String(ingredientConsensus?.confidence_tier || '').trim().toLowerCase();
+  const provenanceTier = provenanceTierRaw === 'medium'
+    ? 'med'
+    : provenanceTierRaw === 'high' || provenanceTierRaw === 'med' || provenanceTierRaw === 'low'
+      ? provenanceTierRaw
+      : '';
+
+  let confidenceTier = hasAuthoritativeSource && keyIngredients.length >= 6
     ? 'high'
-    : (sourceRows.length && keyIngredients.length >= 3)
+    : (hasAuthoritativeSource && keyIngredients.length >= 3)
       ? 'med'
-      : (keyIngredients.length || sourceRows.length)
-        ? 'low'
-        : 'none';
+      : (sourceRows.length && keyIngredients.length >= 3)
+        ? 'med'
+        : (keyIngredients.length || sourceRows.length)
+          ? 'low'
+          : 'none';
+  if (provenanceTier) confidenceTier = provenanceTier;
+  if (incidecoderOnly) confidenceTier = 'low';
+  if (!hasAuthoritativeSource && mergedCodes.includes('version_verification_needed')) confidenceTier = 'low';
 
   const consensusResult = keyIngredients.length
     ? {
@@ -36553,7 +36738,7 @@ function deriveInciStatusFromPayloadSignals(payload) {
     }
     : null;
   return buildInciStatus({
-    gapCodes: normalizedCodes,
+    gapCodes: mergedCodes,
     consensusResult,
     sources: sourceRows,
   });
@@ -36566,11 +36751,20 @@ function buildV4TopTakeawaysFromLegacy(assessment) {
     [
       ...(summary ? [summary] : []),
       ...asStringArray(assessment.formula_intent ?? assessment.formulaIntent, 4),
-      ...asStringArray(assessment.reasons, 6).filter((line) => !/^(your profile|profile priorities|你的情况|你的画像|画像)/i.test(String(line || '').trim())),
+      ...asStringArray(assessment.reasons, 6).filter((line) => {
+        const text = String(line || '').trim();
+        if (!text) return false;
+        if (/^(your profile|profile priorities|你的情况|你的画像|画像)/i.test(text)) return false;
+        if (isDataQualityDiagnosticLine(text)) return false;
+        return true;
+      }),
     ],
     6,
   )
     .map((line) => String(line || '').trim())
+    .filter((line) => !isDataQualityDiagnosticLine(line))
+    .filter((line) => !/^detected key ingredients[:：]/i.test(line))
+    .filter((line) => !/^how to use[:：]/i.test(line))
     .filter(Boolean)
     .slice(0, 5);
   return lines;
@@ -36580,14 +36774,31 @@ function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } 
   const isCn = String(lang || '').toUpperCase() === 'CN';
   const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
   if (Array.isArray(assessment?.watchouts) && assessment.watchouts.length) {
-    return assessment.watchouts;
+    return assessment.watchouts
+      .map((item) => (isPlainObject(item) ? item : null))
+      .filter(Boolean)
+      .map((item) => ({
+        issue: String(item.issue || item.name || item.text || '').trim(),
+        status: ['confirmed', 'possible', 'unknown'].includes(String(item.status || '').toLowerCase())
+          ? String(item.status || '').toLowerCase()
+          : 'unknown',
+        what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim(),
+      }))
+      .filter((item) => item.issue && !isFitSignalLine(item.issue) && !isDataQualityDiagnosticLine(item.issue))
+      .slice(0, 4);
   }
   const evidence = isPlainObject(payload?.evidence) ? payload.evidence : null;
   const science = isPlainObject(evidence?.science) ? evidence.science : null;
   const riskNotes = uniqCaseInsensitiveStrings(
     [
       ...asStringArray(science?.risk_notes ?? science?.riskNotes, 8),
-      ...asStringArray(assessment?.reasons, 8).filter((line) => /risk|watchout|caution|irrit|刺痛|刺激|泛红|干燥|香精|过敏/i.test(String(line || ''))),
+      ...asStringArray(assessment?.reasons, 8).filter((line) => {
+        const text = String(line || '').trim();
+        if (!/risk|watchout|caution|irrit|刺痛|刺激|泛红|干燥|香精|过敏/i.test(text)) return false;
+        if (isFitSignalLine(text)) return false;
+        if (isDataQualityDiagnosticLine(text)) return false;
+        return true;
+      }),
     ],
     8,
   );
@@ -36707,14 +36918,41 @@ function buildV4HowToUseFromLegacy(assessment, { lang = 'EN', productType = 'oth
 function buildV4KeyIngredientsByFunctionFromLegacy(payload) {
   const evidence = isPlainObject(payload?.evidence) ? payload.evidence : null;
   const existing = Array.isArray(evidence?.key_ingredients_by_function) ? evidence.key_ingredients_by_function : [];
-  if (existing.length) return existing;
+  const normalizeIngredients = (rows) => uniqCaseInsensitiveStrings(
+    (Array.isArray(rows) ? rows : [])
+      .map((item) => normalizeInciIngredientName(item))
+      .filter((item) => item && !isLikelyInvalidInciToken(item)),
+    80,
+  );
+  const normalizedExisting = existing
+    .map((item) => (isPlainObject(item) ? item : null))
+    .filter(Boolean)
+    .map((item) => {
+      const ingredients = normalizeIngredients(item.ingredients);
+      const fnRaw = String(item.function || item.category || '').trim();
+      const fnLower = fnRaw.toLowerCase();
+      const hasHumectants = ingredients.some((name) => /\b(glycerin|hyaluronate|hyaluronic|sodium pca|urea|trehalose|betaine)\b/i.test(String(name || '')));
+      const hasBarrierLipids = ingredients.some((name) => /\b(ceramide|cholesterol|fatty acid|phytosphingosine|panthenol)\b/i.test(String(name || '')));
+      let functionLabel = fnRaw;
+      if (/\bbarrier|repair|support\b/i.test(fnLower) && hasHumectants && !hasBarrierLipids) {
+        functionLabel = 'Humectants';
+      }
+      return {
+        function: functionLabel,
+        ingredients,
+        confidence: ['high', 'medium', 'low'].includes(String(item.confidence || '').toLowerCase())
+          ? String(item.confidence || '').toLowerCase()
+          : 'medium',
+      };
+    })
+    .filter((item) => item.function && item.ingredients.length);
+  if (normalizedExisting.length) return normalizedExisting.slice(0, 6);
   const science = isPlainObject(evidence?.science) ? evidence.science : null;
-  const ingredients = uniqCaseInsensitiveStrings(
+  const ingredients = normalizeIngredients(
     [
       ...asStringArray(science?.key_ingredients ?? science?.keyIngredients, 80),
       ...asStringArray(science?.actives, 80),
     ],
-    120,
   );
   if (!ingredients.length) return [];
   const buckets = {
@@ -36835,33 +37073,76 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
   const p = isPlainObject(base) ? { ...base } : base;
   if (!isPlainObject(p)) return payload;
   const assessment = isPlainObject(p.assessment) ? { ...p.assessment } : null;
-  const verdictToken = String(assessment?.verdict || '').trim().toLowerCase();
-  const inciStatusObj = inciStatus || (isPlainObject(p.inci_status) ? p.inci_status : null);
+  const evidenceObj = isPlainObject(p.evidence) ? p.evidence : null;
+  const payloadMissing = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(p.missing_info, 20),
+      ...asStringArray(evidenceObj?.missing_info, 20),
+    ],
+    24,
+  );
+  const reconciled = reconcileInciStatusWithProvenance({
+    ...p,
+    ...(assessment ? { assessment } : {}),
+    missing_info: payloadMissing,
+  });
+  const state = isPlainObject(reconciled) ? reconciled : p;
+  const nextAssessment = isPlainObject(state.assessment) ? { ...state.assessment } : assessment;
+  const summaryCandidate = selectAssessmentSummary({
+    summary: pickFirstTrimmed(
+      nextAssessment?.summary,
+      nextAssessment?.quick_summary,
+      nextAssessment?.quickSummary,
+    ),
+    reasons: asStringArray(nextAssessment?.reasons, 12),
+    fallbacks: [
+      ...asStringArray(nextAssessment?.top_takeaways ?? nextAssessment?.topTakeaways, 4),
+      ...asStringArray(nextAssessment?.formula_intent ?? nextAssessment?.formulaIntent, 4),
+    ],
+  });
+  if (nextAssessment && summaryCandidate && String(nextAssessment.summary || '').trim() !== summaryCandidate) {
+    nextAssessment.summary = summaryCandidate;
+  }
+
+  const verdictToken = String(nextAssessment?.verdict || '').trim().toLowerCase();
+  const inciStatusObj = isPlainObject(state.inci_status)
+    ? state.inci_status
+    : (isPlainObject(inciStatus) ? inciStatus : null);
+  const provenance = isPlainObject(state.provenance) ? state.provenance : null;
+  const provenanceConsensusTier = String(provenance?.ingredient_consensus?.confidence_tier || '').trim().toLowerCase();
+  const hasVersionVerificationNeeded = payloadMissing.some((token) => String(token || '').trim().toLowerCase() === 'version_verification_needed');
   const inciConsensusTier = String(inciStatusObj?.consensus_tier || '').toLowerCase();
   const inciVerificationRequired = Boolean(inciStatusObj?.verification_required);
-  const verdictLevel = String(assessment?.verdict_level || '').trim().toLowerCase();
-  if (verdictLevel === 'recommended' && (inciConsensusTier === 'low' || inciVerificationRequired)) {
-    const overriddenLevel = inciConsensusTier === 'low' ? 'needs_verification' : 'cautiously_ok';
+  const verdictLevel = String(nextAssessment?.verdict_level || '').trim().toLowerCase();
+  if (verdictLevel === 'recommended' && (inciConsensusTier === 'low' || inciVerificationRequired || provenanceConsensusTier === 'low' || hasVersionVerificationNeeded)) {
+    const overriddenLevel = (inciConsensusTier === 'low' || provenanceConsensusTier === 'low') ? 'needs_verification' : 'cautiously_ok';
     const isCn = String(lang || '').toUpperCase() === 'CN';
     const banner = isCn
       ? '官方 INCI 成分表未完全验证，基于现有数据推断，建议核实后再做决策。'
       : 'Official INCI not fully verified; analysis is based on available data. Verify before relying on ingredient-specific claims.';
     return reconcileProductAnalysisConsistency({
-      ...p,
+      ...state,
       assessment: {
-        ...assessment,
+        ...nextAssessment,
         verdict_level: overriddenLevel,
-        data_quality_banner: assessment?.data_quality_banner || banner,
+        data_quality_banner: nextAssessment?.data_quality_banner || banner,
       },
+      ...(inciStatusObj ? { inci_status: inciStatusObj } : {}),
     }, { lang });
   }
 
-  if (verdictToken !== 'unknown' && verdictToken !== '未知') return p;
+  if (verdictToken !== 'unknown' && verdictToken !== '未知') {
+    return {
+      ...state,
+      ...(nextAssessment ? { assessment: nextAssessment } : {}),
+      ...(inciStatusObj ? { inci_status: inciStatusObj } : {}),
+    };
+  }
   const relaxedUnknownMode = AURORA_RULE_RELAX_AGGRESSIVE || AURORA_PRODUCT_GUARDRAIL_TELEMETRY_ONLY;
 
   const isCn = String(lang || '').toUpperCase() === 'CN';
   const reasons = uniqCaseInsensitiveStrings(
-    Array.isArray(assessment?.reasons) ? assessment.reasons : [],
+    Array.isArray(nextAssessment?.reasons) ? nextAssessment.reasons : [],
     10,
   );
   if (reasons.length < 2) {
@@ -36882,27 +37163,24 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
     );
   }
 
-  const payloadMissing = uniqCaseInsensitiveStrings(
-    Array.isArray(p.missing_info) ? p.missing_info : [],
-    14,
-  );
   const hasDiagnosticCode = payloadMissing.some((token) =>
     /(analysis_|evidence_|product_not_resolved|url_fetch_|on_page_fetch_blocked|regulatory_source_used|incidecoder_)/i.test(String(token || '')),
   );
   if (!payloadMissing.length || !hasDiagnosticCode) payloadMissing.push('analysis_limited');
 
-  const evidenceObj = isPlainObject(p.evidence) ? { ...p.evidence } : null;
+  const evidenceForUnknown = isPlainObject(state.evidence) ? { ...state.evidence } : null;
   const evidenceMissing = uniqCaseInsensitiveStrings(
-    Array.isArray(evidenceObj?.missing_info) ? evidenceObj.missing_info : [],
+    Array.isArray(evidenceForUnknown?.missing_info) ? evidenceForUnknown.missing_info : [],
     8,
   );
   if (!evidenceMissing.length) evidenceMissing.push('evidence_missing');
 
   return reconcileProductAnalysisConsistency(applyProductAnalysisGapContract({
-    ...p,
-    ...(assessment ? { assessment: { ...assessment, reasons: reasons.slice(0, 8) } } : {}),
-    ...(evidenceObj ? { evidence: { ...evidenceObj, missing_info: evidenceMissing } } : {}),
+    ...state,
+    ...(nextAssessment ? { assessment: { ...nextAssessment, reasons: reasons.slice(0, 8) } } : {}),
+    ...(evidenceForUnknown ? { evidence: { ...evidenceForUnknown, missing_info: evidenceMissing } } : {}),
     missing_info: payloadMissing.slice(0, 12),
+    ...(inciStatusObj ? { inci_status: inciStatusObj } : {}),
     ...(relaxedUnknownMode
       ? {
         low_confidence: true,
@@ -36941,15 +37219,23 @@ function stripDagDebugFromExpertNotes(notes) {
 
 function buildDataQualityBanner(payload, { lang = 'EN' } = {}) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
-  const missingInfo = Array.isArray(payload?.missing_info) ? payload.missing_info : [];
+  const evidence = isPlainObject(payload?.evidence) ? payload.evidence : null;
+  const missingInfo = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(payload?.missing_info, 20),
+      ...asStringArray(evidence?.missing_info, 20),
+    ],
+    30,
+  );
   const isBlocked = missingInfo.some((c) => String(c || '').includes('on_page_fetch_blocked'));
   const isIncidecoder = missingInfo.some((c) => String(c || '').includes('incidecoder_source_used'));
   const isRegulatory = missingInfo.some((c) => String(c || '').includes('regulatory_source_used'));
   const isRetail = missingInfo.some((c) => String(c || '').includes('retail_source_used'));
+  const versionVerificationNeeded = missingInfo.some((c) => String(c || '').includes('version_verification_needed'));
   const inciStatus = isPlainObject(payload?.inci_status) ? payload.inci_status : null;
   const verificationRequired = Boolean(inciStatus?.verification_required);
 
-  if (!isBlocked && !isIncidecoder && !isRegulatory && !isRetail && !verificationRequired) return null;
+  if (!isBlocked && !isIncidecoder && !isRegulatory && !isRetail && !verificationRequired && !versionVerificationNeeded) return null;
   if (isBlocked && (isIncidecoder || isRegulatory)) {
     return isCn
       ? '官方 INCI 提取受限（站点封锁），分析基于 INCIDecoder/监管数据补充。成分相关结论建议核对实物包装后再决策。'
@@ -36960,7 +37246,12 @@ function buildDataQualityBanner(payload, { lang = 'EN' } = {}) {
       ? '官方产品页抓取受阻，本次证据有限。请上传包装 INCI 或粘贴完整成分表后重试以提升准确度。'
       : 'Official INCI extraction was blocked; evidence is limited. Paste the full INCI list or share an accessible product page for a more accurate analysis.';
   }
-  if (verificationRequired) {
+  if (isIncidecoder && versionVerificationNeeded) {
+    return isCn
+      ? '当前成分线索主要来自 INCIDecoder，且存在版本差异风险；请先核对包装 INCI 后再依据成分细节做决策。'
+      : 'Ingredient evidence relies on INCIDecoder and may vary by version/region. Cross-check your package INCI before relying on ingredient-specific guidance.';
+  }
+  if (verificationRequired || versionVerificationNeeded) {
     return isCn
       ? '成分数据来源未完全验证，成分相关建议仅供参考，建议与官方/包装信息交叉核实。'
       : 'Ingredient data is not fully verified; ingredient-specific guidance is indicative only. Cross-check with official or package information before deciding.';
@@ -36984,7 +37275,7 @@ function validateAndRepairAtomicLists(assessment) {
           what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim() || null,
         };
       })
-      .filter((item) => item && item.issue);
+      .filter((item) => item && item.issue && !isFitSignalLine(item.issue) && !isDataQualityDiagnosticLine(item.issue));
   }
 
   return out;
@@ -37040,22 +37331,40 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
       }
 
       const nextEvidence = isPlainObject(sanitizedPayload.evidence) ? sanitizedPayload.evidence : null;
-      if (nextEvidence && Array.isArray(nextEvidence.key_ingredients_by_function)) {
-        const validatedKif = nextEvidence.key_ingredients_by_function
+      if (nextEvidence && isPlainObject(nextEvidence.science)) {
+        const science = nextEvidence.science;
+        const filteredKeyIngredients = canonicalizeIngredientCandidates(
+          asStringArray(science.key_ingredients ?? science.keyIngredients, 80),
+          { max: 120 },
+        );
+        sanitizedPayload.evidence = {
+          ...nextEvidence,
+          science: {
+            ...science,
+            ...(filteredKeyIngredients.length ? { key_ingredients: filteredKeyIngredients } : { key_ingredients: [] }),
+          },
+        };
+      }
+
+      const evidenceForKif = isPlainObject(sanitizedPayload.evidence) ? sanitizedPayload.evidence : null;
+      if (evidenceForKif && Array.isArray(evidenceForKif.key_ingredients_by_function)) {
+        const validatedKif = evidenceForKif.key_ingredients_by_function
           .map((item) => {
             if (!isPlainObject(item)) return null;
+            const ingredients = canonicalizeIngredientCandidates(
+              Array.isArray(item.ingredients) ? item.ingredients : [],
+              { max: 40 },
+            );
             return {
               function: String(item.function || item.category || '').trim() || null,
-              ingredients: Array.isArray(item.ingredients)
-                ? item.ingredients.map((i) => String(i || '').trim()).filter(Boolean)
-                : [],
+              ingredients,
               confidence: ['high', 'medium', 'low'].includes(String(item.confidence || '').toLowerCase())
                 ? String(item.confidence || '').toLowerCase()
                 : 'medium',
             };
           })
           .filter((item) => item && item.function && item.ingredients.length);
-        sanitizedPayload.evidence = { ...nextEvidence, key_ingredients_by_function: validatedKif };
+        sanitizedPayload.evidence = { ...evidenceForKif, key_ingredients_by_function: validatedKif };
       }
     }
     return {
@@ -40754,7 +41063,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           ctx.lang === 'CN'
             ? '上游未返回可用的取舍对比细节（仅能提供有限对比）。你可以提供平替的链接/完整名称，或从推荐的替代里选择再比对。'
             : 'No tradeoff details were returned (comparison is limited). Provide the dupe link/full name or pick from suggested alternatives to compare again.';
-        payload = { ...payload, tradeoffs: [note] };
+        payload = {
+          ...payload,
+          tradeoffs: [note],
+          compare_quality: 'limited',
+          limited_reason: 'tradeoffs_detail_missing',
+          missing_info: uniqStrings([...(Array.isArray(payload.missing_info) ? payload.missing_info : []), 'tradeoffs_detail_missing']),
+        };
+      } else {
+        payload = {
+          ...payload,
+          compare_quality: String(payload.compare_quality || '').trim().toLowerCase() === 'limited' ? 'limited' : 'full',
+          ...(payload.limited_reason ? { limited_reason: payload.limited_reason } : {}),
+        };
       }
 
       const envelope = buildEnvelope(ctx, {
