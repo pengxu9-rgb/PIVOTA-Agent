@@ -400,6 +400,152 @@ describe('Product Analysis V4 unit tests', () => {
       expect(fragranceWatchout).toBeDefined();
       expect(fragranceWatchout.status).toBe('unknown');
     });
+
+    test('upgrades legacy payload to V4 fields when prompt version is v4', () => {
+      const envelope = {
+        request_id: 'req_legacy_upgrade',
+        trace_id: 'trace_legacy_upgrade',
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: 'analyze_legacy_upgrade',
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Likely Suitable',
+                summary: 'Hydrating formula with barrier-supportive ingredients.',
+                reasons: ['Hydration-focused ingredient profile.'],
+                how_to_use: {
+                  timing: 'AM/PM',
+                  frequency: 'daily',
+                  steps: ['Apply after cleansing.'],
+                  observation_window: 'Observe for 10-14 days.',
+                  stop_signs: ['Persistent redness'],
+                },
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['Glycerin', 'Ceramide NP', 'Niacinamide'],
+                  risk_notes: ['May cause mild dryness in reactive skin.'],
+                },
+                expert_notes: ['Evidence source: official page.'],
+                missing_info: [],
+              },
+              confidence: 0.78,
+              missing_info: [],
+            },
+          },
+        ],
+        session_patch: {},
+        events: [],
+      };
+
+      const result = applyUnknownVerdictQualityGateToEnvelope(envelope, { lang: 'EN' });
+      const card = result.cards.find((c) => c.type === 'product_analysis');
+      expect(card.payload.assessment.verdict_level).toBe('recommended');
+      expect(card.payload.assessment.top_takeaways.length).toBeGreaterThan(0);
+      expect(card.payload.assessment.how_to_use).toMatchObject({
+        when: 'AM/PM',
+        frequency: 'daily',
+      });
+      expect(typeof card.payload.assessment.how_to_use.order_in_routine).toBe('string');
+      expect(Array.isArray(card.payload.assessment.how_to_use.pairing_rules)).toBe(true);
+      expect(Array.isArray(card.payload.assessment.watchouts)).toBe(true);
+      expect(Array.isArray(card.payload.evidence.key_ingredients_by_function)).toBe(true);
+      expect(typeof card.payload.evidence.product_type_reasoning).toBe('string');
+    });
+
+    test('SPF legacy payload enforces AM only and removes PM-first guidance', () => {
+      const envelope = {
+        request_id: 'req_spf_upgrade',
+        trace_id: 'trace_spf_upgrade',
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: 'analyze_spf_upgrade',
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Suitable',
+                anchor_product: {
+                  brand: 'La Roche-Posay',
+                  name: 'Anthelios SPF 50',
+                  url: 'https://example.com/anthelios-spf-50',
+                },
+                how_to_use: {
+                  timing: 'PM first',
+                  frequency: 'Start 2-3 nights/week',
+                  steps: ['PM first for 2-3 nights.'],
+                  stop_signs: ['Stinging'],
+                },
+                reasons: ['Daily sunscreen protection.'],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['Avobenzone', 'Octocrylene'],
+                  risk_notes: [],
+                },
+                expert_notes: [],
+                missing_info: [],
+              },
+              confidence: 0.7,
+              missing_info: [],
+            },
+          },
+        ],
+        session_patch: {},
+        events: [],
+      };
+
+      const result = applyUnknownVerdictQualityGateToEnvelope(envelope, { lang: 'EN' });
+      const card = result.cards.find((c) => c.type === 'product_analysis');
+      const howToUse = card.payload.assessment.how_to_use;
+      expect(howToUse.when).toBe('AM only');
+      expect(howToUse.frequency).toBe('daily');
+      expect(howToUse.pairing_rules.join(' | ').toLowerCase()).not.toContain('pm first');
+      expect(howToUse.pairing_rules.join(' | ').toLowerCase()).toContain('reapply');
+    });
+
+    test('does not hard-downgrade recommended when INCI evidence signals are absent', () => {
+      const envelope = {
+        request_id: 'req_no_inci_signal',
+        trace_id: 'trace_no_inci_signal',
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: 'analyze_no_inci_signal',
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Suitable',
+                summary: 'Looks compatible for daily use.',
+                reasons: ['No obvious irritation markers in returned signals.'],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['Niacinamide'],
+                  risk_notes: [],
+                },
+                expert_notes: [],
+                missing_info: [],
+              },
+              confidence: 0.8,
+              missing_info: [],
+            },
+          },
+        ],
+        session_patch: {},
+        events: [],
+      };
+
+      const result = applyUnknownVerdictQualityGateToEnvelope(envelope, { lang: 'EN' });
+      const card = result.cards.find((c) => c.type === 'product_analysis');
+      expect(card.payload.assessment.verdict_level).toBe('recommended');
+      expect(card.payload.inci_status).toBeUndefined();
+    });
   });
 
   describe('buildDataQualityBanner()', () => {

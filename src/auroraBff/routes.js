@@ -36446,6 +36446,390 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
   return nextPayload;
 }
 
+const PRODUCT_ANALYSIS_V4_VERDICT_LEVELS = new Set([
+  'recommended',
+  'cautiously_ok',
+  'needs_verification',
+  'not_recommended',
+]);
+
+function normalizeVerdictLevelToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!PRODUCT_ANALYSIS_V4_VERDICT_LEVELS.has(token)) return '';
+  return token;
+}
+
+function inferVerdictLevelFromLegacyAssessment(assessment, { inciStatus = null } = {}) {
+  const existing = normalizeVerdictLevelToken(assessment?.verdict_level);
+  if (existing) return existing;
+  const verdictRaw = String(assessment?.verdict || '').trim();
+  const verdict = verdictRaw.toLowerCase();
+  let level = 'needs_verification';
+  if (/(not\s*recommended|avoid|mismatch|veto|不建议|不推荐|禁用|不适配)/i.test(verdictRaw)) {
+    level = 'not_recommended';
+  } else if (/(caution|谨慎|风险|risky|warning|warn)/i.test(verdictRaw)) {
+    level = 'cautiously_ok';
+  } else if (/(unknown|未知|待验证|needs?\s+verification|verify)/i.test(verdictRaw)) {
+    level = 'needs_verification';
+  } else if (/(suitable|适合|较适配|推荐|likely suitable|good fit|yes)/i.test(verdictRaw)) {
+    level = 'recommended';
+  } else if (!verdict) {
+    level = 'needs_verification';
+  }
+  if (level === 'recommended') {
+    const tier = String(inciStatus?.consensus_tier || '').trim().toLowerCase();
+    if (tier === 'low') return 'needs_verification';
+    if (inciStatus?.verification_required) return 'cautiously_ok';
+  }
+  return level;
+}
+
+function inferProductTypeFromPayload(payload) {
+  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
+  const anchor = isPlainObject(assessment?.anchor_product ?? assessment?.anchorProduct)
+    ? (assessment.anchor_product ?? assessment.anchorProduct)
+    : (isPlainObject(payload?.product) ? payload.product : null);
+  const evidence = isPlainObject(payload?.evidence) ? payload.evidence : null;
+  const science = isPlainObject(evidence?.science) ? evidence.science : null;
+  const inciList = uniqCaseInsensitiveStrings(asStringArray(science?.key_ingredients ?? science?.keyIngredients), 80);
+  const name = pickFirstTrimmed(anchor?.display_name, anchor?.displayName, anchor?.name, payload?.product_name, payload?.productName);
+  const url = pickFirstTrimmed(anchor?.url, payload?.product_url, payload?.productUrl);
+  return classifyProductType({ name, url, inciList });
+}
+
+function deriveInciStatusFromPayloadSignals(payload) {
+  if (!isPlainObject(payload)) return null;
+  if (isPlainObject(payload.inci_status)) return payload.inci_status;
+  const evidence = isPlainObject(payload.evidence) ? payload.evidence : null;
+  const science = isPlainObject(evidence?.science) ? evidence.science : null;
+  const gapCodes = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(payload.missing_info),
+      ...asStringArray(evidence?.missing_info),
+    ],
+    40,
+  );
+  const normalizedCodes = gapCodes.map((code) => String(code || '').trim().toLowerCase()).filter(Boolean);
+  const sourceRows = (Array.isArray(evidence?.sources) ? evidence.sources : [])
+    .map((item) => (isPlainObject(item) ? item : null))
+    .filter(Boolean)
+    .map((item) => ({
+      type: String(item.type || '').trim().toLowerCase(),
+      url: String(item.url || '').trim(),
+      confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null,
+      ingredient_count: Number.isFinite(Number(item.ingredient_count)) ? Number(item.ingredient_count) : null,
+    }))
+    .filter((item) => item.type || item.url)
+    .slice(0, 8);
+  const hasSourceSignal = sourceRows.some((row) => ['official_page', 'regulatory', 'retail_page', 'inci_decoder'].includes(row.type));
+  const hasGapSignal = normalizedCodes.some((code) =>
+    code.includes('on_page_fetch_blocked') ||
+    code.includes('regulatory_source_used') ||
+    code.includes('retail_source_used') ||
+    code.includes('incidecoder_source_used'),
+  );
+  if (!hasSourceSignal && !hasGapSignal) return null;
+
+  const keyIngredients = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(science?.key_ingredients ?? science?.keyIngredients, 80),
+      ...asStringArray(science?.actives, 80),
+    ],
+    120,
+  );
+  const hasAuthoritativeSource = sourceRows.some((row) => row.type === 'official_page' || row.type === 'regulatory');
+  const confidenceTier = hasAuthoritativeSource && keyIngredients.length >= 6
+    ? 'high'
+    : (sourceRows.length && keyIngredients.length >= 3)
+      ? 'med'
+      : (keyIngredients.length || sourceRows.length)
+        ? 'low'
+        : 'none';
+
+  const consensusResult = keyIngredients.length
+    ? {
+      merged: keyIngredients,
+      confidence_tier: confidenceTier,
+    }
+    : null;
+  return buildInciStatus({
+    gapCodes: normalizedCodes,
+    consensusResult,
+    sources: sourceRows,
+  });
+}
+
+function buildV4TopTakeawaysFromLegacy(assessment) {
+  if (!isPlainObject(assessment)) return [];
+  const summary = String(assessment.summary ?? assessment.quick_summary ?? assessment.quickSummary ?? '').trim();
+  const lines = uniqCaseInsensitiveStrings(
+    [
+      ...(summary ? [summary] : []),
+      ...asStringArray(assessment.formula_intent ?? assessment.formulaIntent, 4),
+      ...asStringArray(assessment.reasons, 6).filter((line) => !/^(your profile|profile priorities|你的情况|你的画像|画像)/i.test(String(line || '').trim())),
+    ],
+    6,
+  )
+    .map((line) => String(line || '').trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  return lines;
+}
+
+function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
+  if (Array.isArray(assessment?.watchouts) && assessment.watchouts.length) {
+    return assessment.watchouts;
+  }
+  const evidence = isPlainObject(payload?.evidence) ? payload.evidence : null;
+  const science = isPlainObject(evidence?.science) ? evidence.science : null;
+  const riskNotes = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(science?.risk_notes ?? science?.riskNotes, 8),
+      ...asStringArray(assessment?.reasons, 8).filter((line) => /risk|watchout|caution|irrit|刺痛|刺激|泛红|干燥|香精|过敏/i.test(String(line || ''))),
+    ],
+    8,
+  );
+  const inciVerified = !(inciStatus && inciStatus.verification_required);
+  const out = [];
+  for (const risk of riskNotes) {
+    const text = String(risk || '').trim();
+    if (!text) continue;
+    const status = inciVerified
+      ? 'confirmed'
+      : /fragrance|parfum|香精|essential oil/i.test(text)
+        ? 'possible'
+        : 'unknown';
+    const whatToDo = /retinol|retinal|adapalene|tretinoin|acid|aha|bha|pha|salicylic|glycolic|lactic|维a|果酸|水杨酸/i.test(text)
+      ? (isCn ? '从低频开始，并避免同晚叠加强活性。' : 'Start low-frequency and avoid stacking strong actives in the same routine.')
+      : /fragrance|parfum|essential oil|香精|精油/i.test(text)
+        ? (isCn ? '敏感肌先做局部测试；若刺痛/泛红持续请停用。' : 'Patch test first; stop if stinging or redness persists.')
+        : /dry|tight|dehydrat|干燥|紧绷/i.test(text)
+          ? (isCn ? '叠加保湿修护并降低使用频率。' : 'Add barrier hydration and reduce frequency.')
+          : (isCn ? '先小面积试用，并持续观察耐受。' : 'Patch test first and monitor tolerance.');
+    out.push({
+      issue: text.length > 180 ? `${text.slice(0, 179)}…` : text,
+      status,
+      what_to_do: whatToDo,
+    });
+    if (out.length >= 4) break;
+  }
+  if (!out.length && inciStatus?.verification_required) {
+    out.push({
+      issue: isCn ? '当前成分证据尚未完全验证。' : 'Current ingredient evidence is not fully verified.',
+      status: 'unknown',
+      what_to_do: isCn
+        ? '请对照包装 INCI 或官方页面后再依据成分细节做决策。'
+        : 'Cross-check package INCI or official source before relying on ingredient-specific guidance.',
+    });
+  }
+  return out;
+}
+
+function buildV4HowToUseFromLegacy(assessment, { lang = 'EN', productType = 'other', usageOverrides = {} } = {}) {
+  if (!isPlainObject(assessment)) return null;
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const raw = isPlainObject(assessment.how_to_use ?? assessment.howToUse)
+    ? (assessment.how_to_use ?? assessment.howToUse)
+    : {};
+  const steps = asStringArray(raw.steps, 6);
+  let when = pickFirstTrimmed(raw.when);
+  if (!when) {
+    const timing = pickFirstTrimmed(raw.timing, raw.time);
+    const timingLower = String(timing || '').toLowerCase();
+    if (productType === 'spf' || productType === 'spf_moisturizer' || String(usageOverrides?.when || '').toUpperCase() === 'AM_ONLY') {
+      when = 'AM only';
+    } else if (timingLower.includes('am') && !timingLower.includes('pm')) {
+      when = 'AM';
+    } else if (timingLower.includes('pm') && !timingLower.includes('am')) {
+      when = 'PM';
+    } else if (timing) {
+      when = timing;
+    }
+  }
+  if (!when) {
+    when = isCn ? '早晚皆可' : 'AM/PM';
+  }
+
+  let frequency = pickFirstTrimmed(raw.frequency);
+  if (!frequency) {
+    if (productType === 'spf' || productType === 'spf_moisturizer') frequency = 'daily';
+    else if (productType === 'active_treatment') {
+      frequency = isCn ? '先每周 2-3 次，耐受稳定后再加频。' : 'Start 2-3x/week; increase only after stable tolerance.';
+    } else {
+      frequency = 'daily';
+    }
+  }
+  if (productType === 'spf' || productType === 'spf_moisturizer') {
+    frequency = 'daily';
+  }
+
+  let orderInRoutine = pickFirstTrimmed(raw.order_in_routine, raw.orderInRoutine);
+  if (!orderInRoutine) {
+    orderInRoutine = steps.length ? steps[0] : '';
+  }
+  if (!orderInRoutine) {
+    orderInRoutine = productType === 'spf' || productType === 'spf_moisturizer'
+      ? (isCn ? '晨间护肤最后一步，化妆前。' : 'Last step of AM routine before makeup.')
+      : (isCn ? '洁面后使用；白天叠加防晒。' : 'Use after cleansing; add sunscreen in the AM.');
+  }
+
+  let pairingRules = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(raw.pairing_rules ?? raw.pairingRules, 6),
+      ...steps.slice(orderInRoutine && steps[0] === orderInRoutine ? 1 : 0),
+    ],
+    6,
+  );
+  if (productType === 'spf' || productType === 'spf_moisturizer') {
+    pairingRules = uniqCaseInsensitiveStrings(
+      [
+        ...pairingRules,
+        isCn ? '户外暴露时约每 2 小时补涂一次。' : 'Reapply about every 2 hours when outdoors.',
+      ],
+      6,
+    );
+    pairingRules = pairingRules.filter((line) => !/\b(pm first|2-3\s*nights?|night first)\b/i.test(String(line || '')));
+  }
+
+  const stopSigns = uniqCaseInsensitiveStrings(asStringArray(raw.stop_signs ?? raw.stopSigns, 5), 5);
+  const out = {
+    when,
+    frequency,
+    order_in_routine: orderInRoutine,
+    pairing_rules: pairingRules,
+    stop_signs: stopSigns,
+  };
+  return out;
+}
+
+function buildV4KeyIngredientsByFunctionFromLegacy(payload) {
+  const evidence = isPlainObject(payload?.evidence) ? payload.evidence : null;
+  const existing = Array.isArray(evidence?.key_ingredients_by_function) ? evidence.key_ingredients_by_function : [];
+  if (existing.length) return existing;
+  const science = isPlainObject(evidence?.science) ? evidence.science : null;
+  const ingredients = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(science?.key_ingredients ?? science?.keyIngredients, 80),
+      ...asStringArray(science?.actives, 80),
+    ],
+    120,
+  );
+  if (!ingredients.length) return [];
+  const buckets = {
+    'UV filters': [],
+    Humectants: [],
+    'Barrier repair': [],
+    Brightening: [],
+    Exfoliants: [],
+    Retinoids: [],
+    Soothing: [],
+  };
+  const pushBucket = (bucket, ingredient) => {
+    if (!Object.prototype.hasOwnProperty.call(buckets, bucket)) return;
+    const exists = buckets[bucket].some((item) => String(item || '').toLowerCase() === String(ingredient || '').toLowerCase());
+    if (exists) return;
+    buckets[bucket].push(ingredient);
+  };
+  for (const ingredient of ingredients) {
+    const lower = String(ingredient || '').toLowerCase();
+    if (!lower) continue;
+    if (UV_FILTER_ACTIVES.some((token) => lower.includes(token))) {
+      pushBucket('UV filters', ingredient);
+      continue;
+    }
+    if (/\b(glycerin|hyaluronate|hyaluronic|sodium pca|urea|trehalose|betaine)\b/i.test(lower)) {
+      pushBucket('Humectants', ingredient);
+      continue;
+    }
+    if (/\b(ceramide|cholesterol|fatty acid|phytosphingosine|sphingosine|panthenol)\b/i.test(lower)) {
+      pushBucket('Barrier repair', ingredient);
+      continue;
+    }
+    if (/\b(niacinamide|ascorbic|vitamin c|tranexamic|kojic|arbutin|licorice)\b/i.test(lower)) {
+      pushBucket('Brightening', ingredient);
+      continue;
+    }
+    if (/\b(aha|bha|pha|glycolic|lactic|mandelic|salicylic|gluconolactone|lactobionic)\b/i.test(lower)) {
+      pushBucket('Exfoliants', ingredient);
+      continue;
+    }
+    if (/\b(retinol|retinal|retinoate|adapalene|tretinoin)\b/i.test(lower)) {
+      pushBucket('Retinoids', ingredient);
+      continue;
+    }
+    if (/\b(allantoin|bisabolol|centella|madecassoside|cica)\b/i.test(lower)) {
+      pushBucket('Soothing', ingredient);
+    }
+  }
+  const out = [];
+  for (const [fn, rows] of Object.entries(buckets)) {
+    if (!rows.length) continue;
+    out.push({
+      function: fn,
+      ingredients: rows.slice(0, 8),
+      confidence: rows.length >= 2 ? 'high' : 'medium',
+    });
+  }
+  return out.slice(0, 6);
+}
+
+function buildProductTypeReasoningFromPayload(payload, { lang = 'EN' } = {}) {
+  const evidence = isPlainObject(payload?.evidence) ? payload.evidence : null;
+  const existing = pickFirstTrimmed(evidence?.product_type_reasoning, evidence?.productTypeReasoning);
+  if (existing) return existing;
+  const classification = inferProductTypeFromPayload(payload);
+  const productType = String(classification?.product_type || '').trim().toLowerCase();
+  if (!productType) return null;
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  return isCn
+    ? `产品类型判定：${productType}（依据名称/URL/成分信号）。`
+    : `Product type classified as ${productType} based on name/URL/ingredient signals.`;
+}
+
+function upgradeLegacyProductAnalysisToV4(payload, { lang = 'EN' } = {}) {
+  if (!isPlainObject(payload)) return payload;
+  const assessment = isPlainObject(payload.assessment) ? payload.assessment : null;
+  if (!assessment) return payload;
+  const evidence = isPlainObject(payload.evidence) ? payload.evidence : {};
+  const classification = inferProductTypeFromPayload(payload);
+  const inferredInciStatus = deriveInciStatusFromPayloadSignals(payload);
+  const inciStatus = isPlainObject(payload.inci_status) ? payload.inci_status : inferredInciStatus;
+
+  const verdictLevel = inferVerdictLevelFromLegacyAssessment(assessment, { inciStatus });
+  const topTakeaways = buildV4TopTakeawaysFromLegacy(assessment);
+  const watchouts = buildV4WatchoutsFromLegacy(payload, { lang, inciStatus });
+  const howToUse = buildV4HowToUseFromLegacy(assessment, {
+    lang,
+    productType: classification?.product_type || 'other',
+    usageOverrides: classification?.usage_overrides || {},
+  });
+  const keyIngredientsByFunction = buildV4KeyIngredientsByFunctionFromLegacy(payload);
+  const productTypeReasoning = buildProductTypeReasoningFromPayload(payload, { lang });
+  const bestFor = uniqCaseInsensitiveStrings(asStringArray(assessment.best_for ?? assessment.bestFor, 6), 6);
+
+  const nextAssessment = {
+    ...assessment,
+    verdict_level: verdictLevel,
+    ...(topTakeaways.length ? { top_takeaways: topTakeaways } : {}),
+    ...(bestFor.length ? { best_for: bestFor } : {}),
+    ...(watchouts.length ? { watchouts } : {}),
+    ...(howToUse ? { how_to_use: howToUse } : {}),
+  };
+  const nextEvidence = {
+    ...evidence,
+    ...(keyIngredientsByFunction.length ? { key_ingredients_by_function: keyIngredientsByFunction } : {}),
+    ...(productTypeReasoning ? { product_type_reasoning: productTypeReasoning } : {}),
+  };
+  return {
+    ...payload,
+    assessment: nextAssessment,
+    evidence: nextEvidence,
+    ...(inciStatus ? { inci_status: inciStatus } : {}),
+  };
+}
+
 function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null } = {}) {
   const base = isPlainObject(payload) ? reconcileProductAnalysisConsistency(payload, { lang }) : payload;
   const p = isPlainObject(base) ? { ...base } : base;
@@ -36609,6 +36993,7 @@ function validateAndRepairAtomicLists(assessment) {
 function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}) {
   const env = isPlainObject(envelope) ? { ...envelope } : envelope;
   if (!isPlainObject(env)) return envelope;
+  const v4PromptEnabled = AURORA_PRODUCT_INTEL_PROMPT_VERSION === 'v4';
   const cards = Array.isArray(env.cards) ? env.cards : [];
   env.cards = cards.map((card) => {
     if (!isPlainObject(card)) return card;
@@ -36616,7 +37001,13 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
     if (type !== 'product_analysis') return card;
     const reconciledPayload = reconcileProductAnalysisConsistency(card.payload, { lang });
     const contractedPayload = applyProductAnalysisGapContract(reconciledPayload);
-    const qualityPayload = enforceUnknownVerdictQuality(contractedPayload, { lang });
+    const qualityInput = v4PromptEnabled
+      ? upgradeLegacyProductAnalysisToV4(contractedPayload, { lang })
+      : contractedPayload;
+    const qualityPayload = enforceUnknownVerdictQuality(qualityInput, {
+      lang,
+      inciStatus: isPlainObject(qualityInput?.inci_status) ? qualityInput.inci_status : null,
+    });
     const sanitizedPayload = isPlainObject(qualityPayload) ? { ...qualityPayload } : qualityPayload;
     if (isPlainObject(sanitizedPayload)) {
       delete sanitizedPayload.internal_debug_codes;
@@ -51165,6 +51556,8 @@ const __internal = {
   buildDataQualityBanner,
   stripDagDebugFromExpertNotes,
   validateAndRepairAtomicLists,
+  deriveInciStatusFromPayloadSignals,
+  upgradeLegacyProductAnalysisToV4,
   enforceUnknownVerdictQuality,
   applyUnknownVerdictQualityGateToEnvelope,
   isLikelyInvalidInciToken,
