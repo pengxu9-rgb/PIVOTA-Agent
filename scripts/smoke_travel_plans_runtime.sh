@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
+BASE="${BASE:-https://aurora.pivota.cc}"
 AURORA_LANG="${AURORA_LANG:-EN}"
 AURORA_UID="${AURORA_UID:-travel_plans_smoke_$(date +%s)}"
 TRACE_ID="${TRACE_ID:-trace_travel_plans_$(date +%s)}"

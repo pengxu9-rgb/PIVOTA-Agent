@@ -8,7 +8,7 @@ on:
       base_url:
         description: "Aurora BFF base URL"
         required: false
-        default: "https://pivota-agent-production.up.railway.app"
+        default: "https://aurora.pivota.cc"
 
 concurrency:
   group: travel-plans-synthetic-probe
@@ -18,7 +18,7 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: ${{ inputs.base_url || vars.AURORA_BFF_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+      BASE_URL: ${{ inputs.base_url || vars.AURORA_PUBLIC_BASE_URL || vars.AURORA_BFF_BASE_URL || 'https://aurora.pivota.cc' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
