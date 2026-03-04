@@ -104,6 +104,8 @@ const ChatCardsResponseSchema = z
         matching_language: z.enum(['CN', 'EN']),
         language_mismatch: z.boolean(),
         language_resolution_source: z.enum(['header', 'body', 'text_detected', 'mixed_override']),
+        route_decision: z.string().min(1).optional(),
+        route_failure_class: z.string().min(1).optional(),
       })
       .strict(),
   })

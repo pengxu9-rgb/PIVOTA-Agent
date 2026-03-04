@@ -353,6 +353,7 @@ function buildChatCardsResponse({
   threadOps = [],
 } = {}) {
   const base = isPlainObject(envelope) ? envelope : {};
+  const envelopeTelemetry = isPlainObject(base.telemetry) ? base.telemetry : {};
   const requestId = asString(base.request_id) || asString(ctx && ctx.request_id) || `req_${Date.now()}`;
   const traceId = asString(base.trace_id) || asString(ctx && ctx.trace_id) || `trace_${Date.now()}`;
   const uiLanguage = normalizeLanguageToken(ctx && (ctx.ui_lang || ctx.lang), 'EN');
@@ -413,6 +414,7 @@ function buildChatCardsResponse({
       matching_language: matchingLanguage,
       language_mismatch: languageMismatch,
       language_resolution_source: languageResolutionSource,
+      ...envelopeTelemetry,
     },
   };
 
