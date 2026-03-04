@@ -566,7 +566,8 @@ const AURORA_PRODUCT_INTEL_PROMPT_VERSION = (() => {
   const raw = String(process.env.AURORA_PRODUCT_INTEL_PROMPT_VERSION || 'v3')
     .trim()
     .toLowerCase();
-  return raw === 'v2' ? 'v2' : 'v3';
+  if (raw === 'v2' || raw === 'v3' || raw === 'v4') return raw;
+  return 'v3';
 })();
 const AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_ENABLED = (() => {
   const raw = String(process.env.AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_ENABLED || 'true')
@@ -6675,22 +6676,32 @@ function deriveIngredientMechanisms(ingredients, lang = 'EN') {
         : 'Peptide complexes are commonly used to support firmness and the look of fine lines (effect depends on formula and concentration).',
     );
   }
-  if (/\b(hyaluronate|hyaluronic|glycerin|trehalose|urea|sodium pca|pca)\b/.test(joined)) {
+  if (/\b(sodium hyaluronate|hyaluronate|hyaluronic|glycerin|glycerol|trehalose|urea|sodium pca|\bpca\b)\b/.test(joined)) {
     out.push(
       isCn
         ? '保湿剂/吸湿剂组合较完整，通常更偏向补水与维持角质层含水。'
         : 'Humectant blend suggests hydration support and moisture retention.',
     );
   }
-  if (/\b(allantoin|panthenol|betaine)\b/.test(joined)) {
+  if (/\b(allantoin|panthenol|betaine|bisabolol|centella|madecassoside|cica)\b/.test(joined)) {
     out.push(
       isCn ? '含舒缓相关成分，通常更利于降低刺激感。' : 'Includes soothing-support ingredients that can improve tolerance.',
     );
   }
-  return uniqCaseInsensitiveStrings(out, 4);
+  if (/\b(ceramide|cholesterol|fatty acid|linoleic|sphingosine|phytosphingosine)\b/.test(joined)) {
+    out.push(
+      isCn ? '含有屏障修复成分，有助于支持皮肤屏障功能。' : 'Contains barrier-repair ingredients to support skin barrier function.',
+    );
+  }
+  if (/\b(niacinamide|ascorbic|vitamin c|retinol|retinal|azelaic|tranexamic|kojic)\b/.test(joined)) {
+    out.push(
+      isCn ? '含亮肤/淡斑活性成分，需注意使用频率与叠加方式。' : 'Contains brightening or tone-correcting actives; note frequency and layering needs.',
+    );
+  }
+  return uniqCaseInsensitiveStrings(out, 5);
 }
 
-function deriveIngredientRiskNotes(ingredients, profileSummary, lang = 'EN') {
+function deriveIngredientRiskNotes(ingredients, profileSummary, lang = 'EN', inciStatus = null) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
   const list = Array.isArray(ingredients) ? ingredients.map((v) => String(v || '').trim()) : [];
   const joined = list.join(' | ').toLowerCase();
@@ -6698,22 +6709,31 @@ function deriveIngredientRiskNotes(ingredients, profileSummary, lang = 'EN') {
 
   const hasRetinoid = /\b(retinol|retinal|retinoate|adapalene|tretinoin)\b/.test(joined);
   const hasAcid = /\b(aha|bha|pha|glycolic|lactic|mandelic|salicylic|citric acid)\b/.test(joined);
-  const hasFragrance = /\b(fragrance|parfum|linalool|limonene|citral|geraniol)\b/.test(joined);
+  const hasFragrance = /\b(fragrance|parfum|linalool|limonene|citral|geraniol|eugenol|benzyl alcohol|benzyl benzoate)\b/.test(joined);
   const hasAlcoholDenat = /\balcohol denat\b/.test(joined);
-  const hasEssentialOil = /\b(essential oil|lavender oil|citrus peel oil|eucalyptus oil|menthol)\b/.test(joined);
+  const hasEssentialOil = /\b(essential oil|lavender oil|citrus peel oil|eucalyptus oil|menthol|tea tree)\b/.test(joined);
 
   const sensitivity = String(profileSummary?.sensitivity || '').trim().toLowerCase();
   const barrier = String(profileSummary?.barrierStatus || '').trim().toLowerCase();
   const sensitiveProfile = sensitivity === 'high' || sensitivity === 'medium' || barrier === 'impaired';
+  const inciVerified = !inciStatus?.verification_required;
 
   if (hasRetinoid) risks.push(isCn ? '含维A类成分，初期更可能出现刺激/干燥。' : 'Contains retinoid-like ingredients with higher irritation/dryness risk early on.');
   if (hasAcid) risks.push(isCn ? '含酸类成分，频率与叠加需更谨慎。' : 'Contains exfoliating acids; frequency and layering need caution.');
   if (hasFragrance || hasEssentialOil) {
-    risks.push(
-      isCn
-        ? '可能含香精/香料相关成分，敏感肌更建议先做局部测试。'
-        : 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
-    );
+    if (inciVerified) {
+      risks.push(
+        isCn
+          ? '成分表已确认含香精/香料相关成分，敏感肌更建议先做局部测试。'
+          : 'Fragrance/fragrance-related ingredients confirmed in INCI; patch testing recommended for sensitive skin.',
+      );
+    } else {
+      risks.push(
+        isCn
+          ? '成分来源未完全验证，可能含香精/香料相关成分，建议核实后再判断。'
+          : 'INCI not fully verified — fragrance/fragrance-related ingredients possible; verify before relying on this assessment.',
+      );
+    }
   }
   if (hasAlcoholDenat && sensitiveProfile) {
     risks.push(
@@ -6766,6 +6786,17 @@ const INCI_INVALID_PHRASE_PATTERNS = [
   /\b(how to use|frequently asked|faq|full routine|overview)\b/i,
   /\b(copyright|all rights reserved|privacy policy|terms of use)\b/i,
   /\b(choose size|selected because|strong category\/use-case)\b/i,
+  /^key ingredients?[:\s]/i,
+  /^active ingredients?[:\s]/i,
+  /^other ingredients?[:\s]/i,
+  /^ingredients?[:\s]/i,
+  /^full ingredients?[:\s]/i,
+  /^inactive ingredients?[:\s]/i,
+  /^(directions|usage|warning|caution|disclaimer|note|notes)[:\s]/i,
+  /^(contains|formula|composition)[:\s]/i,
+  /^成分[：:]/,
+  /^主要成分/,
+  /^全成分/,
 ];
 
 function isLikelyInvalidInciToken(raw) {
@@ -6777,6 +6808,9 @@ function isLikelyInvalidInciToken(raw) {
   if (/https?:\/\//i.test(text)) return true;
   if (/\b(this|that|your|our|we|you|they|recommended|selected)\b/i.test(text) && text.split(/\s+/).length > 5) return true;
   if (/[\u4e00-\u9fff]/.test(text) && /说明|描述|介绍|推荐|适合/.test(text)) return true;
+  if (/[:\uff1a]$/.test(text)) return true;
+  if (/^(key|active|other|full|inactive|main)\s+ingredient/i.test(text)) return true;
+  if (/^\*+\s*(key|active|main)/i.test(text)) return true;
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length > 8) return true;
   const alphaNumRatio = (text.match(/[a-z0-9]/gi) || []).length / Math.max(1, text.length);
@@ -6850,6 +6884,142 @@ function buildIngredientConsensus({
       overlap_inci_official: overlapInciOfficial,
       cross_source_covered: crossSourceCovered,
     },
+  };
+}
+
+const UV_FILTER_ACTIVES = [
+  'homosalate',
+  'avobenzone',
+  'octinoxate',
+  'octocrylene',
+  'octisalate',
+  'oxybenzone',
+  'zinc oxide',
+  'titanium dioxide',
+  'tinosorb',
+  'uvinul',
+  'bis-ethylhexyloxyphenol methoxyphenyl triazine',
+  'methylene bis-benzotriazolyl',
+  'diethylamino hydroxybenzoyl hexyl benzoate',
+  'ethylhexyl triazone',
+  'iscotrizinol',
+  'drometrizole trisiloxane',
+];
+
+const AHA_BHA_RETINOID_ACTIVES = [
+  'retinol',
+  'retinal',
+  'retinoate',
+  'retinaldehyde',
+  'adapalene',
+  'tretinoin',
+  'glycolic acid',
+  'lactic acid',
+  'mandelic acid',
+  'malic acid',
+  'tartaric acid',
+  'citric acid',
+  'salicylic acid',
+  'beta-hydroxy',
+  'benzoyl peroxide',
+  'azelaic acid',
+  'polyhydroxy acid',
+  'gluconolactone',
+  'lactobionic acid',
+];
+
+function classifyProductType({ name = '', url = '', inciList = [] } = {}) {
+  const nameLower = String(name || '').toLowerCase();
+  const urlLower = String(url || '').toLowerCase();
+  const inciJoined = Array.isArray(inciList)
+    ? inciList.map((i) => String(i || '').toLowerCase()).join(' | ')
+    : '';
+
+  const hasSpfText = /\bspf\b|\bsunscreen\b|\bsun protect|\bsun block|\b防晒\b/.test(nameLower + ' ' + urlLower);
+  const hasUvFilter = UV_FILTER_ACTIVES.some((f) => inciJoined.includes(f));
+  const hasAhaBhaRetinoid = AHA_BHA_RETINOID_ACTIVES.some((a) => inciJoined.includes(a));
+
+  const hasCleanserText = /\bcleanse|\bcleanser|\bface wash|\bfoaming|\bmicellar|\bexfoliat|\b洁面\b|\b洗面\b/.test(nameLower);
+  const hasMoisturizerText = /\bmoisturiz|\bcream\b|\blotion\b|\bemulsion\b|\bbalm\b|\b乳液\b|\b面霜\b|\b保湿\b/.test(nameLower);
+  const hasSerumText = /\bserum\b|\bessence\b|\bampoule\b|\bbooster\b|\b精华\b/.test(nameLower);
+  const hasTonerText = /\btoner\b|\btoning\b|\bsoftener\b|\b水\b|\b化妆水\b/.test(nameLower);
+  const hasMaskText = /\bmask\b|\bsheet mask\b|\bclay mask\b|\b面膜\b/.test(nameLower);
+
+  let product_type;
+  if (hasSpfText || hasUvFilter) {
+    product_type = hasMoisturizerText ? 'spf_moisturizer' : 'spf';
+  } else if (hasAhaBhaRetinoid) {
+    product_type = 'active_treatment';
+  } else if (hasCleanserText) {
+    product_type = 'cleanser';
+  } else if (hasSerumText) {
+    product_type = 'serum';
+  } else if (hasTonerText) {
+    product_type = 'toner';
+  } else if (hasMaskText) {
+    product_type = 'mask';
+  } else if (hasMoisturizerText) {
+    product_type = 'moisturizer';
+  } else {
+    product_type = 'other';
+  }
+
+  const usage_overrides = {};
+  if (product_type === 'spf' || product_type === 'spf_moisturizer') {
+    usage_overrides.when = 'AM_only';
+    usage_overrides.frequency = 'daily';
+    usage_overrides.reapply_guidance = true;
+    usage_overrides.suppress_pm_first = true;
+    usage_overrides.suppress_2_3x_week = true;
+  } else if (product_type === 'active_treatment') {
+    usage_overrides.allow_intro_schedule = true;
+  } else if (product_type === 'cleanser') {
+    usage_overrides.when = 'Both';
+    usage_overrides.frequency = 'daily';
+  } else if (product_type === 'moisturizer' || product_type === 'spf_moisturizer') {
+    usage_overrides.when = 'Both';
+    usage_overrides.frequency = 'daily';
+  }
+
+  return { product_type, usage_overrides };
+}
+
+function buildInciStatus({ gapCodes = [], consensusResult = null, sources = [] } = {}) {
+  const codes = Array.isArray(gapCodes) ? gapCodes.map((c) => String(c || '').toLowerCase()) : [];
+
+  const extraction = codes.includes('on_page_fetch_blocked')
+    ? 'blocked'
+    : (consensusResult?.merged?.length > 0 || codes.includes('incidecoder_source_used') || codes.includes('regulatory_source_used'))
+      ? 'success'
+      : 'missing';
+
+  const consensusTier = (() => {
+    const tier = String(consensusResult?.confidence_tier || '').toLowerCase();
+    if (tier === 'high') return 'high';
+    if (tier === 'med' || tier === 'medium') return 'medium';
+    return 'low';
+  })();
+
+  const verification_required = consensusTier === 'low' || extraction === 'blocked' || extraction === 'missing';
+  const total_ingredients = Array.isArray(consensusResult?.merged) ? consensusResult.merged.length : 0;
+
+  const normalizedSources = Array.isArray(sources)
+    ? sources
+      .map((s) => ({
+        type: String(s?.type || '').trim(),
+        url: String(s?.url || '').trim(),
+        confidence: s?.confidence != null ? Number(s.confidence) : null,
+        ingredient_count: s?.ingredient_count != null ? Number(s.ingredient_count) : null,
+      }))
+      .filter((s) => s.type || s.url)
+    : [];
+
+  return {
+    extraction,
+    consensus_tier: consensusTier,
+    sources: normalizedSources,
+    verification_required,
+    total_ingredients,
   };
 }
 
@@ -11399,6 +11569,52 @@ async function buildProductAnalysisFromUrlIngredients({
   const officialInciNormalized = canonicalizeIngredientCandidates([...inciList, ...regulatoryActiveInci], { max: 140 });
   const incidecoderOverlapCount = Number(ingredientConsensus?.stats?.overlap_inci_official || 0);
   const ingredientConfidenceTier = String(ingredientConsensus?.confidence_tier || 'none').toLowerCase();
+  const inciStatusGapCodes = [
+    ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
+    ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used'] : []),
+    ...(retailSupplement && retailSupplement.ok ? ['retail_source_used'] : []),
+    ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used'] : []),
+    ...(!normalizedInci.length ? ['evidence_missing'] : []),
+  ];
+  const inciStatusSources = [
+    ...(html
+      ? [{
+        type: 'official_page',
+        url: parsedUrl.toString(),
+        confidence: 0.78,
+        ingredient_count: canonicalizeIngredientCandidates(inciList, { max: 260 }).length,
+      }]
+      : []),
+    ...(regulatorySupplement && regulatorySupplement.ok
+      ? [{
+        type: 'regulatory',
+        url: String(regulatorySupplement.source?.url || regulatorySupplement.source_url || ''),
+        confidence: 0.72,
+        ingredient_count: canonicalizeIngredientCandidates(regulatoryActiveInci, { max: 220 }).length,
+      }]
+      : []),
+    ...(retailSupplement && retailSupplement.ok
+      ? [{
+        type: 'retail_page',
+        url: String(retailSupplement.source?.url || retailSupplement.source_url || ''),
+        confidence: Number(retailSupplement.source?.confidence || 0.58),
+        ingredient_count: canonicalizeIngredientCandidates(retailInci, { max: 220 }).length,
+      }]
+      : []),
+    ...(incidecoderSupplement && incidecoderSupplement.ok
+      ? [{
+        type: 'inci_decoder',
+        url: String(incidecoderSupplement.source?.url || incidecoderSupplement.source_url || ''),
+        confidence: Number(incidecoderSupplement.source?.confidence || 0.55),
+        ingredient_count: canonicalizeIngredientCandidates(incidecoderInci, { max: 220 }).length,
+      }]
+      : []),
+  ];
+  const inciStatus = buildInciStatus({
+    gapCodes: inciStatusGapCodes,
+    consensusResult: ingredientConsensus,
+    sources: inciStatusSources,
+  });
   const keyIngredients = deriveKeyIngredientsForAnalysis(
     normalizedInci,
     keyHints.map((item) => normalizeInciIngredientName(item)),
@@ -11406,7 +11622,7 @@ async function buildProductAnalysisFromUrlIngredients({
   const mechanisms = deriveIngredientMechanisms(keyIngredients, lang);
   const riskNotes = uniqCaseInsensitiveStrings(
     [
-      ...deriveIngredientRiskNotes(normalizedInci, profileSummary || {}, lang),
+      ...deriveIngredientRiskNotes(normalizedInci, profileSummary || {}, lang, inciStatus),
       ...(regulatorySupplement && regulatorySupplement.ok && Array.isArray(regulatorySupplement.risk_notes)
         ? regulatorySupplement.risk_notes
         : []),
@@ -12112,6 +12328,7 @@ async function buildProductAnalysisFromUrlIngredients({
       confidence,
       missing_info: evidenceMissingInfo,
     },
+    inci_status: inciStatus,
     confidence,
     confidence_by_block: dagConfidencePatch || defaultConfidenceByBlock,
     provenance: {
@@ -20745,12 +20962,97 @@ function buildProductDeepScanPromptV3({
     `Product: ${descriptor}`;
 }
 
+function buildProductDeepScanPromptV4({
+  prefix = '',
+  productDescriptor = '',
+  productType = null,
+  inciStatus = null,
+  usageOverrides = null,
+} = {}) {
+  const descriptor = String(productDescriptor || '').trim();
+  const pType = String(productType || 'other').trim();
+  const inciExtraction = String(inciStatus?.extraction || 'unknown');
+  const inciConsensusTier = String(inciStatus?.consensus_tier || 'unknown');
+  const inciVerificationRequired = Boolean(inciStatus?.verification_required);
+  const totalIngredients = Number(inciStatus?.total_ingredients || 0);
+  const overrides = usageOverrides && typeof usageOverrides === 'object' ? usageOverrides : {};
+
+  const systemBlock = [
+    'You are an objective skincare product analyst.',
+    'Output MUST be a single valid JSON object. No markdown, no extra keys, no commentary outside the JSON.',
+    'Be specific, non-repetitive, and data-bound. Distinguish CONFIRMED facts (verified INCI/source) from UNVERIFIED claims.',
+    'Do NOT repeat information across fields. Each field must add unique value.',
+    'If data is insufficient, state it once in data_quality_banner and proceed with best available evidence.',
+    'Hard rules:',
+    '1. No repetition across top_takeaways, watchouts, how_to_use, or evidence fields.',
+    `2. Product type: ${pType}. If type is spf or spf_moisturizer: how_to_use.when MUST be "AM only", frequency MUST be "daily", include reapplication guidance. Do NOT suggest "start 2-3 nights/week" or "PM first".`,
+    '3. If consensus_tier is low or verification_required is true: verdict_level MUST be "needs_verification" or "cautiously_ok". Do NOT return "recommended".',
+    '4. Do NOT use placeholder strings as ingredient names.',
+    `5. Fragrance/parfum risk: ONLY mark as confirmed when INCI is verified AND contains fragrance/parfum/known allergens. INCI verified: ${!inciVerificationRequired}.`,
+    '6. watchouts items MUST have: {issue: string, status: "confirmed"|"possible"|"unknown", what_to_do: string}.',
+    '7. key_ingredients_by_function items MUST have: {function: string, ingredients: string[], confidence: "high"|"medium"|"low"}.',
+  ].join('\n');
+
+  const schemaDescription = `{
+  "assessment": {
+    "verdict": string,
+    "verdict_level": "recommended"|"cautiously_ok"|"needs_verification"|"not_recommended",
+    "data_quality_banner": string|null,
+    "top_takeaways": string[],
+    "best_for": string[],
+    "watchouts": [{issue: string, status: "confirmed"|"possible"|"unknown", what_to_do: string}],
+    "how_to_use": {
+      "when": string,
+      "frequency": string,
+      "order_in_routine": string,
+      "pairing_rules": string[],
+      "stop_signs": string[]
+    }
+  },
+  "evidence": {
+    "product_type_reasoning": string,
+    "key_functions": string[],
+    "key_ingredients_by_function": [{function: string, ingredients: string[], confidence: "high"|"medium"|"low"}],
+    "social_signals": {typical_positive: string[], typical_negative: string[]},
+    "sources": string[]
+  },
+  "confidence": number,
+  "missing_info": string[]
+}`;
+
+  const inciContext = inciStatus
+    ? `INCI Status: extraction=${inciExtraction}, consensus_tier=${inciConsensusTier}, ` +
+      `verification_required=${inciVerificationRequired}, total_ingredients=${totalIngredients}. ` +
+      (inciVerificationRequired
+        ? 'INCI not fully verified — qualify fragrance/allergen risk as possible/unknown, not confirmed. '
+        : 'INCI verified — confirmed risk claims are acceptable. ')
+    : '';
+
+  const overridesContext = Object.keys(overrides).length
+    ? `Usage overrides for ${pType}: ${JSON.stringify(overrides)}. ` +
+      (overrides.suppress_pm_first ? 'Do NOT suggest PM-first application. ' : '') +
+      (overrides.suppress_2_3x_week ? 'Do NOT suggest 2-3x/week frequency. ' : '') +
+      (overrides.reapply_guidance ? 'Include reapplication guidance (every 2h when outdoors). ' : '')
+    : '';
+
+  return `${String(prefix || '')}[SYSTEM]\n${systemBlock}\n[/SYSTEM]\n` +
+    `Task: Deep-scan this product for suitability vs the user's profile. Return ONLY a JSON object matching this schema:\n${schemaDescription}\n` +
+    'Context:\n' +
+    `- Product type: ${pType}\n` +
+    (inciContext ? `- ${inciContext}\n` : '') +
+    (overridesContext ? `- ${overridesContext}\n` : '') +
+    `Product: ${descriptor}`;
+}
+
 function buildProductDeepScanPrompt({
   prefix = '',
   productDescriptor = '',
   strictFormulaIntent = false,
   strictNarrative = false,
   includeVersionReminder = false,
+  productType = null,
+  inciStatus = null,
+  usageOverrides = null,
 } = {}) {
   if (AURORA_PRODUCT_INTEL_PROMPT_VERSION === 'v2') {
     return buildProductDeepScanPromptV2({
@@ -20758,6 +21060,15 @@ function buildProductDeepScanPrompt({
       productDescriptor,
       strictFormulaIntent,
       includeVersionReminder,
+    });
+  }
+  if (AURORA_PRODUCT_INTEL_PROMPT_VERSION === 'v4') {
+    return buildProductDeepScanPromptV4({
+      prefix,
+      productDescriptor,
+      productType,
+      inciStatus,
+      usageOverrides,
     });
   }
   return buildProductDeepScanPromptV3({
@@ -22221,6 +22532,28 @@ async function deepScanRoutineProductCandidate({
 
   const routineDescriptorAnchor = routineAnchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
   const productDescriptor = buildProductInputText(routineDescriptorAnchor, productUrl) || inputText || productUrl;
+  const routineInciList = canonicalizeIngredientCandidates(
+    [
+      ...(Array.isArray(routineDescriptorAnchor?.ingredients) ? routineDescriptorAnchor.ingredients : []),
+      ...(Array.isArray(routineDescriptorAnchor?.inci_list) ? routineDescriptorAnchor.inci_list : []),
+      ...(Array.isArray(routineDescriptorAnchor?.inciList) ? routineDescriptorAnchor.inciList : []),
+      ...(Array.isArray(parsedProduct?.ingredients) ? parsedProduct.ingredients : []),
+      ...(Array.isArray(parsedProduct?.inci_list) ? parsedProduct.inci_list : []),
+      ...(Array.isArray(parsedProduct?.inciList) ? parsedProduct.inciList : []),
+    ],
+    { max: 160 },
+  );
+  const routineProductClassification = classifyProductType({
+    name: String(routineDescriptorAnchor?.name || routineDescriptorAnchor?.display_name || inputText || ''),
+    url: String(productUrl || routineDescriptorAnchor?.url || ''),
+    inciList: routineInciList,
+  });
+  const routineInciStatus = isPlainObject(routineDescriptorAnchor?.inci_status) ? routineDescriptorAnchor.inci_status : null;
+  const routinePromptOptions = {
+    productType: routineProductClassification.product_type,
+    usageOverrides: routineProductClassification.usage_overrides,
+    ...(routineInciStatus ? { inciStatus: routineInciStatus } : {}),
+  };
   const contextPrefix = buildContextPrefix({
     profile: profileCtx,
     recentLogs: logsCtx,
@@ -22234,6 +22567,7 @@ async function deepScanRoutineProductCandidate({
     prefix: contextPrefix,
     productDescriptor,
     includeVersionReminder: true,
+    ...routinePromptOptions,
   });
 
   const routinePrimaryLlmRoute = resolveProductIntelLlmRoute({});
@@ -22281,6 +22615,7 @@ async function deepScanRoutineProductCandidate({
         prefix: minimalPrefix,
         productDescriptor,
         includeVersionReminder: true,
+        ...routinePromptOptions,
       });
         const upstreamRetry = await runDeepScan(minimalQuery, Math.max(1200, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS - 600));
         const retryNorm = normalizeProductAnalysisFromUpstream(upstreamRetry);
@@ -22293,6 +22628,7 @@ async function deepScanRoutineProductCandidate({
           productDescriptor,
           strictNarrative: true,
           includeVersionReminder: true,
+          ...routinePromptOptions,
         });
         const formulaRetryUpstream = await runDeepScan(
           formulaRetryQuery,
@@ -36110,12 +36446,32 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
   return nextPayload;
 }
 
-function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
+function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null } = {}) {
   const base = isPlainObject(payload) ? reconcileProductAnalysisConsistency(payload, { lang }) : payload;
   const p = isPlainObject(base) ? { ...base } : base;
   if (!isPlainObject(p)) return payload;
   const assessment = isPlainObject(p.assessment) ? { ...p.assessment } : null;
   const verdictToken = String(assessment?.verdict || '').trim().toLowerCase();
+  const inciStatusObj = inciStatus || (isPlainObject(p.inci_status) ? p.inci_status : null);
+  const inciConsensusTier = String(inciStatusObj?.consensus_tier || '').toLowerCase();
+  const inciVerificationRequired = Boolean(inciStatusObj?.verification_required);
+  const verdictLevel = String(assessment?.verdict_level || '').trim().toLowerCase();
+  if (verdictLevel === 'recommended' && (inciConsensusTier === 'low' || inciVerificationRequired)) {
+    const overriddenLevel = inciConsensusTier === 'low' ? 'needs_verification' : 'cautiously_ok';
+    const isCn = String(lang || '').toUpperCase() === 'CN';
+    const banner = isCn
+      ? '官方 INCI 成分表未完全验证，基于现有数据推断，建议核实后再做决策。'
+      : 'Official INCI not fully verified; analysis is based on available data. Verify before relying on ingredient-specific claims.';
+    return reconcileProductAnalysisConsistency({
+      ...p,
+      assessment: {
+        ...assessment,
+        verdict_level: overriddenLevel,
+        data_quality_banner: assessment?.data_quality_banner || banner,
+      },
+    }, { lang });
+  }
+
   if (verdictToken !== 'unknown' && verdictToken !== '未知') return p;
   const relaxedUnknownMode = AURORA_RULE_RELAX_AGGRESSIVE || AURORA_PRODUCT_GUARDRAIL_TELEMETRY_ONLY;
 
@@ -36172,6 +36528,84 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN' } = {}) {
   }), { lang });
 }
 
+const DAG_DEBUG_PATTERNS = [
+  /^DAG (fallback|timed-out|降级|超时)/i,
+  /^DAG fallback trace:/i,
+  /^DAG timed-out branches:/i,
+  /competitor recall queries:/i,
+  /resolver_first_skipped/i,
+  /url_fetch_vendor/i,
+  /on-page related products were routed/i,
+  /同页 related products 已分流/i,
+];
+
+function stripDagDebugFromExpertNotes(notes) {
+  if (!Array.isArray(notes)) return notes;
+  const userFacing = [];
+  const debug = [];
+  for (const note of notes) {
+    const text = String(note || '').trim();
+    if (!text) continue;
+    if (DAG_DEBUG_PATTERNS.some((re) => re.test(text))) {
+      debug.push(text);
+    } else {
+      userFacing.push(text);
+    }
+  }
+  return { userFacing, debug };
+}
+
+function buildDataQualityBanner(payload, { lang = 'EN' } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const missingInfo = Array.isArray(payload?.missing_info) ? payload.missing_info : [];
+  const isBlocked = missingInfo.some((c) => String(c || '').includes('on_page_fetch_blocked'));
+  const isIncidecoder = missingInfo.some((c) => String(c || '').includes('incidecoder_source_used'));
+  const isRegulatory = missingInfo.some((c) => String(c || '').includes('regulatory_source_used'));
+  const isRetail = missingInfo.some((c) => String(c || '').includes('retail_source_used'));
+  const inciStatus = isPlainObject(payload?.inci_status) ? payload.inci_status : null;
+  const verificationRequired = Boolean(inciStatus?.verification_required);
+
+  if (!isBlocked && !isIncidecoder && !isRegulatory && !isRetail && !verificationRequired) return null;
+  if (isBlocked && (isIncidecoder || isRegulatory)) {
+    return isCn
+      ? '官方 INCI 提取受限（站点封锁），分析基于 INCIDecoder/监管数据补充。成分相关结论建议核对实物包装后再决策。'
+      : 'Official INCI extraction was blocked; analysis based on INCIDecoder/regulatory data only. Verify ingredient-specific claims against your package before relying on them.';
+  }
+  if (isBlocked) {
+    return isCn
+      ? '官方产品页抓取受阻，本次证据有限。请上传包装 INCI 或粘贴完整成分表后重试以提升准确度。'
+      : 'Official INCI extraction was blocked; evidence is limited. Paste the full INCI list or share an accessible product page for a more accurate analysis.';
+  }
+  if (verificationRequired) {
+    return isCn
+      ? '成分数据来源未完全验证，成分相关建议仅供参考，建议与官方/包装信息交叉核实。'
+      : 'Ingredient data is not fully verified; ingredient-specific guidance is indicative only. Cross-check with official or package information before deciding.';
+  }
+  return null;
+}
+
+function validateAndRepairAtomicLists(assessment) {
+  if (!isPlainObject(assessment)) return assessment;
+  const out = { ...assessment };
+
+  if (Array.isArray(out.watchouts)) {
+    out.watchouts = out.watchouts
+      .map((item) => {
+        if (!isPlainObject(item)) return null;
+        return {
+          issue: String(item.issue || item.name || item.text || '').trim() || null,
+          status: ['confirmed', 'possible', 'unknown'].includes(String(item.status || '').toLowerCase())
+            ? String(item.status || '').toLowerCase()
+            : 'unknown',
+          what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim() || null,
+        };
+      })
+      .filter((item) => item && item.issue);
+  }
+
+  return out;
+}
+
 function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}) {
   const env = isPlainObject(envelope) ? { ...envelope } : envelope;
   if (!isPlainObject(env)) return envelope;
@@ -36189,6 +36623,49 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
       delete sanitizedPayload.internalDebugCodes;
       delete sanitizedPayload.missing_info_internal;
       delete sanitizedPayload.missingInfoInternal;
+
+      const evidence = isPlainObject(sanitizedPayload.evidence) ? sanitizedPayload.evidence : null;
+      if (evidence && Array.isArray(evidence.expert_notes)) {
+        const stripped = stripDagDebugFromExpertNotes(evidence.expert_notes);
+        const userFacing = Array.isArray(stripped?.userFacing) ? stripped.userFacing : evidence.expert_notes;
+        const debug = Array.isArray(stripped?.debug) ? stripped.debug : [];
+        sanitizedPayload.evidence = { ...evidence, expert_notes: userFacing };
+        if (debug.length) {
+          sanitizedPayload._debug = {
+            ...(isPlainObject(sanitizedPayload._debug) ? sanitizedPayload._debug : {}),
+            expert_notes_stripped: debug,
+          };
+        }
+      }
+
+      const assessment = isPlainObject(sanitizedPayload.assessment) ? sanitizedPayload.assessment : null;
+      if (assessment) {
+        const banner = assessment.data_quality_banner || buildDataQualityBanner(sanitizedPayload, { lang });
+        const nextAssessment = validateAndRepairAtomicLists({
+          ...assessment,
+          ...(banner ? { data_quality_banner: banner } : {}),
+        });
+        sanitizedPayload.assessment = nextAssessment;
+      }
+
+      const nextEvidence = isPlainObject(sanitizedPayload.evidence) ? sanitizedPayload.evidence : null;
+      if (nextEvidence && Array.isArray(nextEvidence.key_ingredients_by_function)) {
+        const validatedKif = nextEvidence.key_ingredients_by_function
+          .map((item) => {
+            if (!isPlainObject(item)) return null;
+            return {
+              function: String(item.function || item.category || '').trim() || null,
+              ingredients: Array.isArray(item.ingredients)
+                ? item.ingredients.map((i) => String(i || '').trim()).filter(Boolean)
+                : [],
+              confidence: ['high', 'medium', 'low'].includes(String(item.confidence || '').toLowerCase())
+                ? String(item.confidence || '').toLowerCase()
+                : 'medium',
+            };
+          })
+          .filter((item) => item && item.function && item.ingredients.length);
+        sanitizedPayload.evidence = { ...nextEvidence, key_ingredients_by_function: validatedKif };
+      }
     }
     return {
       ...card,
@@ -38261,9 +38738,131 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const descriptorAnchor = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
       const productDescriptor = buildProductInputText(descriptorAnchor, null) || parsed.data.name || input;
+      const collectInciCandidates = (sourceObj) => {
+        const src = isPlainObject(sourceObj) ? sourceObj : null;
+        if (!src) return [];
+        const out = [];
+        const pushText = (value) => {
+          const text = String(value || '').trim();
+          if (!text) return;
+          const parts = text.split(/[|,;\n•]+/);
+          for (const part of parts) {
+            const token = String(part || '').trim();
+            if (token) out.push(token);
+          }
+        };
+        const pushArray = (value) => {
+          if (!Array.isArray(value)) return;
+          for (const item of value) {
+            if (typeof item === 'string') {
+              pushText(item);
+              continue;
+            }
+            if (item == null) continue;
+            if (isPlainObject(item)) {
+              pushText(item.name || item.ingredient || item.inci);
+              continue;
+            }
+            pushText(String(item));
+          }
+        };
+        pushText(src.inci);
+        pushText(src.ingredients);
+        pushText(src.ingredient_list);
+        pushText(src.ingredientList);
+        pushText(src.inci_list);
+        pushText(src.inciList);
+        pushText(src.full_ingredients);
+        pushText(src.fullIngredients);
+        pushArray(src.ingredients);
+        pushArray(src.inci_list);
+        pushArray(src.inciList);
+        pushArray(src.full_ingredients);
+        pushArray(src.fullIngredients);
+        return canonicalizeIngredientCandidates(out, { max: 180 });
+      };
+      const collectInciGapCodes = (sourceObj) => {
+        const src = isPlainObject(sourceObj) ? sourceObj : null;
+        if (!src) return [];
+        const out = [];
+        const pushList = (value) => {
+          for (const item of Array.isArray(value) ? value : []) {
+            const code = String(item || '').trim();
+            if (code) out.push(code);
+          }
+        };
+        pushList(src.missing_info);
+        pushList(src.internal_debug_codes);
+        if (isPlainObject(src.evidence)) pushList(src.evidence.missing_info);
+        return out;
+      };
+      const collectInciSources = (sourceObj) => {
+        const src = isPlainObject(sourceObj) ? sourceObj : null;
+        if (!src) return [];
+        const out = [];
+        const pushSources = (items) => {
+          for (const row of Array.isArray(items) ? items : []) {
+            if (!isPlainObject(row)) continue;
+            const type = String(row.type || row.source_type || '').trim();
+            const url = String(row.url || row.source_url || '').trim();
+            if (!type && !url) continue;
+            out.push({
+              type,
+              url,
+              confidence: row.confidence,
+              ingredient_count: row.ingredient_count,
+            });
+          }
+        };
+        pushSources(src.sources);
+        if (isPlainObject(src.evidence)) pushSources(src.evidence.sources);
+        return out;
+      };
+      const clientProduct = isPlainObject(parsed.data.product) ? parsed.data.product : null;
+      const queryInciList = canonicalizeIngredientCandidates(
+        [...collectInciCandidates(clientProduct), ...collectInciCandidates(descriptorAnchor)],
+        { max: 220 },
+      );
+      const queryGapCodes = uniqCaseInsensitiveStrings(
+        [...collectInciGapCodes(clientProduct), ...collectInciGapCodes(descriptorAnchor)],
+        24,
+      );
+      const queryEvidenceSources = [...collectInciSources(clientProduct), ...collectInciSources(descriptorAnchor)];
+      const queryInciConsensus = queryInciList.length
+        ? buildIngredientConsensus({ official: queryInciList })
+        : null;
+      const anchorInciStatus = isPlainObject(descriptorAnchor?.inci_status)
+        ? descriptorAnchor.inci_status
+        : (isPlainObject(clientProduct?.inci_status) ? clientProduct.inci_status : null);
+      const reliableGapCodesForStatus = queryGapCodes.filter((code) =>
+        /(on_page_fetch_blocked|regulatory_source_used|incidecoder_source_used|retail_source_used|version_verification_needed|evidence_missing)/i
+          .test(String(code || '')),
+      );
+      const hasInciEvidenceForPrompt =
+        queryInciList.length > 0 || reliableGapCodesForStatus.length > 0 || queryEvidenceSources.length > 0;
+      const v4InciStatus =
+        anchorInciStatus ||
+        (hasInciEvidenceForPrompt
+          ? buildInciStatus({
+            gapCodes: reliableGapCodesForStatus,
+            consensusResult: queryInciConsensus,
+            sources: queryEvidenceSources,
+          })
+          : null);
+      const v4ProductClassification = classifyProductType({
+        name: String(descriptorAnchor?.name || descriptorAnchor?.display_name || parsed.data.name || ''),
+        url: String(parsed.data.url || descriptorAnchor?.url || ''),
+        inciList: queryInciList,
+      });
+      const deepScanPromptOptions = {
+        productType: v4ProductClassification.product_type,
+        usageOverrides: v4ProductClassification.usage_overrides,
+        ...(v4InciStatus ? { inciStatus: v4InciStatus } : {}),
+      };
       const query = buildProductDeepScanPrompt({
         prefix,
         productDescriptor,
+        ...deepScanPromptOptions,
       });
 
       const runDeepScan = async ({ queryText, timeoutMs, llmRouteOverride = null }) => {
@@ -38403,6 +39002,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const minimalQuery = buildProductDeepScanPrompt({
           prefix: minimalPrefix,
           productDescriptor: input,
+          ...deepScanPromptOptions,
         });
         const upstream2 = await runDeepScan({ queryText: minimalQuery, timeoutMs: 14000 });
         const norm2 = normalizeProductAnalysisFromUpstream(upstream2);
@@ -38423,6 +39023,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           prefix,
           productDescriptor: input,
           strictNarrative: true,
+          ...deepScanPromptOptions,
         });
         const formulaRetryUpstream = await runDeepScan({
           queryText: formulaRetryQuery,
@@ -49536,10 +50137,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         ].map((x) => String(x || '').trim()).filter(Boolean));
 
         const vetoed = Boolean(a.vetoed);
+        const anchorInciStatus = isPlainObject(a.inci_status) ? a.inci_status : null;
+        const inciVerificationRequired = Boolean(anchorInciStatus?.verification_required);
+        const inciConsensusTier = String(anchorInciStatus?.consensus_tier || '').toLowerCase();
         const verdict = (() => {
           if (vetoed) return outLang === 'CN' ? '不建议' : 'Avoid';
           if (riskFlags.some((f) => /high_irritation/i.test(f))) return outLang === 'CN' ? '谨慎' : 'Caution';
           if (scoreTotal != null && scoreTotal < 55) return outLang === 'CN' ? '谨慎' : 'Caution';
+          if (inciConsensusTier === 'low') return outLang === 'CN' ? '待验证' : 'Needs Verification';
+          if (inciVerificationRequired) return outLang === 'CN' ? '谨慎适合' : 'Cautiously Suitable';
           return outLang === 'CN' ? '适合' : 'Suitable';
         })();
 
@@ -49925,9 +50531,27 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
+          const fitCheckInciList = canonicalizeIngredientCandidates(
+            [
+              ...(Array.isArray(parsedProduct?.ingredients) ? parsedProduct.ingredients : []),
+              ...(Array.isArray(parsedProduct?.inci_list) ? parsedProduct.inci_list : []),
+              ...(Array.isArray(parsedProduct?.inciList) ? parsedProduct.inciList : []),
+            ],
+            { max: 120 },
+          );
+          const fitCheckProductClassification = classifyProductType({
+            name: String(parsedProduct?.name || parsedProduct?.display_name || productInput || ''),
+            url: String(anchorProductUrl || (/^https?:\/\//i.test(String(productInput || '').trim()) ? productInput : '')),
+            inciList: fitCheckInciList,
+          });
+          const fitCheckPromptOptions = {
+            productType: fitCheckProductClassification.product_type,
+            usageOverrides: fitCheckProductClassification.usage_overrides,
+          };
           const deepScanQuery = buildProductDeepScanPrompt({
             prefix: productAnalyzePrefix,
             productDescriptor: productInput,
+            ...fitCheckPromptOptions,
           });
 
           const runDeepScan = async ({ queryText, timeoutMs, llmRouteOverride = null }) => {
@@ -50018,6 +50642,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             const minimalQuery = buildProductDeepScanPrompt({
               prefix: minimalPrefix,
               productDescriptor: productInput,
+              ...fitCheckPromptOptions,
             });
             const deepUpstream2 = await runDeepScan({ queryText: minimalQuery, timeoutMs: 14000 });
             const deepStructured2 =
@@ -50068,6 +50693,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               prefix: productAnalyzePrefix,
               productDescriptor: productInput,
               strictNarrative: true,
+              ...fitCheckPromptOptions,
             });
             const formulaRetryUpstream = await runDeepScan({
               queryText: formulaRetryQuery,
@@ -50503,6 +51129,15 @@ const __internal = {
   buildRealtimeCompetitorCandidates,
   maybeSyncRepairLowCoverageCompetitors,
   buildProductAnalysisFromUrlIngredients,
+  classifyProductType,
+  buildInciStatus,
+  buildProductDeepScanPromptV4,
+  buildDataQualityBanner,
+  stripDagDebugFromExpertNotes,
+  validateAndRepairAtomicLists,
+  enforceUnknownVerdictQuality,
+  applyUnknownVerdictQualityGateToEnvelope,
+  isLikelyInvalidInciToken,
   detectBotChallengePage,
   fetchProductHtmlWithUnblockChain,
   fetchProductHtmlWithFallback,
