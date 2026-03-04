@@ -26302,6 +26302,77 @@ function buildDefaultTravelReadiness({ language, tier, ess, notes = [] } = {}) {
           : ['Prioritize barrier hydration at night and reduce strong-active frequency.'],
       notes: sectionNotes,
     },
+    shopping_preview: buildDefaultShoppingPreview({ language: lang }),
+  };
+}
+
+function buildDefaultShoppingPreview({ language, destination, uvComponent, humidityComponent } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const destinationText = String(destination || '').trim();
+  const cityHint = destinationText ? destinationText.slice(0, 120) : null;
+  const uv = Number.isFinite(Number(uvComponent)) ? Number(uvComponent) : null;
+  const humidity = Number.isFinite(Number(humidityComponent)) ? Number(humidityComponent) : null;
+  const highUv = uv != null && uv >= 0.45;
+  const humidScenario = humidity != null && humidity >= 0.5;
+
+  const products = [
+    {
+      rank: 1,
+      product_id: null,
+      name: lang === 'CN' ? (highUv ? '高倍广谱防晒（SPF50+）' : '广谱防晒（SPF30+）') : highUv ? 'Broad-spectrum sunscreen (SPF50+)' : 'Broad-spectrum sunscreen (SPF30+)',
+      brand: null,
+      category: lang === 'CN' ? '防晒' : 'sunscreen',
+      reasons: [
+        lang === 'CN' ? '按旅行环境压力优先保障日间光防护。' : 'Prioritize UV protection for travel exposure.',
+      ],
+      product_source: 'rule_fallback',
+      price: null,
+      currency: null,
+    },
+    {
+      rank: 2,
+      product_id: null,
+      name: lang === 'CN'
+        ? (humidScenario ? '轻薄保湿凝胶霜' : '屏障修护面霜')
+        : humidScenario ? 'Light gel-cream moisturizer' : 'Barrier-repair moisturizer',
+      brand: null,
+      category: lang === 'CN' ? '保湿' : 'moisturizer',
+      reasons: [
+        lang === 'CN'
+          ? (humidScenario ? '湿热场景优先轻薄保湿，减少闷感。' : '温差/干燥场景优先稳定屏障水分。')
+          : humidScenario
+            ? 'Use lighter hydration in humid conditions to reduce congestion load.'
+            : 'Support barrier hydration during dry or high-swing weather.',
+      ],
+      product_source: 'rule_fallback',
+      price: null,
+      currency: null,
+    },
+    {
+      rank: 3,
+      product_id: null,
+      name: lang === 'CN' ? '温和洁面（低刺激）' : 'Gentle low-irritation cleanser',
+      brand: null,
+      category: lang === 'CN' ? '洁面' : 'cleanser',
+      reasons: [
+        lang === 'CN'
+          ? '旅行期优先降低刺激，保持可持续执行。'
+          : 'Keep cleansing low-irritation to maintain tolerance during travel.',
+      ],
+      product_source: 'rule_fallback',
+      price: null,
+      currency: null,
+    },
+  ];
+
+  return {
+    products,
+    buying_channels: ['beauty_retail', 'pharmacy', 'department_store', 'duty_free', 'ecommerce'],
+    city_hint: cityHint,
+    note:
+      lang === 'CN'
+        ? '当前为规则化旅行预览，后续可按具体预算/品牌偏好细化。'
+        : 'Rule-based travel preview; refine by budget and brand preferences in the next step.',
   };
 }
 
@@ -26385,6 +26456,9 @@ function buildTravelReadinessFromEpi({ language, tier, ess, epiPayload, weather 
   const strategy = epiPayload && typeof epiPayload === 'object' && epiPayload.strategy && typeof epiPayload.strategy === 'object'
     ? epiPayload.strategy
     : {};
+  const components = epiPayload && typeof epiPayload === 'object' && epiPayload.components && typeof epiPayload.components === 'object'
+    ? epiPayload.components
+    : {};
   const weatherObj = weather && typeof weather === 'object' ? weather : {};
   const location = weatherObj.location && typeof weatherObj.location === 'object' ? weatherObj.location : {};
   const dateRange = weatherObj.date_range && typeof weatherObj.date_range === 'object' ? weatherObj.date_range : {};
@@ -26414,6 +26488,12 @@ function buildTravelReadinessFromEpi({ language, tier, ess, epiPayload, weather 
       pm: Array.isArray(strategy.pm) ? strategy.pm.slice(0, 6) : [],
       notes: Array.isArray(strategy.notes) ? strategy.notes.slice(0, 6) : [],
     },
+    shopping_preview: buildDefaultShoppingPreview({
+      language: lang,
+      destination: location.name,
+      uvComponent: components.uv,
+      humidityComponent: components.humidity,
+    }),
   };
 }
 
