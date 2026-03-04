@@ -44878,7 +44878,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const currentCards = Array.isArray(baseEnvelope.cards) ? baseEnvelope.cards : [];
         const hasIngredientEntryCards = currentCards.some((card) => {
           const type = String(card && card.type ? card.type : '').trim().toLowerCase();
-          return type === 'ingredient_hub' || type === 'ingredient_goal_match';
+          return type === 'ingredient_hub' || type === 'ingredient_goal_match' || type === 'aurora_ingredient_report';
         });
         if (hasIngredientEntryCards) return baseEnvelope;
 
@@ -47177,7 +47177,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (ingredientRecoOptInRequested) {
         recordAuroraIngredientsFlowMetric({ stage: 'reco_optin', hit: true });
       }
-      if (ingredientEntryRequested || ingredientByGoalRequested || ingredientLookupRequested || ingredientResearchPollRequested) {
+      if (ingredientEntryRequested || ingredientByGoalRequested || ingredientLookupRequested || ingredientResearchPollRequested || ingredientScienceIntentEffective) {
         skipRoutineRulesFallback = true;
       }
       if (ingredientLookupRequested && !message && ingredientLookupQuery) {
