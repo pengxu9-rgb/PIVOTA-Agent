@@ -51,6 +51,21 @@ function loadAuroraRoutesModule() {
   return { moduleId, mod };
 }
 
+function findAnalysisCard(body) {
+  const cards = Array.isArray(body && body.cards) ? body.cards : [];
+  return (
+    cards.find((item) => item && item.type === 'analysis_story_v2') ||
+    cards.find((item) => item && item.type === 'analysis_summary') ||
+    null
+  );
+}
+
+function getAnalysisMeta(body) {
+  return body && typeof body.analysis_meta === 'object' && body.analysis_meta
+    ? body.analysis_meta
+    : {};
+}
+
 test('vision availability classification: missing key and disabled flag', () => {
   const disabled = classifyVisionAvailability({ enabled: false, apiKeyConfigured: true });
   assert.equal(disabled.available, false);
@@ -273,34 +288,26 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        const card = findAnalysisCard(resp.body);
+        const analysisMeta = getAnalysisMeta(resp.body);
         assert.ok(card);
-        assert.equal(card?.payload?.quality_report?.llm?.vision?.decision, 'fallback');
-        assert.equal(
-          Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons) &&
-            card.payload.quality_report.llm.vision.reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
-          true,
-        );
-        const qualityGrade = String(card?.payload?.quality_report?.photo_quality?.grade || '').toLowerCase();
-        if (qualityGrade === 'fail') {
+        assert.equal(String(analysisMeta.degrade_reason || ''), VisionUnavailabilityReason.VISION_MISSING_KEY);
+        assert.equal(String(analysisMeta.vision_failure_reason || ''), VisionUnavailabilityReason.VISION_MISSING_KEY);
+        assert.equal(String(analysisMeta.detector_source || '').startsWith('rule_based'), true);
+        if (card.type === 'analysis_summary') {
+          assert.equal(card?.payload?.quality_report?.llm?.vision?.decision, 'fallback');
           assert.equal(
-            Array.isArray(card?.payload?.analysis?.takeaways)
-              ? card.payload.analysis.takeaways.some((item) => item && item.source === 'photo')
-              : false,
-            false,
-          );
-          assert.ok(card?.payload?.analysis?.next_action_card);
-          assert.equal(Array.isArray(card?.payload?.analysis?.next_action_card?.retake_guide), true);
-          assert.equal(Array.isArray(card?.payload?.analysis?.next_action_card?.ask_3_questions), true);
-        } else {
-          assert.equal(
-            Array.isArray(card?.payload?.analysis?.takeaways)
-              ? card.payload.analysis.takeaways.some((item) => item && item.source === 'photo')
-              : false,
+            Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons) &&
+              card.payload.quality_report.llm.vision.reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
             true,
           );
+          assert.match(
+            String(card?.payload?.analysis?.photo_notice || card?.payload?.photo_notice || ''),
+            /temporarily unavailable/i,
+          );
+        } else {
+          assert.equal(card.type, 'analysis_story_v2');
         }
-        assert.match(String(card?.payload?.analysis?.photo_notice || ''), /temporarily unavailable/i);
 
         const expectedProvider = String(mod.__internal.resolveVisionProviderSelection().provider || '').trim() || 'gemini';
         const metrics = await request.get('/metrics').expect(200);
@@ -394,14 +401,19 @@ test('/v1/analysis/skin: forced gemini with missing key reports gemini reason an
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        const card = findAnalysisCard(resp.body);
+        const analysisMeta = getAnalysisMeta(resp.body);
         assert.ok(card);
-        assert.equal(card?.payload?.quality_report?.llm?.vision?.provider, 'gemini');
-        assert.equal(
-          Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons) &&
-            card.payload.quality_report.llm.vision.reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
-          true,
-        );
+        assert.equal(String(analysisMeta.degrade_reason || ''), VisionUnavailabilityReason.VISION_MISSING_KEY);
+        assert.equal(String(analysisMeta.vision_failure_reason || ''), VisionUnavailabilityReason.VISION_MISSING_KEY);
+        if (card.type === 'analysis_summary') {
+          assert.equal(card?.payload?.quality_report?.llm?.vision?.provider, 'gemini');
+          assert.equal(
+            Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons) &&
+              card.payload.quality_report.llm.vision.reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
+            true,
+          );
+        }
 
         const metrics = await request.get('/metrics').expect(200);
         const body = String(metrics.text || '');
@@ -454,14 +466,21 @@ test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN 
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        const card = findAnalysisCard(resp.body);
+        const analysisMeta = getAnalysisMeta(resp.body);
         assert.ok(card);
-        const vision = card?.payload?.quality_report?.llm?.vision || {};
-        const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
-        assert.equal(vision.decision, 'skip');
-        assert.equal(reasons.includes('photo_quality_fail_retake'), true);
-        assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_UNKNOWN), false);
-        assert.equal(String(card?.payload?.analysis?.photo_notice || '').toLowerCase().includes('temporarily unavailable'), false);
+        assert.equal(String(analysisMeta.degrade_reason || ''), 'photo_qc_degraded');
+        assert.equal(String(analysisMeta.vision_failure_reason || ''), '');
+        assert.notEqual(String(analysisMeta.vision_failure_reason || ''), VisionUnavailabilityReason.VISION_UNKNOWN);
+
+        const expectedProvider = String(mod.__internal.resolveVisionProviderSelection().provider || '').trim() || 'gemini';
+        const metrics = await request.get('/metrics').expect(200);
+        const body = String(metrics.text || '');
+        assert.match(body, new RegExp(`vision_calls_total\\{provider=\"${expectedProvider}\",decision=\"skip\"\\}\\s+1`));
+        assert.equal(
+          new RegExp(`vision_fallback_total\\{provider=\"${expectedProvider}\",reason=\"${VisionUnavailabilityReason.VISION_UNKNOWN}\"\\}`).test(body),
+          false,
+        );
       } finally {
         delete require.cache[moduleId];
       }
@@ -506,14 +525,27 @@ test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade',
           })
           .expect(200);
 
-        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        const card = findAnalysisCard(resp.body);
+        const analysisMeta = getAnalysisMeta(resp.body);
         assert.ok(card);
-        const vision = card?.payload?.quality_report?.llm?.vision || {};
-        const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
-        assert.equal(vision.decision, 'fallback');
-        assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED), true);
-        assert.equal(vision.upstream_status_code, null);
-        assert.notEqual(card?.payload?.analysis_source, 'retake');
+        const degradeReason = String(analysisMeta.degrade_reason || '');
+        assert.equal(
+          ['photo_download_url_generate_failed', 'photo_download_url_fetch_4xx', 'photo_download_url_fetch_5xx', 'photo_download_url_timeout'].includes(
+            degradeReason,
+          ),
+          true,
+        );
+        assert.equal(String(analysisMeta.vision_failure_reason || ''), VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED);
+        assert.notEqual(String(analysisMeta.detector_source || ''), 'retake');
+
+        const expectedProvider = String(mod.__internal.resolveVisionProviderSelection().provider || '').trim() || 'gemini';
+        const metrics = await request.get('/metrics').expect(200);
+        const body = String(metrics.text || '');
+        assert.match(body, new RegExp(`vision_calls_total\\{provider=\"${expectedProvider}\",decision=\"fallback\"\\}\\s+1`));
+        assert.match(
+          body,
+          new RegExp(`vision_fallback_total\\{provider=\"${expectedProvider}\",reason=\"${VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED}\"\\}\\s+1`),
+        );
       } finally {
         delete require.cache[moduleId];
       }
