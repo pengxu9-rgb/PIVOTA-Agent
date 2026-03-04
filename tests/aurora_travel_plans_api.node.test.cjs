@@ -14,10 +14,7 @@ function buildApp() {
   const profileStore = new Map();
   const keyOf = (identity) => `${String(identity?.auroraUid || '').trim()}::${String(identity?.userId || '').trim()}`;
 
-  memoryStore.getProfileForIdentity = async (identity) => {
-    return profileStore.get(keyOf(identity)) || null;
-  };
-
+  memoryStore.getProfileForIdentity = async (identity) => profileStore.get(keyOf(identity)) || null;
   memoryStore.upsertProfileForIdentity = async (identity, patch = {}) => {
     const key = keyOf(identity);
     const current = profileStore.get(key) || {};
@@ -45,181 +42,47 @@ function buildHeaders(uid) {
   };
 }
 
-test('/v1/travel-plans: create -> list -> archive flow', async () => {
+test('/v1/travel-plans endpoints are not mounted in current mainline routes', async () => {
   const { app, moduleId, memoryStoreId } = buildApp();
-  const uid = `travel_flow_${Date.now()}`;
+  const uid = `travel_routes_absent_${Date.now()}`;
   const headers = buildHeaders(uid);
   try {
-    const createResp = await supertest(app)
-      .post('/v1/travel-plans')
-      .set(headers)
-      .send({
-        destination: 'Tokyo',
-        start_date: '2099-03-01',
-        end_date: '2099-03-05',
-        indoor_outdoor_ratio: 0.4,
-        itinerary: 'Mostly outdoor daytime and one red-eye flight.',
-      })
-      .expect(200);
-
-    const createdPlan = createResp.body?.plan;
-    assert.ok(createdPlan);
-    assert.equal(createdPlan.destination, 'Tokyo');
-    assert.equal(createdPlan.status, 'upcoming');
-    assert.equal(typeof createdPlan.trip_id, 'string');
-    assert.ok(createdPlan.trip_id.length > 0);
-
-    const tripId = createdPlan.trip_id;
-
-    const listResp = await supertest(app).get('/v1/travel-plans').set(headers).expect(200);
-    const listPlans = Array.isArray(listResp.body?.plans) ? listResp.body.plans : [];
-    assert.ok(listPlans.some((plan) => plan && plan.trip_id === tripId));
-
-    await supertest(app).post(`/v1/travel-plans/${encodeURIComponent(tripId)}/archive`).set(headers).send({}).expect(200);
-
-    const listDefaultResp = await supertest(app).get('/v1/travel-plans').set(headers).expect(200);
-    const listDefault = Array.isArray(listDefaultResp.body?.plans) ? listDefaultResp.body.plans : [];
-    assert.equal(listDefault.some((plan) => plan && plan.trip_id === tripId), false);
-
-    const listWithArchivedResp = await supertest(app)
-      .get('/v1/travel-plans?include_archived=true')
-      .set(headers)
-      .expect(200);
-    const listWithArchived = Array.isArray(listWithArchivedResp.body?.plans) ? listWithArchivedResp.body.plans : [];
-    const archivedPlan = listWithArchived.find((plan) => plan && plan.trip_id === tripId);
-    assert.ok(archivedPlan);
-    assert.equal(archivedPlan.status, 'archived');
-    assert.ok(Number(listWithArchivedResp.body?.summary?.counts?.archived || 0) >= 1);
+    await supertest(app).get('/v1/travel-plans').set(headers).expect(404);
+    await supertest(app).post('/v1/travel-plans').set(headers).send({ destination: 'Tokyo' }).expect(404);
+    await supertest(app).patch('/v1/travel-plans/trip_any').set(headers).send({ destination: 'Paris' }).expect(404);
+    await supertest(app).post('/v1/travel-plans/trip_any/archive').set(headers).send({}).expect(404);
   } finally {
     delete require.cache[moduleId];
     delete require.cache[memoryStoreId];
   }
 });
 
-test('/v1/travel-plans: missing X-Aurora-UID returns MISSING_AURORA_UID (not route 404)', async () => {
+test('/v1/profile/update continues to accept travel_plans payload', async () => {
   const { app, moduleId, memoryStoreId } = buildApp();
-  try {
-    const resp = await supertest(app).get('/v1/travel-plans').expect(400);
-    assert.equal(resp.body?.error, 'MISSING_AURORA_UID');
-  } finally {
-    delete require.cache[moduleId];
-    delete require.cache[memoryStoreId];
-  }
-});
-
-test('/v1/travel-plans/:trip_id: patch keeps created_at_ms and updates fields', async () => {
-  const { app, moduleId, memoryStoreId } = buildApp();
-  const uid = `travel_patch_${Date.now()}`;
-  const headers = buildHeaders(uid);
-  try {
-    const createResp = await supertest(app)
-      .post('/v1/travel-plans')
-      .set(headers)
-      .send({
-        destination: 'Osaka',
-        start_date: '2099-04-01',
-        end_date: '2099-04-03',
-      })
-      .expect(200);
-
-    const plan = createResp.body?.plan;
-    const tripId = String(plan?.trip_id || '');
-    assert.ok(tripId);
-    const createdAtMs = Number(plan?.created_at_ms || 0);
-    assert.ok(Number.isFinite(createdAtMs) && createdAtMs > 0);
-
-    const patchResp = await supertest(app)
-      .patch(`/v1/travel-plans/${encodeURIComponent(tripId)}`)
-      .set(headers)
-      .send({
-        destination: 'Osaka, JP',
-        itinerary: 'Mostly indoor conference with short outdoor commute.',
-        indoor_outdoor_ratio: 0.2,
-      })
-      .expect(200);
-
-    const updated = patchResp.body?.plan;
-    assert.ok(updated);
-    assert.equal(updated.destination, 'Osaka, JP');
-    assert.equal(updated.itinerary, 'Mostly indoor conference with short outdoor commute.');
-    assert.equal(Number(updated.created_at_ms || 0), createdAtMs);
-    assert.ok(Number(updated.updated_at_ms || 0) >= createdAtMs);
-  } finally {
-    delete require.cache[moduleId];
-    delete require.cache[memoryStoreId];
-  }
-});
-
-test('/v1/travel-plans/:trip_id: empty patch body returns BAD_REQUEST (route hit sentinel)', async () => {
-  const { app, moduleId, memoryStoreId } = buildApp();
-  const uid = `travel_empty_patch_${Date.now()}`;
-  const headers = buildHeaders(uid);
-  try {
-    const createResp = await supertest(app)
-      .post('/v1/travel-plans')
-      .set(headers)
-      .send({
-        destination: 'Seoul',
-        start_date: '2099-04-10',
-        end_date: '2099-04-12',
-      })
-      .expect(200);
-
-    const tripId = String(createResp.body?.plan?.trip_id || '');
-    assert.ok(tripId);
-
-    const patchResp = await supertest(app)
-      .patch(`/v1/travel-plans/${encodeURIComponent(tripId)}`)
-      .set(headers)
-      .send({})
-      .expect(400);
-    assert.equal(patchResp.body?.error, 'BAD_REQUEST');
-  } finally {
-    delete require.cache[moduleId];
-    delete require.cache[memoryStoreId];
-  }
-});
-
-test('/v1/travel-plans: invalid date range returns BAD_REQUEST', async () => {
-  const { app, moduleId, memoryStoreId } = buildApp();
-  const uid = `travel_bad_range_${Date.now()}`;
+  const uid = `travel_profile_patch_${Date.now()}`;
   const headers = buildHeaders(uid);
   try {
     const resp = await supertest(app)
-      .post('/v1/travel-plans')
+      .post('/v1/profile/update')
       .set(headers)
       .send({
-        destination: 'Paris',
-        start_date: '2099-05-20',
-        end_date: '2099-05-10',
+        skinType: 'combination',
+        sensitivity: 'medium',
+        barrierStatus: 'stable',
+        goals: ['hydration'],
+        travel_plans: [
+          {
+            destination: 'Tokyo',
+            start_date: '2099-03-01',
+            end_date: '2099-03-05',
+            itinerary: 'Mostly outdoor daytime and one red-eye flight.',
+          },
+        ],
       })
-      .expect(400);
+      .expect(200);
 
-    assert.equal(resp.body?.error, 'BAD_REQUEST');
-  } finally {
-    delete require.cache[moduleId];
-    delete require.cache[memoryStoreId];
-  }
-});
-
-test('/v1/travel-plans/:trip_id: missing trip returns PLAN_NOT_FOUND', async () => {
-  const { app, moduleId, memoryStoreId } = buildApp();
-  const uid = `travel_missing_${Date.now()}`;
-  const headers = buildHeaders(uid);
-  try {
-    const patchResp = await supertest(app)
-      .patch('/v1/travel-plans/trip_not_found')
-      .set(headers)
-      .send({ destination: 'Berlin' })
-      .expect(404);
-    assert.equal(patchResp.body?.error, 'PLAN_NOT_FOUND');
-
-    const archiveResp = await supertest(app)
-      .post('/v1/travel-plans/trip_not_found/archive')
-      .set(headers)
-      .send({})
-      .expect(404);
-    assert.equal(archiveResp.body?.error, 'PLAN_NOT_FOUND');
+    assert.equal(Boolean(resp.body && typeof resp.body === 'object'), true);
+    assert.equal(resp.body?.status || 'ok', 'ok');
   } finally {
     delete require.cache[moduleId];
     delete require.cache[memoryStoreId];

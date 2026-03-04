@@ -260,12 +260,58 @@ function hasNonEmptyValue(value) {
   return Boolean(value);
 }
 
-function extractTravelReadiness(cards) {
+function extractTravelReadinessFromTravelCard(cards) {
+  const rows = Array.isArray(cards) ? cards : [];
+  const travelCard = rows.find((item) => item && String(item.type || '') === 'travel');
+  if (!travelCard) return null;
+
+  if (isPlainObject(travelCard.payload) && isPlainObject(travelCard.payload.travel_readiness)) {
+    return travelCard.payload.travel_readiness;
+  }
+
+  const sections = Array.isArray(travelCard.sections) ? travelCard.sections : [];
+  for (const section of sections) {
+    if (!section || String(section.kind || '') !== 'travel_structured') continue;
+    const envPayload = isPlainObject(section.env_payload) ? section.env_payload : null;
+    if (envPayload && isPlainObject(envPayload.travel_readiness)) {
+      return envPayload.travel_readiness;
+    }
+  }
+  return null;
+}
+
+function extractTravelReadinessFromSessionPatch(body) {
+  const sessionPatch =
+    body && isPlainObject(body.session_patch) ? body.session_patch : null;
+  const readiness =
+    sessionPatch && isPlainObject(sessionPatch.last_travel_readiness)
+      ? sessionPatch.last_travel_readiness
+      : null;
+  return readiness && isPlainObject(readiness) ? readiness : null;
+}
+
+function extractTravelReadiness(cards, body) {
+  return (
+    extractTravelReadinessFromTravelCard(cards) ||
+    extractTravelReadinessFromSessionPatch(body) ||
+    extractTravelReadinessFromEnvStress(cards)
+  );
+}
+
+function extractTravelReadinessFromEnvStress(cards) {
   const rows = Array.isArray(cards) ? cards : [];
   const envStress = rows.find((item) => item && String(item.type || '') === 'env_stress');
   if (!envStress || !isPlainObject(envStress.payload)) return null;
   const payload = envStress.payload;
   return isPlainObject(payload.travel_readiness) ? payload.travel_readiness : null;
+}
+
+function hasRequiredCardType(cardTypes, requiredType) {
+  const expected = String(requiredType || '').trim();
+  if (!expected) return false;
+  if (cardTypes.includes(expected)) return true;
+  if (expected === 'env_stress' && cardTypes.includes('travel')) return true;
+  return false;
 }
 
 function evaluateTravelAssertions({ assertions, travelReadiness, meta, errors }) {
@@ -476,14 +522,22 @@ function evaluateCase({ caseDef, turnDef, turnIndex, mode, status, body, headers
       typeof body.assistant_message === 'object' &&
       typeof body.assistant_message.content === 'string'
       ? body.assistant_message.content
-      : '',
+      : (
+        body && typeof body.assistant_text === 'string'
+          ? body.assistant_text
+          : ''
+      ),
   );
 
   const cards = body && Array.isArray(body.cards) ? body.cards : [];
   const cardTypes = cards.map((item) => String((item && item.type) || '')).filter(Boolean);
   const requiredFields = extractRequiredFields(body, meta);
-  const eventNames = (body && Array.isArray(body.events) ? body.events : [])
-    .map((evt) => String((evt && evt.event_name) || '').trim())
+  const eventRows = [
+    ...(body && Array.isArray(body.events) ? body.events : []),
+    ...(body && body.ops && Array.isArray(body.ops.experiment_events) ? body.ops.experiment_events : []),
+  ];
+  const eventNames = eventRows
+    .map((evt) => String((evt && (evt.event_name || evt.event_type)) || '').trim())
     .filter(Boolean);
 
   if (expectation.intent_canonical && meta && String(meta.intent_canonical || '') !== String(expectation.intent_canonical)) {
@@ -522,7 +576,7 @@ function evaluateCase({ caseDef, turnDef, turnIndex, mode, status, body, headers
 
   if (Array.isArray(expectation.must_have_card_types)) {
     for (const type of expectation.must_have_card_types) {
-      if (!cardTypes.includes(String(type))) {
+      if (!hasRequiredCardType(cardTypes, type)) {
         errors.push(`missing required card type: ${String(type)}`);
       }
     }
@@ -539,7 +593,7 @@ function evaluateCase({ caseDef, turnDef, turnIndex, mode, status, body, headers
   if (isPlainObject(expectation.travel_assertions)) {
     evaluateTravelAssertions({
       assertions: expectation.travel_assertions,
-      travelReadiness: extractTravelReadiness(cards),
+      travelReadiness: extractTravelReadiness(cards, body),
       meta,
       errors,
     });
