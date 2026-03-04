@@ -60,7 +60,7 @@
             "string"
           ],
           "sensitivityFlags": [
-            "string"
+            "high_irritation|strong_acid|mild_acid|acid|fragrance|fungal_acne|pill|minimalist"
           ],
           "pairingRules": [
             "string"
@@ -91,6 +91,8 @@
     "If candidates[] or product_candidates[] is non-empty, every recommendation must copy sku_id/product_id/brand/name from a candidate exactly.",
     "If task_mode is 'ingredient_lookup_no_candidates' or (task_mode is 'ingredient_filtered_products' and product_candidates is empty), output recommendations: [] with confidence: 0.",
     "ingredient_candidates[] contains ingredient names for reasoning — NEVER treat them as product names or product IDs.",
+    "Use only predefined short sensitivityFlags tokens: high_irritation, strong_acid, mild_acid, acid, fragrance, fungal_acne, pill, minimalist.",
+    "Only emit the short token 'fragrance' when INCI/ingredients explicitly confirm fragrance/parfum/allergens; do not emit 'fragrance' as a generic precaution.",
     "At least one reason per item must reference the user's profile OR explicitly reference missing profile fields conservatively (e.g., 'skin type not provided').",
     "If global_status.recent_logs_provided is false, add top-level warning 'recent_logs_missing' (only once, not per item).",
     "If global_status.itinerary_provided is false, add top-level warning 'itinerary_unknown' (only once, not per item)."

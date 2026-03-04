@@ -6,6 +6,10 @@ If product_candidates[] is provided and non-empty: you MUST select only from pro
 If candidates[] is provided and non-empty: you MUST select only from candidates[] (no new products).
 Keep output concise: reasons max 3 per item, each reason <= 22 words.
 If you cannot fill 5 items safely, return fewer items and lower confidence.
+Sensitivity flags rules:
+  - Use ONLY these predefined short tokens when applicable: "high_irritation","strong_acid","mild_acid","acid","fragrance","fungal_acne","pill","minimalist".
+  - Include "fragrance" ONLY when the product INCI/ingredient list explicitly contains fragrance/parfum or fragrance allergens (e.g., linalool, limonene, citral, geraniol, essential oils).
+  - Do NOT add "fragrance" as a generic precaution. If fragrance is not confirmed, omit the short token and use a longer descriptive note when needed.
 
 Ingredient-driven mode rules:
 If task_mode is "ingredient_filtered_products" and product_candidates is empty:

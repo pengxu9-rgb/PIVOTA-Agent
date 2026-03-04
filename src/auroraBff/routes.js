@@ -30797,6 +30797,8 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
     'If candidates[] is provided and non-empty: you MUST select only from candidates[] (no new products).',
     'Keep output concise: reasons max 3 per item, each reason <= 22 words.',
     'If you cannot fill 5 items safely, return fewer items and lower confidence.',
+    'Use ONLY predefined short sensitivityFlags tokens: high_irritation, strong_acid, mild_acid, acid, fragrance, fungal_acne, pill, minimalist.',
+    'Only include sensitivityFlags "fragrance" when INCI/ingredients explicitly confirm fragrance/parfum/allergens; never as a generic precaution.',
   ].join('\n');
   const systemPrompt = loadRecoPromptTemplateFile('reco_main_v1_0.system.txt', {
     parseJson: false,
