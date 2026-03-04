@@ -7150,6 +7150,16 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       const radarRows = Array.isArray(envStress?.payload?.radar) ? envStress.payload.radar : [];
       assert.equal(radarRows.length > 0, true);
       assert.equal(radarRows.some((row) => Array.isArray(row?.drivers) && row.drivers.length > 0), true);
+      const shoppingProducts = Array.isArray(envStress?.payload?.travel_readiness?.shopping_preview?.products)
+        ? envStress.payload.travel_readiness.shopping_preview.products
+        : [];
+      if (shoppingProducts.length) {
+        const allowedProductSource = new Set(['catalog', 'rule_fallback', 'llm_generated']);
+        assert.equal(
+          shoppingProducts.every((row) => allowedProductSource.has(String(row?.product_source || '').trim())),
+          true,
+        );
+      }
       assert.doesNotMatch(String(resp.body?.assistant_message?.content || ''), /destination and travel dates/i);
 
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
@@ -8003,7 +8013,11 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
   assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
   assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
   assert.equal(Array.isArray(card.payload?.analysis?.features), true);
-  assert.match(String(card.payload.analysis.features[0].observation || ''), /photo/i);
+  assert.equal((card.payload?.analysis?.features || []).length, 0);
+  assert.equal(card.payload?.analysis?.insufficient_visual_detail, true);
+  assert.equal(Array.isArray(card.payload?.analysis?.guidance_brief), true);
+  assert.equal((card.payload?.analysis?.guidance_brief || []).length > 0, true);
+  assert.match(String(card.payload?.analysis?.strategy || ''), /retake|photo/i);
 });
 
 test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo quality fails', async () => {
