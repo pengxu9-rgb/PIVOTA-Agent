@@ -129,6 +129,25 @@ Before deploy, still verify baseline runtime safety envs on Railway:
 - UI event durability (no PostHog dependency):
   - `AURORA_EVENTS_JSONL_SINK_DIR=/var/log/aurora-ui-events`
 
+## Deployment Truth Lock (Mandatory)
+
+When validating production behavior, treat deployed headers as source of truth instead of local `HEAD`.
+
+- Record these response headers from `GET /health`:
+  - `x-service-commit`
+  - `x-service-branch`
+  - `x-service-deployment-id`
+- Use `scripts/verify_deployed_commit_matches.sh` for deterministic verification:
+
+```bash
+BASE_URL='https://pivota-agent-production.up.railway.app'
+TARGET_COMMIT='b3583b60f115'
+
+TARGET_COMMIT="$TARGET_COMMIT" ./scripts/verify_deployed_commit_matches.sh "$BASE_URL"
+```
+
+If `x-service-commit` does not match target commit, stop diagnosis/fallback analysis and resolve deployment drift first.
+
 Execution cadence:
 
 1. D0 config freeze with aggressive envs above.
@@ -188,6 +207,8 @@ Stop-loss runbook (mandatory for 100% release):
 - `llm_report_called`
 - `artifact_usable`
 - `degrade_reason`
+- `vision_failure_reason` (optional; additive)
+- `report_failure_reason` (optional; additive)
 
 `/v1/chat` now returns ChatCards v1 top-level objects:
 

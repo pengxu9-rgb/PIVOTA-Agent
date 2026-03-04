@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { buildIngredientPlanV2 } = require('../src/auroraBff/ingredientMapperV1');
+const { buildIngredientPlan, buildIngredientPlanV2 } = require('../src/auroraBff/ingredientMapperV1');
 
 function createTempCatalog(rows) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-ing-v2-'));
@@ -272,4 +272,22 @@ test('ingredient_plan_v2 product entries keep rich media/open fields for renderi
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('ingredient plan low-confidence fallback keeps ingredient_name on targets and avoid', () => {
+  const plan = buildIngredientPlan({
+    artifact: {
+      use_photo: false,
+      analysis_context: { analysis_source: 'baseline_low_confidence' },
+    },
+    profile: {},
+  });
+
+  assert.ok(plan);
+  assert.equal(Array.isArray(plan.targets), true);
+  assert.equal(Array.isArray(plan.avoid), true);
+  assert.equal(plan.targets.length > 0, true);
+  assert.equal(plan.avoid.length > 0, true);
+  assert.equal(plan.targets.every((item) => typeof item.ingredient_name === 'string' && item.ingredient_name.trim().length > 0), true);
+  assert.equal(plan.avoid.every((item) => typeof item.ingredient_name === 'string' && item.ingredient_name.trim().length > 0), true);
 });

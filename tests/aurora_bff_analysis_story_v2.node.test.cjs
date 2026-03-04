@@ -135,6 +135,7 @@ test('analysis_story_v2: routine soft gate adds story/prompt and delays ingredie
 
   const types = out.map((card) => card.type);
   assert.equal(types.includes('analysis_story_v2'), true);
+  assert.equal(types.includes('analysis_summary'), false);
   assert.equal(types.includes('routine_prompt'), true);
   assert.equal(types.includes('recommendations'), false);
   const storyCard = out.find((card) => card.type === 'analysis_story_v2');

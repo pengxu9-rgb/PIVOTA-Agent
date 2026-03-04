@@ -30,6 +30,10 @@ const {
   applyConfidenceCaps,
   detectInsufficientVisualDetail,
 } = require('./skinLlmPolicy');
+const {
+  normalizeReportFailureReason,
+  deriveSkinDegradeMeta,
+} = require('./skinDegradeMeta');
 const { dedupeAndCapOutput } = require('./chatCardFactory');
 const {
   VisionUnavailabilityReason,
@@ -25041,7 +25045,11 @@ async function applyAnalysisStoryAndRoutineSoftGate(
           type: 'analysis_story_v2',
           payload: storyPayload,
         };
-    list = list.filter((card) => !(isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2'));
+    list = list.filter((card) => {
+      if (!isPlainObject(card)) return true;
+      const type = String(card.type || '').trim().toLowerCase();
+      return type !== 'analysis_story_v2' && type !== 'analysis_summary';
+    });
     const photoModulesIdx = list.findIndex((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'photo_modules_v1');
     const insertIndex = photoModulesIdx >= 0 ? photoModulesIdx + 1 : 0;
     list.splice(insertIndex, 0, storyCard);
@@ -40910,6 +40918,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let deterministicFallbackReason = null;
         let reportModelCalled = false;
         let reportModelErrored = false;
+        let reportModelErrorReason = null;
 
         let diagnosisPhoto = null;
         let diagnosisPhotoBytes = null;
@@ -41304,19 +41313,21 @@ function mountAuroraBffRoutes(app, { logger }) {
             reportLayer = reportResult.layer;
             analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
           } else {
-            const reportFailure = reportResult.reason || 'report_output_invalid';
-            deterministicFallbackReason = deterministicFallbackReason || reportFailure;
+            const reportFailureRaw = reportResult.reason || 'report_output_invalid';
+            const reportFailureReason = normalizeReportFailureReason(reportFailureRaw) || 'UNKNOWN';
+            deterministicFallbackReason = deterministicFallbackReason || reportFailureRaw;
             reportModelErrored = true;
+            reportModelErrorReason = reportFailureReason;
             if (reportResult.schema_violation) {
               recordAuroraSkinLlmSchemaViolation({
                 stage: 'report',
                 provider: 'gemini',
-                reason: reportFailure,
+                reason: reportFailureReason,
                 inputHashPrefix: llmInputHashPrefix,
               });
             }
-            if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailure}）；我会退回到确定性基线。`);
-            else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
+            if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailureReason}）；我会退回到确定性基线。`);
+            else qualityReportReasons.push(`Report model output was unstable (${reportFailureReason}); falling back to deterministic baseline.`);
           }
         }
         if (!analysis && reportDecision.decision === 'skip' && hasPrimaryInput) {
@@ -41792,20 +41803,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraSkinLlmCall({ stage: 'report', outcome: reportLlmOutcome });
         }
 
-        const degradeReason = (() => {
-          if (renderedAnalysisSource === 'baseline_low_confidence') return 'baseline_low_confidence';
-          if (renderedAnalysisSource === 'retake') return 'photo_quality_fail';
-          if (renderedAnalysisSource === 'rule_based_with_photo_qc') {
-            if (photoFailureCode === 'MISSING_PRIMARY_INPUT') return 'missing_primary_input';
-            if (photoFailureCode) return `photo_${String(photoFailureCode).trim().toLowerCase()}`;
-            return 'photo_qc_degraded';
-          }
-          if (visionDecisionForReport && visionDecisionForReport.decision === 'fallback') {
-            return normalizeVisionReason(pickPrimaryVisionReason(visionDecisionForReport.reasons)) || 'vision_fallback';
-          }
-          if (reportModelErrored) return 'report_model_error';
-          return null;
-        })();
+        const degradeMeta = deriveSkinDegradeMeta({
+          renderedAnalysisSource,
+          photoFailureCode,
+          visionDecisionForReport,
+          reportModelErrored,
+          reportModelErrorReason,
+        });
+        const degradeReason = degradeMeta.degradeReason;
         const analysisMeta = {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           llm_vision_called: visionModelCalled,
@@ -41819,6 +41824,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               String(photoQuality && photoQuality.grade || '').trim().toLowerCase() === 'fail',
           ),
           ...(degradeReason ? { degrade_reason: degradeReason } : {}),
+          ...(degradeMeta.visionFailureReason ? { vision_failure_reason: degradeMeta.visionFailureReason } : {}),
+          ...(degradeMeta.reportFailureReason ? { report_failure_reason: degradeMeta.reportFailureReason } : {}),
         };
         const lowConfidenceFromPhotoQuality = Boolean(
           userRequestedPhoto &&
