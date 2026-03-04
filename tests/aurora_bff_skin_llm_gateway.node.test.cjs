@@ -1,89 +1,113 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const { validateSkinAnalysisContent } = require('../src/auroraBff/skinLlmGateway');
 const {
-  sanitizeGeminiResponseSchema,
-  classifyGeminiError,
-  buildGeminiModelLadder,
-  isGeminiModelUnavailableError,
-  toStatusCode,
-} = require('../src/auroraBff/skinLlmGateway');
+  validateVisionObservation,
+  validateReportStrategy,
+  normalizeVisionObservationLayer,
+  normalizeReportStrategyLayer,
+} = require('../src/auroraBff/skinAnalysisContract');
 
-test('skin llm gateway: sanitizeGeminiResponseSchema removes additionalProperties recursively', () => {
-  const sourceSchema = {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      features: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            observation: { type: 'string' },
-            confidence: { type: 'string' },
-          },
-        },
+test('skin llm gateway contract: accepts and normalizes legacy vision output shape', () => {
+  const payload = {
+    features: [
+      { observation: 'Mild cheek redness', confidence: 'somewhat_sure' },
+      { observation: 'Shine in T-zone', confidence: 'pretty_sure' },
+    ],
+    needs_risk_check: false,
+  };
+  const validation = validateVisionObservation(payload);
+  assert.equal(validation.ok, true);
+
+  const normalized = normalizeVisionObservationLayer(payload);
+  assert.equal(Array.isArray(normalized.features), true);
+  assert.equal(normalized.features.length >= 2, true);
+  assert.equal(typeof normalized.needs_risk_check, 'boolean');
+});
+
+test('skin llm gateway contract: accepts and normalizes new vision output shape', () => {
+  const payload = {
+    quality_note: 'slight blur around edges',
+    observations: [
+      {
+        cue: 'texture',
+        where: 'cheeks',
+        severity: 'mild',
+        confidence: 'med',
+        evidence: 'uneven fine texture',
       },
-      nested: {
-        type: 'object',
-        properties: {
-          child: {
-            type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              properties: { key: { type: 'string' } },
-            },
-          },
-        },
+      {
+        cue: 'shine',
+        where: 'forehead',
+        severity: 'moderate',
+        confidence: 'high',
+        evidence: 'specular highlights in T-zone',
       },
+    ],
+    limits: ['warm indoor lighting'],
+  };
+  const validation = validateVisionObservation(payload);
+  assert.equal(validation.ok, true);
+
+  const normalized = normalizeVisionObservationLayer(payload);
+  assert.equal(Array.isArray(normalized.features), true);
+  assert.equal(normalized.features.length >= 2, true);
+  assert.equal(Array.isArray(normalized.observations), true);
+  assert.equal(normalized.observations.length, 2);
+});
+
+test('skin llm gateway contract: accepts and normalizes legacy + new report output shape', () => {
+  const payload = {
+    strategy: 'AM gentle cleanse + SPF. PM gentle cleanse + moisturizer.',
+    needs_risk_check: false,
+    primary_question: 'Any stinging after moisturizer?',
+    conditional_followups: ['How long does it last?'],
+    routine_expert: {
+      contract: 'aurora.routine_expert.v1',
+      snapshot: { summary: 'minimal routine', am_steps: [], pm_steps: [], active_families: [], risk_flags: [] },
     },
+    findings: [
+      {
+        cue: 'pores',
+        where: 'nose',
+        severity: 'mild',
+        confidence: 'med',
+        evidence: 'visible pore contrast',
+      },
+    ],
+    guidance_brief: ['Avoid stacking multiple strong actives on the same night'],
+    two_week_focus: ['Barrier-first consistency'],
+    next_step_options: [{ id: 'analysis_get_recommendations', label: 'Get recommendations' }],
   };
 
-  const sanitized = sanitizeGeminiResponseSchema(sourceSchema);
-  const asText = JSON.stringify(sanitized);
-  assert.equal(asText.includes('additionalProperties'), false);
-  assert.equal(sanitized.type, 'object');
-  assert.equal(sanitized.properties.features.type, 'array');
-  assert.equal(sanitized.properties.features.items.type, 'object');
-  assert.equal(sanitized.properties.nested.properties.child.items.type, 'object');
+  const validation = validateReportStrategy(payload);
+  assert.equal(validation.ok, true);
+
+  const normalized = normalizeReportStrategyLayer(payload, { lang: 'EN' });
+  assert.equal(typeof normalized.strategy, 'string');
+  assert.equal(typeof normalized.routine_expert, 'object');
+  assert.equal(Array.isArray(normalized.findings), true);
+  assert.equal(Array.isArray(normalized.guidance_brief), true);
+  assert.equal(Array.isArray(normalized.next_step_options), true);
 });
 
-test('skin llm gateway: message-only status is parsed and classified as UPSTREAM_4XX', () => {
-  const err = new Error(
-    'got status: 400 Bad Request. {"error":{"code":400,"status":"INVALID_ARGUMENT","message":"Unknown name \\"additionalProperties\\""}}',
-  );
-  err.code = undefined;
+test('skin llm gateway safety text validation handles routine_expert object', () => {
+  const safeLayer = {
+    strategy: 'Keep routine simple and monitor tolerance.',
+    primary_question: 'Any stinging after moisturizer?',
+    routine_expert: {
+      plan_7d: { am: ['gentle cleanse'], pm: ['moisturizer'] },
+    },
+  };
+  const safe = validateSkinAnalysisContent(safeLayer, { lang: 'EN' });
+  assert.equal(safe.ok, true);
 
-  assert.equal(toStatusCode(err), 400);
-
-  const out = classifyGeminiError(err);
-  assert.equal(out.reason, 'UPSTREAM_4XX');
-  assert.equal(out.upstream_status_code, 400);
-  assert.equal(out.error_evidence.reason_normalized, 'VISION_UPSTREAM_4XX');
-  assert.equal(out.error_evidence.http_status, 400);
-  assert.equal(typeof out.error_evidence.provider_error_message, 'string');
-  assert.ok(out.error_evidence.provider_error_message.toLowerCase().includes('additionalproperties'));
-});
-
-test('skin llm gateway: buildGeminiModelLadder keeps order and deduplicates', () => {
-  const ladder = buildGeminiModelLadder({
-    primaryModel: 'gemini-3-pro',
-    fallbackModel: 'gemini-2.0-flash',
-    envOverride: 'gemini-3-pro, gemini-2.0-flash, gemini-3-pro',
-  });
-  assert.deepEqual(ladder, ['gemini-3-pro', 'gemini-2.0-flash']);
-});
-
-test('skin llm gateway: model-unavailable 4xx is recognized for ladder fallback', () => {
-  const err = new Error('got status: 404 Not Found. model gemini-3-pro is not available for API version v1');
-  const classified = classifyGeminiError(err);
-  assert.equal(classified.reason, 'UPSTREAM_4XX');
-  assert.equal(isGeminiModelUnavailableError(err, classified), true);
-
-  const timeoutErr = new Error('request timeout');
-  timeoutErr.code = 'GEMINI_TIMEOUT';
-  const timeoutClassified = classifyGeminiError(timeoutErr);
-  assert.equal(isGeminiModelUnavailableError(timeoutErr, timeoutClassified), false);
+  const unsafeLayer = {
+    ...safeLayer,
+    strategy: 'Use antibiotic cream and cure dermatitis quickly.',
+  };
+  const unsafe = validateSkinAnalysisContent(unsafeLayer, { lang: 'EN' });
+  assert.equal(unsafe.ok, false);
+  assert.equal(unsafe.violations.includes('safety_keyword_violation'), true);
 });

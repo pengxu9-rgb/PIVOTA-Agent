@@ -262,7 +262,7 @@ const DEFAULT_QUALITY_GATE = Object.freeze({
     min_blur_factor: 0.45,
     min_exposure_factor: 0.45,
     min_wb_factor: 0.65,
-    min_quality_factor: 0.55,
+    min_degraded_strike_count: 2,
   }),
 });
 
@@ -435,17 +435,13 @@ function normalizeQualityGateConfig(overrides) {
         1,
       ),
     ),
-    min_quality_factor: clamp01(
-      clamp(
-        Number(
-          degradedRaw && degradedRaw.min_quality_factor != null
-            ? degradedRaw.min_quality_factor
-            : DEFAULT_QUALITY_GATE.degraded.min_quality_factor,
-        ),
-        0,
-        1,
-      ),
-    ),
+    min_degraded_strike_count: Math.max(1, Math.min(3, Math.trunc(
+      Number(
+        degradedRaw && degradedRaw.min_degraded_strike_count != null
+          ? degradedRaw.min_degraded_strike_count
+          : DEFAULT_QUALITY_GATE.degraded.min_degraded_strike_count,
+      ) || DEFAULT_QUALITY_GATE.degraded.min_degraded_strike_count,
+    ))),
   };
 
   return {
@@ -514,7 +510,7 @@ function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox,
   const wbFactor = clamp01(1 - wbCast / 0.45);
   const coverageFactor = clamp01((coverage - 0.06) / 0.18);
 
-  const qualityFactor = clamp01(blurFactor * exposureFactor * wbFactor * coverageFactor);
+  const qualityFactor = clamp01(Math.pow(blurFactor * exposureFactor * wbFactor * coverageFactor, 0.25));
 
   const bboxWNorm = clamp01((bbox.x1 - bbox.x0 + 1) / Math.max(1, width));
   const bboxHNorm = clamp01((bbox.y1 - bbox.y0 + 1) / Math.max(1, height));
@@ -588,9 +584,10 @@ function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox,
     }
   }
 
-  // Keep FAIL reserved for hard failure conditions (coverage / blur / exposure).
-  // Composite quality_factor is still used for DEGRADED, but not for FAIL to
-  // avoid over-failing clear photos with warm/cool cast.
+  // FAIL: hard failure on frame, coverage, blur, or exposure.
+  // DEGRADED: two-strikes logic -- requires frame guidance issue OR 2+ of
+  // {blur, exposure, wb} below degraded thresholds. A single slightly-low
+  // metric no longer sinks the grade.
   let grade = 'pass';
   for (const reason of frameFailReasons) reasons.push(reason);
   for (const reason of frameDegradedReasons) reasons.push(reason);
@@ -601,14 +598,15 @@ function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox,
     exposureFactor < failGate.min_exposure_factor
   ) {
     grade = 'fail';
-  } else if (
-    frameDegradedReasons.length > 0 ||
-    blurFactor < degradedGate.min_blur_factor ||
-    exposureFactor < degradedGate.min_exposure_factor ||
-    wbFactor < degradedGate.min_wb_factor ||
-    qualityFactor < degradedGate.min_quality_factor
-  ) {
-    grade = 'degraded';
+  } else {
+    let degradedStrikeCount = 0;
+    if (blurFactor < degradedGate.min_blur_factor) degradedStrikeCount++;
+    if (exposureFactor < degradedGate.min_exposure_factor) degradedStrikeCount++;
+    if (wbFactor < degradedGate.min_wb_factor) degradedStrikeCount++;
+    const minStrikes = degradedGate.min_degraded_strike_count || 2;
+    if (frameDegradedReasons.length > 0 || degradedStrikeCount >= minStrikes) {
+      grade = 'degraded';
+    }
   }
 
   return {

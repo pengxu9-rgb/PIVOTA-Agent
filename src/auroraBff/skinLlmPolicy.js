@@ -212,10 +212,62 @@ function shouldCallLlm({
   return { decision: 'skip', reasons: ['unknown_kind'], downgrade_confidence: false };
 }
 
-function downgradeSkinAnalysisConfidence(analysis, { language } = {}) {
+const ISSUE_SPECIFIC_MESSAGES = Object.freeze({
+  EN: Object.freeze({
+    strong_light: 'Strong lighting may hide redness; focusing on texture and distribution.',
+    specular_shine: 'Shine can exaggerate oiliness; cross-checking with pore contrast and texture.',
+    motion_blur: 'Slight blur reduces detail; avoiding calls on tiny bumps.',
+    white_balance_cast: 'Color cast may shift tone readings; focusing on texture over color.',
+    low_coverage: 'Limited face coverage; focusing analysis on visible regions.',
+  }),
+  CN: Object.freeze({
+    strong_light: '强光可能遮盖泛红，侧重纹理与分布分析。',
+    specular_shine: '反光可能放大油腻感，将结合毛孔与纹理交叉验证。',
+    motion_blur: '轻微模糊降低细节可见度，不会判断微小凸起。',
+    white_balance_cast: '色偏可能影响色调判断，侧重纹理分析。',
+    low_coverage: '面部覆盖有限，聚焦可见区域分析。',
+  }),
+});
+
+function pickIssueMessage(issues, lang) {
+  const msgs = ISSUE_SPECIFIC_MESSAGES[lang] || ISSUE_SPECIFIC_MESSAGES.EN;
+  if (!Array.isArray(issues)) return '';
+  for (const issue of issues) {
+    const key = String(issue || '').trim().toLowerCase();
+    if (msgs[key]) return msgs[key];
+  }
+  return '';
+}
+
+function stripQualityDisclaimerLines(input) {
+  const text = typeof input === 'string' ? input : '';
+  if (!text.trim()) return '';
+  const lines = text.split(/\r?\n/);
+  const keep = lines.filter((line) => {
+    const t = String(line || '').trim().toLowerCase();
+    if (!t) return false;
+    if (
+      t.includes('photo quality') ||
+      t.includes('degraded') ||
+      t.includes('conservative') ||
+      t.includes('保守') ||
+      t.includes('照片质量')
+    ) {
+      return false;
+    }
+    return true;
+  });
+  return keep.join('\n').trim();
+}
+
+function downgradeSkinAnalysisConfidence(analysis, { language, qualityObject } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const a = analysis && typeof analysis === 'object' ? analysis : null;
   if (!a) return analysis;
+
+  const qObj = qualityObject && typeof qualityObject === 'object' ? qualityObject : {};
+  const issues = Array.isArray(qObj.issues) ? qObj.issues : [];
+
   const featuresRaw = Array.isArray(a.features) ? a.features : [];
   const features = featuresRaw.map((f) => {
     const obj = f && typeof f === 'object' ? f : null;
@@ -226,16 +278,120 @@ function downgradeSkinAnalysisConfidence(analysis, { language } = {}) {
     return { observation, confidence };
   }).filter(Boolean);
 
-  const strategyRaw = typeof a.strategy === 'string' ? a.strategy.trim() : '';
-  const prefix =
-    /^(?:\u2705|\u26a0|\ud83d\udccd|\*\*)/.test(strategyRaw) || strategyRaw.toLowerCase().startsWith('note:')
-      ? ''
-      : lang === 'CN'
-        ? '提示：照片质量一般，我会更保守一些，避免误判。\n'
-        : 'Note: photo quality is degraded, so keep expectations conservative.\n';
+  const strategyRaw = stripQualityDisclaimerLines(typeof a.strategy === 'string' ? a.strategy.trim() : '');
+  const issueMsg = pickIssueMessage(issues, lang);
+  const strategy = strategyRaw.slice(0, 1200);
 
-  const strategy = `${prefix}${strategyRaw}`.slice(0, 1200);
-  return { ...a, features, strategy };
+  const qualityMessage = issueMsg || (lang === 'CN' ? '照片质量略有不足，已适当降低置信度。' : 'Photo quality is slightly reduced; confidence has been adjusted.');
+
+  return { ...a, features, strategy, quality_message: qualityMessage };
+}
+
+const CONFIDENCE_CAP_BY_GRADE = { pass: 'high', degraded: 'med', fail: null };
+
+function capConfidenceByGrade(confidence, qualityGrade) {
+  const grade = String(qualityGrade || 'pass').toLowerCase();
+  const cap = CONFIDENCE_CAP_BY_GRADE[grade];
+  if (cap === null) return null;
+  if (!cap) return confidence;
+  const order = { low: 0, med: 1, high: 2 };
+  const confVal = order[String(confidence || 'med').toLowerCase()];
+  const capVal = order[cap];
+  if (confVal == null || capVal == null) return confidence;
+  return confVal > capVal ? cap : confidence;
+}
+
+function applyConfidenceCaps(analysis, qualityGrade) {
+  const a = analysis && typeof analysis === 'object' ? analysis : null;
+  if (!a) return analysis;
+  const grade = String(qualityGrade || 'pass').toLowerCase();
+
+  if (grade === 'fail') {
+    return { ...a, findings: [], features: [], insufficient_visual_detail: true };
+  }
+
+  const findings = Array.isArray(a.findings) ? a.findings.map((f) => {
+    if (!f || typeof f !== 'object') return f;
+    return { ...f, confidence: capConfidenceByGrade(f.confidence, grade) };
+  }) : a.findings;
+
+  const features = Array.isArray(a.features) ? a.features.map((f) => {
+    if (!f || typeof f !== 'object') return f;
+    const conf = String(f.confidence || '').toLowerCase();
+    if (grade === 'degraded') {
+      const capped = conf === 'pretty_sure' ? 'somewhat_sure' : conf;
+      return { ...f, confidence: capped };
+    }
+    return f;
+  }) : a.features;
+
+  return { ...a, findings, features };
+}
+
+function detectInsufficientVisualDetail(observations) {
+  const obs = Array.isArray(observations) ? observations : [];
+  if (!obs.length) return true;
+  const lowCount = obs.filter((o) => o && String(o.confidence || '').toLowerCase() === 'low').length;
+  return lowCount / obs.length >= 0.8;
+}
+
+function enforceQualityNarrative(analysis, { language, qualityObject } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const a = analysis && typeof analysis === 'object' ? { ...analysis } : null;
+  if (!a) return analysis;
+
+  const q = qualityObject && typeof qualityObject === 'object' ? qualityObject : {};
+  const rawGrade = String(q.grade || '').trim().toLowerCase();
+  const grade = rawGrade === 'pass' || rawGrade === 'degraded' || rawGrade === 'fail' ? rawGrade : 'degraded';
+
+  const degradedMessage =
+    pickIssueMessage(Array.isArray(q.issues) ? q.issues : [], lang) ||
+    (lang === 'CN' ? '照片质量一般，分析已按可见区域做保守处理。' : 'Photo quality is degraded; analysis is limited to reliably visible cues.');
+  const failMessage =
+    lang === 'CN'
+      ? '照片质量不足，当前不输出观察结论，请按提示重拍。'
+      : 'Photo quality is insufficient; no findings are shown for this turn. Please retake and retry.';
+
+  if (grade === 'pass') {
+    a.strategy = stripQualityDisclaimerLines(typeof a.strategy === 'string' ? a.strategy : '');
+    if (Array.isArray(a.features)) {
+      a.features = a.features.filter((row) => {
+        if (!row || typeof row !== 'object') return false;
+        const obs = String(row.observation || '').trim();
+        if (!obs) return false;
+        const token = obs.toLowerCase();
+        return !(
+          token.includes('degraded') ||
+          token.includes('conservative') ||
+          token.includes('photo quality') ||
+          token.includes('照片质量') ||
+          token.includes('保守')
+        );
+      });
+    }
+    delete a.quality_message;
+    return a;
+  }
+
+  if (grade === 'degraded') {
+    a.strategy = stripQualityDisclaimerLines(typeof a.strategy === 'string' ? a.strategy : '');
+    a.quality_message = degradedMessage;
+    return a;
+  }
+
+  a.features = [];
+  a.findings = [];
+  a.strategy =
+    lang === 'CN'
+      ? '请重拍一张自然光、无滤镜、清晰对焦、正脸无遮挡的照片，然后我再继续分析。'
+      : 'Please retake one clear front-facing photo in natural light (no filter, no occlusion), then I can continue the analysis.';
+  a.guidance_brief =
+    lang === 'CN'
+      ? ['靠近窗边自然光', '镜头对焦后再拍', '确保脸部完整入镜且无遮挡']
+      : ['Use natural daylight near a window', 'Wait for focus lock before capture', 'Keep your full face in frame without occlusion'];
+  a.quality_message = failMessage;
+  a.insufficient_visual_detail = true;
+  return a;
 }
 
 const REASON_TEXT = Object.freeze({
@@ -318,11 +474,39 @@ function humanizeLlmReasons(reasons, { language } = {}) {
   return out;
 }
 
+function shouldFireDeepening({ qualityObject, observations, userReportedSymptoms } = {}) {
+
+  const q = qualityObject && typeof qualityObject === 'object' ? qualityObject : {};
+  const grade = String(q.grade || 'pass').toLowerCase();
+
+  if (grade !== 'pass') return { fire: true, reason: 'quality_not_pass' };
+
+  const obs = Array.isArray(observations) ? observations : [];
+  const lowConfCount = obs.filter((o) => o && String(o.confidence || '').toLowerCase() === 'low').length;
+  if (lowConfCount >= 2) return { fire: true, reason: 'multiple_low_confidence_observations' };
+
+  const symptoms = Array.isArray(userReportedSymptoms) ? userReportedSymptoms : [];
+  const hasActionableSymptom = symptoms.some((s) => {
+    const token = String(s || '').toLowerCase();
+    return token.includes('sting') || token.includes('itch') || token.includes('burn') ||
+      token.includes('flak') || token.includes('tight') || token.includes('刺') ||
+      token.includes('痒') || token.includes('灼') || token.includes('脱皮') || token.includes('紧绷');
+  });
+  if (hasActionableSymptom) return { fire: true, reason: 'user_symptoms_may_change_plan' };
+
+  return { fire: false, reason: 'no_deepening_trigger' };
+}
+
 module.exports = {
   classifyPhotoQuality,
   inferDetectorConfidence,
   shouldCallLlm,
   should_call_llm: shouldCallLlm,
   downgradeSkinAnalysisConfidence,
+  enforceQualityNarrative,
   humanizeLlmReasons,
+  shouldFireDeepening,
+  capConfidenceByGrade,
+  applyConfidenceCaps,
+  detectInsufficientVisualDetail,
 };

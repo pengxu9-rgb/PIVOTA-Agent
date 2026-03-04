@@ -492,6 +492,65 @@ function buildPassthroughCard({ card, requestId, index, language = 'EN', fallbac
   };
 }
 
+function normalizeProductCard(raw, language) {
+  const p = isPlainObject(raw) ? raw : {};
+  const category = asString(p.category) || asString(p.routine_slot) || inferRoutineCategory(p.product_name || p.name || '');
+  const name = asString(p.product_name) || asString(p.name);
+  const brand = asString(p.brand) || asString(p.product_brand);
+  const bestFor = asString(p.best_for) || asString(p.why_this_one) || '';
+  const keyFeatures = asStringArray(p.key_features || p.actives || p.key_ingredients, 6);
+  const priceTier = asString(p.price_tier) || asString(p.item_type) || 'mid';
+  const whyThisOne = asString(p.why_this_one) || asString(p.reason) || '';
+  const seeMore = p.see_more !== false;
+  return {
+    category,
+    name,
+    brand,
+    best_for: bestFor,
+    key_features: keyFeatures,
+    price_tier: ['budget', 'mid', 'premium'].includes(priceTier) ? priceTier : 'mid',
+    why_this_one: whyThisOne,
+    see_more: seeMore,
+    ...(p.alternatives ? { alternatives: asRecordArray(p.alternatives, 9).map((alt) => ({
+      name: asString(alt.name) || asString(alt.product_name),
+      brand: asString(alt.brand),
+      differentiator: asString(alt.differentiator) || asString(alt.reason),
+      price_tier: asString(alt.price_tier) || 'mid',
+      suitability_flags: asStringArray(alt.suitability_flags || alt.flags, 4),
+    })) } : {}),
+    ...(p.user_product_action ? {
+      user_product_action: asString(p.user_product_action),
+    } : {}),
+  };
+}
+
+function buildRecommendationsCard({ card, requestId, index, language = 'EN' }) {
+  const payload = isPlainObject(card && card.payload) ? card.payload : {};
+  const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+  const products = recommendations.map((r) => normalizeProductCard(r, language)).filter((p) => p.name);
+  const amProducts = products.filter((p) => p.category === 'cleanser' || p.category === 'sunscreen' || p.category === 'moisturizer');
+  const pmProducts = products.filter((p) => p.category === 'treatment' || (p.category === 'moisturizer' && !amProducts.includes(p)));
+
+  return {
+    id: normalizeCardId(card && card.card_id, 'recommendations', requestId, index),
+    type: 'recommendations',
+    priority: 1,
+    title: language === 'CN' ? '产品推荐' : 'Product Recommendations',
+    tags: [],
+    sections: [
+      {
+        kind: 'product_cards',
+        products: products.slice(0, 8),
+      },
+    ],
+    actions: [
+      { type: 'see_more_alternatives', label: language === 'CN' ? '查看更多替代品' : 'See more alternatives' },
+      { type: 'optimize_existing_products', label: language === 'CN' ? '优化现有产品' : 'Optimize my current products' },
+    ],
+    payload,
+  };
+}
+
 function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 } = {}) {
   const type = asString(card && card.type).toLowerCase();
   if (!type) return [];
@@ -500,7 +559,7 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
     return [buildProductVerdictCard({ card, requestId, index, language })];
   }
   if (type === 'recommendations') {
-    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '产品推荐' : 'Recommendations' })];
+    return [buildRecommendationsCard({ card, requestId, index, language })];
   }
   if (type === 'routine_simulation' || type === 'conflict_heatmap') {
     return [buildCompatibilityCard({ card, requestId, index, language })];
@@ -544,6 +603,84 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   return [buildNudgeCard({ card, requestId, index, language })];
 }
 
+function tokenOverlap(a, b) {
+  const tokA = new Set(String(a || '').toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean));
+  const tokB = new Set(String(b || '').toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean));
+  if (!tokA.size || !tokB.size) return 0;
+  let overlap = 0;
+  for (const t of tokA) { if (tokB.has(t)) overlap++; }
+  return overlap / Math.min(tokA.size, tokB.size);
+}
+
+function dedupeStrings(items, threshold = 0.7) {
+  const out = [];
+  for (const item of items) {
+    const text = String(item || '').trim();
+    if (!text) continue;
+    const truncated = /\w+-$/.test(text);
+    const cleaned = truncated ? text.replace(/-$/, '') : text;
+    if (out.some((existing) => tokenOverlap(existing, cleaned) >= threshold)) continue;
+    out.push(cleaned);
+  }
+  return out;
+}
+
+function dedupeFindings(findings) {
+  const seen = new Set();
+  const out = [];
+  for (const f of findings) {
+    if (!f || typeof f !== 'object') continue;
+    const key = `${String(f.cue || '').toLowerCase()}:${String(f.where || '').toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out;
+}
+
+const OUTPUT_CAPS = Object.freeze({
+  findings: 5,
+  guidance_brief: 3,
+  am_steps: 5,
+  pm_steps: 6,
+  top_concerns: 3,
+  features: 5,
+  reasoning: 4,
+});
+
+function dedupeAndCapOutput(analysis) {
+  const a = analysis && typeof analysis === 'object' ? analysis : null;
+  if (!a) return analysis;
+
+  const findings = dedupeFindings(Array.isArray(a.findings) ? a.findings : []).slice(0, OUTPUT_CAPS.findings);
+  const guidanceBrief = dedupeStrings(Array.isArray(a.guidance_brief) ? a.guidance_brief : []).slice(0, OUTPUT_CAPS.guidance_brief);
+  const features = Array.isArray(a.features)
+    ? dedupeStrings(a.features.map((f) => f && typeof f === 'object' ? f.observation : '')).slice(0, OUTPUT_CAPS.features).map((obs) => ({ observation: obs, confidence: 'somewhat_sure' }))
+    : a.features;
+  const reasoning = Array.isArray(a.reasoning)
+    ? dedupeStrings(a.reasoning).slice(0, OUTPUT_CAPS.reasoning)
+    : a.reasoning;
+
+  const expert = a.routine_expert && typeof a.routine_expert === 'object' ? { ...a.routine_expert } : a.routine_expert;
+  if (expert && expert.snapshot && typeof expert.snapshot === 'object') {
+    const snap = { ...expert.snapshot };
+    if (Array.isArray(snap.am_steps)) snap.am_steps = snap.am_steps.slice(0, OUTPUT_CAPS.am_steps);
+    if (Array.isArray(snap.pm_steps)) snap.pm_steps = snap.pm_steps.slice(0, OUTPUT_CAPS.pm_steps);
+    expert.snapshot = snap;
+  }
+
+  return {
+    ...a,
+    findings,
+    guidance_brief: guidanceBrief,
+    features: Array.isArray(features) ? features : a.features,
+    reasoning,
+    routine_expert: expert,
+  };
+}
+
 module.exports = {
   mapLegacyCardToSpecCards,
+  dedupeAndCapOutput,
+  OUTPUT_CAPS,
 };

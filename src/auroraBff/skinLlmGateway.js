@@ -4,6 +4,8 @@ const {
   SkinReportStrategySchema,
   validateVisionObservation,
   validateReportStrategy,
+  normalizeVisionObservationLayer,
+  normalizeReportStrategyLayer,
 } = require('./skinAnalysisContract');
 const {
   buildSkinVisionPromptBundle,
@@ -124,6 +126,13 @@ function validateSkinAnalysisContent(layer, { lang } = {}) {
     if (typeof layer.strategy === 'string') texts.push(layer.strategy);
     if (typeof layer.primary_question === 'string') texts.push(layer.primary_question);
     if (typeof layer.routine_expert === 'string') texts.push(layer.routine_expert);
+    if (layer.routine_expert && typeof layer.routine_expert === 'object' && !Array.isArray(layer.routine_expert)) {
+      try {
+        texts.push(JSON.stringify(layer.routine_expert));
+      } catch {
+        // noop
+      }
+    }
     if (Array.isArray(layer.conditional_followups)) {
       for (const item of layer.conditional_followups) {
         if (typeof item === 'string') texts.push(item);
@@ -297,7 +306,7 @@ async function runGeminiVisionStrategy({
     provider: 'gemini',
     reason: null,
     schema_violation: false,
-    analysis: response.parsed,
+    analysis: normalizeVisionObservationLayer(response.parsed),
     retry: { attempted: 0, final: 'success', last_reason: null },
     upstream_status_code: response.upstream_status_code,
     latency_ms: response.latency_ms,
@@ -351,7 +360,7 @@ async function runGeminiReportStrategy({
         reason: null,
         schema_violation: false,
         safety_violation: false,
-        layer: second.parsed,
+        layer: normalizeReportStrategyLayer(second.parsed, { lang: language }),
         retry: { attempted: 1, final: 'success', last_reason: null },
         upstream_status_code: second.upstream_status_code,
         latency_ms: second.latency_ms,
@@ -387,7 +396,7 @@ async function runGeminiReportStrategy({
     reason: null,
     schema_violation: false,
     safety_violation: false,
-    layer: first.parsed,
+    layer: normalizeReportStrategyLayer(first.parsed, { lang: language }),
     retry: { attempted: retryAttempted, final: 'success', last_reason: null },
     upstream_status_code: first.upstream_status_code,
     latency_ms: first.latency_ms,

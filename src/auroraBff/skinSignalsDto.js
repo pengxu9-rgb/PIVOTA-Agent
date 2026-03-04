@@ -261,16 +261,59 @@ function summarizeLockedFeatures(factLayer) {
     .slice(0, 4);
 }
 
+function buildQualityObject(photoQuality) {
+  const q = photoQuality && typeof photoQuality === 'object' ? photoQuality : {};
+  const rawGrade = String(q.grade || '').trim().toLowerCase();
+  const grade =
+    rawGrade === 'pass' || rawGrade === 'good'
+      ? 'pass'
+      : rawGrade === 'fail' || rawGrade === 'poor'
+        ? 'fail'
+        : 'degraded';
+  const reasons = Array.isArray(q.reasons) ? q.reasons : [];
+  const metrics = q.metrics && typeof q.metrics === 'object' ? q.metrics : {};
+
+  const issueSet = new Set();
+  for (const r of reasons) {
+    const token = String(r || '').toLowerCase();
+    if (token.includes('blur')) issueSet.add('motion_blur');
+    if (token.includes('bright') || token.includes('dark') || token.includes('too_')) issueSet.add('strong_light');
+    if (token.includes('wb') || token.includes('white_balance')) issueSet.add('white_balance_cast');
+    if (token.includes('coverage') || token.includes('occlusion')) issueSet.add('low_coverage');
+    if (token.includes('shine') || token.includes('specular')) issueSet.add('specular_shine');
+  }
+
+  const confidencePenalty = grade === 'degraded' ? 0.2 : grade === 'fail' ? 1.0 : 0.0;
+
+  return {
+    grade,
+    issues: Array.from(issueSet).slice(0, 6),
+    confidence_penalty: confidencePenalty,
+    factors: {
+      blur: typeof metrics.blur_factor === 'number' ? metrics.blur_factor : null,
+      exposure: typeof metrics.exposure_factor === 'number' ? metrics.exposure_factor : null,
+      wb: typeof metrics.wb_factor === 'number' ? metrics.wb_factor : null,
+      coverage: typeof metrics.coverage_factor === 'number' ? metrics.coverage_factor : null,
+    },
+  };
+}
+
 function buildVisionSignalsDto({
   lang,
   photoQuality,
+  qualityObject,
   profileSummary,
   diagnosisPolicy,
   factLayer,
   imageBuffer,
 } = {}) {
+  const quality =
+    qualityObject && typeof qualityObject === 'object' && !Array.isArray(qualityObject)
+      ? qualityObject
+      : buildQualityObject(photoQuality);
   const dtoBase = {
     lang: normalizeLang(lang),
+    quality,
     photo_quality: mapPhotoQuality(photoQuality),
     uncertainty_level: normalizeUncertaintyLevel(diagnosisPolicy),
     scene_notes: buildSceneNotes(photoQuality),
@@ -293,11 +336,17 @@ function buildReportSignalsDto({
   profileSummary,
   routineCandidate,
   photoQuality,
+  qualityObject,
   factLayer,
   imageBuffer,
 } = {}) {
+  const quality =
+    qualityObject && typeof qualityObject === 'object' && !Array.isArray(qualityObject)
+      ? qualityObject
+      : buildQualityObject(photoQuality);
   const dtoBase = {
     lang: normalizeLang(lang),
+    quality,
     concern_rank: buildConcernRank(diagnosisV1),
     deterministic_signals: mapDeterministicSignals(diagnosisV1),
     routine_summary: summarizeRoutine(routineCandidate),
@@ -319,6 +368,7 @@ function buildReportSignalsDto({
 module.exports = {
   normalizeLang,
   mapPhotoQuality,
+  buildQualityObject,
   buildImageHash,
   buildInputHash,
   buildInputHashPrefix,

@@ -90,45 +90,88 @@ function normalizeLang(language) {
   return 'en-US';
 }
 
+function qualityGradeInstruction(dto, lang) {
+  const q = dto && typeof dto === 'object' ? dto.quality : null;
+  if (!q || typeof q !== 'object') return '';
+  const grade = String(q.grade || '').toLowerCase();
+  if (grade === 'pass') {
+    return lang === 'zh-CN'
+      ? '\nquality_rule: 照片质量=pass。禁止提及"画质不佳"或"保守判断"。正常输出，不需降级置信度。'
+      : '\nquality_rule: Photo quality=pass. Do NOT mention degraded quality or be conservative due to photo quality. Output normally.';
+  }
+  if (grade === 'degraded') {
+    const issues = Array.isArray(q.issues) ? q.issues.join(', ') : '';
+    return lang === 'zh-CN'
+      ? `\nquality_rule: 照片质量=degraded(${issues})。用1句话说明具体问题。置信度上限=med。禁止重复免责声明。`
+      : `\nquality_rule: Photo quality=degraded (${issues}). Acknowledge the specific issue in exactly 1 sentence. Cap confidence at med. No repeated disclaimers.`;
+  }
+  if (grade === 'fail') {
+    return lang === 'zh-CN'
+      ? '\nquality_rule: 照片质量=fail。不输出任何发现。仅提供重拍指引。'
+      : '\nquality_rule: Photo quality=fail. Return NO findings. Provide retake instructions ONLY.';
+  }
+  return '';
+}
+
 function buildSkinVisionPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
-  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'skin_hotfix_v1';
+  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'skin_v2';
+  const qRule = qualityGradeInstruction(dto, lang);
   if (lang === 'zh-CN') {
     return {
       promptVersion: version,
       systemInstruction:
-        'Role: 你是客观、保守的护肤观察助手。仅基于可见美容信号给建议。禁止疾病诊断、治疗宣称、处方药名称、品牌与具体产品推荐。Language: 简体中文。',
+        'Role: 你是客观的护肤观察助手。仅输出基于照片可见信号的观察，禁止给出护肤建议、产品推荐、日常方案。禁止疾病诊断、治疗宣称、处方药名称。Language: 简体中文。',
       userPrompt:
-        `task: 仅根据面部照片的可见信号，输出保守且可执行的美容护肤观察与建议。\n` +
+        `task: 仅根据面部照片的可见信号，输出结构化观察JSON。禁止输出护肤建议或产品推荐。\n` +
+        `output_contract: 严格输出JSON，schema如下：\n` +
+        `{"quality_note": null | "1句关于光线/模糊的说明", "observations": [{"cue": "redness|shine|bumps|flaking|uneven_tone|texture|pores", "where": "cheeks|forehead|T-zone|chin|nose|全脸", "severity": "mild|moderate|high", "confidence": "low|med|high", "evidence": "所见描述"}], "limits": ["可能的观察限制"]}\n` +
+        `grounding_rule: 尽量输出至少5条不同观察。每条必须包含where和evidence。禁止重复或换句话说同一观察。\n` +
         `focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.\n` +
+        `skin_type_rule: 用户自选肤质仅作为先验参考，必须与照片观察比对。如不一致可备注一次。` +
+        qRule + `\n` +
         `dto: ${JSON.stringify(dto || {})}`,
     };
   }
   return {
     promptVersion: version,
     systemInstruction:
-      'Role: You are an objective, conservative cosmetic skincare observer. Safety: no disease diagnosis, no treatment claims, no prescription drug names, no brand or specific product recommendations. Language: English (US).',
+      'Role: You are an objective cosmetic skincare observer. Output ONLY structured observations from the photo. Do NOT provide routines, product advice, or "lean on X" suggestions. Safety: no disease diagnosis, no treatment claims, no prescription drug names. Language: English (US).',
     userPrompt:
-      `task: Based only on visible FACE skin cues from the image, provide conservative cosmetic observations and practical guidance.\n` +
+      `task: Based only on visible FACE skin cues from the image, output structured observation JSON. No routines or product advice.\n` +
+      `output_contract: Return ONLY JSON with this exact schema:\n` +
+      `{"quality_note": null | "1 sentence about lighting/blur issue", "observations": [{"cue": "redness|shine|bumps|flaking|uneven_tone|texture|pores", "where": "cheeks|forehead|T-zone|chin|nose|full_face", "severity": "mild|moderate|high", "confidence": "low|med|high", "evidence": "what was visually observed"}], "limits": ["possible observation limitations"]}\n` +
+      `grounding_rule: Output at least 5 distinct observations when visible. Each MUST have where + evidence. No observation may be a rephrase of another.\n` +
       `focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.\n` +
+      `skin_type_rule: User-selected skin type is a PRIOR only. Compare against observed cues. Mention mismatch once if relevant.` +
+      qRule + `\n` +
       `dto: ${JSON.stringify(dto || {})}`,
   };
 }
 
 function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
-  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'skin_hotfix_v1';
+  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'skin_v2';
+  const qRule = qualityGradeInstruction(dto, lang);
   if (lang === 'zh-CN') {
     return {
       promptVersion: version,
       systemInstruction:
         'Role: 你是客观、保守的护肤建议助手。仅基于输入信号给出策略。禁止疾病诊断、治疗宣称、处方药名称、品牌与具体产品推荐。不要输出空泛模板话术。Language: 简体中文。',
       userPrompt:
-        `task: 基于提供的文本信号输出谨慎、可执行的护肤策略，不得声称看到了照片。\n` +
-        `output_contract: 严格输出 JSON，必须包含 strategy/needs_risk_check/primary_question/conditional_followups/routine_expert。\n` +
+        `task: 基于提供的观察信号输出谨慎、可执行的护肤策略，不得声称看到了照片。\n` +
+        `output_contract: 严格输出 JSON，必须包含 strategy/needs_risk_check/primary_question/conditional_followups/routine_expert/findings/guidance_brief。\n` +
         `structure_rule: strategy 必须按「原因 -> 注意事项 -> 修复路径 -> 下一问」组织，避免泛化建议。\n` +
+        `separation_rule: 你接收的是视觉阶段的观察结果。不要逐字重复观察。通过cue名称引用观察。你的输出仅包含方案/计划JSON。\n` +
+        `routine_step_schema: routine_expert中的am_plan/pm_plan每步必须包含：{"step":"类型","why":"关联已观察到的cue","look_for":["属性"],"how":"使用方法","caution":"注意事项"}\n` +
+        `two_week_focus: 输出最多3条优先行动的two_week_focus数组。如有刺激信号，优先屏障修复。\n` +
+        `skin_type_rule: 用户自选肤质是先验，非真相。与观察到的cue比对。不一致时提及一次。\n` +
         `deepening_rule: 可选输出 reasoning(1-4条)、deepening(phase/next_phase/question/options)、evidence_refs(最多6条，字段=id/title/url/why_relevant)。\n` +
         `safety_rule: 非医疗诊断；高风险词仅做轻提醒与保守建议，不要主动引导就医。\n` +
+        `findings_rule: 输出findings数组，每项含cue/where/severity/confidence/evidence。quality相关信息禁止出现在findings中。\n` +
+        `guidance_brief_rule: 输出2-3条简短指导建议，不重复。\n` +
+        `next_step_rule: 诊断后输出next_step_options数组，固定3个选项：[{"id":"analysis_get_recommendations","label":"获取产品推荐"},{"id":"analysis_optimize_existing","label":"优化现有产品"},{"id":"analysis_both_reco_optimize","label":"两者都要"}]。` +
+        qRule + `\n` +
         `dto: ${JSON.stringify(dto || {})}`,
     };
   }
@@ -137,11 +180,19 @@ function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
     systemInstruction:
       'Role: You are an objective, conservative cosmetic skincare advisor. Safety: no disease diagnosis, no treatment claims, no prescription drug names, no brand or specific product recommendations. Avoid generic template talk. Language: English (US).',
     userPrompt:
-      `task: Provide cautious and actionable skincare strategy using only provided text signals. Do not claim photo visibility unless explicitly stated.\n` +
-      `output_contract: Return strict JSON with strategy/needs_risk_check/primary_question/conditional_followups/routine_expert.\n` +
+      `task: Provide cautious and actionable skincare strategy using only provided observation signals. Do not claim photo visibility unless explicitly stated.\n` +
+      `output_contract: Return strict JSON with strategy/needs_risk_check/primary_question/conditional_followups/routine_expert/findings/guidance_brief.\n` +
       `structure_rule: strategy must follow "Cause -> Watchouts -> Repair path -> Next question", and must not be generic.\n` +
+      `separation_rule: You receive observations from the vision stage. Do NOT repeat them verbatim. Reference observations by cue name. Your output is routine/plan JSON only.\n` +
+      `routine_step_schema: Each step in routine_expert am_plan/pm_plan MUST contain: {"step":"type","why":"tied to observed cue","look_for":["product attributes"],"how":"application method","caution":"warnings"}\n` +
+      `two_week_focus: Output a two_week_focus array of max 3 priority actions. Prioritize barrier stabilization if irritation signals exist.\n` +
+      `skin_type_rule: User-selected skin type is a PRIOR, not ground truth. Compare against observed cues. Mention mismatch once if relevant. Each routine step must reference at least 1 observed cue.\n` +
       `deepening_rule: You may include reasoning(1-4 strings), deepening(phase/next_phase/question/options), evidence_refs(max 6 items with id/title/url/why_relevant).\n` +
       `safety_rule: non-medical guidance only; for risk terms give light caution + conservative plan, no proactive care-seeking escalation.\n` +
+      `findings_rule: Output a findings array where each item has cue/where/severity/confidence/evidence. Quality info must NEVER appear inside findings.\n` +
+      `guidance_brief_rule: Output 2-3 concise guidance bullets. No duplicates.\n` +
+      `next_step_rule: After diagnosis, output next_step_options array with exactly 3 options: [{"id":"analysis_get_recommendations","label":"Get recommendations"},{"id":"analysis_optimize_existing","label":"Optimize existing products"},{"id":"analysis_both_reco_optimize","label":"Both"}]. Localize labels if language is CN.` +
+      qRule + `\n` +
       `dto: ${JSON.stringify(dto || {})}`,
   };
 }
@@ -231,7 +282,9 @@ function buildSkinDeepeningPromptBundle({ language, dto } = {}) {
         `- narrative: 2-3 句个性化开场（必须提及用户档案中的具体信息如皮肤类型/目标），禁止泛化.\n` +
         `- reasoning: 3-4 条具体可执行建议，按「原因 → 注意细节 → 修复路径 → 阶段提示」顺序，每条 ≤ 100 字.\n` +
         `- deepening_question: 针对当前阶段的自然追问（≤ 60 字）.\n` +
-        `- deepening_options: 2-6 个具体选项（每项 ≤ 40 字），与 deepening_question 匹配.`,
+        `- deepening_options: 2-6 个具体选项（每项 ≤ 40 字），与 deepening_question 匹配.\n` +
+        `- 最多3个追问。每个追问必须对应一个具体的护肤方案调整。\n` +
+        `  例如："产品使用时刺痛吗？"→屏障优先，减少活性成分。"凸起是否发痒？"→按刺激而非痘痘处理。`,
     };
   }
 
@@ -265,7 +318,9 @@ function buildSkinDeepeningPromptBundle({ language, dto } = {}) {
       `- narrative: 2-3 personalized sentences (must reference specific profile info like skin type/goals), no generic language.\n` +
       `- reasoning: 3-4 specific actionable lines following Cause → Watchout → Repair path → Phase tip, each ≤ 100 chars.\n` +
       `- deepening_question: Natural next question for this phase (≤ 60 chars).\n` +
-      `- deepening_options: 2-6 specific options (each ≤ 40 chars) matching the deepening_question.`,
+      `- deepening_options: 2-6 specific options (each ≤ 40 chars) matching the deepening_question.\n` +
+      `- Max 3 follow-up questions total. Each must map to a specific routine change.\n` +
+      `  e.g. "Do products sting?" → barrier-first, reduce actives. "Are bumps itchy?" → treat as irritation, not acne.`,
   };
 }
 

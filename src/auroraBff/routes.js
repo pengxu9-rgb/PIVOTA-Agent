@@ -10,7 +10,7 @@ const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope')
 const { createStageProfiler } = require('./skinAnalysisProfiling');
 const { runSkinDiagnosisV1, summarizeDiagnosisForPolicy, buildSkinAnalysisFromDiagnosisV1 } = require('./skinDiagnosisV1');
 const { buildSkinVisionPrompt, buildSkinReportPrompt } = require('./skinLlmPrompts');
-const { buildVisionSignalsDto, buildReportSignalsDto, buildInputHashPrefix } = require('./skinSignalsDto');
+const { buildVisionSignalsDto, buildReportSignalsDto, buildInputHashPrefix, buildQualityObject } = require('./skinSignalsDto');
 const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
@@ -26,8 +26,12 @@ const {
   inferDetectorConfidence,
   shouldCallLlm,
   downgradeSkinAnalysisConfidence,
+  applyConfidenceCaps,
+  detectInsufficientVisualDetail,
+  enforceQualityNarrative,
   humanizeLlmReasons,
 } = require('./skinLlmPolicy');
+const { dedupeAndCapOutput } = require('./chatCardFactory');
 const {
   VisionUnavailabilityReason,
   classifyVisionAvailability,
@@ -41125,6 +41129,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         const qualityForReport = userRequestedPhoto && photosProvided ? photoQuality : { grade: 'pass', reasons: ['no_photo'] };
+        const qualityObject = buildQualityObject(qualityForReport);
         const policyDetectorConfidenceLevel = diagnosisPolicy ? diagnosisPolicy.detector_confidence_level : detectorConfidence.level;
         const policyUncertainty = diagnosisPolicy ? diagnosisPolicy.uncertainty : null;
 
@@ -41256,6 +41261,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               const visionDto = buildVisionSignalsDto({
                 lang: ctx.lang,
                 photoQuality,
+                qualityObject,
                 profileSummary,
                 diagnosisPolicy,
                 factLayer: factLayerSeed,
@@ -41374,6 +41380,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary,
             routineCandidate: hasRoutine ? routineCandidate : null,
             photoQuality: qualityForReport,
+            qualityObject,
             factLayer: factLayerForReport,
             imageBuffer: diagnosisPhotoBytes || shadowVerifyPhotoBytes || null,
           });
@@ -41560,7 +41567,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           photosProvided &&
           (photoQuality.grade === 'degraded' || photoQuality.grade === 'unknown') &&
           analysisSource !== 'retake';
-        if (analysis && mustDowngrade) analysis = downgradeSkinAnalysisConfidence(analysis, { language: ctx.lang });
+        if (analysis && mustDowngrade) {
+          analysis = downgradeSkinAnalysisConfidence(analysis, { language: ctx.lang, qualityObject });
+        }
         if (analysis && diagnosisV1 && usedPhotos) {
           analysis = mergePhotoFindingsIntoAnalysis({
             analysis,
@@ -41640,6 +41649,24 @@ function mountAuroraBffRoutes(app, { logger }) {
             });
             analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract: locked });
           }
+          analysis = applyConfidenceCaps(analysis, qualityObject.grade);
+          analysis = enforceQualityNarrative(analysis, { language: ctx.lang, qualityObject });
+          const findingsForDetail = Array.isArray(analysis && analysis.findings) ? analysis.findings : [];
+          analysis = {
+            ...analysis,
+            quality: {
+              ...qualityObject,
+              ...(analysis && analysis.quality && typeof analysis.quality === 'object' ? analysis.quality : {}),
+              ...(analysis && typeof analysis.quality_message === 'string' && analysis.quality_message.trim()
+                ? { message: analysis.quality_message.trim() }
+                : {}),
+            },
+            insufficient_visual_detail:
+              typeof analysis?.insufficient_visual_detail === 'boolean'
+                ? analysis.insufficient_visual_detail
+                : detectInsufficientVisualDetail(findingsForDetail),
+          };
+          analysis = dedupeAndCapOutput(analysis);
         }
 
         let renderedAnalysisSource = analysisSource;
