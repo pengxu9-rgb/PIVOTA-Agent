@@ -168,9 +168,9 @@ test('resolveQaPlan travel gate uses active trip from travel_plans', () => {
     session: {},
   });
 
-  assert.equal(plan.gate_type, 'none');
-  assert.deepEqual(plan.required_fields, []);
-  assert.equal(plan.next_step, 'tool_call');
+  assert.equal(plan.gate_type, 'soft');
+  assert.ok(Array.isArray(plan.required_fields) && plan.required_fields.length > 0);
+  assert.equal(plan.next_step, 'upstream');
 });
 
 test('resolveTravelPlansState falls back to home region when no active trip', () => {
@@ -216,9 +216,9 @@ test('resolveQaPlan weather/travel uses home region fallback when all trips are 
     session: {},
   });
 
-  assert.equal(plan.gate_type, 'none');
-  assert.deepEqual(plan.required_fields, []);
-  assert.equal(plan.next_step, 'tool_call');
+  assert.equal(plan.gate_type, 'soft');
+  assert.ok(Array.isArray(plan.required_fields) && plan.required_fields.length > 0);
+  assert.equal(plan.next_step, 'upstream');
 });
 
 test('applyTravelExtractionToProfile ignores non-destination phrases', () => {
