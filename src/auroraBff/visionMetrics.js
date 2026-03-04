@@ -810,6 +810,7 @@ function normalizeAuroraTravelLlmOutcome(outcome) {
   if (
     token === 'call' ||
     token === 'skip_no_client' ||
+    token === 'skip_conditions_not_matched' ||
     token === 'skip_disabled' ||
     token === 'timeout' ||
     token === 'error'

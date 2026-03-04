@@ -7145,7 +7145,9 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       assert.ok(envStress);
       assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
       assert.ok(envStress?.payload?.travel_readiness && typeof envStress.payload.travel_readiness === 'object');
-      assert.ok(envStress?.payload?.travel_readiness?.structured_sections && typeof envStress.payload.travel_readiness.structured_sections === 'object');
+      if (envStress?.payload?.travel_readiness?.structured_sections != null) {
+        assert.ok(typeof envStress.payload.travel_readiness.structured_sections === 'object');
+      }
       assert.ok(typeof envStress?.payload?.tier_description === 'string' && envStress.payload.tier_description.length > 0);
       const radarRows = Array.isArray(envStress?.payload?.radar) ? envStress.payload.radar : [];
       assert.equal(radarRows.length > 0, true);
@@ -7164,8 +7166,10 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       const topMeta = resp.body?.meta || {};
       assert.equal(typeof topMeta.env_source === 'string' && topMeta.env_source.length > 0, true);
       assert.equal(typeof topMeta.degraded === 'boolean', true);
-      assert.equal(topMeta.travel_kb_hit, undefined);
-      assert.equal(topMeta.travel_kb_write_queued, undefined);
+      assert.equal(topMeta.travel_skills_version, 'travel_skills_dag_v1');
+      assert.equal(Array.isArray(topMeta.travel_skills_trace), true);
+      assert.equal(topMeta.travel_kb_hit, false);
+      assert.equal(typeof topMeta.travel_kb_write_queued, 'boolean');
 
       const firstAssistant = String(resp.body?.assistant_message?.content || '');
       const followupSessionState =
@@ -7231,6 +7235,7 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
         mountAuroraBffRoutes(app, { logger: null });
 
         const uidFirst = `test_uid_travel_kb_hit_first_${Date.now()}`;
+        const destinationSeed = `Paris-${Date.now()}`;
         const headersFirst = {
           'X-Aurora-UID': uidFirst,
           'X-Trace-ID': 'test_trace',
@@ -7249,7 +7254,7 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
             region: 'San Francisco, CA',
             travel_plans: [
               {
-                destination: 'Paris',
+                destination: destinationSeed,
                 start_date: '2026-03-10',
                 end_date: '2026-03-15',
               },
@@ -7268,10 +7273,12 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
           .expect(200);
 
         const firstMeta = firstResp.body?.meta || {};
-        assert.equal(firstMeta.env_source, 'local_template');
-        assert.equal(firstMeta.degraded, true);
-        assert.equal(firstMeta.travel_kb_hit, undefined);
-        assert.equal(firstMeta.travel_kb_write_queued, undefined);
+        assert.equal(typeof firstMeta.env_source === 'string' && firstMeta.env_source.length > 0, true);
+        assert.equal(typeof firstMeta.degraded, 'boolean');
+        assert.equal(firstMeta.travel_skills_version, 'travel_skills_dag_v1');
+        assert.equal(Array.isArray(firstMeta.travel_skills_trace), true);
+        assert.equal(firstMeta.travel_kb_hit, false);
+        assert.equal(typeof firstMeta.travel_kb_write_queued, 'boolean');
 
         await new Promise((resolve) => setTimeout(resolve, 40));
 
@@ -7294,7 +7301,7 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
             region: 'San Francisco, CA',
             travel_plans: [
               {
-                destination: 'Paris',
+                destination: destinationSeed,
                 start_date: '2026-03-10',
                 end_date: '2026-03-15',
               },
@@ -7313,10 +7320,12 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
           .expect(200);
 
         const secondMeta = secondResp.body?.meta || {};
-        assert.equal(secondMeta.env_source, 'local_template');
-        assert.equal(secondMeta.degraded, true);
-        assert.equal(secondMeta.travel_kb_hit, undefined);
-        assert.equal(secondMeta.travel_kb_write_queued, undefined);
+        assert.equal(typeof secondMeta.env_source === 'string' && secondMeta.env_source.length > 0, true);
+        assert.equal(typeof secondMeta.degraded, 'boolean');
+        assert.equal(secondMeta.travel_skills_version, 'travel_skills_dag_v1');
+        assert.equal(Array.isArray(secondMeta.travel_skills_trace), true);
+        assert.equal(secondMeta.travel_kb_hit, true);
+        assert.equal(typeof secondMeta.travel_kb_write_queued, 'boolean');
       } finally {
         travelKbPolicy.evaluateTravelKbBackfill = originalEvaluateTravelKbBackfill;
         delete require.cache[routesModuleId];
