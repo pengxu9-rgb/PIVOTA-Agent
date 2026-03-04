@@ -146,11 +146,20 @@ test('travel skills pipeline: DAG order + trace includes started/ended/duration'
         assert.equal(Number.isFinite(Number(row.duration_ms)), true);
         assert.equal(Number(row.duration_ms) >= 0, true);
       }
+      const matrix = out.travel_skill_invocation_matrix || {};
+      assert.equal(typeof matrix.llm_called, 'boolean');
+      assert.equal('llm_skip_reason' in matrix, true);
+      assert.equal(typeof matrix.reco_called, 'boolean');
+      assert.equal('reco_skip_reason' in matrix, true);
+      assert.equal(typeof matrix.store_called, 'boolean');
+      assert.equal('store_skip_reason' in matrix, true);
+      assert.equal(typeof matrix.kb_write_queued, 'boolean');
+      assert.equal(typeof matrix.kb_write_skip_reason, 'string');
     },
   );
 });
 
-test('travel skills pipeline: llm skip metric uses skip_conditions_not_matched', async () => {
+test('travel skills pipeline: destination-present request triggers llm skill with prompt telemetry', async () => {
   await withEnv(
     {
       TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
@@ -191,10 +200,25 @@ test('travel skills pipeline: llm skip metric uses skip_conditions_not_matched',
           const out = await runTravelPipeline(buildInput('Tokyo weather?', { travelWeatherLiveEnabled: true }));
           assert.equal(out.ok, true);
 
+          const llmTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_llm_calibration_skill');
+          assert.equal(Boolean(llmTrace), true);
+          assert.equal(Boolean(llmTrace.meta?.triggered), true);
+          assert.equal(llmTrace.meta?.trigger_reason, 'destination_present');
+          assert.equal(llmTrace.meta?.skip_reason, null);
+          assert.equal(typeof llmTrace.meta?.outcome, 'string');
+          assert.equal(typeof llmTrace.meta?.prompt_hash, 'string');
+          assert.equal(llmTrace.meta.prompt_hash.length >= 16, true);
+          assert.equal(Number.isFinite(Number(llmTrace.meta?.prompt_chars)), true);
+          assert.equal(Number(llmTrace.meta.prompt_chars) > 0, true);
+          assert.equal(String(llmTrace.meta.prompt_hash || '').includes('Task: improve the travel_readiness payload'), false);
+
           const metrics = snapshotTravelMetrics();
+          const llmTriggerEntries = Array.isArray(metrics.auroraTravelLlmTrigger) ? metrics.auroraTravelLlmTrigger : [];
+          const hasDestinationTrigger = llmTriggerEntries.some(([key]) => String(key).includes('destination_present'));
+          assert.equal(hasDestinationTrigger, true);
           const llmEntries = Array.isArray(metrics.auroraTravelLlmCall) ? metrics.auroraTravelLlmCall : [];
-          const hit = llmEntries.some(([key]) => String(key).includes('skip_conditions_not_matched'));
-          assert.equal(hit, true);
+          const hasOldSkip = llmEntries.some(([key]) => String(key).includes('skip_conditions_not_matched'));
+          assert.equal(hasOldSkip, false);
         },
       );
     },
@@ -205,7 +229,7 @@ test('travel skills pipeline: readiness throw is degraded (does not crash)', asy
   await withEnv(
     {
       TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
-      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'true',
     },
     async () => {
       await withModuleOverrides(
@@ -263,7 +287,7 @@ test('travel skills pipeline: empty compose output falls back to non-empty assis
   await withEnv(
     {
       TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
-      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'true',
     },
     async () => {
       await withModuleOverrides(
@@ -289,7 +313,7 @@ test('travel skills pipeline: conservative ok gate returns false when core signa
   await withEnv(
     {
       TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
-      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'true',
     },
     async () => {
       await withModuleOverrides(
@@ -324,6 +348,16 @@ test('travel skills pipeline: conservative ok gate returns false when core signa
           );
           assert.equal(out.ok, false);
           assert.equal(out.quality_reason, 'core_signals_missing');
+          const llmTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_llm_calibration_skill');
+          const recoTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_reco_preview_skill');
+          const storeTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_store_channel_skill');
+          assert.equal(llmTrace?.status, 'skip');
+          assert.equal(llmTrace?.meta?.skip_reason, 'destination_missing');
+          assert.equal(llmTrace?.meta?.outcome, 'skip_destination_missing');
+          assert.equal(recoTrace?.status, 'skip');
+          assert.equal(recoTrace?.meta?.reason, 'destination_missing');
+          assert.equal(storeTrace?.status, 'skip');
+          assert.equal(storeTrace?.meta?.reason, 'destination_missing');
         },
       );
     },
@@ -380,6 +414,57 @@ test('travel skills pipeline: kb async write respects backpressure drop when in-
           assert.equal(Boolean(kbWriteTrace), true);
           assert.equal(kbWriteTrace.status, 'skip');
           assert.equal(kbWriteTrace.meta.reason, 'backpressure_drop');
+        },
+      );
+    },
+  );
+});
+
+test('travel skills pipeline: reco/store skip reasons are explicit when triggered but no data', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      await withModuleOverrides(
+        {
+          [ROOT_READINESS]: {
+            buildTravelReadiness: () => ({
+              destination_context: {
+                destination: 'Tokyo',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+              forecast_window: [{ date: '2026-03-10' }],
+              adaptive_actions: ['use_spf'],
+              alerts: [],
+              shopping_preview: {
+                products: [],
+                buying_channels: [],
+                brand_candidates: [],
+              },
+              store_examples: [],
+              confidence: { score: 0.85, level: 'high' },
+            }),
+          },
+        },
+        async () => {
+          const { runTravelPipeline } = loadFreshPipeline();
+
+          const recoOut = await runTravelPipeline(buildInput('What should I buy for Tokyo travel?'));
+          const recoTrace = recoOut.travel_skills_trace.find((row) => row.skill === 'travel_reco_preview_skill');
+          assert.equal(recoTrace?.status, 'skip');
+          assert.equal(recoTrace?.meta?.reason, 'no_products');
+          assert.equal(recoOut.travel_skill_invocation_matrix?.reco_called, true);
+          assert.equal(recoOut.travel_skill_invocation_matrix?.reco_skip_reason, 'no_products');
+
+          const storeOut = await runTravelPipeline(buildInput('Where can I buy these products in Tokyo?'));
+          const storeTrace = storeOut.travel_skills_trace.find((row) => row.skill === 'travel_store_channel_skill');
+          assert.equal(storeTrace?.status, 'skip');
+          assert.equal(storeTrace?.meta?.reason, 'no_channels');
+          assert.equal(storeOut.travel_skill_invocation_matrix?.store_called, true);
+          assert.equal(storeOut.travel_skill_invocation_matrix?.store_skip_reason, 'no_channels');
         },
       );
     },

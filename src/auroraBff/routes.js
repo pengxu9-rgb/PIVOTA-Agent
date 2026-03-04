@@ -47744,6 +47744,21 @@ function mountAuroraBffRoutes(app, { logger }) {
               : [];
             sessionMeta.travel_kb_hit = Boolean(travelPipelineOut.travel_kb_hit);
             sessionMeta.travel_kb_write_queued = Boolean(travelPipelineOut.travel_kb_write_queued);
+            sessionMeta.travel_skill_invocation_matrix =
+              travelPipelineOut.travel_skill_invocation_matrix &&
+              typeof travelPipelineOut.travel_skill_invocation_matrix === 'object' &&
+              !Array.isArray(travelPipelineOut.travel_skill_invocation_matrix)
+                ? travelPipelineOut.travel_skill_invocation_matrix
+                : {
+                  llm_called: false,
+                  llm_skip_reason: 'unknown',
+                  reco_called: false,
+                  reco_skip_reason: 'unknown',
+                  store_called: false,
+                  store_skip_reason: 'unknown',
+                  kb_write_queued: Boolean(travelPipelineOut.travel_kb_write_queued),
+                  kb_write_skip_reason: Boolean(travelPipelineOut.travel_kb_write_queued) ? 'queued' : 'unknown',
+                };
             if (
               travelPipelineOut.travel_followup_state &&
               typeof travelPipelineOut.travel_followup_state === 'object' &&
@@ -47789,6 +47804,21 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : [],
               travel_kb_hit: Boolean(travelPipelineOut.travel_kb_hit),
               travel_kb_write_queued: Boolean(travelPipelineOut.travel_kb_write_queued),
+              travel_skill_invocation_matrix:
+                travelPipelineOut.travel_skill_invocation_matrix &&
+                typeof travelPipelineOut.travel_skill_invocation_matrix === 'object' &&
+                !Array.isArray(travelPipelineOut.travel_skill_invocation_matrix)
+                  ? travelPipelineOut.travel_skill_invocation_matrix
+                  : {
+                    llm_called: false,
+                    llm_skip_reason: 'unknown',
+                    reco_called: false,
+                    reco_skip_reason: 'unknown',
+                    store_called: false,
+                    store_skip_reason: 'unknown',
+                    kb_write_queued: Boolean(travelPipelineOut.travel_kb_write_queued),
+                    kb_write_skip_reason: Boolean(travelPipelineOut.travel_kb_write_queued) ? 'queued' : 'unknown',
+                  },
             };
             return sendChatEnvelope(envelope);
           }

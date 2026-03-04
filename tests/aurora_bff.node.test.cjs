@@ -7200,6 +7200,20 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       assert.equal(Array.isArray(topMeta.travel_skills_trace), true);
       assert.equal(topMeta.travel_kb_hit, false);
       assert.equal(typeof topMeta.travel_kb_write_queued, 'boolean');
+      const invocationMatrix =
+        topMeta.travel_skill_invocation_matrix && typeof topMeta.travel_skill_invocation_matrix === 'object'
+          ? topMeta.travel_skill_invocation_matrix
+          : {};
+      assert.equal(typeof invocationMatrix.llm_called, 'boolean');
+      assert.equal(typeof invocationMatrix.llm_skip_reason === 'string' || invocationMatrix.llm_skip_reason == null, true);
+      assert.equal(typeof invocationMatrix.reco_called, 'boolean');
+      assert.equal(typeof invocationMatrix.reco_skip_reason === 'string' || invocationMatrix.reco_skip_reason == null, true);
+      assert.equal(typeof invocationMatrix.store_called, 'boolean');
+      assert.equal(typeof invocationMatrix.store_skip_reason === 'string' || invocationMatrix.store_skip_reason == null, true);
+      assert.equal(typeof invocationMatrix.kb_write_queued, 'boolean');
+      assert.equal(typeof invocationMatrix.kb_write_skip_reason, 'string');
+      assert.equal(invocationMatrix.llm_called, true);
+      assert.notEqual(invocationMatrix.llm_skip_reason, 'destination_missing');
 
       const firstAssistant = String(resp.body?.assistant_message?.content || '');
       const followupSessionState =
@@ -7311,6 +7325,12 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
         assert.equal(Array.isArray(firstMeta.travel_skills_trace), true);
         assert.equal(firstMeta.travel_kb_hit, false);
         assert.equal(typeof firstMeta.travel_kb_write_queued, 'boolean');
+        assert.equal(typeof firstMeta.travel_skill_invocation_matrix, 'object');
+        assert.equal(
+          firstMeta.travel_skill_invocation_matrix &&
+            firstMeta.travel_skill_invocation_matrix.llm_skip_reason !== 'destination_missing',
+          true,
+        );
 
         await new Promise((resolve) => setTimeout(resolve, 40));
 
@@ -7358,11 +7378,92 @@ test('/v1/chat: travel kb backfill queues on first call and hits on second call 
         assert.equal(Array.isArray(secondMeta.travel_skills_trace), true);
         assert.equal(secondMeta.travel_kb_hit, true);
         assert.equal(typeof secondMeta.travel_kb_write_queued, 'boolean');
+        assert.equal(typeof secondMeta.travel_skill_invocation_matrix, 'object');
+        assert.equal(
+          secondMeta.travel_skill_invocation_matrix &&
+            secondMeta.travel_skill_invocation_matrix.llm_skip_reason !== 'destination_missing',
+          true,
+        );
       } finally {
         travelKbPolicy.evaluateTravelKbBackfill = originalEvaluateTravelKbBackfill;
         delete require.cache[routesModuleId];
         delete require.cache[travelKbStoreModuleId];
         delete require.cache[travelKbPolicyModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: travel pipeline ok=false falls back to local weather path without crash', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const contractsModuleId = require.resolve('../src/auroraBff/travelSkills/contracts');
+      delete require.cache[routesModuleId];
+      delete require.cache[contractsModuleId];
+      const contracts = require('../src/auroraBff/travelSkills/contracts');
+      const originalRunTravelPipeline = contracts.runTravelPipeline;
+
+      try {
+        contracts.runTravelPipeline = async () => ({
+          ok: false,
+          quality_reason: 'core_signals_missing',
+        });
+
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const headers = {
+          'X-Aurora-UID': `test_uid_travel_fallback_${Date.now()}`,
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        };
+
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headers)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            region: 'San Francisco, CA',
+            travel_plans: [
+              {
+                destination: 'Paris',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            ],
+          })
+          .expect(200);
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'How is weather there? Will it be humid?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        assert.equal(cards.some((c) => c && c.type === 'env_stress'), true);
+        assert.equal(typeof resp.body?.assistant_message?.content, 'string');
+        assert.equal(String(resp.body.assistant_message.content).length > 0, true);
+      } finally {
+        contracts.runTravelPipeline = originalRunTravelPipeline;
+        delete require.cache[routesModuleId];
+        delete require.cache[contractsModuleId];
       }
     },
   );

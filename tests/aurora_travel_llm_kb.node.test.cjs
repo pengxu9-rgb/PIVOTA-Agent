@@ -129,6 +129,13 @@ test('travel LLM calibrator: skip_no_client fallback keeps baseline', async () =
   assert.equal(result.used, false);
   assert.equal(result.outcome, 'skip_no_client');
   assert.deepEqual(result.travel_readiness, baseline);
+  assert.equal(typeof result.source_meta?.prompt_hash, 'string');
+  assert.equal(result.source_meta.prompt_hash.length >= 16, true);
+  assert.equal(Number.isFinite(Number(result.source_meta?.prompt_chars)), true);
+  assert.equal(Number(result.source_meta.prompt_chars) > 0, true);
+  assert.equal(result.source_meta?.input_summary?.destination, 'Paris');
+  assert.equal(typeof result.source_meta?.input_summary?.profile_fields_present, 'object');
+  assert.equal(typeof result.source_meta?.error_code, 'string');
 });
 
 test('travel LLM calibrator: parses patch and deep-merges shopping brand candidates', async () => {
@@ -186,5 +193,9 @@ test('travel LLM calibrator: parses patch and deep-merges shopping brand candida
   assert.equal(result.travel_readiness.shopping_preview.brand_candidates[1].match_status, 'llm_only');
   assert.equal(result.travel_readiness.confidence.level, 'high');
   assert.equal(result.source_meta.reasoning_mode, 'llm_calibration_v1');
+  assert.equal(typeof result.source_meta?.prompt_hash, 'string');
+  assert.equal(result.source_meta.prompt_hash.length >= 16, true);
+  assert.equal(Number.isFinite(Number(result.source_meta?.prompt_chars)), true);
+  assert.equal(Number(result.source_meta.prompt_chars) > 0, true);
+  assert.equal(result.source_meta?.input_summary?.destination, 'Paris');
 });
-

@@ -11,6 +11,9 @@ const { evaluateTravelKbBackfill, buildTravelKbUpsertEntry } = require('../trave
 const { buildProductRecommendationsBundle, toLegacyRecommendationsPayload } = require('../productMatcherV1');
 const {
   recordAuroraTravelLlmCall,
+  recordAuroraTravelLlmTrigger,
+  recordAuroraTravelLlmSkip,
+  recordAuroraTravelSkillSkip,
   recordAuroraTravelKbHit,
   recordAuroraTravelKbWrite,
   recordAuroraTravelResponseSource,
@@ -136,20 +139,65 @@ function shouldTriggerStoreChannel(message) {
   );
 }
 
-function shouldTriggerLlmCalibration({ travelReadiness, weatherSource, alertSource, message } = {}) {
-  if (!TRAVEL_LLM_CALIBRATION_ENABLED) return false;
-  const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
-  const confidence = isPlainObject(readiness.confidence) ? readiness.confidence : {};
-  const level = normalizeText(confidence.level, 24).toLowerCase();
-  const scoreRaw = toNumber(confidence.score);
-  const score = scoreRaw == null ? null : scoreRaw > 1 ? scoreRaw / 100 : scoreRaw;
+function decideLlmCalibrationTrigger({ destination } = {}) {
+  if (!TRAVEL_LLM_CALIBRATION_ENABLED) {
+    return {
+      triggered: false,
+      trigger_reason: null,
+      skip_reason: 'disabled',
+      outcome: 'skip_disabled',
+    };
+  }
+  if (!normalizeText(destination, 120)) {
+    return {
+      triggered: false,
+      trigger_reason: null,
+      skip_reason: 'destination_missing',
+      outcome: 'skip_destination_missing',
+    };
+  }
+  return {
+    triggered: true,
+    trigger_reason: 'destination_present',
+    skip_reason: null,
+    outcome: 'call',
+  };
+}
 
-  const degradedEnv = String(weatherSource || '').toLowerCase() !== 'weather_api';
-  const degradedAlerts = String(alertSource || '').toLowerCase() === 'degraded';
-  const lowConfidence = level === 'low' || (score != null && score < 0.72);
-  const complexQuery = /\b(and|also|compare|difference|plus|products?|store|channel|buy)\b/i.test(String(message || '').toLowerCase());
+function shouldTriggerLlmCalibration({ destination } = {}) {
+  return decideLlmCalibrationTrigger({ destination }).triggered;
+}
 
-  return Boolean(lowConfidence || degradedEnv || degradedAlerts || complexQuery);
+function normalizeLlmTraceOutcome(outcome) {
+  const token = normalizeText(outcome, 64).toLowerCase();
+  if (token === 'call' || token === 'timeout' || token === 'error') return token;
+  if (token === 'skip_no_client') return 'error';
+  return 'error';
+}
+
+function normalizeRecoSkipReason(reason) {
+  const token = normalizeText(reason, 80).toLowerCase();
+  if (token === 'trigger_not_matched' || token === 'destination_missing' || token === 'no_products') return token;
+  return 'trigger_not_matched';
+}
+
+function normalizeStoreSkipReason(reason) {
+  const token = normalizeText(reason, 80).toLowerCase();
+  if (token === 'trigger_not_matched' || token === 'destination_missing' || token === 'no_channels') return token;
+  return 'trigger_not_matched';
+}
+
+function normalizeKbWriteSkipReason(reason) {
+  const token = normalizeText(reason, 80).toLowerCase();
+  if (
+    token === 'safety_conflict' ||
+    token === 'incomplete_structure' ||
+    token === 'backpressure_drop' ||
+    token === 'entry_invalid'
+  ) {
+    return token;
+  }
+  return 'incomplete_structure';
 }
 
 function inferPseudoIngredientTargets(readiness) {
@@ -438,6 +486,7 @@ function evaluatePipelineQuality({
  * @property {Object|null} store_channel
  * @property {string|null} env_source
  * @property {boolean} degraded
+ * @property {Object} travel_skill_invocation_matrix
  */
 
 async function runTravelPipeline(input = {}) {
@@ -466,6 +515,13 @@ async function runTravelPipeline(input = {}) {
   let llmResult = null;
   let recoPreview = null;
   let storeChannel = null;
+  let llmCalled = false;
+  let llmSkipReason = null;
+  let recoCalled = false;
+  let recoSkipReason = null;
+  let storeCalled = false;
+  let storeSkipReason = null;
+  let kbWriteSkipReason = null;
 
   const intentStartedAt = Date.now();
   const profileCtx = pickTravelContextFromProfile(profile);
@@ -693,35 +749,33 @@ async function runTravelPipeline(input = {}) {
   }
 
   const llmStartedAt = Date.now();
-  const llmTriggered = shouldTriggerLlmCalibration({
-    travelReadiness,
-    weatherSource: destinationWeather && destinationWeather.source,
-    alertSource: alertsPayload && alertsPayload.source,
-    message,
-  });
+  const llmDecision = decideLlmCalibrationTrigger({ destination });
+  const travelLlmInput = {
+    destination,
+    start_date: startDate,
+    end_date: endDate,
+    month_bucket: monthBucket,
+    profile: {
+      skinType: pickProfileText(profile, 'skinType', 'skin_type', 40),
+      sensitivity: pickProfileText(profile, 'sensitivity', 'sensitivity', 40),
+      barrierStatus: pickProfileText(profile, 'barrierStatus', 'barrier_status', 40),
+      region: homeRegion || null,
+    },
+    weather_source: normalizeText(destinationWeather && destinationWeather.source, 40) || null,
+    weather_reason: normalizeText(destinationWeather && destinationWeather.reason, 80) || null,
+    alerts_source: normalizeText(alertsPayload && alertsPayload.source, 40) || null,
+    kb_hit: kbHit,
+    question: message,
+  };
 
-  if (llmTriggered) {
+  if (llmDecision.triggered) {
+    llmCalled = true;
+    recordAuroraTravelLlmTrigger({ reason: llmDecision.trigger_reason });
     try {
       llmResult = await calibrateTravelReadinessWithLlm({
         openaiClient,
         language,
-        travelLlmInput: {
-          destination,
-          start_date: startDate,
-          end_date: endDate,
-          month_bucket: monthBucket,
-          profile: {
-            skinType: pickProfileText(profile, 'skinType', 'skin_type', 40),
-            sensitivity: pickProfileText(profile, 'sensitivity', 'sensitivity', 40),
-            barrierStatus: pickProfileText(profile, 'barrierStatus', 'barrier_status', 40),
-            region: homeRegion || null,
-          },
-          weather_source: normalizeText(destinationWeather && destinationWeather.source, 40) || null,
-          weather_reason: normalizeText(destinationWeather && destinationWeather.reason, 80) || null,
-          alerts_source: normalizeText(alertsPayload && alertsPayload.source, 40) || null,
-          kb_hit: kbHit,
-          question: message,
-        },
+        travelLlmInput,
         baseTravelReadiness: travelReadiness,
         timeoutMs: 1800,
         maxRetries: 1,
@@ -732,15 +786,26 @@ async function runTravelPipeline(input = {}) {
         travelReadiness = llmResult.travel_readiness;
       }
 
-      const llmOutcome = normalizeText(llmResult && llmResult.outcome, 40) || 'error';
+      const llmRawOutcome = normalizeText(llmResult && llmResult.outcome, 40) || 'error';
+      const llmOutcome = normalizeLlmTraceOutcome(llmRawOutcome);
+      const llmSourceMeta = isPlainObject(llmResult && llmResult.source_meta) ? llmResult.source_meta : {};
+      const llmErrorCode =
+        normalizeText(llmSourceMeta.error_code || llmResult?.error_reason || llmSourceMeta.reason, 120) || null;
       recordAuroraTravelLlmCall({ outcome: llmOutcome });
       pushTrace(trace, {
         skill: 'travel_llm_calibration_skill',
         status: llmOutcome,
         startedAtMs: llmStartedAt,
         meta: {
+          triggered: true,
+          trigger_reason: llmDecision.trigger_reason,
+          skip_reason: null,
+          outcome: llmOutcome,
           used: Boolean(llmResult && llmResult.used),
-          model: normalizeText(llmResult?.source_meta?.model, 120) || null,
+          model: normalizeText(llmSourceMeta.model, 120) || null,
+          prompt_hash: normalizeText(llmSourceMeta.prompt_hash, 48) || null,
+          prompt_chars: toNumber(llmSourceMeta.prompt_chars),
+          error_code: llmErrorCode,
         },
       });
     } catch (err) {
@@ -755,94 +820,158 @@ async function runTravelPipeline(input = {}) {
         status: 'degraded',
         startedAtMs: llmStartedAt,
         meta: {
-          reason: normalizeText(err && (err.code || err.message), 120) || 'llm_calibration_error',
+          triggered: true,
+          trigger_reason: llmDecision.trigger_reason,
+          skip_reason: null,
+          outcome: 'error',
+          error_code: normalizeText(err && (err.code || err.message), 120) || 'llm_calibration_error',
         },
       });
     }
   } else {
-    recordAuroraTravelLlmCall({
-      outcome: TRAVEL_LLM_CALIBRATION_ENABLED ? 'skip_conditions_not_matched' : 'skip_disabled',
-    });
+    llmSkipReason = llmDecision.skip_reason;
+    recordAuroraTravelLlmSkip({ reason: llmSkipReason });
+    recordAuroraTravelLlmCall({ outcome: llmDecision.outcome });
     pushTrace(trace, {
       skill: 'travel_llm_calibration_skill',
       status: 'skip',
       startedAtMs: llmStartedAt,
-      meta: { reason: 'conditions_not_matched' },
+      meta: {
+        triggered: false,
+        trigger_reason: null,
+        skip_reason: llmSkipReason,
+        outcome: llmDecision.outcome,
+      },
     });
   }
 
   const recoStartedAt = Date.now();
-  const recoTriggered = shouldTriggerRecoPreview(message);
-  if (recoTriggered) {
+  const recoTriggeredByMessage = shouldTriggerRecoPreview(message);
+  if (!destination) {
+    recoSkipReason = normalizeRecoSkipReason('destination_missing');
+    recordAuroraTravelSkillSkip({ skill: 'travel_reco_preview_skill', reason: recoSkipReason });
+    pushTrace(trace, {
+      skill: 'travel_reco_preview_skill',
+      status: 'skip',
+      startedAtMs: recoStartedAt,
+      meta: { reason: recoSkipReason },
+    });
+  } else if (!recoTriggeredByMessage) {
+    recoSkipReason = normalizeRecoSkipReason('trigger_not_matched');
+    recordAuroraTravelSkillSkip({ skill: 'travel_reco_preview_skill', reason: recoSkipReason });
+    pushTrace(trace, {
+      skill: 'travel_reco_preview_skill',
+      status: 'skip',
+      startedAtMs: recoStartedAt,
+      meta: { reason: recoSkipReason },
+    });
+  } else {
+    recoCalled = true;
     try {
       recoPreview = buildRecoPreview({
         travelReadiness,
         profile,
         language,
       });
-      pushTrace(trace, {
-        skill: 'travel_reco_preview_skill',
-        status: 'ok',
-        startedAtMs: recoStartedAt,
-        meta: {
-          source: normalizeText(recoPreview && recoPreview.source, 80) || null,
-          recommendations: Array.isArray(recoPreview && recoPreview.recommendations)
-            ? recoPreview.recommendations.length
-            : 0,
-        },
-      });
+      const recoCount = Array.isArray(recoPreview && recoPreview.recommendations)
+        ? recoPreview.recommendations.length
+        : 0;
+      if (!recoCount) {
+        recoPreview = null;
+        recoSkipReason = normalizeRecoSkipReason('no_products');
+        recordAuroraTravelSkillSkip({ skill: 'travel_reco_preview_skill', reason: recoSkipReason });
+        pushTrace(trace, {
+          skill: 'travel_reco_preview_skill',
+          status: 'skip',
+          startedAtMs: recoStartedAt,
+          meta: { reason: recoSkipReason },
+        });
+      } else {
+        pushTrace(trace, {
+          skill: 'travel_reco_preview_skill',
+          status: 'ok',
+          startedAtMs: recoStartedAt,
+          meta: {
+            source: normalizeText(recoPreview && recoPreview.source, 80) || null,
+            recommendations: recoCount,
+          },
+        });
+      }
     } catch (err) {
       recoPreview = null;
       pushTrace(trace, {
         skill: 'travel_reco_preview_skill',
         status: 'error',
         startedAtMs: recoStartedAt,
-        meta: { reason: normalizeText(err && (err.code || err.message), 120) || 'error' },
+        meta: {
+          reason: normalizeText(err && (err.code || err.message), 120) || 'error',
+        },
       });
     }
-  } else {
-    pushTrace(trace, {
-      skill: 'travel_reco_preview_skill',
-      status: 'skip',
-      startedAtMs: recoStartedAt,
-      meta: { reason: 'trigger_not_matched' },
-    });
   }
 
   const storeStartedAt = Date.now();
-  const storeTriggered = shouldTriggerStoreChannel(message);
-  if (storeTriggered) {
+  const storeTriggeredByMessage = shouldTriggerStoreChannel(message);
+  if (!destination) {
+    storeSkipReason = normalizeStoreSkipReason('destination_missing');
+    recordAuroraTravelSkillSkip({ skill: 'travel_store_channel_skill', reason: storeSkipReason });
+    pushTrace(trace, {
+      skill: 'travel_store_channel_skill',
+      status: 'skip',
+      startedAtMs: storeStartedAt,
+      meta: { reason: storeSkipReason },
+    });
+  } else if (!storeTriggeredByMessage) {
+    storeSkipReason = normalizeStoreSkipReason('trigger_not_matched');
+    recordAuroraTravelSkillSkip({ skill: 'travel_store_channel_skill', reason: storeSkipReason });
+    pushTrace(trace, {
+      skill: 'travel_store_channel_skill',
+      status: 'skip',
+      startedAtMs: storeStartedAt,
+      meta: { reason: storeSkipReason },
+    });
+  } else {
+    storeCalled = true;
     try {
       storeChannel = buildStoreChannel({ travelReadiness, destination });
-      pushTrace(trace, {
-        skill: 'travel_store_channel_skill',
-        status: 'ok',
-        startedAtMs: storeStartedAt,
-        meta: {
-          channels: Array.isArray(storeChannel && storeChannel.buying_channels)
-            ? storeChannel.buying_channels.length
-            : 0,
-          stores: Array.isArray(storeChannel && storeChannel.store_examples)
-            ? storeChannel.store_examples.length
-            : 0,
-        },
-      });
+      const channelCount = Array.isArray(storeChannel && storeChannel.buying_channels)
+        ? storeChannel.buying_channels.length
+        : 0;
+      const storeCount = Array.isArray(storeChannel && storeChannel.store_examples)
+        ? storeChannel.store_examples.length
+        : 0;
+      if (!channelCount) {
+        storeChannel = null;
+        storeSkipReason = normalizeStoreSkipReason('no_channels');
+        recordAuroraTravelSkillSkip({ skill: 'travel_store_channel_skill', reason: storeSkipReason });
+        pushTrace(trace, {
+          skill: 'travel_store_channel_skill',
+          status: 'skip',
+          startedAtMs: storeStartedAt,
+          meta: { reason: storeSkipReason },
+        });
+      } else {
+        pushTrace(trace, {
+          skill: 'travel_store_channel_skill',
+          status: 'ok',
+          startedAtMs: storeStartedAt,
+          meta: {
+            channels: channelCount,
+            stores: storeCount,
+          },
+        });
+      }
     } catch (err) {
       storeChannel = null;
       pushTrace(trace, {
         skill: 'travel_store_channel_skill',
         status: 'error',
         startedAtMs: storeStartedAt,
-        meta: { reason: normalizeText(err && (err.code || err.message), 120) || 'error' },
+        meta: {
+          reason: normalizeText(err && (err.code || err.message), 120) || 'error',
+        },
       });
     }
-  } else {
-    pushTrace(trace, {
-      skill: 'travel_store_channel_skill',
-      status: 'skip',
-      startedAtMs: storeStartedAt,
-      meta: { reason: 'trigger_not_matched' },
-    });
   }
 
   const replyStartedAt = Date.now();
@@ -938,9 +1067,11 @@ async function runTravelPipeline(input = {}) {
       if (entry) {
         if (travelKbWriteInFlight >= TRAVEL_KB_WRITE_MAX_IN_FLIGHT) {
           kbWriteQueued = false;
+          kbWriteSkipReason = normalizeKbWriteSkipReason('backpressure_drop');
           recordAuroraTravelKbWrite({ outcome: 'skip', reason: 'backpressure_drop' });
         } else {
           kbWriteQueued = true;
+          kbWriteSkipReason = null;
           travelKbWriteInFlight += 1;
           recordAuroraTravelKbWrite({ outcome: 'queued', reason: 'eligible' });
           Promise.resolve()
@@ -966,38 +1097,61 @@ async function runTravelPipeline(input = {}) {
             });
         }
       } else {
+        kbWriteSkipReason = normalizeKbWriteSkipReason('entry_invalid');
         recordAuroraTravelKbWrite({ outcome: 'skip', reason: 'entry_invalid' });
       }
 
+      if (!kbWriteQueued) {
+        recordAuroraTravelSkillSkip({
+          skill: 'travel_kb_write_skill',
+          reason: kbWriteSkipReason || normalizeKbWriteSkipReason('incomplete_structure'),
+        });
+      }
       pushTrace(trace, {
         skill: 'travel_kb_write_skill',
         status: kbWriteQueued ? 'queued' : 'skip',
         startedAtMs: kbWriteStartedAt,
         meta: {
-          reason: kbWriteQueued ? 'eligible' : entry ? 'backpressure_drop' : 'entry_invalid',
+          reason: kbWriteQueued
+            ? 'queued'
+            : kbWriteSkipReason || normalizeKbWriteSkipReason('incomplete_structure'),
         },
       });
     } else {
+      kbWriteSkipReason = normalizeKbWriteSkipReason(
+        normalizeText(kbBackfill && kbBackfill.reason, 80) === 'safety_conflict'
+          ? 'safety_conflict'
+          : 'incomplete_structure',
+      );
       recordAuroraTravelKbWrite({
         outcome: 'skip',
-        reason: normalizeText(kbBackfill && kbBackfill.reason, 80) || 'not_eligible',
+        reason: kbWriteSkipReason,
+      });
+      recordAuroraTravelSkillSkip({
+        skill: 'travel_kb_write_skill',
+        reason: kbWriteSkipReason,
       });
       pushTrace(trace, {
         skill: 'travel_kb_write_skill',
         status: 'skip',
         startedAtMs: kbWriteStartedAt,
         meta: {
-          reason: normalizeText(kbBackfill && kbBackfill.reason, 80) || 'not_eligible',
+          reason: kbWriteSkipReason,
         },
       });
     }
   } else {
+    kbWriteSkipReason = normalizeKbWriteSkipReason('incomplete_structure');
     recordAuroraTravelKbWrite({ outcome: 'skip', reason: 'disabled' });
+    recordAuroraTravelSkillSkip({
+      skill: 'travel_kb_write_skill',
+      reason: kbWriteSkipReason,
+    });
     pushTrace(trace, {
       skill: 'travel_kb_write_skill',
       status: 'skip',
       startedAtMs: kbWriteStartedAt,
-      meta: { reason: 'disabled' },
+      meta: { reason: kbWriteSkipReason },
     });
   }
 
@@ -1018,6 +1172,16 @@ async function runTravelPipeline(input = {}) {
     kbHit,
     llmResult,
   });
+  const invocationMatrix = {
+    llm_called: llmCalled,
+    llm_skip_reason: llmCalled ? null : llmSkipReason,
+    reco_called: recoCalled,
+    reco_skip_reason: recoCalled ? recoSkipReason : recoSkipReason || null,
+    store_called: storeCalled,
+    store_skip_reason: storeCalled ? storeSkipReason : storeSkipReason || null,
+    kb_write_queued: kbWriteQueued,
+    kb_write_skip_reason: kbWriteQueued ? 'queued' : kbWriteSkipReason || 'incomplete_structure',
+  };
 
   return {
     ok: Boolean(quality.ok),
@@ -1028,6 +1192,7 @@ async function runTravelPipeline(input = {}) {
     travel_readiness: travelReadiness,
     travel_kb_hit: kbHit,
     travel_kb_write_queued: kbWriteQueued,
+    travel_skill_invocation_matrix: invocationMatrix,
     travel_followup_state: {
       focus: normalizeText(followupReply && followupReply.focus, 80) || null,
       reply_sig: normalizeText(followupReply && followupReply.reply_sig, 320) || null,
@@ -1051,8 +1216,12 @@ module.exports = {
     shouldTriggerRecoPreview,
     shouldTriggerStoreChannel,
     shouldTriggerLlmCalibration,
+    decideLlmCalibrationTrigger,
     mergeKbPrefillIntoReadiness,
     buildRecoPreview,
     buildStoreChannel,
+    normalizeRecoSkipReason,
+    normalizeStoreSkipReason,
+    normalizeKbWriteSkipReason,
   },
 };

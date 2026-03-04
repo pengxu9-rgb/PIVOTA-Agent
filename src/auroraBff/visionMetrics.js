@@ -102,6 +102,9 @@ const travelPlanSelectionCounter = new Map();
 const auroraRoute404Counter = new Map();
 const auroraTravelPlansNonJsonCounter = new Map();
 const auroraTravelLlmCallCounter = new Map();
+const auroraTravelLlmTriggerCounter = new Map();
+const auroraTravelLlmSkipCounter = new Map();
+const auroraTravelSkillSkipCounter = new Map();
 const auroraTravelKbHitCounter = new Map();
 const auroraTravelKbWriteCounter = new Map();
 const auroraTravelResponseSourceCounter = new Map();
@@ -836,6 +839,7 @@ function normalizeAuroraTravelLlmOutcome(outcome) {
     token === 'call' ||
     token === 'skip_no_client' ||
     token === 'skip_conditions_not_matched' ||
+    token === 'skip_destination_missing' ||
     token === 'skip_disabled' ||
     token === 'timeout' ||
     token === 'error'
@@ -843,6 +847,49 @@ function normalizeAuroraTravelLlmOutcome(outcome) {
     return token;
   }
   return 'error';
+}
+
+function normalizeAuroraTravelLlmTriggerReason(reason) {
+  const token = cleanMetricToken(reason, 'destination_present');
+  if (token === 'destination_present') return token;
+  return 'destination_present';
+}
+
+function normalizeAuroraTravelLlmSkipReason(reason) {
+  const token = cleanMetricToken(reason, 'disabled');
+  if (token === 'destination_missing' || token === 'disabled') return token;
+  return 'disabled';
+}
+
+function normalizeAuroraTravelSkillSkipSkill(skill) {
+  const token = cleanMetricToken(skill, 'travel_unknown_skill');
+  if (
+    token === 'travel_reco_preview_skill' ||
+    token === 'travel_store_channel_skill' ||
+    token === 'travel_kb_write_skill' ||
+    token === 'travel_llm_calibration_skill'
+  ) {
+    return token;
+  }
+  return 'travel_unknown_skill';
+}
+
+function normalizeAuroraTravelSkillSkipReason(reason) {
+  const token = cleanMetricToken(reason, 'unknown');
+  if (
+    token === 'trigger_not_matched' ||
+    token === 'destination_missing' ||
+    token === 'no_products' ||
+    token === 'no_channels' ||
+    token === 'safety_conflict' ||
+    token === 'incomplete_structure' ||
+    token === 'backpressure_drop' ||
+    token === 'entry_invalid' ||
+    token === 'queued'
+  ) {
+    return token;
+  }
+  return 'unknown';
 }
 
 function normalizeAuroraTravelKbHitMode(mode) {
@@ -1414,6 +1461,39 @@ function recordAuroraTravelLlmCall({ outcome, delta } = {}) {
   incCounter(
     auroraTravelLlmCallCounter,
     { outcome: normalizeAuroraTravelLlmOutcome(outcome) },
+    amount,
+  );
+}
+
+function recordAuroraTravelLlmTrigger({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelLlmTriggerCounter,
+    { reason: normalizeAuroraTravelLlmTriggerReason(reason) },
+    amount,
+  );
+}
+
+function recordAuroraTravelLlmSkip({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelLlmSkipCounter,
+    { reason: normalizeAuroraTravelLlmSkipReason(reason) },
+    amount,
+  );
+}
+
+function recordAuroraTravelSkillSkip({ skill, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelSkillSkipCounter,
+    {
+      skill: normalizeAuroraTravelSkillSkipSkill(skill),
+      reason: normalizeAuroraTravelSkillSkipReason(reason),
+    },
     amount,
   );
 }
@@ -2881,6 +2961,18 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_travel_llm_call_total counter');
   renderCounter(lines, 'aurora_travel_llm_call_total', auroraTravelLlmCallCounter);
 
+  lines.push('# HELP aurora_travel_llm_trigger_total Total travel LLM trigger reasons.');
+  lines.push('# TYPE aurora_travel_llm_trigger_total counter');
+  renderCounter(lines, 'aurora_travel_llm_trigger_total', auroraTravelLlmTriggerCounter);
+
+  lines.push('# HELP aurora_travel_llm_skip_total Total travel LLM skip reasons.');
+  lines.push('# TYPE aurora_travel_llm_skip_total counter');
+  renderCounter(lines, 'aurora_travel_llm_skip_total', auroraTravelLlmSkipCounter);
+
+  lines.push('# HELP aurora_travel_skill_skip_total Total travel skill skip reasons by skill.');
+  lines.push('# TYPE aurora_travel_skill_skip_total counter');
+  renderCounter(lines, 'aurora_travel_skill_skip_total', auroraTravelSkillSkipCounter);
+
   lines.push('# HELP aurora_travel_kb_hit_total Total travel KB lookup hit/miss counts.');
   lines.push('# TYPE aurora_travel_kb_hit_total counter');
   renderCounter(lines, 'aurora_travel_kb_hit_total', auroraTravelKbHitCounter);
@@ -3494,6 +3586,9 @@ function resetVisionMetrics() {
   auroraRoute404Counter.clear();
   auroraTravelPlansNonJsonCounter.clear();
   auroraTravelLlmCallCounter.clear();
+  auroraTravelLlmTriggerCounter.clear();
+  auroraTravelLlmSkipCounter.clear();
+  auroraTravelSkillSkipCounter.clear();
   auroraTravelKbHitCounter.clear();
   auroraTravelKbWriteCounter.clear();
   auroraTravelResponseSourceCounter.clear();
@@ -3670,6 +3765,9 @@ function snapshotVisionMetrics() {
     auroraRoute404: Array.from(auroraRoute404Counter.entries()),
     auroraTravelPlansNonJson: Array.from(auroraTravelPlansNonJsonCounter.entries()),
     auroraTravelLlmCall: Array.from(auroraTravelLlmCallCounter.entries()),
+    auroraTravelLlmTrigger: Array.from(auroraTravelLlmTriggerCounter.entries()),
+    auroraTravelLlmSkip: Array.from(auroraTravelLlmSkipCounter.entries()),
+    auroraTravelSkillSkip: Array.from(auroraTravelSkillSkipCounter.entries()),
     auroraTravelKbHit: Array.from(auroraTravelKbHitCounter.entries()),
     auroraTravelKbWrite: Array.from(auroraTravelKbWriteCounter.entries()),
     auroraTravelResponseSource: Array.from(auroraTravelResponseSourceCounter.entries()),
@@ -3805,6 +3903,9 @@ module.exports = {
   recordAuroraRoute404,
   recordAuroraTravelPlansNonJson,
   recordAuroraTravelLlmCall,
+  recordAuroraTravelLlmTrigger,
+  recordAuroraTravelLlmSkip,
+  recordAuroraTravelSkillSkip,
   recordAuroraTravelKbHit,
   recordAuroraTravelKbWrite,
   recordAuroraTravelResponseSource,

@@ -1,3 +1,4 @@
+const crypto = require('node:crypto')
 const { extractJsonObject, parseJsonOnlyObject } = require('./jsonExtract')
 
 const ALLOWED_BUYING_CHANNELS = new Set([
@@ -43,6 +44,54 @@ function normalizeStringArray(value, maxItems = 8, maxLen = 120) {
     if (out.length >= maxItems) break
   }
   return out
+}
+
+function hashPromptPayload(value, tokenLen = 24) {
+  const text = typeof value === 'string' ? value : String(value || '')
+  const hash = crypto.createHash('sha256').update(text).digest('hex')
+  const len = Number.isFinite(Number(tokenLen)) ? Math.max(8, Math.min(64, Math.trunc(Number(tokenLen)))) : 24
+  return hash.slice(0, len)
+}
+
+function normalizeErrorCode(err, fallback = 'TRAVEL_LLM_ERROR') {
+  const token = normalizeText(err && (err.code || err.message), 80)
+  return token || fallback
+}
+
+function buildPromptInputSummary({ travelLlmInput = null, baseTravelReadiness = null } = {}) {
+  const llmInput = isPlainObject(travelLlmInput) ? travelLlmInput : {}
+  const readiness = isPlainObject(baseTravelReadiness) ? baseTravelReadiness : {}
+  const destinationContext = isPlainObject(readiness.destination_context) ? readiness.destination_context : {}
+  const profile = isPlainObject(llmInput.profile) ? llmInput.profile : {}
+
+  const profileFieldsPresent = {
+    skin_type: Boolean(normalizeText(profile.skinType != null ? profile.skinType : profile.skin_type, 80)),
+    sensitivity: Boolean(normalizeText(profile.sensitivity, 80)),
+    barrier_status: Boolean(normalizeText(profile.barrierStatus != null ? profile.barrierStatus : profile.barrier_status, 80)),
+    region: Boolean(normalizeText(profile.region, 120)),
+  }
+
+  return {
+    destination: normalizeText(llmInput.destination, 140) || normalizeText(destinationContext.destination, 140) || null,
+    start_date: normalizeText(llmInput.start_date, 24) || normalizeText(destinationContext.start_date, 24) || null,
+    end_date: normalizeText(llmInput.end_date, 24) || normalizeText(destinationContext.end_date, 24) || null,
+    month_bucket: normalizeNumber(llmInput.month_bucket),
+    weather_source: normalizeText(llmInput.weather_source, 40) || null,
+    alerts_source: normalizeText(llmInput.alerts_source, 40) || null,
+    kb_hit: typeof llmInput.kb_hit === 'boolean' ? llmInput.kb_hit : null,
+    profile_fields_present: profileFieldsPresent,
+  }
+}
+
+function buildPromptTelemetry({ systemPrompt, userPrompt, travelLlmInput = null, baseTravelReadiness = null } = {}) {
+  const sys = typeof systemPrompt === 'string' ? systemPrompt : String(systemPrompt || '')
+  const usr = typeof userPrompt === 'string' ? userPrompt : String(userPrompt || '')
+  const promptPayload = `${sys}\n${usr}`
+  return {
+    prompt_hash: hashPromptPayload(promptPayload, 24),
+    prompt_chars: promptPayload.length,
+    input_summary: buildPromptInputSummary({ travelLlmInput, baseTravelReadiness }),
+  }
 }
 
 function normalizeMatchStatus(value) {
@@ -461,6 +510,17 @@ async function calibrateTravelReadinessWithLlm({
 } = {}) {
   const stage = 'travel_readiness_calibration_v1'
   const baseline = sanitizeBaselineIntegrity(isPlainObject(baseTravelReadiness) ? baseTravelReadiness : {})
+  const { systemPrompt, userPrompt } = buildTravelCalibrationPrompts({
+    language,
+    travelLlmInput,
+    baseTravelReadiness: baseline,
+  })
+  const promptTelemetry = buildPromptTelemetry({
+    systemPrompt,
+    userPrompt,
+    travelLlmInput,
+    baseTravelReadiness: baseline,
+  })
 
   if (!openaiClient || !openaiClient.chat || !openaiClient.chat.completions) {
     return {
@@ -469,16 +529,16 @@ async function calibrateTravelReadinessWithLlm({
       outcome: 'skip_no_client',
       travel_readiness: baseline,
       quality_flags: {},
-      source_meta: { reason: 'no_client', model },
+      source_meta: {
+        reason: 'no_client',
+        model,
+        ...promptTelemetry,
+        error_code: 'no_client',
+      },
     }
   }
 
   const attempts = Math.max(1, Math.min(3, Math.trunc(Number(maxRetries) || 0) + 1))
-  const { systemPrompt, userPrompt } = buildTravelCalibrationPrompts({
-    language,
-    travelLlmInput,
-    baseTravelReadiness: baseline,
-  })
 
   let lastErr = null
   for (let i = 0; i < attempts; i += 1) {
@@ -500,7 +560,9 @@ async function calibrateTravelReadinessWithLlm({
       const text = extractCompletionText(response)
       const parsed = parseCalibrationPayload(text)
       if (!parsed) {
-        lastErr = new Error('travel_llm_invalid_json')
+        const parseErr = new Error('travel_llm_invalid_json')
+        parseErr.code = 'TRAVEL_LLM_INVALID_JSON'
+        lastErr = parseErr
         continue
       }
 
@@ -515,6 +577,7 @@ async function calibrateTravelReadinessWithLlm({
           model: String(model || DEFAULT_TRAVEL_LLM_MODEL),
           attempt: i + 1,
           reasoning_mode: normalizeText(parsed.source_notes && parsed.source_notes.reasoning_mode, 80) || 'llm_calibration_v1',
+          ...promptTelemetry,
         },
       }
     } catch (err) {
@@ -532,6 +595,7 @@ async function calibrateTravelReadinessWithLlm({
   }
 
   const timeoutErr = lastErr && String(lastErr.code || '').trim() === 'TRAVEL_LLM_TIMEOUT'
+  const errorCode = normalizeErrorCode(lastErr, timeoutErr ? 'TRAVEL_LLM_TIMEOUT' : 'TRAVEL_LLM_ERROR')
   return {
     stage,
     used: false,
@@ -541,6 +605,8 @@ async function calibrateTravelReadinessWithLlm({
     source_meta: {
       reason: timeoutErr ? 'timeout' : 'error',
       model: String(model || DEFAULT_TRAVEL_LLM_MODEL),
+      ...promptTelemetry,
+      error_code: errorCode,
       error: lastErr && (lastErr.code || lastErr.message) ? String(lastErr.code || lastErr.message).slice(0, 140) : 'unknown',
     },
   }
@@ -561,5 +627,7 @@ module.exports = {
     deepMerge,
     parseCalibrationPayload,
     buildTravelCalibrationPrompts,
+    buildPromptInputSummary,
+    buildPromptTelemetry,
   },
 }
