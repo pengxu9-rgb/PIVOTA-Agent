@@ -7161,16 +7161,23 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       const radarRows = Array.isArray(envStress?.payload?.radar) ? envStress.payload.radar : [];
       assert.equal(radarRows.length > 0, true);
       assert.equal(radarRows.some((row) => Array.isArray(row?.drivers) && row.drivers.length > 0), true);
-      const shoppingProducts = Array.isArray(envStress?.payload?.travel_readiness?.shopping_preview?.products)
-        ? envStress.payload.travel_readiness.shopping_preview.products
+      const shoppingPreview =
+        envStress?.payload?.travel_readiness?.shopping_preview &&
+        typeof envStress.payload.travel_readiness.shopping_preview === 'object'
+          ? envStress.payload.travel_readiness.shopping_preview
+          : null;
+      assert.ok(shoppingPreview);
+      const shoppingProducts = Array.isArray(shoppingPreview?.products)
+        ? shoppingPreview.products
         : [];
-      if (shoppingProducts.length) {
-        const allowedProductSource = new Set(['catalog', 'rule_fallback', 'llm_generated']);
-        assert.equal(
-          shoppingProducts.every((row) => allowedProductSource.has(String(row?.product_source || '').trim())),
-          true,
-        );
-      }
+      assert.equal(shoppingProducts.length > 0, true);
+      assert.equal(Array.isArray(shoppingPreview?.buying_channels), true);
+      assert.equal(shoppingPreview.buying_channels.length > 0, true);
+      const allowedProductSource = new Set(['catalog', 'rule_fallback', 'llm_generated']);
+      assert.equal(
+        shoppingProducts.every((row) => allowedProductSource.has(String(row?.product_source || '').trim())),
+        true,
+      );
       assert.doesNotMatch(String(resp.body?.assistant_message?.content || ''), /destination and travel dates/i);
 
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
