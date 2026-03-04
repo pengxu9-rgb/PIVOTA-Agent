@@ -25828,6 +25828,57 @@ function isRoutineContractIntent(intent) {
   );
 }
 
+function isTravelOrEnvIntent(intent) {
+  const value = String(intent || '').trim().toLowerCase();
+  return (
+    value === String(INTENT_ENUM.TRAVEL_PLANNING || '').trim().toLowerCase() ||
+    value === String(INTENT_ENUM.WEATHER_ENV || '').trim().toLowerCase()
+  );
+}
+
+function isTravelOrEnvCard(card) {
+  if (!isPlainObject(card)) return false;
+  const type = String(card.type || '').trim().toLowerCase();
+  if (!type) return false;
+  if (type === 'travel' || type === 'env_stress' || type === 'environment_stress') return true;
+  if (type.includes('travel') || type.includes('env_stress') || type.includes('environment_stress')) return true;
+
+  const payload = getCardPayload(card);
+  if (!isPlainObject(payload)) return false;
+  const schema = String(payload.schema_version || payload.schema || '').trim().toLowerCase();
+  if (schema.includes('env_stress') || schema.includes('travel')) return true;
+  if (isPlainObject(payload.travel_readiness)) return true;
+
+  const sections = Array.isArray(payload.sections)
+    ? payload.sections
+    : Array.isArray(card.sections)
+      ? card.sections
+      : [];
+  return sections.some((section) => {
+    if (!isPlainObject(section)) return false;
+    const kind = String(section.kind || section.type || '').trim().toLowerCase();
+    if (kind.includes('travel')) return true;
+    if (kind.includes('env_stress') || kind.includes('environment_stress')) return true;
+    if (isPlainObject(section.env_payload)) {
+      const envSchema = String(section.env_payload.schema_version || '').trim().toLowerCase();
+      if (envSchema.includes('env_stress') || envSchema.includes('travel')) return true;
+    }
+    return false;
+  });
+}
+
+function suppressAnalysisCardsForTravelEnvTurn(cards, { canonicalIntent } = {}) {
+  const list = Array.isArray(cards) ? cards : [];
+  if (!list.length) return list;
+  const suppressByIntent = isTravelOrEnvIntent(canonicalIntent);
+  const suppressByCards = list.some((card) => isTravelOrEnvCard(card));
+  if (!suppressByIntent && !suppressByCards) return list;
+  return list.filter((card) => {
+    const type = String(card && card.type ? card.type : '').trim().toLowerCase();
+    return type !== 'analysis_summary' && type !== 'analysis_story_v2';
+  });
+}
+
 function buildRoutineRulesOnlyFallbackCardsForChat({ ctx, message, profile, recentLogs, language, reason } = {}) {
   const expert = buildRulesOnlyRoutineExpertFromContext({ message, profile, recentLogs, language });
   const noticeReason = String(reason || '').trim().toLowerCase() === 'timeout_degraded' ? 'timeout_degraded' : 'default';
@@ -43824,6 +43875,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         guardrailResult && guardrailResult.envelope && typeof guardrailResult.envelope === 'object'
           ? { ...guardrailResult.envelope }
           : envelopeWithContract;
+      if (envelopeWithGuardrails && typeof envelopeWithGuardrails === 'object' && !Array.isArray(envelopeWithGuardrails)) {
+        const currentCards = Array.isArray(envelopeWithGuardrails.cards) ? envelopeWithGuardrails.cards : [];
+        const suppressedCards = suppressAnalysisCardsForTravelEnvTurn(currentCards, {
+          canonicalIntent: policyMeta.intent_canonical || canonicalIntentForResponse.intent,
+        });
+        if (suppressedCards.length !== currentCards.length) {
+          envelopeWithGuardrails.cards = suppressedCards;
+        }
+      }
       if (guardrailResult && (guardrailResult.dropped > 0 || guardrailResult.externalized > 0)) {
         const events = Array.isArray(envelopeWithGuardrails.events) ? envelopeWithGuardrails.events.slice(0, 96) : [];
         events.push(
@@ -49900,6 +49960,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           ctx.lang === 'CN'
             ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
             : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+      }
+
+      const travelSuppressedCards = suppressAnalysisCardsForTravelEnvTurn(assembledCards, {
+        canonicalIntent: canonicalIntent && canonicalIntent.intent,
+      });
+      if (travelSuppressedCards.length !== assembledCards.length) {
+        assembledCards.length = 0;
+        assembledCards.push(...travelSuppressedCards);
       }
 
       const pendingForTemplate =
