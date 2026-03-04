@@ -5,6 +5,7 @@ describe('Product Analysis V4 unit tests', () => {
   let buildInciStatus;
   let buildProductDeepScanPromptV4;
   let buildDataQualityBanner;
+  let deriveInciStatusFromPayloadSignals;
   let enforceUnknownVerdictQuality;
   let applyUnknownVerdictQualityGateToEnvelope;
   let isLikelyInvalidInciToken;
@@ -18,6 +19,7 @@ describe('Product Analysis V4 unit tests', () => {
     buildInciStatus = routes.__internal.buildInciStatus;
     buildProductDeepScanPromptV4 = routes.__internal.buildProductDeepScanPromptV4;
     buildDataQualityBanner = routes.__internal.buildDataQualityBanner;
+    deriveInciStatusFromPayloadSignals = routes.__internal.deriveInciStatusFromPayloadSignals;
     enforceUnknownVerdictQuality = routes.__internal.enforceUnknownVerdictQuality;
     applyUnknownVerdictQualityGateToEnvelope = routes.__internal.applyUnknownVerdictQualityGateToEnvelope;
     isLikelyInvalidInciToken = routes.__internal.isLikelyInvalidInciToken;
@@ -141,6 +143,22 @@ describe('Product Analysis V4 unit tests', () => {
       });
       expect(result.sources).toHaveLength(1);
       expect(result.sources[0].type).toBe('official_page');
+    });
+
+    test('deriveInciStatusFromPayloadSignals aligns incidecoder-only + version verification to low/verified-required', () => {
+      const payload = {
+        evidence: {
+          sources: [{ type: 'inci_decoder', url: 'https://incidecoder.com/p/example', confidence: 0.81 }],
+          science: {
+            key_ingredients: ['Water', 'Glycerin', 'Niacinamide'],
+          },
+        },
+        missing_info: ['incidecoder_source_used', 'version_verification_needed'],
+      };
+      const status = deriveInciStatusFromPayloadSignals(payload);
+      expect(status).toBeTruthy();
+      expect(status.consensus_tier).toBe('low');
+      expect(status.verification_required).toBe(true);
     });
   });
 
@@ -288,6 +306,38 @@ describe('Product Analysis V4 unit tests', () => {
       };
       const result = enforceUnknownVerdictQuality(payload, { lang: 'EN' });
       expect(result.assessment.verdict_level).toBe('recommended');
+    });
+
+    test('downgrades recommended and reconciles inci_status when provenance ingredient_consensus is low', () => {
+      const payload = {
+        assessment: {
+          verdict: 'Suitable',
+          verdict_level: 'recommended',
+          summary: 'Official-page INCI extraction was blocked; INCIDecoder was used as a supplemental source.',
+          reasons: [
+            'Fit signal: lower irritation exposure and redness risk; keep acne/comedone control on track.',
+            'Official-page INCI extraction was blocked; INCIDecoder was used as a supplemental source.',
+          ],
+        },
+        inci_status: {
+          extraction: 'success',
+          consensus_tier: 'medium',
+          verification_required: false,
+          total_ingredients: 3,
+          sources: [{ type: 'official_page', url: 'https://brand.com/pdp' }],
+        },
+        provenance: {
+          ingredient_consensus: {
+            confidence_tier: 'low',
+          },
+        },
+        missing_info: ['incidecoder_source_used', 'version_verification_needed'],
+      };
+      const result = enforceUnknownVerdictQuality(payload, { lang: 'EN' });
+      expect(result.assessment.verdict_level).toBe('needs_verification');
+      expect(result.inci_status.consensus_tier).toBe('low');
+      expect(result.inci_status.verification_required).toBe(true);
+      expect(String(result.assessment.summary || '').toLowerCase()).not.toContain('official-page inci extraction was blocked');
     });
   });
 
@@ -508,6 +558,72 @@ describe('Product Analysis V4 unit tests', () => {
       expect(howToUse.pairing_rules.join(' | ').toLowerCase()).toContain('reapply');
     });
 
+    test('filters fit/data-quality lines out of watchouts and top_takeaways in legacy-to-v4 upgrade', () => {
+      const envelope = {
+        request_id: 'req_filter_upgrade',
+        trace_id: 'trace_filter_upgrade',
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: 'analyze_filter_upgrade',
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Likely Suitable',
+                reasons: [
+                  'Official-page INCI extraction was blocked; INCIDecoder was used as a supplemental source.',
+                  'Fit signal: lower irritation exposure and redness risk; keep acne/comedone control on track.',
+                  'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                ],
+                watchouts: [
+                  {
+                    issue: 'Fit signal: lower irritation exposure and redness risk; keep acne/comedone control on track.',
+                    status: 'confirmed',
+                    what_to_do: 'Patch test first and monitor tolerance.',
+                  },
+                  {
+                    issue: 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                    status: 'confirmed',
+                    what_to_do: 'Patch test first; stop if stinging or redness persists.',
+                  },
+                ],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['Water', 'Niacinamide'],
+                  risk_notes: ['May include fragrance-related ingredients; patch testing is recommended for sensitive skin.'],
+                },
+                expert_notes: [],
+                missing_info: ['incidecoder_source_used', 'version_verification_needed'],
+              },
+              missing_info: ['incidecoder_source_used', 'version_verification_needed'],
+            },
+          },
+        ],
+        session_patch: {},
+        events: [],
+      };
+      const result = applyUnknownVerdictQualityGateToEnvelope(envelope, { lang: 'EN' });
+      const card = result.cards.find((c) => c.type === 'product_analysis');
+      expect(Array.isArray(card.payload.assessment.top_takeaways)).toBe(true);
+      expect(
+        card.payload.assessment.top_takeaways.some((line) =>
+          /official-page inci extraction was blocked/i.test(String(line || '')),
+        ),
+      ).toBe(false);
+      expect(
+        card.payload.assessment.watchouts.some((w) =>
+          /fit signal/i.test(String(w.issue || '')),
+        ),
+      ).toBe(false);
+      expect(
+        card.payload.assessment.watchouts.some((w) =>
+          /fragrance-related/i.test(String(w.issue || '')),
+        ),
+      ).toBe(true);
+    });
+
     test('does not hard-downgrade recommended when INCI evidence signals are absent', () => {
       const envelope = {
         request_id: 'req_no_inci_signal',
@@ -552,6 +668,19 @@ describe('Product Analysis V4 unit tests', () => {
     test('returns null when no quality warnings', () => {
       const banner = buildDataQualityBanner({ missing_info: [] }, { lang: 'EN' });
       expect(banner).toBeNull();
+    });
+
+    test('returns banner for incidecoder + version verification without fetch-blocked code', () => {
+      const banner = buildDataQualityBanner(
+        {
+          missing_info: ['incidecoder_source_used'],
+          evidence: { missing_info: ['version_verification_needed'] },
+        },
+        { lang: 'EN' },
+      );
+      expect(typeof banner).toBe('string');
+      expect(banner.toLowerCase()).toContain('incidecoder');
+      expect(banner.toLowerCase()).toContain('version');
     });
   });
 });

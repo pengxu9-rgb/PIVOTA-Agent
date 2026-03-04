@@ -192,7 +192,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const ev = card.payload.evidence;
     expect(ev).toBeTruthy();
     expect(Array.isArray(ev.science.key_ingredients)).toBe(true);
-    expect(ev.science.key_ingredients).toContain('niacinamide');
+    expect(ev.science.key_ingredients.map((item) => String(item || '').toLowerCase())).toContain('niacinamide');
     expect(Array.isArray(ev.social_signals.typical_positive)).toBe(true);
     expect(ev.social_signals.typical_positive).toContain('soothing');
     expect(Array.isArray(ev.expert_notes)).toBe(true);
@@ -476,12 +476,14 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(
       card.payload.tradeoffs.some((t) => /compared to original|dupe adds|texture/i.test(String(t || ''))),
     ).toBe(true);
+    expect(card.payload.compare_quality).toBe('full');
+    expect(card.payload.limited_reason).toBeUndefined();
     expect(card.payload.confidence).toBeGreaterThan(0);
 
     const ev = card.payload.evidence;
     expect(ev).toBeTruthy();
     expect(Array.isArray(ev.science.key_ingredients)).toBe(true);
-    expect(ev.science.key_ingredients).toContain('niacinamide');
+    expect(ev.science.key_ingredients.map((item) => String(item || '').toLowerCase())).toContain('niacinamide');
   });
 
   test('Normalization: evidence is never omitted (even on null input)', async () => {
