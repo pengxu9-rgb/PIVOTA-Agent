@@ -44487,6 +44487,7 @@ function mountAuroraBffRoutes(app, { logger }) {
     classifyStorageError,
     appendActivityEventForIdentity,
     listActivityEventsForIdentity,
+    listDiagnosisArtifactsForIdentity,
   });
 
   try {

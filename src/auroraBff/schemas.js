@@ -342,6 +342,7 @@ const ActivityEventTypeSchema = z.enum([
   'travel_plan_created',
   'travel_plan_updated',
   'travel_plan_archived',
+  'skin_analysis',
 ]);
 
 const ActivityLogSchema = z
