@@ -706,14 +706,14 @@ const AURORA_INGREDIENT_RESEARCH_TIMEOUT_MS = (() => {
   return Math.max(3000, Math.min(30000, v));
 })();
 const AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 4000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
-  return Math.max(1500, Math.min(8000, v));
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_REPORT_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  return Math.max(1500, Math.min(15000, v));
 })();
 const AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 10000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
-  return Math.max(3000, Math.min(20000, v));
+  const n = Number(process.env.AURORA_INGREDIENT_SYNC_TOTAL_BUDGET_MS || 20000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 20000;
+  return Math.max(3000, Math.min(30000, v));
 })();
 const AURORA_INGREDIENT_CIRCUIT_OPEN_MS = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_OPEN_MS || 90000);
@@ -724,6 +724,21 @@ const AURORA_INGREDIENT_CIRCUIT_HALF_OPEN_PROBES = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_HALF_OPEN_PROBES || 10);
   const v = Number.isFinite(n) ? Math.trunc(n) : 10;
   return Math.max(2, Math.min(50, v));
+})();
+const AURORA_INGREDIENT_CIRCUIT_TIMEOUT_STREAK_THRESHOLD = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_TIMEOUT_STREAK_THRESHOLD || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(1, Math.min(50, v));
+})();
+const AURORA_INGREDIENT_CIRCUIT_TIMEOUT_MIN_SAMPLES = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_TIMEOUT_MIN_SAMPLES || 8);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8;
+  return Math.max(1, Math.min(500, v));
+})();
+const AURORA_INGREDIENT_CIRCUIT_TIMEOUT_RATIO_THRESHOLD_PCT = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_CIRCUIT_TIMEOUT_RATIO_THRESHOLD_PCT || 60);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 60;
+  return Math.max(1, Math.min(100, v));
 })();
 const AURORA_INGREDIENT_LOOKUP_SESSION_PER_MIN = (() => {
   const n = Number(process.env.AURORA_INGREDIENT_LOOKUP_SESSION_PER_MIN || 6);
@@ -748,8 +763,8 @@ const AURORA_INGREDIENT_GOAL_ENRICH_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_INGREDIENT_GOAL_ENRICH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_INGREDIENT_GOAL_ENRICH_TIMEOUT_MS || 2800);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2800;
+  const n = Number(process.env.AURORA_INGREDIENT_GOAL_ENRICH_TIMEOUT_MS || 6000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6000;
   return Math.max(1000, Math.min(12000, v));
 })();
 const AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH = (() => {
@@ -778,6 +793,7 @@ const ingredientProviderCircuit = {
 };
 const ingredientProviderRecentCalls1m = [];
 const ingredientProviderRecentCalls5m = [];
+let ingredientProviderTimeoutStreak = 0;
 let ingredientResearchCacheLoadedFromDisk = false;
 let ingredientResearchCachePersistTimer = null;
 let ingredientResearchCachePersistPending = false;
@@ -1369,6 +1385,7 @@ const PIVOTA_BACKEND_AGENT_API_KEY = String(
 ).trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
+const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
@@ -1394,11 +1411,11 @@ const ANALYSIS_STORY_MODEL_GEMINI =
 const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
   1200,
-  Math.min(12000, Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 5000)),
+  Math.min(12000, Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 10000)),
 );
 const PRODUCT_INTEL_DUAL_QA_TIMEOUT_MS = Math.max(
   800,
-  Math.min(10000, Number(process.env.AURORA_PRODUCT_RELEVANCE_DUAL_LLM_TIMEOUT_MS || 2500)),
+  Math.min(10000, Number(process.env.AURORA_PRODUCT_RELEVANCE_DUAL_LLM_TIMEOUT_MS || 8000)),
 );
 const PRODUCT_INTEL_DUAL_QA_CACHE_TTL_MS = Math.max(
   1000,
@@ -13637,11 +13654,27 @@ async function extractTextFromGeminiResponse(response) {
   return parts.join('\n').trim();
 }
 
+function isGeminiTimeoutLikeError(err) {
+  if (!err) return false;
+  const code = String(err.code || '').trim().toLowerCase();
+  const name = String(err.name || '').trim().toLowerCase();
+  const message = String(err.message || '').trim().toLowerCase();
+  return (
+    name === 'aborterror' ||
+    code.includes('timeout') ||
+    code.includes('abort') ||
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('deadline') ||
+    message.includes('aborted')
+  );
+}
+
 async function callOpenAiJsonObject({
   model,
   systemPrompt,
   userPrompt,
-  timeoutMs = 3000,
+  timeoutMs = 10000,
   maxTokens = 600,
   temperature = 0,
 } = {}) {
@@ -13683,10 +13716,11 @@ async function callGeminiJsonObject({
   model,
   systemPrompt,
   userPrompt,
-  timeoutMs = 3000,
+  timeoutMs = 10000,
   temperature = 0,
   maxOutputTokens = null,
   responseJsonSchema = null,
+  gateRoute = 'gemini_json',
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -13695,8 +13729,10 @@ async function callGeminiJsonObject({
       reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
     };
   }
+  const requestTimeoutMs = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 10_000;
   try {
-    const resp = await withTimeout(
+    const gate = getGeminiGlobalGate();
+    const resp = await gate.withGate(gateRoute, () =>
       gemini.client.models.generateContent({
         model: AURORA_DIAG_FORCE_GEMINI ? AURORA_DIAG_FORCE_GEMINI_MODEL : model || ANALYSIS_STORY_MODEL_GEMINI,
         contents: [
@@ -13712,6 +13748,7 @@ async function callGeminiJsonObject({
         config: {
           temperature,
           responseMimeType: 'application/json',
+          httpOptions: { timeout: requestTimeoutMs },
           ...(Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
             ? { maxOutputTokens: Math.max(64, Math.min(2048, Math.trunc(Number(maxOutputTokens)))) }
             : {}),
@@ -13720,8 +13757,6 @@ async function callGeminiJsonObject({
             : {}),
         },
       }),
-      timeoutMs,
-      'GEMINI_JSON_TIMEOUT',
     );
     const text = await extractTextFromGeminiResponse(resp);
     const parsed = parseJsonOnlyObject(unwrapCodeFence(text));
@@ -13734,6 +13769,20 @@ async function callGeminiJsonObject({
     }
     return { ok: true, json: parsed };
   } catch (err) {
+    if (err && err.name === 'GeminiGateError') {
+      return {
+        ok: false,
+        reason: String(err.code || 'gate_error').toLowerCase(),
+        detail: err.message || null,
+      };
+    }
+    if (isGeminiTimeoutLikeError(err)) {
+      return {
+        ok: false,
+        reason: 'GEMINI_JSON_TIMEOUT',
+        detail: err && err.message ? String(err.message) : null,
+      };
+    }
     return {
       ok: false,
       reason: err && err.code ? String(err.code) : 'gemini_error',
@@ -13911,6 +13960,7 @@ async function callDualQaProvider({ provider, systemPrompt, userPrompt, timeoutM
     userPrompt,
     timeoutMs,
     temperature: 0,
+    gateRoute: 'product_dual_qa',
   });
 }
 let callDualQaProviderImpl = callDualQaProvider;
@@ -24108,6 +24158,7 @@ async function recoverProductsWithLlmFallbackFromQueries({
         temperature: 0.2,
         maxOutputTokens: 400,
         responseJsonSchema: buildProductRetrieverJsonSchema(Math.max(2, targetMax - out.products.length)),
+        gateRoute: 'product_lookup_fallback',
       });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err), query: q }, 'aurora bff: llm fallback query failed');
@@ -32054,16 +32105,21 @@ function buildIngredientMinimalResearch({
   };
 }
 
-function recordIngredientProviderWindow({ ok }) {
-  const now = Date.now();
-  ingredientProviderRecentCalls1m.push({ ts: now, ok: ok === true });
-  ingredientProviderRecentCalls5m.push({ ts: now, ok: ok === true });
+function compactIngredientProviderWindows(now = Date.now()) {
   while (ingredientProviderRecentCalls1m.length && now - ingredientProviderRecentCalls1m[0].ts > 60 * 1000) {
     ingredientProviderRecentCalls1m.shift();
   }
   while (ingredientProviderRecentCalls5m.length && now - ingredientProviderRecentCalls5m[0].ts > 5 * 60 * 1000) {
     ingredientProviderRecentCalls5m.shift();
   }
+}
+
+function recordIngredientProviderWindow({ ok, timeout = false }) {
+  const now = Date.now();
+  compactIngredientProviderWindows(now);
+  const sample = { ts: now, ok: ok === true, timeout: timeout === true };
+  ingredientProviderRecentCalls1m.push(sample);
+  ingredientProviderRecentCalls5m.push(sample);
 }
 
 function getIngredientProviderCircuitState() {
@@ -32079,8 +32135,30 @@ function getIngredientProviderCircuitState() {
 
 function updateIngredientProviderCircuit({ outcome = 'ok' } = {}) {
   const now = Date.now();
-  const fail = outcome !== 'ok';
-  recordIngredientProviderWindow({ ok: !fail });
+  compactIngredientProviderWindows(now);
+  const normalizedOutcome = String(outcome || 'ok').trim().toLowerCase();
+  const isTimeoutOutcome = normalizedOutcome === 'timeout';
+  const isErrorOutcome = normalizedOutcome === 'error' || (!isTimeoutOutcome && normalizedOutcome !== 'ok');
+  if (isTimeoutOutcome) ingredientProviderTimeoutStreak += 1;
+  else ingredientProviderTimeoutStreak = 0;
+
+  let fail = isErrorOutcome;
+  if (isTimeoutOutcome) {
+    let oneMinuteTimeoutCount = 0;
+    for (const row of ingredientProviderRecentCalls1m) {
+      if (row && row.timeout === true) oneMinuteTimeoutCount += 1;
+    }
+    const oneMinuteSamples = ingredientProviderRecentCalls1m.length + 1;
+    const oneMinuteTimeouts = oneMinuteTimeoutCount + 1;
+    const oneMinuteTimeoutRatioPct = oneMinuteSamples > 0 ? (oneMinuteTimeouts / oneMinuteSamples) * 100 : 0;
+    const timeoutByStreak = ingredientProviderTimeoutStreak >= AURORA_INGREDIENT_CIRCUIT_TIMEOUT_STREAK_THRESHOLD;
+    const timeoutByRatio =
+      oneMinuteSamples >= AURORA_INGREDIENT_CIRCUIT_TIMEOUT_MIN_SAMPLES &&
+      oneMinuteTimeoutRatioPct >= AURORA_INGREDIENT_CIRCUIT_TIMEOUT_RATIO_THRESHOLD_PCT;
+    fail = timeoutByStreak || timeoutByRatio;
+  }
+
+  recordIngredientProviderWindow({ ok: !fail, timeout: isTimeoutOutcome });
   if (ingredientProviderCircuit.state === 'half_open') {
     ingredientProviderCircuit.half_open_probe_count = Number(ingredientProviderCircuit.half_open_probe_count || 0) + 1;
     if (fail) {
@@ -32097,6 +32175,12 @@ function updateIngredientProviderCircuit({ outcome = 'ok' } = {}) {
     return ingredientProviderCircuit.state;
   }
   if (ingredientProviderCircuit.state === 'closed') {
+    if (isTimeoutOutcome && fail) {
+      ingredientProviderCircuit.state = 'open';
+      ingredientProviderCircuit.opened_at_ms = now;
+      ingredientProviderCircuit.half_open_probe_count = 0;
+      return ingredientProviderCircuit.state;
+    }
     const oneMinuteTotal = ingredientProviderRecentCalls1m.length;
     const oneMinuteFail = ingredientProviderRecentCalls1m.filter((row) => row.ok !== true).length;
     const fiveMinuteTotal = ingredientProviderRecentCalls5m.length;
@@ -32870,6 +32954,7 @@ async function runIngredientResearchSync({
       temperature: 0.3,
       maxOutputTokens: 700,
       responseJsonSchema: prompt.responseJsonSchema,
+      gateRoute: 'ingredient_sync',
     });
     const latencyMs = Math.max(0, Date.now() - callStartedAt);
     if (resp && resp.ok && resp.json && typeof resp.json === 'object' && !Array.isArray(resp.json)) {
@@ -32946,7 +33031,9 @@ async function runIngredientResearchSync({
     const shouldRetry = reasonCode === 'gemini_network' && attempt === 0;
     if (!shouldRetry) break;
   }
-  const afterCircuitState = updateIngredientProviderCircuit({ outcome: 'error' });
+  const normalizedFinalErrorCode = String(finalErrorCode || '').trim().toLowerCase();
+  const isTimeoutError = normalizedFinalErrorCode.includes('timeout');
+  const afterCircuitState = updateIngredientProviderCircuit({ outcome: isTimeoutError ? 'timeout' : 'error' });
   recordAuroraIngredientProviderMetric({
     stage: 'final',
     provider,

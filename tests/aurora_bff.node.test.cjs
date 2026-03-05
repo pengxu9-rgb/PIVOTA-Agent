@@ -4047,7 +4047,7 @@ test('ingredient research: request uses no ingredient-specific timeout', async (
           query: 'octocrylene',
         });
         assert.equal(payload.research_status, 'ready');
-        assert.equal(seenTimeout, 4000);
+        assert.equal(seenTimeout, 8000);
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];
@@ -4146,6 +4146,60 @@ test('ingredient report hybrid: timeout fallback still returns pending personali
         );
         assert.equal(Array.isArray(payload.benefits), true);
         assert.equal(payload.benefits.length > 0, true);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('ingredient provider circuit: repeated timeout outcomes eventually open circuit with hybrid timeout policy', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_INGREDIENT_CIRCUIT_TIMEOUT_STREAK_THRESHOLD: '2',
+      AURORA_INGREDIENT_CIRCUIT_TIMEOUT_MIN_SAMPLES: '100',
+      AURORA_INGREDIENT_CIRCUIT_TIMEOUT_RATIO_THRESHOLD_PCT: '100',
+      AURORA_INGREDIENT_CIRCUIT_OPEN_MS: '60000',
+    },
+    async () => {
+      const { moduleId, __internal } = loadRouteInternals();
+      let geminiCalls = 0;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return {
+            ok: false,
+            reason: 'GEMINI_JSON_TIMEOUT',
+            detail: 'timed out after 9000ms',
+          };
+        });
+
+        const payload1 = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: `timeout_circuit_probe_${Date.now()}_1`,
+        });
+        const payload2 = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: `timeout_circuit_probe_${Date.now()}_2`,
+        });
+        const payload3 = await __internal.buildIngredientReportPayloadWithResearch({
+          language: 'EN',
+          query: `timeout_circuit_probe_${Date.now()}_3`,
+        });
+
+        assert.equal(payload1.research_error_code, 'gemini_timeout');
+        assert.equal(payload2.research_error_code, 'gemini_timeout');
+        assert.equal(payload3.research_error_code, 'circuit_open');
+        assert.equal(geminiCalls, 2);
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];

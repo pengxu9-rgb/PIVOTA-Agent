@@ -1,5 +1,6 @@
 const { GoogleGenAI } = require('@google/genai');
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
+const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 
 function toInt(value, fallback, min, max) {
   const n = Number(value);
@@ -10,26 +11,6 @@ function toInt(value, fallback, min, max) {
 function normalizeModel(raw) {
   const s = String(raw || '').trim();
   return s || 'gemini-2.0-flash';
-}
-
-function withTimeout(promise, timeoutMs) {
-  const safeMs = Math.max(500, Number(timeoutMs) || 5000);
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      const err = new Error(`gemini prelabel timeout after ${safeMs}ms`);
-      err.code = 'PRELABEL_TIMEOUT';
-      reject(err);
-    }, safeMs);
-    Promise.resolve(promise)
-      .then((value) => {
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-  });
 }
 
 function stringifyObject(value) {
@@ -85,63 +66,31 @@ function sleep(ms) {
 function isRetryable(err) {
   const text = String(err?.message || err || '').toLowerCase();
   if (!text) return false;
-  return text.includes('timeout') || text.includes('429') || text.includes('503') || text.includes('rate');
+  return (
+    text.includes('timeout') ||
+    text.includes('aborted') ||
+    text.includes('abort') ||
+    text.includes('429') ||
+    text.includes('503') ||
+    text.includes('rate')
+  );
 }
 
-function createSemaphore(limit) {
-  const max = Math.max(1, Number(limit) || 1);
-  let inUse = 0;
-  const queue = [];
-
-  async function acquire() {
-    if (inUse < max) {
-      inUse += 1;
-      return () => {
-        inUse = Math.max(0, inUse - 1);
-        const next = queue.shift();
-        if (next) next();
-      };
-    }
-    return new Promise((resolve) => {
-      queue.push(() => {
-        inUse += 1;
-        resolve(() => {
-          inUse = Math.max(0, inUse - 1);
-          const next = queue.shift();
-          if (next) next();
-        });
-      });
-    });
-  }
-
-  return { acquire };
+function isTimeoutLike(err) {
+  if (!err) return false;
+  const code = String(err.code || '').toLowerCase();
+  const name = String(err.name || '').toLowerCase();
+  const text = String(err.message || '').toLowerCase();
+  return (
+    name === 'aborterror' ||
+    code.includes('timeout') ||
+    code.includes('abort') ||
+    text.includes('timeout') ||
+    text.includes('timed out') ||
+    text.includes('deadline') ||
+    text.includes('aborted')
+  );
 }
-
-function createTokenBucket(ratePerMin) {
-  const rate = Math.max(1, Number(ratePerMin) || 120);
-  let tokens = rate;
-  let lastTs = Date.now();
-
-  function take() {
-    const now = Date.now();
-    const elapsed = Math.max(0, now - lastTs);
-    const refill = (elapsed * rate) / 60000;
-    tokens = Math.min(rate, tokens + refill);
-    lastTs = now;
-    if (tokens < 1) return false;
-    tokens -= 1;
-    return true;
-  }
-
-  return { take };
-}
-
-const prelabelSemaphore = createSemaphore(
-  toInt(process.env.AURORA_BFF_RECO_PRELABEL_CONCURRENCY, 8, 1, 64),
-);
-const prelabelRateBucket = createTokenBucket(
-  toInt(process.env.AURORA_BFF_RECO_PRELABEL_RATE_PER_MIN, 120, 1, 5000),
-);
 
 async function callGeminiPrelabel({
   systemPrompt,
@@ -156,13 +105,9 @@ async function callGeminiPrelabel({
     err.code = 'MISSING_GEMINI_KEY';
     throw err;
   }
-  if (!prelabelRateBucket.take()) {
-    const err = new Error('PRELABEL_RATE_LIMITED');
-    err.code = 'PRELABEL_RATE_LIMITED';
-    throw err;
-  }
-  const release = await prelabelSemaphore.acquire();
+  const gate = getGeminiGlobalGate();
   const startedAt = Date.now();
+  const resolvedTimeoutMs = Number.isFinite(Number(timeoutMs)) ? Math.max(500, Math.trunc(Number(timeoutMs))) : 5000;
   try {
     const ai = new GoogleGenAI({ apiKey });
     const request = {
@@ -179,6 +124,7 @@ async function callGeminiPrelabel({
       config: {
         temperature: 0,
         responseMimeType: 'application/json',
+        httpOptions: { timeout: resolvedTimeoutMs },
       },
     };
 
@@ -186,7 +132,7 @@ async function callGeminiPrelabel({
     let lastErr = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
-        const resp = await withTimeout(ai.models.generateContent(request), timeoutMs);
+        const resp = await gate.withGate('reco_prelabel', () => ai.models.generateContent(request));
         const text = await extractTextFromGeminiResponse(resp);
         return {
           ok: true,
@@ -196,6 +142,9 @@ async function callGeminiPrelabel({
           model_name: normalizeModel(model),
         };
       } catch (err) {
+        if (isTimeoutLike(err) && !err.code) {
+          err.code = 'PRELABEL_TIMEOUT';
+        }
         lastErr = err;
         if (attempt >= maxAttempts - 1 || !isRetryable(err)) break;
         await sleep(220 * (2 ** attempt));
@@ -211,8 +160,6 @@ async function callGeminiPrelabel({
       'aurora bff: prelabel gemini call failed',
     );
     throw err;
-  } finally {
-    release();
   }
 }
 
@@ -220,6 +167,5 @@ module.exports = {
   callGeminiPrelabel,
   __internal: {
     extractTextFromGeminiResponse,
-    withTimeout,
   },
 };

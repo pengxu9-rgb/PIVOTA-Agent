@@ -148,6 +148,7 @@ try {
 }
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
+const { getGeminiGlobalGate } = require('./lib/geminiGlobalGate');
 const {
   resolveProductRef,
   _internals: productGroundingResolverInternals = {},
@@ -9728,6 +9729,32 @@ app.get('/version', (req, res) => {
     deployment_id: SERVICE_DEPLOYMENT_ID || null,
     started_at: SERVICE_STARTED_AT,
   });
+});
+
+
+app.get('/healthz/gemini', (req, res) => {
+  try {
+    const gate = getGeminiGlobalGate();
+    const snap = gate.snapshot();
+    const reasons = [];
+    if (Number(snap.gate.keyCount || 0) <= 0) reasons.push('missing_keys');
+    if (snap.gate.circuitOpen) reasons.push('circuit_open');
+    const ready = reasons.length === 0;
+    return res.json({
+      ok: ready,
+      ready,
+      reasons,
+      circuit_open: snap.gate.circuitOpen,
+      concurrency_max: snap.gate.concurrencyMax,
+      rate_per_min: snap.gate.ratePerMin,
+      key_count: snap.gate.keyCount,
+      metrics: snap.metrics,
+      circuit: snap._debug.circuit,
+      semaphore: snap._debug.semaphore,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 app.get('/healthz/db', async (req, res) => {
@@ -19786,6 +19813,22 @@ if (require.main === module) {
         `Pivota Agent gateway listening on http://localhost:${PORT}, proxying to ${PIVOTA_API_BASE}`,
       );
 
+
+      // Gemini gate startup check
+      try {
+        const gate = getGeminiGlobalGate();
+        const snap = gate.snapshot();
+        if (snap.gate.keyCount === 0) {
+          logger.error({ gate: snap.gate }, 'STARTUP: No Gemini API keys found in env. All LLM calls will fail.');
+        } else {
+          logger.info(
+            { keyCount: snap.gate.keyCount, concurrencyMax: snap.gate.concurrencyMax, ratePerMin: snap.gate.ratePerMin },
+            'Gemini global gate initialized',
+          );
+        }
+      } catch (err) {
+        logger.warn({ err: err.message }, 'Failed to initialize Gemini global gate on startup');
+      }
       const autoSyncIntervalConfig = getCreatorCatalogAutoSyncIntervalConfig();
       const intervalMin = autoSyncIntervalConfig.intervalMinutes;
       const initialDelayMs = Math.max(

@@ -12,6 +12,7 @@ const {
   buildSkinReportPromptBundle,
 } = require('./skinLlmPrompts');
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
+const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 
 const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 
@@ -40,22 +41,6 @@ function getGeminiClient() {
     geminiInitFailed = true;
     return null;
   }
-}
-
-function withTimeout(promise, timeoutMs) {
-  let timer = null;
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        const err = new Error(`GEMINI_TIMEOUT_${timeoutMs}`);
-        err.code = 'GEMINI_TIMEOUT';
-        reject(err);
-      }, timeoutMs);
-    }),
-  ]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
 }
 
 async function extractTextFromGeminiResponse(response) {
@@ -95,10 +80,19 @@ function unwrapCodeFence(raw) {
 function classifyGeminiError(err) {
   if (!err) return { reason: 'UNKNOWN', upstream_status_code: null };
   const code = String(err.code || '').trim().toUpperCase();
+  const name = String(err.name || '').trim().toUpperCase();
   const status = Number.isFinite(Number(err.status)) ? Math.trunc(Number(err.status)) : null;
   const message = String(err.message || '').toLowerCase();
 
-  if (code === 'GEMINI_TIMEOUT' || message.includes('timeout') || message.includes('deadline exceeded')) {
+  if (
+    code === 'GEMINI_TIMEOUT' ||
+    code.includes('TIMEOUT') ||
+    code.includes('ABORT') ||
+    name === 'ABORTERROR' ||
+    message.includes('timeout') ||
+    message.includes('deadline exceeded') ||
+    message.includes('aborted')
+  ) {
     return { reason: 'TIMEOUT', upstream_status_code: null };
   }
   if (status === 429 || message.includes('rate limit') || message.includes('resource exhausted')) {
@@ -172,6 +166,9 @@ async function callGeminiJson({
   }
 
   const startedAt = Date.now();
+  const resolvedTimeoutMs = Number.isFinite(Number(timeoutMs))
+    ? Math.max(1, Math.trunc(Number(timeoutMs)))
+    : SKIN_LLM_TIMEOUT_MS;
   const request = {
     model: SKIN_MODEL_GEMINI,
     systemInstruction: {
@@ -202,11 +199,14 @@ async function callGeminiJson({
       topP: 0.8,
       candidateCount: 1,
       maxOutputTokens: 700,
+      httpOptions: { timeout: resolvedTimeoutMs },
     },
   };
 
   try {
-    const invoke = () => withTimeout(client.models.generateContent(request), timeoutMs || SKIN_LLM_TIMEOUT_MS);
+    const gate = getGeminiGlobalGate();
+    const gateRoute = kind || 'skin_vision';
+    const invoke = () => gate.withGate(gateRoute, () => client.models.generateContent(request));
     const resp =
       profiler && typeof profiler.timeLlmCall === 'function'
         ? await profiler.timeLlmCall({ provider: 'gemini', model: SKIN_MODEL_GEMINI, kind }, invoke)
@@ -223,6 +223,16 @@ async function callGeminiJson({
       latency_ms: Date.now() - startedAt,
     };
   } catch (err) {
+    if (err && err.name === 'GeminiGateError') {
+      return {
+        ok: false,
+        reason: String(err.code || 'GATE_ERROR'),
+        upstream_status_code: null,
+        response_text: '',
+        parsed: null,
+        latency_ms: Date.now() - startedAt,
+      };
+    }
     const classified = classifyGeminiError(err);
     return {
       ok: false,
