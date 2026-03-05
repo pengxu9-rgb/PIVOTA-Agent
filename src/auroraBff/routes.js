@@ -5013,7 +5013,14 @@ function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}
   };
 }
 
-async function resolveCatalogProductForProductInput({ inputText, inputUrl, parsedProduct, lang = 'EN', logger } = {}) {
+async function resolveCatalogProductForProductInput({
+  inputText,
+  inputUrl,
+  parsedProduct,
+  lang = 'EN',
+  logger,
+  strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+} = {}) {
   if (!PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED) {
     return {
       ok: false,
@@ -5056,7 +5063,7 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
     const resolvedHasProduct = Boolean(resolved && resolved.ok && resolved.product);
     const guard = resolvedHasProduct
       ? evaluateAnchorProductSkincareGuard(resolved.product, {
-        strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+        strictFilter,
       })
       : null;
     const accepted = Boolean(resolvedHasProduct && guard && guard.ok);
@@ -5102,7 +5109,7 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
         if (!candidate || typeof candidate !== 'object') continue;
         if (!String(candidate.product_id || '').trim()) continue;
         const guard = evaluateAnchorProductSkincareGuard(candidate, {
-          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+          strictFilter,
         });
         if (guard.ok) {
           first = candidate;
@@ -7077,9 +7084,20 @@ function buildInciStatus({ gapCodes = [], consensusResult = null, sources = [] }
 
 function normalizeInciIngredientName(raw) {
   const source = String(raw || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\[\s*more\s*\]\s*/gi, ' ')
+    .replace(/\(\s*more\s*\)\s*/gi, ' ')
+    .replace(/^(?:show|read|view|see)\s+more\s*[:\-]?\s*/i, '')
+    .replace(/\b(?:show|read|view|see)\s+more\b/gi, ' ')
+    .replace(/^(?:full|inactive|active|key|main|other)\s+ingredients?\s*[:：\-]?\s*/i, '')
+    .replace(/^ingredients?\s*[:：\-]?\s*/i, '')
+    .replace(/^[-•·\s]+/, '')
+    .replace(/\s*[•·]\s*/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (!source) return '';
+  if (/^(?:full|inactive|active|key|main|other)\s+ingredients?$/i.test(source)) return '';
+  if (/^ingredients?$/i.test(source)) return '';
   return source
     .split(/\s+/)
     .map((token) => {
@@ -37146,19 +37164,38 @@ function isDiagnosticAssessmentReasonLine(input) {
   const text = String(input || '').trim();
   if (!text) return false;
   if (/^(?:next step|下一步)\s*[:：]/i.test(text)) return true;
-  return /(official[-\s]?page|官方页面|公开可访问|publicly accessible|cloudflare|access denied|site policy \(403\)|degraded analysis path|降级路径|paste (?:the )?full inci|upload package inci|粘贴完整 inci|贴包装 inci|share an accessible official page|upstream did not return evidence details|upstream did not return usable reasoning)/i
+  return /(official[-\s]?page|官方页面|公开可访问|publicly accessible|cloudflare|access denied|site policy \(403\)|degraded analysis path|降级路径|paste (?:the )?full inci|upload package inci|粘贴完整 inci|贴包装 inci|share an accessible official page|upstream did not return evidence details|upstream did not return usable reasoning|detected key ingredients|识别到的关键成分|^i extracted the inci list directly from the product page|^已从产品页解析到 inci)/i
     .test(text);
+}
+
+function sanitizeAssessmentReasonsForPublic(input, { lang = 'EN', min = 0, max = 8, fallbacks = [] } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const normalizeLines = (lines) => uniqCaseInsensitiveStrings(
+    asStringArray(lines)
+      .map((line) => String(line || '').trim())
+      .filter(Boolean)
+      .filter((line) => !isDiagnosticAssessmentReasonLine(line))
+      .filter((line) => !/^how to use[:：]/i.test(String(line || '').trim())),
+    Math.max(max + 4, 12),
+  ).slice(0, max);
+
+  const cleaned = normalizeLines(input);
+  if (cleaned.length >= min) return cleaned;
+
+  const fromFallbacks = normalizeLines(fallbacks);
+  const merged = uniqCaseInsensitiveStrings([...cleaned, ...fromFallbacks], max).slice(0, max);
+  if (merged.length >= min) return merged;
+  if (min <= 0) return merged;
+
+  const genericFallback = isCn
+    ? '当前结论基于已清洗证据，请结合成分与风险模块查看细节。'
+    : 'Reasoning was compacted to user-facing evidence; see ingredients and watchouts for details.';
+  return uniqCaseInsensitiveStrings([...merged, genericFallback], max).slice(0, max);
 }
 
 function sanitizeUnknownVerdictReasonsForPublic(input, { lang = 'EN', min = 2, max = 8 } = {}) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
-  const cleaned = uniqCaseInsensitiveStrings(
-    asStringArray(input)
-      .map((line) => String(line || '').trim())
-      .filter(Boolean)
-      .filter((line) => !isDiagnosticAssessmentReasonLine(line)),
-    Math.max(max + 4, 12),
-  ).slice(0, max);
+  const cleaned = sanitizeAssessmentReasonsForPublic(input, { lang, min: 0, max });
   if (cleaned.length >= min) return cleaned;
   const fallback = isCn
     ? [
@@ -37206,6 +37243,18 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
   });
   if (nextAssessment && summaryCandidate && String(nextAssessment.summary || '').trim() !== summaryCandidate) {
     nextAssessment.summary = summaryCandidate;
+  }
+  if (nextAssessment) {
+    nextAssessment.reasons = sanitizeAssessmentReasonsForPublic(nextAssessment.reasons, {
+      lang,
+      min: 0,
+      max: 8,
+      fallbacks: [
+        summaryCandidate,
+        ...asStringArray(nextAssessment.top_takeaways ?? nextAssessment.topTakeaways, 4),
+        ...asStringArray(nextAssessment.formula_intent ?? nextAssessment.formulaIntent, 4),
+      ],
+    });
   }
 
   const verdictToken = String(nextAssessment?.verdict || '').trim().toLowerCase();
@@ -37423,7 +37472,20 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
           ...assessment,
           ...(banner ? { data_quality_banner: banner } : {}),
         });
-        sanitizedPayload.assessment = nextAssessment;
+        const publicReasons = sanitizeAssessmentReasonsForPublic(nextAssessment?.reasons, {
+          lang,
+          min: 0,
+          max: 8,
+          fallbacks: [
+            pickFirstTrimmed(nextAssessment?.summary, nextAssessment?.quick_summary, nextAssessment?.quickSummary),
+            ...asStringArray(nextAssessment?.top_takeaways ?? nextAssessment?.topTakeaways, 4),
+            ...asStringArray(nextAssessment?.formula_intent ?? nextAssessment?.formulaIntent, 4),
+          ],
+        });
+        sanitizedPayload.assessment = {
+          ...nextAssessment,
+          reasons: publicReasons,
+        };
       }
 
       const nextEvidence = isPlainObject(sanitizedPayload.evidence) ? sanitizedPayload.evidence : null;
@@ -37461,6 +37523,80 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
           })
           .filter((item) => item && item.function && item.ingredients.length);
         sanitizedPayload.evidence = { ...evidenceForKif, key_ingredients_by_function: validatedKif };
+      }
+
+      const ingredientIntel = isPlainObject(sanitizedPayload.ingredient_intel) ? sanitizedPayload.ingredient_intel : null;
+      if (ingredientIntel) {
+        const rawInciNormalized = Array.isArray(ingredientIntel.inci_normalized) ? ingredientIntel.inci_normalized : [];
+        const normalizedRows = rawInciNormalized
+          .map((item) => {
+            if (isPlainObject(item)) {
+              const inci = normalizeInciIngredientName(pickFirstTrimmed(item.inci, item.name, item.value));
+              if (!inci || isLikelyInvalidInciToken(inci)) return null;
+              return { ...item, inci };
+            }
+            const inci = normalizeInciIngredientName(item);
+            if (!inci || isLikelyInvalidInciToken(inci)) return null;
+            return inci;
+          })
+          .filter(Boolean);
+        const normalizedActives = (Array.isArray(ingredientIntel.actives) ? ingredientIntel.actives : [])
+          .map((item) => {
+            const row = isPlainObject(item) ? item : null;
+            if (!row) return null;
+            const name = normalizeInciIngredientName(row.name);
+            if (!name || isLikelyInvalidInciToken(name)) return null;
+            return { ...row, name };
+          })
+          .filter(Boolean);
+        const canonicalInci = canonicalizeIngredientCandidates(
+          [
+            ...splitInciList(ingredientIntel.inci_raw),
+            ...normalizedRows.map((item) => (isPlainObject(item) ? item.inci : item)),
+            ...normalizedActives.map((item) => item.name),
+          ],
+          { max: 120 },
+        );
+        const hasObjectInciRows = normalizedRows.some((item) => isPlainObject(item));
+        const normalizedObjectsByKey = new Map(
+          normalizedRows
+            .map((item) => (isPlainObject(item) ? item : null))
+            .filter(Boolean)
+            .map((item) => [String(item.inci || '').trim().toLowerCase(), item]),
+        );
+        const nextInciNormalized = hasObjectInciRows
+          ? canonicalInci.map((inci) => {
+            const key = String(inci || '').trim().toLowerCase();
+            const existing = normalizedObjectsByKey.get(key);
+            return existing || {
+              inci,
+              functions: [],
+              risks: [],
+              suitability_tags: [],
+            };
+          })
+          : canonicalInci;
+        sanitizedPayload.ingredient_intel = {
+          ...ingredientIntel,
+          ...(canonicalInci.length ? { inci_raw: canonicalInci.join(', ') } : {}),
+          inci_normalized: nextInciNormalized,
+          actives: normalizedActives,
+        };
+      }
+
+      for (const blockName of ['competitors', 'dupes', 'related_products']) {
+        const block = isPlainObject(sanitizedPayload[blockName]) ? sanitizedPayload[blockName] : null;
+        if (!block) continue;
+        const rawCandidates = Array.isArray(block.candidates) ? block.candidates : [];
+        const sanitizedCandidates = sanitizeCompetitorCandidates(rawCandidates, 10, {
+          pool: blockName,
+          enforce_skincare: true,
+          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+        });
+        sanitizedPayload[blockName] = {
+          ...block,
+          candidates: sanitizedCandidates,
+        };
       }
     }
     return {
@@ -38583,6 +38719,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         candidate_quality: 'none',
         url_consistency: null,
       };
+      // Parse output is often reused as downstream analyze anchor input. Keep this path strict to
+      // avoid non-skincare catalog items (for example tools/brushes) being treated as trusted anchors.
+      const parseAnchorStrictFilter = true;
       const applyParseAnchorTrust = ({ source = 'parse_candidate' } = {}) => {
         const candidate = payload && payload.product && typeof payload.product === 'object' ? payload.product : null;
         parseAnchorTrust = evaluateAnchorTrustForProductIntel({
@@ -38590,17 +38729,24 @@ function mountAuroraBffRoutes(app, { logger }) {
           inputText: parseInputText,
           inputUrl: parseInputUrl,
           source,
-          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+          strictFilter: parseAnchorStrictFilter,
         });
         const trustCodes = Array.isArray(parseAnchorTrust.reason_codes) ? parseAnchorTrust.reason_codes : [];
-        const nonSkincareSoftBlocked = !AURORA_RULE_RELAX_AGGRESSIVE && trustCodes.includes('anchor_soft_blocked_non_skincare');
+        const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
         const existingMissing = Array.isArray(payload.missing_info) ? payload.missing_info : [];
+        const retainedMissing = existingMissing.filter((code) => {
+          const token = String(code || '').trim().toLowerCase();
+          if (!token) return false;
+          if (token === 'anchor_id_not_used_due_to_low_trust') return false;
+          if (token.startsWith('anchor_soft_blocked_')) return false;
+          return true;
+        });
         payload = {
           ...payload,
           product: nonSkincareSoftBlocked ? null : parseAnchorTrust.display_anchor || null,
           missing_info: uniqCaseInsensitiveStrings(
             [
-              ...existingMissing,
+              ...retainedMissing,
               ...trustCodes,
               ...((!nonSkincareSoftBlocked && parseAnchorTrust.display_anchor) && !parseAnchorTrust.usable_for_anchor_id
                 ? ['anchor_id_not_used_due_to_low_trust']
@@ -38621,7 +38767,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               : {}),
           },
         };
-        if (!AURORA_RULE_RELAX_AGGRESSIVE && trustCodes.includes('anchor_soft_blocked_non_skincare')) {
+        if (trustCodes.includes('anchor_soft_blocked_non_skincare')) {
           fieldMissing = fieldMissing.filter((item) => String(item && item.field ? item.field : '').trim() !== 'product');
           fieldMissing.push({ field: 'product', reason: 'non_skincare_filtered_anchor_soft_blocked_non_skincare' });
           recoveryPath.push(`${source}_anchor_soft_blocked_non_skincare`);
@@ -38680,6 +38826,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           parsedProduct: null,
           lang: ctx.lang,
           logger,
+          strictFilter: parseAnchorStrictFilter,
         });
         const fallbackReasonCode = mapCatalogParseMissingReason(catalogFallback && catalogFallback.reason);
         const catalogRecoveryToken = (() => {
@@ -38723,8 +38870,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               ].filter(Boolean)),
             ),
           };
-        }
       }
+    }
       if (!payload?.anchor_trust) {
         applyParseAnchorTrust({ source: parseSource || 'parse_candidate' });
       }

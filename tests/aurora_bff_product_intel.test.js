@@ -2069,6 +2069,119 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.recovery_path).toContain('heuristic_url');
   });
 
+  test('/v1/product/parse clears stale ambiguous trust code after catalog fallback upgrades anchor trust', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product_parse',
+        structured: {
+          parse: {
+            product: {
+              brand: 'CeraVe',
+              name: 'Moisturizing Cream',
+              display_name: 'CeraVe Moisturizing Cream',
+              category: 'product',
+            },
+            confidence: 0.62,
+            missing_info: [],
+          },
+        },
+      });
+
+    nock('http://catalog.test')
+      .persist()
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: 'p_cerave_1', merchant_id: 'm_catalog_1' },
+        candidates: [
+          {
+            product_id: 'p_cerave_1',
+            sku_id: 'sku_cerave_1',
+            merchant_id: 'm_catalog_1',
+            brand: 'CeraVe',
+            name: 'Moisturizing Cream',
+            display_name: 'CeraVe Moisturizing Cream',
+            category: 'skincare',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_trust_recalc_1')
+      .send({ text: 'CeraVe Moisturizing Cream' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeTruthy();
+    expect(card.payload.product.product_id).toBe('p_cerave_1');
+    expect(card.payload.anchor_trust).toEqual(
+      expect.objectContaining({
+        level: 'trusted',
+        usable_for_anchor_id: true,
+      }),
+    );
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('catalog_fallback_used');
+    expect(card.payload.missing_info).not.toContain('anchor_soft_blocked_ambiguous');
+  });
+
+  test('/v1/product/parse enforces non-skincare block even when global strict filter is disabled', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product_parse',
+        structured: {
+          parse: {
+            product: {
+              product_id: 'sku_brush_force_block_1',
+              brand: 'Lab Series',
+              name: 'Foundation Brush',
+              display_name: 'Lab Series Foundation Brush',
+              category: 'makeup brush',
+            },
+            confidence: 0.74,
+            missing_info: [],
+          },
+        },
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_force_non_skincare_block_1')
+      .send({ text: 'Lab Series Foundation Brush' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(card.payload.anchor_trust).toEqual(
+      expect.objectContaining({
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+      }),
+    );
+    expect(card.payload.anchor_trust.reasons || []).toContain('anchor_soft_blocked_non_skincare');
+    expect(card.payload.missing_info || []).toContain('anchor_soft_blocked_non_skincare');
+  });
+
   test('evaluateAnchorTrustForProductIntel never reports trusted when soft-block reasons exist', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const trust = __internal.evaluateAnchorTrustForProductIntel({
@@ -3707,6 +3820,112 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(inciRaw).not.toMatch(/\[more\]/i);
     expect(inciNames).toContain('Ceramide AP');
     expect(inciNames.some((name) => /\[more\]/i.test(name))).toBe(false);
+  });
+
+  test('enforceUnknownVerdictQuality strips diagnostic/template reason lines for non-unknown verdicts', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.enforceUnknownVerdictQuality(
+      {
+        assessment: {
+          verdict: 'Caution',
+          summary: 'Contains retinoid-like ingredients with irritation risk.',
+          reasons: [
+            'Official-page INCI extraction was blocked; INCIDecoder was used as a supplemental source.',
+            'Detected key ingredients: Key Ingredients, Niacinamide.',
+            'Contains retinoid-like ingredients with higher irritation/dryness risk early on.',
+          ],
+        },
+        evidence: {
+          science: {
+            key_ingredients: ['Niacinamide', 'Retinol'],
+            mechanisms: ['Barrier support'],
+            fit_notes: [],
+            risk_notes: ['Contains retinoid-like ingredients with higher irritation/dryness risk early on.'],
+          },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          missing_info: [],
+        },
+        missing_info: ['version_verification_needed'],
+      },
+      { lang: 'EN' },
+    );
+
+    const reasons = Array.isArray(out?.assessment?.reasons) ? out.assessment.reasons : [];
+    const reasonsText = reasons.join(' ');
+    expect(reasonsText).not.toMatch(/Official-page INCI extraction was blocked/i);
+    expect(reasonsText).not.toMatch(/Detected key ingredients/i);
+    expect(reasons.length).toBeGreaterThan(0);
+  });
+
+  test('applyUnknownVerdictQualityGateToEnvelope sanitizes ingredient_intel and related generic candidates', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.applyUnknownVerdictQualityGateToEnvelope(
+      {
+        cards: [
+          {
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Likely Suitable',
+                summary: 'Hydration support observed.',
+                reasons: [
+                  'Detected key ingredients: [more] Ceramide AP, Glycerin.',
+                  'Hydration support observed.',
+                ],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['[more] Ceramide AP', 'Key Ingredients', 'Glycerin'],
+                  mechanisms: ['Hydration support'],
+                  fit_notes: [],
+                  risk_notes: [],
+                },
+                social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                expert_notes: [],
+                missing_info: [],
+              },
+              ingredient_intel: {
+                inci_raw: '[more] Ceramide AP, Key Ingredients, Glycerin',
+                inci_normalized: ['[more] Ceramide AP', 'Key Ingredients', 'Glycerin'],
+                actives: [{ name: '[more] Ceramide AP', rationale: 'Barrier support' }],
+              },
+              related_products: {
+                candidates: [
+                  { name: 'Moisturizer' },
+                  { name: 'SPF 50' },
+                  { name: 'Daily UV Shield SPF 50', brand: 'BrandX', category: 'skincare' },
+                ],
+              },
+              competitors: { candidates: [] },
+              dupes: { candidates: [] },
+              missing_info: [],
+            },
+          },
+        ],
+      },
+      { lang: 'EN' },
+    );
+
+    const card = Array.isArray(out?.cards) ? out.cards.find((item) => item?.type === 'product_analysis') : null;
+    const payload = card?.payload || {};
+    const reasonsText = Array.isArray(payload?.assessment?.reasons) ? payload.assessment.reasons.join(' ') : '';
+    expect(reasonsText).not.toMatch(/Detected key ingredients/i);
+
+    const ingredientIntel = payload?.ingredient_intel || {};
+    const inciRaw = String(ingredientIntel.inci_raw || '');
+    const inciRows = Array.isArray(ingredientIntel.inci_normalized) ? ingredientIntel.inci_normalized : [];
+    const inciNames = inciRows.map((item) => (typeof item === 'string' ? item : String(item?.inci || ''))).filter(Boolean);
+    expect(inciRaw).not.toMatch(/\[more\]/i);
+    expect(inciRaw).not.toMatch(/key ingredients/i);
+    expect(inciNames).toContain('Ceramide AP');
+    expect(inciNames.some((name) => /\[more\]/i.test(name))).toBe(false);
+    expect(inciNames.some((name) => /key ingredients/i.test(name))).toBe(false);
+
+    const relatedNames = (payload?.related_products?.candidates || []).map((row) => String(row?.name || ''));
+    expect(relatedNames).toContain('Daily UV Shield SPF 50');
+    expect(relatedNames).not.toContain('Moisturizer');
+    expect(relatedNames).not.toContain('SPF 50');
   });
 
   test('shouldPersistProductIntelKb blocks KB write when INCIDecoder is the only evidence source', () => {
