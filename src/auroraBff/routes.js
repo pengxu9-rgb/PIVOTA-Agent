@@ -208,6 +208,8 @@ const {
   assertRequiredRouteContracts,
 } = require('./requiredRouteContracts');
 const { mountTravelPlansRoutes } = require('./routes/travelPlansRoutes');
+const { mountRoutineRoutes } = require('./routes/routineRoutes');
+const { mountBrandSearchRoutes } = require('./routes/brandSearchRoutes');
 const { mountActivityRoutes } = require('./routes/activityRoutes');
 const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const {
@@ -45144,6 +45146,32 @@ function mountAuroraBffRoutes(app, { logger }) {
     resolveIdentity,
     classifyStorageError,
     appendActivityEventForIdentity,
+  });
+
+  mountRoutineRoutes(app, {
+    logger,
+    requireAuroraUid,
+    resolveIdentity,
+    classifyStorageError,
+  });
+
+  mountBrandSearchRoutes(app, {
+    logger,
+    requireAuroraUid,
+    resolveIdentity,
+    catalogSearch: async ({ query, limit }) => {
+      const result = await searchPivotaBackendProducts({
+        query,
+        limit: Math.max(1, Math.min(50, Number(limit) || 20)),
+        logger,
+        mode: 'main_path',
+        searchAllMerchants: true,
+        fastMode: true,
+      });
+      return {
+        products: Array.isArray(result?.products) ? result.products : [],
+      };
+    },
   });
 
   mountActivityRoutes(app, {

@@ -332,6 +332,7 @@ const TrackerLogSchema = z
     notes: z.string().max(4000).optional(),
     targetProduct: z.string().max(500).optional(),
     sensation: z.string().max(500).optional(),
+    routine_id: z.string().max(120).optional(),
   })
   .strict();
 

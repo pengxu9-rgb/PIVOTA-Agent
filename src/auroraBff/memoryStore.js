@@ -398,6 +398,7 @@ function mapProfileFromDb(row) {
     region: row.region || null,
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
+    active_routine_id: row.active_routine_id || null,
     itinerary: row.itinerary || null,
     travel_plan:
       row.travel_plan && typeof row.travel_plan === 'object' && !Array.isArray(row.travel_plan)
@@ -440,6 +441,7 @@ function mapAccountProfileFromDb(row) {
     region: row.region || null,
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
+    active_routine_id: row.active_routine_id || null,
     itinerary: row.itinerary || null,
     travel_plan:
       row.travel_plan && typeof row.travel_plan === 'object' && !Array.isArray(row.travel_plan)
@@ -842,6 +844,7 @@ function mapSkinLogFromDb(row) {
     notes: row.notes || null,
     targetProduct: row.target_product || null,
     sensation: row.sensation || null,
+    routine_id: row.routine_id || null,
     updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
     created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
   };
@@ -860,6 +863,7 @@ function mapAccountSkinLogFromDb(row) {
     notes: row.notes || null,
     targetProduct: row.target_product || null,
     sensation: row.sensation || null,
+    routine_id: row.routine_id || null,
     updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
     created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
   };
@@ -911,13 +915,14 @@ async function upsertSkinLog(auroraUid, log) {
   const notes = log && typeof log.notes === 'string' ? log.notes.slice(0, 4000) : null;
   const targetProduct = log && typeof log.targetProduct === 'string' ? log.targetProduct.slice(0, 500) : null;
   const sensation = log && typeof log.sensation === 'string' ? log.sensation.slice(0, 500) : null;
+  const routineId = log && typeof log.routine_id === 'string' ? log.routine_id.slice(0, 120) : null;
 
   const res = await query(
     `
       INSERT INTO aurora_skin_logs (
-        aurora_uid, log_date, redness, acne, hydration, notes, target_product, sensation, updated_at
+        aurora_uid, log_date, redness, acne, hydration, notes, target_product, sensation, routine_id, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
       ON CONFLICT (aurora_uid, log_date) DO UPDATE SET
         redness = EXCLUDED.redness,
         acne = EXCLUDED.acne,
@@ -925,10 +930,11 @@ async function upsertSkinLog(auroraUid, log) {
         notes = EXCLUDED.notes,
         target_product = EXCLUDED.target_product,
         sensation = EXCLUDED.sensation,
+        routine_id = EXCLUDED.routine_id,
         updated_at = now()
       RETURNING *
     `,
-    [uid, date, redness, acne, hydration, notes, targetProduct, sensation],
+    [uid, date, redness, acne, hydration, notes, targetProduct, sensation, routineId],
   );
 
   return mapSkinLogFromDb(res.rows && res.rows[0]);
@@ -979,13 +985,14 @@ async function upsertAccountSkinLog(userId, log) {
   const notes = log && typeof log.notes === 'string' ? log.notes.slice(0, 4000) : null;
   const targetProduct = log && typeof log.targetProduct === 'string' ? log.targetProduct.slice(0, 500) : null;
   const sensation = log && typeof log.sensation === 'string' ? log.sensation.slice(0, 500) : null;
+  const routineId = log && typeof log.routine_id === 'string' ? log.routine_id.slice(0, 120) : null;
 
   const res = await query(
     `
       INSERT INTO aurora_account_skin_logs (
-        user_id, log_date, redness, acne, hydration, notes, target_product, sensation, updated_at
+        user_id, log_date, redness, acne, hydration, notes, target_product, sensation, routine_id, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
       ON CONFLICT (user_id, log_date) DO UPDATE SET
         redness = EXCLUDED.redness,
         acne = EXCLUDED.acne,
@@ -993,10 +1000,11 @@ async function upsertAccountSkinLog(userId, log) {
         notes = EXCLUDED.notes,
         target_product = EXCLUDED.target_product,
         sensation = EXCLUDED.sensation,
+        routine_id = EXCLUDED.routine_id,
         updated_at = now()
       RETURNING *
     `,
-    [uid, date, redness, acne, hydration, notes, targetProduct, sensation],
+    [uid, date, redness, acne, hydration, notes, targetProduct, sensation, routineId],
   );
 
   return mapAccountSkinLogFromDb(res.rows && res.rows[0]);
