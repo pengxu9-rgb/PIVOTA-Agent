@@ -5037,6 +5037,27 @@ function evaluateAnchorTrustForProductIntel({
   };
 }
 
+function sanitizeAssessmentAnchorForLowTrust(payload, trustContext = null) {
+  if (!isPlainObject(payload)) return payload;
+  const usableForAnchorId = Boolean(isPlainObject(trustContext) && trustContext.usable_for_anchor_id === true);
+  if (usableForAnchorId) return payload;
+  const assessment = isPlainObject(payload.assessment) ? payload.assessment : null;
+  if (!assessment) return payload;
+  if (
+    !Object.prototype.hasOwnProperty.call(assessment, 'anchor_product') &&
+    !Object.prototype.hasOwnProperty.call(assessment, 'anchorProduct')
+  ) {
+    return payload;
+  }
+  const nextAssessment = { ...assessment };
+  delete nextAssessment.anchor_product;
+  delete nextAssessment.anchorProduct;
+  return {
+    ...payload,
+    assessment: nextAssessment,
+  };
+}
+
 function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}) {
   const normalized = normalizeRecoCatalogProduct(rawProduct);
   if (!normalized || typeof normalized !== 'object') return null;
@@ -23074,6 +23095,7 @@ async function deepScanRoutineProductCandidate({
       payload = { ...payload, assessment: { ...assessment, anchor_product: parsedProduct } };
     }
   }
+  payload = sanitizeAssessmentAnchorForLowTrust(payload, routineAnchorTrustContext);
   if (payload && typeof payload === 'object') {
     const hasDisplayAnchor = Boolean(
       parsedProduct &&
@@ -39460,7 +39482,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               : {}),
           },
         };
-        return annotateProductIntelRelaxedProvenance(withDiag, {
+        const sanitizedPayload = sanitizeAssessmentAnchorForLowTrust(withDiag, anchorTrustContext);
+        return annotateProductIntelRelaxedProvenance(sanitizedPayload, {
           quarantineReasons: kbQuarantineMeta.hit
             ? (Array.isArray(kbQuarantineMeta.reasons) && kbQuarantineMeta.reasons.length
               ? kbQuarantineMeta.reasons
@@ -51739,7 +51762,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 16,
               ),
             });
-            return {
+            const withDiag = {
               ...withGap,
               provenance: {
                 ...(isPlainObject(withGap.provenance) ? withGap.provenance : {}),
@@ -51755,6 +51778,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               },
             };
+            return sanitizeAssessmentAnchorForLowTrust(withDiag, fitCheckAnchorTrustContext);
           };
 
           // Best-effort parse to anchor_product_id to improve KB hit rate.

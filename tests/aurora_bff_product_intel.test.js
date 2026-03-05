@@ -2311,6 +2311,16 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(card.payload.assessment.verdict).toBe('Suitable');
+    expect(card.payload?.provenance?.anchor_trust).toEqual(
+      expect.objectContaining({
+        usable_for_anchor_id: true,
+      }),
+    );
+    expect(card.payload?.assessment?.anchor_product).toEqual(
+      expect.objectContaining({
+        product_id: 'p_catalog_1',
+      }),
+    );
   });
 
   test('/v1/product/analyze fast-returns clear unknown when anchor cannot be resolved and fallback is disabled', async () => {
@@ -3610,6 +3620,12 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
               assessment: {
                 verdict: 'Unknown',
                 reasons: ['Evidence is limited.'],
+                anchor_product: {
+                  product_id: '7ba1d001-df26-4768-9b8b-29f67aa49eaf',
+                  brand: 'SkinCeuticals',
+                  name: 'C E Ferulic',
+                  display_name: 'SkinCeuticals C E Ferulic',
+                },
               },
               evidence: {
                 science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
@@ -3643,6 +3659,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         usable_for_anchor_id: false,
       }),
     );
+    expect(card.payload?.assessment?.anchor_product).toBeUndefined();
+    expect(card.payload?.assessment?.anchorProduct).toBeUndefined();
   });
 
   test('deepScanRoutineProductCandidate blocks non-skincare anchor ids under routine strict guard even in aggressive telemetry mode', async () => {
@@ -3687,6 +3705,12 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
               assessment: {
                 verdict: 'Unknown',
                 reasons: ['Evidence is limited.'],
+                anchor_product: {
+                  product_id: '7ba1d001-df26-4768-9b8b-29f67aa49eaf',
+                  brand: 'SkinCeuticals',
+                  name: 'C E Ferulic',
+                  display_name: 'SkinCeuticals C E Ferulic',
+                },
               },
               evidence: {
                 science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
@@ -3734,6 +3758,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       }),
     );
     expect(result.card.payload?.missing_info || []).toEqual(expect.arrayContaining(['anchor_soft_blocked_non_skincare']));
+    expect(result.card.payload?.assessment?.anchor_product).toBeUndefined();
+    expect(result.card.payload?.assessment?.anchorProduct).toBeUndefined();
   });
 
   test('shouldServeProductIntelKbEntry quarantines low-quality stale KB payloads', () => {

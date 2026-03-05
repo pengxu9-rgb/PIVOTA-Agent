@@ -3425,6 +3425,118 @@ test('/v1/chat: fit-check fallback emits product_analysis when upstream returns 
   });
 });
 
+test('/v1/chat: fit-check fallback strips low-trust upstream anchor_product from product_analysis', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'http://aurora.test',
+      AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK: 'false',
+      AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      PIVOTA_BACKEND_BASE_URL: undefined,
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+
+      decisionModule.auroraChat = async (input) => {
+        const query = String(input && input.query ? input.query : '');
+        if (/Task:\s*Parse the user's product input/i.test(query)) {
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product_parse',
+            structured: {
+              parse: {
+                product: {
+                  product_id: 'sku_brush_fitcheck_1',
+                  brand: 'Brush Studio',
+                  name: 'Foundation Brush',
+                  display_name: 'Brush Studio Foundation Brush',
+                  category: 'makeup brush',
+                },
+                confidence: 0.71,
+                missing_info: [],
+              },
+            },
+          };
+        }
+        if (/Task:\s*Deep-scan\b/i.test(query)) {
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product_analyze',
+            structured: {
+              analyze: {
+                assessment: {
+                  verdict: 'Unknown',
+                  reasons: ['Evidence is limited.'],
+                  anchor_product: {
+                    product_id: '7ba1d001-df26-4768-9b8b-29f67aa49eaf',
+                    brand: 'SkinCeuticals',
+                    name: 'C E Ferulic',
+                    display_name: 'SkinCeuticals C E Ferulic',
+                  },
+                },
+                evidence: {
+                  science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+                  social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                  expert_notes: [],
+                  missing_info: ['evidence_missing'],
+                },
+                confidence: 0.36,
+                missing_info: ['analysis_limited'],
+              },
+            },
+          };
+        }
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'chat',
+          answer: '{}',
+          cards: [],
+        };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({
+            'X-Aurora-UID': 'test_uid_fit_check_strip_low_trust_anchor',
+            'X-Trace-ID': 'test_trace_fit_check_strip_low_trust_anchor',
+            'X-Brief-ID': 'test_brief_fit_check_strip_low_trust_anchor',
+            'X-Lang': 'CN',
+          })
+          .send({
+            message: '请诊断一下这款产品适不适合我：Brush Studio Foundation Brush',
+            session: { state: 'idle' },
+            language: 'CN',
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const productAnalysisCard = cards.find((card) => card && card.type === 'product_analysis');
+        assert.ok(productAnalysisCard);
+        assert.equal(Boolean(productAnalysisCard?.payload?.provenance?.anchor_trust?.usable_for_anchor_id), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(productAnalysisCard?.payload?.assessment || {}, 'anchor_product'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(productAnalysisCard?.payload?.assessment || {}, 'anchorProduct'), false);
+      } finally {
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[routeModuleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: recommendation parse-stub answer is rewritten to reco route contract', async () => {
   return withEnv(
     {
