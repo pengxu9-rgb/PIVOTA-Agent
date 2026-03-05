@@ -4673,7 +4673,7 @@ function extractProductCatalogQueryFromUrl(rawUrl) {
   };
 }
 
-function buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct } = {}) {
+function buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct, preferInputTextFirst = false } = {}) {
   const out = [];
   const seen = new Set();
   const add = (value, { normalize = true } = {}) => {
@@ -4686,6 +4686,12 @@ function buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct
     seen.add(key);
     out.push(s);
   };
+
+  const addInputText = () => add(inputText);
+  if (preferInputTextFirst) {
+    // Keep the user's raw input first to avoid category-only drift from broader fallbacks.
+    addInputText();
+  }
 
   const productObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
   if (productObj) {
@@ -4705,8 +4711,7 @@ function buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct
     add(fromUrl.query_token);
     add(fromUrl.host_token);
   }
-
-  add(inputText);
+  if (!preferInputTextFirst) addInputText();
 
   return out.slice(0, Math.max(1, PRODUCT_INTEL_CATALOG_FALLBACK_MAX_QUERIES));
 }
@@ -4867,6 +4872,46 @@ function tokenizeAnchorCompareText(value) {
       .filter((item) => item.length >= 2),
     32,
   );
+}
+
+function computeAnchorNameSimilarity({ inputText = '', candidate = null } = {}) {
+  const queryTokens = tokenizeAnchorCompareText(inputText);
+  const total = queryTokens.length;
+  if (!total) return { score: 0, overlap: 0, total: 0 };
+
+  const row =
+    normalizeRecoCatalogProduct(candidate) ||
+    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+  if (!row) return { score: 0, overlap: 0, total };
+
+  const candidateTokens = new Set(
+    uniqCaseInsensitiveStrings(
+      [
+        ...tokenizeAnchorCompareText(pickFirstTrimmed(row.brand, row.brand_name, row.brandName)),
+        ...tokenizeAnchorCompareText(pickFirstTrimmed(row.name, row.display_name, row.displayName, row.title)),
+        ...tokenizeAnchorCompareText(pickFirstTrimmed(row.display_name, row.displayName)),
+      ],
+      64,
+    ).map((token) => String(token || '').toLowerCase()),
+  );
+  let overlap = 0;
+  for (const token of queryTokens) {
+    if (candidateTokens.has(String(token || '').toLowerCase())) overlap += 1;
+  }
+  const score = Number(total > 0 ? (overlap / total).toFixed(4) : 0);
+  return { score, overlap, total };
+}
+
+function shouldRejectCatalogAnchorByNameSimilarity({
+  inputText = '',
+  candidate = null,
+  minScore = 0.25,
+} = {}) {
+  const similarity = computeAnchorNameSimilarity({ inputText, candidate });
+  return {
+    similarity,
+    reject: similarity.total > 1 && similarity.score < Number(minScore),
+  };
 }
 
 function extractUrlAnchorSignals(inputUrl) {
@@ -5057,6 +5102,17 @@ function sanitizeAssessmentAnchorForLowTrust(payload, trustContext = null) {
   ) {
     return payload;
   }
+  const existingAnchor = isPlainObject(assessment.anchor_product) ? assessment.anchor_product
+    : isPlainObject(assessment.anchorProduct) ? assessment.anchorProduct
+      : null;
+  if (existingAnchor && isPlainObject(existingAnchor.price)) {
+    const sanitized = { ...existingAnchor };
+    delete sanitized.product_id;
+    delete sanitized.sku_id;
+    const nextAssessment = { ...assessment, anchor_product: sanitized };
+    delete nextAssessment.anchorProduct;
+    return { ...payload, assessment: nextAssessment };
+  }
   const nextAssessment = { ...assessment };
   delete nextAssessment.anchor_product;
   delete nextAssessment.anchorProduct;
@@ -5118,7 +5174,12 @@ async function resolveCatalogProductForProductInput({
     };
   }
 
-  const queries = buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct });
+  const queries = buildProductCatalogQueryCandidates({
+    inputText,
+    inputUrl,
+    parsedProduct,
+    preferInputTextFirst: true,
+  });
   if (!queries.length) {
     return {
       ok: false,
@@ -5132,6 +5193,7 @@ async function resolveCatalogProductForProductInput({
 
   const attempts = [];
   let filteredNonSkincareCount = 0;
+  let filteredNameMismatchCount = 0;
 
   for (const query of queries) {
     const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
@@ -5142,14 +5204,25 @@ async function resolveCatalogProductForProductInput({
       })
       : null;
     const accepted = Boolean(resolvedHasProduct && guard && guard.ok);
+    const nameSimilarityDecision = accepted
+      ? shouldRejectCatalogAnchorByNameSimilarity({
+        inputText: String(inputText || ''),
+        candidate: resolved.product,
+        minScore: 0.25,
+      })
+      : null;
+    const acceptedByName = Boolean(accepted && !(nameSimilarityDecision && nameSimilarityDecision.reject));
     if (resolvedHasProduct && guard && !guard.ok) filteredNonSkincareCount += 1;
+    if (nameSimilarityDecision && nameSimilarityDecision.reject) filteredNameMismatchCount += 1;
     attempts.push({
       mode: 'resolve',
       query,
-      ok: accepted,
+      ok: acceptedByName,
       reason:
-        accepted
+        acceptedByName
           ? null
+          : nameSimilarityDecision && nameSimilarityDecision.reject
+            ? 'catalog_name_similarity_mismatch'
           : resolvedHasProduct && guard && guard.reason
             ? `catalog_${String(guard.reason).trim().toLowerCase()}`
             : resolved && resolved.resolve_reason_code
@@ -5157,9 +5230,13 @@ async function resolveCatalogProductForProductInput({
               : resolved && resolved.reason
                 ? resolved.reason
                 : null,
+      name_similarity:
+        nameSimilarityDecision && Number.isFinite(Number(nameSimilarityDecision.similarity?.score))
+          ? Number(nameSimilarityDecision.similarity.score)
+          : null,
       latency_ms: Number.isFinite(Number(resolved && resolved.latency_ms)) ? Math.trunc(Number(resolved.latency_ms)) : null,
     });
-    if (accepted) {
+    if (acceptedByName) {
       return {
         ok: true,
         reason: null,
@@ -5186,6 +5263,15 @@ async function resolveCatalogProductForProductInput({
         const guard = evaluateAnchorProductSkincareGuard(candidate, {
           strictFilter: Boolean(strictFilter),
         });
+        const nameSimilarityDecision = shouldRejectCatalogAnchorByNameSimilarity({
+          inputText: String(inputText || ''),
+          candidate,
+          minScore: 0.25,
+        });
+        if (nameSimilarityDecision.reject) {
+          filteredNameMismatchCount += 1;
+          continue;
+        }
         if (guard.ok) {
           first = candidate;
           break;
@@ -5201,6 +5287,8 @@ async function resolveCatalogProductForProductInput({
       ok: Boolean(first),
       reason: first
         ? null
+        : filteredNameMismatchCount > 0
+          ? 'catalog_name_similarity_mismatch'
         : filteredNonSkincareCount > 0
           ? 'catalog_non_skincare_match'
           : searched && searched.reason
@@ -5222,7 +5310,12 @@ async function resolveCatalogProductForProductInput({
 
   return {
     ok: false,
-    reason: filteredNonSkincareCount > 0 ? 'catalog_non_skincare_match' : 'catalog_no_match',
+    reason:
+      filteredNameMismatchCount > 0
+        ? 'catalog_name_similarity_mismatch'
+        : filteredNonSkincareCount > 0
+          ? 'catalog_non_skincare_match'
+          : 'catalog_no_match',
     source: null,
     query_used: queries[0] || null,
     product: null,
@@ -5238,7 +5331,12 @@ async function resolvePrimaryAnalyzeAnchorForProductInput({
   logger,
   strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
 } = {}) {
-  const queries = buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct }).slice(0, 2);
+  const queries = buildProductCatalogQueryCandidates({
+    inputText,
+    inputUrl,
+    parsedProduct,
+    preferInputTextFirst: true,
+  }).slice(0, 2);
   if (!queries.length) {
     return {
       ok: false,
@@ -5252,6 +5350,7 @@ async function resolvePrimaryAnalyzeAnchorForProductInput({
 
   const attempts = [];
   let filteredNonSkincareCount = 0;
+  let filteredNameMismatchCount = 0;
   for (const query of queries) {
     const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
     const resolvedHasProduct = Boolean(resolved && resolved.ok && resolved.product);
@@ -5261,10 +5360,21 @@ async function resolvePrimaryAnalyzeAnchorForProductInput({
       })
       : null;
     const accepted = Boolean(resolvedHasProduct && guard && guard.ok);
+    const nameSimilarityDecision = accepted
+      ? shouldRejectCatalogAnchorByNameSimilarity({
+        inputText: String(inputText || ''),
+        candidate: resolved.product,
+        minScore: 0.25,
+      })
+      : null;
+    const acceptedByName = Boolean(accepted && !(nameSimilarityDecision && nameSimilarityDecision.reject));
     if (resolvedHasProduct && guard && !guard.ok) filteredNonSkincareCount += 1;
+    if (nameSimilarityDecision && nameSimilarityDecision.reject) filteredNameMismatchCount += 1;
     const reasonCode =
-      accepted
+      acceptedByName
         ? null
+        : nameSimilarityDecision && nameSimilarityDecision.reject
+          ? 'catalog_name_similarity_mismatch'
         : resolvedHasProduct && guard && guard.reason
           ? `catalog_${String(guard.reason).trim().toLowerCase()}`
           : resolved && resolved.resolve_reason_code
@@ -5275,11 +5385,15 @@ async function resolvePrimaryAnalyzeAnchorForProductInput({
     attempts.push({
       mode: 'resolve',
       query,
-      ok: accepted,
+      ok: acceptedByName,
       reason: reasonCode,
+      name_similarity:
+        nameSimilarityDecision && Number.isFinite(Number(nameSimilarityDecision.similarity?.score))
+          ? Number(nameSimilarityDecision.similarity.score)
+          : null,
       latency_ms: Number.isFinite(Number(resolved && resolved.latency_ms)) ? Math.trunc(Number(resolved.latency_ms)) : null,
     });
-    if (accepted) {
+    if (acceptedByName) {
       return {
         ok: true,
         reason: null,
@@ -5294,7 +5408,9 @@ async function resolvePrimaryAnalyzeAnchorForProductInput({
   return {
     ok: false,
     reason:
-      filteredNonSkincareCount > 0
+      filteredNameMismatchCount > 0
+        ? 'catalog_name_similarity_mismatch'
+        : filteredNonSkincareCount > 0
         ? 'catalog_non_skincare_match'
         : attempts.length
           ? String(attempts[attempts.length - 1].reason || 'catalog_no_match')
@@ -22465,6 +22581,15 @@ function normalizeRoutineIntakeStep(rawStep) {
   return token;
 }
 
+function normalizeRoutineResolveMatchQuality({ similarity = null, hasProduct = false } = {}) {
+  if (!hasProduct) return 'none';
+  const score = Number(similarity && similarity.score);
+  if (!Number.isFinite(score)) return 'low';
+  if (score >= 0.75) return 'high';
+  if (score >= 0.45) return 'medium';
+  return 'low';
+}
+
 function extractFirstHttpUrlFromText(rawText) {
   const text = String(rawText || '').trim();
   if (!text) return '';
@@ -22497,16 +22622,93 @@ function buildRoutineProductParsedHint(entry, { inputText = '', inputUrl = '', i
 
 function buildRoutineProductCandidateFromRow(row, { slot, step, rank }) {
   const rowObj = isPlainObject(row) ? row : null;
+  const resolvedProductInput = (() => {
+    if (isPlainObject(rowObj?.resolved_product)) return rowObj.resolved_product;
+    if (isPlainObject(rowObj?.resolvedProduct)) return rowObj.resolvedProduct;
+    if (isPlainObject(rowObj?.product)) {
+      const productObj = rowObj.product;
+      const hasIdentity = Boolean(
+        pickFirstTrimmed(
+          productObj.product_id,
+          productObj.productId,
+          productObj.sku_id,
+          productObj.skuId,
+        ),
+      );
+      const hasNameSignals = Boolean(
+        pickFirstTrimmed(
+          productObj.brand,
+          productObj.brand_name,
+          productObj.brandName,
+          productObj.name,
+          productObj.display_name,
+          productObj.displayName,
+        ),
+      );
+      if (hasIdentity || hasNameSignals) return productObj;
+    }
+    const explicitResolvedId = pickFirstTrimmed(
+      rowObj?.resolved_product_id,
+      rowObj?.resolvedProductId,
+      rowObj?.product_id,
+      rowObj?.productId,
+      rowObj?.sku_id,
+      rowObj?.skuId,
+    );
+    if (!explicitResolvedId) return null;
+    return {
+      product_id: pickFirstTrimmed(rowObj?.product_id, rowObj?.productId, explicitResolvedId),
+      sku_id: pickFirstTrimmed(rowObj?.sku_id, rowObj?.skuId),
+      brand: pickFirstTrimmed(rowObj?.brand, rowObj?.brand_name, rowObj?.brandName),
+      name: pickFirstTrimmed(rowObj?.name, rowObj?.title),
+      display_name: pickFirstTrimmed(rowObj?.display_name, rowObj?.displayName, rowObj?.name, rowObj?.title),
+      image_url: pickFirstTrimmed(rowObj?.image_url, rowObj?.imageUrl),
+      url: pickFirstTrimmed(rowObj?.url, rowObj?.product_url, rowObj?.productUrl, rowObj?.link, rowObj?.href),
+    };
+  })();
+  const resolvedProduct = resolvedProductInput
+    ? mapCatalogProductToAnchorProduct(resolvedProductInput, {
+      fallbackName: pickFirstTrimmed(
+        rowObj?.text,
+        rowObj?.name,
+        rowObj?.display_name,
+        rowObj?.displayName,
+        rowObj?.title,
+      ),
+    }) ||
+      buildAnchorDisplayFromCandidate(resolvedProductInput, {
+        fallbackName: pickFirstTrimmed(
+          rowObj?.text,
+          rowObj?.name,
+          rowObj?.display_name,
+          rowObj?.displayName,
+          rowObj?.title,
+        ),
+        fallbackUrl: pickFirstTrimmed(rowObj?.url, rowObj?.product_url, rowObj?.productUrl, rowObj?.link, rowObj?.href),
+      })
+    : null;
+  const resolvedProductId = pickFirstTrimmed(
+    rowObj?.resolved_product_id,
+    rowObj?.resolvedProductId,
+    resolvedProduct?.product_id,
+    resolvedProduct?.sku_id,
+    rowObj?.product_id,
+    rowObj?.productId,
+    rowObj?.sku_id,
+    rowObj?.skuId,
+  );
   const rawText = typeof row === 'string'
     ? row
     : pickFirstTrimmed(
-      rowObj?.product,
+      rowObj?.text,
+      rowObj?.value,
+      typeof rowObj?.product === 'string' ? rowObj.product : '',
       rowObj?.name,
       rowObj?.display_name,
       rowObj?.displayName,
       rowObj?.title,
-      rowObj?.text,
-      rowObj?.value,
+      resolvedProduct?.display_name,
+      resolvedProduct?.name,
     );
   const cleanedText = String(rawText || '').trim();
   const explicitUrl = pickFirstTrimmed(
@@ -22543,6 +22745,7 @@ function buildRoutineProductCandidateFromRow(row, { slot, step, rank }) {
     inputUrl: productUrl,
     inciHint,
   });
+  const hintFromResolved = isPlainObject(resolvedProduct) ? { ...resolvedProduct } : null;
   return {
     slot: normalizeRoutineIntakeSlot(slot),
     step: normalizeRoutineIntakeStep(step || rowObj?.step || ''),
@@ -22550,7 +22753,9 @@ function buildRoutineProductCandidateFromRow(row, { slot, step, rank }) {
     product_text: productText || productUrl,
     product_url: productUrl,
     inci_hint: inciHint ? String(inciHint).trim().slice(0, 1400) : '',
-    parsed_product_hint: parsedProductHint,
+    parsed_product_hint: hintFromResolved || parsedProductHint,
+    ...(resolvedProductId ? { resolved_product_id: resolvedProductId } : {}),
+    ...(hintFromResolved ? { resolved_product: hintFromResolved } : {}),
   };
 }
 
@@ -22765,6 +22970,44 @@ async function deepScanRoutineProductCandidate({
   if (!parsedProduct && productUrl) {
     parsedProduct = buildHeuristicProductFromInput({ inputText, inputUrl: productUrl });
   }
+  const frontendResolvedInput =
+    (isPlainObject(row.resolved_product) ? row.resolved_product : null) ||
+    (isPlainObject(row.resolvedProduct) ? row.resolvedProduct : null) ||
+    null;
+  const frontendResolvedFallback = frontendResolvedInput ||
+    (pickFirstTrimmed(
+      row.resolved_product_id,
+      row.resolvedProductId,
+      row.product_id,
+      row.productId,
+      row.sku_id,
+      row.skuId,
+    )
+      ? {
+        product_id: pickFirstTrimmed(row.product_id, row.productId, row.resolved_product_id, row.resolvedProductId, row.sku_id, row.skuId),
+        sku_id: pickFirstTrimmed(row.sku_id, row.skuId),
+        brand: pickFirstTrimmed(row.brand, row.brand_name, row.brandName),
+        name: pickFirstTrimmed(row.name, row.title),
+        display_name: pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
+        image_url: pickFirstTrimmed(row.image_url, row.imageUrl),
+        url: pickFirstTrimmed(row.url, row.product_url, row.productUrl, row.link, row.href),
+      }
+      : null);
+  const frontendResolvedProduct = frontendResolvedFallback
+    ? mapCatalogProductToAnchorProduct(frontendResolvedFallback, { fallbackName: inputText }) ||
+      buildAnchorDisplayFromCandidate(frontendResolvedFallback, {
+        fallbackName: inputText,
+        fallbackUrl: productUrl,
+      })
+    : null;
+  const hasFrontendResolved = Boolean(
+    pickFirstTrimmed(
+      row.resolved_product_id,
+      row.resolvedProductId,
+      frontendResolvedProduct?.product_id,
+      frontendResolvedProduct?.sku_id,
+    ),
+  );
   let anchorId = '';
   const routineStrictNonSkincareGuard = AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_STRICT_NON_SKINCARE;
   const routineResolverStrictFilter = routineStrictNonSkincareGuard ? true : AURORA_PRODUCT_STRICT_SKINCARE_FILTER;
@@ -22841,10 +23084,56 @@ async function deepScanRoutineProductCandidate({
     }
     return trust;
   };
-  applyRoutineAnchorGuard(parsedProduct, 'routine_candidate_hint', { preferDisplay: true });
+  if (frontendResolvedProduct) {
+    parsedProduct = frontendResolvedProduct;
+    const frontendSimilarity = computeAnchorNameSimilarity({
+      inputText: inputText || productUrl,
+      candidate: frontendResolvedProduct,
+    });
+    if (frontendSimilarity.total > 1 && frontendSimilarity.score < 0.2) {
+      routineAnchorTrustContext = {
+        ...routineAnchorTrustContext,
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+        reasons: uniqCaseInsensitiveStrings(
+          [
+            ...(Array.isArray(routineAnchorTrustContext.reasons) ? routineAnchorTrustContext.reasons : []),
+            'anchor_soft_blocked_name_mismatch',
+          ],
+          6,
+        ),
+        source: 'frontend_resolved',
+        candidate_quality: 'strong',
+      };
+      anchorId = '';
+    } else {
+      const frontendTrust = applyRoutineAnchorGuard(frontendResolvedProduct, 'frontend_resolved', { preferDisplay: true });
+      const frontendResolvedId = pickFirstTrimmed(
+        row.resolved_product_id,
+        row.resolvedProductId,
+        frontendTrust?.trusted_anchor?.sku_id,
+        frontendTrust?.trusted_anchor?.product_id,
+        frontendResolvedProduct?.sku_id,
+        frontendResolvedProduct?.product_id,
+      );
+      if (frontendResolvedId && !frontendTrust.reason_codes?.includes('anchor_soft_blocked_non_skincare')) {
+        anchorId = frontendResolvedId;
+        routineAnchorTrustContext = {
+          ...routineAnchorTrustContext,
+          level: 'trusted',
+          usable_for_anchor_id: true,
+          reasons: [],
+          source: 'frontend_resolved',
+          candidate_quality: 'strong',
+        };
+      }
+    }
+  } else {
+    applyRoutineAnchorGuard(parsedProduct, 'routine_candidate_hint', { preferDisplay: true });
+  }
 
   let primaryAnchorResolution = null;
-  if (!anchorId && inputText) {
+  if (!anchorId && inputText && !hasFrontendResolved) {
     primaryAnchorResolution = await resolvePrimaryAnalyzeAnchorForProductInput({
       inputText,
       inputUrl: productUrl || null,
@@ -22867,7 +23156,7 @@ async function deepScanRoutineProductCandidate({
   }
 
   let catalogFallback = null;
-  if (!anchorId && PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && inputText) {
+  if (!anchorId && PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && inputText && !hasFrontendResolved) {
     catalogFallback = await resolveCatalogProductForProductInput({
       inputText,
       inputUrl: productUrl || null,
@@ -22886,6 +23175,28 @@ async function deepScanRoutineProductCandidate({
       /non_skincare/i.test(String(catalogFallback.reason || ''))
     ) {
       markRoutineNonSkincareBlocked({ source: 'routine_catalog_fallback' });
+    }
+  }
+
+  if (anchorId && parsedProduct) {
+    const anchorConsistency = computeAnchorNameSimilarity({
+      inputText: inputText || productUrl,
+      candidate: parsedProduct,
+    });
+    if (anchorConsistency.total > 1 && anchorConsistency.score < 0.2) {
+      anchorId = '';
+      routineAnchorTrustContext = {
+        ...routineAnchorTrustContext,
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+        reasons: uniqCaseInsensitiveStrings(
+          [
+            ...(Array.isArray(routineAnchorTrustContext.reasons) ? routineAnchorTrustContext.reasons : []),
+            'anchor_soft_blocked_name_mismatch',
+          ],
+          6,
+        ),
+      };
     }
   }
 
@@ -38896,6 +39207,140 @@ function mountAuroraBffRoutes(app, { logger }) {
     }
   });
 
+  app.post('/v1/routine/resolve-products', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const requestSchema = z.object({
+        lang: z.string().trim().optional(),
+        products: z
+          .array(
+            z
+              .object({
+                slot: z.any().optional(),
+                step: z.any().optional(),
+                text: z.any().optional(),
+                product: z.any().optional(),
+                name: z.any().optional(),
+                display_name: z.any().optional(),
+                displayName: z.any().optional(),
+              })
+              .passthrough(),
+          )
+          .max(40)
+          .default([]),
+      });
+      const parsed = requestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          resolved: [],
+          reason: 'bad_request',
+          details: parsed.error.format(),
+        });
+      }
+
+      const lang = String(parsed.data.lang || ctx.lang || 'EN').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+      const rows = Array.isArray(parsed.data.products) ? parsed.data.products : [];
+      if (!rows.length) {
+        return res.json({
+          resolved: [],
+          reason: 'empty_input',
+        });
+      }
+
+      const tasks = rows.map((rawRow) => (async () => {
+        const row = isPlainObject(rawRow) ? rawRow : {};
+        const slot = normalizeRoutineIntakeSlot(row.slot || row.period || '');
+        const step = normalizeRoutineIntakeStep(row.step || '');
+        const text = pickFirstTrimmed(
+          row.text,
+          typeof row.product === 'string' ? row.product : '',
+          row.name,
+          row.display_name,
+          row.displayName,
+          row.value,
+        );
+        if (!text) {
+          return {
+            slot,
+            step,
+            text: '',
+            product: null,
+            match_quality: 'none',
+            name_similarity: 0,
+            reason: 'empty_text',
+          };
+        }
+
+        const resolved = await resolvePrimaryAnalyzeAnchorForProductInput({
+          inputText: text,
+          inputUrl: /^https?:\/\//i.test(text) ? text : null,
+          parsedProduct: null,
+          lang,
+          logger,
+          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+        });
+        if (!resolved || !resolved.ok || !resolved.product) {
+          return {
+            slot,
+            step,
+            text,
+            product: null,
+            match_quality: 'none',
+            name_similarity: 0,
+            reason: String(resolved?.reason || 'no_match'),
+          };
+        }
+
+        const product =
+          mapCatalogProductToAnchorProduct(resolved.product, { fallbackName: text }) ||
+          buildAnchorDisplayFromCandidate(resolved.product, { fallbackName: text });
+        const similarity = computeAnchorNameSimilarity({
+          inputText: text,
+          candidate: resolved.product,
+        });
+        const matchQuality = normalizeRoutineResolveMatchQuality({
+          similarity,
+          hasProduct: Boolean(product),
+        });
+        return {
+          slot,
+          step,
+          text,
+          product: product || null,
+          match_quality: matchQuality,
+          name_similarity: Number.isFinite(Number(similarity.score)) ? Number(similarity.score) : 0,
+          ...(product ? {} : { reason: 'no_match' }),
+        };
+      })());
+
+      const settled = await Promise.allSettled(tasks);
+      const resolvedRows = settled.map((item, idx) => {
+        if (item.status === 'fulfilled') return item.value;
+        const fallbackRow = isPlainObject(rows[idx]) ? rows[idx] : {};
+        return {
+          slot: normalizeRoutineIntakeSlot(fallbackRow.slot || fallbackRow.period || ''),
+          step: normalizeRoutineIntakeStep(fallbackRow.step || ''),
+          text: pickFirstTrimmed(fallbackRow.text, fallbackRow.name, fallbackRow.display_name, fallbackRow.displayName),
+          product: null,
+          match_quality: 'none',
+          name_similarity: 0,
+          reason: 'promise_rejected',
+        };
+      });
+
+      return res.json({
+        resolved: resolvedRows,
+      });
+    } catch (err) {
+      const status = err && err.status ? err.status : 500;
+      return res.status(status).json({
+        resolved: [],
+        reason: err?.code || 'resolve_failed',
+      });
+    }
+  });
+
   app.post('/v1/product/parse', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
@@ -52834,6 +53279,7 @@ const __internal = {
   getRecoGuardrailCircuitSnapshot,
   buildRecoCatalogSearchBaseUrlCandidates,
   buildProductCatalogQueryCandidates,
+  computeAnchorNameSimilarity,
   buildRealtimeCompetitorQueryPlan,
   mapCatalogProductToAnchorProduct,
   evaluateAnchorTrustForProductIntel,

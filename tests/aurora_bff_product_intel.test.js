@@ -585,6 +585,101 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(candidates.some((q) => /peptide|serum/i.test(String(q || '')))).toBe(true);
   });
 
+  test('computeAnchorNameSimilarity returns high score for exact brand/name match', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'CeraVe Moisturizing Cream',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Moisturizing Cream',
+        display_name: 'CeraVe Moisturizing Cream',
+      },
+    });
+    expect(out).toEqual(expect.objectContaining({ overlap: 3, total: 3 }));
+    expect(out.score).toBeCloseTo(1, 3);
+  });
+
+  test('computeAnchorNameSimilarity supports partial overlap', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'CeraVe PM Lotion',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Moisturizing Lotion',
+      },
+    });
+    expect(out.total).toBeGreaterThan(1);
+    expect(out.overlap).toBeGreaterThanOrEqual(1);
+    expect(out.score).toBeGreaterThan(0);
+    expect(out.score).toBeLessThan(1);
+  });
+
+  test('computeAnchorNameSimilarity returns 0 overlap for unrelated names', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'The Ordinary Copper Peptides',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Hydrating Cleanser',
+      },
+    });
+    expect(out).toEqual(expect.objectContaining({ overlap: 0 }));
+    expect(out.score).toBe(0);
+  });
+
+  test('computeAnchorNameSimilarity handles empty input text', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: '',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Moisturizing Cream',
+      },
+    });
+    expect(out).toEqual({ score: 0, overlap: 0, total: 0 });
+  });
+
+  test('computeAnchorNameSimilarity handles empty candidate object', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'CeraVe Moisturizing Cream',
+      candidate: null,
+    });
+    expect(out.total).toBe(3);
+    expect(out.overlap).toBe(0);
+    expect(out.score).toBe(0);
+  });
+
+  test('computeAnchorNameSimilarity keeps single-token scoring deterministic', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'cream',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Moisturizing Cream',
+      },
+    });
+    expect(out.total).toBe(1);
+    expect(out.score === 0 || out.score === 1).toBe(true);
+  });
+
+  test('buildProductCatalogQueryCandidates can keep inputText as first query candidate when requested', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const candidates = __internal.buildProductCatalogQueryCandidates({
+      inputText: 'The Ordinary Multi Peptide Copper Peptides 1 Serum',
+      inputUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      parsedProduct: {
+        brand: 'The Ordinary',
+        name: 'Multi Peptide Copper Peptides 1 Serum',
+      },
+      preferInputTextFirst: true,
+    });
+    expect(Array.isArray(candidates)).toBe(true);
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(String(candidates[0] || '').toLowerCase()).toContain('ordinary');
+    expect(String(candidates[0] || '').toLowerCase()).toContain('peptide');
+  });
+
   test('route competitor pools filters non-skincare candidates across competitors/related/dupes', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const routed = __internal.routeCompetitorCandidatePools({
@@ -3760,6 +3855,91 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(result.card.payload?.missing_info || []).toEqual(expect.arrayContaining(['anchor_soft_blocked_non_skincare']));
     expect(result.card.payload?.assessment?.anchor_product).toBeUndefined();
     expect(result.card.payload?.assessment?.anchorProduct).toBeUndefined();
+  });
+
+  test('deepScanRoutineProductCandidate uses frontend resolved shortcut and skips catalog resolve', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+
+    const catalogScope = nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: 'should_not_be_called' },
+        candidates: [],
+      });
+
+    let deepScanBody = null;
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/chat')
+      .reply(200, (_uri, requestBody) => {
+        deepScanBody = requestBody;
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'product_analyze',
+          structured: {
+            analyze: {
+              assessment: {
+                verdict: 'Likely Suitable',
+                reasons: ['Looks fine.'],
+              },
+              evidence: {
+                science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+                social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                expert_notes: [],
+              },
+            },
+          },
+        };
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const result = await __internal.deepScanRoutineProductCandidate({
+      candidate: {
+        slot: 'am',
+        step: 'moisturizer',
+        rank: 0,
+        product_text: 'CeraVe Moisturizing Cream',
+        resolved_product_id: 'prod_cerave_001',
+        resolved_product: {
+          product_id: 'prod_cerave_001',
+          sku_id: 'sku_cerave_001',
+          brand: 'CeraVe',
+          name: 'Moisturizing Cream',
+          display_name: 'CeraVe Moisturizing Cream',
+        },
+      },
+      ctx: {
+        request_id: 'req_routine_frontend_resolved_1',
+        trace_id: 'trace_routine_frontend_resolved_1',
+        lang: 'EN',
+      },
+      profileSummary: {
+        skinType: 'normal',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['hydrate'],
+      },
+      recentLogsSummary: [],
+      logger: null,
+      includeCard: true,
+    });
+
+    expect(deepScanBody).toBeTruthy();
+    expect(['sku_cerave_001', 'prod_cerave_001']).toContain(String(deepScanBody.anchor_product_id || ''));
+    expect(catalogScope.isDone()).toBe(false);
+    expect(result.anchor_used).toBe(true);
+    expect(result.card).toBeTruthy();
+    expect(result.card.payload?.provenance?.anchor_trust).toEqual(
+      expect.objectContaining({
+        source: 'frontend_resolved',
+        usable_for_anchor_id: true,
+      }),
+    );
   });
 
   test('shouldServeProductIntelKbEntry quarantines low-quality stale KB payloads', () => {
