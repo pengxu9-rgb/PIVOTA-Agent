@@ -8,6 +8,7 @@ process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
 process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT = 'dual';
 process.env.AURORA_RULE_RELAX_MODE = 'conservative';
+process.env.AURORA_ANALYSIS_STORY_V2_ENABLED = 'true';
 process.env.AURORA_BFF_RECO_PDP_LIGHT_ENRICH = 'false';
 process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE = 'false';
 
@@ -7930,6 +7931,161 @@ test('/v1/analysis/skin: accepts routine input and avoids low-confidence baselin
   assert.ok(findings.length > 0);
 });
 
+test('/v1/analysis/skin: routine autoscan strict guard blocks brush anchors and reports blocked metrics', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'http://aurora.test',
+      PIVOTA_BACKEND_BASE_URL: 'http://catalog.test',
+      AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS: 'false',
+      AURORA_RULE_RELAX_MODE: 'aggressive',
+      AURORA_PRODUCT_GUARDRAIL_MODE: 'telemetry_only',
+      AURORA_PRODUCT_STRICT_SKINCARE_FILTER: 'false',
+      AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE: 'strict_non_skincare',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      const deepScanBodies = [];
+
+      axios.post = async (url, body, config) => {
+        const u = String(url || '');
+        if (u.endsWith('/agent/v1/products/resolve')) {
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              product_ref: {
+                product_id: '9859793420616',
+                merchant_id: 'merch_efbc46b4619cfbdf',
+              },
+              candidates: [
+                {
+                  product_id: '9859793420616',
+                  sku_id: '9859793420616',
+                  brand: 'Brush Studio',
+                  name: 'Small Eyeshadow Brush',
+                  display_name: 'Small Eyeshadow Brush',
+                  category: 'makeup brush',
+                },
+              ],
+            },
+          };
+        }
+        return originalPost(url, body, config);
+      };
+
+      decisionModule.auroraChat = async (input) => {
+        const query = String(input && input.query ? input.query : '');
+        if (/Task:\s*Deep-scan\b/i.test(query)) {
+          deepScanBodies.push(input || {});
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product_analyze',
+            structured: {
+              analyze: {
+                assessment: {
+                  verdict: 'Unknown',
+                  reasons: ['Evidence is limited.'],
+                },
+                evidence: {
+                  science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+                  social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                  expert_notes: [],
+                },
+              },
+            },
+          };
+        }
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'chat',
+          answer: '{}',
+        };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'test_uid_routine_anchor_guard_skin',
+            'X-Trace-ID': 'test_trace_routine_anchor_guard_skin',
+            'X-Brief-ID': 'test_brief_routine_anchor_guard_skin',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Biotherm Force Cleanser',
+                moisturizer: 'Biotherm Aquasource Hydra Barrier Cream',
+              },
+              pm: {
+                cleanser: 'Biotherm Force Cleanser',
+                moisturizer: 'Biotherm Aquasource Hydra Barrier Cream',
+              },
+            },
+          })
+          .expect(200);
+
+        assert.ok(deepScanBodies.length > 0);
+        assert.equal(
+          deepScanBodies.every((entry) => !String(entry && entry.anchor_product_id ? entry.anchor_product_id : '').trim()),
+          true,
+        );
+
+        const cards = Array.isArray(resp.body && resp.body.cards) ? resp.body.cards : [];
+        const routineCards = cards.filter((card) => String(card && card.type ? card.type : '') === 'product_analysis');
+        assert.ok(routineCards.length > 0);
+        const brushAnchored = routineCards.some((card) =>
+          /brush/i.test(
+            String(
+              card &&
+                card.payload &&
+                card.payload.assessment &&
+                card.payload.assessment.anchor_product &&
+                card.payload.assessment.anchor_product.name
+                ? card.payload.assessment.anchor_product.name
+                : '',
+            ),
+          ),
+        );
+        assert.equal(brushAnchored, false);
+
+        const completedEvent = (Array.isArray(resp.body && resp.body.events) ? resp.body.events : []).find(
+          (evt) => String(evt && evt.event_name ? evt.event_name : '') === 'routine_product_deepscan_completed',
+        );
+        assert.ok(completedEvent);
+        const eventData =
+          completedEvent && completedEvent.data && typeof completedEvent.data === 'object' && !Array.isArray(completedEvent.data)
+            ? completedEvent.data
+            : {};
+        assert.ok(Number(eventData.anchors_blocked_non_skincare || 0) > 0);
+        assert.equal(Number(eventData.anchors_used || 0), 0);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[routeModuleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/product/analyze: returns verdict + enriched reasons', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
@@ -8341,6 +8497,24 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
   const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
   const storyCard = findCardByType(cards, 'analysis_story_v2');
   assert.ok(storyCard);
+
+  const card = findCardByType(cards, 'analysis_summary');
+  assert.ok(card);
+  assert.equal(card.payload.analysis_source, 'retake');
+  assert.equal(card.payload?.quality_report?.photo_quality?.grade, 'fail');
+  assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
+  assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
+  assert.equal(Array.isArray(card.payload?.analysis?.features), true);
+  assert.equal(
+    (card.payload?.analysis?.features || []).every((item) =>
+      /photo|retake|upload/i.test(String(item && item.observation ? item.observation : '')),
+    ),
+    true,
+  );
+  assert.equal(card.payload?.analysis?.insufficient_visual_detail, true);
+  assert.equal(Array.isArray(card.payload?.analysis?.guidance_brief), true);
+  assert.equal((card.payload?.analysis?.guidance_brief || []).length > 0, true);
+  assert.match(String(card.payload?.analysis?.strategy || ''), /retake|photo/i);
 
   const analysisMeta = resp.body?.analysis_meta || {};
   assert.equal(

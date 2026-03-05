@@ -31,6 +31,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_KB_SERVE_POLICY;
     delete process.env.AURORA_PRODUCT_GUARDRAIL_MODE;
     delete process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER;
+    delete process.env.AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE;
@@ -3642,6 +3643,97 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         usable_for_anchor_id: false,
       }),
     );
+  });
+
+  test('deepScanRoutineProductCandidate blocks non-skincare anchor ids under routine strict guard even in aggressive telemetry mode', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    process.env.AURORA_PRODUCT_GUARDRAIL_MODE = 'telemetry_only';
+    process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'false';
+    process.env.AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE = 'strict_non_skincare';
+
+    nock('http://catalog.test')
+      .persist()
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: '9859793420616', merchant_id: 'merch_efbc46b4619cfbdf' },
+        candidates: [
+          {
+            product_id: '9859793420616',
+            sku_id: '9859793420616',
+            brand: 'Brush Studio',
+            name: 'Small Eyeshadow Brush',
+            display_name: 'Small Eyeshadow Brush',
+            category: 'makeup brush',
+          },
+        ],
+      });
+
+    let deepScanBody = null;
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/chat')
+      .reply(200, (_uri, requestBody) => {
+        deepScanBody = requestBody;
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'product_analyze',
+          structured: {
+            analyze: {
+              assessment: {
+                verdict: 'Unknown',
+                reasons: ['Evidence is limited.'],
+              },
+              evidence: {
+                science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+                social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                expert_notes: [],
+              },
+            },
+          },
+        };
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const result = await __internal.deepScanRoutineProductCandidate({
+      candidate: {
+        slot: 'am',
+        step: 'cleanser',
+        rank: 0,
+        product_text: 'Biotherm Force Cleanser',
+      },
+      ctx: {
+        request_id: 'req_routine_anchor_guard_1',
+        trace_id: 'trace_routine_anchor_guard_1',
+        lang: 'EN',
+      },
+      profileSummary: {
+        skinType: 'oily',
+        sensitivity: 'medium',
+        barrierStatus: 'healthy',
+        goals: ['acne', 'pores'],
+      },
+      recentLogsSummary: [],
+      logger: null,
+      includeCard: true,
+    });
+
+    expect(deepScanBody).toBeTruthy();
+    expect(deepScanBody.anchor_product_id).toBeUndefined();
+    expect(result.anchor_used).toBe(false);
+    expect(result.anchor_blocked_non_skincare).toBe(true);
+    expect(result.card).toBeTruthy();
+    expect(result.card.payload?.provenance?.anchor_trust).toEqual(
+      expect.objectContaining({
+        usable_for_anchor_id: false,
+        guard_policy: 'routine_strict_non_skincare_v1',
+      }),
+    );
+    expect(result.card.payload?.missing_info || []).toEqual(expect.arrayContaining(['anchor_soft_blocked_non_skincare']));
   });
 
   test('shouldServeProductIntelKbEntry quarantines low-quality stale KB payloads', () => {

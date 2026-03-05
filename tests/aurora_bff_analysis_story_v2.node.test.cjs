@@ -149,6 +149,69 @@ test('analysis_story_v2: routine soft gate adds story/prompt and delays ingredie
   assert.deepEqual(planCard.payload.targets[0].products.dupes, []);
 });
 
+test('analysis_story_v2: dual response contract keeps analysis_summary and analysis_story_v2 together', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+    AURORA_LLM_QA_MODE: 'off',
+  });
+
+  const cards = [
+    {
+      card_id: 'analysis_dual_1',
+      type: 'analysis_summary',
+      payload: {
+        analysis_source: 'rule_based_with_photo_qc',
+        analysis: { features: [{ observation: 'baseline observation' }] },
+        low_confidence: false,
+      },
+    },
+  ];
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(cards, {
+    ctx: { request_id: 'req_story_dual' },
+    profile: {},
+    language: 'EN',
+  });
+
+  const types = out.map((card) => card.type);
+  assert.equal(types.includes('analysis_summary'), true);
+  assert.equal(types.includes('analysis_story_v2'), true);
+});
+
+test('analysis_story_v2: story-only contract removes analysis_summary but keeps analysis_story_v2', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ANALYSIS_CARD_CONTRACT_MODE: 'story_only',
+    AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+    AURORA_LLM_QA_MODE: 'off',
+  });
+
+  const cards = [
+    {
+      card_id: 'analysis_story_only_1',
+      type: 'analysis_summary',
+      payload: {
+        analysis_source: 'rule_based_with_photo_qc',
+        analysis: { features: [{ observation: 'baseline observation' }] },
+        low_confidence: false,
+      },
+    },
+  ];
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(cards, {
+    ctx: { request_id: 'req_story_only' },
+    profile: {},
+    language: 'EN',
+  });
+
+  const types = out.map((card) => card.type);
+  assert.equal(types.includes('analysis_summary'), false);
+  assert.equal(types.includes('analysis_story_v2'), true);
+});
+
 test('analysis_story_v2: evidence -> generate -> review pipeline enforces routine bridge and disclaimer', () => {
   const internal = loadInternalWithFlags({});
   const fallback = {
