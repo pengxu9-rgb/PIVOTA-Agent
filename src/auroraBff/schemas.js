@@ -335,6 +335,63 @@ const TrackerLogSchema = z
   })
   .strict();
 
+const ActivityEventTypeSchema = z.enum([
+  'chat_started',
+  'tracker_logged',
+  'profile_updated',
+  'travel_plan_created',
+  'travel_plan_updated',
+  'travel_plan_archived',
+]);
+
+const ActivityLogSchema = z
+  .object({
+    event_type: ActivityEventTypeSchema,
+    payload: z.record(z.string(), z.any()).default({}),
+    deeplink: z.string().min(1).max(500).optional(),
+    source: z.string().min(1).max(120).optional(),
+    occurred_at_ms: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const ActivityListQuerySchema = z
+  .object({
+    limit: z
+      .preprocess((value) => {
+        if (value === undefined || value === null || value === '') return undefined;
+        if (typeof value === 'number') return value;
+        if (typeof value === 'string') return Number(value);
+        return value;
+      }, z.number().int().min(1).max(50))
+      .default(20),
+    cursor: z
+      .preprocess((value) => {
+        if (value === undefined || value === null) return undefined;
+        const token = String(value).trim();
+        return token || undefined;
+      }, z.string().max(400).regex(/^[A-Za-z0-9+/=]+$/))
+      .optional(),
+    types: z
+      .preprocess((value) => {
+        if (value === undefined || value === null || value === '') return undefined;
+        if (Array.isArray(value)) {
+          return value
+            .flatMap((item) => String(item || '').split(','))
+            .map((item) => item.trim())
+            .filter(Boolean);
+        }
+        if (typeof value === 'string') {
+          return value
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
+        }
+        return value;
+      }, z.array(ActivityEventTypeSchema).max(10))
+      .optional(),
+  })
+  .strict();
+
 const RoutineSimulateRequestSchema = z
   .object({
     routine: z
@@ -703,6 +760,9 @@ module.exports = {
   TravelPlanCreateSchema,
   TravelPlanUpdateSchema,
   TravelPlanListQuerySchema,
+  ActivityEventTypeSchema,
+  ActivityLogSchema,
+  ActivityListQuerySchema,
   UserProfilePatchSchema,
   TrackerLogSchema,
   RoutineSimulateRequestSchema,

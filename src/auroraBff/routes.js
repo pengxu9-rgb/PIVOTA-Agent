@@ -191,6 +191,8 @@ const {
   getRecentSkinLogsForIdentity,
   getChatContextForIdentity,
   upsertChatContextForIdentity,
+  appendActivityEventForIdentity,
+  listActivityEventsForIdentity,
   appendExperimentEventForIdentity,
   saveLastAnalysisForIdentity,
   saveShadowVerifyForIdentity,
@@ -206,6 +208,7 @@ const {
   assertRequiredRouteContracts,
 } = require('./requiredRouteContracts');
 const { mountTravelPlansRoutes } = require('./routes/travelPlansRoutes');
+const { mountActivityRoutes } = require('./routes/activityRoutes');
 const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const {
   createOtpChallenge,
@@ -44414,6 +44417,16 @@ function mountAuroraBffRoutes(app, { logger }) {
     requireAuroraUid,
     resolveIdentity,
     classifyStorageError,
+    appendActivityEventForIdentity,
+  });
+
+  mountActivityRoutes(app, {
+    logger,
+    requireAuroraUid,
+    resolveIdentity,
+    classifyStorageError,
+    appendActivityEventForIdentity,
+    listActivityEventsForIdentity,
   });
 
   try {
@@ -44523,6 +44536,27 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const identity = await resolveIdentity(req, ctx);
       const updated = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, parsed.data);
+      try {
+        await appendActivityEventForIdentity(
+          { auroraUid: identity.auroraUid, userId: identity.userId },
+          {
+            event_type: 'profile_updated',
+            payload: { fields: Object.keys(parsed.data || {}).slice(0, 20) },
+            deeplink: '/profile',
+            source: 'profile_update_api',
+            occurred_at_ms: Date.now(),
+          },
+        );
+      } catch (activityErr) {
+        logger?.warn?.(
+          {
+            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+          },
+          'profile update activity append failed',
+        );
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -44674,6 +44708,30 @@ function mountAuroraBffRoutes(app, { logger }) {
       const identity = await resolveIdentity(req, ctx);
       const saved = await upsertSkinLogForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, parsed.data);
       const recent = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
+      try {
+        await appendActivityEventForIdentity(
+          { auroraUid: identity.auroraUid, userId: identity.userId },
+          {
+            event_type: 'tracker_logged',
+            payload: {
+              date: saved && typeof saved.date === 'string' ? saved.date : null,
+              has_notes: Boolean(saved && typeof saved.notes === 'string' && saved.notes.trim()),
+            },
+            deeplink: '/tracker',
+            source: 'tracker_log_api',
+            occurred_at_ms: Date.now(),
+          },
+        );
+      } catch (activityErr) {
+        logger?.warn?.(
+          {
+            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+          },
+          'tracker log activity append failed',
+        );
+      }
       const recoRefreshHint = {
         should_refresh: true,
         reason: 'checkin_logged',

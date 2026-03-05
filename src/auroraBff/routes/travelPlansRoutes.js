@@ -7,6 +7,7 @@ const {
 const {
   getProfileForIdentity,
   upsertProfileForIdentity,
+  appendActivityEventForIdentity,
 } = require('../memoryStore');
 const {
   listTravelPlansForView,
@@ -30,6 +31,17 @@ function findTravelPlanByTripId(plans, tripId) {
   if (!id) return null;
   const list = Array.isArray(plans) ? plans : [];
   return list.find((plan) => String(plan && plan.trip_id ? plan.trip_id : '').trim() === id) || null;
+}
+
+function buildTravelPlanActivityPayload(plan) {
+  const target = plan && typeof plan === 'object' ? plan : {};
+  return {
+    trip_id: typeof target.trip_id === 'string' ? target.trip_id : null,
+    destination: typeof target.destination === 'string' ? target.destination : null,
+    start_date: typeof target.start_date === 'string' ? target.start_date : null,
+    end_date: typeof target.end_date === 'string' ? target.end_date : null,
+    is_archived: Boolean(target.is_archived),
+  };
 }
 
 function toTravelPlansStorageError(err, classifyStorageError) {
@@ -103,6 +115,9 @@ function mountTravelPlansRoutes(app, deps = {}) {
   const requireAuroraUid = ensureDependency('requireAuroraUid', deps.requireAuroraUid);
   const resolveIdentity = ensureDependency('resolveIdentity', deps.resolveIdentity);
   const classifyStorageError = ensureDependency('classifyStorageError', deps.classifyStorageError);
+  const appendActivity = typeof deps.appendActivityEventForIdentity === 'function'
+    ? deps.appendActivityEventForIdentity
+    : appendActivityEventForIdentity;
 
   mountTravelPlansResponseObserver(app, { logger });
 
@@ -260,6 +275,27 @@ function mountTravelPlansRoutes(app, deps = {}) {
       if (!createdPlan && Array.isArray(listOut.plans) && listOut.plans.length > 0) {
         createdPlan = listOut.plans[0];
       }
+      try {
+        await appendActivity(
+          { auroraUid: identity.auroraUid, userId: identity.userId },
+          {
+            event_type: 'travel_plan_created',
+            payload: buildTravelPlanActivityPayload(createdPlan),
+            deeplink: '/plans',
+            source: 'travel_plans_api',
+            occurred_at_ms: nowMs,
+          },
+        );
+      } catch (activityErr) {
+        logger?.warn?.(
+          {
+            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+          },
+          'travel plans create activity append failed',
+        );
+      }
 
       return res.status(200).json({ plan: createdPlan || null, summary: listOut.summary });
     } catch (err) {
@@ -335,6 +371,27 @@ function mountTravelPlansRoutes(app, deps = {}) {
       });
       const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
       if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+      try {
+        await appendActivity(
+          { auroraUid: identity.auroraUid, userId: identity.userId },
+          {
+            event_type: 'travel_plan_updated',
+            payload: buildTravelPlanActivityPayload(nextPlan),
+            deeplink: '/plans',
+            source: 'travel_plans_api',
+            occurred_at_ms: nowMs,
+          },
+        );
+      } catch (activityErr) {
+        logger?.warn?.(
+          {
+            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+          },
+          'travel plans patch activity append failed',
+        );
+      }
 
       return res.status(200).json({ plan: nextPlan, summary: listOut.summary });
     } catch (err) {
@@ -395,6 +452,27 @@ function mountTravelPlansRoutes(app, deps = {}) {
       });
       const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
       if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+      try {
+        await appendActivity(
+          { auroraUid: identity.auroraUid, userId: identity.userId },
+          {
+            event_type: 'travel_plan_archived',
+            payload: buildTravelPlanActivityPayload(nextPlan),
+            deeplink: '/plans',
+            source: 'travel_plans_api',
+            occurred_at_ms: nowMs,
+          },
+        );
+      } catch (activityErr) {
+        logger?.warn?.(
+          {
+            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+          },
+          'travel plans archive activity append failed',
+        );
+      }
 
       return res.status(200).json({ plan: nextPlan, summary: listOut.summary });
     } catch (err) {

@@ -25,6 +25,7 @@ const EPHEMERAL_MAX_IDENTITIES = (() => {
 const ephemeral = {
   profiles: new Map(),
   logs: new Map(),
+  activities: new Map(),
   experiments: new Map(),
   identityLinks: new Map(),
   shadowVerifyRuns: new Map(),
@@ -188,6 +189,102 @@ function normalizeJsonbParam(value) {
   } catch {
     return null;
   }
+}
+
+function sanitizeActivityPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
+  try {
+    return JSON.parse(JSON.stringify(payload));
+  } catch {
+    return {};
+  }
+}
+
+function buildActivityId() {
+  return `act_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeActivityEvent(event) {
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
+  const eventType = String(event.event_type || '').trim().slice(0, 80);
+  if (!eventType) return null;
+  const occurredRaw = Number(event.occurred_at_ms);
+  const occurredAtMs = Number.isFinite(occurredRaw) ? Math.max(0, Math.trunc(occurredRaw)) : Date.now();
+  const deeplinkRaw = typeof event.deeplink === 'string' ? event.deeplink.trim() : '';
+  const sourceRaw = typeof event.source === 'string' ? event.source.trim() : '';
+  const activityIdRaw = typeof event.activity_id === 'string' ? event.activity_id.trim() : '';
+  return {
+    activity_id: activityIdRaw || buildActivityId(),
+    event_type: eventType,
+    payload: sanitizeActivityPayload(event.payload),
+    deeplink: deeplinkRaw ? deeplinkRaw.slice(0, 500) : null,
+    source: sourceRaw ? sourceRaw.slice(0, 120) : null,
+    occurred_at_ms: occurredAtMs,
+  };
+}
+
+function mapActivityRowFromDb(row) {
+  if (!row) return null;
+  const payload = row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload) ? row.payload : {};
+  const occurredRaw = Number(row.occurred_at_ms);
+  return {
+    activity_id: String(row.activity_id || '').trim() || buildActivityId(),
+    aurora_uid: typeof row.aurora_uid === 'string' ? row.aurora_uid : null,
+    user_id: typeof row.user_id === 'string' ? row.user_id : null,
+    event_type: String(row.event_type || '').trim() || 'unknown',
+    payload,
+    deeplink: typeof row.deeplink === 'string' ? row.deeplink : null,
+    source: typeof row.source === 'string' ? row.source : null,
+    occurred_at_ms: Number.isFinite(occurredRaw) ? Math.max(0, Math.trunc(occurredRaw)) : Date.now(),
+    created_at: row.created_at ? new Date(row.created_at).toISOString() : isoTs(),
+    id: Number.isFinite(Number(row.id)) ? Number(row.id) : null,
+  };
+}
+
+function encodeActivityCursor(row) {
+  if (!row) return null;
+  const payload = {
+    occurred_at_ms: Number(row.occurred_at_ms),
+    id: row.id != null ? Number(row.id) : Number.MAX_SAFE_INTEGER,
+  };
+  if (!Number.isFinite(payload.occurred_at_ms) || !Number.isFinite(payload.id)) return null;
+  return Buffer.from(JSON.stringify(payload)).toString('base64');
+}
+
+function decodeActivityCursor(cursor) {
+  const token = String(cursor || '').trim();
+  if (!token) return null;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
+  } catch {
+    const err = new Error('Invalid cursor');
+    err.status = 400;
+    err.code = 'BAD_REQUEST';
+    throw err;
+  }
+  const occurredAtMs = Number(parsed && parsed.occurred_at_ms);
+  const id = Number(parsed && parsed.id);
+  if (!Number.isFinite(occurredAtMs) || !Number.isFinite(id)) {
+    const err = new Error('Invalid cursor');
+    err.status = 400;
+    err.code = 'BAD_REQUEST';
+    throw err;
+  }
+  return {
+    occurred_at_ms: Math.max(0, Math.trunc(occurredAtMs)),
+    id: Math.max(0, Math.trunc(id)),
+  };
+}
+
+function compareActivityRowsDesc(a, b) {
+  const aTs = Number(a && a.occurred_at_ms);
+  const bTs = Number(b && b.occurred_at_ms);
+  if (aTs !== bTs) return bTs - aTs;
+  const aId = Number(a && a.id);
+  const bId = Number(b && b.id);
+  if (Number.isFinite(aId) && Number.isFinite(bId) && aId !== bId) return bId - aId;
+  return String(b && b.activity_id ? b.activity_id : '').localeCompare(String(a && a.activity_id ? a.activity_id : ''));
 }
 
 function normalizeChatContext(value) {
@@ -1147,6 +1244,197 @@ async function appendExperimentEventForIdentity({ auroraUid, userId }, event) {
   return mapExperimentRowFromDb(res.rows && res.rows[0]);
 }
 
+async function appendActivityEventForIdentity({ auroraUid, userId }, event) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  if (!identity.user_id && !identity.aurora_uid) return null;
+  const normalized = normalizeActivityEvent(event);
+  if (!normalized) return null;
+
+  if (persistenceDisabled()) {
+    const keys = [];
+    if (identity.user_id) {
+      const key = profileKeyFor({ kind: 'account', id: identity.user_id });
+      if (key) keys.push(`${key}:activity`);
+    }
+    if (identity.aurora_uid) {
+      const key = profileKeyFor({ kind: 'guest', id: identity.aurora_uid });
+      if (key) keys.push(`${key}:activity`);
+    }
+    const row = {
+      id: Date.now(),
+      activity_id: normalized.activity_id,
+      aurora_uid: identity.aurora_uid || null,
+      user_id: identity.user_id || null,
+      event_type: normalized.event_type,
+      payload: normalized.payload,
+      deeplink: normalized.deeplink,
+      source: normalized.source,
+      occurred_at_ms: normalized.occurred_at_ms,
+      created_at: isoTs(),
+    };
+    for (const key of keys) {
+      const existing = Array.isArray(ephemeral.activities.get(key)) ? ephemeral.activities.get(key) : [];
+      touchEphemeral(ephemeral.activities, key, [row, ...existing].slice(0, 500));
+    }
+    return mapActivityRowFromDb(row);
+  }
+
+  const res = await query(
+    `
+      INSERT INTO aurora_activity_events (
+        activity_id,
+        aurora_uid,
+        user_id,
+        event_type,
+        payload,
+        deeplink,
+        source,
+        occurred_at_ms
+      )
+      VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8)
+      RETURNING *
+    `,
+    [
+      normalized.activity_id,
+      identity.aurora_uid || null,
+      identity.user_id || null,
+      normalized.event_type,
+      normalizeJsonbParam(normalized.payload),
+      normalized.deeplink,
+      normalized.source,
+      normalized.occurred_at_ms,
+    ],
+  );
+  return mapActivityRowFromDb(res.rows && res.rows[0]);
+}
+
+async function listActivityEventsForIdentity({ auroraUid, userId }, { limit = 20, cursor = null, types = [] } = {}) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  if (!identity.user_id && !identity.aurora_uid) {
+    return { items: [], next_cursor: null };
+  }
+
+  const safeLimitRaw = Number(limit);
+  const safeLimit = Number.isFinite(safeLimitRaw) ? Math.max(1, Math.min(50, Math.trunc(safeLimitRaw))) : 20;
+  const typeSet = new Set((Array.isArray(types) ? types : []).map((item) => String(item || '').trim()).filter(Boolean));
+  const decodedCursor = cursor ? decodeActivityCursor(cursor) : null;
+
+  if (persistenceDisabled()) {
+    const keys = [];
+    if (identity.user_id) {
+      const accountKey = profileKeyFor({ kind: 'account', id: identity.user_id });
+      if (accountKey) keys.push(`${accountKey}:activity`);
+    }
+    if (identity.aurora_uid) {
+      const guestKey = profileKeyFor({ kind: 'guest', id: identity.aurora_uid });
+      if (guestKey) keys.push(`${guestKey}:activity`);
+    }
+
+    const merged = [];
+    const seen = new Set();
+    for (const key of keys) {
+      const list = Array.isArray(ephemeral.activities.get(key)) ? ephemeral.activities.get(key) : [];
+      for (const row of list) {
+        const activityId = String((row && row.activity_id) || '').trim();
+        if (!activityId || seen.has(activityId)) continue;
+        seen.add(activityId);
+        merged.push(row);
+      }
+    }
+
+    let rows = merged.sort(compareActivityRowsDesc);
+    if (typeSet.size > 0) {
+      rows = rows.filter((row) => typeSet.has(String((row && row.event_type) || '').trim()));
+    }
+    if (decodedCursor) {
+      rows = rows.filter((row) => {
+        const ts = Number(row && row.occurred_at_ms);
+        const id = Number(row && row.id);
+        if (!Number.isFinite(ts) || !Number.isFinite(id)) return false;
+        if (ts < decodedCursor.occurred_at_ms) return true;
+        if (ts > decodedCursor.occurred_at_ms) return false;
+        return id < decodedCursor.id;
+      });
+    }
+
+    const pageRows = rows.slice(0, safeLimit + 1);
+    const hasMore = pageRows.length > safeLimit;
+    const dataRows = hasMore ? pageRows.slice(0, safeLimit) : pageRows;
+    const mapped = dataRows.map((row) => mapActivityRowFromDb(row)).filter(Boolean);
+    const nextCursor = hasMore ? encodeActivityCursor(pageRows[safeLimit - 1]) : null;
+    return {
+      items: mapped.map((item) => ({
+        activity_id: item.activity_id,
+        event_type: item.event_type,
+        payload: item.payload,
+        deeplink: item.deeplink,
+        source: item.source,
+        occurred_at_ms: item.occurred_at_ms,
+        created_at: item.created_at,
+      })),
+      next_cursor: nextCursor,
+    };
+  }
+
+  const where = [];
+  const params = [];
+  let idx = 1;
+
+  if (identity.user_id && identity.aurora_uid) {
+    where.push(`(user_id = $${idx} OR aurora_uid = $${idx + 1})`);
+    params.push(identity.user_id, identity.aurora_uid);
+    idx += 2;
+  } else if (identity.user_id) {
+    where.push(`user_id = $${idx}`);
+    params.push(identity.user_id);
+    idx += 1;
+  } else {
+    where.push(`aurora_uid = $${idx}`);
+    params.push(identity.aurora_uid);
+    idx += 1;
+  }
+
+  if (typeSet.size > 0) {
+    where.push(`event_type = ANY($${idx}::text[])`);
+    params.push(Array.from(typeSet));
+    idx += 1;
+  }
+
+  if (decodedCursor) {
+    where.push(`(occurred_at_ms < $${idx} OR (occurred_at_ms = $${idx} AND id < $${idx + 1}))`);
+    params.push(decodedCursor.occurred_at_ms, decodedCursor.id);
+    idx += 2;
+  }
+
+  params.push(safeLimit + 1);
+  const sql = `
+    SELECT id, activity_id, aurora_uid, user_id, event_type, payload, deeplink, source, occurred_at_ms, created_at
+    FROM aurora_activity_events
+    WHERE ${where.join(' AND ')}
+    ORDER BY occurred_at_ms DESC, id DESC
+    LIMIT $${idx}
+  `;
+  const res = await query(sql, params);
+  const rows = Array.isArray(res.rows) ? res.rows : [];
+  const hasMore = rows.length > safeLimit;
+  const dataRows = hasMore ? rows.slice(0, safeLimit) : rows;
+  const mapped = dataRows.map((row) => mapActivityRowFromDb(row)).filter(Boolean);
+  const nextCursor = hasMore ? encodeActivityCursor(dataRows[dataRows.length - 1]) : null;
+
+  return {
+    items: mapped.map((item) => ({
+      activity_id: item.activity_id,
+      event_type: item.event_type,
+      payload: item.payload,
+      deeplink: item.deeplink,
+      source: item.source,
+      occurred_at_ms: item.occurred_at_ms,
+      created_at: item.created_at,
+    })),
+    next_cursor: nextCursor,
+  };
+}
+
 async function saveLastAnalysisForIdentity({ auroraUid, userId }, { analysis, lang }) {
   const identity = identityFromRequest({ auroraUid, userId });
   const analysisObj = analysis && typeof analysis === 'object' && !Array.isArray(analysis) ? analysis : null;
@@ -1408,6 +1696,7 @@ async function deleteIdentityData({ auroraUid, userId }) {
       if (accountKey) {
         ephemeral.profiles.delete(accountKey);
         ephemeral.logs.delete(`${accountKey}:logs`);
+        ephemeral.activities.delete(`${accountKey}:activity`);
         ephemeral.experiments.delete(`${accountKey}:experiments`);
       }
       for (const [k, v] of Array.from(ephemeral.identityLinks.entries())) {
@@ -1420,6 +1709,7 @@ async function deleteIdentityData({ auroraUid, userId }) {
       if (guestKey) {
         ephemeral.profiles.delete(guestKey);
         ephemeral.logs.delete(`${guestKey}:logs`);
+        ephemeral.activities.delete(`${guestKey}:activity`);
         ephemeral.experiments.delete(`${guestKey}:experiments`);
       }
       ephemeral.identityLinks.delete(identity.aurora_uid);
@@ -1429,6 +1719,7 @@ async function deleteIdentityData({ auroraUid, userId }) {
   }
 
   if (identity.user_id) {
+    await query(`DELETE FROM aurora_activity_events WHERE user_id = $1`, [identity.user_id]);
     // Hard-delete account profile and logs (ON DELETE CASCADE).
     await query(`DELETE FROM aurora_account_profiles WHERE user_id = $1`, [identity.user_id]);
     // Also delete any guest->account links for this account.
@@ -1436,6 +1727,7 @@ async function deleteIdentityData({ auroraUid, userId }) {
   }
 
   if (identity.aurora_uid) {
+    await query(`DELETE FROM aurora_activity_events WHERE aurora_uid = $1`, [identity.aurora_uid]);
     // Hard-delete guest profile and logs (ON DELETE CASCADE).
     await query(`DELETE FROM aurora_user_profiles WHERE aurora_uid = $1`, [identity.aurora_uid]);
   }
@@ -1465,6 +1757,8 @@ module.exports = {
   upsertSkinLogForIdentity,
   getChatContextForIdentity,
   upsertChatContextForIdentity,
+  appendActivityEventForIdentity,
+  listActivityEventsForIdentity,
   appendExperimentEventForIdentity,
   saveLastAnalysisForIdentity,
   saveShadowVerifyForIdentity,
