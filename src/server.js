@@ -9554,12 +9554,48 @@ app.use((req, res, next) => {
   next();
 });
 
+function resolveAuroraChatContractConfig() {
+  const responseFormatRaw = String(process.env.AURORA_CHAT_RESPONSE_FORMAT || 'chatcards').trim().toLowerCase();
+  const responseFormat = responseFormatRaw === 'legacy' ? 'legacy' : 'chatcards';
+  const chatcardsResponseContract = (() => {
+    const raw = String(process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT || 'chatcards').trim().toLowerCase();
+    if (raw === 'legacy' || raw === 'dual') return raw;
+    return 'chatcards';
+  })();
+  const storyEnabled = String(process.env.AURORA_ANALYSIS_STORY_V2_ENABLED || 'true').trim().toLowerCase();
+  const analysisStoryV2Enabled = storyEnabled !== 'false' && storyEnabled !== '0' && storyEnabled !== 'off';
+  const analysisContractRaw = String(
+    process.env.AURORA_ANALYSIS_CARD_CONTRACT_MODE || process.env.AURORA_ANALYSIS_CARD_CONTRACT || '',
+  )
+    .trim()
+    .toLowerCase();
+  const analysisCardContractMode = (() => {
+    if (analysisContractRaw === 'summary' || analysisContractRaw === 'summary_only' || analysisContractRaw === 'legacy') {
+      return 'summary_only';
+    }
+    if (analysisContractRaw === 'story' || analysisContractRaw === 'story_only' || analysisContractRaw === 'v2') {
+      return 'story_only';
+    }
+    if (analysisContractRaw === 'dual') return 'dual';
+    if (responseFormat === 'legacy') return 'summary_only';
+    if (chatcardsResponseContract === 'legacy') return 'summary_only';
+    if (chatcardsResponseContract === 'dual') return 'dual';
+    return analysisStoryV2Enabled ? 'story_only' : 'summary_only';
+  })();
+  return {
+    response_format: responseFormat,
+    response_contract: chatcardsResponseContract,
+    analysis_card_contract_mode: analysisCardContractMode,
+  };
+}
+
 const healthRouteHandler = (req, res) => {
   const dbConfigured = Boolean(process.env.DATABASE_URL);
   const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
   const minSellable = Math.max(Number(process.env.HEALTHZ_MIN_SELLABLE_PRODUCTS || 20) || 20, 0);
   const includeCacheStats = process.env.HEALTHZ_INCLUDE_CACHE_STATS === 'true';
   const auroraStartupCritical = AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady;
+  const auroraChatContract = resolveAuroraChatContractConfig();
   const requiredRoutesHealth =
     typeof getAuroraRequiredRouteContractsHealth === 'function'
       ? getAuroraRequiredRouteContractsHealth()
@@ -9619,6 +9655,7 @@ const healthRouteHandler = (req, res) => {
       taxonomy_view_id: process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION',
       taxonomy_version: process.env.TAXONOMY_VERSION || null,
     },
+    aurora_chat_contract: auroraChatContract,
     resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
     resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
     product_detail_cache: snapshotProductDetailCacheStats(),
@@ -9701,6 +9738,7 @@ const healthRouteHandler = (req, res) => {
           api_key_configured: !!PIVOTA_API_KEY,
           db_configured: dbConfigured,
         },
+        aurora_chat_contract: auroraChatContract,
         resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
         resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
         product_detail_cache: snapshotProductDetailCacheStats(),
@@ -19808,8 +19846,15 @@ if (require.main === module) {
     }
 
     const server = app.listen(PORT, () => {
+      const auroraChatContract = resolveAuroraChatContractConfig();
       logger.info(
-        { port: PORT, use_mock: USE_MOCK, mode: API_MODE },
+        {
+          port: PORT,
+          use_mock: USE_MOCK,
+          mode: API_MODE,
+          aurora_chat_response_format: auroraChatContract.response_format,
+          aurora_analysis_card_contract_mode: auroraChatContract.analysis_card_contract_mode,
+        },
         `Pivota Agent gateway listening on http://localhost:${PORT}, proxying to ${PIVOTA_API_BASE}`,
       );
 

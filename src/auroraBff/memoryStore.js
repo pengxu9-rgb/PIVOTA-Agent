@@ -147,6 +147,16 @@ function mapProfileToDb(profilePatch) {
   const p = profilePatch || {};
   const goals = Array.isArray(p.goals) ? p.goals : undefined;
   const contraindications = Array.isArray(p.contraindications) ? p.contraindications : undefined;
+  const highRiskMedications = Array.isArray(p.high_risk_medications)
+    ? p.high_risk_medications
+    : Array.isArray(p.highRiskMedications)
+      ? p.highRiskMedications
+      : undefined;
+  const pregnancyDueDate = Object.prototype.hasOwnProperty.call(p, 'pregnancy_due_date')
+    ? p.pregnancy_due_date
+    : Object.prototype.hasOwnProperty.call(p, 'pregnancyDueDate')
+      ? p.pregnancyDueDate
+      : undefined;
   const currentRoutine = p.currentRoutine;
   const itinerary = p.itinerary;
   const travelPlan = p.travel_plan;
@@ -165,6 +175,12 @@ function mapProfileToDb(profilePatch) {
     travel_plan: travelPlan !== undefined ? JSON.stringify(travelPlan) : undefined,
     travel_plans: travelPlans !== undefined ? JSON.stringify(travelPlans) : undefined,
     contraindications: contraindications ? JSON.stringify(contraindications) : undefined,
+    age_band: p.age_band != null ? p.age_band : p.ageBand,
+    pregnancy_status: p.pregnancy_status != null ? p.pregnancy_status : p.pregnancyStatus,
+    pregnancy_due_date: pregnancyDueDate,
+    lactation_status: p.lactation_status != null ? p.lactation_status : p.lactationStatus,
+    high_risk_medications:
+      highRiskMedications !== undefined ? JSON.stringify(highRiskMedications) : undefined,
     chat_context: chatContext !== undefined ? chatContext : undefined,
     lang_pref: p.lang_pref,
   };
@@ -360,8 +376,19 @@ function mapExperimentRowFromDb(row) {
   };
 }
 
+function normalizeDateOnlyField(value) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const ts = Date.parse(raw);
+  if (!Number.isFinite(ts)) return null;
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
 function mapProfileFromDb(row) {
   if (!row) return null;
+  const pregnancyDueDate = normalizeDateOnlyField(row.pregnancy_due_date);
   return {
     aurora_uid: row.aurora_uid,
     skinType: row.skin_type || null,
@@ -382,6 +409,15 @@ function mapProfileFromDb(row) {
       : row.contraindications
         ? row.contraindications
         : [],
+    age_band: row.age_band || null,
+    pregnancy_status: row.pregnancy_status || null,
+    pregnancy_due_date: pregnancyDueDate,
+    lactation_status: row.lactation_status || null,
+    high_risk_medications: Array.isArray(row.high_risk_medications)
+      ? row.high_risk_medications
+      : row.high_risk_medications
+        ? row.high_risk_medications
+        : [],
     chatContext: normalizeChatContext(row.chat_context),
     lastAnalysis: row.last_analysis || null,
     lastAnalysisAt: row.last_analysis_at ? new Date(row.last_analysis_at).toISOString() : null,
@@ -394,6 +430,7 @@ function mapProfileFromDb(row) {
 
 function mapAccountProfileFromDb(row) {
   if (!row) return null;
+  const pregnancyDueDate = normalizeDateOnlyField(row.pregnancy_due_date);
   return {
     user_id: row.user_id,
     skinType: row.skin_type || null,
@@ -413,6 +450,15 @@ function mapAccountProfileFromDb(row) {
       ? row.contraindications
       : row.contraindications
         ? row.contraindications
+        : [],
+    age_band: row.age_band || null,
+    pregnancy_status: row.pregnancy_status || null,
+    pregnancy_due_date: pregnancyDueDate,
+    lactation_status: row.lactation_status || null,
+    high_risk_medications: Array.isArray(row.high_risk_medications)
+      ? row.high_risk_medications
+      : row.high_risk_medications
+        ? row.high_risk_medications
         : [],
     chatContext: normalizeChatContext(row.chat_context),
     lastAnalysis: row.last_analysis || null,
@@ -445,6 +491,11 @@ function ensureEphemeralProfile({ kind, id }) {
           travel_plan: null,
           travel_plans: [],
           contraindications: [],
+          age_band: null,
+          pregnancy_status: null,
+          pregnancy_due_date: null,
+          lactation_status: null,
+          high_risk_medications: [],
           chatContext: null,
           lastAnalysis: null,
           lastAnalysisAt: null,
@@ -466,6 +517,11 @@ function ensureEphemeralProfile({ kind, id }) {
           travel_plan: null,
           travel_plans: [],
           contraindications: [],
+          age_band: null,
+          pregnancy_status: null,
+          pregnancy_due_date: null,
+          lactation_status: null,
+          high_risk_medications: [],
           chatContext: null,
           lastAnalysis: null,
           lastAnalysisAt: null,
@@ -498,6 +554,25 @@ function upsertEphemeralProfile({ kind, id }, profilePatch) {
     ...(p.travel_plan !== undefined ? { travel_plan: p.travel_plan } : {}),
     ...(p.travel_plans !== undefined ? { travel_plans: Array.isArray(p.travel_plans) ? p.travel_plans : [] } : {}),
     ...(p.contraindications !== undefined ? { contraindications: Array.isArray(p.contraindications) ? p.contraindications : [] } : {}),
+    ...(p.age_band !== undefined || p.ageBand !== undefined ? { age_band: p.age_band ?? p.ageBand } : {}),
+    ...(p.pregnancy_status !== undefined || p.pregnancyStatus !== undefined
+      ? { pregnancy_status: p.pregnancy_status ?? p.pregnancyStatus }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(p, 'pregnancy_due_date') || Object.prototype.hasOwnProperty.call(p, 'pregnancyDueDate')
+      ? { pregnancy_due_date: Object.prototype.hasOwnProperty.call(p, 'pregnancy_due_date') ? p.pregnancy_due_date : p.pregnancyDueDate }
+      : {}),
+    ...(p.lactation_status !== undefined || p.lactationStatus !== undefined
+      ? { lactation_status: p.lactation_status ?? p.lactationStatus }
+      : {}),
+    ...(p.high_risk_medications !== undefined || p.highRiskMedications !== undefined
+      ? {
+          high_risk_medications: Array.isArray(p.high_risk_medications)
+            ? p.high_risk_medications
+            : Array.isArray(p.highRiskMedications)
+              ? p.highRiskMedications
+              : [],
+        }
+      : {}),
     ...(p.chatContext !== undefined ? { chatContext: normalizeChatContext(p.chatContext) } : {}),
     ...(p.lang_pref !== undefined ? { lang_pref: p.lang_pref } : {}),
     updated_at: isoTs(),
@@ -591,11 +666,16 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         travel_plan,
         travel_plans,
         contraindications,
+        age_band,
+        pregnancy_status,
+        pregnancy_due_date,
+        lactation_status,
+        high_risk_medications,
         chat_context,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, now())
       ON CONFLICT (aurora_uid) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -608,6 +688,11 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         travel_plan = EXCLUDED.travel_plan,
         travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
+        age_band = EXCLUDED.age_band,
+        pregnancy_status = EXCLUDED.pregnancy_status,
+        pregnancy_due_date = EXCLUDED.pregnancy_due_date,
+        lactation_status = EXCLUDED.lactation_status,
+        high_risk_medications = EXCLUDED.high_risk_medications,
         chat_context = EXCLUDED.chat_context,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
@@ -626,6 +711,11 @@ async function upsertUserProfile(auroraUid, profilePatch) {
       normalizeJsonbParam(merged.travel_plan ?? null),
       normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
+      merged.age_band ?? null,
+      merged.pregnancy_status ?? null,
+      merged.pregnancy_due_date ?? null,
+      merged.lactation_status ?? null,
+      normalizeJsonbParam(merged.high_risk_medications ?? null),
       normalizeJsonbParam(normalizeChatContext(merged.chat_context) ?? null),
       merged.lang_pref ?? null,
     ],
@@ -681,11 +771,16 @@ async function upsertAccountProfile(userId, profilePatch) {
         travel_plan,
         travel_plans,
         contraindications,
+        age_band,
+        pregnancy_status,
+        pregnancy_due_date,
+        lactation_status,
+        high_risk_medications,
         chat_context,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, now())
       ON CONFLICT (user_id) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -698,6 +793,11 @@ async function upsertAccountProfile(userId, profilePatch) {
         travel_plan = EXCLUDED.travel_plan,
         travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
+        age_band = EXCLUDED.age_band,
+        pregnancy_status = EXCLUDED.pregnancy_status,
+        pregnancy_due_date = EXCLUDED.pregnancy_due_date,
+        lactation_status = EXCLUDED.lactation_status,
+        high_risk_medications = EXCLUDED.high_risk_medications,
         chat_context = EXCLUDED.chat_context,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
@@ -716,6 +816,11 @@ async function upsertAccountProfile(userId, profilePatch) {
       normalizeJsonbParam(merged.travel_plan ?? null),
       normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
+      merged.age_band ?? null,
+      merged.pregnancy_status ?? null,
+      merged.pregnancy_due_date ?? null,
+      merged.lactation_status ?? null,
+      normalizeJsonbParam(merged.high_risk_medications ?? null),
       normalizeJsonbParam(normalizeChatContext(merged.chat_context) ?? null),
       merged.lang_pref ?? null,
     ],
@@ -1035,6 +1140,20 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
     }
     if ((!accountProfile || !Array.isArray(accountProfile.contraindications) || accountProfile.contraindications.length === 0) && Array.isArray(guestProfile.contraindications) && guestProfile.contraindications.length) {
       patch.contraindications = guestProfile.contraindications;
+    }
+    if (!accountProfile || !accountProfile.age_band) patch.age_band = guestProfile.age_band;
+    if (!accountProfile || !accountProfile.pregnancy_status) patch.pregnancy_status = guestProfile.pregnancy_status;
+    if (!accountProfile || !accountProfile.lactation_status) patch.lactation_status = guestProfile.lactation_status;
+    if (!accountProfile || accountProfile.pregnancy_due_date == null) {
+      patch.pregnancy_due_date = guestProfile.pregnancy_due_date ?? null;
+    }
+    if (
+      (!accountProfile ||
+        !Array.isArray(accountProfile.high_risk_medications) ||
+        accountProfile.high_risk_medications.length === 0) &&
+      Array.isArray(guestProfile.high_risk_medications)
+    ) {
+      patch.high_risk_medications = guestProfile.high_risk_medications;
     }
     if (
       (!accountProfile || !normalizeChatContext(accountProfile.chatContext)) &&

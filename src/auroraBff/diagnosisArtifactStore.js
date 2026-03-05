@@ -30,6 +30,12 @@ function parseMaxArtifactAgeDays(input, fallback = 30) {
   return Math.max(1, Math.min(365, Math.trunc(n)));
 }
 
+function parseArtifactListLimit(input, fallback = 50, max = 400) {
+  const n = Number(input);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(1, Math.min(max, Math.trunc(n)));
+}
+
 function persistenceDisabled() {
   return parseRetentionDays() === 0;
 }
@@ -384,6 +390,75 @@ async function getLatestDiagnosisArtifact({
   }
 }
 
+async function listDiagnosisArtifactsForIdentity({
+  auroraUid,
+  userId,
+  limit = 50,
+  maxAgeDays = 365,
+} = {}) {
+  const user = normalizeIdentityValue(userId);
+  const guest = normalizeIdentityValue(auroraUid);
+  if (!user && !guest) return [];
+
+  const n = parseArtifactListLimit(limit, 50, 400);
+  const maxAge = parseMaxArtifactAgeDays(maxAgeDays, 365);
+  const key = identityKey({ auroraUid: guest, userId: user });
+  const localRows = key && Array.isArray(ephemeral.artifacts.get(key))
+    ? ephemeral.artifacts.get(key).filter((item) => isWithinDays(item.created_at, maxAge))
+    : [];
+
+  if (persistenceDisabled()) return localRows.slice(0, n);
+
+  try {
+    const params = [];
+    const where = [];
+    if (user) {
+      params.push(user);
+      where.push(`user_id = $${params.length}`);
+    } else {
+      params.push(guest);
+      where.push(`aurora_uid = $${params.length}`);
+    }
+    params.push(maxAge);
+    const ageIdx = params.length;
+    params.push(n);
+    const limitIdx = params.length;
+
+    const res = await query(
+      `
+        SELECT artifact_id, aurora_uid, user_id, session_id, artifact_json, confidence_score, confidence_level, source_mix, created_at
+        FROM aurora_skin_diagnosis_artifacts
+        WHERE ${where.join(' AND ')}
+          AND created_at >= now() - ($${ageIdx}::int || ' days')::interval
+        ORDER BY created_at DESC
+        LIMIT $${limitIdx}
+      `,
+      params,
+    );
+
+    const merged = [];
+    const seen = new Set();
+    for (const item of localRows) {
+      const id = String(item && item.artifact_id || '').trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(item);
+    }
+    for (const row of res.rows || []) {
+      const mapped = mapArtifactRow(row);
+      const id = String(mapped && mapped.artifact_id || '').trim();
+      if (!mapped || !id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(mapped);
+    }
+    merged.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    return merged.slice(0, n);
+  } catch (err) {
+    if (isStorageUnavailableError(err)) return localRows.slice(0, n);
+    throw err;
+  }
+}
+
 async function saveIngredientPlan({ artifactId, auroraUid, userId, plan, planId } = {}) {
   const id = String(artifactId || '').trim();
   const payload = plan && typeof plan === 'object' ? plan : null;
@@ -520,6 +595,7 @@ module.exports = {
   createPlanId,
   saveDiagnosisArtifact,
   getLatestDiagnosisArtifact,
+  listDiagnosisArtifactsForIdentity,
   getDiagnosisArtifactById,
   saveIngredientPlan,
   getIngredientPlanByArtifactId,

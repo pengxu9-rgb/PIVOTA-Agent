@@ -314,10 +314,15 @@ const {
   createArtifactId,
   saveDiagnosisArtifact,
   getLatestDiagnosisArtifact,
+  listDiagnosisArtifactsForIdentity,
   saveIngredientPlan,
   getIngredientPlanByArtifactId,
   saveRecoRun,
 } = require('./diagnosisArtifactStore');
+const {
+  appendActivityForIdentity,
+  listActivityForIdentity,
+} = require('./activityStore');
 const {
   LOW_CONFIDENCE_THRESHOLD,
   buildIngredientPlan,
@@ -18671,6 +18676,9 @@ function buildDiagnosisArtifactV1({
   usedPhotos,
   photos,
   photoQuality,
+  photosProvided,
+  photoNotice,
+  photoFailureCode,
 } = {}) {
   const concerns = deriveConcernsFromAnalysis({
     analysis,
@@ -18701,6 +18709,16 @@ function buildDiagnosisArtifactV1({
     })
     .filter(Boolean)
     .slice(0, 4);
+  const photoNoticeText =
+    typeof photoNotice === 'string'
+      ? photoNotice.trim()
+      : photoNotice && typeof photoNotice.message === 'string'
+        ? photoNotice.message.trim()
+        : '';
+  const normalizedPhotoFailureCode =
+    typeof photoFailureCode === 'string' && photoFailureCode.trim()
+      ? photoFailureCode.trim().toUpperCase()
+      : null;
 
   const sourceMix = normalizeArtifactSourceMix([
     usedPhotos ? 'photo' : 'rule',
@@ -18737,6 +18755,15 @@ function buildDiagnosisArtifactV1({
     goals: buildArtifactGoalsNode(profileSummary && profileSummary.goals, 0.74),
     concerns,
     photos: photoRefs,
+    photo_input: {
+      requested: Boolean(usePhoto),
+      provided: photosProvided == null ? photoRefs.length > 0 : Boolean(photosProvided),
+      used: Boolean(usedPhotos),
+      photo_failure_code: normalizedPhotoFailureCode,
+      photo_notice: photoNoticeText || null,
+      quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
+      photos_count: photoRefs.length,
+    },
     safety: {
       non_medical_disclaimer_version: 'v1',
       red_flags: [],
@@ -43667,6 +43694,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               usedPhotos,
               photos,
               photoQuality,
+              photosProvided,
+              photoNotice,
+              photoFailureCode,
             });
             const savedArtifact = await saveDiagnosisArtifact({
               auroraUid: identity.auroraUid,
@@ -43716,6 +43746,36 @@ function mountAuroraBffRoutes(app, { logger }) {
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
               'aurora bff: diagnosis artifact/plan generation failed',
+            );
+          }
+        }
+
+        if (analysis && !shadowRun && persistLastAnalysis) {
+          try {
+            const deeplink = ctx.brief_id
+              ? `/chat?brief_id=${encodeURIComponent(String(ctx.brief_id))}`
+              : '/chat';
+            await appendActivityForIdentity({
+              auroraUid: identity.auroraUid,
+              userId: identity.userId,
+              eventType: 'skin_analysis',
+              payload: {
+                artifact_id: latestArtifactId || null,
+                analysis_source: String(renderedAnalysisSource || '').trim() || 'unknown',
+                used_photos: Boolean(usedPhotos),
+                photos_provided: Boolean(photosProvided),
+                photo_failure_code: photoFailureCode || null,
+                quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
+                photos_count: photosSubmittedCount,
+              },
+              deeplink,
+              source: 'analysis_skin',
+              occurredAtMs: Date.now(),
+            });
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: failed to append skin_analysis activity',
             );
           }
         }
@@ -44454,6 +44514,269 @@ function mountAuroraBffRoutes(app, { logger }) {
     );
     throw err;
   }
+
+  function parseActivityLimit(raw) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 20;
+    return Math.max(1, Math.min(50, Math.trunc(n)));
+  }
+
+  function parseActivityTypes(raw) {
+    if (!raw) return [];
+    const source = Array.isArray(raw) ? raw : String(raw).split(',');
+    const seen = new Set();
+    const out = [];
+    for (const item of source) {
+      const token = String(item || '').trim().toLowerCase();
+      if (!token || seen.has(token)) continue;
+      seen.add(token);
+      out.push(token);
+      if (out.length >= 12) break;
+    }
+    return out;
+  }
+
+  function encodeActivityCursor({ occurred_at_ms, activity_id } = {}) {
+    if (!Number.isFinite(Number(occurred_at_ms))) return null;
+    try {
+      return Buffer.from(
+        JSON.stringify({
+          occurred_at_ms: Math.max(0, Math.trunc(Number(occurred_at_ms))),
+          activity_id: String(activity_id || ''),
+        }),
+      ).toString('base64url');
+    } catch {
+      return null;
+    }
+  }
+
+  function decodeActivityCursor(raw) {
+    const input = String(raw || '').trim();
+    if (!input) return null;
+    try {
+      const parsed = JSON.parse(Buffer.from(input, 'base64url').toString('utf8'));
+      if (!parsed || !Number.isFinite(Number(parsed.occurred_at_ms))) return null;
+      return {
+        occurred_at_ms: Math.max(0, Math.trunc(Number(parsed.occurred_at_ms))),
+        activity_id: String(parsed.activity_id || ''),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function compareActivityRowsDesc(a, b) {
+    const aTs = Number(a && a.occurred_at_ms || 0);
+    const bTs = Number(b && b.occurred_at_ms || 0);
+    if (aTs !== bTs) return bTs - aTs;
+    return String(b && b.activity_id || '').localeCompare(String(a && a.activity_id || ''));
+  }
+
+  function eventAfterActivityCursor(event, cursor) {
+    if (!cursor) return true;
+    const ts = Number(event && event.occurred_at_ms || 0);
+    if (ts < cursor.occurred_at_ms) return true;
+    if (ts > cursor.occurred_at_ms) return false;
+    return String(event && event.activity_id || '').localeCompare(String(cursor.activity_id || '')) < 0;
+  }
+
+  function normalizeActivityPayload(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
+    return payload;
+  }
+
+  function mapActivityStoreItem(item) {
+    if (!item || typeof item !== 'object') return null;
+    return {
+      activity_id: item.activity_id != null ? String(item.activity_id) : null,
+      event_type: String(item.event_type || '').trim() || 'activity_event',
+      payload: normalizeActivityPayload(item.payload),
+      deeplink: typeof item.deeplink === 'string' && item.deeplink.trim() ? item.deeplink.trim() : null,
+      source: String(item.source || '').trim() || 'unknown',
+      occurred_at_ms: Number.isFinite(Number(item.occurred_at_ms))
+        ? Math.max(0, Math.trunc(Number(item.occurred_at_ms)))
+        : Date.now(),
+      ...(item.created_at ? { created_at: item.created_at } : {}),
+    };
+  }
+
+  function normalizeSkinAnalysisBool(value, fallback = false) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const token = value.trim().toLowerCase();
+      if (token === 'true' || token === '1' || token === 'yes' || token === 'y' || token === 'on') return true;
+      if (token === 'false' || token === '0' || token === 'no' || token === 'n' || token === 'off') return false;
+    }
+    return fallback;
+  }
+
+  function buildSyntheticSkinAnalysisActivityFromArtifact(artifactRow) {
+    if (!artifactRow || typeof artifactRow !== 'object') return null;
+    const artifactId = String(artifactRow.artifact_id || '').trim();
+    if (!artifactId) return null;
+    const artifact = artifactRow.artifact_json && typeof artifactRow.artifact_json === 'object'
+      ? artifactRow.artifact_json
+      : {};
+    const analysisContext = artifact.analysis_context && typeof artifact.analysis_context === 'object'
+      ? artifact.analysis_context
+      : {};
+    const photoInput = artifact.photo_input && typeof artifact.photo_input === 'object'
+      ? artifact.photo_input
+      : {};
+    const photos = Array.isArray(artifact.photos) ? artifact.photos : [];
+    const sessionNode = artifact.identity && typeof artifact.identity === 'object' ? artifact.identity : {};
+    const sessionId = String(
+      sessionNode.session_id || artifactRow.session_id || '',
+    ).trim();
+
+    const usedPhotos = normalizeSkinAnalysisBool(
+      photoInput.used,
+      normalizeSkinAnalysisBool(analysisContext.used_photos, photos.length > 0),
+    );
+    const photosProvided = normalizeSkinAnalysisBool(photoInput.provided, photos.length > 0);
+    const analysisSource = String(
+      analysisContext.analysis_source || photoInput.analysis_source || 'unknown',
+    ).trim() || 'unknown';
+    const qualityGrade = String(
+      photoInput.quality_grade || analysisContext.quality_grade || 'unknown',
+    ).trim() || 'unknown';
+    const photoFailureCode = String(photoInput.photo_failure_code || '').trim() || null;
+    const photosCount = Number.isFinite(Number(photoInput.photos_count))
+      ? Math.max(0, Math.trunc(Number(photoInput.photos_count)))
+      : photos.length;
+    const occurredAtMs = Number.isFinite(Date.parse(String(artifactRow.created_at || artifact.created_at || '')))
+      ? Date.parse(String(artifactRow.created_at || artifact.created_at))
+      : Date.now();
+
+    return {
+      activity_id: `artifact:${artifactId}`,
+      event_type: 'skin_analysis',
+      payload: {
+        artifact_id: artifactId,
+        analysis_source: analysisSource,
+        used_photos: usedPhotos,
+        photos_provided: photosProvided,
+        photo_failure_code: photoFailureCode,
+        quality_grade: qualityGrade,
+        photos_count: photosCount,
+      },
+      deeplink: sessionId ? `/chat?brief_id=${encodeURIComponent(sessionId)}` : null,
+      source: 'diagnosis_artifact_backfill',
+      occurred_at_ms: Math.max(0, Math.trunc(occurredAtMs)),
+      created_at: artifactRow.created_at || artifact.created_at || null,
+    };
+  }
+
+  app.get('/v1/activity', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const identity = await resolveIdentity(req, ctx);
+      const limit = parseActivityLimit(req.query && req.query.limit);
+      const cursor = decodeActivityCursor(req.query && req.query.cursor);
+      const requestedTypes = parseActivityTypes(req.query && req.query.types);
+      const includeSkinAnalysis = requestedTypes.length === 0 || requestedTypes.includes('skin_analysis');
+
+      const explicit = await listActivityForIdentity({
+        auroraUid: identity.auroraUid,
+        userId: identity.userId,
+        limit: 300,
+        eventTypes: requestedTypes.length ? requestedTypes : undefined,
+      });
+      const explicitItems = Array.isArray(explicit && explicit.items)
+        ? explicit.items.map(mapActivityStoreItem).filter(Boolean)
+        : [];
+
+      const explicitArtifactIds = new Set(
+        explicitItems
+          .map((item) => {
+            if (!item || item.event_type !== 'skin_analysis') return '';
+            const payload = normalizeActivityPayload(item.payload);
+            return String(payload.artifact_id || '').trim();
+          })
+          .filter(Boolean),
+      );
+
+      let syntheticItems = [];
+      if (includeSkinAnalysis) {
+        const artifacts = await listDiagnosisArtifactsForIdentity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          limit: 300,
+          maxAgeDays: 365,
+        });
+        syntheticItems = (Array.isArray(artifacts) ? artifacts : [])
+          .map(buildSyntheticSkinAnalysisActivityFromArtifact)
+          .filter(Boolean)
+          .filter((item) => {
+            const payload = normalizeActivityPayload(item.payload);
+            const artifactId = String(payload.artifact_id || '').trim();
+            return artifactId && !explicitArtifactIds.has(artifactId);
+          });
+      }
+
+      const merged = [...explicitItems, ...syntheticItems]
+        .filter((item) => {
+          if (!requestedTypes.length) return true;
+          return requestedTypes.includes(String(item.event_type || '').trim().toLowerCase());
+        })
+        .sort(compareActivityRowsDesc)
+        .filter((item) => eventAfterActivityCursor(item, cursor));
+
+      const page = merged.slice(0, limit + 1);
+      const hasMore = page.length > limit;
+      const items = hasMore ? page.slice(0, limit) : page;
+      const tail = items.length ? items[items.length - 1] : null;
+      const nextCursor = hasMore && tail
+        ? encodeActivityCursor({
+            occurred_at_ms: tail.occurred_at_ms,
+            activity_id: tail.activity_id,
+          })
+        : null;
+
+      return res.json({ items, next_cursor: nextCursor });
+    } catch (err) {
+      const status = err && Number.isFinite(Number(err.status)) ? Number(err.status) : 500;
+      logger?.warn({ err: err?.message || String(err), status }, 'activity list failed');
+      return res.status(status).json({
+        items: [],
+        next_cursor: null,
+        error: err && err.code ? err.code : 'ACTIVITY_LIST_FAILED',
+      });
+    }
+  });
+
+  app.post('/v1/activity/log', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const eventType = String(body.event_type || '').trim().toLowerCase();
+      if (!eventType) {
+        return res.status(400).json({ ok: false, activity_id: null, error: 'BAD_REQUEST' });
+      }
+      const identity = await resolveIdentity(req, ctx);
+      const record = await appendActivityForIdentity({
+        auroraUid: identity.auroraUid,
+        userId: identity.userId,
+        eventType,
+        payload: body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload) ? body.payload : {},
+        deeplink: typeof body.deeplink === 'string' ? body.deeplink : null,
+        source: typeof body.source === 'string' ? body.source : 'client',
+        occurredAtMs: Number.isFinite(Number(body.occurred_at_ms)) ? Number(body.occurred_at_ms) : Date.now(),
+      });
+      return res.json({ ok: true, activity_id: record && record.activity_id ? String(record.activity_id) : null });
+    } catch (err) {
+      const status = err && Number.isFinite(Number(err.status)) ? Number(err.status) : 500;
+      logger?.warn({ err: err?.message || String(err), status }, 'activity log failed');
+      return res.status(status).json({
+        ok: false,
+        activity_id: null,
+        error: err && err.code ? err.code : 'ACTIVITY_LOG_FAILED',
+      });
+    }
+  });
 
   app.get('/v1/session/bootstrap', async (req, res) => {
     const ctx = buildRequestContext(req, {});
