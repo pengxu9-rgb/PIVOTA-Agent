@@ -265,3 +265,79 @@ test('analysis_story_v2: evidence -> generate -> review pipeline enforces routin
   assert.equal(typeof coerced.ui_card_v1, 'object');
   assert.equal(typeof coerced.ui_card_v1.headline, 'string');
 });
+
+test('analysis_story_v2: AM/PM plan is profile-aware instead of fixed template', () => {
+  const internal = loadInternalWithFlags({});
+
+  const darkSpotStory = internal.generateAnalysisStoryV2Json({
+    evidence: {
+      language: 'EN',
+      profile: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['dark_spots'],
+      },
+      missing_routine_fields: [],
+      finding_evidence: [{ rank: 1, observation: 'uneven tone' }],
+    },
+    fallbackStory: { schema_version: 'aurora.analysis_story.v2' },
+  });
+
+  const agingStory = internal.generateAnalysisStoryV2Json({
+    evidence: {
+      language: 'EN',
+      profile: {
+        skinType: 'normal',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['anti_aging'],
+      },
+      missing_routine_fields: [],
+      finding_evidence: [{ rank: 1, observation: 'fine lines' }],
+    },
+    fallbackStory: { schema_version: 'aurora.analysis_story.v2' },
+  });
+
+  const barrierStory = internal.generateAnalysisStoryV2Json({
+    evidence: {
+      language: 'EN',
+      profile: {
+        skinType: 'dry',
+        sensitivity: 'high',
+        barrierStatus: 'impaired',
+        goals: ['redness'],
+      },
+      missing_routine_fields: [],
+      finding_evidence: [{ rank: 1, observation: 'persistent redness and stinging' }],
+    },
+    fallbackStory: { schema_version: 'aurora.analysis_story.v2' },
+  });
+
+  const darkSpotAm = (darkSpotStory.am_plan || []).map((x) => String(x?.step || ''));
+  const agingPm = (agingStory.pm_plan || []).map((x) => String(x?.step || ''));
+  const barrierPm = (barrierStory.pm_plan || []).map((x) => String(x?.step || ''));
+
+  assert.equal(darkSpotAm.some((step) => /vitamin c/i.test(step)), true);
+  assert.equal(agingPm.some((step) => /retinol/i.test(step)), true);
+  assert.equal(
+    barrierPm.some((step) => /repair serum|ceramides|panthenol/i.test(step)),
+    true,
+  );
+});
+
+test('analysis_story_v2: generation prompt uses structure-only schema reference', () => {
+  const internal = loadInternalWithFlags({});
+  const prompt = internal.buildAnalysisStoryGenerationPrompt({
+    evidence: {
+      language: 'EN',
+      profile: { skinType: 'oily', sensitivity: 'low', barrierStatus: 'healthy', goals: ['dark_spots'] },
+      finding_evidence: [{ rank: 1, observation: 'uneven tone' }],
+      missing_routine_fields: [],
+    },
+    fallbackStory: { schema_version: 'aurora.analysis_story.v2' },
+  });
+
+  assert.equal(/Schema reference \(structure only, do NOT copy content\):/i.test(prompt), true);
+  assert.equal(/Fallback template JSON:/i.test(prompt), false);
+});

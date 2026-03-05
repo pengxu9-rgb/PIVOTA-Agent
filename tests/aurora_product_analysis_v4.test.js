@@ -232,6 +232,27 @@ describe('Product Analysis V4 unit tests', () => {
       expect(prompt).toContain('PM first');
       expect(prompt).toContain('reapplication guidance');
     });
+
+    test('injects no-brand-guess hard rules when anchor is unresolved', () => {
+      const prompt = buildProductDeepScanPromptV4({
+        productDescriptor: 'vitamin C serum (user text only)',
+        productType: 'serum',
+        inciStatus: {
+          extraction: 'missing',
+          consensus_tier: 'low',
+          verification_required: true,
+          total_ingredients: 0,
+          sources: [],
+        },
+        usageOverrides: {},
+        anchorResolved: false,
+      });
+
+      expect(prompt).toContain('No anchor product was resolved from catalog');
+      expect(prompt).toContain('Do NOT guess or assume a specific brand or SKU');
+      expect(prompt).toContain('SkinCeuticals C E Ferulic');
+      expect(prompt).toContain('Do NOT populate anchor_product');
+    });
   });
 
   describe('isLikelyInvalidInciToken()', () => {

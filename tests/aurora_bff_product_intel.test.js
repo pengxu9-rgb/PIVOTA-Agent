@@ -3714,7 +3714,16 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
             analyze: {
               assessment: {
                 verdict: 'Unknown',
+                summary: 'SkinCeuticals C E Ferulic is ideal for brightening.',
+                hero_ingredient: {
+                  name: 'L-Ascorbic Acid 15%',
+                  why: 'Matches SkinCeuticals antioxidant profile',
+                  source: 'heuristic',
+                },
+                formula_intent: ['SkinCeuticals antioxidant blend with vitamin C'],
                 reasons: ['Evidence is limited.'],
+                best_for: ['Fans of SkinCeuticals'],
+                not_for: ['Those avoiding SkinCeuticals'],
                 anchor_product: {
                   product_id: '7ba1d001-df26-4768-9b8b-29f67aa49eaf',
                   brand: 'SkinCeuticals',
@@ -3756,6 +3765,17 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     );
     expect(card.payload?.assessment?.anchor_product).toBeUndefined();
     expect(card.payload?.assessment?.anchorProduct).toBeUndefined();
+    expect(String(card.payload?.assessment?.summary || '')).not.toMatch(/SkinCeuticals/i);
+    expect(JSON.stringify(card.payload?.assessment?.formula_intent || [])).not.toMatch(/SkinCeuticals/i);
+    expect(JSON.stringify(card.payload?.assessment?.reasons || [])).not.toMatch(/SkinCeuticals/i);
+    expect(JSON.stringify(card.payload?.assessment?.best_for || [])).not.toMatch(/SkinCeuticals/i);
+    expect(JSON.stringify(card.payload?.assessment?.not_for || [])).not.toMatch(/SkinCeuticals/i);
+    const heroIngredient = card.payload?.assessment?.hero_ingredient || null;
+    if (heroIngredient) {
+      expect(String(heroIngredient.name || '')).not.toMatch(/\b15%\s*$/);
+      expect(String(heroIngredient.source || '')).toBe('category_heuristic');
+      expect(String(heroIngredient.why || '')).not.toMatch(/SkinCeuticals/i);
+    }
   });
 
   test('deepScanRoutineProductCandidate blocks non-skincare anchor ids under routine strict guard even in aggressive telemetry mode', async () => {

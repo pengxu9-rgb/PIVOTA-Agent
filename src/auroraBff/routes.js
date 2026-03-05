@@ -5090,35 +5090,85 @@ function evaluateAnchorTrustForProductIntel({
   };
 }
 
+function stripBrandSpecificContent(text) {
+  if (typeof text !== 'string' || !text.trim()) return text;
+  const brandPatterns = [
+    /\bSkinCeuticals\b/gi, /\bThe Ordinary\b/gi, /\bLa Roche[- ]?Posay\b/gi,
+    /\bPaula'?s Choice\b/gi, /\bCeraVe\b/gi, /\bKiehl'?s\b/gi, /\bDrunk Elephant\b/gi,
+    /\bEstee Lauder\b/gi, /\bOlay\b/gi, /\bNeutrogena\b/gi, /\bVichy\b/gi,
+    /\bC E Ferulic\b/gi, /\bPhloretin CF\b/gi, /\bTriple Lipid Restore\b/gi,
+    /\bH\.?A\.? Intensifier\b/gi, /\bHydrating B5\b/gi,
+  ];
+  let cleaned = text;
+  for (const pattern of brandPatterns) {
+    cleaned = cleaned.replace(pattern, '').replace(/\s{2,}/g, ' ').trim();
+  }
+  return cleaned;
+}
+
+function stripBrandFromHeroIngredient(hero) {
+  if (!isPlainObject(hero)) return hero;
+  const next = { ...hero };
+  const name = String(next.name || '').trim();
+  const specificFormulationPattern = /\b\d+%\s*$/;
+  if (specificFormulationPattern.test(name)) {
+    const genericName = name.replace(/\s*\d+%\s*$/, '').trim();
+    next.name = genericName || name;
+    if (typeof next.why === 'string') next.why = stripBrandSpecificContent(next.why);
+  }
+  if (typeof next.source === 'string' && next.source === 'heuristic') {
+    next.source = 'category_heuristic';
+  }
+  return next;
+}
+
 function sanitizeAssessmentAnchorForLowTrust(payload, trustContext = null) {
   if (!isPlainObject(payload)) return payload;
   const usableForAnchorId = Boolean(isPlainObject(trustContext) && trustContext.usable_for_anchor_id === true);
   if (usableForAnchorId) return payload;
   const assessment = isPlainObject(payload.assessment) ? payload.assessment : null;
   if (!assessment) return payload;
-  if (
-    !Object.prototype.hasOwnProperty.call(assessment, 'anchor_product') &&
-    !Object.prototype.hasOwnProperty.call(assessment, 'anchorProduct')
-  ) {
-    return payload;
-  }
-  const existingAnchor = isPlainObject(assessment.anchor_product) ? assessment.anchor_product
-    : isPlainObject(assessment.anchorProduct) ? assessment.anchorProduct
-      : null;
-  if (existingAnchor && isPlainObject(existingAnchor.price)) {
-    const sanitized = { ...existingAnchor };
-    delete sanitized.product_id;
-    delete sanitized.sku_id;
-    const nextAssessment = { ...assessment, anchor_product: sanitized };
-    delete nextAssessment.anchorProduct;
-    return { ...payload, assessment: nextAssessment };
-  }
+
+  const hasAnchorField =
+    Object.prototype.hasOwnProperty.call(assessment, 'anchor_product') ||
+    Object.prototype.hasOwnProperty.call(assessment, 'anchorProduct');
+
   const nextAssessment = { ...assessment };
-  delete nextAssessment.anchor_product;
-  delete nextAssessment.anchorProduct;
+
+  if (hasAnchorField) {
+    delete nextAssessment.anchor_product;
+    delete nextAssessment.anchorProduct;
+  }
+
+  if (isPlainObject(nextAssessment.hero_ingredient)) {
+    nextAssessment.hero_ingredient = stripBrandFromHeroIngredient(nextAssessment.hero_ingredient);
+  }
+  if (typeof nextAssessment.summary === 'string') {
+    nextAssessment.summary = stripBrandSpecificContent(nextAssessment.summary);
+  }
+  if (Array.isArray(nextAssessment.formula_intent)) {
+    nextAssessment.formula_intent = nextAssessment.formula_intent
+      .map((line) => (typeof line === 'string' ? stripBrandSpecificContent(line) : line))
+      .filter((line) => typeof line !== 'string' || line.trim().length > 0);
+  }
+  if (Array.isArray(nextAssessment.reasons)) {
+    nextAssessment.reasons = nextAssessment.reasons
+      .map((line) => (typeof line === 'string' ? stripBrandSpecificContent(line) : line))
+      .filter((line) => typeof line !== 'string' || line.trim().length > 0);
+  }
+  if (Array.isArray(nextAssessment.best_for)) {
+    nextAssessment.best_for = nextAssessment.best_for
+      .map((line) => (typeof line === 'string' ? stripBrandSpecificContent(line) : line));
+  }
+  if (Array.isArray(nextAssessment.not_for)) {
+    nextAssessment.not_for = nextAssessment.not_for
+      .map((line) => (typeof line === 'string' ? stripBrandSpecificContent(line) : line));
+  }
+
   return {
     ...payload,
     assessment: nextAssessment,
+    anchor_trust_sanitized: true,
   };
 }
 
@@ -21348,6 +21398,7 @@ function buildProductDeepScanPromptV3({
   strictFormulaIntent = false,
   strictNarrative = false,
   includeVersionReminder = false,
+  anchorResolved = true,
 } = {}) {
   const strictFormulaLine = strictFormulaIntent || strictNarrative
     ? 'If formula_intent is missing or profile-only, rewrite once using product efficacy/mechanism details only.'
@@ -21359,6 +21410,17 @@ function buildProductDeepScanPromptV3({
       '- Disallowed summary phrases: "Your profile", "Profile priorities", "你的情况", "匹配点".',
       '- how_to_use must be an object with keys: timing, frequency, steps (array), observation_window, stop_signs (array).',
       '- Do NOT return empty how_to_use objects or move follow_up_question into how_to_use.',
+    ]
+    : [];
+  const noBrandGuessLines = !anchorResolved
+    ? [
+      'CRITICAL - No anchor product was resolved from catalog:',
+      '- Do NOT guess or assume a specific brand or product SKU.',
+      '- Do NOT map the user input to well-known products (e.g. do NOT default to SkinCeuticals C E Ferulic for "vitamin C serum").',
+      '- Analyze based on the product CATEGORY and described FUNCTION only.',
+      '- Do NOT populate anchor_product in the response.',
+      '- hero_ingredient should describe the ingredient class (e.g. "vitamin C derivative"), not a specific product formulation.',
+      '- Keep summary, formula_intent, and reasons generic to the product category, not specific to any brand.',
     ]
     : [];
   const versionLine = includeVersionReminder
@@ -21379,6 +21441,7 @@ function buildProductDeepScanPromptV3({
     `Evidence must include science/social_signals/expert_notes.\n` +
     `${strictFormulaLine ? `${strictFormulaLine}\n` : ''}` +
     `${strictNarrativeLines.length ? `${strictNarrativeLines.join('\n')}\n` : ''}` +
+    `${noBrandGuessLines.length ? `${noBrandGuessLines.join('\n')}\n` : ''}` +
     `${versionLine ? `${versionLine}\n` : ''}` +
     `Product: ${descriptor}`;
 }
@@ -21389,6 +21452,7 @@ function buildProductDeepScanPromptV4({
   productType = null,
   inciStatus = null,
   usageOverrides = null,
+  anchorResolved = true,
 } = {}) {
   const descriptor = String(productDescriptor || '').trim();
   const pType = String(productType || 'other').trim();
@@ -21412,6 +21476,12 @@ function buildProductDeepScanPromptV4({
     `5. Fragrance/parfum risk: ONLY mark as confirmed when INCI is verified AND contains fragrance/parfum/known allergens. INCI verified: ${!inciVerificationRequired}.`,
     '6. watchouts items MUST have: {issue: string, status: "confirmed"|"possible"|"unknown", what_to_do: string}.',
     '7. key_ingredients_by_function items MUST have: {function: string, ingredients: string[], confidence: "high"|"medium"|"low"}.',
+    ...(!anchorResolved ? [
+      '8. CRITICAL: No anchor product was resolved from catalog. Do NOT guess or assume a specific brand or SKU.',
+      '   Do NOT default to well-known products (e.g. SkinCeuticals C E Ferulic for "vitamin C serum").',
+      '   Analyze based on product CATEGORY and described FUNCTION only. Use generic ingredient class names.',
+      '   Do NOT populate anchor_product. Keep all analysis category-level, not brand-specific.',
+    ] : []),
   ].join('\n');
 
   const schemaDescription = `{
@@ -21474,6 +21544,7 @@ function buildProductDeepScanPrompt({
   productType = null,
   inciStatus = null,
   usageOverrides = null,
+  anchorResolved = true,
 } = {}) {
   if (AURORA_PRODUCT_INTEL_PROMPT_VERSION === 'v2') {
     return buildProductDeepScanPromptV2({
@@ -21490,6 +21561,7 @@ function buildProductDeepScanPrompt({
       productType,
       inciStatus,
       usageOverrides,
+      anchorResolved,
     });
   }
   return buildProductDeepScanPromptV3({
@@ -21498,6 +21570,7 @@ function buildProductDeepScanPrompt({
     strictFormulaIntent,
     strictNarrative,
     includeVersionReminder,
+    anchorResolved,
   });
 }
 
@@ -23237,6 +23310,7 @@ async function deepScanRoutineProductCandidate({
     prefix: contextPrefix,
     productDescriptor,
     includeVersionReminder: true,
+    anchorResolved: Boolean(anchorId),
     ...routinePromptOptions,
   });
 
@@ -23285,6 +23359,7 @@ async function deepScanRoutineProductCandidate({
         prefix: minimalPrefix,
         productDescriptor,
         includeVersionReminder: true,
+        anchorResolved: Boolean(anchorId),
         ...routinePromptOptions,
       });
         const upstreamRetry = await runDeepScan(minimalQuery, Math.max(1200, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS - 600));
@@ -23298,6 +23373,7 @@ async function deepScanRoutineProductCandidate({
           productDescriptor,
           strictNarrative: true,
           includeVersionReminder: true,
+          anchorResolved: Boolean(anchorId),
           ...routinePromptOptions,
         });
         const formulaRetryUpstream = await runDeepScan(
@@ -25623,6 +25699,131 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
   };
 }
 
+function buildProfileAwareAmPmPlan({ profile, evidence, language } = {}) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const skinType = String(
+    (isPlainObject(profile) ? profile.skinType : '') ||
+    (isPlainObject(evidence) && isPlainObject(evidence.profile) ? evidence.profile.skinType : '') ||
+    '',
+  ).trim().toLowerCase();
+  const sensitivity = String(
+    (isPlainObject(profile) ? profile.sensitivity : '') ||
+    (isPlainObject(evidence) && isPlainObject(evidence.profile) ? evidence.profile.sensitivity : '') ||
+    '',
+  ).trim().toLowerCase();
+  const barrierStatus = String(
+    (isPlainObject(profile) ? profile.barrierStatus : '') ||
+    (isPlainObject(evidence) && isPlainObject(evidence.profile) ? evidence.profile.barrierStatus : '') ||
+    '',
+  ).trim().toLowerCase();
+  const goals = Array.isArray(isPlainObject(profile) ? profile.goals : null)
+    ? profile.goals.map((g) => String(g || '').trim().toLowerCase()).filter(Boolean)
+    : Array.isArray(isPlainObject(evidence) && isPlainObject(evidence.profile) ? evidence.profile.goals : null)
+      ? evidence.profile.goals.map((g) => String(g || '').trim().toLowerCase()).filter(Boolean)
+      : [];
+  const findings = Array.isArray(isPlainObject(evidence) ? evidence.finding_evidence : null)
+    ? evidence.finding_evidence.map((item) => String(item && item.observation || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+
+  const isOily = /oil|oily|combo|combination|混合|油/.test(skinType);
+  const isDry = /dry|dehydrat|干/.test(skinType);
+  const isSensitive = /high|very|severe|极|高/.test(sensitivity);
+  const hasBarrierStress = /impaired|damaged|stressed|compromis|受损|脆弱/.test(barrierStatus) ||
+    findings.some((f) => /barrier|sting|redness|泛红|刺痛|屏障/.test(f));
+  const goalSet = new Set(goals);
+  const wantsDarkSpots = goalSet.has('dark_spots') || goalSet.has('pigmentation') || goalSet.has('brightening') ||
+    goals.some((g) => /dark.?spot|pigment|bright|色斑|提亮|美白/.test(g));
+  const wantsPores = goalSet.has('pores') || goals.some((g) => /pore|毛孔/.test(g));
+  const wantsAcne = goalSet.has('acne') || goalSet.has('breakouts') || goals.some((g) => /acne|breakout|blemish|痘|痤疮/.test(g));
+  const wantsAntiAging = goalSet.has('anti_aging') || goalSet.has('wrinkles') || goalSet.has('fine_lines') ||
+    goals.some((g) => /aging|wrinkle|fine.?line|抗老|皱纹|细纹/.test(g));
+
+  const am = [];
+  am.push({
+    step: isCn ? '温和清洁' : 'Gentle cleanse',
+    purpose: isOily
+      ? (isCn ? '控制油脂堆积，避免过度清洁引发反弹出油' : 'Control sebum build-up without over-stripping')
+      : isDry
+        ? (isCn ? '保留天然油脂，减少清洁后干燥紧绷' : 'Preserve natural oils, minimize post-cleanse tightness')
+        : (isCn ? '减少刺激起点' : 'Minimize irritation load'),
+  });
+
+  if (wantsDarkSpots && !hasBarrierStress) {
+    am.push({
+      step: isCn ? '维生素C 抗氧精华' : 'Vitamin C antioxidant serum',
+      purpose: isCn ? '抑制黑色素氧化，提亮肤色' : 'Inhibit melanin oxidation, brighten skin tone',
+    });
+  } else if (hasBarrierStress || isSensitive) {
+    am.push({
+      step: isCn ? '舒缓修护精华' : 'Calming repair serum',
+      purpose: isCn ? '缓解炎症信号，修复屏障' : 'Calm inflammation signals, support barrier repair',
+    });
+  } else {
+    am.push({
+      step: isCn ? '保湿精华' : 'Hydrating serum',
+      purpose: isCn ? '维持角质层含水量' : 'Maintain stratum corneum hydration',
+    });
+  }
+
+  if (isDry || hasBarrierStress) {
+    am.push({
+      step: isCn ? '保湿面霜' : 'Moisturizer',
+      purpose: isCn ? '锁住水分，加固屏障' : 'Lock in hydration, reinforce barrier',
+    });
+  }
+
+  am.push({
+    step: isCn ? 'SPF50+ 防晒' : 'SPF50+ sunscreen',
+    purpose: wantsDarkSpots
+      ? (isCn ? '防止紫外加深色斑' : 'Prevent UV-induced pigmentation')
+      : (isCn ? '控制紫外暴露' : 'Control UV exposure'),
+  });
+
+  const pm = [];
+  pm.push({
+    step: isCn ? '温和清洁' : 'Gentle cleanse',
+    purpose: isCn ? '清除日间残留与防晒' : 'Remove daytime residue and sunscreen',
+  });
+
+  if (hasBarrierStress || isSensitive) {
+    pm.push({
+      step: isCn ? '修护精华（含神经酰胺/泛醇）' : 'Repair serum (ceramides/panthenol)',
+      purpose: isCn ? '加速屏障修复，减少经皮水分流失' : 'Accelerate barrier repair, reduce TEWL',
+    });
+  } else if (wantsAcne || wantsPores) {
+    pm.push({
+      step: isCn ? '水杨酸/BHA（低频，2-3次/周）' : 'Salicylic acid / BHA (low frequency, 2-3x/week)',
+      purpose: isCn ? '疏通毛孔，减少微粉刺' : 'Unclog pores, reduce microcomedones',
+    });
+  } else if (wantsAntiAging) {
+    pm.push({
+      step: isCn ? '视黄醇（低频起步，隔晚使用）' : 'Retinol (start low frequency, alternate nights)',
+      purpose: isCn ? '促进胶原合成，改善细纹' : 'Promote collagen synthesis, improve fine lines',
+    });
+  } else if (wantsDarkSpots) {
+    pm.push({
+      step: isCn ? '烟酰胺/传明酸精华' : 'Niacinamide / tranexamic acid serum',
+      purpose: isCn ? '抑制黑色素转运，均匀肤色' : 'Inhibit melanin transfer, even skin tone',
+    });
+  } else {
+    pm.push({
+      step: isCn ? '保湿精华' : 'Hydrating serum',
+      purpose: isCn ? '夜间补充水分' : 'Replenish hydration overnight',
+    });
+  }
+
+  pm.push({
+    step: isOily
+      ? (isCn ? '轻薄保湿凝露' : 'Lightweight moisturizing gel')
+      : (isCn ? '屏障修护面霜' : 'Barrier repair moisturizer'),
+    purpose: isOily
+      ? (isCn ? '控油同时锁水，避免闷痘' : 'Control oil while locking moisture, avoid clogging')
+      : (isCn ? '夜间修护与保湿' : 'Night repair and hydration'),
+  });
+
+  return { am_plan: am, pm_plan: pm };
+}
+
 function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, language } = {}) {
   const isCn = String(language || '').toUpperCase() === 'CN';
   const payload = isPlainObject(analysisSummaryPayload) ? analysisSummaryPayload : {};
@@ -25643,6 +25844,7 @@ function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, la
     .slice(0, 6);
 
   const missingFields = deriveRoutineMissingFields(profile);
+  const profilePlan = buildProfileAwareAmPmPlan({ profile, language });
   return {
     schema_version: 'aurora.analysis_story.v2',
     confidence_overall: isPlainObject(analysis.confidence) ? analysis.confidence : { level: payload.low_confidence ? 'low' : 'medium' },
@@ -25662,16 +25864,8 @@ function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, la
       isCn ? '先稳后进，避免一次叠加多个强活性。' : 'Stability first, then progression; avoid stacking multiple strong actives at once.',
       isCn ? '白天防晒是色素与光损管理的基线。' : 'Daily UV protection is the baseline for pigmentation and photoaging control.',
     ],
-    am_plan: [
-      { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '减少刺激起点' : 'Minimize irritation load' },
-      { step: isCn ? '保湿/修护精华' : 'Hydration/repair serum', purpose: isCn ? '维持角质层稳定' : 'Support barrier stability' },
-      { step: isCn ? 'SPF50+ 防晒' : 'SPF50+ sunscreen', purpose: isCn ? '控制紫外暴露' : 'Control UV exposure' },
-    ],
-    pm_plan: [
-      { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '清除日间残留' : 'Remove daytime residue' },
-      { step: isCn ? '单一主力活性（低频）' : 'Single core active (low frequency)', purpose: isCn ? '降低不耐受概率' : 'Reduce irritation risk' },
-      { step: isCn ? '屏障面霜' : 'Barrier moisturizer', purpose: isCn ? '夜间修护' : 'Night recovery' },
-    ],
+    am_plan: profilePlan.am_plan,
+    pm_plan: profilePlan.pm_plan,
     routine_bridge: {
       missing_fields: missingFields,
       why_now: isCn
@@ -25752,9 +25946,17 @@ function buildAnalysisEvidence({ analysisSummaryPayload, profile, language, fall
 function generateAnalysisStoryV2Json({ evidence, fallbackStory } = {}) {
   const preferred = isPlainObject(evidence && evidence.preferred_story) ? evidence.preferred_story : null;
   const base = isPlainObject(preferred) ? preferred : isPlainObject(fallbackStory) ? fallbackStory : {};
+  const profileForPlan = isPlainObject(evidence) && isPlainObject(evidence.profile) ? evidence.profile : null;
+  const profilePlan = buildProfileAwareAmPmPlan({
+    profile: profileForPlan,
+    evidence,
+    language: isPlainObject(evidence) ? evidence.language : undefined,
+  });
   const output = {
     ...base,
     schema_version: 'aurora.analysis_story.v2',
+    am_plan: profilePlan.am_plan,
+    pm_plan: profilePlan.pm_plan,
   };
   if (!isPlainObject(output.routine_bridge)) {
     output.routine_bridge = {
@@ -25825,13 +26027,32 @@ function reviewAnalysisStoryV2Json({ story, evidence } = {}) {
 function buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
   const safeEvidence = isPlainObject(evidence) ? evidence : {};
   const safeFallback = isPlainObject(fallbackStory) ? fallbackStory : {};
+  const schemaExample = {
+    schema_version: 'aurora.analysis_story.v2',
+    confidence_overall: { level: 'medium' },
+    skin_profile: { skin_type_tendency: '...', sensitivity_tendency: '...', current_strengths: ['...'] },
+    priority_findings: [{ priority: 1, title: '...', detail: '...', evidence_region_or_module: [] }],
+    target_state: ['...'],
+    core_principles: ['...'],
+    am_plan: [{ step: '...', purpose: '...' }],
+    pm_plan: [{ step: '...', purpose: '...' }],
+    routine_bridge: { missing_fields: [], why_now: '...', cta_label: '...', cta_action: 'open_routine_intake' },
+    existing_products_optimization: { keep: [], add: [], replace: [], remove: [] },
+    timeline: { first_4_weeks: ['...'], week_8_12_expectation: ['...'] },
+    ui_card_v1: { headline: '...', key_points: ['...'], actions_now: ['...'], avoid_now: ['...'], confidence_label: '...', next_checkin: '...' },
+    safety_notes: ['...'],
+    disclaimer_non_medical: true,
+  };
   return [
-    'Task: Generate a skincare analysis story JSON using ONLY provided evidence.',
+    'Task: Generate a personalized skincare analysis story JSON using ONLY provided evidence.',
     'Rules:',
     '- Follow this narrative order: conclusion first, evidence second, actions third.',
     '- Keep language plain and user-facing; avoid dense ingredient-only dumping.',
     '- No medical diagnosis language.',
-    '- Keep actionable AM/PM steps.',
+    '- CRITICAL: am_plan and pm_plan MUST be customized based on the user\'s skin type, sensitivity, goals, and barrier status from the evidence.',
+    '- Do NOT use generic placeholders like "Gentle cleanse / Hydration serum / SPF50+ sunscreen" for every user.',
+    '- Tailor active steps to user goals: e.g. vitamin C for dark spots, BHA for pores/acne, retinol for anti-aging, ceramides for barrier repair.',
+    '- Adjust frequency and intensity based on sensitivity and barrier status.',
     '- If routine is missing, include routine_bridge with why_now and CTA.',
     '- Must include ui_card_v1 for fast comprehension.',
     '- Return strict JSON only with schema compatible to aurora.analysis_story.v2.',
@@ -25839,8 +26060,8 @@ function buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
     'Evidence JSON:',
     JSON.stringify(safeEvidence, null, 2),
     '',
-    'Fallback template JSON:',
-    JSON.stringify(safeFallback, null, 2),
+    'Schema reference (structure only, do NOT copy content):',
+    JSON.stringify(schemaExample, null, 2),
   ].join('\n');
 }
 
@@ -53333,6 +53554,7 @@ const __internal = {
   countPurchasableProductsForTargets,
   applyPhotoClaimConsistency,
   buildAnalysisEvidence,
+  buildAnalysisStoryGenerationPrompt,
   generateAnalysisStoryV2Json,
   generateAnalysisStoryV2JsonWithLlm,
   reviewAnalysisStoryV2Json,
