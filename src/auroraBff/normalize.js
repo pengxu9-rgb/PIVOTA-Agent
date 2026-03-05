@@ -25,6 +25,43 @@ function asStringArray(value) {
   return [];
 }
 
+const INGREDIENT_UI_NOISE_TOKENS = new Set([
+  'more',
+  'show more',
+  'read more',
+  'view more',
+  'see more',
+  'ingredients',
+  'ingredient',
+  'key ingredients',
+  'key ingredient',
+]);
+
+function normalizeIngredientToken(raw) {
+  let text = String(raw == null ? '' : raw)
+    .replace(/\u00a0/g, ' ')
+    .replace(/\[\s*more\s*\]\s*/gi, '')
+    .replace(/\(\s*more\s*\)\s*/gi, '')
+    .replace(/^(?:show\s+more|read\s+more|view\s+more|see\s+more|more)\s*[:\-]?\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+
+  const lower = text.toLowerCase();
+  if (INGREDIENT_UI_NOISE_TOKENS.has(lower)) return '';
+  if (/^(?:\.{2,}|…+)$/.test(text)) return '';
+  return text;
+}
+
+function normalizeIngredientArray(value) {
+  return uniqueStrings(asStringArray(value).map((item) => normalizeIngredientToken(item)).filter(Boolean));
+}
+
+function readScienceKeyIngredients(science) {
+  const src = asPlainObject(science) || {};
+  return normalizeIngredientArray(src.key_ingredients ?? src.keyIngredients);
+}
+
 function asNumberOrNull(value) {
   if (value == null) return null;
   const n = typeof value === 'number' ? value : Number(value);
@@ -296,7 +333,7 @@ function hasRenderableEvidenceSignals(payload) {
   const evidence = asPlainObject(p.evidence) || {};
   const science = asPlainObject(evidence.science) || {};
   const social = asPlainObject(evidence.social_signals ?? evidence.socialSignals) || {};
-  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const keyIngredients = readScienceKeyIngredients(science);
   const mechanisms = asStringArray(science.mechanisms);
   const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
   const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
@@ -427,6 +464,23 @@ function buildDiagnosticUnknownReasons(payload, { lang = 'EN', fieldMissing = nu
   );
 
   return uniqueStrings(reasons).slice(0, 5);
+}
+
+function buildAssessmentUnknownReasonFallback(lang = 'EN') {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  return [
+    isCn
+      ? '当前证据不足，暂时无法给出高置信度的产品结论。'
+      : 'Current evidence is insufficient for a high-confidence product verdict.',
+  ];
+}
+
+function isDiagnosticNarrativeLine(input) {
+  const text = String(input || '').trim();
+  if (!text) return false;
+  if (/^(?:next step|下一步)\s*[:：]/i.test(text)) return true;
+  return /(cloudflare|access denied|site policy \(403\)|official[-\s]?page fetching|official product page|could not be parsed reliably|degraded analysis path|官网页面抓取受限|降级路径|产品锚点解析不稳定|product anchoring is not stable|no-anchor deep scan|无锚点 deep scan|regulatory source|监管源补证|incidecoder|retail pdp|零售页面补充证据|unblock-fetch fallback|解封抓取|evidence coverage is limited|证据链覆盖不足|version\/region verification|批次版本差异|paste the full inci|公开可访问的官方产品页|publicly accessible official page|share an accessible official page|upstream did not return evidence details|upstream did not return usable reasoning|边界说明：成分浓度与批次差异不可见|boundary: concentration and batch variance are unknown)/i
+    .test(text);
 }
 
 function backfillUrlFetchAttemptProviders(provenanceInput) {
@@ -602,7 +656,7 @@ function normalizeEvidence(raw) {
   if (!expert_notes.length) field_missing.push({ field: 'evidence.expert_notes', reason: 'upstream_missing_or_empty' });
 
   const science = {
-    key_ingredients: asStringArray(scienceRaw?.key_ingredients ?? scienceRaw?.keyIngredients),
+    key_ingredients: readScienceKeyIngredients(scienceRaw),
     mechanisms: asStringArray(scienceRaw?.mechanisms),
     fit_notes: asStringArray(scienceRaw?.fit_notes ?? scienceRaw?.fitNotes),
     risk_notes: asStringArray(scienceRaw?.risk_notes ?? scienceRaw?.riskNotes),
@@ -903,7 +957,11 @@ function sanitizeAssessmentNarrativeLines(lines, { max = 6, allowProfileEcho = f
   const out = [];
   const seen = new Set();
   for (const raw of Array.isArray(lines) ? lines : []) {
-    const text = String(raw || '').trim();
+    const text = String(raw || '')
+      .replace(/\[\s*more\s*\]\s*/gi, '')
+      .replace(/\(\s*more\s*\)\s*/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     if (!text) continue;
     if (!allowProfileEcho && isProfileEchoNarrativeLine(text)) continue;
     const key = text.toLowerCase();
@@ -949,7 +1007,7 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
 
   const ev = asPlainObject(evidence) || {};
   const science = asPlainObject(ev.science) || {};
-  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const keyIngredients = readScienceKeyIngredients(science);
   const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
 
   const lower = uniqueStrings(keyIngredients.map((x) => String(x || '').trim()).filter(Boolean)).join(' | ').toLowerCase();
@@ -1032,7 +1090,7 @@ function pickHeroIngredientFromEvidence(evidence, { lang = 'EN' } = {}) {
   const ev = asPlainObject(evidence);
   if (!ev) return null;
   const science = asPlainObject(ev.science) || {};
-  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const keyIngredients = readScienceKeyIngredients(science);
   if (!keyIngredients.length) return null;
 
   const candidates = keyIngredients
@@ -1184,7 +1242,7 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
   const mechanisms = asStringArray(science.mechanisms);
   const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
-  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const keyIngredients = readScienceKeyIngredients(science);
 
   const positives = asStringArray(social.typical_positive ?? social.typicalPositive);
   const negatives = asStringArray(social.typical_negative ?? social.typicalNegative);
@@ -1273,7 +1331,7 @@ function buildFormulaIntentFromEvidence(evidence, { lang = 'EN' } = {}) {
   const ev = asPlainObject(evidence) || {};
   const science = asPlainObject(ev.science) || {};
   const mechanisms = asStringArray(science.mechanisms);
-  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients)
+  const keyIngredients = readScienceKeyIngredients(science)
     .filter((item) => !/^water$/i.test(String(item || '').trim()));
   const hero = pickHeroIngredientFromEvidence(ev, { lang });
   const isCn = String(lang).toUpperCase() === 'CN';
@@ -1841,7 +1899,7 @@ function buildIngredientIntelBlock(payload, { generatedAt = new Date().toISOStri
   const ev = asPlainObject(p.evidence) || {};
   const science = asPlainObject(ev.science) || {};
   const keyIngredients = uniqueStrings(
-    asStringArray(science.key_ingredients ?? science.keyIngredients)
+    readScienceKeyIngredients(science)
       .map((name) => normalizeIngredientNameToken(name))
       .filter((name) => !isLikelyInvalidIngredientHeadingToken(name)),
   );
@@ -1954,7 +2012,7 @@ function buildSkinFitBlock(payload, { profileSummary = null, generatedAt = new D
   const reasons = asStringArray(assessment.reasons);
   const howToUse = asStringArray(assessment.how_to_use ?? assessment.howToUse);
   const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
-  const scienceKeyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const scienceKeyIngredients = readScienceKeyIngredients(science);
   const scienceMechanisms = asStringArray(science.mechanisms);
   const scienceFitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
   const hasScienceEvidence =
@@ -2482,7 +2540,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
       ...p,
       assessment: {
         verdict: String(lang).toUpperCase() === 'CN' ? '未知' : 'Unknown',
-        reasons: buildDiagnosticUnknownReasons(p, { lang }),
+        reasons: buildAssessmentUnknownReasonFallback(lang),
         ...(fallbackAnchor ? { anchor_product: fallbackAnchor } : {}),
       },
     };
@@ -2504,7 +2562,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
   const existingReasons = sanitizeAssessmentNarrativeLines(asStringArray(assessment.reasons), {
     max: 10,
     allowProfileEcho: false,
-  });
+  }).filter((line) => !isDiagnosticNarrativeLine(line));
   const keptReasons = existingReasons
     .filter((r) => !isGenericReason(r, lang))
     .map((r) => truncateText(r, 200))
@@ -2545,7 +2603,8 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
         if (!t) return false;
         if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(t)) return false;
         return true;
-      }),
+      })
+      .filter((line) => !isDiagnosticNarrativeLine(line)),
   ).slice(0, maxReasons);
   reasons = sanitizeAssessmentNarrativeLines(reasons, { max: maxReasons, allowProfileEcho: false });
 
@@ -2553,6 +2612,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     const derived = buildReasonsFromEvidence(p.evidence, { lang, verdict });
     for (const r of derived) {
       if (!r) continue;
+      if (isDiagnosticNarrativeLine(r)) continue;
       if (reasons.includes(r)) continue;
       reasons.push(r);
       if (reasons.length >= maxReasons) break;
@@ -2564,7 +2624,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
       const verdictToken = String(assessment.verdict || '').trim().toLowerCase();
       return verdictToken === 'unknown' || verdictToken === '未知';
     })();
-    if (isUnknownVerdict) reasons = buildDiagnosticUnknownReasons(p, { lang });
+    if (isUnknownVerdict) reasons = buildAssessmentUnknownReasonFallback(lang);
     else {
       reasons = [
         String(lang).toUpperCase() === 'CN'
@@ -2648,7 +2708,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     ...(betterPairing.length ? { better_pairing: betterPairing } : {}),
     ...(followUpQuestion ? { follow_up_question: followUpQuestion } : {}),
     ...(howToUseNormalized ? { how_to_use: howToUseNormalized } : {}),
-    reasons: uniqueStrings(reasons).slice(0, maxReasons),
+    reasons: uniqueStrings(reasons.filter((line) => !isDiagnosticNarrativeLine(line))).slice(0, maxReasons),
   };
   return reconcileProductAnalysisConsistency(
     attachProductIntelContract(

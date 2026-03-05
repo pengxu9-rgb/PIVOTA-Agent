@@ -4950,17 +4950,18 @@ function evaluateAnchorTrustForProductIntel({
   if (!hasId || candidateQuality === 'weak') {
     reasonCodes.push('anchor_soft_blocked_ambiguous');
   }
+  const dedupedReasonCodes = uniqCaseInsensitiveStrings(reasonCodes, 6);
 
-  let usableForAnchorId = guard.ok && hasId && reasonCodes.length === 0;
-  if (AURORA_RULE_RELAX_AGGRESSIVE || AURORA_PRODUCT_GUARDRAIL_TELEMETRY_ONLY) {
+  let usableForAnchorId = guard.ok && hasId && dedupedReasonCodes.length === 0;
+  if ((AURORA_RULE_RELAX_AGGRESSIVE || AURORA_PRODUCT_GUARDRAIL_TELEMETRY_ONLY) && dedupedReasonCodes.length === 0) {
     usableForAnchorId = Boolean(hasId);
   }
-  if (!PRODUCT_INTEL_URL_ANCHOR_TRUST_GUARD_ENABLED) {
+  if (!PRODUCT_INTEL_URL_ANCHOR_TRUST_GUARD_ENABLED && dedupedReasonCodes.length === 0) {
     usableForAnchorId = Boolean(hasId);
   }
   if (
     String(policy || '').trim().toLowerCase() === 'hard' &&
-    reasonCodes.length &&
+    dedupedReasonCodes.length &&
     !AURORA_RULE_RELAX_AGGRESSIVE &&
     !AURORA_PRODUCT_GUARDRAIL_TELEMETRY_ONLY
   ) {
@@ -4969,19 +4970,21 @@ function evaluateAnchorTrustForProductIntel({
       display_anchor: null,
       usable_for_anchor_id: false,
       trust_level: 'none',
-      reason_codes: uniqCaseInsensitiveStrings(reasonCodes, 6),
+      reason_codes: dedupedReasonCodes,
       source: String(source || 'unknown'),
       candidate_quality: candidateQuality,
       ...(urlConsistency != null ? { url_consistency: urlConsistency } : {}),
     };
   }
+  const trustLevel = dedupedReasonCodes.length ? 'soft_blocked' : (usableForAnchorId ? 'trusted' : 'none');
+  const exposeTrustedAnchor = trustLevel === 'trusted' && Boolean(usableForAnchorId);
 
   return {
-    trusted_anchor: usableForAnchorId ? displayAnchor : null,
+    trusted_anchor: exposeTrustedAnchor ? displayAnchor : null,
     display_anchor: displayAnchor || null,
-    usable_for_anchor_id: Boolean(usableForAnchorId),
-    trust_level: usableForAnchorId ? 'trusted' : 'soft_blocked',
-    reason_codes: uniqCaseInsensitiveStrings(reasonCodes, 6),
+    usable_for_anchor_id: exposeTrustedAnchor,
+    trust_level: trustLevel,
+    reason_codes: dedupedReasonCodes,
     source: String(source || 'unknown'),
     candidate_quality: candidateQuality,
     ...(urlConsistency != null ? { url_consistency: urlConsistency } : {}),
@@ -8621,6 +8624,55 @@ function isLikelyNoiseCompetitorName(name) {
   return false;
 }
 
+const GENERIC_RELATED_NAME_TOKENS = new Set([
+  'moisturizer',
+  'moisturizing',
+  'cream',
+  'lotion',
+  'cleanser',
+  'serum',
+  'toner',
+  'sunscreen',
+  'sunblock',
+  'spf',
+  'uv',
+  'protection',
+  'shield',
+  'hydrating',
+  'hydration',
+  'gel',
+  'balm',
+  'face',
+  'day',
+  'night',
+]);
+
+function isLikelyGenericRelatedCandidateName(name, candidate = null) {
+  const text = String(name || '').trim().toLowerCase();
+  if (!text) return true;
+  void candidate;
+
+  const compact = text
+    .replace(/[^a-z0-9+% ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!compact) return true;
+
+  if (/^(?:moisturizer|moisturizing cream|cleanser|serum|toner|sunscreen|sunblock|spf(?:\s*\d{1,2}\+?)?)$/.test(compact)) {
+    return true;
+  }
+
+  const tokens = compact.split(' ').filter(Boolean);
+  if (!tokens.length || tokens.length > 3) return false;
+  const onlyGenericTokens = tokens.every((token) => {
+    if (GENERIC_RELATED_NAME_TOKENS.has(token)) return true;
+    if (/^spf\d{0,2}\+?$/.test(token)) return true;
+    if (/^\d{1,2}\+?$/.test(token)) return true;
+    return false;
+  });
+  return onlyGenericTokens;
+}
+
 function initCandidateFilterStats(seed = null) {
   const base = seed && typeof seed === 'object' && !Array.isArray(seed) ? seed : {};
   return {
@@ -8674,6 +8726,7 @@ function sanitizeCompetitorCandidates(candidates, max = 10, options = null) {
     if (!row) continue;
     const name = pickFirstTrimmed(row.name, row.display_name);
     if (!name || isLikelyNoiseCompetitorName(name)) continue;
+    if ((pool === 'related_products' || pool === 'related') && isLikelyGenericRelatedCandidateName(name, row)) continue;
     if (enforceSkincare) {
       const guard = evaluateAnchorProductSkincareGuard(row, { strictFilter });
       if (!guard.ok && (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category')) {
@@ -8905,7 +8958,7 @@ function normalizeRecoCandidateForContract(item, { blockType = 'competitors' } =
 function normalizeRecoBlockForContract(rawBlock, { max = 10 } = {}) {
   const block = isPlainObject(rawBlock) ? rawBlock : {};
   const blockType = String(block.block_type || block.blockType || block.pool || '').trim().toLowerCase() || 'competitors';
-  const candidates = sanitizeCompetitorCandidates(block.candidates, max)
+  const candidates = sanitizeCompetitorCandidates(block.candidates, max, { pool: blockType })
     .map((item) => normalizeRecoCandidateForContract(item, { blockType }))
     .filter(Boolean);
   return {
@@ -10341,7 +10394,9 @@ async function runRecoBlocksForUrl({
     source: normalizeRecoSourceObject(row?.source || row?.source_type || 'snapshot'),
     source_type: String(row?.source?.type || row?.source_type || 'snapshot'),
   }));
-  const snapshotRelated = sanitizeCompetitorCandidates(snapshotPayload?.related_products, maxCandidates).map((row) => ({
+  const snapshotRelated = sanitizeCompetitorCandidates(snapshotPayload?.related_products, maxCandidates, {
+    pool: 'related_products',
+  }).map((row) => ({
     ...row,
     source: normalizeRecoSourceObject(row?.source || row?.source_type || 'snapshot'),
     source_type: String(row?.source?.type || row?.source_type || 'snapshot'),
@@ -10411,6 +10466,9 @@ async function runRecoBlocksForUrl({
       ...(Array.isArray(payloadObj?.related_products?.candidates) ? payloadObj.related_products.candidates : []),
     ],
     maxCandidates,
+    {
+      pool: 'related_products',
+    },
   ).map((row) => ({
     ...row,
     source: normalizeRecoSourceObject(
@@ -10645,7 +10703,9 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
     ? p.related_products
     : null;
   const existingRelated = Array.isArray(existingRelatedObj?.candidates) ? existingRelatedObj.candidates : [];
-  const mergedRelated = sanitizeCompetitorCandidates([...existingRelated, ...recoveredRelated], max);
+  const mergedRelated = sanitizeCompetitorCandidates([...existingRelated, ...recoveredRelated], max, {
+    pool: 'related_products',
+  });
   const hasChanged = cleanLen !== rawLen || mergedRelated.length !== existingRelated.length;
   if (!hasChanged) return payload;
 
@@ -11038,6 +11098,9 @@ function scheduleProductIntelCompetitorEnrichBackfill({
       let asyncRelated = sanitizeCompetitorCandidates(
         dagOut?.related_products?.candidates,
         PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+        {
+          pool: 'related_products',
+        },
       );
       let asyncDupes = sanitizeCompetitorCandidates(
         dagOut?.dupes?.candidates,
@@ -11266,6 +11329,9 @@ async function maybeSyncRepairLowCoverageCompetitors({
   let mergedRelatedCandidates = sanitizeCompetitorCandidates(
     dagOut?.related_products?.candidates,
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+    {
+      pool: 'related_products',
+    },
   );
   let mergedDupeCandidates = sanitizeCompetitorCandidates(
     dagOut?.dupes?.candidates,
@@ -11306,6 +11372,9 @@ async function maybeSyncRepairLowCoverageCompetitors({
         mergedRelatedCandidates = sanitizeCompetitorCandidates(
           [...mergedRelatedCandidates, ...(Array.isArray(rerouted.relPool) ? rerouted.relPool : [])],
           PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+          {
+            pool: 'related_products',
+          },
         );
         mergedDupeCandidates = sanitizeCompetitorCandidates(
           [...mergedDupeCandidates, ...(Array.isArray(rerouted.dupePool) ? rerouted.dupePool : [])],
@@ -11341,6 +11410,9 @@ async function maybeSyncRepairLowCoverageCompetitors({
   const existingRelatedCandidates = sanitizeCompetitorCandidates(
     existingRelatedObj?.candidates,
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+    {
+      pool: 'related_products',
+    },
   );
   const existingRelatedKey = existingRelatedCandidates.map((row) => {
     const id = pickFirstTrimmed(row?.product_id, row?.sku_id);
@@ -37070,6 +37142,36 @@ function upgradeLegacyProductAnalysisToV4(payload, { lang = 'EN' } = {}) {
   };
 }
 
+function isDiagnosticAssessmentReasonLine(input) {
+  const text = String(input || '').trim();
+  if (!text) return false;
+  if (/^(?:next step|下一步)\s*[:：]/i.test(text)) return true;
+  return /(official[-\s]?page|官方页面|公开可访问|publicly accessible|cloudflare|access denied|site policy \(403\)|degraded analysis path|降级路径|paste (?:the )?full inci|upload package inci|粘贴完整 inci|贴包装 inci|share an accessible official page|upstream did not return evidence details|upstream did not return usable reasoning)/i
+    .test(text);
+}
+
+function sanitizeUnknownVerdictReasonsForPublic(input, { lang = 'EN', min = 2, max = 8 } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const cleaned = uniqCaseInsensitiveStrings(
+    asStringArray(input)
+      .map((line) => String(line || '').trim())
+      .filter(Boolean)
+      .filter((line) => !isDiagnosticAssessmentReasonLine(line)),
+    Math.max(max + 4, 12),
+  ).slice(0, max);
+  if (cleaned.length >= min) return cleaned;
+  const fallback = isCn
+    ? [
+      '当前证据不足，暂时无法给出高置信度的产品结论。',
+      '该结论仅作临时参考，后续补充证据后应重新评估。',
+    ]
+    : [
+      'Current evidence is insufficient for a high-confidence product verdict.',
+      'Treat this result as provisional until more complete evidence is available.',
+    ];
+  return uniqCaseInsensitiveStrings([...cleaned, ...fallback], max).slice(0, max);
+}
+
 function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null } = {}) {
   const base = isPlainObject(payload) ? reconcileProductAnalysisConsistency(payload, { lang }) : payload;
   const p = isPlainObject(base) ? { ...base } : base;
@@ -37142,28 +37244,10 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
   }
   const relaxedUnknownMode = AURORA_RULE_RELAX_AGGRESSIVE || AURORA_PRODUCT_GUARDRAIL_TELEMETRY_ONLY;
 
-  const isCn = String(lang || '').toUpperCase() === 'CN';
-  const reasons = uniqCaseInsensitiveStrings(
+  const reasons = sanitizeUnknownVerdictReasonsForPublic(
     Array.isArray(nextAssessment?.reasons) ? nextAssessment.reasons : [],
-    10,
+    { lang, min: 2, max: 8 },
   );
-  if (reasons.length < 2) {
-    reasons.push(
-      isCn
-        ? '当前证据链不完整（成分/舆情/专家注释存在缺口），暂无法给出高置信结论。'
-        : 'Evidence is incomplete (ingredient/social/expert coverage has gaps), so confidence is limited.',
-    );
-  }
-  const hasActionableReason = reasons.some((line) =>
-    /(please|paste|share|provide|retry|re-run|upload|index|提供|粘贴|贴上|补充|重试|换一个|入库)/i.test(String(line || '')),
-  );
-  if (!hasActionableReason) {
-    reasons.push(
-      isCn
-        ? '下一步：请粘贴完整 INCI 或更换可访问的官方页面后重试。'
-        : 'Next step: paste the full INCI or share an accessible official page and re-run.',
-    );
-  }
 
   const hasDiagnosticCode = payloadMissing.some((token) =>
     /(analysis_|evidence_|product_not_resolved|url_fetch_|on_page_fetch_blocked|regulatory_source_used|incidecoder_)/i.test(String(token || '')),
@@ -37177,7 +37261,7 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
   );
   if (!evidenceMissing.length) evidenceMissing.push('evidence_missing');
 
-  return reconcileProductAnalysisConsistency(applyProductAnalysisGapContract({
+  const reconciledUnknown = reconcileProductAnalysisConsistency(applyProductAnalysisGapContract({
     ...state,
     ...(nextAssessment ? { assessment: { ...nextAssessment, reasons: reasons.slice(0, 8) } } : {}),
     ...(evidenceForUnknown ? { evidence: { ...evidenceForUnknown, missing_info: evidenceMissing } } : {}),
@@ -37190,6 +37274,16 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
       }
       : {}),
   }), { lang });
+  if (!isPlainObject(reconciledUnknown)) return reconciledUnknown;
+  const reconciledAssessment = isPlainObject(reconciledUnknown.assessment) ? { ...reconciledUnknown.assessment } : null;
+  if (!reconciledAssessment) return reconciledUnknown;
+  return {
+    ...reconciledUnknown,
+    assessment: {
+      ...reconciledAssessment,
+      reasons: sanitizeUnknownVerdictReasonsForPublic(reconciledAssessment.reasons, { lang, min: 1, max: 8 }),
+    },
+  };
 }
 
 const DAG_DEBUG_PATTERNS = [

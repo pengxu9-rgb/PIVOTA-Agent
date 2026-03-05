@@ -2069,6 +2069,43 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.recovery_path).toContain('heuristic_url');
   });
 
+  test('evaluateAnchorTrustForProductIntel never reports trusted when soft-block reasons exist', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const trust = __internal.evaluateAnchorTrustForProductIntel({
+      candidate: {
+        brand: 'Unknown',
+        name: 'Moisturizer',
+        category: 'product',
+      },
+      inputText: 'Moisturizer',
+      inputUrl: 'https://example.com/product/moisturizer',
+      source: 'unit_test',
+    });
+
+    expect(Array.isArray(trust.reason_codes)).toBe(true);
+    expect(trust.reason_codes).toContain('anchor_soft_blocked_ambiguous');
+    expect(String(trust.trust_level || '')).not.toBe('trusted');
+    expect(Boolean(trust.usable_for_anchor_id)).toBe(false);
+    expect(trust.trusted_anchor).toBeNull();
+  });
+
+  test('sanitizeCompetitorCandidates drops generic related placeholders', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const rows = __internal.sanitizeCompetitorCandidates(
+      [
+        { name: 'Moisturizer' },
+        { name: 'SPF 50' },
+        { name: 'Daily UV Shield SPF 50', brand: 'BrandX' },
+      ],
+      10,
+      { pool: 'related_products' },
+    );
+    const names = rows.map((row) => String(row?.name || ''));
+    expect(names).toContain('Daily UV Shield SPF 50');
+    expect(names).not.toContain('Moisturizer');
+    expect(names).not.toContain('SPF 50');
+  });
+
   test('/v1/product/analyze resolves anchor via catalog resolve fast-path before deep-scan', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
@@ -2232,7 +2269,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('product_not_resolved');
     expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
-    expect(card.payload.assessment.reasons.join(' ')).toMatch(/no-anchor deep scan|无锚点 Deep Scan/i);
+    const reasonsText = card.payload.assessment.reasons.join(' ');
+    expect(reasonsText).not.toMatch(/no-anchor deep scan|无锚点 Deep Scan/i);
+    expect(reasonsText.length).toBeGreaterThan(0);
     expect(card.payload.low_confidence).toBe(true);
     expect(card.payload.low_relevance).toBe(true);
     expect(card.payload.internal_debug_codes).toBeUndefined();
@@ -2461,7 +2500,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.missing_info).toContain('on_page_fetch_blocked');
     expect(card.payload.provenance?.url_fetch?.failure_code).toBe('url_fetch_forbidden_403');
     expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
-    expect(card.payload.assessment.reasons.join(' ')).toMatch(/INCI|official page|官方页面/i);
+    const reasonsText = card.payload.assessment.reasons.join(' ');
+    expect(reasonsText).not.toMatch(/INCI|official page|官方页面|Next step|下一步/i);
+    expect(reasonsText.length).toBeGreaterThan(0);
   });
 
   test('/v1/product/analyze uses regulatory source when official page is blocked', async () => {
@@ -3630,6 +3671,42 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const skinFitLevel = String(out?.confidence_by_block?.skin_fit?.level || '');
     expect(skinFitScore).toBeLessThanOrEqual(0.58);
     expect(skinFitLevel).not.toBe('high');
+  });
+
+  test('enrichProductAnalysisPayload strips [more] ingredient tokens from ingredient_intel', () => {
+    const { enrichProductAnalysisPayload } = require('../src/auroraBff/normalize');
+    const out = enrichProductAnalysisPayload(
+      {
+        assessment: {
+          verdict: 'Likely Suitable',
+          reasons: ['Evidence indicates barrier support.'],
+        },
+        evidence: {
+          science: {
+            key_ingredients: ['[more] Ceramide AP', 'Glycerin', 'Panthenol'],
+            mechanisms: ['Barrier support'],
+            fit_notes: [],
+            risk_notes: [],
+          },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: 0.8,
+          missing_info: [],
+        },
+        confidence: 0.8,
+        missing_info: [],
+      },
+      { lang: 'EN' },
+    );
+    const ingredientIntel = out?.ingredient_intel && typeof out.ingredient_intel === 'object' ? out.ingredient_intel : {};
+    const inciRaw = String(ingredientIntel.inci_raw || '');
+    const inciNames = Array.isArray(ingredientIntel.inci_normalized)
+      ? ingredientIntel.inci_normalized.map((item) => String(item?.inci || ''))
+      : [];
+
+    expect(inciRaw).not.toMatch(/\[more\]/i);
+    expect(inciNames).toContain('Ceramide AP');
+    expect(inciNames.some((name) => /\[more\]/i.test(name))).toBe(false);
   });
 
   test('shouldPersistProductIntelKb blocks KB write when INCIDecoder is the only evidence source', () => {
