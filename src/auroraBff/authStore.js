@@ -10,6 +10,7 @@ const AUTH_PEPPER = String(process.env.AURORA_BFF_AUTH_PEPPER || process.env.AUR
 
 const EMAIL_PROVIDER = String(process.env.AURORA_BFF_AUTH_EMAIL_PROVIDER || '').trim().toLowerCase();
 
+const SENDGRID_API_KEY = String(process.env.SENDGRID_API_KEY || '').trim();
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const AUTH_EMAIL_FROM = String(process.env.AURORA_BFF_AUTH_EMAIL_FROM || process.env.AURORA_AUTH_EMAIL_FROM || '').trim();
 
@@ -189,7 +190,40 @@ async function sendOtpEmail({ email, code, language }) {
       ? `你的 Aurora 登录验证码是：${code}\n\n10 分钟内有效。`
       : `Your Aurora sign-in code is: ${code}\n\nIt expires in 10 minutes.`;
 
-  const provider = EMAIL_PROVIDER || (RESEND_API_KEY ? 'resend' : 'ses');
+  const provider = EMAIL_PROVIDER || (SENDGRID_API_KEY ? 'sendgrid' : RESEND_API_KEY ? 'resend' : 'ses');
+
+  if (provider === 'sendgrid') {
+    if (!SENDGRID_API_KEY || !AUTH_EMAIL_FROM) return { ok: false, reason: 'email_not_configured', provider };
+    const fromEmail = extractEmailAddress(AUTH_EMAIL_FROM);
+    if (!fromEmail) return { ok: false, reason: 'email_not_configured', provider };
+
+    try {
+      await axios.post(
+        'https://api.sendgrid.com/v3/mail/send',
+        {
+          personalizations: [{ to: [{ email }] }],
+          from: { email: fromEmail, name: AUTH_EMAIL_FROM.includes('<') ? AUTH_EMAIL_FROM.replace(/<.*>/, '').trim() : '' },
+          subject,
+          content: [{ type: 'text/plain', value: text }],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${SENDGRID_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+          validateStatus: (s) => s >= 200 && s < 300,
+        },
+      );
+      return { ok: true, provider };
+    } catch (err) {
+      const message =
+        err && err.response && err.response.data
+          ? JSON.stringify(err.response.data).slice(0, 400)
+          : err?.message || String(err);
+      return { ok: false, reason: 'email_send_failed', message, provider };
+    }
+  }
 
   if (provider === 'ses') {
     const fromEmail = extractEmailAddress(AUTH_EMAIL_FROM);
@@ -608,4 +642,8 @@ module.exports = {
   revokeSessionToken,
   setUserPassword,
   verifyPasswordForEmail,
+  __test__: {
+    extractEmailAddress,
+    sendOtpEmail,
+  },
 };
