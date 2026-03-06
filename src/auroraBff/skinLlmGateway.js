@@ -36,7 +36,7 @@ function readOutputTokenBudget(envName, fallback) {
 }
 
 const SKIN_VISION_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_VISION_MAX_OUTPUT_TOKENS', 1800);
-const SKIN_REPORT_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_REPORT_MAX_OUTPUT_TOKENS', 4000);
+const SKIN_REPORT_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_REPORT_MAX_OUTPUT_TOKENS', 5000);
 
 function inferStructuredTimeoutMs(maxOutputTokens) {
   const budget = readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number(maxOutputTokens) || 700);
