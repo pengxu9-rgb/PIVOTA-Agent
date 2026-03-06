@@ -27112,7 +27112,19 @@ function isTravelOrEnvCard(card) {
   });
 }
 
-function suppressAnalysisCardsForTravelEnvTurn(cards, { canonicalIntent } = {}) {
+function isRoutineExpertAnalysisSummaryCard(card) {
+  if (!isPlainObject(card)) return false;
+  const type = String(card.type || '').trim().toLowerCase();
+  if (type !== 'analysis_summary') return false;
+  const payload = getCardPayload(card);
+  if (!isPlainObject(payload)) return false;
+  const analysis = payload.analysis && typeof payload.analysis === 'object' && !Array.isArray(payload.analysis)
+    ? payload.analysis
+    : null;
+  return Boolean(analysis && analysis.routine_expert && typeof analysis.routine_expert === 'object' && !Array.isArray(analysis.routine_expert));
+}
+
+function suppressAnalysisCardsForTravelEnvTurn(cards, { canonicalIntent, preserveRoutineExpertSummary = false } = {}) {
   const list = Array.isArray(cards) ? cards : [];
   if (!list.length) return list;
   const suppressByIntent = isTravelOrEnvIntent(canonicalIntent);
@@ -27120,7 +27132,9 @@ function suppressAnalysisCardsForTravelEnvTurn(cards, { canonicalIntent } = {}) 
   if (!suppressByIntent && !suppressByCards) return list;
   return list.filter((card) => {
     const type = String(card && card.type ? card.type : '').trim().toLowerCase();
-    return type !== 'analysis_summary' && type !== 'analysis_story_v2';
+    if (type === 'analysis_story_v2') return false;
+    if (type !== 'analysis_summary') return true;
+    return preserveRoutineExpertSummary && isRoutineExpertAnalysisSummaryCard(card);
   });
 }
 
@@ -46877,6 +46891,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const currentCards = Array.isArray(envelopeWithGuardrails.cards) ? envelopeWithGuardrails.cards : [];
         const suppressedCards = suppressAnalysisCardsForTravelEnvTurn(currentCards, {
           canonicalIntent: policyMeta.intent_canonical || canonicalIntentForResponse.intent,
+          preserveRoutineExpertSummary: true,
         });
         if (suppressedCards.length !== currentCards.length) {
           envelopeWithGuardrails.cards = suppressedCards;
@@ -53308,11 +53323,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           : []),
       ];
 
+      const intentCanonicalValue = String(canonicalIntent && canonicalIntent.intent ? canonicalIntent.intent : '').trim().toLowerCase();
       const routineLikeContext =
-        String(canonicalIntent && canonicalIntent.intent ? canonicalIntent.intent : '').trim().toLowerCase() ===
-          String(INTENT_ENUM.ROUTINE || '').trim().toLowerCase() ||
+        isRoutineContractIntent(intentCanonicalValue) ||
         looksLikeRoutineRequest(message, normalizedActionPayload) ||
-        hasRoutineSosSignal(message);
+        hasRoutineSosSignal(message) ||
+        looksLikeCompatibilityOrConflictQuestion(message) ||
+        looksLikeWeatherOrEnvironmentQuestion(message) ||
+        looksLikeIngredientScienceIntent(message, normalizedActionPayload);
       let catalogPoisonBlockedByGuard = 0;
       if (AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED && routineLikeContext) {
         const filteredCards = [];
@@ -53335,24 +53353,40 @@ function mountAuroraBffRoutes(app, { logger }) {
       const existingRoutineExpert = findRoutineExpertNodeFromEnvelope({ cards: assembledCards });
       const needsRoutineFallbackModules = !hasRoutineExpertRequiredModules(existingRoutineExpert);
       const stallLikeResponse = looksLikeStallPhrase(safeAnswer) || looksLikeGenericStructuredNotice(safeAnswer);
-      if (routineLikeContext && needsRoutineFallbackModules && (!assembledRenderable || stallLikeResponse)) {
+      if (routineLikeContext && needsRoutineFallbackModules) {
+        const fallbackReason = !assembledRenderable && !stallLikeResponse ? 'timeout_degraded' : 'default';
         const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
           ctx,
           message,
           profile,
           recentLogs,
           language: ctx.lang,
-          reason: stallLikeResponse ? 'default' : 'timeout_degraded',
+          reason: fallbackReason,
         });
-        assembledCards.unshift(...fallbackCards);
-        safeAnswer =
-          ctx.lang === 'CN'
-            ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
-            : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+        const fallbackAnalysisCard = fallbackCards.find((card) => card && card.type === 'analysis_summary');
+        const fallbackConfidenceCard = fallbackCards.find((card) => card && card.type === 'confidence_notice');
+        const cardsToPrefix = [];
+        if (fallbackAnalysisCard) cardsToPrefix.push(fallbackAnalysisCard);
+        if (
+          fallbackConfidenceCard &&
+          !assembledCards.some((card) => card && typeof card === 'object' && String(card.type || '').trim() === 'confidence_notice')
+        ) {
+          cardsToPrefix.push(fallbackConfidenceCard);
+        }
+        if (cardsToPrefix.length > 0) {
+          assembledCards.unshift(...cardsToPrefix);
+        }
+        if (!assembledRenderable || stallLikeResponse) {
+          safeAnswer =
+            ctx.lang === 'CN'
+              ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
+              : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+        }
       }
 
       const travelSuppressedCards = suppressAnalysisCardsForTravelEnvTurn(assembledCards, {
         canonicalIntent: canonicalIntent && canonicalIntent.intent,
+        preserveRoutineExpertSummary: true,
       });
       if (travelSuppressedCards.length !== assembledCards.length) {
         assembledCards.length = 0;
@@ -53601,6 +53635,7 @@ const __internal = {
   applyDupeSuggestSanitizeToEnvelope,
   isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
+  suppressAnalysisCardsForTravelEnvTurn,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
   enrichPhotoModulesCardWithIngredientProducts,

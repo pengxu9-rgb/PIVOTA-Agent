@@ -62,6 +62,56 @@ test('routes quality contract flags stall + module fail for routine envelope', (
   assert.ok(q.critical_fail_reasons.includes('module_fail'));
 });
 
+test('travel/env suppression keeps routine expert summary when preserve flag enabled', () => {
+  const cards = [
+    {
+      type: 'analysis_summary',
+      payload: {
+        analysis: {
+          routine_expert: {
+            snapshot: { focus: 'barrier' },
+            key_issues: ['barrier'],
+            phase_plan: { phase_1: 'repair' },
+            plan_7d: { day_1: 'cleanse' },
+            primary_question: 'Do you already have ceramide cream?',
+          },
+        },
+      },
+    },
+    { type: 'analysis_story_v2', payload: { summary: 'story' } },
+    { type: 'travel', payload: { schema_version: 'aurora.ui.env_stress.v1' } },
+  ];
+
+  const suppressed = routes.__internal.suppressAnalysisCardsForTravelEnvTurn(cards, {
+    canonicalIntent: 'travel_planning',
+    preserveRoutineExpertSummary: true,
+  });
+  assert.deepEqual(suppressed.map((card) => card.type), ['analysis_summary', 'travel']);
+});
+
+test('travel/env suppression removes analysis summary when preserve flag disabled', () => {
+  const cards = [
+    {
+      type: 'analysis_summary',
+      payload: {
+        analysis: {
+          routine_expert: {
+            snapshot: { focus: 'barrier' },
+          },
+        },
+      },
+    },
+    { type: 'analysis_story_v2', payload: { summary: 'story' } },
+    { type: 'travel', payload: { schema_version: 'aurora.ui.env_stress.v1' } },
+  ];
+
+  const suppressed = routes.__internal.suppressAnalysisCardsForTravelEnvTurn(cards, {
+    canonicalIntent: 'travel_planning',
+    preserveRoutineExpertSummary: false,
+  });
+  assert.deepEqual(suppressed.map((card) => card.type), ['travel']);
+});
+
 test('routes catalog domain guard rejects makeup brush parse card', () => {
   const bad = {
     type: 'product_parse',
