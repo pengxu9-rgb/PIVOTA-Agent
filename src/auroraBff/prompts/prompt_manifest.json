@@ -1,0 +1,95 @@
+{
+  "manifest_version": "1.0.0",
+  "updated_utc": "2026-03-06T00:00:00Z",
+  "description": "Versioned prompt templates for Aurora skills. Each template has a unique ID and version. Changes to prompt text MUST bump the version.",
+  "templates": [
+    {
+      "template_id": "diagnosis_v2_start_personalized",
+      "version": "1.0.0",
+      "task_mode": "diagnosis",
+      "description": "Personalized follow-up questions for skin diagnosis entry",
+      "input_params": ["skin_type", "concerns", "locale"],
+      "output_schema": null
+    },
+    {
+      "template_id": "diagnosis_v2_answer_blueprint",
+      "version": "1.0.0",
+      "task_mode": "diagnosis",
+      "description": "Analyze skin state and generate blueprint from diagnosis answers",
+      "input_params": ["goals", "profile", "recent_logs", "has_photo", "safety_flags", "locale"],
+      "output_schema": "DiagnosisBlueprintOutput"
+    },
+    {
+      "template_id": "routine_categorize_products",
+      "version": "1.0.0",
+      "task_mode": "routine",
+      "description": "Categorize user products into routine steps",
+      "input_params": ["products", "routine", "locale"],
+      "output_schema": "ProductCategorizationOutput"
+    },
+    {
+      "template_id": "routine_audit_optimize",
+      "version": "1.0.0",
+      "task_mode": "routine",
+      "description": "Audit routine for gaps, conflicts, and optimizations",
+      "input_params": ["routine", "profile", "audit_results", "safety_flags", "locale"],
+      "output_schema": "RoutineAuditOutput"
+    },
+    {
+      "template_id": "reco_step_based",
+      "version": "1.0.0",
+      "task_mode": "recommendation",
+      "description": "Recommend products by routine step",
+      "input_params": ["profile", "routine", "inventory", "target_step", "safety_flags", "locale"],
+      "output_schema": "StepRecommendationOutput"
+    },
+    {
+      "template_id": "tracker_checkin_insights",
+      "version": "1.0.0",
+      "task_mode": "tracker",
+      "description": "Analyze check-in trends and generate insights",
+      "input_params": ["checkin_logs", "profile", "routine", "has_photos", "locale"],
+      "output_schema": "CheckinInsightsOutput"
+    },
+    {
+      "template_id": "product_analyze",
+      "version": "1.0.0",
+      "task_mode": "product_analysis",
+      "description": "Single product analysis: suitability, usage, risk flags",
+      "input_params": ["product_anchor", "ingredient_list", "profile", "safety_flags", "current_routine", "locale"],
+      "output_schema": "ProductAnalysisOutput"
+    },
+    {
+      "template_id": "ingredient_report",
+      "version": "1.0.0",
+      "task_mode": "ingredient",
+      "description": "Ingredient science report with evidence-backed claims",
+      "input_params": ["ingredient_query", "ontology_match", "profile", "safety_flags", "locale"],
+      "output_schema": "IngredientReportOutput"
+    },
+    {
+      "template_id": "dupe_suggest",
+      "version": "1.0.0",
+      "task_mode": "dupe",
+      "description": "Find dupe/alternative products with price bucketing",
+      "input_params": ["anchor", "candidates", "profile", "locale"],
+      "output_schema": "DupeSuggestOutput"
+    },
+    {
+      "template_id": "dupe_compare",
+      "version": "1.0.0",
+      "task_mode": "dupe",
+      "description": "Detailed comparison between anchor and target products",
+      "input_params": ["anchor", "targets", "profile", "locale"],
+      "output_schema": "DupeCompareOutput"
+    },
+    {
+      "template_id": "travel_apply_mode",
+      "version": "1.0.0",
+      "task_mode": "travel",
+      "description": "Generate travel skincare adjustments based on destination climate",
+      "input_params": ["travel_plan", "climate_archetype", "profile", "current_routine", "safety_flags", "locale"],
+      "output_schema": "TravelModeOutput"
+    }
+  ]
+}

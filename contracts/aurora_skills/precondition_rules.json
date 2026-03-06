@@ -1,0 +1,116 @@
+{
+  "$schema": "./skill_contract.schema.json",
+  "version": "1.0.0",
+  "updated_utc": "2026-03-06T00:00:00Z",
+  "description": "Precondition rules for Aurora skills. Each rule is evaluated BEFORE skill execution. If not met, skill returns empty-state + next_actions guiding user to satisfy the precondition.",
+  "rules": [
+    {
+      "rule_id": "pre_diagnosis_has_goal",
+      "applies_to": ["diagnosis_v2.answer"],
+      "condition": "thread_state.diagnosis_goals is non-empty array",
+      "on_fail_action": "navigate_skill",
+      "on_fail_target": "diagnosis_v2.start",
+      "on_fail_message_en": "Please select your skin goals first.",
+      "on_fail_message_zh": "请先选择你的护肤目标。"
+    },
+    {
+      "rule_id": "pre_has_blueprint",
+      "applies_to": ["routine.apply_blueprint"],
+      "condition": "thread_state.blueprint_id is non-null AND thread_state.blueprint.steps is non-empty",
+      "on_fail_action": "navigate_skill",
+      "on_fail_target": "diagnosis_v2.start",
+      "on_fail_message_en": "Complete a skin diagnosis first to generate your blueprint.",
+      "on_fail_message_zh": "请先完成肌肤诊断以生成你的护肤蓝图。"
+    },
+    {
+      "rule_id": "pre_has_routine_skeleton",
+      "applies_to": ["routine.intake_products", "explore.add_to_routine"],
+      "condition": "context.current_routine is non-null AND context.current_routine.steps is non-empty",
+      "on_fail_action": "navigate_skill",
+      "on_fail_target": "routine.apply_blueprint",
+      "on_fail_message_en": "Set up your routine framework first.",
+      "on_fail_message_zh": "请先建立你的护肤流程框架。"
+    },
+    {
+      "rule_id": "pre_has_routine_with_products",
+      "applies_to": ["routine.audit_optimize"],
+      "condition": "context.current_routine is non-null AND at least 1 step has assigned products",
+      "on_fail_action": "navigate_skill",
+      "on_fail_target": "routine.intake_products",
+      "on_fail_message_en": "Add your current products to the routine first.",
+      "on_fail_message_zh": "请先把你现在用的产品添加到护肤流程中。"
+    },
+    {
+      "rule_id": "pre_has_profile_or_routine",
+      "applies_to": ["reco.step_based"],
+      "condition": "context.profile is non-null with at least skin_type OR context.current_routine is non-null",
+      "on_fail_action": "navigate_skill",
+      "on_fail_target": "diagnosis_v2.start",
+      "on_fail_message_en": "We need to know a bit about your skin first.",
+      "on_fail_message_zh": "我们需要先了解一下你的肌肤状况。"
+    },
+    {
+      "rule_id": "pre_has_active_diagnosis_or_routine",
+      "applies_to": ["tracker.checkin_log"],
+      "condition": "thread_state.active_diagnosis_id is non-null OR context.current_routine is non-null",
+      "on_fail_action": "navigate_skill",
+      "on_fail_target": "diagnosis_v2.start",
+      "on_fail_message_en": "Start a diagnosis or set up a routine to begin tracking.",
+      "on_fail_message_zh": "请先开始诊断或建立护肤流程，然后再打卡记录。"
+    },
+    {
+      "rule_id": "pre_has_checkin_history",
+      "applies_to": ["tracker.checkin_insights"],
+      "condition": "context.recent_logs.length >= 3",
+      "on_fail_action": "navigate_skill",
+      "on_fail_target": "tracker.checkin_log",
+      "on_fail_message_en": "Log at least 3 check-ins before we can show trends.",
+      "on_fail_message_zh": "至少记录 3 次打卡后才能查看趋势分析。"
+    },
+    {
+      "rule_id": "pre_has_product_anchor",
+      "applies_to": ["product.analyze", "dupe.suggest", "dupe.compare", "explore.add_to_routine"],
+      "condition": "params.product_anchor is non-null (product URL, brand+name, or product_id)",
+      "on_fail_action": "request_input",
+      "on_fail_target": null,
+      "on_fail_message_en": "Please share a product link or name so I can analyze it.",
+      "on_fail_message_zh": "请粘贴产品链接或输入品牌+产品名，我来帮你分析。"
+    },
+    {
+      "rule_id": "pre_has_candidate_pool",
+      "applies_to": ["dupe.suggest"],
+      "condition": "resolved candidate_pool from product database is non-empty",
+      "on_fail_action": "request_input",
+      "on_fail_target": null,
+      "on_fail_message_en": "I couldn't find alternatives for this product in our database. Try a different product or provide more details.",
+      "on_fail_message_zh": "在数据库中没有找到该产品的替代品。请尝试其他产品或提供更多信息。"
+    },
+    {
+      "rule_id": "pre_has_comparison_target",
+      "applies_to": ["dupe.compare"],
+      "condition": "params.comparison_targets is non-empty array with at least 1 resolved product",
+      "on_fail_action": "request_input",
+      "on_fail_target": null,
+      "on_fail_message_en": "Which product would you like to compare it with?",
+      "on_fail_message_zh": "你想拿它跟哪个产品做对比？"
+    },
+    {
+      "rule_id": "pre_has_ingredient_query",
+      "applies_to": ["ingredient.report"],
+      "condition": "params.ingredient_query is non-null and resolved against ingredient_ontology",
+      "on_fail_action": "request_input",
+      "on_fail_target": null,
+      "on_fail_message_en": "Which ingredient would you like to learn about?",
+      "on_fail_message_zh": "你想了解哪个成分？"
+    },
+    {
+      "rule_id": "pre_has_travel_plan",
+      "applies_to": ["travel.apply_mode"],
+      "condition": "context.travel_plan is non-null with destination and dates",
+      "on_fail_action": "request_input",
+      "on_fail_target": null,
+      "on_fail_message_en": "Where are you traveling to and when? I'll adjust your routine for the trip.",
+      "on_fail_message_zh": "你要去哪里旅行，什么时候？我来帮你调整旅行期间的护肤方案。"
+    }
+  ]
+}
