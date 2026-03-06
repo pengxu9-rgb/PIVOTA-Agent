@@ -423,7 +423,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(card.payload.items[0].offer.price).toBeGreaterThan(0);
   });
 
-  test('Skin analysis: returns analysis_summary card', async () => {
+  test('Skin analysis: returns legacy analysis_summary card', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/analysis/skin')
@@ -431,10 +431,11 @@ describe('Aurora BFF (/v1)', () => {
       .send({ photos: [{ slot_id: 'daylight', qc_status: 'passed' }] })
       .expect(200);
 
-    const card = res.body.cards.find((c) => c.type === 'analysis_story_v2');
+    const card = res.body.cards.find((c) => c.type === 'analysis_summary');
     expect(card).toBeTruthy();
-    expect(card.payload).toHaveProperty('priority_findings');
-    expect(Array.isArray(card.payload.priority_findings)).toBe(true);
+    expect(card.payload).toHaveProperty('analysis');
+    expect(card.payload.analysis).toHaveProperty('findings');
+    expect(Array.isArray(card.payload.analysis.findings)).toBe(true);
     expect(res.body.cards.some((c) => c.type === 'ingredient_plan')).toBe(true);
     expect(Array.isArray(card.field_missing) ? card.field_missing : []).toEqual(
       expect.not.arrayContaining([expect.objectContaining({ field: 'profile.currentRoutine' })]),
@@ -452,7 +453,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.cards.some((c) => c.type === 'photo_confirm')).toBe(true);
   });
 
-  test('Product analyze: returns product_analysis with anchor_product', async () => {
+  test('Product analyze: returns product_analysis assessment payload', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/product/analyze')
@@ -463,7 +464,8 @@ describe('Aurora BFF (/v1)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(card.payload).toHaveProperty('assessment');
-    expect(card.payload.assessment).toHaveProperty('anchor_product');
+    expect(card.payload.assessment).toHaveProperty('verdict');
+    expect(card.payload.assessment).toHaveProperty('summary');
   });
 
   test('Dupe compare: returns dupe_compare with original/dupe products', async () => {

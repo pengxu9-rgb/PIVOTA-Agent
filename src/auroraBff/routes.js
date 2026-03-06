@@ -5135,10 +5135,30 @@ function stripBrandFromHeroIngredient(hero) {
   return next;
 }
 
+function shouldPreserveAuthoritativeUrlAnchor(payload) {
+  if (!isPlainObject(payload)) return false;
+  const assessment = isPlainObject(payload.assessment) ? payload.assessment : null;
+  const anchor = isPlainObject(assessment?.anchor_product ?? assessment?.anchorProduct)
+    ? (assessment.anchor_product ?? assessment.anchorProduct)
+    : null;
+  if (!anchor) return false;
+
+  const provenance = isPlainObject(payload.provenance) ? payload.provenance : null;
+  const source = String(provenance?.source || '').trim().toLowerCase();
+  if (!source.includes('url_realtime_product_intel')) return false;
+
+  const payloadProduct = isPlainObject(payload.product) ? payload.product : null;
+  const payloadUrl = pickFirstTrimmed(payloadProduct?.url, payload.product_url);
+  const anchorUrl = pickFirstTrimmed(anchor?.url, anchor?.product_url, anchor?.pdp_url);
+  if (payloadUrl && anchorUrl && payloadUrl === anchorUrl) return true;
+
+  return isPlainObject(anchor.price);
+}
+
 function sanitizeAssessmentAnchorForLowTrust(payload, trustContext = null) {
   if (!isPlainObject(payload)) return payload;
   const usableForAnchorId = Boolean(isPlainObject(trustContext) && trustContext.usable_for_anchor_id === true);
-  if (usableForAnchorId) return payload;
+  if (usableForAnchorId || shouldPreserveAuthoritativeUrlAnchor(payload)) return payload;
   const assessment = isPlainObject(payload.assessment) ? payload.assessment : null;
   if (!assessment) return payload;
 
