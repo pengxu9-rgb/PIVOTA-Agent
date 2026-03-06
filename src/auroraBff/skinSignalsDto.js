@@ -355,6 +355,7 @@ function buildReportSignalsDto({
     photo_quality: mapPhotoQuality(photoQuality),
     uncertainty_level: normalizeUncertaintyLevel(diagnosisPolicy),
     locked_features_summary: summarizeLockedFeatures(factLayer),
+    insufficient_visual_detail: Boolean(factLayer && factLayer.insufficient_visual_detail),
   };
   const image_hash = buildImageHash(imageBuffer);
   const input_hash = buildInputHash({ payload: dtoBase, imageHash: image_hash });

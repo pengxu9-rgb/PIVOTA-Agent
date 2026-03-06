@@ -862,6 +862,7 @@ function validateFinalContract(payload) {
 function normalizeVisionObservationLayer(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
   const observations = normalizeObservations(p.observations, { maxItems: 8 });
+  const insufficientVisualDetail = observations.length === 0;
   const features = Array.isArray(p.features) && p.features.length
     ? normalizeFeatures(p.features, { minItems: 2, maxItems: 4 })
     : observationsToLegacyFeatures(observations, { maxItems: 4 });
@@ -883,6 +884,7 @@ function normalizeVisionObservationLayer(payload) {
     ...(qualityNote !== undefined ? { quality_note: qualityNote } : {}),
     ...(observations.length ? { observations } : {}),
     ...(limits.length ? { limits } : {}),
+    ...(insufficientVisualDetail ? { insufficient_visual_detail: true } : {}),
   };
 }
 
@@ -931,10 +933,13 @@ function normalizeReportStrategyLayer(payload, { lang } = {}) {
 function buildFactLayer({ deterministicAnalysis, visionLayer } = {}) {
   const deterministic = deterministicAnalysis && typeof deterministicAnalysis === 'object' ? deterministicAnalysis : {};
   const vision = visionLayer && typeof visionLayer === 'object' ? visionLayer : null;
+  const visionInsufficient = Boolean(vision && vision.insufficient_visual_detail);
 
   const deterministicFeatures = normalizeFeatures(deterministic.features, { minItems: 2, maxItems: 4 });
   const visionFeatures = vision
-    ? Array.isArray(vision.features) && vision.features.length
+    ? visionInsufficient
+      ? []
+      : Array.isArray(vision.features) && vision.features.length
       ? normalizeFeatures(vision.features, { minItems: 2, maxItems: 4 })
       : observationsToLegacyFeatures(vision.observations, { maxItems: 4 })
     : [];
@@ -952,6 +957,7 @@ function buildFactLayer({ deterministicAnalysis, visionLayer } = {}) {
   return {
     features: normalizeFeatures(merged, { minItems: 2, maxItems: 4 }),
     needs_risk_check: Boolean(deterministic.needs_risk_check || (vision && vision.needs_risk_check)),
+    ...(visionInsufficient ? { insufficient_visual_detail: true } : {}),
   };
 }
 
