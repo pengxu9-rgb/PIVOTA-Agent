@@ -9635,6 +9635,11 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   };
 }
 
+const AURORA_CHATBOX_ORIGINS = new Set([
+  'https://aurora.pivota.cc',
+  'https://pivota-aurora-chatbox.vercel.app',
+]);
+
 // CORS configuration - allow UI to call Gateway
 // NOTE: Must run BEFORE body parsing so browser clients still receive CORS headers
 // even when JSON parsing fails (otherwise Aurora Chatbox sees "No Access-Control-Allow-Origin").
@@ -9644,7 +9649,7 @@ app.use((req, res, next) => {
     'https://agent.pivota.cc',
     'https://creator.pivota.cc',
     'https://look-replicator.pivota.cc',
-    'https://aurora.pivota.cc',
+    ...AURORA_CHATBOX_ORIGINS,
     'http://localhost:3000',
     'http://localhost:5173',
     'http://127.0.0.1:3000',
@@ -11806,7 +11811,7 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
   const hasAuroraUid = Boolean(String(req.header('X-Aurora-Uid') || req.header('x-aurora-uid') || '').trim());
   const origin = String(req.headers.origin || '').trim();
   const shouldDefaultPreferMerchants =
-    callerHint === 'aurora_chatbox' || callerHint === 'aurora-chatbox' || hasAuroraUid || origin === 'https://aurora.pivota.cc';
+    callerHint === 'aurora_chatbox' || callerHint === 'aurora-chatbox' || hasAuroraUid || AURORA_CHATBOX_ORIGINS.has(origin);
   if (shouldDefaultPreferMerchants) {
     if (options.stable_alias_short_circuit === undefined) {
       options = { ...options, stable_alias_short_circuit: true };
