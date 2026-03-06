@@ -1,6 +1,10 @@
 const assert = require('assert');
 const { validateResultPayload } = require('../src/auroraBff/diagnosisV2Schema');
-const { detectColdStart, detectMissingDataDimensions } = require('../src/auroraBff/diagnosisV2Orchestrator');
+const {
+  detectColdStart,
+  detectMissingDataDimensions,
+  normalizeDiagnosisV2ResultPayload,
+} = require('../src/auroraBff/diagnosisV2Orchestrator');
 const { fixtures } = require('./diagnosisV2.fixtures');
 
 console.log('Test: cold start detection');
@@ -97,6 +101,32 @@ const postProcResult = {
   goal_profile: { selected_goals: ['post_procedure_repair'], constraints: [] },
 };
 assert.strictEqual(validateResultPayload(postProcResult).ok, false);
+console.log('  PASS');
+
+console.log('Test: result normalization - null payload is stripped');
+const nullPayloadResult = normalizeDiagnosisV2ResultPayload(
+  {
+    ...validResult,
+    next_actions: [{ type: 'setup_routine', label: 'Set up your routine', payload: null }],
+  },
+  fixtures.cold_start_new_user.input,
+);
+assert.strictEqual(validateResultPayload(nullPayloadResult).ok, true);
+assert.deepStrictEqual(nullPayloadResult.next_actions, [{ type: 'setup_routine', label: 'Set up your routine' }]);
+console.log('  PASS');
+
+console.log('Test: result normalization - fallback actions and improvement path');
+const fallbackResult = normalizeDiagnosisV2ResultPayload(
+  {
+    ...validResult,
+    improvement_path: [{ tip: '', action_type: 'add_travel', action_label: '' }],
+    next_actions: [{ type: 'add_travel', label: '', payload: null }],
+  },
+  fixtures.cold_start_new_user.input,
+);
+assert.strictEqual(validateResultPayload(fallbackResult).ok, true);
+assert.ok(fallbackResult.improvement_path.some((tip) => tip.action_type === 'intake_optimize'));
+assert.ok(fallbackResult.next_actions.some((action) => action.type === 'intake_optimize'));
 console.log('  PASS');
 
 console.log('\nAll diagnosis v2 tests passed!');

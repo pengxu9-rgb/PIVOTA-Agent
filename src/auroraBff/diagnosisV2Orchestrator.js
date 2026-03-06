@@ -49,6 +49,285 @@ function compactDiagnosisSummary(artifact) {
   };
 }
 
+function isPlainObject(value) {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cleanString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function cleanStringList(value, { limit } = {}) {
+  const list = Array.isArray(value) ? value.map(cleanString).filter(Boolean) : [];
+  return typeof limit === 'number' ? list.slice(0, limit) : list;
+}
+
+function defaultResultActionLabel(type, language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const labels = {
+    take_photo: { CN: '补充照片', EN: 'Add photo' },
+    setup_routine: { CN: '建立日常流程', EN: 'Set up routine' },
+    start_checkin: { CN: '开始打卡', EN: 'Start check-in' },
+    direct_reco: { CN: '查看推荐', EN: 'See recommendations' },
+    intake_optimize: { CN: '补充更多信息', EN: 'Add more context' },
+  };
+  return labels[type]?.[lang] || type;
+}
+
+function defaultImprovementTip(type, language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const tips = {
+    take_photo: {
+      CN: '补充自然光照片后，我可以给出更稳妥的状态判断。',
+      EN: 'Add a natural-light photo so I can give a more reliable assessment.',
+    },
+    setup_routine: {
+      CN: '补充你现在的 AM/PM 护理步骤后，我可以把建议收得更具体。',
+      EN: 'Add your current AM/PM routine so I can make the plan more specific.',
+    },
+    start_checkin: {
+      CN: '开始记录一段时间的状态变化后，我可以更好地判断趋势。',
+      EN: 'Start logging changes over time so I can assess trends more accurately.',
+    },
+    intake_optimize: {
+      CN: '补充更多日常和场景信息后，我可以进一步优化策略。',
+      EN: 'Add more context about your routine and environment so I can refine the plan.',
+    },
+  };
+  return tips[type]?.[lang] || (lang === 'CN' ? '补充更多信息以提升准确度。' : 'Add more context to improve accuracy.');
+}
+
+function normalizeResultActionType(value) {
+  const token = cleanString(value).toLowerCase().replace(/[\s-]+/g, '_');
+  if (!token) return null;
+  if (token === 'take_photo' || token === 'photo' || token === 'add_photo' || token === 'upload_photo') return 'take_photo';
+  if (
+    token === 'setup_routine' ||
+    token === 'routine' ||
+    token === 'build_routine' ||
+    token === 'routine_setup' ||
+    token === 'start_routine'
+  ) {
+    return 'setup_routine';
+  }
+  if (token === 'start_checkin' || token === 'checkin' || token === 'check_in' || token === 'begin_checkin') {
+    return 'start_checkin';
+  }
+  if (
+    token === 'direct_reco' ||
+    token === 'reco' ||
+    token === 'recommend' ||
+    token === 'recommend_products' ||
+    token === 'get_recommendations'
+  ) {
+    return 'direct_reco';
+  }
+  if (
+    token === 'intake_optimize' ||
+    token === 'intake' ||
+    token === 'complete_intake' ||
+    token === 'travel' ||
+    token === 'add_travel'
+  ) {
+    return 'intake_optimize';
+  }
+  return null;
+}
+
+function normalizeImprovementActionType(value) {
+  const token = cleanString(value).toLowerCase().replace(/[\s-]+/g, '_');
+  if (!token) return null;
+  if (token === 'take_photo' || token === 'photo' || token === 'add_photo' || token === 'upload_photo') return 'take_photo';
+  if (
+    token === 'setup_routine' ||
+    token === 'routine' ||
+    token === 'build_routine' ||
+    token === 'routine_setup' ||
+    token === 'start_routine'
+  ) {
+    return 'setup_routine';
+  }
+  if (token === 'start_checkin' || token === 'checkin' || token === 'check_in' || token === 'begin_checkin') {
+    return 'start_checkin';
+  }
+  if (
+    token === 'intake_optimize' ||
+    token === 'intake' ||
+    token === 'complete_intake' ||
+    token === 'travel' ||
+    token === 'add_travel'
+  ) {
+    return 'intake_optimize';
+  }
+  return null;
+}
+
+function dedupeBy(list, keyFn) {
+  const seen = new Set();
+  const out = [];
+  for (const item of Array.isArray(list) ? list : []) {
+    const key = keyFn(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function buildFallbackStrategies(ctx) {
+  const lang = ctx.language === 'CN' ? 'CN' : 'EN';
+  return [
+    {
+      title: lang === 'CN' ? '先做温和修护' : 'Start with gentle barrier support',
+      why:
+        lang === 'CN'
+          ? '当前数据有限，先采用低刺激、可持续的修护方案更稳妥。'
+          : 'The current data is limited, so a low-risk and sustainable repair plan is the safest starting point.',
+      timeline: lang === 'CN' ? '先持续 2-4 周并观察变化' : 'Follow for 2-4 weeks and watch for changes',
+      do_list: [
+        lang === 'CN' ? '保持清洁和保湿步骤尽量简单' : 'Keep cleansing and moisturizing steps simple',
+      ],
+      avoid_list: [lang === 'CN' ? '先避免高刺激活性叠加' : 'Avoid stacking strong actives for now'],
+    },
+  ];
+}
+
+function normalizeStrategies(value, ctx) {
+  const strategies = Array.isArray(value)
+    ? value
+        .map((strategy, index) => {
+          if (!isPlainObject(strategy)) return null;
+          const title = cleanString(strategy.title) || (ctx.language === 'CN' ? `策略 ${index + 1}` : `Strategy ${index + 1}`);
+          const why =
+            cleanString(strategy.why) ||
+            (ctx.language === 'CN'
+              ? '基于当前可用信息，建议先采取温和、低刺激的方案。'
+              : 'Based on the current signals, start with a gentle and low-risk approach.');
+          const timeline =
+            cleanString(strategy.timeline) ||
+            (ctx.language === 'CN' ? '先持续 2-4 周并观察变化' : 'Follow for 2-4 weeks and monitor changes');
+          const doList = cleanStringList(strategy.do_list);
+          const avoidList = cleanStringList(strategy.avoid_list);
+          return {
+            title,
+            why,
+            timeline,
+            do_list: doList.length
+              ? doList
+              : [ctx.language === 'CN' ? '维持温和、稳定的护理节奏' : 'Keep the routine gentle and consistent'],
+            avoid_list: avoidList,
+          };
+        })
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+  return strategies.length ? strategies : buildFallbackStrategies(ctx);
+}
+
+function normalizeRoutineBlueprint(value, ctx) {
+  const blueprint = isPlainObject(value) ? value : {};
+  const lang = ctx.language === 'CN' ? 'CN' : 'EN';
+  const amSteps = cleanStringList(blueprint.am_steps, { limit: 4 });
+  const pmSteps = cleanStringList(blueprint.pm_steps, { limit: 4 });
+  const fallbackAm =
+    lang === 'CN'
+      ? ['温和洁面', '保湿修护', '防晒']
+      : ['Gentle cleanser', 'Barrier-support moisturizer', 'Sunscreen'];
+  const fallbackPm =
+    lang === 'CN'
+      ? ['温和洁面', '修护精华', '保湿霜']
+      : ['Gentle cleanser', 'Barrier-support serum', 'Moisturizer'];
+  return {
+    am_steps: amSteps.length ? amSteps : fallbackAm,
+    pm_steps: pmSteps.length ? pmSteps : fallbackPm,
+    conflict_rules: cleanStringList(blueprint.conflict_rules, { limit: 6 }),
+  };
+}
+
+function buildFallbackImprovementPath(ctx) {
+  const missing = detectMissingDataDimensions(ctx);
+  const candidates = [];
+  if (missing.includes('photo')) candidates.push('take_photo');
+  if (missing.includes('routine')) candidates.push('setup_routine');
+  if (missing.includes('checkin')) candidates.push('start_checkin');
+  return candidates.slice(0, 3).map((type) => ({
+    tip: defaultImprovementTip(type, ctx.language),
+    action_type: type,
+    action_label: defaultResultActionLabel(type, ctx.language),
+  }));
+}
+
+function normalizeImprovementPath(value, ctx) {
+  const normalized = Array.isArray(value)
+    ? value
+        .map((tip) => {
+          if (!isPlainObject(tip)) return null;
+          const actionType = normalizeImprovementActionType(tip.action_type || tip.type || tip.action);
+          if (!actionType) return null;
+          return {
+            tip: cleanString(tip.tip) || defaultImprovementTip(actionType, ctx.language),
+            action_type: actionType,
+            action_label:
+              cleanString(tip.action_label || tip.label) || defaultResultActionLabel(actionType, ctx.language),
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  const deduped = dedupeBy(normalized, (tip) => tip.action_type).slice(0, 3);
+  return deduped.length ? deduped : buildFallbackImprovementPath(ctx);
+}
+
+function buildFallbackNextActions(ctx) {
+  const missing = detectMissingDataDimensions(ctx);
+  const candidates = [];
+  if (missing.includes('routine')) candidates.push('setup_routine');
+  if (missing.includes('photo')) candidates.push('take_photo');
+  if (missing.includes('checkin')) candidates.push('start_checkin');
+  if (missing.includes('travel')) candidates.push('intake_optimize');
+  candidates.push('direct_reco');
+  return dedupeBy(
+    candidates.map((type) => ({
+      type,
+      label: defaultResultActionLabel(type, ctx.language),
+    })),
+    (action) => action.type,
+  ).slice(0, 4);
+}
+
+function normalizeNextActions(value, ctx) {
+  const normalized = Array.isArray(value)
+    ? value
+        .map((action) => {
+          if (!isPlainObject(action)) return null;
+          const type = normalizeResultActionType(action.type || action.action_type || action.id);
+          if (!type) return null;
+          const payload = isPlainObject(action.payload) ? action.payload : undefined;
+          const normalizedAction = {
+            type,
+            label: cleanString(action.label || action.action_label) || defaultResultActionLabel(type, ctx.language),
+          };
+          if (payload) normalizedAction.payload = payload;
+          return normalizedAction;
+        })
+        .filter(Boolean)
+    : [];
+
+  const deduped = dedupeBy(normalized, (action) => action.type).slice(0, 4);
+  return deduped.length ? deduped : buildFallbackNextActions(ctx);
+}
+
+function normalizeDiagnosisV2ResultPayload(resultPayload, ctx) {
+  const payload = isPlainObject(resultPayload) ? { ...resultPayload } : {};
+  return {
+    ...payload,
+    strategies: normalizeStrategies(payload.strategies, ctx),
+    routine_blueprint: normalizeRoutineBlueprint(payload.routine_blueprint, ctx),
+    improvement_path: normalizeImprovementPath(payload.improvement_path, ctx),
+    next_actions: normalizeNextActions(payload.next_actions, ctx),
+  };
+}
+
 function checkLoginGate(ctx) {
   const isLoggedIn = Boolean(ctx.userId && ctx.authToken);
   if (isLoggedIn || ctx.skipLogin === true) {
@@ -364,7 +643,7 @@ async function runDiagnosisV2({
     next_actions: stage3.nextActions,
   };
 
-  const validation = validateResultPayload(resultPayload);
+  const validation = validateResultPayload(normalizeDiagnosisV2ResultPayload(resultPayload, ctx));
   if (!validation.ok) {
     const err = new Error('Diagnosis v2 result validation failed');
     err.validationErrors = validation.errors;
@@ -410,6 +689,7 @@ module.exports = {
   detectColdStart,
   detectMissingDataDimensions,
   compactDiagnosisSummary,
+  normalizeDiagnosisV2ResultPayload,
   checkLoginGate,
   checkPhotoGate,
   runStage1,
