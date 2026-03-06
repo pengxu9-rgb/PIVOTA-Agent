@@ -156,4 +156,49 @@ describe('observability debug bundle', () => {
       else process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP = oldPrivate;
     }
   });
+
+  test('build_sha prefers platform commit vars over manual aurora override', () => {
+    const oldRailway = process.env.RAILWAY_GIT_COMMIT_SHA;
+    const oldGit = process.env.GIT_COMMIT_SHA;
+    const oldSourceVersion = process.env.SOURCE_VERSION;
+    const oldAurora = process.env.AURORA_GIT_SHA;
+    try {
+      process.env.RAILWAY_GIT_COMMIT_SHA = 'railway_sha_real';
+      process.env.GIT_COMMIT_SHA = 'git_sha_fallback';
+      process.env.SOURCE_VERSION = 'source_version_fallback';
+      process.env.AURORA_GIT_SHA = 'manual_override_stale';
+
+      const debugBundle = buildSearchDebugBundle({
+        requestId: 'req-sha-priority',
+        req: {
+          headers: { 'x-debug': '1' },
+          query: {},
+          body: { payload: { search: { query: 'ipsa' } } },
+          ip: '127.0.0.1',
+        },
+        responseBody: {
+          products: [],
+          metadata: {},
+          intent: {},
+        },
+        context: {
+          invokeStartedAtMs: Date.now() - 5,
+          nluLatencyMs: 1,
+          rawUserQuery: 'ipsa',
+          intent: {},
+        },
+      });
+
+      expect(debugBundle.build_sha).toBe('railway_sha_real');
+    } finally {
+      if (oldRailway == null) delete process.env.RAILWAY_GIT_COMMIT_SHA;
+      else process.env.RAILWAY_GIT_COMMIT_SHA = oldRailway;
+      if (oldGit == null) delete process.env.GIT_COMMIT_SHA;
+      else process.env.GIT_COMMIT_SHA = oldGit;
+      if (oldSourceVersion == null) delete process.env.SOURCE_VERSION;
+      else process.env.SOURCE_VERSION = oldSourceVersion;
+      if (oldAurora == null) delete process.env.AURORA_GIT_SHA;
+      else process.env.AURORA_GIT_SHA = oldAurora;
+    }
+  });
 });
