@@ -1,3 +1,5 @@
+const DIAGNOSIS_V2_ENABLED = process.env.DIAGNOSIS_V2_ENABLED === 'true';
+
 const {
   isRecommendationLikeText,
   isSuitabilityLikeText,
@@ -253,7 +255,7 @@ function buildPendingClarificationForGate({ language, missing, message, wants })
   };
 }
 
-function shouldDiagnosisGate({ message, triggerSource, profile }) {
+function shouldDiagnosisGateV1({ message, triggerSource, profile }) {
   const wantsRecs = looksLikeRecommendationRequest(message);
   const wantsFit = looksLikeSuitabilityRequest(message);
   const wantsDiag = looksLikeDiagnosisStart(message);
@@ -291,6 +293,29 @@ function shouldDiagnosisGate({ message, triggerSource, profile }) {
           wants,
         })
       : null,
+  };
+}
+
+function shouldDiagnosisGate(opts) {
+  if (DIAGNOSIS_V2_ENABLED) {
+    return shouldDiagnosisGateV2(opts);
+  }
+  return shouldDiagnosisGateV1(opts);
+}
+
+function shouldDiagnosisGateV2({ message, triggerSource, profile }) {
+  const wantsDiag = looksLikeDiagnosisStart(message);
+  const chipStartDiag = String(triggerSource || '') === 'chip' || String(triggerSource || '') === 'action';
+
+  if (!wantsDiag && !chipStartDiag) {
+    return shouldDiagnosisGateV1({ message, triggerSource, profile });
+  }
+
+  return {
+    gated: false,
+    v2_redirect: true,
+    reason: 'diagnosis_v2',
+    triggerSource,
   };
 }
 
@@ -421,6 +446,7 @@ function hasUsableArtifactForRecommendations(artifact, opts = {}) {
 }
 
 module.exports = {
+  DIAGNOSIS_V2_ENABLED,
   profileCompleteness,
   looksLikeRecommendationRequest,
   looksLikeSuitabilityRequest,
@@ -428,6 +454,8 @@ module.exports = {
   recommendationsAllowed,
   stateChangeAllowed,
   shouldDiagnosisGate,
+  shouldDiagnosisGateV1,
+  shouldDiagnosisGateV2,
   buildDiagnosisPrompt,
   buildDiagnosisChips,
   buildPendingClarificationForGate,

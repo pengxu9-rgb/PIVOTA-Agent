@@ -390,6 +390,20 @@ async function getLatestDiagnosisArtifact({
   }
 }
 
+async function listRecentDiagnosisArtifacts({
+  auroraUid,
+  userId,
+  limit = 3,
+  maxAgeDays = 180,
+} = {}) {
+  return listDiagnosisArtifactsForIdentity({
+    auroraUid,
+    userId,
+    limit,
+    maxAgeDays,
+  });
+}
+
 async function listDiagnosisArtifactsForIdentity({
   auroraUid,
   userId,
@@ -595,6 +609,7 @@ module.exports = {
   createPlanId,
   saveDiagnosisArtifact,
   getLatestDiagnosisArtifact,
+  listRecentDiagnosisArtifacts,
   listDiagnosisArtifactsForIdentity,
   getDiagnosisArtifactById,
   saveIngredientPlan,
