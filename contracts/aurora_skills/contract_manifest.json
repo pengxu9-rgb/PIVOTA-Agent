@@ -1,0 +1,10 @@
+{
+  "manifest_version": "1.0.0",
+  "contract_version": "1.0.0",
+  "files": {
+    "skill_contract.schema.json": "bf34babbf21d17d2e26a5ffc5322ea0a329807f7be713e8a1cce4da117144000",
+    "skill_registry.json": "0f1c56d67ce02653ad6b841cfd95c5d7db5790074c680ff03cba4e89d3dc0f59",
+    "quality_gates.json": "5f2d76904649d4141a21a9dd93510792f79aef45686b7e139e2fcd7fcbfdb588",
+    "precondition_rules.json": "de8f09a50d4237f10d0ecce55cfc48afacc8d125e32e60c1f9e042958c882e6b"
+  }
+}
