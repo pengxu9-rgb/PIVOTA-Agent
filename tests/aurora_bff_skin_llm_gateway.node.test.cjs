@@ -112,3 +112,56 @@ test('skin llm gateway safety text validation handles routine_expert object', ()
   assert.equal(unsafe.ok, false);
   assert.equal(unsafe.violations.includes('safety_keyword_violation'), true);
 });
+
+function withEnv(patch, fn) {
+  const previous = {};
+  for (const [key, value] of Object.entries(patch || {})) {
+    previous[key] = Object.prototype.hasOwnProperty.call(process.env, key) ? process.env[key] : undefined;
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = String(value);
+  }
+
+  const restore = () => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+
+  try {
+    const out = fn();
+    if (out && typeof out.then === 'function') return out.finally(restore);
+    restore();
+    return out;
+  } catch (err) {
+    restore();
+    throw err;
+  }
+}
+
+function loadSkinGatewayFresh() {
+  const gatewayId = require.resolve('../src/auroraBff/skinLlmGateway');
+  const gateId = require.resolve('../src/lib/geminiGlobalGate');
+  const keyId = require.resolve('../src/auroraBff/auroraGeminiKeys');
+  delete require.cache[gatewayId];
+  delete require.cache[gateId];
+  delete require.cache[keyId];
+  return require('../src/auroraBff/skinLlmGateway');
+}
+
+test('skin llm gateway availability respects pooled Gemini global gate keys', async () => {
+  await withEnv(
+    {
+      GEMINI_API_KEY_1: 'pooled_key_1',
+      GEMINI_API_KEY_2: 'pooled_key_2',
+      AURORA_VISION_GEMINI_API_KEY: undefined,
+      AURORA_SKIN_GEMINI_API_KEY: undefined,
+      GEMINI_API_KEY: undefined,
+      GOOGLE_API_KEY: undefined,
+    },
+    async () => {
+      const fresh = loadSkinGatewayFresh();
+      assert.equal(fresh.isGeminiSkinGatewayAvailable(), true);
+    },
+  );
+});

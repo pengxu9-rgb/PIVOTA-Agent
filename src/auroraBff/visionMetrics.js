@@ -162,6 +162,8 @@ const auroraSkinLlmRetrySuccessCounter = new Map();
 const auroraSkinMainlineProviderCounter = new Map();
 const auroraSkinFallbackDeterministicCounter = new Map();
 const auroraSkinShadowVerifyIsolatedWriteCounter = new Map();
+const auroraSkinSemanticGuardCounter = new Map();
+const auroraSkinUsefulOutputCounter = new Map();
 const auroraIngredientsFlowCounter = new Map();
 const auroraIngredientProviderCounter = new Map();
 const ingredientReportGeneratedCounter = new Map();
@@ -2282,6 +2284,38 @@ function recordAuroraSkinShadowVerifyIsolatedWrite({ status, delta } = {}) {
   );
 }
 
+function recordAuroraSkinSemanticGuard({ stage, outcome, reason, promptVersion, locale, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinSemanticGuardCounter,
+    {
+      stage: cleanMetricToken(stage, 'unknown'),
+      outcome: cleanMetricToken(outcome, 'unknown'),
+      reason: cleanMetricToken(reason, 'none'),
+      prompt_version: cleanMetricToken(promptVersion, 'unknown'),
+      locale: cleanMetricToken(locale, 'en_us'),
+    },
+    amount,
+  );
+}
+
+function recordAuroraSkinUsefulOutput({ stage, useful, insufficientReason, promptVersion, locale, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinUsefulOutputCounter,
+    {
+      stage: cleanMetricToken(stage, 'unknown'),
+      useful: useful === true ? 'true' : 'false',
+      insufficient_reason: cleanMetricToken(insufficientReason, 'none'),
+      prompt_version: cleanMetricToken(promptVersion, 'unknown'),
+      locale: cleanMetricToken(locale, 'en_us'),
+    },
+    amount,
+  );
+}
+
 function recordAuroraIngredientsFlowMetric({ stage, outcome, hit, delta, provider } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -3644,6 +3678,8 @@ function resetVisionMetrics() {
   auroraSkinMainlineProviderCounter.clear();
   auroraSkinFallbackDeterministicCounter.clear();
   auroraSkinShadowVerifyIsolatedWriteCounter.clear();
+  auroraSkinSemanticGuardCounter.clear();
+  auroraSkinUsefulOutputCounter.clear();
   auroraIngredientsFlowCounter.clear();
   auroraIngredientProviderCounter.clear();
   ingredientReportGeneratedCounter.clear();
@@ -3825,6 +3861,8 @@ function snapshotVisionMetrics() {
     auroraSkinMainlineProvider: Array.from(auroraSkinMainlineProviderCounter.entries()),
     auroraSkinFallbackDeterministic: Array.from(auroraSkinFallbackDeterministicCounter.entries()),
     auroraSkinShadowVerifyIsolatedWrite: Array.from(auroraSkinShadowVerifyIsolatedWriteCounter.entries()),
+    auroraSkinSemanticGuard: Array.from(auroraSkinSemanticGuardCounter.entries()),
+    auroraSkinUsefulOutput: Array.from(auroraSkinUsefulOutputCounter.entries()),
     auroraIngredientsFlow: Array.from(auroraIngredientsFlowCounter.entries()),
     auroraIngredientProvider: Array.from(auroraIngredientProviderCounter.entries()),
     ingredientReportGenerated: Array.from(ingredientReportGeneratedCounter.entries()),
@@ -3969,6 +4007,8 @@ module.exports = {
   recordAuroraSkinMainlineProvider,
   recordAuroraSkinFallbackDeterministic,
   recordAuroraSkinShadowVerifyIsolatedWrite,
+  recordAuroraSkinSemanticGuard,
+  recordAuroraSkinUsefulOutput,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
   recordIngredientReportMetric,

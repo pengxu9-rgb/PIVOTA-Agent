@@ -2,20 +2,39 @@ const { parseJsonOnlyObject } = require('./jsonExtract');
 const {
   SkinVisionObservationSchema,
   SkinVisionGatewaySchema,
+  SkinVisionCanonicalSchema,
   SkinReportStrategySchema,
+  SkinReportCanonicalSchema,
+  SkinDeepeningCanonicalSchema,
   buildPoorPhotoTemplate,
   validateVisionObservation,
+  validateVisionCanonicalLayer,
   validateReportStrategy,
+  validateReportCanonicalLayer,
+  validateDeepeningCanonicalLayer,
   normalizeVisionObservationLayer,
+  normalizeVisionCanonicalLayer,
   normalizeReportStrategyLayer,
+  normalizeReportCanonicalLayer,
+  normalizeDeepeningCanonicalLayer,
+  renderVisionCanonicalLayer,
+  renderReportCanonicalLayer,
+  renderDeepeningCanonicalLayer,
+  evaluateVisionCanonicalSemantic,
+  evaluateReportCanonicalSemantic,
+  evaluateDeepeningCanonicalSemantic,
 } = require('./skinAnalysisContract');
 const {
   buildSkinVisionPromptBundle,
   buildSkinReportPromptBundle,
+  buildSkinDeepeningPromptBundle,
+  isSkinPromptV3,
+  isSkinDeepeningV2,
 } = require('./skinLlmPrompts');
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
+const { getGeminiGlobalGate, GeminiGateError } = require('../lib/geminiGlobalGate');
 
-const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
+const FALLBACK_GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 
 const SKIN_MODEL_GEMINI =
   String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-flash-preview').trim() ||
@@ -46,21 +65,42 @@ function inferStructuredTimeoutMs(maxOutputTokens) {
   return SKIN_LLM_TIMEOUT_MS;
 }
 
-let geminiClient = null;
+const geminiClientsByKey = new Map();
 let geminiInitFailed = false;
 
 function isGeminiSkinGatewayAvailable() {
-  return Boolean(GEMINI_API_KEY);
+  try {
+    const gate = getGeminiGlobalGate();
+    const snapshot = gate && typeof gate.snapshot === 'function' ? gate.snapshot() : null;
+    const keyCount = Number(snapshot && snapshot.gate && snapshot.gate.keyCount);
+    if (Number.isFinite(keyCount) && keyCount > 0) return true;
+  } catch {
+    // noop
+  }
+  return Boolean(FALLBACK_GEMINI_API_KEY);
 }
 
-function getGeminiClient() {
-  if (!GEMINI_API_KEY) return null;
-  if (geminiClient) return geminiClient;
+function pickGeminiApiKey() {
+  try {
+    const gate = getGeminiGlobalGate();
+    const pooledKey = gate && typeof gate.getApiKey === 'function' ? gate.getApiKey() : null;
+    if (typeof pooledKey === 'string' && pooledKey.trim()) return pooledKey.trim();
+  } catch {
+    // noop
+  }
+  return FALLBACK_GEMINI_API_KEY;
+}
+
+function getGeminiClient(apiKey) {
+  const key = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!key) return null;
+  if (geminiClientsByKey.has(key)) return geminiClientsByKey.get(key);
   if (geminiInitFailed) return null;
   try {
     const { GoogleGenAI } = require('@google/genai');
-    geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    return geminiClient;
+    const client = new GoogleGenAI({ apiKey: key });
+    geminiClientsByKey.set(key, client);
+    return client;
   } catch (_err) {
     geminiInitFailed = true;
     return null;
@@ -131,6 +171,12 @@ function classifyGeminiError(err) {
 
   if (code === 'GEMINI_TIMEOUT' || message.includes('timeout') || message.includes('deadline exceeded')) {
     return { reason: 'TIMEOUT', upstream_status_code: null };
+  }
+  if (code === 'GLOBAL_RATE_LIMITED' || code === 'RATE_LIMITED') {
+    return { reason: 'RATE_LIMIT', upstream_status_code: 429 };
+  }
+  if (code === 'CIRCUIT_OPEN') {
+    return { reason: 'UPSTREAM_5XX', upstream_status_code: 503 };
   }
   if (status === 429 || message.includes('rate limit') || message.includes('resource exhausted')) {
     return { reason: 'RATE_LIMIT', upstream_status_code: 429 };
@@ -241,18 +287,73 @@ function buildConservativeReportFallbackLayer(reportDto, { lang } = {}) {
   );
 }
 
+function buildSemanticRevisionHint({ stage, issues } = {}) {
+  const list = Array.isArray(issues) ? issues.map((item) => String(item || '').trim()).filter(Boolean) : [];
+  if (stage === 'vision') {
+    return [
+      'Revise your previous output.',
+      'Fix the following issues:',
+      list.map((item) => `- ${item}`).join('\n'),
+      'Do not invent cues.',
+      'If the image is insufficient, set visibility_status=insufficient with insufficient_reason.',
+      'If the image is not insufficient on pass-quality input, return at least 2 distinct grounded observations.',
+    ].filter(Boolean).join('\n');
+  }
+  if (stage === 'report') {
+    return [
+      'Revise your previous output.',
+      'Fix the following issues:',
+      list.map((item) => `- ${item}`).join('\n'),
+      'Every routine step must be grounded in linked_cues.',
+      'Keep the plan conservative, structured, and free of user-facing prose.',
+    ].filter(Boolean).join('\n');
+  }
+  return [
+    'Revise your previous output.',
+    'Fix the following issues:',
+    list.map((item) => `- ${item}`).join('\n'),
+    'Keep the output fully structured and renderable.',
+  ].filter(Boolean).join('\n');
+}
+
+function buildVisionAttemptBundle({ language, visionDto, promptVersion, revisionHint } = {}) {
+  const bundle = buildSkinVisionPromptBundle({ language, dto: visionDto, promptVersion });
+  return {
+    bundle,
+    userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt,
+  };
+}
+
+function buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint } = {}) {
+  const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
+  return {
+    bundle,
+    userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt,
+  };
+}
+
+function buildDeepeningAttemptBundle({ language, deepeningDto, promptVersion, revisionHint } = {}) {
+  const bundle = buildSkinDeepeningPromptBundle({ language, dto: deepeningDto, promptVersion });
+  return {
+    bundle,
+    userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt,
+  };
+}
+
 async function callGeminiJson({
   systemInstruction,
   userText,
   imageBuffer,
+  imageMimeType,
   responseSchema,
   maxOutputTokens,
   timeoutMs,
   profiler,
   kind,
 } = {}) {
-  const client = getGeminiClient();
-  if (!client) {
+  const apiKey = pickGeminiApiKey();
+  const client = getGeminiClient(apiKey);
+  if (!client || !apiKey) {
     return {
       ok: false,
       reason: 'MISSING_GEMINI_KEY',
@@ -277,7 +378,7 @@ async function callGeminiJson({
             ? [
                 {
                   inlineData: {
-                    mimeType: 'image/jpeg',
+                    mimeType: typeof imageMimeType === 'string' && imageMimeType.trim() ? imageMimeType.trim() : 'image/jpeg',
                     data: imageBuffer.toString('base64'),
                   },
                 },
@@ -298,11 +399,16 @@ async function callGeminiJson({
   };
 
   try {
+    const globalGate = getGeminiGlobalGate();
     const effectiveTimeoutMs = Math.max(
       readTimeoutMs(timeoutMs, SKIN_LLM_TIMEOUT_MS),
       inferStructuredTimeoutMs(request.config && request.config.maxOutputTokens),
     );
-    const invoke = () => withTimeout(client.models.generateContent(request), effectiveTimeoutMs);
+    const invoke = () =>
+      withTimeout(
+        globalGate.withGate(kind || 'aurora_skin_llm', async () => client.models.generateContent(request)),
+        effectiveTimeoutMs,
+      );
     const resp =
       profiler && typeof profiler.timeLlmCall === 'function'
         ? await profiler.timeLlmCall({ provider: 'gemini', model: SKIN_MODEL_GEMINI, kind }, invoke)
@@ -327,13 +433,14 @@ async function callGeminiJson({
       response_text: '',
       parsed: null,
       latency_ms: Date.now() - startedAt,
-      error: String(err.message || '').slice(0, 500),
+      error: err instanceof GeminiGateError ? `${err.code}:${String(err.message || '').slice(0, 460)}` : String(err.message || '').slice(0, 500),
     };
   }
 }
 
 async function runGeminiVisionStrategy({
   imageBuffer,
+  imageMimeType,
   visionDto,
   language,
   promptVersion,
@@ -355,34 +462,167 @@ async function runGeminiVisionStrategy({
     };
   }
 
-  const bundle = buildSkinVisionPromptBundle({ language, dto: visionDto, promptVersion });
-  const response = await callGeminiJson({
-    systemInstruction: bundle.systemInstruction,
-    userText: bundle.userPrompt,
-    imageBuffer,
-    responseSchema: SkinVisionGatewaySchema,
-    maxOutputTokens: SKIN_VISION_MAX_OUTPUT_TOKENS,
-    timeoutMs,
-    profiler,
-    kind: 'skin_vision_mainline',
-  });
+  const isCanonical = isSkinPromptV3(promptVersion);
+  const attemptVision = async (revisionHint) => {
+    const { bundle, userPrompt } = buildVisionAttemptBundle({ language, visionDto, promptVersion, revisionHint });
+    const response = await callGeminiJson({
+      systemInstruction: bundle.systemInstruction,
+      userText: userPrompt,
+      imageBuffer,
+      imageMimeType,
+      responseSchema: isCanonical ? SkinVisionCanonicalSchema : SkinVisionGatewaySchema,
+      maxOutputTokens: SKIN_VISION_MAX_OUTPUT_TOKENS,
+      timeoutMs,
+      profiler,
+      kind: 'skin_vision_mainline',
+    });
+    return { bundle, response };
+  };
 
-  if (!response.ok) {
+  const firstAttempt = await attemptVision('');
+  if (!firstAttempt.response.ok) {
     return {
       ok: false,
       provider: 'gemini',
-      reason: response.reason || 'UNKNOWN',
+      reason: firstAttempt.response.reason || 'UNKNOWN',
       schema_violation: false,
+      semantic_violation: false,
       analysis: null,
-      retry: { attempted: 0, final: 'fail', last_reason: response.reason || 'UNKNOWN' },
-      upstream_status_code: response.upstream_status_code,
-      latency_ms: response.latency_ms,
-      prompt_version: bundle.promptVersion,
+      retry: { attempted: 0, final: 'fail', last_reason: firstAttempt.response.reason || 'UNKNOWN' },
+      upstream_status_code: firstAttempt.response.upstream_status_code,
+      latency_ms: firstAttempt.response.latency_ms,
+      prompt_version: firstAttempt.bundle.promptVersion,
       input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
     };
   }
 
-  const normalizedLayer = normalizeVisionObservationLayer(response.parsed);
+  if (isCanonical) {
+    const canonical = normalizeVisionCanonicalLayer(firstAttempt.response.parsed);
+    const validation = validateVisionCanonicalLayer(canonical);
+    const semantic = validation.ok ? evaluateVisionCanonicalSemantic(canonical, { quality: visionDto && visionDto.quality }) : { ok: false, code: 'SCHEMA_INVALID', issues: validation.errors || [] };
+    if (validation.ok && semantic.ok) {
+      const rendered = renderVisionCanonicalLayer(canonical, { lang: language });
+      const publicValidation = validateVisionObservation(rendered);
+      if (!publicValidation.ok) {
+        return {
+          ok: false,
+          provider: 'gemini',
+          reason: 'SCHEMA_INVALID',
+          schema_violation: true,
+          semantic_violation: false,
+          analysis: null,
+          retry: { attempted: 0, final: 'fail', last_reason: 'SCHEMA_INVALID' },
+          upstream_status_code: firstAttempt.response.upstream_status_code,
+          latency_ms: firstAttempt.response.latency_ms,
+          prompt_version: firstAttempt.bundle.promptVersion,
+          input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+          validation_errors: publicValidation.errors,
+        };
+      }
+      return {
+        ok: true,
+        provider: 'gemini',
+        reason: null,
+        schema_violation: false,
+        semantic_violation: false,
+        analysis: rendered,
+        canonical,
+        semantic,
+        raw_response_text: firstAttempt.response.response_text,
+        retry: { attempted: 0, final: 'success', last_reason: null },
+        upstream_status_code: firstAttempt.response.upstream_status_code,
+        latency_ms: firstAttempt.response.latency_ms,
+        prompt_version: firstAttempt.bundle.promptVersion,
+        input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+      };
+    }
+
+    const revisionHint = buildSemanticRevisionHint({
+      stage: 'vision',
+      issues: validation.ok ? semantic.issues : validation.errors,
+    });
+    const secondAttempt = await attemptVision(revisionHint);
+    if (!secondAttempt.response.ok) {
+      return {
+        ok: false,
+        provider: 'gemini',
+        reason: secondAttempt.response.reason || 'UNKNOWN',
+        schema_violation: false,
+        semantic_violation: false,
+        analysis: null,
+        retry: { attempted: 1, final: 'fail', last_reason: secondAttempt.response.reason || 'UNKNOWN' },
+        upstream_status_code: secondAttempt.response.upstream_status_code,
+        latency_ms: secondAttempt.response.latency_ms,
+        prompt_version: secondAttempt.bundle.promptVersion,
+        input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+      };
+    }
+    const revisedCanonical = normalizeVisionCanonicalLayer(secondAttempt.response.parsed);
+    const revisedValidation = validateVisionCanonicalLayer(revisedCanonical);
+    const revisedSemantic = revisedValidation.ok
+      ? evaluateVisionCanonicalSemantic(revisedCanonical, { quality: visionDto && visionDto.quality })
+      : { ok: false, code: 'SCHEMA_INVALID', issues: revisedValidation.errors || [] };
+    if (!revisedValidation.ok || !revisedSemantic.ok) {
+      return {
+        ok: false,
+        provider: 'gemini',
+        reason: !revisedValidation.ok ? 'SCHEMA_INVALID' : revisedSemantic.code || 'SEMANTIC_INVALID',
+        schema_violation: !revisedValidation.ok,
+        semantic_violation: Boolean(revisedValidation.ok && !revisedSemantic.ok),
+        analysis: null,
+        canonical: revisedCanonical,
+        semantic: revisedSemantic,
+        raw_response_text: secondAttempt.response.response_text,
+        retry: {
+          attempted: 1,
+          final: 'fail',
+          last_reason: !revisedValidation.ok ? 'SCHEMA_INVALID' : revisedSemantic.code || 'SEMANTIC_INVALID',
+        },
+        upstream_status_code: secondAttempt.response.upstream_status_code,
+        latency_ms: secondAttempt.response.latency_ms,
+        prompt_version: secondAttempt.bundle.promptVersion,
+        input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+        validation_errors: !revisedValidation.ok ? revisedValidation.errors : undefined,
+        semantic_issues: revisedSemantic.issues,
+      };
+    }
+    const revisedRendered = renderVisionCanonicalLayer(revisedCanonical, { lang: language });
+    const revisedPublicValidation = validateVisionObservation(revisedRendered);
+    if (!revisedPublicValidation.ok) {
+      return {
+        ok: false,
+        provider: 'gemini',
+        reason: 'SCHEMA_INVALID',
+        schema_violation: true,
+        semantic_violation: false,
+        analysis: null,
+        retry: { attempted: 1, final: 'fail', last_reason: 'SCHEMA_INVALID' },
+        upstream_status_code: secondAttempt.response.upstream_status_code,
+        latency_ms: secondAttempt.response.latency_ms,
+        prompt_version: secondAttempt.bundle.promptVersion,
+        input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+        validation_errors: revisedPublicValidation.errors,
+      };
+    }
+    return {
+      ok: true,
+      provider: 'gemini',
+      reason: null,
+      schema_violation: false,
+      semantic_violation: false,
+      analysis: revisedRendered,
+      canonical: revisedCanonical,
+      semantic: revisedSemantic,
+      raw_response_text: secondAttempt.response.response_text,
+      retry: { attempted: 1, final: 'success', last_reason: null },
+      upstream_status_code: secondAttempt.response.upstream_status_code,
+      latency_ms: secondAttempt.response.latency_ms,
+      prompt_version: secondAttempt.bundle.promptVersion,
+      input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+    };
+  }
+
+  const normalizedLayer = normalizeVisionObservationLayer(firstAttempt.response.parsed);
   const validation = validateVisionObservation(normalizedLayer);
   if (!validation.ok) {
     return {
@@ -390,26 +630,28 @@ async function runGeminiVisionStrategy({
       provider: 'gemini',
       reason: 'SCHEMA_INVALID',
       schema_violation: true,
+      semantic_violation: false,
       analysis: null,
       retry: { attempted: 0, final: 'fail', last_reason: 'SCHEMA_INVALID' },
-      upstream_status_code: response.upstream_status_code,
-      latency_ms: response.latency_ms,
-      prompt_version: bundle.promptVersion,
+      upstream_status_code: firstAttempt.response.upstream_status_code,
+      latency_ms: firstAttempt.response.latency_ms,
+      prompt_version: firstAttempt.bundle.promptVersion,
       input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
       validation_errors: validation.errors,
     };
   }
-
   return {
     ok: true,
     provider: 'gemini',
     reason: null,
     schema_violation: false,
+    semantic_violation: false,
     analysis: normalizedLayer,
+    raw_response_text: firstAttempt.response.response_text,
     retry: { attempted: 0, final: 'success', last_reason: null },
-    upstream_status_code: response.upstream_status_code,
-    latency_ms: response.latency_ms,
-    prompt_version: bundle.promptVersion,
+    upstream_status_code: firstAttempt.response.upstream_status_code,
+    latency_ms: firstAttempt.response.latency_ms,
+    prompt_version: firstAttempt.bundle.promptVersion,
     input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
   };
 }
@@ -422,6 +664,7 @@ async function runGeminiReportStrategy({
   timeoutMs,
 } = {}) {
   const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
+  const isCanonical = isSkinPromptV3(promptVersion);
   let retryAttempted = 0;
 
   if (shouldUseLimitedSignalReportFallback(reportDto)) {
@@ -441,12 +684,14 @@ async function runGeminiReportStrategy({
   }
 
   const attempt = async (revisionHint) => {
-    const userPrompt = revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt;
+    const promptBundle = isCanonical
+      ? buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint })
+      : { bundle, userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt };
     return await callGeminiJson({
-      systemInstruction: bundle.systemInstruction,
-      userText: userPrompt,
+      systemInstruction: promptBundle.bundle.systemInstruction,
+      userText: promptBundle.userPrompt,
       imageBuffer: null,
-      responseSchema: SkinReportStrategySchema,
+      responseSchema: isCanonical ? SkinReportCanonicalSchema : SkinReportStrategySchema,
       maxOutputTokens: SKIN_REPORT_MAX_OUTPUT_TOKENS,
       timeoutMs,
       profiler,
@@ -455,45 +700,61 @@ async function runGeminiReportStrategy({
   };
 
   let first = await attempt('');
-  let validation = first.ok ? validateReportStrategy(first.parsed) : { ok: false, errors: [] };
-  let safety = first.ok && validation.ok ? validateSkinAnalysisContent(first.parsed, { lang: language }) : { ok: false, violations: [] };
+  let validation = first.ok
+    ? (isCanonical ? validateReportCanonicalLayer(normalizeReportCanonicalLayer(first.parsed)) : validateReportStrategy(first.parsed))
+    : { ok: false, errors: [] };
+  let semantic = first.ok && validation.ok && isCanonical
+    ? evaluateReportCanonicalSemantic(normalizeReportCanonicalLayer(first.parsed))
+    : { ok: true, issues: [] };
+  let safety = first.ok && validation.ok && (!isCanonical || semantic.ok)
+    ? validateSkinAnalysisContent(
+        isCanonical
+          ? renderReportCanonicalLayer(normalizeReportCanonicalLayer(first.parsed), {
+              lang: language,
+              quality: reportDto && reportDto.quality,
+            })
+          : first.parsed,
+        { lang: language },
+      )
+    : { ok: false, violations: [] };
 
-  const needRetry = !first.ok || !validation.ok || !safety.ok;
+  const needRetry = !first.ok || !validation.ok || !semantic.ok || !safety.ok;
   if (needRetry) {
     retryAttempted = 1;
-    const revisionHint =
-      'Revise your previous output to comply with safety rules: remove disease names, prescription drug names, treatment claims, and brand-specific recommendations. Keep the same meaning and be concise.';
+    const revisionHint = !validation.ok || !semantic.ok
+      ? buildSemanticRevisionHint({
+          stage: 'report',
+          issues: !validation.ok ? validation.errors : semantic.issues,
+        })
+      : 'Revise your previous output to comply with safety rules: remove disease names, prescription drug names, treatment claims, and brand-specific recommendations. Keep the same meaning and be concise.';
     const second = await attempt(revisionHint);
-    const secondValidation = second.ok ? validateReportStrategy(second.parsed) : { ok: false, errors: [] };
-    const secondSafety = second.ok && secondValidation.ok
-      ? validateSkinAnalysisContent(second.parsed, { lang: language })
+    const secondCanonical = second.ok && isCanonical ? normalizeReportCanonicalLayer(second.parsed) : null;
+    const secondValidation = second.ok
+      ? (isCanonical ? validateReportCanonicalLayer(secondCanonical) : validateReportStrategy(second.parsed))
+      : { ok: false, errors: [] };
+    const secondSemantic = second.ok && secondValidation.ok && isCanonical
+      ? evaluateReportCanonicalSemantic(secondCanonical)
+      : { ok: true, issues: [] };
+    const secondRendered = second.ok && secondValidation.ok && isCanonical
+      ? renderReportCanonicalLayer(secondCanonical, { lang: language, quality: reportDto && reportDto.quality })
+      : null;
+    const secondSafety = second.ok && secondValidation.ok && (!isCanonical || secondSemantic.ok)
+      ? validateSkinAnalysisContent(isCanonical ? secondRendered : second.parsed, { lang: language })
       : { ok: false, violations: [] };
 
-    if (second.ok && secondValidation.ok && secondSafety.ok) {
+    if (second.ok && secondValidation.ok && secondSemantic.ok && secondSafety.ok) {
       return {
         ok: true,
         provider: 'gemini',
         reason: null,
         schema_violation: false,
         safety_violation: false,
-        layer: normalizeReportStrategyLayer(second.parsed, { lang: language }),
+        semantic_violation: false,
+        layer: isCanonical ? secondRendered : normalizeReportStrategyLayer(second.parsed, { lang: language }),
+        canonical: secondCanonical,
+        semantic: secondSemantic,
+        raw_response_text: second.response_text,
         retry: { attempted: 1, final: 'success', last_reason: null },
-        upstream_status_code: second.upstream_status_code,
-        latency_ms: second.latency_ms,
-        prompt_version: bundle.promptVersion,
-        input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
-      };
-    }
-
-    if (second.ok && (!secondValidation.ok || !secondSafety.ok)) {
-      return {
-        ok: true,
-        provider: 'gemini',
-        reason: null,
-        schema_violation: false,
-        safety_violation: false,
-        layer: buildConservativeReportFallbackLayer(reportDto, { lang: language }),
-        retry: { attempted: retryAttempted, final: 'success', last_reason: null },
         upstream_status_code: second.upstream_status_code,
         latency_ms: second.latency_ms,
         prompt_version: bundle.promptVersion,
@@ -504,20 +765,37 @@ async function runGeminiReportStrategy({
     return {
       ok: false,
       provider: 'gemini',
-      reason: !second.ok ? second.reason || 'UNKNOWN' : !secondValidation.ok ? 'SCHEMA_INVALID' : 'SAFETY_INVALID',
+      reason: !second.ok
+        ? second.reason || 'UNKNOWN'
+        : !secondValidation.ok
+          ? 'SCHEMA_INVALID'
+          : !secondSemantic.ok
+            ? secondSemantic.code || 'SEMANTIC_INVALID'
+            : 'SAFETY_INVALID',
       schema_violation: Boolean(second.ok && !secondValidation.ok),
-      safety_violation: Boolean(second.ok && secondValidation.ok && !secondSafety.ok),
+      semantic_violation: Boolean(second.ok && secondValidation.ok && !secondSemantic.ok),
+      safety_violation: Boolean(second.ok && secondValidation.ok && secondSemantic.ok && !secondSafety.ok),
       layer: null,
+      canonical: secondCanonical,
+      semantic: secondSemantic,
+      raw_response_text: second.response_text,
       retry: {
         attempted: retryAttempted,
         final: 'fail',
-        last_reason: !second.ok ? second.reason || 'UNKNOWN' : !secondValidation.ok ? 'SCHEMA_INVALID' : 'SAFETY_INVALID',
+        last_reason: !second.ok
+          ? second.reason || 'UNKNOWN'
+          : !secondValidation.ok
+            ? 'SCHEMA_INVALID'
+            : !secondSemantic.ok
+              ? secondSemantic.code || 'SEMANTIC_INVALID'
+              : 'SAFETY_INVALID',
       },
       upstream_status_code: second.upstream_status_code,
       latency_ms: second.latency_ms,
       prompt_version: bundle.promptVersion,
       input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
       validation_errors: secondValidation.errors,
+      semantic_issues: secondSemantic.issues,
       safety_violations: secondSafety.violations,
     };
   }
@@ -528,12 +806,160 @@ async function runGeminiReportStrategy({
     reason: null,
     schema_violation: false,
     safety_violation: false,
-    layer: normalizeReportStrategyLayer(first.parsed, { lang: language }),
+    semantic_violation: false,
+    layer: isCanonical
+      ? renderReportCanonicalLayer(normalizeReportCanonicalLayer(first.parsed), { lang: language, quality: reportDto && reportDto.quality })
+      : normalizeReportStrategyLayer(first.parsed, { lang: language }),
+    canonical: isCanonical ? normalizeReportCanonicalLayer(first.parsed) : null,
+    semantic,
+    raw_response_text: first.response_text,
     retry: { attempted: retryAttempted, final: 'success', last_reason: null },
     upstream_status_code: first.upstream_status_code,
     latency_ms: first.latency_ms,
     prompt_version: bundle.promptVersion,
     input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+  };
+}
+
+async function runGeminiDeepeningStrategy({
+  deepeningDto,
+  language,
+  promptVersion,
+  profiler,
+  timeoutMs,
+} = {}) {
+  const isCanonical = isSkinDeepeningV2(promptVersion);
+  const attempt = async (revisionHint) => {
+    const { bundle, userPrompt } = buildDeepeningAttemptBundle({ language, deepeningDto, promptVersion, revisionHint });
+    const response = await callGeminiJson({
+      systemInstruction: bundle.systemInstruction,
+      userText: userPrompt,
+      imageBuffer: null,
+      responseSchema: SkinDeepeningCanonicalSchema,
+      maxOutputTokens: 1200,
+      timeoutMs,
+      profiler,
+      kind: 'skin_deepening_mainline',
+    });
+    return { bundle, response };
+  };
+
+  if (!isCanonical) {
+    return {
+      ok: false,
+      provider: 'gemini',
+      reason: 'UNSUPPORTED_PROMPT_VERSION',
+      schema_violation: false,
+      semantic_violation: false,
+      layer: null,
+      retry: { attempted: 0, final: 'fail', last_reason: 'UNSUPPORTED_PROMPT_VERSION' },
+      upstream_status_code: null,
+      latency_ms: 0,
+      prompt_version: promptVersion || 'skin_deepening_v1',
+      input_hash: deepeningDto && deepeningDto.input_hash ? String(deepeningDto.input_hash) : null,
+    };
+  }
+
+  const first = await attempt('');
+  if (!first.response.ok) {
+    return {
+      ok: false,
+      provider: 'gemini',
+      reason: first.response.reason || 'UNKNOWN',
+      schema_violation: false,
+      semantic_violation: false,
+      layer: null,
+      retry: { attempted: 0, final: 'fail', last_reason: first.response.reason || 'UNKNOWN' },
+      upstream_status_code: first.response.upstream_status_code,
+      latency_ms: first.response.latency_ms,
+      prompt_version: first.bundle.promptVersion,
+      input_hash: deepeningDto && deepeningDto.input_hash ? String(deepeningDto.input_hash) : null,
+    };
+  }
+  const canonical = normalizeDeepeningCanonicalLayer(first.response.parsed);
+  const validation = validateDeepeningCanonicalLayer(canonical);
+  const semantic = validation.ok ? evaluateDeepeningCanonicalSemantic(canonical) : { ok: false, code: 'SCHEMA_INVALID', issues: validation.errors || [] };
+  if (validation.ok && semantic.ok) {
+    return {
+      ok: true,
+      provider: 'gemini',
+      reason: null,
+      schema_violation: false,
+      semantic_violation: false,
+      layer: renderDeepeningCanonicalLayer(canonical, { lang: language }),
+      canonical,
+      semantic,
+      raw_response_text: first.response.response_text,
+      retry: { attempted: 0, final: 'success', last_reason: null },
+      upstream_status_code: first.response.upstream_status_code,
+      latency_ms: first.response.latency_ms,
+      prompt_version: first.bundle.promptVersion,
+      input_hash: deepeningDto && deepeningDto.input_hash ? String(deepeningDto.input_hash) : null,
+    };
+  }
+  const second = await attempt(buildSemanticRevisionHint({
+    stage: 'deepening',
+    issues: validation.ok ? semantic.issues : validation.errors,
+  }));
+  if (!second.response.ok) {
+    return {
+      ok: false,
+      provider: 'gemini',
+      reason: second.response.reason || 'UNKNOWN',
+      schema_violation: false,
+      semantic_violation: false,
+      layer: null,
+      retry: { attempted: 1, final: 'fail', last_reason: second.response.reason || 'UNKNOWN' },
+      upstream_status_code: second.response.upstream_status_code,
+      latency_ms: second.response.latency_ms,
+      prompt_version: second.bundle.promptVersion,
+      input_hash: deepeningDto && deepeningDto.input_hash ? String(deepeningDto.input_hash) : null,
+    };
+  }
+  const revisedCanonical = normalizeDeepeningCanonicalLayer(second.response.parsed);
+  const revisedValidation = validateDeepeningCanonicalLayer(revisedCanonical);
+  const revisedSemantic = revisedValidation.ok
+    ? evaluateDeepeningCanonicalSemantic(revisedCanonical)
+    : { ok: false, code: 'SCHEMA_INVALID', issues: revisedValidation.errors || [] };
+  if (!revisedValidation.ok || !revisedSemantic.ok) {
+    return {
+      ok: false,
+      provider: 'gemini',
+      reason: !revisedValidation.ok ? 'SCHEMA_INVALID' : revisedSemantic.code || 'SEMANTIC_INVALID',
+      schema_violation: !revisedValidation.ok,
+      semantic_violation: Boolean(revisedValidation.ok && !revisedSemantic.ok),
+      layer: null,
+      canonical: revisedCanonical,
+      semantic: revisedSemantic,
+      raw_response_text: second.response.response_text,
+      retry: {
+        attempted: 1,
+        final: 'fail',
+        last_reason: !revisedValidation.ok ? 'SCHEMA_INVALID' : revisedSemantic.code || 'SEMANTIC_INVALID',
+      },
+      upstream_status_code: second.response.upstream_status_code,
+      latency_ms: second.response.latency_ms,
+      prompt_version: second.bundle.promptVersion,
+      input_hash: deepeningDto && deepeningDto.input_hash ? String(deepeningDto.input_hash) : null,
+      validation_errors: !revisedValidation.ok ? revisedValidation.errors : undefined,
+      semantic_issues: revisedSemantic.issues,
+    };
+  }
+  return {
+    ok: true,
+    provider: 'gemini',
+    reason: null,
+    schema_violation: false,
+    semantic_violation: false,
+    layer: renderDeepeningCanonicalLayer(revisedCanonical, { lang: language }),
+    canonical: revisedCanonical,
+    semantic: revisedSemantic,
+    raw_response_text: second.response.response_text,
+    retry: { attempted: 1, final: 'success', last_reason: null },
+    upstream_status_code: second.response.upstream_status_code,
+    latency_ms: second.response.latency_ms,
+    prompt_version: second.bundle.promptVersion,
+    input_hash: deepeningDto && deepeningDto.input_hash ? String(deepeningDto.input_hash) : null,
   };
 }
 
@@ -545,4 +971,5 @@ module.exports = {
   validateSkinAnalysisContent,
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
+  runGeminiDeepeningStrategy,
 };

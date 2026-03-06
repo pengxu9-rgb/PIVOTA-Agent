@@ -1,0 +1,74 @@
+{
+  "version": "skin_prompt_quality_gate.v1",
+  "global_principles": [
+    "Prefer grounded, conservative skincare reasoning.",
+    "Do not reward generic filler just because the JSON is valid.",
+    "Locale rendering must preserve meaning rather than translate loosely.",
+    "Score harshly when the output avoids useful content on pass-quality inputs."
+  ],
+  "pass_criteria": {
+    "bucket_average_min": 9.0,
+    "hard_fail_rate_max": 0.0,
+    "below_8_rate_max": 0.05,
+    "repeat_consistency_min": 0.8
+  },
+  "hard_fail_rules": [
+    "medical_overreach",
+    "fabricated_observation",
+    "clear_case_contradiction",
+    "pass_quality_wrong_insufficiency",
+    "locale_rendering_distortion"
+  ],
+  "stage_rubrics": {
+    "vision": {
+      "dimensions": [
+        "grounding",
+        "cue_accuracy",
+        "region_accuracy",
+        "usefulness",
+        "insufficiency_correctness",
+        "stability"
+      ],
+      "weights": {
+        "grounding": 0.25,
+        "cue_accuracy": 0.2,
+        "region_accuracy": 0.15,
+        "usefulness": 0.2,
+        "insufficiency_correctness": 0.15,
+        "stability": 0.05
+      }
+    },
+    "report": {
+      "dimensions": [
+        "cue_consistency",
+        "actionability",
+        "specificity",
+        "safety",
+        "structure_quality"
+      ],
+      "weights": {
+        "cue_consistency": 0.25,
+        "actionability": 0.25,
+        "specificity": 0.2,
+        "safety": 0.15,
+        "structure_quality": 0.15
+      }
+    },
+    "deepening": {
+      "dimensions": [
+        "phase_correctness",
+        "personalization",
+        "question_quality",
+        "option_quality",
+        "safety"
+      ],
+      "weights": {
+        "phase_correctness": 0.25,
+        "personalization": 0.2,
+        "question_quality": 0.25,
+        "option_quality": 0.15,
+        "safety": 0.15
+      }
+    }
+  }
+}

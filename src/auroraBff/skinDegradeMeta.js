@@ -9,6 +9,7 @@ function normalizeReportFailureReason(reason) {
   if (!token) return null;
 
   if (token === 'REPORT_OUTPUT_INVALID') return 'SCHEMA_INVALID';
+  if (token === 'REPORT_SEMANTIC_INVALID') return 'SEMANTIC_INVALID';
   return token;
 }
 
