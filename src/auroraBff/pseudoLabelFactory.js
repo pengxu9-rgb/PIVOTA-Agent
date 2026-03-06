@@ -798,7 +798,7 @@ function inferModelName(output) {
   if (typeof output?.source_model === 'string' && output.source_model.trim()) return output.source_model.trim();
   if (typeof output?.model === 'string' && output.model.trim()) return output.model.trim();
   if (output?.provider === 'gemini_provider') {
-    return String(process.env.DIAG_ENSEMBLE_GEMINI_MODEL || '').trim() || 'gemini-2.0-flash';
+    return String(process.env.DIAG_ENSEMBLE_GEMINI_MODEL || '').trim() || 'gemini-3-pro-preview';
   }
   if (output?.provider === 'gpt_provider') {
     return String(process.env.DIAG_ENSEMBLE_GPT_MODEL || '').trim() || 'gpt-4o-mini';

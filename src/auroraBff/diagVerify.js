@@ -794,7 +794,7 @@ function getVerifierConfig() {
     hardCaseThreshold: numEnv('DIAG_GEMINI_VERIFY_HARD_CASE_THRESHOLD', 0.55, 0, 1),
     maxCallsPerMin: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_MIN', 60, 0, 1000000))),
     maxCallsPerDay: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_DAY', 10000, 0, 100000000))),
-    model: String(process.env.DIAG_GEMINI_VERIFY_MODEL || process.env.DIAG_ENSEMBLE_GEMINI_MODEL || 'gemini-2.0-flash').trim() || 'gemini-2.0-flash',
+    model: String(process.env.DIAG_GEMINI_VERIFY_MODEL || process.env.DIAG_ENSEMBLE_GEMINI_MODEL || 'gemini-3-flash-preview').trim() || 'gemini-3-flash-preview',
     circuitEnabled: boolEnv('DIAG_VERIFY_5XX_CIRCUIT_ENABLED', true),
     circuitConsecutiveThreshold: Math.max(1, Math.trunc(numEnv('DIAG_VERIFY_5XX_CONSECUTIVE_THRESHOLD', 3, 1, 50))),
     circuitCooldownMs: Math.max(1000, Math.trunc(numEnv('DIAG_VERIFY_5XX_COOLDOWN_MS', 90000, 1000, 900000))),

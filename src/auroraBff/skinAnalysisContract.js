@@ -3,7 +3,6 @@ const DEEPENING_PHASE_VALUES = Object.freeze(['photo_optin', 'products', 'reacti
 
 const EvidenceRefItemSchema = {
   type: 'object',
-  additionalProperties: false,
   properties: {
     id: { type: 'string', maxLength: 40 },
     title: { type: 'string', maxLength: 120 },
@@ -15,7 +14,6 @@ const EvidenceRefItemSchema = {
 
 const DeepeningSchema = {
   type: 'object',
-  additionalProperties: false,
   properties: {
     phase: { type: 'string', enum: DEEPENING_PHASE_VALUES.slice() },
     next_phase: { type: 'string', enum: DEEPENING_PHASE_VALUES.slice() },
@@ -30,7 +28,6 @@ const DeepeningSchema = {
 
 const SkinFeatureItemSchema = {
   type: 'object',
-  additionalProperties: false,
   properties: {
     observation: { type: 'string', maxLength: 120 },
     confidence: { type: 'string', enum: CONFIDENCE_VALUES.slice() },
@@ -43,7 +40,6 @@ const ObservationSeverityValues = Object.freeze(['mild', 'moderate', 'high']);
 
 const ObservationItemSchema = {
   type: 'object',
-  additionalProperties: false,
   properties: {
     cue: { type: 'string', maxLength: 60 },
     where: { type: 'string', maxLength: 60 },
@@ -56,7 +52,6 @@ const ObservationItemSchema = {
 
 const FindingItemSchema = {
   type: 'object',
-  additionalProperties: false,
   properties: {
     cue: { type: 'string', maxLength: 60 },
     where: { type: 'string', maxLength: 60 },
@@ -69,7 +64,6 @@ const FindingItemSchema = {
 
 const QualityInfoSchema = {
   type: 'object',
-  additionalProperties: true,
   properties: {
     grade: { type: 'string', enum: ['pass', 'degraded', 'fail'] },
     message: { type: 'string', maxLength: 220 },
@@ -81,7 +75,6 @@ const QualityInfoSchema = {
     confidence_penalty: { type: 'number' },
     factors: {
       type: 'object',
-      additionalProperties: true,
       properties: {
         blur: { type: 'number' },
         exposure: { type: 'number' },
@@ -94,7 +87,6 @@ const QualityInfoSchema = {
 
 const NextStepOptionSchema = {
   type: 'object',
-  additionalProperties: true,
   properties: {
     id: { type: 'string', maxLength: 80 },
     label: { type: 'string', maxLength: 80 },
@@ -103,15 +95,12 @@ const NextStepOptionSchema = {
 };
 
 const RoutineExpertSchema = {
-  anyOf: [
-    { type: 'string', maxLength: 1200 },
-    { type: 'object', additionalProperties: true },
-  ],
+  type: 'string',
+  maxLength: 1200,
 };
 
 const SkinFinalContractSchema = {
   type: 'object',
-  additionalProperties: false,
   properties: {
     features: {
       type: 'array',
@@ -174,7 +163,6 @@ const SkinFinalContractSchema = {
 
 const SkinVisionObservationSchema = {
   type: 'object',
-  additionalProperties: false,
   properties: {
     features: {
       type: 'array',
@@ -201,7 +189,6 @@ const SkinVisionObservationSchema = {
 
 const SkinReportStrategySchema = {
   type: 'object',
-  additionalProperties: false,
   properties: {
     strategy: { type: 'string', maxLength: 700 },
     needs_risk_check: { type: 'boolean' },

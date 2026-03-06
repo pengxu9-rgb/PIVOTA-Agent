@@ -16,8 +16,8 @@ const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 
 const SKIN_MODEL_GEMINI =
-  String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
-  'gemini-2.0-flash';
+  String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-flash-preview').trim() ||
+  'gemini-3-flash-preview';
 
 const SKIN_LLM_TIMEOUT_MS = Math.max(2000, Math.min(30000, Number(process.env.AURORA_SKIN_VISION_TIMEOUT_MS || 12000)));
 
@@ -95,8 +95,14 @@ function unwrapCodeFence(raw) {
 function classifyGeminiError(err) {
   if (!err) return { reason: 'UNKNOWN', upstream_status_code: null };
   const code = String(err.code || '').trim().toUpperCase();
-  const status = Number.isFinite(Number(err.status)) ? Math.trunc(Number(err.status)) : null;
+  const rawStatus = Number.isFinite(Number(err.status)) ? Math.trunc(Number(err.status)) : null;
   const message = String(err.message || '').toLowerCase();
+
+  // @google/genai 0.7.0 ClientError embeds status in message: "got status: 400 Bad Request. {...}"
+  const status = rawStatus || (() => {
+    const m = String(err.message || '').match(/got status:\s*(\d{3})/i);
+    return m ? parseInt(m[1], 10) : null;
+  })();
 
   if (code === 'GEMINI_TIMEOUT' || message.includes('timeout') || message.includes('deadline exceeded')) {
     return { reason: 'TIMEOUT', upstream_status_code: null };
@@ -231,6 +237,7 @@ async function callGeminiJson({
       response_text: '',
       parsed: null,
       latency_ms: Date.now() - startedAt,
+      error: String(err.message || '').slice(0, 500),
     };
   }
 }
@@ -408,6 +415,7 @@ async function runGeminiReportStrategy({
 module.exports = {
   SKIN_MODEL_GEMINI,
   SKIN_LLM_TIMEOUT_MS,
+  classifyGeminiError,
   isGeminiSkinGatewayAvailable,
   validateSkinAnalysisContent,
   runGeminiVisionStrategy,
