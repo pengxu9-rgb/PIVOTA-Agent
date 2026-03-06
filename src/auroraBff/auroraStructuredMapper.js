@@ -777,12 +777,27 @@ function mapAuroraAlternativesToDupeCompare(
   };
 }
 
-function classifyAlternativeKind(priceDeltaUsd) {
+function classifyAlternativeKind(priceDeltaUsd, { similarity, categoryMatch, hasSharedActives } = {}) {
   const delta = asNumberOrNull(priceDeltaUsd);
-  if (delta == null) return 'similar';
-  if (delta < -0.01) return 'dupe';
-  if (delta > 0.01) return 'premium';
+  const sim = asNumberOrNull(similarity);
+  const hasFunctionalMatch = Boolean(categoryMatch) || (sim != null && sim >= 60) || Boolean(hasSharedActives);
+
+  if (delta != null) {
+    if (delta < -0.01) return 'dupe';
+    if (delta > 0.01) return 'premium';
+    return 'dupe';
+  }
+  if (hasFunctionalMatch) return 'dupe';
+  if (sim != null && sim > 0) return 'similar';
   return 'similar';
+}
+
+function classifyPriceTier(priceDeltaUsd) {
+  const delta = asNumberOrNull(priceDeltaUsd);
+  if (delta == null) return 'price_unknown';
+  if (delta < -0.01) return 'cheaper';
+  if (delta > 0.01) return 'premium';
+  return 'same_price';
 }
 
 function isNoisyAltNote(value) {
@@ -893,7 +908,14 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     const availabilityNote = t ? asString(t.availability_note || t.availabilityNote) : null;
     const priceDeltaUsd = t ? asNumberOrNull(t.price_delta_usd || t.priceDeltaUsd) : null;
 
-    const kind = classifyAlternativeKind(priceDeltaUsd);
+    const productCategory = asString(product.category || product.product_type || product.type);
+    const hasSharedActives = missingActives.length === 0 && addedBenefits.length > 0;
+    const kind = classifyAlternativeKind(priceDeltaUsd, {
+      similarity,
+      categoryMatch: Boolean(productCategory),
+      hasSharedActives,
+    });
+    const priceTier = classifyPriceTier(priceDeltaUsd);
 
     const tradeoffs = [];
     if (missingActives.length) {
@@ -986,6 +1008,7 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
 
     mapped.push({
       kind,
+      price_tier: priceTier,
       product,
       ...(similarity != null ? { similarity } : {}),
       ...(reasons.length ? { reasons: uniqueStrings(reasons).slice(0, 2) } : {}),
@@ -999,7 +1022,47 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
 
   if (!mapped.length) return [];
 
-  const sorted = [...mapped].sort((a, b) => (Number(b.similarity ?? -1) || -1) - (Number(a.similarity ?? -1) || -1));
+  for (const item of mapped) {
+    const hasSimilarity = item.similarity != null && item.similarity > 0;
+    const hasDifference = (item.tradeoffs && item.tradeoffs.length > 0) || (item.reasons && item.reasons.length > 0);
+    const hasTradeoff = item.tradeoffs && item.tradeoffs.length > 0;
+    const meetsMinimum = hasSimilarity || hasDifference || hasTradeoff;
+
+    if (!meetsMinimum) {
+      item.data_insufficient = true;
+      if (!item.missing_info) item.missing_info = [];
+      if (!item.missing_info.includes('explanation_insufficient')) {
+        item.missing_info.push('explanation_insufficient');
+      }
+    }
+
+    if (!hasTradeoff && item.product) {
+      const cat = asString(item.product.category || item.product.product_type || item.product.type);
+      if (cat) {
+        if (!item.tradeoffs) item.tradeoffs = [];
+        item.tradeoffs.push(
+          language === 'CN' ? `品类：${cat}` : `Category: ${cat}`,
+        );
+      }
+    }
+    if (!item.reasons || !item.reasons.length) {
+      if (item.similarity != null && item.similarity > 0) {
+        item.reasons = [
+          language === 'CN' ? `相似度 ${Math.round(item.similarity)}%` : `${Math.round(item.similarity)}% similar`,
+        ];
+      }
+    }
+  }
+
+  const sufficient = mapped.filter((it) => !it.data_insufficient);
+  const insufficient = mapped.filter((it) => it.data_insufficient);
+  const pool = sufficient.length > 0 ? sufficient : mapped;
+
+  const sorted = [...pool].sort((a, b) => {
+    if (a.data_insufficient && !b.data_insufficient) return 1;
+    if (!a.data_insufficient && b.data_insufficient) return -1;
+    return (Number(b.similarity ?? -1) || -1) - (Number(a.similarity ?? -1) || -1);
+  });
   const chosen = [];
   const usedSkus = new Set();
 
@@ -1135,4 +1198,6 @@ module.exports = {
   mapAuroraAlternativesToDupeCompare,
   mapAuroraAlternativesToRecoAlternatives,
   mapAuroraRoutineToRecoGenerate,
+  classifyAlternativeKind,
+  classifyPriceTier,
 };

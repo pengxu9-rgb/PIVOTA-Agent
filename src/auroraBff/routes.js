@@ -211,6 +211,7 @@ const { mountTravelPlansRoutes } = require('./routes/travelPlansRoutes');
 const { mountRoutineRoutes } = require('./routes/routineRoutes');
 const { mountBrandSearchRoutes } = require('./routes/brandSearchRoutes');
 const { mountActivityRoutes } = require('./routes/activityRoutes');
+const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const {
   createOtpChallenge,
@@ -301,6 +302,11 @@ const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
 const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
+const { normalizeProductUrlInput, ensureOriginalNonNull } = require('./services/urlAliasNormalizer');
+const { applyDupeSuggestQualityGate } = require('./qualityGates/dupeSuggestGate');
+const { applyDupeCompareQualityGate } = require('./qualityGates/dupeCompareGate');
+const { executeDupeSuggest } = require('./usecases/dupeSuggest');
+const { executeDupeCompare } = require('./usecases/dupeCompare');
 const {
   normalizeKey: normalizeProductIntelKbKey,
   getProductIntelKbEntry,
@@ -35612,6 +35618,65 @@ function extractAnchorIdFromProductLike(obj) {
   const v = raw ? String(raw).trim() : '';
   return v || null;
 }
+async function buildDupeSuggestCandidatePool({ productObj, anchorId, inputText, originalUrl, logger, maxCandidates = 16 } = {}) {
+  const sources = [];
+  const allCandidates = [];
+  const anchor = String(anchorId || '').trim().toLowerCase();
+  const limit = Math.max(4, Math.min(24, maxCandidates));
+  const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
+  const brandToken = String(product.brand || '').trim();
+  const nameToken = String(product.display_name || product.name || '').trim();
+  const categoryToken = String(product.category || product.product_type || product.type || '').trim();
+  const searchQueries = [];
+  if (brandToken && nameToken) searchQueries.push(`${brandToken} ${nameToken}`);
+  if (categoryToken && brandToken) searchQueries.push(`${categoryToken} ${brandToken}`);
+  if (categoryToken && !brandToken && nameToken) searchQueries.push(`${categoryToken} ${nameToken}`);
+  const textQuery = String(inputText || '').trim();
+  if (textQuery && !searchQueries.some((q) => q.toLowerCase() === textQuery.toLowerCase())) searchQueries.push(textQuery);
+  const catalogCandidates = [];
+  for (const q of searchQueries.slice(0, 3)) {
+    try {
+      const res = await searchPivotaBackendProducts({ query: q, limit: Math.ceil(limit / 2), logger, timeoutMs: 3000, mode: 'main_path', searchAllMerchants: true, fastMode: true });
+      if (res && res.ok && Array.isArray(res.products)) {
+        for (const p of res.products) {
+          if (!p || typeof p !== 'object') continue;
+          const pid = String(p.sku_id || p.product_id || p.id || '').trim().toLowerCase();
+          if (pid && pid === anchor) continue;
+          catalogCandidates.push(p);
+        }
+        if (catalogCandidates.length > 0) sources.push('catalog_search');
+      }
+    } catch (err) { logger?.warn({ err: err?.message, query: q }, 'dupe suggest: catalog search failed for pool'); }
+    if (catalogCandidates.length >= limit) break;
+  }
+  allCandidates.push(...catalogCandidates);
+  const embeddedPool = buildRecoAlternativesCandidatePool({ sharedCandidates: [], productObj, anchorId, maxCandidates: limit });
+  if (embeddedPool.length > 0) { sources.push('product_embedded'); allCandidates.push(...embeddedPool); }
+  const seen = new Set();
+  const deduped = [];
+  for (const row of allCandidates) {
+    if (!row || typeof row !== 'object') continue;
+    const key = String(row.sku_id || row.product_id || row.id || row.name || '').trim().toLowerCase();
+    if (!key || seen.has(key) || key === anchor) continue;
+    seen.add(key);
+    deduped.push(row);
+    if (deduped.length >= limit) break;
+  }
+  const priceCoverage = deduped.filter((r) => { const p = r.price || r.price_usd || (r.pricing && r.pricing.price); return typeof p === 'number' && Number.isFinite(p) && p > 0; }).length;
+  return { candidates: deduped, meta: { count: deduped.length, sources_used: sources, price_coverage_rate: deduped.length > 0 ? priceCoverage / deduped.length : 0, degraded: deduped.length < 3 } };
+}
+
+function buildOriginalStub(url, inputText) {
+  const urlStr = String(url || '').trim();
+  const textStr = String(inputText || '').trim();
+  const nameGuess = textStr || (urlStr ? urlStr.split('/').filter(Boolean).pop() || '' : '');
+  return { _stub: true, url: urlStr || null, name: nameGuess || null, name_guess: nameGuess || null, anchor_resolution_status: 'failed', anchor_resolution_reason: urlStr ? 'url_resolution_failed' : 'no_product_object' };
+}
+
+function resolveOriginalForPayload(originalObj, url, inputText) {
+  if (originalObj && typeof originalObj === 'object' && !Array.isArray(originalObj)) return { original: originalObj, anchor_resolution_status: 'confirmed' };
+  return { original: buildOriginalStub(url, inputText), anchor_resolution_status: 'failed' };
+}
 
 function normalizeRecoDedupeToken(raw) {
   const token = String(raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -36386,6 +36451,9 @@ async function fetchRecoAlternativesForProduct({
     intent: 'alternatives',
     action_id: 'chip.action.dupe_compare',
   });
+  const normalizedPoolCandidates = (Array.isArray(candidatePool) ? candidatePool : [])
+    .map((row) => normalizeAlternativesSelectorCandidate(row, {}))
+    .filter(Boolean);
   const queryPack = buildAuroraRecoAlternativesQuery({
     lang: ctx.lang,
     profileSnapshot,
@@ -36393,7 +36461,7 @@ async function fetchRecoAlternativesForProduct({
     productObj,
     maxTotal,
     region: normalizeRecoPromptRegion(profileSummary),
-    candidates: [],
+    candidates: normalizedPoolCandidates,
     anchorId: anchor,
   });
   const query = `${prefix}${queryPack.query}`;
@@ -41129,1150 +41197,40 @@ function mountAuroraBffRoutes(app, { logger }) {
     }
   });
 
-  app.post('/v1/dupe/suggest', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const parsed = DupeSuggestRequestSchema.safeParse(req.body || {});
-      if (!parsed.success) {
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage('Invalid request.'),
-          suggested_chips: [],
-          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } }],
-          session_patch: {},
-          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
-        });
-        return res.status(400).json(envelope);
-      }
 
-      const maxDupes = Math.max(1, Math.min(6, Number.isFinite(parsed.data.max_dupes) ? parsed.data.max_dupes : 3));
-      const maxComparables = Math.max(
-        1,
-        Math.min(6, Number.isFinite(parsed.data.max_comparables) ? parsed.data.max_comparables : 2),
-      );
-      const forceRefresh = parsed.data.force_refresh === true;
-      const forceValidate = parsed.data.force_validate === true;
-
-      const originalUrl = typeof parsed.data.original_url === 'string' ? parsed.data.original_url.trim() : '';
-      let originalObj =
-        parsed.data.original && typeof parsed.data.original === 'object' && !Array.isArray(parsed.data.original) ? parsed.data.original : null;
-      let anchorId = extractAnchorIdFromProductLike(originalObj);
-
-      const inputText =
-        buildProductInputText(originalObj, originalUrl) ||
-        (typeof parsed.data.original_text === 'string' ? parsed.data.original_text.trim() : '') ||
-        '';
-      if (!inputText) {
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage('Invalid request.'),
-          suggested_chips: [],
-          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: 'original is required' } }],
-          session_patch: {},
-          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
-        });
-        return res.status(400).json(envelope);
-      }
-
-      const buildKbKey = ({ anchor, url, text }) => {
-        const id = String(anchor || '').trim();
-        if (id) return normalizeDupeKbKey(`id:${id}`);
-        const u = String(url || '').trim();
-        if (u) return normalizeDupeKbKey(`url:${u}`);
-        const t = String(text || '').trim();
-        if (!t) return null;
-        const norm = t.toLowerCase().replace(/\s+/g, ' ').slice(0, 220);
-        return normalizeDupeKbKey(`text:${norm}`);
-      };
-
-      // 1) KB fast-path (avoid upstream parse/LLM when possible)
-      let kbKey = buildKbKey({ anchor: anchorId, url: originalUrl, text: inputText });
-      let kbEntry = kbKey ? await getDupeKbEntry(kbKey) : null;
-
-      const kbVerified = kbEntry && kbEntry.verified === true;
-      const canServeKb = kbEntry && kbVerified && !forceRefresh && !forceValidate;
-      if (canServeKb) {
-        const payload = {
-          kb_key: kbKey,
-          original: kbEntry.original || originalObj || null,
-          dupes: Array.isArray(kbEntry.dupes) ? kbEntry.dupes : [],
-          comparables: Array.isArray(kbEntry.comparables) ? kbEntry.comparables : [],
-          verified: true,
-          verified_at: kbEntry.verified_at || null,
-          source: kbEntry.source || 'kb',
-          meta: { served_from_kb: true, validated_now: false },
-        };
-
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: null,
-          suggested_chips: [],
-          cards: [{ card_id: `dupe_suggest_${ctx.request_id}`, type: 'dupe_suggest', payload }],
-          session_patch: {},
-          events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'kb' })],
-        });
-        const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
-          ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
-          : envelope;
-        return res.json(sanitizedEnvelope);
-      }
-
-      // 2) Best-effort parse (improves kb_key stability and gives the UI a normalized product object)
-      if (!anchorId && inputText) {
-        const upstreamMeta = {
-          lang: ctx.lang,
-          state: ctx.state || 'idle',
-          trigger_source: ctx.trigger_source,
-        };
-        const parsePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
-        const parseQuery =
-          `${parsePrefix}Task: Parse the user's product input into a normalized product entity.\n` +
-          `Return ONLY a JSON object with keys: product, confidence, missing_info (string[]).\n` +
-          `Input: ${inputText}`;
-        try {
-          const upstream = await auroraChat({
-            baseUrl: AURORA_DECISION_BASE_URL,
-            query: parseQuery,
-            timeoutMs: 9000,
-            ...(originalUrl ? { anchor_product_url: originalUrl } : {}),
-          });
-          const structured = getUpstreamStructuredOrJson(upstream);
-          const answerJson =
-            upstream && typeof upstream.answer === 'string'
-              ? extractJsonObjectByKeys(upstream.answer, ['product', 'parse', 'anchor_product', 'anchorProduct'])
-              : null;
-          const obj =
-            structured && typeof structured === 'object' && !Array.isArray(structured)
-              ? structured
-              : answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson)
-                ? answerJson
-                : null;
-          const anchor =
-            obj && obj.parse && typeof obj.parse === 'object'
-              ? (obj.parse.anchor_product || obj.parse.anchorProduct)
-              : obj && obj.product && typeof obj.product === 'object'
-                ? obj.product
-                : null;
-          if (anchor && typeof anchor === 'object' && !Array.isArray(anchor)) {
-            originalObj = originalObj || anchor;
-            anchorId = anchorId || extractAnchorIdFromProductLike(anchor);
-          }
-        } catch {
-          // ignore parse failures; continue
-        }
-      }
-
-      // If we managed to derive a more stable ID key, try the KB once more.
-      const stableKey = buildKbKey({ anchor: anchorId, url: originalUrl, text: inputText });
-      if (stableKey && stableKey !== kbKey) {
-        kbKey = stableKey;
-        kbEntry = await getDupeKbEntry(kbKey);
-        const stableVerified = kbEntry && kbEntry.verified === true;
-        if (kbEntry && stableVerified && !forceRefresh && !forceValidate) {
-          const payload = {
-            kb_key: kbKey,
-            original: kbEntry.original || originalObj || null,
-            dupes: Array.isArray(kbEntry.dupes) ? kbEntry.dupes : [],
-            comparables: Array.isArray(kbEntry.comparables) ? kbEntry.comparables : [],
-            verified: true,
-            verified_at: kbEntry.verified_at || null,
-            source: kbEntry.source || 'kb',
-            meta: { served_from_kb: true, validated_now: false },
-          };
-
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: null,
-            suggested_chips: [],
-            cards: [{ card_id: `dupe_suggest_${ctx.request_id}`, type: 'dupe_suggest', payload }],
-            session_patch: {},
-            events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'kb' })],
-          });
-          const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
-            ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
-            : envelope;
-          return res.json(sanitizedEnvelope);
-        }
-      }
-
-      // 3) Generate and validate once via upstream LLM, then cache to KB for future calls.
-      const total = Math.max(2, Math.min(6, maxDupes + maxComparables));
-      const upstreamOut = await fetchRecoAlternativesForProduct({
-        ctx,
-        profileSummary: null,
-        recentLogs: [],
-        productInput: inputText,
-        productObj: originalObj,
-        anchorId,
-        maxTotal: total,
-        debug: false,
-        logger,
-      });
-
-      const mapped = Array.isArray(upstreamOut.alternatives) ? upstreamOut.alternatives : [];
-      const kindOf = (it) => String(it && typeof it === 'object' ? it.kind : '').trim().toLowerCase();
-
-      const dupes = mapped.filter((it) => kindOf(it) === 'dupe').slice(0, maxDupes);
-      const comparables = mapped.filter((it) => kindOf(it) !== 'dupe').slice(0, maxComparables);
-
-      const verified = dupes.length > 0 || comparables.length > 0;
-      if (kbKey) {
-        const kbWritePayload = {
-          kb_key: kbKey,
-          original: originalObj || null,
-          dupes,
-          comparables,
-          verified,
-          verified_at: verified ? new Date().toISOString() : null,
-          verified_by: verified ? 'aurora_llm' : null,
-          source: verified ? 'llm_generate' : 'llm_generate_empty',
-          source_meta: {
-            generated_at: new Date().toISOString(),
-            max_dupes: maxDupes,
-            max_comparables: maxComparables,
-          },
-        };
-        if (DUPE_KB_ASYNC_BACKFILL_ENABLED) {
-          // Non-blocking write: keep response latency stable while still warming KB.
-          upsertDupeKbEntry(kbWritePayload).catch((err) => {
-            logger?.warn(
-              { err: err?.message || String(err), kb_key: kbKey },
-              'aurora bff: async dupe kb backfill failed',
-            );
-          });
-        } else {
-          await upsertDupeKbEntry(kbWritePayload);
-        }
-      }
-
-      const payload = {
-        kb_key: kbKey,
-        original: originalObj || null,
-        dupes,
-        comparables,
-        verified,
-        verified_at: verified ? new Date().toISOString() : null,
-        source: verified ? 'llm_generate' : 'llm_generate_empty',
-        meta: {
-          served_from_kb: false,
-          validated_now: true,
-          force_refresh: forceRefresh,
-          force_validate: forceValidate,
-          kb_backfill_mode: DUPE_KB_ASYNC_BACKFILL_ENABLED ? 'async' : 'sync',
-        },
-        ...(Array.isArray(upstreamOut.field_missing) && upstreamOut.field_missing.length ? { field_missing: upstreamOut.field_missing } : {}),
-      };
-
-      const envelope = buildEnvelope(ctx, {
-        assistant_message: null,
-        suggested_chips: [],
-        cards: [
-          {
-            card_id: `dupe_suggest_${ctx.request_id}`,
-            type: 'dupe_suggest',
-            payload,
-            ...(Array.isArray(upstreamOut.field_missing) && upstreamOut.field_missing.length ? { field_missing: upstreamOut.field_missing } : {}),
-          },
-        ],
-        session_patch: {},
-        events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'llm' })],
-      });
-      const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
-        ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
-        : envelope;
-      return res.json(sanitizedEnvelope);
-    } catch (err) {
-      const status = err.status || 500;
-      const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage('Failed to suggest dupes.'),
-        suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'DUPE_SUGGEST_FAILED' } }],
-        session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: err.code || 'DUPE_SUGGEST_FAILED' })],
-      });
-      return res.status(status).json(envelope);
-    }
-  });
-
-  app.post('/v1/dupe/compare', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const parsed = DupeCompareRequestSchema.safeParse(req.body || {});
-      if (!parsed.success) {
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage('Invalid request.'),
-          suggested_chips: [],
-          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } }],
-          session_patch: {},
-          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
-        });
-        return res.status(400).json(envelope);
-      }
-
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
-      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
-      const profileSummary = summarizeProfileForContext(profile);
-      // Use minimal upstream context for stability: dupe_compare should not depend on per-user logs/profile size.
-      const upstreamMeta = {
-        lang: ctx.lang,
-        state: ctx.state || 'idle',
-        trigger_source: ctx.trigger_source,
-      };
-      const parsePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
-      const analyzePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
-      const comparePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'dupe_compare', action_id: 'chip.action.dupe_compare' });
-
-      const originalInput = buildProductInputText(parsed.data.original, parsed.data.original_url);
-      const dupeInput = buildProductInputText(parsed.data.dupe, parsed.data.dupe_url);
-
-      if (!originalInput || !dupeInput) {
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage('Invalid request.'),
-          suggested_chips: [],
-          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: 'original and dupe are required' } }],
-          session_patch: {},
-          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
-        });
-        return res.status(400).json(envelope);
-      }
-
-      const productQuery = (input) => (
-        `${parsePrefix}Task: Parse the user's product input into a normalized product entity.\n` +
-        `Return ONLY a JSON object with keys: product, confidence, missing_info (string[]).\n` +
-        `Input: ${input}`
-      );
-
-      const parseOne = async ({ inputText, anchorObj, anchorUrl }) => {
-        try {
-          const anchorId = anchorObj && (anchorObj.sku_id || anchorObj.product_id);
-          return await auroraChat({
-            baseUrl: AURORA_DECISION_BASE_URL,
-            query: productQuery(inputText),
-            // Best-effort only; keep fast so dupe_compare doesn't hang on parse.
-            timeoutMs: 9000,
-            ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
-            ...(anchorUrl ? { anchor_product_url: anchorUrl } : {}),
-          });
-        } catch {
-          return null;
-        }
-      };
-
-      const [originalUpstream, dupeUpstream] = await Promise.all([
-        parseOne({ inputText: originalInput, anchorObj: parsed.data.original, anchorUrl: parsed.data.original_url }),
-        parseOne({ inputText: dupeInput, anchorObj: parsed.data.dupe, anchorUrl: parsed.data.dupe_url }),
-      ]);
-
-      const originalStructured = getUpstreamStructuredOrJson(originalUpstream);
-      const dupeStructured = getUpstreamStructuredOrJson(dupeUpstream);
-      const originalAnchorFromUpstream = originalStructured && originalStructured.parse && typeof originalStructured.parse === 'object'
-        ? (originalStructured.parse.anchor_product || originalStructured.parse.anchorProduct)
-        : null;
-      const dupeAnchorFromUpstream = dupeStructured && dupeStructured.parse && typeof dupeStructured.parse === 'object'
-        ? (dupeStructured.parse.anchor_product || dupeStructured.parse.anchorProduct)
-        : null;
-
-      const originalAnchor = originalAnchorFromUpstream || parsed.data.original || null;
-      const dupeAnchor = dupeAnchorFromUpstream || parsed.data.dupe || null;
-
-      const originalText = buildProductInputText(originalAnchor, parsed.data.original_url) || originalInput;
-      const dupeText = buildProductInputText(dupeAnchor, parsed.data.dupe_url) || dupeInput;
-
-      const compareQuery =
-        `${comparePrefix}Task: Compare the original product vs the dupe/alternative.\n` +
-        `Return ONLY a JSON object with keys: original, dupe, tradeoffs (string[]), evidence, confidence (0..1), missing_info (string[]).\n` +
-        `Evidence must include science/social_signals/expert_notes.\n` +
-        `Original: ${originalText}\n` +
-        `Dupe: ${dupeText}`;
-
-      let compareUpstream = null;
-      try {
-        const originalAnchorId = originalAnchor && (originalAnchor.sku_id || originalAnchor.product_id);
-        compareUpstream = await auroraChat({
-          baseUrl: AURORA_DECISION_BASE_URL,
-          query: compareQuery,
-          timeoutMs: 18000,
-          ...(originalAnchorId ? { anchor_product_id: String(originalAnchorId) } : {}),
-          ...(parsed.data.original_url ? { anchor_product_url: parsed.data.original_url } : {}),
-        });
-      } catch (err) {
-        // ignore; fall back below
-      }
-
-      const compareStructured = (() => {
-        const structured = compareUpstream && compareUpstream.structured && typeof compareUpstream.structured === 'object' && !Array.isArray(compareUpstream.structured)
-          ? compareUpstream.structured
-          : null;
-        const answerJson =
-          compareUpstream && typeof compareUpstream.answer === 'string'
-            ? extractJsonObjectByKeys(compareUpstream.answer, [
-              'tradeoffs',
-              'tradeoffs_detail',
-              'tradeoffsDetail',
-              'evidence',
-              'original',
-              'dupe',
-              'alternatives',
-              'compare',
-            ])
-            : null;
-        const answerObj = answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? answerJson : null;
-        if (structured && Array.isArray(structured.alternatives)) return structured;
-        if (answerObj && (Array.isArray(answerObj.tradeoffs) || answerObj.tradeoffs_detail || answerObj.tradeoffsDetail)) return answerObj;
-        return structured || answerObj;
-      })();
-
-      const fallbackAnalyze = () => {
-        if (!originalStructured || !dupeStructured) {
-          return {
-            original: originalAnchor || null,
-            dupe: dupeAnchor || null,
-            tradeoffs: [],
-            evidence: null,
-            confidence: null,
-            missing_info: ['upstream_missing_or_unstructured'],
-          };
-        }
-        const orig = mapAuroraProductAnalysis(originalStructured);
-        const dup = mapAuroraProductAnalysis(dupeStructured);
-
-        const origKeys = Array.isArray(orig.evidence?.science?.key_ingredients) ? orig.evidence.science.key_ingredients : [];
-        const dupKeys = Array.isArray(dup.evidence?.science?.key_ingredients) ? dup.evidence.science.key_ingredients : [];
-        const origRisk = Array.isArray(orig.evidence?.science?.risk_notes) ? orig.evidence.science.risk_notes : [];
-        const dupRisk = Array.isArray(dup.evidence?.science?.risk_notes) ? dup.evidence.science.risk_notes : [];
-
-        const barrierRaw = profileSummary && typeof profileSummary.barrierStatus === 'string' ? profileSummary.barrierStatus.trim().toLowerCase() : '';
-        const barrierImpaired = barrierRaw === 'impaired' || barrierRaw === 'damaged';
-
-        const ingredientSignals = (items) => {
-          const out = {
-            occlusives: [],
-            humectants: [],
-            soothing: [],
-            exfoliants: [],
-            brightening: [],
-            peptides: [],
-            fragrance: [],
-            alcohol: [],
-          };
-
-          const seen = new Set();
-          const add = (k, v) => {
-            const s = typeof v === 'string' ? v.trim() : String(v || '').trim();
-            if (!s) return;
-            const key = `${k}:${s.toLowerCase()}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            out[k].push(s);
-          };
-
-          for (const raw of Array.isArray(items) ? items : []) {
-            const s = typeof raw === 'string' ? raw.trim() : String(raw || '').trim();
-            if (!s) continue;
-            const n = s.toLowerCase();
-
-            // Ignore trivial carriers.
-            if (n === 'water' || n === 'aqua') continue;
-
-            if (
-              n.includes('petrolatum') ||
-              n.includes('petroleum jelly') ||
-              n.includes('mineral oil') ||
-              n.includes('paraffin') ||
-              n.includes('dimethicone') ||
-              n.includes('lanolin') ||
-              n.includes('wax') ||
-              n.includes('beeswax') ||
-              n.includes('shea butter') ||
-              n.includes('cocoa butter')
-            ) {
-              add('occlusives', s);
-            }
-
-            if (
-              n.includes('glycerin') ||
-              n.includes('hyaluronic') ||
-              n.includes('sodium hyaluronate') ||
-              n.includes('panthenol') ||
-              n.includes('urea') ||
-              n.includes('betaine') ||
-              n.includes('sodium pca') ||
-              n.includes('trehalose') ||
-              n.includes('propanediol') ||
-              n.includes('butylene glycol') ||
-              n.includes('sorbitol')
-            ) {
-              add('humectants', s);
-            }
-
-            if (
-              n.includes('panthenol') ||
-              n.includes('allantoin') ||
-              n.includes('madecassoside') ||
-              n.includes('centella') ||
-              n.includes('ceramide') ||
-              n.includes('cholesterol') ||
-              n.includes('beta-glucan') ||
-              n.includes('cica')
-            ) {
-              add('soothing', s);
-            }
-
-            if (
-              n.includes('glycolic') ||
-              n.includes('lactic') ||
-              n.includes('mandelic') ||
-              n.includes('salicylic') ||
-              n.includes('gluconolactone') ||
-              n.includes('pha') ||
-              n.includes('bha') ||
-              n.includes('aha')
-            ) {
-              add('exfoliants', s);
-            }
-
-            if (
-              n.includes('niacinamide') ||
-              n.includes('tranexamic') ||
-              n.includes('azelaic') ||
-              n.includes('ascorbic') ||
-              n.includes('vitamin c') ||
-              n.includes('arbutin') ||
-              n.includes('kojic') ||
-              n.includes('licorice')
-            ) {
-              add('brightening', s);
-            }
-
-            if (n.includes('peptide')) add('peptides', s);
-
-            if (
-              n.includes('fragrance') ||
-              n.includes('parfum') ||
-              n.includes('essential oil') ||
-              n.includes('limonene') ||
-              n.includes('linalool') ||
-              n.includes('citral')
-            ) {
-              add('fragrance', s);
-            }
-
-            if (n.includes('alcohol denat') || n.includes('denatured alcohol')) add('alcohol', s);
-          }
-
-          return out;
-        };
-
-        const pickFew = (arr, max) => Array.from(new Set(Array.isArray(arr) ? arr.map((x) => String(x || '').trim()).filter(Boolean) : [])).slice(0, max);
-        const joinFew = (arr, max) => pickFew(arr, max).join(', ');
-        const nonEmpty = (arr) => Array.isArray(arr) && arr.length > 0;
-
-        const origSig = ingredientSignals(origKeys);
-        const dupSig = ingredientSignals(dupKeys);
-
-        const tradeoffs = [];
-        if (nonEmpty(origSig.occlusives) && !nonEmpty(dupSig.occlusives) && nonEmpty(dupSig.humectants)) {
-          tradeoffs.push(
-            ctx.lang === 'CN'
-              ? `质地/封闭性：原产品更偏封闭锁水（例如 ${joinFew(origSig.occlusives, 2)}）；平替更偏补水（例如 ${joinFew(dupSig.humectants, 2)}）→ 通常更清爽，但可能需要叠加面霜来“锁水”。`
-              : `Texture/finish: Original is more occlusive (e.g., ${joinFew(origSig.occlusives, 2)}) while the dupe is more humectant (e.g., ${joinFew(dupSig.humectants, 2)}) → lighter feel, but may need a moisturizer on top to seal.`,
-          );
-        } else if (nonEmpty(origSig.occlusives) && nonEmpty(dupSig.occlusives)) {
-          tradeoffs.push(
-            ctx.lang === 'CN'
-              ? `共同点：两者都含封闭/油脂类成分（原：${joinFew(origSig.occlusives, 2)}；平替：${joinFew(dupSig.occlusives, 2)}）→ 都可能偏“锁水/滋润”，差异更多来自比例与配方。`
-              : `Shared: Both include occlusive/emollient components (orig: ${joinFew(origSig.occlusives, 2)}; dupe: ${joinFew(dupSig.occlusives, 2)}) → both can be “sealing”; differences may come from formula balance.`,
-          );
-        }
-
-        if (nonEmpty(origSig.humectants) && nonEmpty(dupSig.humectants) && tradeoffs.length < 2) {
-          tradeoffs.push(
-            ctx.lang === 'CN'
-              ? `共同点：两者都含常见保湿成分（原：${joinFew(origSig.humectants, 2)}；平替：${joinFew(dupSig.humectants, 2)}）→ 都能提升含水量，但“锁水力度”仍取决于封闭类成分。`
-              : `Shared: Both include humectants (orig: ${joinFew(origSig.humectants, 2)}; dupe: ${joinFew(dupSig.humectants, 2)}) → both support hydration; how “sealing” it feels depends on occlusives.`,
-          );
-        }
-
-        if (nonEmpty(dupSig.exfoliants)) {
-          tradeoffs.push(
-            ctx.lang === 'CN'
-              ? `刺激风险：平替含去角质类成分（例如 ${joinFew(dupSig.exfoliants, 2)}）→ ${barrierImpaired ? '屏障受损时更容易不耐受，建议低频' : '更易刺激，建议低频'}，不要叠加强活性。`
-              : `Irritation risk: Dupe includes exfoliant-like actives (e.g., ${joinFew(dupSig.exfoliants, 2)}) → ${barrierImpaired ? 'higher irritation risk if your barrier is impaired; start low' : 'higher irritation risk; start low'}, avoid stacking strong actives.`,
-          );
-        }
-
-        if (nonEmpty(dupSig.fragrance) && !nonEmpty(origSig.fragrance)) {
-          tradeoffs.push(
-            ctx.lang === 'CN'
-              ? `气味/敏感风险：平替可能含香精/香料相关成分（例如 ${joinFew(dupSig.fragrance, 1)}）→ 更敏感人群需要谨慎。`
-              : `Fragrance risk: Dupe may include fragrance-related ingredients (e.g., ${joinFew(dupSig.fragrance, 1)}) → higher risk for sensitive skin.`,
-          );
-        }
-
-        const addedRisks = dupRisk.filter((k) => !origRisk.includes(k));
-        if (addedRisks.length) {
-          tradeoffs.push(
-            ctx.lang === 'CN'
-              ? `平替风险提示：${addedRisks.slice(0, 2).join(' · ')}`
-              : `Dupe risk notes: ${addedRisks.slice(0, 2).join(' · ')}`,
-          );
-        }
-
-        if (!tradeoffs.length) {
-          const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
-          const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
-          if (origPreview.length && dupPreview.length) {
-            tradeoffs.push(
-              ctx.lang === 'CN'
-                ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
-                : `Key ingredient emphasis (brief): original — ${origPreview.length ? origPreview.join(' / ') : 'unknown'}; dupe — ${dupPreview.length ? dupPreview.join(' / ') : 'unknown'}.`,
-            );
-          }
-        }
-
-        const confidence = typeof orig.confidence === 'number' && typeof dup.confidence === 'number'
-          ? (orig.confidence + dup.confidence) / 2
-          : (orig.confidence || dup.confidence || null);
-
-        const evidence = {
-          science: {
-            key_ingredients: Array.from(new Set([...origKeys, ...dupKeys])),
-            mechanisms: Array.from(new Set([...(orig.evidence?.science?.mechanisms || []), ...(dup.evidence?.science?.mechanisms || [])])),
-            fit_notes: Array.from(new Set([...(orig.evidence?.science?.fit_notes || []), ...(dup.evidence?.science?.fit_notes || [])])),
-            risk_notes: Array.from(new Set([...(orig.evidence?.science?.risk_notes || []), ...(dup.evidence?.science?.risk_notes || [])])),
-          },
-          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
-          expert_notes: Array.from(new Set([...(orig.evidence?.expert_notes || []), ...(dup.evidence?.expert_notes || [])])),
-          confidence,
-          missing_info: ['dupe_not_in_alternatives_used_analyze_diff'],
-        };
-
-        return {
-          original: originalAnchor || null,
-          dupe: dupeAnchor || null,
-          tradeoffs,
-          evidence,
-          confidence,
-          missing_info: ['dupe_not_found_in_alternatives'],
-        };
-      };
-
-      const mappedFromOriginalAlts =
-        originalStructured && originalStructured.alternatives
-          ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, {
-              fallbackAnalyze,
-              originalAnchorFallback: originalAnchor,
-              lang: ctx.lang,
-              barrierStatus: profileSummary && profileSummary.barrierStatus,
-            })
-          : null;
-
-      const mapped = (() => {
-        // Prefer structured.alternatives (when present) because it yields stable similarity/tradeoffs.
-        if (mappedFromOriginalAlts && Array.isArray(mappedFromOriginalAlts.tradeoffs) && mappedFromOriginalAlts.tradeoffs.length) {
-          return mappedFromOriginalAlts;
-        }
-        if (compareStructured) {
-          if (compareStructured.alternatives) {
-            return mapAuroraAlternativesToDupeCompare(compareStructured, dupeAnchor, {
-              fallbackAnalyze,
-              originalAnchorFallback: originalAnchor,
-              lang: ctx.lang,
-              barrierStatus: profileSummary && profileSummary.barrierStatus,
-            });
-          }
-          return compareStructured;
-        }
-        if (mappedFromOriginalAlts) return mappedFromOriginalAlts;
-        return fallbackAnalyze();
-      })();
-
-      const norm = normalizeDupeCompare(mapped);
-      let payload = norm.payload;
-      let field_missing = norm.field_missing;
-      if (!payload.original && originalAnchor) payload = { ...payload, original: originalAnchor };
-      if (!payload.dupe && dupeAnchor) payload = { ...payload, dupe: dupeAnchor };
-
-      const uniqStrings = (arr) => {
-        const out = [];
-        const seen = new Set();
-        for (const v of Array.isArray(arr) ? arr : []) {
-          const s = typeof v === 'string' ? v.trim() : String(v || '').trim();
-          if (!s) continue;
-          if (seen.has(s)) continue;
-          seen.add(s);
-          out.push(s);
-        }
-        return out;
-      };
-
-      const isMissingTradeoffs = !Array.isArray(payload.tradeoffs) || payload.tradeoffs.length === 0;
-      if (isMissingTradeoffs) {
-        const scanOne = async ({ productText, productObj, productUrl }) => {
-          const anchorId = extractAnchorIdFromProductLike(productObj);
-          const bestText = String(productText || '').trim() || (anchorId ? String(anchorId) : '');
-          if (!bestText) return null;
-
-          const cacheKey = (() => {
-            const langKey = ctx.lang === 'CN' ? 'CN' : 'EN';
-            if (anchorId) return `dupe_deepscan:${langKey}:id:${String(anchorId).trim()}`;
-            const url = typeof productUrl === 'string' ? productUrl.trim() : '';
-            if (url) return `dupe_deepscan:${langKey}:url:${url}`;
-            const norm = bestText.toLowerCase().replace(/\s+/g, ' ').slice(0, 160);
-            return `dupe_deepscan:${langKey}:text:${norm}`;
-          })();
-          const cached = getDupeDeepscanCache(cacheKey);
-          if (cached) return cached;
-
-          const buildQuery = (strict = false) => (
-            `${analyzePrefix}Task: Deep-scan this product for a product-level ingredient/benefit/risk snapshot.\n` +
-            `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-            `Evidence must include science/social_signals/expert_notes.\n` +
-            `${strict ? 'If possible, include at least 4 items in evidence.science.key_ingredients; if unavailable, return [] and add missing_info: \"key_ingredients_missing\".\n' : ''}` +
-            `Product: ${bestText}`
-          );
-
-          const runScan = async (queryText, timeoutMs) =>
-            auroraChat({
-              baseUrl: AURORA_DECISION_BASE_URL,
-              query: queryText,
-              timeoutMs,
-              ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
-              ...(productUrl ? { anchor_product_url: productUrl } : {}),
-            });
-
-          const parseUpstream = (upstream) => {
-            const upStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
-              ? upstream.structured
-              : null;
-            const upAnswerJson =
-              upstream && typeof upstream.answer === 'string'
-                ? extractJsonObjectByKeys(upstream.answer, [
-                    'assessment',
-                    'evidence',
-                    'confidence',
-                    'missing_info',
-                    'missingInfo',
-                    'analyze',
-                    'verdict',
-                    'reasons',
-                    'science_evidence',
-                    'social_signals',
-                    'expert_notes',
-                  ])
-                : null;
-            const upAnswerObj = upAnswerJson && typeof upAnswerJson === 'object' && !Array.isArray(upAnswerJson) ? upAnswerJson : null;
-            const answerLooksLikeProductAnalysis =
-              upAnswerObj &&
-              (upAnswerObj.assessment != null ||
-                upAnswerObj.evidence != null ||
-                upAnswerObj.analyze != null ||
-                upAnswerObj.analysis != null ||
-                upAnswerObj.product_analysis != null ||
-                upAnswerObj.productAnalysis != null ||
-                upAnswerObj.confidence != null ||
-                upAnswerObj.missing_info != null ||
-                upAnswerObj.missingInfo != null ||
-                upAnswerObj.verdict != null ||
-                upAnswerObj.reasons != null ||
-                upAnswerObj.science_evidence != null ||
-                upAnswerObj.scienceEvidence != null ||
-                upAnswerObj.social_signals != null ||
-                upAnswerObj.socialSignals != null ||
-                upAnswerObj.expert_notes != null ||
-                upAnswerObj.expertNotes != null);
-            const structuredOrJson =
-              upStructured && upStructured.analyze && typeof upStructured.analyze === 'object'
-                ? upStructured
-                : answerLooksLikeProductAnalysis
-                  ? upAnswerObj
-                  : upStructured || upAnswerObj;
-
-            const mappedAnalyze =
-              structuredOrJson && typeof structuredOrJson === 'object' && !Array.isArray(structuredOrJson)
-                ? mapAuroraProductAnalysis(structuredOrJson)
-                : structuredOrJson;
-            const normAnalyze = normalizeProductAnalysis(mappedAnalyze);
-            const keyIngredientsNow = (() => {
-              const ev = normAnalyze.payload && typeof normAnalyze.payload === 'object' ? normAnalyze.payload.evidence : null;
-              const sci = ev && typeof ev === 'object' ? ev.science : null;
-              const key = sci && typeof sci === 'object' ? (sci.key_ingredients || sci.keyIngredients) : null;
-              return Array.isArray(key) ? key.filter(Boolean) : [];
-            })();
-            return { normAnalyze, keyIngredientsNow };
-          };
-
-          let best = null;
-          try {
-            const upstream1 = await runScan(buildQuery(false), 12000);
-            best = parseUpstream(upstream1);
-          } catch {
-            // ignore
-          }
-
-          const needsRetry = !best || !best.normAnalyze.payload.assessment || best.keyIngredientsNow.length === 0;
-          if (needsRetry) {
-            try {
-              const upstream2 = await runScan(buildQuery(true), 11000);
-              const parsed2 = parseUpstream(upstream2);
-              if (parsed2 && parsed2.normAnalyze && parsed2.normAnalyze.payload && parsed2.normAnalyze.payload.assessment) {
-                best = parsed2;
-              }
-            } catch {
-              // ignore
-            }
-          }
-
-          if (!best) return null;
-
-          const enriched = enrichProductAnalysisPayload(best.normAnalyze.payload, { lang: ctx.lang, profileSummary });
-          const out = { payload: enriched, field_missing: best.normAnalyze.field_missing };
-
-          const keyAfterEnrich = (() => {
-            const ev = enriched && typeof enriched === 'object' ? enriched.evidence : null;
-            const sci = ev && typeof ev === 'object' ? ev.science : null;
-            const key = sci && typeof sci === 'object' ? (sci.key_ingredients || sci.keyIngredients) : null;
-            return Array.isArray(key) ? key.filter(Boolean) : [];
-          })();
-          if (enriched && enriched.assessment && keyAfterEnrich.length >= 3) {
-            setDupeDeepscanCache(cacheKey, out);
-          }
-
-          return out;
-        };
-
-        const [origScan, dupeScan] = await Promise.all([
-          scanOne({ productText: originalText, productObj: originalAnchor, productUrl: parsed.data.original_url }),
-          scanOne({ productText: dupeText, productObj: dupeAnchor, productUrl: parsed.data.dupe_url }),
-        ]);
-
-        const origPayload = origScan && origScan.payload && typeof origScan.payload === 'object' ? origScan.payload : null;
-        const dupePayload = dupeScan && dupeScan.payload && typeof dupeScan.payload === 'object' ? dupeScan.payload : null;
-
-        const extractEvidence = (p) => {
-          const ev = p && typeof p === 'object' ? p.evidence : null;
-          const sci = ev && typeof ev === 'object' ? ev.science : null;
-          const soc = ev && typeof ev === 'object' ? (ev.social_signals || ev.socialSignals) : null;
-          return {
-            key: uniqStrings(sci && Array.isArray(sci.key_ingredients || sci.keyIngredients) ? (sci.key_ingredients || sci.keyIngredients) : []),
-            mech: uniqStrings(sci && Array.isArray(sci.mechanisms) ? sci.mechanisms : []),
-            fit: uniqStrings(sci && Array.isArray(sci.fit_notes || sci.fitNotes) ? (sci.fit_notes || sci.fitNotes) : []),
-            risk: uniqStrings(sci && Array.isArray(sci.risk_notes || sci.riskNotes) ? (sci.risk_notes || sci.riskNotes) : []),
-            pos: uniqStrings(soc && Array.isArray(soc.typical_positive || soc.typicalPositive) ? (soc.typical_positive || soc.typicalPositive) : []),
-            neg: uniqStrings(soc && Array.isArray(soc.typical_negative || soc.typicalNegative) ? (soc.typical_negative || soc.typicalNegative) : []),
-            expert: uniqStrings(ev && Array.isArray(ev.expert_notes || ev.expertNotes) ? (ev.expert_notes || ev.expertNotes) : []),
-            missing: uniqStrings(ev && Array.isArray(ev.missing_info || ev.missingInfo) ? (ev.missing_info || ev.missingInfo) : []),
-            conf: ev && typeof ev.confidence === 'number' ? ev.confidence : null,
-          };
-        };
-
-        const origEv = extractEvidence(origPayload);
-        const dupEv = extractEvidence(dupePayload);
-
-        const isCn = ctx.lang === 'CN';
-
-        const ingredientSignals = (items) => {
-          const out = {
-            occlusives: [],
-            humectants: [],
-            soothing: [],
-            exfoliants: [],
-            brightening: [],
-            peptides: [],
-            fragrance: [],
-            alcohol: [],
-          };
-
-          const seen = new Set();
-          const add = (k, v) => {
-            const s = typeof v === 'string' ? v.trim() : String(v || '').trim();
-            if (!s) return;
-            const key = `${k}:${s.toLowerCase()}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            out[k].push(s);
-          };
-
-          for (const raw of Array.isArray(items) ? items : []) {
-            const s = typeof raw === 'string' ? raw.trim() : String(raw || '').trim();
-            if (!s) continue;
-            const n = s.toLowerCase();
-
-            // Ignore trivial carriers.
-            if (n === 'water' || n === 'aqua') continue;
-
-            if (
-              n.includes('petrolatum') ||
-              n.includes('petroleum jelly') ||
-              n.includes('mineral oil') ||
-              n.includes('paraffin') ||
-              n.includes('dimethicone') ||
-              n.includes('lanolin') ||
-              n.includes('wax') ||
-              n.includes('beeswax') ||
-              n.includes('shea butter') ||
-              n.includes('cocoa butter')
-            ) {
-              add('occlusives', s);
-            }
-
-            if (
-              n.includes('glycerin') ||
-              n.includes('hyaluronic') ||
-              n.includes('sodium hyaluronate') ||
-              n.includes('panthenol') ||
-              n.includes('urea') ||
-              n.includes('betaine') ||
-              n.includes('sodium pca') ||
-              n.includes('trehalose') ||
-              n.includes('propanediol') ||
-              n.includes('butylene glycol') ||
-              n.includes('sorbitol')
-            ) {
-              add('humectants', s);
-            }
-
-            if (
-              n.includes('panthenol') ||
-              n.includes('allantoin') ||
-              n.includes('madecassoside') ||
-              n.includes('centella') ||
-              n.includes('ceramide') ||
-              n.includes('cholesterol') ||
-              n.includes('beta-glucan') ||
-              n.includes('cica')
-            ) {
-              add('soothing', s);
-            }
-
-            if (
-              n.includes('glycolic') ||
-              n.includes('lactic') ||
-              n.includes('mandelic') ||
-              n.includes('salicylic') ||
-              n.includes('gluconolactone') ||
-              n.includes('pha') ||
-              n.includes('bha') ||
-              n.includes('aha')
-            ) {
-              add('exfoliants', s);
-            }
-
-            if (
-              n.includes('niacinamide') ||
-              n.includes('tranexamic') ||
-              n.includes('azelaic') ||
-              n.includes('ascorbic') ||
-              n.includes('vitamin c') ||
-              n.includes('arbutin') ||
-              n.includes('kojic') ||
-              n.includes('licorice')
-            ) {
-              add('brightening', s);
-            }
-
-            if (n.includes('peptide')) add('peptides', s);
-
-            if (
-              n.includes('fragrance') ||
-              n.includes('parfum') ||
-              n.includes('essential oil') ||
-              n.includes('limonene') ||
-              n.includes('linalool') ||
-              n.includes('citral')
-            ) {
-              add('fragrance', s);
-            }
-
-            if (n.includes('alcohol denat') || n.includes('denatured alcohol')) add('alcohol', s);
-          }
-
-          return out;
-        };
-
-        const pickFew = (arr, max) => uniqStrings(arr).slice(0, max);
-        const joinFew = (arr, max) => pickFew(arr, max).join(', ');
-        const nonEmpty = (arr) => Array.isArray(arr) && arr.length > 0;
-
-        const origSig = ingredientSignals(origEv.key);
-        const dupSig = ingredientSignals(dupEv.key);
-
-        const derivedTradeoffs = [];
-
-        // More human, high-signal comparisons (avoid dumping full INCI).
-        if (nonEmpty(origSig.occlusives) && !nonEmpty(dupSig.occlusives) && nonEmpty(dupSig.humectants)) {
-          derivedTradeoffs.push(
-            isCn
-              ? `质地/封闭性：原产品更偏封闭锁水（例如 ${joinFew(origSig.occlusives, 2)}）；平替更偏补水（例如 ${joinFew(dupSig.humectants, 2)}）→ 通常更清爽，但可能需要叠加面霜来“锁水”。`
-              : `Texture/finish: Original is more occlusive (e.g., ${joinFew(origSig.occlusives, 2)}) while the dupe is more humectant (e.g., ${joinFew(dupSig.humectants, 2)}) → lighter feel, but may need a moisturizer on top to seal.`,
-          );
-        } else if (nonEmpty(dupSig.occlusives) && !nonEmpty(origSig.occlusives) && nonEmpty(origSig.humectants)) {
-          derivedTradeoffs.push(
-            isCn
-              ? `质地/封闭性：平替更偏封闭锁水（例如 ${joinFew(dupSig.occlusives, 2)}）；原产品更偏补水（例如 ${joinFew(origSig.humectants, 2)}）→ 平替通常更厚重、更“锁水”。`
-              : `Texture/finish: Dupe is more occlusive (e.g., ${joinFew(dupSig.occlusives, 2)}) while the original is more humectant (e.g., ${joinFew(origSig.humectants, 2)}) → dupe may feel richer and more sealing.`,
-          );
-        } else if (nonEmpty(origSig.occlusives) && nonEmpty(dupSig.occlusives)) {
-          derivedTradeoffs.push(
-            isCn
-              ? `共同点：两者都含封闭/油脂类成分（原：${joinFew(origSig.occlusives, 2)}；平替：${joinFew(dupSig.occlusives, 2)}）→ 都可能偏“锁水/滋润”，差异更多来自比例与配方。`
-              : `Shared: Both include occlusive/emollient components (orig: ${joinFew(origSig.occlusives, 2)}; dupe: ${joinFew(dupSig.occlusives, 2)}) → both can be “sealing”; differences may come from formula balance.`,
-          );
-        }
-
-        if (nonEmpty(origSig.humectants) && nonEmpty(dupSig.humectants) && derivedTradeoffs.length < 2) {
-          derivedTradeoffs.push(
-            isCn
-              ? `共同点：两者都含常见保湿成分（原：${joinFew(origSig.humectants, 2)}；平替：${joinFew(dupSig.humectants, 2)}）→ 都能提升含水量，但“锁水力度”仍取决于封闭类成分。`
-              : `Shared: Both include humectants (orig: ${joinFew(origSig.humectants, 2)}; dupe: ${joinFew(dupSig.humectants, 2)}) → both support hydration; how “sealing” it feels depends on occlusives.`,
-          );
-        }
-
-        if (nonEmpty(dupSig.exfoliants)) {
-          derivedTradeoffs.push(
-            isCn
-              ? `刺激风险：平替含去角质类成分（例如 ${joinFew(dupSig.exfoliants, 2)}）→ 屏障受损/刺痛时更容易不耐受，建议低频、不要叠加强活性。`
-              : `Irritation risk: Dupe includes exfoliant-like actives (e.g., ${joinFew(dupSig.exfoliants, 2)}) → higher irritation risk if your barrier is impaired; start low and avoid stacking strong actives.`,
-          );
-        }
-
-        if (nonEmpty(dupSig.fragrance) && !nonEmpty(origSig.fragrance)) {
-          derivedTradeoffs.push(
-            isCn
-              ? `气味/敏感风险：平替可能含香精/香料相关成分（例如 ${joinFew(dupSig.fragrance, 1)}）→ 更敏感人群需要谨慎。`
-              : `Fragrance risk: Dupe may include fragrance-related ingredients (e.g., ${joinFew(dupSig.fragrance, 1)}) → higher risk for sensitive skin.`,
-          );
-        }
-
-        const addedRisks = dupEv.risk.filter((k) => !origEv.risk.includes(k));
-        if (addedRisks.length) {
-          derivedTradeoffs.push(
-            isCn
-              ? `平替风险提示：${addedRisks.slice(0, 2).join(' · ')}`
-              : `Dupe risk notes: ${addedRisks.slice(0, 2).join(' · ')}`,
-          );
-        }
-
-        if (derivedTradeoffs.length < 2) {
-          const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
-          const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
-          if (origPreview.length && dupPreview.length) {
-            derivedTradeoffs.push(
-              isCn
-                ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
-                : `Key ingredient emphasis (brief): original — ${origPreview.length ? origPreview.join(' / ') : 'unknown'}; dupe — ${dupPreview.length ? dupPreview.join(' / ') : 'unknown'}.`,
-            );
-          }
-        }
-
-        const origHero = origPayload && origPayload.assessment && typeof origPayload.assessment === 'object'
-          ? (origPayload.assessment.hero_ingredient || origPayload.assessment.heroIngredient)
-          : null;
-        const dupHero = dupePayload && dupePayload.assessment && typeof dupePayload.assessment === 'object'
-          ? (dupePayload.assessment.hero_ingredient || dupePayload.assessment.heroIngredient)
-          : null;
-        if (origHero && dupHero && origHero.name && dupHero.name && String(origHero.name).toLowerCase() !== String(dupHero.name).toLowerCase()) {
-          derivedTradeoffs.push(`Hero ingredient shift: ${origHero.name} → ${dupHero.name}`);
-        }
-
-        const outConfidence = typeof origEv.conf === 'number' && typeof dupEv.conf === 'number'
-          ? (origEv.conf + dupEv.conf) / 2
-          : (origEv.conf || dupEv.conf || null);
-
-        const labelLines = (label, arr, max) => uniqStrings(arr).slice(0, max).map((x) => `${label}: ${x}`);
-
-        const mergedEvidence = {
-          science: {
-            key_ingredients: uniqStrings([...origEv.key, ...dupEv.key]),
-            mechanisms: uniqStrings([...origEv.mech, ...dupEv.mech]).slice(0, 8),
-            fit_notes: uniqStrings([...labelLines('Original', origEv.fit, 3), ...labelLines('Dupe', dupEv.fit, 3)]),
-            risk_notes: uniqStrings([...labelLines('Original', origEv.risk, 3), ...labelLines('Dupe', dupEv.risk, 3)]),
-          },
-          social_signals: {
-            typical_positive: uniqStrings([...labelLines('Original', origEv.pos, 3), ...labelLines('Dupe', dupEv.pos, 3)]),
-            typical_negative: uniqStrings([...labelLines('Original', origEv.neg, 3), ...labelLines('Dupe', dupEv.neg, 3)]),
-            risk_for_groups: [],
-          },
-          expert_notes: uniqStrings([...labelLines('Original', origEv.expert, 2), ...labelLines('Dupe', dupEv.expert, 2)]),
-          confidence: outConfidence,
-          missing_info: uniqStrings(['tradeoffs_from_product_analyze_diff', ...origEv.missing, ...dupEv.missing]),
-        };
-
-        const origAnchorOut =
-          (origPayload && origPayload.assessment && typeof origPayload.assessment === 'object'
-            ? (origPayload.assessment.anchor_product || origPayload.assessment.anchorProduct)
-            : null) || payload.original || null;
-        const dupeAnchorOut =
-          (dupePayload && dupePayload.assessment && typeof dupePayload.assessment === 'object'
-            ? (dupePayload.assessment.anchor_product || dupePayload.assessment.anchorProduct)
-            : null) || payload.dupe || null;
-
-        if (derivedTradeoffs.length) {
-          const rawOut = {
-            original: origAnchorOut,
-            dupe: dupeAnchorOut,
-            ...(payload.similarity != null ? { similarity: payload.similarity } : {}),
-            ...(payload.tradeoffs_detail ? { tradeoffs_detail: payload.tradeoffs_detail } : {}),
-            tradeoffs: derivedTradeoffs.slice(0, 6),
-            evidence: mergedEvidence,
-            confidence: outConfidence,
-            missing_info: uniqStrings([
-              ...uniqStrings(payload.missing_info).filter((c) => c !== 'evidence_missing'),
-              'compare_tradeoffs_missing_used_deepscan_diff',
-            ]),
-          };
-          const norm2 = normalizeDupeCompare(rawOut);
-          payload = norm2.payload;
-          field_missing = mergeFieldMissing(field_missing.filter((x) => x && x.field !== 'tradeoffs'), norm2.field_missing);
-          field_missing = mergeFieldMissing(field_missing, mergeFieldMissing(origScan && origScan.field_missing, dupeScan && dupeScan.field_missing));
-        }
-      }
-
-      if (!Array.isArray(payload.tradeoffs) || payload.tradeoffs.length === 0) {
-        const note =
-          ctx.lang === 'CN'
-            ? '上游未返回可用的取舍对比细节（仅能提供有限对比）。你可以提供平替的链接/完整名称，或从推荐的替代里选择再比对。'
-            : 'No tradeoff details were returned (comparison is limited). Provide the dupe link/full name or pick from suggested alternatives to compare again.';
-        payload = {
-          ...payload,
-          tradeoffs: [note],
-          compare_quality: 'limited',
-          limited_reason: 'tradeoffs_detail_missing',
-          missing_info: uniqStrings([...(Array.isArray(payload.missing_info) ? payload.missing_info : []), 'tradeoffs_detail_missing']),
-        };
-      } else {
-        payload = {
-          ...payload,
-          compare_quality: String(payload.compare_quality || '').trim().toLowerCase() === 'limited' ? 'limited' : 'full',
-          ...(payload.limited_reason ? { limited_reason: payload.limited_reason } : {}),
-        };
-      }
-
-      const envelope = buildEnvelope(ctx, {
-        assistant_message: null,
-        suggested_chips: [],
-        cards: [
-          {
-            card_id: `dupe_${ctx.request_id}`,
-            type: 'dupe_compare',
-            payload,
-            ...(field_missing?.length ? { field_missing: field_missing.slice(0, 8) } : {}),
-          },
-        ],
-        session_patch: {},
-        events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_compare' })],
-      });
-      return res.json(envelope);
-    } catch (err) {
-      const status = err.status || 500;
-      const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage('Failed to compare products.'),
-        suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'DUPE_COMPARE_FAILED' } }],
-        session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: err.code || 'DUPE_COMPARE_FAILED' })],
-      });
-      return res.status(status).json(envelope);
-    }
+  // --- Dupe routes (suggest + compare) ---
+  mountDupeRoutes(app, {
+    logger,
+    buildRequestContext,
+    requireAuroraUid,
+    DupeSuggestRequestSchema,
+    DupeCompareRequestSchema,
+    buildEnvelope,
+    makeAssistantMessage,
+    makeEvent,
+    applyDupeSuggestSanitizeToEnvelope,
+    getDupeKbEntry,
+    upsertDupeKbEntry,
+    normalizeDupeKbKey,
+    searchPivotaBackendProducts,
+    buildRecoAlternativesCandidatePool,
+    fetchRecoAlternativesForProduct,
+    auroraChat,
+    buildContextPrefix,
+    getUpstreamStructuredOrJson,
+    extractJsonObjectByKeys,
+    resolveIdentity,
+    getProfileForIdentity,
+    getRecentSkinLogsForIdentity,
+    summarizeProfileForContext,
+    buildProductInputText,
+    normalizeDupeCompare,
+    mapAuroraProductAnalysis,
+    normalizeProductAnalysis,
+    enrichProductAnalysisPayload,
+    extractAnchorIdFromProductLike,
+    getDupeDeepscanCache,
+    setDupeDeepscanCache,
   });
 
   app.post('/v1/reco/generate', async (req, res) => {
@@ -44423,23 +43381,24 @@ function mountAuroraBffRoutes(app, { logger }) {
             const deeplink = ctx.brief_id
               ? `/chat?brief_id=${encodeURIComponent(String(ctx.brief_id))}`
               : '/chat';
-            await appendActivityForIdentity({
-              auroraUid: identity.auroraUid,
-              userId: identity.userId,
-              eventType: 'skin_analysis',
-              payload: {
-                artifact_id: latestArtifactId || null,
-                analysis_source: String(renderedAnalysisSource || '').trim() || 'unknown',
-                used_photos: Boolean(usedPhotos),
-                photos_provided: Boolean(photosProvided),
-                photo_failure_code: photoFailureCode || null,
-                quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
-                photos_count: photosSubmittedCount,
+            await appendActivityEventForIdentity(
+              { auroraUid: identity.auroraUid, userId: identity.userId },
+              {
+                event_type: 'skin_analysis',
+                payload: {
+                  artifact_id: latestArtifactId || null,
+                  analysis_source: String(renderedAnalysisSource || '').trim() || 'unknown',
+                  used_photos: Boolean(usedPhotos),
+                  photos_provided: Boolean(photosProvided),
+                  photo_failure_code: photoFailureCode || null,
+                  quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
+                  photos_count: photosSubmittedCount,
+                },
+                deeplink,
+                source: 'analysis_skin',
+                occurred_at_ms: Date.now(),
               },
-              deeplink,
-              source: 'analysis_skin',
-              occurredAtMs: Date.now(),
-            });
+            );
           } catch (err) {
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
@@ -53683,6 +52642,11 @@ const __internal = {
   __resetCallOpenAiJsonObjectForTest() {
     callOpenAiJsonObjectImpl = callOpenAiJsonObject;
   },
+  enforceUnknownVerdictQuality,
+  applyUnknownVerdictQualityGateToEnvelope,
+  buildDupeSuggestCandidatePool,
+  buildOriginalStub,
+  resolveOriginalForPayload,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };

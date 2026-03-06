@@ -2628,8 +2628,8 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     else {
       reasons = [
         String(lang).toUpperCase() === 'CN'
-          ? '上游未返回可用的解释理由（仅有结论标签）。'
-          : 'Upstream did not return usable reasoning (verdict label only).',
+          ? '当前证据细节不足（上游仅返回结论标签）。'
+          : 'Current evidence details are insufficient (upstream returned verdict label only).',
       ];
     }
   }
@@ -2697,6 +2697,18 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     normalizeHowToUseShape(assessment.how_to_use ?? assessment.howToUse, { lang }) ||
     buildHowToUseFromEvidence(p.evidence, { lang });
 
+  const finalizedReasons = uniqueStrings(
+    reasons.filter((line) => !isDiagnosticNarrativeLine(line)),
+  ).slice(0, maxReasons);
+  if (!finalizedReasons.length) {
+    finalizedReasons.push(
+      summary ||
+        (String(lang).toUpperCase() === 'CN'
+          ? '当前证据不足，请补充更多证据信息后再判断。'
+          : 'Current evidence details are insufficient; please provide more evidence.'),
+    );
+  }
+
   const outAssessment = {
     ...assessment,
     ...(hero && typeof hero === 'object' ? { hero_ingredient: hero } : {}),
@@ -2708,7 +2720,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     ...(betterPairing.length ? { better_pairing: betterPairing } : {}),
     ...(followUpQuestion ? { follow_up_question: followUpQuestion } : {}),
     ...(howToUseNormalized ? { how_to_use: howToUseNormalized } : {}),
-    reasons: uniqueStrings(reasons.filter((line) => !isDiagnosticNarrativeLine(line))).slice(0, maxReasons),
+    reasons: finalizedReasons,
   };
   return reconcileProductAnalysisConsistency(
     attachProductIntelContract(
@@ -2724,13 +2736,19 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
 }
 
 function normalizeDupeCompare(raw) {
+  const _stubObj = (reason) => ({
+    _stub: true,
+    anchor_resolution_status: 'failed',
+    anchor_resolution_reason: reason,
+  });
+
   const o = asPlainObject(raw);
   if (!o) {
     const evOut = normalizeEvidence(null);
     return {
       payload: {
-        original: null,
-        dupe: null,
+        original: _stubObj('upstream_missing_or_unstructured'),
+        dupe: _stubObj('upstream_missing_or_unstructured'),
         tradeoffs: [],
         evidence: evOut.evidence,
         confidence: null,
@@ -2742,8 +2760,10 @@ function normalizeDupeCompare(raw) {
 
   const field_missing = [];
 
-  const original = asPlainObject(o.original || o.original_product || o.originalProduct) || null;
-  const dupe = asPlainObject(o.dupe || o.dupe_product || o.dupeProduct) || null;
+  const original = asPlainObject(o.original || o.original_product || o.originalProduct)
+    || _stubObj('upstream_missing');
+  const dupe = asPlainObject(o.dupe || o.dupe_product || o.dupeProduct)
+    || _stubObj('upstream_missing');
 
   const similarityRaw = asNumberOrNull(o.similarity ?? o.similarity_score ?? o.similarityScore);
   const similarity = similarityRaw == null ? null : similarityRaw > 1 ? similarityRaw : similarityRaw * 100;

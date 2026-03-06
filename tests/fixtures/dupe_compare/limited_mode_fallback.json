@@ -1,0 +1,13 @@
+{
+  "description": "Golden fixture: dupe_compare with missing tradeoffs must return limited mode with basic_compare",
+  "scenario": "upstream returns no tradeoffs, limited mode is triggered",
+  "expected": {
+    "payload.original": { "_not_null": true },
+    "payload.dupe": { "_not_null": true },
+    "payload.compare_quality": "limited",
+    "payload.limited_reason": "tradeoffs_detail_missing",
+    "payload.basic_compare": { "_min_length": 2 },
+    "payload.limited_action_hint": { "_not_empty": true },
+    "payload.meta.quality_gate_enforced": true
+  }
+}
