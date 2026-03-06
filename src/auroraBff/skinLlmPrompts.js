@@ -125,8 +125,8 @@ function buildSkinVisionPromptBundle({ language, dto, promptVersion } = {}) {
       userPrompt:
         `task: 仅根据面部照片的可见信号，输出结构化观察JSON。禁止输出护肤建议或产品推荐。\n` +
         `output_contract: 严格输出JSON，schema如下：\n` +
-        `{"quality_note": null | "1句关于光线/模糊的说明", "observations": [{"cue": "redness|shine|bumps|flaking|uneven_tone|texture|pores", "where": "cheeks|forehead|T-zone|chin|nose|全脸", "severity": "mild|moderate|high", "confidence": "low|med|high", "evidence": "所见描述"}], "limits": ["可能的观察限制"]}\n` +
-        `grounding_rule: 尽量输出至少5条不同观察。每条必须包含where和evidence。禁止重复或换句话说同一观察。\n` +
+        `{"needs_risk_check":false,"quality_note":null,"observations":[{"cue":"redness|shine|bumps|flaking|uneven_tone|texture|pores","where":"cheeks|forehead|T-zone|chin|nose|全脸","severity":"mild|moderate|high","confidence":"low|med|high","evidence":"所见描述"}],"limits":["可能的观察限制"]}\n` +
+        `grounding_rule: observations尽量输出2-4条不同观察。每条observation必须包含where和evidence，禁止重复。无足够面部皮肤信号时，observations可为空数组。\n` +
         `focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.\n` +
         `skin_type_rule: 用户自选肤质仅作为先验参考，必须与照片观察比对。如不一致可备注一次。` +
         qRule + `\n` +
@@ -140,8 +140,8 @@ function buildSkinVisionPromptBundle({ language, dto, promptVersion } = {}) {
     userPrompt:
       `task: Based only on visible FACE skin cues from the image, output structured observation JSON. No routines or product advice.\n` +
       `output_contract: Return ONLY JSON with this exact schema:\n` +
-      `{"quality_note": null | "1 sentence about lighting/blur issue", "observations": [{"cue": "redness|shine|bumps|flaking|uneven_tone|texture|pores", "where": "cheeks|forehead|T-zone|chin|nose|full_face", "severity": "mild|moderate|high", "confidence": "low|med|high", "evidence": "what was visually observed"}], "limits": ["possible observation limitations"]}\n` +
-      `grounding_rule: Output at least 5 distinct observations when visible. Each MUST have where + evidence. No observation may be a rephrase of another.\n` +
+      `{"needs_risk_check":false,"quality_note":null,"observations":[{"cue":"redness|shine|bumps|flaking|uneven_tone|texture|pores","where":"cheeks|forehead|T-zone|chin|nose|full_face","severity":"mild|moderate|high","confidence":"low|med|high","evidence":"what was visually observed"}],"limits":["possible observation limitations"]}\n` +
+      `grounding_rule: Output 2 to 4 distinct observations when visible. Each observation MUST have where + evidence. No duplicates or rephrases. Use an empty observations array when no face skin is visible.\n` +
       `focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.\n` +
       `skin_type_rule: User-selected skin type is a PRIOR only. Compare against observed cues. Mention mismatch once if relevant.` +
       qRule + `\n` +

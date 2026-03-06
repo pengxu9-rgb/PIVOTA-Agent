@@ -187,6 +187,26 @@ const SkinVisionObservationSchema = {
   },
 };
 
+const SkinVisionGatewaySchema = {
+  type: 'object',
+  properties: {
+    needs_risk_check: { type: 'boolean' },
+    quality_note: {
+      anyOf: [{ type: 'string', maxLength: 180 }, { type: 'null' }],
+    },
+    observations: {
+      type: 'array',
+      maxItems: 10,
+      items: ObservationItemSchema,
+    },
+    limits: {
+      type: 'array',
+      maxItems: 6,
+      items: { type: 'string', maxLength: 180 },
+    },
+  },
+};
+
 const SkinReportStrategySchema = {
   type: 'object',
   properties: {
@@ -1103,6 +1123,7 @@ module.exports = {
   CONFIDENCE_VALUES,
   SkinFinalContractSchema,
   SkinVisionObservationSchema,
+  SkinVisionGatewaySchema,
   SkinReportStrategySchema,
   validateFinalContract,
   validateVisionObservation,
