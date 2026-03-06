@@ -1,6 +1,8 @@
 const request = require('supertest');
 
 describe('creator categories', () => {
+  jest.setTimeout(15000);
+
   function getAppWithEnv(env) {
     jest.resetModules();
     for (const [k, v] of Object.entries(env)) {

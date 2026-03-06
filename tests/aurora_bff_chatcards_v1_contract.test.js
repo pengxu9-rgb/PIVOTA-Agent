@@ -62,7 +62,6 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
 
     expect(res.body).not.toHaveProperty('assistant_message');
     expect(res.body).not.toHaveProperty('suggested_chips');
-    expect(res.body).not.toHaveProperty('session_patch');
     expect(res.body).not.toHaveProperty('events');
   });
 

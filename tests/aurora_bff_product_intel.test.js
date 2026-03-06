@@ -11,6 +11,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_ASYNC_ENRICH = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED = 'true';
     process.env.AURORA_RULE_RELAX_MODE = 'conservative';
     process.env.AURORA_KB_WRITE_POLICY = 'strict';
@@ -25,6 +27,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK;
     delete process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL;
     delete process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS;
+    delete process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_ASYNC_ENRICH;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED;
     delete process.env.AURORA_RULE_RELAX_MODE;
     delete process.env.AURORA_KB_WRITE_POLICY;
@@ -2501,6 +2505,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_ASYNC_ENRICH = 'true';
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
 
@@ -2783,6 +2789,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_ASYNC_ENRICH = 'true';
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
 
@@ -3032,6 +3040,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_ASYNC_ENRICH = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
 
     const getProductIntelKbEntry = jest.fn().mockResolvedValue({
@@ -3135,6 +3145,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_ASYNC_ENRICH = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
 
     const getProductIntelKbEntry = jest.fn().mockResolvedValue({
@@ -3373,6 +3385,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_ASYNC_ENRICH = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
 
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);

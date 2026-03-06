@@ -50,13 +50,6 @@ test('analysis_story_v2: coerce fallback returns schema-complete payload', () =>
     core_principles: ['stability first'],
     am_plan: [{ step: 'Gentle cleanse', purpose: 'Low irritation baseline' }],
     pm_plan: [{ step: 'Barrier moisturizer', purpose: 'Night recovery' }],
-    routine_bridge: {
-      missing_fields: ['currentRoutine.am', 'currentRoutine.pm'],
-      why_now: 'Need routine details to personalize recommendations.',
-      cta_label: 'Add AM/PM routine',
-      cta_action: 'open_routine_intake',
-    },
-    existing_products_optimization: { keep: [], add: [], replace: [], remove: [] },
     timeline: { first_4_weeks: ['Week1 baseline'], week_8_12_expectation: ['Observe improvements'] },
     ui_card_v1: {
       headline: 'Stabilize first.',
@@ -74,7 +67,8 @@ test('analysis_story_v2: coerce fallback returns schema-complete payload', () =>
   assert.equal(Array.isArray(output.am_plan), true);
   assert.equal(Array.isArray(output.pm_plan), true);
   assert.equal(Array.isArray(output.core_principles), true);
-  assert.equal(typeof output.routine_bridge, 'object');
+  assert.equal(Object.prototype.hasOwnProperty.call(output, 'routine_bridge'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(output, 'existing_products_optimization'), false);
   assert.equal(typeof output.ui_card_v1, 'object');
   assert.equal(typeof output.ui_card_v1.headline, 'string');
 });
@@ -141,6 +135,8 @@ test('analysis_story_v2: routine soft gate adds story/prompt and delays ingredie
   const storyCard = out.find((card) => card.type === 'analysis_story_v2');
   assert.equal(typeof storyCard?.payload?.ui_card_v1, 'object');
   assert.equal(Array.isArray(storyCard?.payload?.ui_card_v1?.actions_now), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(storyCard?.payload || {}, 'routine_bridge'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(storyCard?.payload || {}, 'existing_products_optimization'), false);
 
   const planCard = out.find((card) => card.type === 'ingredient_plan_v2');
   assert.equal(planCard.payload.preview_only, true);
@@ -223,13 +219,6 @@ test('analysis_story_v2: evidence -> generate -> review pipeline enforces routin
     core_principles: ['stability first'],
     am_plan: [{ step: 'Cleanse', purpose: 'baseline' }],
     pm_plan: [{ step: 'Moisturize', purpose: 'recovery' }],
-    routine_bridge: {
-      missing_fields: ['currentRoutine.am', 'currentRoutine.pm'],
-      why_now: 'Need AM/PM routine.',
-      cta_label: 'Add AM/PM routine',
-      cta_action: 'open_routine_intake',
-    },
-    existing_products_optimization: { keep: [], add: [], replace: [], remove: [] },
     timeline: { first_4_weeks: [], week_8_12_expectation: [] },
     ui_card_v1: {
       headline: 'Tone consistency first.',
@@ -257,11 +246,13 @@ test('analysis_story_v2: evidence -> generate -> review pipeline enforces routin
   });
   generated.disclaimer_non_medical = false;
   generated.routine_bridge = {};
+  generated.existing_products_optimization = { keep: ['legacy'] };
   const reviewed = internal.reviewAnalysisStoryV2Json({ story: generated, evidence });
   const coerced = internal.coerceAnalysisStoryV2(reviewed.repaired, fallback);
   assert.equal(Array.isArray(evidence.finding_evidence), true);
   assert.equal(coerced.disclaimer_non_medical, true);
-  assert.deepEqual(coerced.routine_bridge.missing_fields, ['currentRoutine.am', 'currentRoutine.pm']);
+  assert.equal(Object.prototype.hasOwnProperty.call(coerced, 'routine_bridge'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(coerced, 'existing_products_optimization'), false);
   assert.equal(typeof coerced.ui_card_v1, 'object');
   assert.equal(typeof coerced.ui_card_v1.headline, 'string');
 });
@@ -340,4 +331,90 @@ test('analysis_story_v2: generation prompt uses structure-only schema reference'
 
   assert.equal(/Schema reference \(structure only, do NOT copy content\):/i.test(prompt), true);
   assert.equal(/Fallback template JSON:/i.test(prompt), false);
+  assert.equal(/routine_bridge/i.test(prompt), false);
+  assert.equal(/existing_products_optimization/i.test(prompt), false);
+});
+
+test('routine_fit_summary helpers: prompt/context/chips/message stay analysis-first', () => {
+  const internal = loadInternalWithFlags({});
+  const prompt = internal.buildRoutineFitSummaryPrompt({
+    prefix: 'profile={"skinType":"oily"}\n\n',
+    skinProfile: { skin_type_tendency: 'oily', sensitivity_tendency: 'high' },
+    ingredientPlan: {
+      targets: [{ ingredient_id: 'niacinamide', ingredient_name: 'Niacinamide', role: 'barrier' }],
+      avoid: [{ ingredient_id: 'ascorbic_acid', ingredient_name: 'Vitamin C (Ascorbic Acid)' }],
+    },
+    routineProducts: [{ slot: 'am', step: 'serum', product_text: 'Brightening serum' }],
+    language: 'EN',
+  });
+  assert.match(prompt, /recommended_ingredients: Niacinamide \(barrier\)/);
+  assert.match(prompt, /avoid: Vitamin C \(Ascorbic Acid\)/);
+  assert.match(prompt, /Current routine \(1 products\):/);
+
+  const card = internal.buildRoutineFitSummaryCard(
+    {
+      overall_fit: 'unsupported_value',
+      fit_score: 9,
+      highlights: ['A', '', 'B', 'C', 'D'],
+      concerns: ['X', 'Y', 'Z', 'W'],
+      dimension_scores: { ingredient_match: { score: -2, note: 'Needs work' } },
+      next_questions: ['Q1', 'Q2', 'Q3', 'Q4'],
+    },
+    'req_1',
+  );
+  assert.equal(card.payload.overall_fit, 'partial_match');
+  assert.equal(card.payload.fit_score, 1);
+  assert.equal(card.payload.highlights.length, 3);
+  assert.equal(card.payload.concerns.length, 3);
+  assert.equal(card.payload.dimension_scores.ingredient_match.score, 0);
+  assert.equal(card.payload.next_questions.length, 3);
+
+  const chips = internal.buildAnalysisSuggestedChips({
+    language: 'EN',
+    lowConfidence: false,
+    hasIngredientPlan: true,
+    hasRoutineFit: true,
+  });
+  assert.equal(chips.some((chip) => chip.chip_id === 'chip.aurora.next_action.routine_deep_dive'), true);
+  assert.equal(chips.some((chip) => /recommend/i.test(String(chip.label || ''))), false);
+
+  const assistantText = internal.buildAnalysisAssistantMessage({
+    language: 'EN',
+    skinProfile: { skin_type_tendency: 'oily', sensitivity_tendency: 'medium' },
+    routineFit: { overall_fit: 'good_match', concerns: [] },
+  });
+  assert.match(assistantText, /good match/i);
+  assert.doesNotMatch(assistantText, /product/i);
+});
+
+test('routine_fit_summary helpers: backfill stays enabled in low-confidence mode and chat prefix includes analysis context', () => {
+  const internal = loadInternalWithFlags({});
+  const plan = internal.resolveRoutineFitAnalysisPlan({
+    routineProductCandidates: [{ product_text: 'Cleanser' }],
+    lowConfidenceRuleBased: true,
+  });
+  assert.deepEqual(plan, {
+    shouldEvaluateRoutineFit: false,
+    shouldQueueKbBackfill: true,
+  });
+
+  const skinAnalysisContext = internal.buildSkinAnalysisContextForPrefix({
+    lastAnalysis: {
+      skin_profile: {
+        skin_type_tendency: 'combination',
+        sensitivity_tendency: 'high',
+        current_strengths: ['steady barrier', 'low congestion'],
+      },
+      priority_findings: [{ title: 'Mild redness on cheeks' }],
+      confidence_overall: { level: 'medium', score: 0.68 },
+      ingredient_plan: {
+        targets: [{ ingredient_name: 'Ceramide', role: 'barrier' }],
+        avoid: [{ ingredient_name: 'Vitamin C', reason: ['sensitivity flare risk'] }],
+      },
+    },
+  });
+  assert.match(skinAnalysisContext, /skin_type=combination/);
+  assert.match(skinAnalysisContext, /Key findings: Mild redness on cheeks/);
+  assert.match(skinAnalysisContext, /Ingredient targets: Ceramide \(barrier\)/);
+  assert.match(skinAnalysisContext, /Avoid: Vitamin C \(sensitivity flare risk\)/);
 });

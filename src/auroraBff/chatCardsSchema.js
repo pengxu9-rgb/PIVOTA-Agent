@@ -16,6 +16,7 @@ const CHAT_CARD_TYPES = [
   'diagnosis_gate',
   'analysis_summary',
   'analysis_story_v2',
+  'routine_fit_summary',
   'diagnosis_v2_login_prompt',
   'diagnosis_v2_intro',
   'diagnosis_v2_photo_prompt',

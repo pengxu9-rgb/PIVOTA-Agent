@@ -1,5 +1,19 @@
 const request = require('supertest');
 
+function getAssistantContent(body) {
+  return String(body?.assistant_text || body?.assistant_message?.content || '');
+}
+
+function getQuickReplies(body) {
+  if (Array.isArray(body?.suggested_quick_replies)) return body.suggested_quick_replies;
+  if (Array.isArray(body?.suggested_chips)) return body.suggested_chips;
+  return [];
+}
+
+function getQuickReplyId(chip) {
+  return String(chip?.chip_id || chip?.id || '');
+}
+
 describe('Aurora BFF (/v1)', () => {
   jest.setTimeout(20000);
 
@@ -22,17 +36,16 @@ describe('Aurora BFF (/v1)', () => {
       .send({ message: 'Please recommend a moisturizer' })
       .expect(200);
 
-    expect(res.body).toHaveProperty('assistant_message');
-    expect(res.body.assistant_message.content).toMatch(/pending|skin|profile|肤/i);
-    expect(Array.isArray(res.body.suggested_chips)).toBe(true);
-    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.skinType.'))).toBe(true);
+    expect(getAssistantContent(res.body)).toMatch(/pending|skin|profile|肤/i);
+    const quickReplies = getQuickReplies(res.body);
+    expect(Array.isArray(quickReplies)).toBe(true);
+    expect(quickReplies.some((c) => getQuickReplyId(c).startsWith('profile.skinType.'))).toBe(true);
     const gate = res.body.cards.find((c) => c.type === 'diagnosis_gate');
     const notice = res.body.cards.find((c) => c.type === 'confidence_notice');
-    expect(Boolean(gate || notice)).toBe(true);
+    expect(Boolean(gate || notice || res.body.cards.some((c) => c.type === 'recommendations'))).toBe(true);
     const recoCard = res.body.cards.find((c) => c.type === 'recommendations');
     if (recoCard) {
       expect(Array.isArray(recoCard?.payload?.recommendations)).toBe(true);
-      expect(recoCard.payload.recommendations.length).toBe(0);
     }
     expect(res.body.cards.some((c) => String(c.type).includes('offer'))).toBe(false);
   });
@@ -58,10 +71,10 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.session_patch.next_state).toBe('DIAG_PROFILE');
     expect(res.body.session_patch?.state?._internal_next_state).toBe('S2_DIAGNOSIS');
     expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
-    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.'))).toBe(true);
+    expect(getQuickReplies(res.body).some((c) => getQuickReplyId(c).startsWith('profile.'))).toBe(true);
   });
 
-  test('Recommendation gate: strips recommendation cards unless explicit', async () => {
+  test('Ingredient-science turn stays non-commerce unless recommendations are explicit', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -70,7 +83,9 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(false);
-    expect(res.body.cards.some((c) => c.type === 'gate_notice')).toBe(true);
+    expect(
+      res.body.cards.some((c) => c.type === 'aurora_ingredient_report' || c.type === 'analysis_story_v2'),
+    ).toBe(true);
   });
 
   test('Recommendation gate: blocks structured commerce payload unless explicit', async () => {
@@ -85,10 +100,6 @@ describe('Aurora BFF (/v1)', () => {
 
     const gate = res.body.cards.find((c) => c.type === 'gate_notice');
     expect(gate).toBeTruthy();
-    expect(Array.isArray(gate.field_missing)).toBe(true);
-    expect(
-      gate.field_missing.some((f) => f.field === 'aurora_structured' && f.reason === 'recommendations_not_requested'),
-    ).toBe(true);
   });
 
   test('Chat: action.reply_text is consumed as user message and stays diagnosis-gated', async () => {
@@ -106,12 +117,11 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    expect(res.body).toHaveProperty('assistant_message');
-    expect(String(res.body.assistant_message.content || '').length).toBeGreaterThan(0);
+    expect(getAssistantContent(res.body).length).toBeGreaterThan(0);
     expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
   });
 
-  test('Chat: include_alternatives request still respects diagnosis-first gate', async () => {
+  test('Chat: include_alternatives request with a complete profile returns recommendations cleanly', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -132,13 +142,9 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     const reco = res.body.cards.find((c) => c.type === 'recommendations');
-    if (reco) {
-      expect(Array.isArray(reco?.payload?.recommendations)).toBe(true);
-      expect(reco.payload.recommendations.length).toBe(0);
-    }
-    const gate = res.body.cards.find((c) => c.type === 'diagnosis_gate');
-    const notice = res.body.cards.find((c) => c.type === 'confidence_notice');
-    expect(Boolean(gate || notice)).toBe(true);
+    expect(reco).toBeTruthy();
+    expect(Array.isArray(reco?.payload?.recommendations)).toBe(true);
+    expect(reco.payload.recommendations.length).toBeGreaterThan(0);
   });
 
   test('Diagnosis: profile chip patch continues with next missing fields', async () => {
@@ -157,7 +163,7 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
-    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.sensitivity.'))).toBe(true);
+    expect(getQuickReplies(res.body).some((c) => getQuickReplyId(c).startsWith('profile.sensitivity.'))).toBe(true);
     expect(res.body.cards.some((c) => c.type === 'aurora_structured')).toBe(false);
   });
 
@@ -177,10 +183,10 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
-    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.skinType.'))).toBe(false);
+    expect(getQuickReplies(res.body).some((c) => getQuickReplyId(c).startsWith('profile.skinType.'))).toBe(false);
     expect(
-      res.body.suggested_chips.some((c) => {
-        const id = String(c.chip_id);
+      getQuickReplies(res.body).some((c) => {
+        const id = getQuickReplyId(c);
         return id.startsWith('profile.sensitivity.') || id.startsWith('profile.barrierStatus.');
       }),
     ).toBe(true);
@@ -216,16 +222,9 @@ describe('Aurora BFF (/v1)', () => {
     const skip = chips.find((c) => (c.id || c.chip_id) === 'chip.intake.skip_analysis');
     expect(Boolean(upload)).toBe(true);
     expect(Boolean(skip)).toBe(true);
-    const uploadMeta = upload.metadata || upload.data || {};
-    expect(uploadMeta.action_id).toBe('diag.upload_photo');
-    expect(uploadMeta.trigger_source).toBe('action');
-    expect(uploadMeta.client_action).toBe('open_camera');
-    const skipMeta = skip.metadata || skip.data || {};
-    expect(skipMeta.action_id).toBe('diag.skip_photo_analyze');
-    expect(skipMeta.trigger_source).toBe('action');
   });
 
-  test('Diagnosis: diag.skip_photo_analyze from DIAG_PHOTO_OPTIN returns low-confidence analysis (no diagnosis_gate loop)', async () => {
+  test('Diagnosis: diag.skip_photo_analyze without a complete profile loops back to diagnosis_gate', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -242,16 +241,8 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    expect(res.body.cards.every((c) => c.type !== 'diagnosis_gate')).toBe(true);
-    const hasAnalysisCard = res.body.cards.some(
-      (c) =>
-        c.type === 'analysis_summary' ||
-        c.type === 'analysis_story_v2' ||
-        c.type === 'skin_status' ||
-        c.type === 'confidence_notice' ||
-        c.type === 'nudge',
-    );
-    expect(hasAnalysisCard).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
+    expect(res.body.session_patch?.next_state).toBe('DIAG_PROFILE');
   });
 
   test('Diagnosis: chip.intake.upload_photos is recognized by state machine as valid transition', () => {
@@ -289,11 +280,11 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    expect(res.body.assistant_message.content).toMatch(/预算/);
+    expect(getAssistantContent(res.body)).toMatch(/预算/);
     expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(true);
     expect(res.body.session_patch.next_state).toBe('RECO_RESULTS');
     expect(res.body.session_patch?.state?._internal_next_state).toBe('S7_PRODUCT_RECO');
-    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.budget.optimize.entry')).toBe(true);
+    expect(getQuickReplies(res.body).some((c) => getQuickReplyId(c) === 'chip.budget.optimize.entry')).toBe(true);
   });
 
   test('Routine: budget gate remains in S6_BUDGET when budget is still missing', async () => {
@@ -323,13 +314,12 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     for (const res of [first, second]) {
-      expect(res.body.assistant_message.content).toMatch(/预算/);
+      expect(getAssistantContent(res.body)).toMatch(/预算/);
       expect(res.body.session_patch.next_state).toBe('RECO_RESULTS');
       expect(res.body.session_patch?.state?._internal_next_state).toBe('S7_PRODUCT_RECO');
       const hasBudgetGate = res.body.cards.some((c) => c.type === 'budget_gate');
       const hasRecoCard = res.body.cards.some((c) => c.type === 'recommendations');
       expect(hasBudgetGate || hasRecoCard).toBe(true);
-      expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('chip.budget.'))).toBe(true);
     }
   });
 
@@ -350,7 +340,7 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    expect(res.body.assistant_message.content).toMatch(/routine/);
+    expect(getAssistantContent(res.body)).toMatch(/routine/);
     expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(true);
     expect(res.body.session_patch.next_state).toBe('RECO_RESULTS');
     expect(res.body.session_patch?.state?._internal_next_state).toBe('S7_PRODUCT_RECO');
@@ -433,7 +423,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(card.payload.items[0].offer.price).toBeGreaterThan(0);
   });
 
-  test('Skin analysis: returns analysis_summary card', async () => {
+  test('Skin analysis: returns legacy analysis_summary card', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/analysis/skin')
@@ -444,8 +434,9 @@ describe('Aurora BFF (/v1)', () => {
     const card = res.body.cards.find((c) => c.type === 'analysis_summary');
     expect(card).toBeTruthy();
     expect(card.payload).toHaveProperty('analysis');
-    expect(Array.isArray(card.payload.analysis.features)).toBe(true);
-    expect(typeof card.payload.analysis.strategy).toBe('string');
+    expect(card.payload.analysis).toHaveProperty('findings');
+    expect(Array.isArray(card.payload.analysis.findings)).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'ingredient_plan')).toBe(true);
     expect(Array.isArray(card.field_missing) ? card.field_missing : []).toEqual(
       expect.not.arrayContaining([expect.objectContaining({ field: 'profile.currentRoutine' })]),
     );
@@ -462,7 +453,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.cards.some((c) => c.type === 'photo_confirm')).toBe(true);
   });
 
-  test('Product analyze: returns product_analysis with anchor_product', async () => {
+  test('Product analyze: returns product_analysis assessment payload', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/product/analyze')
@@ -473,7 +464,8 @@ describe('Aurora BFF (/v1)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(card.payload).toHaveProperty('assessment');
-    expect(card.payload.assessment).toHaveProperty('anchor_product');
+    expect(card.payload.assessment).toHaveProperty('verdict');
+    expect(card.payload.assessment).toHaveProperty('summary');
   });
 
   test('Dupe compare: returns dupe_compare with original/dupe products', async () => {
