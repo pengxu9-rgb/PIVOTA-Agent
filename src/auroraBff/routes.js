@@ -41239,10 +41239,12 @@ function mountAuroraBffRoutes(app, { logger }) {
     summarizeProfileForContext,
     buildProductInputText,
     normalizeDupeCompare,
+    mapAuroraAlternativesToDupeCompare,
     mapAuroraProductAnalysis,
     normalizeProductAnalysis,
     enrichProductAnalysisPayload,
     extractAnchorIdFromProductLike,
+    mergeFieldMissing,
     getDupeDeepscanCache,
     setDupeDeepscanCache,
   });
@@ -46435,14 +46437,19 @@ function mountAuroraBffRoutes(app, { logger }) {
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
       const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
       const debugUpstream = debugFromHeader ?? debugFromBody;
+      const requestedLlmProvider =
+        normalizeChatLlmProvider(parsed.data.llm_provider) ||
+        normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'));
+      const requestedLlmModel =
+        normalizeChatLlmModel(parsed.data.llm_model) ||
+        normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
+      const hasExplicitLlmRouteRequest = Boolean(requestedLlmProvider || requestedLlmModel);
       const llmProvider = AURORA_DIAG_FORCE_GEMINI
         ? 'gemini'
-        : normalizeChatLlmProvider(parsed.data.llm_provider) ||
-          normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'));
+        : requestedLlmProvider;
       const llmModel = AURORA_DIAG_FORCE_GEMINI
         ? AURORA_DIAG_FORCE_GEMINI_MODEL
-        : normalizeChatLlmModel(parsed.data.llm_model) ||
-          normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
+        : requestedLlmModel;
       llmRouteMetaForResponse =
         llmProvider || llmModel
           ? {
@@ -50222,6 +50229,32 @@ function mountAuroraBffRoutes(app, { logger }) {
                 pendingClarificationPatchOverride = sessionPatch.pending_clarification || pendingClarificationPatchOverride;
               }
             }
+          }
+          const forceProfileGateEarlyReturn =
+            hasExplicitLlmRouteRequest &&
+            looksLikeRecommendationRequest(message);
+          if (forceProfileGateEarlyReturn) {
+            const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeChatAssistantMessage(prompt),
+              suggested_chips: chips,
+              cards: [
+                {
+                  card_id: `diag_${ctx.request_id}`,
+                  type: 'diagnosis_gate',
+                  payload: {
+                    reason: 'diagnosis_first_llm_route',
+                    missing_fields: required,
+                    wants: 'recommendation',
+                    profile: summarizeChatProfileForContext(profile),
+                    recent_logs: recentLogs,
+                  },
+                },
+              ],
+              session_patch: nextState ? { next_state: nextState } : {},
+              events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first_llm_route' })],
+            });
+            return sendChatEnvelope(envelope);
           }
         }
 

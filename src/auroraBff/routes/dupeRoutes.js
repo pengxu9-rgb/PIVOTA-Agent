@@ -37,10 +37,12 @@ function mountDupeRoutes(app, deps) {
     summarizeProfileForContext,
     buildProductInputText,
     normalizeDupeCompare,
+    mapAuroraAlternativesToDupeCompare,
     mapAuroraProductAnalysis,
     normalizeProductAnalysis,
     enrichProductAnalysisPayload,
     extractAnchorIdFromProductLike,
+    mergeFieldMissing,
     getDupeDeepscanCache,
     setDupeDeepscanCache,
   } = deps;

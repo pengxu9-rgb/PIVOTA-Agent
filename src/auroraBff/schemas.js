@@ -338,6 +338,7 @@ const TrackerLogSchema = z
 
 const ActivityEventTypeSchema = z.enum([
   'chat_started',
+  'skin_analysis',
   'tracker_logged',
   'profile_updated',
   'travel_plan_created',

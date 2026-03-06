@@ -6,10 +6,12 @@ describe('Aurora BFF (/v1)', () => {
   beforeEach(() => {
     jest.resetModules();
     process.env.AURORA_BFF_USE_MOCK = 'true';
+    process.env.AURORA_CHAT_RESPONSE_FORMAT = 'legacy';
   });
 
   afterEach(() => {
     delete process.env.AURORA_BFF_USE_MOCK;
+    delete process.env.AURORA_CHAT_RESPONSE_FORMAT;
   });
 
   test('Phase0 gate: no recos when profile is missing', async () => {

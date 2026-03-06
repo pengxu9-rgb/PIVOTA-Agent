@@ -191,7 +191,7 @@ const LINGERIE_PATTERNS = [
 ];
 
 const FRAGRANCE_QUERY_REGEX =
-  /\b(perfume|fragrance|parfum|cologne|eau de parfum|eau de toilette|body mist)\b/i;
+  /\b(perfume|fragrance|parfum|cologne|eau de parfum|eau de toilette|body mist)\b|香水|香氛|古龙|古龍|香體|香体/i;
 const BRAND_TERM_SUFFIXES = new Set([
   'beauty',
   'cosmetic',
@@ -3162,16 +3162,16 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       if (nonToolDistinctBuckets < 2) {
         const isFragranceFlow = querySemanticClass === 'fragrance';
         if (!isFragranceFlow) {
-          filtered = Array.isArray(filtered) ? filtered : [];
+          filtered = [];
         }
         diversityDebug = {
           ...diversityDebug,
           reason: isFragranceFlow
             ? 'beauty_non_tool_min_not_met_fragrance_exempt'
-            : 'beauty_non_tool_min_not_met_soft',
-          strict_empty: false,
+            : 'beauty_non_tool_min_not_met',
+          strict_empty: !isFragranceFlow,
           requirement_unmet: true,
-          preserve_primary_on_failure: true,
+          preserve_primary_on_failure: isFragranceFlow,
           required_non_tool_buckets: 2,
           non_tool_distinct_buckets: nonToolDistinctBuckets,
           fragrance_exempt: Boolean(isFragranceFlow),
@@ -3200,6 +3200,16 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     metadata?.association_plan && typeof metadata.association_plan === 'object'
       ? metadata.association_plan
       : null;
+  const slotStateFromMeta =
+    metadata?.slot_state && typeof metadata.slot_state === 'object'
+      ? metadata.slot_state
+      : metadata?.search_trace?.slot_state &&
+          typeof metadata.search_trace.slot_state === 'object'
+        ? metadata.search_trace.slot_state
+        : metadata?.search_decision?.slot_state &&
+            typeof metadata.search_decision.slot_state === 'object'
+          ? metadata.search_decision.slot_state
+          : null;
   const postAnchorBasis = resolvePostAnchorBasis({
     rawQuery,
     intent,
@@ -3295,7 +3305,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const effectiveMaxDomainEntropy = scenarioDerivedAnchorActive
     ? SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY
     : SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY;
-  const postCandidateCount = Array.isArray(filtered) ? filtered.length : 0;
+  let postCandidateCount = Array.isArray(filtered) ? filtered.length : 0;
   const anchorRatioPost =
     postAnchorBasis.mode === 'off'
       ? 1
@@ -3322,7 +3332,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const postQualityOk =
     postQuality.candidates_ok && postQuality.anchor_ok && postQuality.entropy_ok;
   const postQualityHardFail = enforcePostQualityGate && !postQualityOk;
-  const postQualityTriggered = FPM_GATE_SIMPLIFY_V1 ? false : postQualityHardFail;
+  const postQualityTriggered = postQualityHardFail;
   const lowConfidenceReasons = [];
   if (postQualityHardFail) {
     lowConfidenceReasons.push('post_quality_low_confidence');
@@ -3340,7 +3350,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const clarifyByAmbiguityBase =
     clarifyEligible &&
     clarifyIntentGate &&
-    !strictEmptyByAmbiguityBaseConstrained &&
     (postQualityTriggered ||
       postCandidateCount === 0 ||
       (ambiguitySignalOnly && ambiguityScorePost > AMBIGUITY_THRESHOLD_CLARIFY));
@@ -3366,10 +3375,33 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   let clarification = null;
   let finalDecision = 'products_returned';
   if (clarifyByAmbiguity) {
+    const forceClearForAmbiguousRecommend =
+      intentNeedsClarification &&
+      ['exploratory', 'non_shopping'].includes(String(queryClass || ''));
+    const shouldClearProductsForClarify =
+      forceClearForAmbiguousRecommend ||
+      !brandQueryBypassAmbiguity &&
+      (
+        ['scenario', 'mission', 'gift'].includes(String(queryClass || '')) ||
+        (!FPM_CLARIFY_NEVER_EMPTY &&
+          ['exploratory', 'category', 'attribute'].includes(String(queryClass || '')))
+      ) &&
+      (postQualityHardFail || postCandidateCount === 0);
+    if (shouldClearProductsForClarify) {
+      filtered = [];
+      postCandidateCount = 0;
+    }
     clarification = buildClarification({
       queryClass,
       intent,
       language: intent?.language,
+      rawQuery,
+      associationPlan: associationPlanFromMeta,
+      slotState: slotStateFromMeta,
+      hints: {
+        post_candidates: postCandidateCount,
+        match_tier: baselineStats?.match_tier || null,
+      },
     });
     finalDecision = postCandidateCount > 0 ? 'products_returned_with_clarification' : 'clarify';
     lowConfidenceReasons.push('clarification_attached_non_blocking');
@@ -3615,6 +3647,14 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   const reply = toolFirstReply
     ? toolFirstReply
+    : clarification &&
+      String(intent?.scenario?.name || '').toLowerCase() === 'discovery' &&
+      (metadata?.creator_name || metadata?.creatorName)
+      ? buildReply(intent, stats.match_tier, Array.from(reasonCodes), {
+          creatorName: metadata?.creator_name || metadata?.creatorName || null,
+          creatorId: metadata?.creator_id || metadata?.creatorId || null,
+          rawUserQuery: rawQuery,
+        })
     : clarification
       ? `${clarification.question}\n${(clarification.options || []).map((option, index) => `${index + 1}) ${option}`).join('\n')}`
     : shouldOverrideReply
@@ -3634,6 +3674,14 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       }
     : undefined;
 
+  const clarificationSlotState =
+    clarification && String(clarification.slot || '').trim()
+      ? {
+          asked_slots: [String(clarification.slot).trim()],
+          resolved_slots: {},
+        }
+      : null;
+
   const responsePayload = {
     ...augmented,
     ...(mergedMetadata !== existingMeta
@@ -3641,6 +3689,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
           metadata: {
             ...mergedMetadata,
             strategy_version: STRATEGY_VERSION,
+            brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             search_decision: {
               query_class: queryClass,
               query_semantic_class: querySemanticClass,
@@ -3658,6 +3707,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               low_confidence: lowConfidenceReasons.length > 0,
               low_confidence_reasons: lowConfidenceReasons,
               domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
+              ...(clarificationSlotState ? { slot_state: clarificationSlotState } : {}),
             },
             query_semantic_class: querySemanticClass,
             domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
@@ -3676,6 +3726,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
           metadata: {
             ...(augmented?.metadata && typeof augmented.metadata === 'object' ? augmented.metadata : {}),
             strategy_version: STRATEGY_VERSION,
+            brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             search_decision: {
               query_class: queryClass,
               query_semantic_class: querySemanticClass,
@@ -3693,6 +3744,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               low_confidence: lowConfidenceReasons.length > 0,
               low_confidence_reasons: lowConfidenceReasons,
               domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
+              ...(clarificationSlotState ? { slot_state: clarificationSlotState } : {}),
             },
             query_semantic_class: querySemanticClass,
             domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
@@ -3721,6 +3773,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             question: clarification.question,
             options: clarification.options,
             reason_code: clarification.reason_code,
+            ...(clarification.slot ? { slot: clarification.slot } : {}),
+            ...(clarification.dedup_key ? { dedup_key: clarification.dedup_key } : {}),
           },
         }
       : {}),
