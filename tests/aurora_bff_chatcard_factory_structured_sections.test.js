@@ -1,4 +1,5 @@
 const { mapLegacyCardToSpecCards } = require('../src/auroraBff/chatCardFactory');
+const { ChatCardSchema } = require('../src/auroraBff/chatCardsSchema');
 
 describe('aurora chatCardFactory structured sections for adapter inputs', () => {
   test('product_verdict card includes product_verdict_structured section', () => {
@@ -132,5 +133,33 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     const structured = sections.find((section) => section && section.kind === 'nudge_structured');
     expect(structured).toBeTruthy();
     expect(typeof structured.message).toBe('string');
+  });
+
+  test('routine_fit_summary card passes through with schema-compatible type', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'routine_fit_summary',
+        card_id: 'legacy_routine_fit',
+        title: 'Routine fit',
+        payload: {
+          overall_fit: 'partial_match',
+          fit_score: 0.5,
+          summary: 'Some strong matches, with a few gaps to adjust.',
+          highlights: ['Barrier support is solid.'],
+          concerns: ['AM protection could be stronger.'],
+          dimension_scores: {
+            ingredient_match: { score: 0.5, note: 'Mostly aligned' },
+          },
+          next_questions: ['What should I adjust first?'],
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(Array.isArray(cards)).toBe(true);
+    expect(cards[0].type).toBe('routine_fit_summary');
+    expect(cards[0].title).toBe('Routine fit');
+    expect(cards[0].payload.summary).toBe('Some strong matches, with a few gaps to adjust.');
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
   });
 });

@@ -98,6 +98,8 @@ const {
   recordAuroraSkinMainlineProvider,
   recordAuroraSkinFallbackDeterministic,
   recordAuroraSkinShadowVerifyIsolatedWrite,
+  recordAuroraSkinSemanticGuard,
+  recordAuroraSkinUsefulOutput,
   recordAuroraIngredientsFlowMetric,
   recordAuroraIngredientProviderMetric,
   recordAuroraSkinAnalysisRealModel,
@@ -7720,8 +7722,14 @@ async function buildRealtimeCompetitorCandidates({
       .toLowerCase();
     return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
   })();
+  const asyncResolveFallbackEnabled = (() => {
+    const raw = String(process.env.AURORA_BFF_RECO_COMPETITOR_ASYNC_RESOLVE_FALLBACK || 'false')
+      .trim()
+      .toLowerCase();
+    return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+  })();
   const allowResolveFallback =
-    runMode === 'async_backfill' ||
+    (runMode === 'async_backfill' && asyncResolveFallbackEnabled) ||
     (runMode === 'sync_repair' && syncResolveFallbackEnabled) ||
     (runMode === 'main_path' && PRODUCT_URL_REALTIME_COMPETITOR_MAIN_RESOLVE_FALLBACK);
   const searchAllMerchants =
@@ -13824,8 +13832,6 @@ function getOpenAIClient() {
   return openaiClient;
 }
 
-let geminiClient;
-let geminiClientInitFailed = false;
 function getGeminiClient() {
   if (geminiClient) return { client: geminiClient, init_error: null };
   if (geminiClientInitFailed) return { client: null, init_error: VisionUnavailabilityReason.VISION_UNKNOWN };
@@ -16195,6 +16201,7 @@ async function runGeminiVisionSkinAnalysis({
                 temperature: 0.2,
                 responseMimeType: 'application/json',
               },
+            },
             },
           }),
           SKIN_VISION_TIMEOUT_MS,
@@ -19025,6 +19032,107 @@ function buildConfidenceNoticeCardPayload({
   };
 }
 
+function buildAnalysisSuggestedChips({ language, lowConfidence, hasIngredientPlan, hasRoutineFit } = {}) {
+  const isCn = language === 'CN';
+  const chips = [];
+
+  chips.push({
+    chip_id: 'chip.aurora.next_action.deep_dive_skin',
+    label: isCn ? '深入了解我的皮肤状态' : 'Tell me more about my skin',
+    kind: 'follow_up',
+    data: { action_id: 'chip.aurora.next_action.deep_dive_skin' },
+  });
+
+  if (hasIngredientPlan) {
+    chips.push({
+      chip_id: 'chip.aurora.next_action.ingredient_plan',
+      label: isCn ? '查看成分计划详情' : 'Explain the ingredient plan',
+      kind: 'follow_up',
+      data: { action_id: 'chip.aurora.next_action.ingredient_plan' },
+    });
+  }
+
+  if (hasRoutineFit) {
+    chips.push({
+      chip_id: 'chip.aurora.next_action.routine_deep_dive',
+      label: isCn ? '我的 routine 有什么问题？' : 'What issues does my routine have?',
+      kind: 'follow_up',
+      data: { action_id: 'chip.aurora.next_action.routine_deep_dive' },
+    });
+  }
+
+  chips.push({
+    chip_id: 'chip.aurora.next_action.safety_concerns',
+    label: isCn ? '有什么需要注意的吗？' : 'Anything I should watch out for?',
+    kind: 'follow_up',
+    data: { action_id: 'chip.aurora.next_action.safety_concerns' },
+  });
+
+  if (lowConfidence) {
+    chips.push({
+      chip_id: 'chip.intake.upload_photos',
+      label: isCn ? '重新拍照提升准确度' : 'Retake photos to improve accuracy',
+      kind: 'action',
+      data: { action_id: 'chip.intake.upload_photos', client_action: 'open_camera' },
+    });
+  }
+
+  chips.push({
+    chip_id: 'chip_keep_chatting',
+    label: isCn ? '直接提问' : 'Ask me anything',
+    kind: 'follow_up',
+    data: { action_id: 'chip_keep_chatting' },
+  });
+
+  return chips;
+}
+
+function buildAnalysisAssistantMessage({ language, skinProfile, lowConfidence, ingredientPlan, routineFit } = {}) {
+  const isCn = language === 'CN';
+  const lines = [];
+
+  const skinType = skinProfile && typeof skinProfile.skin_type_tendency === 'string'
+    ? skinProfile.skin_type_tendency.trim()
+    : '';
+  const sensitivity = skinProfile && typeof skinProfile.sensitivity_tendency === 'string'
+    ? skinProfile.sensitivity_tendency.trim()
+    : '';
+
+  if (isCn) {
+    const skinTypeLabel = { oily: '偏油', dry: '偏干', combination: '混合', normal: '中性' }[skinType] || skinType || '待确认';
+    const sensLabel = { low: '低', medium: '中等', high: '高' }[sensitivity] || sensitivity || '待确认';
+    lines.push(`分析完成。你的肤质倾向为 **${skinTypeLabel}**，敏感度 **${sensLabel}**。`);
+  } else {
+    lines.push(`Analysis complete. Your skin tends **${skinType || 'unconfirmed'}** with **${sensitivity || 'unconfirmed'}** sensitivity.`);
+  }
+
+  if (lowConfidence) {
+    lines.push(
+      isCn
+        ? '当前置信度较低，建议在自然光下重新拍照以提升准确度。'
+        : 'Confidence is low — retaking photos in daylight can improve accuracy.',
+    );
+  }
+
+  if (routineFit) {
+    const fitLabel = {
+      good_match: isCn ? '匹配良好' : 'good match',
+      partial_match: isCn ? '部分匹配' : 'partial match',
+      needs_adjustment: isCn ? '需要调整' : 'needs adjustment',
+    }[routineFit.overall_fit] || (isCn ? '已评估' : 'evaluated');
+    const concernCount = Array.isArray(routineFit.concerns) ? routineFit.concerns.length : 0;
+    if (isCn) {
+      lines.push(`你的护肤流程整体 **${fitLabel}**${concernCount > 0 ? `，有 ${concernCount} 处值得关注` : ''}。`);
+    } else {
+      lines.push(`Your routine is a **${fitLabel}**${concernCount > 0 ? ` with ${concernCount} area${concernCount > 1 ? 's' : ''} to watch` : ''}.`);
+    }
+  }
+
+  lines.push(isCn ? '有什么想深入了解的？' : 'What would you like to explore?');
+
+  return lines.join(' ');
+}
+
 function hasRenderableCards(cards) {
   return (Array.isArray(cards) ? cards : []).some((card) => {
     if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
@@ -19266,6 +19374,59 @@ function buildIngredientPlanCard(plan, requestId) {
       confidence: plan && plan.confidence && typeof plan.confidence === 'object' ? plan.confidence : null,
     },
   };
+}
+
+function reconcileIngredientPlanWithProductCards(ingredientPlan, productCards, language) {
+  if (!ingredientPlan || !Array.isArray(productCards) || !productCards.length) return productCards;
+  const avoidList = Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid : [];
+  if (!avoidList.length) return productCards;
+
+  const isCn = language === 'CN';
+  const avoidNames = new Set(
+    avoidList.map((a) => String(a && a.ingredient_name || a && a.ingredient_id || '').trim().toLowerCase()).filter(Boolean),
+  );
+  const avoidIdSet = new Set(
+    avoidList.map((a) => String(a && a.ingredient_id || '').trim().toLowerCase()).filter(Boolean),
+  );
+
+  return productCards.map((card) => {
+    if (!card || !card.payload || card.type !== 'product_analysis') return card;
+    const payload = card.payload;
+    const hero = payload.assessment && payload.assessment.hero_ingredient;
+    if (!hero) return card;
+    const heroName = String(hero.name || '').trim().toLowerCase();
+    const heroRole = String(hero.role || '').trim().toLowerCase();
+
+    const matchesAvoid =
+      avoidNames.has(heroName) ||
+      avoidIdSet.has(heroName) ||
+      (heroRole.includes('vitamin c') && (avoidIdSet.has('ascorbic_acid') || avoidNames.has('vitamin c (ascorbic acid)'))) ||
+      (heroName.includes('ascorbic') && (avoidIdSet.has('ascorbic_acid') || avoidNames.has('vitamin c (ascorbic acid)')));
+
+    if (!matchesAvoid) return card;
+
+    const cautionNote = isCn
+      ? `注意：成分计划建议谨慎使用 ${hero.name}（${avoidList.find((a) => a.ingredient_id === 'ascorbic_acid' || String(a.ingredient_name || '').toLowerCase().includes(heroName))?.reason?.[0] || '敏感度考量'}）。建议低频起步并观察耐受情况。`
+      : `Note: The ingredient plan flags ${hero.name} as caution (${avoidList.find((a) => a.ingredient_id === 'ascorbic_acid' || String(a.ingredient_name || '').toLowerCase().includes(heroName))?.reason?.[0] || 'sensitivity concern'}). Start low-frequency and monitor tolerance.`;
+
+    const existingNotFor = Array.isArray(payload.assessment.not_for) ? payload.assessment.not_for : [];
+    return {
+      ...card,
+      payload: {
+        ...payload,
+        assessment: {
+          ...payload.assessment,
+          not_for: [...existingNotFor, cautionNote],
+          ingredient_plan_conflict: {
+            flagged: true,
+            ingredient: hero.name,
+            severity: 'caution',
+            note: cautionNote,
+          },
+        },
+      },
+    };
+  });
 }
 
 function buildRecoEntryChips(language) {
@@ -21606,6 +21767,153 @@ function buildProductDeepScanPrompt({
   });
 }
 
+function buildRoutineFitSummaryPrompt({
+  prefix = '',
+  skinProfile = null,
+  ingredientPlan = null,
+  routineProducts = [],
+  language = 'EN',
+} = {}) {
+  const isCn = language === 'CN';
+  const systemBlock = [
+    isCn
+      ? '你是一个护肤分析师。根据用户的皮肤分析结果和当前护肤流程，评估整体匹配度。'
+      : 'You are a skincare analyst. Evaluate how well the user\'s current routine matches their skin analysis results.',
+    'Output MUST be a single valid JSON object. No markdown, no extra keys, no commentary outside the JSON.',
+    isCn
+      ? '不要逐个分析产品，而是作为整体评估 routine 对皮肤状态的匹配度。'
+      : 'Do NOT analyze products individually. Evaluate the routine as a whole against the skin profile.',
+    'Hard rules:',
+    '1. Be concise — each string field max 1-2 sentences.',
+    '2. highlights and concerns arrays: max 3 items each.',
+    '3. next_questions: suggest 2-3 follow-up questions the user might want to ask.',
+  ].join('\n');
+
+  const skinCtx = [];
+  if (skinProfile) {
+    if (skinProfile.skin_type_tendency) skinCtx.push(`skin_type: ${skinProfile.skin_type_tendency}`);
+    if (skinProfile.sensitivity_tendency) skinCtx.push(`sensitivity: ${skinProfile.sensitivity_tendency}`);
+  }
+  if (ingredientPlan) {
+    const targets = Array.isArray(ingredientPlan.targets)
+      ? ingredientPlan.targets.slice(0, 5).map((t) => `${t.ingredient_name || t.ingredient_id} (${t.role || 'support'})`).join(', ')
+      : '';
+    const avoid = Array.isArray(ingredientPlan.avoid)
+      ? ingredientPlan.avoid.map((a) => a.ingredient_name || a.ingredient_id).join(', ')
+      : '';
+    if (targets) skinCtx.push(`recommended_ingredients: ${targets}`);
+    if (avoid) skinCtx.push(`avoid: ${avoid}`);
+  }
+
+  const routineLines = routineProducts.map((p, i) => {
+    const slot = p.slot || '';
+    const step = p.step || '';
+    const text = p.product_text || '';
+    return `  ${i + 1}. [${slot}/${step}] ${text}`;
+  }).join('\n');
+
+  const schema = `{
+  "overall_fit": "good_match"|"partial_match"|"needs_adjustment",
+  "fit_score": number (0.0-1.0),
+  "summary": string,
+  "highlights": string[] (max 3),
+  "concerns": string[] (max 3),
+  "dimension_scores": {
+    "ingredient_match": {"score": number, "note": string},
+    "routine_completeness": {"score": number, "note": string},
+    "conflict_risk": {"score": number, "note": string},
+    "sensitivity_safety": {"score": number, "note": string}
+  },
+  "next_questions": string[] (max 3)
+}`;
+
+  return `${String(prefix || '')}[SYSTEM]\n${systemBlock}\n[/SYSTEM]\n` +
+    `Task: Evaluate this routine as a whole against the user's skin analysis. Return ONLY JSON matching:\n${schema}\n\n` +
+    `Skin analysis context:\n${skinCtx.length ? skinCtx.join('\n') : '(no analysis available)'}\n\n` +
+    `Current routine (${routineProducts.length} products):\n${routineLines || '(empty)'}`;
+}
+
+function buildRoutineFitSummaryCard(fitResult, requestId) {
+  const fit = fitResult && typeof fitResult === 'object' ? fitResult : {};
+  const overallFitRaw = String(fit.overall_fit || '').trim().toLowerCase();
+  const overallFit =
+    overallFitRaw === 'good_match' || overallFitRaw === 'partial_match' || overallFitRaw === 'needs_adjustment'
+      ? overallFitRaw
+      : 'partial_match';
+  return {
+    card_id: `routine_fit_${requestId}`,
+    type: 'routine_fit_summary',
+    payload: {
+      overall_fit: overallFit,
+      fit_score: Number.isFinite(Number(fit.fit_score)) ? Math.max(0, Math.min(1, Number(fit.fit_score))) : 0.5,
+      summary: String(fit.summary || '').trim(),
+      highlights: Array.isArray(fit.highlights) ? fit.highlights.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
+      concerns: Array.isArray(fit.concerns) ? fit.concerns.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
+      dimension_scores: (() => {
+        const dims = fit.dimension_scores && typeof fit.dimension_scores === 'object' ? fit.dimension_scores : {};
+        const normalize = (d) => {
+          const obj = d && typeof d === 'object' ? d : {};
+          return {
+            score: Number.isFinite(Number(obj.score)) ? Math.max(0, Math.min(1, Number(obj.score))) : 0.5,
+            note: String(obj.note || '').trim(),
+          };
+        };
+        return {
+          ingredient_match: normalize(dims.ingredient_match),
+          routine_completeness: normalize(dims.routine_completeness),
+          conflict_risk: normalize(dims.conflict_risk),
+          sensitivity_safety: normalize(dims.sensitivity_safety),
+        };
+      })(),
+      next_questions: Array.isArray(fit.next_questions) ? fit.next_questions.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
+    },
+  };
+}
+
+function resolveRoutineFitAnalysisPlan({ routineProductCandidates, lowConfidenceRuleBased } = {}) {
+  const candidateCount = Array.isArray(routineProductCandidates) ? routineProductCandidates.length : 0;
+  return {
+    shouldEvaluateRoutineFit: candidateCount > 0 && lowConfidenceRuleBased !== true,
+    shouldQueueKbBackfill: candidateCount > 0,
+  };
+}
+
+function buildSkinAnalysisContextForPrefix(profile) {
+  const lastAnalysis = profile && profile.lastAnalysis;
+  if (!lastAnalysis || typeof lastAnalysis !== 'object') return null;
+  const parts = [];
+  const skinProfile = lastAnalysis.skin_profile || lastAnalysis.skinProfile;
+  if (skinProfile && typeof skinProfile === 'object') {
+    const tokens = [];
+    if (skinProfile.skin_type_tendency) tokens.push(`skin_type=${skinProfile.skin_type_tendency}`);
+    if (skinProfile.sensitivity_tendency) tokens.push(`sensitivity=${skinProfile.sensitivity_tendency}`);
+    if (Array.isArray(skinProfile.current_strengths) && skinProfile.current_strengths.length) {
+      tokens.push(`strengths=${skinProfile.current_strengths.slice(0, 3).join('; ')}`);
+    }
+    if (tokens.length) parts.push(`[Skin analysis context] ${tokens.join(', ')}`);
+  }
+  const findings = lastAnalysis.priority_findings || lastAnalysis.findings;
+  if (Array.isArray(findings) && findings.length) {
+    parts.push(`Key findings: ${findings.slice(0, 5).map((f) => f.title || f.detail || f.observation || JSON.stringify(f)).join('; ')}`);
+  }
+  const confidence = lastAnalysis.confidence_overall || lastAnalysis.confidence;
+  if (confidence && typeof confidence === 'object') {
+    parts.push(`Analysis confidence: ${confidence.level || 'unknown'} (${confidence.score || 'n/a'})`);
+  }
+  const ingPlan = lastAnalysis.ingredient_plan;
+  if (ingPlan && typeof ingPlan === 'object') {
+    const targets = Array.isArray(ingPlan.targets) ? ingPlan.targets.slice(0, 5) : [];
+    const avoid = Array.isArray(ingPlan.avoid) ? ingPlan.avoid : [];
+    if (targets.length) {
+      parts.push(`Ingredient targets: ${targets.map((t) => `${t.ingredient_name || t.ingredient_id} (${t.role || 'support'})`).join(', ')}`);
+    }
+    if (avoid.length) {
+      parts.push(`Avoid: ${avoid.map((a) => `${a.ingredient_name || a.ingredient_id} (${(a.reason || []).join('; ')})`).join(', ')}`);
+    }
+  }
+  return parts.length ? parts.join('\n') : null;
+}
+
 function hasProfileEchoFormulaIntent(lines = []) {
   if (!Array.isArray(lines) || !lines.length) return false;
   const profileEchoPattern = /\b(your profile|profile priorities|skinType=|sensitivity=|barrier=|你的情况|你的画像|画像：)\b/i;
@@ -22278,6 +22586,7 @@ const CHATBOX_UI_RENDERABLE_CARD_TYPES = new Set([
   'conflict_heatmap',
   'analysis_summary',
   'analysis_story_v2',
+  'routine_fit_summary',
   'ingredient_hub',
   'ingredient_goal_match',
   'aurora_ingredient_report',
@@ -22560,23 +22869,6 @@ const AnalysisStoryV2Schema = z.object({
   core_principles: z.array(z.string().trim().min(1)).default([]),
   am_plan: z.array(z.object({ step: z.string().trim().min(1), purpose: z.string().trim().min(1).default('') }).passthrough()).default([]),
   pm_plan: z.array(z.object({ step: z.string().trim().min(1), purpose: z.string().trim().min(1).default('') }).passthrough()).default([]),
-  routine_bridge: z
-    .object({
-      missing_fields: z.array(z.string().trim().min(1)).default([]),
-      why_now: z.string().trim().min(1),
-      cta_label: z.string().trim().min(1),
-      cta_action: z.string().trim().min(1),
-    })
-    .passthrough(),
-  existing_products_optimization: z
-    .object({
-      keep: z.array(z.string().trim().min(1)).default([]),
-      add: z.array(z.string().trim().min(1)).default([]),
-      replace: z.array(z.string().trim().min(1)).default([]),
-      remove: z.array(z.string().trim().min(1)).default([]),
-    })
-    .passthrough()
-    .default({ keep: [], add: [], replace: [], remove: [] }),
   timeline: z
     .object({
       first_4_weeks: z.array(z.string().trim().min(1)).default([]),
@@ -25882,7 +26174,6 @@ function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, la
     .filter(Boolean)
     .slice(0, 6);
 
-  const missingFields = deriveRoutineMissingFields(profile);
   const profilePlan = buildProfileAwareAmPmPlan({ profile, language });
   return {
     schema_version: 'aurora.analysis_story.v2',
@@ -25905,20 +26196,6 @@ function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, la
     ],
     am_plan: profilePlan.am_plan,
     pm_plan: profilePlan.pm_plan,
-    routine_bridge: {
-      missing_fields: missingFields,
-      why_now: isCn
-        ? '补全 AM/PM routine 后，推荐会从通用建议升级为与你现有产品不冲突的个性化方案。'
-        : 'Once AM/PM routine is provided, recommendations can be personalized and conflict-aware.',
-      cta_label: isCn ? '补全 AM/PM Routine' : 'Add AM/PM routine',
-      cta_action: 'open_routine_intake',
-    },
-    existing_products_optimization: {
-      keep: [],
-      add: [],
-      replace: [],
-      remove: [],
-    },
     timeline: {
       first_4_weeks: [
         isCn ? '第1周：只保留基础清洁-保湿-防晒。' : 'Week 1: keep cleanse-moisturize-sunscreen baseline only.',
@@ -25997,14 +26274,8 @@ function generateAnalysisStoryV2Json({ evidence, fallbackStory } = {}) {
     am_plan: profilePlan.am_plan,
     pm_plan: profilePlan.pm_plan,
   };
-  if (!isPlainObject(output.routine_bridge)) {
-    output.routine_bridge = {
-      missing_fields: Array.isArray(evidence && evidence.missing_routine_fields) ? evidence.missing_routine_fields : [],
-      why_now: 'Add AM/PM routine to unlock personalized recommendations.',
-      cta_label: 'Add AM/PM routine',
-      cta_action: 'open_routine_intake',
-    };
-  }
+  delete output.routine_bridge;
+  delete output.existing_products_optimization;
   if (!Array.isArray(output.priority_findings) || !output.priority_findings.length) {
     const inferredFindings = Array.isArray(evidence && evidence.finding_evidence)
       ? evidence.finding_evidence.map((item) => ({
@@ -26031,19 +26302,14 @@ function reviewAnalysisStoryV2Json({ story, evidence } = {}) {
     candidate.disclaimer_non_medical = true;
     issues.push('disclaimer_non_medical_forced_true');
   }
-  const missingRoutine = Array.isArray(evidence && evidence.missing_routine_fields) ? evidence.missing_routine_fields : [];
-  const bridge = isPlainObject(candidate.routine_bridge) ? { ...candidate.routine_bridge } : {};
-  const bridgeMissing = Array.isArray(bridge.missing_fields) ? bridge.missing_fields.map((v) => String(v || '').trim()).filter(Boolean) : [];
-  if (!bridgeMissing.length && missingRoutine.length) {
-    bridge.missing_fields = missingRoutine;
-    issues.push('routine_bridge_missing_fields_repaired');
-  } else if (bridgeMissing.length) {
-    bridge.missing_fields = bridgeMissing;
+  if (Object.prototype.hasOwnProperty.call(candidate, 'routine_bridge')) {
+    delete candidate.routine_bridge;
+    issues.push('routine_bridge_removed');
   }
-  bridge.why_now = pickFirstString(bridge.why_now, 'Add AM/PM routine to unlock personalized recommendations.');
-  bridge.cta_label = pickFirstString(bridge.cta_label, 'Add AM/PM routine');
-  bridge.cta_action = pickFirstString(bridge.cta_action, 'open_routine_intake');
-  candidate.routine_bridge = bridge;
+  if (Object.prototype.hasOwnProperty.call(candidate, 'existing_products_optimization')) {
+    delete candidate.existing_products_optimization;
+    issues.push('existing_products_optimization_removed');
+  }
 
   if (!Array.isArray(candidate.priority_findings)) {
     candidate.priority_findings = [];
@@ -26075,8 +26341,6 @@ function buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
     core_principles: ['...'],
     am_plan: [{ step: '...', purpose: '...' }],
     pm_plan: [{ step: '...', purpose: '...' }],
-    routine_bridge: { missing_fields: [], why_now: '...', cta_label: '...', cta_action: 'open_routine_intake' },
-    existing_products_optimization: { keep: [], add: [], replace: [], remove: [] },
     timeline: { first_4_weeks: ['...'], week_8_12_expectation: ['...'] },
     ui_card_v1: { headline: '...', key_points: ['...'], actions_now: ['...'], avoid_now: ['...'], confidence_label: '...', next_checkin: '...' },
     safety_notes: ['...'],
@@ -26092,7 +26356,7 @@ function buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
     '- Do NOT use generic placeholders like "Gentle cleanse / Hydration serum / SPF50+ sunscreen" for every user.',
     '- Tailor active steps to user goals: e.g. vitamin C for dark spots, BHA for pores/acne, retinol for anti-aging, ceramides for barrier repair.',
     '- Adjust frequency and intensity based on sensitivity and barrier status.',
-    '- If routine is missing, include routine_bridge with why_now and CTA.',
+    '- Do not include product recommendation CTA, routine-intake CTA, or any product shortlist.',
     '- Must include ui_card_v1 for fast comprehension.',
     '- Return strict JSON only with schema compatible to aurora.analysis_story.v2.',
     '',
@@ -26115,7 +26379,7 @@ function buildAnalysisStoryReviewPrompt({ story, evidence } = {}) {
     '- patched_story: object',
     'Rules:',
     '- patched_story must stay within evidence boundaries.',
-    '- enforce non-medical disclaimer and routine_bridge when routine is missing.',
+    '- remove any product recommendation CTA, routine-intake CTA, or product shortlist fields.',
     '- enforce concise, readable language (conclusion -> evidence -> actions).',
     '- enforce ui_card_v1 with headline/key_points/actions_now/avoid_now/confidence_label/next_checkin.',
     '',
@@ -26220,10 +26484,18 @@ async function reviewAnalysisStoryV2JsonWithLlm({
 }
 
 function coerceAnalysisStoryV2(candidate, fallbackPayload) {
+  const stripLegacyAnalysisStoryFields = (value) => {
+    const out = isPlainObject(value) ? { ...value } : value;
+    if (isPlainObject(out)) {
+      delete out.routine_bridge;
+      delete out.existing_products_optimization;
+    }
+    return out;
+  };
   const parsed = AnalysisStoryV2Schema.safeParse(candidate);
-  if (parsed.success) return parsed.data;
+  if (parsed.success) return stripLegacyAnalysisStoryFields(parsed.data);
   const fallbackParsed = AnalysisStoryV2Schema.safeParse(fallbackPayload);
-  if (fallbackParsed.success) return fallbackParsed.data;
+  if (fallbackParsed.success) return stripLegacyAnalysisStoryFields(fallbackParsed.data);
   return {
     schema_version: 'aurora.analysis_story.v2',
     confidence_overall: { level: 'low' },
@@ -26233,13 +26505,6 @@ function coerceAnalysisStoryV2(candidate, fallbackPayload) {
     core_principles: [],
     am_plan: [],
     pm_plan: [],
-    routine_bridge: {
-      missing_fields: ['currentRoutine.am', 'currentRoutine.pm'],
-      why_now: 'Add AM/PM routine to unlock personalized recommendations.',
-      cta_label: 'Add AM/PM routine',
-      cta_action: 'open_routine_intake',
-    },
-    existing_products_optimization: { keep: [], add: [], replace: [], remove: [] },
     timeline: { first_4_weeks: [], week_8_12_expectation: [] },
     ui_card_v1: {
       headline: 'Stabilize first, then improve tone and texture step by step.',
@@ -42833,6 +43098,20 @@ function mountAuroraBffRoutes(app, { logger }) {
                 usedPhotos = true;
                 shadowVerifyPhotoBytes = photoBytes;
                 analysisSource = 'vision_gemini';
+                recordAuroraSkinSemanticGuard({
+                  stage: 'vision',
+                  outcome: vision.semantic && vision.semantic.useful_output ? 'pass' : 'limited',
+                  reason: 'none',
+                  promptVersion: vision.prompt_version,
+                  locale: ctx.lang,
+                });
+                recordAuroraSkinUsefulOutput({
+                  stage: 'vision',
+                  useful: Boolean(vision.semantic ? vision.semantic.useful_output : !vision.analysis.insufficient_visual_detail),
+                  insufficientReason: vision.canonical && vision.canonical.insufficient_reason ? vision.canonical.insufficient_reason : 'none',
+                  promptVersion: vision.prompt_version,
+                  locale: ctx.lang,
+                });
                 logger?.info(
                   {
                     kind: 'metric',
@@ -42864,6 +43143,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                   UPSTREAM_5XX: VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
                   UPSTREAM_4XX: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
                   SCHEMA_INVALID: VisionUnavailabilityReason.VISION_SCHEMA_INVALID,
+                  SEMANTIC_EMPTY: VisionUnavailabilityReason.VISION_SEMANTIC_INVALID,
+                  SEMANTIC_INVALID: VisionUnavailabilityReason.VISION_SEMANTIC_INVALID,
                   IMAGE_FETCH_FAILED: VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED,
                   MISSING_GEMINI_KEY: VisionUnavailabilityReason.VISION_MISSING_KEY,
                 };
@@ -42882,6 +43163,22 @@ function mountAuroraBffRoutes(app, { logger }) {
                     provider: 'gemini',
                     reason: normalizedReason || 'VISION_SCHEMA_INVALID',
                     inputHashPrefix: llmInputHashPrefix,
+                  });
+                }
+                if (vision.semantic_violation) {
+                  recordAuroraSkinSemanticGuard({
+                    stage: 'vision',
+                    outcome: 'fail',
+                    reason: normalizedReason || 'VISION_SEMANTIC_INVALID',
+                    promptVersion: vision.prompt_version,
+                    locale: ctx.lang,
+                  });
+                  recordAuroraSkinUsefulOutput({
+                    stage: 'vision',
+                    useful: false,
+                    insufficientReason: vision.canonical && vision.canonical.insufficient_reason ? vision.canonical.insufficient_reason : 'none',
+                    promptVersion: vision.prompt_version,
+                    locale: ctx.lang,
                   });
                 }
                 logger?.info(
@@ -42959,6 +43256,20 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (reportResult.ok && reportResult.layer) {
             reportLayer = reportResult.layer;
             analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
+            recordAuroraSkinSemanticGuard({
+              stage: 'report',
+              outcome: reportResult.semantic && reportResult.semantic.useful_output ? 'pass' : 'limited',
+              reason: 'none',
+              promptVersion: reportResult.prompt_version,
+              locale: ctx.lang,
+            });
+            recordAuroraSkinUsefulOutput({
+              stage: 'report',
+              useful: Boolean(reportResult.semantic ? reportResult.semantic.useful_output : !reportResult.layer.insufficient_visual_detail),
+              insufficientReason: reportResult.layer && reportResult.layer.insufficient_visual_detail ? 'insufficient_visual_detail' : 'none',
+              promptVersion: reportResult.prompt_version,
+              locale: ctx.lang,
+            });
           } else {
             const reportFailureRaw = reportResult.reason || 'report_output_invalid';
             const reportFailureReason = normalizeReportFailureReason(reportFailureRaw) || 'UNKNOWN';
@@ -42971,6 +43282,22 @@ function mountAuroraBffRoutes(app, { logger }) {
                 provider: 'gemini',
                 reason: reportFailureReason,
                 inputHashPrefix: llmInputHashPrefix,
+              });
+            }
+            if (reportResult.semantic_violation) {
+              recordAuroraSkinSemanticGuard({
+                stage: 'report',
+                outcome: 'fail',
+                reason: reportFailureReason,
+                promptVersion: reportResult.prompt_version,
+                locale: ctx.lang,
+              });
+              recordAuroraSkinUsefulOutput({
+                stage: 'report',
+                useful: false,
+                insufficientReason: 'semantic_invalid',
+                promptVersion: reportResult.prompt_version,
+                locale: ctx.lang,
               });
             }
             if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailureReason}）；我会退回到确定性基线。`);
@@ -43425,6 +43752,28 @@ function mountAuroraBffRoutes(app, { logger }) {
 
             artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
             recommendationReady = Boolean(artifactGate && artifactGate.ok && artifactGate.confidence_level !== 'low');
+
+            if (ingredientPlan && persistLastAnalysis && analysis) {
+              try {
+                const analysisWithPlan = {
+                  ...analysis,
+                  ingredient_plan: {
+                    targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
+                      ingredient_id: t.ingredient_id, ingredient_name: t.ingredient_name, role: t.role, priority: t.priority,
+                    })) : [],
+                    avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
+                      ingredient_id: a.ingredient_id, ingredient_name: a.ingredient_name, severity: a.severity, reason: a.reason,
+                    })) : [],
+                  },
+                };
+                await saveLastAnalysisForIdentity(
+                  { auroraUid: identity.auroraUid, userId: identity.userId },
+                  { analysis: analysisWithPlan, lang: ctx.lang },
+                );
+              } catch {
+                // non-critical: ingredient plan context will still work from ingredient plan card
+              }
+            }
           } catch (err) {
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
@@ -43585,93 +43934,106 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (ingredientPlan) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
         }
-        const routineProductCards = [];
         const routineProductEvents = [];
-        if (routineProductCandidates.length > 0 && !lowConfidenceRuleBased) {
-          const syncCandidates = routineProductCandidates.slice(0, AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT);
-          const asyncCandidates = routineProductCandidates.slice(AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT);
+
+        const routineFitPlan = resolveRoutineFitAnalysisPlan({
+          routineProductCandidates,
+          lowConfidenceRuleBased,
+        });
+        let routineFitCard = null;
+        if (routineFitPlan.shouldEvaluateRoutineFit) {
           routineProductEvents.push(
-            makeEvent(ctx, 'routine_product_deepscan_started', {
+            makeEvent(ctx, 'routine_fit_evaluation_started', {
               total_candidates: routineProductCandidates.length,
-              sync_target: syncCandidates.length,
-              async_target: asyncCandidates.length,
             }),
           );
-          const syncScanResults = await Promise.all(
-            syncCandidates.map((candidate) =>
-              deepScanRoutineProductCandidate({
-                candidate,
-                ctx,
-                profileSummary,
-                recentLogsSummary,
-                logger,
-                includeCard: true,
-              }).catch(() => ({ card: null, backfilled: false, failure_reason: 'scan_failed' })),
-            ),
-          );
-          let syncBackfilled = 0;
-          let syncFailed = 0;
-          let anchorsBlockedNonSkincare = 0;
-          let anchorsUsed = 0;
-          for (const result of syncScanResults) {
-            if (result && result.card && result.card.type === 'product_analysis') {
-              routineProductCards.push(result.card);
-            } else {
-              syncFailed += 1;
-            }
-            if (result && result.backfilled) syncBackfilled += 1;
-            if (result && result.anchor_blocked_non_skincare) anchorsBlockedNonSkincare += 1;
-            if (result && result.anchor_used) anchorsUsed += 1;
-          }
-          routineProductEvents.push(
-            makeEvent(ctx, 'routine_product_deepscan_completed', {
-              sync_scanned: syncCandidates.length,
-              sync_backfilled: syncBackfilled,
-              cards_emitted: routineProductCards.length,
-              sync_failed: syncFailed,
-              anchors_blocked_non_skincare: anchorsBlockedNonSkincare,
-              anchors_used: anchorsUsed,
-            }),
-          );
-          if (asyncCandidates.length > 0) {
-            routineProductEvents.push(
-              makeEvent(ctx, 'routine_product_deepscan_backfilled', {
-                queued: asyncCandidates.length,
-                mode: 'async_queue',
-              }),
-            );
-            setImmediate(async () => {
-              let asyncCompleted = 0;
-              let asyncBackfilled = 0;
-              for (const candidate of asyncCandidates) {
-                try {
-                  const result = await deepScanRoutineProductCandidate({
-                    candidate,
-                    ctx,
-                    profileSummary,
-                    recentLogsSummary,
-                    logger,
-                    includeCard: false,
-                  });
-                  asyncCompleted += 1;
-                  if (result && result.backfilled) asyncBackfilled += 1;
-                } catch {
-                  // swallow async backfill errors to avoid impacting main request path
-                }
-              }
-              logger?.info(
-                {
-                  request_id: ctx.request_id,
-                  trace_id: ctx.trace_id,
-                  queued: asyncCandidates.length,
-                  completed: asyncCompleted,
-                  backfilled: asyncBackfilled,
-                },
-                'aurora bff: routine product async deepscan backfill finished',
-              );
+          const routineSkinProfile = {
+            skin_type_tendency: profileSummary && profileSummary.skinType ? profileSummary.skinType : null,
+            sensitivity_tendency: profileSummary && profileSummary.sensitivity ? profileSummary.sensitivity : null,
+          };
+          const fitPrefix = buildContextPrefix({
+            profile: isPlainObject(profileSummary) ? profileSummary : {},
+            lang: ctx.lang,
+            state: 'S4_ANALYSIS_LOADING',
+            trigger_source: 'routine_fit_evaluation',
+            intent: 'routine_fit_summary',
+            action_id: 'routine.fit.evaluate',
+          });
+          const fitPrompt = buildRoutineFitSummaryPrompt({
+            prefix: fitPrefix,
+            skinProfile: routineSkinProfile,
+            ingredientPlan,
+            routineProducts: routineProductCandidates.slice(0, 8),
+            language: ctx.lang,
+          });
+
+          try {
+            const fitUpstream = await auroraChat({
+              baseUrl: AURORA_DECISION_BASE_URL,
+              query: fitPrompt,
+              timeoutMs: Math.min(12000, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS || 12000),
+              llm_provider: 'gemini',
+              llm_model: SKIN_VISION_MODEL_GEMINI || 'gemini-3-flash-preview',
             });
+
+            if (fitUpstream && fitUpstream.structured && typeof fitUpstream.structured === 'object') {
+              routineFitCard = buildRoutineFitSummaryCard(fitUpstream.structured, ctx.request_id);
+            } else if (fitUpstream && fitUpstream.text) {
+              try {
+                const parsed = JSON.parse(fitUpstream.text);
+                routineFitCard = buildRoutineFitSummaryCard(parsed, ctx.request_id);
+              } catch {
+                logger?.warn({ request_id: ctx.request_id }, 'aurora bff: routine fit JSON parse failed');
+              }
+            }
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: routine fit evaluation failed',
+            );
           }
+
+          routineProductEvents.push(
+            makeEvent(ctx, 'routine_fit_evaluation_completed', {
+              fit_card_emitted: Boolean(routineFitCard),
+              overall_fit: routineFitCard && routineFitCard.payload ? routineFitCard.payload.overall_fit : null,
+            }),
+          );
         }
+
+        if (routineFitPlan.shouldQueueKbBackfill) {
+          setImmediate(async () => {
+            let asyncCompleted = 0;
+            let asyncBackfilled = 0;
+            for (const candidate of routineProductCandidates) {
+              try {
+                const result = await deepScanRoutineProductCandidate({
+                  candidate,
+                  ctx,
+                  profileSummary,
+                  recentLogsSummary,
+                  logger,
+                  includeCard: false,
+                });
+                asyncCompleted += 1;
+                if (result && result.backfilled) asyncBackfilled += 1;
+              } catch {
+                // non-critical: KB backfill for on-demand deep dive
+              }
+            }
+            logger?.info(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                queued: routineProductCandidates.length,
+                completed: asyncCompleted,
+                backfilled: asyncBackfilled,
+              },
+              'aurora bff: routine product async KB backfill finished',
+            );
+          });
+        }
+
         if (artifactConfidence && String(artifactConfidence.level || '').toLowerCase() === 'low') {
           logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
           extraCards.push({
@@ -43685,19 +44047,28 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
           });
         }
-        const deduplicatedRoutineProductCards = (() => {
-          const seen = new Set();
-          return routineProductCards.filter((card) => {
-            const p = card?.payload?.product;
-            const key = (p && (p.product_id || p.name || '')) || '';
-            if (!key || !seen.has(key)) { if (key) seen.add(key); return true; }
-            return false;
-          });
-        })();
+
+        const analysisSkinProfile = {
+          skin_type_tendency: profileSummary && profileSummary.skinType ? profileSummary.skinType : null,
+          sensitivity_tendency: profileSummary && profileSummary.sensitivity ? profileSummary.sensitivity : null,
+        };
+        const analysisChips = buildAnalysisSuggestedChips({
+          language: ctx.lang,
+          lowConfidence: lowConfidenceSummary,
+          hasIngredientPlan: Boolean(ingredientPlan),
+          hasRoutineFit: Boolean(routineFitCard),
+        });
+        const analysisAssistantText = buildAnalysisAssistantMessage({
+          language: ctx.lang,
+          skinProfile: analysisSkinProfile,
+          lowConfidence: lowConfidenceSummary,
+          ingredientPlan,
+          routineFit: routineFitCard && routineFitCard.payload ? routineFitCard.payload : null,
+        });
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: null,
-          suggested_chips: [],
+          assistant_message: makeAssistantMessage(analysisAssistantText),
+          suggested_chips: analysisChips,
           cards: [
             {
               card_id: `analysis_${ctx.request_id}`,
@@ -43705,7 +44076,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: analysisSummaryPayload,
               ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
             },
-            ...deduplicatedRoutineProductCards,
+            ...(routineFitCard ? [routineFitCard] : []),
             ...(photoModulesCard ? [photoModulesCard] : []),
             ...extraCards,
           ],
@@ -44062,9 +44433,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
         });
 
+        const timeoutChips = buildAnalysisSuggestedChips({
+          language: ctx.lang,
+          lowConfidence: true,
+          hasIngredientPlan: false,
+          hasRoutineProducts: false,
+        });
+        const timeoutAssistantText = ctx.lang === 'CN'
+          ? '分析超时，已切换为保守方案。你可以重新拍照或直接提问。'
+          : 'Analysis timed out and switched to a conservative plan. You can retake photos or ask questions.';
+
         const envelope = buildEnvelope(ctx, {
-          assistant_message: null,
-          suggested_chips: [],
+          assistant_message: makeAssistantMessage(timeoutAssistantText),
+          suggested_chips: timeoutChips,
           cards: [
             {
               card_id: `analysis_${ctx.request_id}`,
@@ -51398,6 +51779,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         ].filter(Boolean);
         return parts.join('\n');
       })();
+      const skinAnalysisContextForPrefix = buildSkinAnalysisContextForPrefix(profile);
+
       const prefix = buildContextPrefix({
         profile: profileSummary,
         recentLogs,
@@ -51409,6 +51792,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         clarification_id: clarificationId,
         ...(historyForPrefix.length ? { clarification_history: historyForPrefix } : {}),
         ...(ingredientHintForPrefix ? { ingredient_kb_context: ingredientHintForPrefix } : {}),
+        ...(skinAnalysisContextForPrefix ? { skin_analysis_context: skinAnalysisContextForPrefix } : {}),
       });
       const query = `${prefix}${upstreamMessage || '(no message)'}`;
       const isResumeUpstreamCall = Boolean(
@@ -52845,6 +53229,13 @@ const __internal = {
   deriveProductsEmptyReason,
   countPurchasableProductsForTargets,
   applyPhotoClaimConsistency,
+  buildAnalysisSuggestedChips,
+  buildAnalysisAssistantMessage,
+  reconcileIngredientPlanWithProductCards,
+  buildRoutineFitSummaryPrompt,
+  buildRoutineFitSummaryCard,
+  resolveRoutineFitAnalysisPlan,
+  buildSkinAnalysisContextForPrefix,
   buildAnalysisEvidence,
   buildAnalysisStoryGenerationPrompt,
   generateAnalysisStoryV2Json,
@@ -52855,6 +53246,8 @@ const __internal = {
   evaluateIngredientCandidateWithQaMode,
   resolveQaMode,
   resolveQaSingleProvider,
+  pickQaProvidersForMode,
+  callDualQaProvider,
   getQaRemainingBudgetMs,
   shouldSkipQaByBudget,
   applyAnalysisStoryAndRoutineSoftGate,
