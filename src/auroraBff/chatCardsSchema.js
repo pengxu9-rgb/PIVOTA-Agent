@@ -16,6 +16,10 @@ const CHAT_CARD_TYPES = [
   'diagnosis_gate',
   'analysis_summary',
   'analysis_story_v2',
+  'diagnosis_v2_login_prompt',
+  'diagnosis_v2_intro',
+  'diagnosis_v2_photo_prompt',
+  'diagnosis_v2_result',
   'confidence_notice',
   'budget_gate',
   'gate_notice',
@@ -118,5 +122,9 @@ const ChatCardsResponseSchema = z
 
 module.exports = {
   CHAT_CARD_TYPES,
+  CardActionSchema,
+  QuickReplySchema,
+  FollowUpQuestionSchema,
+  ChatCardSchema,
   ChatCardsResponseSchema,
 };

@@ -594,6 +594,18 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   if (type === 'gate_notice') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '门控提示' : 'Gate notice' })];
   }
+  if (type === 'diagnosis_v2_login_prompt') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '登录后诊断更准确' : 'Log in for better diagnosis' })];
+  }
+  if (type === 'diagnosis_v2_intro') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '选择你的护肤目标' : 'Choose your skincare goals' })];
+  }
+  if (type === 'diagnosis_v2_photo_prompt') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '拍照提升准确度' : 'Photo for better accuracy' })];
+  }
+  if (type === 'diagnosis_v2_result') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '你的皮肤诊断报告' : 'Your skin diagnosis report' })];
+  }
   if (type === 'ingredient_plan' || type === 'ingredient_plan_v2' || type === 'routine_prompt') {
     return [buildRoutineCard({ card, requestId, index, language })];
   }

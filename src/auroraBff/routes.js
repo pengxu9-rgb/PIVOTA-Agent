@@ -38589,6 +38589,9 @@ function getRequiredRouteContractsHealth() {
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
+  const { mountDiagnosisV2Routes } = require('./diagnosisV2Routes');
+  const { createDiagnosisV2LlmProvider } = require('./diagnosisV2LlmProvider');
+  mountDiagnosisV2Routes(app, { logger, llmProvider: createDiagnosisV2LlmProvider() });
   preflightAuroraKbV0ForStartup({ logger });
   startPdpHotsetPrewarmLoop({ logger });
   if (PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !PIVOTA_BACKEND_BASE_URL) {
