@@ -18,3 +18,15 @@ test('CORS preflight advertises PATCH in Access-Control-Allow-Methods', async ()
   const methods = String(resp.headers['access-control-allow-methods'] || '');
   assert.match(methods, /\bPATCH\b/);
 });
+
+test('CORS preflight allows the Aurora Chatbox production Vercel origin', async () => {
+  const resp = await supertest(app)
+    .options('/v1/travel-plans')
+    .set('Origin', 'https://pivota-aurora-chatbox.vercel.app')
+    .set('Access-Control-Request-Method', 'GET')
+    .set('Access-Control-Request-Headers', 'content-type,x-aurora-uid')
+    .expect(204);
+
+  assert.equal(resp.headers['access-control-allow-origin'], 'https://pivota-aurora-chatbox.vercel.app');
+  assert.equal(resp.headers['access-control-allow-credentials'], 'true');
+});
