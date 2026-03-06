@@ -228,6 +228,24 @@ function extractMeta(body) {
   ) {
     return body.session_patch.meta;
   }
+  if (body && body.telemetry && typeof body.telemetry === 'object' && !Array.isArray(body.telemetry)) {
+    const telemetry = body.telemetry;
+    const mapped = {};
+    const intent = String(telemetry.intent || '').trim();
+    const gateType = String(telemetry.gate_type || '').trim();
+    const intentSource = String(telemetry.intent_source || '').trim();
+    if (intent) mapped.intent_canonical = intent;
+    if (gateType) mapped.gate_type = gateType;
+    if (Object.prototype.hasOwnProperty.call(telemetry, 'env_source')) {
+      mapped.env_source = telemetry.env_source == null ? null : String(telemetry.env_source).trim() || null;
+    }
+    if (typeof telemetry.degraded === 'boolean') mapped.degraded = telemetry.degraded;
+    if (Array.isArray(telemetry.required_fields)) {
+      mapped.required_fields = telemetry.required_fields.map((field) => String(field || '').trim()).filter(Boolean);
+    }
+    if (intentSource) mapped.intent_source = intentSource;
+    return Object.keys(mapped).length > 0 ? mapped : null;
+  }
   return null;
 }
 
@@ -469,6 +487,25 @@ function hasEpiSignalInEnvStressCard(cards) {
   );
 }
 
+function hasEpiSignalInTravelCard(cards) {
+  if (!Array.isArray(cards) || !cards.length) return false;
+  const travelCards = cards.filter((item) => item && String(item.type || '') === 'travel');
+  for (const card of travelCards) {
+    if (!card || typeof card !== 'object') continue;
+    if (isPlainObject(card.payload) && hasNonEmptyValue(card.payload.epi)) {
+      return true;
+    }
+    const sections = Array.isArray(card.sections) ? card.sections : [];
+    for (const section of sections) {
+      const envPayload = isPlainObject(section && section.env_payload) ? section.env_payload : null;
+      if (envPayload && hasNonEmptyValue(envPayload.epi)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function buildHeaderMap(inputHeaders = {}) {
   const out = {};
   for (const [k, v] of Object.entries(inputHeaders || {})) {
@@ -611,7 +648,7 @@ function evaluateCase({ caseDef, turnDef, turnIndex, mode, status, body, headers
         !hit &&
         !cardHit &&
         expectationMentionsEpi(expectation.assistant_contains_any) &&
-        hasEpiSignalInEnvStressCard(cards);
+        (hasEpiSignalInEnvStressCard(cards) || hasEpiSignalInTravelCard(cards));
       if (!hit && !cardHit && !epiFallbackHit) {
         errors.push(`assistant content missing any of [${expectation.assistant_contains_any.join(', ')}]`);
       }
@@ -1245,6 +1282,8 @@ module.exports = {
     extractMeta,
     extractTravelMissingFields,
     extractRequiredFields,
+    hasEpiSignalInEnvStressCard,
+    hasEpiSignalInTravelCard,
     evaluateCase,
     summarizeResults,
     checkHeaderMetaMismatch,
