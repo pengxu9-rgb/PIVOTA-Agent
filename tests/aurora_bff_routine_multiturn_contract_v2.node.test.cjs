@@ -89,6 +89,35 @@ test('travel/env suppression keeps routine expert summary when preserve flag ena
   assert.deepEqual(suppressed.map((card) => card.type), ['analysis_summary', 'travel']);
 });
 
+test('story-only mode helper preserves summary when routine expert exists', () => {
+  const cards = [
+    {
+      type: 'analysis_summary',
+      payload: {
+        analysis: {
+          routine_expert: {
+            snapshot: { focus: 'barrier' },
+          },
+        },
+      },
+    },
+    { type: 'analysis_story_v2', payload: { summary: 'story' } },
+  ];
+  assert.equal(routes.__internal.shouldPreserveRoutineExpertSummaryCard(cards), true);
+});
+
+test('story-only mode helper does not preserve summary without routine expert', () => {
+  const cards = [
+    {
+      type: 'analysis_summary',
+      payload: {
+        analysis: {},
+      },
+    },
+  ];
+  assert.equal(routes.__internal.shouldPreserveRoutineExpertSummaryCard(cards), false);
+});
+
 test('travel/env suppression removes analysis summary when preserve flag disabled', () => {
   const cards = [
     {
