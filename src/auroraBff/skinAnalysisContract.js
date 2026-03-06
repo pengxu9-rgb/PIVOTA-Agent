@@ -686,13 +686,13 @@ function validateVisionObservation(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
   const errors = [];
   if (!p) return { ok: false, errors: ['/ must be object'] };
-  const allowed = new Set(['features', 'needs_risk_check', 'quality_note', 'observations', 'limits']);
+  const allowed = new Set(['features', 'needs_risk_check', 'quality_note', 'observations', 'limits', 'insufficient_visual_detail']);
   for (const key of Object.keys(p)) {
     if (!allowed.has(key)) errors.push(`/${key} is not allowed`);
   }
 
   const hasLegacyShape = Array.isArray(p.features) || typeof p.needs_risk_check === 'boolean';
-  const hasNewShape = Array.isArray(p.observations) || p.quality_note != null || p.limits != null;
+  const hasNewShape = Array.isArray(p.observations) || p.quality_note != null || p.limits != null || typeof p.insufficient_visual_detail === 'boolean';
   if (!hasLegacyShape && !hasNewShape) {
     errors.push('/ must include either legacy (features/needs_risk_check) or new (observations) fields');
   }
@@ -711,6 +711,9 @@ function validateVisionObservation(payload) {
   }
   if (p.limits != null) {
     errors.push(...validateStringArray(p.limits, { path: '/limits', maxItems: 6, maxLen: 180 }));
+  }
+  if (p.insufficient_visual_detail != null && typeof p.insufficient_visual_detail !== 'boolean') {
+    errors.push('/insufficient_visual_detail must be boolean');
   }
 
   return { ok: errors.length === 0, errors };
