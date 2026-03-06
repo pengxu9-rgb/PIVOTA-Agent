@@ -192,13 +192,13 @@ function inferGateTypeFromEnvelope(envelope) {
       .filter(Boolean),
   );
   if (
-    eventNames.has('safety_gate_block') ||
     eventNames.has('safety_gate_require_info') ||
     eventNames.has('anchor_collection_waiting_input')
   ) {
     return 'hard';
   }
   if (
+    eventNames.has('safety_gate_block') ||
     eventNames.has('safety_advisory_inline') ||
     eventNames.has('gate_advisory_inline') ||
     eventNames.has('fitcheck_anchor_requested')
@@ -208,9 +208,23 @@ function inferGateTypeFromEnvelope(envelope) {
   return '';
 }
 
+function gateTypeRank(value) {
+  const token = asString(value).toLowerCase();
+  if (token === 'hard') return 2;
+  if (token === 'soft') return 1;
+  return 0;
+}
+
+function mergeGateType(metaGateType, inferredGateType) {
+  return gateTypeRank(inferredGateType) > gateTypeRank(metaGateType)
+    ? asString(inferredGateType)
+    : asString(metaGateType || inferredGateType);
+}
+
 function buildCompatTelemetry({ envelope } = {}) {
   const meta = extractEnvelopeMeta(envelope);
-  const gateType = asString(meta.gate_type) || inferGateTypeFromEnvelope(envelope);
+  const inferredGateType = inferGateTypeFromEnvelope(envelope);
+  const gateType = mergeGateType(meta.gate_type, inferredGateType);
   const requiredFields = normalizeCompatRequiredFields(meta.required_fields, 8);
   const out = {};
 
