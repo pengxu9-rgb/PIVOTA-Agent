@@ -11,6 +11,47 @@ function normalizeJsonbParam(value) {
   return JSON.stringify(value);
 }
 
+async function upsertActiveRoutinePointerForIdentity({ auroraUid, userId, routineId, currentRoutine }) {
+  if (userId) {
+    await query(
+      `
+        INSERT INTO aurora_account_profiles (
+          user_id,
+          active_routine_id,
+          current_routine,
+          updated_at
+        )
+        VALUES ($1, $2, $3, now())
+        ON CONFLICT (user_id) DO UPDATE SET
+          active_routine_id = EXCLUDED.active_routine_id,
+          current_routine = EXCLUDED.current_routine,
+          updated_at = now(),
+          deleted_at = NULL
+      `,
+      [userId, routineId, normalizeJsonbParam(currentRoutine || null)],
+    );
+    return;
+  }
+
+  await query(
+    `
+      INSERT INTO aurora_user_profiles (
+        aurora_uid,
+        active_routine_id,
+        current_routine,
+        updated_at
+      )
+      VALUES ($1, $2, $3, now())
+      ON CONFLICT (aurora_uid) DO UPDATE SET
+        active_routine_id = EXCLUDED.active_routine_id,
+        current_routine = EXCLUDED.current_routine,
+        updated_at = now(),
+        deleted_at = NULL
+    `,
+    [auroraUid, routineId, normalizeJsonbParam(currentRoutine || null)],
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Read
 // ---------------------------------------------------------------------------
@@ -80,13 +121,12 @@ async function saveRoutineVersion({ auroraUid, userId, routineId, label, intensi
     ],
   );
 
-  const table = userId ? 'aurora_account_profiles' : 'aurora_user_profiles';
-  const idCol = userId ? 'user_id' : 'aurora_uid';
-  const idVal = userId || auroraUid;
-  await query(
-    `UPDATE ${table} SET active_routine_id = $1, current_routine = $2, updated_at = now() WHERE ${idCol} = $3`,
-    [rid, normalizeJsonbParam({ am: amSteps, pm: pmSteps }), idVal],
-  );
+  await upsertActiveRoutinePointerForIdentity({
+    auroraUid: auroraUid || null,
+    userId: userId || null,
+    routineId: rid,
+    currentRoutine: { am: amSteps, pm: pmSteps },
+  });
 
   return { routine_id: rid, version_id: vid };
 }
