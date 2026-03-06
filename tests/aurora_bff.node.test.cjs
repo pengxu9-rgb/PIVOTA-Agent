@@ -4029,6 +4029,109 @@ test('/v1/chat: ingredient science bypasses budget gate in S6_BUDGET and asks sc
   });
 });
 
+test('/v1/chat: ingredient science target chip returns aurora_ingredient_report (no routine fallback)', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'GEMINI_JSON_TIMEOUT',
+          detail: 'timed out after 9000ms',
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({
+            'X-Aurora-UID': 'test_uid_science_chip_target',
+            'X-Trace-ID': 'test_trace_science_chip_target',
+            'X-Brief-ID': 'test_brief_science_chip_target',
+            'X-Lang': 'EN',
+          })
+          .send({
+            action: {
+              action_id: 'chip.science.target.niacinamide',
+              kind: 'chip',
+              data: {
+                reply_text: 'Ingredient science: niacinamide - explain evidence strength, who it fits, and key risks.',
+              },
+            },
+            language: 'EN',
+          });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const report = cards.find((card) => String(card?.type || '') === 'aurora_ingredient_report');
+        const reasons = Array.isArray(report?.payload?.route_decision_reasons) ? report.payload.route_decision_reasons : [];
+        assert.ok(report);
+        assert.equal(report?.payload?.normalized_query, 'niacinamide');
+        assert.equal(reasons.includes('chip_query_routed'), true);
+        assert.equal(/rules-based fallback/i.test(String(resp.body?.assistant_message?.content || '')), false);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: ingredient science goal chip returns ingredient_goal_match in S6_BUDGET', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const moduleId = require.resolve('../src/auroraBff/routes');
+    delete require.cache[moduleId];
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const resp = await supertest(app)
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'test_uid_science_goal_chip_budget_state',
+        'X-Trace-ID': 'test_trace_science_goal_chip_budget_state',
+        'X-Brief-ID': 'test_brief_science_goal_chip_budget_state',
+        'X-Lang': 'EN',
+      })
+      .send({
+        action: {
+          action_id: 'chip.science.goal.brightening',
+          kind: 'chip',
+          data: {
+            reply_text: 'Science-only: explain ingredient mechanisms/evidence for dark spots and brightening (no product picks yet).',
+          },
+        },
+        session: { state: 'S6_BUDGET' },
+        client_state: 'RECO_GATE',
+        language: 'EN',
+      });
+
+    assert.equal(resp.status, 200);
+    const cardTypes = Array.isArray(resp.body?.cards) ? resp.body.cards.map((card) => String(card?.type || '')) : [];
+    assert.equal(cardTypes.includes('ingredient_goal_match'), true);
+    assert.equal(cardTypes.includes('budget_gate'), false);
+    assert.equal(cardTypes.includes('analysis_story_v2'), false);
+
+    delete require.cache[moduleId];
+  });
+});
+
 test('ingredient research: gemini-only path never calls openai even when OPENAI_API_KEY exists', async () => {
   return withEnv(
     {

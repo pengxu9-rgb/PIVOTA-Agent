@@ -47602,13 +47602,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? extractIngredientLookupQuery(normalizedActionPayload)
         : '';
       const ingredientTextMessage = String(message || '').trim();
-      const ingredientLookupTargetFromText = ingredientTextTrigger
+      const shouldExtractIngredientTarget = ingredientTextTrigger || ingredientScienceIntent;
+      const ingredientLookupTargetFromText = shouldExtractIngredientTarget
         ? extractIngredientLookupTargetFromText(message, ctx.lang)
         : '';
-      const ingredientEntityMatch = ingredientTextTrigger
+      const ingredientEntityMatch = shouldExtractIngredientTarget
         ? ingredientEntityMatchFromText(message, ctx.lang)
         : { normalized_query: '', entity_key: '', entity_match_type: 'none', entity_confidence: 0 };
-      if (ingredientTextTrigger && ingredientEntityMatch.entity_match_type !== 'none') {
+      if (shouldExtractIngredientTarget && ingredientEntityMatch.entity_match_type !== 'none') {
         pushIngredientRouteDecision(`entity_${ingredientEntityMatch.entity_match_type}_match`);
       }
       const ingredientFallbackSuppressed = Boolean(
@@ -47641,6 +47642,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientGoalRequest = ingredientByGoalRequested
         ? extractIngredientGoalRequest(normalizedActionPayload)
         : { goal: '', sensitivity: 'unknown' };
+      const ingredientGoalFromMessage = ingredientByGoalRequested ? '' : normalizeIngredientGoalToken(message);
       const ingredientActionData = extractActionDataObject(normalizedActionPayload);
       const sessionMetaInput =
         parsed.data &&
@@ -48124,6 +48126,73 @@ function mountAuroraBffRoutes(app, { logger }) {
           events,
         });
       };
+      const buildIngredientGoalMatchEnvelope = async ({
+        goal = 'barrier',
+        sensitivity = 'unknown',
+        routeSource = 'chip',
+        reasonTag = 'ingredient_goal_match',
+        explicitRouteReasons = [],
+      } = {}) => {
+        const requestedGoal = normalizeIngredientGoalToken(goal) || 'barrier';
+        const requestedSensitivity = normalizeIngredientSensitivityToken(sensitivity);
+        const goalContextSource = routeSource === 'text' ? 'text_goal' : 'chip_goal';
+        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+          goal: requestedGoal,
+          sensitivity: requestedSensitivity,
+          source: goalContextSource,
+          updated_at_ms: Date.now(),
+        });
+        const goalPayloadBase = buildIngredientGoalMatchPayload({
+          language: ctx.lang,
+          goal: requestedGoal,
+          sensitivity: requestedSensitivity,
+        });
+        const goalPayload = await enrichIngredientGoalMatchPayload({
+          basePayload: goalPayloadBase,
+          language: ctx.lang,
+          goal: requestedGoal,
+          sensitivity: requestedSensitivity,
+          logger,
+        });
+        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+          candidates: Array.isArray(goalPayload && goalPayload.candidate_ingredients)
+            ? goalPayload.candidate_ingredients.map((item) =>
+              pickFirstTrimmed(item && item.ingredient, item && item.name),
+            ).filter(Boolean)
+            : [],
+          source: goalContextSource,
+          updated_at_ms: Date.now(),
+        });
+        const assistantText =
+          ctx.lang === 'CN'
+            ? `已按“${goalPayload.goal_label}”给你整理候选成分与避坑组合。`
+            : `I mapped candidate ingredients and avoid-pairs for “${goalPayload.goal_label}”.`;
+        return buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
+          cards: [
+            {
+              card_id: `ingredient_goal_match_${ctx.request_id}`,
+              type: 'ingredient_goal_match',
+              payload: goalPayload,
+            },
+          ],
+          session_patch: attachIngredientContextMetaToSessionPatch(
+            attachIngredientRouteMetaToSessionPatch(
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+              {
+                routeSource,
+                routeDecisionReasons: Array.isArray(explicitRouteReasons)
+                  ? explicitRouteReasons.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 12)
+                  : [],
+                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+              },
+            ),
+            ingredientRecoContext,
+          ),
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: reasonTag })],
+        });
+      };
       if (ingredientEntryRequested) {
         recordAuroraIngredientsFlowMetric({ stage: 'entry_opened', hit: true });
       }
@@ -48380,61 +48449,13 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       if (ingredientByGoalRequested) {
-        const requestedGoal = ingredientGoalRequest.goal || 'barrier';
-        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
-          goal: requestedGoal,
-          sensitivity: ingredientGoalRequest.sensitivity,
-          source: ingredientTextTrigger ? 'text_goal' : 'chip_goal',
-          updated_at_ms: Date.now(),
-        });
-        const goalPayloadBase = buildIngredientGoalMatchPayload({
-          language: ctx.lang,
-          goal: requestedGoal,
-          sensitivity: ingredientGoalRequest.sensitivity,
-        });
-        const goalPayload = await enrichIngredientGoalMatchPayload({
-          basePayload: goalPayloadBase,
-          language: ctx.lang,
-          goal: requestedGoal,
-          sensitivity: ingredientGoalRequest.sensitivity,
-          logger,
-        });
-        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
-          candidates: Array.isArray(goalPayload && goalPayload.candidate_ingredients)
-            ? goalPayload.candidate_ingredients.map((item) =>
-              pickFirstTrimmed(item && item.ingredient, item && item.name),
-            ).filter(Boolean)
-            : [],
-          source: ingredientTextTrigger ? 'text_goal' : 'chip_goal',
-          updated_at_ms: Date.now(),
-        });
-        const assistantText =
-          ctx.lang === 'CN'
-            ? `已按“${goalPayload.goal_label}”给你整理候选成分与避坑组合。`
-            : `I mapped candidate ingredients and avoid-pairs for “${goalPayload.goal_label}”.`;
         requestMessage = 'ingredient_goal_match';
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
-          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
-          cards: [
-            {
-              card_id: `ingredient_goal_match_${ctx.request_id}`,
-              type: 'ingredient_goal_match',
-              payload: goalPayload,
-            },
-          ],
-          session_patch: attachIngredientContextMetaToSessionPatch(
-            attachIngredientRouteMetaToSessionPatch(
-              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-              {
-                routeSource: 'chip',
-                routeDecisionReasons: ['goal_match', ...ingredientRouteDecisionReasons],
-                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
-              },
-            ),
-            ingredientRecoContext,
-          ),
-          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
+        const envelope = await buildIngredientGoalMatchEnvelope({
+          goal: ingredientGoalRequest.goal || 'barrier',
+          sensitivity: ingredientGoalRequest.sensitivity,
+          routeSource: ingredientTextTrigger ? 'text' : 'chip',
+          reasonTag: 'ingredient_goal_match',
+          explicitRouteReasons: ['goal_match', ...ingredientRouteDecisionReasons],
         });
         return sendChatEnvelope(envelope);
       }
@@ -49683,11 +49704,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      const ingredientLookupTargetProvided =
-        Boolean(ingredientLookupQuery) ||
-        Boolean(ingredientLookupTargetFromText) ||
-        messageContainsSpecificIngredientScienceTarget(message);
-      const shouldKickoffIngredientScience =
+      const ingredientStandaloneScienceEligible =
         ingredientScienceIntentEffective &&
         !ingredientEntryRequested &&
         !ingredientByGoalRequested &&
@@ -49697,8 +49714,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         !looksLikeCompatibilityOrConflictQuestion(message) &&
-        !looksLikeWeatherOrEnvironmentQuestion(message) &&
-        !ingredientLookupTargetProvided;
+        !looksLikeWeatherOrEnvironmentQuestion(message);
+      const ingredientLookupTargetProvided =
+        Boolean(ingredientLookupQuery) ||
+        Boolean(ingredientLookupTargetFromText) ||
+        (ingredientTextTrigger && messageContainsSpecificIngredientScienceTarget(message));
+      const ingredientGoalTargetProvided =
+        Boolean(ingredientGoalRequest.goal) ||
+        (!ingredientLookupTargetFromText && Boolean(ingredientGoalFromMessage));
+      const shouldKickoffIngredientScience =
+        ingredientStandaloneScienceEligible &&
+        !ingredientLookupTargetProvided &&
+        !ingredientGoalTargetProvided;
 
       if (shouldKickoffIngredientScience) {
         const kickoff = buildIngredientScienceKickoff({ language: ctx.lang });
@@ -49717,6 +49744,47 @@ function mountAuroraBffRoutes(app, { logger }) {
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_science_clarify' })],
         });
         return sendChatEnvelope(envelope);
+      }
+
+      if (
+        ingredientStandaloneScienceEligible &&
+        !ingredientTextTrigger &&
+        ingredientLookupTargetFromText
+      ) {
+        recordAuroraIngredientsFlowMetric({ stage: 'chip_query_routed', hit: true });
+        ingredientReplayContext.route_source = 'chip';
+        requestMessage = 'ingredient_chip_lookup_report';
+        const envelope = await buildIngredientLookupEnvelope({
+          lookupTarget: ingredientLookupTargetFromText,
+          routeSource: 'chip',
+          queryFirstApplied: false,
+          reasonTag: 'ingredient_chip_lookup_report',
+          explicitRouteReasons: ['chip_query_routed', ...ingredientRouteDecisionReasons],
+        });
+        if (envelope) return sendChatEnvelope(envelope);
+      }
+
+      if (
+        ingredientStandaloneScienceEligible &&
+        !ingredientTextTrigger &&
+        !ingredientLookupTargetFromText &&
+        ingredientGoalFromMessage
+      ) {
+        recordAuroraIngredientsFlowMetric({ stage: 'chip_goal_routed', hit: true });
+        ingredientReplayContext.route_source = 'chip';
+        requestMessage = 'ingredient_chip_goal_match';
+        const envelope = await buildIngredientGoalMatchEnvelope({
+          goal: ingredientGoalFromMessage,
+          sensitivity:
+            pickFirstTrimmed(
+              ingredientRecoContext && ingredientRecoContext.sensitivity,
+              ingredientActionData && ingredientActionData.sensitivity,
+            ) || 'unknown',
+          routeSource: 'chip',
+          reasonTag: 'ingredient_chip_goal_match',
+          explicitRouteReasons: ['chip_goal_routed', ...ingredientRouteDecisionReasons],
+        });
+        if (envelope) return sendChatEnvelope(envelope);
       }
 
       if (isBudgetOptimizationEntryAction(actionId) && allowRecoCards) {
@@ -52386,7 +52454,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const existingRoutineExpert = findRoutineExpertNodeFromEnvelope({ cards: assembledCards });
       const needsRoutineFallbackModules = !hasRoutineExpertRequiredModules(existingRoutineExpert);
       const stallLikeResponse = looksLikeStallPhrase(safeAnswer) || looksLikeGenericStructuredNotice(safeAnswer);
-      if (routineLikeContext && needsRoutineFallbackModules) {
+      if (routineLikeContext && needsRoutineFallbackModules && !skipRoutineRulesFallback) {
         const fallbackReason = !assembledRenderable && !stallLikeResponse ? 'timeout_degraded' : 'default';
         const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
           ctx,
