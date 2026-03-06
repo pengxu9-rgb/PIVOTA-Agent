@@ -16222,7 +16222,6 @@ async function runGeminiVisionSkinAnalysis({
                 responseMimeType: 'application/json',
               },
             },
-            },
           }),
           SKIN_VISION_TIMEOUT_MS,
         );
