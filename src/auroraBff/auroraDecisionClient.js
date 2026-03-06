@@ -48,12 +48,15 @@ async function postWithRetry(url, body, { timeoutMs, retries, retryDelayMs, head
   throw lastErr || new Error('Upstream request failed');
 }
 
-function buildContextPrefix({ profile, recentLogs, ingredient_kb_context, ...meta } = {}) {
+function buildContextPrefix({ profile, recentLogs, ingredient_kb_context, skin_analysis_context, ...meta } = {}) {
   const lines = [];
   if (profile) lines.push(`profile=${JSON.stringify(profile)}`);
   if (Array.isArray(recentLogs) && recentLogs.length) lines.push(`recent_logs=${JSON.stringify(recentLogs)}`);
   if (ingredient_kb_context && typeof ingredient_kb_context === 'string' && ingredient_kb_context.trim()) {
     lines.push(ingredient_kb_context.trim());
+  }
+  if (skin_analysis_context && typeof skin_analysis_context === 'string' && skin_analysis_context.trim()) {
+    lines.push(skin_analysis_context.trim());
   }
   const metaCompact = {};
   for (const [k, v] of Object.entries(meta || {})) {

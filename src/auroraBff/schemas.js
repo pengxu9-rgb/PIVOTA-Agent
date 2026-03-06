@@ -25,7 +25,7 @@ const SuggestedChipSchema = z
   .object({
     chip_id: z.string().min(1),
     label: z.string().min(1),
-    kind: z.enum(['quick_reply', 'action']).optional(),
+    kind: z.enum(['quick_reply', 'action', 'follow_up']).optional(),
     data: z.record(z.string(), z.any()).optional(),
   })
   .strict();

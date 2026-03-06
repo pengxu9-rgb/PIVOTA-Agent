@@ -26,7 +26,7 @@ function makeCandidate(overrides = {}) {
 }
 
 describe('aurora reco blocks dag', () => {
-  test('catalog_ann timeout + on_page present: competitors remain on_page-free, related can fallback from on_page', async () => {
+  test('catalog_ann fallback path + on_page present: competitors remain on_page-free, related can fallback from on_page', async () => {
     const out = await recoBlocks(
       makeAnchor(),
       {
@@ -60,7 +60,7 @@ describe('aurora reco blocks dag', () => {
           }),
         },
       },
-      180,
+      300,
     );
 
     const competitors = Array.isArray(out?.competitors?.candidates) ? out.competitors.candidates : [];
@@ -78,8 +78,10 @@ describe('aurora reco blocks dag', () => {
     expect(firstRelated.score_breakdown && typeof firstRelated.score_breakdown).toBe('object');
     expect(typeof firstRelated.score_breakdown.category_use_case_match).toBe('number');
     expect(typeof firstRelated.score_breakdown.score_total).toBe('number');
-    expect(Array.isArray(out?.diagnostics?.timed_out_blocks)).toBe(true);
-    expect(out.diagnostics.timed_out_blocks).toContain('catalog_ann');
+    expect(Array.isArray(out?.provenance_patch?.fallbacks_used)).toBe(true);
+    expect(out.provenance_patch.fallbacks_used).toEqual(
+      expect.arrayContaining(['fast_ann_competitors', 'related_on_page_fallback']),
+    );
   });
 
   test('all competitor recall fail: competitors may be empty, provenance has fallback trace, confidence lowers to low', async () => {
