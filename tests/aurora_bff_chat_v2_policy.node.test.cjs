@@ -23,6 +23,13 @@ test('intent canonical detects ingredient science from bilingual patterns', () =
   assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
 });
 
+test('intent canonical keeps pregnancy + retinol safety ask on ingredient_science', () => {
+  const out = inferCanonicalIntent({
+    message: 'I am pregnant. Can I use retinol?',
+  });
+  assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
+});
+
 test('intent canonical maps ingredient entry action to ingredient science', () => {
   const out = inferCanonicalIntent({
     message: '',
@@ -62,6 +69,14 @@ test('intent canonical prefers travel_planning when travel cue and weather words
     message: 'Travel next week skincare: weather and UV advice please',
   });
   assert.equal(out.intent, INTENT_ENUM.TRAVEL_PLANNING);
+});
+
+test('intent canonical trims trailing clause from English travel destination extraction', () => {
+  const out = inferCanonicalIntent({
+    message: 'I will travel to Paris and need AM/PM weather-aware skincare.',
+  });
+  assert.equal(out.intent, INTENT_ENUM.TRAVEL_PLANNING);
+  assert.equal(out.entities.destination, 'Paris');
 });
 
 test('qa planner produces soft gate for recommendation with missing core profile', () => {
@@ -205,6 +220,21 @@ test('safety engine warns for travel + high UV + acids', () => {
   assert.equal(result.block_level, BLOCK_LEVEL.WARN);
   assert.ok(Array.isArray(result.matched_rules));
   assert.ok(result.matched_rules.some((rule) => /travel|uv|acid|legacy:i4|kb_v0:/i.test(String(rule.id || ''))));
+});
+
+test('safety engine does not leak travel-required fields for generic travel weather query', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.TRAVEL_PLANNING,
+    message: 'I will travel to Paris and need AM/PM weather-aware skincare.',
+    profile: {
+      pregnancy_status: 'not_pregnant',
+      age_band: 'adult',
+    },
+    language: 'EN',
+  });
+
+  assert.ok(!result.required_fields.includes('travel_destination'));
+  assert.ok(!result.required_fields.includes('travel_dates'));
 });
 
 test('safety engine blocks lactating + oral isotretinoin', () => {

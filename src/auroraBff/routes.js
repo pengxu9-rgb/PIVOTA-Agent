@@ -47292,9 +47292,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           .map((field) => String(field || '').trim())
           .filter(Boolean);
         policyMeta.required_fields = requiredFields.slice(0, 8);
-        if (blockLevel === BLOCK_LEVEL.BLOCK || blockLevel === BLOCK_LEVEL.REQUIRE_INFO) {
+        if (blockLevel === BLOCK_LEVEL.REQUIRE_INFO) {
           policyMeta.gate_type = 'hard';
-        } else if (blockLevel === BLOCK_LEVEL.WARN && policyMeta.gate_type === 'none') {
+        } else if (
+          (blockLevel === BLOCK_LEVEL.BLOCK || blockLevel === BLOCK_LEVEL.WARN) &&
+          policyMeta.gate_type === 'none'
+        ) {
           policyMeta.gate_type = 'soft';
         }
         const optionalRequiredFields = requiredFields.filter((field) => OPTIONAL_SAFETY_PROFILE_FIELDS.includes(field));
