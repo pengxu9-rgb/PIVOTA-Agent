@@ -382,7 +382,8 @@ async function runGeminiVisionStrategy({
     };
   }
 
-  const validation = validateVisionObservation(response.parsed);
+  const normalizedLayer = normalizeVisionObservationLayer(response.parsed);
+  const validation = validateVisionObservation(normalizedLayer);
   if (!validation.ok) {
     return {
       ok: false,
@@ -404,7 +405,7 @@ async function runGeminiVisionStrategy({
     provider: 'gemini',
     reason: null,
     schema_violation: false,
-    analysis: normalizeVisionObservationLayer(response.parsed),
+    analysis: normalizedLayer,
     retry: { attempted: 0, final: 'success', last_reason: null },
     upstream_status_code: response.upstream_status_code,
     latency_ms: response.latency_ms,

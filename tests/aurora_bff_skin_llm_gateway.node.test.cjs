@@ -55,6 +55,7 @@ test('skin llm gateway contract: accepts and normalizes new vision output shape'
   assert.equal(normalized.features.length >= 2, true);
   assert.equal(Array.isArray(normalized.observations), true);
   assert.equal(normalized.observations.length, 2);
+  assert.equal(validateVisionObservation(normalized).ok, true);
 });
 
 test('skin llm gateway contract: accepts and normalizes legacy + new report output shape', () => {
