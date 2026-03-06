@@ -20359,14 +20359,24 @@ function derivePregnancyPolicyPatch({ profile, message, todayUtc } = {}) {
   }
 
   if (status === 'unknown') {
-    status = 'not_pregnant';
-    dueDate = null;
-    patch.pregnancy_status = 'not_pregnant';
-    patch.pregnancy_due_date = null;
-    events.push({
-      event_name: 'pregnancy_status_defaulted',
-      data: { default_status: 'not_pregnant', reason: 'missing_or_unknown', effective_date_utc: nowUtc },
-    });
+    const hasSafetySensitiveActiveMention = /(retinoid|retinol|tretinoin|adapalene|hydroquinone|isotretinoin|accutane|a醇|维a|维甲酸|阿达帕林|氢醌|异维a酸)/i.test(
+      text,
+    );
+    const hasConflictCue = /same\s+night|together|combine|mix|搭配|冲突|同晚|一起|叠加|能不能一起|能否一起/i.test(text);
+    const hasExplicitPregnancySignal = /pregnan|trying to conceive|ttc|备孕|怀孕|not\s+pregnant|未怀孕/i.test(text);
+    const shouldDefaultUnknownToNotPregnant =
+      !hasSafetySensitiveActiveMention || hasConflictCue || hasExplicitPregnancySignal;
+
+    if (shouldDefaultUnknownToNotPregnant) {
+      status = 'not_pregnant';
+      dueDate = null;
+      patch.pregnancy_status = 'not_pregnant';
+      patch.pregnancy_due_date = null;
+      events.push({
+        event_name: 'pregnancy_status_defaulted',
+        data: { default_status: 'not_pregnant', reason: 'missing_or_unknown', effective_date_utc: nowUtc },
+      });
+    }
   }
 
   return {
@@ -45187,6 +45197,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       gate_policy_version: AURORA_GATE_POLICY_META_VERSION,
       gate_decisions: [],
       advisory_count: 0,
+      required_fields: [],
       degraded: false,
     };
     const gateDecisions = [];
@@ -45456,6 +45467,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           : {};
       sessionMeta.safety_gate_mode = 'advisory_only_v1';
       sessionMeta.safety_advisory_emitted = Boolean(advisory);
+      if (advisory && Array.isArray(advisory.required_fields) && advisory.required_fields.length > 0) {
+        sessionMeta.required_fields = advisory.required_fields.slice(0, 8);
+      } else if (Object.prototype.hasOwnProperty.call(sessionMeta, 'required_fields')) {
+        delete sessionMeta.required_fields;
+      }
       if (advisory && Array.isArray(advisory.missing_optional_fields) && advisory.missing_optional_fields.length > 0) {
         sessionMeta.safety_missing_optional_fields = advisory.missing_optional_fields.slice(0, 6);
       } else if (Object.prototype.hasOwnProperty.call(sessionMeta, 'safety_missing_optional_fields')) {
@@ -45478,6 +45494,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (!advisory) return base;
 
       const events = Array.isArray(base.events) ? base.events.slice(0, 96) : [];
+      const advisoryBlockLevel = String(advisory.block_level || '').trim();
       if (!events.some((evt) => evt && evt.event_name === 'safety_advisory_inline')) {
         events.push(
           makeEvent(ctx, 'safety_advisory_inline', {
@@ -45487,7 +45504,38 @@ function mountAuroraBffRoutes(app, { logger }) {
           }),
         );
       }
+      if (
+        advisoryBlockLevel === BLOCK_LEVEL.REQUIRE_INFO &&
+        !events.some((evt) => evt && evt.event_name === 'safety_gate_require_info')
+      ) {
+        events.push(
+          makeEvent(ctx, 'safety_gate_require_info', {
+            intent: canonicalIntentForResponse && canonicalIntentForResponse.intent
+              ? canonicalIntentForResponse.intent
+              : INTENT_ENUM.UNKNOWN,
+            required_fields: Array.isArray(advisory.required_fields) ? advisory.required_fields.slice(0, 4) : [],
+            question: advisory.required_question || null,
+          }),
+        );
+      }
       base.events = events;
+
+      if (advisoryBlockLevel === BLOCK_LEVEL.REQUIRE_INFO) {
+        const requiredQuestion = String(advisory.required_question || '').trim();
+        if (requiredQuestion) {
+          const assistantMessage =
+            base.assistant_message && typeof base.assistant_message === 'object' && !Array.isArray(base.assistant_message)
+              ? { ...base.assistant_message }
+              : { role: 'assistant', content: '', format: 'text' };
+          const assistantContent = String(assistantMessage.content || '').trim();
+          if (!assistantContent.toLowerCase().includes(requiredQuestion.toLowerCase())) {
+            assistantMessage.content = assistantContent
+              ? `${assistantContent}\n\n${requiredQuestion}`
+              : requiredQuestion;
+            base.assistant_message = assistantMessage;
+          }
+        }
+      }
 
       return base;
     };
@@ -46504,8 +46552,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionLabel,
         language: ctx.match_lang || ctx.lang,
       });
+      const hasMedicationRiskSignal = /\b(isotretinoin|accutane|roaccutane)\b|异维a酸|罗可坦|泰尔丝/i.test(String(message || ''));
       if (
         AURORA_ROUTER_DST_PATCH_V1_ENABLED &&
+        !hasMedicationRiskSignal &&
         hasRoutineSosSignal(message) &&
         (
           canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT ||
@@ -47182,12 +47232,32 @@ function mountAuroraBffRoutes(app, { logger }) {
         policyMeta.gate_type = plannerDecision.gate_type || 'none';
         policyMeta.loop_count = Number(plannerDecision.loop_count) || 0;
         policyMeta.break_applied = plannerDecision.break_applied || 'none';
+        policyMeta.required_fields = Array.isArray(plannerDecision.required_fields)
+          ? plannerDecision.required_fields.slice(0, 8)
+          : [];
         plannerSessionStatePatch = plannerDecision.session_state_patch || null;
       }
       const buildSafetyNoticeText = (safety) => {
         const s = safety && typeof safety === 'object' ? safety : null;
         if (!s) return '';
-        const reasons = Array.isArray(s.reasons) ? s.reasons.slice(0, 3) : [];
+        const triggeredBy = (Array.isArray(s.triggered_by) ? s.triggered_by : [])
+          .map((value) => String(value || '').trim().toLowerCase())
+          .filter(Boolean);
+        const allReasons = Array.isArray(s.reasons) ? s.reasons : [];
+        const isotretinoinReason =
+          triggeredBy.includes('medications')
+            ? allReasons.find((line) => /\b(isotretinoin|accutane|roaccutane)\b|异维a酸|罗可坦|泰尔丝/i.test(String(line || '')))
+            : null;
+        const medicationReason =
+          isotretinoinReason ||
+          (
+            triggeredBy.includes('medications')
+              ? allReasons.find((line) => /\bmedication|prescription\b|处方/i.test(String(line || '')))
+              : null
+          );
+        const reasons = medicationReason
+          ? [medicationReason, ...allReasons.filter((line) => line !== medicationReason)].slice(0, 3)
+          : allReasons.slice(0, 3);
         const alternatives = Array.isArray(s.safe_alternatives) ? s.safe_alternatives.slice(0, 3) : [];
         const requiredQuestions = Array.isArray(s.required_questions) ? s.required_questions.slice(0, 1) : [];
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
@@ -47243,6 +47313,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         const requiredFields = (Array.isArray(s.required_fields) ? s.required_fields : [])
           .map((field) => String(field || '').trim())
           .filter(Boolean);
+        policyMeta.required_fields = requiredFields.slice(0, 8);
+        if (blockLevel === BLOCK_LEVEL.REQUIRE_INFO) {
+          policyMeta.gate_type = 'hard';
+        } else if (
+          (blockLevel === BLOCK_LEVEL.BLOCK || blockLevel === BLOCK_LEVEL.WARN) &&
+          policyMeta.gate_type === 'none'
+        ) {
+          policyMeta.gate_type = 'soft';
+        }
         const optionalRequiredFields = requiredFields.filter((field) => OPTIONAL_SAFETY_PROFILE_FIELDS.includes(field));
         const missingOptionalFields = optionalRequiredFields.filter(
           (field) => !profileHasOptionalSafetyFieldValue(profileValue, field),
@@ -47255,6 +47334,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
 
         const reasonCodes = Array.isArray(s.reason_codes) ? s.reason_codes.slice(0, 6) : [];
+        const triggeredBy = (Array.isArray(s.triggered_by) ? s.triggered_by : [])
+          .map((value) => String(value || '').trim().toLowerCase())
+          .filter(Boolean);
         const policyDecision =
           blockLevel === BLOCK_LEVEL.BLOCK
             ? pushGateDecision('safety_hard_block', {
@@ -47266,8 +47348,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               reason_codes: reasonCodes,
             });
         const policyMode = policyDecision && typeof policyDecision.mode === 'string' ? policyDecision.mode : GATE_MODE.BYPASS;
+        const preserveBlockForMedicationRisk =
+          blockLevel === BLOCK_LEVEL.BLOCK && triggeredBy.includes('medications');
         const effectiveMode =
-          conflictIntent && policyMode === GATE_MODE.BLOCK
+          conflictIntent && policyMode === GATE_MODE.BLOCK && !preserveBlockForMedicationRisk
             ? GATE_MODE.ADVISORY
             : policyMode;
         if (effectiveMode === GATE_MODE.BLOCK) return { mode: 'block', advisory: null, ask_once_fields: [] };
@@ -47300,12 +47384,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           reason: 'safety_optional_profile_missing',
           non_blocking: true,
           severity: blockLevel === BLOCK_LEVEL.BLOCK ? 'block' : 'warn',
+          block_level: blockLevel,
           message,
           details: Array.isArray(s.reasons) ? s.reasons.slice(0, 4) : [],
           assumptions: assumptions.slice(0, 3),
           actions: ['update_optional_profile', 'continue_conservative_mode'],
           chips,
           missing_optional_fields: missingOptionalFields,
+          required_fields: requiredFields.slice(0, 4),
           required_question: firstQuestion,
           reason_codes: Array.isArray(s.reason_codes) ? s.reason_codes.slice(0, 4) : [],
         };
@@ -48363,6 +48449,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: {},
           events: [
             makeEvent(ctx, 'fitcheck_anchor_requested', {
+              reason_codes: reasonCodes,
+            }),
+            makeEvent(ctx, 'anchor_collection_waiting_input', {
+              intent: INTENT_ENUM.EVALUATE_PRODUCT,
               reason_codes: reasonCodes,
             }),
           ],

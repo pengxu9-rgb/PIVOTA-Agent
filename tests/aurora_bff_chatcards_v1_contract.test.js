@@ -12,6 +12,9 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
   afterEach(() => {
     delete process.env.AURORA_BFF_USE_MOCK;
     delete process.env.AURORA_SAFETY_ENGINE_V1_ENABLED;
+    delete process.env.AURORA_QA_PLANNER_V1_ENABLED;
+    delete process.env.AURORA_LOOP_BREAKER_V2_ENABLED;
+    delete process.env.AURORA_CHAT_RESPONSE_META_ENABLED;
   });
 
   test('returns ChatCards v1 fields and does not expose legacy envelope fields', async () => {
@@ -128,6 +131,9 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
   });
 
   test('high-risk safety intent maps to safety.risk_level=high on v1 response', async () => {
+    process.env.AURORA_QA_PLANNER_V1_ENABLED = 'true';
+    process.env.AURORA_LOOP_BREAKER_V2_ENABLED = 'true';
+    process.env.AURORA_CHAT_RESPONSE_META_ENABLED = 'true';
     const app = require('../src/server');
 
     const res = await request(app)
@@ -141,7 +147,14 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
     expect(res.body.version).toBe('1.0');
     expect(res.body.safety).toBeTruthy();
     expect(res.body.safety.risk_level).toBe('high');
+    expect(res.body.telemetry.intent).toBe('ingredient_science');
+    expect(res.body.telemetry.gate_type).toBe('soft');
     expect(Array.isArray(res.body.safety.red_flags)).toBe(true);
+    expect(
+      (Array.isArray(res.body.ops?.experiment_events) ? res.body.ops.experiment_events : []).some(
+        (evt) => evt?.event_type === 'safety_gate_block',
+      ),
+    ).toBe(true);
   });
 
   test('CN pregnancy + retinoid keeps high safety risk on v1 response', async () => {
@@ -180,5 +193,31 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
     expect(res.body.telemetry.matching_language).toBe('EN');
     expect(res.body.telemetry.language_mismatch).toBe(true);
     expect(res.body.telemetry.language_resolution_source).toBe('header');
+  });
+
+  test('anchor collection prompt is exposed as hard gate in chatcards telemetry', async () => {
+    process.env.AURORA_QA_PLANNER_V1_ENABLED = 'true';
+    process.env.AURORA_LOOP_BREAKER_V2_ENABLED = 'true';
+    process.env.AURORA_CHAT_RESPONSE_META_ENABLED = 'true';
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', `uid_chatcards_v1_anchor_${Date.now()}`)
+      .set('X-Lang', 'EN')
+      .set('x-aurora-force-variant', 'v2_weather')
+      .send({ message: 'Is this toner good for me?' })
+      .expect(200);
+
+    expect(res.body.version).toBe('1.0');
+    expect(res.body.telemetry.intent).toBe('evaluate_product');
+    expect(res.body.telemetry.gate_type).toBe('hard');
+    expect(Array.isArray(res.body.telemetry.required_fields)).toBe(true);
+    expect(res.body.telemetry.required_fields).toContain('anchor');
+    expect(
+      (Array.isArray(res.body.ops?.experiment_events) ? res.body.ops.experiment_events : []).some(
+        (evt) => evt?.event_type === 'anchor_collection_waiting_input',
+      ),
+    ).toBe(true);
   });
 });

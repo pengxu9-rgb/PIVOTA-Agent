@@ -14,6 +14,20 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+const CHATCARDS_EXPERIMENT_EVENT_TYPES = new Set([
+  'recos_requested',
+  'loop_breaker_triggered',
+  'safety_gate_block',
+  'safety_gate_require_info',
+  'catalog_availability_shortcircuit',
+  'simulate_conflict',
+  'value_moment',
+  'anchor_collection_waiting_input',
+  'fitcheck_anchor_requested',
+  'pregnancy_status_defaulted',
+  'pregnancy_status_auto_reset',
+]);
+
 function normalizeLanguageToken(value, fallback = 'EN') {
   const token = asString(value).toUpperCase();
   if (token === 'CN' || token === 'ZH' || token === 'ZH-CN' || token === 'ZH_HANS') return 'CN';
@@ -147,6 +161,85 @@ function buildSafetyDisclaimer({ riskLevel, language }) {
   return '';
 }
 
+function extractEnvelopeMeta(envelope) {
+  const base = isPlainObject(envelope) ? envelope : {};
+  const sessionPatch = isPlainObject(base.session_patch) ? base.session_patch : {};
+  const sessionMeta = isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {};
+  const topMeta = isPlainObject(base.meta) ? base.meta : {};
+  return { ...sessionMeta, ...topMeta };
+}
+
+function normalizeCompatRequiredFields(value, max = 8) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of asArray(value)) {
+    const token = asString(raw);
+    if (!token) continue;
+    const key = token.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(token);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function inferGateTypeFromEnvelope(envelope) {
+  const events = asArray(envelope && envelope.events);
+  const eventNames = new Set(
+    events
+      .map((evt) => asString(evt && evt.event_name).toLowerCase())
+      .filter(Boolean),
+  );
+  if (
+    eventNames.has('safety_gate_require_info') ||
+    eventNames.has('anchor_collection_waiting_input')
+  ) {
+    return 'hard';
+  }
+  if (
+    eventNames.has('safety_gate_block') ||
+    eventNames.has('safety_advisory_inline') ||
+    eventNames.has('gate_advisory_inline') ||
+    eventNames.has('fitcheck_anchor_requested')
+  ) {
+    return 'soft';
+  }
+  return '';
+}
+
+function gateTypeRank(value) {
+  const token = asString(value).toLowerCase();
+  if (token === 'hard') return 2;
+  if (token === 'soft') return 1;
+  return 0;
+}
+
+function mergeGateType(metaGateType, inferredGateType) {
+  return gateTypeRank(inferredGateType) > gateTypeRank(metaGateType)
+    ? asString(inferredGateType)
+    : asString(metaGateType || inferredGateType);
+}
+
+function buildCompatTelemetry({ envelope } = {}) {
+  const meta = extractEnvelopeMeta(envelope);
+  const inferredGateType = inferGateTypeFromEnvelope(envelope);
+  const gateType = mergeGateType(meta.gate_type, inferredGateType);
+  const requiredFields = normalizeCompatRequiredFields(meta.required_fields, 8);
+  const out = {};
+
+  if (gateType) out.gate_type = gateType;
+  if (Object.prototype.hasOwnProperty.call(meta, 'env_source')) {
+    const envSource = meta.env_source == null ? null : asString(meta.env_source);
+    if (envSource || envSource === null) out.env_source = envSource;
+  }
+  if (typeof meta.degraded === 'boolean') out.degraded = meta.degraded;
+  if (requiredFields.length > 0) out.required_fields = requiredFields;
+  if (asString(meta.intent_source)) out.intent_source = asString(meta.intent_source);
+
+  return out;
+}
+
 function normalizeFollowUpAndQuickReplies({ envelope, language = 'EN', intent = '' } = {}) {
   const chips = envelope && Array.isArray(envelope.suggested_chips) ? envelope.suggested_chips : [];
   const source = asArray(chips)
@@ -242,14 +335,7 @@ function normalizeOps({ envelope, threadOps } = {}) {
       if (!isPlainObject(evt)) return null;
       const eventName = asString(evt.event_name);
       if (!eventName) return null;
-      if (
-        eventName !== 'recos_requested' &&
-        eventName !== 'loop_breaker_triggered' &&
-        eventName !== 'safety_gate_block' &&
-        eventName !== 'catalog_availability_shortcircuit' &&
-        eventName !== 'simulate_conflict' &&
-        eventName !== 'value_moment'
-      ) {
+      if (!CHATCARDS_EXPERIMENT_EVENT_TYPES.has(eventName)) {
         return null;
       }
       const data = isPlainObject(evt.data) ? evt.data : {};
@@ -381,6 +467,7 @@ function buildChatCardsResponse({
   const disclaimer = buildSafetyDisclaimer({ riskLevel, language: uiLanguage });
 
   const ops = normalizeOps({ envelope: base, threadOps });
+  const compatTelemetry = buildCompatTelemetry({ envelope: base });
 
   const response = {
     version: '1.0',
@@ -413,6 +500,7 @@ function buildChatCardsResponse({
       matching_language: matchingLanguage,
       language_mismatch: languageMismatch,
       language_resolution_source: languageResolutionSource,
+      ...compatTelemetry,
       ...envelopeTelemetry,
     },
   };

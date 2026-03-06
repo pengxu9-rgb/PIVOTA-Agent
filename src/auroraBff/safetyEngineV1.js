@@ -235,7 +235,8 @@ function buildCtx({
         /benzoyl\s*peroxide|过氧化苯甲酰/i,
         /hydroquinone|氢醌/i,
       ].filter((re) => re.test(lower)).length >= 2,
-    travelHighUv: hasAny(lower, [/(travel|trip|outdoor|beach|sun|uv|出差|旅行|户外|海边|暴晒|紫外线)/i]),
+    travelContext: hasAny(lower, [/(travel|trip|vacation|holiday|出差|旅行|旅途|行程)/i]),
+    travelHighUv: hasAny(lower, [/(outdoor|beach|sun|uv|high\s*uv|晒|暴晒|紫外线|户外|海边)/i]),
     wantsExfoliation: hasAny(lower, [/(exfoliat|acid|peel|刷酸|去角质|焕肤)/i]),
     overnightFast: hasAny(lower, [/(overnight|fastest|quickest|立刻见效|一夜见效|最快见效)/i]),
     tretinoinRx: hasAny(lower, [/(tretinoin|维甲酸|阿维a酸).{0,12}(rx|prescription|处方)?/i]),
@@ -263,8 +264,10 @@ function buildCtx({
   if (mentions.fragrance) conceptSet.add('FRAGRANCE');
   if (mentions.strongExfoliant) conceptSet.add('EXFOLIANT');
   if (mentions.dailyExfoliation) conceptSet.add('DAILY_EXFOLIATION');
-  if (mentions.travelHighUv) {
+  if (mentions.travelContext || mentions.travelHighUv) {
     conceptSet.add('TRAVEL');
+  }
+  if (mentions.travelHighUv) {
     conceptSet.add('HIGH_UV');
     conceptSet.add('SUN_EXPOSURE');
   }
