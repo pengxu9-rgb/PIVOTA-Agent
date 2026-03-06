@@ -3,6 +3,7 @@ const {
   SkinVisionObservationSchema,
   SkinVisionGatewaySchema,
   SkinReportStrategySchema,
+  buildPoorPhotoTemplate,
   validateVisionObservation,
   validateReportStrategy,
   normalizeVisionObservationLayer,
@@ -172,6 +173,66 @@ function validateSkinAnalysisContent(layer, { lang } = {}) {
     ok: violations.length === 0,
     violations,
   };
+}
+
+function shouldUseLimitedSignalReportFallback(reportDto) {
+  return Boolean(reportDto && reportDto.insufficient_visual_detail);
+}
+
+function buildLimitedSignalReportLayer(reportDto, { lang } = {}) {
+  const fallback = buildPoorPhotoTemplate({ lang });
+  const quality = reportDto && reportDto.quality && typeof reportDto.quality === 'object' && !Array.isArray(reportDto.quality)
+    ? reportDto.quality
+    : null;
+  return normalizeReportStrategyLayer(
+    {
+      ...fallback,
+      ...(quality ? { quality } : {}),
+      insufficient_visual_detail: true,
+    },
+    { lang },
+  );
+}
+
+function buildConservativeReportFallbackLayer(reportDto, { lang } = {}) {
+  const locale = String(lang || '').trim().toLowerCase();
+  const isZh = locale === 'cn' || locale === 'zh' || locale === 'zh-cn';
+  const quality = reportDto && reportDto.quality && typeof reportDto.quality === 'object' && !Array.isArray(reportDto.quality)
+    ? reportDto.quality
+    : null;
+  const base = isZh
+    ? {
+        strategy:
+          '当前图像信号需要保守处理 -> 注意事项：先不要一次叠加多种强活性 -> 修复路径：维持温和清洁、保湿、防晒三步 7 天，再逐项观察变化 -> 下一问：你现在最困扰的是紧绷、泛红还是出油？',
+        needs_risk_check: false,
+        primary_question: '你现在最困扰的是紧绷、泛红还是出油？',
+        conditional_followups: ['洁面后会刺痛或紧绷吗？', 'T 区到中午会明显出油吗？', '近期是否新加了酸类或维A类？'],
+        routine_expert: '',
+        guidance_brief: ['先维持基础护理 7 天。', '不要同时新增多个强活性。', '如出现持续刺激，立即回退到清洁+保湿+防晒。'],
+        two_week_focus: ['稳定屏障', '记录刺激触发因素', '观察出油与泛红波动'],
+      }
+    : {
+        strategy:
+          'Current signal should be handled conservatively -> Watchouts: do not stack multiple strong actives at once -> Repair path: keep a gentle cleanse, moisturizer, and sunscreen baseline for 7 days, then reintroduce changes one at a time -> Next question: what feels most uncomfortable right now, tightness, redness, or oiliness?',
+        needs_risk_check: false,
+        primary_question: 'What feels most uncomfortable right now: tightness, redness, or oiliness?',
+        conditional_followups: ['Do you feel stinging or tightness after cleansing?', 'Does your T-zone become oily by midday?', 'Have you recently added acids or retinoids?'],
+        routine_expert: '',
+        guidance_brief: [
+          'Keep a basic cleanse-moisturize-sunscreen routine for 7 days.',
+          'Do not introduce multiple strong actives at the same time.',
+          'If irritation persists, step back to cleanse, moisturizer, and sunscreen only.',
+        ],
+        two_week_focus: ['Stabilize the barrier', 'Track trigger patterns', 'Monitor redness and oil fluctuation'],
+      };
+
+  return normalizeReportStrategyLayer(
+    {
+      ...base,
+      ...(quality ? { quality } : {}),
+    },
+    { lang },
+  );
 }
 
 async function callGeminiJson({
@@ -373,6 +434,22 @@ async function runGeminiReportStrategy({
   const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
   let retryAttempted = 0;
 
+  if (shouldUseLimitedSignalReportFallback(reportDto)) {
+    return {
+      ok: true,
+      provider: 'gemini',
+      reason: null,
+      schema_violation: false,
+      safety_violation: false,
+      layer: buildLimitedSignalReportLayer(reportDto, { lang: language }),
+      retry: { attempted: 0, final: 'success', last_reason: null },
+      upstream_status_code: null,
+      latency_ms: 0,
+      prompt_version: bundle.promptVersion,
+      input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+    };
+  }
+
   const attempt = async (revisionHint) => {
     const userPrompt = revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt;
     return await callGeminiJson({
@@ -411,6 +488,22 @@ async function runGeminiReportStrategy({
         safety_violation: false,
         layer: normalizeReportStrategyLayer(second.parsed, { lang: language }),
         retry: { attempted: 1, final: 'success', last_reason: null },
+        upstream_status_code: second.upstream_status_code,
+        latency_ms: second.latency_ms,
+        prompt_version: bundle.promptVersion,
+        input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+      };
+    }
+
+    if (second.ok && (!secondValidation.ok || !secondSafety.ok)) {
+      return {
+        ok: true,
+        provider: 'gemini',
+        reason: null,
+        schema_violation: false,
+        safety_violation: false,
+        layer: buildConservativeReportFallbackLayer(reportDto, { lang: language }),
+        retry: { attempted: retryAttempted, final: 'success', last_reason: null },
         upstream_status_code: second.upstream_status_code,
         latency_ms: second.latency_ms,
         prompt_version: bundle.promptVersion,
