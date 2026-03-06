@@ -1,6 +1,7 @@
 const { parseJsonOnlyObject } = require('./jsonExtract');
 const {
   SkinVisionObservationSchema,
+  SkinVisionGatewaySchema,
   SkinReportStrategySchema,
   validateVisionObservation,
   validateReportStrategy,
@@ -19,7 +20,30 @@ const SKIN_MODEL_GEMINI =
   String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-flash-preview').trim() ||
   'gemini-3-flash-preview';
 
-const SKIN_LLM_TIMEOUT_MS = Math.max(2000, Math.min(30000, Number(process.env.AURORA_SKIN_VISION_TIMEOUT_MS || 12000)));
+function readTimeoutMs(raw, fallback) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.max(2000, Math.min(45000, Math.trunc(value)));
+}
+
+const SKIN_LLM_TIMEOUT_MS = readTimeoutMs(process.env.AURORA_SKIN_VISION_TIMEOUT_MS, 12000);
+
+function readOutputTokenBudget(envName, fallback) {
+  const raw = Number(process.env[envName]);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return Math.max(256, Math.min(8192, Math.trunc(raw)));
+}
+
+const SKIN_VISION_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_VISION_MAX_OUTPUT_TOKENS', 1800);
+const SKIN_REPORT_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_REPORT_MAX_OUTPUT_TOKENS', 4000);
+
+function inferStructuredTimeoutMs(maxOutputTokens) {
+  const budget = readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number(maxOutputTokens) || 700);
+  if (budget >= 4000) return Math.max(SKIN_LLM_TIMEOUT_MS, 30000);
+  if (budget >= 3000) return Math.max(SKIN_LLM_TIMEOUT_MS, 25000);
+  if (budget >= 1400) return Math.max(SKIN_LLM_TIMEOUT_MS, 15000);
+  return SKIN_LLM_TIMEOUT_MS;
+}
 
 let geminiClient = null;
 let geminiInitFailed = false;
@@ -161,6 +185,7 @@ async function callGeminiJson({
   userText,
   imageBuffer,
   responseSchema,
+  maxOutputTokens,
   timeoutMs,
   profiler,
   kind,
@@ -207,12 +232,16 @@ async function callGeminiJson({
       temperature: 0.1,
       topP: 0.8,
       candidateCount: 1,
-      maxOutputTokens: 700,
+      maxOutputTokens: readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number.isFinite(Number(maxOutputTokens)) ? Number(maxOutputTokens) : 700),
     },
   };
 
   try {
-    const invoke = () => withTimeout(client.models.generateContent(request), timeoutMs || SKIN_LLM_TIMEOUT_MS);
+    const effectiveTimeoutMs = Math.max(
+      readTimeoutMs(timeoutMs, SKIN_LLM_TIMEOUT_MS),
+      inferStructuredTimeoutMs(request.config && request.config.maxOutputTokens),
+    );
+    const invoke = () => withTimeout(client.models.generateContent(request), effectiveTimeoutMs);
     const resp =
       profiler && typeof profiler.timeLlmCall === 'function'
         ? await profiler.timeLlmCall({ provider: 'gemini', model: SKIN_MODEL_GEMINI, kind }, invoke)
@@ -270,7 +299,8 @@ async function runGeminiVisionStrategy({
     systemInstruction: bundle.systemInstruction,
     userText: bundle.userPrompt,
     imageBuffer,
-    responseSchema: SkinVisionObservationSchema,
+    responseSchema: SkinVisionGatewaySchema,
+    maxOutputTokens: SKIN_VISION_MAX_OUTPUT_TOKENS,
     timeoutMs,
     profiler,
     kind: 'skin_vision_mainline',
@@ -339,6 +369,7 @@ async function runGeminiReportStrategy({
       userText: userPrompt,
       imageBuffer: null,
       responseSchema: SkinReportStrategySchema,
+      maxOutputTokens: SKIN_REPORT_MAX_OUTPUT_TOKENS,
       timeoutMs,
       profiler,
       kind: 'skin_report_mainline',
