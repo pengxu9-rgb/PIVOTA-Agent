@@ -1445,14 +1445,14 @@ const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
   'gpt-4o-mini';
 const SKIN_VISION_MODEL_GEMINI =
-  String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
-  'gemini-2.0-flash';
+  String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-flash-preview').trim() ||
+  'gemini-3-flash-preview';
 const ANALYSIS_STORY_MODEL_OPENAI =
   String(process.env.AURORA_ANALYSIS_STORY_MODEL_OPENAI || process.env.AURORA_SKIN_TEXT_MODEL_OPENAI || 'gpt-4o-mini').trim() ||
   'gpt-4o-mini';
 const ANALYSIS_STORY_MODEL_GEMINI =
-  String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
-  'gemini-2.0-flash';
+  String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-flash-preview').trim() ||
+  'gemini-3-flash-preview';
 const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
   1200,
@@ -21040,8 +21040,8 @@ function normalizeChatLlmProvider(value) {
 function getDiagForceGeminiModel() {
   const explicit = String(process.env.AURORA_DIAG_FORCE_GEMINI_MODEL || '').trim();
   if (explicit) return explicit;
-  const fallback = String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
-  return fallback || 'gemini-2.0-flash';
+  const fallback = String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-pro-preview').trim();
+  return fallback || 'gemini-3-pro-preview';
 }
 
 function normalizeChatLlmModel(value) {
@@ -25683,13 +25683,20 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
     4,
   );
   const avoidNow = asStringArray(Array.isArray(row.safety_notes) ? row.safety_notes : [], 3);
-  const headline =
-    pickFirstString(
-      Array.isArray(row.target_state) ? row.target_state[0] : '',
-      isCn
-        ? '先稳定，再循序推进亮肤与纹理改善。'
-        : 'Stabilize first, then improve tone and texture step by step.',
-    ) || (isCn ? '先稳后进。' : 'Stability first.');
+  const lowConfidenceNoFindings =
+    String(confidenceLevel).toLowerCase() === 'low' &&
+    !findingTitles.length &&
+    !fallbackEvidence.length;
+  const headline = lowConfidenceNoFindings
+    ? (isCn
+      ? '照片分析未能完成，请在自然光下重新拍照以获取准确结果。'
+      : 'Photo analysis could not be completed. Please retake photos in natural daylight for accurate results.')
+    : (pickFirstString(
+        Array.isArray(row.target_state) ? row.target_state[0] : '',
+        isCn
+          ? '先稳定，再循序推进亮肤与纹理改善。'
+          : 'Stabilize first, then improve tone and texture step by step.',
+      ) || (isCn ? '先稳后进。' : 'Stability first.'));
   const timeline = isPlainObject(row.timeline) ? row.timeline : {};
   const nextCheckin = pickFirstString(
     Array.isArray(timeline.first_4_weeks) ? timeline.first_4_weeks[0] : '',
@@ -38656,7 +38663,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         request_id: pickFirstTrimmed(parsed.data.request_id, ctx.request_id),
         session_id: pickFirstTrimmed(parsed.data.session_id, ctx.aurora_uid),
         logger,
-        model_name: process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-2.0-flash',
+        model_name: process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-3-flash-preview',
         prompt_version: PRELABEL_PROMPT_VERSION,
         ttl_ms: RECO_DOGFOOD_CONFIG.prelabel?.ttl_ms,
         gemini_timeout_ms: RECO_DOGFOOD_CONFIG.prelabel?.timeout_ms,
@@ -43539,13 +43546,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         const sessionPatch = { next_state: 'S5_ANALYSIS_SUMMARY' };
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifactId);
 
+        const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
+          ? diagnosisArtifact.overall_confidence
+          : null;
+        const lowConfidenceRuleBased =
+          artifactConfidence &&
+          String(artifactConfidence.level || '').toLowerCase() === 'low' &&
+          (renderedAnalysisSource === 'rule_based' || renderedAnalysisSource === 'baseline_low_confidence');
+
         const extraCards = [];
         if (ingredientPlan) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
         }
         const routineProductCards = [];
         const routineProductEvents = [];
-        if (routineProductCandidates.length > 0) {
+        if (routineProductCandidates.length > 0 && !lowConfidenceRuleBased) {
           const syncCandidates = routineProductCandidates.slice(0, AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT);
           const asyncCandidates = routineProductCandidates.slice(AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT);
           routineProductEvents.push(
@@ -43630,9 +43645,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             });
           }
         }
-        const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
-          ? diagnosisArtifact.overall_confidence
-          : null;
         if (artifactConfidence && String(artifactConfidence.level || '').toLowerCase() === 'low') {
           logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
           extraCards.push({
@@ -43646,6 +43658,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
           });
         }
+        const deduplicatedRoutineProductCards = (() => {
+          const seen = new Set();
+          return routineProductCards.filter((card) => {
+            const p = card?.payload?.product;
+            const key = (p && (p.product_id || p.name || '')) || '';
+            if (!key || !seen.has(key)) { if (key) seen.add(key); return true; }
+            return false;
+          });
+        })();
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
           suggested_chips: [],
@@ -43656,7 +43678,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: analysisSummaryPayload,
               ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
             },
-            ...routineProductCards,
+            ...deduplicatedRoutineProductCards,
             ...(photoModulesCard ? [photoModulesCard] : []),
             ...extraCards,
           ],

@@ -239,7 +239,7 @@ async function generatePrelabelsForAnchor({
   request_id = '',
   session_id = '',
   logger,
-  model_name = process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-2.0-flash',
+  model_name = process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-3-flash-preview',
   prompt_version = PRELABEL_PROMPT_VERSION,
   allow_same_brand_competitors = false,
   allow_same_brand_dupes = false,

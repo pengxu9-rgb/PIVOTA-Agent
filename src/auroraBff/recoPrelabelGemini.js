@@ -10,7 +10,7 @@ function toInt(value, fallback, min, max) {
 
 function normalizeModel(raw) {
   const s = String(raw || '').trim();
-  return s || 'gemini-2.0-flash';
+  return s || 'gemini-3-flash-preview';
 }
 
 function stringifyObject(value) {
@@ -96,7 +96,7 @@ async function callGeminiPrelabel({
   systemPrompt,
   userPrompt,
   timeoutMs = 5000,
-  model = process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-2.0-flash',
+  model = process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-3-flash-preview',
   logger,
 } = {}) {
   const apiKey = resolveAuroraGeminiKey('AURORA_RECO_GEMINI_API_KEY');

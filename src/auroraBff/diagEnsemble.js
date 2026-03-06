@@ -1134,7 +1134,7 @@ function getProviderConfig() {
     timeoutMs: numEnv('DIAG_ENSEMBLE_TIMEOUT_MS', 12000, 1000, 45000),
     retries: numEnv('DIAG_ENSEMBLE_RETRIES', 1, 0, 3),
     geminiEnabled: boolEnv('DIAG_ENSEMBLE_GEMINI_ENABLED', true),
-    geminiModel: String(process.env.DIAG_ENSEMBLE_GEMINI_MODEL || 'gemini-2.0-flash').trim() || 'gemini-2.0-flash',
+    geminiModel: String(process.env.DIAG_ENSEMBLE_GEMINI_MODEL || 'gemini-3-pro-preview').trim() || 'gemini-3-pro-preview',
     gptEnabled: boolEnv('DIAG_ENSEMBLE_GPT_ENABLED', true),
     gptModel: String(process.env.DIAG_ENSEMBLE_GPT_MODEL || 'gpt-4o-mini').trim() || 'gpt-4o-mini',
   };
