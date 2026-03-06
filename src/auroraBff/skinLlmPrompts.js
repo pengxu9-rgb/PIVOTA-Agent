@@ -113,9 +113,112 @@ function qualityGradeInstruction(dto, lang) {
   return '';
 }
 
+function normalizePromptVersion(promptVersion, fallback) {
+  return typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : fallback;
+}
+
+function isSkinPromptV3(promptVersion) {
+  const token = String(promptVersion || '').trim().toLowerCase();
+  return token === 'skin_v3' || token === 'skin_v3_canonical' || token.includes('v3_canonical');
+}
+
+function isSkinDeepeningV2(promptVersion) {
+  const token = String(promptVersion || '').trim().toLowerCase();
+  return token === 'skin_deepening_v2_canonical' || token === 'skin_v3' || token.includes('deepening_v2');
+}
+
+function buildVisionCanonicalPrompt({ dto } = {}) {
+  const safeDto = dto && typeof dto === 'object' ? dto : {};
+  const contextJson = JSON.stringify(safeDto || {});
+  return {
+    promptVersion: 'skin_vision_v3_canonical',
+    systemInstruction:
+      'You are a cosmetic skin cue extraction engine. Reason in English only. Output strict JSON matching the response schema. Never localize, diagnose disease, recommend products, or write routines.',
+    userPrompt: [
+      'objective:',
+      '- Inspect only visible facial skin cues grounded in the image.',
+      '- Decide whether the image supports sufficient, limited, or insufficient visual grounding.',
+      'decision rubric:',
+      '- sufficient: face skin is visible and at least 2 grounded cues can be extracted.',
+      '- limited: the face is visible but evidence is weak/noisy; only keep grounded cues.',
+      '- insufficient: blur, lighting, occlusion, framing, or absent cues prevent grounded extraction.',
+      'hard constraints:',
+      '- English-only canonical semantics.',
+      '- Use canonical enums only.',
+      '- No routines, products, diagnoses, treatment claims, or disease names.',
+      '- If visibility_status is insufficient, observations should usually be empty and insufficient_reason must be set.',
+      '- If pass-quality context is provided and visibility_status is sufficient or limited, return at least 2 distinct grounded observations.',
+      'compact context block:',
+      contextJson,
+      'few-shot mini examples:',
+      'Example A -> visibility_status=sufficient; observations might include redness on cheeks and shine in t_zone.',
+      'Example B -> visibility_status=insufficient; insufficient_reason=blur; observations=[].',
+    ].join('\n'),
+  };
+}
+
+function buildReportCanonicalPrompt({ dto } = {}) {
+  const safeDto = dto && typeof dto === 'object' ? dto : {};
+  const contextJson = JSON.stringify(safeDto || {});
+  return {
+    promptVersion: 'skin_report_v3_canonical',
+    systemInstruction:
+      'You are a cosmetic skincare planning engine. Reason in English only. Output strict JSON matching the response schema. Use only canonical enums. Do not localize, diagnose disease, name brands, or recommend specific products.',
+    userPrompt: [
+      'objective:',
+      '- Convert the provided skin signals into a grounded, conservative, structured skincare plan.',
+      '- Stay fully consistent with visible cues and deterministic signals.',
+      'decision rubric:',
+      '- summary_focus must identify the primary care priority.',
+      '- routine_steps must be grounded in linked_cues.',
+      '- watchouts and two_week_focus must stay conservative and actionable.',
+      'hard constraints:',
+      '- English-only canonical semantics.',
+      '- No user-facing prose paragraphs and no free-form product advice.',
+      '- Every routine step must include time, step_type, target, cadence, intensity, and linked_cues.',
+      '- follow_up must use only intent enums for deterministic rendering.',
+      '- If cues are too weak, do not invent confidence or claims.',
+      'compact context block:',
+      contextJson,
+      'few-shot mini examples:',
+      'Example A -> barrier/redness priority with cleanse+moisturize+protect steps and watchouts about stinging.',
+      'Example B -> oiliness/texture priority with monitor + low_frequency treat step, while still avoiding over-stacking actives.',
+    ].join('\n'),
+  };
+}
+
+function buildDeepeningCanonicalPrompt({ dto } = {}) {
+  const safeDto = dto && typeof dto === 'object' ? dto : {};
+  const contextJson = JSON.stringify(safeDto || {});
+  return {
+    promptVersion: 'skin_deepening_v2_canonical',
+    systemInstruction:
+      'You are a structured skincare deepening engine. Reason in English only. Output strict JSON matching the response schema. Do not localize and do not produce long prose.',
+    userPrompt: [
+      'objective:',
+      '- Choose the correct deepening phase and next-question intent from the provided skincare context.',
+      '- Keep the output fully renderable by a deterministic locale renderer.',
+      'decision rubric:',
+      '- phase must match the conversation stage.',
+      '- advice_items must be structured watchouts or 2-week focus items only.',
+      '- question_intent must choose the single best next question intent.',
+      'hard constraints:',
+      '- English-only canonical semantics.',
+      '- No free-form narrative.',
+      '- Use only schema enums.',
+      'compact context block:',
+      contextJson,
+      'few-shot mini examples:',
+      'Example A -> photo_optin + photo_upload when the user has not uploaded a photo yet.',
+      'Example B -> reactions + reaction_check when a routine exists but tolerance is still unclear.',
+    ].join('\n'),
+  };
+}
+
 function buildSkinVisionPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
-  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'skin_v2';
+  const version = normalizePromptVersion(promptVersion, 'skin_v2');
+  if (isSkinPromptV3(version)) return buildVisionCanonicalPrompt({ dto });
   const qRule = qualityGradeInstruction(dto, lang);
   if (lang === 'zh-CN') {
     return {
@@ -151,7 +254,8 @@ function buildSkinVisionPromptBundle({ language, dto, promptVersion } = {}) {
 
 function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
-  const version = typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : 'skin_v2';
+  const version = normalizePromptVersion(promptVersion, 'skin_v2');
+  if (isSkinPromptV3(version)) return buildReportCanonicalPrompt({ dto });
   const qRule = qualityGradeInstruction(dto, lang);
   if (lang === 'zh-CN') {
     return {
@@ -241,8 +345,10 @@ function buildSkinReportPrompt({
   return `${bundle.systemInstruction}\n${bundle.userPrompt}`;
 }
 
-function buildSkinDeepeningPromptBundle({ language, dto } = {}) {
+function buildSkinDeepeningPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
+  const version = normalizePromptVersion(promptVersion, 'skin_deepening_v1');
+  if (isSkinDeepeningV2(version)) return buildDeepeningCanonicalPrompt({ dto });
   const d = dto && typeof dto === 'object' ? dto : {};
   const profileStr = JSON.stringify(d.profile || {});
   const phaseStr = String(d.phase || 'photo_optin');
@@ -260,12 +366,12 @@ function buildSkinDeepeningPromptBundle({ language, dto } = {}) {
       reactions:
         '当前阶段 = reactions。基于其已有信息给出具体护肤建议，再追问最近使用后的皮肤反应。deepening_options 必须包含 6 个具体可选反应（干燥加重/皮肤紧绷/刺痛或灼热/泛红加重/新爆痘/无明显不适）。',
       refined:
-        '当前阶段 = refined。基于反应反馈给出针对性微调方案，确认 7 天执行计划，并提供第 3 天 / 第 7 天回检提示。',
+      '当前阶段 = refined。基于反应反馈给出针对性微调方案，确认 7 天执行计划，并提供第 3 天 / 第 7 天回检提示。',
     };
     const guide = phaseGuideCn[phaseStr] || phaseGuideCn.photo_optin;
 
     return {
-      promptVersion: 'skin_deepening_v1',
+      promptVersion: version,
       systemInstruction:
         'Role: 你是亲切、专业的护肤顾问，擅长基于用户皮肤信息给出个性化、可执行的护肤建议。' +
         '安全规则：禁止疾病诊断（玫瑰痤疮/湿疹/牛皮癣等）、禁止处方药名称、禁止治疗宣称、禁止品牌或具体产品推荐。' +
@@ -301,7 +407,7 @@ function buildSkinDeepeningPromptBundle({ language, dto } = {}) {
   const guide = phaseGuideEn[phaseStr] || phaseGuideEn.photo_optin;
 
   return {
-    promptVersion: 'skin_deepening_v1',
+    promptVersion: version,
     systemInstruction:
       'Role: You are a warm, professional skincare advisor specializing in evidence-based cosmetic skincare. ' +
       'Safety rules: no disease diagnosis (rosacea/eczema/psoriasis), no prescription drug names, no treatment claims, no brand or specific product names. ' +
@@ -330,6 +436,11 @@ module.exports = {
   buildSkinVisionPromptBundle,
   buildSkinReportPromptBundle,
   buildSkinDeepeningPromptBundle,
+  buildVisionCanonicalPrompt,
+  buildReportCanonicalPrompt,
+  buildDeepeningCanonicalPrompt,
+  isSkinPromptV3,
+  isSkinDeepeningV2,
   pickDetectorCandidates,
   summarizeRoutineActives,
 };

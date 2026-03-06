@@ -1,6 +1,7 @@
-const { GoogleGenAI } = require('@google/genai');
-const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
-const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
+const {
+  hasAuroraGeminiApiKey,
+  callAuroraGeminiGenerateContent,
+} = require('./auroraGeminiGlobalClient');
 
 function toInt(value, fallback, min, max) {
   const n = Number(value);
@@ -99,17 +100,14 @@ async function callGeminiPrelabel({
   model = process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-3-flash-preview',
   logger,
 } = {}) {
-  const apiKey = resolveAuroraGeminiKey('AURORA_RECO_GEMINI_API_KEY');
-  if (!apiKey) {
+  if (!hasAuroraGeminiApiKey('AURORA_RECO_GEMINI_API_KEY')) {
     const err = new Error('MISSING_GEMINI_KEY');
     err.code = 'MISSING_GEMINI_KEY';
     throw err;
   }
-  const gate = getGeminiGlobalGate();
   const startedAt = Date.now();
   const resolvedTimeoutMs = Number.isFinite(Number(timeoutMs)) ? Math.max(500, Math.trunc(Number(timeoutMs))) : 5000;
   try {
-    const ai = new GoogleGenAI({ apiKey });
     const request = {
       model: normalizeModel(model),
       systemInstruction: {
@@ -132,7 +130,14 @@ async function callGeminiPrelabel({
     let lastErr = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
-        const resp = await gate.withGate('reco_prelabel', () => ai.models.generateContent(request));
+        const resp = await withTimeout(
+          callAuroraGeminiGenerateContent({
+            featureEnvVar: 'AURORA_RECO_GEMINI_API_KEY',
+            route: 'aurora_reco_prelabel',
+            request,
+          }),
+          resolvedTimeoutMs,
+        );
         const text = await extractTextFromGeminiResponse(resp);
         return {
           ok: true,

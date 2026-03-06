@@ -37,6 +37,56 @@ const SkinFeatureItemSchema = {
 
 const ObservationConfidenceValues = Object.freeze(['low', 'med', 'high']);
 const ObservationSeverityValues = Object.freeze(['mild', 'moderate', 'high']);
+const VisionVisibilityValues = Object.freeze(['sufficient', 'limited', 'insufficient']);
+const VisionInsufficientReasonValues = Object.freeze([
+  'blur',
+  'lighting',
+  'occlusion',
+  'face_not_visible',
+  'resolution_low',
+  'no_clear_cue',
+  'mixed',
+]);
+const CanonicalCueValues = Object.freeze(['redness', 'shine', 'bumps', 'flaking', 'uneven_tone', 'texture', 'pores']);
+const CanonicalRegionValues = Object.freeze(['cheeks', 'forehead', 't_zone', 'chin', 'nose', 'jawline', 'full_face']);
+const SummaryPriorityValues = Object.freeze(['barrier', 'redness', 'oiliness', 'texture', 'tone', 'bumps', 'pores', 'mixed']);
+const RoutineTimeValues = Object.freeze(['am', 'pm', 'either']);
+const RoutineStepTypeValues = Object.freeze(['cleanse', 'hydrate', 'moisturize', 'protect', 'treat', 'pause', 'monitor']);
+const RoutineTargetValues = Object.freeze(['barrier', 'redness', 'oiliness', 'texture', 'tone', 'bumps', 'pores', 'mixed']);
+const RoutineCadenceValues = Object.freeze(['daily', 'every_other_night', 'two_nights_weekly', 'hold', 'as_needed']);
+const RoutineIntensityValues = Object.freeze(['gentle', 'barrier_safe', 'low_frequency', 'standard']);
+const WatchoutValues = Object.freeze([
+  'avoid_stacking_strong_actives',
+  'pause_if_stinging',
+  'protect_barrier',
+  'protect_uv',
+  'one_change_at_a_time',
+  'retake_clear_photo',
+]);
+const TwoWeekFocusValues = Object.freeze([
+  'stabilize_barrier',
+  'track_redness',
+  'track_oil',
+  'track_bumps',
+  'track_texture',
+  'track_tone',
+  'confirm_tolerance',
+]);
+const FollowUpIntentValues = Object.freeze([
+  'priority_symptom',
+  'routine_share',
+  'reaction_check',
+  'tolerance_check',
+  'photo_upload',
+  'confirm_plan',
+]);
+const RiskFlagValues = Object.freeze([
+  'monitor_persistent_redness',
+  'monitor_stinging',
+  'monitor_new_breakouts',
+  'retake_photo',
+]);
+const DeepeningAdviceValues = Object.freeze([...WatchoutValues, ...TwoWeekFocusValues]);
 
 const ObservationItemSchema = {
   type: 'object',
@@ -253,6 +303,169 @@ const SkinReportStrategySchema = {
       items: { type: 'string', maxLength: 220 },
     },
   },
+};
+
+const CanonicalObservationItemSchema = {
+  type: 'object',
+  properties: {
+    cue: { type: 'string', enum: CanonicalCueValues.slice(), description: 'Canonical cue enum grounded in visible skin signal.' },
+    region: { type: 'string', enum: CanonicalRegionValues.slice(), description: 'Canonical facial region enum.' },
+    severity: { type: 'string', enum: ObservationSeverityValues.slice(), description: 'Observed severity band for the visible cue.' },
+    confidence: { type: 'string', enum: ObservationConfidenceValues.slice(), description: 'Model confidence for the visible cue.' },
+    evidence: { type: 'string', maxLength: 220, description: 'Short English evidence phrase describing the visible cue.' },
+  },
+  required: ['cue', 'region', 'severity', 'confidence', 'evidence'],
+};
+
+const SkinVisionCanonicalSchema = {
+  type: 'object',
+  properties: {
+    visibility_status: {
+      type: 'string',
+      enum: VisionVisibilityValues.slice(),
+      description: 'Whether the image supports grounded cue extraction: sufficient, limited, or insufficient.',
+    },
+    insufficient_reason: {
+      type: 'string',
+      enum: VisionInsufficientReasonValues.slice(),
+      description: 'Required when visibility_status is insufficient.',
+    },
+    needs_risk_check: {
+      type: 'boolean',
+      description: 'True only when the image suggests caution, not medical diagnosis.',
+    },
+    quality_note: {
+      type: 'string',
+      maxLength: 180,
+      description: 'Optional English note describing the image quality constraint in one sentence.',
+    },
+    observations: {
+      type: 'array',
+      maxItems: 8,
+      items: CanonicalObservationItemSchema,
+      description: 'Distinct visible cosmetic cues grounded in the image.',
+    },
+    limits: {
+      type: 'array',
+      maxItems: 4,
+      items: { type: 'string', maxLength: 120 },
+      description: 'Optional short English limit notes.',
+    },
+  },
+  required: ['visibility_status', 'needs_risk_check', 'observations'],
+};
+
+const CanonicalSummaryFocusSchema = {
+  type: 'object',
+  properties: {
+    priority: { type: 'string', enum: SummaryPriorityValues.slice(), description: 'Primary skincare focus priority.' },
+    primary_cues: {
+      type: 'array',
+      maxItems: 3,
+      items: { type: 'string', enum: CanonicalCueValues.slice() },
+      description: 'Cue enums driving the current plan.',
+    },
+  },
+  required: ['priority', 'primary_cues'],
+};
+
+const CanonicalRoutineStepSchema = {
+  type: 'object',
+  properties: {
+    time: { type: 'string', enum: RoutineTimeValues.slice(), description: 'Routine timing bucket.' },
+    step_type: { type: 'string', enum: RoutineStepTypeValues.slice(), description: 'Canonical routine step category.' },
+    target: { type: 'string', enum: RoutineTargetValues.slice(), description: 'Primary routine target for this step.' },
+    cadence: { type: 'string', enum: RoutineCadenceValues.slice(), description: 'How often this step should be used.' },
+    intensity: { type: 'string', enum: RoutineIntensityValues.slice(), description: 'How conservative the step should be.' },
+    linked_cues: {
+      type: 'array',
+      maxItems: 3,
+      items: { type: 'string', enum: CanonicalCueValues.slice() },
+      description: 'Cue enums directly supporting this step.',
+    },
+  },
+  required: ['time', 'step_type', 'target', 'cadence', 'intensity', 'linked_cues'],
+};
+
+const CanonicalFollowUpSchema = {
+  type: 'object',
+  properties: {
+    intent: { type: 'string', enum: FollowUpIntentValues.slice(), description: 'Next-question intent for deterministic rendering.' },
+    conditional_followups: {
+      type: 'array',
+      maxItems: 3,
+      items: { type: 'string', enum: FollowUpIntentValues.slice() },
+      description: 'Optional additional follow-up intents.',
+    },
+  },
+  required: ['intent'],
+};
+
+const CanonicalDeepeningSchema = {
+  type: 'object',
+  properties: {
+    phase: { type: 'string', enum: DEEPENING_PHASE_VALUES.slice(), description: 'Conversation phase for deepening.' },
+    summary_priority: { type: 'string', enum: SummaryPriorityValues.slice(), description: 'Top skin focus for the phase.' },
+    advice_items: {
+      type: 'array',
+      maxItems: 4,
+      items: { type: 'string', enum: DeepeningAdviceValues.slice() },
+      description: 'Structured advice items that deterministic renderer turns into prose.',
+    },
+    question_intent: {
+      type: 'string',
+      enum: FollowUpIntentValues.slice(),
+      description: 'Controls the deterministic deepening question and option set.',
+    },
+  },
+  required: ['phase', 'summary_priority', 'advice_items', 'question_intent'],
+};
+
+const SkinReportCanonicalSchema = {
+  type: 'object',
+  properties: {
+    needs_risk_check: { type: 'boolean', description: 'True when the plan should surface caution signals.' },
+    summary_focus: CanonicalSummaryFocusSchema,
+    insights: {
+      type: 'array',
+      maxItems: 6,
+      items: CanonicalObservationItemSchema,
+      description: 'Canonical visible insights that the plan must stay consistent with.',
+    },
+    routine_steps: {
+      type: 'array',
+      maxItems: 8,
+      items: CanonicalRoutineStepSchema,
+      description: 'Structured routine steps for deterministic locale rendering.',
+    },
+    watchouts: {
+      type: 'array',
+      maxItems: 4,
+      items: { type: 'string', enum: WatchoutValues.slice() },
+      description: 'Structured watchouts for deterministic rendering.',
+    },
+    follow_up: CanonicalFollowUpSchema,
+    two_week_focus: {
+      type: 'array',
+      maxItems: 3,
+      items: { type: 'string', enum: TwoWeekFocusValues.slice() },
+      description: 'Structured two-week focus items.',
+    },
+    risk_flags: {
+      type: 'array',
+      maxItems: 3,
+      items: { type: 'string', enum: RiskFlagValues.slice() },
+      description: 'Structured caution flags.',
+    },
+    deepening: CanonicalDeepeningSchema,
+  },
+  required: ['needs_risk_check', 'summary_focus', 'insights', 'routine_steps', 'watchouts', 'follow_up', 'two_week_focus', 'risk_flags'],
+};
+
+const SkinDeepeningCanonicalSchema = {
+  type: 'object',
+  properties: CanonicalDeepeningSchema.properties,
+  required: CanonicalDeepeningSchema.required,
 };
 
 function clampText(raw, maxLen) {
@@ -561,6 +774,788 @@ function deriveAsk3Questions(primaryQuestion, conditionalFollowups) {
   return list.slice(0, 3);
 }
 
+function normalizeEnumValue(raw, values, fallback) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (values.includes(token)) return token;
+  return fallback;
+}
+
+function normalizeCanonicalCue(raw) {
+  const token = String(raw || '').trim().toLowerCase().replace(/[^a-z_]+/g, '_').replace(/^_+|_+$/g, '');
+  if (token === 'oiliness') return 'shine';
+  if (token === 'rough_texture') return 'texture';
+  if (token === 'uneven_tone' || token === 'tone') return 'uneven_tone';
+  return normalizeEnumValue(token, CanonicalCueValues, 'texture');
+}
+
+function normalizeCanonicalRegion(raw) {
+  const token = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_')
+    .replace(/[^a-z_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (token === 't_zone' || token === 't') return 't_zone';
+  if (token === 'fullface' || token === 'whole_face' || token === 'all_face') return 'full_face';
+  if (token === 'jaw' || token === 'jaw_line') return 'jawline';
+  return normalizeEnumValue(token, CanonicalRegionValues, 'full_face');
+}
+
+function normalizeVisionVisibility(raw) {
+  return normalizeEnumValue(raw, VisionVisibilityValues, 'insufficient');
+}
+
+function inferInsufficientReasonFromText(text) {
+  const token = String(text || '').trim().toLowerCase();
+  if (!token) return null;
+  if (token.includes('blur')) return 'blur';
+  if (token.includes('light') || token.includes('shadow') || token.includes('exposure') || token.includes('wb')) return 'lighting';
+  if (token.includes('occlusion') || token.includes('cover')) return 'occlusion';
+  if (token.includes('face') && token.includes('visible')) return 'face_not_visible';
+  if (token.includes('resolution')) return 'resolution_low';
+  if (token.includes('no clear') || token.includes('no cue')) return 'no_clear_cue';
+  return 'mixed';
+}
+
+function normalizeInsufficientReason(raw, { fallbackText } = {}) {
+  const direct = normalizeEnumValue(raw, VisionInsufficientReasonValues, '');
+  if (direct) return direct;
+  return inferInsufficientReasonFromText(fallbackText) || 'mixed';
+}
+
+function normalizeSummaryPriority(raw) {
+  return normalizeEnumValue(raw, SummaryPriorityValues, 'mixed');
+}
+
+function normalizeRoutineTime(raw) {
+  return normalizeEnumValue(raw, RoutineTimeValues, 'either');
+}
+
+function normalizeRoutineStepType(raw) {
+  return normalizeEnumValue(raw, RoutineStepTypeValues, 'monitor');
+}
+
+function normalizeRoutineTarget(raw) {
+  return normalizeEnumValue(raw, RoutineTargetValues, 'mixed');
+}
+
+function normalizeRoutineCadence(raw) {
+  return normalizeEnumValue(raw, RoutineCadenceValues, 'daily');
+}
+
+function normalizeRoutineIntensity(raw) {
+  return normalizeEnumValue(raw, RoutineIntensityValues, 'gentle');
+}
+
+function normalizeWatchout(raw) {
+  return normalizeEnumValue(raw, WatchoutValues, 'one_change_at_a_time');
+}
+
+function normalizeTwoWeekFocusItem(raw) {
+  return normalizeEnumValue(raw, TwoWeekFocusValues, 'confirm_tolerance');
+}
+
+function normalizeFollowUpIntent(raw) {
+  return normalizeEnumValue(raw, FollowUpIntentValues, 'priority_symptom');
+}
+
+function normalizeRiskFlag(raw) {
+  return normalizeEnumValue(raw, RiskFlagValues, 'monitor_stinging');
+}
+
+function normalizeDeepeningAdvice(raw) {
+  return normalizeEnumValue(raw, DeepeningAdviceValues, 'confirm_tolerance');
+}
+
+function normalizeCanonicalObservationArray(raw, { maxItems = 8 } = {}) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  const seen = new Set();
+  for (const row of list) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const cue = normalizeCanonicalCue(row.cue);
+    const region = normalizeCanonicalRegion(row.region != null ? row.region : row.where);
+    const severity = normalizeObservationSeverity(row.severity);
+    const confidence = normalizeObservationConfidence(row.confidence);
+    const evidence = clampText(row.evidence, 220);
+    if (!evidence) continue;
+    const key = `${cue}:${region}:${severity}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ cue, region, severity, confidence, evidence });
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function normalizeCanonicalSummaryFocus(raw) {
+  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const primaryCues = Array.isArray(node.primary_cues)
+    ? node.primary_cues.map((item) => normalizeCanonicalCue(item)).filter(Boolean).slice(0, 3)
+    : [];
+  return {
+    priority: normalizeSummaryPriority(node.priority),
+    primary_cues: primaryCues.length ? primaryCues : ['texture'],
+  };
+}
+
+function normalizeCanonicalRoutineSteps(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const row of list) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const linkedCues = Array.isArray(row.linked_cues)
+      ? row.linked_cues.map((item) => normalizeCanonicalCue(item)).filter(Boolean).slice(0, 3)
+      : [];
+    out.push({
+      time: normalizeRoutineTime(row.time),
+      step_type: normalizeRoutineStepType(row.step_type),
+      target: normalizeRoutineTarget(row.target),
+      cadence: normalizeRoutineCadence(row.cadence),
+      intensity: normalizeRoutineIntensity(row.intensity),
+      linked_cues: linkedCues.length ? linkedCues : ['texture'],
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function normalizeCanonicalFollowUp(raw) {
+  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const conditionalFollowups = Array.isArray(node.conditional_followups)
+    ? node.conditional_followups.map((item) => normalizeFollowUpIntent(item)).filter(Boolean).slice(0, 3)
+    : [];
+  return {
+    intent: normalizeFollowUpIntent(node.intent),
+    ...(conditionalFollowups.length ? { conditional_followups: conditionalFollowups } : {}),
+  };
+}
+
+function normalizeCanonicalDeepening(raw) {
+  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!node) return null;
+  const adviceItems = Array.isArray(node.advice_items)
+    ? node.advice_items.map((item) => normalizeDeepeningAdvice(item)).filter(Boolean).slice(0, 4)
+    : [];
+  return {
+    phase: normalizeEnumValue(node.phase, DEEPENING_PHASE_VALUES, 'photo_optin'),
+    summary_priority: normalizeSummaryPriority(node.summary_priority),
+    advice_items: adviceItems.length ? adviceItems : ['confirm_tolerance'],
+    question_intent: normalizeFollowUpIntent(node.question_intent),
+  };
+}
+
+function normalizeDeepeningCanonicalLayer(payload) {
+  return normalizeCanonicalDeepening(payload);
+}
+
+function normalizeVisionCanonicalLayer(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const observations = normalizeCanonicalObservationArray(p.observations, { maxItems: 8 });
+  const limits = normalizeGuidanceBrief(p.limits).map((item) => clampText(item, 120)).slice(0, 4);
+  const qualityNote = clampText(p.quality_note, 180);
+  const visibilityStatus = normalizeVisionVisibility(
+    p.visibility_status || (p.insufficient_visual_detail ? 'insufficient' : observations.length ? 'sufficient' : 'limited'),
+  );
+  const insufficientReason =
+    visibilityStatus === 'insufficient'
+      ? normalizeInsufficientReason(p.insufficient_reason, { fallbackText: `${qualityNote} ${limits.join(' ')}` })
+      : undefined;
+  return {
+    visibility_status: visibilityStatus,
+    ...(insufficientReason ? { insufficient_reason: insufficientReason } : {}),
+    needs_risk_check: Boolean(p.needs_risk_check),
+    ...(qualityNote ? { quality_note: qualityNote } : {}),
+    observations,
+    ...(limits.length ? { limits } : {}),
+  };
+}
+
+function normalizeReportCanonicalLayer(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const watchouts = Array.isArray(p.watchouts)
+    ? p.watchouts.map((item) => normalizeWatchout(item)).filter(Boolean).slice(0, 4)
+    : [];
+  const twoWeekFocus = Array.isArray(p.two_week_focus)
+    ? p.two_week_focus.map((item) => normalizeTwoWeekFocusItem(item)).filter(Boolean).slice(0, 3)
+    : [];
+  const riskFlags = Array.isArray(p.risk_flags)
+    ? p.risk_flags.map((item) => normalizeRiskFlag(item)).filter(Boolean).slice(0, 3)
+    : [];
+  return {
+    needs_risk_check: Boolean(p.needs_risk_check),
+    summary_focus: normalizeCanonicalSummaryFocus(p.summary_focus),
+    insights: normalizeCanonicalObservationArray(p.insights, { maxItems: 6 }),
+    routine_steps: normalizeCanonicalRoutineSteps(p.routine_steps),
+    watchouts: watchouts.length ? watchouts : ['one_change_at_a_time'],
+    follow_up: normalizeCanonicalFollowUp(p.follow_up),
+    two_week_focus: twoWeekFocus.length ? twoWeekFocus : ['confirm_tolerance'],
+    risk_flags: riskFlags,
+    ...(p.deepening ? { deepening: normalizeCanonicalDeepening(p.deepening) } : {}),
+  };
+}
+
+function validateVisionCanonicalLayer(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  const errors = [];
+  if (!p) return { ok: false, errors: ['/ must be object'] };
+  if (!VisionVisibilityValues.includes(String(p.visibility_status || '').trim().toLowerCase())) {
+    errors.push('/visibility_status invalid');
+  }
+  if (p.visibility_status === 'insufficient' && !VisionInsufficientReasonValues.includes(String(p.insufficient_reason || '').trim().toLowerCase())) {
+    errors.push('/insufficient_reason required when visibility_status=insufficient');
+  }
+  if (typeof p.needs_risk_check !== 'boolean') errors.push('/needs_risk_check must be boolean');
+  if (p.quality_note != null && (typeof p.quality_note !== 'string' || p.quality_note.length > 180)) errors.push('/quality_note invalid');
+  errors.push(...validateObservationArray(
+    Array.isArray(p.observations)
+      ? p.observations.map((row) => ({ ...row, where: row.region }))
+      : p.observations,
+    { path: '/observations', max: 8 },
+  ));
+  if (p.limits != null) {
+    errors.push(...validateStringArray(p.limits, { path: '/limits', maxItems: 4, maxLen: 120 }));
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+function validateReportCanonicalLayer(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  const errors = [];
+  if (!p) return { ok: false, errors: ['/ must be object'] };
+  if (typeof p.needs_risk_check !== 'boolean') errors.push('/needs_risk_check must be boolean');
+  if (!p.summary_focus || typeof p.summary_focus !== 'object' || Array.isArray(p.summary_focus)) {
+    errors.push('/summary_focus must be object');
+  } else {
+    if (!SummaryPriorityValues.includes(String(p.summary_focus.priority || '').trim().toLowerCase())) {
+      errors.push('/summary_focus/priority invalid');
+    }
+    if (!Array.isArray(p.summary_focus.primary_cues)) errors.push('/summary_focus/primary_cues must be array');
+  }
+  errors.push(...validateObservationArray(
+    Array.isArray(p.insights) ? p.insights.map((row) => ({ ...row, where: row.region })) : p.insights,
+    { path: '/insights', max: 6 },
+  ));
+  if (!Array.isArray(p.routine_steps)) errors.push('/routine_steps must be array');
+  else {
+    if (p.routine_steps.length > 8) errors.push('/routine_steps max 8 items');
+    for (let i = 0; i < p.routine_steps.length; i += 1) {
+      const row = p.routine_steps[i];
+      if (!row || typeof row !== 'object' || Array.isArray(row)) {
+        errors.push(`/routine_steps/${i} must be object`);
+        continue;
+      }
+      if (!RoutineTimeValues.includes(String(row.time || '').trim().toLowerCase())) errors.push(`/routine_steps/${i}/time invalid`);
+      if (!RoutineStepTypeValues.includes(String(row.step_type || '').trim().toLowerCase())) errors.push(`/routine_steps/${i}/step_type invalid`);
+      if (!RoutineTargetValues.includes(String(row.target || '').trim().toLowerCase())) errors.push(`/routine_steps/${i}/target invalid`);
+      if (!RoutineCadenceValues.includes(String(row.cadence || '').trim().toLowerCase())) errors.push(`/routine_steps/${i}/cadence invalid`);
+      if (!RoutineIntensityValues.includes(String(row.intensity || '').trim().toLowerCase())) errors.push(`/routine_steps/${i}/intensity invalid`);
+      if (!Array.isArray(row.linked_cues)) errors.push(`/routine_steps/${i}/linked_cues must be array`);
+    }
+  }
+  if (!Array.isArray(p.watchouts)) errors.push('/watchouts must be array');
+  if (!Array.isArray(p.two_week_focus)) errors.push('/two_week_focus must be array');
+  if (p.risk_flags != null && !Array.isArray(p.risk_flags)) errors.push('/risk_flags must be array');
+  if (!p.follow_up || typeof p.follow_up !== 'object' || Array.isArray(p.follow_up)) {
+    errors.push('/follow_up must be object');
+  } else if (!FollowUpIntentValues.includes(String(p.follow_up.intent || '').trim().toLowerCase())) {
+    errors.push('/follow_up/intent invalid');
+  }
+  if (p.deepening != null) {
+    if (!p.deepening || typeof p.deepening !== 'object' || Array.isArray(p.deepening)) {
+      errors.push('/deepening must be object');
+    } else {
+      if (!DEEPENING_PHASE_VALUES.includes(String(p.deepening.phase || '').trim().toLowerCase())) errors.push('/deepening/phase invalid');
+      if (!SummaryPriorityValues.includes(String(p.deepening.summary_priority || '').trim().toLowerCase())) errors.push('/deepening/summary_priority invalid');
+      if (!Array.isArray(p.deepening.advice_items)) errors.push('/deepening/advice_items must be array');
+      if (!FollowUpIntentValues.includes(String(p.deepening.question_intent || '').trim().toLowerCase())) errors.push('/deepening/question_intent invalid');
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+function validateDeepeningCanonicalLayer(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  const errors = [];
+  if (!p) return { ok: false, errors: ['/ must be object'] };
+  if (!DEEPENING_PHASE_VALUES.includes(String(p.phase || '').trim().toLowerCase())) errors.push('/phase invalid');
+  if (!SummaryPriorityValues.includes(String(p.summary_priority || '').trim().toLowerCase())) errors.push('/summary_priority invalid');
+  if (!Array.isArray(p.advice_items)) errors.push('/advice_items must be array');
+  if (!FollowUpIntentValues.includes(String(p.question_intent || '').trim().toLowerCase())) errors.push('/question_intent invalid');
+  return { ok: errors.length === 0, errors };
+}
+
+function evaluateVisionCanonicalSemantic(payload, { quality } = {}) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const issues = [];
+  const visibilityStatus = normalizeVisionVisibility(p.visibility_status);
+  const grade = String((quality && quality.grade) || '')
+    .trim()
+    .toLowerCase();
+  if (visibilityStatus === 'insufficient' && !p.insufficient_reason) {
+    issues.push('missing_insufficient_reason');
+  }
+  if ((visibilityStatus === 'sufficient' || visibilityStatus === 'limited') && grade === 'pass' && (!Array.isArray(p.observations) || p.observations.length < 2)) {
+    issues.push('semantic_empty_on_pass_quality');
+  }
+  if (visibilityStatus === 'limited' && (!Array.isArray(p.observations) || !p.observations.length) && grade === 'pass') {
+    issues.push('limited_without_grounded_cues');
+  }
+  return {
+    ok: issues.length === 0,
+    code: issues.includes('semantic_empty_on_pass_quality') ? 'SEMANTIC_EMPTY' : issues.length ? 'SEMANTIC_INVALID' : null,
+    issues,
+    useful_output: visibilityStatus !== 'insufficient' && Array.isArray(p.observations) && p.observations.length >= 2,
+  };
+}
+
+function evaluateReportCanonicalSemantic(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const issues = [];
+  if (!Array.isArray(p.insights) || !p.insights.length) issues.push('missing_insights');
+  if (!Array.isArray(p.routine_steps) || !p.routine_steps.length) issues.push('missing_routine_steps');
+  if (Array.isArray(p.routine_steps) && !p.routine_steps.some((row) => Array.isArray(row && row.linked_cues) && row.linked_cues.length > 0)) {
+    issues.push('routine_steps_not_grounded');
+  }
+  if (!p.follow_up || typeof p.follow_up !== 'object' || !p.follow_up.intent) issues.push('missing_follow_up');
+  if (!p.summary_focus || !Array.isArray(p.summary_focus.primary_cues) || !p.summary_focus.primary_cues.length) issues.push('missing_summary_focus');
+  return {
+    ok: issues.length === 0,
+    code: issues.includes('missing_insights') ? 'SEMANTIC_EMPTY' : issues.length ? 'SEMANTIC_INVALID' : null,
+    issues,
+    useful_output: issues.length === 0,
+  };
+}
+
+function evaluateDeepeningCanonicalSemantic(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const issues = [];
+  if (!p.phase) issues.push('missing_phase');
+  if (!p.question_intent) issues.push('missing_question_intent');
+  if (!Array.isArray(p.advice_items) || !p.advice_items.length) issues.push('missing_advice_items');
+  return {
+    ok: issues.length === 0,
+    code: issues.includes('missing_advice_items') ? 'SEMANTIC_EMPTY' : issues.length ? 'SEMANTIC_INVALID' : null,
+    issues,
+    useful_output: issues.length === 0,
+  };
+}
+
+function localizeCueLabel(cue, lang) {
+  const locale = normalizeLang(lang);
+  const map = {
+    redness: locale === 'zh-CN' ? '泛红' : 'redness',
+    shine: locale === 'zh-CN' ? '油光' : 'shine',
+    bumps: locale === 'zh-CN' ? '颗粒/痘样凸起' : 'bumps',
+    flaking: locale === 'zh-CN' ? '脱屑' : 'flaking',
+    uneven_tone: locale === 'zh-CN' ? '肤色不均' : 'uneven tone',
+    texture: locale === 'zh-CN' ? '纹理粗糙' : 'texture',
+    pores: locale === 'zh-CN' ? '毛孔可见' : 'visible pores',
+  };
+  return map[normalizeCanonicalCue(cue)] || (locale === 'zh-CN' ? '可见皮肤信号' : 'visible skin signal');
+}
+
+function localizeRegionLabel(region, lang) {
+  const locale = normalizeLang(lang);
+  const map = {
+    cheeks: locale === 'zh-CN' ? '面颊' : 'cheeks',
+    forehead: locale === 'zh-CN' ? '额头' : 'forehead',
+    t_zone: locale === 'zh-CN' ? 'T区' : 'T-zone',
+    chin: locale === 'zh-CN' ? '下巴' : 'chin',
+    nose: locale === 'zh-CN' ? '鼻部' : 'nose',
+    jawline: locale === 'zh-CN' ? '下颌线' : 'jawline',
+    full_face: locale === 'zh-CN' ? '全脸' : 'full face',
+  };
+  return map[normalizeCanonicalRegion(region)] || map.full_face;
+}
+
+function localizeSeverityLabel(severity, lang) {
+  const locale = normalizeLang(lang);
+  const token = normalizeObservationSeverity(severity);
+  if (locale === 'zh-CN') {
+    if (token === 'high') return '较明显';
+    if (token === 'moderate') return '中等';
+    return '轻度';
+  }
+  if (token === 'high') return 'marked';
+  if (token === 'moderate') return 'moderate';
+  return 'mild';
+}
+
+function localizeVisibilityReason(reason, lang) {
+  const locale = normalizeLang(lang);
+  const token = normalizeInsufficientReason(reason);
+  const zh = {
+    blur: '画面模糊影响判断',
+    lighting: '光线条件影响判断',
+    occlusion: '遮挡影响判断',
+    face_not_visible: '面部区域不够清晰',
+    resolution_low: '分辨率不足',
+    no_clear_cue: '可见信号不足',
+    mixed: '可见条件不足',
+  };
+  const en = {
+    blur: 'motion blur limits the read',
+    lighting: 'lighting limits the read',
+    occlusion: 'occlusion limits the read',
+    face_not_visible: 'the face is not clearly visible',
+    resolution_low: 'resolution is too low',
+    no_clear_cue: 'clear cues are not visible',
+    mixed: 'the visible conditions are too limited',
+  };
+  return (locale === 'zh-CN' ? zh : en)[token] || (locale === 'zh-CN' ? zh.mixed : en.mixed);
+}
+
+function localizePriorityLabel(priority, lang) {
+  const locale = normalizeLang(lang);
+  const map = {
+    barrier: locale === 'zh-CN' ? '屏障稳定' : 'barrier stability',
+    redness: locale === 'zh-CN' ? '泛红管理' : 'redness control',
+    oiliness: locale === 'zh-CN' ? '出油平衡' : 'oil balance',
+    texture: locale === 'zh-CN' ? '纹理平滑' : 'texture smoothing',
+    tone: locale === 'zh-CN' ? '均匀肤色' : 'tone evenness',
+    bumps: locale === 'zh-CN' ? '颗粒波动' : 'bump control',
+    pores: locale === 'zh-CN' ? '毛孔可见度' : 'pore visibility',
+    mixed: locale === 'zh-CN' ? '先稳后进' : 'stability-first mixed focus',
+  };
+  return map[normalizeSummaryPriority(priority)] || map.mixed;
+}
+
+function localizeWatchout(watchout, lang) {
+  const locale = normalizeLang(lang);
+  const map = {
+    avoid_stacking_strong_actives:
+      locale === 'zh-CN' ? '不要在同一晚叠加多个强活性。' : 'Do not stack multiple strong actives on the same night.',
+    pause_if_stinging:
+      locale === 'zh-CN' ? '若刺痛持续或加重，先暂停新增活性。' : 'If stinging persists or worsens, pause newly added actives.',
+    protect_barrier:
+      locale === 'zh-CN' ? '先守住清洁-保湿-防晒三步基线。' : 'Keep a cleanse-moisturize-sunscreen baseline first.',
+    protect_uv:
+      locale === 'zh-CN' ? '白天把防晒作为固定最后一步。' : 'Keep sunscreen as the fixed final AM step.',
+    one_change_at_a_time:
+      locale === 'zh-CN' ? '一次只调整一个变量，方便追踪反应。' : 'Change one variable at a time so reactions stay trackable.',
+    retake_clear_photo:
+      locale === 'zh-CN' ? '下次尽量在自然光下补拍清晰正脸照。' : 'Retake a clear front-facing photo in daylight next time.',
+  };
+  return map[normalizeWatchout(watchout)] || map.one_change_at_a_time;
+}
+
+function localizeTwoWeekFocus(item, lang) {
+  const locale = normalizeLang(lang);
+  const map = {
+    stabilize_barrier: locale === 'zh-CN' ? '优先稳定屏障 2 周。' : 'Keep the barrier stable for the next 2 weeks.',
+    track_redness: locale === 'zh-CN' ? '连续记录泛红波动。' : 'Track redness trend over the next 2 weeks.',
+    track_oil: locale === 'zh-CN' ? '连续记录中午前后的出油变化。' : 'Track midday oil changes over the next 2 weeks.',
+    track_bumps: locale === 'zh-CN' ? '连续记录新起颗粒数量。' : 'Track whether new bumps are increasing.',
+    track_texture: locale === 'zh-CN' ? '连续记录纹理与粗糙感变化。' : 'Track texture and roughness changes.',
+    track_tone: locale === 'zh-CN' ? '连续记录肤色均匀度变化。' : 'Track tone evenness changes.',
+    confirm_tolerance: locale === 'zh-CN' ? '确认当前方案是否耐受。' : 'Confirm that the current plan is well tolerated.',
+  };
+  return map[normalizeTwoWeekFocusItem(item)] || map.confirm_tolerance;
+}
+
+function localizeRiskFlag(flag, lang) {
+  const locale = normalizeLang(lang);
+  const map = {
+    monitor_persistent_redness: locale === 'zh-CN' ? '若泛红持续不退，及时回退到基础护理。' : 'If redness persists, step back to basic care.',
+    monitor_stinging: locale === 'zh-CN' ? '若刺痛明显，立即减法。' : 'If stinging becomes obvious, simplify immediately.',
+    monitor_new_breakouts: locale === 'zh-CN' ? '若新爆痘增加，暂停新增变量。' : 'If new breakouts increase, pause new variables.',
+    retake_photo: locale === 'zh-CN' ? '建议补拍更清晰照片后再复核。' : 'Retake a clearer photo before the next reassessment.',
+  };
+  return map[normalizeRiskFlag(flag)] || map.monitor_stinging;
+}
+
+function localizeStepLabel(step, lang) {
+  const locale = normalizeLang(lang);
+  const stepType = normalizeRoutineStepType(step && step.step_type);
+  const intensity = normalizeRoutineIntensity(step && step.intensity);
+  const mapEn = {
+    cleanse: intensity === 'gentle' || intensity === 'barrier_safe' ? 'Gentle cleanse' : 'Cleanse',
+    hydrate: 'Hydrating layer',
+    moisturize: intensity === 'barrier_safe' ? 'Barrier moisturizer' : 'Moisturizer',
+    protect: 'Broad-spectrum sunscreen',
+    treat: intensity === 'low_frequency' ? 'Low-frequency active step' : 'Targeted treatment step',
+    pause: 'Pause strong actives',
+    monitor: 'Track response',
+  };
+  const mapZh = {
+    cleanse: intensity === 'gentle' || intensity === 'barrier_safe' ? '温和清洁' : '清洁',
+    hydrate: '补水层',
+    moisturize: intensity === 'barrier_safe' ? '屏障保湿' : '保湿',
+    protect: '广谱防晒',
+    treat: intensity === 'low_frequency' ? '低频活性步骤' : '针对性处理步骤',
+    pause: '暂停强活性',
+    monitor: '观察反应',
+  };
+  return (locale === 'zh-CN' ? mapZh : mapEn)[stepType] || (locale === 'zh-CN' ? '护理步骤' : 'Care step');
+}
+
+function localizeLookFor(step, lang) {
+  const locale = normalizeLang(lang);
+  const stepType = normalizeRoutineStepType(step && step.step_type);
+  const intensity = normalizeRoutineIntensity(step && step.intensity);
+  const map = {
+    cleanse: locale === 'zh-CN' ? ['温和', '低刺激'] : ['gentle', 'low-irritation'],
+    hydrate: locale === 'zh-CN' ? ['补水', '舒缓'] : ['hydrating', 'soothing'],
+    moisturize: locale === 'zh-CN' ? ['修护', '保湿'] : ['barrier-supportive', 'moisturizing'],
+    protect: locale === 'zh-CN' ? ['广谱', '高 SPF'] : ['broad-spectrum', 'high SPF'],
+    treat: intensity === 'low_frequency'
+      ? (locale === 'zh-CN' ? ['低频', '单一主力'] : ['low-frequency', 'single-core-active'])
+      : (locale === 'zh-CN' ? ['针对性', '温和耐受'] : ['targeted', 'tolerable']),
+    pause: locale === 'zh-CN' ? ['回退基础护理'] : ['simplify', 'barrier-first'],
+    monitor: locale === 'zh-CN' ? ['记录变化'] : ['track changes'],
+  };
+  return map[stepType] || (locale === 'zh-CN' ? ['温和'] : ['gentle']);
+}
+
+function localizeStepHow(step, lang) {
+  const locale = normalizeLang(lang);
+  const cadence = normalizeRoutineCadence(step && step.cadence);
+  const mapEn = {
+    daily: 'Use daily if the skin remains calm.',
+    every_other_night: 'Use every other night while tracking tolerance.',
+    two_nights_weekly: 'Start with 2 nights per week.',
+    hold: 'Hold this step for now.',
+    as_needed: 'Use only as needed based on comfort.',
+  };
+  const mapZh = {
+    daily: '皮肤稳定时可每天使用。',
+    every_other_night: '先隔晚用，并观察耐受。',
+    two_nights_weekly: '先从每周 2 晚开始。',
+    hold: '这一步先暂停。',
+    as_needed: '按皮肤舒适度按需使用。',
+  };
+  return (locale === 'zh-CN' ? mapZh : mapEn)[cadence] || (locale === 'zh-CN' ? mapZh.daily : mapEn.daily);
+}
+
+function localizeStepCaution(step, lang) {
+  const locale = normalizeLang(lang);
+  const intensity = normalizeRoutineIntensity(step && step.intensity);
+  if (intensity === 'low_frequency') {
+    return locale === 'zh-CN'
+      ? '若刺痛、泛红或脱屑增加，立即回到基础护理。'
+      : 'If stinging, redness, or peeling increases, revert to the basic routine.';
+  }
+  if (normalizeRoutineStepType(step && step.step_type) === 'protect') {
+    return locale === 'zh-CN'
+      ? '作为早晨最后一步固定执行。'
+      : 'Keep this as the fixed final step in the morning.';
+  }
+  return locale === 'zh-CN'
+    ? '若不适加重，优先减法。'
+    : 'If discomfort worsens, simplify first.';
+}
+
+function buildDeterministicEvidence(row, lang) {
+  const locale = normalizeLang(lang);
+  const cue = localizeCueLabel(row && row.cue, lang);
+  const region = localizeRegionLabel(row && row.region, lang);
+  const severity = localizeSeverityLabel(row && row.severity, lang);
+  if (locale === 'zh-CN') {
+    return `${region}可见${severity}的${cue}信号。`;
+  }
+  return `${severity} ${cue} signal is visible around the ${region}.`;
+}
+
+function renderVisionCanonicalLayer(payload, { lang } = {}) {
+  const locale = normalizeLang(lang);
+  const p = normalizeVisionCanonicalLayer(payload);
+  if (p.visibility_status === 'insufficient') {
+    const reasonText = localizeVisibilityReason(p.insufficient_reason, locale);
+    const fallbackFeatures = locale === 'zh-CN'
+      ? [
+          { observation: `当前照片可见信息有限，${reasonText}。`, confidence: 'not_sure' },
+          { observation: '建议补拍自然光、无遮挡、清晰对焦的正脸照。', confidence: 'not_sure' },
+        ]
+      : [
+          { observation: `Current photo signal is limited because ${reasonText}.`, confidence: 'not_sure' },
+          { observation: 'Retake a clear front-facing photo in daylight with no filter or obstruction.', confidence: 'not_sure' },
+        ];
+    return {
+      features: normalizeFeatures(fallbackFeatures, { minItems: 2, maxItems: 4, conservative: true }),
+      needs_risk_check: Boolean(p.needs_risk_check),
+      quality_note: locale === 'zh-CN' ? `${reasonText}。` : `${reasonText}.`,
+      ...(p.limits && p.limits.length ? { limits: p.limits } : {}),
+      insufficient_visual_detail: true,
+    };
+  }
+
+  const observations = p.observations.map((row) => ({
+    cue: row.cue,
+    where: localizeRegionLabel(row.region, locale),
+    severity: row.severity,
+    confidence: row.confidence,
+    evidence: buildDeterministicEvidence(row, locale),
+  }));
+  const features = observationsToLegacyFeatures(
+    observations.map((row) => ({ ...row, where: row.where })),
+    { maxItems: 4 },
+  );
+  return {
+    features: normalizeFeatures(features, { minItems: 2, maxItems: 4 }),
+    needs_risk_check: Boolean(p.needs_risk_check),
+    ...(p.quality_note ? { quality_note: p.quality_note } : {}),
+    ...(observations.length ? { observations } : {}),
+    ...(p.limits && p.limits.length ? { limits: p.limits } : {}),
+  };
+}
+
+function buildRoutineQuestionFromIntent(intent, { lang } = {}) {
+  const locale = normalizeLang(lang);
+  const token = normalizeFollowUpIntent(intent);
+  const zh = {
+    priority_symptom: '你现在最困扰的是泛红、出油还是颗粒感？',
+    routine_share: '你现在 AM 和 PM 分别在用哪些步骤？',
+    reaction_check: '最近使用后最明显的反应是什么？',
+    tolerance_check: '最近是否有刺痛、紧绷或泛红加重？',
+    photo_upload: '愿意补一张清晰自拍做更细致的分析吗？',
+    confirm_plan: '这个 7 天方案你能先稳定执行吗？',
+  };
+  const en = {
+    priority_symptom: 'What feels most dominant right now: redness, oiliness, or bumps?',
+    routine_share: 'What steps are you currently using in AM and PM?',
+    reaction_check: 'What reaction has been most noticeable after recent use?',
+    tolerance_check: 'Any stinging, tightness, or increased redness recently?',
+    photo_upload: 'Would you upload one clearer selfie for a more detailed read?',
+    confirm_plan: 'Can you follow this 7-day plan consistently first?',
+  };
+  return (locale === 'zh-CN' ? zh : en)[token] || (locale === 'zh-CN' ? zh.priority_symptom : en.priority_symptom);
+}
+
+function buildFollowUpOptions(intent, { lang } = {}) {
+  const locale = normalizeLang(lang);
+  const token = normalizeFollowUpIntent(intent);
+  if (token === 'reaction_check') {
+    return locale === 'zh-CN'
+      ? ['干燥加重', '皮肤紧绷', '刺痛/灼热', '泛红加重', '新爆痘', '无明显不适']
+      : ['More dryness', 'Tightness', 'Stinging/burning', 'More redness', 'New breakouts', 'No obvious discomfort'];
+  }
+  if (token === 'routine_share') {
+    return locale === 'zh-CN' ? ['分享 AM routine', '分享 PM routine', '我不确定'] : ['Share AM routine', 'Share PM routine', 'Not sure'];
+  }
+  if (token === 'photo_upload') {
+    return locale === 'zh-CN' ? ['上传照片', '先跳过'] : ['Upload photo', 'Skip for now'];
+  }
+  if (token === 'confirm_plan') {
+    return locale === 'zh-CN' ? ['可以先执行 7 天', '想更简单一点', '还想优化产品'] : ['I can follow it for 7 days', 'I need a simpler version', 'I also want product optimization'];
+  }
+  return locale === 'zh-CN' ? ['泛红', '出油', '颗粒感'] : ['Redness', 'Oiliness', 'Bumps'];
+}
+
+function renderDeepeningCanonicalLayer(payload, { lang } = {}) {
+  const locale = normalizeLang(lang);
+  const node = normalizeCanonicalDeepening(payload);
+  if (!node) return null;
+  const advice = node.advice_items.map((item) => {
+    if (WatchoutValues.includes(item)) return localizeWatchout(item, locale);
+    return localizeTwoWeekFocus(item, locale);
+  });
+  return {
+    phase: node.phase,
+    next_phase: node.phase,
+    question: buildRoutineQuestionFromIntent(node.question_intent, { lang: locale }),
+    options: buildFollowUpOptions(node.question_intent, { lang: locale }),
+    summary_focus: localizePriorityLabel(node.summary_priority, locale),
+    advice_items: advice,
+  };
+}
+
+function buildRoutineExpertObject({ summaryFocus, routineSteps, watchouts, riskFlags, lang } = {}) {
+  const locale = normalizeLang(lang);
+  const bucketed = { am_plan: [], pm_plan: [], anytime_plan: [] };
+  for (const step of Array.isArray(routineSteps) ? routineSteps : []) {
+    const entry = {
+      step: localizeStepLabel(step, locale),
+      why: `${localizePriorityLabel(step.target, locale)} -> ${Array.isArray(step.linked_cues) && step.linked_cues.length ? step.linked_cues.map((cue) => localizeCueLabel(cue, locale)).join(locale === 'zh-CN' ? ' / ' : ' / ') : localizePriorityLabel(step.target, locale)}`,
+      look_for: localizeLookFor(step, locale),
+      how: localizeStepHow(step, locale),
+      caution: localizeStepCaution(step, locale),
+    };
+    const key = step.time === 'am' ? 'am_plan' : step.time === 'pm' ? 'pm_plan' : 'anytime_plan';
+    bucketed[key].push(entry);
+  }
+  return {
+    contract: 'aurora.routine_expert.v2',
+    summary_focus: localizePriorityLabel(summaryFocus && summaryFocus.priority, locale),
+    am_plan: bucketed.am_plan.slice(0, 4),
+    pm_plan: bucketed.pm_plan.slice(0, 4),
+    anytime_plan: bucketed.anytime_plan.slice(0, 4),
+    watchouts: (Array.isArray(watchouts) ? watchouts : []).map((item) => localizeWatchout(item, locale)).slice(0, 4),
+    risk_flags: (Array.isArray(riskFlags) ? riskFlags : []).map((item) => localizeRiskFlag(item, locale)).slice(0, 3),
+  };
+}
+
+function buildStrategyFromCanonicalReport({ summaryFocus, watchouts, followUp, lang } = {}) {
+  const locale = normalizeLang(lang);
+  const focus = localizePriorityLabel(summaryFocus && summaryFocus.priority, locale);
+  const caution = Array.isArray(watchouts) && watchouts.length
+    ? localizeWatchout(watchouts[0], locale)
+    : localizeWatchout('one_change_at_a_time', locale);
+  const nextQuestion = buildRoutineQuestionFromIntent(followUp && followUp.intent, { lang: locale });
+  if (locale === 'zh-CN') {
+    return `当前重点：${focus} -> 注意事项：${caution} -> 执行路径：先按温和、单变量方案推进 7 天 -> 下一问：${nextQuestion}`;
+  }
+  return `Current focus: ${focus} -> Watchout: ${caution} -> Path: keep a gentle one-variable-at-a-time plan for 7 days -> Next question: ${nextQuestion}`;
+}
+
+function renderReportCanonicalLayer(payload, { lang, quality } = {}) {
+  const locale = normalizeLang(lang);
+  const p = normalizeReportCanonicalLayer(payload);
+  const findings = p.insights.map((row) => ({
+    cue: row.cue,
+    where: localizeRegionLabel(row.region, locale),
+    severity: row.severity,
+    confidence: row.confidence,
+    evidence: buildDeterministicEvidence(row, locale),
+  }));
+  const guidanceBrief = Array.from(
+    new Set([
+      ...p.watchouts.map((item) => localizeWatchout(item, locale)),
+      ...p.two_week_focus.map((item) => localizeTwoWeekFocus(item, locale)),
+    ]),
+  ).slice(0, 5);
+  const followUp = normalizeCanonicalFollowUp(p.follow_up);
+  const primaryQuestion = buildRoutineQuestionFromIntent(followUp.intent, { lang: locale });
+  const conditionalFollowups = Array.isArray(followUp.conditional_followups)
+    ? followUp.conditional_followups.map((item) => buildRoutineQuestionFromIntent(item, { lang: locale })).slice(0, 3)
+    : [];
+  const deepening = p.deepening ? renderDeepeningCanonicalLayer(p.deepening, { lang: locale }) : null;
+  const routineExpert = buildRoutineExpertObject({
+    summaryFocus: p.summary_focus,
+    routineSteps: p.routine_steps,
+    watchouts: p.watchouts,
+    riskFlags: p.risk_flags,
+    lang: locale,
+  });
+  return {
+    strategy: buildStrategyFromCanonicalReport({ summaryFocus: p.summary_focus, watchouts: p.watchouts, followUp, lang: locale }),
+    needs_risk_check: Boolean(p.needs_risk_check),
+    primary_question: primaryQuestion,
+    conditional_followups: conditionalFollowups,
+    routine_expert: routineExpert,
+    reasoning: guidanceBrief.slice(0, 4),
+    ...(deepening ? { deepening } : {}),
+    ...(quality ? { quality: normalizeQualityInfo(quality) } : {}),
+    findings,
+    guidance_brief: guidanceBrief,
+    next_step_options: normalizeNextStepOptions(
+      locale === 'zh-CN'
+        ? [
+            { id: 'analysis_get_recommendations', label: '获取产品推荐' },
+            { id: 'analysis_optimize_existing', label: '优化现有产品' },
+            { id: 'analysis_both_reco_optimize', label: '两者都要' },
+          ]
+        : [
+            { id: 'analysis_get_recommendations', label: 'Get recommendations' },
+            { id: 'analysis_optimize_existing', label: 'Optimize existing products' },
+            { id: 'analysis_both_reco_optimize', label: 'Both' },
+          ],
+    ),
+    two_week_focus: p.two_week_focus.map((item) => localizeTwoWeekFocus(item, locale)),
+  };
+}
+
 function validateFeatureArray(features, { min = 2, max = 4, path = '/features' } = {}) {
   const errors = [];
   if (!Array.isArray(features)) {
@@ -864,11 +1859,18 @@ function validateFinalContract(payload) {
 
 function normalizeVisionObservationLayer(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  if (p.visibility_status || p.insufficient_reason || p.region || (Array.isArray(p.observations) && p.observations.some((row) => row && typeof row === 'object' && Object.prototype.hasOwnProperty.call(row, 'region')))) {
+    return renderVisionCanonicalLayer(p, { lang: 'en-US' });
+  }
   const observations = normalizeObservations(p.observations, { maxItems: 8 });
-  const insufficientVisualDetail = observations.length === 0;
+  const insufficientVisualDetail = typeof p.insufficient_visual_detail === 'boolean' ? p.insufficient_visual_detail : observations.length === 0;
   const features = Array.isArray(p.features) && p.features.length
-    ? normalizeFeatures(p.features, { minItems: 2, maxItems: 4 })
-    : observationsToLegacyFeatures(observations, { maxItems: 4 });
+    ? normalizeFeatures(p.features, { minItems: 2, maxItems: 4, conservative: insufficientVisualDetail })
+    : observations.length
+      ? observationsToLegacyFeatures(observations, { maxItems: 4 })
+      : insufficientVisualDetail
+        ? normalizeFeatures([], { minItems: 2, maxItems: 4, conservative: true })
+        : [];
   const limits = normalizeGuidanceBrief(p.limits).slice(0, 6).map((item) => clampText(item, 180));
   const qualityNoteRaw = p.quality_note;
   const qualityNote =
@@ -882,7 +1884,7 @@ function normalizeVisionObservationLayer(payload) {
       ? p.needs_risk_check
       : observations.some((row) => row.confidence === 'low');
   return {
-    features: normalizeFeatures(features, { minItems: 2, maxItems: 4 }),
+    ...(Array.isArray(features) && features.length ? { features: normalizeFeatures(features, { minItems: 2, maxItems: 4, conservative: insufficientVisualDetail }) } : {}),
     needs_risk_check: Boolean(needsRiskCheck),
     ...(qualityNote !== undefined ? { quality_note: qualityNote } : {}),
     ...(observations.length ? { observations } : {}),
@@ -893,6 +1895,9 @@ function normalizeVisionObservationLayer(payload) {
 
 function normalizeReportStrategyLayer(payload, { lang } = {}) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  if (p.summary_focus || p.routine_steps || p.watchouts || p.follow_up) {
+    return renderReportCanonicalLayer(p, { lang, quality: p.quality });
+  }
   const locale = normalizeLang(lang);
   const defaultStrategy =
     locale === 'zh-CN'
@@ -1133,16 +2138,31 @@ module.exports = {
   SkinFinalContractSchema,
   SkinVisionObservationSchema,
   SkinVisionGatewaySchema,
+  SkinVisionCanonicalSchema,
   SkinReportStrategySchema,
+  SkinReportCanonicalSchema,
+  SkinDeepeningCanonicalSchema,
   validateFinalContract,
   validateVisionObservation,
+  validateVisionCanonicalLayer,
   validateReportStrategy,
+  validateReportCanonicalLayer,
+  validateDeepeningCanonicalLayer,
   mapQualityToMode,
   buildPoorPhotoTemplate,
   buildFactLayer,
   deriveAsk3Questions,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
+  normalizeVisionCanonicalLayer,
+  normalizeReportCanonicalLayer,
+  normalizeDeepeningCanonicalLayer,
   normalizeVisionObservationLayer,
   normalizeReportStrategyLayer,
+  renderVisionCanonicalLayer,
+  renderReportCanonicalLayer,
+  renderDeepeningCanonicalLayer,
+  evaluateVisionCanonicalSemantic,
+  evaluateReportCanonicalSemantic,
+  evaluateDeepeningCanonicalSemantic,
 };

@@ -9,13 +9,17 @@
  * @returns {string} trimmed key or empty string
  */
 function resolveAuroraGeminiKey(featureEnvVar) {
-  return String(
-    process.env[featureEnvVar] ||
-      process.env.AURORA_SKIN_GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_API_KEY ||
-      '',
-  ).trim();
+  const candidates = [
+    process.env[featureEnvVar],
+    process.env.AURORA_SKIN_GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY,
+    process.env.GOOGLE_API_KEY,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (value) return value;
+  }
+  return '';
 }
 
 module.exports = { resolveAuroraGeminiKey };

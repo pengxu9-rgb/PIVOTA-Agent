@@ -1429,9 +1429,12 @@ const PIVOTA_BACKEND_AGENT_API_KEY = String(
     '',
 ).trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
-const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
-const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
-const GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
+const {
+  hasAuroraGeminiApiKey,
+  getAuroraGeminiClient,
+  callAuroraGeminiGenerateContent,
+} = require('./auroraGeminiGlobalClient');
+const AURORA_GEMINI_KEY_FEATURE_ENV = 'AURORA_VISION_GEMINI_API_KEY';
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
 const SKIN_VISION_PROVIDER = (() => {
@@ -13824,33 +13827,39 @@ function getOpenAIClient() {
 let geminiClient;
 let geminiClientInitFailed = false;
 function getGeminiClient() {
-  if (!GEMINI_API_KEY) return { client: null, init_error: VisionUnavailabilityReason.VISION_MISSING_KEY };
   if (geminiClient) return { client: geminiClient, init_error: null };
   if (geminiClientInitFailed) return { client: null, init_error: VisionUnavailabilityReason.VISION_UNKNOWN };
 
-  try {
-    const { GoogleGenAI } = require('@google/genai');
-    geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    return { client: geminiClient, init_error: null };
-  } catch (_err) {
-    geminiClientInitFailed = true;
+  const resolved = getAuroraGeminiClient(AURORA_GEMINI_KEY_FEATURE_ENV);
+  if (!resolved || !resolved.client) {
+    const initError = String(resolved && resolved.init_error ? resolved.init_error : '').trim().toUpperCase();
+    if (initError === 'MISSING_GEMINI_KEY') {
+      return { client: null, init_error: VisionUnavailabilityReason.VISION_MISSING_KEY };
+    }
+    if (initError === 'GEMINI_INIT_FAILED') {
+      geminiClientInitFailed = true;
+    }
     return { client: null, init_error: VisionUnavailabilityReason.VISION_UNKNOWN };
   }
+
+  geminiClient = resolved.client;
+  return { client: geminiClient, init_error: null };
 }
 
 function resolveVisionProviderSelection() {
+  const hasGemini = hasAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
   if (AURORA_DIAG_FORCE_GEMINI) {
-    return { provider: 'gemini', apiKeyConfigured: Boolean(GEMINI_API_KEY), requested: 'forced_gemini' };
+    return { provider: 'gemini', apiKeyConfigured: hasGemini, requested: 'forced_gemini' };
   }
   const requested = SKIN_VISION_PROVIDER;
   if (requested === 'openai') {
     return { provider: 'openai', apiKeyConfigured: Boolean(OPENAI_API_KEY), requested };
   }
   if (requested === 'gemini') {
-    return { provider: 'gemini', apiKeyConfigured: Boolean(GEMINI_API_KEY), requested };
+    return { provider: 'gemini', apiKeyConfigured: hasGemini, requested };
   }
 
-  if (GEMINI_API_KEY) return { provider: 'gemini', apiKeyConfigured: true, requested };
+  if (hasGemini) return { provider: 'gemini', apiKeyConfigured: true, requested };
   if (OPENAI_API_KEY) return { provider: 'openai', apiKeyConfigured: true, requested };
   return { provider: 'gemini', apiKeyConfigured: false, requested };
 }
@@ -13970,9 +13979,10 @@ async function callGeminiJsonObject({
   }
   const requestTimeoutMs = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 10_000;
   try {
-    const gate = getGeminiGlobalGate();
-    const resp = await gate.withGate(gateRoute, () =>
-      gemini.client.models.generateContent({
+    const resp = await callAuroraGeminiGenerateContent({
+      featureEnvVar: AURORA_GEMINI_KEY_FEATURE_ENV,
+      route: gateRoute || 'aurora_routes_json',
+      request: {
         model: AURORA_DIAG_FORCE_GEMINI ? AURORA_DIAG_FORCE_GEMINI_MODEL : model || ANALYSIS_STORY_MODEL_GEMINI,
         contents: [
           {
@@ -13995,8 +14005,8 @@ async function callGeminiJsonObject({
             ? { responseJsonSchema }
             : {}),
         },
-      }),
-    );
+      },
+    });
     const text = await extractTextFromGeminiResponse(resp);
     const parsed = parseJsonOnlyObject(unwrapCodeFence(text));
     if (!parsed || typeof parsed !== 'object') {
@@ -14086,7 +14096,7 @@ function resolveQaSingleProvider(provider) {
 }
 
 function resolveQaProviderAvailability(provider) {
-  if (provider === 'gemini') return Boolean(GEMINI_API_KEY);
+  if (provider === 'gemini') return hasAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
   if (provider === 'openai') return Boolean(OPENAI_API_KEY);
   return false;
 }
@@ -14138,7 +14148,7 @@ function shouldSkipQaByBudget({ qaContext, stage } = {}) {
 
 function pickDualQaProviders({ primary = 'gemini' } = {}) {
   const providers = [];
-  const hasGemini = Boolean(GEMINI_API_KEY);
+  const hasGemini = hasAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
   const hasOpenAi = Boolean(OPENAI_API_KEY);
   if (primary === 'gemini' && hasGemini) providers.push('gemini');
   if (primary === 'openai' && hasOpenAi) providers.push('openai');
@@ -16160,27 +16170,31 @@ async function runGeminiVisionSkinAnalysis({
     operation: async () => {
       const callGemini = async () =>
         withVisionTimeout(
-          gemini.client.models.generateContent({
-            model: SKIN_VISION_MODEL_GEMINI,
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: 'image/jpeg',
-                      data: optimized.toString('base64'),
+          callAuroraGeminiGenerateContent({
+            featureEnvVar: AURORA_GEMINI_KEY_FEATURE_ENV,
+            route: 'aurora_routes_vision',
+            request: {
+              model: SKIN_VISION_MODEL_GEMINI,
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: 'image/jpeg',
+                        data: optimized.toString('base64'),
+                      },
                     },
-                  },
-                  {
-                    text: promptBase,
-                  },
-                ],
+                    {
+                      text: promptBase,
+                    },
+                  ],
+                },
+              ],
+              config: {
+                temperature: 0.2,
+                responseMimeType: 'application/json',
               },
-            ],
-            config: {
-              temperature: 0.2,
-              responseMimeType: 'application/json',
             },
           }),
           SKIN_VISION_TIMEOUT_MS,
@@ -33648,7 +33662,7 @@ async function runIngredientResearchSync({
   const providerAttempts = [];
   const startedAt = Date.now();
   const circuitState = getIngredientProviderCircuitState();
-  if (INGREDIENT_KB_ONLY_MODE || circuitState === 'open' || !GEMINI_API_KEY) {
+  if (INGREDIENT_KB_ONLY_MODE || circuitState === 'open' || !hasAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV)) {
     const reason = INGREDIENT_KB_ONLY_MODE ? 'kb_only_mode' : circuitState === 'open' ? 'circuit_open' : 'provider_unavailable';
     if (circuitState === 'open') {
       recordAuroraIngredientsFlowMetric({ stage: 'circuit_open', hit: true });

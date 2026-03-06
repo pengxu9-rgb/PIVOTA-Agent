@@ -9,7 +9,10 @@ const {
   smoothSeverity,
   loadCalibrationRuntime,
 } = require('./diagCalibration');
-const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
+const {
+  hasAuroraGeminiApiKey,
+  callAuroraGeminiGenerateContent,
+} = require('./auroraGeminiGlobalClient');
 
 const CANONICAL_SCHEMA_VERSION = 'aurora.diagnosis_canonical.v1';
 const CANONICAL_TYPES = Object.freeze([
@@ -1264,7 +1267,6 @@ async function runGeminiProvider({
   model,
 } = {}) {
   const startedAt = Date.now();
-  const apiKey = resolveAuroraGeminiKey('AURORA_DIAG_GEMINI_API_KEY');
   const qualityFeatures = buildQualityFeatureSnapshot(photoQuality);
   const imageBytesLen = Buffer.isBuffer(imageBuffer) ? imageBuffer.length : 0;
   const requestPayloadBytesLen = imageBytesLen > 0 ? Math.ceil((imageBytesLen / 3)) * 4 : 0;
@@ -1274,7 +1276,7 @@ async function runGeminiProvider({
     1000,
     Math.trunc(Number(timeoutMs || (safeConnectTimeoutMs + safeReadTimeoutMs))),
   );
-  if (!apiKey) {
+  if (!hasAuroraGeminiApiKey('AURORA_DIAG_GEMINI_API_KEY')) {
     return {
       ok: false,
       provider: 'gemini_provider',
@@ -1313,31 +1315,7 @@ async function runGeminiProvider({
     };
   }
 
-  let GoogleGenAI = null;
-  try {
-    ({ GoogleGenAI } = require('@google/genai'));
-  } catch (_err) {
-    return {
-      ok: false,
-      provider: 'gemini_provider',
-      model_name: model,
-      model_version: 'v1',
-      concerns: [],
-      quality_features: qualityFeatures,
-      latency_ms: Date.now() - startedAt,
-      attempts: 0,
-      provider_status_code: 501,
-      failure_reason: 'VISION_UNKNOWN',
-      http_status_class: '5xx',
-      error_class: 'MISSING_DEP',
-      image_bytes_len: imageBytesLen,
-      request_payload_bytes_len: requestPayloadBytesLen,
-      response_bytes_len: 0,
-    };
-  }
-
   const qualityGrade = String(photoQuality?.grade || 'unknown').toLowerCase();
-  const ai = new GoogleGenAI({ apiKey });
   const prompt = buildGeminiPrompt({ language, profileSummary, qualityGrade });
   const request = {
     model,
@@ -1366,7 +1344,11 @@ async function runGeminiProvider({
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await withTimeout(
-        ai.models.generateContent(request),
+        callAuroraGeminiGenerateContent({
+          featureEnvVar: 'AURORA_DIAG_GEMINI_API_KEY',
+          route: 'aurora_diag_ensemble',
+          request,
+        }),
         safeTotalTimeoutMs,
         { code: 'ETIMEDOUT_TOTAL', timeoutStage: 'total' },
       );

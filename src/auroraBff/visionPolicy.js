@@ -7,6 +7,7 @@ const VisionUnavailabilityReason = Object.freeze({
   VISION_UPSTREAM_4XX: 'VISION_UPSTREAM_4XX',
   VISION_UPSTREAM_5XX: 'VISION_UPSTREAM_5XX',
   VISION_SCHEMA_INVALID: 'VISION_SCHEMA_INVALID',
+  VISION_SEMANTIC_INVALID: 'VISION_SEMANTIC_INVALID',
   VISION_IMAGE_FETCH_FAILED: 'VISION_IMAGE_FETCH_FAILED',
   VISION_UNKNOWN: 'VISION_UNKNOWN',
   VISION_CV_FALLBACK_USED: 'VISION_CV_FALLBACK_USED',
@@ -22,6 +23,7 @@ const VISION_FAILURE_REASONS = Object.freeze(
     VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
     VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
     VisionUnavailabilityReason.VISION_SCHEMA_INVALID,
+    VisionUnavailabilityReason.VISION_SEMANTIC_INVALID,
     VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED,
     VisionUnavailabilityReason.VISION_UNKNOWN,
   ]),
@@ -74,6 +76,7 @@ function normalizeVisionReason(reason) {
   if (token.includes('QUOTA')) return VisionUnavailabilityReason.VISION_QUOTA_EXCEEDED;
   if (token.includes('TIMEOUT')) return VisionUnavailabilityReason.VISION_TIMEOUT;
   if (token.includes('SCHEMA')) return VisionUnavailabilityReason.VISION_SCHEMA_INVALID;
+  if (token.includes('SEMANTIC')) return VisionUnavailabilityReason.VISION_SEMANTIC_INVALID;
   if (token.includes('FETCH') || token.includes('IMAGE')) return VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED;
   if (token.includes('4XX')) return VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
   if (token.includes('5XX')) return VisionUnavailabilityReason.VISION_UPSTREAM_5XX;
