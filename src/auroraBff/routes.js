@@ -26248,7 +26248,8 @@ async function applyAnalysisStoryAndRoutineSoftGate(
   let list = Array.isArray(cards) ? cards.filter((card) => card != null) : [];
   if (!list.length) return list;
 
-  const wantsSummaryCard = AURORA_ANALYSIS_CARD_CONTRACT_MODE !== 'story_only';
+  const preserveRoutineExpertSummary = shouldPreserveRoutineExpertSummaryCard(list);
+  const wantsSummaryCard = AURORA_ANALYSIS_CARD_CONTRACT_MODE !== 'story_only' || preserveRoutineExpertSummary;
   const wantsStoryCard =
     !AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE &&
     AURORA_ANALYSIS_STORY_V2_ENABLED &&
@@ -27034,6 +27035,12 @@ function hasKnownFieldReaskInText({ profile, text, cards }) {
   if (typeof p.pregnancy_status === 'string' && p.pregnancy_status.trim() && /(pregnan|怀孕|孕周|备孕)/i.test(composite)) return true;
   if (typeof p.lactation_status === 'string' && p.lactation_status.trim() && /(lactat|breastfeed|哺乳)/i.test(composite)) return true;
   return false;
+}
+
+function shouldPreserveRoutineExpertSummaryCard(cards) {
+  const list = Array.isArray(cards) ? cards : [];
+  if (!list.length) return false;
+  return Boolean(findRoutineExpertNodeFromEnvelope({ cards: list }));
 }
 
 function findRoutineExpertNodeFromEnvelope(envelope) {
@@ -53634,6 +53641,7 @@ const __internal = {
   sanitizeDupeSuggestPayload,
   applyDupeSuggestSanitizeToEnvelope,
   isSkincareCatalogCard,
+  shouldPreserveRoutineExpertSummaryCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   suppressAnalysisCardsForTravelEnvTurn,
   buildExecutablePlanForAnalysis,
