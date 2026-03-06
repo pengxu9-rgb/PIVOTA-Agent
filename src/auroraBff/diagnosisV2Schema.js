@@ -65,7 +65,7 @@ const RoutineBlueprintSchema = z.object({
 
 const ImprovementTipSchema = z.object({
   tip: z.string().min(1),
-  action_type: z.enum(['take_photo', 'setup_routine', 'start_checkin', 'add_travel']),
+  action_type: z.enum(['take_photo', 'setup_routine', 'start_checkin', 'add_travel', 'intake_optimize']),
   action_label: z.string().min(1),
 });
 

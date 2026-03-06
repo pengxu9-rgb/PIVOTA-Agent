@@ -201,7 +201,7 @@ function buildStage3Prompt({
           '- no photo -> take_photo',
           '- no routine -> setup_routine',
           '- no check-in logs -> start_checkin',
-          '- no travel plan -> add_travel',
+          '- no travel plan -> intake_optimize',
         ].join('\n')
       : '';
 
@@ -227,7 +227,7 @@ function buildStage3Prompt({
       '{',
       '  "strategies": [{ "title": string, "why": string, "timeline": string, "do_list": string[], "avoid_list": string[] }],',
       '  "routine_blueprint": { "am_steps": string[], "pm_steps": string[], "conflict_rules": string[] },',
-      '  "improvement_path": [{ "tip": string, "action_type": "take_photo"|"setup_routine"|"start_checkin"|"add_travel", "action_label": string }],',
+      '  "improvement_path": [{ "tip": string, "action_type": "take_photo"|"setup_routine"|"start_checkin"|"intake_optimize", "action_label": string }],',
       '  "next_actions": [{ "type": string, "label": string, "payload"?: object }],',
       '  "thinking_steps": [{ "id"?: string, "text": string }]',
       '}',
