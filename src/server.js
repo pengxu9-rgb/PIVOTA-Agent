@@ -199,9 +199,9 @@ const SERVICE_DEPLOYMENT_ID = String(
 ).trim();
 const SERVICE_GIT_SHA = String(
   process.env.RAILWAY_GIT_COMMIT_SHA ||
-  process.env.AURORA_GIT_SHA ||
   process.env.GIT_COMMIT_SHA ||
   process.env.SOURCE_VERSION ||
+  process.env.AURORA_GIT_SHA ||
   ''
 ).trim();
 const SERVICE_GIT_SHA_SHORT = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
