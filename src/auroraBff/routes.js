@@ -49107,19 +49107,53 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
           );
         }
+        const cardsForResponse = [
+          {
+            card_id: `ingredient_report_${ctx.request_id}`,
+            type: 'aurora_ingredient_report',
+            payload: reportPayload,
+          },
+        ];
+        const contractIntent = String(
+          pickFirstTrimmed(
+            policyMeta && policyMeta.intent_canonical,
+            canonicalIntent && canonicalIntent.intent,
+            INTENT_ENUM.INGREDIENT_SCIENCE,
+          ) || '',
+        )
+          .trim()
+          .toLowerCase();
+        if (isRoutineContractIntent(contractIntent)) {
+          const existingRoutineExpert = findRoutineExpertNodeFromEnvelope({ cards: cardsForResponse });
+          if (!hasRoutineExpertRequiredModules(existingRoutineExpert)) {
+            const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+              ctx,
+              message: requestMessage || message,
+              profile,
+              recentLogs,
+              language: ctx.lang,
+              reason: 'default',
+            });
+            const fallbackAnalysisCard = fallbackCards.find((card) => card && card.type === 'analysis_summary');
+            const fallbackConfidenceCard = fallbackCards.find((card) => card && card.type === 'confidence_notice');
+            if (fallbackAnalysisCard) {
+              cardsForResponse.push(fallbackAnalysisCard);
+            }
+            if (
+              fallbackConfidenceCard &&
+              !cardsForResponse.some((card) => card && typeof card === 'object' && String(card.type || '').trim() === 'confidence_notice')
+            ) {
+              cardsForResponse.push(fallbackConfidenceCard);
+            }
+          }
+        }
         return buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(assistantText),
           suggested_chips: buildIngredientReportQuickReplyChips({
             language: ctx.lang,
             reportPayload,
           }),
-          cards: [
-            {
-              card_id: `ingredient_report_${ctx.request_id}`,
-              type: 'aurora_ingredient_report',
-              payload: reportPayload,
-            },
-          ],
+          cards: cardsForResponse,
           session_patch: sessionPatch,
           events,
         });
