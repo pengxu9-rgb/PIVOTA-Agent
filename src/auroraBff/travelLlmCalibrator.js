@@ -354,6 +354,31 @@ function normalizeTravelReadinessPatch(value) {
     if (Object.keys(confidence).length) out.confidence = confidence
   }
 
+  if (Array.isArray(value.category_recommendations)) {
+    const categoryRecs = []
+    for (const raw of value.category_recommendations) {
+      const row = isPlainObject(raw) ? raw : {}
+      const category = normalizeText(row.category, 40)
+      if (!category) continue
+      const products = Array.isArray(row.products) ? row.products.slice(0, 4).map((p) => {
+        const prod = isPlainObject(p) ? p : {}
+        return {
+          name: normalizeText(prod.name, 140) || null,
+          ingredient_logic: normalizeText(prod.ingredient_logic, 260) || null,
+          usage: normalizeText(prod.usage, 260) || null,
+        }
+      }).filter((p) => p.name) : []
+      categoryRecs.push({
+        category,
+        why: normalizeText(row.why, 320) || null,
+        products,
+        skip_reason: normalizeText(row.skip_reason, 160) || null,
+      })
+      if (categoryRecs.length >= 10) break
+    }
+    if (categoryRecs.length) out.category_recommendations = categoryRecs
+  }
+
   return out
 }
 
@@ -439,35 +464,89 @@ function withTimeout(promise, timeoutMs, timeoutCode = 'TRAVEL_LLM_TIMEOUT') {
 
 function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTravelReadiness } = {}) {
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN'
+
+  const profileInput = isPlainObject(travelLlmInput) && isPlainObject(travelLlmInput.profile)
+    ? travelLlmInput.profile
+    : {}
+  const goals = Array.isArray(profileInput.goals) ? profileInput.goals : []
+  const contraindications = Array.isArray(profileInput.contraindications) ? profileInput.contraindications : []
+  const hasRoutine = Boolean(normalizeText(profileInput.currentRoutine, 10))
+  const isPregnantOrLactating = Boolean(
+    normalizeText(profileInput.pregnancy_status, 20) || normalizeText(profileInput.lactation_status, 20),
+  )
+
   const systemPrompt =
-    'You are a dermatology-safe travel skincare calibration assistant. ' +
-    'Return valid JSON only. Never output markdown. ' +
-    'Do not block when routine is missing; keep guidance actionable and lower confidence instead. ' +
-    'Respect safety-first wording and avoid medical diagnosis.'
+    'You are a board-certified dermatologist-level travel skincare advisor. ' +
+    'Return valid JSON only. Never output markdown, never diagnose, never prescribe.\n\n' +
+    'CATEGORY COVERAGE — evaluate ALL relevant categories for this trip:\n' +
+    '1. Cleansing (+ double-cleanse / makeup removal when user wears makeup)\n' +
+    '2. Antioxidant protection (vitamin C / niacinamide serum, especially UV>=5)\n' +
+    '3. Sun protection — face SPF with tier + reapply cadence + body SPF if outdoor-heavy\n' +
+    '4. Moisturization & barrier repair — differentiate AM (lighter) vs PM (repair); texture by humidity\n' +
+    '5. Masks — pick by scenario: flight-recovery (hydrating+soothing), post-sun (cooling+anti-inflammatory), deep-hydration (dry climate)\n' +
+    '6. Post-sun repair — aloe gel, panthenol serum, calming mist (trigger: UV>=6 or outdoor-heavy)\n' +
+    '7. Brightening / dark-spot care — ONLY if user goals include dark_spots or brightening; advise travel-safe lower concentration\n' +
+    '8. Eye care — eye cream + cooling patches (trigger: jet-lag >=5h or long-haul flight)\n' +
+    '9. Body care — body SPF, body lotion, after-sun body (trigger: outdoor >2 days)\n' +
+    '10. Emergency kit — pimple patches, lip balm, hand cream, hydrocortisone note\n\n' +
+    'DEPTH RULES:\n' +
+    '- For each category you include, provide: WHY needed in this specific scenario + ingredient logic + usage timing/frequency.\n' +
+    '- BAD: "Apply sunscreen regularly." GOOD: "UV index 8: SPF50+ PA++++ with photostable UVA filters; reapply 2h outdoors, stick format for midday touch-ups."\n' +
+    '- Tailor moisturizer texture to humidity delta: high-humidity → gel-cream AM; low-humidity → richer ceramide cream PM + occlusive seal.\n' +
+    '- For masks, specify exact scenario trigger and ingredient rationale, not generic "hydrating mask."\n\n' +
+    'PERSONALIZATION:\n' +
+    '- Use skin_type, sensitivity, barrier_status, goals, contraindications, current_routine to differentiate.\n' +
+    '- If goals include dark_spots/brightening → add travel brightening protocol (lower vitamin C concentration during travel, resume post-trip).\n' +
+    '- If goals include acne → prioritize non-comedogenic, add salicylic acid spot treatment.\n' +
+    '- If goals include wrinkles/anti-aging → add antioxidant emphasis, retinoid travel pause note.\n' +
+    '- If routine mentions makeup → emphasize double cleansing and thorough SPF removal.\n' +
+    (isPregnantOrLactating
+      ? '- CRITICAL: User is pregnant/lactating — exclude retinoids, high-dose salicylic acid (>2%), hydroquinone. Flag safe alternatives.\n'
+      : '') +
+    (contraindications.length
+      ? `- CONTRAINDICATIONS to avoid: ${contraindications.join(', ')}.\n`
+      : '') +
+    '\nDEDUPLICATION:\n' +
+    '- Each piece of advice must appear in EXACTLY ONE output field. Never repeat the same product/action across adaptive_actions, personal_focus, and shopping_preview.\n' +
+    '- adaptive_actions = environment-triggered routine shifts (max 4, no product names).\n' +
+    '- personal_focus = user-profile-driven priorities (max 3, reference goals/sensitivity).\n' +
+    '- shopping_preview.products = concrete product types with ingredient logic (max 6).\n' +
+    '- Do NOT duplicate SPF advice across all three.\n\n' +
+    'SAFETY: Never diagnose conditions. Never prescribe medications. ' +
+    'Flag any suggestion that approaches medical-grade as "consult your dermatologist." ' +
+    'Do not block when routine data is missing; provide actionable guidance and lower confidence instead.'
 
   const userPrompt =
     `language=${lang}\n` +
-    'Task: improve the travel_readiness payload for execution quality.\n' +
-    'Output schema:\n' +
+    'Task: calibrate the travel_readiness payload with deep, category-specific, personalized, non-redundant skincare guidance.\n\n' +
+    (goals.length ? `User goals: ${goals.join(', ')}\n` : '') +
+    (hasRoutine ? `Current routine available: yes (see profile.currentRoutine in input)\n` : 'Current routine: not provided\n') +
+    (isPregnantOrLactating ? 'Pregnancy/lactation: active — apply ingredient restrictions.\n' : '') +
+    '\nOutput schema:\n' +
     '{\n' +
     '  "travel_readiness_patch": {\n' +
-    '    "delta_vs_home": {...optional},\n' +
-    '    "adaptive_actions": [{"why":"", "what_to_do":""}],\n' +
-    '    "personal_focus": [{"focus":"", "why":"", "what_to_do":""}],\n' +
+    '    "delta_vs_home": {...optional refinements},\n' +
+    '    "adaptive_actions": [{"why":"environment reason","what_to_do":"routine shift, no product names"}],\n' +
+    '    "personal_focus": [{"focus":"label","why":"profile-based reason","what_to_do":"specific action"}],\n' +
     '    "jetlag_sleep": {...optional},\n' +
+    '    "category_recommendations": [\n' +
+    '      {"category":"cleansing|antioxidant|sun_protection|moisturization|masks|post_sun|brightening|eye_care|body_care|emergency",\n' +
+    '       "why":"scenario-specific reason",\n' +
+    '       "products":[{"name":"","ingredient_logic":"","usage":"timing+frequency"}],\n' +
+    '       "skip_reason":"only if category skipped"}\n' +
+    '    ],\n' +
     '    "shopping_preview": {\n' +
-    '      "products": [{"name":"", "brand":"", "category":"", "reasons":[], "product_source":"llm_generated"}],\n' +
-    '      "brand_candidates": [{"brand":"", "match_status":"kb_verified|catalog_verified|llm_only", "reason":""}],\n' +
+    '      "products": [{"name":"","brand":"","category":"","reasons":[],"product_source":"llm_generated"}],\n' +
+    '      "brand_candidates": [{"brand":"","match_status":"kb_verified|catalog_verified|llm_only","reason":""}],\n' +
     '      "buying_channels": ["beauty_retail|pharmacy|department_store|duty_free|ecommerce"],\n' +
     '      "city_hint": "",\n' +
     '      "note": ""\n' +
     '    },\n' +
-    '    "confidence": {"level":"low|medium|high", "missing_inputs":[], "improve_by":[]}\n' +
+    '    "confidence": {"level":"low|medium|high","missing_inputs":[],"improve_by":[]}\n' +
     '  },\n' +
-    '  "quality_flags": {"structured_complete":true|false, "safety_conflict":true|false},\n' +
-    '  "source_notes": {"reasoning_mode":"llm_calibration_v1"}\n' +
-    '}\n' +
-    'If you are unsure about local brands, still provide best-effort candidates with match_status="llm_only".\n' +
+    '  "quality_flags": {"structured_complete":true|false,"safety_conflict":true|false,"categories_covered":["list of covered category ids"]},\n' +
+    '  "source_notes": {"reasoning_mode":"llm_calibration_v2"}\n' +
+    '}\n\n' +
     'Fact input JSON:\n' +
     `${JSON.stringify(travelLlmInput || {}, null, 2)}\n` +
     'Current travel_readiness JSON:\n' +
@@ -503,7 +582,7 @@ async function calibrateTravelReadinessWithLlm({
   language = 'EN',
   travelLlmInput = null,
   baseTravelReadiness = null,
-  timeoutMs = 1800,
+  timeoutMs = 3500,
   maxRetries = 1,
   model = DEFAULT_TRAVEL_LLM_MODEL,
   logger = null,
@@ -546,7 +625,8 @@ async function calibrateTravelReadinessWithLlm({
       const response = await withTimeout(
         openaiClient.chat.completions.create({
           model: String(model || DEFAULT_TRAVEL_LLM_MODEL),
-          temperature: 0.2,
+          temperature: 0.3,
+          max_tokens: 2000,
           response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: systemPrompt },

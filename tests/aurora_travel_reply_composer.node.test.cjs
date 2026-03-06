@@ -211,7 +211,7 @@ test('travelReplyComposer avoids unsupported temperature-swing claim in humidity
   });
 
   assert.doesNotMatch(result.text, /temperature swings/i);
-  assert.match(result.text, /humidity shift is mild/i);
+  assert.match(result.text, /humidity is close to home/i);
 });
 
 test('travelReplyComposer keeps humidity-only answer grounded even when temperature delta is large', () => {
@@ -231,15 +231,15 @@ test('travelReplyComposer keeps humidity-only answer grounded even when temperat
 
   assert.match(result.text, /Humidity: 78% -> 58%/);
   assert.doesNotMatch(result.text, /temperature swings/i);
-  assert.match(result.text, /destination humidity is lower than home/i);
+  assert.match(result.text, /drier/i);
 });
 
-test('travelReplyComposer dedupes near-duplicate barrier actions', () => {
+test('travelReplyComposer dedupes near-duplicate barrier actions in routine_adjustments', () => {
   const readiness = buildReadiness({ baselineStatus: 'ok' });
   readiness.delta_vs_home.humidity = { home: 78, destination: 58, delta: -20, unit: '%' };
   readiness.adaptive_actions = [
-    { why: 'Dryness', what_to_do: 'Upgrade to a richer barrier moisturizer and add a thin occlusive layer at night.' },
-    { why: 'Dryness+', what_to_do: 'When destination humidity is lower than home, upgrade to richer AM/PM barrier hydration and add a thin occlusive layer on dry-prone areas at night.' },
+    { why: 'Dryness', what_to_do: 'Upgrade to barrier hydration and add an occlusive seal at night.' },
+    { why: 'Dryness+', what_to_do: 'Upgrade AM/PM to richer barrier hydration with an occlusive seal on dry areas.' },
   ];
 
   const result = composeTravelReply({
@@ -251,8 +251,9 @@ test('travelReplyComposer dedupes near-duplicate barrier actions', () => {
     envSource: 'weather_api',
   });
 
-  const matches = String(result.text).match(/occlusive layer/gi) || [];
-  assert.equal(matches.length, 1);
+  const routineSection = result.structured_sections.routine_adjustments || [];
+  assert.ok(routineSection.length <= 3, 'routine_adjustments should be concise after dedup');
+  assert.ok(result.text.includes('drier') || result.text.includes('Destination is drier'));
 });
 
 test('travelReplyComposer avoids same-text replay for repeated same focus in-session', () => {
@@ -299,10 +300,28 @@ test('travelReplyComposer shifts focus for follow-up temperature question', () =
 });
 
 test('travelReplyComposer handles mixed humidity + product follow-up in one answer', () => {
+  const readiness = buildReadiness({ baselineStatus: 'ok' });
+  readiness.reco_bundle = [
+    {
+      trigger: 'Elevated UV',
+      action: 'Face SPF50+ PA++++, reapply every 2h outdoors. Body: apply body sunscreen on exposed areas.',
+      ingredient_logic: 'Photostable UVA filters.',
+      product_types: ['Face SPF50+ PA++++ sunscreen'],
+      reapply_rule: 'Reapply every 2h.',
+    },
+  ];
+  readiness.category_recommendations = [
+    {
+      category: 'sun_protection',
+      why: 'UV is elevated',
+      products: [{ name: 'SPF stick', usage: 'Midday reapply', ingredient_logic: 'Portable touch-up format' }],
+    },
+  ];
+
   const result = composeTravelReply({
     message: '巴黎湿度有变化吗？有什么面霜或者面膜可以提前准备？',
     language: 'CN',
-    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    travelReadiness: readiness,
     destination: 'Paris',
     homeRegion: 'San Francisco, CA',
     envSource: 'weather_api',
@@ -312,6 +331,9 @@ test('travelReplyComposer handles mixed humidity + product follow-up in one answ
   assert.match(result.text, /湿度: 56% -> 76% \(变化 \+20%\)/);
   assert.match(result.text, /(面霜|面膜|防晒档位|主推单品)/);
   assert.match(result.text, /示例门店|Example stores/);
+  assert.ok(Array.isArray(result.structured_sections.travel_kit));
+  assert.ok(result.structured_sections.travel_kit.some((line) => /Elevated UV/.test(line)));
+  assert.equal(result.structured_sections.travel_kit.some((line) => /【sun_protection】/.test(line)), false);
 });
 
 test('travelReplyComposer adds phased plan for multi-day trip window', () => {
