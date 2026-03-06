@@ -255,6 +255,19 @@ function extractHeaders(headers) {
   };
 }
 
+function extractRolloutMeta(payload) {
+  if (!isObject(payload)) return null;
+  if (isObject(payload.meta)) return payload.meta;
+
+  const sessionPatch = isObject(payload.session_patch)
+    ? payload.session_patch
+    : isObject(payload.sessionPatch)
+      ? payload.sessionPatch
+      : null;
+  if (sessionPatch && isObject(sessionPatch.meta)) return sessionPatch.meta;
+  return null;
+}
+
 function classifyAttempt(attempt) {
   const reasons = [];
   let infraFlake = false;
@@ -290,7 +303,7 @@ function classifyAttempt(attempt) {
     retryable = true;
   }
 
-  const meta = isObject(attempt.json) ? attempt.json.meta : null;
+  const meta = extractRolloutMeta(attempt.json);
   const headerBucket = toNumberIfFinite(attempt.headers.bucketRaw);
   const metaBucket = meta && Object.prototype.hasOwnProperty.call(meta, 'rollout_bucket')
     ? toNumberIfFinite(meta.rollout_bucket)
