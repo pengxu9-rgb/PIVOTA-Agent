@@ -14,14 +14,14 @@ const {
   buildReportSignalsDto,
   buildDeepeningSignalsDto,
 } = require('../src/auroraBff/skinSignalsDto');
+const { hasAuroraGeminiApiKey } = require('../src/auroraBff/auroraGeminiGlobalClient');
 const {
   __internal: {
-    resolveQaMode,
-    resolveQaSingleProvider,
-    pickQaProvidersForMode,
     callDualQaProvider,
   },
 } = require('../src/auroraBff/routes');
+
+const JUDGE_GEMINI_FEATURE_ENV = 'AURORA_VISION_GEMINI_API_KEY';
 
 function parseArgs(argv) {
   const out = {
@@ -132,6 +132,60 @@ function normalizeLocale(locale) {
   const token = String(locale || '').trim().toLowerCase();
   if (token === 'zh' || token === 'zh-cn' || token === 'cn') return 'zh-CN';
   return 'en-US';
+}
+
+function normalizeQaModeForJudge(mode) {
+  const token = String(mode || '')
+    .trim()
+    .toLowerCase();
+  if (token === 'off' || token === 'single' || token === 'dual') return token;
+  return 'single';
+}
+
+function normalizeJudgeProvider(provider) {
+  const token = String(provider || '')
+    .trim()
+    .toLowerCase();
+  if (token === 'google') return 'gemini';
+  if (token === 'gemini' || token === 'openai') return token;
+  return 'gemini';
+}
+
+function getJudgeProviderAvailabilitySnapshot() {
+  return {
+    gemini: hasAuroraGeminiApiKey(JUDGE_GEMINI_FEATURE_ENV),
+    openai: Boolean(String(process.env.OPENAI_API_KEY || '').trim()),
+  };
+}
+
+function pickJudgeProviders({
+  mode,
+  singleProvider,
+  allowOpenAiFallback = false,
+  availability = getJudgeProviderAvailabilitySnapshot(),
+} = {}) {
+  const qaMode = normalizeQaModeForJudge(mode);
+  if (qaMode === 'off') return [];
+  const primary = normalizeJudgeProvider(singleProvider);
+  const hasGemini = availability && availability.gemini === true;
+  const hasOpenAi = availability && availability.openai === true;
+  const providers = [];
+  if (qaMode === 'dual') {
+    if (primary === 'gemini' && hasGemini) providers.push('gemini');
+    if (primary === 'openai' && hasOpenAi) providers.push('openai');
+    if (hasGemini && !providers.includes('gemini')) providers.push('gemini');
+    if (hasOpenAi && !providers.includes('openai')) providers.push('openai');
+    return providers.slice(0, 2);
+  }
+  if (primary === 'gemini' && hasGemini) providers.push('gemini');
+  if (primary === 'openai' && hasOpenAi) providers.push('openai');
+  if (allowOpenAiFallback === true && primary === 'gemini' && hasOpenAi && !providers.includes('openai')) {
+    providers.push('openai');
+  }
+  if (allowOpenAiFallback === true && primary === 'openai' && hasGemini && !providers.includes('gemini')) {
+    providers.push('gemini');
+  }
+  return providers.slice(0, 2);
 }
 
 function decodeInlineBase64(raw) {
@@ -355,6 +409,8 @@ function buildJudgeUserPrompt({ rubric, row, result, localChecks }) {
 function normalizeJudgeResult(result, provider) {
   const json = result && result.ok && result.json && typeof result.json === 'object' ? result.json : null;
   if (!json) {
+    const failureReason = String(result && result.reason ? result.reason : 'judge_failed').trim() || 'judge_failed';
+    const failureDetail = String(result && result.detail ? result.detail : '').trim() || null;
     return {
       provider,
       ok: false,
@@ -362,7 +418,9 @@ function normalizeJudgeResult(result, provider) {
       hard_fail: true,
       hard_fail_reasons: ['judge_failed'],
       strengths: [],
-      weaknesses: ['judge_failed'],
+      weaknesses: [`judge_failed:${failureReason}`],
+      failure_reason: failureReason,
+      failure_detail: failureDetail,
     };
   }
   return {
@@ -373,6 +431,8 @@ function normalizeJudgeResult(result, provider) {
     hard_fail_reasons: Array.isArray(json.hard_fail_reasons) ? json.hard_fail_reasons.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 6) : [],
     strengths: Array.isArray(json.strengths) ? json.strengths.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 4) : [],
     weaknesses: Array.isArray(json.weaknesses) ? json.weaknesses.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 4) : [],
+    failure_reason: null,
+    failure_detail: null,
   };
 }
 
@@ -531,7 +591,9 @@ function summarizeBuckets(rawRows, judgedRows, { skipJudge = false } = {}) {
     bucket.scores.push(Number(row.judge_average_score) || 0);
     if (row.judge_hard_fail === true) bucket.hard_fail_count += 1;
     if ((Number(row.judge_average_score) || 0) < 8) bucket.below8_count += 1;
-    if (row.primary_judge && row.primary_judge.ok === false) bucket.judge_failed_count += 1;
+    if ((row.primary_judge && row.primary_judge.ok === false) || (row.secondary_judge && row.secondary_judge.ok === false)) {
+      bucket.judge_failed_count += 1;
+    }
   }
 
   const repeatGroups = new Map();
@@ -611,7 +673,7 @@ function buildConsistencyDiffs(rawRows) {
   });
 }
 
-function buildMarkdownReport({ args, summary, rawRows, judgedRows }) {
+function buildMarkdownReport({ args, summary, rawRows, judgedRows, judgeRuntime }) {
   const lines = [];
   lines.push('# Skin Prompt Quality Gate');
   lines.push('');
@@ -620,11 +682,18 @@ function buildMarkdownReport({ args, summary, rawRows, judgedRows }) {
   lines.push(`- Prompt version: ${args.promptVersion}`);
   lines.push(`- Deepening prompt version: ${args.deepeningPromptVersion}`);
   lines.push(`- Judge mode: ${args.skipJudge ? 'skipped' : args.qaMode}`);
+  if (judgeRuntime) {
+    lines.push(`- Judge providers selected: ${(judgeRuntime.selected_providers || []).join(', ') || 'none'}`);
+    lines.push(
+      `- Judge provider availability: gemini=${judgeRuntime.provider_availability?.gemini === true} openai=${judgeRuntime.provider_availability?.openai === true}`,
+    );
+    lines.push(`- Judge provider selector ignores runtime force-gemini: ${judgeRuntime.ignore_runtime_force_gemini === true}`);
+  }
   lines.push('');
   lines.push('## Bucket Summary');
   lines.push('');
   for (const row of summary) {
-    lines.push(`- ${row.stage} / ${row.locale}: pass=${row.pass} success_rate=${row.success_rate} useful_output_rate=${row.useful_output_rate} semantic_empty_rate=${row.semantic_empty_rate} avg_score=${row.avg_score} hard_fail_rate=${row.hard_fail_rate} below8_rate=${row.below8_rate} repeat_consistency=${row.repeat_consistency}`);
+    lines.push(`- ${row.stage} / ${row.locale}: pass=${row.pass} success_rate=${row.success_rate} useful_output_rate=${row.useful_output_rate} semantic_empty_rate=${row.semantic_empty_rate} avg_score=${row.avg_score} hard_fail_rate=${row.hard_fail_rate} below8_rate=${row.below8_rate} judge_failed_rate=${row.judge_failed_rate} repeat_consistency=${row.repeat_consistency}`);
   }
   const failures = judgedRows.filter((row) => row.judge_hard_fail === true || Number(row.judge_average_score) < 9);
   if (failures.length) {
@@ -645,13 +714,22 @@ async function main() {
   const rubricPath = resolvePath(rootDir, args.rubric);
   const cases = readJsonl(casesPath);
   const rubric = readJson(rubricPath);
+  const judgeRuntime = {
+    requested_mode: normalizeQaModeForJudge(args.qaMode),
+    requested_single_provider: normalizeJudgeProvider(args.singleProvider),
+    allow_openai_fallback: args.allowOpenAiFallback === true,
+    provider_availability: getJudgeProviderAvailabilitySnapshot(),
+    ignore_runtime_force_gemini: true,
+  };
   const providers = args.skipJudge
     ? []
-    : pickQaProvidersForMode({
-        mode: resolveQaMode(args.qaMode),
-        singleProvider: resolveQaSingleProvider(args.singleProvider),
+    : pickJudgeProviders({
+        mode: judgeRuntime.requested_mode,
+        singleProvider: judgeRuntime.requested_single_provider,
         allowOpenAiFallback: args.allowOpenAiFallback,
+        availability: judgeRuntime.provider_availability,
       });
+  judgeRuntime.selected_providers = providers;
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outDir = args.outDir ? resolvePath(rootDir, args.outDir) : path.join(rootDir, 'reports', 'skin-prompt-quality', timestamp);
   ensureDir(outDir);
@@ -715,10 +793,11 @@ async function main() {
   writeJson(path.join(outDir, 'summary.json'), {
     generated_at: new Date().toISOString(),
     args,
+    judge_runtime: judgeRuntime,
     summary,
     consistency_diffs: consistencyDiffs,
   });
-  fs.writeFileSync(path.join(outDir, 'report.md'), buildMarkdownReport({ args, summary, rawRows, judgedRows }));
+  fs.writeFileSync(path.join(outDir, 'report.md'), buildMarkdownReport({ args, summary, rawRows, judgedRows, judgeRuntime }));
 
   const failedBuckets = summary.filter((row) => !row.pass);
   const verdict = failedBuckets.length ? 'FAIL' : 'PASS';
@@ -735,7 +814,12 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs,
+  normalizeQaModeForJudge,
+  normalizeJudgeProvider,
+  getJudgeProviderAvailabilitySnapshot,
+  pickJudgeProviders,
   buildJudgeUserPrompt,
+  normalizeJudgeResult,
   evaluateLocalExpectations,
   summarizeBuckets,
   buildConsistencyDiffs,
