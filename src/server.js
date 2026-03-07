@@ -95,6 +95,9 @@ const AURORA_ROUTES_FAIL_CLOSED = (() => {
 })();
 const AURORA_DEGRADED_PATH_PREFIXES = Object.freeze([
   '/v1/chat',
+  '/v1/chat/stream',
+  '/v2/chat',
+  '/v2/chat/stream',
   '/v1/session/',
   '/v1/profile/',
   '/v1/tracker/',

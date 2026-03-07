@@ -1088,12 +1088,19 @@ const PRODUCT_INTEL_KB_QUARANTINE_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_CHAT_SKILL_ROUTER_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_SKILL_ROUTER_V2 || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   profile_v2: AURORA_PROFILE_V2_ENABLED,
   qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
   safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
   travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
   loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
+  skill_router_v2: AURORA_CHAT_SKILL_ROUTER_V2_ENABLED,
   chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
   router_dst_patch_v1: AURORA_ROUTER_DST_PATCH_V1_ENABLED,
   nonblocking_gate_v1: AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
@@ -22519,6 +22526,12 @@ function asStringArray(value, max = 8) {
   return out;
 }
 
+function asLooseStringArray(value, max = 8) {
+  if (Array.isArray(value)) return asStringArray(value, max);
+  const single = typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
+  return single ? [single].slice(0, Math.max(1, max)) : [];
+}
+
 const PRODUCT_INTEL_SKINCARE_RE =
   /(skincare|skin care|sunscreen|sun\s*screen|spf|uv|cleanser|serum|essence|moistur|cream|toner|lotion|mask|barrier|acne|azelaic|niacinamide|retinol|retinoid|vitamin c|ceramide|hyaluronic|treatment|ampoule|emulsion|balm|护肤|防晒|洁面|精华|乳液|面霜|爽肤水|面膜|屏障|壬二酸|烟酰胺|视黄醇|神经酰胺|玻尿酸|修护|护理)/i;
 const PRODUCT_INTEL_BLACKLIST_RE =
@@ -38315,6 +38328,120 @@ function buildDataQualityBanner(payload, { lang = 'EN' } = {}) {
   return null;
 }
 
+function normalizeProductAnalysisOptionalShapes(payload) {
+  if (!isPlainObject(payload)) return payload;
+
+  const normalizeSourceRows = (value, max = 8) => {
+    const rows = Array.isArray(value) ? value : (isPlainObject(value) ? [value] : []);
+    return rows
+      .map((item) => {
+        if (!isPlainObject(item)) return null;
+        const type = String(item.type || '').trim().toLowerCase();
+        const url = String(item.url || '').trim();
+        const label = String(item.label || '').trim();
+        const confidence = Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null;
+        const ingredientCount = Number.isFinite(Number(item.ingredient_count)) ? Number(item.ingredient_count) : null;
+        if (!type && !url && !label) return null;
+        return {
+          ...item,
+          ...(type ? { type } : {}),
+          ...(url ? { url } : {}),
+          ...(label ? { label } : {}),
+          ...(confidence != null ? { confidence } : {}),
+          ...(ingredientCount != null ? { ingredient_count: ingredientCount } : {}),
+        };
+      })
+      .filter(Boolean)
+      .slice(0, max);
+  };
+
+  const out = { ...payload };
+  const assessment = isPlainObject(out.assessment) ? { ...out.assessment } : {};
+  if (Object.prototype.hasOwnProperty.call(assessment, 'how_to_use') && !isPlainObject(assessment.how_to_use)) {
+    delete assessment.how_to_use;
+  }
+  if (!assessment.how_to_use && isPlainObject(assessment.howToUse)) {
+    assessment.how_to_use = assessment.howToUse;
+  }
+  if (isPlainObject(assessment.how_to_use)) {
+    assessment.how_to_use = {
+      ...assessment.how_to_use,
+      pairing_rules: asLooseStringArray(assessment.how_to_use.pairing_rules, 8),
+      stop_signs: asLooseStringArray(assessment.how_to_use.stop_signs, 8),
+    };
+  }
+  out.assessment = assessment;
+
+  const evidence = isPlainObject(out.evidence) ? { ...out.evidence } : {};
+  const science = isPlainObject(evidence.science) ? { ...evidence.science } : {};
+  science.key_ingredients = asLooseStringArray(science.key_ingredients ?? science.keyIngredients, 40);
+  science.mechanisms = asLooseStringArray(science.mechanisms, 20);
+  science.fit_notes = asLooseStringArray(science.fit_notes ?? science.fitNotes, 20);
+  science.risk_notes = asLooseStringArray(science.risk_notes ?? science.riskNotes, 20);
+
+  const evidenceSocial = isPlainObject(evidence.social_signals) ? { ...evidence.social_signals } : {};
+  evidenceSocial.typical_positive = asLooseStringArray(
+    evidenceSocial.typical_positive ?? evidenceSocial.typicalPositive,
+    20,
+  );
+  evidenceSocial.typical_negative = asLooseStringArray(
+    evidenceSocial.typical_negative ?? evidenceSocial.typicalNegative,
+    20,
+  );
+  evidenceSocial.risk_for_groups = asLooseStringArray(
+    evidenceSocial.risk_for_groups ?? evidenceSocial.riskForGroups,
+    20,
+  );
+
+  evidence.science = science;
+  evidence.social_signals = evidenceSocial;
+  evidence.expert_notes = asLooseStringArray(evidence.expert_notes ?? evidence.expertNotes, 20);
+  evidence.missing_info = asLooseStringArray(evidence.missing_info, 20);
+  evidence.sources = normalizeSourceRows(evidence.sources, 8);
+  if (!Array.isArray(evidence.key_ingredients_by_function)) {
+    evidence.key_ingredients_by_function = isPlainObject(evidence.key_ingredients_by_function)
+      ? [evidence.key_ingredients_by_function]
+      : [];
+  }
+  out.evidence = evidence;
+
+  const socialSignals = isPlainObject(out.social_signals) ? { ...out.social_signals } : {};
+  const overallSummary = isPlainObject(socialSignals.overall_summary) ? { ...socialSignals.overall_summary } : {};
+  overallSummary.top_pos_themes = asLooseStringArray(
+    overallSummary.top_pos_themes ?? overallSummary.topPosThemes,
+    20,
+  );
+  overallSummary.top_neg_themes = asLooseStringArray(
+    overallSummary.top_neg_themes ?? overallSummary.topNegThemes,
+    20,
+  );
+  overallSummary.watchouts = asLooseStringArray(overallSummary.watchouts, 20);
+  socialSignals.overall_summary = overallSummary;
+  socialSignals.platforms = Array.isArray(socialSignals.platforms)
+    ? socialSignals.platforms.map((item) => (isPlainObject(item) ? item : null)).filter(Boolean)
+    : [];
+  out.social_signals = socialSignals;
+
+  const inciStatus = isPlainObject(out.inci_status) ? { ...out.inci_status } : {};
+  inciStatus.sources = normalizeSourceRows(inciStatus.sources, 8);
+  out.inci_status = inciStatus;
+  out.provenance = isPlainObject(out.provenance) ? { ...out.provenance } : {};
+
+  for (const blockName of ['competitors', 'dupes', 'related_products']) {
+    const block = isPlainObject(out[blockName]) ? { ...out[blockName] } : {};
+    const candidates = Array.isArray(block.candidates)
+      ? block.candidates
+      : (isPlainObject(block.candidates) ? [block.candidates] : []);
+    block.candidates = candidates;
+    if (Object.prototype.hasOwnProperty.call(block, '_meta') && !isPlainObject(block._meta)) {
+      delete block._meta;
+    }
+    out[blockName] = block;
+  }
+
+  return out;
+}
+
 function validateAndRepairAtomicLists(assessment) {
   if (!isPlainObject(assessment)) return assessment;
   const out = { ...assessment };
@@ -38351,11 +38478,13 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
     const qualityInput = v4PromptEnabled
       ? upgradeLegacyProductAnalysisToV4(contractedPayload, { lang })
       : contractedPayload;
-    const qualityPayload = enforceUnknownVerdictQuality(qualityInput, {
+    const normalizedQualityInput = normalizeProductAnalysisOptionalShapes(qualityInput);
+    const qualityPayload = enforceUnknownVerdictQuality(normalizedQualityInput, {
       lang,
-      inciStatus: isPlainObject(qualityInput?.inci_status) ? qualityInput.inci_status : null,
+      inciStatus: isPlainObject(normalizedQualityInput?.inci_status) ? normalizedQualityInput.inci_status : null,
     });
-    const sanitizedPayload = isPlainObject(qualityPayload) ? { ...qualityPayload } : qualityPayload;
+    const normalizedQualityPayload = normalizeProductAnalysisOptionalShapes(qualityPayload);
+    const sanitizedPayload = isPlainObject(normalizedQualityPayload) ? { ...normalizedQualityPayload } : normalizedQualityPayload;
     if (isPlainObject(sanitizedPayload)) {
       delete sanitizedPayload.internal_debug_codes;
       delete sanitizedPayload.internalDebugCodes;
@@ -38605,7 +38734,9 @@ function getRequiredRouteContractsHealth() {
 function mountAuroraBffRoutes(app, { logger }) {
   const { mountDiagnosisV2Routes } = require('./diagnosisV2Routes');
   const { createDiagnosisV2LlmProvider } = require('./diagnosisV2LlmProvider');
+  const { registerRoutes } = require('./index');
   mountDiagnosisV2Routes(app, { logger, llmProvider: createDiagnosisV2LlmProvider() });
+  registerRoutes(app, { includeV1Chat: false, includeV1Stream: true, includeV2: true });
   preflightAuroraKbV0ForStartup({ logger });
   startPdpHotsetPrewarmLoop({ logger });
   if (PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !PIVOTA_BACKEND_BASE_URL) {
@@ -45209,6 +45340,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
+        skill_router_v2: Boolean(effectiveChatFlags.skill_router_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       },
       gate_policy_version: AURORA_GATE_POLICY_META_VERSION,
@@ -45311,6 +45443,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
+        skill_router_v2: Boolean(effectiveChatFlags.skill_router_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       };
     };
@@ -46365,6 +46498,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
     try {
       requireAuroraUid(ctx);
+      if (effectiveChatFlags.skill_router_v2) {
+        const { handleChat: handleChatV2 } = require('./routes/chat');
+        return handleChatV2(req, res);
+      }
       if (!parsed.success) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage('Invalid request.'),

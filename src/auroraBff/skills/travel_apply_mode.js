@@ -42,7 +42,12 @@ class TravelApplyModeSkill extends BaseSkill {
       schema: 'TravelModeOutput',
     });
 
-    const travelMode = llmResult.parsed;
+    const travelMode = this._normalizeTravelMode(
+      llmResult.parsed || {},
+      climateArchetype,
+      context.current_routine,
+      context.safety_flags || []
+    );
     const adjustments = this._buildAdjustments(travelMode, climateArchetype);
 
     const sections = [
@@ -147,6 +152,53 @@ class TravelApplyModeSkill extends BaseSkill {
     });
 
     return adjustments;
+  }
+
+  _normalizeTravelMode(travelMode, climateArchetype, currentRoutine, safetyFlags) {
+    const climate = String(climateArchetype || travelMode?.inferred_climate || '').trim().toLowerCase();
+    const uvLevel = travelMode?.uv_level || (this._isHighUvClimate(climate) ? 'high' : 'moderate');
+    const humidity = travelMode?.humidity || (climate.includes('dry') ? 'low' : climate.includes('humid') ? 'high' : 'medium');
+    const packingList = Array.isArray(travelMode?.packing_list) ? travelMode.packing_list : [];
+    const reduceIrritation =
+      travelMode?.reduce_irritation === true ||
+      this._shouldReduceActives({ climate, uvLevel, currentRoutine, safetyFlags });
+
+    return {
+      ...travelMode,
+      uv_level: uvLevel,
+      humidity,
+      packing_list: packingList,
+      inferred_climate: travelMode?.inferred_climate || climateArchetype || null,
+      reduce_irritation: reduceIrritation,
+    };
+  }
+
+  _shouldReduceActives({ climate, uvLevel, currentRoutine, safetyFlags }) {
+    const routineProducts = this._collectRoutineProducts(currentRoutine);
+    const hasStrongActives = routineProducts.some((product) => {
+      const concepts = Array.isArray(product?.concepts) ? product.concepts.map((item) => String(item || '').toUpperCase()) : [];
+      const name = String(product?.name || '').toUpperCase();
+      return (
+        concepts.some((concept) => ['RETINOID', 'RETINOL', 'AHA', 'BHA', 'BENZOYL_PEROXIDE'].includes(concept)) ||
+        /RETIN|RETINOID|SALICYLIC|GLYCOLIC|LACTIC|MANDELIC|BENZOYL/i.test(name)
+      );
+    });
+
+    const hasSensitivityFlags = (Array.isArray(safetyFlags) ? safetyFlags : []).some((flag) =>
+      /BARRIER|PROCEDURE|SENSITIVE|IRRIT|RECENT_PROCEDURE/i.test(String(flag || ''))
+    );
+
+    return hasSensitivityFlags || (hasStrongActives && (this._isHighUvClimate(climate) || uvLevel === 'high' || uvLevel === 'extreme'));
+  }
+
+  _collectRoutineProducts(currentRoutine) {
+    const amSteps = Array.isArray(currentRoutine?.am_steps) ? currentRoutine.am_steps : [];
+    const pmSteps = Array.isArray(currentRoutine?.pm_steps) ? currentRoutine.pm_steps : [];
+    return [...amSteps, ...pmSteps].flatMap((step) => (Array.isArray(step?.products) ? step.products : []));
+  }
+
+  _isHighUvClimate(climate) {
+    return /high_uv|tropical|equatorial|beach|desert/i.test(String(climate || ''));
   }
 }
 

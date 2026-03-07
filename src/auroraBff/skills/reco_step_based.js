@@ -2,82 +2,105 @@ const BaseSkill = require('./BaseSkill');
 
 class RecoStepBasedSkill extends BaseSkill {
   constructor() {
-    super('reco.step_based', '1.0.0');
+    super('reco.step_based', '2.0.0');
   }
 
   async checkPreconditions(request) {
-    const profile = request.context?.profile;
-    const routine = request.context?.current_routine;
+    const profile = request.context?.profile || {};
+    const routine = request.context?.current_routine || null;
+    const concerns = request.params?._extracted_concerns || [];
+    const targetIngredient = request.params?.target_ingredient || null;
+    const targetStep = request.params?.target_step || null;
 
-    const hasProfile = profile && (profile.skin_type || profile.concerns?.length > 0);
-    const hasRoutine =
-      routine && (routine.am_steps?.length > 0 || routine.pm_steps?.length > 0);
+    const hasProfile = Boolean(profile.skin_type) || (Array.isArray(profile.concerns) && profile.concerns.length > 0);
+    const hasRoutine = Boolean(routine && ((routine.am_steps || []).length > 0 || (routine.pm_steps || []).length > 0));
+    const hasConcernContext = Array.isArray(concerns) && concerns.length > 0;
+    const hasTargetContext = Boolean(targetIngredient || targetStep);
 
-    if (!hasProfile && !hasRoutine) {
+    if (!hasProfile && !hasRoutine && !hasConcernContext && !hasTargetContext) {
       return {
         met: false,
         failures: [
           {
-            rule_id: 'pre_has_profile_or_routine',
-            reason: 'No profile or routine available for recommendations',
-            on_fail_target: 'diagnosis_v2.start',
-            on_fail_message_en: 'We need to know a bit about your skin first.',
-            on_fail_message_zh: '我们需要先了解一下你的肌肤状况。',
+            rule_id: 'pre_has_context_for_reco',
+            reason: 'Need some context for recommendations',
+            on_fail_message_en: 'Tell me your main skin concerns or what ingredient/product type you need.',
+            on_fail_message_zh: '告诉我你的主要皮肤问题，或者你想找的成分/产品类型。',
           },
         ],
       };
     }
+
     return { met: true, failures: [] };
   }
 
   async execute(request, llmGateway) {
-    const { context, params } = request;
-    const targetStep = params?.target_step || null;
-    const safetyFlags = context.safety_flags || [];
-
     const llmResult = await llmGateway.call({
       templateId: 'reco_step_based',
       taskMode: 'recommendation',
       params: {
-        profile: context.profile,
-        routine: context.current_routine,
-        inventory: context.inventory,
-        target_step: targetStep,
-        safety_flags: safetyFlags,
-        locale: context.locale || 'en',
+        profile: request.context?.profile || {},
+        routine: request.context?.current_routine || null,
+        inventory: request.context?.inventory || [],
+        target_step: request.params?.target_step || null,
+        target_ingredient: request.params?.target_ingredient || null,
+        concerns: request.params?._extracted_concerns || [],
+        safety_flags: request.context?.safety_flags || [],
+        locale: request.context?.locale || 'en',
       },
       schema: 'StepRecommendationOutput',
     });
 
-    const reco = llmResult.parsed;
-
-    const sections = [];
-    for (const stepReco of reco.step_recommendations || []) {
-      sections.push({
+    const recommendations = llmResult.parsed?.step_recommendations || [];
+    const sections = recommendations
+      .filter((recommendation) => Array.isArray(recommendation.candidates) && recommendation.candidates.length > 0)
+      .map((recommendation) => ({
         type: 'step_recommendation',
-        step_id: stepReco.step_id,
-        step_name: stepReco.step_name,
-        candidates: stepReco.candidates.map((c) => ({
-          product_id: c.product_id,
-          brand: c.brand,
-          name: c.name,
-          why: c.why,
-          suitability_score: c.suitability_score,
-          price_tier: c.price_tier,
+        step_id: recommendation.step_id,
+        step_name: recommendation.step_name,
+        candidates: recommendation.candidates.map((candidate) => ({
+          product_id: candidate.product_id,
+          brand: candidate.brand,
+          name: candidate.name,
+          why: candidate.why,
+          suitability_score: candidate.suitability_score,
+          price_tier: candidate.price_tier,
         })),
-      });
-    }
+      }));
 
     if (sections.length === 0) {
       sections.push({
         type: 'empty_state_message',
-        message_en: 'No suitable recommendations found for your current profile.',
-        message_zh: '暂未找到适合你当前肌肤状况的推荐产品。',
+        message_en: "I couldn't find specific recommendations right now. Share a bit more about your concern or target ingredient.",
+        message_zh: '暂时没有找到具体推荐。可以再补充一点你的皮肤问题或目标成分。',
       });
     }
 
+    const nextActions = [];
+    if (request.params?.target_ingredient) {
+      nextActions.push({
+        action_type: 'navigate_skill',
+        target_skill_id: 'ingredient.report',
+        label: {
+          en: `Learn more about ${request.params.target_ingredient}`,
+          zh: `了解更多关于${request.params.target_ingredient}`,
+        },
+        params: { ingredient_query: request.params.target_ingredient },
+      });
+    }
+    nextActions.push({
+      action_type: 'navigate_skill',
+      target_skill_id: 'product.analyze',
+      label: { en: 'Analyze a specific product', zh: '分析具体产品' },
+    });
+
     return {
-      cards: [{ card_type: 'effect_review', sections }],
+      cards: [
+        {
+          card_type: 'effect_review',
+          sections,
+        },
+      ],
       ops: {
         thread_ops: [],
         profile_patch: {},
@@ -86,26 +109,11 @@ class RecoStepBasedSkill extends BaseSkill {
           {
             event: 'reco_shown',
             step_count: sections.length,
-            has_routine: !!context.current_routine,
+            has_routine: Boolean(request.context?.current_routine),
           },
         ],
       },
-      next_actions: [
-        {
-          action_type: 'show_chip',
-          label: { en: 'Add to my routine', zh: '加入我的护肤流程' },
-        },
-        {
-          action_type: 'navigate_skill',
-          target_skill_id: 'product.analyze',
-          label: { en: 'Analyze a specific product', zh: '分析某个产品' },
-        },
-        {
-          action_type: 'navigate_skill',
-          target_skill_id: 'tracker.checkin_log',
-          label: { en: 'Start tracking', zh: '开始打卡记录' },
-        },
-      ],
+      next_actions: nextActions,
       _promptHash: llmResult.promptHash,
       _taskMode: 'recommendation',
       _llmCalls: 1,
@@ -115,17 +123,15 @@ class RecoStepBasedSkill extends BaseSkill {
   async validateOutput(response, request) {
     const baseResult = await super.validateOutput(response, request);
     const issues = [...baseResult.issues];
-
     const safetyFlags = request.context?.safety_flags || [];
     const blockedConcepts = new Set();
 
-    const blockRulePrefixes = ['PREG_', 'CHILD_', 'MINOR_'];
     for (const flag of safetyFlags) {
-      for (const prefix of blockRulePrefixes) {
-        if (flag.startsWith(prefix) && flag.includes('BLOCK')) {
-          const concept = flag.replace(prefix, '').replace('_BLOCK', '').replace('_BLOCK_SPECIFIC', '');
-          blockedConcepts.add(concept);
-        }
+      const raw = String(flag || '');
+      if (!raw.includes('BLOCK')) continue;
+      const match = raw.match(/(?:PREG|CHILD|MINOR)_([^_]+(?:_[^_]+)*)_BLOCK(?:_SPECIFIC)?$/);
+      if (match && match[1]) {
+        blockedConcepts.add(match[1]);
       }
     }
 
@@ -133,15 +139,13 @@ class RecoStepBasedSkill extends BaseSkill {
       for (const card of response.cards || []) {
         for (const section of card.sections || []) {
           for (const candidate of section.candidates || []) {
-            if (candidate.concepts) {
-              for (const concept of candidate.concepts) {
-                if (blockedConcepts.has(concept)) {
-                  issues.push({
-                    code: 'BLOCKED_CONCEPT_IN_RECO',
-                    message: `Recommended product contains blocked concept: ${concept}`,
-                    severity: 'error',
-                  });
-                }
+            for (const concept of candidate.concepts || []) {
+              if (blockedConcepts.has(concept)) {
+                issues.push({
+                  code: 'BLOCKED_CONCEPT_IN_RECO',
+                  message: `Recommended product contains blocked concept: ${concept}`,
+                  severity: 'error',
+                });
               }
             }
           }
@@ -150,7 +154,7 @@ class RecoStepBasedSkill extends BaseSkill {
     }
 
     return {
-      quality_ok: issues.filter((i) => i.severity === 'error').length === 0,
+      quality_ok: issues.filter((issue) => issue.severity === 'error').length === 0,
       issues,
     };
   }

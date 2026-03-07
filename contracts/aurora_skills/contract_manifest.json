@@ -1,10 +1,10 @@
 {
-  "manifest_version": "1.0.0",
-  "contract_version": "1.0.0",
+  "manifest_version": "2.0.0",
+  "contract_version": "2.0.0",
   "files": {
-    "skill_contract.schema.json": "bf34babbf21d17d2e26a5ffc5322ea0a329807f7be713e8a1cce4da117144000",
-    "skill_registry.json": "0f1c56d67ce02653ad6b841cfd95c5d7db5790074c680ff03cba4e89d3dc0f59",
-    "quality_gates.json": "5f2d76904649d4141a21a9dd93510792f79aef45686b7e139e2fcd7fcbfdb588",
-    "precondition_rules.json": "de8f09a50d4237f10d0ecce55cfc48afacc8d125e32e60c1f9e042958c882e6b"
+    "skill_contract.schema.json": "e473c17a0d0a2cee669928f56b4423348c9c031c419154beef36e0ef1c708830",
+    "skill_registry.json": "a3a58beb28e7ee2073b7322a1fc03a463c3d5a970187362eded4d5d088d7cc74",
+    "quality_gates.json": "a6cb9f2596ab333c5db61efa780c4a4581184b47b8d50fa833a20c6450e947ad",
+    "precondition_rules.json": "73489c23d40a5582870328e7f929459cdb5979c789032b1ac1fbb9087f331055"
   }
 }

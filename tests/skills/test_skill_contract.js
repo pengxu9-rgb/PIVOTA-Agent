@@ -1,13 +1,6 @@
-/**
- * Contract-level regression tests for Aurora skills.
- * Validates that each skill conforms to skill_contract.schema.json.
- *
- * Run: node tests/skills/test_skill_contract.js
- */
-
 const assert = require('assert');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
 const { SkillRouter } = require('../../src/auroraBff/orchestrator/skill_router');
 const LlmGateway = require('../../src/auroraBff/services/llm_gateway');
@@ -15,22 +8,44 @@ const { validateSkillResponse } = require('../../src/auroraBff/validators/schema
 
 const FIXTURES_PATH = path.resolve(__dirname, '../golden_fixtures/fixture_manifest.json');
 
+function toBool(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'y' || raw === 'on';
+}
+
+function ensureLiveKeys() {
+  const geminiKey =
+    String(process.env.GEMINI_API_KEY || '').trim() ||
+    String(process.env.GEMINI_API_KEY_1 || '').trim() ||
+    String(process.env.GEMINI_API_KEY_2 || '').trim() ||
+    String(process.env.GEMINI_API_KEY_3 || '').trim();
+  if (!geminiKey) {
+    throw new Error('AURORA_SKILL_CONTRACT_LIVE=1 requires one of GEMINI_API_KEY, GEMINI_API_KEY_1, GEMINI_API_KEY_2, GEMINI_API_KEY_3');
+  }
+}
+
 async function runTests() {
+  const liveMode = toBool(process.env.AURORA_SKILL_CONTRACT_LIVE);
+  if (liveMode) {
+    ensureLiveKeys();
+  }
+
   const manifest = JSON.parse(fs.readFileSync(FIXTURES_PATH, 'utf-8'));
-  const gateway = new LlmGateway();
+  const gateway = new LlmGateway({ stubResponses: !liveMode });
   const router = new SkillRouter(gateway);
 
   let passed = 0;
   let failed = 0;
 
+  console.log(`Mode: ${liveMode ? 'live' : 'offline-stub'}\n`);
+
   for (const fixture of manifest.fixtures) {
     const label = `[${fixture.fixture_id}] ${fixture.scenario}`;
     try {
       const result = await router.route(fixture.request);
+      const { errors } = validateSkillResponse(result, fixture.skill_id);
 
-      const { valid, errors } = validateSkillResponse(result, fixture.skill_id);
-
-      assertBasicContract(result, fixture, errors);
+      assertBasicContract(result, errors);
 
       if (fixture.assertions.quality_ok !== undefined) {
         assert.strictEqual(
@@ -44,7 +59,7 @@ async function runTests() {
         assert.strictEqual(
           result.quality.preconditions_met,
           fixture.assertions.preconditions_met,
-          `preconditions_met mismatch`
+          'preconditions_met mismatch'
         );
       }
 
@@ -56,12 +71,9 @@ async function runTests() {
       }
 
       if (fixture.assertions.cards_must_include_types) {
-        const cardTypes = new Set(result.cards.map((c) => c.card_type));
+        const cardTypes = new Set(result.cards.map((card) => card.card_type));
         for (const expected of fixture.assertions.cards_must_include_types) {
-          assert.ok(
-            cardTypes.has(expected),
-            `Missing expected card type: ${expected}. Got: ${[...cardTypes].join(', ')}`
-          );
+          assert.ok(cardTypes.has(expected), `Missing expected card type: ${expected}`);
         }
       }
 
@@ -73,19 +85,15 @@ async function runTests() {
       }
 
       if (fixture.assertions.must_not_contain_visual_analysis) {
-        const hasVisual = result.cards.some((c) =>
-          c.sections.some((s) => s.type === 'visual_analysis')
+        const hasVisual = result.cards.some((card) =>
+          (card.sections || []).some((section) => section.type === 'visual_analysis')
         );
         assert.ok(!hasVisual, 'Must not contain visual_analysis section');
       }
 
       if (fixture.assertions.must_not_contain_product_claims_for_unverified) {
         const serialized = JSON.stringify(result).toLowerCase();
-        const forbidden = [
-          'products containing',
-          'products with this ingredient',
-          '含该成分的产品',
-        ];
+        const forbidden = ['products containing', 'products with this ingredient', '含该成分的产品'];
         for (const phrase of forbidden) {
           assert.ok(!serialized.includes(phrase), `Must not contain forbidden claim: ${phrase}`);
         }
@@ -93,7 +101,7 @@ async function runTests() {
 
       if (fixture.assertions.all_claims_must_have_evidence_badge) {
         const claimsSections = result.cards.flatMap((card) =>
-          card.sections.filter((section) => section.type === 'ingredient_claims')
+          (card.sections || []).filter((section) => section.type === 'ingredient_claims')
         );
         assert.ok(claimsSections.length > 0, 'Expected ingredient_claims section');
         for (const section of claimsSections) {
@@ -151,11 +159,11 @@ async function runTests() {
       }
 
       console.log(`  PASS  ${label}`);
-      passed++;
-    } catch (err) {
+      passed += 1;
+    } catch (error) {
       console.error(`  FAIL  ${label}`);
-      console.error(`        ${err.message}`);
-      failed++;
+      console.error(`        ${error.message}`);
+      failed += 1;
     }
   }
 
@@ -163,26 +171,24 @@ async function runTests() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-function assertBasicContract(result, fixture, schemaErrors) {
+function assertBasicContract(result, schemaErrors) {
   assert.ok(schemaErrors.length === 0, `Schema validation failed: ${schemaErrors.join('; ')}`);
   assert.ok(result.cards !== undefined, 'Missing cards');
   assert.ok(result.ops !== undefined, 'Missing ops');
   assert.ok(result.quality !== undefined, 'Missing quality');
   assert.ok(result.telemetry !== undefined, 'Missing telemetry');
-  assert.ok(result.next_actions !== undefined, 'Missing next_actions');
+  assert.ok(Array.isArray(result.next_actions), 'Missing next_actions');
   assert.ok(result.next_actions.length >= 1, 'next_actions must be non-empty');
-
-  assert.strictEqual(result.telemetry.skill_id.includes('.'), true, 'skill_id must be dot-separated');
-
-  assert.ok(!('session_patch' in result), 'MUST NOT return session_patch (deprecated)');
-  assert.ok(!('assistant_message' in result), 'MUST NOT return assistant_message (ChatCards v1)');
-  assert.ok(!('suggested_chips' in result), 'MUST NOT return suggested_chips (ChatCards v1)');
+  assert.ok(result.telemetry.skill_id.includes('.'), 'skill_id must be dot-separated');
+  assert.ok(!('session_patch' in result), 'MUST NOT return session_patch');
+  assert.ok(!('assistant_message' in result), 'MUST NOT return assistant_message');
+  assert.ok(!('suggested_chips' in result), 'MUST NOT return suggested_chips');
 }
 
-function findStructuredSection(result, type) {
+function findStructuredSection(result, sectionType) {
   for (const card of result.cards || []) {
     for (const section of card.sections || []) {
-      if (section.type === type) {
+      if (section.type === sectionType) {
         return section;
       }
     }
@@ -192,7 +198,7 @@ function findStructuredSection(result, type) {
 
 console.log('Aurora Skill Contract Tests');
 console.log('==========================\n');
-runTests().catch((err) => {
-  console.error('Test runner error:', err);
+runTests().catch((error) => {
+  console.error('Test runner error:', error);
   process.exit(1);
 });

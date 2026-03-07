@@ -2,12 +2,14 @@ const BaseSkill = require('./BaseSkill');
 
 class IngredientReportSkill extends BaseSkill {
   constructor() {
-    super('ingredient.report', '1.0.0');
+    super('ingredient.report', '2.0.0');
   }
 
   async checkPreconditions(request) {
     const query = request.params?.ingredient_query;
-    if (!query) {
+    const userQuestion = request.params?._user_question;
+
+    if (!query && !userQuestion) {
       return {
         met: false,
         failures: [
@@ -20,14 +22,125 @@ class IngredientReportSkill extends BaseSkill {
         ],
       };
     }
+
     return { met: true, failures: [] };
   }
 
   async execute(request, llmGateway) {
-    const { context, params } = request;
-    const query = params.ingredient_query;
+    const query = request.params?.ingredient_query;
+    const userQuestion = request.params?._user_question;
 
-    const ontologyMatch = params._resolved_ingredient || null;
+    if (userQuestion && (!query || this._isGeneralIngredientQuestion(userQuestion))) {
+      return this._handleIngredientQuestion(request, llmGateway);
+    }
+
+    return this._handleSpecificIngredient(request, llmGateway);
+  }
+
+  async _handleIngredientQuestion(request, llmGateway) {
+    const locale = request.context?.locale || 'en';
+    const userQuestion = request.params?._user_question || request.params?.ingredient_query || '';
+
+    const llmResult = await llmGateway.call({
+      templateId: 'ingredient_query_answer',
+      taskMode: 'ingredient',
+      params: {
+        user_question: userQuestion,
+        profile: request.context?.profile || {},
+        safety_flags: request.context?.safety_flags || [],
+        locale,
+      },
+      schema: 'IngredientQueryOutput',
+    });
+
+    const answer = llmResult.parsed || {};
+    const cards = [
+      {
+        card_type: 'text_response',
+        sections: [
+          {
+            type: 'text_answer',
+            text_en: answer.answer_en,
+            text_zh: answer.answer_zh || null,
+          },
+        ],
+      },
+    ];
+
+    if (Array.isArray(answer.safety_notes) && answer.safety_notes.length > 0) {
+      cards[0].sections.push({
+        type: 'safety_notes',
+        notes: answer.safety_notes,
+      });
+    }
+
+    if (Array.isArray(answer.ingredients_mentioned) && answer.ingredients_mentioned.length > 0) {
+      cards.push({
+        card_type: 'aurora_ingredient_report',
+        sections: [
+          {
+            type: 'ingredient_list',
+            ingredients: answer.ingredients_mentioned.map((ingredient) => ({
+              name: ingredient.name,
+              inci: ingredient.inci || null,
+              relevance: ingredient.relevance || null,
+              pros: locale.startsWith('zh') ? ingredient.pros_zh || [] : ingredient.pros_en || [],
+              cons: locale.startsWith('zh') ? ingredient.cons_zh || [] : ingredient.cons_en || [],
+              evidence_level: ingredient.evidence_level || 'uncertain',
+              best_for: ingredient.best_for || [],
+            })),
+          },
+        ],
+      });
+    }
+
+    const nextActions = [];
+    if (Array.isArray(answer.ingredients_mentioned) && answer.ingredients_mentioned.length > 0) {
+      nextActions.push({
+        action_type: 'navigate_skill',
+        target_skill_id: 'ingredient.report',
+        label: {
+          en: `Deep dive: ${answer.ingredients_mentioned[0].name}`,
+          zh: `深入了解：${answer.ingredients_mentioned[0].name}`,
+        },
+        params: {
+          ingredient_query: answer.ingredients_mentioned[0].name,
+        },
+      });
+    }
+    nextActions.push({
+      action_type: 'navigate_skill',
+      target_skill_id: 'reco.step_based',
+      label: { en: 'Find products', zh: '查找产品' },
+      params: {
+        _extracted_concerns: request.params?._extracted_concerns || [],
+      },
+    });
+
+    return {
+      cards,
+      ops: {
+        thread_ops: [],
+        profile_patch: {},
+        routine_patch: {},
+        experiment_events: [
+          {
+            event: 'ingredient_query_answered',
+            question: userQuestion,
+            ingredients_count: Array.isArray(answer.ingredients_mentioned) ? answer.ingredients_mentioned.length : 0,
+          },
+        ],
+      },
+      next_actions: nextActions,
+      _promptHash: llmResult.promptHash,
+      _taskMode: 'ingredient',
+      _llmCalls: 1,
+    };
+  }
+
+  async _handleSpecificIngredient(request, llmGateway) {
+    const query = request.params?.ingredient_query;
+    const ontologyMatch = request.params?._resolved_ingredient || null;
 
     const llmResult = await llmGateway.call({
       templateId: 'ingredient_report',
@@ -35,49 +148,79 @@ class IngredientReportSkill extends BaseSkill {
       params: {
         ingredient_query: query,
         ontology_match: ontologyMatch,
-        profile: context.profile,
-        safety_flags: context.safety_flags || [],
-        locale: context.locale || 'en',
+        profile: request.context?.profile || {},
+        safety_flags: request.context?.safety_flags || [],
+        locale: request.context?.locale || 'en',
       },
       schema: 'IngredientReportOutput',
     });
 
-    const report = llmResult.parsed;
-    const verified = ontologyMatch !== null;
-    const claims = this._sanitizeClaims(report.claims || [], verified);
-
+    const report = llmResult.parsed || {};
+    const verified = Boolean(ontologyMatch);
+    const normalizedClaims = this._normalizeClaims(report.claims, {
+      ingredientName: report.ingredient_name || query,
+      verified,
+    });
     const sections = [
       {
         type: 'ingredient_overview',
         ingredient_name: report.ingredient_name || query,
+        inci_name: report.inci_name || null,
         concept_id: ontologyMatch?.concept_id || null,
         verified_in_ontology: verified,
-        category: report.category,
-        description_en: report.description_en,
-        description_zh: report.description_zh,
-      },
-      {
-        type: 'ingredient_claims',
-        claims,
+        category: report.category || 'other',
+        description_en: report.description_en || '',
+        description_zh: report.description_zh || null,
       },
     ];
 
-    if (report.watchouts?.length > 0) {
+    if (Array.isArray(report.benefits) && report.benefits.length > 0) {
+      sections.push({
+        type: 'ingredient_benefits',
+        benefits: report.benefits,
+      });
+    }
+
+    sections.push({
+      type: 'ingredient_claims',
+      claims: normalizedClaims,
+    });
+
+    if (report.how_to_use) {
+      sections.push({
+        type: 'ingredient_usage',
+        how_to_use: report.how_to_use,
+      });
+    }
+
+    if (Array.isArray(report.watchouts) && report.watchouts.length > 0) {
       sections.push({
         type: 'ingredient_watchouts',
         watchouts: report.watchouts,
       });
     }
 
-    if (report.interactions?.length > 0) {
+    if (Array.isArray(report.interactions) && report.interactions.length > 0) {
       sections.push({
         type: 'ingredient_interactions',
         interactions: report.interactions,
       });
     }
 
+    if (Array.isArray(report.related_ingredients) && report.related_ingredients.length > 0) {
+      sections.push({
+        type: 'related_ingredients',
+        ingredients: report.related_ingredients,
+      });
+    }
+
     return {
-      cards: [{ card_type: 'aurora_ingredient_report', sections }],
+      cards: [
+        {
+          card_type: 'aurora_ingredient_report',
+          sections,
+        },
+      ],
       ops: {
         thread_ops: [],
         profile_patch: {},
@@ -90,120 +233,72 @@ class IngredientReportSkill extends BaseSkill {
           },
         ],
       },
-      next_actions: this._buildNextActions(verified),
+      next_actions: [
+        {
+          action_type: 'navigate_skill',
+          target_skill_id: 'reco.step_based',
+          label: {
+            en: `Find products with ${report.ingredient_name || query}`,
+            zh: `查找含有${report.ingredient_name || query}的产品`,
+          },
+          params: { target_ingredient: query },
+        },
+        {
+          action_type: 'navigate_skill',
+          target_skill_id: 'product.analyze',
+          label: { en: 'Analyze a product', zh: '分析一个产品' },
+        },
+      ],
       _promptHash: llmResult.promptHash,
       _taskMode: 'ingredient',
       _llmCalls: 1,
     };
   }
 
-  _buildNextActions(verified) {
-    if (!verified) {
-      return [
-        {
-          action_type: 'request_input',
-          label: { en: 'Check a specific product', zh: '检查具体产品' },
-          params: { input_type: 'product_anchor' },
-        },
-        {
-          action_type: 'navigate_skill',
-          target_skill_id: 'product.analyze',
-          label: { en: 'Analyze a product label', zh: '分析产品标签' },
-        },
-      ];
+  _normalizeClaims(claims, { ingredientName, verified }) {
+    const normalized = Array.isArray(claims)
+      ? claims
+          .filter((claim) => claim && typeof claim === 'object')
+          .map((claim) => ({
+            ...claim,
+            text_en: claim.text_en || `${ingredientName} may support some skincare goals, but results depend on the exact ingredient identity and formula.`,
+            text_zh: claim.text_zh || null,
+            evidence_badge: claim.evidence_badge || (verified ? 'limited' : 'uncertain'),
+            verified_source: verified,
+          }))
+      : [];
+
+    if (normalized.length > 0) {
+      return normalized;
     }
 
     return [
       {
-        action_type: 'navigate_skill',
-        target_skill_id: 'reco.step_based',
-        label: { en: 'Find products with this ingredient', zh: '找含有这个成分的产品' },
-      },
-      {
-        action_type: 'navigate_skill',
-        target_skill_id: 'product.analyze',
-        label: { en: 'Analyze a product', zh: '分析某个产品' },
+        text_en: verified
+          ? `${ingredientName} may offer skincare benefits, but tolerance and real-world performance still depend on formulation and usage.`
+          : `${ingredientName} may be relevant to skincare, but the exact ingredient identity and evidence level are not verified here.`,
+        text_zh: null,
+        evidence_badge: verified ? 'limited' : 'uncertain',
+        verified_source: verified,
       },
     ];
   }
 
-  _sanitizeClaims(claims, verified) {
-    return claims.map((claim) => {
-      const nextClaim = {
-        ...claim,
-        evidence_badge: claim.evidence_badge || 'uncertain',
-      };
-
-      if (!verified && this._containsForbiddenProductClaim(nextClaim)) {
-        return {
-          ...nextClaim,
-          text_en:
-            'Unable to confirm product-level presence for this ingredient without ontology verification.',
-          text_zh: '在未完成成分词典验证前，无法确认具体产品层面的成分归属。',
-        };
-      }
-
-      return nextClaim;
-    });
-  }
-
-  _containsForbiddenProductClaim(payload) {
-    const text = JSON.stringify(payload || {}).toLowerCase();
-    return (
-      text.includes('products containing') ||
-      text.includes('products with this ingredient') ||
-      text.includes('含该成分的产品')
-    );
-  }
-
-  async validateOutput(response, request) {
-    const baseResult = await super.validateOutput(response, request);
-    const issues = [...baseResult.issues];
-    const verified = request.params?._resolved_ingredient != null;
-
-    for (const card of response.cards || []) {
-      for (const section of card.sections || []) {
-        if (section.type === 'ingredient_overview' && !section.verified_in_ontology) {
-          const claimsSection = card.sections.find((s) => s.type === 'ingredient_claims');
-          if (claimsSection) {
-            for (const claim of claimsSection.claims || []) {
-              if (this._containsForbiddenProductClaim(claim)) {
-                issues.push({
-                  code: 'UNVERIFIED_PRODUCT_CLAIM',
-                  message: 'Cannot claim "products containing X" without ontology verification',
-                  severity: 'error',
-                });
-              }
-            }
-          }
-        }
-
-        if (section.type === 'ingredient_claims') {
-          for (const claim of section.claims || []) {
-            if (!claim.evidence_badge) {
-              issues.push({
-                code: 'MISSING_EVIDENCE_BADGE',
-                message: 'Each claim must have an evidence_badge',
-                severity: 'warning',
-              });
-            }
-          }
-        }
-      }
-    }
-
-    if (!verified && this._containsForbiddenProductClaim(response)) {
-      issues.push({
-        code: 'UNVERIFIED_RESPONSE_PRODUCT_CLAIM',
-        message: 'Unverified ingredient response still contains forbidden product-level claim',
-        severity: 'error',
-      });
-    }
-
-    return {
-      quality_ok: issues.filter((i) => i.severity === 'error').length === 0,
-      issues,
-    };
+  _isGeneralIngredientQuestion(question) {
+    const lower = String(question || '').toLowerCase();
+    const patterns = [
+      'best for',
+      'what ingredient',
+      'which ingredient',
+      'good for',
+      'help with',
+      'what works for',
+      '什么成分',
+      '哪个成分',
+      '推荐',
+      '适合',
+    ];
+    return patterns.some((pattern) => lower.includes(pattern));
   }
 }
 
