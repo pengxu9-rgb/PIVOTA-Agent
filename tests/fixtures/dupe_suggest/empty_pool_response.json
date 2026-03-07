@@ -1,0 +1,15 @@
+{
+  "description": "Golden fixture: When candidate pool is empty, must return empty-state with explicit reason",
+  "scenario": "candidate_pool returns 0 candidates",
+  "expected": {
+    "payload.dupes": [],
+    "payload.comparables": [],
+    "payload.verified": false,
+    "payload.empty_state_reason": "candidate_pool_empty",
+    "payload.quality.quality_ok": false,
+    "payload.quality.quality_issues_contains": "candidate_pool_empty",
+    "payload.action_hint": { "_not_empty": true },
+    "payload.meta.quality_gate_enforced": true,
+    "payload.meta.quality_gate_reason": "candidate_pool_empty"
+  }
+}

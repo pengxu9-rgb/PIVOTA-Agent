@@ -148,6 +148,16 @@ TARGET_COMMIT="$TARGET_COMMIT" ./scripts/verify_deployed_commit_matches.sh "$BAS
 
 If `x-service-commit` does not match target commit, stop diagnosis/fallback analysis and resolve deployment drift first.
 
+Drift triage order:
+
+1. Confirm the deployed `x-service-deployment-id` actually changed.
+2. If deployment id changed but `x-service-commit` did not, inspect stale commit override vars first:
+   - `AURORA_GIT_SHA`
+   - `GIT_COMMIT_SHA`
+   - `SOURCE_VERSION`
+3. Prefer platform-injected commit vars (`RAILWAY_GIT_COMMIT_SHA`) over manual overrides.
+4. Keep manual commit overrides temporary; clear them after recovery.
+
 Execution cadence:
 
 1. D0 config freeze with aggressive envs above.

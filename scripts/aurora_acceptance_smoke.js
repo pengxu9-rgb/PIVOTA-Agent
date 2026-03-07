@@ -102,7 +102,26 @@ function collectFindings(payload) {
   };
 }
 
+function isBlockingCheck(check) {
+  return check?.blocking !== false;
+}
+
+function checkStatusLabel(check) {
+  if (check?.ok) return 'PASS';
+  return isBlockingCheck(check) ? 'FAIL' : 'WARN';
+}
+
+function renderCheckLine(check) {
+  const scopeSuffix = isBlockingCheck(check) ? '' : ' [internal/non-blocking]';
+  const detail = check?.detail ? ` — ${check.detail}` : '';
+  return `- ${checkStatusLabel(check)} ${check?.name || 'unnamed_check'}${scopeSuffix}${detail}`;
+}
+
 function renderReport({ args, checks, findings, requestId, productAnalyzeStatus, feedbackStatus }) {
+  const blockingChecks = checks.filter((check) => isBlockingCheck(check));
+  const internalChecks = checks.filter((check) => !isBlockingCheck(check));
+  const blockingFailures = blockingChecks.filter((check) => !check.ok);
+  const internalWarnings = internalChecks.filter((check) => !check.ok);
   const lines = [];
   lines.push('# Aurora Acceptance Smoke Report');
   lines.push('');
@@ -112,10 +131,26 @@ function renderReport({ args, checks, findings, requestId, productAnalyzeStatus,
   lines.push(`- Product URL: ${args.productUrl || '(not provided)'}`);
   lines.push(`- Request ID: ${requestId || 'n/a'}`);
   lines.push('');
-  lines.push('## Checks');
+  lines.push('## Summary');
   lines.push('');
-  for (const check of checks) {
-    lines.push(`- ${check.ok ? 'PASS' : 'FAIL'} ${check.name}${check.detail ? ` — ${check.detail}` : ''}`);
+  lines.push(`- Blocking acceptance: ${blockingFailures.length === 0 ? 'PASS' : 'FAIL'}`);
+  lines.push(`- Blocking failures: ${blockingFailures.length}`);
+  lines.push(`- Internal non-blocking findings: ${internalWarnings.length}`);
+  lines.push('');
+  lines.push('## Blocking Checks');
+  lines.push('');
+  for (const check of blockingChecks) {
+    lines.push(renderCheckLine(check));
+  }
+  lines.push('');
+  lines.push('## Internal Non-Blocking Checks');
+  lines.push('');
+  if (internalChecks.length === 0) {
+    lines.push('- none');
+  } else {
+    for (const check of internalChecks) {
+      lines.push(renderCheckLine(check));
+    }
   }
   lines.push('');
   lines.push('## Product Analyze');
@@ -129,8 +164,9 @@ function renderReport({ args, checks, findings, requestId, productAnalyzeStatus,
   lines.push(`- Internal missing_info leaks: ${(findings?.internal_missing_info_leaks || []).join(', ') || 'none'}`);
   lines.push(`- "Price unknown" phrase hits: ${findings?.price_unknown_phrase_hits ?? 0}`);
   lines.push('');
-  lines.push('## Dogfood Endpoint');
+  lines.push('## Internal Dogfood Endpoint');
   lines.push('');
+  lines.push('- Classification: internal / non-blocking');
   lines.push(`- POST /v1/reco/employee-feedback HTTP: ${feedbackStatus}`);
   lines.push('');
   return `${lines.join('\n')}\n`;
@@ -225,32 +261,41 @@ async function main() {
       'unknown_anchor',
   );
 
-  const feedbackOut = await fetchJson(`${backend}/v1/reco/employee-feedback`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Aurora-UID': uid,
-      'X-Lang': args.lang,
-      'X-Trace-ID': traceId,
-    },
-    body: JSON.stringify({
-      anchor_product_id: anchorProductId,
-      block: 'competitors',
-      candidate_name: 'smoke_candidate',
-      feedback_type: 'relevant',
-      reason_tags: ['other'],
-      request_id: requestId || randomToken('req'),
-      session_id: randomToken('sess'),
-    }),
-  });
+  let feedbackOut = null;
+  let feedbackError = null;
+  try {
+    feedbackOut = await fetchJson(`${backend}/v1/reco/employee-feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Aurora-UID': uid,
+        'X-Lang': args.lang,
+        'X-Trace-ID': traceId,
+      },
+      body: JSON.stringify({
+        anchor_product_id: anchorProductId,
+        block: 'competitors',
+        candidate_name: 'smoke_candidate',
+        feedback_type: 'relevant',
+        reason_tags: ['other'],
+        request_id: requestId || randomToken('req'),
+        session_id: randomToken('sess'),
+      }),
+    });
+  } catch (err) {
+    feedbackError = err;
+  }
   requestChecks.push({
     name: 'employee_feedback_endpoint_ok',
-    ok: feedbackOut.res.ok,
-    detail: `status=${feedbackOut.res.status}`,
+    ok: Boolean(feedbackOut?.res?.ok),
+    blocking: false,
+    detail: feedbackError
+      ? `error=${feedbackError?.message || String(feedbackError)}`
+      : `status=${feedbackOut?.res?.status ?? 'unknown'}`,
   });
 
   for (const check of requestChecks) {
-    if (!check.ok) exitCode = 1;
+    if (!check.ok && isBlockingCheck(check)) exitCode = 1;
   }
 
   const report = renderReport({
@@ -259,7 +304,9 @@ async function main() {
     findings,
     requestId,
     productAnalyzeStatus: analyzeOut.res.status,
-    feedbackStatus: feedbackOut.res.status,
+    feedbackStatus: feedbackError
+      ? `error=${feedbackError?.message || String(feedbackError)}`
+      : feedbackOut?.res?.status ?? 'unknown',
   });
 
   const outPath = path.resolve(args.out);

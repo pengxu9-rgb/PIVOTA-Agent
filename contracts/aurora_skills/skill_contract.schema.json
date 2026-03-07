@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pivota.dev/schemas/aurora_skills/skill_contract.v1.json",
+  "title": "Aurora Skill Contract v1",
+  "description": "Language-agnostic contract for Aurora Beauty skills. Both PIVOTA-Agent (Node.js) and Pivota-glow-agent (Python) MUST conform to these schemas.",
+  "version": "1.0.0",
+  "$defs": {
+    "SkillId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "Dot-separated namespace.action, e.g. diagnosis_v2.start"
+    },
+    "SemVer": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "BlockLevel": {
+      "type": "string",
+      "enum": ["INFO", "WARN", "REQUIRE_INFO", "BLOCK"]
+    },
+    "CardType": {
+      "type": "string",
+      "enum": [
+        "product_verdict",
+        "compatibility",
+        "routine",
+        "triage",
+        "skin_status",
+        "effect_review",
+        "travel",
+        "nudge",
+        "aurora_ingredient_report",
+        "diagnosis_gate",
+        "profile",
+        "analysis_summary",
+        "empty_state"
+      ]
+    },
+    "Card": {
+      "type": "object",
+      "required": ["card_type", "sections"],
+      "properties": {
+        "card_type": { "$ref": "#/$defs/CardType" },
+        "sections": {
+          "type": "array",
+          "items": { "type": "object" },
+          "minItems": 1
+        },
+        "metadata": { "type": "object" }
+      }
+    },
+    "Ops": {
+      "type": "object",
+      "description": "Replaces deprecated session_patch. Aligned with ChatCards v1 ops contract.",
+      "properties": {
+        "thread_ops": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "profile_patch": { "type": "object" },
+        "routine_patch": { "type": "object" },
+        "experiment_events": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "QualityResult": {
+      "type": "object",
+      "required": ["schema_valid", "quality_ok", "preconditions_met"],
+      "properties": {
+        "schema_valid": { "type": "boolean" },
+        "quality_ok": { "type": "boolean" },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code", "message", "severity"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "severity": {
+                "type": "string",
+                "enum": ["error", "warning", "info"]
+              }
+            }
+          }
+        },
+        "preconditions_met": { "type": "boolean" },
+        "precondition_failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule_id", "reason"],
+            "properties": {
+              "rule_id": { "type": "string" },
+              "reason": { "type": "string" },
+              "required_fields": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Telemetry": {
+      "type": "object",
+      "required": ["call_id", "skill_id", "skill_version", "elapsed_ms"],
+      "properties": {
+        "call_id": { "type": "string", "format": "uuid" },
+        "skill_id": { "$ref": "#/$defs/SkillId" },
+        "skill_version": { "$ref": "#/$defs/SemVer" },
+        "prompt_hash": {
+          "type": "string",
+          "description": "SHA-256 of the prompt template used, if LLM was invoked"
+        },
+        "task_mode": { "type": "string" },
+        "elapsed_ms": { "type": "integer", "minimum": 0 },
+        "llm_calls": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "NextAction": {
+      "type": "object",
+      "required": ["action_type"],
+      "properties": {
+        "action_type": {
+          "type": "string",
+          "enum": [
+            "navigate_skill",
+            "request_input",
+            "show_chip",
+            "schedule_reminder",
+            "trigger_photo",
+            "open_product_drawer"
+          ]
+        },
+        "target_skill_id": { "$ref": "#/$defs/SkillId" },
+        "label": { "type": "object" },
+        "params": { "type": "object" }
+      }
+    },
+    "ContextObject": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object",
+          "description": "User skin profile: type, concerns, sensitivities, goals, age_band, life_stage"
+        },
+        "recent_logs": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Recent check-in/tracker entries"
+        },
+        "travel_plan": {
+          "type": ["object", "null"],
+          "description": "Active travel plan if any"
+        },
+        "current_routine": {
+          "type": ["object", "null"],
+          "description": "Current routine skeleton with steps and products"
+        },
+        "inventory": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "User's product inventory"
+        },
+        "locale": { "type": "string" },
+        "safety_flags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Active safety rule IDs from KB v0 safety_rules"
+        }
+      }
+    },
+    "SkillRequest": {
+      "type": "object",
+      "required": ["skill_id", "skill_version", "context"],
+      "properties": {
+        "skill_id": { "$ref": "#/$defs/SkillId" },
+        "skill_version": { "$ref": "#/$defs/SemVer" },
+        "intent": { "type": "string" },
+        "params": { "type": "object" },
+        "context": { "$ref": "#/$defs/ContextObject" },
+        "thread_state": { "type": "object" }
+      }
+    },
+    "SkillResponse": {
+      "type": "object",
+      "required": ["cards", "ops", "quality", "telemetry", "next_actions"],
+      "properties": {
+        "cards": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Card" }
+        },
+        "ops": { "$ref": "#/$defs/Ops" },
+        "quality": { "$ref": "#/$defs/QualityResult" },
+        "telemetry": { "$ref": "#/$defs/Telemetry" },
+        "next_actions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/NextAction" },
+          "minItems": 1,
+          "description": "MUST be non-empty. At minimum provide a fallback action."
+        }
+      }
+    }
+  }
+}

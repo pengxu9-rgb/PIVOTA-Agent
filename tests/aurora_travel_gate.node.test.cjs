@@ -123,6 +123,28 @@ test('normalizeCaseTurns keeps wait_after_ms for multi-turn pacing', () => {
   assert.equal(turns[1].wait_after_ms, 0);
 });
 
+test('extractMeta falls back to chatcards telemetry compatibility fields', () => {
+  const meta = __internal.extractMeta({
+    telemetry: {
+      intent: 'evaluate_product',
+      gate_type: 'hard',
+      env_source: 'weather_api',
+      degraded: false,
+      required_fields: ['pregnancy_status'],
+      intent_source: 'rules_v2',
+    },
+  });
+
+  assert.deepEqual(meta, {
+    intent_canonical: 'evaluate_product',
+    gate_type: 'hard',
+    env_source: 'weather_api',
+    degraded: false,
+    required_fields: ['pregnancy_status'],
+    intent_source: 'rules_v2',
+  });
+});
+
 test('evaluateCase supports travel_assertions for destination, actions, shopping, jetlag and meta booleans', () => {
   const caseDef = {
     case_id: 'travel_assertions_unit_case',
@@ -382,6 +404,58 @@ test('evaluateCase supports event assertions and assistant_not_contains_any', ()
   assert.equal(out.passed, true);
   assert.equal(out.errors.length, 0);
   assert.equal(out.turn_id, 'send_link');
+});
+
+test('evaluateCase accepts EPI signal from travel.sections[].env_payload.epi', () => {
+  const caseDef = {
+    case_id: 'travel_epi_section_unit_case',
+    category: 'complete_fields',
+    language: 'EN',
+    expected: {
+      gate_type: 'none',
+      must_have_card_types: ['env_stress'],
+      assistant_contains_any: ['Environmental Pressure Index', 'EPI'],
+    },
+  };
+
+  const body = {
+    assistant_text: 'Here is a trip-ready routine.',
+    cards: [
+      {
+        type: 'travel',
+        sections: [
+          {
+            kind: 'travel_structured',
+            env_payload: {
+              epi: 62,
+              env_source: 'weather_api',
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  const meta = {
+    intent_canonical: 'travel_planning',
+    gate_type: 'none',
+    env_source: 'weather_api',
+    degraded: false,
+  };
+
+  const out = __internal.evaluateCase({
+    caseDef,
+    mode: 'local-mock',
+    status: 200,
+    body,
+    headers: {},
+    meta,
+    strictMeta: true,
+    fetchCalls: 0,
+  });
+
+  assert.equal(out.passed, true);
+  assert.equal(out.errors.length, 0);
 });
 
 test('evaluateCase accepts degraded local_template fallback in staging-live', () => {

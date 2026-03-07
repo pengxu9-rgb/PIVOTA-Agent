@@ -1,0 +1,292 @@
+{
+  "manifest_version": "1.0.0",
+  "description": "Golden fixture test scenarios for Aurora skill regression testing. Each fixture defines a SkillRequest input and expected assertions on the SkillResponse.",
+  "fixtures": [
+    {
+      "fixture_id": "gf_diagnosis_start_basic",
+      "scenario": "New user starts diagnosis with no profile",
+      "skill_id": "diagnosis_v2.start",
+      "request": {
+        "skill_id": "diagnosis_v2.start",
+        "skill_version": "1.0.0",
+        "intent": "skin_diagnosis",
+        "params": {},
+        "context": {
+          "profile": {},
+          "recent_logs": [],
+          "travel_plan": null,
+          "current_routine": null,
+          "inventory": [],
+          "locale": "zh-CN",
+          "safety_flags": []
+        },
+        "thread_state": {}
+      },
+      "assertions": {
+        "cards_min_count": 1,
+        "cards_must_include_types": ["diagnosis_gate"],
+        "next_actions_min_count": 1,
+        "quality_ok": true,
+        "must_not_contain_visual_analysis": true
+      }
+    },
+    {
+      "fixture_id": "gf_diagnosis_answer_no_photo",
+      "scenario": "User answered diagnosis questions, no photo uploaded",
+      "skill_id": "diagnosis_v2.answer",
+      "request": {
+        "skill_id": "diagnosis_v2.answer",
+        "skill_version": "1.0.0",
+        "intent": "skin_diagnosis",
+        "params": {},
+        "context": {
+          "profile": { "has_photo": false, "skin_type": "combination" },
+          "recent_logs": [],
+          "travel_plan": null,
+          "current_routine": null,
+          "inventory": [],
+          "locale": "en",
+          "safety_flags": []
+        },
+        "thread_state": {
+          "diagnosis_goals": ["acne", "hydration"]
+        }
+      },
+      "assertions": {
+        "cards_must_include_types": ["skin_status"],
+        "next_actions_min_count": 2,
+        "quality_ok": true,
+        "must_not_contain_visual_analysis": true,
+        "ops_profile_patch_must_include": ["skin_type", "primary_concerns"]
+      }
+    },
+    {
+      "fixture_id": "gf_routine_pregnancy_safety",
+      "scenario": "Pregnant user generates routine: retinoids must be blocked",
+      "skill_id": "routine.apply_blueprint",
+      "request": {
+        "skill_id": "routine.apply_blueprint",
+        "skill_version": "1.0.0",
+        "params": {},
+        "context": {
+          "profile": {
+            "skin_type": "normal",
+            "primary_concerns": ["anti_aging"],
+            "has_photo": false
+          },
+          "recent_logs": [],
+          "travel_plan": null,
+          "current_routine": null,
+          "inventory": [],
+          "locale": "zh-CN",
+          "safety_flags": ["PREG_RETINOID_BLOCK", "PREG_HIGH_STRENGTH_AHA_WARN"]
+        },
+        "thread_state": {
+          "blueprint_id": "bp_test_123"
+        }
+      },
+      "assertions": {
+        "cards_must_include_types": ["routine"],
+        "quality_ok": true,
+        "pm_treatment_must_not_contain_concepts": ["RETINOID", "TRETINOIN", "ADAPALENE", "TAZAROTENE", "RETINOL"],
+        "pm_treatment_should_suggest": ["AZELAIC_ACID", "NIACINAMIDE"]
+      }
+    },
+    {
+      "fixture_id": "gf_product_analyze_spf",
+      "scenario": "SPF product must be AM-only with reapply guidance, never PM-first",
+      "skill_id": "product.analyze",
+      "request": {
+        "skill_id": "product.analyze",
+        "skill_version": "1.0.0",
+        "params": {
+          "product_anchor": {
+            "brand": "La Roche-Posay",
+            "name": "Anthelios UVMune 400 SPF50+",
+            "product_type": "sunscreen"
+          }
+        },
+        "context": {
+          "profile": { "skin_type": "combination" },
+          "recent_logs": [],
+          "travel_plan": null,
+          "current_routine": null,
+          "inventory": [],
+          "locale": "en",
+          "safety_flags": []
+        },
+        "thread_state": {}
+      },
+      "assertions": {
+        "cards_must_include_types": ["product_verdict"],
+        "quality_ok": true,
+        "usage_time_of_day": "AM only",
+        "usage_must_include_reapply": true,
+        "usage_must_not_include": ["PM-first", "2-3x/week", "every other day"]
+      }
+    },
+    {
+      "fixture_id": "gf_dupe_suggest_no_candidates",
+      "scenario": "Dupe suggest with empty candidate pool returns empty-state, not garbage",
+      "skill_id": "dupe.suggest",
+      "request": {
+        "skill_id": "dupe.suggest",
+        "skill_version": "1.0.0",
+        "params": {
+          "product_anchor": { "brand": "Obscure Brand", "name": "Rare Product" },
+          "_candidate_pool": []
+        },
+        "context": {
+          "profile": {},
+          "recent_logs": [],
+          "travel_plan": null,
+          "current_routine": null,
+          "inventory": [],
+          "locale": "zh-CN",
+          "safety_flags": []
+        },
+        "thread_state": {}
+      },
+      "assertions": {
+        "cards_must_include_types": ["empty_state"],
+        "quality_ok": false,
+        "preconditions_met": false,
+        "next_actions_min_count": 1
+      }
+    },
+    {
+      "fixture_id": "gf_travel_high_uv",
+      "scenario": "Travel to high-UV destination must include SPF reapply reminder",
+      "skill_id": "travel.apply_mode",
+      "request": {
+        "skill_id": "travel.apply_mode",
+        "skill_version": "1.0.0",
+        "params": {
+          "_climate_archetype": "tropical_humid_high_uv"
+        },
+        "context": {
+          "profile": { "skin_type": "dry" },
+          "recent_logs": [],
+          "travel_plan": {
+            "destination": "Bali, Indonesia",
+            "dates": { "start": "2026-04-01", "end": "2026-04-10" }
+          },
+          "current_routine": {
+            "routine_id": "routine_123",
+            "am_steps": [
+              { "step_id": "am_sunscreen", "products": [{ "name": "SPF 50" }] }
+            ],
+            "pm_steps": [
+              { "step_id": "pm_treatment", "products": [{ "name": "Retinol", "concepts": ["RETINOID"] }] }
+            ]
+          },
+          "inventory": [],
+          "locale": "en",
+          "safety_flags": []
+        },
+        "thread_state": {}
+      },
+      "assertions": {
+        "cards_must_include_types": ["travel"],
+        "quality_ok": true,
+        "adjustments_must_include_type": "spf_reapply",
+        "adjustments_should_include_type": "reduce_actives"
+      }
+    },
+    {
+      "fixture_id": "gf_ingredient_unverified",
+      "scenario": "Unverified ingredient must not claim 'products containing X'",
+      "skill_id": "ingredient.report",
+      "request": {
+        "skill_id": "ingredient.report",
+        "skill_version": "1.0.0",
+        "params": {
+          "ingredient_query": "SuperMagicExtract",
+          "_resolved_ingredient": null
+        },
+        "context": {
+          "profile": {},
+          "recent_logs": [],
+          "travel_plan": null,
+          "current_routine": null,
+          "inventory": [],
+          "locale": "en",
+          "safety_flags": []
+        },
+        "thread_state": {}
+      },
+      "assertions": {
+        "cards_must_include_types": ["aurora_ingredient_report"],
+        "must_not_contain_product_claims_for_unverified": true,
+        "all_claims_must_have_evidence_badge": true
+      }
+    },
+    {
+      "fixture_id": "gf_checkin_insights_no_photo",
+      "scenario": "Insights without photos must not reference visible changes",
+      "skill_id": "tracker.checkin_insights",
+      "request": {
+        "skill_id": "tracker.checkin_insights",
+        "skill_version": "1.0.0",
+        "params": {},
+        "context": {
+          "profile": { "skin_type": "oily" },
+          "recent_logs": [
+            { "checkin_id": "c1", "text": "Skin feels better", "sensation_level": 1, "has_photo": false },
+            { "checkin_id": "c2", "text": "Slight dryness", "sensation_level": 2, "has_photo": false },
+            { "checkin_id": "c3", "text": "Smooth today", "sensation_level": 1, "has_photo": false }
+          ],
+          "travel_plan": null,
+          "current_routine": null,
+          "inventory": [],
+          "locale": "en",
+          "safety_flags": []
+        },
+        "thread_state": {}
+      },
+      "assertions": {
+        "quality_ok": true,
+        "must_not_contain_visual_references": true,
+        "next_actions_should_include_photo_prompt": true
+      }
+    },
+    {
+      "fixture_id": "gf_post_procedure_recovery",
+      "scenario": "Post-procedure user: strong actives should be paused",
+      "skill_id": "routine.audit_optimize",
+      "request": {
+        "skill_id": "routine.audit_optimize",
+        "skill_version": "1.0.0",
+        "params": {},
+        "context": {
+          "profile": {
+            "skin_type": "normal",
+            "primary_concerns": ["acne"]
+          },
+          "recent_logs": [],
+          "travel_plan": null,
+          "current_routine": {
+            "routine_id": "routine_456",
+            "am_steps": [
+              { "step_id": "am_cleanser", "products": [{ "name": "Gentle Cleanser" }] },
+              { "step_id": "am_sunscreen", "products": [{ "name": "SPF 50", "concepts": ["SUNSCREEN"] }] }
+            ],
+            "pm_steps": [
+              { "step_id": "pm_treatment", "products": [{ "name": "Retinol 0.5%", "concepts": ["RETINOID"] }] },
+              { "step_id": "pm_moisturizer", "products": [{ "name": "Rich Cream" }] }
+            ]
+          },
+          "inventory": [],
+          "locale": "zh-CN",
+          "safety_flags": ["RECENT_PROCEDURE_AVOID_ACTIVES_WARN", "BARRIER_COMPROMISED_PAUSE_ACTIVES_WARN"]
+        },
+        "thread_state": {}
+      },
+      "assertions": {
+        "cards_must_include_types": ["routine"],
+        "should_flag_retinoid_with_barrier_compromised": true,
+        "compatibility_issues_should_exist": true
+      }
+    }
+  ]
+}

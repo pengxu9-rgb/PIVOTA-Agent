@@ -389,7 +389,7 @@ function buildTravelCard({ card, requestId, index, language = 'EN' }) {
     id: normalizeCardId(card && card.card_id, 'travel', requestId, index),
     type: 'travel',
     priority: 1,
-    title: language === 'CN' ? '旅行模式：极简清单与应急预案' : 'Travel mode: minimal packing + contingency',
+    title: language === 'CN' ? '旅行护肤方案' : 'Travel skincare plan',
     tags: [language === 'CN' ? '场景策略' : 'Scenario strategy'],
     sections: [
       { kind: 'checklist', title: language === 'CN' ? '关键提醒' : 'Key reminders', items: notes.length ? notes : [language === 'CN' ? '优先保湿和防晒。' : 'Prioritize hydration and SPF.'] },
@@ -398,7 +398,7 @@ function buildTravelCard({ card, requestId, index, language = 'EN' }) {
         env_payload: envPayload,
       },
     ],
-    actions: [{ type: 'generate_packing_list', label: language === 'CN' ? '生成打包清单' : 'Generate packing list' }],
+    actions: [{ type: 'generate_packing_list', label: language === 'CN' ? '查看完整装备清单' : 'View full travel kit' }],
   };
 }
 

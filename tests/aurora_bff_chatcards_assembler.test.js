@@ -94,6 +94,51 @@ describe('chatCardsAssembler safety mapping', () => {
     expect(out.follow_up_questions).toHaveLength(0);
   });
 
+  test('anchor wait event upgrades compat telemetry gate_type to hard', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        session_patch: {
+          meta: {
+            gate_type: 'soft',
+            required_fields: ['anchor'],
+          },
+        },
+        events: [
+          {
+            event_name: 'fitcheck_anchor_requested',
+            data: { reason_codes: ['anchor_missing'] },
+          },
+          {
+            event_name: 'anchor_collection_waiting_input',
+            data: { intent: 'evaluate_product' },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'evaluate_product',
+    });
+
+    expect(out.telemetry.gate_type).toBe('hard');
+    expect(out.telemetry.required_fields).toEqual(['anchor']);
+  });
+
+  test('safety block event falls back to soft compat telemetry without explicit meta', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        events: [
+          {
+            event_name: 'safety_gate_block',
+            data: { block_level: 'BLOCK' },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'ingredient_science',
+    });
+
+    expect(out.telemetry.gate_type).toBe('soft');
+  });
+
   test('keeps pending clarification follow-up questions and enforces option bounds', () => {
     const out = buildChatCardsResponse({
       envelope: makeEnvelope({

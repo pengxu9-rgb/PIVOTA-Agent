@@ -180,6 +180,15 @@ function hasAnchorLinkCue(text) {
   return ANCHOR_LINK_CUE_RE.test(String(text || '').trim());
 }
 
+function normalizeTravelDestinationCandidate(value) {
+  const raw = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!raw) return '';
+  return raw
+    .replace(/\s+(?:and|for|with|please|need|want|how|what|weather|skincare|routine|am\/pm|am|pm)\b.*$/i, '')
+    .replace(/[,.!?;:]+$/g, '')
+    .trim();
+}
+
 function extractTravelEntities(message) {
   const text = String(message || '').trim();
   if (!text) return {};
@@ -193,11 +202,13 @@ function extractTravelEntities(message) {
     };
   }
 
-  const destinationEn = text.match(/\b(?:to|in|at|destination)\s+([A-Za-z][A-Za-z\s\-]{1,40})/i);
+  const destinationEn = text.match(
+    /\b(?:to|in|at|destination)\s+([A-Za-z][A-Za-z\s\-]{1,40}?)(?=\s+(?:and|for|with|please|need|want|how|what|next|this|during|weather|skincare|routine|am\/pm|am|pm)\b|[,.!?]|$)/i,
+  );
   const destinationCn = text.match(/(?:去|到|目的地|在)\s*([\u4e00-\u9fffA-Za-z\-]{2,30})/);
-  const destination = destinationCn?.[1] || destinationEn?.[1];
+  const destination = normalizeTravelDestinationCandidate(destinationCn?.[1] || destinationEn?.[1]);
   if (destination) {
-    entities.destination = String(destination).trim();
+    entities.destination = destination;
   }
 
   const lowered = text.toLowerCase();
@@ -281,11 +292,15 @@ function inferCanonicalIntent({ message, actionId, actionLabel, language } = {})
     const hasScienceCue =
       isIngredientScienceLikeText(text) ||
       /\b(citation|citations|journal|journals)\b/i.test(text);
-    if (hasIngredientConcept && (!hasRecoCue || hasScienceCue)) {
+    const hasSafetyLifecycleCue = /(pregnan|trying\s+to\s+conceive|conceiv|lactat|breastfeed|怀孕|备孕|哺乳)/i.test(text);
+    const hasIngredientUseQuestionCue =
+      /\b(?:can|could|should)\s+i\s+use\b/i.test(text) ||
+      /(可以用吗|能用吗|安全吗|适合.*(怀孕|备孕|哺乳))/i.test(text);
+    if (hasIngredientConcept && (!hasRecoCue || hasScienceCue || hasSafetyLifecycleCue || hasIngredientUseQuestionCue)) {
       return {
         intent: INTENT_ENUM.INGREDIENT_SCIENCE,
-        source: 'kb_v0_concept_match',
-        confidence: 0.82,
+        source: hasSafetyLifecycleCue || hasIngredientUseQuestionCue ? 'ingredient_safety_heuristic' : 'kb_v0_concept_match',
+        confidence: hasSafetyLifecycleCue || hasIngredientUseQuestionCue ? 0.86 : 0.82,
         entities: {},
       };
     }

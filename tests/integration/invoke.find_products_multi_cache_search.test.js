@@ -6,6 +6,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    jest.dontMock('../../src/findProductsMulti/policy');
     nock.cleanAll();
     nock.disableNetConnect();
     nock.enableNetConnect((host) => {
@@ -60,6 +61,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
   afterEach(() => {
     jest.dontMock('../../src/db');
+    jest.dontMock('../../src/findProductsMulti/policy');
     jest.resetModules();
     nock.cleanAll();
     nock.enableNetConnect();

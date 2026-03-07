@@ -760,6 +760,20 @@ async function runTravelPipeline(input = {}) {
       sensitivity: pickProfileText(profile, 'sensitivity', 'sensitivity', 40),
       barrierStatus: pickProfileText(profile, 'barrierStatus', 'barrier_status', 40),
       region: homeRegion || null,
+      goals: Array.isArray(profile.goals) ? profile.goals.slice(0, 8).map((g) => normalizeText(g, 60)).filter(Boolean) : [],
+      budgetTier: pickProfileText(profile, 'budgetTier', 'budget_tier', 40),
+      currentRoutine: normalizeText(
+        typeof profile.currentRoutine === 'string'
+          ? profile.currentRoutine
+          : isPlainObject(profile.currentRoutine) ? JSON.stringify(profile.currentRoutine) : '',
+        600,
+      ) || null,
+      contraindications: Array.isArray(profile.contraindications)
+        ? profile.contraindications.slice(0, 12).map((c) => normalizeText(c, 80)).filter(Boolean)
+        : [],
+      age_band: pickProfileText(profile, 'age_band', 'age_band', 24),
+      pregnancy_status: pickProfileText(profile, 'pregnancy_status', 'pregnancy_status', 24),
+      lactation_status: pickProfileText(profile, 'lactation_status', 'lactation_status', 24),
     },
     weather_source: normalizeText(destinationWeather && destinationWeather.source, 40) || null,
     weather_reason: normalizeText(destinationWeather && destinationWeather.reason, 80) || null,
@@ -777,7 +791,7 @@ async function runTravelPipeline(input = {}) {
         language,
         travelLlmInput,
         baseTravelReadiness: travelReadiness,
-        timeoutMs: 1800,
+        timeoutMs: 3500,
         maxRetries: 1,
         logger,
       });

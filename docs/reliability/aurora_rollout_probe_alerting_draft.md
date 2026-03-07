@@ -4,7 +4,7 @@
 
 This draft defines the online health probe and alert rules for Aurora `/v1/chat` rollout invariants:
 
-1. `meta` must be present.
+1. rollout `meta` must be present at top-level `meta` or `session_patch.meta` (ChatCards mode).
 2. `x-aurora-variant` must match `meta.rollout_variant`.
 3. `x-aurora-bucket` must match `meta.rollout_bucket`.
 4. `x-aurora-policy-version` must match `meta.policy_version`.
@@ -50,7 +50,7 @@ CLI aliases are also supported for CI convenience:
 
 | Rule ID | Severity | Trigger | Notes |
 | --- | --- | --- | --- |
-| `meta_missing` | high | `meta_null_count > 0` in one run | Envelope regression or bypass path. |
+| `meta_missing` | high | `meta_null_count > 0` in one run | Rollout meta missing from both `meta` and `session_patch.meta`. |
 | `header_meta_mismatch` | high | `mismatch_count > 0` in one run | Variant/meta drift or header stripping. |
 | `bucket_out_of_range` | high | `bucket_out_of_range_count > 0` | Hashing/parsing bug. |
 | `elevated_failures` | high | non-200 or parse errors in 2 runs within 10 minutes | Prevent page on one-off infra flakes. |

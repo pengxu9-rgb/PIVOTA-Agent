@@ -1,0 +1,17 @@
+{
+  "description": "Golden fixture: A well-formed dupe_compare response with full tradeoffs",
+  "input": {
+    "original": { "brand": "La Mer", "name": "Creme de la Mer Moisturizing Cream", "sku_id": "lamer_001" },
+    "original_url": "https://www.cremedelamer.com/product/001",
+    "dupe": { "brand": "CeraVe", "name": "Moisturizing Cream", "sku_id": "cerave_001" },
+    "dupe_url": "https://www.cerave.com/moisturizing-cream"
+  },
+  "expected": {
+    "payload.original": { "_not_null": true, "_not_stub": true },
+    "payload.dupe": { "_not_null": true, "_not_stub": true },
+    "payload.compare_quality": "full",
+    "payload.tradeoffs": { "_min_length": 2 },
+    "payload.evidence": { "_not_null": true },
+    "payload.confidence": { "_not_null": true }
+  }
+}

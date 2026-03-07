@@ -1,0 +1,15 @@
+{
+  "description": "Golden fixture: Lab Series URL-only input should resolve to a non-null original (stub or actual product)",
+  "input": {
+    "original_url": "https://www.labseries.com/product/27905/99493/skincare/max-ls-power-v-lifting-serum",
+    "max_dupes": 3,
+    "max_comparables": 2
+  },
+  "expected": {
+    "payload.original": { "_not_null": true },
+    "payload.anchor_resolution_status": { "_one_of": ["confirmed", "failed"] },
+    "payload.original._stub_if_failed": {
+      "_description": "If anchor_resolution_status=failed, original must have _stub=true and url set"
+    }
+  }
+}
