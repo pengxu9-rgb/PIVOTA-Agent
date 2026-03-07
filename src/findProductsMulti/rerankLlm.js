@@ -3,10 +3,16 @@ const path = require('path');
 
 const axios = require('axios');
 const OpenAI = require('openai');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 const DEFAULT_PROMPT_PATH = path.join(__dirname, '..', '..', 'prompts', 'product_rerank_prompt_v1.txt');
 const DEFAULT_MODEL_OPENAI = process.env.PIVOTA_RERANK_MODEL || 'gpt-5.1-mini';
-const DEFAULT_MODEL_GEMINI = process.env.PIVOTA_RERANK_MODEL_GEMINI || process.env.PIVOTA_RERANK_MODEL || 'gemini-1.5-flash';
+const DEFAULT_MODEL_GEMINI = resolveNonImageGeminiModel({
+  model: process.env.PIVOTA_RERANK_MODEL_GEMINI || process.env.PIVOTA_RERANK_MODEL,
+  fallbackModel: 'gemini-3-flash-preview',
+  envSource: process.env.PIVOTA_RERANK_MODEL_GEMINI ? 'PIVOTA_RERANK_MODEL_GEMINI' : 'PIVOTA_RERANK_MODEL',
+  callPath: 'find_products_rerank',
+}).effectiveModel;
 
 const MAX_CANDIDATES_PER_SOURCE = Math.min(
   200,
@@ -318,4 +324,3 @@ async function maybeRerankFindProductsMultiResponse({ response, userQuery, limit
 module.exports = {
   maybeRerankFindProductsMultiResponse,
 };
-

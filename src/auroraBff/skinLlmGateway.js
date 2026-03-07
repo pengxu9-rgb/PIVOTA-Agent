@@ -36,12 +36,17 @@ const {
 } = require('./skinLlmPrompts');
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 const { getGeminiGlobalGate, GeminiGateError } = require('../lib/geminiGlobalGate');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 const FALLBACK_GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 
 const SKIN_MODEL_GEMINI =
-  String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-flash-preview').trim() ||
-  'gemini-3-flash-preview';
+  resolveNonImageGeminiModel({
+    model: String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || '').trim(),
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: process.env.AURORA_SKIN_VISION_MODEL_GEMINI ? 'AURORA_SKIN_VISION_MODEL_GEMINI' : 'GEMINI_MODEL',
+    callPath: 'aurora_skin_vision_gateway',
+  }).effectiveModel;
 
 function readTimeoutMs(raw, fallback) {
   const value = Number(raw);

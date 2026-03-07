@@ -145,7 +145,7 @@ describe("LLM provider (env selection)", () => {
     process.env.PIVOTA_LAYER2_MODEL_GEMINI = "gemini-1.5-flash";
 
     nock("http://gemini.local")
-      .post("/v1beta/models/gemini-1.5-flash:generateContent")
+      .post("/v1beta/models/gemini-3-flash-preview:generateContent")
       .query(true)
       .reply(200, {
         candidates: [
