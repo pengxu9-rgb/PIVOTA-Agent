@@ -224,6 +224,27 @@ function summarizeRoutine(routineCandidate) {
   };
 }
 
+function extractRoutineProducts(routineCandidate) {
+  if (!routineCandidate || typeof routineCandidate !== 'object' || Array.isArray(routineCandidate)) return null;
+  const amSteps = Array.isArray(routineCandidate.am) ? routineCandidate.am : [];
+  const pmSteps = Array.isArray(routineCandidate.pm) ? routineCandidate.pm : [];
+  if (!amSteps.length && !pmSteps.length) return null;
+
+  const mapStep = (entry) => {
+    if (!entry || typeof entry !== 'object') return null;
+    const step = String(entry.step || '').trim();
+    const product = String(entry.product || '').trim();
+    if (!step || !product) return null;
+    return { step, product: product.slice(0, 200) };
+  };
+
+  const am = amSteps.map(mapStep).filter(Boolean).slice(0, 8);
+  const pm = pmSteps.map(mapStep).filter(Boolean).slice(0, 8);
+  const notes = String(routineCandidate.notes || '').trim().slice(0, 800) || null;
+
+  return am.length || pm.length || notes ? { am, pm, notes } : null;
+}
+
 function buildConstraints(profileSummary) {
   const p = profileSummary && typeof profileSummary === 'object' ? profileSummary : {};
   const out = [];
@@ -344,12 +365,14 @@ function buildReportSignalsDto({
     qualityObject && typeof qualityObject === 'object' && !Array.isArray(qualityObject)
       ? qualityObject
       : buildQualityObject(photoQuality);
+  const routineProducts = extractRoutineProducts(routineCandidate);
   const dtoBase = {
     lang: normalizeLang(lang),
     quality,
     concern_rank: buildConcernRank(diagnosisV1),
     deterministic_signals: mapDeterministicSignals(diagnosisV1),
     routine_summary: summarizeRoutine(routineCandidate),
+    ...(routineProducts ? { routine_products: routineProducts } : {}),
     constraints: buildConstraints(profileSummary),
     open_questions: buildOpenQuestions({ diagnosisPolicy, photoQuality }),
     photo_quality: mapPhotoQuality(photoQuality),
@@ -422,5 +445,6 @@ module.exports = {
   buildInputHashPrefix,
   buildVisionSignalsDto,
   buildReportSignalsDto,
+  extractRoutineProducts,
   buildDeepeningSignalsDto,
 };

@@ -3,8 +3,12 @@
 const fs = require('fs');
 const path = require('path');
 
+const KB_CACHE_TTL_MS = parseInt(process.env.AURORA_KB_CACHE_TTL_MS, 10) || 5 * 60 * 1000;
+
 let interactionRulesCache = null;
+let interactionRulesCacheTs = 0;
 let safetyRulesCache = null;
+let safetyRulesCacheTs = 0;
 
 const KB_DIR = process.env.AURORA_KB_V0_DIR || path.join(__dirname, '..', '..', 'data', 'aurora_chat_v2', 'kb_v0');
 
@@ -20,19 +24,23 @@ function loadJsonFile(filename) {
 }
 
 function getInteractionRules() {
-  if (interactionRulesCache) return interactionRulesCache;
+  const now = Date.now();
+  if (interactionRulesCache && (now - interactionRulesCacheTs) < KB_CACHE_TTL_MS) return interactionRulesCache;
   const data = loadJsonFile('interaction_rules.v0.json');
   interactionRulesCache = data && Array.isArray(data.interactions) ? data.interactions : [];
+  interactionRulesCacheTs = now;
   return interactionRulesCache;
 }
 
 function getSafetyRules() {
-  if (safetyRulesCache) return safetyRulesCache;
+  const now = Date.now();
+  if (safetyRulesCache && (now - safetyRulesCacheTs) < KB_CACHE_TTL_MS) return safetyRulesCache;
   const data = loadJsonFile('safety_rules.v0.json');
   safetyRulesCache = {
     rules: data && Array.isArray(data.rules) ? data.rules : [],
     templates: data && Array.isArray(data.templates) ? data.templates : [],
   };
+  safetyRulesCacheTs = now;
   return safetyRulesCache;
 }
 

@@ -18,6 +18,14 @@ const {
   buildQualityObject,
 } = require('./skinSignalsDto');
 const {
+  detectRoutineLifecycleStage,
+  buildRoutineLifecycleContext,
+  buildLifecyclePromptInstructions,
+  buildSupplementaryPromptInstructions,
+  parseRoutineForSupplementary,
+} = require('./routineLifecycle');
+const { buildKbGroundingForPrompt } = require('./routineKbLoader');
+const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
@@ -43400,24 +43408,24 @@ function mountAuroraBffRoutes(app, { logger }) {
               logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes for diagnosis');
             }
 
-	            if (diagnosisPhotoBytes) {
-	              const diag = await runSkinDiagnosisV1({
-	                imageBuffer: diagnosisPhotoBytes,
-	                language: ctx.lang,
-	                profileSummary,
-	                recentLogsSummary,
-	                profiler,
-                  qualityGateConfig,
-                  severityThresholdsOverrides,
-	              });
-	              if (diag && diag.ok && diag.diagnosis) {
-	                diagnosisV1 = diag.diagnosis;
-	                diagnosisV1Internal = diag.internal || null;
-	                diagnosisPolicy = summarizeDiagnosisForPolicy(diagnosisV1);
-	                usedPhotos = true;
-	                shadowVerifyPhotoBytes = diagnosisPhotoBytes;
-	                const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
-	                if (dq && typeof dq.grade === 'string') photoQuality = mergePhotoQuality(photoQuality, dq, { extraPrefix: 'pixel_' });
+            if (diagnosisPhotoBytes) {
+              const diag = await runSkinDiagnosisV1({
+                imageBuffer: diagnosisPhotoBytes,
+                language: ctx.lang,
+                profileSummary,
+                recentLogsSummary,
+                profiler,
+                qualityGateConfig,
+                severityThresholdsOverrides,
+              });
+              if (diag && diag.ok && diag.diagnosis) {
+                diagnosisV1 = diag.diagnosis;
+                diagnosisV1Internal = diag.internal || null;
+                diagnosisPolicy = summarizeDiagnosisForPolicy(diagnosisV1);
+                usedPhotos = true;
+                shadowVerifyPhotoBytes = diagnosisPhotoBytes;
+                const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
+                if (dq && typeof dq.grade === 'string') photoQuality = mergePhotoQuality(photoQuality, dq, { extraPrefix: 'pixel_' });
                 if (dq && dq.grade === 'fail') {
                   if (ctx.lang === 'CN') qualityReportReasons.push('照片像素质量未通过（模糊/光照/白平衡/覆盖不足等）；为避免误判我会建议重拍。');
                   else
@@ -43729,11 +43737,46 @@ function mountAuroraBffRoutes(app, { logger }) {
           llmInputHash = reportDto.input_hash || llmInputHash;
           llmInputHashPrefix = buildInputHashPrefix(llmInputHash);
           recordAuroraSkinMainlineProvider({ provider: 'gemini' });
+          const lifecycleStage = detectRoutineLifecycleStage({
+            routineCandidate: hasRoutine ? routineCandidate : null,
+            previousRoutine,
+            intent: parsed.data.intent || null,
+          });
+          let lifecycleInstructions = '';
+          if (lifecycleStage) {
+            const lifecycleCtx = buildRoutineLifecycleContext({
+              stage: lifecycleStage,
+              routineCandidate: hasRoutine ? routineCandidate : null,
+              previousRoutine,
+              profileSummary,
+              language: ctx.lang,
+            });
+            lifecycleInstructions = buildLifecyclePromptInstructions(lifecycleCtx, ctx.lang);
+          }
+          const supplementaryInstructions = buildSupplementaryPromptInstructions({
+            routineCandidate: hasRoutine ? routineCandidate : null,
+            profileSummary,
+            language: ctx.lang,
+          });
+          let kbGrounding = '';
+          if (hasRoutine && routineCandidate) {
+            const { actives } = parseRoutineForSupplementary(routineCandidate);
+            const activeConcepts = actives.map((a) => a.toUpperCase());
+            if (profileSummary && profileSummary.barrierStatus === 'impaired') activeConcepts.push('BARRIER_COMPROMISED');
+            if (profileSummary && profileSummary.sensitivity === 'high') activeConcepts.push('SENSITIVE_SKIN');
+            kbGrounding = buildKbGroundingForPrompt({
+              activeConcepts,
+              profileSummary,
+              language: ctx.lang,
+            });
+          }
+          lifecycleInstructions = lifecycleInstructions + supplementaryInstructions + kbGrounding;
           const reportResult = await runGeminiReportStrategy({
             reportDto,
             language: ctx.lang,
             promptVersion,
             profiler,
+            lifecycleInstructions,
           });
           if (reportResult.retry && Number(reportResult.retry.attempted || 0) > 0) {
             recordAuroraSkinLlmRetry({
@@ -53290,6 +53333,10 @@ const __internal = {
   runPdpHotsetPrewarmBatch,
   resolveRecoPdpByStableIds,
   maybeInferSkinMaskForPhotoModules,
+  resolveSkinDeepeningPromptVersion,
+  extractSkinDeepeningSymptoms,
+  resolveSkinDeepeningPhase,
+  buildMainlineDeepeningDto,
   ensureSkinmaskModelPathForInference,
   __setResolveProductRefForTest(fn) {
     resolveProductRefDirectImpl = typeof fn === 'function' ? fn : null;
