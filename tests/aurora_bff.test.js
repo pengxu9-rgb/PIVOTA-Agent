@@ -121,7 +121,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
   });
 
-  test('Chat: include_alternatives request with a complete profile returns recommendations cleanly', async () => {
+  test('Chat: include_alternatives request with a complete profile in diagnosis state routes to photo opt-in', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -141,10 +141,13 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    const reco = res.body.cards.find((c) => c.type === 'recommendations');
-    expect(reco).toBeTruthy();
-    expect(Array.isArray(reco?.payload?.recommendations)).toBe(true);
-    expect(reco.payload.recommendations.length).toBeGreaterThan(0);
+    const chips = getQuickReplies(res.body);
+    expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(false);
+    expect(res.body.session_patch?.next_state).toBe('DIAG_PHOTO_OPTIN');
+    expect(chips.some((c) => getQuickReplyId(c) === 'chip.intake.upload_photos')).toBe(true);
+    expect(chips.some((c) => getQuickReplyId(c) === 'chip.intake.skip_analysis')).toBe(true);
+    expect(res.body.session_patch?.profile?.skinType).toBe('oily');
+    expect(res.body.session_patch?.profile?.budgetTier).toBe('¥500');
   });
 
   test('Diagnosis: profile chip patch continues with next missing fields', async () => {
@@ -224,7 +227,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(Boolean(skip)).toBe(true);
   });
 
-  test('Diagnosis: diag.skip_photo_analyze without a complete profile loops back to diagnosis_gate', async () => {
+  test('Diagnosis: diag.skip_photo_analyze without a complete profile returns a low-confidence baseline', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -241,8 +244,13 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
-    expect(res.body.session_patch?.next_state).toBe('DIAG_PROFILE');
+    const analysis = res.body.cards.find((c) => c.type === 'analysis_summary');
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(false);
+    expect(analysis).toBeTruthy();
+    expect(analysis?.payload?.analysis_source).toBe('baseline_low_confidence');
+    expect(analysis?.payload?.low_confidence).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'confidence_notice')).toBe(true);
+    expect(res.body.session_patch?.next_state).toBe('DIAG_ANALYSIS_SUMMARY');
   });
 
   test('Diagnosis: chip.intake.upload_photos is recognized by state machine as valid transition', () => {

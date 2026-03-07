@@ -13873,6 +13873,8 @@ function extractHeatmapStepsFromConflictDetector({ conflictDetector, contextRaw 
 let openaiClient;
 let openaiCtor;
 let openaiCtorResolved = false;
+let geminiClient = null;
+let geminiClientInitFailed = false;
 function getOpenAIConstructor() {
   if (openaiCtorResolved) return openaiCtor;
   openaiCtorResolved = true;
@@ -44113,13 +44115,76 @@ function mountAuroraBffRoutes(app, { logger }) {
         const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
           ? diagnosisArtifact.overall_confidence
           : null;
-        const skipRoutineAutoscanForLowConfidence = Boolean(lowConfidenceSummary);
+        const lowConfidenceRuleBased = Boolean(lowConfidenceSummary);
 
         const extraCards = [];
         if (ingredientPlan) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
         }
+        const routineProductCards = [];
         const routineProductEvents = [];
+        const runtimeRoutineProductCandidates = Array.isArray(routineProductCandidates) ? routineProductCandidates : [];
+        const syncRoutineProductCandidates =
+          runtimeRoutineProductCandidates.length > 0 && !lowConfidenceRuleBased
+            ? runtimeRoutineProductCandidates.slice(0, AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT)
+            : [];
+        const queuedRoutineProductCandidates =
+          syncRoutineProductCandidates.length > 0
+            ? runtimeRoutineProductCandidates.slice(AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT)
+            : runtimeRoutineProductCandidates;
+        if (syncRoutineProductCandidates.length > 0) {
+          routineProductEvents.push(
+            makeEvent(ctx, 'routine_product_deepscan_started', {
+              total_candidates: runtimeRoutineProductCandidates.length,
+              sync_target: syncRoutineProductCandidates.length,
+              async_target: queuedRoutineProductCandidates.length,
+            }),
+          );
+          const syncScanResults = await Promise.all(
+            syncRoutineProductCandidates.map((candidate) =>
+              deepScanRoutineProductCandidate({
+                candidate,
+                ctx,
+                profileSummary,
+                recentLogsSummary,
+                logger,
+                includeCard: true,
+              }).catch(() => ({ card: null, backfilled: false, failure_reason: 'scan_failed' })),
+            ),
+          );
+          let syncBackfilled = 0;
+          let syncFailed = 0;
+          let anchorsBlockedNonSkincare = 0;
+          let anchorsUsed = 0;
+          for (const result of syncScanResults) {
+            if (result && result.card && result.card.type === 'product_analysis') {
+              routineProductCards.push(result.card);
+            } else {
+              syncFailed += 1;
+            }
+            if (result && result.backfilled) syncBackfilled += 1;
+            if (result && result.anchor_blocked_non_skincare) anchorsBlockedNonSkincare += 1;
+            if (result && result.anchor_used) anchorsUsed += 1;
+          }
+          routineProductEvents.push(
+            makeEvent(ctx, 'routine_product_deepscan_completed', {
+              sync_scanned: syncRoutineProductCandidates.length,
+              sync_backfilled: syncBackfilled,
+              cards_emitted: routineProductCards.length,
+              sync_failed: syncFailed,
+              anchors_blocked_non_skincare: anchorsBlockedNonSkincare,
+              anchors_used: anchorsUsed,
+            }),
+          );
+          if (queuedRoutineProductCandidates.length > 0) {
+            routineProductEvents.push(
+              makeEvent(ctx, 'routine_product_deepscan_backfilled', {
+                queued: queuedRoutineProductCandidates.length,
+                mode: 'async_queue',
+              }),
+            );
+          }
+        }
         const routineFitPlan = resolveRoutineFitAnalysisPlan({
           routineProductCandidates,
           lowConfidenceRuleBased,
@@ -44185,11 +44250,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
 
-        if (routineFitPlan.shouldQueueKbBackfill) {
+        if (routineFitPlan.shouldQueueKbBackfill && queuedRoutineProductCandidates.length > 0) {
           setImmediate(async () => {
             let asyncCompleted = 0;
             let asyncBackfilled = 0;
-            for (const candidate of routineProductCandidates) {
+            for (const candidate of queuedRoutineProductCandidates) {
               try {
                 const result = await deepScanRoutineProductCandidate({
                   candidate,
@@ -44209,7 +44274,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               {
                 request_id: ctx.request_id,
                 trace_id: ctx.trace_id,
-                queued: routineProductCandidates.length,
+                queued: queuedRoutineProductCandidates.length,
                 completed: asyncCompleted,
                 backfilled: asyncBackfilled,
               },
@@ -44260,6 +44325,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: analysisSummaryPayload,
               ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
             },
+            ...routineProductCards,
             ...(routineFitCard ? [routineFitCard] : []),
             ...(photoModulesCard ? [photoModulesCard] : []),
             ...extraCards,
