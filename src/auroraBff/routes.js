@@ -25,6 +25,7 @@ const {
   parseRoutineForSupplementary,
 } = require('./routineLifecycle');
 const { buildKbGroundingForPrompt } = require('./routineKbLoader');
+const { normalizeCurrentRoutineToV2 } = require('./routineSchemaV2');
 const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
@@ -43254,11 +43255,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         const routineDerivedProfilePatch = extractProfilePatchFromRoutinePayload(routineFromRequest);
 
         if (routineFromRequest !== undefined) {
+          const normalizedRoutine = normalizeCurrentRoutineToV2(routineFromRequest);
           // Best-effort persistence. Analysis should still proceed even if storage is unavailable.
           profile = {
             ...(profile || {}),
             ...(routineDerivedProfilePatch && typeof routineDerivedProfilePatch === 'object' ? routineDerivedProfilePatch : {}),
-            currentRoutine: routineFromRequest,
+            currentRoutine: normalizedRoutine,
           };
           if (persistLastAnalysis) {
             try {
@@ -43266,7 +43268,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 { auroraUid: identity.auroraUid, userId: identity.userId },
                 {
                   ...(routineDerivedProfilePatch && typeof routineDerivedProfilePatch === 'object' ? routineDerivedProfilePatch : {}),
-                  currentRoutine: routineFromRequest,
+                  currentRoutine: normalizedRoutine,
                 },
               );
             } catch (err) {

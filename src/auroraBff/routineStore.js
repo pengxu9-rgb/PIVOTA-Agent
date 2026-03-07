@@ -125,7 +125,7 @@ async function saveRoutineVersion({ auroraUid, userId, routineId, label, intensi
     auroraUid: auroraUid || null,
     userId: userId || null,
     routineId: rid,
-    currentRoutine: { am: amSteps, pm: pmSteps },
+    currentRoutine: { schema_version: 'aurora.routine_intake.v2', am: amSteps || [], pm: pmSteps || [] },
   });
 
   return { routine_id: rid, version_id: vid };
