@@ -13,6 +13,7 @@ const {
   hasAuroraGeminiApiKey,
   callAuroraGeminiGenerateContent,
 } = require('./auroraGeminiGlobalClient');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 const CANONICAL_SCHEMA_VERSION = 'aurora.diagnosis_canonical.v1';
 const CANONICAL_TYPES = Object.freeze([
@@ -1137,7 +1138,12 @@ function getProviderConfig() {
     timeoutMs: numEnv('DIAG_ENSEMBLE_TIMEOUT_MS', 12000, 1000, 45000),
     retries: numEnv('DIAG_ENSEMBLE_RETRIES', 1, 0, 3),
     geminiEnabled: boolEnv('DIAG_ENSEMBLE_GEMINI_ENABLED', true),
-    geminiModel: String(process.env.DIAG_ENSEMBLE_GEMINI_MODEL || 'gemini-3-pro-preview').trim() || 'gemini-3-pro-preview',
+    geminiModel: resolveNonImageGeminiModel({
+      model: String(process.env.DIAG_ENSEMBLE_GEMINI_MODEL || '').trim(),
+      fallbackModel: 'gemini-3-pro-preview',
+      envSource: 'DIAG_ENSEMBLE_GEMINI_MODEL',
+      callPath: 'diag_ensemble',
+    }).effectiveModel,
     gptEnabled: boolEnv('DIAG_ENSEMBLE_GPT_ENABLED', true),
     gptModel: String(process.env.DIAG_ENSEMBLE_GPT_MODEL || 'gpt-4o-mini').trim() || 'gpt-4o-mini',
   };

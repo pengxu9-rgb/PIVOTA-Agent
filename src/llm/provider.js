@@ -2,6 +2,10 @@ const axios = require('axios');
 const { AxiosError } = require('axios');
 const { z } = require('zod');
 const { getAxiosKeepAliveConfig } = require('../http/axiosKeepAlive');
+const {
+  NON_IMAGE_GEMINI_FLOOR_MODEL,
+  resolveNonImageGeminiModel,
+} = require('../lib/geminiModelFloor');
 
 let sharp = null;
 try {
@@ -114,10 +118,15 @@ function geminiBaseUrl() {
     .replace(/\/v1$/i, '');
 }
 
-function geminiModelName(model) {
+function geminiModelName(model, envSource = 'PIVOTA_LAYER2_MODEL_GEMINI') {
   const m = String(model || '').trim();
-  if (!m) return 'gemini-1.5-flash';
-  return m.startsWith('models/') ? m.slice('models/'.length) : m;
+  const resolved = resolveNonImageGeminiModel({
+    model: m,
+    fallbackModel: NON_IMAGE_GEMINI_FLOOR_MODEL,
+    envSource,
+    callPath: 'layer2_provider',
+  }).effectiveModel;
+  return resolved.startsWith('models/') ? resolved.slice('models/'.length) : resolved;
 }
 
 function isGeminiLikeModelName(model) {
@@ -514,14 +523,15 @@ function createProviderFromEnv(purpose = 'generic') {
     if (provider === 'gemini') {
       const apiKey = geminiApiKey();
       const baseURL = geminiBaseUrl();
-      const requestedModel = geminiModelName(getEnv('PIVOTA_LAYER2_MODEL_GEMINI') || getEnv('PIVOTA_LAYER2_MODEL'));
+      const layer2GeminiModel = getEnv('PIVOTA_LAYER2_MODEL_GEMINI') || getEnv('PIVOTA_LAYER2_MODEL');
+      const requestedModel = geminiModelName(
+        layer2GeminiModel,
+        getEnv('PIVOTA_LAYER2_MODEL_GEMINI') ? 'PIVOTA_LAYER2_MODEL_GEMINI' : 'PIVOTA_LAYER2_MODEL'
+      );
       const candidateModels = uniqueStrings([
         requestedModel,
-        'gemini-1.5-flash-latest',
-        'gemini-1.5-flash',
-        'gemini-2.0-flash-lite',
-        'gemini-2.0-flash',
-        'gemini-1.5-pro-latest',
+        'gemini-3-flash-preview',
+        'gemini-3-pro-preview',
       ]);
       const apiVersions = ['v1beta', 'v1'];
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: GEMINI_API_KEY');

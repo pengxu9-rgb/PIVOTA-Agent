@@ -5,6 +5,7 @@ const path = require("node:path");
 const { GeminiGuardError, getGeminiGuards } = require("./geminiGuards");
 const { preprocessImageForGemini } = require("./geminiImagePreprocess");
 const { getGeminiGlobalGate } = require("../../lib/geminiGlobalGate");
+const { resolveNonImageGeminiModel } = require("../../lib/geminiModelFloor");
 
 function parseEnvString(v) {
   const s = String(v ?? "").trim();
@@ -64,11 +65,22 @@ async function withTimeout(promise, timeoutMs) {
 async function generateMultiImageJsonFromGemini({ promptText, images, schema, model: modelOverride }) {
   const apiKey = getGeminiGlobalGate().getApiKey() || parseEnvString(process.env.GEMINI_API_KEY) || parseEnvString(process.env.GOOGLE_API_KEY);
   // One-click JSON should use a text-capable model even if GEMINI_MODEL is set to an image model for try-on.
-  const model =
-    parseEnvString(modelOverride) ||
-    parseEnvString(process.env.GEMINI_ONE_CLICK_MODEL) ||
-    parseEnvString(process.env.GEMINI_MODEL) ||
-    "gemini-2.5-flash";
+  const model = resolveNonImageGeminiModel({
+    model:
+      parseEnvString(modelOverride) ||
+      parseEnvString(process.env.PIVOTA_ONE_CLICK_MODEL_GEMINI) ||
+      parseEnvString(process.env.GEMINI_ONE_CLICK_MODEL) ||
+      parseEnvString(process.env.GEMINI_MODEL),
+    fallbackModel: "gemini-3-flash-preview",
+    envSource: parseEnvString(modelOverride)
+      ? "one_click_override"
+      : parseEnvString(process.env.PIVOTA_ONE_CLICK_MODEL_GEMINI)
+        ? "PIVOTA_ONE_CLICK_MODEL_GEMINI"
+        : parseEnvString(process.env.GEMINI_ONE_CLICK_MODEL)
+          ? "GEMINI_ONE_CLICK_MODEL"
+          : "GEMINI_MODEL",
+    callPath: "layer1_one_click_json",
+  }).effectiveModel;
   const timeoutMs = Math.max(1, parseEnvInt(process.env.GEMINI_TIMEOUT_MS, 25_000));
   const debugEnabled = parseEnvBool(process.env.GEMINI_DEBUG) || parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
   const imgMaxEdge = Math.max(64, parseEnvInt(process.env.GEMINI_IMAGE_MAX_EDGE, 1536));
@@ -221,8 +233,7 @@ async function generateMultiImageImageFromGemini({ promptText, images }) {
   const apiKey = getGeminiGlobalGate().getApiKey() || parseEnvString(process.env.GEMINI_API_KEY) || parseEnvString(process.env.GOOGLE_API_KEY);
   const model =
     parseEnvString(process.env.GEMINI_TRYON_IMAGE_MODEL) ||
-    parseEnvString(process.env.GEMINI_MODEL) ||
-    "gemini-2.0-flash-preview-image-generation";
+    "gemini-3.1-flash-image-preview";
   const timeoutMs = Math.max(1, parseEnvInt(process.env.GEMINI_TIMEOUT_MS, 45_000));
   const debugEnabled = parseEnvBool(process.env.GEMINI_DEBUG) || parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
   const imgMaxEdge = Math.max(64, parseEnvInt(process.env.GEMINI_IMAGE_MAX_EDGE, 1536));

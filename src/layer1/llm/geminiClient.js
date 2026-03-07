@@ -5,6 +5,7 @@ const path = require("node:path");
 const { GeminiGuardError, getGeminiGuards } = require("./geminiGuards");
 const { preprocessImageForGemini } = require("./geminiImagePreprocess");
 const { getGeminiGlobalGate } = require("../../lib/geminiGlobalGate");
+const { resolveNonImageGeminiModel } = require("../../lib/geminiModelFloor");
 
 function parseEnvString(v) {
   const s = String(v ?? "").trim();
@@ -112,7 +113,12 @@ function isLikelyImageBytes(buf) {
 async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSchema }) {
   const globalGate = getGeminiGlobalGate();
   const apiKey = globalGate.getApiKey() || parseEnvString(process.env.GEMINI_API_KEY) || parseEnvString(process.env.GOOGLE_API_KEY);
-  const model = parseEnvString(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
+  const model = resolveNonImageGeminiModel({
+    model: parseEnvString(process.env.PIVOTA_LAYER1_GEMINI_MODEL) || parseEnvString(process.env.GEMINI_MODEL),
+    fallbackModel: "gemini-3-flash-preview",
+    envSource: parseEnvString(process.env.PIVOTA_LAYER1_GEMINI_MODEL) ? "PIVOTA_LAYER1_GEMINI_MODEL" : "GEMINI_MODEL",
+    callPath: "layer1_lookspec",
+  }).effectiveModel;
   const timeoutMs = Math.max(1, parseEnvInt(process.env.GEMINI_TIMEOUT_MS, 20_000));
   const maxRetries = Math.max(0, parseEnvInt(process.env.GEMINI_MAX_RETRIES, 1));
   const baseDelayMs = Math.max(1, parseEnvInt(process.env.GEMINI_RETRY_BASE_DELAY_MS, 200));

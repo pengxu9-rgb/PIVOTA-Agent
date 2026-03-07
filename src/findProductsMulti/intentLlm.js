@@ -6,6 +6,7 @@ const {
   extractIntentRuleBased,
   TOY_KEYWORDS_STRONG,
 } = require('./intent');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 function isEnabled() {
   return process.env.PIVOTA_INTENT_LLM_ENABLED === 'true';
@@ -384,7 +385,12 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
     throw new Error('GEMINI_API_KEY is not set');
   }
 
-  const model = process.env.PIVOTA_INTENT_MODEL_GEMINI || process.env.PIVOTA_INTENT_MODEL || 'gemini-1.5-flash';
+  const model = resolveNonImageGeminiModel({
+    model: process.env.PIVOTA_INTENT_MODEL_GEMINI || process.env.PIVOTA_INTENT_MODEL,
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: process.env.PIVOTA_INTENT_MODEL_GEMINI ? 'PIVOTA_INTENT_MODEL_GEMINI' : 'PIVOTA_INTENT_MODEL',
+    callPath: 'find_products_intent',
+  }).effectiveModel;
   const baseURL =
     (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
 

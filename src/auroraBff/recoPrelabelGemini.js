@@ -2,6 +2,7 @@ const {
   hasAuroraGeminiApiKey,
   callAuroraGeminiGenerateContent,
 } = require('./auroraGeminiGlobalClient');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 function toInt(value, fallback, min, max) {
   const n = Number(value);
@@ -10,8 +11,12 @@ function toInt(value, fallback, min, max) {
 }
 
 function normalizeModel(raw) {
-  const s = String(raw || '').trim();
-  return s || 'gemini-3-flash-preview';
+  return resolveNonImageGeminiModel({
+    model: String(raw || '').trim(),
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: 'AURORA_BFF_RECO_PRELABEL_MODEL',
+    callPath: 'aurora_reco_prelabel',
+  }).effectiveModel;
 }
 
 function withTimeout(promise, timeoutMs) {

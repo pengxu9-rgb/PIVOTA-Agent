@@ -1491,7 +1491,10 @@ const {
   hasAuroraGeminiApiKey,
   getAuroraGeminiClient,
   callAuroraGeminiGenerateContent,
+  callAuroraGeminiGenerateContentWithMeta,
 } = require('./auroraGeminiGlobalClient');
+const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 const AURORA_GEMINI_KEY_FEATURE_ENV = 'AURORA_VISION_GEMINI_API_KEY';
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
@@ -1502,19 +1505,46 @@ const SKIN_VISION_PROVIDER = (() => {
   if (raw === 'openai' || raw === 'gemini' || raw === 'auto') return raw;
   return 'gemini';
 })();
+function pickConfiguredEnv(keys) {
+  for (const key of Array.isArray(keys) ? keys : []) {
+    const value = String(process.env[key] || '').trim();
+    if (value) return { value, envSource: key };
+  }
+  return { value: '', envSource: null };
+}
+
+function resolveAuroraGeminiModel(keys, fallbackModel, callPath) {
+  const picked = pickConfiguredEnv(keys);
+  return resolveNonImageGeminiModel({
+    model: picked.value,
+    fallbackModel,
+    envSource: picked.envSource || (Array.isArray(keys) && keys.length === 1 ? keys[0] : 'aurora_default'),
+    callPath,
+  }).effectiveModel;
+}
 const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
   'gpt-4o-mini';
 const SKIN_VISION_MODEL_GEMINI =
-  String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-flash-preview').trim() ||
-  'gemini-3-flash-preview';
+  resolveAuroraGeminiModel(['AURORA_SKIN_VISION_MODEL_GEMINI', 'GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_skin_vision');
 const ANALYSIS_STORY_MODEL_OPENAI =
   String(process.env.AURORA_ANALYSIS_STORY_MODEL_OPENAI || process.env.AURORA_SKIN_TEXT_MODEL_OPENAI || 'gpt-4o-mini').trim() ||
   'gpt-4o-mini';
 const ANALYSIS_STORY_MODEL_GEMINI =
-  String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-flash-preview').trim() ||
-  'gemini-3-flash-preview';
+  resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_analysis_story');
 const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
+const AURORA_RUNTIME_QA_GEMINI_MODEL =
+  resolveAuroraGeminiModel(['AURORA_RUNTIME_QA_GEMINI_MODEL'], ANALYSIS_STORY_MODEL_GEMINI || 'gemini-3-flash-preview', 'aurora_runtime_qa');
+const AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL =
+  resolveAuroraGeminiModel(['AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_qa_product_relevance');
+const AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL =
+  resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_qa_story_review');
+const AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL =
+  resolveAuroraGeminiModel(['AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL'], 'gemini-3-flash-preview', 'aurora_runtime_qa_stable');
+const AURORA_RUNTIME_QA_ALLOW_PREVIEW =
+  String(process.env.AURORA_RUNTIME_QA_ALLOW_PREVIEW || 'false').trim().toLowerCase() === 'true';
+const AURORA_EVAL_JUDGE_GEMINI_MODEL =
+  resolveAuroraGeminiModel(['AURORA_EVAL_JUDGE_GEMINI_MODEL', 'AURORA_DIAG_FORCE_GEMINI_MODEL'], 'gemini-3-pro-preview', 'aurora_eval_judge');
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
   1200,
   Math.min(12000, Number(process.env.AURORA_ANALYSIS_STORY_LLM_TIMEOUT_MS || 5000)),
@@ -1522,6 +1552,29 @@ const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
 const PRODUCT_INTEL_DUAL_QA_TIMEOUT_MS = Math.max(
   800,
   Math.min(10000, Number(process.env.AURORA_PRODUCT_RELEVANCE_DUAL_LLM_TIMEOUT_MS || 2500)),
+);
+const AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS = Math.max(
+  1200,
+  Math.min(20000, Number(process.env.AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS || 12000)),
+);
+const AURORA_PRODUCT_RELEVANCE_GEMINI_TIMEOUT_MS = Math.max(
+  1000,
+  Math.min(12000, Number(process.env.AURORA_PRODUCT_RELEVANCE_GEMINI_TIMEOUT_MS || 4500)),
+);
+const AURORA_EVAL_JUDGE_GEMINI_TIMEOUT_MS = Math.max(
+  5000,
+  Math.min(90000, Number(process.env.AURORA_EVAL_JUDGE_GEMINI_TIMEOUT_MS || 45000)),
+);
+function resolveEvalJudgeMaxOutputTokens() {
+  const requested = Number(process.env.AURORA_EVAL_JUDGE_GEMINI_MAX_OUTPUT_TOKENS || 0);
+  const model = String(AURORA_EVAL_JUDGE_GEMINI_MODEL || '').trim().toLowerCase();
+  const defaultBudget = model.includes('pro') ? 1800 : 220;
+  if (!Number.isFinite(requested) || requested <= 0) return defaultBudget;
+  return Math.max(64, Math.min(2048, Math.trunc(requested)));
+}
+const AURORA_EVAL_JUDGE_GEMINI_MAX_OUTPUT_TOKENS = Math.max(
+  64,
+  resolveEvalJudgeMaxOutputTokens(),
 );
 const PRODUCT_INTEL_DUAL_QA_CACHE_TTL_MS = Math.max(
   1000,
@@ -2060,6 +2113,9 @@ const AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY = String(
 ).trim();
 const AURORA_BFF_RECO_PRELABEL_ADMIN_KEY = String(
   process.env.AURORA_BFF_RECO_PRELABEL_ADMIN_KEY || '',
+).trim();
+const AURORA_BFF_QA_GATE_ADMIN_KEY = String(
+  process.env.AURORA_BFF_QA_GATE_ADMIN_KEY || '',
 ).trim();
 
 function parsePdpHotsetFromEnv(raw) {
@@ -3904,6 +3960,10 @@ const chatQualityMetrics = {
   known_field_reask_total: 0,
   contract_fail_total_by_reason: Object.create(null),
 };
+const qaRouteObservability = {
+  totals_by_route: Object.create(null),
+  recent_events: [],
+};
 
 function recordRecoPdpExternalFallbackBlocked(delta = 1) {
   const n = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 0;
@@ -4006,6 +4066,156 @@ function renderChatQualityMetricsPrometheus() {
     for (const reasonCode of reasonCodes) {
       const count = Number(reasonCounts[reasonCode] || 0);
       lines.push(`contract_fail_total{reason="${String(reasonCode)}"} ${count}`);
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function normalizeQaMetricRoute(route) {
+  const token = String(route || '').trim();
+  return token || 'unknown';
+}
+
+function escapePrometheusLabel(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n');
+}
+
+function trimQaEventValue(value, max = 240) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function getQaRouteMetricBucket(route) {
+  const key = normalizeQaMetricRoute(route);
+  if (!qaRouteObservability.totals_by_route[key]) {
+    qaRouteObservability.totals_by_route[key] = {
+      total: 0,
+      by_reason: Object.create(null),
+      timeout_stage_by_stage: Object.create(null),
+      latency_total_ms: 0,
+      gate_wait_total_ms: 0,
+      upstream_total_ms: 0,
+      last_model: '',
+      last_prompt_bytes: 0,
+      last_schema_bytes: 0,
+      last_max_output_tokens: 0,
+    };
+  }
+  return qaRouteObservability.totals_by_route[key];
+}
+
+function recordQaRouteObservability(meta = {}) {
+  const route = normalizeQaMetricRoute(meta.route);
+  const bucket = getQaRouteMetricBucket(route);
+  const reason = trimQaEventValue(meta.result_reason || 'unknown', 120) || 'unknown';
+  const timeoutStage = trimQaEventValue(meta.timeout_stage || 'none', 32) || 'none';
+  bucket.total += 1;
+  bucket.by_reason[reason] = Number(bucket.by_reason[reason] || 0) + 1;
+  bucket.timeout_stage_by_stage[timeoutStage] = Number(bucket.timeout_stage_by_stage[timeoutStage] || 0) + 1;
+  bucket.latency_total_ms += Number.isFinite(Number(meta.total_ms)) ? Math.max(0, Number(meta.total_ms)) : 0;
+  bucket.gate_wait_total_ms += Number.isFinite(Number(meta.gate_wait_ms)) ? Math.max(0, Number(meta.gate_wait_ms)) : 0;
+  bucket.upstream_total_ms += Number.isFinite(Number(meta.upstream_ms)) ? Math.max(0, Number(meta.upstream_ms)) : 0;
+  bucket.last_model = trimQaEventValue(meta.model || '', 120);
+  bucket.last_prompt_bytes = Number.isFinite(Number(meta.prompt_bytes)) ? Math.max(0, Math.trunc(Number(meta.prompt_bytes))) : 0;
+  bucket.last_schema_bytes = Number.isFinite(Number(meta.schema_bytes)) ? Math.max(0, Math.trunc(Number(meta.schema_bytes))) : 0;
+  bucket.last_max_output_tokens = Number.isFinite(Number(meta.max_output_tokens))
+    ? Math.max(0, Math.trunc(Number(meta.max_output_tokens)))
+    : 0;
+
+  qaRouteObservability.recent_events.push({
+    ts: new Date().toISOString(),
+    route,
+    model: bucket.last_model || null,
+    prompt_bytes: bucket.last_prompt_bytes,
+    schema_bytes: bucket.last_schema_bytes,
+    max_output_tokens: bucket.last_max_output_tokens,
+    gate_wait_ms: Number.isFinite(Number(meta.gate_wait_ms)) ? Math.max(0, Math.trunc(Number(meta.gate_wait_ms))) : 0,
+    upstream_ms: Number.isFinite(Number(meta.upstream_ms)) ? Math.max(0, Math.trunc(Number(meta.upstream_ms))) : 0,
+    total_ms: Number.isFinite(Number(meta.total_ms)) ? Math.max(0, Math.trunc(Number(meta.total_ms))) : 0,
+    timeout_stage: timeoutStage === 'none' ? null : timeoutStage,
+    result_reason: reason,
+    detail: trimQaEventValue(meta.detail || '', 320) || null,
+  });
+  if (qaRouteObservability.recent_events.length > 100) {
+    qaRouteObservability.recent_events.splice(0, qaRouteObservability.recent_events.length - 100);
+  }
+}
+
+function getQaRouteObservabilitySnapshot() {
+  return {
+    totals_by_route: JSON.parse(JSON.stringify(qaRouteObservability.totals_by_route || {})),
+    recent_events: Array.isArray(qaRouteObservability.recent_events)
+      ? qaRouteObservability.recent_events.slice(-50)
+      : [],
+  };
+}
+
+function renderGeminiQaMetricsPrometheus() {
+  const gate = getGeminiGlobalGate();
+  const snapshot = gate && typeof gate.snapshot === 'function' ? gate.snapshot() : null;
+  const routeMetrics =
+    snapshot && snapshot.metrics && snapshot.metrics.by_route && typeof snapshot.metrics.by_route === 'object'
+      ? snapshot.metrics.by_route
+      : {};
+  const lines = [
+    '# HELP aurora_gemini_gate_route_window_total Rolling 60s Gemini gate counts by route and status.',
+    '# TYPE aurora_gemini_gate_route_window_total gauge',
+  ];
+  const routes = Object.keys(routeMetrics).sort();
+  if (!routes.length) {
+    lines.push('aurora_gemini_gate_route_window_total{route="none",status="success"} 0');
+  } else {
+    for (const route of routes) {
+      const row = routeMetrics[route] || {};
+      for (const status of ['success', 'timeout', 'rate_limited']) {
+        lines.push(
+          `aurora_gemini_gate_route_window_total{route="${escapePrometheusLabel(route)}",status="${status}"} ${Number(row[status] || 0)}`,
+        );
+      }
+    }
+  }
+
+  lines.push('# HELP aurora_gemini_qa_timeout_stage_total Total QA timeout classifications by route and stage.');
+  lines.push('# TYPE aurora_gemini_qa_timeout_stage_total counter');
+  const totalsByRoute = qaRouteObservability.totals_by_route || {};
+  const qaRoutes = Object.keys(totalsByRoute).sort();
+  if (!qaRoutes.length) {
+    lines.push('aurora_gemini_qa_timeout_stage_total{route="none",stage="none"} 0');
+  } else {
+    for (const route of qaRoutes) {
+      const row = totalsByRoute[route] || {};
+      const stages = row.timeout_stage_by_stage || {};
+      const stageKeys = Object.keys(stages).sort();
+      if (!stageKeys.length) {
+        lines.push(`aurora_gemini_qa_timeout_stage_total{route="${escapePrometheusLabel(route)}",stage="none"} 0`);
+        continue;
+      }
+      for (const stage of stageKeys) {
+        lines.push(
+          `aurora_gemini_qa_timeout_stage_total{route="${escapePrometheusLabel(route)}",stage="${escapePrometheusLabel(stage)}"} ${Number(stages[stage] || 0)}`,
+        );
+      }
+    }
+  }
+
+  lines.push('# HELP aurora_gemini_qa_avg_latency_ms Average QA latency by route and segment.');
+  lines.push('# TYPE aurora_gemini_qa_avg_latency_ms gauge');
+  if (!qaRoutes.length) {
+    lines.push('aurora_gemini_qa_avg_latency_ms{route="none",segment="total"} 0');
+  } else {
+    for (const route of qaRoutes) {
+      const row = totalsByRoute[route] || {};
+      const denom = Number(row.total || 0);
+      const totalAvg = denom > 0 ? Math.round(Number(row.latency_total_ms || 0) / denom) : 0;
+      const gateAvg = denom > 0 ? Math.round(Number(row.gate_wait_total_ms || 0) / denom) : 0;
+      const upstreamAvg = denom > 0 ? Math.round(Number(row.upstream_total_ms || 0) / denom) : 0;
+      lines.push(`aurora_gemini_qa_avg_latency_ms{route="${escapePrometheusLabel(route)}",segment="total"} ${totalAvg}`);
+      lines.push(`aurora_gemini_qa_avg_latency_ms{route="${escapePrometheusLabel(route)}",segment="gate_wait"} ${gateAvg}`);
+      lines.push(`aurora_gemini_qa_avg_latency_ms{route="${escapePrometheusLabel(route)}",segment="upstream"} ${upstreamAvg}`);
     }
   }
   return `${lines.join('\n')}\n`;
@@ -13711,6 +13921,292 @@ async function callOpenAiJsonObject({
 }
 let callOpenAiJsonObjectImpl = callOpenAiJsonObject;
 
+const PRODUCT_RELEVANCE_QA_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    relevant: { type: 'boolean' },
+    category: { type: 'string' },
+    reason: { type: 'string' },
+  },
+  required: ['relevant', 'category', 'reason'],
+});
+
+const ANALYSIS_STORY_V2_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    schema_version: { type: 'string' },
+    confidence_overall: {
+      type: 'object',
+      properties: {
+        score: { type: 'number' },
+        level: { type: 'string' },
+        rationale: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['level'],
+    },
+    skin_profile: {
+      type: 'object',
+      properties: {
+        skin_type_tendency: { type: 'string' },
+        sensitivity_tendency: { type: 'string' },
+        current_strengths: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['current_strengths'],
+    },
+    priority_findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          priority: { type: 'number' },
+          title: { type: 'string' },
+          detail: { type: 'string' },
+          evidence_region_or_module: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['priority', 'title', 'detail', 'evidence_region_or_module'],
+      },
+    },
+    target_state: { type: 'array', items: { type: 'string' } },
+    core_principles: { type: 'array', items: { type: 'string' } },
+    am_plan: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          step: { type: 'string' },
+          purpose: { type: 'string' },
+        },
+        required: ['step', 'purpose'],
+      },
+    },
+    pm_plan: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          step: { type: 'string' },
+          purpose: { type: 'string' },
+        },
+        required: ['step', 'purpose'],
+      },
+    },
+    timeline: {
+      type: 'object',
+      properties: {
+        first_4_weeks: { type: 'array', items: { type: 'string' } },
+        week_8_12_expectation: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['first_4_weeks', 'week_8_12_expectation'],
+    },
+    ui_card_v1: {
+      type: 'object',
+      properties: {
+        headline: { type: 'string' },
+        key_points: { type: 'array', items: { type: 'string' } },
+        actions_now: { type: 'array', items: { type: 'string' } },
+        avoid_now: { type: 'array', items: { type: 'string' } },
+        confidence_label: { type: 'string' },
+        next_checkin: { type: 'string' },
+      },
+      required: ['headline', 'key_points', 'actions_now', 'avoid_now', 'confidence_label', 'next_checkin'],
+    },
+    safety_notes: { type: 'array', items: { type: 'string' } },
+    disclaimer_non_medical: { type: 'boolean' },
+  },
+  required: [
+    'schema_version',
+    'confidence_overall',
+    'skin_profile',
+    'priority_findings',
+    'target_state',
+    'core_principles',
+    'am_plan',
+    'pm_plan',
+    'timeline',
+    'ui_card_v1',
+    'safety_notes',
+    'disclaimer_non_medical',
+  ],
+});
+
+const ANALYSIS_STORY_REVIEW_PATCH_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    approved: { type: 'boolean' },
+    issues: { type: 'array', items: { type: 'string' } },
+    patch_ops: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          op: { type: 'string' },
+          path: { type: 'string' },
+          value_json: { type: 'string' },
+        },
+        required: ['op', 'path'],
+      },
+    },
+  },
+  required: ['approved', 'issues', 'patch_ops'],
+});
+const ANALYSIS_STORY_REVIEW_ISSUE_CODES = Object.freeze([
+  'headline_generic',
+  'key_points_generic',
+  'actions_generic',
+  'avoid_generic',
+  'confidence_mismatch',
+  'unsupported_cta',
+  'unsupported_field',
+  'safety_note_mismatch',
+]);
+
+function compactQaPromptValue(value, { depth = 0, maxDepth = 4, maxItems = 6, maxString = 240 } = {}) {
+  if (value == null) return value;
+  if (typeof value === 'string') {
+    return value.length > maxString ? `${value.slice(0, maxString - 1)}…` : value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    if (depth >= maxDepth) return value.slice(0, maxItems).map((item) => compactQaPromptValue(item, { depth: depth + 1, maxDepth, maxItems, maxString }));
+    return value.slice(0, maxItems).map((item) => compactQaPromptValue(item, { depth: depth + 1, maxDepth, maxItems, maxString }));
+  }
+  if (typeof value !== 'object') return String(value);
+  if (depth >= maxDepth) return '[truncated]';
+  const out = {};
+  for (const [key, raw] of Object.entries(value).slice(0, maxItems * 3)) {
+    out[key] = compactQaPromptValue(raw, { depth: depth + 1, maxDepth, maxItems, maxString });
+  }
+  return out;
+}
+
+function stringifyCompactQaPromptValue(value, options) {
+  return JSON.stringify(compactQaPromptValue(value, options));
+}
+
+function safeJsonByteLength(value) {
+  if (value == null) return 0;
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8');
+  } catch {
+    return 0;
+  }
+}
+
+function sanitizeGeminiJsonSchema(value) {
+  if (Array.isArray(value)) return value.map((item) => sanitizeGeminiJsonSchema(item));
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, val] of Object.entries(value)) {
+    if (key === 'additionalProperties' || key === 'maxItems') continue;
+    out[key] = sanitizeGeminiJsonSchema(val);
+  }
+  return out;
+}
+
+function shouldTrackQaRoute(route) {
+  const token = String(route || '').trim();
+  return token === 'aurora_eval_judge' || token.startsWith('aurora_qa_');
+}
+
+function buildGeminiJsonTimeoutResult(err, fallbackReason = 'gemini_error') {
+  const code = err && err.code ? String(err.code) : '';
+  const detail = err && err.message ? String(err.message) : null;
+  if (code === 'GEMINI_QUEUE_TIMEOUT') {
+    return { reason: 'GEMINI_JSON_TIMEOUT', detail, timeout_stage: 'queue' };
+  }
+  if (code === 'GEMINI_UPSTREAM_TIMEOUT') {
+    return { reason: 'GEMINI_JSON_TIMEOUT', detail, timeout_stage: 'upstream' };
+  }
+  return {
+    reason: code || fallbackReason,
+    detail,
+    timeout_stage: err && err.timeout_stage ? String(err.timeout_stage) : null,
+  };
+}
+
+function splitGeminiTimeoutBudget(totalMs, { queueMs, upstreamMs } = {}) {
+  const total = Number.isFinite(Number(totalMs)) ? Math.max(1, Math.trunc(Number(totalMs))) : 0;
+  const desiredQueue = Number.isFinite(Number(queueMs)) ? Math.max(0, Math.trunc(Number(queueMs))) : 0;
+  const desiredUpstream = Number.isFinite(Number(upstreamMs)) ? Math.max(1, Math.trunc(Number(upstreamMs))) : 0;
+  if (!total) {
+    return {
+      queue_timeout_ms: desiredQueue,
+      upstream_timeout_ms: desiredUpstream,
+    };
+  }
+  const queueTimeoutMs = desiredQueue > 0 ? Math.min(desiredQueue, Math.max(1, total - 1)) : 0;
+  const maxUpstream = Math.max(1, total - queueTimeoutMs);
+  const upstreamTimeoutMs = desiredUpstream > 0 ? Math.min(desiredUpstream, maxUpstream) : maxUpstream;
+  return {
+    queue_timeout_ms: queueTimeoutMs,
+    upstream_timeout_ms: upstreamTimeoutMs,
+  };
+}
+
+function normalizeQaTimeoutMeta(meta = {}, {
+  route = 'aurora_routes_json',
+  model = '',
+  promptBytes = 0,
+  schemaBytes = 0,
+  maxOutputTokens = 0,
+  resultReason = 'unknown',
+  timeoutStage = null,
+  detail = null,
+} = {}) {
+  return {
+    route,
+    model: String(model || '').trim(),
+    prompt_bytes: Number.isFinite(Number(promptBytes)) ? Math.max(0, Math.trunc(Number(promptBytes))) : 0,
+    schema_bytes: Number.isFinite(Number(schemaBytes)) ? Math.max(0, Math.trunc(Number(schemaBytes))) : 0,
+    max_output_tokens: Number.isFinite(Number(maxOutputTokens)) ? Math.max(0, Math.trunc(Number(maxOutputTokens))) : 0,
+    gate_wait_ms: Number.isFinite(Number(meta.gate_wait_ms)) ? Math.max(0, Math.trunc(Number(meta.gate_wait_ms))) : 0,
+    upstream_ms: Number.isFinite(Number(meta.upstream_ms)) ? Math.max(0, Math.trunc(Number(meta.upstream_ms))) : 0,
+    total_ms: Number.isFinite(Number(meta.total_ms)) ? Math.max(0, Math.trunc(Number(meta.total_ms))) : 0,
+    timeout_stage: timeoutStage ? String(timeoutStage) : null,
+    result_reason: String(resultReason || 'unknown').trim() || 'unknown',
+    detail: detail ? String(detail) : null,
+  };
+}
+
+function extractGeminiFinishReason(response) {
+  const candidate = Array.isArray(response && response.candidates) ? response.candidates[0] : null;
+  const finishReason = candidate && typeof candidate.finishReason === 'string' ? candidate.finishReason.trim() : '';
+  return finishReason || null;
+}
+
+function parseGeminiJsonPayload(text, schema = null) {
+  const jsonOnly = unwrapCodeFence(text);
+  const requiredKeys =
+    schema && Array.isArray(schema.required) ? schema.required.map((item) => String(item || '').trim()).filter(Boolean) : [];
+  const strict = parseJsonOnlyObject(jsonOnly);
+  if (strict && typeof strict === 'object') {
+    return {
+      parsed: strict,
+      raw_text: jsonOnly,
+      parse_status: 'parsed',
+    };
+  }
+  const extracted = extractJsonObjectByKeys(jsonOnly, requiredKeys);
+  if (extracted && typeof extracted === 'object') {
+    return {
+      parsed: extracted,
+      raw_text: jsonOnly,
+      parse_status: 'extracted',
+    };
+  }
+  const trimmed = String(text || '').trim();
+  const truncated =
+    /```/i.test(trimmed) ||
+    /\{\s*$/.test(trimmed) ||
+    (trimmed.includes('{') && !trimmed.endsWith('}')) ||
+    trimmed.startsWith('Here is the JSON requested');
+  return {
+    parsed: null,
+    raw_text: jsonOnly,
+    parse_status: truncated ? 'parse_truncated' : 'invalid',
+  };
+}
+
 async function callGeminiJsonObject({
   model,
   systemPrompt,
@@ -13718,7 +14214,12 @@ async function callGeminiJsonObject({
   timeoutMs = 3000,
   temperature = 0,
   maxOutputTokens = null,
+  responseSchema = null,
   responseJsonSchema = null,
+  route = 'aurora_routes_json',
+  queueTimeoutMs = 0,
+  upstreamTimeoutMs = 0,
+  ignoreForceModel = false,
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -13727,57 +14228,272 @@ async function callGeminiJsonObject({
       reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
     };
   }
+  const resolvedModel =
+    ignoreForceModel === true
+      ? String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI
+      : AURORA_DIAG_FORCE_GEMINI
+        ? AURORA_DIAG_FORCE_GEMINI_MODEL
+        : String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
+  const systemText = String(systemPrompt || 'Return strict JSON only.').trim();
+  const userText = String(userPrompt || '').trim();
+  const promptText = `${systemText}\n\n${userText}`;
+  const requestedSchema =
+    responseSchema && typeof responseSchema === 'object'
+      ? responseSchema
+      : responseJsonSchema && typeof responseJsonSchema === 'object'
+        ? responseJsonSchema
+        : null;
+  const sanitizedSchema =
+    requestedSchema && typeof requestedSchema === 'object' ? sanitizeGeminiJsonSchema(requestedSchema) : null;
+  const effectiveMaxOutputTokens =
+    Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
+      ? Math.max(64, Math.min(4096, Math.trunc(Number(maxOutputTokens))))
+      : 0;
+  const promptBytes = Buffer.byteLength(promptText, 'utf8');
+  const schemaBytes = safeJsonByteLength(sanitizedSchema);
+  const timeoutBudget = splitGeminiTimeoutBudget(timeoutMs, {
+    queueMs: queueTimeoutMs,
+    upstreamMs: upstreamTimeoutMs || timeoutMs,
+  });
   try {
-    const resp = await withTimeout(
-      callAuroraGeminiGenerateContent({
+    const built = await callAuroraGeminiGenerateContentWithMeta({
         featureEnvVar: AURORA_GEMINI_KEY_FEATURE_ENV,
-        route: 'aurora_routes_json',
+        route,
+        queueTimeoutMs: timeoutBudget.queue_timeout_ms,
+        upstreamTimeoutMs: timeoutBudget.upstream_timeout_ms,
         request: {
-        model: AURORA_DIAG_FORCE_GEMINI ? AURORA_DIAG_FORCE_GEMINI_MODEL : model || ANALYSIS_STORY_MODEL_GEMINI,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `${String(systemPrompt || 'Return strict JSON only.')}\n\n${String(userPrompt || '')}`,
-              },
-            ],
+          model: resolvedModel,
+          systemInstruction: {
+            parts: [{ text: systemText }],
           },
-        ],
-        config: {
-          temperature,
-          responseMimeType: 'application/json',
-          ...(Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
-            ? { maxOutputTokens: Math.max(64, Math.min(2048, Math.trunc(Number(maxOutputTokens)))) }
-            : {}),
-          ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && responseJsonSchema && typeof responseJsonSchema === 'object'
-            ? { responseJsonSchema }
-            : {}),
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text: userText,
+                },
+              ],
+            },
+          ],
+          config: {
+            temperature,
+            responseMimeType: 'application/json',
+            thinkingConfig: { includeThoughts: false },
+            ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
+            ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && sanitizedSchema ? { responseSchema: sanitizedSchema } : {}),
+          },
         },
-        },
-      }),
-      timeoutMs,
-      'GEMINI_JSON_TIMEOUT',
-    );
-    const text = await extractTextFromGeminiResponse(resp);
-    const parsed = parseJsonOnlyObject(unwrapCodeFence(text));
+      });
+    const response = built && built.response ? built.response : null;
+    const finishReason = extractGeminiFinishReason(response);
+    const qaMeta = normalizeQaTimeoutMeta(built && built.meta ? built.meta : {}, {
+      route,
+      model: resolvedModel,
+      promptBytes,
+      schemaBytes,
+      maxOutputTokens: effectiveMaxOutputTokens,
+      resultReason: finishReason === 'MAX_TOKENS' ? 'gemini_json_max_tokens' : 'ok',
+    });
+    const text = await extractTextFromGeminiResponse(response);
+    const parsedResult = parseGeminiJsonPayload(text, sanitizedSchema);
+    const parsed = parsedResult.parsed;
     if (!parsed || typeof parsed !== 'object') {
+      const invalidReason = parsedResult.parse_status === 'parse_truncated' || finishReason === 'MAX_TOKENS'
+        ? 'PARSE_TRUNCATED_JSON'
+        : 'gemini_json_invalid';
+      const invalidMeta = {
+        ...qaMeta,
+        result_reason: invalidReason,
+        detail: finishReason ? `finish_reason=${finishReason}` : null,
+      };
+      if (shouldTrackQaRoute(route)) recordQaRouteObservability(invalidMeta);
       return {
         ok: false,
-        reason: 'gemini_json_invalid',
-        raw_text: typeof text === 'string' ? text : null,
+        reason: invalidReason,
+        detail: finishReason ? `finish_reason=${finishReason}` : null,
+        raw_text: parsedResult.raw_text || (typeof text === 'string' ? text : null),
+        finish_reason: finishReason,
+        parse_status: parsedResult.parse_status,
+        timeout_stage: null,
+        meta: invalidMeta,
+        gate_wait_ms: invalidMeta.gate_wait_ms,
+        upstream_ms: invalidMeta.upstream_ms,
+        total_ms: invalidMeta.total_ms,
+        schema_sanitized: Boolean(sanitizedSchema),
       };
     }
-    return { ok: true, json: parsed };
+    if (shouldTrackQaRoute(route)) recordQaRouteObservability(qaMeta);
+    return {
+      ok: true,
+      json: parsed,
+      finish_reason: finishReason,
+      parse_status: parsedResult.parse_status,
+      timeout_stage: null,
+      meta: qaMeta,
+      gate_wait_ms: qaMeta.gate_wait_ms,
+      upstream_ms: qaMeta.upstream_ms,
+      total_ms: qaMeta.total_ms,
+      schema_sanitized: Boolean(sanitizedSchema),
+    };
   } catch (err) {
+    const classified = buildGeminiJsonTimeoutResult(err, 'gemini_error');
+    const failedMeta = normalizeQaTimeoutMeta(
+      err && err.meta && typeof err.meta === 'object' ? err.meta : {},
+      {
+        route,
+        model: resolvedModel,
+        promptBytes,
+        schemaBytes,
+        maxOutputTokens: effectiveMaxOutputTokens,
+        resultReason: classified.reason,
+        timeoutStage: classified.timeout_stage,
+        detail: classified.detail,
+      },
+    );
+    if (shouldTrackQaRoute(route)) recordQaRouteObservability(failedMeta);
     return {
       ok: false,
-      reason: err && err.code ? String(err.code) : 'gemini_error',
-      detail: err && err.message ? String(err.message) : null,
+      reason: classified.reason,
+      detail: classified.detail,
+      timeout_stage: classified.timeout_stage,
+      meta: failedMeta,
+      gate_wait_ms: failedMeta.gate_wait_ms,
+      upstream_ms: failedMeta.upstream_ms,
+      total_ms: failedMeta.total_ms,
+      schema_sanitized: Boolean(sanitizedSchema),
     };
   }
 }
 let callGeminiJsonObjectImpl = callGeminiJsonObject;
+
+function pickRuntimeQaProviders({ mode, singleProvider } = {}) {
+  return pickQaProvidersForMode({
+    mode,
+    singleProvider,
+    allowOpenAiFallback: false,
+  }).filter((provider) => provider === 'gemini');
+}
+
+function resolveRuntimeQaGeminiModel(model) {
+  const configured = resolveNonImageGeminiModel({
+    model: String(model || AURORA_RUNTIME_QA_GEMINI_MODEL || '').trim(),
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: model ? 'runtime_override' : 'AURORA_RUNTIME_QA_GEMINI_MODEL',
+    callPath: 'aurora_runtime_qa',
+  }).effectiveModel;
+  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
+  const lower = configured.toLowerCase();
+  if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
+  return configured;
+}
+
+function resolveProductRelevanceGeminiModel(model) {
+  const configured = resolveNonImageGeminiModel({
+    model: String(model || AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL || '').trim(),
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: model ? 'runtime_override' : 'AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL',
+    callPath: 'aurora_qa_product_relevance',
+  }).effectiveModel;
+  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
+  const lower = configured.toLowerCase();
+  if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
+  return configured;
+}
+
+function resolveStoryReviewGeminiModel(model) {
+  const configured = resolveNonImageGeminiModel({
+    model: String(model || AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL || '').trim(),
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: model ? 'runtime_override' : 'AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL',
+    callPath: 'aurora_qa_story_review',
+  }).effectiveModel;
+  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
+  const lower = configured.toLowerCase();
+  if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
+  return configured;
+}
+
+function resolveRuntimeQaRequest(kind, overrides = {}) {
+  const token = String(kind || '').trim().toLowerCase();
+  const extra = overrides && typeof overrides === 'object' ? { ...overrides } : {};
+  delete extra.model;
+  if (token === 'product_relevance') {
+    return {
+      route: 'aurora_qa_product_relevance',
+      model: resolveProductRelevanceGeminiModel(overrides.model),
+      timeoutMs: AURORA_PRODUCT_RELEVANCE_GEMINI_TIMEOUT_MS,
+      queueTimeoutMs: 1000,
+      upstreamTimeoutMs: 3500,
+      maxOutputTokens: 520,
+      responseSchema: PRODUCT_RELEVANCE_QA_JSON_SCHEMA,
+      ...extra,
+    };
+  }
+  if (token === 'story_review') {
+    return {
+      route: 'aurora_qa_story_review',
+      model: resolveStoryReviewGeminiModel(overrides.model),
+      timeoutMs: AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS,
+      queueTimeoutMs: 2000,
+      upstreamTimeoutMs: 10000,
+      maxOutputTokens: 1200,
+      responseSchema: ANALYSIS_STORY_REVIEW_PATCH_JSON_SCHEMA,
+      ...extra,
+    };
+  }
+  return {
+    route: 'aurora_qa_story_generate',
+    model: resolveRuntimeQaGeminiModel(overrides.model),
+    timeoutMs: AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS,
+    queueTimeoutMs: 2000,
+    upstreamTimeoutMs: 10000,
+    maxOutputTokens: 1600,
+    responseSchema: ANALYSIS_STORY_V2_JSON_SCHEMA,
+    ...extra,
+  };
+}
+
+async function callRuntimeQaJson({ kind, systemPrompt, userPrompt, ...overrides } = {}) {
+  const request = resolveRuntimeQaRequest(kind, overrides);
+  return callGeminiJsonObjectImpl({
+    model: request.model,
+    systemPrompt,
+    userPrompt,
+    timeoutMs: request.timeoutMs,
+    queueTimeoutMs: request.queueTimeoutMs,
+    upstreamTimeoutMs: request.upstreamTimeoutMs,
+    temperature: Number.isFinite(Number(request.temperature)) ? Number(request.temperature) : 0,
+    maxOutputTokens: request.maxOutputTokens,
+    responseSchema: request.responseSchema || request.responseJsonSchema,
+    route: request.route,
+    ignoreForceModel: true,
+  });
+}
+
+async function callEvalJudgeJson({
+  systemPrompt,
+  userPrompt,
+  timeoutMs = AURORA_EVAL_JUDGE_GEMINI_TIMEOUT_MS,
+  responseSchema = null,
+  responseJsonSchema = null,
+  maxOutputTokens = AURORA_EVAL_JUDGE_GEMINI_MAX_OUTPUT_TOKENS,
+  temperature = 0,
+} = {}) {
+  return callGeminiJsonObjectImpl({
+    model: AURORA_EVAL_JUDGE_GEMINI_MODEL,
+    systemPrompt,
+    userPrompt,
+    timeoutMs,
+    queueTimeoutMs: 5000,
+    upstreamTimeoutMs: 40000,
+    temperature,
+    maxOutputTokens,
+    responseSchema: responseSchema || responseJsonSchema,
+    route: 'aurora_eval_judge',
+    ignoreForceModel: true,
+  });
+}
 
 const productDualQaCache = new Map();
 
@@ -13859,7 +14575,7 @@ function markQaContextSkip(qaContext, stage, reason) {
   meta.skipped_reason = pickFirstString(reason, meta.skipped_reason, 'qa_skipped');
 }
 
-function markQaContextCall(qaContext, stage, provider, outcome = 'ok') {
+function markQaContextCall(qaContext, stage, provider, outcome = 'ok', details = null) {
   const ctx = isPlainObject(qaContext) ? qaContext : null;
   if (!ctx) return;
   const bucket = String(stage || '').trim() === 'relevance' ? 'relevance' : 'story';
@@ -13868,6 +14584,19 @@ function markQaContextCall(qaContext, stage, provider, outcome = 'ok') {
   meta.provider = pickFirstString(provider, meta.provider);
   meta.outcome = pickFirstString(outcome, meta.outcome);
   meta.called = true;
+  const extra = details && typeof details === 'object' && !Array.isArray(details) ? details : null;
+  if (extra) {
+    if (extra.route) meta.route = String(extra.route).trim();
+    if (extra.model) meta.model = String(extra.model).trim();
+    if (extra.result_reason) meta.result_reason = String(extra.result_reason).trim();
+    if (extra.timeout_stage) meta.timeout_stage = String(extra.timeout_stage).trim();
+    if (Number.isFinite(Number(extra.prompt_bytes))) meta.prompt_bytes = Math.max(0, Math.trunc(Number(extra.prompt_bytes)));
+    if (Number.isFinite(Number(extra.schema_bytes))) meta.schema_bytes = Math.max(0, Math.trunc(Number(extra.schema_bytes)));
+    if (Number.isFinite(Number(extra.max_output_tokens))) meta.max_output_tokens = Math.max(0, Math.trunc(Number(extra.max_output_tokens)));
+    if (Number.isFinite(Number(extra.gate_wait_ms))) meta.gate_wait_ms = Math.max(0, Math.trunc(Number(extra.gate_wait_ms)));
+    if (Number.isFinite(Number(extra.upstream_ms))) meta.upstream_ms = Math.max(0, Math.trunc(Number(extra.upstream_ms)));
+    if (Number.isFinite(Number(extra.total_ms))) meta.total_ms = Math.max(0, Math.trunc(Number(extra.total_ms)));
+  }
 }
 
 function shouldSkipQaByBudget({ qaContext, stage } = {}) {
@@ -13930,7 +14659,16 @@ function pickQaProvidersForMode({
   return providers.slice(0, 2);
 }
 
-async function callDualQaProvider({ provider, systemPrompt, userPrompt, timeoutMs }) {
+async function callDualQaProvider({
+  provider,
+  systemPrompt,
+  userPrompt,
+  timeoutMs,
+  responseSchema = null,
+  responseJsonSchema = null,
+  maxOutputTokens = null,
+  geminiUseCase = 'eval_judge',
+} = {}) {
   if (provider === 'openai') {
     return callOpenAiJsonObject({
       model: ANALYSIS_STORY_MODEL_OPENAI,
@@ -13941,11 +14679,45 @@ async function callDualQaProvider({ provider, systemPrompt, userPrompt, timeoutM
       maxTokens: 500,
     });
   }
-  return callGeminiJsonObjectImpl({
-    model: ANALYSIS_STORY_MODEL_GEMINI,
+  if (String(geminiUseCase || '').trim().toLowerCase() === 'runtime_story_generate') {
+    return callRuntimeQaJson({
+      kind: 'story_generate',
+      systemPrompt,
+      userPrompt,
+      timeoutMs,
+      temperature: 0,
+      maxOutputTokens,
+      responseSchema: responseSchema || responseJsonSchema,
+    });
+  }
+  if (String(geminiUseCase || '').trim().toLowerCase() === 'runtime_story_review') {
+    return callRuntimeQaJson({
+      kind: 'story_review',
+      systemPrompt,
+      userPrompt,
+      timeoutMs,
+      temperature: 0,
+      maxOutputTokens,
+      responseSchema: responseSchema || responseJsonSchema,
+    });
+  }
+  if (String(geminiUseCase || '').trim().toLowerCase() === 'runtime_product_relevance') {
+    return callRuntimeQaJson({
+      kind: 'product_relevance',
+      systemPrompt,
+      userPrompt,
+      timeoutMs,
+      temperature: 0,
+      maxOutputTokens,
+      responseSchema: responseSchema || responseJsonSchema,
+    });
+  }
+  return callEvalJudgeJson({
     systemPrompt,
     userPrompt,
     timeoutMs,
+    responseSchema: responseSchema || responseJsonSchema,
+    maxOutputTokens,
     temperature: 0,
   });
 }
@@ -21263,10 +22035,13 @@ function normalizeChatLlmProvider(value) {
 }
 
 function getDiagForceGeminiModel() {
-  const explicit = String(process.env.AURORA_DIAG_FORCE_GEMINI_MODEL || '').trim();
-  if (explicit) return explicit;
-  const fallback = String(process.env.AURORA_ANALYSIS_STORY_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-3-pro-preview').trim();
-  return fallback || 'gemini-3-pro-preview';
+  const picked = pickConfiguredEnv(['AURORA_DIAG_FORCE_GEMINI_MODEL', 'AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL']);
+  return resolveNonImageGeminiModel({
+    model: picked.value,
+    fallbackModel: 'gemini-3-pro-preview',
+    envSource: picked.envSource || 'AURORA_DIAG_FORCE_GEMINI_MODEL',
+    callPath: 'aurora_diag_force',
+  }).effectiveModel;
 }
 
 function normalizeChatLlmModel(value) {
@@ -24285,7 +25060,7 @@ function buildProductRelevanceDualQaPrompt(candidate) {
     ingredient_name: pickFirstString(row.ingredient_name),
     url: extractCandidateOpenUrl(row),
   };
-  return JSON.stringify(payload, null, 2);
+  return JSON.stringify(payload);
 }
 
 function parseDualQaRelevanceDecision(obj) {
@@ -24368,10 +25143,9 @@ async function evaluateIngredientCandidateWithQaMode(
     };
   }
 
-  const providers = pickQaProvidersForMode({
+  const providers = pickRuntimeQaProviders({
     mode,
     singleProvider: normalizedSingleProvider,
-    allowOpenAiFallback,
   });
   if ((mode === 'dual' && providers.length < 2) || !providers.length) {
     const fallbackPass = heuristicPass;
@@ -24385,27 +25159,30 @@ async function evaluateIngredientCandidateWithQaMode(
   }
 
   const systemPrompt =
-    'You are a product relevance gate for skincare recommendations. Return strict JSON with keys: relevant(boolean), category(string), reason(string).';
-  const userPrompt =
-    `Task: decide if this candidate is a skincare product suitable for skincare recommendation flow.\n` +
-    `Reject non-skincare products such as brushes/tools/apparel.\n` +
-    `Candidate:\n${buildProductRelevanceDualQaPrompt(row)}`;
+    'Return JSON only: {"relevant":boolean,"category":string,"reason":string}. Reject non-skincare items.';
+  const userPrompt = buildProductRelevanceDualQaPrompt(row);
 
   if (mode === 'single') {
     let parsed = null;
     for (const provider of providers) {
-      const vote = await callDualQaProviderImpl({
-        provider,
+      const vote = await callRuntimeQaJson({
+        kind: 'product_relevance',
         systemPrompt,
         userPrompt,
-        timeoutMs: PRODUCT_INTEL_DUAL_QA_TIMEOUT_MS,
+        timeoutMs: AURORA_PRODUCT_RELEVANCE_GEMINI_TIMEOUT_MS,
       });
       if (!vote || !vote.ok || !isPlainObject(vote.json)) {
-        markQaContextCall(qaContext, 'relevance', provider, 'error');
+        markQaContextCall(qaContext, 'relevance', provider, 'error', vote && vote.meta ? vote.meta : null);
         continue;
       }
       parsed = parseDualQaRelevanceDecision(vote.json);
-      markQaContextCall(qaContext, 'relevance', provider, parsed && parsed.relevant === true ? 'ok' : 'reject');
+      markQaContextCall(
+        qaContext,
+        'relevance',
+        provider,
+        parsed && parsed.relevant === true ? 'ok' : 'reject',
+        vote && vote.meta ? vote.meta : null,
+      );
       if (parsed) break;
     }
     const pass = Boolean(parsed && parsed.relevant === true && parsed.category !== 'non_skincare');
@@ -24421,11 +25198,11 @@ async function evaluateIngredientCandidateWithQaMode(
     providers
       .slice(0, 2)
       .map((provider) =>
-        callDualQaProviderImpl({
-          provider,
+        callRuntimeQaJson({
+          kind: 'product_relevance',
           systemPrompt,
           userPrompt,
-          timeoutMs: PRODUCT_INTEL_DUAL_QA_TIMEOUT_MS,
+          timeoutMs: AURORA_PRODUCT_RELEVANCE_GEMINI_TIMEOUT_MS,
         }).then((vote) => ({ provider, vote })),
       ),
   );
@@ -24436,6 +25213,7 @@ async function evaluateIngredientCandidateWithQaMode(
     'relevance',
     [vote1 && vote1.provider, vote2 && vote2.provider].filter(Boolean).join(','),
     parsed1 && parsed2 ? 'ok' : 'error',
+    ((vote1 && vote1.vote && vote1.vote.meta) || (vote2 && vote2.vote && vote2.vote.meta)) || null,
   );
 
   // Fail-closed by design: require dual-pass consensus.
@@ -26136,6 +26914,85 @@ function reviewAnalysisStoryV2Json({ story, evidence } = {}) {
   };
 }
 
+const ANALYSIS_STORY_ALLOWED_PATCH_PATHS = new Set([
+  'confidence_overall.level',
+  'confidence_overall.rationale',
+  'ui_card_v1.headline',
+  'ui_card_v1.key_points',
+  'ui_card_v1.actions_now',
+  'ui_card_v1.avoid_now',
+  'ui_card_v1.confidence_label',
+  'ui_card_v1.next_checkin',
+  'safety_notes',
+]);
+
+function cloneStoryPatchValue(value) {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function setObjectPath(target, path, value) {
+  if (!target || typeof target !== 'object') return;
+  const parts = String(path || '').split('.').filter(Boolean);
+  if (!parts.length) return;
+  let cursor = target;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    const key = parts[i];
+    if (!cursor[key] || typeof cursor[key] !== 'object' || Array.isArray(cursor[key])) cursor[key] = {};
+    cursor = cursor[key];
+  }
+  cursor[parts[parts.length - 1]] = cloneStoryPatchValue(value);
+}
+
+function removeObjectPath(target, path) {
+  if (!target || typeof target !== 'object') return;
+  const parts = String(path || '').split('.').filter(Boolean);
+  if (!parts.length) return;
+  let cursor = target;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    cursor = cursor && typeof cursor === 'object' ? cursor[parts[i]] : null;
+    if (!cursor || typeof cursor !== 'object') return;
+  }
+  delete cursor[parts[parts.length - 1]];
+}
+
+function normalizeStoryPatchPath(path) {
+  const raw = String(path || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('/')) return raw.replace(/^\/+/, '').replace(/\//g, '.');
+  return raw;
+}
+
+function applyAnalysisStoryReviewPatchOps({ story, patchOps } = {}) {
+  const base = isPlainObject(story) ? cloneStoryPatchValue(story) : {};
+  for (const rawOp of Array.isArray(patchOps) ? patchOps : []) {
+    const op = isPlainObject(rawOp) ? rawOp : {};
+    const kind = String(op.op || '').trim().toLowerCase();
+    const path = normalizeStoryPatchPath(op.path);
+    if (!ANALYSIS_STORY_ALLOWED_PATCH_PATHS.has(path)) continue;
+    if (kind === 'remove') {
+      removeObjectPath(base, path);
+      continue;
+    }
+    if (kind === 'replace' || kind === 'set') {
+      let nextValue = Object.prototype.hasOwnProperty.call(op, 'value') ? op.value : undefined;
+      if (!Object.prototype.hasOwnProperty.call(op, 'value') && typeof op.value_json === 'string' && op.value_json.trim()) {
+        try {
+          nextValue = JSON.parse(op.value_json);
+        } catch {
+          nextValue = op.value_json;
+        }
+      }
+      setObjectPath(base, path, nextValue);
+    }
+  }
+  return base;
+}
+
 function buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
   const safeEvidence = isPlainObject(evidence) ? evidence : {};
   const safeFallback = isPlainObject(fallbackStory) ? fallbackStory : {};
@@ -26149,35 +27006,80 @@ function buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
     '- Do not include product recommendation CTA, routine-intake CTA, or any product shortlist.',
     '- Must include ui_card_v1 for fast comprehension.',
     '- Return strict JSON only with schema compatible to aurora.analysis_story.v2.',
-    '',
-    'Evidence JSON:',
-    JSON.stringify(safeEvidence, null, 2),
-    '',
-    'Fallback template JSON:',
-    JSON.stringify(safeFallback, null, 2),
+    `EvidenceDigest=${stringifyCompactQaPromptValue(safeEvidence, { maxDepth: 4, maxItems: 6, maxString: 220 })}`,
+    `FallbackDigest=${stringifyCompactQaPromptValue(
+      {
+        schema_version: safeFallback.schema_version,
+        confidence_overall: safeFallback.confidence_overall,
+        skin_profile: safeFallback.skin_profile,
+        priority_findings: safeFallback.priority_findings,
+        target_state: safeFallback.target_state,
+        core_principles: safeFallback.core_principles,
+        am_plan: safeFallback.am_plan,
+        pm_plan: safeFallback.pm_plan,
+        timeline: safeFallback.timeline,
+        ui_card_v1: safeFallback.ui_card_v1,
+        safety_notes: safeFallback.safety_notes,
+      },
+      { maxDepth: 4, maxItems: 5, maxString: 180 },
+    )}`,
   ].join('\n');
 }
 
 function buildAnalysisStoryReviewPrompt({ story, evidence } = {}) {
   const safeStory = isPlainObject(story) ? story : {};
   const safeEvidence = isPlainObject(evidence) ? evidence : {};
+  const evidenceDigest = {
+    language: safeEvidence.language || null,
+    finding_evidence: Array.isArray(safeEvidence.finding_evidence)
+      ? safeEvidence.finding_evidence.slice(0, 4).map((row) => ({
+          title: pickFirstString(row && row.title, row && row.label, row && row.observation),
+          detail: pickFirstString(row && row.detail, row && row.observation, row && row.evidence),
+          region: pickFirstString(row && row.region, row && row.module),
+        }))
+      : [],
+    target_state: Array.isArray(safeEvidence.target_state) ? safeEvidence.target_state.slice(0, 4) : [],
+    core_principles: Array.isArray(safeEvidence.core_principles) ? safeEvidence.core_principles.slice(0, 4) : [],
+  };
+  const storyDigest = {
+    confidence_overall: isPlainObject(safeStory.confidence_overall) ? { level: safeStory.confidence_overall.level || null } : null,
+    priority_findings: Array.isArray(safeStory.priority_findings)
+      ? safeStory.priority_findings.slice(0, 3).map((row) => ({
+          title: pickFirstString(row && row.title),
+          detail: pickFirstString(row && row.detail),
+        }))
+      : [],
+    ui_card_v1: isPlainObject(safeStory.ui_card_v1)
+      ? {
+          headline: safeStory.ui_card_v1.headline || null,
+          key_points: Array.isArray(safeStory.ui_card_v1.key_points) ? safeStory.ui_card_v1.key_points.slice(0, 4) : [],
+          actions_now: Array.isArray(safeStory.ui_card_v1.actions_now) ? safeStory.ui_card_v1.actions_now.slice(0, 4) : [],
+          avoid_now: Array.isArray(safeStory.ui_card_v1.avoid_now) ? safeStory.ui_card_v1.avoid_now.slice(0, 4) : [],
+          confidence_label: safeStory.ui_card_v1.confidence_label || null,
+          next_checkin: safeStory.ui_card_v1.next_checkin || null,
+        }
+      : null,
+    safety_notes: Array.isArray(safeStory.safety_notes) ? safeStory.safety_notes.slice(0, 4) : [],
+  };
   return [
-    'Task: Review and patch a skincare analysis story JSON for factual consistency and safety.',
+    'Task: Review a skincare analysis story JSON for factual consistency and safety.',
     'Output strict JSON with keys:',
     '- approved: boolean',
-    '- issues: string[]',
-    '- patched_story: object',
+    '- issues: string[] short issue codes only',
+    '- patch_ops: patch instructions only',
     'Rules:',
-    '- patched_story must stay within evidence boundaries.',
+    '- patch_ops must stay within evidence boundaries.',
     '- remove any product recommendation CTA, routine-intake CTA, or product shortlist fields.',
     '- enforce concise, readable language (conclusion -> evidence -> actions).',
     '- enforce ui_card_v1 with headline/key_points/actions_now/avoid_now/confidence_label/next_checkin.',
-    '',
-    'Evidence JSON:',
-    JSON.stringify(safeEvidence, null, 2),
-    '',
-    'Story JSON:',
-    JSON.stringify(safeStory, null, 2),
+    '- Allowed patch ops only: replace|remove on these paths:',
+    `  ${Array.from(ANALYSIS_STORY_ALLOWED_PATCH_PATHS).join(', ')}`,
+    `- issues must use only these codes: ${ANALYSIS_STORY_REVIEW_ISSUE_CODES.join(', ')}`,
+    '- keep issues to at most 3 codes.',
+    '- For replace ops, encode the replacement payload as compact JSON in value_json.',
+    '- patch_ops should be minimal. If no patch is needed, return patch_ops=[].',
+    `EvidenceDigest=${JSON.stringify(evidenceDigest)}`,
+    `StoryDigest=${JSON.stringify(storyDigest)}`,
   ].join('\n');
 }
 
@@ -26196,10 +27098,9 @@ async function generateAnalysisStoryV2JsonWithLlm({
     return deterministic;
   }
   if (shouldSkipQaByBudget({ qaContext, stage: 'story' })) return deterministic;
-  const providers = pickQaProvidersForMode({
+  const providers = pickRuntimeQaProviders({
     mode,
     singleProvider: resolveQaSingleProvider(singleProvider),
-    allowOpenAiFallback,
   });
   if (!providers.length) return deterministic;
 
@@ -26207,17 +27108,18 @@ async function generateAnalysisStoryV2JsonWithLlm({
     'You are a skincare analysis generator. Output strict JSON only, valid for aurora.analysis_story.v2.';
   const userPrompt = buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory });
   for (const provider of providers) {
-    const result = await callDualQaProviderImpl({
-      provider,
+    if (provider !== 'gemini') continue;
+    const result = await callRuntimeQaJson({
+      kind: 'story_generate',
       systemPrompt,
       userPrompt,
-      timeoutMs: ANALYSIS_STORY_LLM_TIMEOUT_MS,
+      timeoutMs: AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS,
     });
     if (!result || !result.ok || !isPlainObject(result.json)) {
-      markQaContextCall(qaContext, 'story', provider, 'error');
+      markQaContextCall(qaContext, 'story', provider, 'error', result && result.meta ? result.meta : null);
       continue;
     }
-    markQaContextCall(qaContext, 'story', provider, 'ok');
+    markQaContextCall(qaContext, 'story', provider, 'ok', result && result.meta ? result.meta : null);
     return result.json;
   }
   return deterministic;
@@ -26238,32 +27140,40 @@ async function reviewAnalysisStoryV2JsonWithLlm({
     return localReviewed;
   }
   if (shouldSkipQaByBudget({ qaContext, stage: 'story' })) return localReviewed;
-  const providers = pickQaProvidersForMode({
+  const providers = pickRuntimeQaProviders({
     mode,
     singleProvider: resolveQaSingleProvider(singleProvider),
-    allowOpenAiFallback,
   });
-  if (providers.length < 2) return localReviewed;
+  if (!providers.length) return localReviewed;
 
   const systemPrompt =
     'You are a strict JSON reviewer for skincare analysis stories. Output strict JSON only.';
   const userPrompt = buildAnalysisStoryReviewPrompt({ story, evidence });
   for (const provider of providers) {
-    const result = await callDualQaProviderImpl({
-      provider,
+    if (provider !== 'gemini') continue;
+    const result = await callRuntimeQaJson({
+      kind: 'story_review',
       systemPrompt,
       userPrompt,
-      timeoutMs: ANALYSIS_STORY_LLM_TIMEOUT_MS,
+      timeoutMs: AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS,
     });
     if (!result || !result.ok || !isPlainObject(result.json)) {
-      markQaContextCall(qaContext, 'story', provider, 'error');
+      markQaContextCall(qaContext, 'story', provider, 'error', result && result.meta ? result.meta : null);
       continue;
     }
     const approved = result.json.approved === true;
-    const patched = isPlainObject(result.json.patched_story) ? result.json.patched_story : null;
-    if (!patched) continue;
+    const patched = applyAnalysisStoryReviewPatchOps({
+      story,
+      patchOps: Array.isArray(result.json.patch_ops) ? result.json.patch_ops : [],
+    });
     const reviewed = reviewAnalysisStoryV2Json({ story: patched, evidence });
-    markQaContextCall(qaContext, 'story', provider, approved ? 'ok' : 'reject');
+    markQaContextCall(
+      qaContext,
+      'story',
+      provider,
+      approved ? 'ok' : 'reject',
+      result && result.meta ? result.meta : null,
+    );
     return {
       ok: approved || (reviewed && reviewed.ok),
       repaired: reviewed && reviewed.repaired ? reviewed.repaired : patched,
@@ -30545,6 +31455,20 @@ function hasRecoPrelabelAdminAccess(req) {
   const provided = getPdpHotsetPrewarmAdminToken(req);
   if (!provided) return false;
   const expectedBuf = Buffer.from(AURORA_BFF_RECO_PRELABEL_ADMIN_KEY);
+  const providedBuf = Buffer.from(provided);
+  if (expectedBuf.length !== providedBuf.length) return false;
+  try {
+    return crypto.timingSafeEqual(expectedBuf, providedBuf);
+  } catch {
+    return false;
+  }
+}
+
+function hasQaGateAdminAccess(req) {
+  if (!AURORA_BFF_QA_GATE_ADMIN_KEY) return false;
+  const provided = getPdpHotsetPrewarmAdminToken(req);
+  if (!provided) return false;
+  const expectedBuf = Buffer.from(AURORA_BFF_QA_GATE_ADMIN_KEY);
   const providedBuf = Buffer.from(provided);
   if (expectedBuf.length !== providedBuf.length) return false;
   try {
@@ -38414,7 +39338,25 @@ function mountAuroraBffRoutes(app, { logger }) {
     const visionMetrics = String(renderVisionMetricsPrometheus() || '');
     const recoMetrics = renderRecoPdpFallbackMetricsPrometheus();
     const qualityMetrics = renderChatQualityMetricsPrometheus();
-    return res.status(200).send(`${visionMetrics}${recoMetrics}${qualityMetrics}`);
+    const qaMetrics = renderGeminiQaMetricsPrometheus();
+    return res.status(200).send(`${visionMetrics}${recoMetrics}${qualityMetrics}${qaMetrics}`);
+  });
+
+  app.get('/v1/ops/gemini-qa-gate/state', (req, res) => {
+    if (!AURORA_BFF_QA_GATE_ADMIN_KEY) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    if (!hasQaGateAdminAccess(req)) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+    }
+    const gate = getGeminiGlobalGate();
+    return res.status(200).json({
+      ok: true,
+      data: {
+        gate: gate && typeof gate.snapshot === 'function' ? gate.snapshot() : null,
+        qa_observability: getQaRouteObservabilitySnapshot(),
+      },
+    });
   });
 
   app.get('/v1/ops/pdp-prefetch/state', (req, res) => {
@@ -53239,12 +54181,16 @@ const __internal = {
   generateAnalysisStoryV2JsonWithLlm,
   reviewAnalysisStoryV2Json,
   reviewAnalysisStoryV2JsonWithLlm,
+  applyAnalysisStoryReviewPatchOps,
   coerceAnalysisStoryV2,
   evaluateIngredientCandidateWithQaMode,
   resolveQaMode,
   resolveQaSingleProvider,
   pickQaProvidersForMode,
+  pickRuntimeQaProviders,
   callDualQaProvider,
+  callRuntimeQaJson,
+  callEvalJudgeJson,
   getQaRemainingBudgetMs,
   shouldSkipQaByBudget,
   applyAnalysisStoryAndRoutineSoftGate,

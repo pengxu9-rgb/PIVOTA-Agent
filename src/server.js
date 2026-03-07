@@ -36,6 +36,7 @@ const {
   buildCreatorCategoryTree,
   getCreatorCategoryProducts,
 } = require('./services/categories');
+const { resolveNonImageGeminiModel } = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const {
   buildFindProductsMultiContext,
@@ -6086,11 +6087,14 @@ function resolveGeminiBaseUrl() {
 
 function resolveUiChatModel(provider) {
   if (provider === 'gemini') {
-    return String(
-      process.env.PIVOTA_UI_CHAT_LLM_MODEL_GEMINI ||
-        process.env.PIVOTA_UI_CHAT_LLM_MODEL ||
-        'gemini-2.0-flash',
-    ).trim();
+    return resolveNonImageGeminiModel({
+      model: process.env.PIVOTA_UI_CHAT_LLM_MODEL_GEMINI || process.env.PIVOTA_UI_CHAT_LLM_MODEL,
+      fallbackModel: 'gemini-3-flash-preview',
+      envSource: process.env.PIVOTA_UI_CHAT_LLM_MODEL_GEMINI
+        ? 'PIVOTA_UI_CHAT_LLM_MODEL_GEMINI'
+        : 'PIVOTA_UI_CHAT_LLM_MODEL',
+      callPath: 'ui_chat',
+    }).effectiveModel;
   }
   return String(
     process.env.PIVOTA_UI_CHAT_LLM_MODEL_OPENAI ||
