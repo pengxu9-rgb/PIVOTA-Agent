@@ -38,6 +38,7 @@ const {
   runGeminiDeepeningStrategy,
   isGeminiSkinGatewayAvailable,
 } = require('./skinLlmGateway');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 const {
   classifyPhotoQuality,
   inferDetectorConfidence,
@@ -1504,7 +1505,6 @@ const {
   callAuroraGeminiGenerateContentWithMeta,
 } = require('./auroraGeminiGlobalClient');
 const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
-const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 const AURORA_GEMINI_KEY_FEATURE_ENV = 'AURORA_VISION_GEMINI_API_KEY';
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
