@@ -462,6 +462,21 @@ const SkinReportCanonicalSchema = {
   required: ['needs_risk_check', 'summary_focus', 'insights', 'routine_steps', 'watchouts', 'follow_up', 'two_week_focus', 'risk_flags'],
 };
 
+const SkinReportCanonicalLlmSchema = {
+  type: 'object',
+  properties: {
+    needs_risk_check: SkinReportCanonicalSchema.properties.needs_risk_check,
+    summary_focus: SkinReportCanonicalSchema.properties.summary_focus,
+    insights: SkinReportCanonicalSchema.properties.insights,
+    routine_steps: SkinReportCanonicalSchema.properties.routine_steps,
+    watchouts: SkinReportCanonicalSchema.properties.watchouts,
+    follow_up: SkinReportCanonicalSchema.properties.follow_up,
+    two_week_focus: SkinReportCanonicalSchema.properties.two_week_focus,
+    risk_flags: SkinReportCanonicalSchema.properties.risk_flags,
+  },
+  required: SkinReportCanonicalSchema.required.slice(),
+};
+
 const SkinDeepeningCanonicalSchema = {
   type: 'object',
   properties: CanonicalDeepeningSchema.properties,
@@ -780,15 +795,82 @@ function normalizeEnumValue(raw, values, fallback) {
   return fallback;
 }
 
-function normalizeCanonicalCue(raw) {
+function normalizeEnumValueStrict(raw, values) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (values.includes(token)) return token;
+  return '';
+}
+
+const CUE_PRIORITY_ORDER = Object.freeze({
+  redness: 70,
+  bumps: 66,
+  texture: 62,
+  shine: 58,
+  flaking: 56,
+  uneven_tone: 52,
+  pores: 48,
+});
+
+const REGION_PRIORITY_ORDER = Object.freeze({
+  cheeks: 10,
+  t_zone: 9,
+  forehead: 8,
+  chin: 7,
+  nose: 6,
+  jawline: 5,
+  full_face: 4,
+});
+
+const ROUTINE_TIME_ORDER = Object.freeze({
+  am: 1,
+  pm: 2,
+  either: 3,
+});
+
+const ROUTINE_STEP_ORDER = Object.freeze({
+  cleanse: 1,
+  hydrate: 2,
+  moisturize: 3,
+  protect: 4,
+  treat: 5,
+  monitor: 6,
+  pause: 7,
+});
+
+const DEEPENING_ADVICE_ORDER = Object.freeze({
+  protect_barrier: 1,
+  one_change_at_a_time: 2,
+  pause_if_stinging: 3,
+  protect_uv: 4,
+  confirm_tolerance: 5,
+  stabilize_barrier: 6,
+  track_redness: 7,
+  track_oil: 8,
+  track_bumps: 9,
+  track_texture: 10,
+  track_tone: 11,
+  retake_clear_photo: 12,
+});
+
+const REPORT_PRIORITY_ORDER = Object.freeze(['barrier', 'redness', 'oiliness', 'bumps', 'texture', 'tone', 'pores', 'mixed']);
+
+function normalizeCanonicalCueToken(raw) {
   const token = String(raw || '').trim().toLowerCase().replace(/[^a-z_]+/g, '_').replace(/^_+|_+$/g, '');
   if (token === 'oiliness') return 'shine';
   if (token === 'rough_texture') return 'texture';
   if (token === 'uneven_tone' || token === 'tone') return 'uneven_tone';
-  return normalizeEnumValue(token, CanonicalCueValues, 'texture');
+  return normalizeEnumValueStrict(token, CanonicalCueValues);
 }
 
-function normalizeCanonicalRegion(raw) {
+function normalizeCanonicalCue(raw) {
+  return normalizeCanonicalCueToken(raw) || 'texture';
+}
+
+function normalizeCanonicalCueStrict(raw) {
+  return normalizeCanonicalCueToken(raw);
+}
+
+function normalizeCanonicalRegionToken(raw) {
   const token = String(raw || '')
     .trim()
     .toLowerCase()
@@ -799,7 +881,15 @@ function normalizeCanonicalRegion(raw) {
   if (token === 't_zone' || token === 't') return 't_zone';
   if (token === 'fullface' || token === 'whole_face' || token === 'all_face') return 'full_face';
   if (token === 'jaw' || token === 'jaw_line') return 'jawline';
-  return normalizeEnumValue(token, CanonicalRegionValues, 'full_face');
+  return normalizeEnumValueStrict(token, CanonicalRegionValues);
+}
+
+function normalizeCanonicalRegion(raw) {
+  return normalizeCanonicalRegionToken(raw) || 'full_face';
+}
+
+function normalizeCanonicalRegionStrict(raw) {
+  return normalizeCanonicalRegionToken(raw);
 }
 
 function normalizeVisionVisibility(raw) {
@@ -868,91 +958,171 @@ function normalizeDeepeningAdvice(raw) {
   return normalizeEnumValue(raw, DeepeningAdviceValues, 'confirm_tolerance');
 }
 
-function normalizeCanonicalObservationArray(raw, { maxItems = 8 } = {}) {
+function normalizeDeepeningAdviceStrict(raw) {
+  return normalizeEnumValueStrict(raw, DeepeningAdviceValues);
+}
+
+function compareCanonicalPriority(a, b) {
+  return REPORT_PRIORITY_ORDER.indexOf(a) - REPORT_PRIORITY_ORDER.indexOf(b);
+}
+
+function observationConfidenceRank(confidence) {
+  const token = normalizeObservationConfidence(confidence);
+  if (token === 'high') return 3;
+  if (token === 'med') return 2;
+  return 1;
+}
+
+function observationSeverityRank(severity) {
+  const token = normalizeObservationSeverity(severity);
+  if (token === 'high') return 3;
+  if (token === 'moderate') return 2;
+  return 1;
+}
+
+function canonicalObservationScore(row) {
+  const cueWeight = CUE_PRIORITY_ORDER[row && row.cue] || 0;
+  const regionWeight = REGION_PRIORITY_ORDER[row && row.region] || 0;
+  return observationConfidenceRank(row && row.confidence) * 100 + observationSeverityRank(row && row.severity) * 10 + cueWeight + regionWeight;
+}
+
+function normalizeCanonicalObservationArray(raw, { maxItems = 8, strict = false } = {}) {
   const list = Array.isArray(raw) ? raw : [];
-  const out = [];
-  const seen = new Set();
+  const bestByKey = new Map();
   for (const row of list) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    const cue = normalizeCanonicalCue(row.cue);
-    const region = normalizeCanonicalRegion(row.region != null ? row.region : row.where);
+    const cue = strict ? normalizeCanonicalCueStrict(row.cue) : normalizeCanonicalCue(row.cue);
+    const region = strict ? normalizeCanonicalRegionStrict(row.region != null ? row.region : row.where) : normalizeCanonicalRegion(row.region != null ? row.region : row.where);
     const severity = normalizeObservationSeverity(row.severity);
     const confidence = normalizeObservationConfidence(row.confidence);
     const evidence = clampText(row.evidence, 220);
-    if (!evidence) continue;
-    const key = `${cue}:${region}:${severity}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ cue, region, severity, confidence, evidence });
-    if (out.length >= maxItems) break;
+    if (!cue || !region || !evidence) continue;
+    const key = `${cue}:${region}`;
+    const next = { cue, region, severity, confidence, evidence };
+    const prev = bestByKey.get(key);
+    if (!prev || canonicalObservationScore(next) > canonicalObservationScore(prev)) {
+      bestByKey.set(key, next);
+    }
   }
-  return out;
+  return Array.from(bestByKey.values())
+    .sort((a, b) => {
+      const scoreDiff = canonicalObservationScore(b) - canonicalObservationScore(a);
+      if (scoreDiff) return scoreDiff;
+      const cueDiff = (CUE_PRIORITY_ORDER[b.cue] || 0) - (CUE_PRIORITY_ORDER[a.cue] || 0);
+      if (cueDiff) return cueDiff;
+      const regionDiff = (REGION_PRIORITY_ORDER[b.region] || 0) - (REGION_PRIORITY_ORDER[a.region] || 0);
+      if (regionDiff) return regionDiff;
+      return `${a.cue}:${a.region}`.localeCompare(`${b.cue}:${b.region}`);
+    })
+    .slice(0, maxItems);
 }
 
-function normalizeCanonicalSummaryFocus(raw) {
+function normalizeCanonicalSummaryFocus(raw, { strict = false } = {}) {
   const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const primaryCues = Array.isArray(node.primary_cues)
-    ? node.primary_cues.map((item) => normalizeCanonicalCue(item)).filter(Boolean).slice(0, 3)
+    ? node.primary_cues.map((item) => (strict ? normalizeCanonicalCueStrict(item) : normalizeCanonicalCue(item))).filter(Boolean).slice(0, 3)
     : [];
+  const priority = strict ? normalizeEnumValueStrict(node.priority, SummaryPriorityValues) : normalizeSummaryPriority(node.priority);
   return {
-    priority: normalizeSummaryPriority(node.priority),
-    primary_cues: primaryCues.length ? primaryCues : ['texture'],
+    ...(priority ? { priority } : {}),
+    ...(primaryCues.length ? { primary_cues: primaryCues } : strict ? {} : { primary_cues: ['texture'] }),
   };
 }
 
-function normalizeCanonicalRoutineSteps(raw) {
+function normalizeCanonicalRoutineSteps(raw, { strict = false } = {}) {
   const list = Array.isArray(raw) ? raw : [];
-  const out = [];
+  const bestByKey = new Map();
   for (const row of list) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
     const linkedCues = Array.isArray(row.linked_cues)
-      ? row.linked_cues.map((item) => normalizeCanonicalCue(item)).filter(Boolean).slice(0, 3)
+      ? row.linked_cues.map((item) => (strict ? normalizeCanonicalCueStrict(item) : normalizeCanonicalCue(item))).filter(Boolean).slice(0, 3)
       : [];
-    out.push({
-      time: normalizeRoutineTime(row.time),
-      step_type: normalizeRoutineStepType(row.step_type),
-      target: normalizeRoutineTarget(row.target),
-      cadence: normalizeRoutineCadence(row.cadence),
-      intensity: normalizeRoutineIntensity(row.intensity),
-      linked_cues: linkedCues.length ? linkedCues : ['texture'],
-    });
-    if (out.length >= 8) break;
+    const normalized = {
+      ...(strict
+        ? (() => {
+            const time = normalizeEnumValueStrict(row.time, RoutineTimeValues);
+            const stepType = normalizeEnumValueStrict(row.step_type, RoutineStepTypeValues);
+            const target = normalizeEnumValueStrict(row.target, RoutineTargetValues);
+            const cadence = normalizeEnumValueStrict(row.cadence, RoutineCadenceValues);
+            const intensity = normalizeEnumValueStrict(row.intensity, RoutineIntensityValues);
+            return {
+              ...(time ? { time } : {}),
+              ...(stepType ? { step_type: stepType } : {}),
+              ...(target ? { target } : {}),
+              ...(cadence ? { cadence } : {}),
+              ...(intensity ? { intensity } : {}),
+            };
+          })()
+        : {
+            time: normalizeRoutineTime(row.time),
+            step_type: normalizeRoutineStepType(row.step_type),
+            target: normalizeRoutineTarget(row.target),
+            cadence: normalizeRoutineCadence(row.cadence),
+            intensity: normalizeRoutineIntensity(row.intensity),
+          }),
+      ...(linkedCues.length ? { linked_cues: linkedCues } : strict ? {} : { linked_cues: ['texture'] }),
+    };
+    const key = `${normalized.time || 'missing'}:${normalized.step_type || 'missing'}:${normalized.target || 'missing'}`;
+    const prev = bestByKey.get(key);
+    if (!prev || (Array.isArray(normalized.linked_cues) ? normalized.linked_cues.length : 0) > (Array.isArray(prev.linked_cues) ? prev.linked_cues.length : 0)) {
+      bestByKey.set(key, normalized);
+    }
   }
-  return out;
+  return Array.from(bestByKey.values())
+    .sort((a, b) => {
+      const timeDiff = (ROUTINE_TIME_ORDER[a.time] || 99) - (ROUTINE_TIME_ORDER[b.time] || 99);
+      if (timeDiff) return timeDiff;
+      const stepDiff = (ROUTINE_STEP_ORDER[a.step_type] || 99) - (ROUTINE_STEP_ORDER[b.step_type] || 99);
+      if (stepDiff) return stepDiff;
+      return `${a.target || ''}:${a.cadence || ''}:${a.intensity || ''}`.localeCompare(`${b.target || ''}:${b.cadence || ''}:${b.intensity || ''}`);
+    })
+    .slice(0, 8);
 }
 
-function normalizeCanonicalFollowUp(raw) {
+function normalizeCanonicalFollowUp(raw, { strict = false } = {}) {
   const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const conditionalFollowups = Array.isArray(node.conditional_followups)
-    ? node.conditional_followups.map((item) => normalizeFollowUpIntent(item)).filter(Boolean).slice(0, 3)
+    ? node.conditional_followups.map((item) => (strict ? normalizeEnumValueStrict(item, FollowUpIntentValues) : normalizeFollowUpIntent(item))).filter(Boolean).slice(0, 3)
     : [];
+  const intent = strict ? normalizeEnumValueStrict(node.intent, FollowUpIntentValues) : normalizeFollowUpIntent(node.intent);
   return {
-    intent: normalizeFollowUpIntent(node.intent),
+    ...(intent ? { intent } : {}),
     ...(conditionalFollowups.length ? { conditional_followups: conditionalFollowups } : {}),
   };
 }
 
-function normalizeCanonicalDeepening(raw) {
+function normalizeCanonicalDeepening(raw, { strict = false, inheritedPriority } = {}) {
   const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
   if (!node) return null;
   const adviceItems = Array.isArray(node.advice_items)
-    ? node.advice_items.map((item) => normalizeDeepeningAdvice(item)).filter(Boolean).slice(0, 4)
+    ? node.advice_items
+        .map((item) => (strict ? normalizeDeepeningAdviceStrict(item) : normalizeDeepeningAdvice(item)))
+        .filter(Boolean)
+        .filter((item, index, arr) => arr.indexOf(item) === index)
+        .sort((a, b) => (DEEPENING_ADVICE_ORDER[a] || 99) - (DEEPENING_ADVICE_ORDER[b] || 99))
+        .slice(0, 4)
     : [];
+  const phase = strict ? normalizeEnumValueStrict(node.phase, DEEPENING_PHASE_VALUES) : normalizeEnumValue(node.phase, DEEPENING_PHASE_VALUES, 'photo_optin');
+  const summaryPriority =
+    strict
+      ? normalizeEnumValueStrict(node.summary_priority, SummaryPriorityValues) || normalizeEnumValueStrict(inheritedPriority, SummaryPriorityValues)
+      : normalizeSummaryPriority(node.summary_priority || inheritedPriority);
+  const questionIntent = strict ? normalizeEnumValueStrict(node.question_intent, FollowUpIntentValues) : normalizeFollowUpIntent(node.question_intent);
   return {
-    phase: normalizeEnumValue(node.phase, DEEPENING_PHASE_VALUES, 'photo_optin'),
-    summary_priority: normalizeSummaryPriority(node.summary_priority),
-    advice_items: adviceItems.length ? adviceItems : ['confirm_tolerance'],
-    question_intent: normalizeFollowUpIntent(node.question_intent),
+    ...(phase ? { phase } : {}),
+    ...(summaryPriority ? { summary_priority: summaryPriority } : {}),
+    ...(adviceItems.length ? { advice_items: adviceItems } : strict ? {} : { advice_items: ['confirm_tolerance'] }),
+    ...(questionIntent ? { question_intent: questionIntent } : {}),
   };
 }
 
-function normalizeDeepeningCanonicalLayer(payload) {
-  return normalizeCanonicalDeepening(payload);
+function normalizeDeepeningCanonicalLayer(payload, options) {
+  return normalizeCanonicalDeepening(payload, options);
 }
 
 function normalizeVisionCanonicalLayer(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
-  const observations = normalizeCanonicalObservationArray(p.observations, { maxItems: 8 });
+  const observations = normalizeCanonicalObservationArray(p.observations, { maxItems: 4 });
   const limits = normalizeGuidanceBrief(p.limits).map((item) => clampText(item, 120)).slice(0, 4);
   const qualityNote = clampText(p.quality_note, 180);
   const visibilityStatus = normalizeVisionVisibility(
@@ -972,7 +1142,7 @@ function normalizeVisionCanonicalLayer(payload) {
   };
 }
 
-function normalizeReportCanonicalLayer(payload) {
+function normalizeReportCanonicalLayer(payload, { strict = false } = {}) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
   const watchouts = Array.isArray(p.watchouts)
     ? p.watchouts.map((item) => normalizeWatchout(item)).filter(Boolean).slice(0, 4)
@@ -984,15 +1154,15 @@ function normalizeReportCanonicalLayer(payload) {
     ? p.risk_flags.map((item) => normalizeRiskFlag(item)).filter(Boolean).slice(0, 3)
     : [];
   return {
-    needs_risk_check: Boolean(p.needs_risk_check),
-    summary_focus: normalizeCanonicalSummaryFocus(p.summary_focus),
-    insights: normalizeCanonicalObservationArray(p.insights, { maxItems: 6 }),
-    routine_steps: normalizeCanonicalRoutineSteps(p.routine_steps),
-    watchouts: watchouts.length ? watchouts : ['one_change_at_a_time'],
-    follow_up: normalizeCanonicalFollowUp(p.follow_up),
-    two_week_focus: twoWeekFocus.length ? twoWeekFocus : ['confirm_tolerance'],
+    ...(typeof p.needs_risk_check === 'boolean' ? { needs_risk_check: p.needs_risk_check } : strict ? {} : { needs_risk_check: Boolean(p.needs_risk_check) }),
+    summary_focus: normalizeCanonicalSummaryFocus(p.summary_focus, { strict }),
+    insights: normalizeCanonicalObservationArray(p.insights, { maxItems: 6, strict }),
+    routine_steps: normalizeCanonicalRoutineSteps(p.routine_steps, { strict }),
+    ...(watchouts.length ? { watchouts } : strict ? {} : { watchouts: ['one_change_at_a_time'] }),
+    follow_up: normalizeCanonicalFollowUp(p.follow_up, { strict }),
+    ...(twoWeekFocus.length ? { two_week_focus: twoWeekFocus } : strict ? {} : { two_week_focus: ['confirm_tolerance'] }),
     risk_flags: riskFlags,
-    ...(p.deepening ? { deepening: normalizeCanonicalDeepening(p.deepening) } : {}),
+    ...(p.deepening ? { deepening: normalizeCanonicalDeepening(p.deepening, { strict }) } : {}),
   };
 }
 
@@ -1086,9 +1256,226 @@ function validateDeepeningCanonicalLayer(payload) {
   return { ok: errors.length === 0, errors };
 }
 
-function evaluateVisionCanonicalSemantic(payload, { quality } = {}) {
+function cueToSummaryPriority(cue) {
+  const token = normalizeCanonicalCue(cue);
+  if (token === 'shine') return 'oiliness';
+  if (token === 'uneven_tone') return 'tone';
+  if (token === 'flaking') return 'barrier';
+  return SummaryPriorityValues.includes(token) ? token : 'mixed';
+}
+
+function priorityToCanonicalCue(priority) {
+  const token = normalizeSummaryPriority(priority);
+  if (token === 'oiliness') return 'shine';
+  if (token === 'tone') return 'uneven_tone';
+  if (token === 'barrier') return 'texture';
+  return CanonicalCueValues.includes(token) ? token : 'texture';
+}
+
+function mapConcernTokenToPriority(token) {
+  const value = String(token || '').trim().toLowerCase();
+  if (!value) return '';
+  if (value === 'barrier' || value === 'dryness') return 'barrier';
+  if (value === 'redness') return 'redness';
+  if (value === 'shine' || value === 'oiliness') return 'oiliness';
+  if (value === 'acne' || value === 'acne_like' || value === 'comedone' || value === 'bumps') return 'bumps';
+  if (value === 'rough_texture' || value === 'texture') return 'texture';
+  if (value === 'tone' || value === 'uneven_tone' || value === 'pigmentation') return 'tone';
+  if (value === 'pores') return 'pores';
+  return '';
+}
+
+function extractCueVotesFromLockedFeatures(raw) {
+  const texts = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : [];
+  const out = [];
+  for (const item of texts) {
+    const token = String(item || '').trim().toLowerCase();
+    if (!token) continue;
+    if (token.includes('red')) out.push('redness');
+    if (token.includes('shine') || token.includes('oil')) out.push('shine');
+    if (token.includes('bump') || token.includes('breakout') || token.includes('comed')) out.push('bumps');
+    if (token.includes('flake') || token.includes('dry') || token.includes('barrier')) out.push('flaking');
+    if (token.includes('tone') || token.includes('pigment')) out.push('uneven_tone');
+    if (token.includes('texture') || token.includes('rough')) out.push('texture');
+    if (token.includes('pore')) out.push('pores');
+  }
+  return out;
+}
+
+function buildPrimaryCueList({ summaryFocus, insights, reportContext, resolvedPriority } = {}) {
+  const candidates = [];
+  if (summaryFocus && Array.isArray(summaryFocus.primary_cues)) candidates.push(...summaryFocus.primary_cues);
+  if (Array.isArray(insights)) candidates.push(...insights.map((row) => row && row.cue).filter(Boolean));
+  const locked = reportContext && reportContext.locked_features_summary;
+  candidates.push(...extractCueVotesFromLockedFeatures(locked));
+  const fallbackCue = priorityToCanonicalCue(resolvedPriority);
+  if (fallbackCue) candidates.unshift(fallbackCue);
+  const out = [];
+  for (const cue of candidates) {
+    const normalizedCue = normalizeCanonicalCueStrict(cue);
+    if (!normalizedCue || out.includes(normalizedCue)) continue;
+    out.push(normalizedCue);
+    if (out.length >= 3) break;
+  }
+  return out.length ? out : [priorityToCanonicalCue(resolvedPriority || 'mixed')];
+}
+
+function resolveReportSummaryFocus(summaryFocus, insights, reportContext) {
+  const scoreMap = new Map();
+  const addScore = (priority, weight) => {
+    const token = normalizeEnumValueStrict(priority, SummaryPriorityValues);
+    if (!token || !Number.isFinite(Number(weight)) || Number(weight) <= 0) return;
+    scoreMap.set(token, (scoreMap.get(token) || 0) + Number(weight));
+  };
+
+  const normalizedFocus = normalizeCanonicalSummaryFocus(summaryFocus, { strict: false });
+  if (normalizedFocus.priority && normalizedFocus.priority !== 'mixed') addScore(normalizedFocus.priority, 2.5);
+  for (const cue of Array.isArray(normalizedFocus.primary_cues) ? normalizedFocus.primary_cues : []) {
+    addScore(cueToSummaryPriority(cue), 1.2);
+  }
+  for (const row of Array.isArray(insights) ? insights : []) {
+    if (!row || typeof row !== 'object') continue;
+    addScore(cueToSummaryPriority(row.cue), observationConfidenceRank(row.confidence) + observationSeverityRank(row.severity) / 2);
+  }
+
+  const concernRank = reportContext && Array.isArray(reportContext.concern_rank) ? reportContext.concern_rank : [];
+  const concernWeights = [3.2, 2.4, 1.8, 1.2, 0.8];
+  for (let i = 0; i < concernRank.length; i += 1) {
+    addScore(mapConcernTokenToPriority(concernRank[i]), concernWeights[i] || 0.5);
+  }
+
+  const signals = reportContext && reportContext.deterministic_signals && typeof reportContext.deterministic_signals === 'object'
+    ? reportContext.deterministic_signals
+    : {};
+  const redness = String(signals.redness || '').trim().toLowerCase();
+  if (redness === 'high') addScore('redness', 3);
+  else if (redness === 'mid') addScore('redness', 2);
+  else if (redness === 'low') addScore('redness', 1);
+  const oiliness = String(signals.oiliness || '').trim().toLowerCase();
+  if (oiliness === 'high') addScore('oiliness', 3);
+  else if (oiliness === 'mid') addScore('oiliness', 2);
+  else if (oiliness === 'low') addScore('oiliness', 1);
+  const acneLike = String(signals.acne_like || '').trim().toLowerCase();
+  if (acneLike === 'some') addScore('bumps', 2.5);
+  else if (acneLike === 'few') addScore('bumps', 1.3);
+  const dryness = String(signals.dryness || '').trim().toLowerCase();
+  if (dryness === 'some') addScore('barrier', 2.4);
+  const texture = String(signals.texture || '').trim().toLowerCase();
+  if (texture === 'rough') addScore('texture', 1.8);
+
+  for (const cue of extractCueVotesFromLockedFeatures(reportContext && reportContext.locked_features_summary)) {
+    addScore(cueToSummaryPriority(cue), 0.8);
+  }
+
+  let resolvedPriority = '';
+  let bestScore = -1;
+  for (const priority of REPORT_PRIORITY_ORDER) {
+    const nextScore = scoreMap.get(priority) || 0;
+    if (nextScore > bestScore) {
+      resolvedPriority = priority;
+      bestScore = nextScore;
+    }
+  }
+  if (!resolvedPriority) resolvedPriority = normalizedFocus.priority || 'mixed';
+
+  return {
+    priority: resolvedPriority || 'mixed',
+    primary_cues: buildPrimaryCueList({
+      summaryFocus: normalizedFocus,
+      insights,
+      reportContext,
+      resolvedPriority: resolvedPriority || 'mixed',
+    }),
+  };
+}
+
+function defaultWatchoutsForPriority(priority, quality) {
+  const out = ['one_change_at_a_time'];
+  const token = normalizeSummaryPriority(priority);
+  const grade = String(quality && quality.grade || '').trim().toLowerCase();
+  if (token === 'barrier' || token === 'redness') out.unshift('pause_if_stinging');
+  if (token === 'tone' || token === 'redness') out.push('protect_uv');
+  if (grade === 'degraded' || grade === 'fail') out.push('retake_clear_photo');
+  return out.filter((item, index, arr) => arr.indexOf(item) === index).slice(0, 4);
+}
+
+function defaultTwoWeekFocusForPriority(priority) {
+  const token = normalizeSummaryPriority(priority);
+  if (token === 'barrier') return ['stabilize_barrier', 'confirm_tolerance'];
+  if (token === 'redness') return ['track_redness', 'confirm_tolerance'];
+  if (token === 'oiliness') return ['track_oil', 'confirm_tolerance'];
+  if (token === 'bumps') return ['track_bumps', 'confirm_tolerance'];
+  if (token === 'texture') return ['track_texture', 'confirm_tolerance'];
+  if (token === 'tone') return ['track_tone', 'confirm_tolerance'];
+  return ['confirm_tolerance'];
+}
+
+function defaultFollowUpIntent({ priority, reportContext } = {}) {
+  const token = normalizeSummaryPriority(priority);
+  const routineSummary = reportContext && reportContext.routine_summary && typeof reportContext.routine_summary === 'object'
+    ? reportContext.routine_summary
+    : {};
+  if (routineSummary.moisturizer === 'unknown' || routineSummary.sunscreen === 'unknown') return 'routine_share';
+  if (token === 'barrier' || token === 'redness') return 'tolerance_check';
+  return 'priority_symptom';
+}
+
+function adjudicateReportCanonicalLayer(payload, { reportContext, deepening } = {}) {
+  const base = normalizeReportCanonicalLayer(payload, { strict: false });
+  const summaryFocus = resolveReportSummaryFocus(base.summary_focus, base.insights, reportContext);
+  const watchouts = Array.isArray(base.watchouts) && base.watchouts.length
+    ? base.watchouts
+    : defaultWatchoutsForPriority(summaryFocus.priority, reportContext && reportContext.quality);
+  const twoWeekFocus = Array.isArray(base.two_week_focus) && base.two_week_focus.length
+    ? base.two_week_focus
+    : defaultTwoWeekFocusForPriority(summaryFocus.priority);
+  const followUp = normalizeCanonicalFollowUp(base.follow_up, { strict: false });
+  const resolvedFollowUp = {
+    intent: followUp.intent || defaultFollowUpIntent({ priority: summaryFocus.priority, reportContext }),
+    ...(Array.isArray(followUp.conditional_followups) && followUp.conditional_followups.length
+      ? { conditional_followups: followUp.conditional_followups }
+      : {}),
+  };
+  return {
+    needs_risk_check: Boolean(base.needs_risk_check),
+    summary_focus: summaryFocus,
+    insights: normalizeCanonicalObservationArray(base.insights, { maxItems: 6 }),
+    routine_steps: normalizeCanonicalRoutineSteps(base.routine_steps, { strict: false }),
+    watchouts,
+    follow_up: resolvedFollowUp,
+    two_week_focus: twoWeekFocus,
+    risk_flags: Array.isArray(base.risk_flags) ? base.risk_flags.slice(0, 3) : [],
+    ...(deepening ? { deepening: normalizeCanonicalDeepening(deepening, { strict: false, inheritedPriority: summaryFocus.priority }) } : {}),
+  };
+}
+
+function defaultQuestionIntentForPhase(phase) {
+  const token = normalizeEnumValue(phase, DEEPENING_PHASE_VALUES, 'photo_optin');
+  if (token === 'photo_optin') return 'photo_upload';
+  if (token === 'products') return 'routine_share';
+  if (token === 'reactions') return 'reaction_check';
+  return 'confirm_plan';
+}
+
+function adjudicateDeepeningCanonicalLayer(payload, { inheritedPriority, deepeningContext } = {}) {
+  const base = normalizeCanonicalDeepening(payload, { strict: false, inheritedPriority });
+  if (!base) return null;
+  const phase = normalizeEnumValue(base.phase || (deepeningContext && deepeningContext.phase), DEEPENING_PHASE_VALUES, 'photo_optin');
+  const summaryPriority = normalizeSummaryPriority(inheritedPriority || base.summary_priority);
+  return {
+    phase,
+    summary_priority: summaryPriority,
+    advice_items: Array.isArray(base.advice_items) && base.advice_items.length ? base.advice_items.slice(0, 4) : defaultTwoWeekFocusForPriority(summaryPriority),
+    question_intent: normalizeFollowUpIntent(base.question_intent || (deepeningContext && deepeningContext.question_intent) || defaultQuestionIntentForPhase(phase)),
+  };
+}
+
+function evaluateVisionCanonicalSemantic(payload, { quality, parseStatus } = {}) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
   const issues = [];
+  if (parseStatus === 'parse_truncated') {
+    issues.push('parse_truncated');
+  }
   const visibilityStatus = normalizeVisionVisibility(p.visibility_status);
   const grade = String((quality && quality.grade) || '')
     .trim()
@@ -1104,39 +1491,81 @@ function evaluateVisionCanonicalSemantic(payload, { quality } = {}) {
   }
   return {
     ok: issues.length === 0,
-    code: issues.includes('semantic_empty_on_pass_quality') ? 'SEMANTIC_EMPTY' : issues.length ? 'SEMANTIC_INVALID' : null,
+    code: issues.includes('parse_truncated')
+      ? 'PARSE_TRUNCATED_JSON'
+      : issues.includes('semantic_empty_on_pass_quality')
+        ? 'SEMANTIC_EMPTY'
+        : issues.length
+          ? 'SEMANTIC_INVALID'
+          : null,
     issues,
     useful_output: visibilityStatus !== 'insufficient' && Array.isArray(p.observations) && p.observations.length >= 2,
   };
 }
 
-function evaluateReportCanonicalSemantic(payload) {
+function evaluateReportCanonicalSemantic(payload, { reportContext, parseStatus } = {}) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
   const issues = [];
+  if (parseStatus === 'parse_truncated') issues.push('parse_truncated');
   if (!Array.isArray(p.insights) || !p.insights.length) issues.push('missing_insights');
   if (!Array.isArray(p.routine_steps) || !p.routine_steps.length) issues.push('missing_routine_steps');
   if (Array.isArray(p.routine_steps) && !p.routine_steps.some((row) => Array.isArray(row && row.linked_cues) && row.linked_cues.length > 0)) {
     issues.push('routine_steps_not_grounded');
   }
   if (!p.follow_up || typeof p.follow_up !== 'object' || !p.follow_up.intent) issues.push('missing_follow_up');
-  if (!p.summary_focus || !Array.isArray(p.summary_focus.primary_cues) || !p.summary_focus.primary_cues.length) issues.push('missing_summary_focus');
+  if (!p.summary_focus || !p.summary_focus.priority || !Array.isArray(p.summary_focus.primary_cues) || !p.summary_focus.primary_cues.length) {
+    issues.push('missing_summary_focus');
+  } else if (
+    p.summary_focus.priority === 'mixed' &&
+    reportContext &&
+    Array.isArray(reportContext.concern_rank) &&
+    reportContext.concern_rank.length > 0
+  ) {
+    issues.push('underconstrained_priority');
+  }
+  if (
+    reportContext &&
+    Array.isArray(reportContext.concern_rank) &&
+    reportContext.concern_rank.length > 0 &&
+    (!p.summary_focus || !p.summary_focus.priority)
+  ) {
+    issues.push('underconstrained_priority');
+  }
+  if (issues.includes('missing_insights') && issues.includes('missing_routine_steps')) {
+    issues.push('schema_valid_but_empty');
+  }
   return {
     ok: issues.length === 0,
-    code: issues.includes('missing_insights') ? 'SEMANTIC_EMPTY' : issues.length ? 'SEMANTIC_INVALID' : null,
+    code: issues.includes('parse_truncated')
+      ? 'PARSE_TRUNCATED_JSON'
+      : issues.includes('underconstrained_priority')
+        ? 'UNDERCONSTRAINED_PRIORITY'
+        : issues.includes('schema_valid_but_empty') || issues.includes('missing_insights')
+          ? 'SEMANTIC_EMPTY'
+          : issues.length
+            ? 'SEMANTIC_INVALID'
+            : null,
     issues,
     useful_output: issues.length === 0,
   };
 }
 
-function evaluateDeepeningCanonicalSemantic(payload) {
+function evaluateDeepeningCanonicalSemantic(payload, { parseStatus } = {}) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
   const issues = [];
+  if (parseStatus === 'parse_truncated') issues.push('parse_truncated');
   if (!p.phase) issues.push('missing_phase');
   if (!p.question_intent) issues.push('missing_question_intent');
   if (!Array.isArray(p.advice_items) || !p.advice_items.length) issues.push('missing_advice_items');
   return {
     ok: issues.length === 0,
-    code: issues.includes('missing_advice_items') ? 'SEMANTIC_EMPTY' : issues.length ? 'SEMANTIC_INVALID' : null,
+    code: issues.includes('parse_truncated')
+      ? 'PARSE_TRUNCATED_JSON'
+      : issues.includes('missing_advice_items')
+        ? 'SEMANTIC_EMPTY'
+        : issues.length
+          ? 'SEMANTIC_INVALID'
+          : null,
     issues,
     useful_output: issues.length === 0,
   };
@@ -1349,11 +1778,17 @@ function localizeStepCaution(step, lang) {
 
 function buildDeterministicEvidence(row, lang) {
   const locale = normalizeLang(lang);
+  const canonicalEvidence = row && typeof row.evidence === 'string' ? row.evidence.trim() : '';
+  if (locale !== 'zh-CN' && canonicalEvidence) {
+    return clampText(canonicalEvidence, 220);
+  }
   const cue = localizeCueLabel(row && row.cue, lang);
   const region = localizeRegionLabel(row && row.region, lang);
   const severity = localizeSeverityLabel(row && row.severity, lang);
   if (locale === 'zh-CN') {
-    return `${region}可见${severity}的${cue}信号。`;
+    return canonicalEvidence
+      ? clampText(`${region}可见${severity}的${cue}信号（${canonicalEvidence}）。`, 220)
+      : `${region}可见${severity}的${cue}信号。`;
   }
   return `${severity} ${cue} signal is visible around the ${region}.`;
 }
@@ -1395,10 +1830,21 @@ function renderVisionCanonicalLayer(payload, { lang } = {}) {
   return {
     features: normalizeFeatures(features, { minItems: 2, maxItems: 4 }),
     needs_risk_check: Boolean(p.needs_risk_check),
-    ...(p.quality_note ? { quality_note: p.quality_note } : {}),
+    ...(p.quality_note ? { quality_note: locale === 'zh-CN' ? localizeQualityNote(p.quality_note) : p.quality_note } : {}),
     ...(observations.length ? { observations } : {}),
     ...(p.limits && p.limits.length ? { limits: p.limits } : {}),
   };
+}
+
+function localizeQualityNote(note) {
+  if (!note || typeof note !== 'string') return note;
+  const lower = note.toLowerCase();
+  if (lower.includes('clear') && lower.includes('well-lit')) return '图像清晰、光线充足，可以正常分析。';
+  if (lower.includes('clear')) return '图像较清晰，可以提取信号。';
+  if (lower.includes('blur') || lower.includes('blurry')) return '图像有模糊，部分信号可能受限。';
+  if (lower.includes('lighting') || lower.includes('dark')) return '光线条件有限，部分信号可能不准确。';
+  if (lower.includes('high resolution') || lower.includes('good quality')) return '图像质量较好，可以进行分析。';
+  return '图像条件允许提取部分信号。';
 }
 
 function buildRoutineQuestionFromIntent(intent, { lang } = {}) {
@@ -1445,7 +1891,10 @@ function buildFollowUpOptions(intent, { lang } = {}) {
 
 function renderDeepeningCanonicalLayer(payload, { lang } = {}) {
   const locale = normalizeLang(lang);
-  const node = normalizeCanonicalDeepening(payload);
+  const node = adjudicateDeepeningCanonicalLayer(payload, {
+    inheritedPriority: payload && payload.summary_priority,
+    deepeningContext: payload,
+  });
   if (!node) return null;
   const advice = node.advice_items.map((item) => {
     if (WatchoutValues.includes(item)) return localizeWatchout(item, locale);
@@ -1499,9 +1948,9 @@ function buildStrategyFromCanonicalReport({ summaryFocus, watchouts, followUp, l
   return `Current focus: ${focus} -> Watchout: ${caution} -> Path: keep a gentle one-variable-at-a-time plan for 7 days -> Next question: ${nextQuestion}`;
 }
 
-function renderReportCanonicalLayer(payload, { lang, quality } = {}) {
+function renderReportCanonicalLayer(payload, { lang, quality, reportContext, deepening } = {}) {
   const locale = normalizeLang(lang);
-  const p = normalizeReportCanonicalLayer(payload);
+  const p = adjudicateReportCanonicalLayer(payload, { reportContext, deepening });
   const findings = p.insights.map((row) => ({
     cue: row.cue,
     where: localizeRegionLabel(row.region, locale),
@@ -1520,7 +1969,7 @@ function renderReportCanonicalLayer(payload, { lang, quality } = {}) {
   const conditionalFollowups = Array.isArray(followUp.conditional_followups)
     ? followUp.conditional_followups.map((item) => buildRoutineQuestionFromIntent(item, { lang: locale })).slice(0, 3)
     : [];
-  const deepening = p.deepening ? renderDeepeningCanonicalLayer(p.deepening, { lang: locale }) : null;
+  const renderedDeepening = p.deepening ? renderDeepeningCanonicalLayer(p.deepening, { lang: locale }) : null;
   const routineExpert = buildRoutineExpertObject({
     summaryFocus: p.summary_focus,
     routineSteps: p.routine_steps,
@@ -1535,7 +1984,7 @@ function renderReportCanonicalLayer(payload, { lang, quality } = {}) {
     conditional_followups: conditionalFollowups,
     routine_expert: routineExpert,
     reasoning: guidanceBrief.slice(0, 4),
-    ...(deepening ? { deepening } : {}),
+    ...(renderedDeepening ? { deepening: renderedDeepening } : {}),
     ...(quality ? { quality: normalizeQualityInfo(quality) } : {}),
     findings,
     guidance_brief: guidanceBrief,
@@ -2141,6 +2590,7 @@ module.exports = {
   SkinVisionCanonicalSchema,
   SkinReportStrategySchema,
   SkinReportCanonicalSchema,
+  SkinReportCanonicalLlmSchema,
   SkinDeepeningCanonicalSchema,
   validateFinalContract,
   validateVisionObservation,
@@ -2162,6 +2612,8 @@ module.exports = {
   renderVisionCanonicalLayer,
   renderReportCanonicalLayer,
   renderDeepeningCanonicalLayer,
+  adjudicateReportCanonicalLayer,
+  adjudicateDeepeningCanonicalLayer,
   evaluateVisionCanonicalSemantic,
   evaluateReportCanonicalSemantic,
   evaluateDeepeningCanonicalSemantic,

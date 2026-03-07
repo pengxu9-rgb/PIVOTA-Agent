@@ -366,6 +366,53 @@ function buildReportSignalsDto({
   };
 }
 
+function buildDeepeningSignalsDto({
+  lang,
+  phase,
+  questionIntent,
+  photoChoice,
+  productsSubmitted,
+  profileSummary,
+  routineCandidate,
+  reactions,
+  summaryPriority,
+  watchouts,
+  twoWeekFocus,
+  qualityObject,
+} = {}) {
+  const profile = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
+    ? profileSummary
+    : {};
+  const dtoBase = {
+    lang: normalizeLang(lang),
+    phase: typeof phase === 'string' && phase.trim() ? phase.trim() : 'photo_optin',
+    question_intent: typeof questionIntent === 'string' && questionIntent.trim() ? questionIntent.trim() : 'photo_upload',
+    photo_choice: typeof photoChoice === 'string' && photoChoice.trim() ? photoChoice.trim() : 'unknown',
+    products_submitted: productsSubmitted === true,
+    profile: {
+      skinType: profile.skinType || null,
+      barrierStatus: profile.barrierStatus || null,
+      sensitivity: profile.sensitivity || null,
+      goals: Array.isArray(profile.goals) ? profile.goals.filter((item) => typeof item === 'string' && item.trim()).slice(0, 4) : [],
+    },
+    routine_actives: summarizeRoutineActives(routineCandidate).slice(0, 4),
+    reactions: Array.isArray(reactions) ? reactions.map((item) => clampText(item, 80)).filter(Boolean).slice(0, 6) : [],
+    summary_priority: typeof summaryPriority === 'string' && summaryPriority.trim() ? summaryPriority.trim() : 'mixed',
+    suggested_advice_items: Array.from(
+      new Set([
+        ...(Array.isArray(watchouts) ? watchouts : []),
+        ...(Array.isArray(twoWeekFocus) ? twoWeekFocus : []),
+      ].map((item) => clampText(item, 40)).filter(Boolean)),
+    ).slice(0, 6),
+    quality: qualityObject && typeof qualityObject === 'object' && !Array.isArray(qualityObject) ? qualityObject : null,
+  };
+  const input_hash = buildInputHash({ payload: dtoBase, imageHash: 'no_image' });
+  return {
+    ...dtoBase,
+    input_hash,
+  };
+}
+
 module.exports = {
   normalizeLang,
   mapPhotoQuality,
@@ -375,4 +422,5 @@ module.exports = {
   buildInputHashPrefix,
   buildVisionSignalsDto,
   buildReportSignalsDto,
+  buildDeepeningSignalsDto,
 };

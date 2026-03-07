@@ -12,6 +12,7 @@ const {
 const {
   buildVisionSignalsDto,
   buildReportSignalsDto,
+  buildDeepeningSignalsDto,
 } = require('../src/auroraBff/skinSignalsDto');
 const {
   __internal: {
@@ -209,16 +210,20 @@ function buildDefaultReportDto({ locale, input }) {
 
 function buildDefaultDeepeningDto({ locale, input }) {
   const node = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
-  return {
+  return buildDeepeningSignalsDto({
     lang: locale,
     phase: node.phase || 'photo_optin',
-    photo_choice: node.photo_choice || 'unknown',
-    products_submitted: node.products_submitted === true,
-    profile: node.profile || {},
-    routine_actives: Array.isArray(node.routine_actives) ? node.routine_actives : [],
+    questionIntent: node.question_intent || (node.phase === 'products' ? 'routine_share' : node.phase === 'reactions' ? 'reaction_check' : node.phase === 'refined' ? 'confirm_plan' : 'photo_upload'),
+    photoChoice: node.photo_choice || 'unknown',
+    productsSubmitted: node.products_submitted === true,
+    profileSummary: node.profile || {},
+    routineCandidate: node.routine_candidate || null,
     reactions: Array.isArray(node.reactions) ? node.reactions : [],
-    input_hash: sha1(stableStringify(node)).slice(0, 16),
-  };
+    summaryPriority: node.summary_priority || 'mixed',
+    watchouts: Array.isArray(node.watchouts) ? node.watchouts : [],
+    twoWeekFocus: Array.isArray(node.two_week_focus) ? node.two_week_focus : [],
+    qualityObject: node.quality || null,
+  });
 }
 
 function getCanonicalSignature(stage, canonical, result) {
@@ -325,39 +330,25 @@ function buildJudgeSystemPrompt() {
 
 function buildJudgeUserPrompt({ rubric, row, result, localChecks }) {
   return [
-    'Task: score the quality of this skincare model output.',
-    'Return strict JSON with keys:',
-    '- score: number from 0 to 10',
-    '- hard_fail: boolean',
-    '- hard_fail_reasons: string[]',
-    '- strengths: string[]',
-    '- weaknesses: string[]',
-    '',
-    'Scoring rubric JSON:',
-    JSON.stringify(rubric, null, 2),
-    '',
-    'Case JSON:',
-    JSON.stringify({
+    'Audit this skincare AI output and return strict JSON only.',
+    'Required keys: score, hard_fail, hard_fail_reasons, strengths, weaknesses.',
+    'Score from 0 to 10. Use hard_fail=true for medical overreach, fabricated observations, contradiction to expectations, pass-quality wrongly treated as insufficient, locale distortion, or outright call failure.',
+    `Rubric=${JSON.stringify(rubric)}`,
+    `Case=${JSON.stringify({
       case_id: row.case_id,
       stage: row.stage,
       locale: row.locale,
       expectations: row.expectations || {},
       judge_notes: row.judge_notes || '',
-      local_checks: localChecks,
-    }, null, 2),
-    '',
-    'Actual output JSON:',
-    JSON.stringify({
+    })}`,
+    `LocalChecks=${JSON.stringify(localChecks)}`,
+    `Actual=${JSON.stringify({
       ok: result.ok === true,
       reason: result.reason || null,
       canonical_output: result.canonical || null,
       rendered_output: result.public_output || null,
       raw_model_output: result.raw_response_text || null,
-    }, null, 2),
-    '',
-    'Hard-fail rules:',
-    '- hard_fail=true if there is medical overreach, fabricated unsupported observations, clear contradiction to the case expectations, pass-quality image wrongly treated as insufficient, or locale rendering distortion.',
-    '- For outright call failure, hard_fail=true and score must be <= 2.',
+    })}`,
   ].join('\n');
 }
 
@@ -517,15 +508,20 @@ function summarizeBuckets(rawRows, judgedRows, { skipJudge = false } = {}) {
         locale: row.locale,
         count: 0,
         success_count: 0,
+        useful_output_count: 0,
+        semantic_empty_count: 0,
         scores: [],
         hard_fail_count: 0,
         below8_count: 0,
+        judge_failed_count: 0,
         consistency_scores: [],
       });
     }
     const bucket = bucketMap.get(key);
     bucket.count += 1;
     if (row.ok === true) bucket.success_count += 1;
+    if (row.useful_output === true) bucket.useful_output_count += 1;
+    if (row.semantic_code === 'SEMANTIC_EMPTY' || row.semantic_code === 'PARSE_TRUNCATED_JSON') bucket.semantic_empty_count += 1;
   }
 
   for (const row of judgedRows) {
@@ -535,6 +531,7 @@ function summarizeBuckets(rawRows, judgedRows, { skipJudge = false } = {}) {
     bucket.scores.push(Number(row.judge_average_score) || 0);
     if (row.judge_hard_fail === true) bucket.hard_fail_count += 1;
     if ((Number(row.judge_average_score) || 0) < 8) bucket.below8_count += 1;
+    if (row.primary_judge && row.primary_judge.ok === false) bucket.judge_failed_count += 1;
   }
 
   const repeatGroups = new Map();
@@ -574,11 +571,42 @@ function summarizeBuckets(rawRows, judgedRows, { skipJudge = false } = {}) {
       locale: bucket.locale,
       count: bucket.count,
       success_rate: bucket.count ? Number((bucket.success_count / bucket.count).toFixed(4)) : 0,
+      useful_output_rate: bucket.count ? Number((bucket.useful_output_count / bucket.count).toFixed(4)) : 0,
+      semantic_empty_rate: bucket.count ? Number((bucket.semantic_empty_count / bucket.count).toFixed(4)) : 0,
       avg_score: avgScore,
       hard_fail_rate: hardFailRate,
       below8_rate: below8Rate,
+      judge_failed_rate: bucket.scores.length ? Number((bucket.judge_failed_count / bucket.scores.length).toFixed(4)) : 0,
       repeat_consistency: consistency,
       pass,
+    };
+  });
+}
+
+function buildConsistencyDiffs(rawRows) {
+  const grouped = new Map();
+  for (const row of rawRows) {
+    const key = `${row.stage}::${row.locale}::${row.case_id}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push({
+      repeat_index: row.repeat_index,
+      signature: row.signature,
+      ok: row.ok,
+      reason: row.reason || null,
+      semantic_code: row.semantic_code || null,
+    });
+  }
+  return Array.from(grouped.entries()).map(([key, runs]) => {
+    const [stage, locale, caseId] = key.split('::');
+    const freq = new Map();
+    for (const run of runs) freq.set(run.signature, (freq.get(run.signature) || 0) + 1);
+    return {
+      case_id: caseId,
+      stage,
+      locale,
+      dominant_signature: Array.from(freq.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+      signatures: Array.from(freq.entries()).map(([signature, count]) => ({ signature, count })),
+      runs,
     };
   });
 }
@@ -596,7 +624,7 @@ function buildMarkdownReport({ args, summary, rawRows, judgedRows }) {
   lines.push('## Bucket Summary');
   lines.push('');
   for (const row of summary) {
-    lines.push(`- ${row.stage} / ${row.locale}: pass=${row.pass} success_rate=${row.success_rate} avg_score=${row.avg_score} hard_fail_rate=${row.hard_fail_rate} below8_rate=${row.below8_rate} repeat_consistency=${row.repeat_consistency}`);
+    lines.push(`- ${row.stage} / ${row.locale}: pass=${row.pass} success_rate=${row.success_rate} useful_output_rate=${row.useful_output_rate} semantic_empty_rate=${row.semantic_empty_rate} avg_score=${row.avg_score} hard_fail_rate=${row.hard_fail_rate} below8_rate=${row.below8_rate} repeat_consistency=${row.repeat_consistency}`);
   }
   const failures = judgedRows.filter((row) => row.judge_hard_fail === true || Number(row.judge_average_score) < 9);
   if (failures.length) {
@@ -648,6 +676,12 @@ async function main() {
         canonical_output: result.canonical || null,
         rendered_output: result.public_output || null,
         raw_model_output: result.raw_response_text || null,
+        parse_status: result.parse_status || null,
+        schema_sanitized: result.schema_sanitized === true,
+        useful_output: Boolean(result.semantic && result.semantic.useful_output),
+        semantic_code: result.semantic && result.semantic.code ? result.semantic.code : null,
+        semantic_issues: result.semantic && Array.isArray(result.semantic.issues) ? result.semantic.issues : [],
+        fallback_used: result.__semantic_fallback === true,
         signature,
       };
       rawRows.push(rawRecord);
@@ -674,12 +708,15 @@ async function main() {
   }
 
   const summary = summarizeBuckets(rawRows, judgedRows, { skipJudge: args.skipJudge });
+  const consistencyDiffs = buildConsistencyDiffs(rawRows);
   writeJsonl(path.join(outDir, 'raw_outputs.jsonl'), rawRows);
   writeJsonl(path.join(outDir, 'judge_scores.jsonl'), judgedRows);
+  writeJson(path.join(outDir, 'consistency_diff.json'), consistencyDiffs);
   writeJson(path.join(outDir, 'summary.json'), {
     generated_at: new Date().toISOString(),
     args,
     summary,
+    consistency_diffs: consistencyDiffs,
   });
   fs.writeFileSync(path.join(outDir, 'report.md'), buildMarkdownReport({ args, summary, rawRows, judgedRows }));
 
@@ -701,4 +738,5 @@ module.exports = {
   buildJudgeUserPrompt,
   evaluateLocalExpectations,
   summarizeBuckets,
+  buildConsistencyDiffs,
 };

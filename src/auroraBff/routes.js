@@ -10,21 +10,30 @@ const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope')
 const { createStageProfiler } = require('./skinAnalysisProfiling');
 const { runSkinDiagnosisV1, summarizeDiagnosisForPolicy, buildSkinAnalysisFromDiagnosisV1 } = require('./skinDiagnosisV1');
 const { buildSkinVisionPrompt, buildSkinReportPrompt } = require('./skinLlmPrompts');
-const { buildVisionSignalsDto, buildReportSignalsDto, buildInputHashPrefix, buildQualityObject } = require('./skinSignalsDto');
+const {
+  buildVisionSignalsDto,
+  buildReportSignalsDto,
+  buildDeepeningSignalsDto,
+  buildInputHashPrefix,
+  buildQualityObject,
+} = require('./skinSignalsDto');
 const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
+  renderDeepeningCanonicalLayer,
 } = require('./skinAnalysisContract');
 const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
+  runGeminiDeepeningStrategy,
   isGeminiSkinGatewayAvailable,
 } = require('./skinLlmGateway');
 const {
   classifyPhotoQuality,
   inferDetectorConfidence,
   shouldCallLlm,
+  shouldFireDeepening,
   downgradeSkinAnalysisConfidence,
   humanizeLlmReasons,
   applyConfidenceCaps,
@@ -155,6 +164,113 @@ const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
+
+function resolveSkinDeepeningPromptVersion(promptVersion) {
+  const token = String(promptVersion || '').trim().toLowerCase();
+  if (!token) return 'skin_deepening_v2_canonical';
+  if (token === 'skin_v3' || token === 'skin_v3_canonical' || token.includes('v3_canonical')) return 'skin_deepening_v2_canonical';
+  if (token === 'skin_deepening_v2_canonical' || token.includes('deepening_v2')) return token;
+  return 'skin_deepening_v2_canonical';
+}
+
+function extractSkinDeepeningSymptoms(recentLogsSummary) {
+  const logs = Array.isArray(recentLogsSummary) ? recentLogsSummary : [];
+  const out = [];
+  const pushToken = (raw) => {
+    if (typeof raw !== 'string') return;
+    const text = raw.trim();
+    if (!text) return;
+    out.push(text);
+  };
+  for (const item of logs.slice(0, 7)) {
+    if (!item || typeof item !== 'object') continue;
+    pushToken(item.reaction);
+    pushToken(item.symptom);
+    pushToken(item.note);
+    pushToken(item.notes);
+    pushToken(item.message);
+    if (Array.isArray(item.reactions)) {
+      for (const reaction of item.reactions) pushToken(reaction);
+    }
+    if (Array.isArray(item.symptoms)) {
+      for (const symptom of item.symptoms) pushToken(symptom);
+    }
+  }
+  return Array.from(new Set(out)).slice(0, 6);
+}
+
+function resolveSkinDeepeningPhase({
+  userRequestedPhoto,
+  photosProvided,
+  hasRoutine,
+  qualityObject,
+  observations,
+  userReportedSymptoms,
+} = {}) {
+  if (!userRequestedPhoto || !photosProvided) {
+    return { phase: 'photo_optin', question_intent: 'photo_upload', reason: 'photo_missing' };
+  }
+  if (!hasRoutine) {
+    return { phase: 'products', question_intent: 'routine_share', reason: 'routine_missing' };
+  }
+  const gate = shouldFireDeepening({
+    qualityObject,
+    observations,
+    userReportedSymptoms,
+  });
+  if (gate.fire) {
+    return { phase: 'reactions', question_intent: 'reaction_check', reason: gate.reason || 'needs_deepening' };
+  }
+  return { phase: 'refined', question_intent: 'confirm_plan', reason: 'stable_plan' };
+}
+
+function buildMainlineDeepeningDto({
+  language,
+  promptVersion,
+  userRequestedPhoto,
+  photosProvided,
+  hasRoutine,
+  routineCandidate,
+  profileSummary,
+  recentLogsSummary,
+  qualityObject,
+  reportCanonical,
+  visionCanonical,
+} = {}) {
+  const observations =
+    reportCanonical && Array.isArray(reportCanonical.insights) && reportCanonical.insights.length
+      ? reportCanonical.insights
+      : visionCanonical && Array.isArray(visionCanonical.observations)
+        ? visionCanonical.observations
+        : [];
+  const reactions = extractSkinDeepeningSymptoms(recentLogsSummary);
+  const phasePlan = resolveSkinDeepeningPhase({
+    userRequestedPhoto,
+    photosProvided,
+    hasRoutine,
+    qualityObject,
+    observations,
+    userReportedSymptoms: reactions,
+  });
+  return {
+    dto: buildDeepeningSignalsDto({
+      lang: language,
+      phase: phasePlan.phase,
+      questionIntent: phasePlan.question_intent,
+      photoChoice: userRequestedPhoto && photosProvided ? 'uploaded' : 'unknown',
+      productsSubmitted: hasRoutine,
+      profileSummary,
+      routineCandidate,
+      reactions,
+      summaryPriority: reportCanonical && reportCanonical.summary_focus ? reportCanonical.summary_focus.priority : 'mixed',
+      watchouts: reportCanonical && Array.isArray(reportCanonical.watchouts) ? reportCanonical.watchouts : [],
+      twoWeekFocus: reportCanonical && Array.isArray(reportCanonical.two_week_focus) ? reportCanonical.two_week_focus : [],
+      qualityObject,
+    }),
+    promptVersion: resolveSkinDeepeningPromptVersion(promptVersion),
+    phasePlan,
+  };
+}
 const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
@@ -18703,6 +18819,273 @@ function buildAnalysisAssistantMessage({ language, skinProfile, lowConfidence, i
   return lines.join(' ');
 }
 
+function formatRoutineFitDimensionLabel(key, language) {
+  const isCn = language === 'CN';
+  const labels = {
+    ingredient_match: isCn ? '成分匹配' : 'ingredient match',
+    routine_completeness: isCn ? '流程完整度' : 'routine completeness',
+    conflict_risk: isCn ? '冲突风险' : 'conflict risk',
+    sensitivity_safety: isCn ? '敏感安全性' : 'sensitivity safety',
+  };
+  return labels[key] || key;
+}
+
+function filterAnalysisFollowupChips(chips, currentActionId) {
+  const current = String(currentActionId || '').trim().toLowerCase();
+  return (Array.isArray(chips) ? chips : []).filter((chip) => {
+    if (!chip || typeof chip !== 'object' || Array.isArray(chip)) return false;
+    const chipActionId = String(
+      (chip.data && typeof chip.data === 'object' && !Array.isArray(chip.data) && chip.data.action_id) || chip.chip_id || '',
+    ).trim().toLowerCase();
+    return chipActionId !== current;
+  });
+}
+
+function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, requestId, replyText } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : {};
+  const skinProfile = isPlainObject(analysis.skin_profile) ? analysis.skin_profile : isPlainObject(analysis.skinProfile) ? analysis.skinProfile : {};
+  const findings = Array.isArray(analysis.priority_findings)
+    ? analysis.priority_findings
+    : Array.isArray(analysis.findings)
+      ? analysis.findings
+      : [];
+  const guidanceBrief = Array.isArray(analysis.guidance_brief) ? analysis.guidance_brief : [];
+  const confidence = isPlainObject(analysis.confidence_overall) ? analysis.confidence_overall : isPlainObject(analysis.confidence) ? analysis.confidence : {};
+  const ingredientPlan = isPlainObject(analysis.ingredient_plan) ? analysis.ingredient_plan : null;
+  const routineFit = getRoutineFitPayloadFromLastAnalysis(analysis);
+  const lowConfidence = String(confidence.level || '').trim().toLowerCase() === 'low';
+  const followupFocus = String(replyText || '').trim();
+  const focusLine =
+    followupFocus && followupFocus.length > 6
+      ? (lang === 'CN' ? `你这次想追问的是：${followupFocus}。` : `You asked to focus on: ${followupFocus}.`)
+      : '';
+  const suggestedChips = filterAnalysisFollowupChips(
+    buildAnalysisSuggestedChips({
+      language: lang,
+      lowConfidence,
+      hasIngredientPlan: Boolean(ingredientPlan),
+      hasRoutineFit: Boolean(routineFit),
+    }),
+    actionId,
+  );
+  const findingLines = findings
+    .map((item) => pickFirstTrimmed(item && item.title, item && item.detail, item && item.observation))
+    .filter(Boolean)
+    .slice(0, 3);
+  const strengths = Array.isArray(skinProfile.current_strengths) ? skinProfile.current_strengths.filter(Boolean).slice(0, 3) : [];
+  const missingContext = !Boolean(
+    Object.keys(skinProfile).length ||
+      findingLines.length ||
+      (ingredientPlan && typeof ingredientPlan === 'object') ||
+      routineFit,
+  );
+  if (missingContext) {
+    return {
+      assistant_text:
+        lang === 'CN'
+          ? '我需要先拿到一份最新的皮肤分析，才能继续解释这一项。请先重新完成皮肤分析，或补充你当前的 AM/PM routine。'
+          : 'I need a recent skin analysis before I can explain that. Please run skin analysis again or add your current AM/PM routine first.',
+      cards: [
+        {
+          card_id: `analysis_followup_missing_${requestId}`,
+          type: 'confidence_notice',
+          payload: {
+            severity: 'warn',
+            reason: 'analysis_context_missing',
+            message:
+              lang === 'CN'
+                ? '缺少可复用的皮肤分析上下文。'
+                : 'Reusable skin-analysis context is missing.',
+            details: [
+              lang === 'CN'
+                ? '建议先重新完成一次皮肤分析，或更新当前 routine 后再追问。'
+                : 'Run skin analysis again or update your current routine, then ask this follow-up again.',
+            ],
+            actions: ['rerun_skin_analysis'],
+          },
+        },
+      ],
+      suggested_chips: suggestedChips,
+      missing_context: true,
+      used_last_analysis: false,
+    };
+  }
+
+  if (actionId === 'chip.aurora.next_action.deep_dive_skin') {
+    const skinType = pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType) || (lang === 'CN' ? '待确认' : 'unconfirmed');
+    const sensitivity = pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity) || (lang === 'CN' ? '待确认' : 'unconfirmed');
+    const summary =
+      lang === 'CN'
+        ? [
+          focusLine,
+          `基于你最近一次分析，你的肤质倾向是 ${skinType}，敏感度 ${sensitivity}。`,
+          findingLines.length ? `当前最值得优先看的问题是：${findingLines.join('；')}。` : '',
+          strengths.length ? `目前的正向信号包括：${strengths.join('、')}。` : '',
+          guidanceBrief.length ? `下一步建议：${guidanceBrief.slice(0, 2).join('；')}。` : '',
+          confidence.level ? `本次结论置信度为 ${confidence.level}。` : '',
+        ].filter(Boolean).join(' ')
+        : [
+          focusLine,
+          `From your latest analysis, your skin trends ${skinType} with ${sensitivity} sensitivity.`,
+          findingLines.length ? `The top issues to prioritize are: ${findingLines.join('; ')}.` : '',
+          strengths.length ? `Current strengths include: ${strengths.join(', ')}.` : '',
+          guidanceBrief.length ? `Next focus: ${guidanceBrief.slice(0, 2).join('; ')}.` : '',
+          confidence.level ? `Confidence for this read is ${confidence.level}.` : '',
+        ].filter(Boolean).join(' ');
+    return {
+      assistant_text: summary,
+      cards: [],
+      suggested_chips: suggestedChips,
+      missing_context: false,
+      used_last_analysis: true,
+    };
+  }
+
+  if (actionId === 'chip.aurora.next_action.ingredient_plan') {
+    if (!ingredientPlan) {
+      return {
+        assistant_text:
+          lang === 'CN'
+            ? '这次分析里还没有可解释的成分计划。请先重新完成皮肤分析。'
+            : 'There is no ingredient plan on the latest analysis yet. Please rerun skin analysis first.',
+        cards: [],
+        suggested_chips: suggestedChips,
+        missing_context: true,
+        used_last_analysis: false,
+      };
+    }
+    const targets = Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 3) : [];
+    const avoid = Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 3) : [];
+    const conflicts = Array.isArray(ingredientPlan.conflicts) ? ingredientPlan.conflicts.slice(0, 2) : [];
+    const assistantText =
+      lang === 'CN'
+        ? [
+          focusLine,
+          targets.length
+            ? `当前成分计划优先考虑：${targets.map((item) => `${item.ingredient_name || item.ingredient_id}${item.role ? `（${item.role}）` : ''}`).join('、')}。`
+            : '当前成分计划没有明确的优先成分。',
+          avoid.length
+            ? `需要谨慎或暂时避免：${avoid.map((item) => item.ingredient_name || item.ingredient_id).join('、')}。`
+            : '',
+          conflicts.length
+            ? `当前重点风险：${conflicts.map((item) => pickFirstTrimmed(item.title, item.summary, item.issue)).filter(Boolean).join('；')}。`
+            : '',
+        ].filter(Boolean).join(' ')
+        : [
+          focusLine,
+          targets.length
+            ? `Your current ingredient plan prioritizes ${targets.map((item) => `${item.ingredient_name || item.ingredient_id}${item.role ? ` (${item.role})` : ''}`).join(', ')}.`
+            : 'Your current ingredient plan does not list any clear priority ingredients yet.',
+          avoid.length
+            ? `Use caution or avoid ${avoid.map((item) => item.ingredient_name || item.ingredient_id).join(', ')}.`
+            : '',
+          conflicts.length
+            ? `Main watchouts: ${conflicts.map((item) => pickFirstTrimmed(item.title, item.summary, item.issue)).filter(Boolean).join('; ')}.`
+            : '',
+        ].filter(Boolean).join(' ');
+    return {
+      assistant_text: assistantText,
+      cards: [buildIngredientPlanCard(ingredientPlan, requestId)],
+      suggested_chips: suggestedChips,
+      missing_context: false,
+      used_last_analysis: true,
+    };
+  }
+
+  if (actionId === 'chip.aurora.next_action.routine_deep_dive') {
+    if (!routineFit) {
+      return {
+        assistant_text:
+          lang === 'CN'
+            ? '我还没有你最近一次 routine-fit 评估结果。请先补全当前 AM/PM routine 并重新分析。'
+            : 'I do not have a recent routine-fit evaluation yet. Please add your AM/PM routine and rerun analysis first.',
+        cards: [],
+        suggested_chips: suggestedChips,
+        missing_context: true,
+        used_last_analysis: false,
+      };
+    }
+    const lowDimensions = collectRoutineFitLowDimensions(routineFit, { max: 2 });
+    const assistantText =
+      lang === 'CN'
+        ? [
+          focusLine,
+          `你的当前 routine 整体属于 ${routineFit.overall_fit || 'partial_match'}。`,
+          routineFit.summary ? `${routineFit.summary}` : '',
+          lowDimensions.length
+            ? `最低分维度是：${lowDimensions.map((item) => `${formatRoutineFitDimensionLabel(item.key, lang)} ${Math.round(item.score * 100)}%`).join('、')}。`
+            : '',
+          Array.isArray(routineFit.concerns) && routineFit.concerns.length
+            ? `主要关注点：${routineFit.concerns.slice(0, 3).join('；')}。`
+            : '目前没有额外的 routine 红旗。',
+        ].filter(Boolean).join(' ')
+        : [
+          focusLine,
+          `Your current routine is rated as ${routineFit.overall_fit || 'partial_match'}.`,
+          routineFit.summary || '',
+          lowDimensions.length
+            ? `The lowest-scoring dimensions are ${lowDimensions.map((item) => `${formatRoutineFitDimensionLabel(item.key, lang)} ${Math.round(item.score * 100)}%`).join(', ')}.`
+            : '',
+          Array.isArray(routineFit.concerns) && routineFit.concerns.length
+            ? `Main concerns: ${routineFit.concerns.slice(0, 3).join('; ')}.`
+            : 'There are no extra routine red flags at the moment.',
+        ].filter(Boolean).join(' ');
+    return {
+      assistant_text: assistantText,
+      cards: [buildRoutineFitSummaryCard(routineFit, requestId)],
+      suggested_chips: suggestedChips,
+      missing_context: false,
+      used_last_analysis: true,
+    };
+  }
+
+  const avoid = ingredientPlan && Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 3) : [];
+  const conflicts = ingredientPlan && Array.isArray(ingredientPlan.conflicts) ? ingredientPlan.conflicts.slice(0, 3) : [];
+  const routineConcerns = routineFit && Array.isArray(routineFit.concerns) ? routineFit.concerns.slice(0, 3) : [];
+  const safetyDetails = [
+    ...avoid.map((item) =>
+      lang === 'CN'
+        ? `谨慎成分：${item.ingredient_name || item.ingredient_id}${Array.isArray(item.reason) && item.reason.length ? `（${item.reason.join('；')}）` : ''}`
+        : `Caution ingredient: ${item.ingredient_name || item.ingredient_id}${Array.isArray(item.reason) && item.reason.length ? ` (${item.reason.join('; ')})` : ''}`,
+    ),
+    ...conflicts.map((item) => pickFirstTrimmed(item.title, item.summary, item.issue)),
+    ...routineConcerns,
+  ].filter(Boolean).slice(0, 4);
+  const safetyMessage = safetyDetails.length
+    ? (
+      lang === 'CN'
+        ? [focusLine, `当前最值得注意的是：${safetyDetails.join('；')}。`].filter(Boolean).join(' ')
+        : [focusLine, `The main safety watchouts right now are: ${safetyDetails.join('; ')}.`].filter(Boolean).join(' ')
+    )
+    : (
+      lang === 'CN'
+        ? [focusLine, '当前分析里没有额外的高风险红旗，重点还是控制刺激叠加并观察耐受。'].filter(Boolean).join(' ')
+        : [focusLine, 'There are no extra high-risk flags in the current analysis; the main focus is still avoiding irritation stacking and watching tolerance.'].filter(Boolean).join(' ')
+    );
+  const cards = safetyDetails.length
+    ? [{
+      card_id: `analysis_safety_${requestId}`,
+      type: 'confidence_notice',
+      payload: {
+        severity: 'warn',
+        reason: 'analysis_safety_followup',
+        message: safetyMessage,
+        details: safetyDetails,
+        actions: ['continue_conservative_mode'],
+      },
+    }]
+    : [];
+  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId));
+  return {
+    assistant_text: safetyMessage,
+    cards,
+    suggested_chips: suggestedChips,
+    missing_context: false,
+    used_last_analysis: true,
+  };
+}
+
 function hasRenderableCards(cards) {
   return (Array.isArray(cards) ? cards : []).some((card) => {
     if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
@@ -21370,6 +21753,30 @@ function buildRoutineFitSummaryPrompt({
     `Current routine (${routineProducts.length} products):\n${routineLines || '(empty)'}`;
 }
 
+const ROUTINE_FIT_REQUIRED_STRUCTURED_KEYS = [
+  'overall_fit',
+  'fit_score',
+  'summary',
+  'highlights',
+  'concerns',
+  'dimension_scores',
+  'next_questions',
+];
+
+const ROUTINE_FIT_DIMENSION_KEYS = [
+  'ingredient_match',
+  'routine_completeness',
+  'conflict_risk',
+  'sensitivity_safety',
+];
+
+const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
+  'chip.aurora.next_action.deep_dive_skin',
+  'chip.aurora.next_action.ingredient_plan',
+  'chip.aurora.next_action.routine_deep_dive',
+  'chip.aurora.next_action.safety_concerns',
+]);
+
 function buildRoutineFitSummaryCard(fitResult, requestId) {
   const fit = fitResult && typeof fitResult === 'object' ? fitResult : {};
   const overallFitRaw = String(fit.overall_fit || '').trim().toLowerCase();
@@ -21448,7 +21855,156 @@ function buildSkinAnalysisContextForPrefix(profile) {
       parts.push(`Avoid: ${avoid.map((a) => `${a.ingredient_name || a.ingredient_id} (${(a.reason || []).join('; ')})`).join(', ')}`);
     }
   }
+  const routineFit = getRoutineFitPayloadFromLastAnalysis(lastAnalysis);
+  if (routineFit) {
+    const lowDimensions = collectRoutineFitLowDimensions(routineFit, { max: 2 });
+    const lowDimensionSummary = lowDimensions.length
+      ? lowDimensions.map((item) => `${item.key}=${Math.round(item.score * 100)}%`).join(', ')
+      : '';
+    parts.push(`Routine fit: ${routineFit.overall_fit || 'partial_match'} (${Math.round(Number(routineFit.fit_score || 0.5) * 100)}%)`);
+    if (lowDimensionSummary) parts.push(`Lowest routine-fit dimensions: ${lowDimensionSummary}`);
+    if (Array.isArray(routineFit.concerns) && routineFit.concerns.length) {
+      parts.push(`Routine concerns: ${routineFit.concerns.slice(0, 3).join('; ')}`);
+    }
+  }
   return parts.length ? parts.join('\n') : null;
+}
+
+function buildRoutineFitRetryPrompt(basePrompt = '', language = 'EN') {
+  const isCn = language === 'CN';
+  const strictJsonReminder = isCn
+    ? '重试：必须只返回一个 JSON 对象，且必须包含 overall_fit, fit_score, summary, highlights, concerns, dimension_scores, next_questions 七个顶层字段。不要提问，不要解释。'
+    : 'Retry: return exactly one JSON object with overall_fit, fit_score, summary, highlights, concerns, dimension_scores, and next_questions. Do not ask questions. Do not add commentary.';
+  return `${String(basePrompt || '').trim()}\n\n[SYSTEM]\n${strictJsonReminder}\n[/SYSTEM]`;
+}
+
+function validateRoutineFitStructuredPayload(payload) {
+  const fit = isPlainObject(payload) ? payload : null;
+  if (!fit) {
+    return {
+      ok: false,
+      failure_reason: 'json_parse_failed',
+      missing_keys: [],
+      partial_structured: false,
+      partial_dimensions: [],
+    };
+  }
+
+  const missingKeys = ROUTINE_FIT_REQUIRED_STRUCTURED_KEYS.filter((key) => {
+    if (key === 'dimension_scores') return !isPlainObject(fit.dimension_scores);
+    return fit[key] == null;
+  });
+  if (missingKeys.length) {
+    return {
+      ok: false,
+      failure_reason: 'missing_required_keys',
+      missing_keys: missingKeys,
+      partial_structured: false,
+      partial_dimensions: [],
+    };
+  }
+
+  const dims = isPlainObject(fit.dimension_scores) ? fit.dimension_scores : {};
+  const partialDimensions = ROUTINE_FIT_DIMENSION_KEYS.filter((key) => !isPlainObject(dims[key]));
+  return {
+    ok: true,
+    value: fit,
+    failure_reason: null,
+    missing_keys: [],
+    partial_structured: partialDimensions.length > 0,
+    partial_dimensions: partialDimensions,
+  };
+}
+
+function isRoutineFitClarifyLikeResponse(upstream) {
+  if (!upstream || typeof upstream !== 'object' || Array.isArray(upstream)) return false;
+  if (String(upstream.intent || '').trim().toLowerCase() === 'clarify') return true;
+  if (isPlainObject(upstream.clarification)) return true;
+  return false;
+}
+
+function parseRoutineFitUpstreamResult(upstream) {
+  const structuredCandidate = getUpstreamStructuredOrJson(upstream, {
+    answerRequiredKeys: ROUTINE_FIT_REQUIRED_STRUCTURED_KEYS,
+  });
+  const textCandidate = (() => {
+    const rawText = pickFirstTrimmed(upstream && upstream.text, upstream && upstream.raw_text);
+    if (!rawText) return null;
+    return (
+      extractJsonObjectByKeys(rawText, ROUTINE_FIT_REQUIRED_STRUCTURED_KEYS) ||
+      parseJsonOnlyObject(rawText) ||
+      extractJsonObject(rawText)
+    );
+  })();
+  const candidate =
+    structuredCandidate && typeof structuredCandidate === 'object' && !Array.isArray(structuredCandidate)
+      ? structuredCandidate
+      : textCandidate && typeof textCandidate === 'object' && !Array.isArray(textCandidate)
+        ? textCandidate
+        : null;
+
+  if (!candidate) {
+    return {
+      ok: false,
+      value: null,
+      failure_reason: isRoutineFitClarifyLikeResponse(upstream) ? 'clarify_like_response' : 'json_parse_failed',
+      missing_keys: [],
+      partial_structured: false,
+      partial_dimensions: [],
+    };
+  }
+
+  const validation = validateRoutineFitStructuredPayload(candidate);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      value: null,
+      failure_reason: validation.failure_reason,
+      missing_keys: validation.missing_keys,
+      partial_structured: false,
+      partial_dimensions: [],
+    };
+  }
+
+  return {
+    ok: true,
+    value: validation.value,
+    failure_reason: null,
+    missing_keys: [],
+    partial_structured: validation.partial_structured,
+    partial_dimensions: validation.partial_dimensions,
+  };
+}
+
+function getRoutineFitPayloadFromLastAnalysis(lastAnalysis) {
+  if (!isPlainObject(lastAnalysis)) return null;
+  const candidate =
+    isPlainObject(lastAnalysis.routine_fit)
+      ? lastAnalysis.routine_fit
+      : isPlainObject(lastAnalysis.routine_fit_summary)
+        ? lastAnalysis.routine_fit_summary
+        : null;
+  if (!candidate) return null;
+  const card = buildRoutineFitSummaryCard(candidate, 'stored');
+  return isPlainObject(card && card.payload) ? card.payload : null;
+}
+
+function collectRoutineFitLowDimensions(routineFit, { max = 2 } = {}) {
+  const payload = isPlainObject(routineFit) ? routineFit : {};
+  const dims = isPlainObject(payload.dimension_scores) ? payload.dimension_scores : {};
+  return ROUTINE_FIT_DIMENSION_KEYS
+    .map((key) => {
+      const value = isPlainObject(dims[key]) ? dims[key] : {};
+      const rawScore = Number(value.score);
+      const score = Number.isFinite(rawScore) ? Math.max(0, Math.min(1, rawScore)) : 0.5;
+      return {
+        key,
+        score,
+        note: String(value.note || '').trim(),
+      };
+    })
+    .sort((a, b) => a.score - b.score)
+    .slice(0, Math.max(0, Math.trunc(Number(max) || 0)));
 }
 
 function hasProfileEchoFormulaIntent(lines = []) {
@@ -42658,6 +43214,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         let visionDecisionForReport = null;
         let visionLayer = null;
         let reportLayer = null;
+        let reportCanonical = null;
+        let deepeningRuntime = null;
         let llmInputHash = null;
         let llmInputHashPrefix = null;
         let deterministicFallbackReason = null;
@@ -43088,6 +43646,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           if (reportResult.ok && reportResult.layer) {
             reportLayer = reportResult.layer;
+            reportCanonical = reportResult.canonical || reportCanonical;
             analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
             recordAuroraSkinSemanticGuard({
               stage: 'report',
@@ -43103,6 +43662,52 @@ function mountAuroraBffRoutes(app, { logger }) {
               promptVersion: reportResult.prompt_version,
               locale: ctx.lang,
             });
+            const deepeningContext = buildMainlineDeepeningDto({
+              language: ctx.lang,
+              promptVersion,
+              userRequestedPhoto,
+              photosProvided,
+              hasRoutine,
+              routineCandidate,
+              profileSummary,
+              recentLogsSummary,
+              qualityObject: reportDto && reportDto.quality,
+              reportCanonical,
+              visionCanonical: visionRuntime && visionRuntime.canonical ? visionRuntime.canonical : null,
+            });
+            if (deepeningContext && deepeningContext.dto) {
+              deepeningRuntime = await runGeminiDeepeningStrategy({
+                deepeningDto: deepeningContext.dto,
+                language: ctx.lang,
+                promptVersion: deepeningContext.promptVersion,
+                profiler,
+              });
+              if (deepeningRuntime && deepeningRuntime.ok && deepeningRuntime.layer) {
+                reportLayer = {
+                  ...reportLayer,
+                  deepening: deepeningRuntime.layer,
+                };
+              } else {
+                reportLayer = {
+                  ...reportLayer,
+                  deepening: renderDeepeningCanonicalLayer(
+                    {
+                      phase: deepeningContext.phasePlan.phase,
+                      summary_priority:
+                        reportCanonical && reportCanonical.summary_focus
+                          ? reportCanonical.summary_focus.priority
+                          : 'mixed',
+                      advice_items:
+                        reportCanonical && Array.isArray(reportCanonical.two_week_focus) && reportCanonical.two_week_focus.length
+                          ? reportCanonical.two_week_focus
+                          : ['confirm_tolerance'],
+                      question_intent: deepeningContext.phasePlan.question_intent,
+                    },
+                    { lang: ctx.lang },
+                  ),
+                };
+              }
+            }
           } else {
             const reportFailureRaw = reportResult.reason || 'report_output_invalid';
             const reportFailureReason = normalizeReportFailureReason(reportFailureRaw) || 'UNKNOWN';
@@ -43740,6 +44345,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           lowConfidenceRuleBased,
         });
         let routineFitCard = null;
+        let routineFitFailureReason = null;
+        let routineFitRetryCount = 0;
+        let routineFitPartialStructured = false;
+        let routineFitPartialDimensions = [];
         if (routineFitPlan.shouldEvaluateRoutineFit) {
           routineProductEvents.push(
             makeEvent(ctx, 'routine_fit_evaluation_started', {
@@ -43767,38 +44376,119 @@ function mountAuroraBffRoutes(app, { logger }) {
             language: ctx.lang,
           });
 
-          try {
-            const fitUpstream = await auroraChat({
-              baseUrl: AURORA_DECISION_BASE_URL,
-              query: fitPrompt,
-              timeoutMs: Math.min(12000, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS || 12000),
-              llm_provider: 'gemini',
-              llm_model: SKIN_VISION_MODEL_GEMINI || 'gemini-3-flash-preview',
-            });
+          for (let attempt = 0; attempt < 2 && !routineFitCard; attempt += 1) {
+            const attemptPrompt = attempt === 0 ? fitPrompt : buildRoutineFitRetryPrompt(fitPrompt, ctx.lang);
+            try {
+              const fitUpstream = await auroraChat({
+                baseUrl: AURORA_DECISION_BASE_URL,
+                query: attemptPrompt,
+                timeoutMs: Math.min(12000, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS || 12000),
+                llm_provider: 'gemini',
+                llm_model: SKIN_VISION_MODEL_GEMINI || 'gemini-3-flash-preview',
+                intent_hint: 'routine_fit_summary',
+                disallow_clarify: true,
+                required_structured_keys: ROUTINE_FIT_REQUIRED_STRUCTURED_KEYS,
+              });
 
-            if (fitUpstream && fitUpstream.structured && typeof fitUpstream.structured === 'object') {
-              routineFitCard = buildRoutineFitSummaryCard(fitUpstream.structured, ctx.request_id);
-            } else if (fitUpstream && fitUpstream.text) {
-              try {
-                const parsed = JSON.parse(fitUpstream.text);
-                routineFitCard = buildRoutineFitSummaryCard(parsed, ctx.request_id);
-              } catch {
-                logger?.warn({ request_id: ctx.request_id }, 'aurora bff: routine fit JSON parse failed');
+              const parsedFit = parseRoutineFitUpstreamResult(fitUpstream);
+              if (parsedFit.ok && parsedFit.value) {
+                routineFitCard = buildRoutineFitSummaryCard(parsedFit.value, ctx.request_id);
+                routineFitFailureReason = null;
+                routineFitRetryCount = attempt;
+                routineFitPartialStructured = Boolean(parsedFit.partial_structured);
+                routineFitPartialDimensions = Array.isArray(parsedFit.partial_dimensions)
+                  ? parsedFit.partial_dimensions.slice(0, ROUTINE_FIT_DIMENSION_KEYS.length)
+                  : [];
+                break;
               }
+
+              routineFitFailureReason = parsedFit.failure_reason || 'json_parse_failed';
+              routineFitRetryCount = attempt;
+              if (attempt === 0) {
+                logger?.warn(
+                  {
+                    request_id: ctx.request_id,
+                    failure_reason: routineFitFailureReason,
+                    missing_keys: parsedFit.missing_keys,
+                  },
+                  'aurora bff: routine fit evaluation retrying after invalid structured output',
+                );
+              }
+            } catch (err) {
+              routineFitFailureReason = 'upstream_error';
+              routineFitRetryCount = attempt;
+              logger?.warn(
+                { err: err && err.message ? err.message : String(err), request_id: ctx.request_id, attempt: attempt + 1 },
+                'aurora bff: routine fit evaluation failed',
+              );
             }
-          } catch (err) {
-            logger?.warn(
-              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
-              'aurora bff: routine fit evaluation failed',
+          }
+
+          if (!routineFitCard) {
+            recordAuroraSkinFlowMetric({
+              stage: `routine_fit_${String(routineFitFailureReason || 'failed').slice(0, 48)}`,
+              hit: true,
+            });
+          }
+          recordAuroraSkinFlowMetric({ stage: 'routine_fit_evaluated', hit: true });
+          recordAuroraSkinFlowMetric({ stage: 'routine_fit_emitted', hit: Boolean(routineFitCard) });
+          logger?.info(
+            { kind: 'metric', name: 'aurora.skin.routine_fit.emitted_rate', value: routineFitCard ? 1 : 0 },
+            'metric',
+          );
+          if (routineFitCard && routineFitPartialStructured) {
+            logger?.info(
+              { kind: 'metric', name: 'aurora.skin.routine_fit.partial_structured_rate', value: 1 },
+              'metric',
             );
           }
 
           routineProductEvents.push(
             makeEvent(ctx, 'routine_fit_evaluation_completed', {
+              candidate_count: routineProductCandidates.length,
               fit_card_emitted: Boolean(routineFitCard),
               overall_fit: routineFitCard && routineFitCard.payload ? routineFitCard.payload.overall_fit : null,
+              failure_reason: routineFitCard ? null : routineFitFailureReason || 'unknown',
+              retry_count: routineFitRetryCount,
+              partial_structured: routineFitPartialStructured,
+              partial_dimensions: routineFitPartialDimensions,
             }),
           );
+        }
+
+        if (routineFitCard && analysisSummaryPayload && typeof analysisSummaryPayload === 'object') {
+          analysisSummaryPayload.routine_fit = routineFitCard.payload;
+        }
+
+        if (routineFitCard && persistLastAnalysis && analysis) {
+          try {
+            const analysisWithFollowups = {
+              ...analysis,
+              ...(ingredientPlan ? {
+                ingredient_plan: {
+                  targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
+                    ingredient_id: t.ingredient_id,
+                    ingredient_name: t.ingredient_name,
+                    role: t.role,
+                    priority: t.priority,
+                  })) : [],
+                  avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
+                    ingredient_id: a.ingredient_id,
+                    ingredient_name: a.ingredient_name,
+                    severity: a.severity,
+                    reason: a.reason,
+                  })) : [],
+                },
+              } : {}),
+              routine_fit: routineFitCard.payload,
+            };
+            await saveLastAnalysisForIdentity(
+              { auroraUid: identity.auroraUid, userId: identity.userId },
+              { analysis: analysisWithFollowups, lang: ctx.lang },
+            );
+          } catch {
+            // non-critical: follow-up chat can still use the current response card
+          }
         }
 
         if (routineFitPlan.shouldQueueKbBackfill) {
@@ -46514,6 +47204,40 @@ function mountAuroraBffRoutes(app, { logger }) {
         const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
         return makeAssistantMessage(text, format);
       };
+      const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim());
+      if (isAnalysisFollowupAction) {
+        const followup = buildAnalysisFollowupContent({
+          actionId: String(actionId || '').trim(),
+          lastAnalysis: profile && profile.lastAnalysis,
+          language: ctx.lang,
+          requestId: ctx.request_id,
+          replyText: actionReplyText,
+        });
+        recordAuroraSkinFlowMetric({ stage: 'analysis_followup_action', hit: true });
+        recordAuroraSkinFlowMetric({
+          stage: `analysis_followup_${String(actionId || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(-48)}`,
+          hit: true,
+        });
+        logger?.info(
+          { kind: 'metric', name: 'aurora.skin.analysis_followup.routed_rate', value: 1 },
+          'metric',
+        );
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(followup.assistant_text),
+          suggested_chips: Array.isArray(followup.suggested_chips) ? followup.suggested_chips : [],
+          cards: Array.isArray(followup.cards) ? followup.cards : [],
+          session_patch: {},
+          events: [
+            makeEvent(ctx, 'analysis_followup_action_routed', {
+              action_id: String(actionId || '').trim(),
+              used_last_analysis: Boolean(followup.used_last_analysis),
+              missing_context: Boolean(followup.missing_context),
+              fell_back_to_generic: false,
+            }),
+          ],
+        });
+        return sendChatEnvelope(envelope);
+      }
       const isFollowupAlternativesAction = String(actionId || '').trim().toLowerCase() === 'chat.followup.alternatives';
       if (isFollowupAlternativesAction) {
         const followupData =
@@ -52388,9 +53112,15 @@ const __internal = {
   applyPhotoClaimConsistency,
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
+  buildAnalysisFollowupContent,
   reconcileIngredientPlanWithProductCards,
   buildRoutineFitSummaryPrompt,
   buildRoutineFitSummaryCard,
+  buildRoutineFitRetryPrompt,
+  validateRoutineFitStructuredPayload,
+  parseRoutineFitUpstreamResult,
+  getRoutineFitPayloadFromLastAnalysis,
+  collectRoutineFitLowDimensions,
   resolveRoutineFitAnalysisPlan,
   buildSkinAnalysisContextForPrefix,
   buildAnalysisEvidence,
@@ -52421,6 +53151,10 @@ const __internal = {
   applyLowConfidenceRecoGuard,
   envelopeRequiresConservativeRecoGuard,
   applyLowOrMediumRecoGuardToEnvelope,
+  resolveSkinDeepeningPromptVersion,
+  extractSkinDeepeningSymptoms,
+  resolveSkinDeepeningPhase,
+  buildMainlineDeepeningDto,
   buildEmotionalPreamble,
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,
