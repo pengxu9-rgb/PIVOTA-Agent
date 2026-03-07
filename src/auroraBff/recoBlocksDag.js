@@ -679,13 +679,15 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
   const catalogTimeoutFloorMs = CATALOG_ANN_TIMEOUT_FLOOR_BY_MODE_MS[mode] || CATALOG_ANN_TIMEOUT_FLOOR_BY_MODE_MS.main_path;
   const catalogTimeoutBudgetCapMs =
     mode === 'main_path'
-      ? Math.max(260, totalBudgetMs - Math.max(220, timeouts.on_page_related) - 80)
+      ? Math.max(40, totalBudgetMs - Math.max(40, Math.min(timeouts.on_page_related, 220)) - 40)
       : mode === 'sync_repair'
-        ? Math.max(320, totalBudgetMs - Math.max(180, timeouts.on_page_related) - 80)
-        : Math.max(420, totalBudgetMs - Math.max(120, timeouts.on_page_related) - 60);
-  const catalogTimeoutForStageA = Math.max(
-    catalogTimeoutFloorMs,
-    Math.min(timeouts.catalog_ann, catalogTimeoutBudgetCapMs),
+        ? Math.max(40, totalBudgetMs - Math.max(40, Math.min(timeouts.on_page_related, 180)) - 40)
+        : Math.max(40, totalBudgetMs - Math.max(40, Math.min(timeouts.on_page_related, 120)) - 30);
+  // Respect per-mode timeout floors when the overall budget can afford them, but do not
+  // consume the entire DAG budget in low-budget paths that still need on-page fallback.
+  const catalogTimeoutForStageA = Math.min(
+    catalogTimeoutBudgetCapMs,
+    Math.max(catalogTimeoutFloorMs, timeouts.catalog_ann),
   );
 
   const stageA = await Promise.all([
@@ -779,6 +781,11 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     .filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
 
   const needCompetitorFallback = !compPool.length || diagnostics.blocks.catalog_ann.timeout || diagnostics.blocks.kb_backfill.timeout;
+  const buildRetryDeadlineMs = () => {
+    if (onPageMode !== 'fallback_only' || relPool.length > 0) return deadlineMs;
+    const reserveMs = Math.max(40, Math.min(timeouts.on_page_related, 120));
+    return deadlineMs - reserveMs;
+  };
   if (needCompetitorFallback) {
     if (!compPool.length || diagnostics.blocks.kb_backfill.timeout) {
       addFallbackToken(diagnostics.fallbacks_used, 'kb_or_cache_competitors');
@@ -789,7 +796,7 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
         ctx,
         timeoutMs: Math.max(120, timeouts.kb_backfill),
         budgetMs: totalBudgetMs,
-        deadlineMs,
+        deadlineMs: buildRetryDeadlineMs(),
         defaultSourceType: defaultSourceTypeBySource.kb_backfill,
         diagnostics,
       });
@@ -821,7 +828,7 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
         ctx,
         timeoutMs: annRetryTimeoutMs,
         budgetMs: totalBudgetMs,
-        deadlineMs,
+        deadlineMs: buildRetryDeadlineMs(),
         defaultSourceType: defaultSourceTypeBySource.catalog_ann,
         diagnostics,
       });

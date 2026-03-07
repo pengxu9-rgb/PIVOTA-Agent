@@ -317,8 +317,13 @@ function buildVisionAttemptBundle({ language, visionDto, promptVersion, revision
   };
 }
 
-function buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint } = {}) {
-  const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
+function buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint, lifecycleInstructions } = {}) {
+  const bundle = buildSkinReportPromptBundle({
+    language,
+    dto: reportDto,
+    promptVersion,
+    lifecycleInstructions,
+  });
   return {
     bundle,
     userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt,
@@ -674,8 +679,14 @@ async function runGeminiReportStrategy({
   promptVersion,
   profiler,
   timeoutMs,
+  lifecycleInstructions,
 } = {}) {
-  const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
+  const bundle = buildSkinReportPromptBundle({
+    language,
+    dto: reportDto,
+    promptVersion,
+    lifecycleInstructions,
+  });
   const isCanonical = isSkinPromptV3(promptVersion);
   let retryAttempted = 0;
 
@@ -697,7 +708,13 @@ async function runGeminiReportStrategy({
 
   const attempt = async (revisionHint) => {
     const promptBundle = isCanonical
-      ? buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint })
+      ? buildReportAttemptBundle({
+          language,
+          reportDto,
+          promptVersion,
+          revisionHint,
+          lifecycleInstructions,
+        })
       : { bundle, userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt };
     return await callGeminiJson({
       systemInstruction: promptBundle.bundle.systemInstruction,
