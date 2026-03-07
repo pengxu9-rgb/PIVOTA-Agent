@@ -1,6 +1,12 @@
 const OpenAI = require('openai');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
-const GEMINI_MODEL = String(process.env.DIAGNOSIS_V2_GEMINI_MODEL || 'gemini-2.0-flash').trim();
+const GEMINI_MODEL = resolveNonImageGeminiModel({
+  model: String(process.env.DIAGNOSIS_V2_GEMINI_MODEL || process.env.GEMINI_MODEL || '').trim(),
+  fallbackModel: 'gemini-3-flash-preview',
+  envSource: process.env.DIAGNOSIS_V2_GEMINI_MODEL ? 'DIAGNOSIS_V2_GEMINI_MODEL' : 'GEMINI_MODEL',
+  callPath: 'diagnosis_v2',
+}).effectiveModel;
 const OPENAI_MODEL = String(process.env.DIAGNOSIS_V2_OPENAI_MODEL || 'gpt-4o-mini').trim();
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || '').trim();
 const REQUEST_TIMEOUT_MS = 15000;
