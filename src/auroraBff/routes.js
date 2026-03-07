@@ -7207,9 +7207,20 @@ function buildInciStatus({ gapCodes = [], consensusResult = null, sources = [] }
 
 function normalizeInciIngredientName(raw) {
   const source = String(raw || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\[\s*more\s*\]\s*/gi, ' ')
+    .replace(/\(\s*more\s*\)\s*/gi, ' ')
+    .replace(/^(?:show|read|view|see)\s+more\s*[:\-]?\s*/i, '')
+    .replace(/\b(?:show|read|view|see)\s+more\b/gi, ' ')
+    .replace(/^(?:full|inactive|active|key|main|other)\s+ingredients?\s*[:：\-]?\s*/i, '')
+    .replace(/^ingredients?\s*[:：\-]?\s*/i, '')
+    .replace(/^[-•·\s]+/, '')
+    .replace(/\s*[•·]\s*/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (!source) return '';
+  if (/^(?:full|inactive|active|key|main|other)\s+ingredients?$/i.test(source)) return '';
+  if (/^ingredients?$/i.test(source)) return '';
   return source
     .split(/\s+/)
     .map((token) => {
@@ -8760,6 +8771,55 @@ function isLikelyNoiseCompetitorName(name) {
   return false;
 }
 
+const GENERIC_RELATED_NAME_TOKENS = new Set([
+  'moisturizer',
+  'moisturizing',
+  'cream',
+  'lotion',
+  'cleanser',
+  'serum',
+  'toner',
+  'sunscreen',
+  'sunblock',
+  'spf',
+  'uv',
+  'protection',
+  'shield',
+  'hydrating',
+  'hydration',
+  'gel',
+  'balm',
+  'face',
+  'day',
+  'night',
+]);
+
+function isLikelyGenericRelatedCandidateName(name, candidate = null) {
+  const text = String(name || '').trim().toLowerCase();
+  if (!text) return true;
+  void candidate;
+
+  const compact = text
+    .replace(/[^a-z0-9+% ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!compact) return true;
+
+  if (/^(?:moisturizer|moisturizing cream|cleanser|serum|toner|sunscreen|sunblock|spf(?:\s*\d{1,2}\+?)?)$/.test(compact)) {
+    return true;
+  }
+
+  const tokens = compact.split(' ').filter(Boolean);
+  if (!tokens.length || tokens.length > 3) return false;
+  const onlyGenericTokens = tokens.every((token) => {
+    if (GENERIC_RELATED_NAME_TOKENS.has(token)) return true;
+    if (/^spf\d{0,2}\+?$/.test(token)) return true;
+    if (/^\d{1,2}\+?$/.test(token)) return true;
+    return false;
+  });
+  return onlyGenericTokens;
+}
+
 function initCandidateFilterStats(seed = null) {
   const base = seed && typeof seed === 'object' && !Array.isArray(seed) ? seed : {};
   return {
@@ -8813,6 +8873,7 @@ function sanitizeCompetitorCandidates(candidates, max = 10, options = null) {
     if (!row) continue;
     const name = pickFirstTrimmed(row.name, row.display_name);
     if (!name || isLikelyNoiseCompetitorName(name)) continue;
+    if ((pool === 'related_products' || pool === 'related') && isLikelyGenericRelatedCandidateName(name, row)) continue;
     if (enforceSkincare) {
       const guard = evaluateAnchorProductSkincareGuard(row, { strictFilter });
       if (!guard.ok && (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category')) {
@@ -23026,6 +23087,12 @@ function asStringArray(value, max = 8) {
     if (out.length >= max) break;
   }
   return out;
+}
+
+function asLooseStringArray(value, max = 8) {
+  if (Array.isArray(value)) return asStringArray(value, max);
+  const single = typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
+  return single ? [single].slice(0, Math.max(1, max)) : [];
 }
 
 const PRODUCT_INTEL_SKINCARE_RE =
@@ -38011,6 +38078,55 @@ function upgradeLegacyProductAnalysisToV4(payload, { lang = 'EN' } = {}) {
   };
 }
 
+function isDiagnosticAssessmentReasonLine(input) {
+  const text = String(input || '').trim();
+  if (!text) return false;
+  if (/^(?:next step|下一步)\s*[:：]/i.test(text)) return true;
+  return /(official[-\s]?page|官方页面|公开可访问|publicly accessible|cloudflare|access denied|site policy \(403\)|degraded analysis path|降级路径|paste (?:the )?full inci|upload package inci|粘贴完整 inci|贴包装 inci|share an accessible official page|upstream did not return evidence details|upstream did not return usable reasoning|detected key ingredients|识别到的关键成分|^i extracted the inci list directly from the product page|^已从产品页解析到 inci)/i
+    .test(text);
+}
+
+function sanitizeAssessmentReasonsForPublic(input, { lang = 'EN', min = 0, max = 8, fallbacks = [] } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const normalizeLines = (lines) => uniqCaseInsensitiveStrings(
+    asStringArray(lines)
+      .map((line) => String(line || '').trim())
+      .filter(Boolean)
+      .filter((line) => !isDiagnosticAssessmentReasonLine(line))
+      .filter((line) => !/^how to use[:：]/i.test(String(line || '').trim())),
+    Math.max(max + 4, 12),
+  ).slice(0, max);
+
+  const cleaned = normalizeLines(input);
+  if (cleaned.length >= min) return cleaned;
+
+  const fromFallbacks = normalizeLines(fallbacks);
+  const merged = uniqCaseInsensitiveStrings([...cleaned, ...fromFallbacks], max).slice(0, max);
+  if (merged.length >= min) return merged;
+  if (min <= 0) return merged;
+
+  const genericFallback = isCn
+    ? '当前结论基于已清洗证据，请结合成分与风险模块查看细节。'
+    : 'Reasoning was compacted to user-facing evidence; see ingredients and watchouts for details.';
+  return uniqCaseInsensitiveStrings([...merged, genericFallback], max).slice(0, max);
+}
+
+function sanitizeUnknownVerdictReasonsForPublic(input, { lang = 'EN', min = 2, max = 8 } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const cleaned = sanitizeAssessmentReasonsForPublic(input, { lang, min: 0, max });
+  if (cleaned.length >= min) return cleaned;
+  const fallback = isCn
+    ? [
+      '当前证据不足，暂时无法给出高置信度的产品结论。',
+      '该结论仅作临时参考，后续补充证据后应重新评估。',
+    ]
+    : [
+      'Current evidence is insufficient for a high-confidence product verdict.',
+      'Treat this result as provisional until more complete evidence is available.',
+    ];
+  return uniqCaseInsensitiveStrings([...cleaned, ...fallback], max).slice(0, max);
+}
+
 function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null } = {}) {
   const base = isPlainObject(payload) ? reconcileProductAnalysisConsistency(payload, { lang }) : payload;
   const p = isPlainObject(base) ? { ...base } : base;
@@ -38045,6 +38161,18 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
   });
   if (nextAssessment && summaryCandidate && String(nextAssessment.summary || '').trim() !== summaryCandidate) {
     nextAssessment.summary = summaryCandidate;
+  }
+  if (nextAssessment) {
+    nextAssessment.reasons = sanitizeAssessmentReasonsForPublic(nextAssessment.reasons, {
+      lang,
+      min: 0,
+      max: 8,
+      fallbacks: [
+        summaryCandidate,
+        ...asStringArray(nextAssessment.top_takeaways ?? nextAssessment.topTakeaways, 4),
+        ...asStringArray(nextAssessment.formula_intent ?? nextAssessment.formulaIntent, 4),
+      ],
+    });
   }
 
   const verdictToken = String(nextAssessment?.verdict || '').trim().toLowerCase();
@@ -38082,29 +38210,10 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
     };
   }
   const relaxedUnknownMode = AURORA_RULE_RELAX_AGGRESSIVE || AURORA_PRODUCT_GUARDRAIL_TELEMETRY_ONLY;
-
-  const isCn = String(lang || '').toUpperCase() === 'CN';
-  const reasons = uniqCaseInsensitiveStrings(
+  const reasons = sanitizeUnknownVerdictReasonsForPublic(
     Array.isArray(nextAssessment?.reasons) ? nextAssessment.reasons : [],
-    10,
+    { lang, min: 2, max: 8 },
   );
-  if (reasons.length < 2) {
-    reasons.push(
-      isCn
-        ? '当前证据链不完整（成分/舆情/专家注释存在缺口），暂无法给出高置信结论。'
-        : 'Evidence is incomplete (ingredient/social/expert coverage has gaps), so confidence is limited.',
-    );
-  }
-  const hasActionableReason = reasons.some((line) =>
-    /(please|paste|share|provide|retry|re-run|upload|index|提供|粘贴|贴上|补充|重试|换一个|入库)/i.test(String(line || '')),
-  );
-  if (!hasActionableReason) {
-    reasons.push(
-      isCn
-        ? '下一步：请粘贴完整 INCI 或更换可访问的官方页面后重试。'
-        : 'Next step: paste the full INCI or share an accessible official page and re-run.',
-    );
-  }
 
   const hasDiagnosticCode = payloadMissing.some((token) =>
     /(analysis_|evidence_|product_not_resolved|url_fetch_|on_page_fetch_blocked|regulatory_source_used|incidecoder_)/i.test(String(token || '')),
@@ -38118,7 +38227,7 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
   );
   if (!evidenceMissing.length) evidenceMissing.push('evidence_missing');
 
-  return reconcileProductAnalysisConsistency(applyProductAnalysisGapContract({
+  const reconciledUnknown = reconcileProductAnalysisConsistency(applyProductAnalysisGapContract({
     ...state,
     ...(nextAssessment ? { assessment: { ...nextAssessment, reasons: reasons.slice(0, 8) } } : {}),
     ...(evidenceForUnknown ? { evidence: { ...evidenceForUnknown, missing_info: evidenceMissing } } : {}),
@@ -38131,6 +38240,16 @@ function enforceUnknownVerdictQuality(payload, { lang = 'EN', inciStatus = null 
       }
       : {}),
   }), { lang });
+  if (!isPlainObject(reconciledUnknown)) return reconciledUnknown;
+  const reconciledAssessment = isPlainObject(reconciledUnknown.assessment) ? { ...reconciledUnknown.assessment } : null;
+  if (!reconciledAssessment) return reconciledUnknown;
+  return {
+    ...reconciledUnknown,
+    assessment: {
+      ...reconciledAssessment,
+      reasons: sanitizeUnknownVerdictReasonsForPublic(reconciledAssessment.reasons, { lang, min: 1, max: 8 }),
+    },
+  };
 }
 
 const DAG_DEBUG_PATTERNS = [
@@ -38202,6 +38321,120 @@ function buildDataQualityBanner(payload, { lang = 'EN' } = {}) {
   return null;
 }
 
+function normalizeProductAnalysisOptionalShapes(payload) {
+  if (!isPlainObject(payload)) return payload;
+
+  const normalizeSourceRows = (value, max = 8) => {
+    const rows = Array.isArray(value) ? value : (isPlainObject(value) ? [value] : []);
+    return rows
+      .map((item) => {
+        if (!isPlainObject(item)) return null;
+        const type = String(item.type || '').trim().toLowerCase();
+        const url = String(item.url || '').trim();
+        const label = String(item.label || '').trim();
+        const confidence = Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null;
+        const ingredientCount = Number.isFinite(Number(item.ingredient_count)) ? Number(item.ingredient_count) : null;
+        if (!type && !url && !label) return null;
+        return {
+          ...item,
+          ...(type ? { type } : {}),
+          ...(url ? { url } : {}),
+          ...(label ? { label } : {}),
+          ...(confidence != null ? { confidence } : {}),
+          ...(ingredientCount != null ? { ingredient_count: ingredientCount } : {}),
+        };
+      })
+      .filter(Boolean)
+      .slice(0, max);
+  };
+
+  const out = { ...payload };
+  const assessment = isPlainObject(out.assessment) ? { ...out.assessment } : {};
+  if (Object.prototype.hasOwnProperty.call(assessment, 'how_to_use') && !isPlainObject(assessment.how_to_use)) {
+    delete assessment.how_to_use;
+  }
+  if (!assessment.how_to_use && isPlainObject(assessment.howToUse)) {
+    assessment.how_to_use = assessment.howToUse;
+  }
+  if (isPlainObject(assessment.how_to_use)) {
+    assessment.how_to_use = {
+      ...assessment.how_to_use,
+      pairing_rules: asLooseStringArray(assessment.how_to_use.pairing_rules, 8),
+      stop_signs: asLooseStringArray(assessment.how_to_use.stop_signs, 8),
+    };
+  }
+  out.assessment = assessment;
+
+  const evidence = isPlainObject(out.evidence) ? { ...out.evidence } : {};
+  const science = isPlainObject(evidence.science) ? { ...evidence.science } : {};
+  science.key_ingredients = asLooseStringArray(science.key_ingredients ?? science.keyIngredients, 40);
+  science.mechanisms = asLooseStringArray(science.mechanisms, 20);
+  science.fit_notes = asLooseStringArray(science.fit_notes ?? science.fitNotes, 20);
+  science.risk_notes = asLooseStringArray(science.risk_notes ?? science.riskNotes, 20);
+
+  const evidenceSocial = isPlainObject(evidence.social_signals) ? { ...evidence.social_signals } : {};
+  evidenceSocial.typical_positive = asLooseStringArray(
+    evidenceSocial.typical_positive ?? evidenceSocial.typicalPositive,
+    20,
+  );
+  evidenceSocial.typical_negative = asLooseStringArray(
+    evidenceSocial.typical_negative ?? evidenceSocial.typicalNegative,
+    20,
+  );
+  evidenceSocial.risk_for_groups = asLooseStringArray(
+    evidenceSocial.risk_for_groups ?? evidenceSocial.riskForGroups,
+    20,
+  );
+
+  evidence.science = science;
+  evidence.social_signals = evidenceSocial;
+  evidence.expert_notes = asLooseStringArray(evidence.expert_notes ?? evidence.expertNotes, 20);
+  evidence.missing_info = asLooseStringArray(evidence.missing_info, 20);
+  evidence.sources = normalizeSourceRows(evidence.sources, 8);
+  if (!Array.isArray(evidence.key_ingredients_by_function)) {
+    evidence.key_ingredients_by_function = isPlainObject(evidence.key_ingredients_by_function)
+      ? [evidence.key_ingredients_by_function]
+      : [];
+  }
+  out.evidence = evidence;
+
+  const socialSignals = isPlainObject(out.social_signals) ? { ...out.social_signals } : {};
+  const overallSummary = isPlainObject(socialSignals.overall_summary) ? { ...socialSignals.overall_summary } : {};
+  overallSummary.top_pos_themes = asLooseStringArray(
+    overallSummary.top_pos_themes ?? overallSummary.topPosThemes,
+    20,
+  );
+  overallSummary.top_neg_themes = asLooseStringArray(
+    overallSummary.top_neg_themes ?? overallSummary.topNegThemes,
+    20,
+  );
+  overallSummary.watchouts = asLooseStringArray(overallSummary.watchouts, 20);
+  socialSignals.overall_summary = overallSummary;
+  socialSignals.platforms = Array.isArray(socialSignals.platforms)
+    ? socialSignals.platforms.map((item) => (isPlainObject(item) ? item : null)).filter(Boolean)
+    : [];
+  out.social_signals = socialSignals;
+
+  const inciStatus = isPlainObject(out.inci_status) ? { ...out.inci_status } : {};
+  inciStatus.sources = normalizeSourceRows(inciStatus.sources, 8);
+  out.inci_status = inciStatus;
+  out.provenance = isPlainObject(out.provenance) ? { ...out.provenance } : {};
+
+  for (const blockName of ['competitors', 'dupes', 'related_products']) {
+    const block = isPlainObject(out[blockName]) ? { ...out[blockName] } : {};
+    const candidates = Array.isArray(block.candidates)
+      ? block.candidates
+      : (isPlainObject(block.candidates) ? [block.candidates] : []);
+    block.candidates = candidates;
+    if (Object.prototype.hasOwnProperty.call(block, '_meta') && !isPlainObject(block._meta)) {
+      delete block._meta;
+    }
+    out[blockName] = block;
+  }
+
+  return out;
+}
+
 function validateAndRepairAtomicLists(assessment) {
   if (!isPlainObject(assessment)) return assessment;
   const out = { ...assessment };
@@ -38238,11 +38471,13 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
     const qualityInput = v4PromptEnabled
       ? upgradeLegacyProductAnalysisToV4(contractedPayload, { lang })
       : contractedPayload;
-    const qualityPayload = enforceUnknownVerdictQuality(qualityInput, {
+    const normalizedQualityInput = normalizeProductAnalysisOptionalShapes(qualityInput);
+    const qualityPayload = enforceUnknownVerdictQuality(normalizedQualityInput, {
       lang,
-      inciStatus: isPlainObject(qualityInput?.inci_status) ? qualityInput.inci_status : null,
+      inciStatus: isPlainObject(normalizedQualityInput?.inci_status) ? normalizedQualityInput.inci_status : null,
     });
-    const sanitizedPayload = isPlainObject(qualityPayload) ? { ...qualityPayload } : qualityPayload;
+    const normalizedQualityPayload = normalizeProductAnalysisOptionalShapes(qualityPayload);
+    const sanitizedPayload = isPlainObject(normalizedQualityPayload) ? { ...normalizedQualityPayload } : normalizedQualityPayload;
     if (isPlainObject(sanitizedPayload)) {
       delete sanitizedPayload.internal_debug_codes;
       delete sanitizedPayload.internalDebugCodes;
@@ -38270,7 +38505,20 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
           ...assessment,
           ...(banner ? { data_quality_banner: banner } : {}),
         });
-        sanitizedPayload.assessment = nextAssessment;
+        const publicReasons = sanitizeAssessmentReasonsForPublic(nextAssessment?.reasons, {
+          lang,
+          min: 0,
+          max: 8,
+          fallbacks: [
+            pickFirstTrimmed(nextAssessment?.summary, nextAssessment?.quick_summary, nextAssessment?.quickSummary),
+            ...asStringArray(nextAssessment?.top_takeaways ?? nextAssessment?.topTakeaways, 4),
+            ...asStringArray(nextAssessment?.formula_intent ?? nextAssessment?.formulaIntent, 4),
+          ],
+        });
+        sanitizedPayload.assessment = {
+          ...nextAssessment,
+          reasons: publicReasons,
+        };
       }
 
       const nextEvidence = isPlainObject(sanitizedPayload.evidence) ? sanitizedPayload.evidence : null;
@@ -38308,6 +38556,80 @@ function applyUnknownVerdictQualityGateToEnvelope(envelope, { lang = 'EN' } = {}
           })
           .filter((item) => item && item.function && item.ingredients.length);
         sanitizedPayload.evidence = { ...evidenceForKif, key_ingredients_by_function: validatedKif };
+      }
+
+      const ingredientIntel = isPlainObject(sanitizedPayload.ingredient_intel) ? sanitizedPayload.ingredient_intel : null;
+      if (ingredientIntel) {
+        const rawInciNormalized = Array.isArray(ingredientIntel.inci_normalized) ? ingredientIntel.inci_normalized : [];
+        const normalizedRows = rawInciNormalized
+          .map((item) => {
+            if (isPlainObject(item)) {
+              const inci = normalizeInciIngredientName(pickFirstTrimmed(item.inci, item.name, item.value));
+              if (!inci || isLikelyInvalidInciToken(inci)) return null;
+              return { ...item, inci };
+            }
+            const inci = normalizeInciIngredientName(item);
+            if (!inci || isLikelyInvalidInciToken(inci)) return null;
+            return inci;
+          })
+          .filter(Boolean);
+        const normalizedActives = (Array.isArray(ingredientIntel.actives) ? ingredientIntel.actives : [])
+          .map((item) => {
+            const row = isPlainObject(item) ? item : null;
+            if (!row) return null;
+            const name = normalizeInciIngredientName(row.name);
+            if (!name || isLikelyInvalidInciToken(name)) return null;
+            return { ...row, name };
+          })
+          .filter(Boolean);
+        const canonicalInci = canonicalizeIngredientCandidates(
+          [
+            ...splitInciList(ingredientIntel.inci_raw),
+            ...normalizedRows.map((item) => (isPlainObject(item) ? item.inci : item)),
+            ...normalizedActives.map((item) => item.name),
+          ],
+          { max: 120 },
+        );
+        const hasObjectInciRows = normalizedRows.some((item) => isPlainObject(item));
+        const normalizedObjectsByKey = new Map(
+          normalizedRows
+            .map((item) => (isPlainObject(item) ? item : null))
+            .filter(Boolean)
+            .map((item) => [String(item.inci || '').trim().toLowerCase(), item]),
+        );
+        const nextInciNormalized = hasObjectInciRows
+          ? canonicalInci.map((inci) => {
+            const key = String(inci || '').trim().toLowerCase();
+            const existing = normalizedObjectsByKey.get(key);
+            return existing || {
+              inci,
+              functions: [],
+              risks: [],
+              suitability_tags: [],
+            };
+          })
+          : canonicalInci;
+        sanitizedPayload.ingredient_intel = {
+          ...ingredientIntel,
+          ...(canonicalInci.length ? { inci_raw: canonicalInci.join(', ') } : {}),
+          inci_normalized: nextInciNormalized,
+          actives: normalizedActives,
+        };
+      }
+
+      for (const blockName of ['competitors', 'dupes', 'related_products']) {
+        const block = isPlainObject(sanitizedPayload[blockName]) ? sanitizedPayload[blockName] : null;
+        if (!block) continue;
+        const rawCandidates = Array.isArray(block.candidates) ? block.candidates : [];
+        const sanitizedCandidates = sanitizeCompetitorCandidates(rawCandidates, 10, {
+          pool: blockName,
+          enforce_skincare: true,
+          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+        });
+        sanitizedPayload[blockName] = {
+          ...block,
+          candidates: sanitizedCandidates,
+        };
       }
     }
     return {

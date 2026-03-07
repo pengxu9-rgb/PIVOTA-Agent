@@ -4260,6 +4260,143 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(relatedNames).not.toContain('SPF 50');
   });
 
+  test('applyUnknownVerdictQualityGateToEnvelope normalizes March 7 style mixed-shape payloads into stable public blocks', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.applyUnknownVerdictQualityGateToEnvelope(
+      {
+        cards: [
+          {
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Likely Suitable',
+                verdict_level: 'needs_verification',
+                summary: 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                reasons: [
+                  'Fit signal: lower irritation exposure and redness risk; keep acne/comedone control on track.',
+                  'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                ],
+                how_to_use: {
+                  when: 'AM only',
+                  frequency: 'daily',
+                  order_in_routine: 'Layer from thinnest to thickest; keep hydration before occlusive steps.',
+                  pairing_rules: 'Use daytime SPF as the final AM step.',
+                  stop_signs: ['Persistent stinging beyond 30-60 seconds'],
+                },
+                watchouts: [
+                  {
+                    text: 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                    recommendation: 'Patch test first; stop if stinging or redness persists.',
+                    status: 'possible',
+                  },
+                ],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['Acetyl Hexapeptide-8', 'Sodium Hyaluronate'],
+                  mechanisms: 'Humectant blend suggests hydration support and moisture retention.',
+                  fit_notes: ['Ingredient-source consistency is limited; cross-check with package INCI.'],
+                  risk_notes: 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                },
+                social_signals: {
+                  typical_positive: 'hydration',
+                  typical_negative: ['drying feel'],
+                  risk_for_groups: 'Sensitive skin: start low and monitor for stinging/redness.',
+                },
+                sources: [
+                  {
+                    url: 'https://www.labseries.com/product/example',
+                    type: 'official_page',
+                    label: 'labseries.com',
+                    confidence: 0.78,
+                  },
+                  'bad-source-row',
+                ],
+                expert_notes: 'INCIDecoder supplement loaded (60 ingredients, match=0.67).',
+                missing_info: 'version_verification_needed',
+                key_ingredients_by_function: {
+                  function: 'Humectants',
+                  ingredients: 'Sodium Hyaluronate',
+                  confidence: 'medium',
+                },
+              },
+              social_signals: {
+                overall_summary: {
+                  top_pos_themes: 'hydration',
+                  top_neg_themes: ['drying feel'],
+                  watchouts: 'Sensitive skin: start low and monitor for stinging/redness.',
+                },
+                platforms: [{ name: 'BrandSite' }, 'bad-platform-row'],
+              },
+              competitors: { candidates: null },
+              dupes: null,
+              related_products: {
+                candidates: {
+                  brand: 'Lab Series',
+                  name: 'Daily Defense SPF Lotion',
+                  similarity_score: 0.725,
+                  category: 'skincare',
+                  source: { type: 'on_page_related' },
+                },
+              },
+              missing_info: ['incidecoder_source_used', 'version_verification_needed'],
+              inci_status: {
+                extraction: 'success',
+                consensus_tier: 'low',
+                verification_required: true,
+                sources: {
+                  type: 'inci_decoder',
+                  url: 'https://incidecoder.com/products/lab-series-pro-ls-all-in-one-face-treatment',
+                  confidence: 0.82,
+                },
+              },
+              provenance: 'url_realtime_product_intel_async_backfill',
+            },
+          },
+        ],
+      },
+      { lang: 'EN' },
+    );
+
+    const card = Array.isArray(out?.cards) ? out.cards.find((item) => item?.type === 'product_analysis') : null;
+    const payload = card?.payload || {};
+
+    expect(payload?.assessment?.verdict).toBe('Likely Suitable');
+    expect(payload?.assessment?.verdict_level).toBe('needs_verification');
+    expect(String(payload?.assessment?.data_quality_banner || '')).toMatch(/incidecoder/i);
+    expect(Array.isArray(payload?.assessment?.how_to_use?.pairing_rules)).toBe(true);
+    expect(payload?.assessment?.how_to_use?.pairing_rules).toContain('Use daytime SPF as the final AM step.');
+    expect(Array.isArray(payload?.assessment?.watchouts)).toBe(true);
+    expect(payload?.assessment?.watchouts[0]).toEqual(
+      expect.objectContaining({
+        issue: expect.stringMatching(/fragrance-related/i),
+        status: 'possible',
+      }),
+    );
+
+    expect(Array.isArray(payload?.evidence?.science?.mechanisms)).toBe(true);
+    expect(payload?.evidence?.science?.mechanisms).toContain('Humectant blend suggests hydration support and moisture retention.');
+    expect(Array.isArray(payload?.evidence?.social_signals?.typical_positive)).toBe(true);
+    expect(payload?.evidence?.social_signals?.typical_positive).toContain('hydration');
+    expect(Array.isArray(payload?.evidence?.expert_notes)).toBe(true);
+    expect(payload?.evidence?.expert_notes).toContain('INCIDecoder supplement loaded (60 ingredients, match=0.67).');
+    expect(Array.isArray(payload?.evidence?.sources)).toBe(true);
+    expect(payload?.evidence?.sources).toHaveLength(1);
+
+    expect(Array.isArray(payload?.social_signals?.overall_summary?.top_pos_themes)).toBe(true);
+    expect(payload?.social_signals?.overall_summary?.top_pos_themes).toContain('hydration');
+    expect(Array.isArray(payload?.social_signals?.platforms)).toBe(true);
+    expect(payload?.social_signals?.platforms).toHaveLength(1);
+
+    expect(Array.isArray(payload?.competitors?.candidates)).toBe(true);
+    expect(Array.isArray(payload?.dupes?.candidates)).toBe(true);
+    expect(Array.isArray(payload?.related_products?.candidates)).toBe(true);
+    expect(payload?.related_products?.candidates).toHaveLength(1);
+    expect(Array.isArray(payload?.inci_status?.sources)).toBe(true);
+    expect(payload?.inci_status?.sources).toHaveLength(1);
+    expect(typeof payload?.provenance).toBe('object');
+  });
+
   test('shouldPersistProductIntelKb blocks KB write when INCIDecoder is the only evidence source', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const decision = __internal.shouldPersistProductIntelKb({
