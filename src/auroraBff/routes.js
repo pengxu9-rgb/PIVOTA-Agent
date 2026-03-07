@@ -12,6 +12,14 @@ const { runSkinDiagnosisV1, summarizeDiagnosisForPolicy, buildSkinAnalysisFromDi
 const { buildSkinVisionPrompt, buildSkinReportPrompt } = require('./skinLlmPrompts');
 const { buildVisionSignalsDto, buildReportSignalsDto, buildInputHashPrefix, buildQualityObject } = require('./skinSignalsDto');
 const {
+  detectRoutineLifecycleStage,
+  buildRoutineLifecycleContext,
+  buildLifecyclePromptInstructions,
+  buildSupplementaryPromptInstructions,
+  parseRoutineForSupplementary: parseRoutineForActives,
+} = require('./routineLifecycle');
+const { buildKbGroundingForPrompt } = require('./routineKbLoader');
+const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
@@ -384,9 +392,25 @@ const RECO_PROMPTS_ROOT_DIR = path.resolve(__dirname, '../../prompts');
 const RECO_MAIN_PROMPT_TEMPLATE_ID = 'reco_main_v1_0';
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const recoPromptTemplateCache = new Map();
+function readBooleanEnv(name, fallback = 'false') {
+  const raw = String(process.env[name] || fallback)
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+}
+
+function readRoutineAutoscanAnchorGuardModeEnv() {
+  const raw = String(process.env.AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE || 'strict_non_skincare')
+    .trim()
+    .toLowerCase();
+  return raw === 'inherit_global' ? 'inherit_global' : 'strict_non_skincare';
+}
+
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
-const CONFLICT_HEATMAP_V1_ENABLED = String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
+function getConflictHeatmapV1Enabled() {
+  return readBooleanEnv('AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED');
+}
 const AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_FAST_PATH || 'true')
     .trim()
@@ -459,12 +483,9 @@ const AURORA_LOOP_BREAKER_V2_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
-const AURORA_CHAT_RESPONSE_META_ENABLED = (() => {
-  const raw = String(process.env.AURORA_CHAT_RESPONSE_META_ENABLED || 'false')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
+function getChatResponseMetaEnabled() {
+  return readBooleanEnv('AURORA_CHAT_RESPONSE_META_ENABLED');
+}
 const AURORA_ROUTER_DST_PATCH_V1_ENABLED = (() => {
   const raw = String(process.env.AURORA_ROUTER_DST_PATCH_V1 || 'true')
     .trim()
@@ -539,14 +560,17 @@ const AURORA_PRODUCT_STRICT_SKINCARE_FILTER = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
-const AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE = (() => {
-  const raw = String(process.env.AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE || 'strict_non_skincare')
-    .trim()
-    .toLowerCase();
-  return raw === 'inherit_global' ? 'inherit_global' : 'strict_non_skincare';
-})();
-const AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_STRICT_NON_SKINCARE =
-  AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE === 'strict_non_skincare';
+function getRoutineAutoscanAnchorGuardMode() {
+  return readRoutineAutoscanAnchorGuardModeEnv();
+}
+
+function getRoutineAutoscanAnchorGuardStrictNonSkincare() {
+  return getRoutineAutoscanAnchorGuardMode() === 'strict_non_skincare';
+}
+
+function getRoutineProductAutoscanEnabled() {
+  return readBooleanEnv('AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED', 'true');
+}
 const AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA = (() => {
   const raw = String(process.env.AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA || 'false')
     .trim()
@@ -1096,7 +1120,7 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
   travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
   loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
-  chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
+  chat_response_meta: getChatResponseMetaEnabled(),
   router_dst_patch_v1: AURORA_ROUTER_DST_PATCH_V1_ENABLED,
   nonblocking_gate_v1: AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
   catalog_domain_guard_v1: AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED,
@@ -1109,7 +1133,7 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   kb_serve_policy: AURORA_KB_SERVE_POLICY,
   product_guardrail_mode: AURORA_PRODUCT_GUARDRAIL_MODE,
   product_strict_skincare_filter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
-  routine_autoscan_anchor_guard_mode: AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE,
+  routine_autoscan_anchor_guard_mode: getRoutineAutoscanAnchorGuardMode(),
   product_relevance_dual_llm_qa: AURORA_PRODUCT_RELEVANCE_DUAL_LLM_QA,
   product_relevance_qa_mode: AURORA_PRODUCT_RELEVANCE_QA_MODE,
   llm_qa_mode: AURORA_LLM_QA_MODE,
@@ -5165,12 +5189,44 @@ function sanitizeAssessmentAnchorForLowTrust(payload, trustContext = null) {
   const hasAnchorField =
     Object.prototype.hasOwnProperty.call(assessment, 'anchor_product') ||
     Object.prototype.hasOwnProperty.call(assessment, 'anchorProduct');
+  const currentAnchor = isPlainObject(assessment.anchor_product || assessment.anchorProduct)
+    ? (assessment.anchor_product || assessment.anchorProduct)
+    : null;
+  const internalCodes = getProductAnalysisInternalMissingCodes(payload);
+  const preserveDisplayAnchorForUrlRealtime = internalCodes.some((code) => {
+    const token = String(code || '').trim().toLowerCase();
+    return token === 'url_realtime_product_intel_used' || token === 'url_ingredient_analysis_used';
+  });
 
   const nextAssessment = { ...assessment };
 
   if (hasAnchorField) {
     delete nextAssessment.anchor_product;
     delete nextAssessment.anchorProduct;
+    if (preserveDisplayAnchorForUrlRealtime && currentAnchor) {
+      const displayAnchor = {
+        ...(pickFirstTrimmed(currentAnchor.brand, currentAnchor.brand_name, currentAnchor.brandName)
+          ? { brand: pickFirstTrimmed(currentAnchor.brand, currentAnchor.brand_name, currentAnchor.brandName) }
+          : {}),
+        ...(pickFirstTrimmed(currentAnchor.name)
+          ? { name: pickFirstTrimmed(currentAnchor.name) }
+          : {}),
+        ...(pickFirstTrimmed(currentAnchor.display_name, currentAnchor.displayName)
+          ? { display_name: pickFirstTrimmed(currentAnchor.display_name, currentAnchor.displayName) }
+          : {}),
+        ...(isPlainObject(currentAnchor.price) ? { price: currentAnchor.price } : {}),
+        ...(pickFirstTrimmed(currentAnchor.url)
+          ? { url: pickFirstTrimmed(currentAnchor.url) }
+          : {}),
+        ...(pickFirstTrimmed(currentAnchor.image_url, currentAnchor.imageUrl)
+          ? { image_url: pickFirstTrimmed(currentAnchor.image_url, currentAnchor.imageUrl) }
+          : {}),
+        ...(Array.isArray(currentAnchor.availability) ? { availability: currentAnchor.availability } : {}),
+      };
+      if (Object.keys(displayAnchor).length > 0) {
+        nextAssessment.anchor_product = displayAnchor;
+      }
+    }
   }
 
   if (isPlainObject(nextAssessment.hero_ingredient)) {
@@ -11359,7 +11415,7 @@ function scheduleProductIntelCompetitorEnrichBackfill({
   }
   if (!payloadSnapshot || typeof payloadSnapshot !== 'object' || Array.isArray(payloadSnapshot)) return;
 
-  setImmediate(async () => {
+  const timer = setTimeout(async () => {
     try {
       const assessment =
         payloadSnapshot.assessment && typeof payloadSnapshot.assessment === 'object' && !Array.isArray(payloadSnapshot.assessment)
@@ -13817,6 +13873,8 @@ function extractHeatmapStepsFromConflictDetector({ conflictDetector, contextRaw 
 let openaiClient;
 let openaiCtor;
 let openaiCtorResolved = false;
+let geminiClient = null;
+let geminiClientInitFailed = false;
 function getOpenAIConstructor() {
   if (openaiCtorResolved) return openaiCtor;
   openaiCtorResolved = true;
@@ -17679,11 +17737,43 @@ function parseRoutineIntake(routineCandidate) {
   if (!pmSteps.length && Array.isArray(source.pm_steps)) pmSteps.push(...normalizeRoutineStepArray(source.pm_steps, 'pm'));
 
   const notes = String(source.notes || source.note || source.memo || '').trim().slice(0, 800);
+  const notesProducts = extractProductNamesFromNotes(notes);
   return {
     am_steps: amSteps.slice(0, 8),
     pm_steps: pmSteps.slice(0, 8),
     notes,
+    notes_products: notesProducts,
   };
+}
+
+function extractProductNamesFromNotes(notes) {
+  if (!notes || typeof notes !== 'string') return [];
+  const text = notes.trim();
+  if (!text) return [];
+
+  const products = [];
+  const brandPatterns = [
+    /(?:用|use|using|added|switched to|changed to|trying|started)\s+(.{3,60}?)(?:[,，。.;；\n]|$)/gi,
+    /([A-Z][a-zA-Z''-]+(?:\s+[A-Z][a-zA-Z''-]+){0,5}(?:\s+(?:Serum|Cream|Lotion|Toner|Cleanser|Mask|SPF|Moisturizer|Oil|Gel|Essence|Ampoule|Mist|Balm|Sunscreen))+)/g,
+    /([A-Z][a-zA-Z''-]+(?:\s+(?:de|la|le|du|des|The)\s+)?[A-Z][a-zA-Z''-]+(?:\s+[A-Z][a-zA-Z''-]+){0,4})/g,
+  ];
+
+  for (const pattern of brandPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const candidate = (match[1] || match[0]).trim();
+      if (candidate.length >= 4 && candidate.length <= 80) {
+        const lower = candidate.toLowerCase();
+        const stopWords = ['morning', 'night', 'evening', 'routine', 'skin', 'face', 'notes', 'added', 'changed'];
+        if (!stopWords.some((sw) => lower === sw)) {
+          products.push(candidate);
+        }
+      }
+    }
+  }
+
+  const unique = [...new Set(products)];
+  return unique.slice(0, 10);
 }
 
 function mapFamilyTokenLabel(token, language) {
@@ -19460,6 +19550,44 @@ function buildRecoEntryChips(language) {
     {
       chip_id: 'chip.intake.skip_analysis',
       label: lang === 'CN' ? '先用低置信度方案' : 'Use low-confidence baseline',
+      kind: 'quick_reply',
+      data: {},
+    },
+  ];
+}
+
+function buildDiagnosisPhotoOptInPrompt(language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  return lang === 'CN'
+    ? '已收到你的肤况信息。要不要再上传一张照片让我更准？你也可以先跳过照片，我会给一份低置信度的安全基线。'
+    : "Got it — I saved your skin profile. Want to upload a photo for a more accurate analysis? You can also skip photos and I’ll give a low-confidence, safe baseline first.";
+}
+
+function buildDiagnosisPhotoOptInChips(language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  return [
+    {
+      chip_id: 'chip.intake.upload_photos',
+      label: lang === 'CN' ? '上传照片（更准）' : 'Upload a photo (more accurate)',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'diag.upload_photo',
+        trigger_source: 'action',
+        client_action: 'open_camera',
+      },
+    },
+    {
+      chip_id: 'chip.intake.skip_analysis',
+      label: lang === 'CN' ? '跳过照片（低置信度）' : 'Skip photo (low confidence)',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'diag.skip_photo_analyze',
+        trigger_source: 'action',
+      },
+    },
+    {
+      chip_id: 'chip_keep_chatting',
+      label: lang === 'CN' ? '继续聊聊' : 'Just keep chatting',
       kind: 'quick_reply',
       data: {},
     },
@@ -23425,7 +23553,7 @@ async function deepScanRoutineProductCandidate({
     ),
   );
   let anchorId = '';
-  const routineStrictNonSkincareGuard = AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_STRICT_NON_SKINCARE;
+  const routineStrictNonSkincareGuard = getRoutineAutoscanAnchorGuardStrictNonSkincare();
   const routineResolverStrictFilter = routineStrictNonSkincareGuard ? true : AURORA_PRODUCT_STRICT_SKINCARE_FILTER;
   let anchorBlockedNonSkincare = false;
   let routineAnchorTrustContext = {
@@ -27394,10 +27522,16 @@ function isRoutineContractIntent(intent) {
   const value = String(intent || '').trim().toLowerCase();
   return (
     value === String(INTENT_ENUM.ROUTINE || '').trim().toLowerCase() ||
-    value === String(INTENT_ENUM.INGREDIENT_SCIENCE || '').trim().toLowerCase() ||
-    value === String(INTENT_ENUM.TRAVEL_PLANNING || '').trim().toLowerCase() ||
-    value === String(INTENT_ENUM.WEATHER_ENV || '').trim().toLowerCase() ||
     value === String(INTENT_ENUM.CONFLICT_CHECK || '').trim().toLowerCase()
+  );
+}
+
+function shouldApplyRoutineRulesFallbackForTurn({ intent, message, actionPayload } = {}) {
+  return (
+    isRoutineContractIntent(intent) ||
+    looksLikeRoutineRequest(message, actionPayload) ||
+    hasRoutineSosSignal(message) ||
+    looksLikeCompatibilityOrConflictQuestion(message)
   );
 }
 
@@ -34149,7 +34283,7 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
   };
   touchIngredientResearchCache(key, base, { persist: false });
   ingredientResearchInflight.add(key);
-  setImmediate(async () => {
+  const timer = setTimeout(async () => {
     const startedAtMs = Date.now();
     try {
       if (!AURORA_INGREDIENT_RESEARCH_ASYNC_ENABLED || USE_AURORA_BFF_MOCK) {
@@ -34357,7 +34491,8 @@ function enqueueIngredientResearchJob({ query, language = 'EN', requestId = '', 
       }
       ingredientResearchInflight.delete(key);
     }
-  });
+  }, 25);
+  if (timer && typeof timer.unref === 'function') timer.unref();
   return { key, status: 'queued', job_id: jobId };
 }
 
@@ -42775,6 +42910,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let profileSummary = summarizeProfileForContext(profile);
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
+        const previousRoutine = profile && profile.currentRoutine ? profile.currentRoutine : null;
         const routineFromRequest = parsed.data.currentRoutine;
 
         if (routineFromRequest !== undefined) {
@@ -42805,7 +42941,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   : false),
         );
         const routineProductCandidates =
-          AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED && hasRoutine
+          getRoutineProductAutoscanEnabled() && hasRoutine
             ? extractRoutineProductCandidatesForDeepScan(routineCandidate, {
               maxTotal: AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT,
             })
@@ -43252,11 +43388,46 @@ function mountAuroraBffRoutes(app, { logger }) {
           llmInputHash = reportDto.input_hash || llmInputHash;
           llmInputHashPrefix = buildInputHashPrefix(llmInputHash);
           recordAuroraSkinMainlineProvider({ provider: 'gemini' });
+          const lifecycleStage = detectRoutineLifecycleStage({
+            routineCandidate: hasRoutine ? routineCandidate : null,
+            previousRoutine,
+            intent: parsed.data.intent || null,
+          });
+          let lifecycleInstructions = '';
+          if (lifecycleStage) {
+            const lifecycleCtx = buildRoutineLifecycleContext({
+              stage: lifecycleStage,
+              routineCandidate: hasRoutine ? routineCandidate : null,
+              previousRoutine,
+              profileSummary,
+              language: ctx.lang,
+            });
+            lifecycleInstructions = buildLifecyclePromptInstructions(lifecycleCtx, ctx.lang);
+          }
+          const supplementaryInstructions = buildSupplementaryPromptInstructions({
+            routineCandidate: hasRoutine ? routineCandidate : null,
+            profileSummary,
+            language: ctx.lang,
+          });
+          let kbGrounding = '';
+          if (hasRoutine && routineCandidate) {
+            const { actives } = parseRoutineForActives(routineCandidate);
+            const activeConcepts = actives.map((a) => a.toUpperCase());
+            if (profileSummary && profileSummary.barrierStatus === 'impaired') activeConcepts.push('BARRIER_COMPROMISED');
+            if (profileSummary && profileSummary.sensitivity === 'high') activeConcepts.push('SENSITIVE_SKIN');
+            kbGrounding = buildKbGroundingForPrompt({
+              activeConcepts,
+              profileSummary,
+              language: ctx.lang,
+            });
+          }
+          lifecycleInstructions = lifecycleInstructions + supplementaryInstructions + kbGrounding;
           const reportResult = await runGeminiReportStrategy({
             reportDto,
             language: ctx.lang,
             promptVersion,
             profiler,
+            lifecycleInstructions,
           });
           if (reportResult.retry && Number(reportResult.retry.attempted || 0) > 0) {
             recordAuroraSkinLlmRetry({
@@ -43944,17 +44115,76 @@ function mountAuroraBffRoutes(app, { logger }) {
         const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
           ? diagnosisArtifact.overall_confidence
           : null;
-        const lowConfidenceRuleBased =
-          artifactConfidence &&
-          String(artifactConfidence.level || '').toLowerCase() === 'low' &&
-          (renderedAnalysisSource === 'rule_based' || renderedAnalysisSource === 'baseline_low_confidence');
+        const lowConfidenceRuleBased = Boolean(lowConfidenceSummary);
 
         const extraCards = [];
         if (ingredientPlan) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
         }
+        const routineProductCards = [];
         const routineProductEvents = [];
-
+        const runtimeRoutineProductCandidates = Array.isArray(routineProductCandidates) ? routineProductCandidates : [];
+        const syncRoutineProductCandidates =
+          runtimeRoutineProductCandidates.length > 0 && !lowConfidenceRuleBased
+            ? runtimeRoutineProductCandidates.slice(0, AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT)
+            : [];
+        const queuedRoutineProductCandidates =
+          syncRoutineProductCandidates.length > 0
+            ? runtimeRoutineProductCandidates.slice(AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT)
+            : runtimeRoutineProductCandidates;
+        if (syncRoutineProductCandidates.length > 0) {
+          routineProductEvents.push(
+            makeEvent(ctx, 'routine_product_deepscan_started', {
+              total_candidates: runtimeRoutineProductCandidates.length,
+              sync_target: syncRoutineProductCandidates.length,
+              async_target: queuedRoutineProductCandidates.length,
+            }),
+          );
+          const syncScanResults = await Promise.all(
+            syncRoutineProductCandidates.map((candidate) =>
+              deepScanRoutineProductCandidate({
+                candidate,
+                ctx,
+                profileSummary,
+                recentLogsSummary,
+                logger,
+                includeCard: true,
+              }).catch(() => ({ card: null, backfilled: false, failure_reason: 'scan_failed' })),
+            ),
+          );
+          let syncBackfilled = 0;
+          let syncFailed = 0;
+          let anchorsBlockedNonSkincare = 0;
+          let anchorsUsed = 0;
+          for (const result of syncScanResults) {
+            if (result && result.card && result.card.type === 'product_analysis') {
+              routineProductCards.push(result.card);
+            } else {
+              syncFailed += 1;
+            }
+            if (result && result.backfilled) syncBackfilled += 1;
+            if (result && result.anchor_blocked_non_skincare) anchorsBlockedNonSkincare += 1;
+            if (result && result.anchor_used) anchorsUsed += 1;
+          }
+          routineProductEvents.push(
+            makeEvent(ctx, 'routine_product_deepscan_completed', {
+              sync_scanned: syncRoutineProductCandidates.length,
+              sync_backfilled: syncBackfilled,
+              cards_emitted: routineProductCards.length,
+              sync_failed: syncFailed,
+              anchors_blocked_non_skincare: anchorsBlockedNonSkincare,
+              anchors_used: anchorsUsed,
+            }),
+          );
+          if (queuedRoutineProductCandidates.length > 0) {
+            routineProductEvents.push(
+              makeEvent(ctx, 'routine_product_deepscan_backfilled', {
+                queued: queuedRoutineProductCandidates.length,
+                mode: 'async_queue',
+              }),
+            );
+          }
+        }
         const routineFitPlan = resolveRoutineFitAnalysisPlan({
           routineProductCandidates,
           lowConfidenceRuleBased,
@@ -44020,11 +44250,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
 
-        if (routineFitPlan.shouldQueueKbBackfill) {
+        if (routineFitPlan.shouldQueueKbBackfill && queuedRoutineProductCandidates.length > 0) {
           setImmediate(async () => {
             let asyncCompleted = 0;
             let asyncBackfilled = 0;
-            for (const candidate of routineProductCandidates) {
+            for (const candidate of queuedRoutineProductCandidates) {
               try {
                 const result = await deepScanRoutineProductCandidate({
                   candidate,
@@ -44044,7 +44274,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               {
                 request_id: ctx.request_id,
                 trace_id: ctx.trace_id,
-                queued: routineProductCandidates.length,
+                queued: queuedRoutineProductCandidates.length,
                 completed: asyncCompleted,
                 backfilled: asyncBackfilled,
               },
@@ -44095,6 +44325,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: analysisSummaryPayload,
               ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
             },
+            ...routineProductCards,
             ...(routineFitCard ? [routineFitCard] : []),
             ...(photoModulesCard ? [photoModulesCard] : []),
             ...extraCards,
@@ -45319,7 +45550,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const testProduct = parsed.data.test_product || null;
       const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
       const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
-      const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+      const conflictHeatmapEnabled = getConflictHeatmapV1Enabled();
+      const heatmapPayload = conflictHeatmapEnabled
         ? buildConflictHeatmapV1({ routineSimulation: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary }, routineSteps: heatmapSteps })
         : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
       const envelope = buildEnvelope(ctx, {
@@ -45340,7 +45572,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: {},
         events: [
           makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length }),
-          ...(CONFLICT_HEATMAP_V1_ENABLED
+          ...(conflictHeatmapEnabled
             ? [
               makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
                 schema_version: heatmapPayload.schema_version,
@@ -46228,13 +46460,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         const intentCanonical = String(policyMeta && policyMeta.intent_canonical ? policyMeta.intent_canonical : '')
           .trim()
           .toLowerCase();
-        const routineContext =
-          isRoutineContractIntent(intentCanonical) ||
-          hasRoutineSosSignal(requestMessage) ||
-          looksLikeCompatibilityOrConflictQuestion(requestMessage) ||
-          looksLikeWeatherOrEnvironmentQuestion(requestMessage) ||
-          looksLikeRoutineRequest(requestMessage, null) ||
-          looksLikeIngredientScienceIntent(requestMessage, null);
+        const routineContext = shouldApplyRoutineRulesFallbackForTurn({
+          intent: intentCanonical,
+          message: requestMessage,
+          actionPayload: null,
+        });
         if (!routineContext) return baseEnvelope;
 
         const existingExpert = findRoutineExpertNodeFromEnvelope(baseEnvelope);
@@ -48607,6 +48837,14 @@ function mountAuroraBffRoutes(app, { logger }) {
             payload: reportPayload,
           },
         ];
+        if (AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE && !allowRecoCards) {
+          cardsForResponse.push({
+            card_id: `gate_${ctx.request_id}`,
+            type: 'gate_notice',
+            payload: {},
+            field_missing: [{ field: 'recommendations', reason: 'recommendations_not_requested' }],
+          });
+        }
         const contractIntent = String(
           pickFirstTrimmed(
             policyMeta && policyMeta.intent_canonical,
@@ -49934,7 +50172,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
           const simPayload = { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary };
           const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
-          const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+          const conflictHeatmapEnabled = getConflictHeatmapV1Enabled();
+          const heatmapPayload = conflictHeatmapEnabled
             ? buildConflictHeatmapV1({ routineSimulation: simPayload, routineSteps: heatmapSteps })
             : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
 
@@ -49961,7 +50200,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const events = [
             makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length, source: 'local_chat' }),
           ];
-          if (CONFLICT_HEATMAP_V1_ENABLED) {
+          if (conflictHeatmapEnabled) {
             events.push(
               makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
                 schema_version: heatmapPayload.schema_version,
@@ -50025,6 +50264,61 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(parseFailEnvelope);
       }
 
+      const normalizedChatActionId = String(actionId || '').trim().toLowerCase();
+      const isSkipPhotoAnalyzeAction =
+        normalizedChatActionId === 'diag.skip_photo_analyze' ||
+        normalizedChatActionId === 'chip.intake.skip_analysis' ||
+        normalizedChatActionId === 'analysis_skip_photo';
+      if (String(agentState || '') === 'DIAG_PHOTO_OPTIN' && isSkipPhotoAnalyzeAction) {
+        const baselineAnalysis = buildLowConfidenceBaselineSkinAnalysis({
+          profile,
+          language: ctx.lang,
+        });
+        const profileSummaryForSkip = summarizeChatProfileForContext(profile);
+        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'DIAG_ANALYSIS_SUMMARY' : undefined;
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            ctx.lang === 'CN'
+              ? '已跳过照片。我先给你一版低置信度的安全基线，后续你也可以再补照片提升准确度。'
+              : "Skipping photos for now — I'll give you a low-confidence, safe baseline first. You can still add photos later to improve accuracy.",
+          ),
+          suggested_chips: buildDiagnosisPhotoOptInChips(ctx.lang).slice(0, 2),
+          cards: [
+            {
+              card_id: `analysis_${ctx.request_id}`,
+              type: 'analysis_summary',
+              payload: {
+                analysis_source: 'baseline_low_confidence',
+                low_confidence: true,
+                analysis: baselineAnalysis,
+              },
+            },
+            {
+              card_id: `conf_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: 'low_confidence',
+                confidence: {
+                  score: 0.35,
+                  level: 'low',
+                  rationale: ['skip_photo_baseline'],
+                },
+                actions: ['upload_daylight_and_indoor_white', 'update_current_routine'],
+              }),
+            },
+          ],
+          session_patch: nextState
+            ? { next_state: nextState, profile: profileSummaryForSkip }
+            : { profile: profileSummaryForSkip },
+          events: [
+            makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diag_skip_photo_baseline' }),
+            makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: false, analysis_source: 'baseline_low_confidence' }),
+          ],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
       const inDiagnosisState =
@@ -50077,35 +50371,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           return sendChatEnvelope(envelope);
         }
 
-        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-        const prompt =
-          lang === 'CN'
-            ? '已收到你的肤况信息。要不要再上传一张照片让我更准？你也可以先跳过照片，我会给一份低置信度的安全基线。'
-            : "Got it — I saved your skin profile. Want to upload a photo for a more accurate analysis? You can also skip photos and I’ll give a low-confidence, safe baseline first.";
-
+        const prompt = buildDiagnosisPhotoOptInPrompt(ctx.lang);
         const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(prompt),
-          suggested_chips: [
-            {
-              chip_id: 'chip.intake.upload_photos',
-              label: lang === 'CN' ? '上传照片（更准）' : 'Upload a photo (more accurate)',
-              kind: 'quick_reply',
-              data: {},
-            },
-            {
-              chip_id: 'chip.intake.skip_analysis',
-              label: lang === 'CN' ? '跳过照片（低置信度）' : 'Skip photo (low confidence)',
-              kind: 'quick_reply',
-              data: {},
-            },
-            {
-              chip_id: 'chip_keep_chatting',
-              label: lang === 'CN' ? '继续聊聊' : 'Just keep chatting',
-              kind: 'quick_reply',
-              data: {},
-            },
-          ],
+          suggested_chips: buildDiagnosisPhotoOptInChips(ctx.lang),
           cards: [],
           session_patch: nextState ? { next_state: nextState, profile: summarizeChatProfileForContext(profile) } : { profile: summarizeChatProfileForContext(profile) },
           events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_profile_complete' })],
@@ -50472,14 +50742,22 @@ function mountAuroraBffRoutes(app, { logger }) {
           const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
           const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
           const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+          const nextSuggestedChips =
+            !rawBudget && AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE
+              ? [...buildBudgetGateChips(ctx.lang), ...(Array.isArray(suggestedChips) ? suggestedChips : [])]
+              : suggestedChips;
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(
-              ctx.lang === 'CN'
-                ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
-                : 'Got it. I generated a simple AM/PM routine (see the card below).',
+              rawBudget
+                ? ctx.lang === 'CN'
+                  ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
+                  : 'Got it. I generated a simple AM/PM routine (see the card below).'
+                : ctx.lang === 'CN'
+                  ? '我先保留当前 AM/PM 方案；如果你愿意，也可以按下面的预算档位再优化一版。'
+                  : 'I kept the current AM/PM routine. If you want, I can still optimize it using one of the budget options below.',
             ),
-            suggested_chips: suggestedChips,
+            suggested_chips: nextSuggestedChips,
             cards: [
               {
                 card_id: `reco_${ctx.request_id}`,
@@ -50832,6 +51110,36 @@ function mountAuroraBffRoutes(app, { logger }) {
           const required = hardRequiredMissing;
           const prompt = buildDiagnosisPrompt(ctx.lang, required);
           const chips = buildDiagnosisChips(ctx.lang, required);
+          if (AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE) {
+            const nextState = stateChangeAllowed(ctx.trigger_source) ? 'DIAG_PROFILE' : undefined;
+            const profileSummaryForLegacyGate = summarizeChatProfileForContext(profile);
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeChatAssistantMessage(prompt),
+              suggested_chips: chips,
+              cards: [
+                {
+                  card_id: `conf_${ctx.request_id}`,
+                  type: 'confidence_notice',
+                  payload: buildConfidenceNoticeCardPayload({
+                    language: ctx.lang,
+                    reason: 'default',
+                    confidence: {
+                      score: 0.24,
+                      level: 'low',
+                      rationale: ['diagnosis_first', ...required.map((field) => `missing_${field}`)],
+                    },
+                    actions: ['refine_profile'],
+                    details: ['diagnosis_first', ...required.map((field) => `missing_${field}`)],
+                  }),
+                },
+              ],
+              session_patch: nextState
+                ? { next_state: nextState, profile: profileSummaryForLegacyGate }
+                : { profile: profileSummaryForLegacyGate },
+              events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first_legacy' })],
+            });
+            return sendChatEnvelope(envelope);
+          }
           const decision = pushGateDecision('diagnosis_first_profile_gate', {
             reason_codes: ['diagnosis_first'],
           });
@@ -50967,6 +51275,40 @@ function mountAuroraBffRoutes(app, { logger }) {
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
         const allowLowRiskNonBlockingArtifactGate =
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
+        if (
+          AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE &&
+          String(ctx.state || '') === 'S2_DIAGNOSIS' &&
+          !artifactGate.ok
+        ) {
+          const profileSummaryForPhotoOptIn = summarizeChatProfileForContext(profile);
+          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'DIAG_PHOTO_OPTIN' : undefined;
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(buildDiagnosisPhotoOptInPrompt(ctx.lang)),
+            suggested_chips: buildDiagnosisPhotoOptInChips(ctx.lang),
+            cards: [
+              {
+                card_id: `conf_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: 'artifact_missing',
+                  confidence: {
+                    score: 0.28,
+                    level: 'low',
+                    rationale: ['artifact_missing', 'diagnosis_in_progress'],
+                  },
+                  actions: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
+                  details: [String(artifactGate.reason || 'artifact_missing')],
+                }),
+              },
+            ],
+            session_patch: nextState
+              ? { next_state: nextState, profile: profileSummaryForPhotoOptIn }
+              : { profile: profileSummaryForPhotoOptIn },
+            events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_photo_optin_required' })],
+          });
+          return sendChatEnvelope(envelope);
+        }
         if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !allowLowRiskNonBlockingArtifactGate) {
           const chips = buildRecoEntryChips(ctx.lang);
           const decision = pushGateDecision('artifact_missing_gate', {
@@ -52045,7 +52387,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             payload: conflictDetector,
           });
           const heatmapSteps = extractHeatmapStepsFromConflictDetector({ conflictDetector, contextRaw });
-          const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+          const conflictHeatmapEnabled = getConflictHeatmapV1Enabled();
+          const heatmapPayload = conflictHeatmapEnabled
             ? buildConflictHeatmapV1({ routineSimulation: conflictDetector, routineSteps: heatmapSteps })
             : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
           derivedCards.push({
@@ -52053,7 +52396,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             type: 'conflict_heatmap',
             payload: heatmapPayload,
           });
-          if (CONFLICT_HEATMAP_V1_ENABLED) {
+          if (conflictHeatmapEnabled) {
             heatmapImpressionEvent = makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
               schema_version: heatmapPayload.schema_version,
               state: heatmapPayload.state,
@@ -52914,6 +53257,29 @@ function mountAuroraBffRoutes(app, { logger }) {
           return { ...card, payload };
         })
         : cardsForEnvelopeRaw;
+      const hasRecoEscalationChip =
+        Array.isArray(suggestedChips) &&
+        suggestedChips.some((chip) => {
+          const chipId = String(chip && chip.chip_id ? chip.chip_id : '').trim().toLowerCase();
+          const data =
+            chip && chip.data && typeof chip.data === 'object' && !Array.isArray(chip.data)
+              ? chip.data
+              : {};
+          const actionId = String(data.action_id || '').trim().toLowerCase();
+          return (
+            chipId === 'chip.start.reco_products' ||
+            chipId === 'chip.start.ingredients.reco' ||
+            actionId === 'chip.start.reco_products'
+          );
+        });
+      if (
+        AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE &&
+        !allowRecs &&
+        hasRecoEscalationChip &&
+        !fieldMissing.some((item) => item && item.field === 'recommendations' && item.reason === 'recommendations_not_requested')
+      ) {
+        fieldMissing.push({ field: 'recommendations', reason: 'recommendations_not_requested' });
+      }
       const shouldEchoProfile =
         Boolean(profileSummary) &&
         (Boolean(appliedProfilePatch) || !profilePatchFromSession);
@@ -52957,13 +53323,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       ];
 
       const intentCanonicalValue = String(canonicalIntent && canonicalIntent.intent ? canonicalIntent.intent : '').trim().toLowerCase();
-      const routineLikeContext =
-        isRoutineContractIntent(intentCanonicalValue) ||
-        looksLikeRoutineRequest(message, normalizedActionPayload) ||
-        hasRoutineSosSignal(message) ||
-        looksLikeCompatibilityOrConflictQuestion(message) ||
-        looksLikeWeatherOrEnvironmentQuestion(message) ||
-        looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+      const routineLikeContext = shouldApplyRoutineRulesFallbackForTurn({
+        intent: intentCanonicalValue,
+        message,
+        actionPayload: normalizedActionPayload,
+      });
       let catalogPoisonBlockedByGuard = 0;
       if (AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED && routineLikeContext) {
         const filteredCards = [];

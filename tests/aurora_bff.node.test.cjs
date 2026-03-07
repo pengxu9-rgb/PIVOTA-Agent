@@ -57,9 +57,24 @@ function withEnv(patch, fn) {
   }
 }
 
+function resetAuroraRouteModuleCaches() {
+  for (const modulePath of [
+    '../src/lib/geminiGlobalGate',
+    '../src/auroraBff/auroraGeminiGlobalClient',
+    '../src/auroraBff/skinLlmGateway',
+    '../src/auroraBff/routes',
+  ]) {
+    try {
+      delete require.cache[require.resolve(modulePath)];
+    } catch {
+      // noop
+    }
+  }
+}
+
 function loadRouteInternals() {
+  resetAuroraRouteModuleCaches();
   const moduleId = require.resolve('../src/auroraBff/routes');
-  delete require.cache[moduleId];
   const { __internal } = require('../src/auroraBff/routes');
   return { moduleId, __internal };
 }
@@ -3499,8 +3514,8 @@ test('/v1/chat: fit-check fallback strips low-trust upstream anchor_product from
         };
       };
 
+      resetAuroraRouteModuleCaches();
       const routeModuleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[routeModuleId];
       try {
         const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
         const app = express();
@@ -3530,7 +3545,7 @@ test('/v1/chat: fit-check fallback strips low-trust upstream anchor_product from
         assert.equal(Object.prototype.hasOwnProperty.call(productAnalysisCard?.payload?.assessment || {}, 'anchorProduct'), false);
       } finally {
         decisionModule.auroraChat = originalAuroraChat;
-        delete require.cache[routeModuleId];
+        resetAuroraRouteModuleCaches();
         delete require.cache[decisionModuleId];
       }
     },
@@ -4773,8 +4788,8 @@ test('/v1/chat: prompt contract mismatch skips upstream and returns readable fal
         throw new Error('should_not_be_called_when_prompt_contract_mismatch');
       };
 
+      resetAuroraRouteModuleCaches();
       const routeModuleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[routeModuleId];
       try {
         const routeModule = require('../src/auroraBff/routes');
         const { __internal } = routeModule;
@@ -4807,7 +4822,7 @@ test('/v1/chat: prompt contract mismatch skips upstream and returns readable fal
         assert.ok(getLabeledCounterValue(snap.auroraSkinFlow, { stage: 'reco_prompt_contract_mismatch', outcome: 'hit' }) >= 1);
       } finally {
         decisionModule.auroraChat = originalAuroraChat;
-        delete require.cache[routeModuleId];
+        resetAuroraRouteModuleCaches();
         delete require.cache[decisionModuleId];
       }
     },
@@ -8225,8 +8240,8 @@ test('/v1/analysis/skin: routine autoscan strict guard blocks brush anchors and 
         };
       };
 
+      resetAuroraRouteModuleCaches();
       const routeModuleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[routeModuleId];
       try {
         const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
         const app = express();
@@ -8294,7 +8309,7 @@ test('/v1/analysis/skin: routine autoscan strict guard blocks brush anchors and 
         axios.get = originalGet;
         axios.post = originalPost;
         decisionModule.auroraChat = originalAuroraChat;
-        delete require.cache[routeModuleId];
+        resetAuroraRouteModuleCaches();
         delete require.cache[decisionModuleId];
       }
     },

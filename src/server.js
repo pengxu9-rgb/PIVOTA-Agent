@@ -9636,7 +9636,6 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
 }
 
 const AURORA_CHATBOX_ORIGINS = new Set([
-  'https://aurora.pivota.cc',
   'https://pivota-aurora-chatbox.vercel.app',
 ]);
 
@@ -9649,6 +9648,7 @@ app.use((req, res, next) => {
     'https://agent.pivota.cc',
     'https://creator.pivota.cc',
     'https://look-replicator.pivota.cc',
+    'https://aurora.pivota.cc',
     ...AURORA_CHATBOX_ORIGINS,
     'http://localhost:3000',
     'http://localhost:5173',
@@ -11811,7 +11811,11 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
   const hasAuroraUid = Boolean(String(req.header('X-Aurora-Uid') || req.header('x-aurora-uid') || '').trim());
   const origin = String(req.headers.origin || '').trim();
   const shouldDefaultPreferMerchants =
-    callerHint === 'aurora_chatbox' || callerHint === 'aurora-chatbox' || hasAuroraUid || AURORA_CHATBOX_ORIGINS.has(origin);
+    callerHint === 'aurora_chatbox' ||
+    callerHint === 'aurora-chatbox' ||
+    hasAuroraUid ||
+    origin === 'https://aurora.pivota.cc' ||
+    AURORA_CHATBOX_ORIGINS.has(origin);
   if (shouldDefaultPreferMerchants) {
     if (options.stable_alias_short_circuit === undefined) {
       options = { ...options, stable_alias_short_circuit: true };
@@ -16699,7 +16703,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             );
           const relaxCacheRelevanceForAmbiguousRecommend =
             (Boolean(effectiveIntent?.ambiguity?.needs_clarification) || genericRecommendQuery) &&
-            ['exploratory', 'non_shopping', 'mission', 'scenario', 'category', ''].includes(
+            ['exploratory', 'non_shopping', ''].includes(
               cachePolicyQueryClass,
             );
           const relaxCacheRelevanceGate =
@@ -16788,7 +16792,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
           const cacheLookupClass = cachePolicyQueryClass === 'lookup' || cachePolicyQueryClass === 'attribute';
           const shouldSkipLookupPolicyForCacheHit =
-            !FPM_GATE_SIMPLIFY_V1 &&
             isLookupQuery &&
             (cacheLookupClass || !cachePolicyQueryClass) &&
             String(upstreamData?.metadata?.query_source || '').startsWith(
@@ -16807,6 +16810,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const withPolicyProducts = Array.isArray(withPolicy?.products)
             ? withPolicy.products
             : [];
+          const cacheClarifyOnly =
+            Boolean(withPolicy?.clarification && withPolicy.clarification.question) &&
+            withPolicyProducts.length === 0;
+          const cacheClarifyOnlyShouldUseEarlyDecision =
+            cacheClarifyOnly &&
+            ['mission', 'scenario', 'gift'].includes(
+              cachePolicyQueryClass,
+            ) &&
+            !cacheBrandLikeQuery &&
+            !isLookupQuery;
           const cacheValidationQueryClass =
             traceQueryClass ||
             effectiveIntent?.query_class ||
@@ -16817,8 +16830,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             intent: effectiveIntent,
             queryClass: cacheValidationQueryClass,
           });
-          const cacheRejectedLowQuality = Boolean(cacheValidation.enabled && !cacheValidation.accepted);
+          const lookupRelevantCacheMiss =
+            cacheValidation.enabled &&
+            isLookupQuery &&
+            effectiveProducts.length > 0 &&
+            !cacheRelevant;
+          if (lookupRelevantCacheMiss) {
+            cacheValidation.accepted = false;
+            cacheValidation.reason = 'anchor_below_threshold';
+            cacheValidation.anchor_ratio = Math.min(
+              Number(cacheValidation.anchor_ratio || 0) || 0,
+              Math.max(0, SEARCH_CACHE_MIN_ANCHOR - 0.01),
+            );
+          }
+          const cacheRejectedLowQuality = Boolean(
+            cacheValidation.enabled && (!cacheValidation.accepted || lookupRelevantCacheMiss),
+          );
           if (cacheRejectedLowQuality) {
+            effectiveCacheHit = false;
+          }
+          if (cacheClarifyOnlyShouldUseEarlyDecision) {
             effectiveCacheHit = false;
           }
           const cacheMissingExternalForUnified =
@@ -16839,6 +16870,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : cacheBrandLikeQuery
                   ? 'brand_query_search_first'
                   : null;
+          const forceSearchFirstForExpandedQuery =
+            Boolean(cacheQueryText) &&
+            Boolean(queryText) &&
+            cacheQueryText !== queryText &&
+            !isLookupQuery &&
+            !cacheBrandLikeQuery &&
+            ['category', 'exploratory'].includes(cachePolicyQueryClass);
+          if (forceSearchFirstForExpandedQuery) {
+            effectiveCacheHit = false;
+          }
           const bypassCacheStrictEmptyForUnified =
             Boolean(cacheStrictEmptyBypassReason) &&
             (unifiedRelevanceRequested || cacheBrandLikeQuery);
@@ -16850,6 +16891,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               cacheMissingExternalForUnified;
             crossMerchantCacheRouteDebug.cache_strict_empty_bypassed = bypassCacheStrictEmptyForUnified;
             crossMerchantCacheRouteDebug.cache_strict_empty_bypass_reason = cacheStrictEmptyBypassReason;
+            crossMerchantCacheRouteDebug.force_search_first_for_expanded_query =
+              forceSearchFirstForExpandedQuery;
+            crossMerchantCacheRouteDebug.cache_clarify_only_recast_as_early_decision =
+              cacheClarifyOnlyShouldUseEarlyDecision;
           }
 
           const promotions = await getActivePromotions(now, creatorId);
@@ -16938,6 +16983,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             'exploratory',
             'non_shopping',
           ].includes(queryClassForEarlyDecision);
+          const petLeashPriceMinRaw = effectiveIntent?.hard_constraints?.price?.min;
+          const petLeashPriceMaxRaw = effectiveIntent?.hard_constraints?.price?.max;
+          const petLeashHasPriceMin =
+            petLeashPriceMinRaw != null && Number.isFinite(Number(petLeashPriceMinRaw));
+          const petLeashHasPriceMax =
+            petLeashPriceMaxRaw != null && Number.isFinite(Number(petLeashPriceMaxRaw));
+          const petLeashGenericCategoryCacheMiss =
+            effectiveProducts.length === 0 &&
+            hasPetLeashSearchSignal(cacheQueryText) &&
+            queryClassForEarlyDecision === 'category' &&
+            genericRecommendQuery &&
+            !petLeashHasPriceMin &&
+            !petLeashHasPriceMax;
           const forceSearchFirstForClass = ['category', 'exploratory'].includes(
             queryClassForEarlyDecision,
           );
@@ -16949,8 +17007,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             effectiveIntent &&
             !isBrandLikeForEarlyDecision &&
             !isStrongLookupForEarlyDecision &&
-            !forceSearchFirstForClass &&
-            (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
+            (!forceSearchFirstForClass || petLeashGenericCategoryCacheMiss) &&
+            (
+              hasEarlyDecisionClass ||
+              (queryClassMissing && hasAmbiguitySignal) ||
+              petLeashGenericCategoryCacheMiss
+            ) &&
             !forceControlledRecallForScenario;
           addFpmGateTrace({
             gateId: 'early_ambiguity_decision',
@@ -19683,8 +19745,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         miss: Boolean(shouldAttemptResolverFirst && (!resolverFirstResult || Number(resolverFirstResult.usableCount || 0) <= 0)),
         latency_ms: Number(resolverFirstResult?.resolve_latency_ms || resolverFirstResult?.data?.metadata?.resolve_latency_ms || 0) || null,
       };
+      const cacheSourceReturned = querySource.startsWith('cache_');
+      const cacheSourceUpstreamEvidence =
+        Number(existingMeta?.upstream_status || 0) > 0 ||
+        String(existingMeta?.upstream_error_code || '').trim().length > 0 ||
+        Number(existingMeta?.proxy_search_fallback?.upstream_status || 0) > 0 ||
+        String(existingMeta?.proxy_search_fallback?.upstream_error_code || '').trim().length > 0 ||
+        Boolean(existingMeta?.proxy_search_fallback?.applied);
       const upstreamStage = {
-        called: !(querySource.startsWith('cache_') && products.length > 0),
+        called: cacheSourceReturned ? cacheSourceUpstreamEvidence : true,
         timeout:
           String(existingMeta?.upstream_error_code || '').toUpperCase() === 'ECONNABORTED' ||
           String(existingMeta?.proxy_search_fallback?.upstream_error_code || '').toUpperCase() === 'ECONNABORTED',
