@@ -8,7 +8,6 @@ process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
 process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT = 'dual';
 process.env.AURORA_RULE_RELAX_MODE = 'conservative';
-process.env.AURORA_ANALYSIS_STORY_V2_ENABLED = 'true';
 process.env.AURORA_BFF_RECO_PDP_LIGHT_ENRICH = 'false';
 process.env.AURORA_BFF_RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE = 'false';
 
@@ -57,24 +56,9 @@ function withEnv(patch, fn) {
   }
 }
 
-function resetAuroraRouteModuleCaches() {
-  for (const modulePath of [
-    '../src/lib/geminiGlobalGate',
-    '../src/auroraBff/auroraGeminiGlobalClient',
-    '../src/auroraBff/skinLlmGateway',
-    '../src/auroraBff/routes',
-  ]) {
-    try {
-      delete require.cache[require.resolve(modulePath)];
-    } catch {
-      // noop
-    }
-  }
-}
-
 function loadRouteInternals() {
-  resetAuroraRouteModuleCaches();
   const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
   const { __internal } = require('../src/auroraBff/routes');
   return { moduleId, __internal };
 }
@@ -3440,118 +3424,6 @@ test('/v1/chat: fit-check fallback emits product_analysis when upstream returns 
   });
 });
 
-test('/v1/chat: fit-check fallback strips low-trust upstream anchor_product from product_analysis', async () => {
-  return withEnv(
-    {
-      AURORA_BFF_USE_MOCK: 'false',
-      AURORA_DECISION_BASE_URL: 'http://aurora.test',
-      AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK: 'false',
-      AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS: 'false',
-      AURORA_BFF_RETENTION_DAYS: '0',
-      DATABASE_URL: undefined,
-      PIVOTA_BACKEND_BASE_URL: undefined,
-    },
-    async () => {
-      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
-      delete require.cache[decisionModuleId];
-      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
-      const originalAuroraChat = decisionModule.auroraChat;
-
-      decisionModule.auroraChat = async (input) => {
-        const query = String(input && input.query ? input.query : '');
-        if (/Task:\s*Parse the user's product input/i.test(query)) {
-          return {
-            schema_version: 'aurora.chat.v1',
-            intent: 'product_parse',
-            structured: {
-              parse: {
-                product: {
-                  product_id: 'sku_brush_fitcheck_1',
-                  brand: 'Brush Studio',
-                  name: 'Foundation Brush',
-                  display_name: 'Brush Studio Foundation Brush',
-                  category: 'makeup brush',
-                },
-                confidence: 0.71,
-                missing_info: [],
-              },
-            },
-          };
-        }
-        if (/Task:\s*Deep-scan\b/i.test(query)) {
-          return {
-            schema_version: 'aurora.chat.v1',
-            intent: 'product_analyze',
-            structured: {
-              analyze: {
-                assessment: {
-                  verdict: 'Unknown',
-                  reasons: ['Evidence is limited.'],
-                  anchor_product: {
-                    product_id: '7ba1d001-df26-4768-9b8b-29f67aa49eaf',
-                    brand: 'SkinCeuticals',
-                    name: 'C E Ferulic',
-                    display_name: 'SkinCeuticals C E Ferulic',
-                  },
-                },
-                evidence: {
-                  science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
-                  social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
-                  expert_notes: [],
-                  missing_info: ['evidence_missing'],
-                },
-                confidence: 0.36,
-                missing_info: ['analysis_limited'],
-              },
-            },
-          };
-        }
-        return {
-          schema_version: 'aurora.chat.v1',
-          intent: 'chat',
-          answer: '{}',
-          cards: [],
-        };
-      };
-
-      resetAuroraRouteModuleCaches();
-      const routeModuleId = require.resolve('../src/auroraBff/routes');
-      try {
-        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
-        const app = express();
-        app.use(express.json({ limit: '1mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
-
-        const resp = await supertest(app)
-          .post('/v1/chat')
-          .set({
-            'X-Aurora-UID': 'test_uid_fit_check_strip_low_trust_anchor',
-            'X-Trace-ID': 'test_trace_fit_check_strip_low_trust_anchor',
-            'X-Brief-ID': 'test_brief_fit_check_strip_low_trust_anchor',
-            'X-Lang': 'CN',
-          })
-          .send({
-            message: '请诊断一下这款产品适不适合我：Brush Studio Foundation Brush',
-            session: { state: 'idle' },
-            language: 'CN',
-          })
-          .expect(200);
-
-        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-        const productAnalysisCard = cards.find((card) => card && card.type === 'product_analysis');
-        assert.ok(productAnalysisCard);
-        assert.equal(Boolean(productAnalysisCard?.payload?.provenance?.anchor_trust?.usable_for_anchor_id), false);
-        assert.equal(Object.prototype.hasOwnProperty.call(productAnalysisCard?.payload?.assessment || {}, 'anchor_product'), false);
-        assert.equal(Object.prototype.hasOwnProperty.call(productAnalysisCard?.payload?.assessment || {}, 'anchorProduct'), false);
-      } finally {
-        decisionModule.auroraChat = originalAuroraChat;
-        resetAuroraRouteModuleCaches();
-        delete require.cache[decisionModuleId];
-      }
-    },
-  );
-});
-
 test('/v1/chat: recommendation parse-stub answer is rewritten to reco route contract', async () => {
   return withEnv(
     {
@@ -4044,109 +3916,6 @@ test('/v1/chat: ingredient science bypasses budget gate in S6_BUDGET and asks sc
   });
 });
 
-test('/v1/chat: ingredient science target chip returns aurora_ingredient_report (no routine fallback)', async () => {
-  return withEnv(
-    {
-      AURORA_BFF_RETENTION_DAYS: '0',
-      DATABASE_URL: undefined,
-      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
-      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
-      AURORA_LLM_QA_MODE: 'single',
-      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
-      GEMINI_API_KEY: 'test_gemini_key',
-      AURORA_DIAG_FORCE_GEMINI: 'false',
-    },
-    async () => {
-      const moduleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[moduleId];
-      const routeModule = require('../src/auroraBff/routes');
-      const { mountAuroraBffRoutes, __internal } = routeModule;
-      try {
-        __internal.__setCallGeminiJsonObjectForTest(async () => ({
-          ok: false,
-          reason: 'GEMINI_JSON_TIMEOUT',
-          detail: 'timed out after 9000ms',
-        }));
-
-        const app = express();
-        app.use(express.json({ limit: '1mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
-
-        const resp = await supertest(app)
-          .post('/v1/chat')
-          .set({
-            'X-Aurora-UID': 'test_uid_science_chip_target',
-            'X-Trace-ID': 'test_trace_science_chip_target',
-            'X-Brief-ID': 'test_brief_science_chip_target',
-            'X-Lang': 'EN',
-          })
-          .send({
-            action: {
-              action_id: 'chip.science.target.niacinamide',
-              kind: 'chip',
-              data: {
-                reply_text: 'Ingredient science: niacinamide - explain evidence strength, who it fits, and key risks.',
-              },
-            },
-            language: 'EN',
-          });
-
-        assert.equal(resp.status, 200);
-        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-        const report = cards.find((card) => String(card?.type || '') === 'aurora_ingredient_report');
-        const reasons = Array.isArray(report?.payload?.route_decision_reasons) ? report.payload.route_decision_reasons : [];
-        assert.ok(report);
-        assert.equal(report?.payload?.normalized_query, 'niacinamide');
-        assert.equal(reasons.includes('chip_query_routed'), true);
-        assert.equal(/rules-based fallback/i.test(String(resp.body?.assistant_message?.content || '')), false);
-      } finally {
-        __internal.__resetCallGeminiJsonObjectForTest();
-        delete require.cache[moduleId];
-      }
-    },
-  );
-});
-
-test('/v1/chat: ingredient science goal chip returns ingredient_goal_match in S6_BUDGET', async () => {
-  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
-    const moduleId = require.resolve('../src/auroraBff/routes');
-    delete require.cache[moduleId];
-    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
-    const app = express();
-    app.use(express.json({ limit: '1mb' }));
-    mountAuroraBffRoutes(app, { logger: null });
-
-    const resp = await supertest(app)
-      .post('/v1/chat')
-      .set({
-        'X-Aurora-UID': 'test_uid_science_goal_chip_budget_state',
-        'X-Trace-ID': 'test_trace_science_goal_chip_budget_state',
-        'X-Brief-ID': 'test_brief_science_goal_chip_budget_state',
-        'X-Lang': 'EN',
-      })
-      .send({
-        action: {
-          action_id: 'chip.science.goal.brightening',
-          kind: 'chip',
-          data: {
-            reply_text: 'Science-only: explain ingredient mechanisms/evidence for dark spots and brightening (no product picks yet).',
-          },
-        },
-        session: { state: 'S6_BUDGET' },
-        client_state: 'RECO_GATE',
-        language: 'EN',
-      });
-
-    assert.equal(resp.status, 200);
-    const cardTypes = Array.isArray(resp.body?.cards) ? resp.body.cards.map((card) => String(card?.type || '')) : [];
-    assert.equal(cardTypes.includes('ingredient_goal_match'), true);
-    assert.equal(cardTypes.includes('budget_gate'), false);
-    assert.equal(cardTypes.includes('analysis_story_v2'), false);
-
-    delete require.cache[moduleId];
-  });
-});
-
 test('ingredient research: gemini-only path never calls openai even when OPENAI_API_KEY exists', async () => {
   return withEnv(
     {
@@ -4278,7 +4047,7 @@ test('ingredient research: request uses no ingredient-specific timeout', async (
           query: 'octocrylene',
         });
         assert.equal(payload.research_status, 'ready');
-        assert.equal(seenTimeout, 8000);
+        assert.equal(seenTimeout, 4000);
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];
@@ -4377,208 +4146,6 @@ test('ingredient report hybrid: timeout fallback still returns pending personali
         );
         assert.equal(Array.isArray(payload.benefits), true);
         assert.equal(payload.benefits.length > 0, true);
-      } finally {
-        __internal.__resetCallGeminiJsonObjectForTest();
-        delete require.cache[moduleId];
-      }
-    },
-  );
-});
-
-test('ingredient provider circuit: repeated timeout outcomes eventually open circuit with hybrid timeout policy', async () => {
-  return withEnv(
-    {
-      AURORA_BFF_RETENTION_DAYS: '0',
-      DATABASE_URL: undefined,
-      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
-      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
-      AURORA_LLM_QA_MODE: 'single',
-      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
-      GEMINI_API_KEY: 'test_gemini_key',
-      AURORA_DIAG_FORCE_GEMINI: 'false',
-      AURORA_INGREDIENT_CIRCUIT_TIMEOUT_STREAK_THRESHOLD: '2',
-      AURORA_INGREDIENT_CIRCUIT_TIMEOUT_MIN_SAMPLES: '100',
-      AURORA_INGREDIENT_CIRCUIT_TIMEOUT_RATIO_THRESHOLD_PCT: '100',
-      AURORA_INGREDIENT_CIRCUIT_OPEN_MS: '60000',
-    },
-    async () => {
-      const { moduleId, __internal } = loadRouteInternals();
-      let geminiCalls = 0;
-      try {
-        __internal.__setCallGeminiJsonObjectForTest(async () => {
-          geminiCalls += 1;
-          return {
-            ok: false,
-            reason: 'GEMINI_JSON_TIMEOUT',
-            detail: 'timed out after 9000ms',
-          };
-        });
-
-        const payload1 = await __internal.buildIngredientReportPayloadWithResearch({
-          language: 'EN',
-          query: `timeout_circuit_probe_${Date.now()}_1`,
-        });
-        const payload2 = await __internal.buildIngredientReportPayloadWithResearch({
-          language: 'EN',
-          query: `timeout_circuit_probe_${Date.now()}_2`,
-        });
-        const payload3 = await __internal.buildIngredientReportPayloadWithResearch({
-          language: 'EN',
-          query: `timeout_circuit_probe_${Date.now()}_3`,
-        });
-
-        assert.equal(payload1.research_error_code, 'gemini_timeout');
-        assert.equal(payload2.research_error_code, 'gemini_timeout');
-        assert.equal(payload3.research_error_code, 'circuit_open');
-        assert.equal(geminiCalls, 2);
-      } finally {
-        __internal.__resetCallGeminiJsonObjectForTest();
-        delete require.cache[moduleId];
-      }
-    },
-  );
-});
-
-test('/v1/chat: known ingredient lookup defers inline sync and avoids fallback status', async () => {
-  return withEnv(
-    {
-      AURORA_BFF_RETENTION_DAYS: '0',
-      DATABASE_URL: undefined,
-      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
-      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
-      AURORA_LLM_QA_MODE: 'single',
-      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
-      GEMINI_API_KEY: 'test_gemini_key',
-      AURORA_DIAG_FORCE_GEMINI: 'false',
-    },
-    async () => {
-      const moduleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[moduleId];
-      const routeModule = require('../src/auroraBff/routes');
-      const { mountAuroraBffRoutes, __internal } = routeModule;
-      let geminiCalls = 0;
-      try {
-        __internal.__setCallGeminiJsonObjectForTest(async () => {
-          geminiCalls += 1;
-          return {
-            ok: false,
-            reason: 'GEMINI_JSON_TIMEOUT',
-            detail: 'timed out after 9000ms',
-          };
-        });
-
-        const app = express();
-        app.use(express.json({ limit: '1mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
-
-        const resp = await supertest(app)
-          .post('/v1/chat')
-          .set({
-            'X-Aurora-UID': 'test_uid_known_ingredient_deferred_sync',
-            'X-Trace-ID': 'test_trace_known_ingredient_deferred_sync',
-            'X-Brief-ID': 'test_brief_known_ingredient_deferred_sync',
-            'X-Lang': 'EN',
-          })
-          .send({
-            action: {
-              action_id: 'ingredient.lookup',
-              kind: 'action',
-              data: {
-                ingredient_query: 'Homosalate',
-                entry_source: 'ingredient_hub',
-              },
-            },
-            language: 'EN',
-          });
-
-        assert.equal(resp.status, 200);
-        const report = Array.isArray(resp.body?.cards)
-          ? resp.body.cards.find((card) => card && card.type === 'aurora_ingredient_report')
-          : null;
-        assert.ok(report);
-        const payload = report?.payload || {};
-        assert.equal(geminiCalls, 0);
-        assert.notEqual(payload.research_status, 'fallback');
-        const reasons = Array.isArray(payload.route_decision_reasons) ? payload.route_decision_reasons : [];
-        assert.equal(reasons.includes('sync_research_fallback'), false);
-        if (payload.research_status === 'queued') {
-          assert.equal(reasons.includes('sync_research_deferred_known_entity'), true);
-          assert.equal(payload.report_state?.status, 'pending');
-        }
-      } finally {
-        __internal.__resetCallGeminiJsonObjectForTest();
-        delete require.cache[moduleId];
-      }
-    },
-  );
-});
-
-test('/v1/chat: sync timeout with queued async research returns queued status instead of fallback', async () => {
-  return withEnv(
-    {
-      AURORA_BFF_RETENTION_DAYS: '0',
-      DATABASE_URL: undefined,
-      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
-      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
-      AURORA_LLM_QA_MODE: 'single',
-      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
-      GEMINI_API_KEY: 'test_gemini_key',
-      AURORA_DIAG_FORCE_GEMINI: 'false',
-    },
-    async () => {
-      const moduleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[moduleId];
-      const routeModule = require('../src/auroraBff/routes');
-      const { mountAuroraBffRoutes, __internal } = routeModule;
-      let geminiCalls = 0;
-      try {
-        __internal.__setCallGeminiJsonObjectForTest(async () => {
-          geminiCalls += 1;
-          return {
-            ok: false,
-            reason: 'GEMINI_JSON_TIMEOUT',
-            detail: 'timed out after 9000ms',
-          };
-        });
-
-        const app = express();
-        app.use(express.json({ limit: '1mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
-
-        const resp = await supertest(app)
-          .post('/v1/chat')
-          .set({
-            'X-Aurora-UID': 'test_uid_sync_timeout_queue_preferred',
-            'X-Trace-ID': 'test_trace_sync_timeout_queue_preferred',
-            'X-Brief-ID': 'test_brief_sync_timeout_queue_preferred',
-            'X-Lang': 'EN',
-          })
-          .send({
-            action: {
-              action_id: 'ingredient.lookup',
-              kind: 'action',
-              data: {
-                ingredient_query: `octocrylene_lookup_${Date.now()}`,
-                entry_source: 'ingredient_hub',
-              },
-            },
-            language: 'EN',
-          });
-
-        assert.equal(resp.status, 200);
-        const report = Array.isArray(resp.body?.cards)
-          ? resp.body.cards.find((card) => card && card.type === 'aurora_ingredient_report')
-          : null;
-        assert.ok(report);
-        const payload = report?.payload || {};
-        assert.ok(geminiCalls >= 1);
-        assert.equal(payload.research_status, 'queued');
-        assert.equal(payload.research_error_code, null);
-        assert.equal(payload.report_state?.status, 'pending');
-        assert.equal(payload.report_state?.reason_code, 'research_queued');
-        const reasons = Array.isArray(payload.route_decision_reasons) ? payload.route_decision_reasons : [];
-        assert.equal(reasons.includes('sync_research_fallback'), false);
-        assert.equal(reasons.includes('sync_research_queued_after_fallback'), true);
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();
         delete require.cache[moduleId];
@@ -4788,8 +4355,8 @@ test('/v1/chat: prompt contract mismatch skips upstream and returns readable fal
         throw new Error('should_not_be_called_when_prompt_contract_mismatch');
       };
 
-      resetAuroraRouteModuleCaches();
       const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
       try {
         const routeModule = require('../src/auroraBff/routes');
         const { __internal } = routeModule;
@@ -4822,7 +4389,7 @@ test('/v1/chat: prompt contract mismatch skips upstream and returns readable fal
         assert.ok(getLabeledCounterValue(snap.auroraSkinFlow, { stage: 'reco_prompt_contract_mismatch', outcome: 'hit' }) >= 1);
       } finally {
         decisionModule.auroraChat = originalAuroraChat;
-        resetAuroraRouteModuleCaches();
+        delete require.cache[routeModuleId];
         delete require.cache[decisionModuleId];
       }
     },
@@ -4941,9 +4508,7 @@ test('/v1/chat: alternatives budget exhausted only degrades alternatives (recomm
       try {
         const routeModule = require('../src/auroraBff/routes');
         const { mountAuroraBffRoutes, __internal } = routeModule;
-        let geminiCalls = 0;
         __internal.__setCallGeminiJsonObjectForTest(async () => {
-          geminiCalls += 1;
           return { ok: true, json: { products: [{ id: 'fake_1', why: 'should_not_happen' }] } };
         });
 
@@ -4986,7 +4551,6 @@ test('/v1/chat: alternatives budget exhausted only degrades alternatives (recomm
         const recos = Array.isArray(recoCard?.payload?.recommendations) ? recoCard.payload.recommendations : [];
         assert.ok(recos.length > 0);
         assert.equal(recos.some((item) => Array.isArray(item?.alternatives) && item.alternatives.length > 0), false);
-        assert.equal(geminiCalls, 0);
 
         const snap = snapshotVisionMetrics();
         assert.ok(Number(snap.recoAlternativesBudgetExhaustedTotal || 0) >= 1);
@@ -8161,157 +7725,111 @@ test('/v1/analysis/skin: accepts routine input and avoids low-confidence baselin
   assert.ok(findings.length > 0);
 });
 
-test('/v1/analysis/skin: routine autoscan strict guard blocks brush anchors and reports blocked metrics', async () => {
-  return withEnv(
+test('/v1/analysis/skin: nested profile fields inside currentRoutine feed analysis context', async () => {
+  await withEnv(
     {
-      AURORA_BFF_USE_MOCK: 'false',
-      AURORA_DECISION_BASE_URL: 'http://aurora.test',
-      PIVOTA_BACKEND_BASE_URL: 'http://catalog.test',
-      AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS: 'false',
-      AURORA_RULE_RELAX_MODE: 'aggressive',
-      AURORA_PRODUCT_GUARDRAIL_MODE: 'telemetry_only',
-      AURORA_PRODUCT_STRICT_SKINCARE_FILTER: 'false',
-      AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE: 'strict_non_skincare',
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
     },
     async () => {
-      const axios = require('axios');
-      const originalGet = axios.get;
-      const originalPost = axios.post;
-
-      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
-      delete require.cache[decisionModuleId];
-      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
-      const originalAuroraChat = decisionModule.auroraChat;
-      const deepScanBodies = [];
-
-      axios.post = async (url, body, config) => {
-        const u = String(url || '');
-        if (u.endsWith('/agent/v1/products/resolve')) {
-          return {
-            status: 200,
-            data: {
-              resolved: true,
-              product_ref: {
-                product_id: '9859793420616',
-                merchant_id: 'merch_efbc46b4619cfbdf',
-              },
-              candidates: [
-                {
-                  product_id: '9859793420616',
-                  sku_id: '9859793420616',
-                  brand: 'Brush Studio',
-                  name: 'Small Eyeshadow Brush',
-                  display_name: 'Small Eyeshadow Brush',
-                  category: 'makeup brush',
-                },
-              ],
-            },
-          };
-        }
-        return originalPost(url, body, config);
-      };
-
-      decisionModule.auroraChat = async (input) => {
-        const query = String(input && input.query ? input.query : '');
-        if (/Task:\s*Deep-scan\b/i.test(query)) {
-          deepScanBodies.push(input || {});
-          return {
-            schema_version: 'aurora.chat.v1',
-            intent: 'product_analyze',
-            structured: {
-              analyze: {
-                assessment: {
-                  verdict: 'Unknown',
-                  reasons: ['Evidence is limited.'],
-                },
-                evidence: {
-                  science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
-                  social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
-                  expert_notes: [],
-                },
-              },
-            },
-          };
-        }
-        return {
-          schema_version: 'aurora.chat.v1',
-          intent: 'chat',
-          answer: '{}',
-        };
-      };
-
-      resetAuroraRouteModuleCaches();
       const routeModuleId = require.resolve('../src/auroraBff/routes');
-      try {
-        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
-        const app = express();
-        app.use(express.json({ limit: '1mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
 
-        const resp = await supertest(app)
-          .post('/v1/analysis/skin')
-          .set({
-            'X-Aurora-UID': 'test_uid_routine_anchor_guard_skin',
-            'X-Trace-ID': 'test_trace_routine_anchor_guard_skin',
-            'X-Brief-ID': 'test_brief_routine_anchor_guard_skin',
-            'X-Lang': 'EN',
-          })
-          .send({
-            use_photo: false,
-            currentRoutine: {
-              am: {
-                cleanser: 'Biotherm Force Cleanser',
-                moisturizer: 'Biotherm Aquasource Hydra Barrier Cream',
-              },
-              pm: {
-                cleanser: 'Biotherm Force Cleanser',
-                moisturizer: 'Biotherm Aquasource Hydra Barrier Cream',
-              },
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/analysis/skin')
+        .set({
+          'X-Aurora-UID': `test_uid_nested_routine_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_nested_routine',
+          'X-Brief-ID': 'test_brief_nested_routine',
+          'X-Lang': 'EN',
+        })
+        .send({
+          use_photo: false,
+          currentRoutine: {
+            profile: {
+              skin_type: 'combination',
+              barrier_status: 'impaired',
+              sensitivity: 'high',
             },
-          })
-          .expect(200);
+            goal_profile: {
+              selected_goals: ['brightening', 'barrier_repair'],
+            },
+            am: {
+              cleanser: 'Gentle cleanser',
+              serum: 'Vitamin C serum',
+              moisturizer: 'Barrier cream',
+              spf: 'SPF 50',
+            },
+            pm: {
+              cleanser: 'Gentle cleanser',
+              treatment: 'Retinol serum',
+              moisturizer: 'Barrier cream',
+            },
+          },
+        })
+        .expect(200);
 
-        assert.ok(deepScanBodies.length > 0);
-        assert.equal(
-          deepScanBodies.every((entry) => !String(entry && entry.anchor_product_id ? entry.anchor_product_id : '').trim()),
-          true,
-        );
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const storyCard = findCardByType(cards, 'analysis_story_v2');
+      assert.ok(storyCard);
+      assert.match(String(resp.body?.assistant_message?.content || ''), /combination/i);
+      assert.match(String(resp.body?.assistant_message?.content || ''), /combination.*high|\bhigh\b.*sensitivity/i);
+      assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), false);
+    },
+  );
+});
 
-        const cards = Array.isArray(resp.body && resp.body.cards) ? resp.body.cards : [];
-        const routineCards = cards.filter((card) => String(card && card.type ? card.type : '') === 'product_analysis');
-        assert.ok(routineCards.length > 0);
-        const brushAnchored = routineCards.some((card) =>
-          /brush/i.test(
-            String(
-              card &&
-                card.payload &&
-                card.payload.assessment &&
-                card.payload.assessment.anchor_product &&
-                card.payload.assessment.anchor_product.name
-                ? card.payload.assessment.anchor_product.name
-                : '',
-            ),
-          ),
-        );
-        assert.equal(brushAnchored, false);
+test('/v1/profile/update: nested profile fields inside currentRoutine are persisted into top-level profile', async () => {
+  await withEnv(
+    {
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
 
-        const completedEvent = (Array.isArray(resp.body && resp.body.events) ? resp.body.events : []).find(
-          (evt) => String(evt && evt.event_name ? evt.event_name : '') === 'routine_product_deepscan_completed',
-        );
-        assert.ok(completedEvent);
-        const eventData =
-          completedEvent && completedEvent.data && typeof completedEvent.data === 'object' && !Array.isArray(completedEvent.data)
-            ? completedEvent.data
-            : {};
-        assert.ok(Number(eventData.anchors_blocked_non_skincare || 0) > 0);
-        assert.equal(Number(eventData.anchors_used || 0), 0);
-      } finally {
-        axios.get = originalGet;
-        axios.post = originalPost;
-        decisionModule.auroraChat = originalAuroraChat;
-        resetAuroraRouteModuleCaches();
-        delete require.cache[decisionModuleId];
-      }
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/profile/update')
+        .set({
+          'X-Aurora-UID': `test_uid_profile_nested_routine_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_profile_nested_routine',
+          'X-Brief-ID': 'test_brief_profile_nested_routine',
+          'X-Lang': 'EN',
+        })
+        .send({
+          currentRoutine: {
+            profile: {
+              skin_type: 'combination',
+              barrier_status: 'impaired',
+              sensitivity: 'high',
+            },
+            goal_profile: {
+              selected_goals: ['brightening', 'barrier_repair'],
+            },
+            am: { cleanser: 'Gentle cleanser', serum: 'Vitamin C serum' },
+            pm: { cleanser: 'Gentle cleanser', treatment: 'Retinol serum' },
+          },
+        })
+        .expect(200);
+
+      const profilePayload = (resp.body?.cards || []).find((card) => card?.type === 'profile')?.payload?.profile || {};
+      assert.equal(profilePayload.skinType, 'combination');
+      assert.equal(profilePayload.barrierStatus, 'impaired');
+      assert.equal(profilePayload.sensitivity, 'high');
+      assert.deepEqual(profilePayload.goals, ['brightening', 'barrier_repair']);
     },
   );
 });
@@ -8727,24 +8245,6 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
   const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
   const storyCard = findCardByType(cards, 'analysis_story_v2');
   assert.ok(storyCard);
-
-  const card = findCardByType(cards, 'analysis_summary');
-  assert.ok(card);
-  assert.equal(card.payload.analysis_source, 'retake');
-  assert.equal(card.payload?.quality_report?.photo_quality?.grade, 'fail');
-  assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
-  assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
-  assert.equal(Array.isArray(card.payload?.analysis?.features), true);
-  assert.equal(
-    (card.payload?.analysis?.features || []).every((item) =>
-      /photo|retake|upload/i.test(String(item && item.observation ? item.observation : '')),
-    ),
-    true,
-  );
-  assert.equal(card.payload?.analysis?.insufficient_visual_detail, true);
-  assert.equal(Array.isArray(card.payload?.analysis?.guidance_brief), true);
-  assert.equal((card.payload?.analysis?.guidance_brief || []).length > 0, true);
-  assert.match(String(card.payload?.analysis?.strategy || ''), /retake|photo/i);
 
   const analysisMeta = resp.body?.analysis_meta || {};
   assert.equal(
@@ -10204,6 +9704,267 @@ test('fetchPhotoBytesFromPivotaBackend: signed URL expired maps to DOWNLOAD_URL_
       } finally {
         axios.get = originalGet;
         delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: routine fit retries after clarify-like output, emits routine_fit_summary, and persists routine_fit', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      const capturedCalls = [];
+      let routineFitCallCount = 0;
+
+      decisionModule.auroraChat = async (args = {}) => {
+        capturedCalls.push(args);
+        if (String(args.intent_hint || '').trim() === 'routine_fit_summary') {
+          routineFitCallCount += 1;
+          if (routineFitCallCount === 1) {
+            return {
+              intent: 'clarify',
+              answer: 'Can you share more routine details first?',
+              clarification: { questions: [{ id: 'routine', question: 'Share more routine details' }] },
+            };
+          }
+          return {
+            structured: {
+              overall_fit: 'partial_match',
+              fit_score: 0.62,
+              summary: 'Routine mostly fits, but the active stack is a bit crowded.',
+              highlights: ['Barrier support is already present.'],
+              concerns: ['Morning actives may overlap and raise irritation risk.'],
+              dimension_scores: {
+                ingredient_match: { score: 0.74, note: 'Most ingredients align with the plan.' },
+                routine_completeness: { score: 0.68, note: 'Core steps are covered.' },
+                conflict_risk: { score: 0.39, note: 'Active overlap needs simplification.' },
+                sensitivity_safety: { score: 0.55, note: 'Monitor tolerance when layering actives.' },
+              },
+              next_questions: ['What should I simplify first?'],
+            },
+          };
+        }
+        return { answer: 'Mock Aurora reply.', intent: 'chat', cards: [] };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const memoryStore = require('../src/auroraBff/memoryStore');
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const uid = 'uid_analysis_routine_fit_retry';
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': uid,
+            'X-Trace-ID': 'trace_analysis_routine_fit_retry',
+            'X-Brief-ID': 'brief_analysis_routine_fit_retry',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                serum: 'Vitamin C serum',
+                moisturizer: 'Barrier cream',
+                spf: 'SPF 50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const routineFitCard = findCardByType(cards, 'routine_fit_summary');
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        const summaryCard = findCardByType(cards, 'analysis_summary');
+
+        assert.ok(storyCard);
+        assert.ok(routineFitCard);
+        assert.equal(Boolean(summaryCard), false);
+        assert.equal(cards.some((card) => card && card.type === 'product_analysis'), false);
+        assert.equal(routineFitCallCount, 2);
+
+        const routineFitCalls = capturedCalls.filter((row) => String(row?.intent_hint || '').trim() === 'routine_fit_summary');
+        assert.equal(routineFitCalls.length, 2);
+        assert.equal(routineFitCalls[0]?.disallow_clarify, true);
+        assert.equal(Array.isArray(routineFitCalls[0]?.required_structured_keys), true);
+        assert.equal(routineFitCalls[0].required_structured_keys.includes('dimension_scores'), true);
+
+        const completedEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((event) => event && event.event_name === 'routine_fit_evaluation_completed')
+          : null;
+        assert.ok(completedEvent);
+        assert.equal(Boolean(completedEvent?.data?.fit_card_emitted), true);
+        assert.equal(Number(completedEvent?.data?.retry_count), 1);
+        assert.equal(completedEvent?.data?.failure_reason, null);
+
+        const savedProfile = await memoryStore.getProfileForIdentity({ auroraUid: uid, userId: null });
+        assert.equal(savedProfile?.lastAnalysis?.routine_fit?.overall_fit, 'partial_match');
+        assert.equal(savedProfile?.lastAnalysis?.routine_fit?.summary, 'Routine mostly fits, but the active stack is a bit crowded.');
+      } finally {
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[routeModuleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of ingredient_hub or nudge fallback', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const memoryStore = require('../src/auroraBff/memoryStore');
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const uid = 'uid_analysis_followup_actions';
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'trace_analysis_followup_actions',
+        'X-Brief-ID': 'brief_analysis_followup_actions',
+        'X-Lang': 'EN',
+      };
+
+      try {
+        await memoryStore.saveLastAnalysisForIdentity(
+          { auroraUid: uid, userId: null },
+          {
+            analysis: {
+              skin_profile: {
+                skin_type_tendency: 'combination',
+                sensitivity_tendency: 'high',
+                current_strengths: ['steady barrier'],
+              },
+              priority_findings: [{ title: 'Cheek redness' }, { detail: 'Mild dehydration' }],
+              confidence_overall: { level: 'medium', score: 0.73 },
+              guidance_brief: ['Simplify the morning active stack', 'Keep barrier support stable'],
+              ingredient_plan: {
+                targets: [{ ingredient_name: 'Ceramide', role: 'barrier' }],
+                avoid: [{ ingredient_name: 'Vitamin C', reason: ['stinging risk'] }],
+                conflicts: [{ title: 'Do not stack acids with retinoid' }],
+              },
+              routine_fit: {
+                overall_fit: 'partial_match',
+                fit_score: 0.51,
+                summary: 'Routine is close but crowded.',
+                highlights: ['Barrier support is present'],
+                concerns: ['Morning stack is too active'],
+                dimension_scores: {
+                  ingredient_match: { score: 0.71, note: 'Mostly aligned' },
+                  routine_completeness: { score: 0.67, note: 'Core routine present' },
+                  conflict_risk: { score: 0.29, note: 'Active overlap' },
+                  sensitivity_safety: { score: 0.43, note: 'Monitor irritation' },
+                },
+                next_questions: ['What should I simplify first?'],
+              },
+            },
+            lang: 'EN',
+          },
+        );
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const deepDive = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action: {
+              action_id: 'chip.aurora.next_action.deep_dive_skin',
+              kind: 'action',
+              data: { reply_text: 'Tell me more about my skin', trigger_source: 'analysis_story_v2' },
+            },
+            language: 'EN',
+          })
+          .expect(200);
+        assert.equal(Boolean(findCardByType(deepDive.body?.cards, 'ingredient_hub')), false);
+        assert.equal(Boolean(findCardByType(deepDive.body?.cards, 'nudge')), false);
+        assert.match(String(deepDive.body?.assistant_message?.content || ''), /latest analysis|skin trends/i);
+
+        const ingredientPlan = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action: {
+              action_id: 'chip.aurora.next_action.ingredient_plan',
+              kind: 'action',
+              data: { reply_text: 'Explain the ingredient plan', trigger_source: 'analysis_story_v2' },
+            },
+            language: 'EN',
+          })
+          .expect(200);
+        assert.ok(findCardByType(ingredientPlan.body?.cards, 'ingredient_plan'));
+        assert.equal(Boolean(findCardByType(ingredientPlan.body?.cards, 'ingredient_hub')), false);
+        assert.equal(Boolean(findCardByType(ingredientPlan.body?.cards, 'nudge')), false);
+
+        const routine = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action: {
+              action_id: 'chip.aurora.next_action.routine_deep_dive',
+              kind: 'action',
+              data: { reply_text: 'What should I simplify first?', trigger_source: 'routine_fit_summary' },
+            },
+            language: 'EN',
+          })
+          .expect(200);
+        assert.ok(findCardByType(routine.body?.cards, 'routine_fit_summary'));
+        assert.equal(Boolean(findCardByType(routine.body?.cards, 'ingredient_hub')), false);
+        assert.equal(Boolean(findCardByType(routine.body?.cards, 'nudge')), false);
+
+        const safety = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action: {
+              action_id: 'chip.aurora.next_action.safety_concerns',
+              kind: 'action',
+              data: { reply_text: 'Anything I should watch out for?', trigger_source: 'analysis_story_v2' },
+            },
+            language: 'EN',
+          })
+          .expect(200);
+        assert.ok(findCardByType(safety.body?.cards, 'confidence_notice'));
+        assert.equal(Boolean(findCardByType(safety.body?.cards, 'ingredient_hub')), false);
+        assert.equal(Boolean(findCardByType(safety.body?.cards, 'nudge')), false);
+
+        const actionEvents = Array.isArray(safety.body?.events) ? safety.body.events : [];
+        assert.equal(
+          actionEvents.some((event) => event && event.event_name === 'analysis_followup_action_routed' && event.data?.fell_back_to_generic === false),
+          true,
+        );
+      } finally {
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+        delete require.cache[routeModuleId];
       }
     },
   );

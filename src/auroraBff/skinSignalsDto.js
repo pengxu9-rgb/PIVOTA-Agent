@@ -242,7 +242,7 @@ function extractRoutineProducts(routineCandidate) {
   const pm = pmSteps.map(mapStep).filter(Boolean).slice(0, 8);
   const notes = String(routineCandidate.notes || '').trim().slice(0, 800) || null;
 
-  return (am.length || pm.length || notes) ? { am, pm, notes } : null;
+  return am.length || pm.length || notes ? { am, pm, notes } : null;
 }
 
 function buildConstraints(profileSummary) {

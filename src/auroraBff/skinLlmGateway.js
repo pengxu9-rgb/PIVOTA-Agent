@@ -110,6 +110,22 @@ function getGeminiClient(apiKey) {
   }
 }
 
+function withTimeout(promise, timeoutMs) {
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(`GEMINI_TIMEOUT_${timeoutMs}`);
+        err.code = 'GEMINI_TIMEOUT';
+        reject(err);
+      }, timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 async function extractTextFromGeminiResponse(response) {
   if (!response) return '';
   if (typeof response.text === 'function') {
@@ -156,25 +172,16 @@ function classifyJsonParseStatus(rawText, parsed) {
 function classifyGeminiError(err) {
   if (!err) return { reason: 'UNKNOWN', upstream_status_code: null };
   const code = String(err.code || '').trim().toUpperCase();
-  const name = String(err.name || '').trim().toUpperCase();
   const rawStatus = Number.isFinite(Number(err.status)) ? Math.trunc(Number(err.status)) : null;
   const message = String(err.message || '').toLowerCase();
 
-  // @google/genai 0.7.0 ClientError embeds HTTP status in message text.
+  // @google/genai 0.7.0 ClientError embeds status in message: "got status: 400 Bad Request. {...}"
   const status = rawStatus || (() => {
     const m = String(err.message || '').match(/got status:\s*(\d{3})/i);
     return m ? parseInt(m[1], 10) : null;
   })();
 
-  if (
-    code === 'GEMINI_TIMEOUT' ||
-    code.includes('TIMEOUT') ||
-    code.includes('ABORT') ||
-    name === 'ABORTERROR' ||
-    message.includes('timeout') ||
-    message.includes('deadline exceeded') ||
-    message.includes('aborted')
-  ) {
+  if (code === 'GEMINI_TIMEOUT' || message.includes('timeout') || message.includes('deadline exceeded')) {
     return { reason: 'TIMEOUT', upstream_status_code: null };
   }
   if (code === 'GLOBAL_RATE_LIMITED' || code === 'RATE_LIMITED') {
@@ -329,13 +336,8 @@ function buildVisionAttemptBundle({ language, visionDto, promptVersion, revision
   };
 }
 
-function buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint, lifecycleInstructions } = {}) {
-  const bundle = buildSkinReportPromptBundle({
-    language,
-    dto: reportDto,
-    promptVersion,
-    lifecycleInstructions,
-  });
+function buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint } = {}) {
+  const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
   return {
     bundle,
     userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt,
@@ -391,14 +393,6 @@ async function callGeminiJson({
   }
 
   const startedAt = Date.now();
-  const resolvedOutputTokens = readOutputTokenBudget(
-    'AURORA_SKIN_MAX_OUTPUT_TOKENS',
-    Number.isFinite(Number(maxOutputTokens)) ? Number(maxOutputTokens) : 700,
-  );
-  const resolvedTimeoutMs = Math.max(
-    readTimeoutMs(timeoutMs, SKIN_LLM_TIMEOUT_MS),
-    inferStructuredTimeoutMs(resolvedOutputTokens),
-  );
   const request = {
     model: SKIN_MODEL_GEMINI,
     systemInstruction: {
@@ -428,8 +422,7 @@ async function callGeminiJson({
       temperature: 0.1,
       topP: 0.8,
       candidateCount: 1,
-      maxOutputTokens: resolvedOutputTokens,
-      httpOptions: { timeout: resolvedTimeoutMs },
+      maxOutputTokens: readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number.isFinite(Number(maxOutputTokens)) ? Number(maxOutputTokens) : 700),
     },
   };
 
@@ -465,16 +458,6 @@ async function callGeminiJson({
       latency_ms: Date.now() - startedAt,
     };
   } catch (err) {
-    if (err && err.name === 'GeminiGateError') {
-      return {
-        ok: false,
-        reason: String(err.code || 'GATE_ERROR'),
-        upstream_status_code: null,
-        response_text: '',
-        parsed: null,
-        latency_ms: Date.now() - startedAt,
-      };
-    }
     const classified = classifyGeminiError(err);
     return {
       ok: false,
@@ -724,14 +707,8 @@ async function runGeminiReportStrategy({
   promptVersion,
   profiler,
   timeoutMs,
-  lifecycleInstructions,
 } = {}) {
-  const bundle = buildSkinReportPromptBundle({
-    language,
-    dto: reportDto,
-    promptVersion,
-    lifecycleInstructions,
-  });
+  const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
   const isCanonical = isSkinPromptV3(promptVersion);
   let retryAttempted = 0;
 
@@ -764,13 +741,7 @@ async function runGeminiReportStrategy({
 
   const attempt = async (revisionHint) => {
     const promptBundle = isCanonical
-      ? buildReportAttemptBundle({
-          language,
-          reportDto,
-          promptVersion,
-          revisionHint,
-          lifecycleInstructions,
-        })
+      ? buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint })
       : { bundle, userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt };
     return await callGeminiJson({
       systemInstruction: promptBundle.bundle.systemInstruction,

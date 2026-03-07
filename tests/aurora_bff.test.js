@@ -20,12 +20,10 @@ describe('Aurora BFF (/v1)', () => {
   beforeEach(() => {
     jest.resetModules();
     process.env.AURORA_BFF_USE_MOCK = 'true';
-    process.env.AURORA_CHAT_RESPONSE_FORMAT = 'legacy';
   });
 
   afterEach(() => {
     delete process.env.AURORA_BFF_USE_MOCK;
-    delete process.env.AURORA_CHAT_RESPONSE_FORMAT;
   });
 
   test('Phase0 gate: no recos when profile is missing', async () => {
@@ -121,7 +119,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
   });
 
-  test('Chat: include_alternatives request with a complete profile in diagnosis state routes to photo opt-in', async () => {
+  test('Chat: include_alternatives request with a complete profile returns recommendations cleanly', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -141,13 +139,10 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    const chips = getQuickReplies(res.body);
-    expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(false);
-    expect(res.body.session_patch?.next_state).toBe('DIAG_PHOTO_OPTIN');
-    expect(chips.some((c) => getQuickReplyId(c) === 'chip.intake.upload_photos')).toBe(true);
-    expect(chips.some((c) => getQuickReplyId(c) === 'chip.intake.skip_analysis')).toBe(true);
-    expect(res.body.session_patch?.profile?.skinType).toBe('oily');
-    expect(res.body.session_patch?.profile?.budgetTier).toBe('¥500');
+    const reco = res.body.cards.find((c) => c.type === 'recommendations');
+    expect(reco).toBeTruthy();
+    expect(Array.isArray(reco?.payload?.recommendations)).toBe(true);
+    expect(reco.payload.recommendations.length).toBeGreaterThan(0);
   });
 
   test('Diagnosis: profile chip patch continues with next missing fields', async () => {
@@ -227,7 +222,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(Boolean(skip)).toBe(true);
   });
 
-  test('Diagnosis: diag.skip_photo_analyze without a complete profile returns a low-confidence baseline', async () => {
+  test('Diagnosis: diag.skip_photo_analyze without a complete profile loops back to diagnosis_gate', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -244,13 +239,8 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    const analysis = res.body.cards.find((c) => c.type === 'analysis_summary');
-    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(false);
-    expect(analysis).toBeTruthy();
-    expect(analysis?.payload?.analysis_source).toBe('baseline_low_confidence');
-    expect(analysis?.payload?.low_confidence).toBe(true);
-    expect(res.body.cards.some((c) => c.type === 'confidence_notice')).toBe(true);
-    expect(res.body.session_patch?.next_state).toBe('DIAG_ANALYSIS_SUMMARY');
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
+    expect(res.body.session_patch?.next_state).toBe('DIAG_PROFILE');
   });
 
   test('Diagnosis: chip.intake.upload_photos is recognized by state machine as valid transition', () => {
@@ -431,7 +421,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(card.payload.items[0].offer.price).toBeGreaterThan(0);
   });
 
-  test('Skin analysis: returns legacy analysis_summary card', async () => {
+  test('Skin analysis: returns analysis_summary card', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/analysis/skin')
@@ -439,11 +429,10 @@ describe('Aurora BFF (/v1)', () => {
       .send({ photos: [{ slot_id: 'daylight', qc_status: 'passed' }] })
       .expect(200);
 
-    const card = res.body.cards.find((c) => c.type === 'analysis_summary');
+    const card = res.body.cards.find((c) => c.type === 'analysis_story_v2');
     expect(card).toBeTruthy();
-    expect(card.payload).toHaveProperty('analysis');
-    expect(card.payload.analysis).toHaveProperty('findings');
-    expect(Array.isArray(card.payload.analysis.findings)).toBe(true);
+    expect(card.payload).toHaveProperty('priority_findings');
+    expect(Array.isArray(card.payload.priority_findings)).toBe(true);
     expect(res.body.cards.some((c) => c.type === 'ingredient_plan')).toBe(true);
     expect(Array.isArray(card.field_missing) ? card.field_missing : []).toEqual(
       expect.not.arrayContaining([expect.objectContaining({ field: 'profile.currentRoutine' })]),
@@ -461,7 +450,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.cards.some((c) => c.type === 'photo_confirm')).toBe(true);
   });
 
-  test('Product analyze: returns product_analysis assessment payload', async () => {
+  test('Product analyze: returns product_analysis with anchor_product', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/product/analyze')
@@ -472,8 +461,7 @@ describe('Aurora BFF (/v1)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(card.payload).toHaveProperty('assessment');
-    expect(card.payload.assessment).toHaveProperty('verdict');
-    expect(card.payload.assessment).toHaveProperty('summary');
+    expect(card.payload.assessment).toHaveProperty('anchor_product');
   });
 
   test('Dupe compare: returns dupe_compare with original/dupe products', async () => {

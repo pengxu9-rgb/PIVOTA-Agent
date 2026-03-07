@@ -106,10 +106,16 @@ run_case_low_confidence() {
   local analysis_json
   analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false}')"
 
-  jq_assert_json "analysis_summary exists" '.cards | any(.type=="analysis_summary")' "$analysis_json"
-  jq_assert_json "analysis source baseline_low_confidence" '(.cards[] | select(.type=="analysis_summary") | .payload.analysis_source) == "baseline_low_confidence"' "$analysis_json"
-  jq_assert_json "artifact confidence low" '(.cards[] | select(.type=="analysis_summary") | .payload.diagnosis_artifact.overall_confidence.level) == "low"' "$analysis_json"
-  jq_assert_json "recommendation_ready false on low confidence" '(.cards[] | select(.type=="analysis_summary") | .payload.recommendation_ready) == false' "$analysis_json"
+  jq_assert_json "analysis_story_v2 exists" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
+  jq_assert_json "ingredient_plan exists on low confidence path" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
+  jq_assert_json "confidence_notice exists on low confidence path" '.cards | any(.type=="confidence_notice")' "$analysis_json"
+  jq_assert_json "no routine_fit_summary on low confidence path" '(.cards | any(.type=="routine_fit_summary")) | not' "$analysis_json"
+  jq_assert_json "analysis_summary not public when story exists" '
+    if (.cards | any(.type=="analysis_story_v2"))
+    then (.cards | any(.type=="analysis_summary")) | not
+    else true
+    end
+  ' "$analysis_json"
 
   local reco_json
   reco_json="$(
@@ -147,10 +153,51 @@ run_case_medium_confidence() {
   local analysis_json
   analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false,"currentRoutine":"AM: cleanser + moisturizer + sunscreen; PM: cleanser + moisturizer + niacinamide serum"}')"
 
-  jq_assert_json "analysis_summary exists (medium case)" '.cards | any(.type=="analysis_summary")' "$analysis_json"
-  jq_assert_json "analysis source is not baseline fallback" '(.cards[] | select(.type=="analysis_summary") | .payload.analysis_source) != "baseline_low_confidence"' "$analysis_json"
-  jq_assert_json "artifact confidence medium/high" '.cards[] | select(.type=="analysis_summary") | (.payload.diagnosis_artifact.overall_confidence.level == "medium" or .payload.diagnosis_artifact.overall_confidence.level == "high")' "$analysis_json"
-  jq_assert_json "recommendation_ready true on medium/high artifact" '(.cards[] | select(.type=="analysis_summary") | .payload.recommendation_ready) == true' "$analysis_json"
+  jq_assert_json "analysis_story_v2 exists (medium case)" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
+  jq_assert_json "ingredient_plan exists (medium case)" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
+  jq_assert_json "routine_fit_summary exists (medium case)" '.cards | any(.type=="routine_fit_summary")' "$analysis_json"
+  jq_assert_json "routine deep-dive chip exists when routine_fit_summary exists" '
+    if (.cards | any(.type=="routine_fit_summary"))
+    then (.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))
+    else false
+    end
+  ' "$analysis_json"
+  jq_assert_json "analysis_summary not public when story exists (medium case)" '
+    if (.cards | any(.type=="analysis_story_v2"))
+    then (.cards | any(.type=="analysis_summary")) | not
+    else true
+    end
+  ' "$analysis_json"
+
+  local deep_dive_json
+  deep_dive_json="$(
+    post_json "$uid" "$trace" "$brief" "/v1/chat" '{
+      "action":{
+        "action_id":"chip.aurora.next_action.deep_dive_skin",
+        "kind":"action",
+        "data":{"reply_text":"Tell me more about my skin","trigger_source":"analysis_story_v2"}
+      }
+    }'
+  )"
+  jq_assert_json "deep_dive_skin does not fall back to ingredient_hub or nudge" '
+    (.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not
+  ' "$deep_dive_json"
+  jq_assert_json "deep_dive_skin returns non-empty assistant message" '((.assistant_message.content // "") | length) > 0' "$deep_dive_json"
+
+  local routine_follow_json
+  routine_follow_json="$(
+    post_json "$uid" "$trace" "$brief" "/v1/chat" '{
+      "action":{
+        "action_id":"chip.aurora.next_action.routine_deep_dive",
+        "kind":"action",
+        "data":{"reply_text":"What should I simplify first?","trigger_source":"routine_fit_summary"}
+      }
+    }'
+  )"
+  jq_assert_json "routine_deep_dive returns routine_fit_summary again" '.cards | any(.type=="routine_fit_summary")' "$routine_follow_json"
+  jq_assert_json "routine_deep_dive does not fall back to ingredient_hub or nudge" '
+    (.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not
+  ' "$routine_follow_json"
 
   local reco_json
   reco_json="$(

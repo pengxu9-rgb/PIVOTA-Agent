@@ -477,6 +477,7 @@ function buildChatCardsResponse({
     cards,
     follow_up_questions: followUpQuestions,
     suggested_quick_replies: quickReplies,
+    session_patch: isPlainObject(base.session_patch) ? base.session_patch : {},
     ops,
     safety: {
       risk_level: riskLevel,

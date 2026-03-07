@@ -119,12 +119,59 @@ skin_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
   "${COMMON_HEADERS[@]}" \
   --data '{}')"
 
-printf "%s\n" "$skin_json" | jq_assert "analysis_summary card exists" '.cards | any(.type=="analysis_summary")'
 printf "%s\n" "$skin_json" | jq_assert "analysis_story_v2 has ui_card_v1" '.cards | any(.type=="analysis_story_v2" and ((.payload.ui_card_v1|type)=="object") and ((.payload.ui_card_v1.headline//"")|length>0))'
-printf "%s\n" "$skin_json" | jq_assert "analysis field_missing is array" '((.cards[]|select(.type=="analysis_summary")|.field_missing)|type) == "array"'
-printf "%s\n" "$skin_json" | jq_assert "analysis has 1+ features" '(.cards[]|select(.type=="analysis_summary")|.payload.analysis.features|length) >= 1'
-printf "%s\n" "$skin_json" | jq_assert "analysis has strategy" '((.cards[]|select(.type=="analysis_summary")|.payload.analysis.strategy)//"") | length > 0'
+printf "%s\n" "$skin_json" | jq_assert "ingredient_plan card exists" '.cards | any(.type=="ingredient_plan")'
+printf "%s\n" "$skin_json" | jq_assert "analysis_summary not public when story exists" '
+  if (.cards | any(.type=="analysis_story_v2"))
+  then (.cards | any(.type=="analysis_summary")) | not
+  else true
+  end
+'
 printf "%s\n" "$skin_json" | jq_assert "analysis suppresses passive pregnancy confidence card" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="pregnancy_optional_profile")] | length) == 0'
+
+say "skin analysis (routine-fit path)"
+skin_routine_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
+  -H 'Content-Type: application/json' \
+  "${COMMON_HEADERS[@]}" \
+  --data '{"use_photo":false,"currentRoutine":{"am":{"cleanser":"Gentle cleanser","serum":"Vitamin C serum","moisturizer":"Barrier cream","spf":"SPF50"},"pm":{"cleanser":"Gentle cleanser","treatment":"Retinol serum","moisturizer":"Barrier cream"}}}')"
+
+printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has story card" '.cards | any(.type=="analysis_story_v2")'
+printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has ingredient_plan" '.cards | any(.type=="ingredient_plan")'
+printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has routine_fit_summary" '.cards | any(.type=="routine_fit_summary")'
+printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis exposes deep-dive chip" '(.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))'
+printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis does not expose public analysis_summary" '
+  if (.cards | any(.type=="analysis_story_v2"))
+  then (.cards | any(.type=="analysis_summary")) | not
+  else true
+  end
+'
+
+say "analysis follow-up actions"
+analysis_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
+  -H 'Content-Type: application/json' \
+  "${COMMON_HEADERS[@]}" \
+  --data '{
+    "action":{
+      "action_id":"chip.aurora.next_action.deep_dive_skin",
+      "kind":"action",
+      "data":{"reply_text":"Tell me more about my skin","trigger_source":"analysis_story_v2"}
+    }
+  }')"
+printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
+printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin assistant text exists" '((.assistant_message.content // "") | length) > 0'
+
+analysis_routine_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
+  -H 'Content-Type: application/json' \
+  "${COMMON_HEADERS[@]}" \
+  --data '{
+    "action":{
+      "action_id":"chip.aurora.next_action.routine_deep_dive",
+      "kind":"action",
+      "data":{"reply_text":"What should I simplify first?","trigger_source":"routine_fit_summary"}
+    }
+  }')"
+printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive replays routine_fit_summary" '.cards | any(.type=="routine_fit_summary")'
+printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
 
 say "product analyze (Nivea Creme)"
 started_at_before_analyze="$(health_started_at)"

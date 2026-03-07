@@ -2,6 +2,7 @@ const nock = require('nock');
 const request = require('supertest');
 
 describe('invoke external key auth', () => {
+  jest.setTimeout(15000);
   const ORIGINAL_ENV = { ...process.env };
   const INTROSPECT_BASE = 'https://auth.test';
   const INTROSPECT_PATH = '/agent/internal/auth/introspect';

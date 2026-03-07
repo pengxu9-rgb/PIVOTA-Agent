@@ -262,12 +262,11 @@ function buildSkinVisionPromptBundle({ language, dto, promptVersion } = {}) {
   };
 }
 
-function buildSkinReportPromptBundle({ language, dto, promptVersion, lifecycleInstructions } = {}) {
+function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
   const version = normalizePromptVersion(promptVersion, 'skin_v2');
   if (isSkinPromptV3(version)) return buildReportCanonicalPrompt({ dto });
   const qRule = qualityGradeInstruction(dto, lang);
-  const lcInstructions = typeof lifecycleInstructions === 'string' ? lifecycleInstructions : '';
   if (lang === 'zh-CN') {
     return {
       promptVersion: version,
@@ -279,7 +278,6 @@ function buildSkinReportPromptBundle({ language, dto, promptVersion, lifecycleIn
         `structure_rule: strategy 必须按「原因 -> 注意事项 -> 修复路径 -> 下一问」组织，避免泛化建议。\n` +
         `separation_rule: 你接收的是视觉阶段的观察结果。不要逐字重复观察。通过cue名称引用观察。你的输出仅包含方案/计划JSON。\n` +
         `routine_step_schema: routine_expert中的am_plan/pm_plan每步必须包含：{"step":"类型","why":"关联已观察到的cue","look_for":["属性"],"how":"使用方法","caution":"注意事项"}\n` +
-        `routine_products_rule: 当dto中包含routine_products时，用户已填写了具体产品。你的strategy和routine_expert必须直接引用并分析这些产品，不要推荐用户未提及的产品。如果有notes，结合notes理解用户意图和使用习惯。routine_products.am/pm是产品列表，notes是用户备注。\n` +
         `two_week_focus: 输出最多3条优先行动的two_week_focus数组。如有刺激信号，优先屏障修复。\n` +
         `skin_type_rule: 用户自选肤质是先验，非真相。与观察到的cue比对。不一致时提及一次。\n` +
         `deepening_rule: 可选输出 reasoning(1-4条)、deepening(phase/next_phase/question/options)、evidence_refs(最多6条，字段=id/title/url/why_relevant)。\n` +
@@ -287,7 +285,6 @@ function buildSkinReportPromptBundle({ language, dto, promptVersion, lifecycleIn
         `findings_rule: 输出findings数组，每项含cue/where/severity/confidence/evidence。quality相关信息禁止出现在findings中。\n` +
         `guidance_brief_rule: 输出2-3条简短指导建议，不重复。\n` +
         `next_step_rule: 诊断后输出next_step_options数组，固定3个选项：[{"id":"analysis_get_recommendations","label":"获取产品推荐"},{"id":"analysis_optimize_existing","label":"优化现有产品"},{"id":"analysis_both_reco_optimize","label":"两者都要"}]。` +
-        lcInstructions +
         qRule + `\n` +
         `dto: ${JSON.stringify(dto || {})}`,
     };
@@ -302,7 +299,6 @@ function buildSkinReportPromptBundle({ language, dto, promptVersion, lifecycleIn
       `structure_rule: strategy must follow "Cause -> Watchouts -> Repair path -> Next question", and must not be generic.\n` +
       `separation_rule: You receive observations from the vision stage. Do NOT repeat them verbatim. Reference observations by cue name. Your output is routine/plan JSON only.\n` +
       `routine_step_schema: Each step in routine_expert am_plan/pm_plan MUST contain: {"step":"type","why":"tied to observed cue","look_for":["product attributes"],"how":"application method","caution":"warnings"}\n` +
-      `routine_products_rule: When dto contains routine_products, the user has provided their actual products. Your strategy and routine_expert MUST directly reference and analyze these products. Do NOT recommend products the user did not mention. If notes are provided, use them to understand user intent and usage habits. routine_products.am/pm contain the product list, notes contain user remarks.\n` +
       `two_week_focus: Output a two_week_focus array of max 3 priority actions. Prioritize barrier stabilization if irritation signals exist.\n` +
       `skin_type_rule: User-selected skin type is a PRIOR, not ground truth. Compare against observed cues. Mention mismatch once if relevant. Each routine step must reference at least 1 observed cue.\n` +
       `deepening_rule: You may include reasoning(1-4 strings), deepening(phase/next_phase/question/options), evidence_refs(max 6 items with id/title/url/why_relevant).\n` +
@@ -310,7 +306,6 @@ function buildSkinReportPromptBundle({ language, dto, promptVersion, lifecycleIn
       `findings_rule: Output a findings array where each item has cue/where/severity/confidence/evidence. Quality info must NEVER appear inside findings.\n` +
       `guidance_brief_rule: Output 2-3 concise guidance bullets. No duplicates.\n` +
       `next_step_rule: After diagnosis, output next_step_options array with exactly 3 options: [{"id":"analysis_get_recommendations","label":"Get recommendations"},{"id":"analysis_optimize_existing","label":"Optimize existing products"},{"id":"analysis_both_reco_optimize","label":"Both"}]. Localize labels if language is CN.` +
-      lcInstructions +
       qRule + `\n` +
       `dto: ${JSON.stringify(dto || {})}`,
   };
