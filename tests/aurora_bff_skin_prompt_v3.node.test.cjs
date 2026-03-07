@@ -195,6 +195,46 @@ test('skin prompt v3: report adjudication resolves deterministic priority from r
   });
   assert.equal(adjudicated.summary_focus.priority, 'redness');
   assert.deepEqual(adjudicated.summary_focus.primary_cues.slice(0, 1), ['redness']);
+  assert.equal(adjudicated.follow_up.intent, 'tolerance_check');
+  assert.deepEqual(adjudicated.follow_up.conditional_followups, ['routine_share']);
+  assert.equal(adjudicated.insights.length, 1);
+});
+
+test('skin prompt v3: report adjudication forces barrier-first plan for sensitive active routines', () => {
+  const strictCanonical = normalizeReportCanonicalLayer(
+    {
+      needs_risk_check: true,
+      summary_focus: { priority: 'redness', primary_cues: ['redness', 'texture'] },
+      insights: [
+        { cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high', evidence: 'cheek redness' },
+        { cue: 'texture', region: 'chin', severity: 'mild', confidence: 'med', evidence: 'chin texture' },
+        { cue: 'flaking', region: 'full_face', severity: 'mild', confidence: 'med', evidence: 'surface dryness' },
+      ],
+      routine_steps: [],
+      watchouts: [],
+      follow_up: { intent: 'reaction_check', conditional_followups: ['tolerance_check'] },
+      two_week_focus: [],
+      risk_flags: [],
+    },
+    { strict: true },
+  );
+  const adjudicated = adjudicateReportCanonicalLayer(strictCanonical, {
+    reportContext: {
+      concern_rank: ['redness', 'texture'],
+      deterministic_signals: { redness: 'mid', oiliness: 'low', acne_like: 'few', dryness: 'some', texture: 'rough' },
+      routine_summary: { moisturizer: 'yes', sunscreen: 'unknown', actives: ['retinoid'] },
+      constraints: ['sensitive-skin self-report'],
+      locked_features_summary: ['mild redness on cheeks', 'rough texture around chin'],
+      quality: { grade: 'pass' },
+    },
+  });
+  assert.equal(adjudicated.summary_focus.priority, 'barrier');
+  assert.deepEqual([...adjudicated.summary_focus.primary_cues].sort(), ['redness', 'texture']);
+  assert.deepEqual(adjudicated.follow_up, { intent: 'reaction_check', conditional_followups: ['routine_share'] });
+  assert.deepEqual(
+    adjudicated.insights.map((row) => `${row.cue}:${row.region}:${row.severity}`),
+    ['redness:cheeks:moderate', 'texture:chin:moderate'],
+  );
 });
 
 test('skin prompt v3: deepening adjudication preserves inherited priority and sorts advice items', () => {

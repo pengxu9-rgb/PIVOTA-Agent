@@ -1320,6 +1320,77 @@ function buildPrimaryCueList({ summaryFocus, insights, reportContext, resolvedPr
   return out.length ? out : [priorityToCanonicalCue(resolvedPriority || 'mixed')];
 }
 
+function normalizeReportInsightSeverity(cue, rawSeverity, { resolvedPriority, reportContext } = {}) {
+  const signals = reportContext && reportContext.deterministic_signals && typeof reportContext.deterministic_signals === 'object'
+    ? reportContext.deterministic_signals
+    : {};
+  const normalizedCue = normalizeCanonicalCue(cue);
+  const normalizedSeverity = normalizeObservationSeverity(rawSeverity);
+  if (normalizedCue === 'redness') {
+    const redness = String(signals.redness || '').trim().toLowerCase();
+    if (redness === 'high') return 'high';
+    if (redness === 'mid') return 'moderate';
+    if (redness === 'low') return 'mild';
+  }
+  if (normalizedCue === 'texture') {
+    const texture = String(signals.texture || '').trim().toLowerCase();
+    if (texture === 'rough') return 'moderate';
+    if (texture === 'ok') return 'mild';
+  }
+  if (normalizedCue === 'bumps') {
+    const acneLike = String(signals.acne_like || '').trim().toLowerCase();
+    if (acneLike === 'some') return 'moderate';
+    if (acneLike === 'few') return 'mild';
+  }
+  if (normalizedCue === 'shine') {
+    const oiliness = String(signals.oiliness || '').trim().toLowerCase();
+    if (oiliness === 'high') return 'moderate';
+    if (oiliness === 'mid') return 'mild';
+    if (oiliness === 'low') return 'mild';
+  }
+  if (normalizedCue === 'flaking') {
+    const dryness = String(signals.dryness || '').trim().toLowerCase();
+    if (dryness === 'some') return 'mild';
+  }
+  if (normalizedCue === priorityToCanonicalCue(resolvedPriority)) {
+    return normalizedSeverity === 'high' ? 'high' : 'moderate';
+  }
+  return normalizedSeverity === 'high' ? 'moderate' : 'mild';
+}
+
+function selectDeterministicReportInsights(insights, { primaryCues, resolvedPriority, reportContext } = {}) {
+  const list = Array.isArray(insights) ? insights.slice() : [];
+  const prioritizedCues = Array.isArray(primaryCues) ? primaryCues.map((item) => normalizeCanonicalCue(item)).filter(Boolean) : [];
+  const resolvedCue = priorityToCanonicalCue(resolvedPriority || 'mixed');
+  const allowedCues = Array.from(new Set([resolvedCue, ...prioritizedCues])).filter(Boolean);
+  const ranked = normalizeCanonicalObservationArray(list, { maxItems: 6 })
+    .sort((a, b) => {
+      const allowedDiff = Number(allowedCues.includes(b.cue)) - Number(allowedCues.includes(a.cue));
+      if (allowedDiff) return allowedDiff;
+      const scoreDiff = canonicalObservationScore(b) - canonicalObservationScore(a);
+      if (scoreDiff) return scoreDiff;
+      return `${a.cue}:${a.region}`.localeCompare(`${b.cue}:${b.region}`);
+    });
+  const kept = [];
+  const seen = new Set();
+  for (const row of ranked) {
+    const key = `${row.cue}:${row.region}`;
+    if (seen.has(key)) continue;
+    if (kept.length >= 2) break;
+    if (allowedCues.length && !allowedCues.includes(row.cue)) continue;
+    seen.add(key);
+    kept.push({
+      ...row,
+      severity: normalizeReportInsightSeverity(row.cue, row.severity, { resolvedPriority, reportContext }),
+    });
+  }
+  if (kept.length >= 2) return kept;
+  return ranked.slice(0, Math.min(2, ranked.length)).map((row) => ({
+    ...row,
+    severity: normalizeReportInsightSeverity(row.cue, row.severity, { resolvedPriority, reportContext }),
+  }));
+}
+
 function resolveReportSummaryFocus(summaryFocus, insights, reportContext) {
   const scoreMap = new Map();
   const addScore = (priority, weight) => {
@@ -1362,6 +1433,16 @@ function resolveReportSummaryFocus(summaryFocus, insights, reportContext) {
   if (dryness === 'some') addScore('barrier', 2.4);
   const texture = String(signals.texture || '').trim().toLowerCase();
   if (texture === 'rough') addScore('texture', 1.8);
+  const routineSummary = reportContext && reportContext.routine_summary && typeof reportContext.routine_summary === 'object'
+    ? reportContext.routine_summary
+    : {};
+  const constraints = reportContext && Array.isArray(reportContext.constraints) ? reportContext.constraints : [];
+  const hasSensitiveConstraint = constraints.includes('sensitive-skin self-report');
+  const actives = Array.isArray(routineSummary.actives) ? routineSummary.actives : [];
+  const sunscreen = String(routineSummary.sunscreen || '').trim().toLowerCase();
+  if (dryness === 'some' && hasSensitiveConstraint) addScore('barrier', 4);
+  if (actives.length) addScore('barrier', 2.4);
+  if (sunscreen && sunscreen !== 'yes') addScore('barrier', 1.4);
 
   for (const cue of extractCueVotesFromLockedFeatures(reportContext && reportContext.locked_features_summary)) {
     addScore(cueToSummaryPriority(cue), 0.8);
@@ -1377,6 +1458,13 @@ function resolveReportSummaryFocus(summaryFocus, insights, reportContext) {
     }
   }
   if (!resolvedPriority) resolvedPriority = normalizedFocus.priority || 'mixed';
+  if (
+    dryness === 'some' &&
+    (hasSensitiveConstraint || actives.length || sunscreen !== 'yes') &&
+    ['redness', 'texture', 'mixed', 'tone', 'pores'].includes(resolvedPriority)
+  ) {
+    resolvedPriority = 'barrier';
+  }
 
   return {
     priority: resolvedPriority || 'mixed',
@@ -1389,12 +1477,19 @@ function resolveReportSummaryFocus(summaryFocus, insights, reportContext) {
   };
 }
 
-function defaultWatchoutsForPriority(priority, quality) {
+function defaultWatchoutsForPriority(priority, quality, reportContext) {
   const out = ['one_change_at_a_time'];
   const token = normalizeSummaryPriority(priority);
   const grade = String(quality && quality.grade || '').trim().toLowerCase();
+  const routineSummary = reportContext && reportContext.routine_summary && typeof reportContext.routine_summary === 'object'
+    ? reportContext.routine_summary
+    : {};
+  const actives = Array.isArray(routineSummary.actives) ? routineSummary.actives : [];
+  const constraints = reportContext && Array.isArray(reportContext.constraints) ? reportContext.constraints : [];
   if (token === 'barrier' || token === 'redness') out.unshift('pause_if_stinging');
-  if (token === 'tone' || token === 'redness') out.push('protect_uv');
+  if (token === 'tone' || token === 'redness' || routineSummary.sunscreen !== 'yes') out.push('protect_uv');
+  if (token === 'barrier' || token === 'redness' || constraints.includes('sensitive-skin self-report')) out.push('protect_barrier');
+  if (actives.length) out.push('avoid_stacking_strong_actives');
   if (grade === 'degraded' || grade === 'fail') out.push('retake_clear_photo');
   return out.filter((item, index, arr) => arr.indexOf(item) === index).slice(0, 4);
 }
@@ -1415,36 +1510,153 @@ function defaultFollowUpIntent({ priority, reportContext } = {}) {
   const routineSummary = reportContext && reportContext.routine_summary && typeof reportContext.routine_summary === 'object'
     ? reportContext.routine_summary
     : {};
+  const actives = Array.isArray(routineSummary.actives) ? routineSummary.actives : [];
+  if (actives.length) return 'reaction_check';
   if (routineSummary.moisturizer === 'unknown' || routineSummary.sunscreen === 'unknown') return 'routine_share';
   if (token === 'barrier' || token === 'redness') return 'tolerance_check';
   return 'priority_symptom';
 }
 
+function defaultConditionalFollowUps({ intent, priority, reportContext } = {}) {
+  const resolvedIntent = normalizeFollowUpIntent(intent);
+  const routineSummary = reportContext && reportContext.routine_summary && typeof reportContext.routine_summary === 'object'
+    ? reportContext.routine_summary
+    : {};
+  const actives = Array.isArray(routineSummary.actives) ? routineSummary.actives : [];
+  if (resolvedIntent === 'reaction_check') return ['routine_share'];
+  if (resolvedIntent === 'routine_share') {
+    return actives.length ? ['reaction_check'] : ['tolerance_check'];
+  }
+  if (resolvedIntent === 'tolerance_check') return ['routine_share'];
+  if (normalizeSummaryPriority(priority) === 'barrier' || normalizeSummaryPriority(priority) === 'redness') return ['routine_share'];
+  return ['routine_share'];
+}
+
+function resolveRiskFlags({ priority, reportContext } = {}) {
+  const out = [];
+  const token = normalizeSummaryPriority(priority);
+  const grade = String(reportContext && reportContext.quality && reportContext.quality.grade || '').trim().toLowerCase();
+  if (token === 'redness' || token === 'barrier') out.push('monitor_persistent_redness', 'monitor_stinging');
+  if (token === 'bumps') out.push('monitor_new_breakouts');
+  if (grade === 'degraded' || grade === 'fail') out.push('retake_photo');
+  return out.filter((item, index, arr) => arr.indexOf(item) === index).slice(0, 3);
+}
+
+function buildDeterministicRoutineSteps({ summaryFocus, insights, reportContext } = {}) {
+  const priority = normalizeSummaryPriority(summaryFocus && summaryFocus.priority);
+  const primaryCues = Array.isArray(summaryFocus && summaryFocus.primary_cues) ? summaryFocus.primary_cues : [];
+  const routineSummary = reportContext && reportContext.routine_summary && typeof reportContext.routine_summary === 'object'
+    ? reportContext.routine_summary
+    : {};
+  const actives = Array.isArray(routineSummary.actives) ? routineSummary.actives : [];
+  const constraints = reportContext && Array.isArray(reportContext.constraints) ? reportContext.constraints : [];
+  const qualityGrade = String(reportContext && reportContext.quality && reportContext.quality.grade || '').trim().toLowerCase();
+  const hasSensitiveConstraint = constraints.includes('sensitive-skin self-report');
+  const targetCue = primaryCues.find((cue) => cue && cue !== 'redness' && cue !== 'flaking') || primaryCues[0] || priorityToCanonicalCue(priority);
+  const targetPriority = cueToSummaryPriority(targetCue);
+  const cuePool = Array.isArray(insights) ? insights.map((item) => item && item.cue).filter(Boolean) : [];
+  const linkedPrimary = Array.from(new Set([priorityToCanonicalCue(priority), ...cuePool])).filter(Boolean).slice(0, 3);
+  const linkedSecondary = Array.from(new Set([targetCue, ...cuePool])).filter(Boolean).slice(0, 3);
+
+  const steps = [
+    {
+      time: 'am',
+      step_type: 'cleanse',
+      target: priority === 'mixed' ? 'barrier' : priority === 'redness' ? 'barrier' : priority,
+      cadence: 'daily',
+      intensity: 'gentle',
+      linked_cues: linkedPrimary.length ? linkedPrimary.slice(0, 2) : ['texture'],
+    },
+    {
+      time: 'am',
+      step_type: 'protect',
+      target: priority === 'mixed' ? 'barrier' : priority === 'redness' ? 'barrier' : priority,
+      cadence: 'daily',
+      intensity: routineSummary.sunscreen === 'yes' ? 'standard' : 'barrier_safe',
+      linked_cues: linkedPrimary.length ? linkedPrimary.slice(0, 2) : ['texture'],
+    },
+    {
+      time: 'either',
+      step_type: 'moisturize',
+      target: 'barrier',
+      cadence: 'daily',
+      intensity: 'barrier_safe',
+      linked_cues: linkedPrimary.length ? linkedPrimary.slice(0, 3) : ['texture'],
+    },
+  ];
+
+  const canTreat =
+    qualityGrade === 'pass' &&
+    !hasSensitiveConstraint &&
+    !actives.length &&
+    targetPriority &&
+    targetPriority !== 'barrier' &&
+    targetPriority !== 'redness' &&
+    targetPriority !== 'mixed';
+  steps.push(
+    canTreat
+      ? {
+          time: 'pm',
+          step_type: 'treat',
+          target: targetPriority,
+          cadence: 'two_nights_weekly',
+          intensity: 'low_frequency',
+          linked_cues: linkedSecondary.length ? linkedSecondary.slice(0, 2) : ['texture'],
+        }
+      : {
+          time: 'pm',
+          step_type: 'monitor',
+          target: targetPriority && targetPriority !== 'mixed' ? targetPriority : priority === 'mixed' ? 'barrier' : priority,
+          cadence: 'as_needed',
+          intensity: 'low_frequency',
+          linked_cues: linkedSecondary.length ? linkedSecondary.slice(0, 2) : ['texture'],
+        },
+  );
+
+  return normalizeCanonicalRoutineSteps(steps, { strict: false });
+}
+
 function adjudicateReportCanonicalLayer(payload, { reportContext, deepening } = {}) {
   const base = normalizeReportCanonicalLayer(payload, { strict: false });
   const summaryFocus = resolveReportSummaryFocus(base.summary_focus, base.insights, reportContext);
-  const watchouts = Array.isArray(base.watchouts) && base.watchouts.length
-    ? base.watchouts
-    : defaultWatchoutsForPriority(summaryFocus.priority, reportContext && reportContext.quality);
-  const twoWeekFocus = Array.isArray(base.two_week_focus) && base.two_week_focus.length
-    ? base.two_week_focus
-    : defaultTwoWeekFocusForPriority(summaryFocus.priority);
-  const followUp = normalizeCanonicalFollowUp(base.follow_up, { strict: false });
+  const resolvedInsights = selectDeterministicReportInsights(base.insights, {
+    primaryCues: summaryFocus.primary_cues,
+    resolvedPriority: summaryFocus.priority,
+    reportContext,
+  });
+  const resolvedSummaryFocus = {
+    ...summaryFocus,
+    primary_cues: buildPrimaryCueList({
+      summaryFocus,
+      insights: resolvedInsights,
+      reportContext,
+      resolvedPriority: summaryFocus.priority,
+    }).slice(0, 2),
+  };
+  const watchouts = defaultWatchoutsForPriority(summaryFocus.priority, reportContext && reportContext.quality, reportContext);
+  const twoWeekFocus = defaultTwoWeekFocusForPriority(summaryFocus.priority);
+  const resolvedIntent = defaultFollowUpIntent({ priority: summaryFocus.priority, reportContext });
   const resolvedFollowUp = {
-    intent: followUp.intent || defaultFollowUpIntent({ priority: summaryFocus.priority, reportContext }),
-    ...(Array.isArray(followUp.conditional_followups) && followUp.conditional_followups.length
-      ? { conditional_followups: followUp.conditional_followups }
-      : {}),
+    intent: resolvedIntent,
+    conditional_followups: defaultConditionalFollowUps({
+      intent: resolvedIntent,
+      priority: summaryFocus.priority,
+      reportContext,
+    }),
   };
   return {
     needs_risk_check: Boolean(base.needs_risk_check),
-    summary_focus: summaryFocus,
-    insights: normalizeCanonicalObservationArray(base.insights, { maxItems: 6 }),
-    routine_steps: normalizeCanonicalRoutineSteps(base.routine_steps, { strict: false }),
+    summary_focus: resolvedSummaryFocus,
+    insights: resolvedInsights,
+    routine_steps: buildDeterministicRoutineSteps({
+      summaryFocus: resolvedSummaryFocus,
+      insights: resolvedInsights,
+      reportContext,
+    }),
     watchouts,
     follow_up: resolvedFollowUp,
     two_week_focus: twoWeekFocus,
-    risk_flags: Array.isArray(base.risk_flags) ? base.risk_flags.slice(0, 3) : [],
+    risk_flags: resolveRiskFlags({ priority: summaryFocus.priority, reportContext }),
     ...(deepening ? { deepening: normalizeCanonicalDeepening(deepening, { strict: false, inheritedPriority: summaryFocus.priority }) } : {}),
   };
 }
