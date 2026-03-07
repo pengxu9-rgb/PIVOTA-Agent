@@ -226,9 +226,26 @@ function createMetricsTracker() {
 function createKeyPool() {
   const keys = [];
   let index = 0;
+  let lastEnvFingerprint = null;
+
+  function buildEnvFingerprint() {
+    const parts = [];
+    for (let i = 1; i <= 10; i += 1) {
+      parts.push(String(process.env[`GEMINI_API_KEY_${i}`] || '').trim());
+    }
+    parts.push(String(process.env.AURORA_SKIN_GEMINI_API_KEY || '').trim());
+    parts.push(String(process.env.GEMINI_API_KEY || '').trim());
+    parts.push(String(process.env.GOOGLE_API_KEY || '').trim());
+    return parts.join('||');
+  }
 
   function loadKeys() {
-    if (keys.length) return;
+    const nextFingerprint = buildEnvFingerprint();
+    if (lastEnvFingerprint === nextFingerprint && keys.length) return;
+    lastEnvFingerprint = nextFingerprint;
+    keys.length = 0;
+    index = 0;
+
     const pooled = [];
     for (let i = 1; i <= 10; i += 1) {
       const k = String(process.env[`GEMINI_API_KEY_${i}`] || '').trim();

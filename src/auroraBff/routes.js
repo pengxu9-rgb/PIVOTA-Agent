@@ -32,6 +32,7 @@ const {
 const {
   classifyPhotoQuality,
   inferDetectorConfidence,
+  summarizeRoutineConfidenceSignals,
   shouldCallLlm,
   shouldFireDeepening,
   downgradeSkinAnalysisConfidence,
@@ -18517,6 +18518,7 @@ function deriveArtifactOverallConfidence({
   const barrierPresent = Boolean(profileSummary && profileSummary.barrierStatus);
   const sensitivityPresent = Boolean(profileSummary && profileSummary.sensitivity);
   const goalsPresent = Boolean(profileSummary && Array.isArray(profileSummary.goals) && profileSummary.goals.length > 0);
+  const routineSignals = summarizeRoutineConfidenceSignals(profileSummary && profileSummary.currentRoutine);
 
   const baseParts = [];
   baseParts.push(skinTypePresent ? 0.74 : 0);
@@ -18541,6 +18543,16 @@ function deriveArtifactOverallConfidence({
 
   let score = Math.max(0, Math.min(1, base + concernBoost));
   const rationale = ['core4_weighted_mean'];
+
+  if (routineSignals.present) {
+    rationale.push('routine_present');
+  }
+  if (routineSignals.supports_medium_confidence) {
+    score = Math.max(score, LOW_CONFIDENCE_THRESHOLD + (routineSignals.has_actives ? 0.08 : 0.04));
+    rationale.push('structured_routine_context');
+  } else if (routineSignals.present) {
+    score = Math.max(score, 0.34);
+  }
 
   const qualityGrade = String(photoQuality && photoQuality.grade || '').trim().toLowerCase();
   if (qualityGrade === 'degraded') {
@@ -20341,6 +20353,20 @@ function extractProfilePatchFromSession(session) {
   if (!rawProfile) return null;
 
   const patch = {};
+  const mergeMissingPatchFields = (target, source) => {
+    const base = target && typeof target === 'object' ? target : {};
+    const extra = source && typeof source === 'object' ? source : null;
+    if (!extra) return base;
+    if (!base.skinType && typeof extra.skinType === 'string' && extra.skinType.trim()) base.skinType = extra.skinType.trim();
+    if (!base.sensitivity && typeof extra.sensitivity === 'string' && extra.sensitivity.trim()) base.sensitivity = extra.sensitivity.trim();
+    if (!base.barrierStatus && typeof extra.barrierStatus === 'string' && extra.barrierStatus.trim()) {
+      base.barrierStatus = extra.barrierStatus.trim();
+    }
+    if ((!Array.isArray(base.goals) || base.goals.length === 0) && Array.isArray(extra.goals) && extra.goals.length) {
+      base.goals = extra.goals.slice(0, 12);
+    }
+    return base;
+  };
 
   // Strings
   const copyString = (toKey, ...fromKeys) => {
@@ -20412,6 +20438,77 @@ function extractProfilePatchFromSession(session) {
   if (rawProfile.travelPlan && typeof rawProfile.travelPlan === 'object' && !Array.isArray(rawProfile.travelPlan)) {
     patch.travel_plan = rawProfile.travelPlan;
   }
+  mergeMissingPatchFields(patch, extractProfilePatchFromRoutinePayload(patch.currentRoutine));
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
+function extractProfilePatchFromRoutinePayload(routineInput) {
+  const routineRoot = tryParseRoutineObject(routineInput) || (isPlainObject(routineInput) ? routineInput : null);
+  if (!routineRoot) return null;
+
+  const candidates = [];
+  const visited = new Set();
+  const visit = (node, depth = 0) => {
+    if (depth > 3 || !isPlainObject(node) || visited.has(node)) return;
+    visited.add(node);
+    candidates.push(node);
+    for (const key of ['profile', 'profile_patch', 'profilePatch', 'skin_profile', 'skinProfile', 'goal_profile', 'goalProfile', 'meta', 'metadata', 'context']) {
+      visit(node[key], depth + 1);
+    }
+  };
+  visit(routineRoot);
+
+  const readString = (...aliases) => {
+    for (const node of candidates) {
+      for (const alias of aliases) {
+        const value = node && typeof node === 'object' ? node[alias] : null;
+        if (typeof value !== 'string') continue;
+        const trimmed = value.trim();
+        if (!trimmed) continue;
+        return trimmed;
+      }
+    }
+    return '';
+  };
+
+  const readGoalArray = () => {
+    const out = [];
+    const seen = new Set();
+    const pushGoal = (value) => {
+      const normalized = typeof value === 'string' ? value.trim() : '';
+      if (!normalized) return;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(normalized);
+    };
+
+    for (const node of candidates) {
+      for (const alias of ['goals', 'selected_goals', 'selectedGoals', 'pending_goals', 'pendingGoals']) {
+        const values = node && typeof node === 'object' ? node[alias] : null;
+        if (!Array.isArray(values)) continue;
+        values.forEach(pushGoal);
+      }
+      pushGoal(node && typeof node === 'object' ? node.custom_input : null);
+      pushGoal(node && typeof node === 'object' ? node.customInput : null);
+    }
+
+    return out.slice(0, 12);
+  };
+
+  const patch = {};
+  const skinType = readString('skinType', 'skin_type', 'skin_type_tendency', 'skinTypeTendency');
+  if (skinType) patch.skinType = skinType;
+  const sensitivity = readString('sensitivity', 'sensitivity_level', 'sensitivityLevel', 'sensitivity_tendency', 'sensitivityTendency');
+  if (sensitivity) patch.sensitivity = sensitivity;
+  const barrierStatus = readString('barrierStatus', 'barrier_status', 'barrier', 'barrier_state', 'barrierState');
+  if (barrierStatus) patch.barrierStatus = barrierStatus;
+  const goals = readGoalArray();
+  if (goals.length) patch.goals = goals;
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -43146,15 +43243,23 @@ function mountAuroraBffRoutes(app, { logger }) {
         let profileSummary = summarizeProfileForContext(profile);
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
         const routineFromRequest = parsed.data.currentRoutine;
+        const routineDerivedProfilePatch = extractProfilePatchFromRoutinePayload(routineFromRequest);
 
         if (routineFromRequest !== undefined) {
           // Best-effort persistence. Analysis should still proceed even if storage is unavailable.
-          profile = { ...(profile || {}), currentRoutine: routineFromRequest };
+          profile = {
+            ...(profile || {}),
+            ...(routineDerivedProfilePatch && typeof routineDerivedProfilePatch === 'object' ? routineDerivedProfilePatch : {}),
+            currentRoutine: routineFromRequest,
+          };
           if (persistLastAnalysis) {
             try {
               profile = await upsertProfileForIdentity(
                 { auroraUid: identity.auroraUid, userId: identity.userId },
-                { currentRoutine: routineFromRequest },
+                {
+                  ...(routineDerivedProfilePatch && typeof routineDerivedProfilePatch === 'object' ? routineDerivedProfilePatch : {}),
+                  currentRoutine: routineFromRequest,
+                },
               );
             } catch (err) {
               logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist current routine for analysis');
@@ -45142,7 +45247,12 @@ function mountAuroraBffRoutes(app, { logger }) {
     const ctx = buildRequestContext(req, {});
     try {
       requireAuroraUid(ctx);
-      const parsed = UserProfilePatchSchema.safeParse(req.body || {});
+      const rawBody = isPlainObject(req.body) ? req.body : {};
+      const derivedProfilePatch = extractProfilePatchFromRoutinePayload(rawBody.currentRoutine ?? rawBody.current_routine);
+      const parsed = UserProfilePatchSchema.safeParse({
+        ...(derivedProfilePatch && typeof derivedProfilePatch === 'object' ? derivedProfilePatch : {}),
+        ...rawBody,
+      });
       if (!parsed.success) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage('Invalid request.'),
@@ -53113,6 +53223,7 @@ const __internal = {
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
   buildAnalysisFollowupContent,
+  extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,
   buildRoutineFitSummaryPrompt,
   buildRoutineFitSummaryCard,

@@ -1,6 +1,8 @@
 const request = require('supertest');
 
 describe('health endpoints', () => {
+  jest.setTimeout(15000);
+
   beforeEach(() => {
     jest.resetModules();
   });

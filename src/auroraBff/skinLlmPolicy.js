@@ -4,6 +4,99 @@ function normalizeToken(value) {
     .toLowerCase();
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function summarizeRoutineConfidenceSignals(routineCandidate) {
+  const raw = routineCandidate;
+  let routineObject = null;
+  let routineText =
+    typeof raw === 'string'
+      ? raw
+      : isPlainObject(raw) || Array.isArray(raw)
+        ? JSON.stringify(raw)
+        : '';
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (isPlainObject(parsed) || Array.isArray(parsed)) routineObject = parsed;
+      } catch {
+        routineObject = null;
+      }
+    }
+  } else if (isPlainObject(raw) || Array.isArray(raw)) {
+    routineObject = raw;
+  }
+
+  const routineLower = String(routineText || '').toLowerCase();
+  const hasActives = /\bretinol\b|\badapalene\b|\btretinoin\b|\bretinoid\b|\bglycolic\b|\blactic\b|\bmandelic\b|\bsalicylic\b|\baha\b|\bbha\b|\bbpo\b|\bbenzoyl\b|\bvitamin c\b|\bascorbic\b/.test(routineLower);
+  const slotKeys = new Set(['am', 'pm', 'morning', 'evening', 'night', 'am_steps', 'pm_steps']);
+  const productHintKeys = new Set(['product', 'name', 'display_name', 'displayName', 'url', 'link', 'href']);
+  const productTexts = new Set();
+  let stepCount = 0;
+  let slotCount = 0;
+
+  const walk = (node, parentKey = '', depth = 0) => {
+    if (depth > 5 || node == null) return;
+    if (typeof node === 'string') {
+      const token = node.trim();
+      if (!token) return;
+      if (parentKey && !slotKeys.has(parentKey)) stepCount += 1;
+      productTexts.add(token.toLowerCase());
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach((entry) => walk(entry, parentKey, depth + 1));
+      return;
+    }
+    if (!isPlainObject(node)) return;
+    const keys = Object.keys(node);
+    if (keys.some((key) => productHintKeys.has(String(key || '')))) {
+      const productText = [node.product, node.name, node.display_name, node.displayName].find((value) => typeof value === 'string' && value.trim());
+      if (productText) productTexts.add(String(productText).trim().toLowerCase());
+      stepCount += 1;
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      const normalizedKey = String(key || '').trim().toLowerCase();
+      if (slotKeys.has(normalizedKey) && value != null) slotCount += 1;
+      walk(value, normalizedKey, depth + 1);
+    }
+  };
+
+  walk(routineObject);
+
+  if (!routineObject && routineLower) {
+    const lineParts = routineLower
+      .split(/\n|,|;/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    stepCount = Math.max(stepCount, Math.min(6, lineParts.length));
+  }
+
+  const productCount = Math.max(productTexts.size, stepCount);
+  const structured = Boolean(routineObject);
+  const hasAmPm = slotCount >= 2 || (routineLower.includes('"am"') && routineLower.includes('"pm"'));
+  const supportsMediumConfidence =
+    Boolean(routineLower) &&
+    ((structured && productCount >= 2 && (hasAmPm || hasActives || stepCount >= 3)) ||
+      (!structured && hasActives && productCount >= 2));
+
+  return {
+    present: Boolean(routineLower),
+    structured,
+    has_actives: hasActives,
+    has_am_pm: hasAmPm,
+    step_count: stepCount,
+    product_count: productCount,
+    supports_medium_confidence: supportsMediumConfidence,
+  };
+}
+
 function classifyPhotoQuality(photos) {
   const list = Array.isArray(photos) ? photos : [];
   if (!list.length) return { grade: 'unknown', reasons: ['no_photos'] };
@@ -58,6 +151,7 @@ function inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCan
   const p = profileSummary && typeof profileSummary === 'object' ? profileSummary : {};
   const logs = Array.isArray(recentLogsSummary) ? recentLogsSummary : [];
   const routineRaw = routineCandidate;
+  const routineSignals = summarizeRoutineConfidenceSignals(routineRaw);
   const routineText =
     typeof routineRaw === 'string'
       ? routineRaw
@@ -77,8 +171,12 @@ function inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCan
   if (p.sensitivity && String(p.sensitivity).trim()) signals.push('sensitivity');
   if (routineLower) {
     signals.push('routine');
-    if (/\bretinol\b|\badapalene\b|\btretinoin\b|\bretinoid\b|\bglycolic\b|\blactic\b|\bmandelic\b|\bsalicylic\b|\baha\b|\bbha\b|\bbpo\b/.test(routineLower)) {
+    if (routineSignals.supports_medium_confidence) signals.push('routine_structure');
+    if (routineSignals.has_actives) {
       strong.push('actives_in_routine');
+    }
+    if (routineSignals.has_am_pm || routineSignals.product_count >= 3) {
+      strong.push('structured_routine');
     }
   }
   if (logs.length) {
@@ -87,7 +185,12 @@ function inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCan
     if (latest && Object.values(latest).some((v) => typeof v === 'number' && Number.isFinite(v))) strong.push('recent_logs');
   }
 
-  const level = strong.length >= 1 && signals.length >= 3 ? 'high' : signals.length >= 2 ? 'medium' : 'low';
+  const level =
+    strong.length >= 1 && signals.length >= 3
+      ? 'high'
+      : signals.length >= 2 || routineSignals.supports_medium_confidence
+        ? 'medium'
+        : 'low';
   return { level, signals, strong };
 }
 
@@ -500,6 +603,7 @@ function shouldFireDeepening({ qualityObject, observations, userReportedSymptoms
 module.exports = {
   classifyPhotoQuality,
   inferDetectorConfidence,
+  summarizeRoutineConfidenceSignals,
   shouldCallLlm,
   should_call_llm: shouldCallLlm,
   downgradeSkinAnalysisConfidence,
