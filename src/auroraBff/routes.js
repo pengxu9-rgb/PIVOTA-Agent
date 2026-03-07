@@ -334,6 +334,7 @@ const {
   assertRequiredRouteContracts,
 } = require('./requiredRouteContracts');
 const { mountTravelPlansRoutes } = require('./routes/travelPlansRoutes');
+const { mountActivityRoutes } = require('./routes/activityRoutes');
 const { buildChatCardsResponse } = require('./chatCardsAssembler');
 const {
   createOtpChallenge,
@@ -45193,6 +45194,13 @@ function mountAuroraBffRoutes(app, { logger }) {
   });
 
   mountTravelPlansRoutes(app, {
+    logger,
+    requireAuroraUid,
+    resolveIdentity,
+    classifyStorageError,
+  });
+
+  mountActivityRoutes(app, {
     logger,
     requireAuroraUid,
     resolveIdentity,
