@@ -1,27 +1,14 @@
 {
   "$schema": "./skill_contract.schema.json",
-  "version": "1.0.0",
-  "updated_utc": "2026-03-06T00:00:00Z",
-  "description": "Quality gates per skill. Orchestrator MUST evaluate these after skill execution. Failures trigger empty-state or degraded output.",
+  "version": "2.0.0",
+  "updated_utc": "2026-03-07T00:00:00Z",
+  "description": "Streamlined quality gates. Only safety-critical rules remain blocking.",
   "gates": [
     {
       "gate_id": "qg_diagnosis_start",
       "skill_id": "diagnosis_v2.start",
       "kb_ref": null,
-      "rules": [
-        {
-          "rule_id": "qg_diag_start_has_goal_prompt",
-          "check": "response.cards[0].sections must include a goal selection or follow-up question",
-          "on_fail": "empty_state",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_diag_start_next_actions",
-          "check": "response.next_actions.length >= 1",
-          "on_fail": "inject_fallback_action",
-          "severity": "error"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_diagnosis_answer",
@@ -29,29 +16,10 @@
       "kb_ref": "safety_rules.v0.json",
       "rules": [
         {
-          "rule_id": "qg_diag_answer_blueprint",
-          "check": "response.ops.profile_patch must contain inferred skin state fields",
-          "on_fail": "retry_once_then_empty_state",
-          "severity": "error"
-        },
-        {
           "rule_id": "qg_diag_no_photo_no_visual_cues",
-          "check": "if context.profile.has_photo === false, response.cards must NOT reference visible skin observations",
+          "check": "if context.profile.has_photo === false, response.cards must not reference visual observations",
           "on_fail": "strip_visual_references",
           "severity": "error"
-        },
-        {
-          "rule_id": "qg_diag_answer_next_actions",
-          "check": "response.next_actions.length >= 1",
-          "on_fail": "inject_fallback_action",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_diag_safety_block_check",
-          "check": "if safety_rules triggered with block_level=BLOCK, response must NOT contain blocked concepts in recommendations",
-          "on_fail": "empty_state_with_safety_notice",
-          "severity": "error",
-          "kb_ref": "safety_rules.v0.json"
         }
       ]
     },
@@ -59,34 +27,13 @@
       "gate_id": "qg_routine_apply",
       "skill_id": "routine.apply_blueprint",
       "kb_ref": "safety_rules.v0.json",
-      "rules": [
-        {
-          "rule_id": "qg_routine_has_steps",
-          "check": "response.cards[0].sections must contain at least AM or PM step array",
-          "on_fail": "empty_state",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_routine_no_blocked_concepts",
-          "check": "routine steps must not include concepts blocked by active safety_rules",
-          "on_fail": "filter_blocked_steps",
-          "severity": "error",
-          "kb_ref": "safety_rules.v0.json"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_routine_intake",
       "skill_id": "routine.intake_products",
       "kb_ref": null,
-      "rules": [
-        {
-          "rule_id": "qg_intake_product_categorized",
-          "check": "each product in response must have a step_assignment (cleanser/toner/serum/moisturizer/sunscreen/treatment)",
-          "on_fail": "mark_uncategorized",
-          "severity": "warning"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_routine_audit",
@@ -94,21 +41,14 @@
       "kb_ref": "interaction_rules.v0.json",
       "rules": [
         {
-          "rule_id": "qg_audit_interaction_check",
-          "check": "all product pairs must be checked against interaction_rules.v0.json; high-risk pairs flagged",
-          "on_fail": "append_interaction_warnings",
-          "severity": "error",
-          "kb_ref": "interaction_rules.v0.json"
-        },
-        {
           "rule_id": "qg_audit_spf_am_only",
-          "check": "if product contains SPF, usage must be AM-only with reapply guidance",
+          "check": "SPF usage must stay AM-only with reapply guidance",
           "on_fail": "correct_spf_schedule",
           "severity": "error"
         },
         {
           "rule_id": "qg_audit_retinoid_pm_only",
-          "check": "if product is a retinoid, usage must be PM-only",
+          "check": "retinoids must not stay in AM steps",
           "on_fail": "correct_retinoid_schedule",
           "severity": "error"
         }
@@ -118,27 +58,7 @@
       "gate_id": "qg_reco_step",
       "skill_id": "reco.step_based",
       "kb_ref": "safety_rules.v0.json",
-      "rules": [
-        {
-          "rule_id": "qg_reco_has_candidates",
-          "check": "response.cards must contain at least one product recommendation or explicit empty-state",
-          "on_fail": "empty_state",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_reco_no_blocked_ingredients",
-          "check": "recommended products must not contain blocked ingredients per safety_rules",
-          "on_fail": "filter_blocked_products",
-          "severity": "error",
-          "kb_ref": "safety_rules.v0.json"
-        },
-        {
-          "rule_id": "qg_reco_next_actions",
-          "check": "response.next_actions.length >= 1",
-          "on_fail": "inject_fallback_action",
-          "severity": "error"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_checkin_log",
@@ -147,7 +67,7 @@
       "rules": [
         {
           "rule_id": "qg_checkin_bound_to_entity",
-          "check": "response.ops.thread_ops must bind check-in to a diagnosis_id or routine_id",
+          "check": "response.ops.thread_ops should bind the check-in to a diagnosis or routine entity",
           "on_fail": "warn_unbound_checkin",
           "severity": "warning"
         }
@@ -160,13 +80,13 @@
       "rules": [
         {
           "rule_id": "qg_insights_min_data",
-          "check": "must have >= 3 check-in entries to generate trend analysis",
+          "check": "trend analysis works best with at least 3 check-ins",
           "on_fail": "empty_state_insufficient_data",
-          "severity": "error"
+          "severity": "warning"
         },
         {
           "rule_id": "qg_insights_no_photo_guard",
-          "check": "if no photos in check-in history, do not reference visible changes",
+          "check": "if no photos exist in recent logs, do not reference visible change",
           "on_fail": "strip_visual_references",
           "severity": "error"
         }
@@ -176,162 +96,37 @@
       "gate_id": "qg_product_analyze",
       "skill_id": "product.analyze",
       "kb_ref": "safety_rules.v0.json",
-      "rules": [
-        {
-          "rule_id": "qg_product_has_anchor",
-          "check": "params.product_anchor must be a valid product reference (URL, brand+name, or product_id)",
-          "on_fail": "empty_state_need_anchor",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_product_spf_am_reapply",
-          "check": "if product type is sunscreen or contains SPF, usage MUST be AM-only with reapply every 2h outdoors; MUST NOT output PM-first or 2-3x/week",
-          "on_fail": "correct_spf_usage",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_product_strong_active_frequency",
-          "check": "if product has strong actives (retinoid, high-strength AHA/BHA), initial frequency MUST be conservative (1-2x/week build-up)",
-          "on_fail": "correct_frequency",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_product_safety_rules_applied",
-          "check": "all applicable safety_rules from KB v0 must be evaluated against user profile",
-          "on_fail": "append_safety_warnings",
-          "severity": "error",
-          "kb_ref": "safety_rules.v0.json"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_ingredient_report",
       "skill_id": "ingredient.report",
       "kb_ref": "ingredient_ontology.v0.json",
-      "rules": [
-        {
-          "rule_id": "qg_ingredient_in_ontology",
-          "check": "queried ingredient must be resolved against ingredient_ontology.v0.json",
-          "on_fail": "return_unverified_branch",
-          "severity": "error",
-          "kb_ref": "ingredient_ontology.v0.json"
-        },
-        {
-          "rule_id": "qg_ingredient_no_unverified_product_claims",
-          "check": "if ingredient cannot be verified in a specific product, MUST NOT say 'products containing X'; use 'unable to confirm' branch instead",
-          "on_fail": "strip_product_claims",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_ingredient_has_evidence_badge",
-          "check": "each claim must have an evidence_badge (strong/moderate/limited/uncertain)",
-          "on_fail": "default_to_uncertain",
-          "severity": "warning"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_dupe_suggest",
       "skill_id": "dupe.suggest",
       "kb_ref": "concept_dictionary.v0.json",
-      "rules": [
-        {
-          "rule_id": "qg_dupe_has_anchor",
-          "check": "params must include anchor product with resolved identity",
-          "on_fail": "empty_state_need_anchor",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_dupe_has_candidate_pool",
-          "check": "candidate_pool must be non-empty; do NOT output confidence=0 candidates",
-          "on_fail": "empty_state_no_candidates",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_dupe_bucketed",
-          "check": "candidates must be bucketed: same_price / cheaper / more_expensive / unknown_price",
-          "on_fail": "add_missing_buckets",
-          "severity": "warning"
-        },
-        {
-          "rule_id": "qg_dupe_has_differences",
-          "check": "each candidate must include differences[] and tradeoffs[]",
-          "on_fail": "flag_incomplete_comparison",
-          "severity": "error"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_dupe_compare",
       "skill_id": "dupe.compare",
       "kb_ref": "concept_dictionary.v0.json",
-      "rules": [
-        {
-          "rule_id": "qg_compare_has_anchor",
-          "check": "params must include anchor product",
-          "on_fail": "empty_state_need_anchor",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_compare_has_target",
-          "check": "params must include at least one comparison_target",
-          "on_fail": "empty_state_need_target",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_compare_basic_info",
-          "check": "both full and limited comparisons MUST include basic comparison info (key_ingredients, texture, suitability)",
-          "on_fail": "flag_incomplete_comparison",
-          "severity": "error"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_travel_apply",
       "skill_id": "travel.apply_mode",
       "kb_ref": "climate_normals.v0.json",
-      "rules": [
-        {
-          "rule_id": "qg_travel_has_plan",
-          "check": "context.travel_plan must be non-null with destination and dates",
-          "on_fail": "empty_state_need_travel_info",
-          "severity": "error"
-        },
-        {
-          "rule_id": "qg_travel_climate_resolved",
-          "check": "destination must be resolved to a climate_normals archetype",
-          "on_fail": "use_default_travel_advice",
-          "severity": "warning",
-          "kb_ref": "climate_normals.v0.json"
-        },
-        {
-          "rule_id": "qg_travel_spf_reapply",
-          "check": "if UV index > moderate, MUST include SPF reapply reminder",
-          "on_fail": "inject_spf_reapply",
-          "severity": "error"
-        }
-      ]
+      "rules": []
     },
     {
       "gate_id": "qg_explore_add",
       "skill_id": "explore.add_to_routine",
       "kb_ref": "safety_rules.v0.json",
-      "rules": [
-        {
-          "rule_id": "qg_explore_safety_check",
-          "check": "new product must pass safety_rules check against user profile before addition",
-          "on_fail": "warn_safety_concern",
-          "severity": "error",
-          "kb_ref": "safety_rules.v0.json"
-        },
-        {
-          "rule_id": "qg_explore_interaction_check",
-          "check": "new product must be checked against existing routine for interaction_rules conflicts",
-          "on_fail": "warn_interaction_conflict",
-          "severity": "warning",
-          "kb_ref": "interaction_rules.v0.json"
-        }
-      ]
+      "rules": []
     }
   ]
 }

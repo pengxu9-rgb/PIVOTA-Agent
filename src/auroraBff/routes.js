@@ -1159,12 +1159,19 @@ const PRODUCT_INTEL_KB_QUARANTINE_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_CHAT_SKILL_ROUTER_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_SKILL_ROUTER_V2 || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   profile_v2: AURORA_PROFILE_V2_ENABLED,
   qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
   safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
   travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
   loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
+  skill_router_v2: AURORA_CHAT_SKILL_ROUTER_V2_ENABLED,
   chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
   router_dst_patch_v1: AURORA_ROUTER_DST_PATCH_V1_ENABLED,
   nonblocking_gate_v1: AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
@@ -39650,7 +39657,10 @@ function getRequiredRouteContractsHealth() {
 
 function mountAuroraBffRoutes(app, { logger }) {
   const { mountDiagnosisV2Routes } = require('./diagnosisV2Routes');
-  mountDiagnosisV2Routes(app, { logger, llmProvider: null });
+  const { createDiagnosisV2LlmProvider } = require('./diagnosisV2LlmProvider');
+  const { registerRoutes } = require('./index');
+  mountDiagnosisV2Routes(app, { logger, llmProvider: createDiagnosisV2LlmProvider() });
+  registerRoutes(app, { includeV1Chat: false, includeV1Stream: true, includeV2: true });
   preflightAuroraKbV0ForStartup({ logger });
   startPdpHotsetPrewarmLoop({ logger });
   if (PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !PIVOTA_BACKEND_BASE_URL) {
@@ -47162,6 +47172,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
+        skill_router_v2: Boolean(effectiveChatFlags.skill_router_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       },
       gate_policy_version: AURORA_GATE_POLICY_META_VERSION,
@@ -47263,6 +47274,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
         travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
         loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
+        skill_router_v2: Boolean(effectiveChatFlags.skill_router_v2),
         chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
       };
     };
@@ -48279,6 +48291,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
     try {
       requireAuroraUid(ctx);
+      if (effectiveChatFlags.skill_router_v2) {
+        const { handleChat: handleChatV2 } = require('./routes/chat');
+        return handleChatV2(req, res);
+      }
       if (!parsed.success) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage('Invalid request.'),

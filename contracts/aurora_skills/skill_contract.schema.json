@@ -2,21 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pivota.dev/schemas/aurora_skills/skill_contract.v1.json",
   "title": "Aurora Skill Contract v1",
-  "description": "Language-agnostic contract for Aurora Beauty skills. Both PIVOTA-Agent (Node.js) and Pivota-glow-agent (Python) MUST conform to these schemas.",
+  "description": "Language-agnostic contract for Aurora skills.",
   "version": "1.0.0",
   "$defs": {
     "SkillId": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
-      "description": "Dot-separated namespace.action, e.g. diagnosis_v2.start"
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
     },
     "SemVer": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
-    "BlockLevel": {
-      "type": "string",
-      "enum": ["INFO", "WARN", "REQUIRE_INFO", "BLOCK"]
     },
     "CardType": {
       "type": "string",
@@ -33,7 +28,8 @@
         "diagnosis_gate",
         "profile",
         "analysis_summary",
-        "empty_state"
+        "empty_state",
+        "text_response"
       ]
     },
     "Card": {
@@ -51,7 +47,6 @@
     },
     "Ops": {
       "type": "object",
-      "description": "Replaces deprecated session_patch. Aligned with ChatCards v1 ops contract.",
       "properties": {
         "thread_ops": {
           "type": "array",
@@ -112,10 +107,7 @@
         "call_id": { "type": "string", "format": "uuid" },
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "skill_version": { "$ref": "#/$defs/SemVer" },
-        "prompt_hash": {
-          "type": "string",
-          "description": "SHA-256 of the prompt template used, if LLM was invoked"
-        },
+        "prompt_hash": { "type": "string" },
         "task_mode": { "type": "string" },
         "elapsed_ms": { "type": "integer", "minimum": 0 },
         "llm_calls": { "type": "integer", "minimum": 0 }
@@ -144,33 +136,25 @@
     "ContextObject": {
       "type": "object",
       "properties": {
-        "profile": {
-          "type": "object",
-          "description": "User skin profile: type, concerns, sensitivities, goals, age_band, life_stage"
-        },
+        "profile": { "type": "object" },
         "recent_logs": {
           "type": "array",
-          "items": { "type": "object" },
-          "description": "Recent check-in/tracker entries"
+          "items": { "type": "object" }
         },
         "travel_plan": {
-          "type": ["object", "null"],
-          "description": "Active travel plan if any"
+          "type": ["object", "null"]
         },
         "current_routine": {
-          "type": ["object", "null"],
-          "description": "Current routine skeleton with steps and products"
+          "type": ["object", "null"]
         },
         "inventory": {
           "type": "array",
-          "items": { "type": "object" },
-          "description": "User's product inventory"
+          "items": { "type": "object" }
         },
         "locale": { "type": "string" },
         "safety_flags": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Active safety rule IDs from KB v0 safety_rules"
+          "items": { "type": "string" }
         }
       }
     },
@@ -200,8 +184,7 @@
         "next_actions": {
           "type": "array",
           "items": { "$ref": "#/$defs/NextAction" },
-          "minItems": 1,
-          "description": "MUST be non-empty. At minimum provide a fallback action."
+          "minItems": 1
         }
       }
     }

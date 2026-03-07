@@ -1,24 +1,20 @@
-/**
- * Aurora BFF entry point.
- *
- * This replaces the monolithic routes.js (~39K lines) with a modular
- * skill-based architecture. The old routes.js remains for legacy fallback
- * during migration (controlled by feature flag).
- *
- * Directory structure:
- *   routes/        - Thin route handlers (<200 lines each)
- *   orchestrator/  - SkillRouter + QualityGateEngine
- *   skills/        - One file per skill (BaseSkill subclass)
- *   mappers/       - DTO / card mapping (SkillResponse -> ChatCards v1)
- *   services/      - LlmGateway, memory_store, etc.
- *   prompts/       - Versioned prompt templates
- *   validators/    - JSON Schema validation
- */
+const { handleChat, handleChatStream } = require('./routes/chat');
 
-const { handleChat } = require('./routes/chat');
+function registerRoutes(app, options = {}) {
+  const includeV1Chat = options.includeV1Chat !== false;
+  const includeV1Stream = options.includeV1Stream === true || options.includeV1Stream == null;
+  const includeV2 = options.includeV2 === true || options.includeV2 == null;
 
-function registerRoutes(app) {
-  app.post('/v1/chat', handleChat);
+  if (includeV1Chat) {
+    app.post('/v1/chat', handleChat);
+  }
+  if (includeV1Stream) {
+    app.post('/v1/chat/stream', handleChatStream);
+  }
+  if (includeV2) {
+    app.post('/v2/chat', handleChat);
+    app.post('/v2/chat/stream', handleChatStream);
+  }
 }
 
 module.exports = { registerRoutes };

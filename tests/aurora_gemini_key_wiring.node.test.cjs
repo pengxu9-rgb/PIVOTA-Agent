@@ -47,3 +47,13 @@ test('routes uses feature-specific vision Gemini key resolver', () => {
     false,
   );
 });
+
+test('aurora chat v2 llm gateway uses Gemini global gate only and has no OpenAI fallback chain', () => {
+  const source = readSource('src/auroraBff/services/llm_gateway.js');
+  assert.match(source, /getGeminiGlobalGate/);
+  assert.match(source, /getApiKey/);
+  assert.equal(source.includes("process.env.AURORA_CHAT_V2_GEMINI_API_KEY"), false);
+  assert.equal(source.includes('OPENAI_API_KEY'), false);
+  assert.equal(source.includes('_callOpenAI'), false);
+  assert.equal(source.includes('fallbackProvider'), false);
+});

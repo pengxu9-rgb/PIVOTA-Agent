@@ -36,6 +36,8 @@
     "probe:aurora:reco:baseline-snapshot": "node scripts/aurora_reco_baseline_snapshot.cjs",
     "verify:aurora:contracts": "node scripts/verify_aurora_contracts_sync.cjs",
     "test:aurora:skills": "node tests/skills/test_skill_contract.js",
+    "test:aurora:skills:live": "AURORA_SKILL_CONTRACT_LIVE=1 node tests/skills/test_skill_contract.js",
+    "test:aurora:routes:v2": "node --test tests/aurora_chat_v2_routes.node.test.cjs",
     "gate:aurora:travel20": "node scripts/aurora_travel_gate.js",
     "gate:aurora:safety20": "node scripts/aurora_travel_gate.js --cases tests/golden/aurora_safety_20.jsonl --report-prefix aurora_safety_gate",
     "gate:aurora:anchor20": "node scripts/aurora_travel_gate.js --cases tests/golden/aurora_anchor_eval_20.jsonl --report-prefix aurora_anchor_eval_gate",
