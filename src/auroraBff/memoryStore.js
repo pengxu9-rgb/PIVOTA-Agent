@@ -1,5 +1,6 @@
 const { query } = require('../db');
 const { normalizeTravelProfilePatch } = require('./travelPlans');
+const { normalizeCurrentRoutineToV2 } = require('./routineSchemaV2');
 
 function parseRetentionDays() {
   const raw =
@@ -157,7 +158,7 @@ function mapProfileToDb(profilePatch) {
     : Object.prototype.hasOwnProperty.call(p, 'pregnancyDueDate')
       ? p.pregnancyDueDate
       : undefined;
-  const currentRoutine = p.currentRoutine;
+  const currentRoutine = normalizeCurrentRoutineToV2(p.currentRoutine);
   const itinerary = p.itinerary;
   const travelPlan = p.travel_plan;
   const travelPlans = p.travel_plans;
@@ -397,7 +398,7 @@ function mapProfileFromDb(row) {
     goals: Array.isArray(row.goals) ? row.goals : row.goals ? row.goals : [],
     region: row.region || null,
     budgetTier: row.budget_tier || null,
-    currentRoutine: row.current_routine || null,
+    currentRoutine: normalizeCurrentRoutineToV2(row.current_routine),
     active_routine_id: row.active_routine_id || null,
     itinerary: row.itinerary || null,
     travel_plan:
@@ -440,7 +441,7 @@ function mapAccountProfileFromDb(row) {
     goals: Array.isArray(row.goals) ? row.goals : row.goals ? row.goals : [],
     region: row.region || null,
     budgetTier: row.budget_tier || null,
-    currentRoutine: row.current_routine || null,
+    currentRoutine: normalizeCurrentRoutineToV2(row.current_routine),
     active_routine_id: row.active_routine_id || null,
     itinerary: row.itinerary || null,
     travel_plan:
