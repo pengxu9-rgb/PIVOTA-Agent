@@ -10,7 +10,13 @@ const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope')
 const { createStageProfiler } = require('./skinAnalysisProfiling');
 const { runSkinDiagnosisV1, summarizeDiagnosisForPolicy, buildSkinAnalysisFromDiagnosisV1 } = require('./skinDiagnosisV1');
 const { buildSkinVisionPrompt, buildSkinReportPrompt } = require('./skinLlmPrompts');
-const { buildVisionSignalsDto, buildReportSignalsDto, buildInputHashPrefix, buildQualityObject } = require('./skinSignalsDto');
+const {
+  buildVisionSignalsDto,
+  buildReportSignalsDto,
+  buildDeepeningSignalsDto,
+  buildInputHashPrefix,
+  buildQualityObject,
+} = require('./skinSignalsDto');
 const {
   detectRoutineLifecycleStage,
   buildRoutineLifecycleContext,
@@ -23,16 +29,19 @@ const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
+  renderDeepeningCanonicalLayer,
 } = require('./skinAnalysisContract');
 const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
+  runGeminiDeepeningStrategy,
   isGeminiSkinGatewayAvailable,
 } = require('./skinLlmGateway');
 const {
   classifyPhotoQuality,
   inferDetectorConfidence,
   shouldCallLlm,
+  shouldFireDeepening,
   downgradeSkinAnalysisConfidence,
   humanizeLlmReasons,
   applyConfidenceCaps,
@@ -163,6 +172,114 @@ const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
+
+function resolveSkinDeepeningPromptVersion(promptVersion) {
+  const token = String(promptVersion || '').trim().toLowerCase();
+  if (!token) return 'skin_deepening_v2_canonical';
+  if (token === 'skin_v3' || token === 'skin_v3_canonical' || token.includes('v3_canonical')) return 'skin_deepening_v2_canonical';
+  if (token === 'skin_deepening_v2_canonical' || token.includes('deepening_v2')) return token;
+  return 'skin_deepening_v2_canonical';
+}
+
+function extractSkinDeepeningSymptoms(recentLogsSummary) {
+  const logs = Array.isArray(recentLogsSummary) ? recentLogsSummary : [];
+  const out = [];
+  const pushToken = (raw) => {
+    if (typeof raw !== 'string') return;
+    const text = raw.trim();
+    if (!text) return;
+    out.push(text);
+  };
+  for (const item of logs.slice(0, 7)) {
+    if (!item || typeof item !== 'object') continue;
+    pushToken(item.reaction);
+    pushToken(item.symptom);
+    pushToken(item.note);
+    pushToken(item.notes);
+    pushToken(item.message);
+    if (Array.isArray(item.reactions)) {
+      for (const reaction of item.reactions) pushToken(reaction);
+    }
+    if (Array.isArray(item.symptoms)) {
+      for (const symptom of item.symptoms) pushToken(symptom);
+    }
+  }
+  return Array.from(new Set(out)).slice(0, 6);
+}
+
+function resolveSkinDeepeningPhase({
+  userRequestedPhoto,
+  photosProvided,
+  hasRoutine,
+  qualityObject,
+  observations,
+  userReportedSymptoms,
+} = {}) {
+  if (!userRequestedPhoto || !photosProvided) {
+    return { phase: 'photo_optin', question_intent: 'photo_upload', reason: 'photo_missing' };
+  }
+  if (!hasRoutine) {
+    return { phase: 'products', question_intent: 'routine_share', reason: 'routine_missing' };
+  }
+  const gate = shouldFireDeepening({
+    qualityObject,
+    observations,
+    userReportedSymptoms,
+  });
+  if (gate.fire) {
+    return { phase: 'reactions', question_intent: 'reaction_check', reason: gate.reason || 'needs_deepening' };
+  }
+  return { phase: 'refined', question_intent: 'confirm_plan', reason: 'stable_plan' };
+}
+
+function buildMainlineDeepeningDto({
+  language,
+  promptVersion,
+  userRequestedPhoto,
+  photosProvided,
+  hasRoutine,
+  routineCandidate,
+  profileSummary,
+  recentLogsSummary,
+  qualityObject,
+  reportCanonical,
+  visionCanonical,
+} = {}) {
+  const observations =
+    reportCanonical && Array.isArray(reportCanonical.insights) && reportCanonical.insights.length
+      ? reportCanonical.insights
+      : visionCanonical && Array.isArray(visionCanonical.observations)
+        ? visionCanonical.observations
+        : [];
+  const reactions = extractSkinDeepeningSymptoms(recentLogsSummary);
+  const phasePlan = resolveSkinDeepeningPhase({
+    userRequestedPhoto,
+    photosProvided,
+    hasRoutine,
+    qualityObject,
+    observations,
+    userReportedSymptoms: reactions,
+  });
+  return {
+    dto: buildDeepeningSignalsDto({
+      lang: language,
+      phase: phasePlan.phase,
+      questionIntent: phasePlan.question_intent,
+      photoChoice: userRequestedPhoto && photosProvided ? 'uploaded' : 'unknown',
+      productsSubmitted: hasRoutine,
+      profileSummary,
+      routineCandidate,
+      reactions,
+      summaryPriority: reportCanonical && reportCanonical.summary_focus ? reportCanonical.summary_focus.priority : 'mixed',
+      watchouts: reportCanonical && Array.isArray(reportCanonical.watchouts) ? reportCanonical.watchouts : [],
+      twoWeekFocus: reportCanonical && Array.isArray(reportCanonical.two_week_focus) ? reportCanonical.two_week_focus : [],
+      qualityObject,
+    }),
+    promptVersion: resolveSkinDeepeningPromptVersion(promptVersion),
+    phasePlan,
+  };
+}
+
 const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
@@ -42980,6 +43097,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         let visionDecisionForReport = null;
         let visionLayer = null;
         let reportLayer = null;
+        let reportCanonical = null;
+        let deepeningRuntime = null;
         let llmInputHash = null;
         let llmInputHashPrefix = null;
         let deterministicFallbackReason = null;
@@ -43445,6 +43564,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           if (reportResult.ok && reportResult.layer) {
             reportLayer = reportResult.layer;
+            reportCanonical = reportResult.canonical || reportCanonical;
             analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
             recordAuroraSkinSemanticGuard({
               stage: 'report',
@@ -43460,6 +43580,52 @@ function mountAuroraBffRoutes(app, { logger }) {
               promptVersion: reportResult.prompt_version,
               locale: ctx.lang,
             });
+            const deepeningContext = buildMainlineDeepeningDto({
+              language: ctx.lang,
+              promptVersion,
+              userRequestedPhoto,
+              photosProvided,
+              hasRoutine,
+              routineCandidate,
+              profileSummary,
+              recentLogsSummary,
+              qualityObject: reportDto && reportDto.quality,
+              reportCanonical,
+              visionCanonical: visionRuntime && visionRuntime.canonical ? visionRuntime.canonical : null,
+            });
+            if (deepeningContext && deepeningContext.dto) {
+              deepeningRuntime = await runGeminiDeepeningStrategy({
+                deepeningDto: deepeningContext.dto,
+                language: ctx.lang,
+                promptVersion: deepeningContext.promptVersion,
+                profiler,
+              });
+              if (deepeningRuntime && deepeningRuntime.ok && deepeningRuntime.layer) {
+                reportLayer = {
+                  ...reportLayer,
+                  deepening: deepeningRuntime.layer,
+                };
+              } else {
+                reportLayer = {
+                  ...reportLayer,
+                  deepening: renderDeepeningCanonicalLayer(
+                    {
+                      phase: deepeningContext.phasePlan.phase,
+                      summary_priority:
+                        reportCanonical && reportCanonical.summary_focus
+                          ? reportCanonical.summary_focus.priority
+                          : 'mixed',
+                      advice_items:
+                        reportCanonical && Array.isArray(reportCanonical.two_week_focus) && reportCanonical.two_week_focus.length
+                          ? reportCanonical.two_week_focus
+                          : ['confirm_tolerance'],
+                      question_intent: deepeningContext.phasePlan.question_intent,
+                    },
+                    { lang: ctx.lang },
+                  ),
+                };
+              }
+            }
           } else {
             const reportFailureRaw = reportResult.reason || 'report_output_invalid';
             const reportFailureReason = normalizeReportFailureReason(reportFailureRaw) || 'UNKNOWN';
@@ -53674,6 +53840,10 @@ const __internal = {
   runPdpHotsetPrewarmBatch,
   resolveRecoPdpByStableIds,
   maybeInferSkinMaskForPhotoModules,
+  resolveSkinDeepeningPromptVersion,
+  extractSkinDeepeningSymptoms,
+  resolveSkinDeepeningPhase,
+  buildMainlineDeepeningDto,
   ensureSkinmaskModelPathForInference,
   __setResolveProductRefForTest(fn) {
     resolveProductRefDirectImpl = typeof fn === 'function' ? fn : null;

@@ -5,6 +5,7 @@ const {
   SkinVisionCanonicalSchema,
   SkinReportStrategySchema,
   SkinReportCanonicalSchema,
+  SkinReportCanonicalLlmSchema,
   SkinDeepeningCanonicalSchema,
   buildPoorPhotoTemplate,
   validateVisionObservation,
@@ -17,6 +18,8 @@ const {
   normalizeReportStrategyLayer,
   normalizeReportCanonicalLayer,
   normalizeDeepeningCanonicalLayer,
+  adjudicateReportCanonicalLayer,
+  adjudicateDeepeningCanonicalLayer,
   renderVisionCanonicalLayer,
   renderReportCanonicalLayer,
   renderDeepeningCanonicalLayer,
@@ -139,6 +142,15 @@ function unwrapCodeFence(raw) {
   while (end > 0 && !lines[end].startsWith('```')) end -= 1;
   if (end <= 0) return text;
   return lines.slice(1, end).join('\n').trim();
+}
+
+function classifyJsonParseStatus(rawText, parsed) {
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return 'parsed';
+  const text = typeof rawText === 'string' ? rawText.trim() : '';
+  if (!text) return 'empty';
+  if (text.startsWith('{') && !text.endsWith('}')) return 'parse_truncated';
+  if (text.startsWith('{') && text.endsWith('}')) return 'parse_invalid';
+  return 'non_json';
 }
 
 function classifyGeminiError(err) {
@@ -338,6 +350,17 @@ function buildDeepeningAttemptBundle({ language, deepeningDto, promptVersion, re
   };
 }
 
+function sanitizeGeminiResponseSchema(schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  if (Array.isArray(schema)) return schema.map(sanitizeGeminiResponseSchema);
+  const out = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (k === 'maxItems' || k === 'minItems' || k === 'default' || k === 'title' || k === 'examples') continue;
+    out[k] = sanitizeGeminiResponseSchema(v);
+  }
+  return out;
+}
+
 async function callGeminiJson({
   systemInstruction,
   userText,
@@ -351,13 +374,18 @@ async function callGeminiJson({
 } = {}) {
   const apiKey = pickGeminiApiKey();
   const client = getGeminiClient(apiKey);
+  const sanitizedResponseSchema = sanitizeGeminiResponseSchema(responseSchema);
   if (!client || !apiKey) {
     return {
       ok: false,
       reason: 'MISSING_GEMINI_KEY',
       upstream_status_code: null,
       response_text: '',
+      json_text: '',
       parsed: null,
+      parse_status: 'empty',
+      schema_sanitized: false,
+      response_schema: sanitizedResponseSchema,
       latency_ms: 0,
     };
   }
@@ -396,7 +424,7 @@ async function callGeminiJson({
     ],
     config: {
       responseMimeType: 'application/json',
-      responseSchema,
+      responseSchema: sanitizedResponseSchema,
       temperature: 0.1,
       topP: 0.8,
       candidateCount: 1,
@@ -423,12 +451,17 @@ async function callGeminiJson({
     const text = await extractTextFromGeminiResponse(resp);
     const jsonOnly = unwrapCodeFence(text);
     const parsed = parseJsonOnlyObject(jsonOnly);
+    const parseStatus = classifyJsonParseStatus(jsonOnly, parsed);
     return {
       ok: true,
       reason: null,
       upstream_status_code: null,
       response_text: text,
+      json_text: jsonOnly,
       parsed,
+      parse_status: parseStatus,
+      schema_sanitized: Boolean(responseSchema && sanitizedResponseSchema && JSON.stringify(responseSchema) !== JSON.stringify(sanitizedResponseSchema)),
+      response_schema: sanitizedResponseSchema,
       latency_ms: Date.now() - startedAt,
     };
   } catch (err) {
@@ -448,7 +481,11 @@ async function callGeminiJson({
       reason: classified.reason,
       upstream_status_code: classified.upstream_status_code,
       response_text: '',
+      json_text: '',
       parsed: null,
+      parse_status: 'empty',
+      schema_sanitized: false,
+      response_schema: sanitizedResponseSchema,
       latency_ms: Date.now() - startedAt,
       error: err instanceof GeminiGateError ? `${err.code}:${String(err.message || '').slice(0, 460)}` : String(err.message || '').slice(0, 500),
     };
@@ -516,7 +553,12 @@ async function runGeminiVisionStrategy({
   if (isCanonical) {
     const canonical = normalizeVisionCanonicalLayer(firstAttempt.response.parsed);
     const validation = validateVisionCanonicalLayer(canonical);
-    const semantic = validation.ok ? evaluateVisionCanonicalSemantic(canonical, { quality: visionDto && visionDto.quality }) : { ok: false, code: 'SCHEMA_INVALID', issues: validation.errors || [] };
+    const semantic = validation.ok
+      ? evaluateVisionCanonicalSemantic(canonical, {
+          quality: visionDto && visionDto.quality,
+          parseStatus: firstAttempt.response.parse_status,
+        })
+      : { ok: false, code: 'SCHEMA_INVALID', issues: validation.errors || [] };
     if (validation.ok && semantic.ok) {
       const rendered = renderVisionCanonicalLayer(canonical, { lang: language });
       const publicValidation = validateVisionObservation(rendered);
@@ -554,7 +596,7 @@ async function runGeminiVisionStrategy({
       };
     }
 
-    const revisionHint = buildSemanticRevisionHint({
+      const revisionHint = buildSemanticRevisionHint({
       stage: 'vision',
       issues: validation.ok ? semantic.issues : validation.errors,
     });
@@ -577,7 +619,10 @@ async function runGeminiVisionStrategy({
     const revisedCanonical = normalizeVisionCanonicalLayer(secondAttempt.response.parsed);
     const revisedValidation = validateVisionCanonicalLayer(revisedCanonical);
     const revisedSemantic = revisedValidation.ok
-      ? evaluateVisionCanonicalSemantic(revisedCanonical, { quality: visionDto && visionDto.quality })
+      ? evaluateVisionCanonicalSemantic(revisedCanonical, {
+          quality: visionDto && visionDto.quality,
+          parseStatus: secondAttempt.response.parse_status,
+        })
       : { ok: false, code: 'SCHEMA_INVALID', issues: revisedValidation.errors || [] };
     if (!revisedValidation.ok || !revisedSemantic.ok) {
       return {
@@ -690,6 +735,17 @@ async function runGeminiReportStrategy({
   const isCanonical = isSkinPromptV3(promptVersion);
   let retryAttempted = 0;
 
+  const normalizeReportGatewayReason = (response, validation, semantic, safety) => {
+    if (!response.ok) {
+      if (response.reason === 'UPSTREAM_4XX' && Number(response.upstream_status_code) === 400) return 'UPSTREAM_SCHEMA_INVALID';
+      return response.reason || 'UNKNOWN';
+    }
+    if (!validation.ok) return 'SCHEMA_INVALID';
+    if (!semantic.ok) return semantic.code || 'SEMANTIC_INVALID';
+    if (!safety.ok) return 'SAFETY_INVALID';
+    return null;
+  };
+
   if (shouldUseLimitedSignalReportFallback(reportDto)) {
     return {
       ok: true,
@@ -720,7 +776,7 @@ async function runGeminiReportStrategy({
       systemInstruction: promptBundle.bundle.systemInstruction,
       userText: promptBundle.userPrompt,
       imageBuffer: null,
-      responseSchema: isCanonical ? SkinReportCanonicalSchema : SkinReportStrategySchema,
+      responseSchema: isCanonical ? SkinReportCanonicalLlmSchema : SkinReportStrategySchema,
       maxOutputTokens: SKIN_REPORT_MAX_OUTPUT_TOKENS,
       timeoutMs,
       profiler,
@@ -728,44 +784,59 @@ async function runGeminiReportStrategy({
     });
   };
 
-  let first = await attempt('');
-  let validation = first.ok
-    ? (isCanonical ? validateReportCanonicalLayer(normalizeReportCanonicalLayer(first.parsed)) : validateReportStrategy(first.parsed))
+  const first = await attempt('');
+  const firstCanonical = first.ok && isCanonical ? normalizeReportCanonicalLayer(first.parsed, { strict: true }) : null;
+  const firstValidation = first.ok
+    ? (isCanonical ? validateReportCanonicalLayer(firstCanonical) : validateReportStrategy(first.parsed))
     : { ok: false, errors: [] };
-  let semantic = first.ok && validation.ok && isCanonical
-    ? evaluateReportCanonicalSemantic(normalizeReportCanonicalLayer(first.parsed))
+  const firstSemantic = first.ok && firstValidation.ok && isCanonical
+    ? evaluateReportCanonicalSemantic(firstCanonical, {
+        reportContext: reportDto,
+        parseStatus: first.parse_status,
+      })
     : { ok: true, issues: [] };
-  let safety = first.ok && validation.ok && (!isCanonical || semantic.ok)
-    ? validateSkinAnalysisContent(
-        isCanonical
-          ? renderReportCanonicalLayer(normalizeReportCanonicalLayer(first.parsed), {
-              lang: language,
-              quality: reportDto && reportDto.quality,
-            })
-          : first.parsed,
-        { lang: language },
-      )
+  const firstAdjudicatedCanonical = first.ok && firstValidation.ok && isCanonical
+    ? adjudicateReportCanonicalLayer(firstCanonical, { reportContext: reportDto })
+    : null;
+  const firstRendered = first.ok && firstValidation.ok && isCanonical
+    ? renderReportCanonicalLayer(firstAdjudicatedCanonical, {
+        lang: language,
+        quality: reportDto && reportDto.quality,
+        reportContext: reportDto,
+      })
+    : null;
+  const firstSafety = first.ok && firstValidation.ok && (!isCanonical || firstSemantic.ok)
+    ? validateSkinAnalysisContent(isCanonical ? firstRendered : first.parsed, { lang: language })
     : { ok: false, violations: [] };
 
-  const needRetry = !first.ok || !validation.ok || !semantic.ok || !safety.ok;
-  if (needRetry) {
+  if (!first.ok || !firstValidation.ok || !firstSemantic.ok || !firstSafety.ok) {
     retryAttempted = 1;
-    const revisionHint = !validation.ok || !semantic.ok
+    const revisionHint = !firstValidation.ok || !firstSemantic.ok
       ? buildSemanticRevisionHint({
           stage: 'report',
-          issues: !validation.ok ? validation.errors : semantic.issues,
+          issues: !firstValidation.ok ? firstValidation.errors : firstSemantic.issues,
         })
       : 'Revise your previous output to comply with safety rules: remove disease names, prescription drug names, treatment claims, and brand-specific recommendations. Keep the same meaning and be concise.';
     const second = await attempt(revisionHint);
-    const secondCanonical = second.ok && isCanonical ? normalizeReportCanonicalLayer(second.parsed) : null;
+    const secondCanonical = second.ok && isCanonical ? normalizeReportCanonicalLayer(second.parsed, { strict: true }) : null;
     const secondValidation = second.ok
       ? (isCanonical ? validateReportCanonicalLayer(secondCanonical) : validateReportStrategy(second.parsed))
       : { ok: false, errors: [] };
     const secondSemantic = second.ok && secondValidation.ok && isCanonical
-      ? evaluateReportCanonicalSemantic(secondCanonical)
+      ? evaluateReportCanonicalSemantic(secondCanonical, {
+          reportContext: reportDto,
+          parseStatus: second.parse_status,
+        })
       : { ok: true, issues: [] };
+    const secondAdjudicatedCanonical = second.ok && secondValidation.ok && isCanonical
+      ? adjudicateReportCanonicalLayer(secondCanonical, { reportContext: reportDto })
+      : null;
     const secondRendered = second.ok && secondValidation.ok && isCanonical
-      ? renderReportCanonicalLayer(secondCanonical, { lang: language, quality: reportDto && reportDto.quality })
+      ? renderReportCanonicalLayer(secondAdjudicatedCanonical, {
+          lang: language,
+          quality: reportDto && reportDto.quality,
+          reportContext: reportDto,
+        })
       : null;
     const secondSafety = second.ok && secondValidation.ok && (!isCanonical || secondSemantic.ok)
       ? validateSkinAnalysisContent(isCanonical ? secondRendered : second.parsed, { lang: language })
@@ -780,9 +851,11 @@ async function runGeminiReportStrategy({
         safety_violation: false,
         semantic_violation: false,
         layer: isCanonical ? secondRendered : normalizeReportStrategyLayer(second.parsed, { lang: language }),
-        canonical: secondCanonical,
+        canonical: secondAdjudicatedCanonical,
         semantic: secondSemantic,
         raw_response_text: second.response_text,
+        parse_status: second.parse_status,
+        schema_sanitized: Boolean(second.schema_sanitized),
         retry: { attempted: 1, final: 'success', last_reason: null },
         upstream_status_code: second.upstream_status_code,
         latency_ms: second.latency_ms,
@@ -791,33 +864,46 @@ async function runGeminiReportStrategy({
       };
     }
 
+    if (second.ok && secondValidation.ok && !secondSemantic.ok && isCanonical) {
+      return {
+        ok: true,
+        provider: 'gemini',
+        reason: null,
+        schema_violation: false,
+        safety_violation: false,
+        semantic_violation: false,
+        layer: buildConservativeReportFallbackLayer(reportDto, { lang: language }),
+        canonical: secondAdjudicatedCanonical,
+        semantic: secondSemantic,
+        raw_response_text: second.response_text,
+        parse_status: second.parse_status,
+        schema_sanitized: Boolean(second.schema_sanitized),
+        retry: { attempted: retryAttempted, final: 'success', last_reason: 'semantic_fallback' },
+        upstream_status_code: second.upstream_status_code,
+        latency_ms: second.latency_ms,
+        prompt_version: bundle.promptVersion,
+        input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+        __semantic_fallback: true,
+      };
+    }
+
     return {
       ok: false,
       provider: 'gemini',
-      reason: !second.ok
-        ? second.reason || 'UNKNOWN'
-        : !secondValidation.ok
-          ? 'SCHEMA_INVALID'
-          : !secondSemantic.ok
-            ? secondSemantic.code || 'SEMANTIC_INVALID'
-            : 'SAFETY_INVALID',
+      reason: normalizeReportGatewayReason(second, secondValidation, secondSemantic, secondSafety),
       schema_violation: Boolean(second.ok && !secondValidation.ok),
       semantic_violation: Boolean(second.ok && secondValidation.ok && !secondSemantic.ok),
       safety_violation: Boolean(second.ok && secondValidation.ok && secondSemantic.ok && !secondSafety.ok),
       layer: null,
-      canonical: secondCanonical,
+      canonical: secondAdjudicatedCanonical,
       semantic: secondSemantic,
       raw_response_text: second.response_text,
+      parse_status: second.parse_status,
+      schema_sanitized: Boolean(second.schema_sanitized),
       retry: {
         attempted: retryAttempted,
         final: 'fail',
-        last_reason: !second.ok
-          ? second.reason || 'UNKNOWN'
-          : !secondValidation.ok
-            ? 'SCHEMA_INVALID'
-            : !secondSemantic.ok
-              ? secondSemantic.code || 'SEMANTIC_INVALID'
-              : 'SAFETY_INVALID',
+        last_reason: normalizeReportGatewayReason(second, secondValidation, secondSemantic, secondSafety),
       },
       upstream_status_code: second.upstream_status_code,
       latency_ms: second.latency_ms,
@@ -837,11 +923,13 @@ async function runGeminiReportStrategy({
     safety_violation: false,
     semantic_violation: false,
     layer: isCanonical
-      ? renderReportCanonicalLayer(normalizeReportCanonicalLayer(first.parsed), { lang: language, quality: reportDto && reportDto.quality })
+      ? firstRendered
       : normalizeReportStrategyLayer(first.parsed, { lang: language }),
-    canonical: isCanonical ? normalizeReportCanonicalLayer(first.parsed) : null,
-    semantic,
+    canonical: isCanonical ? firstAdjudicatedCanonical : null,
+    semantic: firstSemantic,
     raw_response_text: first.response_text,
+    parse_status: first.parse_status,
+    schema_sanitized: Boolean(first.schema_sanitized),
     retry: { attempted: retryAttempted, final: 'success', last_reason: null },
     upstream_status_code: first.upstream_status_code,
     latency_ms: first.latency_ms,
@@ -905,20 +993,30 @@ async function runGeminiDeepeningStrategy({
       input_hash: deepeningDto && deepeningDto.input_hash ? String(deepeningDto.input_hash) : null,
     };
   }
-  const canonical = normalizeDeepeningCanonicalLayer(first.response.parsed);
+  const canonical = normalizeDeepeningCanonicalLayer(first.response.parsed, {
+    strict: true,
+    inheritedPriority: deepeningDto && deepeningDto.summary_priority,
+  });
   const validation = validateDeepeningCanonicalLayer(canonical);
-  const semantic = validation.ok ? evaluateDeepeningCanonicalSemantic(canonical) : { ok: false, code: 'SCHEMA_INVALID', issues: validation.errors || [] };
+  const semantic = validation.ok
+    ? evaluateDeepeningCanonicalSemantic(canonical, { parseStatus: first.response.parse_status })
+    : { ok: false, code: 'SCHEMA_INVALID', issues: validation.errors || [] };
   if (validation.ok && semantic.ok) {
+    const resolvedCanonical = adjudicateDeepeningCanonicalLayer(canonical, {
+      inheritedPriority: deepeningDto && deepeningDto.summary_priority,
+      deepeningContext: deepeningDto,
+    });
     return {
       ok: true,
       provider: 'gemini',
       reason: null,
       schema_violation: false,
       semantic_violation: false,
-      layer: renderDeepeningCanonicalLayer(canonical, { lang: language }),
-      canonical,
+      layer: renderDeepeningCanonicalLayer(resolvedCanonical, { lang: language }),
+      canonical: resolvedCanonical,
       semantic,
       raw_response_text: first.response.response_text,
+      parse_status: first.response.parse_status,
       retry: { attempted: 0, final: 'success', last_reason: null },
       upstream_status_code: first.response.upstream_status_code,
       latency_ms: first.response.latency_ms,
@@ -945,10 +1043,13 @@ async function runGeminiDeepeningStrategy({
       input_hash: deepeningDto && deepeningDto.input_hash ? String(deepeningDto.input_hash) : null,
     };
   }
-  const revisedCanonical = normalizeDeepeningCanonicalLayer(second.response.parsed);
+  const revisedCanonical = normalizeDeepeningCanonicalLayer(second.response.parsed, {
+    strict: true,
+    inheritedPriority: deepeningDto && deepeningDto.summary_priority,
+  });
   const revisedValidation = validateDeepeningCanonicalLayer(revisedCanonical);
   const revisedSemantic = revisedValidation.ok
-    ? evaluateDeepeningCanonicalSemantic(revisedCanonical)
+    ? evaluateDeepeningCanonicalSemantic(revisedCanonical, { parseStatus: second.response.parse_status })
     : { ok: false, code: 'SCHEMA_INVALID', issues: revisedValidation.errors || [] };
   if (!revisedValidation.ok || !revisedSemantic.ok) {
     return {
@@ -961,6 +1062,7 @@ async function runGeminiDeepeningStrategy({
       canonical: revisedCanonical,
       semantic: revisedSemantic,
       raw_response_text: second.response.response_text,
+      parse_status: second.response.parse_status,
       retry: {
         attempted: 1,
         final: 'fail',
@@ -974,16 +1076,21 @@ async function runGeminiDeepeningStrategy({
       semantic_issues: revisedSemantic.issues,
     };
   }
+  const resolvedRevisedCanonical = adjudicateDeepeningCanonicalLayer(revisedCanonical, {
+    inheritedPriority: deepeningDto && deepeningDto.summary_priority,
+    deepeningContext: deepeningDto,
+  });
   return {
     ok: true,
     provider: 'gemini',
     reason: null,
     schema_violation: false,
     semantic_violation: false,
-    layer: renderDeepeningCanonicalLayer(revisedCanonical, { lang: language }),
-    canonical: revisedCanonical,
+    layer: renderDeepeningCanonicalLayer(resolvedRevisedCanonical, { lang: language }),
+    canonical: resolvedRevisedCanonical,
     semantic: revisedSemantic,
     raw_response_text: second.response.response_text,
+    parse_status: second.response.parse_status,
     retry: { attempted: 1, final: 'success', last_reason: null },
     upstream_status_code: second.response.upstream_status_code,
     latency_ms: second.response.latency_ms,
