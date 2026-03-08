@@ -201,6 +201,52 @@ test('P2-1 contract: empty upstream output degrades to confidence_notice(artifac
   );
 });
 
+test('P2-1 contract: empty structured recommendations degrade to confidence_notice(upstream_empty_recommendations)', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+    },
+    async () => {
+      const { harness, uid } = await setupRecoHarnessWithArtifact({
+        auroraChatImpl: async () => ({
+          answer: '{"recommendations":[]}',
+          intent: 'reco_products',
+          structured: {
+            recommendations: [],
+            confidence: 0,
+            warnings: ['recent_logs_missing'],
+          },
+        }),
+        uidSeed: 'contract_upstream_empty_recs',
+      });
+
+      try {
+        const resp = await harness.request
+          .post('/v1/chat')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            message: 'recommend products',
+            action: { action_id: 'chip.start.reco_products', kind: 'chip', data: {} },
+            language: 'EN',
+            session: { state: 'idle' },
+          })
+          .expect(200);
+
+        assertEnvelopeValid(resp.body);
+        const cards = parseCards(resp.body);
+        assertNoticeReason(cards, 'upstream_empty_recommendations');
+        assert.equal(Boolean(findCard(cards, 'recommendations')), false);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
 test('P2-1 contract: low confidence artifact yields confidence_notice(low_confidence)', async () => {
   await withEnv(
     {

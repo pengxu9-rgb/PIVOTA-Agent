@@ -251,6 +251,81 @@ test('shouldApplyRecoOutputGuard: non-reco empty envelope should not trigger gua
   }
 });
 
+test('applyRecoCardContractInvariant: generic empty recommendations degrade to confidence_notice', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: { role: 'assistant', content: 'Fallback guidance.', format: 'markdown' },
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: 'reco_empty',
+          type: 'recommendations',
+          payload: {
+            recommendations: [],
+            warnings: ['recent_logs_missing'],
+          },
+          field_missing: [{ field: 'recommendations', reason: 'upstream_missing_or_empty' }],
+        },
+      ],
+      session_patch: { next_state: 'S7_PRODUCT_RECO' },
+      events: [{ event_name: 'recos_requested', data: { explicit: true } }],
+    };
+
+    const out = __internal.applyRecoCardContractInvariant({
+      envelope,
+      ctx: { request_id: 'req_empty_reco', trace_id: 'trace_empty_reco' },
+      language: 'EN',
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.reason, 'upstream_empty_recommendations');
+    assert.equal(Array.isArray(out.envelope.cards), true);
+    assert.equal(out.envelope.cards.some((card) => card && card.type === 'recommendations'), false);
+    assert.equal(out.envelope.cards.some((card) => card && card.type === 'confidence_notice'), true);
+    assert.equal(out.envelope.cards.find((card) => card && card.type === 'confidence_notice').payload.reason, 'upstream_empty_recommendations');
+    assert.equal(Boolean(out.envelope.session_patch && out.envelope.session_patch.next_state), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyRecoCardContractInvariant: explicit ingredient no-candidate empty mode is preserved', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: { role: 'assistant', content: 'No ingredient match yet.', format: 'markdown' },
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: 'reco_empty_ingredient',
+          type: 'recommendations',
+          payload: {
+            recommendations: [],
+            task_mode: 'ingredient_lookup_no_candidates',
+            products_empty_reason: 'ingredient_constraint_no_match',
+            empty_match_actions: [{ action_id: 'broaden_to_goal', label: 'Broaden' }],
+          },
+        },
+      ],
+      session_patch: {},
+      events: [{ event_name: 'recos_requested', data: { explicit: true } }],
+    };
+
+    const out = __internal.applyRecoCardContractInvariant({
+      envelope,
+      ctx: { request_id: 'req_empty_ing_reco', trace_id: 'trace_empty_ing_reco' },
+      language: 'EN',
+    });
+
+    assert.equal(out.applied, false);
+    assert.equal(Array.isArray(out.envelope.cards), true);
+    assert.equal(out.envelope.cards[0].type, 'recommendations');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 function looksTreatmentOrHighIrritation(rec) {
   const row = rec && typeof rec === 'object' ? rec : {};
   const bucket = [

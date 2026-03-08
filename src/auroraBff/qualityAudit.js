@@ -1,5 +1,6 @@
 const { scoreReplyQuality, REPLY_QUALITY_RUBRIC, __internal: scorerInternal } = require('./replyQualityScorer');
 const { selectTemplate } = require('./replyTemplates');
+const { hasNonEmptyRecommendationsCard } = require('./recoContract');
 
 const ALLOWED_FIELD_MISSING_REASONS = new Set([
   'not_provided_by_user',
@@ -34,10 +35,6 @@ function getCards(envelope) {
 
 function getSessionPatch(envelope) {
   return isPlainObject(envelope && envelope.session_patch) ? envelope.session_patch : {};
-}
-
-function hasRecommendationsCard(cards) {
-  return cards.some((card) => safeString(card && card.type).trim().toLowerCase() === 'recommendations');
 }
 
 function isRecoUiState(nextState) {
@@ -207,7 +204,7 @@ function auditEnvelope(envelope = {}, ctx = {}) {
 
   const invariants = [];
 
-  const recoApplicable = hasRecommendationsCard(cards);
+  const recoApplicable = hasNonEmptyRecommendationsCard(cards);
   const uiNextState = safeString(patch.next_state).trim();
   const recoPassed = !recoApplicable || isRecoUiState(uiNextState);
   invariants.push({

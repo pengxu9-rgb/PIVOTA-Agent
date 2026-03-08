@@ -466,10 +466,9 @@ reco_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     "session":{"state":"S2_DIAGNOSIS"}
   }')"
 
-printf "%s\n" "$reco_json" | jq_assert "chat reco returns recommendations/product_verdict or confidence_notice" '
+printf "%s\n" "$reco_json" | jq_assert "chat reco returns recommendations or confidence_notice" '
   .cards
   | any(.type=="recommendations")
-    or any(.type=="product_verdict")
     or any(.type=="confidence_notice")
 '
 
@@ -518,37 +517,25 @@ if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >
       ($ev | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0)))
     end
   '
-elif printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="product_verdict")' >/dev/null; then
-  printf "%s\n" "$reco_json" | jq_assert "product_verdict card exists when recommendations are absent" '.cards | any(.type=="product_verdict")'
-  printf "%s\n" "$reco_json" | jq_assert "product_verdict keeps structured section" '
-    .cards | any(
-      .type=="product_verdict" and
-      (
-        (.sections // [])
-        | any(.kind=="product_verdict_structured" and ((.verdict // "")|length>0))
-      )
-    )
-  '
-  printf "%s\n" "$reco_json" | jq_assert "recommendations absent in product_verdict path" '(.cards | any(.type=="recommendations")) | not'
-  printf "%s\n" "$reco_json" | jq_assert "recos_requested event carries source/reason when event stream is present" '
-    (.events // []) as $ev |
-    if ($ev | length) == 0 then
-      true
-    else
-      ($ev | any(
-        (.event_name=="recos_requested") and
-        (
-          ((.data.source // "") | length) > 0
-          or
-          ((.data.reason // "") | length) > 0
-        )
-      ))
-    end
-  '
 else
   printf "%s\n" "$reco_json" | jq_assert "confidence_notice card exists" '.cards | any(.type=="confidence_notice")'
   printf "%s\n" "$reco_json" | jq_assert "recommendations absent when confidence_notice path" '(.cards | any(.type=="recommendations")) | not'
-  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes gate reason" '(.events // []) | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing" or .data.reason=="artifact_low_confidence" or .data.reason=="safety_block" or .data.reason=="timeout_degraded"))'
+  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes reco degrade reason" '
+    (.events // []) |
+    any(
+      (.event_name=="recos_requested") and
+      (
+        .data.reason=="artifact_missing" or
+        .data.reason=="artifact_low_confidence" or
+        .data.reason=="safety_block" or
+        .data.reason=="timeout_degraded" or
+        .data.reason=="upstream_empty_recommendations" or
+        .data.reason=="upstream_schema_invalid" or
+        .data.reason=="ingredient_constraint_no_match" or
+        .data.reason=="low_confidence_treatment_filtered"
+      )
+    )
+  '
 fi
 
 say "pregnancy due-date auto reset (non-blocking policy)"

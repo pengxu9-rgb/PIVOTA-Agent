@@ -33,6 +33,12 @@ const {
   buildMissingRoutineFields,
 } = require('./routineState');
 const {
+  hasNonEmptyRecommendationsPayload,
+  getRecommendationTaskMode,
+  isExplicitIngredientRecoEmptyMode,
+  hasNonEmptyRecommendationsCard,
+} = require('./recoContract');
+const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
@@ -19664,6 +19670,22 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '系统响应超时，已降级为保守方案。请稍后重试，或先补充照片/当前护肤流程。'
         : 'The system hit a timeout and switched to a conservative fallback. Please retry shortly, or add photos/current routine details first.',
+    upstream_empty_recommendations:
+      lang === 'CN'
+        ? '上游没有返回可落地的产品清单，已改为保守提示。可补充当前 routine 或稍后重试。'
+        : 'Upstream did not return a grounded product shortlist, so this was downgraded to a conservative notice. Add your current routine or retry shortly.',
+    upstream_schema_invalid:
+      lang === 'CN'
+        ? '上游推荐结果结构不完整，已改为保守提示。可稍后重试，或先补充更多上下文。'
+        : 'Upstream recommendation output was structurally incomplete, so this was downgraded to a conservative notice. Retry shortly or add more context first.',
+    ingredient_constraint_no_match:
+      lang === 'CN'
+        ? '当前成分约束下没有确认匹配的产品。可扩展到目标推荐，或改查具体产品 INCI。'
+        : 'No confirmed products matched the current ingredient constraint. Broaden to goal-based recommendations or check a specific product INCI instead.',
+    low_confidence_treatment_filtered:
+      lang === 'CN'
+        ? '当前置信度下，刺激性较强的方案已被过滤，先保留更保守的建议。'
+        : 'Higher-irritation options were filtered at the current confidence level, so only conservative guidance is kept for now.',
     default:
       lang === 'CN' ? '当前建议已按保守模式输出。' : 'Current guidance is running in conservative mode.',
   };
@@ -19679,6 +19701,141 @@ function buildConfidenceNoticeCardPayload({
     message: messageByReason[reason] || messageByReason.default,
     actions: Array.isArray(actions) ? actions : [],
     details: Array.isArray(details) ? details.slice(0, 6) : [],
+  };
+}
+
+function collectRecoContractReasonTokens({ payload, fieldMissing } = {}) {
+  const basePayload = isPlainObject(payload) ? payload : {};
+  const fieldMissingRows = Array.isArray(fieldMissing) ? fieldMissing : [];
+  return Array.from(new Set([
+    ...fieldMissingRows.map((row) => (isPlainObject(row) ? String(row.reason || '').trim().toLowerCase() : '')),
+    ...asStringArray(basePayload.missing_info).map((value) => String(value || '').trim().toLowerCase()),
+    ...asStringArray(basePayload.warnings).map((value) => String(value || '').trim().toLowerCase()),
+    String(basePayload.products_empty_reason || '').trim().toLowerCase(),
+    String(basePayload.failure_reason || '').trim().toLowerCase(),
+  ].filter(Boolean)));
+}
+
+function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
+  const tokens = collectRecoContractReasonTokens({ payload, fieldMissing });
+  if (tokens.includes('low_confidence_treatment_filtered')) return 'low_confidence_treatment_filtered';
+  if (tokens.includes('low_confidence')) return 'low_confidence';
+  if (tokens.includes('artifact_missing')) return 'artifact_missing';
+  if (tokens.includes('ingredient_constraint_no_match') || tokens.includes('ingredient_no_verified_candidates')) {
+    return 'ingredient_constraint_no_match';
+  }
+  if (tokens.includes('upstream_missing_or_unstructured')) return 'upstream_schema_invalid';
+  if (tokens.includes('upstream_missing_or_empty')) return 'upstream_empty_recommendations';
+  return 'upstream_empty_recommendations';
+}
+
+function buildRecoInvariantNoticeCard({ ctx, language, reason, details } = {}) {
+  const actionMap = {
+    upstream_empty_recommendations: ['retry_recommendations', 'update_current_routine'],
+    upstream_schema_invalid: ['retry_recommendations', 'update_current_routine', 'upload_daylight_and_indoor_white'],
+    ingredient_constraint_no_match: ['broaden_to_goal', 'check_product_inci', 'search_category'],
+    low_confidence_treatment_filtered: ['upload_daylight_and_indoor_white', 'update_current_routine', 'retry_recommendations'],
+    artifact_missing: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
+  };
+  return {
+    card_id: `conf_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_reco_contract`,
+    type: 'confidence_notice',
+    payload: buildConfidenceNoticeCardPayload({
+      language,
+      reason,
+      confidence: {
+        score: reason === 'low_confidence_treatment_filtered' ? LOW_CONFIDENCE_THRESHOLD : 0.32,
+        level: 'low',
+        rationale: ['reco_output_contract_invariant'],
+      },
+      actions: actionMap[reason] || actionMap.upstream_empty_recommendations,
+      details: Array.isArray(details) ? details : [],
+    }),
+  };
+}
+
+function applyRecoCardContractInvariant({ envelope, ctx, language } = {}) {
+  const baseEnvelope = isPlainObject(envelope)
+    ? {
+        ...envelope,
+        cards: Array.isArray(envelope.cards) ? envelope.cards.slice() : [],
+        events: Array.isArray(envelope.events) ? envelope.events.slice() : [],
+      }
+    : envelope;
+  if (!isPlainObject(baseEnvelope)) {
+    return { envelope: baseEnvelope, applied: false, reason: null, droppedCount: 0 };
+  }
+
+  let applied = false;
+  let droppedCount = 0;
+  let reason = null;
+  const nextCards = [];
+  for (const card of baseEnvelope.cards) {
+    if (!isPlainObject(card)) {
+      nextCards.push(card);
+      continue;
+    }
+    const type = String(card.type || '').trim().toLowerCase();
+    if (type !== 'recommendations') {
+      nextCards.push(card);
+      continue;
+    }
+    const payload = isPlainObject(card.payload) ? card.payload : {};
+    if (hasNonEmptyRecommendationsPayload(payload) || isExplicitIngredientRecoEmptyMode(payload)) {
+      nextCards.push(card);
+      continue;
+    }
+    applied = true;
+    droppedCount += 1;
+    reason = reason || inferRecoContractNoticeReason({ payload, fieldMissing: card.field_missing });
+  }
+
+  if (!applied) {
+    return { envelope: baseEnvelope, applied: false, reason: null, droppedCount: 0 };
+  }
+
+  if (!hasNonEmptyRecommendationsCard(nextCards)) {
+    const hasRecoNotice = nextCards.some((card) => {
+      if (!isPlainObject(card)) return false;
+      if (String(card.type || '').trim().toLowerCase() !== 'confidence_notice') return false;
+      const payload = isPlainObject(card.payload) ? card.payload : {};
+      return String(payload.reason || '').trim().toLowerCase() === String(reason || '').trim().toLowerCase();
+    });
+    if (!hasRecoNotice) {
+      nextCards.push(
+        buildRecoInvariantNoticeCard({
+          ctx,
+          language,
+          reason,
+          details: ['reco_output_contract_invariant'],
+        }),
+      );
+    }
+  }
+
+  const nextSessionPatch = isPlainObject(baseEnvelope.session_patch) ? { ...baseEnvelope.session_patch } : {};
+  if (!hasNonEmptyRecommendationsCard(nextCards)) {
+    delete nextSessionPatch.next_state;
+  }
+  const nextEvents = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice(0, 64) : [];
+  nextEvents.push(
+    makeEvent(ctx || {}, 'reco_output_contract_degraded', {
+      reason,
+      dropped_count: droppedCount,
+      generic_reco_card_removed: true,
+    }),
+  );
+
+  return {
+    envelope: {
+      ...baseEnvelope,
+      cards: nextCards,
+      session_patch: nextSessionPatch,
+      events: nextEvents,
+    },
+    applied: true,
+    reason,
+    droppedCount,
   };
 }
 
@@ -20107,7 +20264,7 @@ function hasRenderableCards(cards) {
         ? card.payload
         : {};
       const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
-      return recommendations.length > 0;
+      return recommendations.length > 0 || isExplicitIngredientRecoEmptyMode(payload);
     }
     if (type === 'confidence_notice') {
       const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload)
@@ -44094,16 +44251,26 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {},
         events: [makeEvent({ ...ctx, trigger_source: 'action' }, 'recos_requested', { explicit: true })],
       });
-      if (!AURORA_RECO_GENERATE_GUARDRAIL_V1) return res.json(envelope);
-      const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
+      const invariantEnvelope = applyRecoCardContractInvariant({
         envelope,
+        ctx,
+        language: ctx.lang,
+      }).envelope;
+      if (!AURORA_RECO_GENERATE_GUARDRAIL_V1) return res.json(invariantEnvelope);
+      const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
+        envelope: invariantEnvelope,
         ctx,
         logger,
       });
       if (Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
         persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
       }
-      const guardedEnvelope = isPlainObject(guardrailResult.envelope) ? guardrailResult.envelope : envelope;
+      const guardedEnvelopeBase = isPlainObject(guardrailResult.envelope) ? guardrailResult.envelope : invariantEnvelope;
+      const guardedEnvelope = applyRecoCardContractInvariant({
+        envelope: guardedEnvelopeBase,
+        ctx,
+        language: ctx.lang,
+      }).envelope;
       const guardedCards = Array.isArray(guardedEnvelope.cards) ? guardedEnvelope.cards : [];
       const guardedRecoCard = guardedCards.find(
         (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'recommendations',
@@ -48528,7 +48695,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         sessionId: chatSessionId,
         logger,
       });
-      const normalized = applyReplyTemplates({ envelope: dogfoodAugmented, ctx: templateCtx });
+      const guardEligible = statusCode < 400 && shouldApplyRecoOutputGuard({ envelope: dogfoodAugmented, ctx });
+      const lowMediumFiltered = guardEligible
+        ? applyLowOrMediumRecoGuardToEnvelope({ envelope: dogfoodAugmented, ctx, language: ctx.lang })
+        : {
+            envelope: dogfoodAugmented,
+            applied: false,
+            filteredCount: 0,
+            totalCount: 0,
+            fallbackApplied: false,
+          };
       const setResponseHeader = (name, value) => {
         if (typeof res.set === 'function') {
           res.set(name, value);
@@ -48543,14 +48719,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         setResponseHeader('x-aurora-variant', String(rolloutContext.variant || 'legacy'));
         setResponseHeader('x-aurora-policy-version', String(rolloutContext.policy_version || policyMeta.policy_version || 'legacy'));
       }
-      const guardEligible = statusCode < 400 && shouldApplyRecoOutputGuard({ envelope: normalized, ctx });
-      const lowMediumFiltered = {
-        envelope: normalized,
-        applied: false,
-        filteredCount: 0,
-        totalCount: 0,
-        fallbackApplied: false,
-      };
       if (lowMediumFiltered.applied) {
         logger?.info(
           {
@@ -48575,9 +48743,25 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_notice_fallback', hit: true });
         }
       }
+      const recoInvariant = guardEligible
+        ? applyRecoCardContractInvariant({ envelope: lowMediumFiltered.envelope, ctx, language: ctx.lang })
+        : { envelope: lowMediumFiltered.envelope, applied: false, reason: null, droppedCount: 0 };
+      if (recoInvariant.applied) {
+        logger?.warn(
+          {
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            reason: recoInvariant.reason,
+            dropped_count: recoInvariant.droppedCount,
+          },
+          'aurora bff: reco contract invariant rewrote empty recommendations output',
+        );
+        recordAuroraSkinFlowMetric({ stage: 'reco_output_contract_degraded', hit: true });
+      }
+      const normalized = applyReplyTemplates({ envelope: recoInvariant.envelope, ctx: templateCtx });
       const guarded = guardEligible
-        ? ensureNonEmptyChatCardsEnvelope({ envelope: lowMediumFiltered.envelope, ctx, language: ctx.lang })
-        : { envelope: lowMediumFiltered.envelope, applied: false, reason: null };
+        ? ensureNonEmptyChatCardsEnvelope({ envelope: normalized, ctx, language: ctx.lang })
+        : { envelope: normalized, applied: false, reason: null };
       if (guarded.applied) {
         logger?.warn(
           {
@@ -53606,11 +53790,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           const noCandidatesMode =
             recoTaskMode === 'ingredient_lookup_no_candidates'
             || String(payload.products_empty_reason || '').trim() === 'ingredient_no_verified_candidates';
+          const payloadHasRecs = Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
           payload.recommendation_confidence_level = noCandidatesMode ? 'low' : artifactConfidenceLevel;
           if (noCandidatesMode) {
             payload.recommendation_confidence_score = 0;
           } else if (artifactConfidenceScore != null) {
             payload.recommendation_confidence_score = artifactConfidenceScore;
+          }
+          if (!payloadHasRecs && !noCandidatesMode) {
+            if (!hasRecoArtifact) {
+              payload.failure_reason = String(payload.failure_reason || '').trim() || 'artifact_missing';
+            } else if (lowConfidenceArtifact) {
+              payload.failure_reason = String(payload.failure_reason || '').trim() || 'low_confidence';
+            }
           }
           payload.source = String(payload.source || '').trim() || recoSource;
           const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
@@ -53856,7 +54048,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               kb_write_status: kbWriteStatus,
               ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
               ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
-              ...(!hasRecs ? { reason: 'artifact_missing' } : {}),
+              ...(!hasRecs
+                ? { reason: inferRecoContractNoticeReason({ payload, fieldMissing: norm.field_missing }) }
+                : {}),
             }),
           ],
         });
@@ -55441,6 +55635,7 @@ const __internal = {
   deriveProductsEmptyReason,
   countPurchasableProductsForTargets,
   applyPhotoClaimConsistency,
+  applyRecoCardContractInvariant,
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
   buildAnalysisFollowupContent,

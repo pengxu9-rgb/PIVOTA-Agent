@@ -1,4 +1,5 @@
 const RECO_UI_STATES = new Set(['RECO_GATE', 'RECO_CONSTRAINTS', 'RECO_RESULTS']);
+const { hasNonEmptyRecommendationsCard } = require('./recoContract');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -148,7 +149,7 @@ function selectTemplate({ envelope, ctx } = {}) {
     return unknownCount >= 2 ? 'diagnosis_clarification.degraded' : 'diagnosis_clarification.standard';
   }
 
-  if (hasCardType(cards, 'recommendations')) {
+  if (hasNonEmptyRecommendationsCard(cards)) {
     return 'recommendations_output.standard';
   }
 
@@ -838,7 +839,7 @@ function applyReplyTemplates({ envelope, ctx } = {}) {
 
   if (pendingNeedsSingleQuestion) {
     chips = ensurePendingChipRules(chips, currentNormId || gateCurrentNormId || 'skinType', lang);
-  } else if (templateId === 'recommendations_output.standard' || hasCardType(env.cards, 'recommendations')) {
+  } else if (templateId === 'recommendations_output.standard' || hasNonEmptyRecommendationsCard(env.cards)) {
     chips = mergeChips(chips, makeRecoActionChips(lang));
   }
 

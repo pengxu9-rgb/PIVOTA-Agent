@@ -167,6 +167,28 @@ test('replyTemplates: recommendations enforce RECO_RESULTS with actionable next-
   assert.ok(actionChips.length >= 2);
 });
 
+test('replyTemplates: empty recommendations card does not select recommendations template', () => {
+  const envelope = makeEnvelope({
+    assistant_message: { role: 'assistant', format: 'text', content: 'Fallback guidance.' },
+    cards: [
+      {
+        card_id: 'reco_empty',
+        type: 'recommendations',
+        payload: {
+          recommendations: [],
+          warnings: ['upstream empty'],
+        },
+      },
+    ],
+    session_patch: {
+      next_state: 'S7_PRODUCT_RECO',
+    },
+  });
+
+  const out = applyReplyTemplates({ envelope, ctx: { lang: 'EN' } });
+  assert.equal(String(out?.assistant_message?.content || ''), 'Fallback guidance.');
+});
+
 test('replyTemplates: no-photo analysis includes explicit no-photo boundary text', () => {
   const envelope = makeEnvelope({
     cards: [
