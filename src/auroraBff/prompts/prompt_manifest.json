@@ -5,42 +5,42 @@
   "templates": [
     {
       "template_id": "diagnosis_v2_start_personalized",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "diagnosis",
       "input_params": ["skin_type", "concerns", "locale"],
-      "output_schema": null
+      "output_schema": "DiagnosisStartOutput"
     },
     {
       "template_id": "diagnosis_v2_answer_blueprint",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "diagnosis",
       "input_params": ["goals", "profile", "recent_logs", "has_photo", "safety_flags", "locale"],
       "output_schema": "DiagnosisBlueprintOutput"
     },
     {
       "template_id": "routine_categorize_products",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "routine",
       "input_params": ["products", "routine", "locale"],
       "output_schema": "ProductCategorizationOutput"
     },
     {
       "template_id": "routine_audit_optimize",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "routine",
       "input_params": ["routine", "profile", "audit_results", "safety_flags", "locale"],
       "output_schema": "RoutineAuditOutput"
     },
     {
       "template_id": "reco_step_based",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "recommendation",
       "input_params": ["profile", "routine", "inventory", "target_step", "target_ingredient", "concerns", "safety_flags", "locale"],
       "output_schema": "StepRecommendationOutput"
     },
     {
       "template_id": "tracker_checkin_insights",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "tracker",
       "input_params": ["checkin_logs", "profile", "routine", "has_photos", "locale"],
       "output_schema": "CheckinInsightsOutput"
@@ -61,28 +61,28 @@
     },
     {
       "template_id": "ingredient_query_answer",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "ingredient",
       "input_params": ["user_question", "profile", "safety_flags", "locale"],
       "output_schema": "IngredientQueryOutput"
     },
     {
       "template_id": "intent_classifier",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "chat",
       "input_params": ["user_message"],
       "output_schema": "IntentClassifierOutput"
     },
     {
       "template_id": "dupe_suggest",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "dupe",
       "input_params": ["anchor", "candidates", "profile", "locale"],
       "output_schema": "DupeSuggestOutput"
     },
     {
       "template_id": "dupe_compare",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "task_mode": "dupe",
       "input_params": ["anchor", "targets", "profile", "locale"],
       "output_schema": "DupeCompareOutput"

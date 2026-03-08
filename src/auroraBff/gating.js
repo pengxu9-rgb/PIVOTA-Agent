@@ -131,6 +131,7 @@ function stateChangeAllowed(triggerSource) {
 }
 
 const CORE_PROFILE_FIELDS = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+const DIAGNOSIS_GATE_PROMPT_VERSION = 'diagnosis_gate_prompt_v2';
 
 function orderMissingFields(missing) {
   const list = Array.isArray(missing) ? missing.filter(Boolean) : [];
@@ -325,8 +326,8 @@ function buildDiagnosisPrompt(language, missing) {
   const meta = buildDiagnosisQuestionMeta(lang, current);
   const prefix =
     lang === 'CN'
-      ? '我可以帮你，但我需要先做一个极简肤况确认，避免瞎猜。'
-      : "I can help — but first I need a quick skin profile so I don't guess.";
+      ? '在我继续之前，我先确认一个肤况信息，避免瞎猜。'
+      : "Before I continue, I need one quick skin-profile detail so I don't guess.";
   if (!meta) {
     return prefix;
   }
@@ -447,6 +448,7 @@ function hasUsableArtifactForRecommendations(artifact, opts = {}) {
 
 module.exports = {
   DIAGNOSIS_V2_ENABLED,
+  DIAGNOSIS_GATE_PROMPT_VERSION,
   profileCompleteness,
   looksLikeRecommendationRequest,
   looksLikeSuitabilityRequest,

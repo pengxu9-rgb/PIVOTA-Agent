@@ -1,5 +1,9 @@
 const BaseSkill = require('./BaseSkill');
 
+function isLlmQualityError(error) {
+  return Boolean(error) && String(error.name || '') === 'LlmQualityError';
+}
+
 class DiagnosisStartSkill extends BaseSkill {
   constructor() {
     super('diagnosis_v2.start', '1.0.0');
@@ -24,18 +28,25 @@ class DiagnosisStartSkill extends BaseSkill {
     let llmCalls = 0;
 
     if (profile.skin_type || profile.concerns?.length > 0) {
-      const llmResult = await llmGateway.call({
-        templateId: 'diagnosis_v2_start_personalized',
-        taskMode: 'diagnosis',
-        params: {
-          skin_type: profile.skin_type,
-          concerns: profile.concerns,
-          locale,
-        },
-      });
-      followUpQuestions = llmResult.parsed?.follow_up_questions;
-      promptHash = llmResult.promptHash;
       llmCalls = 1;
+      try {
+        const llmResult = await llmGateway.call({
+          templateId: 'diagnosis_v2_start_personalized',
+          taskMode: 'diagnosis',
+          schema: 'DiagnosisStartOutput',
+          params: {
+            skin_type: profile.skin_type,
+            concerns: profile.concerns,
+            locale,
+          },
+        });
+        followUpQuestions = llmResult.parsed?.follow_up_questions;
+        promptHash = llmResult.promptHash;
+      } catch (error) {
+        if (!isLlmQualityError(error)) {
+          throw error;
+        }
+      }
     }
 
     const sections = [

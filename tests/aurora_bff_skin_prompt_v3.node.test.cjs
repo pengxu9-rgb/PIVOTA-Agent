@@ -6,6 +6,7 @@ const {
   buildSkinReportPromptBundle,
   buildSkinDeepeningPromptBundle,
   isSkinPromptV3,
+  isSkinDeepeningV2,
 } = require('../src/auroraBff/skinLlmPrompts');
 const {
   normalizeVisionCanonicalLayer,
@@ -26,6 +27,11 @@ const {
 
 test('skin prompt v3: canonical vision and report prompts ignore locale-specific reasoning', () => {
   assert.equal(isSkinPromptV3('skin_v3'), true);
+  assert.equal(isSkinPromptV3('skin_v3_canonical'), true);
+  assert.equal(isSkinPromptV3('skin_report_v3_canonical'), true);
+  assert.equal(isSkinPromptV3('skin_vision_v3_canonical'), true);
+  assert.equal(isSkinPromptV3('skin_report_v3_hardened'), false);
+  assert.equal(isSkinPromptV3('skin_vision_v2_hardened'), false);
 
   const vision = buildSkinVisionPromptBundle({
     language: 'zh-CN',
@@ -51,6 +57,36 @@ test('skin prompt v3: canonical vision and report prompts ignore locale-specific
   });
   assert.equal(deepening.promptVersion, 'skin_deepening_v2_canonical');
   assert.match(deepening.systemInstruction, /Reason in English only/);
+});
+
+test('skin prompt v3: explicit canonical ids still route to canonical builders while hardened ids stay mainline', () => {
+  assert.equal(isSkinDeepeningV2('skin_deepening_v2_canonical'), true);
+  assert.equal(isSkinDeepeningV2('skin_deepening_v2_hardened'), false);
+  assert.equal(isSkinDeepeningV2('skin_v3'), false);
+
+  const reportCanonical = buildSkinReportPromptBundle({
+    language: 'en-US',
+    promptVersion: 'skin_report_v3_canonical',
+    dto: { quality: { grade: 'pass' } },
+  });
+  assert.equal(reportCanonical.promptVersion, 'skin_report_v3_canonical');
+  assert.match(reportCanonical.systemInstruction, /Reason in English only/);
+
+  const visionCanonical = buildSkinVisionPromptBundle({
+    language: 'en-US',
+    promptVersion: 'skin_vision_v3_canonical',
+    dto: { quality: { grade: 'pass' } },
+  });
+  assert.equal(visionCanonical.promptVersion, 'skin_vision_v3_canonical');
+  assert.match(visionCanonical.systemInstruction, /Reason in English only/);
+
+  const deepeningMainline = buildSkinDeepeningPromptBundle({
+    language: 'en-US',
+    promptVersion: 'skin_deepening_v2_hardened',
+    dto: { phase: 'photo_optin' },
+  });
+  assert.equal(deepeningMainline.promptVersion, 'skin_deepening_v2_hardened');
+  assert.doesNotMatch(deepeningMainline.systemInstruction, /Reason in English only/);
 });
 
 test('skin prompt v3: vision semantic guard rejects empty pass-quality output and renderer localizes zh output', () => {
