@@ -51601,7 +51601,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               openaiClient: getOpenAIClient(),
               logger,
               nowMs: Date.now(),
-              userLocale: templateCtx.accept_language || '',
+              userLocale: templateCtx.accept_language || ctx.lang,
               hasSafetyConflict: Boolean(
                 safetyDecision &&
                   safetyDecision.block_level &&
