@@ -20340,9 +20340,12 @@ function inferCardGuardReasonFromEvents(events) {
 
 function normalizeRecoRequestedEventsForPrimaryReason(events, primaryReason) {
   const rows = Array.isArray(events) ? events : [];
-  const normalizedReason = String(primaryReason || '').trim().toLowerCase() === 'timeout_degraded'
+  const reasonToken = String(primaryReason || '').trim().toLowerCase();
+  const normalizedReason = reasonToken === 'timeout_degraded'
     ? 'timeout_degraded'
-    : 'artifact_missing';
+    : reasonToken === 'artifact_missing'
+      ? 'artifact_missing'
+      : '';
   const next = [];
   let hasRecoRequested = false;
   for (const evt of rows) {
@@ -20356,20 +20359,70 @@ function normalizeRecoRequestedEventsForPrimaryReason(events, primaryReason) {
     }
     hasRecoRequested = true;
     const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? { ...evt.data } : {};
-    const previousReason = String(data.reason || '').trim().toLowerCase();
     if (normalizedReason === 'artifact_missing') {
+      const previousReason = String(data.reason || '').trim().toLowerCase();
       if (previousReason && previousReason !== 'artifact_missing') {
         data.telemetry_reason = previousReason;
       }
       data.reason = 'artifact_missing';
-    } else {
+    } else if (normalizedReason === 'timeout_degraded') {
       data.reason = 'timeout_degraded';
+    } else {
+      delete data.reason;
     }
     next.push({ ...evt, data });
   }
   return { events: next, hasRecoRequested };
 }
 
+function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, emitIfMissing = false, eventData = {} } = {}) {
+  const rows = Array.isArray(events) ? events : [];
+  const contractObj = isPlainObject(contract) ? contract : {};
+  const normalized = normalizeRecoRequestedEventsForPrimaryReason(rows, contractObj.primary_failure_reason);
+  const next = [];
+  let hasRecoRequested = normalized.hasRecoRequested;
+  for (const evt of normalized.events) {
+    if (!evt || typeof evt !== 'object' || Array.isArray(evt)) {
+      next.push(evt);
+      continue;
+    }
+    if (String(evt.event_name || '').trim() !== 'recos_requested') {
+      next.push(evt);
+      continue;
+    }
+    const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? { ...evt.data } : {};
+    if (contractObj.telemetry_failure_reason && !pickFirstTrimmed(data.telemetry_reason)) {
+      data.telemetry_reason = contractObj.telemetry_failure_reason;
+    }
+    if (contractObj.failure_class && !pickFirstTrimmed(data.failure_class)) {
+      data.failure_class = contractObj.failure_class;
+    }
+    if (contractObj.source && !pickFirstTrimmed(data.source)) {
+      data.source = contractObj.source;
+    }
+    if (contractObj.source_mode && !pickFirstTrimmed(data.source_mode)) {
+      data.source_mode = contractObj.source_mode;
+    }
+    if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
+      Object.assign(data, eventData);
+    }
+    next.push({ ...evt, data });
+  }
+  if (!hasRecoRequested && emitIfMissing) {
+    const data = {
+      explicit: true,
+      ...(contractObj.source ? { source: contractObj.source } : {}),
+      ...(contractObj.source_mode ? { source_mode: contractObj.source_mode } : {}),
+      ...(contractObj.primary_failure_reason ? { reason: contractObj.primary_failure_reason } : {}),
+      ...(contractObj.telemetry_failure_reason ? { telemetry_reason: contractObj.telemetry_failure_reason } : {}),
+      ...(contractObj.failure_class ? { failure_class: contractObj.failure_class } : {}),
+      ...(eventData && typeof eventData === 'object' && !Array.isArray(eventData) ? eventData : {}),
+    };
+    next.unshift(makeEvent(ctx || {}, 'recos_requested', data));
+    hasRecoRequested = true;
+  }
+  return { events: next, hasRecoRequested };
+}
 function ensureNonEmptyChatCardsEnvelope({ envelope, ctx, language } = {}) {
   const baseEnvelope = envelope && typeof envelope === 'object' && !Array.isArray(envelope)
     ? { ...envelope }
@@ -20748,6 +20801,86 @@ function normalizeRecoFailureClass(value) {
     return token;
   }
   return '';
+}
+
+function normalizeRecoContractTelemetryReason(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (
+    token === 'timeout_degraded' ||
+    token === 'prompt_contract_mismatch' ||
+    token === 'empty_structured' ||
+    token === 'catalog_transient_failure'
+  ) {
+    return token;
+  }
+  return '';
+}
+
+function buildRecoMainlineContract({
+  recommendations,
+  sourceMode,
+  source,
+  llmFailureClass,
+  upstreamFailureCode,
+  promptContractOk = true,
+} = {}) {
+  const recoRows = Array.isArray(recommendations) ? recommendations : [];
+  const hasRecommendations = recoRows.length > 0;
+  const failureClass = normalizeRecoFailureClass(llmFailureClass);
+  const normalizedSourceMode = String(sourceMode || '').trim().toLowerCase() || 'rules_only';
+  const upstreamCode = String(upstreamFailureCode || '').trim().toUpperCase();
+
+  let telemetryFailureReason = '';
+  if (!hasRecommendations) {
+    if (failureClass === 'timeout' || isTransientRecoUpstreamFailureCode(upstreamCode)) {
+      telemetryFailureReason = 'timeout_degraded';
+    } else if (failureClass === 'precheck_fail' || promptContractOk === false || upstreamCode === 'PROMPT_CONTRACT_MISMATCH') {
+      telemetryFailureReason = 'prompt_contract_mismatch';
+    } else if (failureClass === 'empty_structured' || failureClass === 'provider_error') {
+      telemetryFailureReason = 'empty_structured';
+    } else if (normalizedSourceMode === 'catalog_transient_fallback') {
+      telemetryFailureReason = 'catalog_transient_failure';
+    }
+  }
+
+  const normalizedTelemetryReason = normalizeRecoContractTelemetryReason(telemetryFailureReason);
+  let upstreamStatus = 'ok';
+  if (!hasRecommendations) {
+    if (normalizedTelemetryReason === 'timeout_degraded') upstreamStatus = 'timeout';
+    else if (normalizedTelemetryReason === 'prompt_contract_mismatch') upstreamStatus = 'prompt_contract_mismatch';
+    else if (normalizedTelemetryReason === 'empty_structured') upstreamStatus = 'schema_invalid';
+    else if (normalizedTelemetryReason === 'catalog_transient_failure') upstreamStatus = 'catalog_transient_failure';
+    else upstreamStatus = 'artifact_missing';
+  }
+
+  return {
+    ok: hasRecommendations,
+    contract_status: hasRecommendations ? 'grounded' : 'artifact_missing',
+    source_mode: normalizedSourceMode,
+    source: String(source || '').trim() || null,
+    primary_failure_reason: hasRecommendations ? null : 'artifact_missing',
+    telemetry_failure_reason: normalizedTelemetryReason || null,
+    failure_class: failureClass || null,
+    upstream_status: upstreamStatus,
+  };
+}
+
+function attachRecoContractMeta(payload, contract) {
+  if (!isPlainObject(payload)) return payload;
+  const contractObj = isPlainObject(contract) ? contract : {};
+  const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+  return {
+    ...payload,
+    recommendation_meta: {
+      ...metaExisting,
+      ...(contractObj.source_mode ? { source_mode: contractObj.source_mode } : {}),
+      ...(contractObj.contract_status ? { contract_status: contractObj.contract_status } : {}),
+      ...(contractObj.primary_failure_reason ? { primary_failure_reason: contractObj.primary_failure_reason } : {}),
+      ...(contractObj.telemetry_failure_reason ? { telemetry_failure_reason: contractObj.telemetry_failure_reason } : {}),
+      ...(contractObj.failure_class ? { failure_class: contractObj.failure_class } : {}),
+      ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
+    },
+  };
 }
 
 function buildRecoInputCoverage({ profileSummary, recentLogs, requestText } = {}) {
@@ -38819,6 +38952,7 @@ async function generateProductRecommendations({
   logger,
   recoTriggerSource = null,
   recomputeFromProfileUpdate = false,
+  budgetMs = null,
 }) {
   const profileSummary = summarizeProfileForContext(profile);
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
@@ -38844,6 +38978,7 @@ async function generateProductRecommendations({
     pickFirstTrimmed(recoTriggerSource, ctx && ctx.trigger_source, 'text'),
   );
   const recomputeFromProfileUpdateFlag = recomputeFromProfileUpdate === true;
+  const deadlineAtMs = Number.isFinite(Number(budgetMs)) ? Date.now() + Math.max(0, Math.trunc(Number(budgetMs))) : null;
 
   let upstream = null;
   let contextMeta = {};
@@ -38964,6 +39099,9 @@ async function generateProductRecommendations({
     } catch (err) {
       llmLatencyMs = Date.now() - llmStartedAtMs;
       upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
+        llmFailureClass = 'timeout';
+      }
       if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
         logger?.warn(
           {
@@ -39265,12 +39403,20 @@ async function generateProductRecommendations({
     });
   }
 
-  const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
-    recommendations: norm.payload.recommendations,
-    logger,
-    fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
-    lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-  });
+  const skipPdpOpenEnrichByBudget = Number.isFinite(deadlineAtMs) && Date.now() >= (deadlineAtMs - 250);
+  const pdpOpenOut = skipPdpOpenEnrichByBudget
+    ? {
+      recommendations: Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [],
+      path_stats: { skipped_due_budget: true },
+      fail_reason_counts: {},
+      time_to_pdp_ms_stats: {},
+    }
+    : await enrichRecommendationsWithPdpOpenContract({
+      recommendations: norm.payload.recommendations,
+      logger,
+      fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
+      lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
+    });
   const pdpDeduped = dedupeRecoRecommendationsStrict(pdpOpenOut.recommendations, { maxItems: 8 });
   norm.payload = {
     ...norm.payload,
@@ -39311,12 +39457,21 @@ async function generateProductRecommendations({
       llm_trace: llmTrace,
     },
   };
+  const recoContract = buildRecoMainlineContract({
+    recommendations: nextPayload.recommendations,
+    sourceMode,
+    source: nextPayload.source,
+    llmFailureClass,
+    upstreamFailureCode,
+    promptContractOk: promptContract.ok,
+  });
   const warningContract = applyRecoWarningVisibilityContract(nextPayload);
   nextPayload = {
     ...warningContract.payload,
     prompt_contract_ok: promptContract.ok,
     ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
   };
+  nextPayload = attachRecoContractMeta(nextPayload, recoContract);
   if (normalizedIngredientContext) {
     const recoCount = Array.isArray(nextPayload.recommendations) ? nextPayload.recommendations.length : 0;
     nextPayload.constraint_match_summary = {
@@ -39326,6 +39481,7 @@ async function generateProductRecommendations({
     };
   }
   norm.payload = nextPayload;
+  norm.contract = recoContract;
 
   return {
     norm,
@@ -39334,6 +39490,7 @@ async function generateProductRecommendations({
     upstreamFailureCode,
     llmFailureClass,
     llmTrace,
+    contract: recoContract,
   };
 }
 
@@ -44397,6 +44554,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
         ? upstreamReco.norm
         : normalizeRecoGenerate(null);
+      const baseContract =
+        upstreamReco && upstreamReco.contract && typeof upstreamReco.contract === 'object'
+          ? upstreamReco.contract
+          : buildRecoMainlineContract({
+            recommendations: norm?.payload?.recommendations,
+            sourceMode: norm?.payload?.recommendation_meta?.source_mode,
+            source: norm?.payload?.source,
+            llmFailureClass: upstreamReco?.llmFailureClass,
+            upstreamFailureCode: upstreamReco?.upstreamFailureCode,
+            promptContractOk: norm?.payload?.prompt_contract_ok !== false,
+          });
       if (parsed.data.include_alternatives) {
         const alt = await enrichRecommendationsWithAlternatives({
           ctx,
@@ -44409,6 +44577,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
       }
       const payload = norm.payload;
+      const llmTraceRef = buildRecoLlmTraceRef(upstreamReco && upstreamReco.llmTrace);
 
       const suggestedChips = Array.isArray(payload.recommendations) && payload.recommendations.length > 0
         ? []
@@ -44424,6 +44593,19 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
+      const finalDirectContract = buildRecoMainlineContract({
+        recommendations: payload?.recommendations,
+        sourceMode: payload?.recommendation_meta?.source_mode || baseContract.source_mode,
+        source: payload?.source || baseContract.source,
+        llmFailureClass: upstreamReco?.llmFailureClass || baseContract.failure_class,
+        upstreamFailureCode: upstreamReco?.upstreamFailureCode,
+        promptContractOk: payload?.prompt_contract_ok !== false,
+      });
+      if (isPlainObject(payload)) {
+        const nextPayload = attachRecoContractMeta(payload, finalDirectContract);
+        payload.recommendation_meta = nextPayload.recommendation_meta;
+      }
+
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: suggestedChips,
@@ -44437,34 +44619,50 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
         ],
         session_patch: payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {},
-        events: [
-          makeEvent({ ...ctx, trigger_source: 'action' }, 'recos_requested', {
+        events: applyRecoContractToRecoRequestedEvents([], finalDirectContract, {
+          ctx: { ...ctx, trigger_source: 'action' },
+          emitIfMissing: true,
+          eventData: {
             explicit: true,
-            source: String(payload?.source || payload?.recommendation_meta?.source_mode || 'catalog_grounded_v1'),
-            ...(!Array.isArray(payload?.recommendations) || payload.recommendations.length === 0 ? { reason: 'artifact_missing' } : {}),
-          }),
-        ],
+            ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
+          },
+        }).events,
       });
-      const invariantEnvelope = applyRecoCardContractInvariant({
+      if (!AURORA_RECO_GENERATE_GUARDRAIL_V1) {
+        const envelopeRecommendations = Array.isArray(payload?.recommendations) ? payload.recommendations : [];
+        if (!envelopeRecommendations.length) {
+          const noRecoEnvelope = {
+            ...envelope,
+            cards: [
+              {
+                card_id: `conf_${ctx.request_id}_reco_missing`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: finalDirectContract.primary_failure_reason || 'artifact_missing',
+                  confidence: { score: 0.35, level: 'low', rationale: [finalDirectContract.telemetry_failure_reason || 'artifact_missing'] },
+                  actions: ['retry_recommendations', 'refine_profile'],
+                }),
+              },
+              ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
+            ],
+            suggested_chips: suggestedChips.length ? suggestedChips : buildRecoEntryChips(ctx.lang),
+            session_patch: {},
+          };
+          return res.json(noRecoEnvelope);
+        }
+        return res.json(envelope);
+      }
+      const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
         envelope,
         ctx,
-        language: ctx.lang,
-      }).envelope;
-      if (!AURORA_RECO_GENERATE_GUARDRAIL_V1) return res.json(invariantEnvelope);
-      const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
-        envelope: invariantEnvelope,
         ctx,
         logger,
       });
       if (Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
         persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
       }
-      const guardedEnvelopeBase = isPlainObject(guardrailResult.envelope) ? guardrailResult.envelope : invariantEnvelope;
-      const guardedEnvelope = applyRecoCardContractInvariant({
-        envelope: guardedEnvelopeBase,
-        ctx,
-        language: ctx.lang,
-      }).envelope;
+      const guardedEnvelope = isPlainObject(guardrailResult.envelope) ? guardrailResult.envelope : envelope;
       const guardedCards = Array.isArray(guardedEnvelope.cards) ? guardedEnvelope.cards : [];
       const guardedRecoCard = guardedCards.find(
         (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'recommendations',
@@ -44473,6 +44671,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? guardedRecoCard.payload.recommendations
         : [];
       const hasGuardedRecommendations = guardedRecommendations.length > 0;
+      const finalContract = buildRecoMainlineContract({
+        recommendations: guardedRecommendations,
+        sourceMode: guardedRecoCard?.payload?.recommendation_meta?.source_mode || baseContract.source_mode,
+        source: guardedRecoCard?.payload?.source || baseContract.source,
+        llmFailureClass: baseContract.failure_class || upstreamReco?.llmFailureClass,
+        upstreamFailureCode: upstreamReco?.upstreamFailureCode,
+        promptContractOk: guardedRecoCard?.payload?.prompt_contract_ok !== false,
+      });
       const nextSessionPatch = isPlainObject(guardedEnvelope.session_patch) ? { ...guardedEnvelope.session_patch } : {};
       if (hasGuardedRecommendations) {
         nextSessionPatch.next_state = 'S7_PRODUCT_RECO';
@@ -44481,7 +44687,28 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (!Array.isArray(guardedEnvelope.suggested_chips) || guardedEnvelope.suggested_chips.length === 0) {
           guardedEnvelope.suggested_chips = buildRecoEntryChips(ctx.lang);
         }
+        guardedEnvelope.cards = [
+          {
+            card_id: `conf_${ctx.request_id}_reco_missing`,
+            type: 'confidence_notice',
+            payload: buildConfidenceNoticeCardPayload({
+              language: ctx.lang,
+              reason: finalContract.primary_failure_reason || 'artifact_missing',
+              confidence: { score: 0.35, level: 'low', rationale: [finalContract.telemetry_failure_reason || 'artifact_missing'] },
+              actions: ['retry_recommendations', 'refine_profile'],
+            }),
+          },
+          ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
+        ];
       }
+      guardedEnvelope.events = applyRecoContractToRecoRequestedEvents(guardedEnvelope.events, finalContract, {
+        ctx: { ...ctx, trigger_source: 'action' },
+        emitIfMissing: true,
+        eventData: {
+          explicit: true,
+          ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
+        },
+      }).events;
       guardedEnvelope.session_patch = nextSessionPatch;
       return res.json(guardedEnvelope);
     } catch (err) {
@@ -53686,35 +53913,35 @@ function mountAuroraBffRoutes(app, { logger }) {
         let upstreamFailureCode = '';
         let llmFailureClass = '';
         let recoLlmTrace = null;
+        let recoContract = null;
         if (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0) {
           try {
-            const upstreamReco = await withTimeout(
-              generateProductRecommendations({
-                ctx,
-                profile,
-                recentLogs,
-                message,
-                ingredientContext: recoIngredientContext,
-                includeAlternatives,
-                debug: debugUpstream,
-                logger,
-              }),
-              AURORA_BFF_CHAT_RECO_BUDGET_MS,
-              'AURORA_CHAT_RECO_BUDGET_TIMEOUT',
-            );
+            const upstreamReco = await generateProductRecommendations({
+              ctx,
+              profile,
+              recentLogs,
+              message,
+              ingredientContext: recoIngredientContext,
+              includeAlternatives,
+              debug: debugUpstream,
+              logger,
+              budgetMs: AURORA_BFF_CHAT_RECO_BUDGET_MS,
+            });
             norm = upstreamReco.norm;
             upstreamDebug = upstreamReco.upstreamDebug;
             alternativesDebug = upstreamReco.alternativesDebug;
             upstreamFailureCode = String(upstreamReco.upstreamFailureCode || '').trim().toUpperCase();
             llmFailureClass = normalizeRecoFailureClass(upstreamReco.llmFailureClass || '');
             recoLlmTrace = isPlainObject(upstreamReco.llmTrace) ? upstreamReco.llmTrace : null;
+            recoContract = isPlainObject(upstreamReco.contract) ? upstreamReco.contract : null;
           } catch (err) {
             const transientCode = classifyRecoUpstreamFailureCode(err);
-            if (!(err && err.code === 'AURORA_CHAT_RECO_BUDGET_TIMEOUT') && !isTransientRecoUpstreamFailureCode(transientCode)) {
+            if (!isTransientRecoUpstreamFailureCode(transientCode)) {
               throw err;
             }
             recoTimeoutDegraded = true;
             llmFailureClass = 'timeout';
+            upstreamFailureCode = transientCode || '';
             recordAuroraRecoLlmCall({ stage: 'main', outcome: 'timeout' });
             logger?.warn(
               {
@@ -53729,6 +53956,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         if (!recoLlmTrace && isPlainObject(norm?.payload?.recommendation_meta?.llm_trace)) {
           recoLlmTrace = norm.payload.recommendation_meta.llm_trace;
+        }
+        if (!recoContract) {
+          recoContract = buildRecoMainlineContract({
+            recommendations: norm?.payload?.recommendations,
+            sourceMode: norm?.payload?.recommendation_meta?.source_mode,
+            source: norm?.payload?.source,
+            llmFailureClass,
+            upstreamFailureCode,
+            promptContractOk: norm?.payload?.prompt_contract_ok !== false,
+          });
         }
         const generatedRecoCount = Array.isArray(norm?.payload?.recommendations) ? norm.payload.recommendations.length : 0;
         const generatedPayloadSource = String(norm?.payload?.source || '').trim().toLowerCase();
@@ -53745,6 +53982,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoSource = generatedPayloadSource || generatedSourceMode || 'catalog_grounded_v1';
         } else if (generatedRecoCount > 0) {
           recoSource = generatedPayloadSource || 'rules_only';
+        }
+        if (!generatedRecoCount && String(recoContract?.telemetry_failure_reason || '').trim().toLowerCase() === 'timeout_degraded') {
+          recoTimeoutDegraded = true;
         }
 
         let matcherRecoCount = 0;
@@ -53936,26 +54176,26 @@ function mountAuroraBffRoutes(app, { logger }) {
             suggested_chips: refinementChips,
             cards,
             session_patch: sessionPatch,
-            events: [
+            events: applyRecoContractToRecoRequestedEvents([
               makeEvent(ctx, 'reco_timeout_degraded', {
                 source: 'upstream_timeout',
                 ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
                 failure_class: 'timeout',
                 ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
               }),
-              makeEvent(ctx, 'recos_requested', {
+            ], recoContract, {
+              ctx,
+              emitIfMissing: true,
+              eventData: {
                 explicit: true,
                 gated: true,
-                reason: 'artifact_missing',
-                telemetry_reason: 'timeout_degraded',
                 source: 'upstream_timeout',
                 source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
                 recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
                 ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
-                failure_class: 'timeout',
                 ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
-              }),
-            ],
+              },
+            }).events,
           });
           return sendChatEnvelope(envelope);
         }
@@ -54024,6 +54264,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             llm_trace_ref: llmTraceRef,
             llm_failure_class: llmFailureClass || null,
           };
+          const finalRecoContract = buildRecoMainlineContract({
+            recommendations: payload.recommendations,
+            sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+            source: payload.source,
+            llmFailureClass: llmFailureClass || recoContract?.failure_class,
+            upstreamFailureCode,
+            promptContractOk: payload.prompt_contract_ok !== false,
+          });
+          recoContract = finalRecoContract;
+          const nextPayload = attachRecoContractMeta(payload, finalRecoContract);
+          payload.recommendation_meta = nextPayload.recommendation_meta;
         }
 
         const recoAssistantBase = buildRouteAwareAssistantText({
@@ -54085,14 +54336,31 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
 
-        const cards = [
-          {
-            card_id: `reco_${ctx.request_id}`,
-            type: 'recommendations',
-            payload,
-            ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
-          },
-        ];
+        const cards = hasRecs
+          ? [
+            {
+              card_id: `reco_${ctx.request_id}`,
+              type: 'recommendations',
+              payload,
+              ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+            },
+          ]
+          : [
+            {
+              card_id: `conf_${ctx.request_id}_reco_missing`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: recoContract?.primary_failure_reason || 'artifact_missing',
+                confidence: {
+                  score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.35,
+                  level: 'low',
+                  rationale: [recoContract?.telemetry_failure_reason || 'artifact_missing'],
+                },
+                actions: ['retry_recommendations', 'upload_daylight_and_indoor_white', 'update_current_routine'],
+              }),
+            },
+          ];
         if (mappedIngredientPlan) {
           cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
         }
@@ -54243,25 +54511,26 @@ function mountAuroraBffRoutes(app, { logger }) {
           suggested_chips: refinementChips,
           cards,
           session_patch: sessionPatch,
-          events: [
-            ...(hasRecs ? [makeEvent(ctx, 'value_moment', { kind: 'product_reco' })] : []),
-            makeEvent(ctx, 'recos_requested', {
-              explicit: true,
-              source: recoSource,
-              source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
-              recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
-              low_confidence: lowConfidenceArtifact,
-              confidence_level: artifactConfidenceLevel,
-              ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
-              ...(llmFailureClass ? { failure_class: llmFailureClass } : {}),
-              kb_write_status: kbWriteStatus,
-              ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
-              ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
-              ...(!hasRecs
-                ? { reason: inferRecoContractNoticeReason({ payload, fieldMissing: norm.field_missing }) }
-                : {}),
-            }),
-          ],
+          events: applyRecoContractToRecoRequestedEvents(
+            hasRecs ? [makeEvent(ctx, 'value_moment', { kind: 'product_reco' })] : [],
+            recoContract,
+            {
+              ctx,
+              emitIfMissing: true,
+              eventData: {
+                explicit: true,
+                source: recoSource,
+                source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
+                recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
+                low_confidence: lowConfidenceArtifact,
+                confidence_level: artifactConfidenceLevel,
+                ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
+                kb_write_status: kbWriteStatus,
+                ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
+                ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
+              },
+            },
+          ).events,
         });
         return sendChatEnvelope(envelope);
       }

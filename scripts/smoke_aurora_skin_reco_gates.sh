@@ -134,11 +134,11 @@ run_case_low_confidence() {
 
   jq_assert_json "low confidence emits reco-stage output (product_verdict/recommendations/notice)" '
     .cards | any(.type=="product_verdict" or .type=="recommendations")
-      or any((.type=="confidence_notice") and (.payload.reason=="low_confidence" or .payload.reason=="timeout_degraded"))
+      or any((.type=="confidence_notice") and (.payload.reason=="low_confidence" or .payload.reason=="artifact_missing" or .payload.reason=="timeout_degraded"))
   ' "$reco_json"
   jq_assert_json "low confidence event flag true when stream is present" '
     if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.low_confidence==true) or (.data.reason=="low_confidence") or (.data.reason=="timeout_degraded"))))
+    then ((.events // []) | any((.event_name=="recos_requested") and (.data.low_confidence==true) and (((.data.reason=="low_confidence") or (.data.reason=="artifact_missing")) or (.data.telemetry_reason=="timeout_degraded"))))
     else true
     end
   ' "$reco_json"
@@ -217,20 +217,25 @@ run_case_medium_confidence() {
     }'
   )"
 
-  jq_assert_json "medium/high path emits product_verdict/recommendations or timeout_degraded notice" '
+  jq_assert_json "medium/high path emits grounded recommendations or canonical artifact_missing notice" '
     .cards | any(.type=="product_verdict" or .type=="recommendations")
-      or any((.type=="confidence_notice") and (.payload.reason=="timeout_degraded"))
+      or any((.type=="confidence_notice") and (.payload.reason=="artifact_missing" or .payload.reason=="timeout_degraded"))
   ' "$reco_json"
-  jq_assert_json "no artifact_missing in medium/high path" '(.cards | any((.type=="confidence_notice") and (.payload.reason=="artifact_missing"))) | not' "$reco_json"
-  jq_assert_json "recos_requested source or timeout reason present (optional stream)" '
+  jq_assert_json "recos_requested source and canonical reason present (optional stream)" '
     if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0) or (.data.reason=="timeout_degraded"))))
+    then ((.events // []) | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0)) and ((((.data.reason // "") | length) == 0) or (.data.reason=="artifact_missing"))))
     else true
     end
   ' "$reco_json"
-  jq_assert_json "medium/high path not marked low_confidence unless timeout_degraded (optional stream)" '
+  jq_assert_json "medium/high path not marked low_confidence in reco event (optional stream)" '
     if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.low_confidence==false) or (.data.reason=="timeout_degraded"))))
+    then ((.events // []) | any((.event_name=="recos_requested") and (.data.low_confidence==false)))
+    else true
+    end
+  ' "$reco_json"
+  jq_assert_json "medium/high timeout only appears in telemetry when no reco is returned" '
+    if ((.events // []) | any(.event_name=="recos_requested"))
+    then ((.events // []) | map(select(.event_name=="recos_requested")) | all((.data.reason // "") != "timeout_degraded"))
     else true
     end
   ' "$reco_json"
