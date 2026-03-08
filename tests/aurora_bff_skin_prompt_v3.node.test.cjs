@@ -205,6 +205,72 @@ test('skin prompt v3: deepening semantic accepts llm output without advice and a
   assert.deepEqual(adjudicated.advice_items, ['protect_barrier', 'pause_if_stinging', 'confirm_tolerance', 'stabilize_barrier']);
 });
 
+test('skin prompt v3: report transport canonical must adjudicate before validation', () => {
+  const transportCanonical = normalizeReportCanonicalLayer(
+    {
+      needs_risk_check: false,
+      summary_focus: {},
+      insights: [
+        { cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high', evidence: 'diffuse cheek redness' },
+      ],
+      routine_steps: [],
+      watchouts: [],
+      follow_up: {},
+      two_week_focus: [],
+      risk_flags: [],
+    },
+    { strict: true },
+  );
+  assert.equal(validateReportCanonicalLayer(transportCanonical).ok, false);
+
+  const adjudicated = adjudicateReportCanonicalLayer(transportCanonical, {
+    reportContext: {
+      concern_rank: ['redness', 'texture'],
+      deterministic_signals: { redness: 'high', oiliness: 'low', acne_like: 'none', dryness: 'some', texture: 'rough' },
+      routine_summary: { moisturizer: 'yes', sunscreen: 'unknown', actives: ['retinoid'] },
+      constraints: ['sensitive-skin self-report'],
+      vision_cues: [{ cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high' }],
+      quality: { grade: 'pass' },
+    },
+  });
+  assert.equal(validateReportCanonicalLayer(adjudicated).ok, true);
+  assert.equal(evaluateReportCanonicalSemantic(adjudicated, {
+    reportContext: {
+      concern_rank: ['redness', 'texture'],
+      deterministic_signals: { redness: 'high', oiliness: 'low', acne_like: 'none', dryness: 'some', texture: 'rough' },
+      routine_summary: { moisturizer: 'yes', sunscreen: 'unknown', actives: ['retinoid'] },
+      constraints: ['sensitive-skin self-report'],
+      vision_cues: [{ cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high' }],
+      quality: { grade: 'pass' },
+    },
+  }).ok, true);
+});
+
+test('skin prompt v3: deepening transport canonical must adjudicate before validation', () => {
+  const transportCanonical = normalizeDeepeningCanonicalLayer(
+    {
+      phase: 'reactions',
+      question_intent: 'reaction_check',
+    },
+    { strict: true, allowAdviceOmit: true },
+  );
+  assert.equal(validateDeepeningCanonicalLayer(transportCanonical, { allowAdviceOmit: true }).ok, false);
+
+  const adjudicated = adjudicateDeepeningCanonicalLayer(transportCanonical, {
+    inheritedPriority: 'barrier',
+    deepeningContext: {
+      phase: 'reactions',
+      reaction_flags: ['stinging', 'redness'],
+      suggested_advice_items: ['track_redness'],
+      products_submitted: true,
+      photo_choice: 'uploaded',
+    },
+  });
+  assert.equal(validateDeepeningCanonicalLayer(adjudicated, { allowAdviceOmit: true }).ok, true);
+  assert.equal(evaluateDeepeningCanonicalSemantic(adjudicated).ok, true);
+  assert.equal(adjudicated.summary_priority, 'barrier');
+});
+
 test('skin prompt v3: report LLM transport schema excludes deepening while internal canonical keeps it', () => {
   assert.equal(Boolean(SkinReportCanonicalSchema.properties.deepening), true);
   assert.equal(Boolean(SkinReportCanonicalLlmSchema.properties.deepening), false);
