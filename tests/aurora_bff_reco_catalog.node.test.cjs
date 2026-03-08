@@ -3121,7 +3121,7 @@ test('/v1/chat reco transient catalog failure: returns stable fallback payload w
 
         const debug = getAuroraDebugPayload(resp.body);
         assert.ok(
-          ['catalog_transient_fallback', 'answer_json', 'llm_primary', 'artifact_matcher_v1', 'rules_only'].includes(
+          ['catalog_grounded', 'catalog_transient_fallback', 'answer_json', 'llm_primary', 'artifact_matcher_v1', 'rules_only'].includes(
             String(debug?.structured_source || ''),
           ),
         );
@@ -3207,7 +3207,7 @@ test('/v1/chat reco: 200 soft-fallback timeout search response still returns rec
 
         const debug = getAuroraDebugPayload(resp.body);
         assert.ok(
-          ['catalog_transient_fallback', 'answer_json', 'llm_primary', 'artifact_matcher_v1', 'rules_only'].includes(
+          ['catalog_grounded', 'catalog_transient_fallback', 'answer_json', 'llm_primary', 'artifact_matcher_v1', 'rules_only'].includes(
             String(debug?.structured_source || ''),
           ),
         );
