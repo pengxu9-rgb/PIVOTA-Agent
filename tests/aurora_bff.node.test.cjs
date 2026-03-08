@@ -146,6 +146,16 @@ function findCardByType(cards, type) {
   return null;
 }
 
+function isProductsSearchUrl(url) {
+  const target = String(url || '');
+  return (
+    target.includes('/products/search') ||
+    target.includes('/products/search-lite') ||
+    target.includes('/v1/products/search') ||
+    target.includes('/v1/catalog/search')
+  );
+}
+
 test('normalizeClarificationField: maps common skinType ids (ASCII/CN) to canonical field', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -179,7 +189,7 @@ test('normalizeClarificationField: never returns empty; falls back to stable has
   assert.ok(Number(snap.clarificationIdNormalizedEmptyCount) >= 3);
 });
 
-test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards degrade to timeout confidence notice when timeout events present', () => {
+test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards keep artifact_missing as primary reason even when timeout telemetry exists', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const recoEnvelope = {
@@ -200,12 +210,41 @@ test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards degrade to timeout
       language: 'CN',
     });
     assert.equal(guarded.applied, true);
-    assert.equal(guarded.reason, 'timeout_degraded');
+    assert.equal(guarded.reason, 'artifact_missing');
     const cards = Array.isArray(guarded.envelope.cards) ? guarded.envelope.cards : [];
     assert.equal(cards.length, 1);
     assert.equal(cards[0].type, 'confidence_notice');
-    assert.equal(cards[0]?.payload?.reason, 'timeout_degraded');
+    assert.equal(cards[0]?.payload?.reason, 'artifact_missing');
     assert.ok(Array.isArray(cards[0]?.payload?.actions) && cards[0].payload.actions.length > 0);
+    const recoEvents = Array.isArray(guarded.envelope?.events)
+      ? guarded.envelope.events.filter((evt) => evt && evt.event_name === 'recos_requested')
+      : [];
+    assert.ok(recoEvents.length >= 1);
+    assert.equal(recoEvents.some((evt) => evt?.data?.reason === 'artifact_missing'), true);
+    assert.equal(recoEvents.some((evt) => evt?.data?.telemetry_reason === 'timeout_degraded'), true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('ensureNonEmptyChatCardsEnvelope: timeout remains primary only when no reco request context exists', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const recoEnvelope = {
+      assistant_message: null,
+      suggested_chips: [],
+      cards: [],
+      session_patch: {},
+      events: [{ event_name: 'analysis_timeout_degraded', data: { budget_ms: 30000 } }],
+    };
+    const guarded = __internal.ensureNonEmptyChatCardsEnvelope({
+      envelope: recoEnvelope,
+      ctx: { request_id: 'req_guard_timeout_only', trace_id: 'trace_guard_timeout_only' },
+      language: 'EN',
+    });
+    assert.equal(guarded.applied, true);
+    assert.equal(guarded.reason, 'timeout_degraded');
+    assert.equal(guarded.envelope?.cards?.[0]?.payload?.reason, 'timeout_degraded');
   } finally {
     delete require.cache[moduleId];
   }
@@ -4700,6 +4739,176 @@ test('/v1/reco/alternatives: no candidates returns explainable empty and never c
   );
 });
 
+test('/v1/reco/alternatives: structured candidate pool returns selector_grounded before synthetic fallback', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS: '6500',
+      AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS: '2000',
+    },
+    async () => {
+      resetVisionMetrics();
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        let geminiCalls = 0;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return { ok: true, json: { products: [{ id: 'fake_1', why: 'should_not_happen' }] } };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_selector_grounded',
+            'X-Trace-ID': 'test_trace_alt_selector_grounded',
+            'X-Brief-ID': 'test_brief_alt_selector_grounded',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'unknown product text with selector candidates',
+            max_total: 3,
+            product: {
+              name: 'Anchor product',
+              alternatives: [
+                {
+                  product_id: 'prod_alt_1',
+                  merchant_id: 'mid_alt',
+                  brand: 'Brand One',
+                  name: 'Barrier Cream One',
+                  display_name: 'Barrier Cream One',
+                  pdp_url: 'https://example.com/alt-1',
+                  compare_highlights: ['barrier-first'],
+                },
+                {
+                  product_id: 'prod_alt_2',
+                  merchant_id: 'mid_alt',
+                  brand: 'Brand Two',
+                  name: 'Barrier Cream Two',
+                  display_name: 'Barrier Cream Two',
+                  pdp_url: 'https://example.com/alt-2',
+                  compare_highlights: ['low irritation'],
+                },
+              ],
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'selector_grounded');
+        assert.equal(resp.body?.fallback_source, null);
+        assert.equal(resp.body?.failure_class, null);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.ok(resp.body.alternatives.length > 0);
+        assert.equal(geminiCalls, 0);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/generate: uses grounded generic reco mainline instead of legacy routine path', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let searchCalls = 0;
+      decisionModule.auroraChat = async () => {
+        const err = new Error('upstream timeout');
+        err.code = 'ECONNABORTED';
+        throw err;
+      };
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        searchCalls += 1;
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: `prod_reco_${searchCalls}`,
+                merchant_id: 'mid_reco',
+                brand: 'BrandReco',
+                name: `Reco Product ${searchCalls}`,
+                display_name: `Reco Product ${searchCalls}`,
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes } = routeModule;
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/generate')
+          .set({
+            'X-Aurora-UID': 'test_uid_reco_generate_grounded',
+            'X-Trace-ID': 'test_trace_reco_generate_grounded',
+            'X-Brief-ID': 'test_brief_reco_generate_grounded',
+            'X-Lang': 'EN',
+          })
+          .send({
+            focus: 'barrier support',
+            constraints: { budget: 'mid', fragrance_free: 'preferred' },
+          });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const recoCard = cards.find((card) => card && card.type === 'recommendations') || null;
+        assert.ok(recoCard);
+        const recos = Array.isArray(recoCard?.payload?.recommendations) ? recoCard.payload.recommendations : [];
+        assert.ok(recos.length > 0);
+        assert.equal(recoCard?.payload?.recommendation_meta?.source_mode, 'catalog_grounded');
+        const recoEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((evt) => evt && evt.event_name === 'recos_requested')
+          : null;
+        assert.ok(recoEvent);
+        assert.equal(String(recoEvent?.data?.source || '').includes('catalog_grounded'), true);
+        assert.ok(searchCalls >= 1);
+      } finally {
+        axios.get = originalGet;
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: ingredient.by_goal returns ingredient_goal_match even when client_state=RECO_GATE', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const moduleId = require.resolve('../src/auroraBff/routes');
@@ -6085,7 +6294,7 @@ test('/v1/chat: chip_get_recos does not hard-gate when profile missing, then yie
       assert.equal(Array.isArray(recs), true);
       const recommendationMeta = reco && reco.payload && typeof reco.payload === 'object' ? reco.payload.recommendation_meta : null;
       if (recommendationMeta && typeof recommendationMeta === 'object') {
-        assert.ok(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
+        assert.ok(['llm_primary', 'catalog_grounded', 'catalog_transient_fallback', 'artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
         assert.equal(typeof recommendationMeta.used_recent_logs, 'boolean');
         assert.equal(typeof recommendationMeta.used_itinerary, 'boolean');
         assert.equal(typeof recommendationMeta.used_safety_flags, 'boolean');
