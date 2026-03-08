@@ -169,7 +169,7 @@ analysis_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     }
   }')"
 printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
-printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin assistant text exists" '((.assistant_message.content // "") | length) > 0'
+printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin assistant text exists" '(((.assistant_text // .assistant_message.content // "") | length) > 0)'
 
 analysis_routine_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \

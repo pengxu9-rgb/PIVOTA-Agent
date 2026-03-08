@@ -188,7 +188,7 @@ run_case_medium_confidence() {
   jq_assert_json "deep_dive_skin does not fall back to ingredient_hub or nudge" '
     (.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not
   ' "$deep_dive_json"
-  jq_assert_json "deep_dive_skin returns non-empty assistant message" '((.assistant_message.content // "") | length) > 0' "$deep_dive_json"
+  jq_assert_json "deep_dive_skin returns non-empty assistant message" '(((.assistant_text // .assistant_message.content // "") | length) > 0)' "$deep_dive_json"
 
   local routine_follow_json
   routine_follow_json="$(
