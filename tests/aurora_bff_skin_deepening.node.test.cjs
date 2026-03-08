@@ -9,63 +9,40 @@ const {
   parseCards,
   findCard,
 } = require('./aurora_bff_test_harness.cjs');
+const { __internal: routesInternal } = require('../src/auroraBff/routes');
+const {
+  adjudicateDeepeningCanonicalLayer,
+  renderDeepeningCanonicalLayer,
+} = require('../src/auroraBff/skinAnalysisContract');
 
-function readDeepeningPhaseFromCard(card) {
-  return String(card && card.payload && card.payload.analysis && card.payload.analysis.deepening && card.payload.analysis.deepening.phase || '')
-    .trim()
-    .toLowerCase();
+function currentAnalysisCardFromBody(body) {
+  const cards = parseCards(body);
+  return findCard(cards, 'analysis_story_v2') || findCard(cards, 'analysis_summary');
 }
 
-function readDeepeningOptionsFromCard(card) {
-  const options = card && card.payload && card.payload.analysis && card.payload.analysis.deepening
-    ? card.payload.analysis.deepening.options
-    : null;
-  return Array.isArray(options) ? options.map((item) => String(item || '').trim()).filter(Boolean) : [];
-}
-
-function readDeepeningMetaPhase(body) {
-  return String(
-    body &&
-      body.session_patch &&
-      body.session_patch.meta &&
-      body.session_patch.meta.analysis_deepening_v1 &&
-      body.session_patch.meta.analysis_deepening_v1.phase || '',
-  )
-    .trim()
-    .toLowerCase();
-}
-
-function readDeepeningMeta(body) {
-  const meta =
-    body &&
-    body.session_patch &&
-    body.session_patch.meta &&
-    body.session_patch.meta.analysis_deepening_v1 &&
-    typeof body.session_patch.meta.analysis_deepening_v1 === 'object' &&
-    !Array.isArray(body.session_patch.meta.analysis_deepening_v1)
-      ? body.session_patch.meta.analysis_deepening_v1
-      : null;
-  return meta ? { ...meta } : null;
-}
-
-function hasPhotoChoiceDupChips(body) {
+function countUploadPhotoChips(body) {
   const chips = Array.isArray(body && body.suggested_chips) ? body.suggested_chips : [];
-  return chips.some((chip) => {
+  return chips.filter((chip) => {
     const id = String(chip && chip.chip_id || '').trim().toLowerCase();
-    return (
-      id === 'chip.intake.upload_photos' ||
-      id === 'chip_intake_upload_photos' ||
-      id === 'chip.intake.skip_analysis' ||
-      id === 'chip_intake_skip_analysis'
-    );
-  });
+    return id === 'chip.intake.upload_photos' || id === 'chip_intake_upload_photos';
+  }).length;
 }
 
-function analysisSummaryCardFromBody(body) {
-  return findCard(parseCards(body), 'analysis_summary');
+function renderDeepeningFromPlan(plan, { lang = 'en-US' } = {}) {
+  const canonical = adjudicateDeepeningCanonicalLayer(
+    {
+      phase: plan && plan.phasePlan ? plan.phasePlan.phase : 'photo_optin',
+      question_intent: plan && plan.dto ? plan.dto.question_intent : 'photo_upload',
+    },
+    {
+      inheritedPriority: plan && plan.dto ? plan.dto.summary_priority : 'mixed',
+      deepeningContext: plan && plan.dto ? plan.dto : null,
+    },
+  );
+  return renderDeepeningCanonicalLayer(canonical, { lang });
 }
 
-test('skin deepening e2e: phase migration and dedupe from photo_optin to refined', async () => {
+test('skin deepening compatibility: current analysis card accessor supports story_v2 and legacy summary envelopes', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
@@ -78,101 +55,49 @@ test('skin deepening e2e: phase migration and dedupe from photo_optin to refined
     async () => {
       const { request, restore } = createAppWithPatchedAuroraChat();
       try {
-        const uid = buildTestUid('skin_deepening');
-        const headers = headersFor(uid, 'CN');
-        const expectedReactionOptions = ['干燥加重', '皮肤紧绷', '刺痛/灼热', '泛红加重', '新爆痘', '无明显不适'];
-
+        const uid = buildTestUid('skin_deepening_story');
         const initial = await request
           .post('/v1/analysis/skin')
-          .set(headers)
+          .set(headersFor(uid, 'EN'))
           .send({ use_photo: false })
           .expect(200);
-        const initialCard = analysisSummaryCardFromBody(initial.body);
-        assert.ok(initialCard, 'initial analysis_summary should exist');
-        assert.equal(readDeepeningPhaseFromCard(initialCard), 'photo_optin');
-        assert.equal(readDeepeningMetaPhase(initial.body), 'photo_optin');
 
-        let deepeningMeta = readDeepeningMeta(initial.body);
+        const currentCard = currentAnalysisCardFromBody(initial.body);
+        assert.ok(currentCard, 'current analysis card should exist');
+        assert.equal(currentCard.type, 'analysis_story_v2');
+        assert.equal(Boolean(findCard(parseCards(initial.body), 'analysis_summary')), false);
+        assert.equal(countUploadPhotoChips(initial.body), 1);
+      } finally {
+        restore();
+      }
+    },
+  );
 
-        const turnProducts = await request
-          .post('/v1/chat')
-          .set(headers)
-          .send({
-            client_state: 'DIAG_ANALYSIS_SUMMARY',
-            action: {
-              action_id: 'analysis_skip_photo',
-              kind: 'action',
-              data: { reply_text: '先不上传，继续文本深挖' },
-            },
-            session: deepeningMeta ? { meta: { analysis_deepening_v1: deepeningMeta } } : {},
-          })
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_RESPONSE_FORMAT: 'legacy',
+      AURORA_SKIN_SINGLE_CARD_V1: 'true',
+      AURORA_SKIN_DEEPENING_V1: 'true',
+      AURORA_CHATCARDS_SESSION_PATCH_V1: 'true',
+      AURORA_CARD_FIRST_DEDUPE_V1: 'true',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'false',
+    },
+    async () => {
+      const { request, restore } = createAppWithPatchedAuroraChat();
+      try {
+        const uid = buildTestUid('skin_deepening_summary');
+        const initial = await request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({ use_photo: false })
           .expect(200);
-        const productsCard = analysisSummaryCardFromBody(turnProducts.body);
-        assert.ok(productsCard, 'products stage card should exist');
-        assert.equal(readDeepeningPhaseFromCard(productsCard), 'products');
-        assert.equal(readDeepeningMetaPhase(turnProducts.body), 'products');
-        assert.equal(hasPhotoChoiceDupChips(turnProducts.body), false);
-        assert.equal(parseCards(turnProducts.body).filter((card) => card && card.type === 'analysis_summary').length, 1);
 
-        deepeningMeta = readDeepeningMeta(turnProducts.body) || deepeningMeta;
-
-        const turnReactions = await request
-          .post('/v1/chat')
-          .set(headers)
-          .send({
-            client_state: 'DIAG_ANALYSIS_SUMMARY',
-            action: {
-              action_id: 'analysis_continue_without_products',
-              kind: 'action',
-              data: { reply_text: '先继续下一步' },
-            },
-            session: deepeningMeta ? { meta: { analysis_deepening_v1: deepeningMeta } } : {},
-          })
-          .expect(200);
-        const reactionsCard = analysisSummaryCardFromBody(turnReactions.body);
-        assert.ok(reactionsCard, 'reactions stage card should exist');
-        assert.equal(readDeepeningPhaseFromCard(reactionsCard), 'reactions');
-        assert.equal(readDeepeningMetaPhase(turnReactions.body), 'reactions');
-        assert.deepEqual(readDeepeningOptionsFromCard(reactionsCard), expectedReactionOptions);
-        assert.equal(hasPhotoChoiceDupChips(turnReactions.body), false);
-        assert.equal(parseCards(turnReactions.body).filter((card) => card && card.type === 'analysis_summary').length, 1);
-
-        deepeningMeta = readDeepeningMeta(turnReactions.body) || deepeningMeta;
-
-        const turnRefined = await request
-          .post('/v1/chat')
-          .set(headers)
-          .send({
-            client_state: 'DIAG_ANALYSIS_SUMMARY',
-            action: {
-              action_id: 'analysis_reaction_select',
-              kind: 'action',
-              data: { reaction: '皮肤紧绷', reply_text: '皮肤紧绷' },
-            },
-            session: deepeningMeta ? { meta: { analysis_deepening_v1: deepeningMeta } } : {},
-          })
-          .expect(200);
-        const refinedCard = analysisSummaryCardFromBody(turnRefined.body);
-        assert.ok(refinedCard, 'refined stage card should exist');
-        assert.equal(readDeepeningPhaseFromCard(refinedCard), 'refined');
-        assert.equal(readDeepeningMetaPhase(turnRefined.body), 'refined');
-        assert.equal(hasPhotoChoiceDupChips(turnRefined.body), false);
-        assert.equal(parseCards(turnRefined.body).filter((card) => card && card.type === 'analysis_summary').length, 1);
-
-        const refinedMeta = readDeepeningMeta(turnRefined.body);
-        const refinedReactions = Array.isArray(refinedMeta && refinedMeta.reactions)
-          ? refinedMeta.reactions.map((item) => String(item || '').trim()).filter(Boolean)
-          : [];
-        assert.ok(refinedReactions.includes('皮肤紧绷'));
-
-        const refinedStrategy = String(
-          refinedCard &&
-            refinedCard.payload &&
-            refinedCard.payload.analysis &&
-            refinedCard.payload.analysis.strategy || '',
-        );
-        assert.match(refinedStrategy, /观察指标/);
-        assert.match(refinedStrategy, /回退条件/);
+        const currentCard = currentAnalysisCardFromBody(initial.body);
+        assert.ok(currentCard, 'legacy-compatible analysis card should exist');
+        assert.equal(currentCard.type, 'analysis_summary');
+        assert.equal(Boolean(findCard(parseCards(initial.body), 'analysis_story_v2')), false);
+        assert.equal(currentCard.payload.analysis.insufficient_visual_detail, true);
       } finally {
         restore();
       }
@@ -180,58 +105,127 @@ test('skin deepening e2e: phase migration and dedupe from photo_optin to refined
   );
 });
 
-test('skin deepening LLM narrative: uses LLM output when gateway patched, falls back to template when key missing', async () => {
+test('skin deepening compatibility: mainline phase planner and renderer stay deterministic across photo_optin -> refined', () => {
+  const reportCanonical = {
+    summary_focus: { priority: 'barrier' },
+    watchouts: ['pause_if_stinging'],
+    two_week_focus: ['confirm_tolerance'],
+    insights: [{ cue: 'redness', region: 'cheeks', severity: 'mild', confidence: 'med', evidence: 'diffuse cheek redness' }],
+  };
+
+  const photoOptin = routesInternal.buildMainlineDeepeningDto({
+    language: 'en-US',
+    promptVersion: 'skin_v3',
+    userRequestedPhoto: true,
+    photosProvided: false,
+    hasRoutine: false,
+    routineCandidate: null,
+    profileSummary: { goals: ['calm redness'] },
+    recentLogsSummary: [],
+    qualityObject: { grade: 'pass' },
+    reportCanonical,
+    visionCanonical: null,
+  });
+  const photoOptinRendered = renderDeepeningFromPlan(photoOptin, { lang: 'en-US' });
+  assert.equal(photoOptin.phasePlan.phase, 'photo_optin');
+  assert.equal(photoOptinRendered.phase, 'photo_optin');
+  assert.match(photoOptinRendered.question, /upload/i);
+  assert.deepEqual(photoOptinRendered.options, ['Upload photo', 'Skip for now']);
+  assert.equal(new Set(photoOptinRendered.options).size, photoOptinRendered.options.length);
+
+  const products = routesInternal.buildMainlineDeepeningDto({
+    language: 'en-US',
+    promptVersion: 'skin_v3',
+    userRequestedPhoto: true,
+    photosProvided: true,
+    hasRoutine: false,
+    routineCandidate: null,
+    profileSummary: { goals: ['calm redness'] },
+    recentLogsSummary: [],
+    qualityObject: { grade: 'pass' },
+    reportCanonical,
+    visionCanonical: null,
+  });
+  const productsRendered = renderDeepeningFromPlan(products, { lang: 'en-US' });
+  assert.equal(products.phasePlan.phase, 'products');
+  assert.equal(productsRendered.phase, 'products');
+  assert.deepEqual(productsRendered.options, ['Share AM routine', 'Share PM routine', 'Not sure']);
+
+  const reactions = routesInternal.buildMainlineDeepeningDto({
+    language: 'en-US',
+    promptVersion: 'skin_v3',
+    userRequestedPhoto: true,
+    photosProvided: true,
+    hasRoutine: true,
+    routineCandidate: 'retinoid pm',
+    profileSummary: { goals: ['calm redness'] },
+    recentLogsSummary: [{ reaction: 'stinging after serum' }],
+    qualityObject: { grade: 'pass' },
+    reportCanonical,
+    visionCanonical: null,
+  });
+  const reactionsRendered = renderDeepeningFromPlan(reactions, { lang: 'en-US' });
+  assert.equal(reactions.phasePlan.phase, 'reactions');
+  assert.equal(reactionsRendered.phase, 'reactions');
+  assert.deepEqual(
+    reactionsRendered.options,
+    ['More dryness', 'Tightness', 'Stinging/burning', 'More redness', 'New breakouts', 'No obvious discomfort'],
+  );
+
+  const refined = routesInternal.buildMainlineDeepeningDto({
+    language: 'en-US',
+    promptVersion: 'skin_v3',
+    userRequestedPhoto: true,
+    photosProvided: true,
+    hasRoutine: true,
+    routineCandidate: 'cleanser moisturizer spf',
+    profileSummary: { goals: ['calm redness'] },
+    recentLogsSummary: [],
+    qualityObject: { grade: 'pass' },
+    reportCanonical,
+    visionCanonical: null,
+  });
+  const refinedRendered = renderDeepeningFromPlan(refined, { lang: 'en-US' });
+  assert.equal(refined.phasePlan.phase, 'refined');
+  assert.equal(refinedRendered.phase, 'refined');
+  assert.match(refinedRendered.question, /7-day plan/i);
+  assert.deepEqual(
+    refinedRendered.options,
+    ['I can follow it for 7 days', 'I need a simpler version', 'I also want product optimization'],
+  );
+});
+
+test('skin deepening compatibility: legacy single-card fallback keeps a renderable summary without duplicate upload prompts', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_RESPONSE_FORMAT: 'legacy',
       AURORA_SKIN_SINGLE_CARD_V1: 'true',
       AURORA_SKIN_DEEPENING_V1: 'true',
       AURORA_CHATCARDS_SESSION_PATCH_V1: 'true',
       AURORA_CARD_FIRST_DEDUPE_V1: 'true',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'false',
       AURORA_SKIN_DEEPENING_LLM_V1: 'true',
-      // No Gemini key set → gateway falls back to template gracefully
+      GEMINI_API_KEY: '',
+      GOOGLE_API_KEY: '',
+      AURORA_VISION_GEMINI_API_KEY: '',
+      AURORA_SKIN_GEMINI_API_KEY: '',
     },
     async () => {
       const { request, restore } = createAppWithPatchedAuroraChat();
       try {
-        const uid = buildTestUid('skin_deepening_llm_fallback');
-        const headers = headersFor(uid, 'EN');
-
-        // Initial analysis call without photo — LLM flag on but no key → template fallback
+        const uid = buildTestUid('skin_deepening_fallback');
         const initial = await request
           .post('/v1/analysis/skin')
-          .set(headers)
+          .set(headersFor(uid, 'EN'))
           .send({ use_photo: false })
           .expect(200);
-        const initialCard = analysisSummaryCardFromBody(initial.body);
-        assert.ok(initialCard, 'analysis_summary card must exist even when LLM key missing');
-        assert.equal(readDeepeningPhaseFromCard(initialCard), 'photo_optin', 'phase should be photo_optin');
 
-        // Chat deepening turn → template fallback should still return a valid card
-        const deepeningMeta = readDeepeningMeta(initial.body);
-        const turnReactions = await request
-          .post('/v1/chat')
-          .set(headers)
-          .send({
-            client_state: 'DIAG_ANALYSIS_SUMMARY',
-            action: {
-              action_id: 'analysis_skip_photo',
-              kind: 'action',
-              data: { reply_text: 'skip photo, continue text' },
-            },
-            session: deepeningMeta ? { meta: { analysis_deepening_v1: deepeningMeta } } : {},
-          })
-          .expect(200);
-        const reactionsCard = analysisSummaryCardFromBody(turnReactions.body);
-        assert.ok(reactionsCard, 'analysis_summary card should exist on deepening turn even without LLM key');
-        // Phase advances to products (no products submitted yet)
-        const reactionsPhase = readDeepeningPhaseFromCard(reactionsCard);
-        assert.ok(
-          reactionsPhase === 'products' || reactionsPhase === 'reactions',
-          `phase should advance from photo_optin, got ${reactionsPhase}`,
-        );
-        // No duplicate photo-choice chips in the response
-        assert.ok(!hasPhotoChoiceDupChips(turnReactions.body), 'photo-choice chips must not be duplicated after phase advance');
+        const summaryCard = findCard(parseCards(initial.body), 'analysis_summary');
+        assert.ok(summaryCard, 'analysis_summary should exist in legacy single-card fallback mode');
+        assert.equal(summaryCard.payload.analysis.insufficient_visual_detail, true);
+        assert.match(String(summaryCard.payload.analysis.strategy || ''), /Retake guide|Meanwhile plan/i);
+        assert.equal(countUploadPhotoChips(initial.body) <= 1, true);
       } finally {
         restore();
       }

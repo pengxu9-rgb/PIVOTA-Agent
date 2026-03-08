@@ -264,6 +264,46 @@ function pickRepeatCount(row, defaultRepeats) {
   return Math.max(1, Math.min(10, Math.trunc(count)));
 }
 
+function isLegacyCompatCase(row, input) {
+  return row && row.legacy_compat === true || input && input.legacy_compat === true;
+}
+
+function assertNoLegacyAcceptanceInput({ row, stage, input }) {
+  const node = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  if (isLegacyCompatCase(row, node)) return;
+
+  const violations = [];
+  if (stage === 'vision') {
+    if (node.vision_dto) violations.push('input.vision_dto');
+    if (Object.prototype.hasOwnProperty.call(node, 'lang')) violations.push('input.lang');
+    if (Object.prototype.hasOwnProperty.call(node, 'user_goal')) violations.push('input.user_goal');
+    if (Object.prototype.hasOwnProperty.call(node, 'locked_features_summary')) violations.push('input.locked_features_summary');
+  } else if (stage === 'report') {
+    if (node.report_dto) violations.push('input.report_dto');
+    if (Object.prototype.hasOwnProperty.call(node, 'lang')) violations.push('input.lang');
+    if (Object.prototype.hasOwnProperty.call(node, 'locked_features_summary')) violations.push('input.locked_features_summary');
+  } else if (stage === 'deepening') {
+    if (node.deepening_dto) violations.push('input.deepening_dto');
+    if (Object.prototype.hasOwnProperty.call(node, 'profile')) violations.push('input.profile');
+  }
+
+  if (!violations.length) return;
+  throw new Error(
+    `Case ${String(row && row.case_id || 'unknown')} uses legacy acceptance input (${violations.join(', ')}); ` +
+    'formal quality-gate cases must use builder-friendly stage inputs or set legacy_compat=true for compatibility-only coverage.',
+  );
+}
+
+function auditAcceptanceCases(cases) {
+  for (const row of Array.isArray(cases) ? cases : []) {
+    const stage = String(row && row.stage || '').trim().toLowerCase();
+    const input = row && row.input && typeof row.input === 'object' && !Array.isArray(row.input) ? row.input : {};
+    if (stage === 'vision' || stage === 'report' || stage === 'deepening') {
+      assertNoLegacyAcceptanceInput({ row, stage, input });
+    }
+  }
+}
+
 function buildDefaultVisionDto({ locale, input, imageBuffer }) {
   const node = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   return buildVisionSignalsDto({
@@ -625,6 +665,10 @@ async function executeCase({ rootDir, row, repeatIndex, args }) {
   const locale = normalizeLocale(row.locale);
   const stage = String(row.stage || '').trim().toLowerCase();
   const input = row.input && typeof row.input === 'object' && !Array.isArray(row.input) ? row.input : {};
+  const legacyCompat = isLegacyCompatCase(row, input);
+  if (stage === 'vision' || stage === 'report' || stage === 'deepening') {
+    assertNoLegacyAcceptanceInput({ row, stage, input });
+  }
   if (stage === 'vision') {
     const image = loadImageInput(rootDir, input);
     if (!image) {
@@ -637,7 +681,9 @@ async function executeCase({ rootDir, row, repeatIndex, args }) {
         repeat_index: repeatIndex,
       };
     }
-    const visionDto = input.vision_dto || buildDefaultVisionDto({ locale, input, imageBuffer: image.buffer });
+    const visionDto = input.vision_dto && legacyCompat
+      ? input.vision_dto
+      : buildDefaultVisionDto({ locale, input, imageBuffer: image.buffer });
     const result = await runGeminiVisionStrategy({
       imageBuffer: image.buffer,
       imageMimeType: image.mimeType,
@@ -658,7 +704,9 @@ async function executeCase({ rootDir, row, repeatIndex, args }) {
     };
   }
   if (stage === 'report') {
-    const reportDto = input.report_dto || buildDefaultReportDto({ locale, input });
+    const reportDto = input.report_dto && legacyCompat
+      ? input.report_dto
+      : buildDefaultReportDto({ locale, input });
     const result = await runGeminiReportStrategy({
       reportDto,
       language: locale,
@@ -676,7 +724,9 @@ async function executeCase({ rootDir, row, repeatIndex, args }) {
     };
   }
   if (stage === 'deepening') {
-    const deepeningDto = input.deepening_dto || buildDefaultDeepeningDto({ locale, input });
+    const deepeningDto = input.deepening_dto && legacyCompat
+      ? input.deepening_dto
+      : buildDefaultDeepeningDto({ locale, input });
     const result = await runGeminiDeepeningStrategy({
       deepeningDto,
       language: locale,
@@ -863,6 +913,7 @@ async function main() {
   const casesPath = resolvePath(rootDir, args.cases);
   const rubricPath = resolvePath(rootDir, args.rubric);
   const cases = readJsonl(casesPath);
+  auditAcceptanceCases(cases);
   const rubric = readJson(rubricPath);
   const judgeRuntime = {
     requested_mode: normalizeQaModeForJudge(args.qaMode),
@@ -993,6 +1044,7 @@ module.exports = {
   buildJudgeUserPrompt,
   normalizeJudgeResult,
   evaluateLocalExpectations,
+  auditAcceptanceCases,
   summarizeBuckets,
   buildConsistencyDiffs,
 };
