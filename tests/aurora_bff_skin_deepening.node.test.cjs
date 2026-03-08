@@ -11,7 +11,9 @@ const {
 } = require('./aurora_bff_test_harness.cjs');
 const { __internal: routesInternal } = require('../src/auroraBff/routes');
 const {
+  adjudicateReportCanonicalLayer,
   adjudicateDeepeningCanonicalLayer,
+  renderReportCanonicalLayer,
   renderDeepeningCanonicalLayer,
 } = require('../src/auroraBff/skinAnalysisContract');
 
@@ -40,6 +42,66 @@ function renderDeepeningFromPlan(plan, { lang = 'en-US' } = {}) {
     },
   );
   return renderDeepeningCanonicalLayer(canonical, { lang });
+}
+
+function buildReportSuccessStub({ lang = 'en-US', priority = 'barrier' } = {}) {
+  const canonical = adjudicateReportCanonicalLayer(
+    {
+      needs_risk_check: true,
+      summary_focus: { priority, primary_cues: priority === 'barrier' ? ['redness', 'texture'] : [priority] },
+      insights: [
+        {
+          cue: 'redness',
+          region: 'cheeks',
+          severity: 'moderate',
+          confidence: 'high',
+          evidence: 'cheek redness',
+        },
+      ],
+      routine_steps: [
+        {
+          time: 'am',
+          step_type: 'cleanse',
+          target: 'barrier',
+          cadence: 'daily',
+          intensity: 'gentle',
+          linked_cues: ['redness'],
+        },
+      ],
+      watchouts: ['pause_if_stinging'],
+      follow_up: { intent: 'reaction_check', conditional_followups: ['routine_share'] },
+      two_week_focus: ['stabilize_barrier'],
+      risk_flags: [],
+    },
+    {
+      reportContext: {
+        concern_rank: ['redness', 'texture'],
+        deterministic_signals: {
+          redness: 'mid',
+          oiliness: 'low',
+          acne_like: 'few',
+          dryness: 'some',
+          texture: 'rough',
+        },
+        routine_summary: { moisturizer: 'yes', sunscreen: 'unknown', actives: ['retinoid'] },
+        constraints: ['sensitive-skin self-report'],
+        vision_cues: [{ cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high' }],
+        quality: { grade: 'pass' },
+      },
+    },
+  );
+  return {
+    ok: true,
+    provider: 'gemini',
+    reason: null,
+    schema_violation: false,
+    semantic_violation: false,
+    layer: renderReportCanonicalLayer(canonical, { lang, quality: { grade: 'pass' } }),
+    canonical,
+    semantic: { ok: true, useful_output: true, issues: [] },
+    retry: { attempted: 0, final: 'success', last_reason: null },
+    prompt_version: 'skin_v3',
+  };
 }
 
 test('skin deepening compatibility: current analysis card accessor supports story_v2 and legacy summary envelopes', async () => {
@@ -227,6 +289,85 @@ test('skin deepening compatibility: legacy single-card fallback keeps a renderab
         assert.match(String(summaryCard.payload.analysis.strategy || ''), /Retake guide|Meanwhile plan/i);
         assert.equal(countUploadPhotoChips(initial.body) <= 1, true);
       } finally {
+        restore();
+      }
+    },
+  );
+});
+
+test('skin deepening compatibility: report optional step failures fail open to deterministic baseline', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_SKIN_GEMINI_API_KEY: 'test-key',
+      GEMINI_API_KEY: 'test-key',
+      GOOGLE_API_KEY: 'test-key',
+    },
+    async () => {
+      const { request, restore, routesMod } = createAppWithPatchedAuroraChat();
+      try {
+        routesMod.__internal.__setSkinLlmStrategyRunnersForTest({
+          report: async () => {
+            throw new Error('report_lifecycle_context_blowup');
+          },
+        });
+        const uid = buildTestUid('skin_report_optional_fail_open');
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: 'AM cleanser + SPF; PM retinoid + moisturizer',
+          })
+          .expect(200);
+
+        const currentCard = currentAnalysisCardFromBody(resp.body);
+        assert.ok(currentCard, 'analysis card should still exist');
+        assert.match(JSON.stringify(currentCard.payload || {}), /analysis/i);
+      } finally {
+        routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
+        restore();
+      }
+    },
+  );
+});
+
+test('skin deepening compatibility: deepening optional step failures fall back to deterministic deepening', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_SKIN_GEMINI_API_KEY: 'test-key',
+      GEMINI_API_KEY: 'test-key',
+      GOOGLE_API_KEY: 'test-key',
+    },
+    async () => {
+      const { request, restore, routesMod } = createAppWithPatchedAuroraChat();
+      try {
+        routesMod.__internal.__setSkinLlmStrategyRunnersForTest({
+          report: async () => buildReportSuccessStub({ lang: 'en-US' }),
+          deepening: async () => {
+            throw new Error('deepening_optional_child_blowup');
+          },
+        });
+        const uid = buildTestUid('skin_deepening_optional_fail_open');
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: 'AM cleanser + SPF; PM retinoid + moisturizer',
+            recentLogs: [{ reaction: 'stinging after serum' }],
+          })
+          .expect(200);
+
+        const currentCard = currentAnalysisCardFromBody(resp.body);
+        assert.ok(currentCard, 'analysis card should still exist');
+        const cards = parseCards(resp.body);
+        assert.equal(Boolean(findCard(cards, 'error')), false);
+      } finally {
+        routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
         restore();
       }
     },

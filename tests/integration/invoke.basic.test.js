@@ -52,4 +52,50 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
     expect(res.body.error).toBe('INVALID_REQUEST');
   });
+
+  it('fails open on upstream timeout-like failures without secondary ReferenceError', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(504, { error: 'UPSTREAM_TIMEOUT' });
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke')
+      .reply(200, { products: [] });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products',
+        payload: {
+          search: { query: 'shoes' },
+        },
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.error).toBeUndefined();
+  });
+
+  it('fails open on transport errors without secondary ReferenceError', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .replyWithError('socket hang up');
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke')
+      .reply(200, { products: [] });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products',
+        payload: {
+          search: { query: 'shoes' },
+        },
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.error).toBeUndefined();
+  });
 });

@@ -16752,6 +16752,67 @@ async function runGeminiVisionSkinAnalysis({
 
 let runGeminiVisionSkinAnalysisImpl = runGeminiVisionSkinAnalysis;
 let runOpenAIVisionSkinAnalysisImpl = runOpenAIVisionSkinAnalysis;
+let runGeminiVisionStrategyImpl = runGeminiVisionStrategy;
+let runGeminiReportStrategyImpl = runGeminiReportStrategy;
+let runGeminiDeepeningStrategyImpl = runGeminiDeepeningStrategy;
+
+function classifyAuroraOptionalStepError(err) {
+  const raw =
+    (err && (err.code || err.reason || err.name || err.message)) ||
+    'unknown_optional_step_error';
+  const normalized = String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return normalized || 'unknown_optional_step_error';
+}
+
+async function executeAuroraOptionalStep({
+  logger,
+  route,
+  stepId,
+  criticality = 'optional',
+  metricStage = null,
+  fn,
+} = {}) {
+  if (typeof fn !== 'function') {
+    throw new Error('executeAuroraOptionalStep requires a function');
+  }
+  try {
+    const value = await fn();
+    if (metricStage) recordAuroraSkinFlowMetric({ stage: metricStage, outcome: 'hit' });
+    return {
+      ok: true,
+      value,
+      fallback_applied: false,
+      error_class: null,
+      error: null,
+    };
+  } catch (err) {
+    const errorClass = classifyAuroraOptionalStepError(err);
+    if (metricStage) recordAuroraSkinFlowMetric({ stage: metricStage, outcome: 'miss' });
+    logger?.warn(
+      {
+        route: route || null,
+        step_id: String(stepId || 'unknown_optional_step'),
+        criticality,
+        fallback_applied: true,
+        error_class: errorClass,
+        err: err && err.message ? err.message : String(err),
+        code: err && err.code ? String(err.code) : null,
+      },
+      'aurora bff: optional step failed',
+    );
+    return {
+      ok: false,
+      value: null,
+      fallback_applied: true,
+      error_class: errorClass,
+      error: err,
+    };
+  }
+}
 
 function shouldAttemptOpenAiFallbackFromGemini({ photoQuality, llmKillSwitch } = {}) {
   if (AURORA_DIAG_FORCE_GEMINI) return false;
@@ -40099,11 +40160,11 @@ function mountAuroraBffRoutes(app, { logger }) {
     try {
       requireAuroraUid(ctx);
       const identity = await resolveIdentity(req, ctx);
-      resolvedIdentity = {
+      const resolvedIdentity = {
         auroraUid: identity.auroraUid || null,
         userId: identity.userId || null,
       };
-      if (!identity.userId) {
+      if (!resolvedIdentity.userId) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(ctx.lang === 'CN' ? '请先登录。' : 'Please sign in first.'),
           suggested_chips: [],
@@ -40128,7 +40189,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      await setUserPassword({ userId: identity.userId, password: parsed.data.password });
+      await setUserPassword({ userId: resolvedIdentity.userId, password: parsed.data.password });
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage(
@@ -40145,7 +40206,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'auth_password_set', { user_id: identity.userId })],
+        events: [makeEvent(ctx, 'auth_password_set', { user_id: resolvedIdentity.userId })],
       });
       return res.json(envelope);
     } catch (err) {
@@ -44522,13 +44583,34 @@ function mountAuroraBffRoutes(app, { logger }) {
               llmInputHash = visionDto.input_hash || llmInputHash;
               llmInputHashPrefix = buildInputHashPrefix(llmInputHash);
               recordAuroraSkinMainlineProvider({ provider: 'gemini' });
-              const vision = await runGeminiVisionStrategy({
-                imageBuffer: photoBytes,
-                visionDto,
-                language: ctx.lang,
-                promptVersion,
-                profiler,
+              const visionStep = await executeAuroraOptionalStep({
+                logger,
+                route: '/v1/analysis/skin',
+                stepId: 'analysis_skin.vision_mainline',
+                criticality: 'optional',
+                metricStage: 'analysis_optional_step',
+                fn: async () =>
+                  runGeminiVisionStrategyImpl({
+                    imageBuffer: photoBytes,
+                    visionDto,
+                    language: ctx.lang,
+                    promptVersion,
+                    profiler,
+                  }),
               });
+              const vision = visionStep.ok
+                ? visionStep.value
+                : {
+                    ok: false,
+                    provider: 'gemini',
+                    reason: 'OPTIONAL_STEP_FAILED',
+                    schema_violation: false,
+                    semantic_violation: false,
+                    upstream_status_code: null,
+                    latency_ms: 0,
+                    retry: { attempted: 0, final: 'fail', last_reason: 'OPTIONAL_STEP_FAILED' },
+                    optional_step_error_class: visionStep.error_class,
+                  };
               visionRuntime = vision;
               if (vision && vision.ok && vision.analysis) {
                 visionLayer = vision.analysis;
@@ -44673,12 +44755,36 @@ function mountAuroraBffRoutes(app, { logger }) {
           llmInputHash = reportDto.input_hash || llmInputHash;
           llmInputHashPrefix = buildInputHashPrefix(llmInputHash);
           recordAuroraSkinMainlineProvider({ provider: 'gemini' });
-          const reportResult = await runGeminiReportStrategy({
-            reportDto,
-            language: ctx.lang,
-            promptVersion,
-            profiler,
+          const reportStep = await executeAuroraOptionalStep({
+            logger,
+            route: '/v1/analysis/skin',
+            stepId: 'analysis_skin.report_mainline',
+            criticality: 'optional',
+            metricStage: 'analysis_optional_step',
+            fn: async () =>
+              runGeminiReportStrategyImpl({
+                reportDto,
+                language: ctx.lang,
+                promptVersion,
+                profiler,
+              }),
           });
+          const reportResult = reportStep.ok
+            ? reportStep.value
+            : {
+                ok: false,
+                provider: 'gemini',
+                reason: 'OPTIONAL_STEP_FAILED',
+                schema_violation: false,
+                semantic_violation: false,
+                layer: null,
+                retry: { attempted: 0, final: 'fail', last_reason: 'OPTIONAL_STEP_FAILED' },
+                upstream_status_code: null,
+                latency_ms: 0,
+                prompt_version: promptVersion,
+                input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+                optional_step_error_class: reportStep.error_class,
+              };
           if (reportResult.retry && Number(reportResult.retry.attempted || 0) > 0) {
             recordAuroraSkinLlmRetry({
               stage: 'report',
@@ -44725,12 +44831,29 @@ function mountAuroraBffRoutes(app, { logger }) {
               visionCanonical: visionRuntime && visionRuntime.canonical ? visionRuntime.canonical : null,
             });
             if (deepeningContext && deepeningContext.dto) {
-              deepeningRuntime = await runGeminiDeepeningStrategy({
-                deepeningDto: deepeningContext.dto,
-                language: ctx.lang,
-                promptVersion: deepeningContext.promptVersion,
-                profiler,
+              const deepeningStep = await executeAuroraOptionalStep({
+                logger,
+                route: '/v1/analysis/skin',
+                stepId: 'analysis_skin.deepening_child',
+                criticality: 'optional',
+                metricStage: 'analysis_optional_step',
+                fn: async () =>
+                  runGeminiDeepeningStrategyImpl({
+                    deepeningDto: deepeningContext.dto,
+                    language: ctx.lang,
+                    promptVersion: deepeningContext.promptVersion,
+                    profiler,
+                  }),
               });
+              deepeningRuntime = deepeningStep.ok
+                ? deepeningStep.value
+                : {
+                    ok: false,
+                    provider: 'deterministic',
+                    reason: 'OPTIONAL_STEP_FAILED',
+                    optional_step_error_class: deepeningStep.error_class,
+                    layer: null,
+                  };
               if (deepeningRuntime && deepeningRuntime.ok && deepeningRuntime.layer) {
                 reportLayer = {
                   ...reportLayer,
@@ -47674,14 +47797,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         chatContext &&
         typeof chatContext === 'object'
       ) {
-        try {
-          await upsertChatContextForIdentity(
-            { auroraUid: resolvedIdentity.auroraUid, userId: resolvedIdentity.userId },
-            chatContext,
-          );
-        } catch (err) {
-          logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist chat context');
-        }
+        await executeAuroraOptionalStep({
+          logger,
+          route: '/v1/chat',
+          stepId: 'chat.persist_context',
+          criticality: 'optional',
+          fn: async () =>
+            upsertChatContextForIdentity(
+              { auroraUid: resolvedIdentity.auroraUid, userId: resolvedIdentity.userId },
+              chatContext,
+            ),
+        });
       }
 
       const telemetryEntities = (() => {
@@ -54257,6 +54383,19 @@ const __internal = {
   __resetVisionRunnersForTest() {
     runGeminiVisionSkinAnalysisImpl = runGeminiVisionSkinAnalysis;
     runOpenAIVisionSkinAnalysisImpl = runOpenAIVisionSkinAnalysis;
+  },
+  __setSkinLlmStrategyRunnersForTest(runners = {}) {
+    const visionFn = runners && typeof runners.vision === 'function' ? runners.vision : null;
+    const reportFn = runners && typeof runners.report === 'function' ? runners.report : null;
+    const deepeningFn = runners && typeof runners.deepening === 'function' ? runners.deepening : null;
+    runGeminiVisionStrategyImpl = visionFn || runGeminiVisionStrategy;
+    runGeminiReportStrategyImpl = reportFn || runGeminiReportStrategy;
+    runGeminiDeepeningStrategyImpl = deepeningFn || runGeminiDeepeningStrategy;
+  },
+  __resetSkinLlmStrategyRunnersForTest() {
+    runGeminiVisionStrategyImpl = runGeminiVisionStrategy;
+    runGeminiReportStrategyImpl = runGeminiReportStrategy;
+    runGeminiDeepeningStrategyImpl = runGeminiDeepeningStrategy;
   },
   __setInferSkinMaskOnFaceCropForTest(fn) {
     inferSkinMaskOnFaceCropImpl = typeof fn === 'function' ? fn : inferSkinMaskOnFaceCrop;
