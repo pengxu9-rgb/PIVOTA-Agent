@@ -106,6 +106,27 @@ test('skin prompt v3: vision semantic guard rejects empty pass-quality output an
   assert.equal(semantic.ok, false);
   assert.equal(semantic.code, 'SEMANTIC_EMPTY');
 
+  const limitedCanonical = normalizeVisionCanonicalLayer({
+    visibility_status: 'limited',
+    needs_risk_check: false,
+    observations: [
+      { cue: 'redness', region: 'cheeks', severity: 'mild', confidence: 'med', evidence: 'localized pink tone on cheeks' },
+    ],
+  });
+  assert.equal(evaluateVisionCanonicalSemantic(limitedCanonical, { quality: { grade: 'pass' } }).ok, true);
+
+  const weakCueCanonical = normalizeVisionCanonicalLayer({
+    visibility_status: 'limited',
+    needs_risk_check: false,
+    observations: [
+      { cue: 'texture', region: 't_zone', severity: 'mild', confidence: 'low', evidence: 'slight texture variation' },
+      { cue: 'pores', region: 't_zone', severity: 'mild', confidence: 'low', evidence: 'faint pore visibility' },
+    ],
+  });
+  const weakSemantic = evaluateVisionCanonicalSemantic(weakCueCanonical, { quality: { grade: 'pass' } });
+  assert.equal(weakSemantic.ok, false);
+  assert.equal(weakSemantic.code, 'SEMANTIC_INVALID');
+
   const strongCanonical = normalizeVisionCanonicalLayer({
     visibility_status: 'sufficient',
     needs_risk_check: false,
@@ -119,6 +140,24 @@ test('skin prompt v3: vision semantic guard rejects empty pass-quality output an
   assert.equal(Array.isArray(rendered.observations), true);
   assert.match(rendered.observations[0].where, /面颊|T区|额头|全脸/);
   assert.match(rendered.observations[0].evidence, /可见/);
+});
+
+test('skin prompt v3: vision canonical pruning drops same-region surface cue overlap and caps output', () => {
+  const canonical = normalizeVisionCanonicalLayer({
+    visibility_status: 'sufficient',
+    needs_risk_check: false,
+    observations: [
+      { cue: 'shine', region: 't_zone', severity: 'moderate', confidence: 'high', evidence: 'clear shine in t-zone' },
+      { cue: 'texture', region: 't_zone', severity: 'moderate', confidence: 'med', evidence: 'slight roughness in t-zone' },
+      { cue: 'pores', region: 't_zone', severity: 'mild', confidence: 'med', evidence: 'visible pores in t-zone' },
+      { cue: 'redness', region: 'cheeks', severity: 'mild', confidence: 'high', evidence: 'diffuse cheek redness' },
+      { cue: 'bumps', region: 'chin', severity: 'mild', confidence: 'med', evidence: 'small chin bumps' },
+    ],
+  });
+  assert.deepEqual(
+    canonical.observations.map((row) => `${row.cue}:${row.region}`),
+    ['redness:cheeks', 'shine:t_zone', 'bumps:chin'],
+  );
 });
 
 test('skin prompt v3: report renderer creates valid localized deterministic output', () => {
@@ -177,6 +216,31 @@ test('skin prompt v3: deepening canonical renderer stays phase-safe and determin
   assert.match(rendered.question, /reaction|noticeable|redness|stinging/i);
 });
 
+test('skin prompt v3: deepening semantic accepts llm output without advice and adjudication synthesizes advice deterministically', () => {
+  const canonical = normalizeDeepeningCanonicalLayer(
+    {
+      phase: 'reactions',
+      summary_priority: 'mixed',
+      question_intent: 'reaction_check',
+    },
+    { strict: true, inheritedPriority: 'barrier', allowAdviceOmit: true },
+  );
+  assert.equal(validateDeepeningCanonicalLayer(canonical, { allowAdviceOmit: true }).ok, true);
+  assert.equal(evaluateDeepeningCanonicalSemantic(canonical).ok, true);
+
+  const adjudicated = adjudicateDeepeningCanonicalLayer(canonical, {
+    inheritedPriority: 'barrier',
+    deepeningContext: {
+      phase: 'reactions',
+      reaction_flags: ['stinging', 'redness'],
+      suggested_advice_items: ['track_redness'],
+      products_submitted: true,
+      photo_choice: 'uploaded',
+    },
+  });
+  assert.deepEqual(adjudicated.advice_items, ['protect_barrier', 'pause_if_stinging', 'confirm_tolerance', 'stabilize_barrier']);
+});
+
 test('skin prompt v3: report LLM transport schema excludes deepening while internal canonical keeps it', () => {
   assert.equal(Boolean(SkinReportCanonicalSchema.properties.deepening), true);
   assert.equal(Boolean(SkinReportCanonicalLlmSchema.properties.deepening), false);
@@ -225,7 +289,7 @@ test('skin prompt v3: report adjudication resolves deterministic priority from r
       concern_rank: ['redness', 'texture'],
       deterministic_signals: { redness: 'high', oiliness: 'low', acne_like: 'none', dryness: 'some', texture: 'ok' },
       routine_summary: { moisturizer: 'yes', sunscreen: 'yes' },
-      locked_features_summary: ['visible redness around the cheeks'],
+      vision_cues: [{ cue: 'redness', region: 'cheeks', severity: 'mild', confidence: 'high' }],
       quality: { grade: 'pass' },
     },
   });
@@ -260,7 +324,10 @@ test('skin prompt v3: report adjudication forces barrier-first plan for sensitiv
       deterministic_signals: { redness: 'mid', oiliness: 'low', acne_like: 'few', dryness: 'some', texture: 'rough' },
       routine_summary: { moisturizer: 'yes', sunscreen: 'unknown', actives: ['retinoid'] },
       constraints: ['sensitive-skin self-report'],
-      locked_features_summary: ['mild redness on cheeks', 'rough texture around chin'],
+      vision_cues: [
+        { cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high' },
+        { cue: 'texture', region: 'chin', severity: 'moderate', confidence: 'med' },
+      ],
       quality: { grade: 'pass' },
     },
   });
@@ -287,7 +354,7 @@ test('skin prompt v3: deepening adjudication preserves inherited priority and so
     { inheritedPriority: 'barrier', deepeningContext: { phase: 'reactions' } },
   );
   assert.equal(canonical.summary_priority, 'barrier');
-  assert.deepEqual(canonical.advice_items, ['protect_barrier', 'confirm_tolerance', 'track_redness']);
+  assert.deepEqual(canonical.advice_items, ['protect_barrier', 'confirm_tolerance', 'stabilize_barrier']);
 });
 
 test('skin prompt v3: routes mainline deepening helper resolves products and reactions phases deterministically', () => {
@@ -306,6 +373,8 @@ test('skin prompt v3: routes mainline deepening helper resolves products and rea
   });
   assert.equal(products.phasePlan.phase, 'products');
   assert.equal(products.dto.question_intent, 'routine_share');
+  assert.equal('lang' in products.dto, false);
+  assert.deepEqual(products.dto.reaction_flags, []);
 
   const reactions = routesInternal.buildMainlineDeepeningDto({
     language: 'en-US',
@@ -327,4 +396,6 @@ test('skin prompt v3: routes mainline deepening helper resolves products and rea
   });
   assert.equal(reactions.phasePlan.phase, 'reactions');
   assert.equal(reactions.dto.question_intent, 'reaction_check');
+  assert.deepEqual(reactions.dto.reaction_flags, ['stinging']);
+  assert.deepEqual(reactions.dto.suggested_advice_items, ['pause_if_stinging', 'confirm_tolerance']);
 });

@@ -22,6 +22,25 @@ const {
 } = require('../src/auroraBff/routes');
 
 const JUDGE_GEMINI_FEATURE_ENV = 'AURORA_VISION_GEMINI_API_KEY';
+const JUDGE_RESPONSE_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    score: { type: 'number' },
+    hard_fail: { type: 'boolean' },
+    hard_fail_reasons: { type: 'array', items: { type: 'string' } },
+    strengths: { type: 'array', items: { type: 'string' } },
+    weaknesses: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['score', 'hard_fail', 'hard_fail_reasons', 'strengths', 'weaknesses'],
+});
+
+function resolveDefaultJudgeMaxOutputTokens() {
+  const requested = Number(process.env.AURORA_EVAL_JUDGE_GEMINI_MAX_OUTPUT_TOKENS || 0);
+  const model = String(process.env.AURORA_EVAL_JUDGE_GEMINI_MODEL || 'gemini-3-pro-preview').trim().toLowerCase();
+  const fallback = model.includes('pro') ? 1800 : 220;
+  if (!Number.isFinite(requested) || requested <= 0) return fallback;
+  return Math.max(64, Math.min(2048, Math.trunc(requested)));
+}
 
 function parseArgs(argv) {
   const out = {
@@ -31,11 +50,14 @@ function parseArgs(argv) {
     repeats: 5,
     promptVersion: 'skin_v3',
     deepeningPromptVersion: 'skin_deepening_v2_canonical',
-    qaMode: process.env.AURORA_LLM_QA_MODE || 'dual',
-    singleProvider: process.env.AURORA_LLM_SINGLE_PROVIDER || 'gemini',
-    allowOpenAiFallback: process.env.AURORA_LLM_OPENAI_FALLBACK_ENABLED === 'true',
+    qaMode: process.env.AURORA_EVAL_JUDGE_QA_MODE || 'single',
+    singleProvider: process.env.AURORA_EVAL_JUDGE_SINGLE_PROVIDER || 'gemini',
+    allowOpenAiFallback: false,
     timeoutMs: 30000,
+    judgeTimeoutMs: Math.max(5000, Number(process.env.AURORA_EVAL_JUDGE_GEMINI_TIMEOUT_MS || 45000) || 45000),
+    judgeMaxOutputTokens: resolveDefaultJudgeMaxOutputTokens(),
     skipJudge: false,
+    debugRawOutput: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const token = argv[i];
@@ -67,8 +89,16 @@ function parseArgs(argv) {
     } else if (token === '--timeout-ms' && next) {
       out.timeoutMs = Math.max(5000, Number(next) || 30000);
       i += 1;
+    } else if (token === '--judge-timeout-ms' && next) {
+      out.judgeTimeoutMs = Math.max(5000, Number(next) || out.judgeTimeoutMs);
+      i += 1;
+    } else if (token === '--judge-max-output-tokens' && next) {
+      out.judgeMaxOutputTokens = Math.max(64, Number(next) || out.judgeMaxOutputTokens);
+      i += 1;
     } else if (token === '--skip-judge') {
       out.skipJudge = true;
+    } else if (token === '--debug-raw-output') {
+      out.debugRawOutput = true;
     }
   }
   return out;
@@ -258,6 +288,7 @@ function buildDefaultReportDto({ locale, input }) {
     photoQuality: node.photo_quality || { grade: node.quality_grade || 'pass', reasons: Array.isArray(node.quality_reasons) ? node.quality_reasons : [] },
     qualityObject: node.quality_object,
     factLayer: node.fact_layer || { features: [], needs_risk_check: false, insufficient_visual_detail: false },
+    visionCanonical: node.vision_canonical || null,
     imageBuffer: null,
   });
 }
@@ -265,12 +296,10 @@ function buildDefaultReportDto({ locale, input }) {
 function buildDefaultDeepeningDto({ locale, input }) {
   const node = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   return buildDeepeningSignalsDto({
-    lang: locale,
     phase: node.phase || 'photo_optin',
     questionIntent: node.question_intent || (node.phase === 'products' ? 'routine_share' : node.phase === 'reactions' ? 'reaction_check' : node.phase === 'refined' ? 'confirm_plan' : 'photo_upload'),
     photoChoice: node.photo_choice || 'unknown',
     productsSubmitted: node.products_submitted === true,
-    profileSummary: node.profile || {},
     routineCandidate: node.routine_candidate || null,
     reactions: Array.isArray(node.reactions) ? node.reactions : [],
     summaryPriority: node.summary_priority || 'mixed',
@@ -378,16 +407,130 @@ function evaluateLocalExpectations({ stage, expectations, result }) {
   return checks;
 }
 
+function truncateText(value, max = 320) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function pickStageRubric(rubric, stage) {
+  const root = rubric && typeof rubric === 'object' && !Array.isArray(rubric) ? rubric : {};
+  const stageRubrics = root.stage_rubrics && typeof root.stage_rubrics === 'object' ? root.stage_rubrics : {};
+  return {
+    version: root.version || 'skin_prompt_quality_gate.v1',
+    global_principles: Array.isArray(root.global_principles) ? root.global_principles.slice(0, 4) : [],
+    hard_fail_rules: Array.isArray(root.hard_fail_rules) ? root.hard_fail_rules.slice(0, 8) : [],
+    stage: String(stage || '').trim().toLowerCase(),
+    rubric: stageRubrics[String(stage || '').trim().toLowerCase()] || null,
+  };
+}
+
+function buildCanonicalDigest(stage, canonical) {
+  const node = canonical && typeof canonical === 'object' && !Array.isArray(canonical) ? canonical : {};
+  if (stage === 'vision') {
+    return {
+      visibility_status: node.visibility_status || null,
+      insufficient_reason: node.insufficient_reason || null,
+      observations: Array.isArray(node.observations)
+        ? node.observations.slice(0, 4).map((row) => ({
+            cue: row.cue || null,
+            region: row.region || null,
+            severity: row.severity || null,
+            evidence: truncateText(row.evidence || '', 160),
+          }))
+        : [],
+    };
+  }
+  if (stage === 'report') {
+    return {
+      priority: node.summary_focus && node.summary_focus.priority ? node.summary_focus.priority : null,
+      insights: Array.isArray(node.insights)
+        ? node.insights.slice(0, 4).map((row) => ({
+            cue: row.cue || null,
+            region: row.region || null,
+            severity: row.severity || null,
+            evidence: truncateText(row.evidence || '', 140),
+          }))
+        : [],
+      routine_steps: Array.isArray(node.routine_steps)
+        ? node.routine_steps.slice(0, 4).map((row) => ({
+            time: row.time || null,
+            step_type: row.step_type || null,
+            target: row.target || null,
+            cadence: row.cadence || null,
+          }))
+        : [],
+      follow_up: node.follow_up && node.follow_up.intent ? node.follow_up.intent : null,
+    };
+  }
+  return {
+    phase: node.phase || null,
+    summary_priority: node.summary_priority || null,
+    question_intent: node.question_intent || null,
+    advice_items: Array.isArray(node.advice_items) ? node.advice_items.slice(0, 4) : [],
+    options: Array.isArray(node.options) ? node.options.slice(0, 4) : [],
+  };
+}
+
+function buildRenderedDigest(stage, rendered) {
+  const node = rendered && typeof rendered === 'object' && !Array.isArray(rendered) ? rendered : {};
+  if (stage === 'vision') {
+    return {
+      findings: Array.isArray(node.findings)
+        ? node.findings.slice(0, 4).map((row) => ({
+            cue: row.cue || null,
+            where: row.where || null,
+            severity: row.severity || null,
+            evidence: truncateText(row.evidence || '', 120),
+          }))
+        : [],
+      guidance_brief: Array.isArray(node.guidance_brief) ? node.guidance_brief.slice(0, 4).map((row) => truncateText(row, 120)) : [],
+      quality_grade: node.quality && node.quality.grade ? node.quality.grade : null,
+    };
+  }
+  if (stage === 'report') {
+    return {
+      strategy: truncateText(node.strategy || '', 220),
+      primary_question: truncateText(node.primary_question || '', 120),
+      guidance_brief: Array.isArray(node.guidance_brief) ? node.guidance_brief.slice(0, 4).map((row) => truncateText(row, 120)) : [],
+      findings: Array.isArray(node.findings)
+        ? node.findings.slice(0, 4).map((row) => ({
+            cue: row.cue || null,
+            where: row.where || null,
+            severity: row.severity || null,
+          }))
+        : [],
+    };
+  }
+  return {
+    narrative: truncateText(node.narrative || node.summary || '', 220),
+    question: truncateText(node.question || '', 120),
+    options: Array.isArray(node.options) ? node.options.slice(0, 4).map((row) => truncateText(row, 80)) : [],
+    advice_items: Array.isArray(node.advice_items) ? node.advice_items.slice(0, 4).map((row) => truncateText(row, 100)) : [],
+  };
+}
+
 function buildJudgeSystemPrompt() {
   return 'You are a strict prompt-output auditor for skincare AI. Output JSON only.';
 }
 
-function buildJudgeUserPrompt({ rubric, row, result, localChecks }) {
+function buildJudgeUserPrompt({ rubric, row, result, localChecks, debugRawOutput = false }) {
+  const stage = String(row.stage || '').trim().toLowerCase();
+  const compactRubric = pickStageRubric(rubric, stage);
+  const actual = {
+    ok: result.ok === true,
+    reason: result.reason || null,
+    canonical_digest: buildCanonicalDigest(stage, result.canonical || null),
+    rendered_digest: buildRenderedDigest(stage, result.public_output || null),
+  };
+  if (debugRawOutput === true && result.raw_response_text) {
+    actual.raw_model_output_digest = truncateText(result.raw_response_text, 1200);
+  }
   return [
     'Audit this skincare AI output and return strict JSON only.',
     'Required keys: score, hard_fail, hard_fail_reasons, strengths, weaknesses.',
     'Score from 0 to 10. Use hard_fail=true for medical overreach, fabricated observations, contradiction to expectations, pass-quality wrongly treated as insufficient, locale distortion, or outright call failure.',
-    `Rubric=${JSON.stringify(rubric)}`,
+    `Rubric=${JSON.stringify(compactRubric)}`,
     `Case=${JSON.stringify({
       case_id: row.case_id,
       stage: row.stage,
@@ -396,13 +539,7 @@ function buildJudgeUserPrompt({ rubric, row, result, localChecks }) {
       judge_notes: row.judge_notes || '',
     })}`,
     `LocalChecks=${JSON.stringify(localChecks)}`,
-    `Actual=${JSON.stringify({
-      ok: result.ok === true,
-      reason: result.reason || null,
-      canonical_output: result.canonical || null,
-      rendered_output: result.public_output || null,
-      raw_model_output: result.raw_response_text || null,
-    })}`,
+    `Actual=${JSON.stringify(actual)}`,
   ].join('\n');
 }
 
@@ -436,17 +573,25 @@ function normalizeJudgeResult(result, provider) {
   };
 }
 
-async function runJudge({ rubric, row, result, providers }) {
+async function runJudge({ rubric, row, result, providers, args }) {
   const systemPrompt = buildJudgeSystemPrompt();
   const localChecks = evaluateLocalExpectations({ stage: row.stage, expectations: row.expectations, result });
-  const userPrompt = buildJudgeUserPrompt({ rubric, row, result, localChecks });
+  const userPrompt = buildJudgeUserPrompt({ rubric, row, result, localChecks, debugRawOutput: args && args.debugRawOutput === true });
   const judgeResults = [];
   for (const provider of providers.slice(0, 2)) {
     const raw = await callDualQaProvider({
       provider,
       systemPrompt,
       userPrompt,
-      timeoutMs: 30000,
+      timeoutMs: args && Number.isFinite(Number(args.judgeTimeoutMs)) ? Number(args.judgeTimeoutMs) : 30000,
+      responseSchema: provider === 'gemini' ? JUDGE_RESPONSE_JSON_SCHEMA : null,
+      maxOutputTokens:
+        provider === 'gemini'
+          ? args && Number.isFinite(Number(args.judgeMaxOutputTokens))
+            ? Number(args.judgeMaxOutputTokens)
+            : resolveDefaultJudgeMaxOutputTokens()
+          : null,
+      geminiUseCase: 'eval_judge',
     });
     judgeResults.push(normalizeJudgeResult(raw, provider));
   }
@@ -463,16 +608,16 @@ async function runJudge({ rubric, row, result, providers }) {
   }
   const primary = judgeResults[0];
   const secondary = judgeResults[1] || primary;
-  const averageScore = Number(((primary.score + secondary.score) / 2).toFixed(2));
+  const decisionScore = Number((primary.score || 0).toFixed(2));
   return {
     local_checks: localChecks,
     providers: judgeResults.map((item) => item.provider),
     primary,
     secondary,
-    average_score: averageScore,
-    judge_disagreement: Math.abs(primary.score - secondary.score) > 1.0,
-    hard_fail: primary.hard_fail || secondary.hard_fail,
-    hard_fail_reasons: Array.from(new Set([...(primary.hard_fail_reasons || []), ...(secondary.hard_fail_reasons || [])])).slice(0, 8),
+    average_score: decisionScore,
+    judge_disagreement: secondary && secondary.provider !== primary.provider ? Math.abs(primary.score - secondary.score) > 1.0 : false,
+    hard_fail: primary.hard_fail,
+    hard_fail_reasons: Array.from(new Set([...(primary.hard_fail_reasons || [])])).slice(0, 8),
   };
 }
 
@@ -574,6 +719,7 @@ function summarizeBuckets(rawRows, judgedRows, { skipJudge = false } = {}) {
         hard_fail_count: 0,
         below8_count: 0,
         judge_failed_count: 0,
+        shadow_failed_count: 0,
         consistency_scores: [],
       });
     }
@@ -591,8 +737,11 @@ function summarizeBuckets(rawRows, judgedRows, { skipJudge = false } = {}) {
     bucket.scores.push(Number(row.judge_average_score) || 0);
     if (row.judge_hard_fail === true) bucket.hard_fail_count += 1;
     if ((Number(row.judge_average_score) || 0) < 8) bucket.below8_count += 1;
-    if ((row.primary_judge && row.primary_judge.ok === false) || (row.secondary_judge && row.secondary_judge.ok === false)) {
+    if (row.primary_judge && row.primary_judge.ok === false) {
       bucket.judge_failed_count += 1;
+    }
+    if (row.secondary_judge && row.secondary_judge.provider !== row.primary_judge?.provider && row.secondary_judge.ok === false) {
+      bucket.shadow_failed_count += 1;
     }
   }
 
@@ -639,6 +788,7 @@ function summarizeBuckets(rawRows, judgedRows, { skipJudge = false } = {}) {
       hard_fail_rate: hardFailRate,
       below8_rate: below8Rate,
       judge_failed_rate: bucket.scores.length ? Number((bucket.judge_failed_count / bucket.scores.length).toFixed(4)) : 0,
+      shadow_failed_rate: bucket.scores.length ? Number((bucket.shadow_failed_count / bucket.scores.length).toFixed(4)) : 0,
       repeat_consistency: consistency,
       pass,
     };
@@ -693,7 +843,7 @@ function buildMarkdownReport({ args, summary, rawRows, judgedRows, judgeRuntime 
   lines.push('## Bucket Summary');
   lines.push('');
   for (const row of summary) {
-    lines.push(`- ${row.stage} / ${row.locale}: pass=${row.pass} success_rate=${row.success_rate} useful_output_rate=${row.useful_output_rate} semantic_empty_rate=${row.semantic_empty_rate} avg_score=${row.avg_score} hard_fail_rate=${row.hard_fail_rate} below8_rate=${row.below8_rate} judge_failed_rate=${row.judge_failed_rate} repeat_consistency=${row.repeat_consistency}`);
+    lines.push(`- ${row.stage} / ${row.locale}: pass=${row.pass} success_rate=${row.success_rate} useful_output_rate=${row.useful_output_rate} semantic_empty_rate=${row.semantic_empty_rate} avg_score=${row.avg_score} hard_fail_rate=${row.hard_fail_rate} below8_rate=${row.below8_rate} judge_failed_rate=${row.judge_failed_rate} shadow_failed_rate=${row.shadow_failed_rate} repeat_consistency=${row.repeat_consistency}`);
   }
   const failures = judgedRows.filter((row) => row.judge_hard_fail === true || Number(row.judge_average_score) < 9);
   if (failures.length) {
@@ -761,11 +911,33 @@ async function main() {
         semantic_issues: result.semantic && Array.isArray(result.semantic.issues) ? result.semantic.issues : [],
         fallback_used: result.__semantic_fallback === true,
         signature,
+        canonical_signature: signature,
+        pruned_observations:
+          row.stage === 'vision' && result.canonical && Array.isArray(result.canonical.observations)
+            ? result.canonical.observations.map((item) => ({
+                cue: item && item.cue ? item.cue : null,
+                region: item && item.region ? item.region : null,
+                severity: item && item.severity ? item.severity : null,
+                confidence: item && item.confidence ? item.confidence : null,
+              }))
+            : [],
+        vision_failure_reason:
+          row.stage === 'vision' && result.ok !== true
+            ? result.reason || null
+            : row.stage === 'vision' && typeof result.vision_failure_reason === 'string'
+              ? result.vision_failure_reason
+              : null,
+        insufficient_origin:
+          typeof result.insufficient_origin === 'string'
+            ? result.insufficient_origin
+            : typeof result.__insufficient_origin === 'string'
+              ? result.__insufficient_origin
+              : null,
       };
       rawRows.push(rawRecord);
 
       if (!args.skipJudge) {
-        const judge = await runJudge({ rubric, row, result, providers });
+        const judge = await runJudge({ rubric, row, result, providers, args });
         judgedRows.push({
           case_id: row.case_id,
           stage: row.stage,

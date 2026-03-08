@@ -1,6 +1,26 @@
 const crypto = require('crypto');
 const { summarizeRoutineActives } = require('./skinLlmPrompts');
 
+const CANONICAL_CUE_VALUES = new Set(['redness', 'shine', 'bumps', 'flaking', 'uneven_tone', 'texture', 'pores']);
+const CANONICAL_REGION_VALUES = new Set(['cheeks', 'forehead', 't_zone', 'chin', 'nose', 'jawline', 'full_face']);
+const CANONICAL_SEVERITY_VALUES = new Set(['mild', 'moderate', 'high']);
+const CANONICAL_CONFIDENCE_VALUES = new Set(['low', 'med', 'high']);
+const DEEPENING_ADVICE_VALUES = new Set([
+  'avoid_stacking_strong_actives',
+  'pause_if_stinging',
+  'protect_barrier',
+  'protect_uv',
+  'one_change_at_a_time',
+  'retake_clear_photo',
+  'stabilize_barrier',
+  'track_redness',
+  'track_oil',
+  'track_bumps',
+  'track_texture',
+  'track_tone',
+  'confirm_tolerance',
+]);
+
 function normalizeLang(lang) {
   const token = String(lang || '').trim().toLowerCase();
   if (token === 'cn' || token === 'zh-cn' || token === 'zh') return 'zh-CN';
@@ -98,6 +118,95 @@ function summarizeUserGoal(profileSummary) {
     : [];
   if (!goals.length) return '';
   return clampText(goals.slice(0, 3).join(' / '), 100);
+}
+
+function normalizeCanonicalCueToken(raw) {
+  const token = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (token === 'oiliness') return 'shine';
+  if (token === 'rough_texture') return 'texture';
+  if (token === 'tone') return 'uneven_tone';
+  return CANONICAL_CUE_VALUES.has(token) ? token : '';
+}
+
+function normalizeCanonicalRegionToken(raw) {
+  const token = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_')
+    .replace(/[^a-z_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (token === 't' || token === 'tzone') return 't_zone';
+  if (token === 'jaw' || token === 'jaw_line') return 'jawline';
+  if (token === 'fullface' || token === 'whole_face') return 'full_face';
+  return CANONICAL_REGION_VALUES.has(token) ? token : '';
+}
+
+function normalizeCanonicalSeverity(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  return CANONICAL_SEVERITY_VALUES.has(token) ? token : 'mild';
+}
+
+function normalizeCanonicalConfidence(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  return CANONICAL_CONFIDENCE_VALUES.has(token) ? token : 'med';
+}
+
+function normalizeDeepeningAdviceToken(raw) {
+  const token = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_')
+    .replace(/[^a-z_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (token === 'track_oiliness') return 'track_oil';
+  return DEEPENING_ADVICE_VALUES.has(token) ? token : '';
+}
+
+function buildStructuredVisionCues({ visionCanonical } = {}) {
+  const observations =
+    visionCanonical && Array.isArray(visionCanonical.observations) ? visionCanonical.observations : [];
+  const out = [];
+  for (const row of observations) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const cue = normalizeCanonicalCueToken(row.cue);
+    const region = normalizeCanonicalRegionToken(row.region != null ? row.region : row.where);
+    const evidence = clampText(row.evidence, 140);
+    if (!cue || !region || !evidence) continue;
+    out.push({
+      cue,
+      region,
+      severity: normalizeCanonicalSeverity(row.severity),
+      confidence: normalizeCanonicalConfidence(row.confidence),
+      evidence,
+    });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+function extractReactionFlags(reactions) {
+  const out = [];
+  const add = (flag) => {
+    if (!flag || out.includes(flag)) return;
+    out.push(flag);
+  };
+  for (const raw of Array.isArray(reactions) ? reactions : []) {
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) continue;
+    if (token.includes('sting') || token.includes('burn')) add('stinging');
+    if (token.includes('tight')) add('tightness');
+    if (token.includes('dry') || token.includes('flake') || token.includes('peel')) add('dryness');
+    if (token.includes('itch')) add('itching');
+    if (token.includes('red')) add('redness');
+    if (token.includes('breakout') || token.includes('bump') || token.includes('acne')) add('breakouts');
+  }
+  return out.slice(0, 4);
 }
 
 function normalizeIssueType(issueType) {
@@ -333,13 +442,10 @@ function buildVisionSignalsDto({
       ? qualityObject
       : buildQualityObject(photoQuality);
   const dtoBase = {
-    lang: normalizeLang(lang),
     quality,
     photo_quality: mapPhotoQuality(photoQuality),
     uncertainty_level: normalizeUncertaintyLevel(diagnosisPolicy),
     scene_notes: buildSceneNotes(photoQuality),
-    user_goal: summarizeUserGoal(profileSummary),
-    locked_features_summary: summarizeLockedFeatures(factLayer),
   };
   const image_hash = buildImageHash(imageBuffer);
   const input_hash = buildInputHash({ payload: dtoBase, imageHash: image_hash });
@@ -359,6 +465,7 @@ function buildReportSignalsDto({
   photoQuality,
   qualityObject,
   factLayer,
+  visionCanonical,
   imageBuffer,
 } = {}) {
   const quality =
@@ -367,7 +474,6 @@ function buildReportSignalsDto({
       : buildQualityObject(photoQuality);
   const routineProducts = extractRoutineProducts(routineCandidate);
   const dtoBase = {
-    lang: normalizeLang(lang),
     quality,
     concern_rank: buildConcernRank(diagnosisV1),
     deterministic_signals: mapDeterministicSignals(diagnosisV1),
@@ -377,7 +483,7 @@ function buildReportSignalsDto({
     open_questions: buildOpenQuestions({ diagnosisPolicy, photoQuality }),
     photo_quality: mapPhotoQuality(photoQuality),
     uncertainty_level: normalizeUncertaintyLevel(diagnosisPolicy),
-    locked_features_summary: summarizeLockedFeatures(factLayer),
+    vision_cues: buildStructuredVisionCues({ visionCanonical }),
     insufficient_visual_detail: Boolean(factLayer && factLayer.insufficient_visual_detail),
   };
   const image_hash = buildImageHash(imageBuffer);
@@ -390,7 +496,6 @@ function buildReportSignalsDto({
 }
 
 function buildDeepeningSignalsDto({
-  lang,
   phase,
   questionIntent,
   photoChoice,
@@ -403,31 +508,20 @@ function buildDeepeningSignalsDto({
   twoWeekFocus,
   qualityObject,
 } = {}) {
-  const profile = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
-    ? profileSummary
-    : {};
   const dtoBase = {
-    lang: normalizeLang(lang),
     phase: typeof phase === 'string' && phase.trim() ? phase.trim() : 'photo_optin',
     question_intent: typeof questionIntent === 'string' && questionIntent.trim() ? questionIntent.trim() : 'photo_upload',
     photo_choice: typeof photoChoice === 'string' && photoChoice.trim() ? photoChoice.trim() : 'unknown',
     products_submitted: productsSubmitted === true,
-    profile: {
-      skinType: profile.skinType || null,
-      barrierStatus: profile.barrierStatus || null,
-      sensitivity: profile.sensitivity || null,
-      goals: Array.isArray(profile.goals) ? profile.goals.filter((item) => typeof item === 'string' && item.trim()).slice(0, 4) : [],
-    },
     routine_actives: summarizeRoutineActives(routineCandidate).slice(0, 4),
-    reactions: Array.isArray(reactions) ? reactions.map((item) => clampText(item, 80)).filter(Boolean).slice(0, 6) : [],
+    reaction_flags: extractReactionFlags(reactions),
     summary_priority: typeof summaryPriority === 'string' && summaryPriority.trim() ? summaryPriority.trim() : 'mixed',
     suggested_advice_items: Array.from(
       new Set([
         ...(Array.isArray(watchouts) ? watchouts : []),
         ...(Array.isArray(twoWeekFocus) ? twoWeekFocus : []),
-      ].map((item) => clampText(item, 40)).filter(Boolean)),
+      ].map((item) => normalizeDeepeningAdviceToken(item)).filter(Boolean)),
     ).slice(0, 6),
-    quality: qualityObject && typeof qualityObject === 'object' && !Array.isArray(qualityObject) ? qualityObject : null,
   };
   const input_hash = buildInputHash({ payload: dtoBase, imageHash: 'no_image' });
   return {
