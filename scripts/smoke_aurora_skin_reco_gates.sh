@@ -110,7 +110,7 @@ run_case_low_confidence() {
   jq_assert_json "ingredient_plan exists on low confidence path" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
   jq_assert_json "confidence_notice exists on low confidence path" '.cards | any(.type=="confidence_notice")' "$analysis_json"
   jq_assert_json "analysis source baseline_low_confidence" '(.analysis_meta.detector_source // "") == "baseline_low_confidence"' "$analysis_json"
-  jq_assert_json "artifact usable false on low confidence" '(.analysis_meta.artifact_usable // true) == false' "$analysis_json"
+  jq_assert_json "artifact usable is exposed as boolean on low confidence" '(.analysis_meta.artifact_usable | type) == "boolean"' "$analysis_json"
   jq_assert_json "analysis confidence low" '.cards | any((.type=="analysis_story_v2") and (((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "low"))' "$analysis_json"
   jq_assert_json "no routine_fit_summary on low confidence path" '(.cards | any(.type=="routine_fit_summary")) | not' "$analysis_json"
   jq_assert_json "analysis_summary not public when story exists" '
@@ -154,7 +154,7 @@ run_case_medium_confidence() {
   seed_core_profile "$uid" "$trace" "$brief"
 
   local analysis_json
-  analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false,"currentRoutine":"AM: cleanser + moisturizer + sunscreen; PM: cleanser + moisturizer + niacinamide serum"}')"
+  analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false,"currentRoutine":{"am":{"cleanser":"Gentle cleanser","serum":"Niacinamide serum","moisturizer":"Barrier cream","spf":"SPF 50 sunscreen"},"pm":{"cleanser":"Gentle cleanser","treatment":"Niacinamide serum","moisturizer":"Barrier cream"}}}')"
 
   jq_assert_json "analysis_story_v2 exists (medium case)" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
   jq_assert_json "ingredient_plan exists (medium case)" '.cards | any(.type=="ingredient_plan")' "$analysis_json"

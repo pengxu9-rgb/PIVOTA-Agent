@@ -23015,6 +23015,254 @@ function parseRoutineFitUpstreamResult(upstream) {
   };
 }
 
+function normalizeRoutineFitText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchRoutineFitLabelInTexts(label, texts) {
+  const normalizedLabel = normalizeRoutineFitText(label);
+  if (!normalizedLabel) return false;
+  const haystacks = Array.isArray(texts) ? texts : [];
+  if (haystacks.some((text) => text.includes(normalizedLabel))) return true;
+  const stop = new Set(['acid', 'serum', 'cream', 'lotion', 'gel', 'extract', 'and', 'the']);
+  const parts = normalizedLabel.split(' ').filter((part) => part.length >= 3 && !stop.has(part));
+  if (!parts.length) return false;
+  return parts.some((part) => haystacks.some((text) => text.includes(part)));
+}
+
+function buildDeterministicRoutineFitSummary({
+  routineProducts = [],
+  ingredientPlan = null,
+  skinProfile = null,
+  profileSummary = null,
+  language = 'EN',
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const rows = Array.isArray(routineProducts) ? routineProducts.filter((row) => isPlainObject(row)) : [];
+  if (!rows.length) return null;
+
+  const slotSteps = { am: new Set(), pm: new Set() };
+  const normalizedTexts = [];
+  const activeKinds = new Set();
+  let activeProductCount = 0;
+  let barrierSupportCount = 0;
+
+  for (const row of rows) {
+    const slot = String(row.slot || '').trim().toLowerCase() === 'pm' ? 'pm' : 'am';
+    const step = normalizeRoutineIntakeStep(row.step || 'other');
+    slotSteps[slot].add(step);
+
+    const productText = pickFirstTrimmed(row.product_text, row.product, row.name, row.display_name);
+    const normalizedText = normalizeRoutineFitText(productText);
+    if (!normalizedText) continue;
+    normalizedTexts.push(normalizedText);
+
+    const looksActive =
+      step === 'treatment' ||
+      /(retin|adapalene|tretin|retinal|salicylic|glycolic|lactic|mandelic|\baha\b|\bbha\b|\bpha\b|benzoyl|vitamin c|ascorb|azelaic|niacinamide|serum|acid)/.test(normalizedText);
+    if (looksActive) activeProductCount += 1;
+    if (/(retin|adapalene|tretin|retinal)/.test(normalizedText)) activeKinds.add('retinoid');
+    if (/(salicylic|glycolic|lactic|mandelic|\baha\b|\bbha\b|\bpha\b)/.test(normalizedText)) activeKinds.add('acid');
+    if (/(benzoyl)/.test(normalizedText)) activeKinds.add('benzoyl_peroxide');
+    if (/(vitamin c|ascorb|tetrahexyldecyl|ascorbyl)/.test(normalizedText)) activeKinds.add('vitamin_c');
+    if (/(azelaic)/.test(normalizedText)) activeKinds.add('azelaic_acid');
+    if (/(niacinamide|nicotinamide)/.test(normalizedText)) activeKinds.add('niacinamide');
+    if (/(spf|sunscreen|uv)/.test(normalizedText)) slotSteps[slot].add('spf');
+    if (/(ceramide|panthenol|glycerin|hyaluronic|cica|centella|squalane)/.test(normalizedText)) barrierSupportCount += 1;
+  }
+
+  const targetEntries = Array.isArray(ingredientPlan && ingredientPlan.targets) ? ingredientPlan.targets : [];
+  const avoidEntries = Array.isArray(ingredientPlan && ingredientPlan.avoid) ? ingredientPlan.avoid : [];
+  const targetMatches = [];
+  const avoidMatches = [];
+  for (const entry of targetEntries) {
+    const label = pickFirstTrimmed(entry && entry.ingredient_name, entry && entry.ingredient_id);
+    if (label && matchRoutineFitLabelInTexts(label, normalizedTexts)) targetMatches.push(label);
+  }
+  for (const entry of avoidEntries) {
+    const label = pickFirstTrimmed(entry && entry.ingredient_name, entry && entry.ingredient_id);
+    if (label && matchRoutineFitLabelInTexts(label, normalizedTexts)) avoidMatches.push(label);
+  }
+  const targetMatchNames = Array.from(new Set(targetMatches)).slice(0, 3);
+  const avoidMatchNames = Array.from(new Set(avoidMatches)).slice(0, 3);
+
+  const sensitivity = String(
+    (skinProfile && (skinProfile.sensitivity_tendency || skinProfile.sensitivity)) ||
+      (profileSummary && profileSummary.sensitivity) ||
+      '',
+  ).trim().toLowerCase();
+  const barrierStatus = String(
+    (profileSummary && profileSummary.barrierStatus) ||
+      (skinProfile && (skinProfile.barrier_status || skinProfile.barrierStatus)) ||
+      '',
+  ).trim().toLowerCase();
+  const barrierSensitive = ['impaired', 'damaged', 'compromised', 'reactive', 'sensitive', 'weak'].includes(barrierStatus);
+
+  const hasAmCleanser = slotSteps.am.has('cleanser');
+  const hasAmMoisturizer = slotSteps.am.has('moisturizer');
+  const hasAmSpf = slotSteps.am.has('spf');
+  const hasPmCleanser = slotSteps.pm.has('cleanser');
+  const hasPmMoisturizer = slotSteps.pm.has('moisturizer');
+
+  let ingredientMatchScore = 0.48;
+  if (targetMatchNames.length) ingredientMatchScore += Math.min(0.22, targetMatchNames.length * 0.1);
+  if (barrierSupportCount > 0 && (barrierSensitive || sensitivity === 'high')) ingredientMatchScore += 0.12;
+  if (avoidMatchNames.length) ingredientMatchScore -= Math.min(0.28, avoidMatchNames.length * 0.14);
+  if (activeProductCount === 0 && targetEntries.length) ingredientMatchScore -= 0.08;
+
+  let routineCompletenessScore =
+    0.12 +
+    (hasAmCleanser ? 0.16 : 0) +
+    (hasAmMoisturizer ? 0.18 : 0) +
+    (hasAmSpf ? 0.22 : 0) +
+    (hasPmCleanser ? 0.14 : 0) +
+    (hasPmMoisturizer ? 0.18 : 0);
+
+  let conflictRiskScore = 0.82;
+  if (activeKinds.has('retinoid') && activeKinds.has('acid')) conflictRiskScore -= 0.32;
+  if (activeKinds.has('retinoid') && activeKinds.has('benzoyl_peroxide')) conflictRiskScore -= 0.28;
+  if (avoidMatchNames.length) conflictRiskScore -= 0.15;
+  if (activeProductCount >= 3) conflictRiskScore -= 0.16;
+  if (activeKinds.size >= 3) conflictRiskScore -= 0.1;
+
+  let sensitivitySafetyScore = sensitivity === 'high' ? 0.58 : sensitivity === 'medium' ? 0.68 : 0.76;
+  if (barrierSensitive) sensitivitySafetyScore -= 0.12;
+  if (barrierSupportCount > 0) sensitivitySafetyScore += 0.08;
+  if ((activeKinds.has('retinoid') || activeKinds.has('acid') || activeKinds.has('benzoyl_peroxide')) && sensitivity === 'high') {
+    sensitivitySafetyScore -= 0.14;
+  }
+  if (activeKinds.has('retinoid') && activeKinds.has('acid')) sensitivitySafetyScore -= 0.08;
+  if (activeProductCount >= 3) sensitivitySafetyScore -= 0.08;
+  if (hasAmSpf && activeKinds.size > 0) sensitivitySafetyScore += 0.04;
+
+  ingredientMatchScore = clamp01Score(ingredientMatchScore);
+  routineCompletenessScore = clamp01Score(routineCompletenessScore);
+  conflictRiskScore = clamp01Score(conflictRiskScore);
+  sensitivitySafetyScore = clamp01Score(sensitivitySafetyScore);
+
+  const fitScore = clamp01Score(
+    ingredientMatchScore * 0.32 +
+      routineCompletenessScore * 0.28 +
+      conflictRiskScore * 0.2 +
+      sensitivitySafetyScore * 0.2,
+  );
+  const overallFit = fitScore >= 0.74 ? 'good_match' : fitScore >= 0.5 ? 'partial_match' : 'needs_adjustment';
+
+  const highlights = [];
+  const concerns = [];
+  if (hasAmSpf) {
+    highlights.push(lang === 'CN' ? '晨间已经覆盖防晒，这对整体耐受和色沉管理是加分项。' : 'AM sunscreen is already in place, which supports tolerance and pigmentation control.');
+  }
+  if (hasAmCleanser && hasAmMoisturizer && hasPmCleanser && hasPmMoisturizer) {
+    highlights.push(lang === 'CN' ? '清洁和保湿的基础框架已经具备。' : 'The routine already covers the core cleanse and moisturize structure.');
+  }
+  if (targetMatchNames.length) {
+    highlights.push(
+      lang === 'CN'
+        ? `当前 routine 已经包含部分匹配目标成分，例如 ${targetMatchNames.join('、')}。`
+        : `The routine already includes some plan-aligned ingredients, such as ${targetMatchNames.join(', ')}.`,
+    );
+  } else if (barrierSupportCount > 0 && (barrierSensitive || sensitivity === 'high')) {
+    highlights.push(lang === 'CN' ? '当前流程里有一定的修护支持，对敏感期更友好。' : 'There is some barrier-supportive cushioning in the routine, which helps a sensitive profile.');
+  }
+
+  if (!hasAmSpf) {
+    concerns.push(lang === 'CN' ? '晨间 routine 里缺少明确的防晒步骤。' : 'AM sunscreen is missing from the current routine.');
+  }
+  if (avoidMatchNames.length) {
+    concerns.push(
+      lang === 'CN'
+        ? `当前 routine 里出现了需要留意的成分，例如 ${avoidMatchNames.join('、')}。`
+        : `The routine appears to include ingredients to watch, including ${avoidMatchNames.join(', ')}.`,
+    );
+  }
+  if ((activeKinds.has('retinoid') && activeKinds.has('acid')) || activeProductCount >= 3) {
+    concerns.push(
+      lang === 'CN'
+        ? '活性层数偏多，建议优先简化以降低刺激和冲突风险。'
+        : 'The active stack looks crowded, so simplifying it should reduce irritation and overlap risk.',
+    );
+  }
+  if ((sensitivity === 'high' || barrierSensitive) && (activeKinds.has('retinoid') || activeKinds.has('acid') || activeKinds.has('benzoyl_peroxide'))) {
+    concerns.push(
+      lang === 'CN'
+        ? '在敏感或屏障不稳时，强活性需要更保守地安排频率。'
+        : 'Given the sensitivity/barrier profile, strong actives should be scheduled more conservatively.',
+    );
+  }
+  if (!hasPmMoisturizer) {
+    concerns.push(lang === 'CN' ? '晚间缺少明确的保湿收尾，可能影响耐受。' : 'PM barrier support looks light, which may reduce tolerance.');
+  }
+
+  const summary =
+    overallFit === 'good_match'
+      ? (lang === 'CN'
+        ? '你的 routine 整体匹配度较好，核心步骤完整，只需要少量微调。'
+        : 'Your routine is broadly well matched, with the core steps covered and only minor adjustments needed.')
+      : overallFit === 'partial_match'
+        ? (lang === 'CN'
+          ? '你的 routine 有不错的基础，但还需要做几处简化或顺序优化。'
+          : 'Your routine has a solid base, but a few simplifications or sequencing changes would improve it.')
+        : (lang === 'CN'
+          ? '你的 routine 需要进一步调整，重点是减少刺激叠加并补齐关键步骤。'
+          : 'Your routine likely needs adjustment, mainly to reduce active overlap and fill in a few core gaps.');
+
+  return {
+    overall_fit: overallFit,
+    fit_score: fitScore,
+    summary,
+    highlights: highlights.slice(0, 3),
+    concerns: concerns.slice(0, 3),
+    dimension_scores: {
+      ingredient_match: {
+        score: ingredientMatchScore,
+        note:
+          avoidMatchNames.length
+            ? (lang === 'CN'
+              ? `有部分成分与当前建议不完全一致，例如 ${avoidMatchNames.join('、')}。`
+              : `Some ingredients do not fully align with the current plan, including ${avoidMatchNames.join(', ')}.`)
+            : targetMatchNames.length
+              ? (lang === 'CN'
+                ? `已匹配到部分目标成分，例如 ${targetMatchNames.join('、')}。`
+                : `Some target ingredients are already present, such as ${targetMatchNames.join(', ')}.`)
+              : (lang === 'CN'
+                ? '基础结构可用，但目标成分匹配度还有提升空间。'
+                : 'The base structure is workable, but ingredient alignment could be stronger.'),
+      },
+      routine_completeness: {
+        score: routineCompletenessScore,
+        note:
+          hasAmSpf && hasPmMoisturizer
+            ? (lang === 'CN' ? 'AM/PM 基础步骤基本齐全。' : 'AM/PM core steps are mostly covered.')
+            : (lang === 'CN' ? '还有几个核心步骤可以补齐或明确化。' : 'A few core steps still need to be made more explicit.'),
+      },
+      conflict_risk: {
+        score: conflictRiskScore,
+        note:
+          (activeKinds.has('retinoid') && activeKinds.has('acid')) || activeProductCount >= 3
+            ? (lang === 'CN' ? '活性叠加较多，建议拆开或降频。' : 'There is enough active overlap that spacing or simplification would help.')
+            : (lang === 'CN' ? '暂时没有明显的高风险叠加。' : 'No major high-risk overlaps stand out right now.'),
+      },
+      sensitivity_safety: {
+        score: sensitivitySafetyScore,
+        note:
+          (sensitivity === 'high' || barrierSensitive) && (activeKinds.has('retinoid') || activeKinds.has('acid') || activeKinds.has('benzoyl_peroxide'))
+            ? (lang === 'CN' ? '敏感期建议更保守地使用强活性。' : 'Use strong actives more conservatively with this sensitivity profile.')
+            : (lang === 'CN' ? '当前结构整体还算可耐受。' : 'The routine structure looks reasonably tolerable overall.'),
+      },
+    },
+    next_questions:
+      lang === 'CN'
+        ? ['我应该先简化哪一步？', '哪些活性不要同一晚叠加？', '现在的使用频率应该怎么安排？']
+        : ['What should I simplify first?', 'Which actives should I avoid stacking on the same night?', 'How often should I use the active steps?'],
+  };
+}
+
 function getRoutineFitPayloadFromLastAnalysis(lastAnalysis) {
   if (!isPlainObject(lastAnalysis)) return null;
   const candidate =
@@ -46070,6 +46318,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         let routineFitRetryCount = 0;
         let routineFitPartialStructured = false;
         let routineFitPartialDimensions = [];
+        let routineFitFallbackUsed = false;
+        let routineFitFallbackReason = null;
         if (routineFitPlan.shouldEvaluateRoutineFit) {
           routineProductEvents.push(
             makeEvent(ctx, 'routine_fit_evaluation_started', {
@@ -46146,6 +46396,30 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
 
           if (!routineFitCard) {
+            const fallbackFit = buildDeterministicRoutineFitSummary({
+              routineProducts: routineProductCandidates,
+              ingredientPlan,
+              skinProfile: routineSkinProfile,
+              profileSummary,
+              language: ctx.lang,
+            });
+            if (fallbackFit) {
+              routineFitCard = buildRoutineFitSummaryCard(fallbackFit, ctx.request_id);
+              routineFitFallbackUsed = true;
+              routineFitFallbackReason = routineFitFailureReason || 'unknown';
+              recordAuroraSkinFlowMetric({ stage: 'routine_fit_fallback', hit: true });
+              logger?.info(
+                {
+                  request_id: ctx.request_id,
+                  failure_reason: routineFitFallbackReason,
+                  fallback_source: 'deterministic_local',
+                },
+                'aurora bff: routine fit fallback applied after upstream failure',
+              );
+            }
+          }
+
+          if (!routineFitCard) {
             recordAuroraSkinFlowMetric({
               stage: `routine_fit_${String(routineFitFailureReason || 'failed').slice(0, 48)}`,
               hit: true,
@@ -46173,6 +46447,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               retry_count: routineFitRetryCount,
               partial_structured: routineFitPartialStructured,
               partial_dimensions: routineFitPartialDimensions,
+              fallback_used: routineFitFallbackUsed,
+              fallback_reason: routineFitFallbackUsed ? routineFitFallbackReason : null,
+              fallback_source: routineFitFallbackUsed ? 'deterministic_local' : null,
             }),
           );
         }
@@ -54865,6 +55142,7 @@ const __internal = {
   buildRoutineFitRetryPrompt,
   validateRoutineFitStructuredPayload,
   parseRoutineFitUpstreamResult,
+  buildDeterministicRoutineFitSummary,
   getRoutineFitPayloadFromLastAnalysis,
   collectRoutineFitLowDimensions,
   resolveRoutineFitAnalysisPlan,

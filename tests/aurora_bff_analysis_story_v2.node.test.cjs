@@ -308,6 +308,39 @@ test('routine_fit_summary helpers: structured parsing retries on clarify/missing
   assert.equal(badJson.failure_reason, 'json_parse_failed');
 });
 
+test('routine_fit_summary helpers: deterministic fallback emits stable structured summary', () => {
+  const internal = loadInternalWithFlags({});
+  const fallback = internal.buildDeterministicRoutineFitSummary({
+    routineProducts: [
+      { slot: 'am', step: 'cleanser', product_text: 'Gentle cleanser' },
+      { slot: 'am', step: 'serum', product_text: 'Vitamin C serum' },
+      { slot: 'am', step: 'moisturizer', product_text: 'Barrier cream' },
+      { slot: 'am', step: 'spf', product_text: 'SPF 50 sunscreen' },
+      { slot: 'pm', step: 'cleanser', product_text: 'Gentle cleanser' },
+      { slot: 'pm', step: 'treatment', product_text: 'Retinol serum' },
+      { slot: 'pm', step: 'moisturizer', product_text: 'Barrier cream with ceramides' },
+    ],
+    ingredientPlan: {
+      targets: [{ ingredient_name: 'Ceramide', role: 'barrier' }],
+      avoid: [{ ingredient_name: 'Vitamin C' }],
+    },
+    skinProfile: { skin_type_tendency: 'combination', sensitivity_tendency: 'high' },
+    profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+    language: 'EN',
+  });
+
+  assert.equal(typeof fallback.summary, 'string');
+  assert.equal(['good_match', 'partial_match', 'needs_adjustment'].includes(fallback.overall_fit), true);
+  assert.equal(Array.isArray(fallback.highlights), true);
+  assert.equal(Array.isArray(fallback.concerns), true);
+  assert.equal(fallback.highlights.length <= 3, true);
+  assert.equal(fallback.concerns.length <= 3, true);
+  assert.equal(Array.isArray(fallback.next_questions), true);
+  assert.equal(fallback.next_questions.length >= 2, true);
+  assert.equal(fallback.dimension_scores.conflict_risk.score < 0.8, true);
+  assert.match(fallback.dimension_scores.ingredient_match.note, /Vitamin C|align/i);
+});
+
 test('routine_fit_summary helpers: backfill stays enabled in low-confidence mode and chat prefix includes analysis context', () => {
   const internal = loadInternalWithFlags({});
   const plan = internal.resolveRoutineFitAnalysisPlan({

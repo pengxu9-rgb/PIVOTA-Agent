@@ -9832,6 +9832,97 @@ test('/v1/analysis/skin: routine fit retries after clarify-like output, emits ro
   );
 });
 
+test('/v1/analysis/skin: routine fit falls back locally after upstream errors and still emits routine_fit_summary', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let routineFitCallCount = 0;
+
+      decisionModule.auroraChat = async (args = {}) => {
+        if (String(args.intent_hint || '').trim() === 'routine_fit_summary') {
+          routineFitCallCount += 1;
+          throw new Error('routine fit upstream unavailable');
+        }
+        return { answer: 'Mock Aurora reply.', intent: 'chat', cards: [] };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const memoryStore = require('../src/auroraBff/memoryStore');
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const uid = 'uid_analysis_routine_fit_fallback';
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': uid,
+            'X-Trace-ID': 'trace_analysis_routine_fit_fallback',
+            'X-Brief-ID': 'brief_analysis_routine_fit_fallback',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                serum: 'Vitamin C serum',
+                moisturizer: 'Barrier cream',
+                spf: 'SPF 50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const routineFitCard = findCardByType(cards, 'routine_fit_summary');
+        assert.ok(routineFitCard);
+        assert.equal(routineFitCallCount, 2);
+        assert.equal(['good_match', 'partial_match', 'needs_adjustment'].includes(routineFitCard.payload?.overall_fit), true);
+        assert.equal(Array.isArray(routineFitCard.payload?.next_questions), true);
+        assert.equal((routineFitCard.payload?.summary || '').length > 0, true);
+
+        const completedEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((event) => event && event.event_name === 'routine_fit_evaluation_completed')
+          : null;
+        assert.ok(completedEvent);
+        assert.equal(Boolean(completedEvent?.data?.fit_card_emitted), true);
+        assert.equal(Boolean(completedEvent?.data?.fallback_used), true);
+        assert.equal(completedEvent?.data?.fallback_reason, 'upstream_error');
+        assert.equal(completedEvent?.data?.fallback_source, 'deterministic_local');
+
+        const savedProfile = await memoryStore.getProfileForIdentity({ auroraUid: uid, userId: null });
+        assert.equal(typeof savedProfile?.lastAnalysis?.routine_fit?.summary, 'string');
+        assert.equal(Array.isArray(savedProfile?.lastAnalysis?.routine_fit?.next_questions), true);
+      } finally {
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[routeModuleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of ingredient_hub or nudge fallback', async () => {
   await withEnv(
     {
