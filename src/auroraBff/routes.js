@@ -1160,7 +1160,7 @@ const PRODUCT_INTEL_KB_QUARANTINE_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_CHAT_SKILL_ROUTER_V2_ENABLED = (() => {
-  const raw = String(process.env.AURORA_CHAT_SKILL_ROUTER_V2 || 'false')
+  const raw = String(process.env.AURORA_CHAT_SKILL_ROUTER_V2 || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -1201,6 +1201,31 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   reco_generate_guardrail_v1: AURORA_RECO_GENERATE_GUARDRAIL_V1,
   dupe_suggest_sanitize_v1: AURORA_DUPE_SUGGEST_SANITIZE_V1,
 });
+
+function shouldDelegateV1ChatToV2(body) {
+  const payload = isPlainObject(body) ? body : {};
+  const hasLegacyInteractiveKeys =
+    payload.action != null ||
+    payload.action_id != null ||
+    payload.client_state != null ||
+    payload.session != null ||
+    (Array.isArray(payload.messages) && payload.messages.length > 0) ||
+    payload.selected_option_index != null ||
+    payload.clarification_id != null ||
+    payload.requested_transition != null;
+  if (hasLegacyInteractiveKeys) return false;
+
+  const hasV2Context = isPlainObject(payload.context);
+  if (hasV2Context) return true;
+
+  return Boolean(
+    pickFirstTrimmed(
+      payload.skill_id,
+      payload.intent,
+      payload.canonical_intent,
+    ),
+  ) || isPlainObject(payload.params);
+}
 const PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS || 3200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 3200;
@@ -48291,7 +48316,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
     try {
       requireAuroraUid(ctx);
-      if (effectiveChatFlags.skill_router_v2) {
+      if (effectiveChatFlags.skill_router_v2 && shouldDelegateV1ChatToV2(req.body || {})) {
         const { handleChat: handleChatV2 } = require('./routes/chat');
         return handleChatV2(req, res);
       }

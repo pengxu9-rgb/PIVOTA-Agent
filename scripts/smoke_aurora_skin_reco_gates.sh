@@ -109,6 +109,9 @@ run_case_low_confidence() {
   jq_assert_json "analysis_story_v2 exists" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
   jq_assert_json "ingredient_plan exists on low confidence path" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
   jq_assert_json "confidence_notice exists on low confidence path" '.cards | any(.type=="confidence_notice")' "$analysis_json"
+  jq_assert_json "analysis source baseline_low_confidence" '(.analysis_meta.detector_source // "") == "baseline_low_confidence"' "$analysis_json"
+  jq_assert_json "artifact usable false on low confidence" '(.analysis_meta.artifact_usable // true) == false' "$analysis_json"
+  jq_assert_json "analysis confidence low" '.cards | any((.type=="analysis_story_v2") and (((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "low"))' "$analysis_json"
   jq_assert_json "no routine_fit_summary on low confidence path" '(.cards | any(.type=="routine_fit_summary")) | not' "$analysis_json"
   jq_assert_json "analysis_summary not public when story exists" '
     if (.cards | any(.type=="analysis_story_v2"))
@@ -156,6 +159,9 @@ run_case_medium_confidence() {
   jq_assert_json "analysis_story_v2 exists (medium case)" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
   jq_assert_json "ingredient_plan exists (medium case)" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
   jq_assert_json "routine_fit_summary exists (medium case)" '.cards | any(.type=="routine_fit_summary")' "$analysis_json"
+  jq_assert_json "analysis source is not baseline fallback" '(.analysis_meta.detector_source // "") != "baseline_low_confidence"' "$analysis_json"
+  jq_assert_json "artifact usable on medium/high" '(.analysis_meta.artifact_usable // false) == true' "$analysis_json"
+  jq_assert_json "analysis confidence medium/high" '.cards | any((.type=="analysis_story_v2") and ((((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "medium") or (((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "high")))' "$analysis_json"
   jq_assert_json "routine deep-dive chip exists when routine_fit_summary exists" '
     if (.cards | any(.type=="routine_fit_summary"))
     then (.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))
