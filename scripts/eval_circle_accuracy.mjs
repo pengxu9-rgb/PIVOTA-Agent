@@ -1006,7 +1006,9 @@ async function callApiPrediction({
 
   const cards = Array.isArray(parsed && parsed.cards) ? parsed.cards : [];
   const modulesCard = cards.find((card) => card && card.type === 'photo_modules_v1');
-  const analysisCard = cards.find((card) => card && card.type === 'analysis_summary');
+  const analysisCard =
+    cards.find((card) => card && card.type === 'analysis_story_v2') ||
+    cards.find((card) => card && card.type === 'analysis_summary');
   if (!modulesCard || !modulesCard.payload || typeof modulesCard.payload !== 'object') {
     return {
       ok: false,
