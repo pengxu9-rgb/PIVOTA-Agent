@@ -35,6 +35,8 @@
     "probe:aurora:reco:prompt-extract": "node scripts/aurora_reco_prompt_extract.cjs",
     "probe:aurora:reco:baseline-snapshot": "node scripts/aurora_reco_baseline_snapshot.cjs",
     "verify:aurora:contracts": "node scripts/verify_aurora_contracts_sync.cjs",
+    "audit:aurora:prompts": "node scripts/export_aurora_prompt_inventory.cjs",
+    "audit:aurora:prompt-specs": "node scripts/export_aurora_prompt_spec_matrix.cjs",
     "test:aurora:skills": "node tests/skills/test_skill_contract.js",
     "test:aurora:skills:live": "AURORA_SKILL_CONTRACT_LIVE=1 node tests/skills/test_skill_contract.js",
     "test:aurora:routes:v2": "node --test tests/aurora_chat_v2_routes.node.test.cjs",

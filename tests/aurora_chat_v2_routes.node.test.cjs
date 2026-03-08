@@ -13,6 +13,21 @@ function createApp() {
   return app;
 }
 
+function parseSse(responseText) {
+  return String(responseText || '')
+    .trim()
+    .split(/\n\n+/)
+    .filter(Boolean)
+    .map((block) => {
+      const event = block.match(/^event:\s*(\w+)/m)?.[1] || null;
+      const dataText = block.match(/^data:\s*(.+)$/m)?.[1] || '{}';
+      return {
+        event,
+        data: JSON.parse(dataText),
+      };
+    });
+}
+
 test.beforeEach(() => {
   process.env.AURORA_CHAT_V2_STUB_RESPONSES = '1';
   __resetRouterForTests();
@@ -74,6 +89,28 @@ test('POST /v2/chat/stream emits ordered SSE events with a single result', async
   assert.ok(events.indexOf('chunk') > events.indexOf('thinking'));
   assert.ok(events.indexOf('result') > events.indexOf('chunk'));
   assert.strictEqual(events[events.length - 1], 'done');
+});
+
+test('POST /v2/chat/stream free-form chunks reconstruct the final text answer', async () => {
+  const app = createApp();
+  const response = await request(app)
+    .post('/v2/chat/stream')
+    .send({
+      message: 'how do I start a simple skincare routine?',
+      context: { locale: 'en', profile: {} },
+    })
+    .expect(200);
+
+  const parsed = parseSse(response.text);
+  const chunkText = parsed
+    .filter((event) => event.event === 'chunk')
+    .map((event) => event.data.text)
+    .join('');
+  const resultPayload = parsed.find((event) => event.event === 'result')?.data;
+  const finalAnswer = resultPayload?.cards?.[0]?.sections?.find((section) => section.type === 'text_answer')?.text_en;
+
+  assert.ok(chunkText.length > 0);
+  assert.equal(chunkText, finalAnswer);
 });
 
 test('POST /v1/chat/stream is an alias of the v2 stream handler', async () => {

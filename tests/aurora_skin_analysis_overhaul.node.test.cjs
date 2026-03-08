@@ -157,19 +157,22 @@ test('vision prompt: fail grade says return NO findings', () => {
 // Phase 6: Report prompt enforces separation
 // ---------------------------------------------------------------------------
 
-test('report prompt: EN contains separation_rule and routine_step_schema', () => {
+test('report prompt: EN contains structured separation and routine step rules', () => {
   const bundle = buildSkinReportPromptBundle({ language: 'en-US', dto: { quality: { grade: 'pass' } } });
-  assert.ok(bundle.userPrompt.includes('separation_rule'));
-  assert.ok(bundle.userPrompt.includes('routine_step_schema'));
+  assert.ok(bundle.userPrompt.includes('[OUTPUT_CONTRACT]'));
+  assert.ok(bundle.userPrompt.includes('[HARD_RULES]'));
+  assert.ok(bundle.userPrompt.includes('Separation rule'));
+  assert.ok(bundle.userPrompt.includes('routine_expert am_plan/pm_plan each step MUST contain'));
   assert.ok(bundle.userPrompt.includes('two_week_focus'));
-  assert.ok(bundle.userPrompt.includes('findings_rule'));
-  assert.ok(bundle.userPrompt.includes('guidance_brief_rule'));
+  assert.ok(bundle.userPrompt.includes('findings'));
+  assert.ok(bundle.userPrompt.includes('guidance_brief'));
 });
 
-test('report prompt: CN contains separation and findings rules', () => {
+test('report prompt: CN contains structured separation and findings rules', () => {
   const bundle = buildSkinReportPromptBundle({ language: 'zh-CN', dto: { quality: { grade: 'pass' } } });
-  assert.ok(bundle.userPrompt.includes('separation_rule'));
-  assert.ok(bundle.userPrompt.includes('findings_rule'));
+  assert.ok(bundle.userPrompt.includes('[HARD_RULES]'));
+  assert.ok(bundle.userPrompt.includes('分离规则'));
+  assert.ok(bundle.userPrompt.includes('findings'));
   assert.ok(bundle.userPrompt.includes('two_week_focus'));
 });
 
@@ -334,9 +337,9 @@ test('dedupeAndCapOutput: caps AM/PM steps', () => {
 // Phase 10: next_step_options in report prompt
 // ---------------------------------------------------------------------------
 
-test('report prompt: includes next_step_rule', () => {
+test('report prompt: includes next_step_options contract', () => {
   const bundle = buildSkinReportPromptBundle({ language: 'en-US', dto: {} });
-  assert.ok(bundle.userPrompt.includes('next_step_rule'));
+  assert.ok(bundle.userPrompt.includes('next_step_options'));
   assert.ok(bundle.userPrompt.includes('analysis_get_recommendations'));
   assert.ok(bundle.userPrompt.includes('analysis_optimize_existing'));
   assert.ok(bundle.userPrompt.includes('analysis_both_reco_optimize'));
