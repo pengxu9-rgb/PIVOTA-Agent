@@ -10,6 +10,7 @@ const MANIFEST_SCHEMA_VERSION = 'aurora.diag.pseudo_label_manifest.v1';
 const DEFAULT_STORE_SUBDIR = path.join('tmp', 'diag_pseudo_label_factory');
 const DEFAULT_REGION_IOU_THRESHOLD = 0.3;
 const DEFAULT_AGREEMENT_THRESHOLD = 0.75;
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 function normalizeToken(value) {
   return String(value == null ? '' : value)
@@ -798,7 +799,12 @@ function inferModelName(output) {
   if (typeof output?.source_model === 'string' && output.source_model.trim()) return output.source_model.trim();
   if (typeof output?.model === 'string' && output.model.trim()) return output.model.trim();
   if (output?.provider === 'gemini_provider') {
-    return String(process.env.DIAG_ENSEMBLE_GEMINI_MODEL || '').trim() || 'gemini-3-pro-preview';
+    return resolveNonImageGeminiModel({
+      model: String(process.env.DIAG_ENSEMBLE_GEMINI_MODEL || '').trim(),
+      fallbackModel: 'gemini-3-pro-preview',
+      envSource: 'DIAG_ENSEMBLE_GEMINI_MODEL',
+      callPath: 'pseudo_label_factory',
+    }).effectiveModel;
   }
   if (output?.provider === 'gpt_provider') {
     return String(process.env.DIAG_ENSEMBLE_GPT_MODEL || '').trim() || 'gpt-4o-mini';

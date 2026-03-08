@@ -3200,6 +3200,30 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     metadata?.association_plan && typeof metadata.association_plan === 'object'
       ? metadata.association_plan
       : null;
+  const requestContext =
+    requestPayload?.context && typeof requestPayload.context === 'object'
+      ? requestPayload.context
+      : null;
+  const slotStateFromContext =
+    requestContext &&
+    (Array.isArray(requestContext.asked_slots) ||
+      (requestContext.resolved_slots && typeof requestContext.resolved_slots === 'object'))
+      ? {
+          asked_slots: Array.isArray(requestContext.asked_slots)
+            ? requestContext.asked_slots
+                .map((value) => String(value || '').trim())
+                .filter(Boolean)
+            : [],
+          resolved_slots:
+            requestContext.resolved_slots && typeof requestContext.resolved_slots === 'object'
+              ? Object.fromEntries(
+                  Object.entries(requestContext.resolved_slots)
+                    .map(([key, value]) => [String(key || '').trim(), value])
+                    .filter(([key, value]) => key && String(value || '').trim()),
+                )
+              : {},
+        }
+      : null;
   const slotStateFromMeta =
     metadata?.slot_state && typeof metadata.slot_state === 'object'
       ? metadata.slot_state
@@ -3210,6 +3234,32 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             typeof metadata.search_decision.slot_state === 'object'
           ? metadata.search_decision.slot_state
           : null;
+  const slotState = {
+    asked_slots: Array.from(
+      new Set(
+        [
+          ...(Array.isArray(slotStateFromContext?.asked_slots) ? slotStateFromContext.asked_slots : []),
+          ...(Array.isArray(slotStateFromMeta?.asked_slots) ? slotStateFromMeta.asked_slots : []),
+        ]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean),
+      ),
+    ),
+    resolved_slots: {
+      ...(slotStateFromContext?.resolved_slots && typeof slotStateFromContext.resolved_slots === 'object'
+        ? slotStateFromContext.resolved_slots
+        : {}),
+      ...(slotStateFromMeta?.resolved_slots && typeof slotStateFromMeta.resolved_slots === 'object'
+        ? slotStateFromMeta.resolved_slots
+        : {}),
+    },
+  };
+  const hasSlotState =
+    slotState.asked_slots.length > 0 || Object.keys(slotState.resolved_slots).length > 0;
+  const clarifyBudgetContext =
+    requestContext?.clarify_budget && typeof requestContext.clarify_budget === 'object'
+      ? requestContext.clarify_budget
+      : null;
   const postAnchorBasis = resolvePostAnchorBasis({
     rawQuery,
     intent,
@@ -3374,37 +3424,75 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   let clarification = null;
   let finalDecision = 'products_returned';
+  let clarifyBudgetExhausted = false;
+  let contextFailOpenApplied = false;
   if (clarifyByAmbiguity) {
+    const clarifyBudgetMaxRounds = Number(clarifyBudgetContext?.max_rounds);
+    const clarifyBudgetUsedRounds = Number(clarifyBudgetContext?.used_rounds);
+    clarifyBudgetExhausted =
+      Number.isFinite(clarifyBudgetMaxRounds) &&
+      Number.isFinite(clarifyBudgetUsedRounds) &&
+      clarifyBudgetMaxRounds >= 0 &&
+      clarifyBudgetUsedRounds >= clarifyBudgetMaxRounds;
+    const resolvedScenarioFromContext = String(slotState.resolved_slots?.scenario || '').trim();
+    const canApplyContextFailOpen =
+      resolvedScenarioFromContext.length > 0 &&
+      (postCandidateCount > 0 || preDomainFilterCandidates.length > 0 || before > 0) &&
+      !clarifyBudgetExhausted &&
+      ['mission', 'scenario', 'category'].includes(String(queryClass || ''));
+    if (canApplyContextFailOpen) {
+      if (postCandidateCount === 0) {
+        filtered = preDomainFilterCandidates.length > 0 ? preDomainFilterCandidates.slice() : list.slice();
+        postCandidateCount = filtered.length;
+        postQuality.candidates = postCandidateCount;
+        postQuality.candidates_ok = postCandidateCount >= effectiveMinRecallCandidates;
+      }
+      contextFailOpenApplied = true;
+      postQuality.context_fail_open_applied = true;
+      lowConfidenceReasons.push('context_fail_open');
+    } else {
+      postQuality.context_fail_open_applied = false;
+    }
     const forceClearForAmbiguousRecommend =
       intentNeedsClarification &&
-      ['exploratory', 'non_shopping'].includes(String(queryClass || ''));
+      String(queryClass || '') === 'exploratory';
     const shouldClearProductsForClarify =
-      forceClearForAmbiguousRecommend ||
-      !brandQueryBypassAmbiguity &&
-      (
-        ['scenario', 'mission', 'gift'].includes(String(queryClass || '')) ||
-        (!FPM_CLARIFY_NEVER_EMPTY &&
-          ['exploratory', 'category', 'attribute'].includes(String(queryClass || '')))
-      ) &&
-      (postQualityHardFail || postCandidateCount === 0);
-    if (shouldClearProductsForClarify) {
-      filtered = [];
-      postCandidateCount = 0;
+      !contextFailOpenApplied &&
+      !clarifyBudgetExhausted &&
+      (forceClearForAmbiguousRecommend ||
+        (!brandQueryBypassAmbiguity &&
+          (
+            ['scenario', 'mission', 'gift'].includes(String(queryClass || '')) ||
+            (!FPM_CLARIFY_NEVER_EMPTY &&
+              ['exploratory', 'category', 'attribute'].includes(String(queryClass || '')))
+          ) &&
+          (postQualityHardFail || postCandidateCount === 0)));
+    if (!clarifyBudgetExhausted && !contextFailOpenApplied) {
+      if (shouldClearProductsForClarify) {
+        filtered = [];
+        postCandidateCount = 0;
+      }
+      clarification = buildClarification({
+        queryClass,
+        intent,
+        language: intent?.language,
+        rawQuery,
+        associationPlan: associationPlanFromMeta,
+        slotState: hasSlotState ? slotState : null,
+        hints: {
+          post_candidates: postCandidateCount,
+          match_tier: baselineStats?.match_tier || null,
+        },
+      });
+      finalDecision = postCandidateCount > 0 ? 'products_returned_with_clarification' : 'clarify';
+      lowConfidenceReasons.push('clarification_attached_non_blocking');
+    } else if (clarifyBudgetExhausted) {
+      postQuality.context_fail_open_applied = false;
+      finalDecision = postCandidateCount > 0 ? 'products_returned' : 'clarify_skipped_budget_exhausted';
+      lowConfidenceReasons.push('clarify_budget_exhausted');
     }
-    clarification = buildClarification({
-      queryClass,
-      intent,
-      language: intent?.language,
-      rawQuery,
-      associationPlan: associationPlanFromMeta,
-      slotState: slotStateFromMeta,
-      hints: {
-        post_candidates: postCandidateCount,
-        match_tier: baselineStats?.match_tier || null,
-      },
-    });
-    finalDecision = postCandidateCount > 0 ? 'products_returned_with_clarification' : 'clarify';
-    lowConfidenceReasons.push('clarification_attached_non_blocking');
+  } else {
+    postQuality.context_fail_open_applied = false;
   }
   after = filtered.length;
 
@@ -3441,6 +3529,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   }
   if (strictEmptyByAmbiguity) reasonCodes.add('AMBIGUITY_STRICT_EMPTY');
   if (clarifyByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY');
+  if (clarifyBudgetExhausted) reasonCodes.add('CLARIFY_BUDGET_EXHAUSTED');
+  if (contextFailOpenApplied) reasonCodes.add('CONTEXT_FAIL_OPEN');
   if (postQualityHardFail) reasonCodes.add('LOW_CONF_POST');
   if (brandQueryBypassAmbiguity) reasonCodes.add('BRAND_QUERY_BYPASS_AMBIGUITY');
   if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
@@ -3677,10 +3767,17 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const clarificationSlotState =
     clarification && String(clarification.slot || '').trim()
       ? {
-          asked_slots: [String(clarification.slot).trim()],
-          resolved_slots: {},
+          asked_slots: Array.from(
+            new Set([
+              ...(hasSlotState ? slotState.asked_slots : []),
+              String(clarification.slot).trim(),
+            ]),
+          ),
+          resolved_slots: hasSlotState ? { ...slotState.resolved_slots } : {},
         }
-      : null;
+      : hasSlotState
+        ? slotState
+        : null;
 
   const responsePayload = {
     ...augmented,

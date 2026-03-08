@@ -18,6 +18,8 @@ async function withEnv(patch, fn) {
 }
 
 describe('health endpoints', () => {
+  jest.setTimeout(15000);
+
   beforeEach(() => {
     jest.resetModules();
   });

@@ -4,6 +4,7 @@ const { PRELABEL_PROMPT_VERSION, buildPrelabelSystemPrompt, buildPrelabelUserPro
 const { callGeminiPrelabel } = require('./recoPrelabelGemini');
 const { validateAndNormalizePrelabelOutput, fallbackInvalidJson } = require('./recoPrelabelValidator');
 const { upsertSuggestion, getSuggestionByInputHash, getSuggestionsByAnchor } = require('./recoLabelSuggestionStore');
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 const BLOCKS = ['competitors', 'dupes', 'related_products'];
 
@@ -239,7 +240,12 @@ async function generatePrelabelsForAnchor({
   request_id = '',
   session_id = '',
   logger,
-  model_name = process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-3-flash-preview',
+  model_name = resolveNonImageGeminiModel({
+    model: process.env.AURORA_BFF_RECO_PRELABEL_MODEL,
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: 'AURORA_BFF_RECO_PRELABEL_MODEL',
+    callPath: 'aurora_reco_prelabel_service',
+  }).effectiveModel,
   prompt_version = PRELABEL_PROMPT_VERSION,
   allow_same_brand_competitors = false,
   allow_same_brand_dupes = false,

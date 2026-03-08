@@ -2,6 +2,10 @@ import axios, { AxiosError } from "axios";
 import { z } from "zod";
 import sharp from "sharp";
 import { getAxiosKeepAliveConfig } from "../http/axiosKeepAlive";
+import {
+  NON_IMAGE_GEMINI_FLOOR_MODEL,
+  resolveNonImageGeminiModel,
+} from "../lib/geminiModelFloor";
 
 export type ImageInput =
   | { kind: "url"; url: string }
@@ -98,10 +102,15 @@ function geminiBaseUrl(): string {
     .replace(/\/v1$/i, "");
 }
 
-function geminiModelName(model: string): string {
+function geminiModelName(model: string, envSource = "PIVOTA_LAYER2_MODEL_GEMINI"): string {
   const m = String(model || "").trim();
-  if (!m) return "gemini-1.5-flash";
-  return m.startsWith("models/") ? m.slice("models/".length) : m;
+  const resolved = resolveNonImageGeminiModel({
+    model: m,
+    fallbackModel: NON_IMAGE_GEMINI_FLOOR_MODEL,
+    envSource,
+    callPath: "layer2_provider",
+  }).effectiveModel;
+  return resolved.startsWith("models/") ? resolved.slice("models/".length) : resolved;
 }
 
 function isGeminiLikeModelName(model: string): boolean {
@@ -738,17 +747,15 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
         throw new LlmError("LLM_CONFIG_MISSING", "Missing required env var: GEMINI_API_KEY");
       }
 
-      const requestedModel = geminiModelName(getEnv("PIVOTA_LAYER2_MODEL_GEMINI") || getEnv("PIVOTA_LAYER2_MODEL"));
+      const layer2GeminiModel = getEnv("PIVOTA_LAYER2_MODEL_GEMINI") || getEnv("PIVOTA_LAYER2_MODEL");
+      const requestedModel = geminiModelName(
+        layer2GeminiModel,
+        getEnv("PIVOTA_LAYER2_MODEL_GEMINI") ? "PIVOTA_LAYER2_MODEL_GEMINI" : "PIVOTA_LAYER2_MODEL"
+      );
       const candidateModels = uniqueStrings([
         requestedModel,
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-002",
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro-latest",
-        "gemini-1.5-pro",
-        "gemini-1.5-pro-002",
+        "gemini-3-flash-preview",
+        "gemini-3-pro-preview",
       ]);
 
       const apiVersions = ["v1beta", "v1"] as const;

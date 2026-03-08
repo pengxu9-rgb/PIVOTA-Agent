@@ -180,6 +180,32 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     }
   });
 
+  test("layer1 Gemini client auto-upgrades legacy shared model env to gemini-3-flash-preview", async () => {
+    process.env.GEMINI_API_KEY = "test_key";
+    process.env.GEMINI_MODEL = "gemini-2.5-flash";
+
+    const genai = require("@google/genai");
+    const imgPath = writeTempImage();
+
+    try {
+      const generateContent = jest.fn().mockResolvedValue({ text: "{\"ok\":true}" });
+      genai.GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+
+      const { generateLookSpecFromImage } = require("../../src/layer1/llm/geminiClient");
+      const out = await generateLookSpecFromImage({
+        imagePath: imgPath,
+        promptText: "prompt",
+        responseJsonSchema: { type: "object" },
+      });
+
+      expect(out.ok).toBe(true);
+      const call = generateContent.mock.calls[0][0];
+      expect(call.model).toBe("gemini-3-flash-preview");
+    } finally {
+      fs.rmSync(imgPath, { force: true });
+    }
+  });
+
   test("does not call Gemini or retry when GEMINI_API_KEY missing", async () => {
     process.env.GEMINI_MAX_RETRIES = "5";
 

@@ -64,10 +64,11 @@ test('legacy analysis-story review prompt encodes reviewer-patcher constraints',
     assert.match(prompt, /\[SYSTEM\]\[version=aurora\.analysis_story\.v2\.review_v2\]/i);
     assert.match(prompt, /strict JSON reviewer/i);
     assert.match(prompt, /single valid JSON object/i);
-    assert.match(prompt, /patched_story must stay within evidence boundaries/i);
+    assert.match(prompt, /patch_ops must stay within evidence boundaries/i);
     assert.match(prompt, /Do NOT introduce new findings, causes, products, or brands/i);
-    assert.match(prompt, /Keep disclaimer_non_medical true/i);
-    assert.match(prompt, /If routine is missing in evidence, keep or repair routine_bridge/i);
+    assert.match(prompt, /Remove any product recommendation CTA, routine-intake CTA, or product shortlist fields/i);
+    assert.match(prompt, /Allowed patch ops only: replace\|remove on these paths:/i);
+    assert.match(prompt, /issues must use only these codes:/i);
     assert.match(prompt, /If a safe patch is not possible, set approved=false/i);
     assert.match(prompt, /Review output schema \(structure only\):/i);
   } finally {

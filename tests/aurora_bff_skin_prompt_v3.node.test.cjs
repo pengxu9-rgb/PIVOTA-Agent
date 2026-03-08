@@ -9,21 +9,26 @@ const {
   isSkinDeepeningV2,
 } = require('../src/auroraBff/skinLlmPrompts');
 const {
+  SkinReportCanonicalSchema,
+  SkinReportCanonicalLlmSchema,
   normalizeVisionCanonicalLayer,
   validateVisionCanonicalLayer,
   evaluateVisionCanonicalSemantic,
   renderVisionCanonicalLayer,
   normalizeReportCanonicalLayer,
+  adjudicateReportCanonicalLayer,
   validateReportCanonicalLayer,
   evaluateReportCanonicalSemantic,
   renderReportCanonicalLayer,
   normalizeDeepeningCanonicalLayer,
+  adjudicateDeepeningCanonicalLayer,
   validateDeepeningCanonicalLayer,
   evaluateDeepeningCanonicalSemantic,
   renderDeepeningCanonicalLayer,
   validateReportStrategy,
   validateVisionObservation,
 } = require('../src/auroraBff/skinAnalysisContract');
+const { __internal: routesInternal } = require('../src/auroraBff/routes');
 
 test('skin prompt v3: canonical vision and report prompts ignore locale-specific reasoning', () => {
   assert.equal(isSkinPromptV3('skin_v3'), true);
@@ -170,4 +175,156 @@ test('skin prompt v3: deepening canonical renderer stays phase-safe and determin
   assert.equal(Array.isArray(rendered.options), true);
   assert.equal(rendered.options.length >= 3, true);
   assert.match(rendered.question, /reaction|noticeable|redness|stinging/i);
+});
+
+test('skin prompt v3: report LLM transport schema excludes deepening while internal canonical keeps it', () => {
+  assert.equal(Boolean(SkinReportCanonicalSchema.properties.deepening), true);
+  assert.equal(Boolean(SkinReportCanonicalLlmSchema.properties.deepening), false);
+});
+
+test('skin prompt v3: strict canonical ingress does not invent mixed priority or texture-linked steps', () => {
+  const strictCanonical = normalizeReportCanonicalLayer(
+    {
+      needs_risk_check: false,
+      summary_focus: {},
+      insights: [],
+      routine_steps: [{ time: 'am', step_type: 'cleanse' }],
+      watchouts: [],
+      follow_up: {},
+      two_week_focus: [],
+      risk_flags: [],
+    },
+    { strict: true },
+  );
+  assert.deepEqual(strictCanonical.summary_focus, {});
+  assert.deepEqual(strictCanonical.follow_up, {});
+  assert.equal(Array.isArray(strictCanonical.routine_steps), true);
+  assert.equal(strictCanonical.routine_steps[0].linked_cues, undefined);
+});
+
+test('skin prompt v3: report adjudication resolves deterministic priority from report context', () => {
+  const strictCanonical = normalizeReportCanonicalLayer(
+    {
+      needs_risk_check: false,
+      summary_focus: { priority: 'mixed', primary_cues: [] },
+      insights: [
+        { cue: 'redness', region: 'cheeks', severity: 'mild', confidence: 'high', evidence: 'diffuse cheek redness' },
+      ],
+      routine_steps: [
+        { time: 'am', step_type: 'cleanse', target: 'barrier', cadence: 'daily', intensity: 'gentle', linked_cues: ['redness'] },
+      ],
+      watchouts: [],
+      follow_up: {},
+      two_week_focus: [],
+      risk_flags: [],
+    },
+    { strict: true },
+  );
+  const adjudicated = adjudicateReportCanonicalLayer(strictCanonical, {
+    reportContext: {
+      concern_rank: ['redness', 'texture'],
+      deterministic_signals: { redness: 'high', oiliness: 'low', acne_like: 'none', dryness: 'some', texture: 'ok' },
+      routine_summary: { moisturizer: 'yes', sunscreen: 'yes' },
+      locked_features_summary: ['visible redness around the cheeks'],
+      quality: { grade: 'pass' },
+    },
+  });
+  assert.equal(adjudicated.summary_focus.priority, 'redness');
+  assert.deepEqual(adjudicated.summary_focus.primary_cues.slice(0, 1), ['redness']);
+  assert.equal(adjudicated.follow_up.intent, 'tolerance_check');
+  assert.deepEqual(adjudicated.follow_up.conditional_followups, ['routine_share']);
+  assert.equal(adjudicated.insights.length, 1);
+});
+
+test('skin prompt v3: report adjudication forces barrier-first plan for sensitive active routines', () => {
+  const strictCanonical = normalizeReportCanonicalLayer(
+    {
+      needs_risk_check: true,
+      summary_focus: { priority: 'redness', primary_cues: ['redness', 'texture'] },
+      insights: [
+        { cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high', evidence: 'cheek redness' },
+        { cue: 'texture', region: 'chin', severity: 'mild', confidence: 'med', evidence: 'chin texture' },
+        { cue: 'flaking', region: 'full_face', severity: 'mild', confidence: 'med', evidence: 'surface dryness' },
+      ],
+      routine_steps: [],
+      watchouts: [],
+      follow_up: { intent: 'reaction_check', conditional_followups: ['tolerance_check'] },
+      two_week_focus: [],
+      risk_flags: [],
+    },
+    { strict: true },
+  );
+  const adjudicated = adjudicateReportCanonicalLayer(strictCanonical, {
+    reportContext: {
+      concern_rank: ['redness', 'texture'],
+      deterministic_signals: { redness: 'mid', oiliness: 'low', acne_like: 'few', dryness: 'some', texture: 'rough' },
+      routine_summary: { moisturizer: 'yes', sunscreen: 'unknown', actives: ['retinoid'] },
+      constraints: ['sensitive-skin self-report'],
+      locked_features_summary: ['mild redness on cheeks', 'rough texture around chin'],
+      quality: { grade: 'pass' },
+    },
+  });
+  assert.equal(adjudicated.summary_focus.priority, 'barrier');
+  assert.deepEqual([...adjudicated.summary_focus.primary_cues].sort(), ['redness', 'texture']);
+  assert.deepEqual(adjudicated.follow_up, { intent: 'reaction_check', conditional_followups: ['routine_share'] });
+  assert.deepEqual(
+    adjudicated.insights.map((row) => `${row.cue}:${row.region}:${row.severity}`),
+    ['redness:cheeks:moderate', 'texture:chin:moderate'],
+  );
+});
+
+test('skin prompt v3: deepening adjudication preserves inherited priority and sorts advice items', () => {
+  const canonical = adjudicateDeepeningCanonicalLayer(
+    normalizeDeepeningCanonicalLayer(
+      {
+        phase: 'reactions',
+        summary_priority: 'mixed',
+        advice_items: ['track_redness', 'protect_barrier', 'confirm_tolerance'],
+        question_intent: 'reaction_check',
+      },
+      { strict: true, inheritedPriority: 'barrier' },
+    ),
+    { inheritedPriority: 'barrier', deepeningContext: { phase: 'reactions' } },
+  );
+  assert.equal(canonical.summary_priority, 'barrier');
+  assert.deepEqual(canonical.advice_items, ['protect_barrier', 'confirm_tolerance', 'track_redness']);
+});
+
+test('skin prompt v3: routes mainline deepening helper resolves products and reactions phases deterministically', () => {
+  const products = routesInternal.buildMainlineDeepeningDto({
+    language: 'en-US',
+    promptVersion: 'skin_v3',
+    userRequestedPhoto: true,
+    photosProvided: true,
+    hasRoutine: false,
+    routineCandidate: null,
+    profileSummary: { goals: ['calm redness'] },
+    recentLogsSummary: [],
+    qualityObject: { grade: 'pass' },
+    reportCanonical: { summary_focus: { priority: 'redness' }, watchouts: [], two_week_focus: [] },
+    visionCanonical: null,
+  });
+  assert.equal(products.phasePlan.phase, 'products');
+  assert.equal(products.dto.question_intent, 'routine_share');
+
+  const reactions = routesInternal.buildMainlineDeepeningDto({
+    language: 'en-US',
+    promptVersion: 'skin_v3',
+    userRequestedPhoto: true,
+    photosProvided: true,
+    hasRoutine: true,
+    routineCandidate: 'retinoid pm',
+    profileSummary: { goals: ['calm redness'] },
+    recentLogsSummary: [{ reaction: 'stinging after serum' }],
+    qualityObject: { grade: 'pass' },
+    reportCanonical: {
+      summary_focus: { priority: 'barrier' },
+      watchouts: ['pause_if_stinging'],
+      two_week_focus: ['confirm_tolerance'],
+      insights: [{ cue: 'redness', region: 'cheeks', severity: 'mild', confidence: 'low', evidence: 'pink tone' }],
+    },
+    visionCanonical: null,
+  });
+  assert.equal(reactions.phasePlan.phase, 'reactions');
+  assert.equal(reactions.dto.question_intent, 'reaction_check');
 });

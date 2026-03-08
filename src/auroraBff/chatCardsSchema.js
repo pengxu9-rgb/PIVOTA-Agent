@@ -16,13 +16,14 @@ const CHAT_CARD_TYPES = [
   'diagnosis_gate',
   'analysis_summary',
   'analysis_story_v2',
+  'routine_fit_summary',
+  'confidence_notice',
+  'budget_gate',
+  'gate_notice',
   'diagnosis_v2_login_prompt',
   'diagnosis_v2_intro',
   'diagnosis_v2_photo_prompt',
   'diagnosis_v2_result',
-  'confidence_notice',
-  'budget_gate',
-  'gate_notice',
 ];
 
 const CardActionSchema = z
