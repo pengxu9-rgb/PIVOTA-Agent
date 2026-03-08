@@ -1513,6 +1513,11 @@ const AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 3800;
   return Math.max(900, Math.min(12000, v));
 })();
+const AURORA_ROUTINE_FIT_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_ROUTINE_FIT_TIMEOUT_MS || 12000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 12000;
+  return Math.max(3000, Math.min(20000, v));
+})();
 const DUPE_KB_ASYNC_BACKFILL_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_DUPE_KB_ASYNC_BACKFILL || 'true')
     .trim()
@@ -1573,6 +1578,12 @@ const ANALYSIS_STORY_MODEL_OPENAI =
   'gpt-4o-mini';
 const ANALYSIS_STORY_MODEL_GEMINI =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_analysis_story');
+const ROUTINE_FIT_MODEL_GEMINI =
+  resolveAuroraGeminiModel(
+    ['AURORA_ROUTINE_FIT_MODEL_GEMINI', 'AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'],
+    'gemini-3-flash-preview',
+    'aurora_routine_fit',
+  );
 const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
 const AURORA_RUNTIME_QA_GEMINI_MODEL =
   resolveAuroraGeminiModel(['AURORA_RUNTIME_QA_GEMINI_MODEL'], ANALYSIS_STORY_MODEL_GEMINI || 'gemini-3-flash-preview', 'aurora_runtime_qa');
@@ -23061,6 +23072,37 @@ function parseRoutineFitUpstreamResult(upstream) {
     partial_structured: validation.partial_structured,
     partial_dimensions: validation.partial_dimensions,
   };
+}
+
+function classifyRoutineFitUpstreamFailure(err) {
+  const status = Number(err && err.status);
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  const message = String((err && err.message) || '').trim().toLowerCase();
+
+  if (status === 429 || code === 'ERR_RATE_LIMIT' || message.includes('rate limit')) {
+    return { failure_class: 'rate_limited', upstream_status: Number.isFinite(status) ? status : null, upstream_error_code: code || null };
+  }
+  if (
+    code === 'ECONNABORTED' ||
+    code === 'ETIMEDOUT' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    message.includes('timeout')
+  ) {
+    return { failure_class: 'upstream_timeout', upstream_status: Number.isFinite(status) ? status : null, upstream_error_code: code || null };
+  }
+  if (Number.isFinite(status) && status >= 500) {
+    return { failure_class: 'upstream_5xx', upstream_status: status, upstream_error_code: code || null };
+  }
+  if (Number.isFinite(status) && status >= 400) {
+    return { failure_class: 'upstream_4xx', upstream_status: status, upstream_error_code: code || null };
+  }
+  if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'UND_ERR_SOCKET') {
+    return { failure_class: 'upstream_connection_error', upstream_status: Number.isFinite(status) ? status : null, upstream_error_code: code || null };
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return { failure_class: 'upstream_dns_error', upstream_status: Number.isFinite(status) ? status : null, upstream_error_code: code || null };
+  }
+  return { failure_class: 'upstream_error', upstream_status: Number.isFinite(status) ? status : null, upstream_error_code: code || null };
 }
 
 function normalizeRoutineFitText(value) {
@@ -46400,6 +46442,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             routineProducts: routineProductCandidates.slice(0, 8),
             language: ctx.lang,
           });
+          const fitPromptHash = crypto.createHash('sha1').update(fitPrompt).digest('hex').slice(0, 16);
 
           for (let attempt = 0; attempt < 2 && !routineFitCard; attempt += 1) {
             const attemptPrompt = attempt === 0 ? fitPrompt : buildRoutineFitRetryPrompt(fitPrompt, ctx.lang);
@@ -46407,12 +46450,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               const fitUpstream = await auroraChat({
                 baseUrl: AURORA_DECISION_BASE_URL,
                 query: attemptPrompt,
-                timeoutMs: Math.min(12000, AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS || 12000),
+                timeoutMs: AURORA_ROUTINE_FIT_TIMEOUT_MS,
                 llm_provider: 'gemini',
-                llm_model: SKIN_VISION_MODEL_GEMINI || 'gemini-3-flash-preview',
+                llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
                 intent_hint: 'routine_fit_summary',
                 disallow_clarify: true,
                 required_structured_keys: ROUTINE_FIT_REQUIRED_STRUCTURED_KEYS,
+                prompt_hash: fitPromptHash,
+                prompt_template_id: 'routine_fit_summary_v1',
+                trace_id: ctx.trace_id,
+                request_id: ctx.request_id,
               });
 
               const parsedFit = parseRoutineFitUpstreamResult(fitUpstream);
@@ -46440,11 +46487,30 @@ function mountAuroraBffRoutes(app, { logger }) {
                 );
               }
             } catch (err) {
-              routineFitFailureReason = 'upstream_error';
+              const failureMeta = classifyRoutineFitUpstreamFailure(err);
+              routineFitFailureReason = failureMeta.failure_class || 'upstream_error';
               routineFitRetryCount = attempt;
               logger?.warn(
-                { err: err && err.message ? err.message : String(err), request_id: ctx.request_id, attempt: attempt + 1 },
+                {
+                  err: err && err.message ? err.message : String(err),
+                  request_id: ctx.request_id,
+                  attempt: attempt + 1,
+                  failure_class: failureMeta.failure_class,
+                  upstream_status: failureMeta.upstream_status,
+                  upstream_error_code: failureMeta.upstream_error_code,
+                  timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+                },
                 'aurora bff: routine fit evaluation failed',
+              );
+              routineProductEvents.push(
+                makeEvent(ctx, 'routine_fit_upstream_failure', {
+                  attempt: attempt + 1,
+                  failure_class: failureMeta.failure_class,
+                  upstream_status: failureMeta.upstream_status,
+                  upstream_error_code: failureMeta.upstream_error_code,
+                  timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+                  llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
+                }),
               );
             }
           }
@@ -46467,6 +46533,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                   request_id: ctx.request_id,
                   failure_reason: routineFitFallbackReason,
                   fallback_source: 'deterministic_local',
+                  timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+                  llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
                 },
                 'aurora bff: routine fit fallback applied after upstream failure',
               );
@@ -46504,6 +46572,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               fallback_used: routineFitFallbackUsed,
               fallback_reason: routineFitFallbackUsed ? routineFitFallbackReason : null,
               fallback_source: routineFitFallbackUsed ? 'deterministic_local' : null,
+              timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+              llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
             }),
           );
         }
@@ -55196,6 +55266,7 @@ const __internal = {
   buildRoutineFitRetryPrompt,
   validateRoutineFitStructuredPayload,
   parseRoutineFitUpstreamResult,
+  classifyRoutineFitUpstreamFailure,
   buildDeterministicRoutineFitSummary,
   getRoutineFitPayloadFromLastAnalysis,
   collectRoutineFitLowDimensions,

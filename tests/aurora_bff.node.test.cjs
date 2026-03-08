@@ -9924,6 +9924,102 @@ test('/v1/analysis/skin: routine fit falls back locally after upstream errors an
   );
 });
 
+test('/v1/analysis/skin: routine fit uses dedicated timeout/model and classifies upstream timeout failures', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+      AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS: '3800',
+      AURORA_ROUTINE_FIT_TIMEOUT_MS: '12000',
+      AURORA_ROUTINE_FIT_MODEL_GEMINI: 'gemini-routine-fit-test',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      const capturedCalls = [];
+
+      decisionModule.auroraChat = async (args = {}) => {
+        if (String(args.intent_hint || '').trim() === 'routine_fit_summary') {
+          capturedCalls.push(args);
+          const err = new Error('timeout of 12000ms exceeded');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        return { answer: 'Mock Aurora reply.', intent: 'chat', cards: [] };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_analysis_routine_fit_timeout',
+            'X-Trace-ID': 'trace_analysis_routine_fit_timeout',
+            'X-Brief-ID': 'brief_analysis_routine_fit_timeout',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                serum: 'Niacinamide serum',
+                moisturizer: 'Barrier cream',
+                spf: 'SPF 50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        assert.equal(capturedCalls.length, 2);
+        assert.equal(capturedCalls[0]?.timeoutMs, 12000);
+        assert.equal(capturedCalls[0]?.llm_model, 'gemini-3-flash-preview');
+        assert.equal(capturedCalls[0]?.prompt_template_id, 'routine_fit_summary_v1');
+        assert.equal(typeof capturedCalls[0]?.prompt_hash, 'string');
+        assert.equal(capturedCalls[0]?.prompt_hash.length > 0, true);
+
+        const completedEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((event) => event && event.event_name === 'routine_fit_evaluation_completed')
+          : null;
+        assert.ok(completedEvent);
+        assert.equal(Boolean(completedEvent?.data?.fallback_used), true);
+        assert.equal(completedEvent?.data?.fallback_reason, 'upstream_timeout');
+        assert.equal(completedEvent?.data?.timeout_ms, 12000);
+        assert.equal(completedEvent?.data?.llm_model, 'gemini-3-flash-preview');
+
+        const upstreamFailureEvents = Array.isArray(resp.body?.events)
+          ? resp.body.events.filter((event) => event && event.event_name === 'routine_fit_upstream_failure')
+          : [];
+        assert.equal(upstreamFailureEvents.length, 2);
+        assert.equal(upstreamFailureEvents[0]?.data?.failure_class, 'upstream_timeout');
+        assert.equal(upstreamFailureEvents[0]?.data?.upstream_error_code, 'ECONNABORTED');
+        assert.equal(upstreamFailureEvents[0]?.data?.timeout_ms, 12000);
+      } finally {
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[routeModuleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of ingredient_hub or nudge fallback', async () => {
   await withEnv(
     {
