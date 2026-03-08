@@ -139,6 +139,10 @@ function hasCardType(env, type) {
   return asArray(env?.cards).some((card) => String(card?.type || '').trim().toLowerCase() === wanted);
 }
 
+function hasRenderableAnalysisCard(env) {
+  return hasCardType(env, 'analysis_story_v2') || hasCardType(env, 'analysis_summary');
+}
+
 function getCardPayload(env, type) {
   const wanted = String(type || '').trim().toLowerCase();
   const card = asArray(env?.cards).find((row) => String(row?.type || '').trim().toLowerCase() === wanted);
@@ -354,7 +358,7 @@ function summarizeCaseOutcome(result) {
   if (!result.bootstrap?.ok) failures.push('bootstrap_failed');
   if (!result.profile_update?.ok) failures.push('profile_update_failed');
 
-  if (!hasCardType(result.analysis?.data, 'analysis_summary')) failures.push('analysis_summary_missing');
+  if (!hasRenderableAnalysisCard(result.analysis?.data)) failures.push('analysis_card_missing');
   if (!asObject(result.analysis?.data)?.analysis_meta) failures.push('analysis_meta_missing');
 
   if (!hasRecoOutput(result.reco_first?.data)) failures.push('reco_first_missing_output');

@@ -721,6 +721,10 @@ function findCardByType(cards, type) {
     : null;
 }
 
+function findCanonicalAnalysisCard(cards) {
+  return findCardByType(cards, 'analysis_story_v2') || findCardByType(cards, 'analysis_summary');
+}
+
 const OVAL_MASK_CACHE = new Map();
 function polygonToMask(points, gridSize) {
   return require('../src/auroraBff/evalAdapters/common/metrics').polygonNormToMask(
@@ -1078,7 +1082,7 @@ async function analyzePhotoViaApi({
   const root = response.json && typeof response.json === 'object' ? response.json : {};
   const cards = Array.isArray(root.cards) ? root.cards : [];
   const photoCard = findCardByType(cards, 'photo_modules_v1');
-  const analysisCard = findCardByType(cards, 'analysis_summary');
+  const analysisCard = findCanonicalAnalysisCard(cards);
   if (!photoCard || !photoCard.payload || typeof photoCard.payload !== 'object') {
     return {
       ok: false,

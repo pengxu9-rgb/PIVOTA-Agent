@@ -9772,6 +9772,8 @@ function resolveAuroraChatContractConfig() {
   })();
   const storyEnabled = String(process.env.AURORA_ANALYSIS_STORY_V2_ENABLED || 'true').trim().toLowerCase();
   const analysisStoryV2Enabled = storyEnabled !== 'false' && storyEnabled !== '0' && storyEnabled !== 'off';
+  const skillRouterRaw = String(process.env.AURORA_CHAT_SKILL_ROUTER_V2 || 'true').trim().toLowerCase();
+  const skillRouterV2 = !['false', '0', 'off', 'no', 'n'].includes(skillRouterRaw);
   const analysisContractRaw = String(
     process.env.AURORA_ANALYSIS_CARD_CONTRACT_MODE || process.env.AURORA_ANALYSIS_CARD_CONTRACT || '',
   )
@@ -9793,7 +9795,10 @@ function resolveAuroraChatContractConfig() {
   return {
     response_format: responseFormat,
     response_contract: chatcardsResponseContract,
+    analysis_story_v2_enabled: analysisStoryV2Enabled,
     analysis_card_contract_mode: analysisCardContractMode,
+    skill_router_v2: skillRouterV2,
+    v1_chat_v2_delegation_mode: 'compatible_only',
   };
 }
 

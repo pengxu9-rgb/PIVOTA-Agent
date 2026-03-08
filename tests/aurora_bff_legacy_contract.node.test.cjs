@@ -49,11 +49,13 @@ function buildHeaders() {
   };
 }
 
-test('legacy response format keeps analysis_summary and strips analysis_story_v2 for /v1/analysis/skin', async () => {
+test('summary_only contract keeps analysis_summary and strips analysis_story_v2 for /v1/analysis/skin', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
       AURORA_CHAT_RESPONSE_FORMAT: 'legacy',
+      AURORA_ANALYSIS_CARD_CONTRACT_MODE: 'summary_only',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'false',
     },
     async () => {
       const request = supertest(createApp());
@@ -75,6 +77,8 @@ test('chatcards response format keeps analysis_story_v2 for /v1/analysis/skin', 
     {
       AURORA_BFF_USE_MOCK: 'true',
       AURORA_CHAT_RESPONSE_FORMAT: 'chatcards',
+      AURORA_ANALYSIS_CARD_CONTRACT_MODE: 'story_only',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
     },
     async () => {
       const request = supertest(createApp());

@@ -88,4 +88,30 @@ describe('health endpoints', () => {
       },
     );
   });
+
+  it('/healthz exposes aurora chat rollout and analysis contract fields', async () => {
+    await withEnv(
+      {
+        AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+        AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+        AURORA_ANALYSIS_CARD_CONTRACT_MODE: 'story_only',
+      },
+      async () => {
+        jest.resetModules();
+        const app = require('../src/server');
+        const resp = await request(app).get('/healthz').expect(200);
+
+        expect(resp.body.aurora_chat_contract).toEqual(
+          expect.objectContaining({
+            response_format: expect.any(String),
+            response_contract: expect.any(String),
+            analysis_story_v2_enabled: true,
+            analysis_card_contract_mode: 'story_only',
+            skill_router_v2: true,
+            v1_chat_v2_delegation_mode: 'compatible_only',
+          }),
+        );
+      },
+    );
+  });
 });

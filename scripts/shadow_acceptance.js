@@ -640,7 +640,11 @@ async function resolveImageBytes({ imagePath, imageUrl }) {
 
 function extractAnalysisCard(payload) {
   const cards = Array.isArray(payload?.cards) ? payload.cards : [];
-  return cards.find((card) => safeToken(card?.type) === 'analysis_summary') || null;
+  return (
+    cards.find((card) => safeToken(card?.type) === 'analysis_story_v2') ||
+    cards.find((card) => safeToken(card?.type) === 'analysis_summary') ||
+    null
+  );
 }
 
 async function uploadProbePhoto({ base, auroraUid, imageBytes, language = 'EN' }) {
@@ -1124,7 +1128,7 @@ async function runShadowAcceptance(options = {}) {
   );
   if (!hasVisionSource) failures.push('smoke calls produced no vision_gemini analysis_source');
   if (!deltaStepA.unstable && successDelta < 1) failures.push('verify success delta is 0 (status=success|ok)');
-  if (smoke.renderable_card_ratio < 1) failures.push('analysis_summary missing in one or more smoke calls');
+  if (smoke.renderable_card_ratio < 1) failures.push('canonical analysis card missing in one or more smoke calls');
 
   let guard = { executed: false, skip_reason: 'ALLOW_GUARD_TEST=false' };
   let deltaStepB = {
@@ -1168,7 +1172,7 @@ async function runShadowAcceptance(options = {}) {
       failures.push('guard test failed: verify_budget_guard_total did not increase');
     }
     if (guardBatch.renderable_card_ratio < 1) {
-      failures.push('guard test impacted user-visible response (missing analysis_summary)');
+      failures.push('guard test impacted user-visible response (missing canonical analysis card)');
     }
   }
 
