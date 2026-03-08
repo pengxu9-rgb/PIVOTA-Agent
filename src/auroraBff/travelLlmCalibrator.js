@@ -255,38 +255,6 @@ function normalizeTravelReadinessPatch(value) {
   if (!isPlainObject(value)) return {}
   const out = {}
 
-  if (isPlainObject(value.destination_context)) {
-    const node = value.destination_context
-    const destinationContext = {
-      ...(normalizeText(node.destination, 140) ? { destination: normalizeText(node.destination, 140) } : {}),
-      ...(normalizeText(node.start_date, 24) ? { start_date: normalizeText(node.start_date, 24) } : {}),
-      ...(normalizeText(node.end_date, 24) ? { end_date: normalizeText(node.end_date, 24) } : {}),
-      ...(normalizeText(node.env_source, 48) ? { env_source: normalizeText(node.env_source, 48) } : {}),
-      ...(normalizeNumber(node.epi) != null ? { epi: normalizeNumber(node.epi) } : {}),
-    }
-    if (Object.keys(destinationContext).length) out.destination_context = destinationContext
-  }
-
-  if (isPlainObject(value.delta_vs_home)) {
-    const node = value.delta_vs_home
-    const deltaVsHome = {
-      ...(isPlainObject(node.temperature) ? { temperature: node.temperature } : {}),
-      ...(isPlainObject(node.humidity) ? { humidity: node.humidity } : {}),
-      ...(isPlainObject(node.uv) ? { uv: node.uv } : {}),
-      ...(isPlainObject(node.wind) ? { wind: node.wind } : {}),
-      ...(isPlainObject(node.precip) ? { precip: node.precip } : {}),
-      ...(normalizeStringArray(node.summary_tags, 8, 48).length ? { summary_tags: normalizeStringArray(node.summary_tags, 8, 48) } : {}),
-      ...(normalizeText(node.baseline_status, 48) ? { baseline_status: normalizeText(node.baseline_status, 48) } : {}),
-    }
-    if (Object.keys(deltaVsHome).length) out.delta_vs_home = deltaVsHome
-  }
-
-  const forecastWindow = normalizeForecastWindow(value.forecast_window)
-  if (forecastWindow.length) out.forecast_window = forecastWindow
-
-  const alerts = normalizeAlerts(value.alerts)
-  if (alerts.length) out.alerts = alerts
-
   if (Array.isArray(value.adaptive_actions)) {
     const adaptiveActions = []
     for (const raw of value.adaptive_actions) {
@@ -478,6 +446,9 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
   const systemPrompt =
     'You are a board-certified dermatologist-level travel skincare advisor. ' +
     'Return valid JSON only. Never output markdown, never diagnose, never prescribe.\n\n' +
+    'IMMUTABLE FACTS:\n' +
+    '- destination_context, delta_vs_home, forecast_window, alerts, epi, env_source, weather_reason, and all date/location/weather numbers are immutable baseline facts.\n' +
+    '- Never add, edit, replace, or "correct" weather/date/source values. If facts seem sparse, work within them and lower confidence instead.\n\n' +
     'CATEGORY COVERAGE — evaluate ALL relevant categories for this trip:\n' +
     '1. Cleansing (+ double-cleanse / makeup removal when user wears makeup)\n' +
     '2. Antioxidant protection (vitamin C / niacinamide serum, especially UV>=5)\n' +
@@ -525,7 +496,6 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     '\nOutput schema:\n' +
     '{\n' +
     '  "travel_readiness_patch": {\n' +
-    '    "delta_vs_home": {...optional refinements},\n' +
     '    "adaptive_actions": [{"why":"environment reason","what_to_do":"routine shift, no product names"}],\n' +
     '    "personal_focus": [{"focus":"label","why":"profile-based reason","what_to_do":"specific action"}],\n' +
     '    "jetlag_sleep": {...optional},\n' +

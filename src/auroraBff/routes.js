@@ -51626,6 +51626,12 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : advice;
             policyMeta.env_source = travelPipelineOut.env_source || 'local_template';
             policyMeta.degraded = Boolean(travelPipelineOut.degraded);
+            const pendingTravelClarification =
+              travelPipelineOut.pending_clarification &&
+              typeof travelPipelineOut.pending_clarification === 'object' &&
+              !Array.isArray(travelPipelineOut.pending_clarification)
+                ? travelPipelineOut.pending_clarification
+                : null;
 
             if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
               const safetyText = buildSafetyNoticeText(safetyDecision);
@@ -51647,6 +51653,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               ess: Number.isFinite(localEss) ? localEss : Number.isFinite(pipelineEpi) ? pipelineEpi : null,
             };
             if (
+              !pendingTravelClarification &&
               !envStressUi.travel_readiness &&
               travelPipelineOut.travel_readiness &&
               typeof travelPipelineOut.travel_readiness === 'object' &&
@@ -51660,16 +51667,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               !Array.isArray(envStressUi.travel_readiness)
                 ? envStressUi.travel_readiness
                 : null;
-            recordAuroraTravelEnvCardEmitted({
-              turn:
-                chatContext &&
-                (
-                  chatContext.travel_followup ||
-                  chatContext.travelFollowup
-                )
-                  ? 'followup'
-                  : 'first_turn',
-            });
+            if (!pendingTravelClarification) {
+              recordAuroraTravelEnvCardEmitted({
+                turn:
+                  chatContext &&
+                  (
+                    chatContext.travel_followup ||
+                    chatContext.travelFollowup
+                  )
+                    ? 'followup'
+                    : 'first_turn',
+              });
+            }
 
             const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
             const scenarioHint =
@@ -51714,7 +51723,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               },
             ];
-            if (travelPipelineOut.store_channel) {
+            if (travelPipelineOut.store_channel && !pendingTravelClarification) {
               suggestedChips.push({
                 chip_id: 'chip.travel.store_channel',
                 label: lang === 'CN' ? '继续查渠道/有货' : 'Check stores/offers',
@@ -51727,6 +51736,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               });
             }
+            const finalSuggestedChips =
+              pendingTravelClarification && Array.isArray(travelPipelineOut.suggested_chips)
+                ? travelPipelineOut.suggested_chips.slice(0, 10)
+                : suggestedChips;
 
             const sessionPatch =
               nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
@@ -51756,14 +51769,18 @@ function mountAuroraBffRoutes(app, { logger }) {
                   kb_write_skip_reason: Boolean(travelPipelineOut.travel_kb_write_queued) ? 'queued' : 'unknown',
                 };
             if (
+              !pendingTravelClarification &&
               travelPipelineOut.travel_followup_state &&
               typeof travelPipelineOut.travel_followup_state === 'object' &&
               !Array.isArray(travelPipelineOut.travel_followup_state)
             ) {
               sessionMeta.travel_followup = travelPipelineOut.travel_followup_state;
             }
+            if (pendingTravelClarification) {
+              sessionMeta.travel_pending_clarification = pendingTravelClarification;
+            }
             sessionPatch.meta = sessionMeta;
-            if (travelReadiness) {
+            if (travelReadiness && !pendingTravelClarification) {
               sessionPatch.last_travel_readiness = {
                 destination: travelReadiness.destination_context?.destination || null,
                 start_date: travelReadiness.destination_context?.start_date || null,
@@ -51775,8 +51792,8 @@ function mountAuroraBffRoutes(app, { logger }) {
 
             const envelope = buildEnvelope(ctx, {
               assistant_message: makeChatAssistantMessage(advice, 'markdown'),
-              suggested_chips: suggestedChips,
-              cards: envStressUi
+              suggested_chips: finalSuggestedChips,
+              cards: envStressUi && !pendingTravelClarification
                 ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
                 : [],
               session_patch: sessionPatch,
@@ -51840,6 +51857,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             (travelPlan && typeof travelPlan.destination === 'string' && travelPlan.destination.trim()) ||
             (canonicalIntent.entities && canonicalIntent.entities.destination) ||
             '';
+          const destinationPlace =
+            travelPlan &&
+            travelPlan.destination_place &&
+            typeof travelPlan.destination_place === 'object' &&
+            !Array.isArray(travelPlan.destination_place)
+              ? travelPlan.destination_place
+              : null;
           const startDate =
             (travelPlan && typeof travelPlan.start_date === 'string' && travelPlan.start_date.trim()) ||
             (canonicalIntent.entities &&
@@ -51857,8 +51881,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
           const weather = await getTravelWeather({
             destination,
+            destinationPlace,
             startDate,
             endDate,
+            userLocale: templateCtx.accept_language || ctx.lang,
           });
           const epiPayload = buildEpiPayload({
             weather,

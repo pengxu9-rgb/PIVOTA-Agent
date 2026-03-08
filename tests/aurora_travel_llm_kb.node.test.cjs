@@ -15,6 +15,7 @@ function buildCompleteTravelReadiness() {
       start_date: '2026-03-10',
       end_date: '2026-03-15',
       env_source: 'weather_api',
+      weather_reason: 'weather_api_ok',
       epi: 72,
     },
     delta_vs_home: {
@@ -51,6 +52,12 @@ function buildCompleteTravelReadiness() {
       missing_inputs: ['current_routine'],
       improve_by: ['Add AM/PM routine'],
     },
+    forecast_window: [
+      { date: '2026-03-10', temp_low_c: 7, temp_high_c: 13, uv_max: 7.1, precip_mm: 2.1 },
+    ],
+    alerts: [
+      { severity: 'orange', title: 'Wind advisory', action_hint: 'Reduce prolonged outdoor exposure.' },
+    ],
   };
 }
 
@@ -198,4 +205,56 @@ test('travel LLM calibrator: parses patch and deep-merges shopping brand candida
   assert.equal(Number.isFinite(Number(result.source_meta?.prompt_chars)), true);
   assert.equal(Number(result.source_meta.prompt_chars) > 0, true);
   assert.equal(result.source_meta?.input_summary?.destination, 'Paris');
+});
+
+test('travel LLM calibrator: immutable weather facts cannot be overwritten by patch', async () => {
+  const baseline = buildCompleteTravelReadiness();
+  const mockClient = {
+    chat: {
+      completions: {
+        create: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  travel_readiness_patch: {
+                    destination_context: {
+                      destination: 'Fake Paris',
+                      env_source: 'climate_fallback',
+                      weather_reason: 'llm_override',
+                    },
+                    delta_vs_home: {
+                      temperature: { home: 99, destination: -99, delta: -198, unit: 'C' },
+                      summary_tags: ['made_up'],
+                    },
+                    forecast_window: [{ date: '2026-03-10', temp_low_c: -20, temp_high_c: -10 }],
+                    alerts: [{ severity: 'red', title: 'Model fabricated alert' }],
+                    adaptive_actions: [{ why: 'Windier', what_to_do: 'Use richer cream at night' }],
+                    confidence: { level: 'high', score: 0.93 },
+                  },
+                }),
+              },
+            },
+          ],
+        }),
+      },
+    },
+  };
+
+  const result = await calibrateTravelReadinessWithLlm({
+    openaiClient: mockClient,
+    language: 'EN',
+    travelLlmInput: { destination: 'Paris', month_bucket: 3 },
+    baseTravelReadiness: baseline,
+    timeoutMs: 500,
+    maxRetries: 0,
+  });
+
+  assert.equal(result.used, true);
+  assert.deepEqual(result.travel_readiness.destination_context, baseline.destination_context);
+  assert.deepEqual(result.travel_readiness.delta_vs_home, baseline.delta_vs_home);
+  assert.deepEqual(result.travel_readiness.forecast_window, baseline.forecast_window);
+  assert.deepEqual(result.travel_readiness.alerts, baseline.alerts);
+  assert.equal(result.travel_readiness.adaptive_actions[0].what_to_do, 'Use richer cream at night');
+  assert.equal(result.travel_readiness.confidence.level, 'high');
 });
