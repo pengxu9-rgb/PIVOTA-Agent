@@ -111,12 +111,13 @@ test('eval skin prompt quality: bucket summary counts secondary judge infrastruc
         locale: 'zh-CN',
         judge_average_score: 9,
         judge_hard_fail: false,
-        primary_judge: { ok: true },
-        secondary_judge: { ok: false, failure_reason: 'invalid_api_key' },
+        primary_judge: { ok: true, provider: 'gemini' },
+        secondary_judge: { ok: false, provider: 'openai', failure_reason: 'invalid_api_key' },
       },
     ],
     { skipJudge: false },
   );
   assert.equal(summary.length, 1);
-  assert.equal(summary[0].judge_failed_rate, 1);
+  assert.equal(summary[0].judge_failed_rate, 0);
+  assert.equal(summary[0].shadow_failed_rate, 1);
 });
