@@ -20738,7 +20738,9 @@ function classifyResumeResponseMode(answerText) {
   const leading = text.slice(0, 400);
   const leadingNorm = leading.replace(/\s+/g, ' ').trim();
   const questionMarks = (text.match(/[?？]/g) || []).length;
-  const startsWithIntakePrompt = /^(before i can|before i recommend|i need a quick skin profile)/i.test(leadingNorm);
+  const startsWithIntakePrompt =
+    /^(before i can|before i recommend)/i.test(leadingNorm) ||
+    /(quick skin profile|quick skin-profile detail)/i.test(leadingNorm);
   const numberedQuestionLines = (leading.match(/(?:^|\n)\s*\d+\s*[\)\.:\uff1a]/g) || []).length >= 2;
   if (questionMarks >= 2 || startsWithIntakePrompt || numberedQuestionLines) return 'question';
 

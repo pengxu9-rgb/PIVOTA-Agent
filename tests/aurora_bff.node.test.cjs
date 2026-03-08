@@ -2048,7 +2048,7 @@ test('/v1/chat: Start diagnosis chip enters diagnosis flow (no upstream loop)', 
 
   assert.equal(resp.status, 200);
   assert.equal(typeof resp.body?.assistant_message?.content, 'string');
-  assert.match(resp.body.assistant_message.content, /quick skin profile/i);
+  assert.match(resp.body.assistant_message.content, /which skin type fits you best/i);
   assert.equal(Array.isArray(resp.body?.suggested_chips), true);
   assert.ok(resp.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.skinType.')));
   assert.ok(resp.body.suggested_chips.every((c) => !String(c.chip_id).startsWith('chip.clarify.next.')));
@@ -2817,7 +2817,7 @@ test('/v1/chat: resume probe metrics detect intake-like resume output and do not
           .expect(200);
 
         const badResumeText = String(resp3.body?.assistant_message?.content || '');
-        assert.match(badResumeText, /quick skin profile/i);
+        assert.match(badResumeText, /(quick skin profile|quick skin-profile detail)/i);
 
         const snapAfterResume = snapshotVisionMetrics();
         const questionModeCount = getLabeledCounterValue(snapAfterResume.resumeResponseMode, { mode: 'question' });
@@ -4241,7 +4241,8 @@ test('/v1/chat: ingredient.lookup uses research path and second lookup can hit i
             geminiArgs.responseJsonSchema.required.includes('schema_version'),
           true,
         );
-        assert.match(String(geminiArgs?.systemPrompt || ''), /strictly parsable JSON only/i);
+        assert.match(String(geminiArgs?.systemPrompt || ''), /Prompt version: ingredient_research_v2_lite_hardened/i);
+        assert.match(String(geminiArgs?.systemPrompt || ''), /single valid JSON object/i);
         assert.match(String(geminiArgs?.userPrompt || ''), /schema_version\"\s*:\s*\"v2-lite\"/i);
         assert.equal(geminiCalls, 1);
 
