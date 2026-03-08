@@ -28,6 +28,8 @@ This document covers deploying and operating the Aurora BFF/Orchestrator inside 
 ### Upstreams
 
 - `AURORA_DECISION_BASE_URL` (Aurora decision system base, e.g. `https://...`)
+  - Runtime machine path: `${AURORA_DECISION_BASE_URL}/api/upstream/chat`
+  - The public `/api/chat` on that service is not the BFF machine endpoint anymore; it is reserved for public facade/proxy traffic.
 - `PIVOTA_BACKEND_BASE_URL` (pivota-backend base). If unset, the service falls back to `PIVOTA_API_BASE`.
 - `PIVOTA_BACKEND_AGENT_API_KEY` (or compatible API key env) for photo upload/download-url bridge when checkout token is absent.
 
