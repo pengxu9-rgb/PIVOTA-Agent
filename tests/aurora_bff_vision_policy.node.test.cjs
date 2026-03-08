@@ -13,6 +13,7 @@ const {
   normalizeVisionFailureReason,
   pickPrimaryVisionReason,
   buildVisionPhotoNotice,
+  containsImageInvalidHint,
 } = require('../src/auroraBff/visionPolicy');
 const { resetVisionMetrics } = require('../src/auroraBff/visionMetrics');
 
@@ -89,6 +90,9 @@ test('vision failure mapping: timeout / 429 / 4xx / 5xx / schema', () => {
   const badRequest = classifyVisionProviderFailure({ status: 400, message: 'invalid request' });
   assert.equal(badRequest.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
 
+  const invalidImage = classifyVisionProviderFailure({ status: 400, message: 'Unable to process input image' });
+  assert.equal(invalidImage.reason, VisionUnavailabilityReason.VISION_IMAGE_INVALID);
+
   const forbidden = classifyVisionProviderFailure({ status: 403, message: 'forbidden' });
   assert.equal(forbidden.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
 
@@ -109,6 +113,8 @@ test('vision failure mapping: timeout / 429 / 4xx / 5xx / schema', () => {
 
   const grpcUnauthenticated = classifyVisionProviderFailure({ code: 'UNAUTHENTICATED', message: 'api key invalid' });
   assert.equal(grpcUnauthenticated.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
+
+  assert.equal(containsImageInvalidHint('Unable to process input image payload'), true);
 });
 
 test('vision retry policy: only retry retryable reasons', async () => {
@@ -159,6 +165,9 @@ test('vision photo notice is safe and user-facing', () => {
 
   const n2 = buildVisionPhotoNotice({ reason: VisionUnavailabilityReason.VISION_UPSTREAM_4XX, language: 'EN' });
   assert.match(String(n2 || ''), /re-upload/i);
+
+  const n2b = buildVisionPhotoNotice({ reason: VisionUnavailabilityReason.VISION_IMAGE_INVALID, language: 'EN' });
+  assert.match(String(n2b || ''), /re-upload/i);
 
   const n3 = buildVisionPhotoNotice({ reason: 'photo_quality_fail_retake', language: 'EN' });
   assert.equal(n3, null);

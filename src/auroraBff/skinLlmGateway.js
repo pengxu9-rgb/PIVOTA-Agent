@@ -7,6 +7,7 @@ const {
   SkinReportCanonicalSchema,
   SkinReportCanonicalLlmSchema,
   SkinDeepeningCanonicalSchema,
+  SkinDeepeningCanonicalLlmSchema,
   buildPoorPhotoTemplate,
   validateVisionObservation,
   validateVisionCanonicalLayer,
@@ -37,6 +38,7 @@ const {
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 const { getGeminiGlobalGate, GeminiGateError } = require('../lib/geminiGlobalGate');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
+const { containsImageInvalidHint } = require('./visionPolicy');
 
 const FALLBACK_GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
 
@@ -202,9 +204,70 @@ function classifyGeminiError(err) {
     return { reason: 'UPSTREAM_5XX', upstream_status_code: status };
   }
   if (status && status >= 400) {
+    if (containsImageInvalidHint(message)) {
+      return { reason: 'IMAGE_INVALID', upstream_status_code: status };
+    }
     return { reason: 'UPSTREAM_4XX', upstream_status_code: status };
   }
+  if (containsImageInvalidHint(message)) {
+    return { reason: 'IMAGE_INVALID', upstream_status_code: status };
+  }
   return { reason: 'UNKNOWN', upstream_status_code: status };
+}
+
+function inferInvalidImageInsufficientReason(text) {
+  const token = String(text || '').toLowerCase();
+  if (token.includes('resolution') || token.includes('too large') || token.includes('payload too large')) {
+    return 'resolution_low';
+  }
+  if (token.includes('blur') || token.includes('decode') || token.includes('corrupt')) {
+    return 'mixed';
+  }
+  return 'no_clear_cue';
+}
+
+function buildVisionInvalidImageSuccess({
+  language,
+  promptVersion,
+  inputHash,
+  response,
+  retryAttempted,
+} = {}) {
+  const responseText = response && typeof response.response_text === 'string' ? response.response_text : '';
+  const canonical = normalizeVisionCanonicalLayer({
+    visibility_status: 'insufficient',
+    insufficient_reason: inferInvalidImageInsufficientReason(responseText || (response && response.error)),
+    needs_risk_check: false,
+    quality_note: responseText ? String(responseText).slice(0, 180) : undefined,
+    observations: [],
+  });
+  const rendered = renderVisionCanonicalLayer(canonical, { lang: language });
+  return {
+    ok: true,
+    provider: 'gemini',
+    reason: null,
+    schema_violation: false,
+    semantic_violation: false,
+    analysis: rendered,
+    canonical,
+    semantic: {
+      ok: true,
+      code: null,
+      issues: [],
+      useful_output: false,
+    },
+    raw_response_text: responseText || null,
+    parse_status: response && response.parse_status ? response.parse_status : 'empty',
+    schema_sanitized: Boolean(response && response.schema_sanitized),
+    retry: { attempted: retryAttempted || 0, final: 'success', last_reason: null },
+    upstream_status_code: response && response.upstream_status_code != null ? response.upstream_status_code : null,
+    latency_ms: response && response.latency_ms != null ? response.latency_ms : 0,
+    prompt_version: promptVersion || 'skin_vision_v3_canonical',
+    input_hash: inputHash || null,
+    insufficient_origin: 'gateway_invalid_image',
+    __insufficient_origin: 'gateway_invalid_image',
+    vision_failure_reason: 'VISION_IMAGE_INVALID',
+  };
 }
 
 function validateSkinAnalysisContent(layer, { lang } = {}) {
@@ -523,6 +586,15 @@ async function runGeminiVisionStrategy({
 
   const firstAttempt = await attemptVision('');
   if (!firstAttempt.response.ok) {
+    if (firstAttempt.response.reason === 'IMAGE_INVALID') {
+      return buildVisionInvalidImageSuccess({
+        language,
+        promptVersion: firstAttempt.bundle.promptVersion,
+        inputHash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+        response: firstAttempt.response,
+        retryAttempted: 0,
+      });
+    }
     return {
       ok: false,
       provider: 'gemini',
@@ -530,6 +602,9 @@ async function runGeminiVisionStrategy({
       schema_violation: false,
       semantic_violation: false,
       analysis: null,
+      raw_response_text: firstAttempt.response.response_text || null,
+      parse_status: firstAttempt.response.parse_status,
+      schema_sanitized: Boolean(firstAttempt.response.schema_sanitized),
       retry: { attempted: 0, final: 'fail', last_reason: firstAttempt.response.reason || 'UNKNOWN' },
       upstream_status_code: firstAttempt.response.upstream_status_code,
       latency_ms: firstAttempt.response.latency_ms,
@@ -557,9 +632,12 @@ async function runGeminiVisionStrategy({
           reason: 'SCHEMA_INVALID',
           schema_violation: true,
           semantic_violation: false,
-          analysis: null,
-          retry: { attempted: 0, final: 'fail', last_reason: 'SCHEMA_INVALID' },
-          upstream_status_code: firstAttempt.response.upstream_status_code,
+        analysis: null,
+        retry: { attempted: 0, final: 'fail', last_reason: 'SCHEMA_INVALID' },
+        raw_response_text: firstAttempt.response.response_text,
+        parse_status: firstAttempt.response.parse_status,
+        schema_sanitized: Boolean(firstAttempt.response.schema_sanitized),
+        upstream_status_code: firstAttempt.response.upstream_status_code,
           latency_ms: firstAttempt.response.latency_ms,
           prompt_version: firstAttempt.bundle.promptVersion,
           input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
@@ -576,11 +654,21 @@ async function runGeminiVisionStrategy({
         canonical,
         semantic,
         raw_response_text: firstAttempt.response.response_text,
+        parse_status: firstAttempt.response.parse_status,
+        schema_sanitized: Boolean(firstAttempt.response.schema_sanitized),
         retry: { attempted: 0, final: 'success', last_reason: null },
         upstream_status_code: firstAttempt.response.upstream_status_code,
         latency_ms: firstAttempt.response.latency_ms,
         prompt_version: firstAttempt.bundle.promptVersion,
         input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+        insufficient_origin:
+          canonical && canonical.visibility_status === 'insufficient'
+            ? 'model'
+            : null,
+        __insufficient_origin:
+          canonical && canonical.visibility_status === 'insufficient'
+            ? 'model'
+            : null,
       };
     }
 
@@ -590,6 +678,15 @@ async function runGeminiVisionStrategy({
     });
     const secondAttempt = await attemptVision(revisionHint);
     if (!secondAttempt.response.ok) {
+      if (secondAttempt.response.reason === 'IMAGE_INVALID') {
+        return buildVisionInvalidImageSuccess({
+          language,
+          promptVersion: secondAttempt.bundle.promptVersion,
+          inputHash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+          response: secondAttempt.response,
+          retryAttempted: 1,
+        });
+      }
       return {
         ok: false,
         provider: 'gemini',
@@ -597,6 +694,9 @@ async function runGeminiVisionStrategy({
         schema_violation: false,
         semantic_violation: false,
         analysis: null,
+        raw_response_text: secondAttempt.response.response_text || null,
+        parse_status: secondAttempt.response.parse_status,
+        schema_sanitized: Boolean(secondAttempt.response.schema_sanitized),
         retry: { attempted: 1, final: 'fail', last_reason: secondAttempt.response.reason || 'UNKNOWN' },
         upstream_status_code: secondAttempt.response.upstream_status_code,
         latency_ms: secondAttempt.response.latency_ms,
@@ -632,6 +732,8 @@ async function runGeminiVisionStrategy({
         latency_ms: secondAttempt.response.latency_ms,
         prompt_version: secondAttempt.bundle.promptVersion,
         input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+        parse_status: secondAttempt.response.parse_status,
+        schema_sanitized: Boolean(secondAttempt.response.schema_sanitized),
         validation_errors: !revisedValidation.ok ? revisedValidation.errors : undefined,
         semantic_issues: revisedSemantic.issues,
       };
@@ -647,6 +749,9 @@ async function runGeminiVisionStrategy({
         semantic_violation: false,
         analysis: null,
         retry: { attempted: 1, final: 'fail', last_reason: 'SCHEMA_INVALID' },
+        raw_response_text: secondAttempt.response.response_text,
+        parse_status: secondAttempt.response.parse_status,
+        schema_sanitized: Boolean(secondAttempt.response.schema_sanitized),
         upstream_status_code: secondAttempt.response.upstream_status_code,
         latency_ms: secondAttempt.response.latency_ms,
         prompt_version: secondAttempt.bundle.promptVersion,
@@ -664,11 +769,21 @@ async function runGeminiVisionStrategy({
       canonical: revisedCanonical,
       semantic: revisedSemantic,
       raw_response_text: secondAttempt.response.response_text,
+      parse_status: secondAttempt.response.parse_status,
+      schema_sanitized: Boolean(secondAttempt.response.schema_sanitized),
       retry: { attempted: 1, final: 'success', last_reason: null },
       upstream_status_code: secondAttempt.response.upstream_status_code,
       latency_ms: secondAttempt.response.latency_ms,
       prompt_version: secondAttempt.bundle.promptVersion,
       input_hash: visionDto && visionDto.input_hash ? String(visionDto.input_hash) : null,
+      insufficient_origin:
+        revisedCanonical && revisedCanonical.visibility_status === 'insufficient'
+          ? 'model'
+          : null,
+      __insufficient_origin:
+        revisedCanonical && revisedCanonical.visibility_status === 'insufficient'
+          ? 'model'
+          : null,
     };
   }
 
@@ -683,6 +798,9 @@ async function runGeminiVisionStrategy({
       semantic_violation: false,
       analysis: null,
       retry: { attempted: 0, final: 'fail', last_reason: 'SCHEMA_INVALID' },
+      raw_response_text: firstAttempt.response.response_text,
+      parse_status: firstAttempt.response.parse_status,
+      schema_sanitized: Boolean(firstAttempt.response.schema_sanitized),
       upstream_status_code: firstAttempt.response.upstream_status_code,
       latency_ms: firstAttempt.response.latency_ms,
       prompt_version: firstAttempt.bundle.promptVersion,
@@ -698,6 +816,8 @@ async function runGeminiVisionStrategy({
     semantic_violation: false,
     analysis: normalizedLayer,
     raw_response_text: firstAttempt.response.response_text,
+    parse_status: firstAttempt.response.parse_status,
+    schema_sanitized: Boolean(firstAttempt.response.schema_sanitized),
     retry: { attempted: 0, final: 'success', last_reason: null },
     upstream_status_code: firstAttempt.response.upstream_status_code,
     latency_ms: firstAttempt.response.latency_ms,
@@ -928,7 +1048,7 @@ async function runGeminiDeepeningStrategy({
       systemInstruction: bundle.systemInstruction,
       userText: userPrompt,
       imageBuffer: null,
-      responseSchema: SkinDeepeningCanonicalSchema,
+      responseSchema: SkinDeepeningCanonicalLlmSchema,
       maxOutputTokens: 1200,
       timeoutMs,
       profiler,
@@ -972,8 +1092,9 @@ async function runGeminiDeepeningStrategy({
   const canonical = normalizeDeepeningCanonicalLayer(first.response.parsed, {
     strict: true,
     inheritedPriority: deepeningDto && deepeningDto.summary_priority,
+    allowAdviceOmit: true,
   });
-  const validation = validateDeepeningCanonicalLayer(canonical);
+  const validation = validateDeepeningCanonicalLayer(canonical, { allowAdviceOmit: true });
   const semantic = validation.ok
     ? evaluateDeepeningCanonicalSemantic(canonical, { parseStatus: first.response.parse_status })
     : { ok: false, code: 'SCHEMA_INVALID', issues: validation.errors || [] };
@@ -1022,8 +1143,9 @@ async function runGeminiDeepeningStrategy({
   const revisedCanonical = normalizeDeepeningCanonicalLayer(second.response.parsed, {
     strict: true,
     inheritedPriority: deepeningDto && deepeningDto.summary_priority,
+    allowAdviceOmit: true,
   });
-  const revisedValidation = validateDeepeningCanonicalLayer(revisedCanonical);
+  const revisedValidation = validateDeepeningCanonicalLayer(revisedCanonical, { allowAdviceOmit: true });
   const revisedSemantic = revisedValidation.ok
     ? evaluateDeepeningCanonicalSemantic(revisedCanonical, { parseStatus: second.response.parse_status })
     : { ok: false, code: 'SCHEMA_INVALID', issues: revisedValidation.errors || [] };

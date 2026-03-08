@@ -87,6 +87,7 @@ const RiskFlagValues = Object.freeze([
   'retake_photo',
 ]);
 const DeepeningAdviceValues = Object.freeze([...WatchoutValues, ...TwoWeekFocusValues]);
+const DeepeningReactionFlagValues = Object.freeze(['stinging', 'tightness', 'dryness', 'itching', 'redness', 'breakouts']);
 
 const ObservationItemSchema = {
   type: 'object',
@@ -421,6 +422,15 @@ const CanonicalDeepeningSchema = {
   required: ['phase', 'summary_priority', 'advice_items', 'question_intent'],
 };
 
+const CanonicalDeepeningLlmSchema = {
+  type: 'object',
+  properties: {
+    phase: CanonicalDeepeningSchema.properties.phase,
+    question_intent: CanonicalDeepeningSchema.properties.question_intent,
+  },
+  required: ['phase', 'question_intent'],
+};
+
 const SkinReportCanonicalSchema = {
   type: 'object',
   properties: {
@@ -481,6 +491,12 @@ const SkinDeepeningCanonicalSchema = {
   type: 'object',
   properties: CanonicalDeepeningSchema.properties,
   required: CanonicalDeepeningSchema.required,
+};
+
+const SkinDeepeningCanonicalLlmSchema = {
+  type: 'object',
+  properties: CanonicalDeepeningLlmSchema.properties,
+  required: CanonicalDeepeningLlmSchema.required,
 };
 
 function clampText(raw, maxLen) {
@@ -986,6 +1002,45 @@ function canonicalObservationScore(row) {
   return observationConfidenceRank(row && row.confidence) * 100 + observationSeverityRank(row && row.severity) * 10 + cueWeight + regionWeight;
 }
 
+function isVisionSurfaceCue(cue) {
+  return cue === 'shine' || cue === 'texture' || cue === 'pores';
+}
+
+function canCoexistInSameRegion(existing, candidate) {
+  const a = existing && existing.cue;
+  const b = candidate && candidate.cue;
+  if (!a || !b) return false;
+  if (isVisionSurfaceCue(a) && isVisionSurfaceCue(b)) return false;
+  const inflammatoryPair = new Set([a, b]);
+  if (inflammatoryPair.has('redness') && inflammatoryPair.has('bumps')) {
+    return canonicalObservationScore(existing) >= 240 && canonicalObservationScore(candidate) >= 240;
+  }
+  return true;
+}
+
+function pruneVisionCanonicalObservations(observations, { visibilityStatus } = {}) {
+  const list = Array.isArray(observations) ? observations.slice() : [];
+  if (!list.length) return [];
+  if (visibilityStatus === 'insufficient') return [];
+  const cappedVisibility = visibilityStatus === 'limited' ? 'limited' : 'sufficient';
+  const kept = [];
+  for (const row of list) {
+    const conflictIndex = kept.findIndex((item) => item.region === row.region && !canCoexistInSameRegion(item, row));
+    if (conflictIndex >= 0) {
+      const current = kept[conflictIndex];
+      if (canonicalObservationScore(row) > canonicalObservationScore(current)) kept[conflictIndex] = row;
+      continue;
+    }
+    kept.push(row);
+  }
+  kept.sort((a, b) => {
+    const scoreDiff = canonicalObservationScore(b) - canonicalObservationScore(a);
+    if (scoreDiff) return scoreDiff;
+    return `${a.cue}:${a.region}`.localeCompare(`${b.cue}:${b.region}`);
+  });
+  return kept.slice(0, cappedVisibility === 'limited' ? 2 : 3);
+}
+
 function normalizeCanonicalObservationArray(raw, { maxItems = 8, strict = false } = {}) {
   const list = Array.isArray(raw) ? raw : [];
   const bestByKey = new Map();
@@ -1091,7 +1146,7 @@ function normalizeCanonicalFollowUp(raw, { strict = false } = {}) {
   };
 }
 
-function normalizeCanonicalDeepening(raw, { strict = false, inheritedPriority } = {}) {
+function normalizeCanonicalDeepening(raw, { strict = false, inheritedPriority, allowAdviceOmit = false } = {}) {
   const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
   if (!node) return null;
   const adviceItems = Array.isArray(node.advice_items)
@@ -1111,7 +1166,7 @@ function normalizeCanonicalDeepening(raw, { strict = false, inheritedPriority } 
   return {
     ...(phase ? { phase } : {}),
     ...(summaryPriority ? { summary_priority: summaryPriority } : {}),
-    ...(adviceItems.length ? { advice_items: adviceItems } : strict ? {} : { advice_items: ['confirm_tolerance'] }),
+    ...(adviceItems.length ? { advice_items: adviceItems } : strict && allowAdviceOmit ? {} : strict ? {} : { advice_items: ['confirm_tolerance'] }),
     ...(questionIntent ? { question_intent: questionIntent } : {}),
   };
 }
@@ -1122,12 +1177,14 @@ function normalizeDeepeningCanonicalLayer(payload, options) {
 
 function normalizeVisionCanonicalLayer(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
-  const observations = normalizeCanonicalObservationArray(p.observations, { maxItems: 4 });
+  const normalizedObservations = normalizeCanonicalObservationArray(p.observations, { maxItems: 6 });
   const limits = normalizeGuidanceBrief(p.limits).map((item) => clampText(item, 120)).slice(0, 4);
   const qualityNote = clampText(p.quality_note, 180);
-  const visibilityStatus = normalizeVisionVisibility(
-    p.visibility_status || (p.insufficient_visual_detail ? 'insufficient' : observations.length ? 'sufficient' : 'limited'),
+  let visibilityStatus = normalizeVisionVisibility(
+    p.visibility_status || (p.insufficient_visual_detail ? 'insufficient' : normalizedObservations.length >= 2 ? 'sufficient' : normalizedObservations.length === 1 ? 'limited' : 'limited'),
   );
+  const observations = pruneVisionCanonicalObservations(normalizedObservations, { visibilityStatus });
+  if (visibilityStatus === 'sufficient' && observations.length < 2) visibilityStatus = observations.length ? 'limited' : 'insufficient';
   const insufficientReason =
     visibilityStatus === 'insufficient'
       ? normalizeInsufficientReason(p.insufficient_reason, { fallbackText: `${qualityNote} ${limits.join(' ')}` })
@@ -1137,7 +1194,7 @@ function normalizeVisionCanonicalLayer(payload) {
     ...(insufficientReason ? { insufficient_reason: insufficientReason } : {}),
     needs_risk_check: Boolean(p.needs_risk_check),
     ...(qualityNote ? { quality_note: qualityNote } : {}),
-    observations,
+    observations: visibilityStatus === 'insufficient' ? [] : observations,
     ...(limits.length ? { limits } : {}),
   };
 }
@@ -1245,13 +1302,13 @@ function validateReportCanonicalLayer(payload) {
   return { ok: errors.length === 0, errors };
 }
 
-function validateDeepeningCanonicalLayer(payload) {
+function validateDeepeningCanonicalLayer(payload, { allowAdviceOmit = false } = {}) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
   const errors = [];
   if (!p) return { ok: false, errors: ['/ must be object'] };
   if (!DEEPENING_PHASE_VALUES.includes(String(p.phase || '').trim().toLowerCase())) errors.push('/phase invalid');
   if (!SummaryPriorityValues.includes(String(p.summary_priority || '').trim().toLowerCase())) errors.push('/summary_priority invalid');
-  if (!Array.isArray(p.advice_items)) errors.push('/advice_items must be array');
+  if ((!allowAdviceOmit || p.advice_items != null) && !Array.isArray(p.advice_items)) errors.push('/advice_items must be array');
   if (!FollowUpIntentValues.includes(String(p.question_intent || '').trim().toLowerCase())) errors.push('/question_intent invalid');
   return { ok: errors.length === 0, errors };
 }
@@ -1302,10 +1359,18 @@ function extractCueVotesFromLockedFeatures(raw) {
   return out;
 }
 
+function extractCueVotesFromVisionCues(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((item) => (item && typeof item === 'object' ? normalizeCanonicalCueStrict(item.cue) : ''))
+    .filter(Boolean);
+}
+
 function buildPrimaryCueList({ summaryFocus, insights, reportContext, resolvedPriority } = {}) {
   const candidates = [];
   if (summaryFocus && Array.isArray(summaryFocus.primary_cues)) candidates.push(...summaryFocus.primary_cues);
   if (Array.isArray(insights)) candidates.push(...insights.map((row) => row && row.cue).filter(Boolean));
+  candidates.push(...extractCueVotesFromVisionCues(reportContext && reportContext.vision_cues));
   const locked = reportContext && reportContext.locked_features_summary;
   candidates.push(...extractCueVotesFromLockedFeatures(locked));
   const fallbackCue = priorityToCanonicalCue(resolvedPriority);
@@ -1359,7 +1424,10 @@ function normalizeReportInsightSeverity(cue, rawSeverity, { resolvedPriority, re
 }
 
 function selectDeterministicReportInsights(insights, { primaryCues, resolvedPriority, reportContext } = {}) {
-  const list = Array.isArray(insights) ? insights.slice() : [];
+  const structuredVisionCues = Array.isArray(reportContext && reportContext.vision_cues)
+    ? reportContext.vision_cues
+    : [];
+  const list = Array.isArray(insights) && insights.length ? insights.slice() : structuredVisionCues.slice();
   const prioritizedCues = Array.isArray(primaryCues) ? primaryCues.map((item) => normalizeCanonicalCue(item)).filter(Boolean) : [];
   const resolvedCue = priorityToCanonicalCue(resolvedPriority || 'mixed');
   const allowedCues = Array.from(new Set([resolvedCue, ...prioritizedCues])).filter(Boolean);
@@ -1444,6 +1512,9 @@ function resolveReportSummaryFocus(summaryFocus, insights, reportContext) {
   if (actives.length) addScore('barrier', 2.4);
   if (sunscreen && sunscreen !== 'yes') addScore('barrier', 1.4);
 
+  for (const cue of extractCueVotesFromVisionCues(reportContext && reportContext.vision_cues)) {
+    addScore(cueToSummaryPriority(cue), 1.4);
+  }
   for (const cue of extractCueVotesFromLockedFeatures(reportContext && reportContext.locked_features_summary)) {
     addScore(cueToSummaryPriority(cue), 0.8);
   }
@@ -1669,6 +1740,46 @@ function defaultQuestionIntentForPhase(phase) {
   return 'confirm_plan';
 }
 
+function normalizeReactionFlag(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  return DeepeningReactionFlagValues.includes(token) ? token : '';
+}
+
+function resolveDeterministicDeepeningAdviceItems({ summaryPriority, phase, deepeningContext } = {}) {
+  const priority = normalizeSummaryPriority(summaryPriority);
+  const phaseToken = normalizeEnumValue(phase, DEEPENING_PHASE_VALUES, 'photo_optin');
+  const suggested = Array.isArray(deepeningContext && deepeningContext.suggested_advice_items)
+    ? deepeningContext.suggested_advice_items.map((item) => normalizeDeepeningAdvice(item)).filter(Boolean)
+    : [];
+  const reactionFlags = Array.isArray(deepeningContext && deepeningContext.reaction_flags)
+    ? deepeningContext.reaction_flags.map((item) => normalizeReactionFlag(item)).filter(Boolean)
+    : [];
+  const out = [];
+  const add = (item) => {
+    const token = normalizeDeepeningAdvice(item);
+    if (!token || out.includes(token)) return;
+    out.push(token);
+  };
+
+  for (const item of suggested) add(item);
+  for (const item of defaultTwoWeekFocusForPriority(priority)) add(item);
+  if (priority === 'barrier' || priority === 'redness') add('protect_barrier');
+  if (priority === 'tone' || priority === 'redness') add('protect_uv');
+  if (reactionFlags.some((item) => item === 'stinging' || item === 'itching')) add('pause_if_stinging');
+  if (reactionFlags.some((item) => item === 'tightness' || item === 'dryness')) add('stabilize_barrier');
+  if (reactionFlags.includes('redness')) add('track_redness');
+  if (reactionFlags.includes('breakouts')) add('track_bumps');
+  if (phaseToken === 'photo_optin' && String(deepeningContext && deepeningContext.photo_choice || '').trim().toLowerCase() !== 'uploaded') {
+    add('retake_clear_photo');
+  }
+  if (phaseToken === 'products' && deepeningContext && deepeningContext.products_submitted === true) add('one_change_at_a_time');
+  if (!out.length) add('confirm_tolerance');
+
+  return out
+    .sort((a, b) => (DEEPENING_ADVICE_ORDER[a] || 99) - (DEEPENING_ADVICE_ORDER[b] || 99))
+    .slice(0, 4);
+}
+
 function adjudicateDeepeningCanonicalLayer(payload, { inheritedPriority, deepeningContext } = {}) {
   const base = normalizeCanonicalDeepening(payload, { strict: false, inheritedPriority });
   if (!base) return null;
@@ -1677,7 +1788,11 @@ function adjudicateDeepeningCanonicalLayer(payload, { inheritedPriority, deepeni
   return {
     phase,
     summary_priority: summaryPriority,
-    advice_items: Array.isArray(base.advice_items) && base.advice_items.length ? base.advice_items.slice(0, 4) : defaultTwoWeekFocusForPriority(summaryPriority),
+    advice_items: resolveDeterministicDeepeningAdviceItems({
+      summaryPriority,
+      phase,
+      deepeningContext,
+    }),
     question_intent: normalizeFollowUpIntent(base.question_intent || (deepeningContext && deepeningContext.question_intent) || defaultQuestionIntentForPhase(phase)),
   };
 }
@@ -1692,26 +1807,60 @@ function evaluateVisionCanonicalSemantic(payload, { quality, parseStatus } = {})
   const grade = String((quality && quality.grade) || '')
     .trim()
     .toLowerCase();
+  const observations = Array.isArray(p.observations) ? p.observations : [];
+  const lowEvidenceCount = observations.filter((row) => canonicalObservationScore(row) < 210).length;
+  const sameRegionClusters = new Map();
+  for (const row of observations) {
+    const region = normalizeCanonicalRegion(row && row.region);
+    if (!region) continue;
+    const bucket = sameRegionClusters.get(region) || [];
+    bucket.push(row);
+    sameRegionClusters.set(region, bucket);
+  }
   if (visibilityStatus === 'insufficient' && !p.insufficient_reason) {
     issues.push('missing_insufficient_reason');
   }
-  if ((visibilityStatus === 'sufficient' || visibilityStatus === 'limited') && grade === 'pass' && (!Array.isArray(p.observations) || p.observations.length < 2)) {
+  if (visibilityStatus === 'sufficient' && grade === 'pass' && observations.length < 2) {
     issues.push('semantic_empty_on_pass_quality');
   }
-  if (visibilityStatus === 'limited' && (!Array.isArray(p.observations) || !p.observations.length) && grade === 'pass') {
+  if (visibilityStatus === 'limited' && !observations.length && grade === 'pass') {
     issues.push('limited_without_grounded_cues');
+  }
+  if (grade === 'pass' && observations.length > 0 && lowEvidenceCount === observations.length) {
+    issues.push('weak_cues_only_on_pass_quality');
+  }
+  if (visibilityStatus === 'limited' && observations.length > 1 && lowEvidenceCount > 0) {
+    issues.push('limited_cues_padding');
+  }
+  for (const bucket of sameRegionClusters.values()) {
+    if (!Array.isArray(bucket) || bucket.length < 2) continue;
+    const conflicts = [];
+    for (let i = 0; i < bucket.length; i += 1) {
+      for (let j = i + 1; j < bucket.length; j += 1) {
+        if (!canCoexistInSameRegion(bucket[i], bucket[j])) conflicts.push(`${bucket[i].cue}:${bucket[j].cue}`);
+      }
+    }
+    if (conflicts.length) {
+      issues.push('conflicting_same_region_cues');
+      break;
+    }
   }
   return {
     ok: issues.length === 0,
     code: issues.includes('parse_truncated')
       ? 'PARSE_TRUNCATED_JSON'
-      : issues.includes('semantic_empty_on_pass_quality')
+      : issues.includes('semantic_empty_on_pass_quality') || issues.includes('limited_without_grounded_cues')
         ? 'SEMANTIC_EMPTY'
         : issues.length
           ? 'SEMANTIC_INVALID'
           : null,
     issues,
-    useful_output: visibilityStatus !== 'insufficient' && Array.isArray(p.observations) && p.observations.length >= 2,
+    useful_output:
+      visibilityStatus === 'sufficient'
+        ? observations.length >= 2
+        : visibilityStatus === 'limited'
+          ? observations.length >= 1
+          : false,
   };
 }
 
@@ -1768,16 +1917,13 @@ function evaluateDeepeningCanonicalSemantic(payload, { parseStatus } = {}) {
   if (parseStatus === 'parse_truncated') issues.push('parse_truncated');
   if (!p.phase) issues.push('missing_phase');
   if (!p.question_intent) issues.push('missing_question_intent');
-  if (!Array.isArray(p.advice_items) || !p.advice_items.length) issues.push('missing_advice_items');
   return {
     ok: issues.length === 0,
     code: issues.includes('parse_truncated')
       ? 'PARSE_TRUNCATED_JSON'
-      : issues.includes('missing_advice_items')
-        ? 'SEMANTIC_EMPTY'
-        : issues.length
-          ? 'SEMANTIC_INVALID'
-          : null,
+      : issues.length
+        ? 'SEMANTIC_INVALID'
+        : null,
     issues,
     useful_output: issues.length === 0,
   };
@@ -2804,6 +2950,7 @@ module.exports = {
   SkinReportCanonicalSchema,
   SkinReportCanonicalLlmSchema,
   SkinDeepeningCanonicalSchema,
+  SkinDeepeningCanonicalLlmSchema,
   validateFinalContract,
   validateVisionObservation,
   validateVisionCanonicalLayer,

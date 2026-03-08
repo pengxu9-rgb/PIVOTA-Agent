@@ -8,6 +8,7 @@ const VisionUnavailabilityReason = Object.freeze({
   VISION_UPSTREAM_5XX: 'VISION_UPSTREAM_5XX',
   VISION_SCHEMA_INVALID: 'VISION_SCHEMA_INVALID',
   VISION_SEMANTIC_INVALID: 'VISION_SEMANTIC_INVALID',
+  VISION_IMAGE_INVALID: 'VISION_IMAGE_INVALID',
   VISION_IMAGE_FETCH_FAILED: 'VISION_IMAGE_FETCH_FAILED',
   VISION_UNKNOWN: 'VISION_UNKNOWN',
   VISION_CV_FALLBACK_USED: 'VISION_CV_FALLBACK_USED',
@@ -24,6 +25,7 @@ const VISION_FAILURE_REASONS = Object.freeze(
     VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
     VisionUnavailabilityReason.VISION_SCHEMA_INVALID,
     VisionUnavailabilityReason.VISION_SEMANTIC_INVALID,
+    VisionUnavailabilityReason.VISION_IMAGE_INVALID,
     VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED,
     VisionUnavailabilityReason.VISION_UNKNOWN,
   ]),
@@ -77,6 +79,7 @@ function normalizeVisionReason(reason) {
   if (token.includes('TIMEOUT')) return VisionUnavailabilityReason.VISION_TIMEOUT;
   if (token.includes('SCHEMA')) return VisionUnavailabilityReason.VISION_SCHEMA_INVALID;
   if (token.includes('SEMANTIC')) return VisionUnavailabilityReason.VISION_SEMANTIC_INVALID;
+  if (token.includes('IMAGE_INVALID')) return VisionUnavailabilityReason.VISION_IMAGE_INVALID;
   if (token.includes('FETCH') || token.includes('IMAGE')) return VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED;
   if (token.includes('4XX')) return VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
   if (token.includes('5XX')) return VisionUnavailabilityReason.VISION_UPSTREAM_5XX;
@@ -103,6 +106,23 @@ function isVisionFailureReason(reason) {
 
 function shouldRetryVision(reason) {
   return RETRYABLE_REASONS.has(normalizeVisionReason(reason));
+}
+
+function containsImageInvalidHint(text) {
+  const token = String(text || '').toLowerCase();
+  return (
+    token.includes('unable to process input image') ||
+    token.includes('unsupported mime') ||
+    token.includes('mime') ||
+    token.includes('invalid image') ||
+    token.includes('invalid argument') ||
+    token.includes('too large') ||
+    token.includes('payload too large') ||
+    token.includes('decode') ||
+    token.includes('corrupt') ||
+    token.includes('resolution') ||
+    token.includes('image')
+  );
 }
 
 function classifyVisionAvailability({ enabled, apiKeyConfigured } = {}) {
@@ -362,7 +382,9 @@ function classifyVisionProviderFailure(error, { timeoutMs, region, model } = {})
       };
     }
     if (grpc4xxCodes.has(normalizedErrorCode)) {
-      const reason = VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
+      const reason = containsImageInvalidHint(text)
+        ? VisionUnavailabilityReason.VISION_IMAGE_INVALID
+        : VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
       return {
         reason,
         status_code: statusCode,
@@ -443,7 +465,9 @@ function classifyVisionProviderFailure(error, { timeoutMs, region, model } = {})
   }
 
   if (statusCode != null && statusCode >= 400) {
-    const reason = VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
+    const reason = containsImageInvalidHint(text)
+      ? VisionUnavailabilityReason.VISION_IMAGE_INVALID
+      : VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
     return {
       reason,
       status_code: statusCode,
@@ -459,7 +483,25 @@ function classifyVisionProviderFailure(error, { timeoutMs, region, model } = {})
   }
 
   if (/clienterror|invalid argument|permission denied|unauthenticated|forbidden/.test(text)) {
-    const reason = VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
+    const reason = containsImageInvalidHint(text)
+      ? VisionUnavailabilityReason.VISION_IMAGE_INVALID
+      : VisionUnavailabilityReason.VISION_UPSTREAM_4XX;
+    return {
+      reason,
+      status_code: statusCode,
+      error_code: errorCode,
+      error_evidence: buildVisionErrorEvidence(error, {
+        reason,
+        statusCode,
+        timeoutMs,
+        region,
+        model,
+      }),
+    };
+  }
+
+  if (containsImageInvalidHint(text)) {
+    const reason = VisionUnavailabilityReason.VISION_IMAGE_INVALID;
     return {
       reason,
       status_code: statusCode,
@@ -611,6 +653,7 @@ function buildVisionPhotoNotice({ reason, language } = {}) {
   }
 
   if (
+    normalized === VisionUnavailabilityReason.VISION_IMAGE_INVALID ||
     normalized === VisionUnavailabilityReason.VISION_UPSTREAM_4XX ||
     normalized === VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED
   ) {
@@ -640,4 +683,5 @@ module.exports = {
   executeVisionWithRetry,
   pickPrimaryVisionReason,
   buildVisionPhotoNotice,
+  containsImageInvalidHint,
 };

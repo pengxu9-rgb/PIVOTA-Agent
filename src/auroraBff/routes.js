@@ -21,6 +21,7 @@ const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
+  adjudicateDeepeningCanonicalLayer,
   renderDeepeningCanonicalLayer,
 } = require('./skinAnalysisContract');
 const {
@@ -255,12 +256,10 @@ function buildMainlineDeepeningDto({
   });
   return {
     dto: buildDeepeningSignalsDto({
-      lang: language,
       phase: phasePlan.phase,
       questionIntent: phasePlan.question_intent,
       photoChoice: userRequestedPhoto && photosProvided ? 'uploaded' : 'unknown',
       productsSubmitted: hasRoutine,
-      profileSummary,
       routineCandidate,
       reactions,
       summaryPriority: reportCanonical && reportCanonical.summary_focus ? reportCanonical.summary_focus.priority : 'mixed',
@@ -44580,6 +44579,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                   RATE_LIMIT: VisionUnavailabilityReason.VISION_RATE_LIMITED,
                   UPSTREAM_5XX: VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
                   UPSTREAM_4XX: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+                  IMAGE_INVALID: VisionUnavailabilityReason.VISION_IMAGE_INVALID,
+                  VISION_IMAGE_INVALID: VisionUnavailabilityReason.VISION_IMAGE_INVALID,
                   SCHEMA_INVALID: VisionUnavailabilityReason.VISION_SCHEMA_INVALID,
                   SEMANTIC_EMPTY: VisionUnavailabilityReason.VISION_SEMANTIC_INVALID,
                   SEMANTIC_INVALID: VisionUnavailabilityReason.VISION_SEMANTIC_INVALID,
@@ -44666,6 +44667,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             routineCandidate: hasRoutine ? routineCandidate : null,
             photoQuality: qualityForReport,
             factLayer: factLayerForReport,
+            visionCanonical: visionRuntime && visionRuntime.canonical ? visionRuntime.canonical : null,
             imageBuffer: diagnosisPhotoBytes || shadowVerifyPhotoBytes || null,
           });
           llmInputHash = reportDto.input_hash || llmInputHash;
@@ -44735,23 +44737,26 @@ function mountAuroraBffRoutes(app, { logger }) {
                   deepening: deepeningRuntime.layer,
                 };
               } else {
+                const fallbackDeepeningCanonical = adjudicateDeepeningCanonicalLayer(
+                  {
+                    phase: deepeningContext.phasePlan.phase,
+                    summary_priority:
+                      reportCanonical && reportCanonical.summary_focus
+                        ? reportCanonical.summary_focus.priority
+                        : 'mixed',
+                    question_intent: deepeningContext.phasePlan.question_intent,
+                  },
+                  {
+                    inheritedPriority:
+                      reportCanonical && reportCanonical.summary_focus
+                        ? reportCanonical.summary_focus.priority
+                        : 'mixed',
+                    deepeningContext: deepeningContext.dto,
+                  },
+                );
                 reportLayer = {
                   ...reportLayer,
-                  deepening: renderDeepeningCanonicalLayer(
-                    {
-                      phase: deepeningContext.phasePlan.phase,
-                      summary_priority:
-                        reportCanonical && reportCanonical.summary_focus
-                          ? reportCanonical.summary_focus.priority
-                          : 'mixed',
-                      advice_items:
-                        reportCanonical && Array.isArray(reportCanonical.two_week_focus) && reportCanonical.two_week_focus.length
-                          ? reportCanonical.two_week_focus
-                          : ['confirm_tolerance'],
-                      question_intent: deepeningContext.phasePlan.question_intent,
-                    },
-                    { lang: ctx.lang },
-                  ),
+                  deepening: renderDeepeningCanonicalLayer(fallbackDeepeningCanonical, { lang: ctx.lang }),
                 };
               }
             }

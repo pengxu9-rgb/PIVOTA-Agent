@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   buildVisionSignalsDto,
   buildReportSignalsDto,
+  buildDeepeningSignalsDto,
   buildInputHashPrefix,
 } = require('../src/auroraBff/skinSignalsDto');
 
@@ -24,6 +25,9 @@ test('skin signals dto: input_hash is stable for same payload', () => {
   const b = buildVisionSignalsDto(common);
   assert.equal(a.input_hash, b.input_hash);
   assert.equal(buildInputHashPrefix(a.input_hash).length, 8);
+  assert.equal('lang' in a, false);
+  assert.equal('user_goal' in a, false);
+  assert.equal('locked_features_summary' in a, false);
 });
 
 test('skin signals dto: report dto contains signals-only fields and remains compact', () => {
@@ -46,12 +50,17 @@ test('skin signals dto: report dto contains signals-only fields and remains comp
     factLayer: {
       features: [{ observation: 'mild redness around cheeks', confidence: 'somewhat_sure' }],
     },
+    visionCanonical: {
+      observations: [
+        { cue: 'redness', region: 'cheeks', severity: 'mild', confidence: 'high', evidence: 'pink tone' },
+        { cue: 'shine', region: 't_zone', severity: 'moderate', confidence: 'med', evidence: 't-zone reflectance' },
+      ],
+    },
     imageBuffer: Buffer.from('image-bytes-2'),
   });
 
   const keys = Object.keys(dto).sort();
   for (const key of [
-    'lang',
     'input_hash',
     'concern_rank',
     'deterministic_signals',
@@ -60,11 +69,43 @@ test('skin signals dto: report dto contains signals-only fields and remains comp
     'open_questions',
     'photo_quality',
     'uncertainty_level',
-    'locked_features_summary',
+    'vision_cues',
   ]) {
     assert.equal(keys.includes(key), true);
   }
+  assert.equal(keys.includes('lang'), false);
+  assert.equal(keys.includes('locked_features_summary'), false);
+  assert.deepEqual(
+    dto.vision_cues,
+    [
+      { cue: 'redness', region: 'cheeks', severity: 'mild', confidence: 'high', evidence: 'pink tone' },
+      { cue: 'shine', region: 't_zone', severity: 'moderate', confidence: 'med', evidence: 't-zone reflectance' },
+    ],
+  );
 
   const size = Buffer.byteLength(JSON.stringify(dto), 'utf8');
   assert.ok(size < 1400, `dto size too large: ${size}`);
+});
+
+test('skin signals dto: deepening dto removes locale/profile text and canonicalizes reactions/advice', () => {
+  const dto = buildDeepeningSignalsDto({
+    lang: 'zh-CN',
+    phase: 'reactions',
+    questionIntent: 'reaction_check',
+    photoChoice: 'uploaded',
+    productsSubmitted: true,
+    profileSummary: { goals: ['calm redness'] },
+    routineCandidate: 'retinoid pm',
+    reactions: ['stinging', 'unknown', 'redness'],
+    summaryPriority: 'barrier',
+    watchouts: ['pause_if_stinging'],
+    twoWeekFocus: ['track_redness'],
+    qualityObject: { grade: 'pass' },
+  });
+
+  assert.equal('lang' in dto, false);
+  assert.equal('profile' in dto, false);
+  assert.equal('quality' in dto, false);
+  assert.deepEqual(dto.reaction_flags, ['stinging', 'redness']);
+  assert.deepEqual(dto.suggested_advice_items, ['pause_if_stinging', 'track_redness']);
 });
