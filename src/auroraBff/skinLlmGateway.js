@@ -64,8 +64,16 @@ function readOutputTokenBudget(envName, fallback) {
   return Math.max(256, Math.min(8192, Math.trunc(raw)));
 }
 
+function readSamplingFloat(envName, fallback, { min = 0, max = 1 } = {}) {
+  const raw = Number(process.env[envName]);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.max(min, Math.min(max, raw));
+}
+
 const SKIN_VISION_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_VISION_MAX_OUTPUT_TOKENS', 1800);
-const SKIN_REPORT_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_REPORT_MAX_OUTPUT_TOKENS', 5000);
+const SKIN_REPORT_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_REPORT_MAX_OUTPUT_TOKENS', 1800);
+const SKIN_JSON_TEMPERATURE = readSamplingFloat('AURORA_SKIN_JSON_TEMPERATURE', 0, { min: 0, max: 1 });
+const SKIN_JSON_TOP_P = readSamplingFloat('AURORA_SKIN_JSON_TOP_P', 0.1, { min: 0.01, max: 1 });
 
 function inferStructuredTimeoutMs(maxOutputTokens) {
   const budget = readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number(maxOutputTokens) || 700);
@@ -380,10 +388,12 @@ function buildSemanticRevisionHint({ stage, issues } = {}) {
     ].filter(Boolean).join('\n');
   }
   if (stage === 'report') {
+    const hasParseTruncated = list.includes('parse_truncated');
     return [
       'Revise your previous output.',
       'Fix the following issues:',
       list.map((item) => `- ${item}`).join('\n'),
+      hasParseTruncated ? 'Return a smaller JSON object: at most 2 insights, at most 4 routine_steps, and omit optional arrays rather than leaving partial JSON.' : '',
       'Every routine step must be grounded in linked_cues.',
       'Keep the plan conservative, structured, and free of user-facing prose.',
     ].filter(Boolean).join('\n');
@@ -487,8 +497,8 @@ async function callGeminiJson({
     config: {
       responseMimeType: 'application/json',
       responseSchema: sanitizedResponseSchema,
-      temperature: 0.1,
-      topP: 0.8,
+      temperature: SKIN_JSON_TEMPERATURE,
+      topP: SKIN_JSON_TOP_P,
       candidateCount: 1,
       maxOutputTokens: readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number.isFinite(Number(maxOutputTokens)) ? Number(maxOutputTokens) : 700),
     },
