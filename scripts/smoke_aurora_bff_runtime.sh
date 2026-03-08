@@ -62,6 +62,15 @@ printf "BASE=%s\nAURORA_LANG=%s\nAURORA_UID=%s\nTRACE_ID=%s\nBRIEF_ID=%s\nCURL_R
 say "deployed commit (best-effort)"
 curl_do -sSI "${BASE}/v1/session/bootstrap" | grep -i '^x-service-commit:' || true
 
+say "health contract"
+health_json="$(curl_do -fsS "${BASE}/health")"
+printf "%s\n" "$health_json" | jq_assert "health exposes aurora_chat_contract" '.aurora_chat_contract | type=="object"'
+printf "%s\n" "$health_json" | jq_assert "health exposes skill_router_v2" '(.aurora_chat_contract.skill_router_v2 | type) == "boolean"'
+printf "%s\n" "$health_json" | jq_assert "health exposes analysis_story_v2_enabled" '(.aurora_chat_contract.analysis_story_v2_enabled | type) == "boolean"'
+printf "%s\n" "$health_json" | jq_assert "skill_router_v2 enabled" '.aurora_chat_contract.skill_router_v2 == true'
+printf "%s\n" "$health_json" | jq_assert "analysis card contract is story_only" '.aurora_chat_contract.analysis_card_contract_mode == "story_only"'
+printf "%s\n" "$health_json" | jq_assert "v1 chat delegation mode is compatible_only" '.aurora_chat_contract.v1_chat_v2_delegation_mode == "compatible_only"'
+
 say "session bootstrap"
 bootstrap_json="$(curl_do -fsS "${BASE}/v1/session/bootstrap" "${COMMON_HEADERS[@]}")"
 printf "%s\n" "$bootstrap_json" | jq_assert "bootstrap envelope has cards" '.cards | type=="array" and (length >= 1)'
@@ -127,6 +136,8 @@ printf "%s\n" "$skin_json" | jq_assert "analysis_summary not public when story e
   else true
   end
 '
+printf "%s\n" "$skin_json" | jq_assert "analysis meta present" '.analysis_meta | type=="object"'
+printf "%s\n" "$skin_json" | jq_assert "analysis confidence label present" '.cards | any(.type=="analysis_story_v2" and ((.payload.ui_card_v1.confidence_label//"")|length>0))'
 printf "%s\n" "$skin_json" | jq_assert "analysis suppresses passive pregnancy confidence card" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="pregnancy_optional_profile")] | length) == 0'
 
 say "skin analysis (routine-fit path)"
@@ -158,7 +169,7 @@ analysis_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     }
   }')"
 printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
-printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin assistant text exists" '((.assistant_message.content // "") | length) > 0'
+printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin assistant text exists" '(((.assistant_text // .assistant_message.content // "") | length) > 0)'
 
 analysis_routine_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \
@@ -172,6 +183,16 @@ analysis_routine_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   }')"
 printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive replays routine_fit_summary" '.cards | any(.type=="routine_fit_summary")'
 printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
+
+say "/v1/chat free-form with context (v2-compatible path)"
+v1_chat_v2_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
+  -H 'Content-Type: application/json' \
+  "${COMMON_HEADERS[@]}" \
+  --data '{"message":"what ingredient is best for acne?","context":{"locale":"en","profile":{}}}')"
+
+printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns cards array" '.cards | type=="array" and (length >= 1)'
+printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns text_response" '.cards | any(.card_type=="text_response")'
+printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns next_actions" '.next_actions | type=="array"'
 
 say "product analyze (Nivea Creme)"
 started_at_before_analyze="$(health_started_at)"

@@ -234,20 +234,24 @@ async def _wait_ready(base_url: str, *, timeout_s: float = 20.0) -> None:
     raise TimeoutError(f"server not ready after {timeout_s}s: {base_url}")
 
 
-def _extract_analysis_summary(envelope: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _extract_analysis_payload(envelope: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     cards = envelope.get("cards") or []
     if not isinstance(cards, list):
         return None
-    for c in cards:
-        if not isinstance(c, dict):
-            continue
-        if c.get("type") == "analysis_summary":
-            payload = c.get("payload")
-            return payload if isinstance(payload, dict) else None
+    for card_type in ("analysis_story_v2", "analysis_summary"):
+        for c in cards:
+            if not isinstance(c, dict):
+                continue
+            if c.get("type") == card_type:
+                payload = c.get("payload")
+                return payload if isinstance(payload, dict) else None
     return None
 
 
-def _infer_llm_called(analysis_payload: Dict[str, Any]) -> bool:
+def _infer_llm_called(envelope: Dict[str, Any], analysis_payload: Dict[str, Any]) -> bool:
+    analysis_meta = envelope.get("analysis_meta") or {}
+    if isinstance(analysis_meta, dict):
+        return bool(analysis_meta.get("llm_vision_called")) or bool(analysis_meta.get("llm_report_called"))
     qr = analysis_payload.get("quality_report") or {}
     llm = (qr.get("llm") or {}) if isinstance(qr, dict) else {}
     vision = llm.get("vision") or {}
@@ -257,7 +261,13 @@ def _infer_llm_called(analysis_payload: Dict[str, Any]) -> bool:
     return v_dec == "call" or r_dec == "call"
 
 
-def _infer_timeout_degraded(analysis_payload: Dict[str, Any]) -> bool:
+def _infer_timeout_degraded(envelope: Dict[str, Any], analysis_payload: Dict[str, Any]) -> bool:
+    analysis_meta = envelope.get("analysis_meta") or {}
+    if isinstance(analysis_meta, dict):
+        for key in ("degrade_reason", "vision_failure_reason", "report_failure_reason"):
+            value = str(analysis_meta.get(key) or "")
+            if "timeout" in value.lower() or "超时" in value:
+                return True
     qr = analysis_payload.get("quality_report") or {}
     reasons = qr.get("reasons") if isinstance(qr, dict) else None
     if not isinstance(reasons, list):
@@ -311,17 +321,17 @@ async def _run_load(base_url: str, cfg: LoadTestConfig) -> List[RequestResult]:
                     except Exception:
                         results.append(RequestResult(ok=False, latency_ms=dt, status_code=status, llm_called=False, timeout_degraded=False, error="json_decode_failed"))
                         continue
-                    payload = _extract_analysis_summary(envelope)
+                    payload = _extract_analysis_payload(envelope)
                     if not payload:
-                        results.append(RequestResult(ok=False, latency_ms=dt, status_code=status, llm_called=False, timeout_degraded=False, error="missing_analysis_summary"))
+                        results.append(RequestResult(ok=False, latency_ms=dt, status_code=status, llm_called=False, timeout_degraded=False, error="missing_analysis_card"))
                         continue
                     results.append(
                         RequestResult(
                             ok=True,
                             latency_ms=dt,
                             status_code=status,
-                            llm_called=_infer_llm_called(payload),
-                            timeout_degraded=_infer_timeout_degraded(payload),
+                            llm_called=_infer_llm_called(envelope, payload),
+                            timeout_degraded=_infer_timeout_degraded(envelope, payload),
                             error=None,
                         )
                     )
@@ -444,8 +454,8 @@ def _render_report(
     lines.append("")
     lines.append("## Notes")
     lines.append("")
-    lines.append("- `llm_called_ratio` is inferred from `analysis_summary.payload.quality_report.llm.*.decision == \"call\"` (policy decision).")
-    lines.append("- `timeout_degraded_count` is inferred from quality reasons containing `timeout/超时` or client-side timeouts.")
+    lines.append("- `llm_called_ratio` is inferred from `analysis_meta.llm_vision_called || analysis_meta.llm_report_called`, with `analysis_summary.payload.quality_report` as fallback.")
+    lines.append("- `timeout_degraded_count` is inferred from `analysis_meta.*reason` timeout markers, summary quality reasons, or client-side timeouts.")
     lines.append("- External LLM calls are disabled by default in this load test (local + deterministic).")
     lines.append("")
     return "\n".join(lines)

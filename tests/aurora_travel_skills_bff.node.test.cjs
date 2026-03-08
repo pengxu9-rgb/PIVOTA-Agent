@@ -264,3 +264,57 @@ test('/v1/chat: chat context persists travel_followup after identity resolution'
     },
   );
 });
+
+test('/v1/chat: travel pipeline userLocale falls back to X-Lang when Accept-Language is absent', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const contractsModuleId = require.resolve('../src/auroraBff/travelSkills/contracts');
+      delete require.cache[routesModuleId];
+      delete require.cache[contractsModuleId];
+      const contracts = require('../src/auroraBff/travelSkills/contracts');
+      const originalRunTravelPipeline = contracts.runTravelPipeline;
+      let capturedLocale = null;
+      contracts.runTravelPipeline = async (input) => {
+        capturedLocale = input && input.userLocale;
+        return { ok: false, quality_reason: 'core_signals_missing' };
+      };
+
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const headers = {
+          ...buildHeaders(`uid_locale_${Date.now()}`, 'locale'),
+          'X-Lang': 'CN',
+        };
+        await seedTravelProfile(app, headers, '新加坡');
+
+        await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: '请根据我去新加坡的旅行计划给护肤建议。',
+            session: { state: 'idle' },
+            language: 'CN',
+          })
+          .expect(200);
+
+        assert.equal(capturedLocale, 'CN');
+      } finally {
+        contracts.runTravelPipeline = originalRunTravelPipeline;
+        delete require.cache[routesModuleId];
+        delete require.cache[contractsModuleId];
+      }
+    },
+  );
+});

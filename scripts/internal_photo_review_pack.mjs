@@ -306,6 +306,10 @@ function findCardByType(cards, type) {
     : null;
 }
 
+function findCanonicalAnalysisCard(cards) {
+  return findCardByType(cards, 'analysis_story_v2') || findCardByType(cards, 'analysis_summary');
+}
+
 function maskFromPolygon(points, gridSize) {
   const safeGrid = Math.max(32, Math.min(256, Math.trunc(Number(gridSize) || 64)));
   return require('../src/auroraBff/evalAdapters/common/metrics').polygonNormToMask(
@@ -471,7 +475,7 @@ async function analyzePhoto({
   const root = response.json && typeof response.json === 'object' ? response.json : {};
   const cards = Array.isArray(root.cards) ? root.cards : [];
   const photoCard = findCardByType(cards, 'photo_modules_v1');
-  const analysisCard = findCardByType(cards, 'analysis_summary');
+  const analysisCard = findCanonicalAnalysisCard(cards);
   if (!photoCard || !photoCard.payload || typeof photoCard.payload !== 'object') {
     return {
       ok: false,
@@ -809,4 +813,3 @@ main().catch((error) => {
   process.stderr.write(`${String(error && error.stack ? error.stack : error)}\n`);
   process.exitCode = 1;
 });
-

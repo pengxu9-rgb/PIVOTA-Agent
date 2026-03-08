@@ -78,6 +78,33 @@ function pushUniqueAction(lines, seenSemantics, line) {
   lines.push(text);
 }
 
+function travelKitSemanticKey(raw) {
+  const text = normalizeText(raw, 320).toLowerCase();
+  if (!text) return '';
+  if (
+    text.includes('sun_protection') ||
+    text.includes('elevated uv') ||
+    text.includes('daily sun protection') ||
+    text.includes('uv 升高') ||
+    text.includes('日常防晒') ||
+    text.includes('body sunscreen') ||
+    text.includes('身体防晒')
+  ) return 'sun_protection';
+  if (text.includes('post_sun') || text.includes('post-sun') || text.includes('after-sun') || text.includes('晒后修复')) return 'post_sun';
+  if (text.includes('moisturization') || text.includes('warmer / more humid') || text.includes('temperature swing / dryness') || text.includes('湿热上升') || text.includes('温差/干燥')) return 'moisturization';
+  if (text.includes('masks') || text.includes('mask') || text.includes('面膜')) return 'masks';
+  if (text.includes('cleansing') || text.includes('double cleanse') || text.includes('makeup removal') || text.includes('双重清洁') || text.includes('卸妆')) return 'cleansing';
+  if (text.includes('antioxidant') || text.includes('抗氧化')) return 'antioxidant';
+  if (text.includes('brightening') || text.includes('dark-spot') || text.includes('dark spot') || text.includes('美白') || text.includes('祛斑')) return 'brightening';
+  if (text.includes('eye_care') || text.includes('eye care') || text.includes('眼部护理')) return 'eye_care';
+  if (text.includes('body_care') || text.includes('body care') || text.includes('身体护理')) return 'body_care';
+  if (text.includes('emergency') || text.includes('应急')) return 'emergency';
+  return text
+    .replace(/[^a-z0-9\u4e00-\u9fff\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function formatSignedNumber(value, digits = 1) {
   const n = roundTo(value, digits);
   if (n == null) return null;
@@ -431,93 +458,33 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
   const seenSemantics = new Set();
   const focusHumidity = Array.isArray(foci) && foci.includes(FOCUS_ENUM.HUMIDITY);
   const focusTemperature = Array.isArray(foci) && foci.includes(FOCUS_ENUM.TEMPERATURE);
-  const shownDeltaKeys = new Set(
-    Array.isArray(displayedDeltaKeys) && displayedDeltaKeys.length
-      ? displayedDeltaKeys
-      : getDeltaKeysForDisplay(foci),
-  );
-
-  if (Array.isArray(foci) && foci.includes(FOCUS_ENUM.UV)) {
-    const uvDestination = toNumber(delta?.uv?.destination);
-    if (uvDestination != null && uvDestination >= 6) {
-      pushUniqueAction(
-        lines,
-        seenSemantics,
-        t(
-          language,
-          '白天选 SPF50+，户外每 2 小时补涂一次，出汗后立即补涂。',
-          'Use SPF50+ in daytime; reapply every 2 hours outdoors and immediately after heavy sweat.',
-        ),
-      );
-    } else {
-      pushUniqueAction(
-        lines,
-        seenSemantics,
-        t(
-          language,
-          '日常可用 SPF30-50，若连续户外超过 90 分钟改为 SPF50 并补涂。',
-          'Use SPF30-50 daily; if outdoors over 90 minutes continuously, switch to SPF50 and reapply.',
-        ),
-      );
-    }
-  }
 
   if (focusHumidity || focusTemperature) {
     const humidityDelta = toNumber(delta?.humidity?.delta);
     const temperatureDelta = toNumber(delta?.temperature?.delta);
-    if (shownDeltaKeys.has('humidity') && humidityDelta != null && humidityDelta >= 8) {
-      pushUniqueAction(
-        lines,
-        seenSemantics,
-        t(
-          language,
-          '早上改轻薄保湿（凝胶/乳液），晚间用中等修护霜，避免同晚叠加多活性。',
-          'Switch AM to lighter hydration (gel/lotion), keep a medium repair cream at night, and avoid active stacking.',
-        ),
-      );
-    } else if (shownDeltaKeys.has('humidity') && humidityDelta != null && humidityDelta <= -8) {
-      pushUniqueAction(
-        lines,
-        seenSemantics,
-        t(
-          language,
-          '目的地比常驻地更干时，早晚升级为修护保湿，夜间可在易干部位薄涂封层。',
-          'When destination humidity is lower than home, upgrade to richer AM/PM barrier hydration and add a thin occlusive layer on dry-prone areas at night.',
-        ),
-      );
-    } else if ((focusTemperature || shownDeltaKeys.has('temperature')) && temperatureDelta != null && Math.abs(temperatureDelta) >= 3) {
-      pushUniqueAction(
-        lines,
-        seenSemantics,
-        t(
-          language,
-          '温差偏大时，早晚都保留屏障修护霜；夜间可加一层封闭型保湿。',
-          'With larger temperature swings, keep barrier cream AM/PM and add a thin occlusive layer at night if needed.',
-        ),
-      );
-    } else if (focusHumidity || shownDeltaKeys.has('humidity')) {
-      pushUniqueAction(
-        lines,
-        seenSemantics,
-        t(
-          language,
-          '湿度变化不大时，保持基础保湿与温和清洁，避免临时叠加高刺激活性。',
-          'When humidity shift is mild, keep baseline hydration and gentle cleansing, and avoid suddenly stacking high-irritation actives.',
-        ),
-      );
+    if (humidityDelta != null && humidityDelta >= 8) {
+      pushUniqueAction(lines, seenSemantics, t(language,
+        'AM 切换为轻薄质地保湿，PM 保留中等修护霜；旅行期避免同晚叠加多种活性。',
+        'Switch AM to lighter texture hydration, keep PM medium repair cream; avoid same-night multi-active stacking during travel.',
+      ));
+    } else if (humidityDelta != null && humidityDelta <= -8) {
+      pushUniqueAction(lines, seenSemantics, t(language,
+        '目的地更干：AM/PM 升级为修护保湿，夜间易干部位薄涂封层。',
+        'Destination is drier: upgrade AM/PM to barrier hydration, add thin occlusive on dry-prone areas at night.',
+      ));
+    } else if (temperatureDelta != null && Math.abs(temperatureDelta) >= 3) {
+      pushUniqueAction(lines, seenSemantics, t(language,
+        '温差偏大时保持修护霜 AM/PM，夜间可加一层封闭型保湿。',
+        'With larger temperature swings, keep barrier cream AM/PM and add a thin occlusive at night if needed.',
+      ));
     }
   }
 
   if (Array.isArray(foci) && foci.includes(FOCUS_ENUM.SLEEP)) {
-    pushUniqueAction(
-      lines,
-      seenSemantics,
-      t(
-        language,
-        '飞行当天和落地第一晚优先补水修护面膜 1 次，第二晚按皮肤反应决定是否继续。',
-        'Use one hydrating recovery mask on flight day or first night after landing; continue second night only if needed.',
-      ),
-    );
+    pushUniqueAction(lines, seenSemantics, t(language,
+      '飞行当天/落地第一晚以补水修护为主，跳过高强度活性。',
+      'Flight day / first night: focus on hydration and recovery, skip strong actives.',
+    ));
   }
 
   const adaptive = Array.isArray(travelReadiness && travelReadiness.adaptive_actions)
@@ -526,7 +493,7 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
   for (const row of adaptive) {
     const text = normalizeText(row && row.what_to_do, 280);
     if (text) pushUniqueAction(lines, seenSemantics, text);
-    if (lines.length >= 4) break;
+    if (lines.length >= 3) break;
   }
 
   return uniqueStrings(lines, 3);
@@ -549,69 +516,89 @@ function buildPhasedPlanLines({ language, travelReadiness, foci }) {
   const lines = [
     t(
       language,
-      '行前（T-2~T-1）：维持现有护肤，不新增高刺激活性；新产品先做局部耐受测试。',
-      'Pre-trip (T-2 to T-1): keep routine stable, avoid introducing high-irritation actives, and patch-test any new product.',
+      '行前（T-2~T-1）：维持现有护肤流程不变，不引入新产品或新活性；新产品先做局部耐受测试。',
+      'Pre-trip (T-2 to T-1): keep existing routine unchanged, do not introduce new products or actives; patch-test any new product first.',
     ),
     t(
       language,
-      '飞行日：优先补水+屏障修护；落地当晚跳过高强度酸/维A。',
-      'Flight day: prioritize hydration + barrier recovery, and skip strong acids/retinoids on arrival night.',
+      '飞行日：简化至核心 3 步（清洁+保湿+修护），跳过所有活性成分；详见装备清单中的飞行修护面膜。',
+      'Flight day: simplify to 3 core steps (cleanse+moisturize+repair), skip all actives; see flight recovery mask in kit.',
     ),
     hasSleepFocus
       ? t(
         language,
-        '在地日程：按时区调整睡眠和进餐，白天按户外时长补防晒，晚间以修护为主后再逐步恢复活性。',
-        'On-site days: align sleep/meals to local time, reapply sunscreen by outdoor exposure, and keep PM recovery-first before reintroducing actives.',
+        '在地日程：按当地时区调整作息，白天按户外时长执行防晒策略（见装备清单），晚间修护优先后逐步恢复活性频次。',
+        'On-site days: align schedule to local time, follow sun protection protocol by outdoor hours (see kit), keep PM recovery-first before gradually resuming actives.',
       )
       : hasUvStress
         ? t(
           language,
-          '在地日程：早上固定 SPF50+，户外每 2 小时补涂；晚间优先修护，活性逐步恢复。',
-          'On-site days: keep SPF50+ every morning and reapply every 2 hours outdoors; prioritize PM recovery and resume actives gradually.',
+          '在地日程：执行装备清单中的防晒+晒后修复方案；晚间修护优先，活性从第 2 晚起逐步恢复。',
+          'On-site days: follow sun protection + post-sun repair from kit; PM recovery-first, resume actives gradually from night 2.',
         )
         : t(
           language,
-          '在地日程：白天按紧绷/出油状态动态补保湿；晚间先修护再按耐受恢复活性。',
-          'On-site days: adjust daytime hydration by tightness/oiliness; run PM recovery-first before restoring actives by tolerance.',
+          '在地日程：白天按紧绷/出油状态动态调整保湿；晚间修护优先，按耐受度恢复活性。',
+          'On-site days: adjust daytime hydration by tightness/oiliness; PM recovery-first, restore actives by tolerance.',
         ),
   ];
   return uniqueStrings(lines, 3);
 }
 
-function buildProductLines({ language, foci, travelReadiness }) {
+function buildTravelKitLines({ language, foci, travelReadiness, profile }) {
+  const recoBundle = Array.isArray(travelReadiness && travelReadiness.reco_bundle)
+    ? travelReadiness.reco_bundle
+    : [];
   const shopping = isPlainObject(travelReadiness && travelReadiness.shopping_preview)
     ? travelReadiness.shopping_preview
     : {};
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
+  const categoryRecs = Array.isArray(travelReadiness && travelReadiness.category_recommendations)
+    ? travelReadiness.category_recommendations
+    : [];
+
   const lines = [];
+  const seenCategories = new Set();
 
-  if (Array.isArray(foci) && (foci.includes(FOCUS_ENUM.PRODUCTS) || foci.includes(FOCUS_ENUM.UV) || foci.includes(FOCUS_ENUM.HUMIDITY))) {
-    const uvDestination = toNumber(delta?.uv?.destination);
-    if (uvDestination != null && uvDestination >= 6) {
-      lines.push(t(language, '防晒档位：SPF50+（户外为主）。', 'Sunscreen tier: SPF50+ (for outdoor-heavy days).'));
-    } else {
-      lines.push(t(language, '防晒档位：SPF30-50（通勤可用 SPF30，长户外升到 SPF50）。', 'Sunscreen tier: SPF30-50 (SPF30 for commuting, SPF50 for long outdoor exposure).'));
-    }
+  for (const row of recoBundle.slice(0, 10)) {
+    const trigger = normalizeText(row && row.trigger, 120);
+    const action = normalizeText(row && row.action, 280);
+    const ingredientLogic = normalizeText(row && row.ingredient_logic, 260);
+    const reapplyRule = normalizeText(row && row.reapply_rule, 200);
+    const productTypes = Array.isArray(row && row.product_types)
+      ? row.product_types.map((pt) => normalizeText(pt, 120)).filter(Boolean)
+      : [];
+    if (!trigger && !action) continue;
 
-    const humidityDelta = toNumber(delta?.humidity?.delta);
-    if (humidityDelta != null && humidityDelta >= 8) {
-      lines.push(
-        t(
-          language,
-          '面霜类型：白天轻薄凝胶霜，夜间屏障修护霜；面膜优先补水修护型。',
-          'Moisturizer type: lighter gel-cream in AM, barrier-repair cream in PM; prioritize hydrating recovery masks.',
-        ),
-      );
-    } else {
-      lines.push(
-        t(
-          language,
-          '面霜类型：中等到滋润修护霜；面膜优先补水+舒缓型。',
-          'Moisturizer type: medium-to-rich barrier cream; choose hydrating and soothing mask types.',
-        ),
-      );
+    const productStr = productTypes.length ? productTypes.join(', ') : '';
+    const parts = [];
+    if (trigger) parts.push(`【${trigger}】`);
+    if (productStr) parts.push(productStr);
+    if (action) parts.push(action);
+    if (ingredientLogic) parts.push(`[${t(language, '成分', 'Ingredients')}: ${ingredientLogic}]`);
+    if (reapplyRule) parts.push(`(${reapplyRule})`);
+    const semantic = travelKitSemanticKey([trigger, action, productStr].filter(Boolean).join(' '));
+    if (semantic) seenCategories.add(semantic);
+    lines.push(parts.join(' '));
+  }
+
+  for (const cat of categoryRecs.slice(0, 10)) {
+    const category = normalizeText(cat && cat.category, 40);
+    const catProducts = Array.isArray(cat && cat.products) ? cat.products : [];
+    if (!category || cat.skip_reason) continue;
+
+    const semantic = travelKitSemanticKey(category);
+    if (semantic && seenCategories.has(semantic)) continue;
+    if (semantic) seenCategories.add(semantic);
+
+    for (const prod of catProducts.slice(0, 3)) {
+      const name = normalizeText(prod && prod.name, 140);
+      const usage = normalizeText(prod && prod.usage, 200);
+      const ingLogic = normalizeText(prod && prod.ingredient_logic, 200);
+      if (!name) continue;
+      const parts = [`【${category}】`, name];
+      if (usage) parts.push(usage);
+      if (ingLogic) parts.push(`[${ingLogic}]`);
+      lines.push(parts.join(' '));
     }
   }
 
@@ -619,7 +606,7 @@ function buildProductLines({ language, foci, travelReadiness }) {
     ? shopping.products
         .map((row) => normalizeText(row && row.name, 80))
         .filter(Boolean)
-        .slice(0, 3)
+        .slice(0, 6)
     : [];
   if (names.length) {
     lines.push(
@@ -656,30 +643,11 @@ function buildProductLines({ language, foci, travelReadiness }) {
     );
   }
 
-  const recoBundle = Array.isArray(travelReadiness && travelReadiness.reco_bundle)
-    ? travelReadiness.reco_bundle
-    : [];
-  for (const row of recoBundle.slice(0, 2)) {
-    const action = normalizeText(row && row.action, 240);
-    const reapply = normalizeText(row && row.reapply_rule, 200);
-    const trigger = normalizeText(row && row.trigger, 120);
-    const parts = [trigger, action, reapply].filter(Boolean);
-    if (!parts.length) continue;
-      lines.push(parts.join(' · '));
-  }
+  return uniqueStrings(lines, 14);
+}
 
-  const hasReapplyRule = lines.some((line) => /\b(reapply|re-apply)\b/i.test(String(line || '')) || /补涂/.test(String(line || '')));
-  if (!hasReapplyRule && Array.isArray(foci) && (foci.includes(FOCUS_ENUM.UV) || foci.includes(FOCUS_ENUM.PRODUCTS))) {
-    lines.push(
-      t(
-        language,
-        '补涂规则：户外每 2 小时补涂一次；出汗、擦拭或淋雨后立即补涂。',
-        'Reapply rule: every 2 hours outdoors, and immediately after sweat, wipe-off, or rain exposure.',
-      ),
-    );
-  }
-
-  return uniqueStrings(lines, 5);
+function buildProductLines({ language, foci, travelReadiness }) {
+  return buildTravelKitLines({ language, foci, travelReadiness, profile: {} });
 }
 
 const SEASONAL_ALERTS = Object.freeze([
@@ -763,59 +731,28 @@ function buildActiveHandlingLines({ language, travelReadiness }) {
   const hasPollen = summaryTags.includes('pollen') || summaryTags.includes('seasonal_allergen');
 
   const lines = [];
-  lines.push(t(lang,
-    '旅行期间不要提高活性浓度或频次。',
-    'Don\'t increase active strength or frequency on the trip.',
-  ));
-
   if (isWindy || hasPollen || personalFocus.some((f) => /barrier|屏障/i.test(normalizeText(f && f.focus, 80)))) {
     lines.push(t(lang,
-      '考虑将活性频次降低约 30-50%（如每晚改隔天），风+花粉季更容易刺激。',
-      'Consider reducing active frequency by ~30-50% (e.g. every other night); wind + pollen season can make irritation more likely.',
+      '活性频次降低 30-50%（如每晚改隔天）；风大/花粉季刺激阈值更低。',
+      'Reduce active frequency 30-50% (e.g. every night to every other night); wind/pollen season lowers irritation threshold.',
     ));
   } else {
     lines.push(t(lang,
-      '可考虑将活性频次降低约 30%，旅行中皮肤适应力下降。',
-      'Consider reducing active frequency by ~30% during travel; skin adaptability is lower.',
+      '活性频次降低约 30%（如隔天使用）；旅行中皮肤适应力下降，不要升浓度。',
+      'Reduce active frequency ~30% (e.g. every other night); skin adaptability drops during travel, do not increase concentration.',
     ));
   }
 
   lines.push(t(lang,
-    '如果出现刺痛/紧绷：暂停活性 2-3 晚，专注补水+保湿。',
-    'If you get stinging/tightness: pause actives for 2-3 nights and focus on hydration + moisturizer.',
+    '刺痛/紧绷信号：立即暂停全部活性 2-3 晚，仅做清洁+保湿+修护。',
+    'Stinging/tightness signal: immediately pause all actives for 2-3 nights, only cleanse+moisturize+repair.',
   ));
 
-  return uniqueStrings(lines, 3);
+  return uniqueStrings(lines, 2);
 }
 
 function buildPackingListLines({ language, travelReadiness }) {
-  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
-  const uvDestination = toNumber(delta?.uv?.destination);
-  const humidityDelta = toNumber(delta?.humidity?.delta);
-
-  const items = [];
-  items.push(t(lang, '温和洁面（或卸妆膏+温和洁面）', 'Gentle cleanser (or cleansing balm + gentle cleanser)'));
-  items.push(t(lang, '补水精华/化妆水', 'Hydrating serum/essence'));
-
-  if (humidityDelta != null && humidityDelta <= -8) {
-    items.push(t(lang, '你的保湿霜 + 一支封层（或厚重晚霜）', 'Your moisturizer + a small occlusive (or heavier night cream)'));
-  } else {
-    items.push(t(lang, '你的保湿霜', 'Your moisturizer'));
-  }
-
-  if (uvDestination != null && uvDestination >= 6) {
-    items.push(t(lang, '防晒 SPF50+（加便携补涂装：防晒棒/气垫/散粉）', 'SPF50+ sunscreen (+ portable reapply format: stick/cushion/powder SPF)'));
-  } else {
-    items.push(t(lang, '防晒 SPF30-50', 'SPF 30-50 sunscreen'));
-  }
-
-  items.push(t(lang, '润唇膏 + 护手霜', 'Lip balm + hand cream'));
-  items.push(t(lang, '（可选）痘痘贴——旅行突发很好用', 'Optional: pimple patches (great for travel flare-ups)'));
-
-  return uniqueStrings(items, 6);
+  return [];
 }
 
 function buildTroubleshootingLines({ language, travelReadiness }) {
@@ -1013,10 +950,11 @@ function composeTravelReply({
     foci,
   });
 
-  const productLines = buildProductLines({
+  const productLines = buildTravelKitLines({
     language: lang,
     foci,
     travelReadiness: readiness,
+    profile: {},
   });
 
   const baselineGapLine = homeRegionText && !homeBaselineAvailable
@@ -1058,10 +996,9 @@ function composeTravelReply({
   if (comparisonLines.length) qualitySections.push('answer_delta');
   if (actionLines.length) qualitySections.push('actions');
   if (phasedPlanLines.length) qualitySections.push('phased_plan');
-  if (productLines.length) qualitySections.push('products');
+  if (productLines.length) qualitySections.push('travel_kit');
   if (flightDayPlanLines.length) qualitySections.push('flight_day');
   if (activeHandlingLines.length) qualitySections.push('active_handling');
-  if (packingListLines.length) qualitySections.push('packing_list');
   if (troubleshootingLines.length) qualitySections.push('troubleshooting');
   if (alertsSection.lines.length) qualitySections.push('alerts');
 
@@ -1111,15 +1048,9 @@ function composeTravelReply({
         ...phasedPlanLines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
-    packingListLines.length
-      ? [
-        t(lang, '旅行护肤清单：', 'Mini travel kit to pack:'),
-        ...packingListLines.map((line) => `- ${line}`),
-      ].join('\n')
-      : '',
     productLines.length
       ? [
-        t(lang, '产品与准备：', 'Products and prep:'),
+        t(lang, '旅行护肤装备清单：', 'Travel skincare kit:'),
         ...productLines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
@@ -1149,8 +1080,9 @@ function composeTravelReply({
     flight_day_plan: uniqueStrings(flightDayPlanLines, 6),
     active_handling: uniqueStrings(activeHandlingLines, 6),
     phased_plan: uniqueStrings(phasedPlanLines, 6),
-    packing_list: uniqueStrings(packingListLines, 8),
-    product_guidance: uniqueStrings(productLines, 6),
+    packing_list: [],
+    travel_kit: uniqueStrings(productLines, 14),
+    product_guidance: uniqueStrings(productLines, 14),
     troubleshooting: uniqueStrings(troubleshootingLines, 6),
   };
   const textBrief = buildTravelTextBrief({

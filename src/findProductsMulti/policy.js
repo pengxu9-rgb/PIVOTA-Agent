@@ -191,7 +191,7 @@ const LINGERIE_PATTERNS = [
 ];
 
 const FRAGRANCE_QUERY_REGEX =
-  /\b(perfume|fragrance|parfum|cologne|eau de parfum|eau de toilette|body mist)\b/i;
+  /\b(perfume|fragrance|parfum|cologne|eau de parfum|eau de toilette|body mist)\b|香水|香氛|古龙|古龍|香體|香体/i;
 const BRAND_TERM_SUFFIXES = new Set([
   'beauty',
   'cosmetic',
@@ -3162,16 +3162,16 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       if (nonToolDistinctBuckets < 2) {
         const isFragranceFlow = querySemanticClass === 'fragrance';
         if (!isFragranceFlow) {
-          filtered = Array.isArray(filtered) ? filtered : [];
+          filtered = [];
         }
         diversityDebug = {
           ...diversityDebug,
           reason: isFragranceFlow
             ? 'beauty_non_tool_min_not_met_fragrance_exempt'
-            : 'beauty_non_tool_min_not_met_soft',
-          strict_empty: false,
+            : 'beauty_non_tool_min_not_met',
+          strict_empty: !isFragranceFlow,
           requirement_unmet: true,
-          preserve_primary_on_failure: true,
+          preserve_primary_on_failure: isFragranceFlow,
           required_non_tool_buckets: 2,
           non_tool_distinct_buckets: nonToolDistinctBuckets,
           fragrance_exempt: Boolean(isFragranceFlow),
@@ -3199,6 +3199,66 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const associationPlanFromMeta =
     metadata?.association_plan && typeof metadata.association_plan === 'object'
       ? metadata.association_plan
+      : null;
+  const requestContext =
+    requestPayload?.context && typeof requestPayload.context === 'object'
+      ? requestPayload.context
+      : null;
+  const slotStateFromContext =
+    requestContext &&
+    (Array.isArray(requestContext.asked_slots) ||
+      (requestContext.resolved_slots && typeof requestContext.resolved_slots === 'object'))
+      ? {
+          asked_slots: Array.isArray(requestContext.asked_slots)
+            ? requestContext.asked_slots
+                .map((value) => String(value || '').trim())
+                .filter(Boolean)
+            : [],
+          resolved_slots:
+            requestContext.resolved_slots && typeof requestContext.resolved_slots === 'object'
+              ? Object.fromEntries(
+                  Object.entries(requestContext.resolved_slots)
+                    .map(([key, value]) => [String(key || '').trim(), value])
+                    .filter(([key, value]) => key && String(value || '').trim()),
+                )
+              : {},
+        }
+      : null;
+  const slotStateFromMeta =
+    metadata?.slot_state && typeof metadata.slot_state === 'object'
+      ? metadata.slot_state
+      : metadata?.search_trace?.slot_state &&
+          typeof metadata.search_trace.slot_state === 'object'
+        ? metadata.search_trace.slot_state
+        : metadata?.search_decision?.slot_state &&
+            typeof metadata.search_decision.slot_state === 'object'
+          ? metadata.search_decision.slot_state
+          : null;
+  const slotState = {
+    asked_slots: Array.from(
+      new Set(
+        [
+          ...(Array.isArray(slotStateFromContext?.asked_slots) ? slotStateFromContext.asked_slots : []),
+          ...(Array.isArray(slotStateFromMeta?.asked_slots) ? slotStateFromMeta.asked_slots : []),
+        ]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean),
+      ),
+    ),
+    resolved_slots: {
+      ...(slotStateFromContext?.resolved_slots && typeof slotStateFromContext.resolved_slots === 'object'
+        ? slotStateFromContext.resolved_slots
+        : {}),
+      ...(slotStateFromMeta?.resolved_slots && typeof slotStateFromMeta.resolved_slots === 'object'
+        ? slotStateFromMeta.resolved_slots
+        : {}),
+    },
+  };
+  const hasSlotState =
+    slotState.asked_slots.length > 0 || Object.keys(slotState.resolved_slots).length > 0;
+  const clarifyBudgetContext =
+    requestContext?.clarify_budget && typeof requestContext.clarify_budget === 'object'
+      ? requestContext.clarify_budget
       : null;
   const postAnchorBasis = resolvePostAnchorBasis({
     rawQuery,
@@ -3295,7 +3355,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const effectiveMaxDomainEntropy = scenarioDerivedAnchorActive
     ? SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY
     : SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY;
-  const postCandidateCount = Array.isArray(filtered) ? filtered.length : 0;
+  let postCandidateCount = Array.isArray(filtered) ? filtered.length : 0;
   const anchorRatioPost =
     postAnchorBasis.mode === 'off'
       ? 1
@@ -3322,7 +3382,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const postQualityOk =
     postQuality.candidates_ok && postQuality.anchor_ok && postQuality.entropy_ok;
   const postQualityHardFail = enforcePostQualityGate && !postQualityOk;
-  const postQualityTriggered = FPM_GATE_SIMPLIFY_V1 ? false : postQualityHardFail;
+  const postQualityTriggered = postQualityHardFail;
   const lowConfidenceReasons = [];
   if (postQualityHardFail) {
     lowConfidenceReasons.push('post_quality_low_confidence');
@@ -3340,7 +3400,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const clarifyByAmbiguityBase =
     clarifyEligible &&
     clarifyIntentGate &&
-    !strictEmptyByAmbiguityBaseConstrained &&
     (postQualityTriggered ||
       postCandidateCount === 0 ||
       (ambiguitySignalOnly && ambiguityScorePost > AMBIGUITY_THRESHOLD_CLARIFY));
@@ -3365,14 +3424,75 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   let clarification = null;
   let finalDecision = 'products_returned';
+  let clarifyBudgetExhausted = false;
+  let contextFailOpenApplied = false;
   if (clarifyByAmbiguity) {
-    clarification = buildClarification({
-      queryClass,
-      intent,
-      language: intent?.language,
-    });
-    finalDecision = postCandidateCount > 0 ? 'products_returned_with_clarification' : 'clarify';
-    lowConfidenceReasons.push('clarification_attached_non_blocking');
+    const clarifyBudgetMaxRounds = Number(clarifyBudgetContext?.max_rounds);
+    const clarifyBudgetUsedRounds = Number(clarifyBudgetContext?.used_rounds);
+    clarifyBudgetExhausted =
+      Number.isFinite(clarifyBudgetMaxRounds) &&
+      Number.isFinite(clarifyBudgetUsedRounds) &&
+      clarifyBudgetMaxRounds >= 0 &&
+      clarifyBudgetUsedRounds >= clarifyBudgetMaxRounds;
+    const resolvedScenarioFromContext = String(slotState.resolved_slots?.scenario || '').trim();
+    const canApplyContextFailOpen =
+      resolvedScenarioFromContext.length > 0 &&
+      (postCandidateCount > 0 || preDomainFilterCandidates.length > 0 || before > 0) &&
+      !clarifyBudgetExhausted &&
+      ['mission', 'scenario', 'category'].includes(String(queryClass || ''));
+    if (canApplyContextFailOpen) {
+      if (postCandidateCount === 0) {
+        filtered = preDomainFilterCandidates.length > 0 ? preDomainFilterCandidates.slice() : list.slice();
+        postCandidateCount = filtered.length;
+        postQuality.candidates = postCandidateCount;
+        postQuality.candidates_ok = postCandidateCount >= effectiveMinRecallCandidates;
+      }
+      contextFailOpenApplied = true;
+      postQuality.context_fail_open_applied = true;
+      lowConfidenceReasons.push('context_fail_open');
+    } else {
+      postQuality.context_fail_open_applied = false;
+    }
+    const forceClearForAmbiguousRecommend =
+      intentNeedsClarification &&
+      String(queryClass || '') === 'exploratory';
+    const shouldClearProductsForClarify =
+      !contextFailOpenApplied &&
+      !clarifyBudgetExhausted &&
+      (forceClearForAmbiguousRecommend ||
+        (!brandQueryBypassAmbiguity &&
+          (
+            ['scenario', 'mission', 'gift'].includes(String(queryClass || '')) ||
+            (!FPM_CLARIFY_NEVER_EMPTY &&
+              ['exploratory', 'category', 'attribute'].includes(String(queryClass || '')))
+          ) &&
+          (postQualityHardFail || postCandidateCount === 0)));
+    if (!clarifyBudgetExhausted && !contextFailOpenApplied) {
+      if (shouldClearProductsForClarify) {
+        filtered = [];
+        postCandidateCount = 0;
+      }
+      clarification = buildClarification({
+        queryClass,
+        intent,
+        language: intent?.language,
+        rawQuery,
+        associationPlan: associationPlanFromMeta,
+        slotState: hasSlotState ? slotState : null,
+        hints: {
+          post_candidates: postCandidateCount,
+          match_tier: baselineStats?.match_tier || null,
+        },
+      });
+      finalDecision = postCandidateCount > 0 ? 'products_returned_with_clarification' : 'clarify';
+      lowConfidenceReasons.push('clarification_attached_non_blocking');
+    } else if (clarifyBudgetExhausted) {
+      postQuality.context_fail_open_applied = false;
+      finalDecision = postCandidateCount > 0 ? 'products_returned' : 'clarify_skipped_budget_exhausted';
+      lowConfidenceReasons.push('clarify_budget_exhausted');
+    }
+  } else {
+    postQuality.context_fail_open_applied = false;
   }
   after = filtered.length;
 
@@ -3409,6 +3529,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   }
   if (strictEmptyByAmbiguity) reasonCodes.add('AMBIGUITY_STRICT_EMPTY');
   if (clarifyByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY');
+  if (clarifyBudgetExhausted) reasonCodes.add('CLARIFY_BUDGET_EXHAUSTED');
+  if (contextFailOpenApplied) reasonCodes.add('CONTEXT_FAIL_OPEN');
   if (postQualityHardFail) reasonCodes.add('LOW_CONF_POST');
   if (brandQueryBypassAmbiguity) reasonCodes.add('BRAND_QUERY_BYPASS_AMBIGUITY');
   if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
@@ -3615,6 +3737,14 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   const reply = toolFirstReply
     ? toolFirstReply
+    : clarification &&
+      String(intent?.scenario?.name || '').toLowerCase() === 'discovery' &&
+      (metadata?.creator_name || metadata?.creatorName)
+      ? buildReply(intent, stats.match_tier, Array.from(reasonCodes), {
+          creatorName: metadata?.creator_name || metadata?.creatorName || null,
+          creatorId: metadata?.creator_id || metadata?.creatorId || null,
+          rawUserQuery: rawQuery,
+        })
     : clarification
       ? `${clarification.question}\n${(clarification.options || []).map((option, index) => `${index + 1}) ${option}`).join('\n')}`
     : shouldOverrideReply
@@ -3634,6 +3764,21 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       }
     : undefined;
 
+  const clarificationSlotState =
+    clarification && String(clarification.slot || '').trim()
+      ? {
+          asked_slots: Array.from(
+            new Set([
+              ...(hasSlotState ? slotState.asked_slots : []),
+              String(clarification.slot).trim(),
+            ]),
+          ),
+          resolved_slots: hasSlotState ? { ...slotState.resolved_slots } : {},
+        }
+      : hasSlotState
+        ? slotState
+        : null;
+
   const responsePayload = {
     ...augmented,
     ...(mergedMetadata !== existingMeta
@@ -3641,6 +3786,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
           metadata: {
             ...mergedMetadata,
             strategy_version: STRATEGY_VERSION,
+            brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             search_decision: {
               query_class: queryClass,
               query_semantic_class: querySemanticClass,
@@ -3658,6 +3804,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               low_confidence: lowConfidenceReasons.length > 0,
               low_confidence_reasons: lowConfidenceReasons,
               domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
+              ...(clarificationSlotState ? { slot_state: clarificationSlotState } : {}),
             },
             query_semantic_class: querySemanticClass,
             domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
@@ -3676,6 +3823,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
           metadata: {
             ...(augmented?.metadata && typeof augmented.metadata === 'object' ? augmented.metadata : {}),
             strategy_version: STRATEGY_VERSION,
+            brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             search_decision: {
               query_class: queryClass,
               query_semantic_class: querySemanticClass,
@@ -3693,6 +3841,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               low_confidence: lowConfidenceReasons.length > 0,
               low_confidence_reasons: lowConfidenceReasons,
               domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
+              ...(clarificationSlotState ? { slot_state: clarificationSlotState } : {}),
             },
             query_semantic_class: querySemanticClass,
             domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
@@ -3721,6 +3870,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             question: clarification.question,
             options: clarification.options,
             reason_code: clarification.reason_code,
+            ...(clarification.slot ? { slot: clarification.slot } : {}),
+            ...(clarification.dedup_key ? { dedup_key: clarification.dedup_key } : {}),
           },
         }
       : {}),

@@ -94,6 +94,28 @@ test('classifyAttempt marks meta missing as invariant failure', () => {
   assert.ok(out.reasons.includes('meta_null'));
 });
 
+test('classifyAttempt accepts rollout meta from session_patch.meta (chatcards mode)', () => {
+  const out = __internal.classifyAttempt(
+    makeAttempt({
+      json: {
+        session_patch: {
+          meta: {
+            rollout_variant: 'v2_core',
+            rollout_bucket: 2,
+            policy_version: 'aurora_chat_v2_p0',
+          },
+        },
+      },
+    }),
+  );
+
+  assert.equal(out.invariants.metaNull, false);
+  assert.equal(out.invariants.variantMismatch, false);
+  assert.equal(out.invariants.bucketMismatch, false);
+  assert.equal(out.invariants.policyMismatch, false);
+  assert.ok(!out.reasons.includes('meta_null'));
+});
+
 test('classifyAttempt marks header/meta mismatch fields', () => {
   const out = __internal.classifyAttempt(
     makeAttempt({

@@ -1,0 +1,132 @@
+{
+  "$schema": "./skill_contract.schema.json",
+  "version": "2.0.0",
+  "updated_utc": "2026-03-07T00:00:00Z",
+  "description": "Streamlined quality gates. Only safety-critical rules remain blocking.",
+  "gates": [
+    {
+      "gate_id": "qg_diagnosis_start",
+      "skill_id": "diagnosis_v2.start",
+      "kb_ref": null,
+      "rules": []
+    },
+    {
+      "gate_id": "qg_diagnosis_answer",
+      "skill_id": "diagnosis_v2.answer",
+      "kb_ref": "safety_rules.v0.json",
+      "rules": [
+        {
+          "rule_id": "qg_diag_no_photo_no_visual_cues",
+          "check": "if context.profile.has_photo === false, response.cards must not reference visual observations",
+          "on_fail": "strip_visual_references",
+          "severity": "error"
+        }
+      ]
+    },
+    {
+      "gate_id": "qg_routine_apply",
+      "skill_id": "routine.apply_blueprint",
+      "kb_ref": "safety_rules.v0.json",
+      "rules": []
+    },
+    {
+      "gate_id": "qg_routine_intake",
+      "skill_id": "routine.intake_products",
+      "kb_ref": null,
+      "rules": []
+    },
+    {
+      "gate_id": "qg_routine_audit",
+      "skill_id": "routine.audit_optimize",
+      "kb_ref": "interaction_rules.v0.json",
+      "rules": [
+        {
+          "rule_id": "qg_audit_spf_am_only",
+          "check": "SPF usage must stay AM-only with reapply guidance",
+          "on_fail": "correct_spf_schedule",
+          "severity": "error"
+        },
+        {
+          "rule_id": "qg_audit_retinoid_pm_only",
+          "check": "retinoids must not stay in AM steps",
+          "on_fail": "correct_retinoid_schedule",
+          "severity": "error"
+        }
+      ]
+    },
+    {
+      "gate_id": "qg_reco_step",
+      "skill_id": "reco.step_based",
+      "kb_ref": "safety_rules.v0.json",
+      "rules": []
+    },
+    {
+      "gate_id": "qg_checkin_log",
+      "skill_id": "tracker.checkin_log",
+      "kb_ref": null,
+      "rules": [
+        {
+          "rule_id": "qg_checkin_bound_to_entity",
+          "check": "response.ops.thread_ops should bind the check-in to a diagnosis or routine entity",
+          "on_fail": "warn_unbound_checkin",
+          "severity": "warning"
+        }
+      ]
+    },
+    {
+      "gate_id": "qg_checkin_insights",
+      "skill_id": "tracker.checkin_insights",
+      "kb_ref": null,
+      "rules": [
+        {
+          "rule_id": "qg_insights_min_data",
+          "check": "trend analysis works best with at least 3 check-ins",
+          "on_fail": "empty_state_insufficient_data",
+          "severity": "warning"
+        },
+        {
+          "rule_id": "qg_insights_no_photo_guard",
+          "check": "if no photos exist in recent logs, do not reference visible change",
+          "on_fail": "strip_visual_references",
+          "severity": "error"
+        }
+      ]
+    },
+    {
+      "gate_id": "qg_product_analyze",
+      "skill_id": "product.analyze",
+      "kb_ref": "safety_rules.v0.json",
+      "rules": []
+    },
+    {
+      "gate_id": "qg_ingredient_report",
+      "skill_id": "ingredient.report",
+      "kb_ref": "ingredient_ontology.v0.json",
+      "rules": []
+    },
+    {
+      "gate_id": "qg_dupe_suggest",
+      "skill_id": "dupe.suggest",
+      "kb_ref": "concept_dictionary.v0.json",
+      "rules": []
+    },
+    {
+      "gate_id": "qg_dupe_compare",
+      "skill_id": "dupe.compare",
+      "kb_ref": "concept_dictionary.v0.json",
+      "rules": []
+    },
+    {
+      "gate_id": "qg_travel_apply",
+      "skill_id": "travel.apply_mode",
+      "kb_ref": "climate_normals.v0.json",
+      "rules": []
+    },
+    {
+      "gate_id": "qg_explore_add",
+      "skill_id": "explore.add_to_routine",
+      "kb_ref": "safety_rules.v0.json",
+      "rules": []
+    }
+  ]
+}

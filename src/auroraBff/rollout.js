@@ -147,6 +147,7 @@ function normalizeGlobalFlags(flags) {
     travel_weather_live_v1: Boolean(src.travel_weather_live_v1),
     travel_llm_calibration_v1: Boolean(src.travel_llm_calibration_v1),
     loop_breaker_v2: Boolean(src.loop_breaker_v2),
+    skill_router_v2: Boolean(src.skill_router_v2),
     chat_response_meta: Boolean(src.chat_response_meta),
   };
 }
@@ -232,6 +233,7 @@ function computeAuroraChatRolloutContext({ req, ctx, body, identity, globalFlags
       travel_llm_calibration_v1:
         globals.travel_llm_calibration_v1 && capabilityFlags.travel_llm_calibration_v1,
       loop_breaker_v2: globals.loop_breaker_v2 && capabilityFlags.loop_breaker_v2,
+      skill_router_v2: globals.skill_router_v2,
       chat_response_meta: globals.chat_response_meta || rolloutApplied,
     }
     : { ...globals };

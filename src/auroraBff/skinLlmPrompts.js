@@ -117,15 +117,30 @@ function normalizePromptVersion(promptVersion, fallback) {
   return typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : fallback;
 }
 
+const SKIN_CANONICAL_PROMPT_ALIASES = new Set([
+  'skin_v3',
+  'skin_v3_canonical',
+  'skin_report_v3_canonical',
+  'skin_vision_v3_canonical',
+]);
+
+const SKIN_DEEPENING_CANONICAL_PROMPT_ALIASES = new Set([
+  'skin_deepening_v2_canonical',
+]);
+
 function isSkinPromptV3(promptVersion) {
   const token = String(promptVersion || '').trim().toLowerCase();
-  return token === 'skin_v3' || token === 'skin_v3_canonical' || token.includes('v3_canonical');
+  return SKIN_CANONICAL_PROMPT_ALIASES.has(token);
 }
 
 function isSkinDeepeningV2(promptVersion) {
   const token = String(promptVersion || '').trim().toLowerCase();
-  return token === 'skin_deepening_v2_canonical' || token === 'skin_v3' || token.includes('deepening_v2');
+  return SKIN_DEEPENING_CANONICAL_PROMPT_ALIASES.has(token);
 }
+
+const SKIN_REPORT_MAINLINE_PROMPT_VERSION = 'skin_report_v3_hardened';
+const SKIN_DEEPENING_MAINLINE_PROMPT_VERSION = 'skin_deepening_v2_hardened';
+const SKIN_VISION_MAINLINE_PROMPT_VERSION = 'skin_vision_v2_hardened';
 
 function buildVisionCanonicalPrompt({ dto } = {}) {
   const safeDto = dto && typeof dto === 'object' ? dto : {};
@@ -150,8 +165,11 @@ function buildVisionCanonicalPrompt({ dto } = {}) {
       '- sufficient => at most 3 observations.',
       '- limited => at most 2 observations.',
       '- If evidence supports only 1 grounded cue, prefer limited + 1 cue rather than inventing a second cue.',
+      '- If 2 strong grounded cues are already present and any extra cue is weaker or more ambiguous, prefer keeping only the stronger 2 cues.',
       '- Prefer the most grounded cues; drop edge-case guesses when evidence is weak.',
       '- Surface cues in the same region (shine, texture, pores) are mutually competitive: keep only the single strongest grounded cue.',
+      '- Treat shine centered on the nose/forehead as T-zone shine unless the evidence is clearly isolated to another region.',
+      '- Do not duplicate the same cue across multiple regions unless the separation is visually obvious and both regions are strongly grounded.',
       '- Redness and bumps may coexist only when the evidence is strong and the region separation is visually clear.',
       '- If two observations overlap on the same cue+region, keep the stronger one only.',
       '- Order observations by strongest grounding first.',
@@ -220,7 +238,9 @@ function buildDeepeningCanonicalPrompt({ dto } = {}) {
       '- English-only canonical semantics.',
       '- No free-form narrative.',
       '- Use only schema enums.',
+      '- Preserve the current phase from context unless it is missing.',
       '- Preserve the inherited summary_priority from context unless it is missing.',
+      '- Do not advance to refined just because a plan seems clear; if context says reactions, stay in reactions.',
       '- Do not choose advice_items; downstream deterministic rules will synthesize advice from phase, priority, and reactions.',
       '- photo_optin -> prefer photo_upload; products -> prefer routine_share; reactions -> prefer reaction_check; refined -> prefer confirm_plan.',
       'compact context block:',
@@ -234,87 +254,185 @@ function buildDeepeningCanonicalPrompt({ dto } = {}) {
 
 function buildSkinVisionPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
-  const version = normalizePromptVersion(promptVersion, 'skin_v2');
+  const version = normalizePromptVersion(promptVersion, SKIN_VISION_MAINLINE_PROMPT_VERSION);
   if (isSkinPromptV3(version)) return buildVisionCanonicalPrompt({ dto });
   const qRule = qualityGradeInstruction(dto, lang);
   if (lang === 'zh-CN') {
     return {
       promptVersion: version,
-      systemInstruction:
-        'Role: 你是客观的护肤观察助手。仅输出基于照片可见信号的观察，禁止给出护肤建议、产品推荐、日常方案。禁止疾病诊断、治疗宣称、处方药名称。Language: 简体中文。',
-      userPrompt:
-        `task: 仅根据面部照片的可见信号，输出结构化观察JSON。禁止输出护肤建议或产品推荐。\n` +
-        `output_contract: 严格输出JSON，schema如下：\n` +
-        `{"needs_risk_check":false,"quality_note":null,"observations":[{"cue":"redness|shine|bumps|flaking|uneven_tone|texture|pores","where":"cheeks|forehead|T-zone|chin|nose|全脸","severity":"mild|moderate|high","confidence":"low|med|high","evidence":"所见描述"}],"limits":["可能的观察限制"]}\n` +
-        `grounding_rule: observations尽量输出2-4条不同观察。每条observation必须包含where和evidence，禁止重复。无足够面部皮肤信号时，observations可为空数组。\n` +
-        `focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.\n` +
-        `skin_type_rule: 用户自选肤质仅作为先验参考，必须与照片观察比对。如不一致可备注一次。` +
-        qRule + `\n` +
+      systemInstruction: [
+        `Role: 你是客观的皮肤可见线索提取助手。Prompt version: ${version}.`,
+        '输出必须是单个严格 JSON 对象，不要输出 JSON 之外的文本。',
+        '仅输出基于照片可见信号的观察，禁止给出护肤建议、产品推荐、日常方案。',
+        '禁止疾病诊断、治疗宣称、处方药名称。',
+        'Language: 简体中文。',
+      ].join('\n'),
+      userPrompt: [
+        `[SYSTEM_CONTRACT][version=${version}]`,
+        'task: 仅根据面部照片的可见信号，输出结构化观察 JSON。禁止输出护肤建议或产品推荐。',
+        'output_contract: 严格输出 JSON，schema如下：',
+        '{"needs_risk_check":false,"quality_note":null,"observations":[{"cue":"redness|shine|bumps|flaking|uneven_tone|texture|pores","where":"cheeks|forehead|T-zone|chin|nose|全脸","severity":"mild|moderate|high","confidence":"low|med|high","evidence":"所见描述"}],"limits":["可能的观察限制"]}',
+        'grounding_rule: observations尽量输出2-4条不同观察。每条 observation 必须包含 where 和 evidence，禁止重复。无足够面部皮肤信号时，observations 可为空数组。',
+        'focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.',
+        'skin_type_rule: 用户自选肤质仅作为先验参考，必须与照片观察比对。如不一致可备注一次。',
+        'missing_data_policy: 如果画面不足以支持稳定观察，优先输出空或极少 observations，并在 limits / quality_note 中说明限制，不要猜测。',
+        qRule,
         `dto: ${JSON.stringify(dto || {})}`,
+        '[/SYSTEM_CONTRACT]',
+      ].filter(Boolean).join('\n'),
     };
   }
   return {
     promptVersion: version,
-    systemInstruction:
-      'Role: You are an objective cosmetic skincare observer. Output ONLY structured observations from the photo. Do NOT provide routines, product advice, or "lean on X" suggestions. Safety: no disease diagnosis, no treatment claims, no prescription drug names. Language: English (US).',
-    userPrompt:
-      `task: Based only on visible FACE skin cues from the image, output structured observation JSON. No routines or product advice.\n` +
-      `output_contract: Return ONLY JSON with this exact schema:\n` +
-      `{"needs_risk_check":false,"quality_note":null,"observations":[{"cue":"redness|shine|bumps|flaking|uneven_tone|texture|pores","where":"cheeks|forehead|T-zone|chin|nose|full_face","severity":"mild|moderate|high","confidence":"low|med|high","evidence":"what was visually observed"}],"limits":["possible observation limitations"]}\n` +
-      `grounding_rule: Output 2 to 4 distinct observations when visible. Each observation MUST have where + evidence. No duplicates or rephrases. Use an empty observations array when no face skin is visible.\n` +
-      `focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.\n` +
-      `skin_type_rule: User-selected skin type is a PRIOR only. Compare against observed cues. Mention mismatch once if relevant.` +
-      qRule + `\n` +
+    systemInstruction: [
+      `Role: You are an objective cosmetic skin cue extractor. Prompt version: ${version}.`,
+      'Output MUST be a single strict JSON object and nothing else.',
+      'Output ONLY structured observations from the photo. Do NOT provide routines, product advice, or "lean on X" suggestions.',
+      'Safety: no disease diagnosis, no treatment claims, no prescription drug names.',
+      'Language: English (US).',
+    ].join('\n'),
+    userPrompt: [
+      `[SYSTEM_CONTRACT][version=${version}]`,
+      'task: Based only on visible FACE skin cues from the image, output structured observation JSON. No routines or product advice.',
+      'output_contract: Return ONLY JSON with this exact schema:',
+      '{"needs_risk_check":false,"quality_note":null,"observations":[{"cue":"redness|shine|bumps|flaking|uneven_tone|texture|pores","where":"cheeks|forehead|T-zone|chin|nose|full_face","severity":"mild|moderate|high","confidence":"low|med|high","evidence":"what was visually observed"}],"limits":["possible observation limitations"]}',
+      'grounding_rule: Output 2 to 4 distinct observations when visible. Each observation MUST have where + evidence. No duplicates or rephrases. Use an empty observations array when no face skin is visible.',
+      'focus: redness, acne-like bumps, oily shine, dryness/flaking, uneven tone, rough texture, visible pores.',
+      'skin_type_rule: User-selected skin type is a PRIOR only. Compare against observed cues. Mention mismatch once if relevant.',
+      'missing_data_policy: If the image does not support grounded extraction, keep observations empty or minimal and explain the limitation conservatively instead of guessing.',
+      qRule,
       `dto: ${JSON.stringify(dto || {})}`,
+      '[/SYSTEM_CONTRACT]',
+    ].filter(Boolean).join('\n'),
   };
 }
 
 function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
-  const version = normalizePromptVersion(promptVersion, 'skin_v2');
+  const version = normalizePromptVersion(promptVersion, SKIN_REPORT_MAINLINE_PROMPT_VERSION);
   if (isSkinPromptV3(version)) return buildReportCanonicalPrompt({ dto });
   const qRule = qualityGradeInstruction(dto, lang);
   if (lang === 'zh-CN') {
     return {
       promptVersion: version,
-      systemInstruction:
-        'Role: 你是客观、保守的护肤建议助手。仅基于输入信号给出策略。禁止疾病诊断、治疗宣称、处方药名称、品牌与具体产品推荐。不要输出空泛模板话术。Language: 简体中文。',
-      userPrompt:
-        `task: 基于提供的观察信号输出谨慎、可执行的护肤策略，不得声称看到了照片。\n` +
-        `output_contract: 严格输出 JSON，必须包含 strategy/needs_risk_check/primary_question/conditional_followups/routine_expert/findings/guidance_brief。\n` +
-        `structure_rule: strategy 必须按「原因 -> 注意事项 -> 修复路径 -> 下一问」组织，避免泛化建议。\n` +
-        `separation_rule: 你接收的是视觉阶段的观察结果。不要逐字重复观察。通过cue名称引用观察。你的输出仅包含方案/计划JSON。\n` +
-        `routine_step_schema: routine_expert中的am_plan/pm_plan每步必须包含：{"step":"类型","why":"关联已观察到的cue","look_for":["属性"],"how":"使用方法","caution":"注意事项"}\n` +
-        `two_week_focus: 输出最多3条优先行动的two_week_focus数组。如有刺激信号，优先屏障修复。\n` +
-        `skin_type_rule: 用户自选肤质是先验，非真相。与观察到的cue比对。不一致时提及一次。\n` +
-        `deepening_rule: 可选输出 reasoning(1-4条)、deepening(phase/next_phase/question/options)、evidence_refs(最多6条，字段=id/title/url/why_relevant)。\n` +
-        `safety_rule: 非医疗诊断；高风险词仅做轻提醒与保守建议，不要主动引导就医。\n` +
-        `findings_rule: 输出findings数组，每项含cue/where/severity/confidence/evidence。quality相关信息禁止出现在findings中。\n` +
-        `guidance_brief_rule: 输出2-3条简短指导建议，不重复。\n` +
-        `next_step_rule: 诊断后输出next_step_options数组，固定3个选项：[{"id":"analysis_get_recommendations","label":"获取产品推荐"},{"id":"analysis_optimize_existing","label":"优化现有产品"},{"id":"analysis_both_reco_optimize","label":"两者都要"}]。` +
-        qRule + `\n` +
+      systemInstruction: [
+        '[ROLE]',
+        `你是客观、保守的护肤方案合成助手（Pivota）。Prompt version: ${version}.`,
+        '输出必须是单个严格 JSON 对象，不要输出 JSON 之外的文本。',
+        'Language: 简体中文。',
+        '[/ROLE]',
+      ].join('\n'),
+      userPrompt: [
+        '[TASK]',
+        '基于提供的观察信号输出谨慎、可执行的护肤策略，不得声称看到了照片。',
+        '每个步骤都必须能回扣到已提供 cue/信号，避免泛化建议。',
+        '[/TASK]',
+        '',
+        '[OUTPUT_CONTRACT]',
+        '严格输出 JSON，必须包含以下顶层字段：',
+        '{ "strategy": string, "needs_risk_check": boolean, "primary_question": string, "conditional_followups": array,',
+        '  "routine_expert": { "am_plan": array, "pm_plan": array }, "findings": array, "guidance_brief": array,',
+        '  "two_week_focus": array, "next_step_options": array }',
+        '可选输出（仅在有明确价值时）：reasoning(1-4条)、deepening(phase/next_phase/question/options)、evidence_refs(最多6条，字段=id/title/url/why_relevant)。',
+        '不要添加额外顶层字段。未知字段使用 null、[] 或 {} 代替省略。',
+        '[/OUTPUT_CONTRACT]',
+        '',
+        '[FIELD_SEMANTICS]',
+        '- strategy 必须按「原因 -> 注意事项 -> 修复路径 -> 下一问」组织。',
+        '- routine_expert 中 am_plan/pm_plan 每步必须包含：{"step":"类型","why":"关联已观察到的cue","look_for":["属性"],"how":"使用方法","caution":"注意事项"}',
+        '- findings 数组每项含 cue/where/severity/confidence/evidence。quality 相关信息禁止出现在 findings 中。',
+        '- two_week_focus: 最多3条优先行动。如有刺激信号，优先屏障修复。',
+        '- guidance_brief: 2-3条简短指导建议，不重复。',
+        '- next_step_options: 固定3个选项：[{"id":"analysis_get_recommendations","label":"获取产品推荐"},{"id":"analysis_optimize_existing","label":"优化现有产品"},{"id":"analysis_both_reco_optimize","label":"两者都要"}]。',
+        '[/FIELD_SEMANTICS]',
+        '',
+        '[HARD_RULES]',
+        '1. 分离规则：你接收的是视觉阶段的观察结果。不要逐字重复观察，通过 cue 名称引用。',
+        '2. 肤质规则：用户自选肤质是先验，非真相。与观察到的 cue 比对，不一致时提及一次。',
+        '3. Cue关联规则：每个 routine 步骤必须引用至少1个已观察到的 cue。',
+        '4. 安全规则：非医疗诊断；高风险词仅做轻提醒与保守建议，不要主动引导就医。',
+        '5. 质量规则：quality 相关信息禁止出现在 findings 中。',
+        '[/HARD_RULES]',
+        '',
+        '[MISSING_DATA_POLICY]',
+        '- 如果观察线索较弱或 routine 上下文不足，保持保守，明确标注局限性。',
+        '- 不要编造既往 routine、产品、品牌或高置信度结论。',
+        '- 如无需 deepening 或 evidence，省略这些可选块。',
+        '[/MISSING_DATA_POLICY]',
+        '',
+        '[FORBIDDEN_BEHAVIOR]',
+        '- 禁止疾病诊断、治疗宣称、处方药名称。',
+        '- 禁止品牌与具体产品推荐。',
+        '- 禁止空泛模板话术或重复免责声明。',
+        '- 禁止无依据的置信度升级。',
+        '[/FORBIDDEN_BEHAVIOR]',
+        '',
+        '[INPUT_CONTEXT]',
+        qRule,
         `dto: ${JSON.stringify(dto || {})}`,
+        '[/INPUT_CONTEXT]',
+      ].filter(Boolean).join('\n'),
     };
   }
   return {
     promptVersion: version,
-    systemInstruction:
-      'Role: You are an objective, conservative cosmetic skincare advisor. Safety: no disease diagnosis, no treatment claims, no prescription drug names, no brand or specific product recommendations. Avoid generic template talk. Language: English (US).',
-    userPrompt:
-      `task: Provide cautious and actionable skincare strategy using only provided observation signals. Do not claim photo visibility unless explicitly stated.\n` +
-      `output_contract: Return strict JSON with strategy/needs_risk_check/primary_question/conditional_followups/routine_expert/findings/guidance_brief.\n` +
-      `structure_rule: strategy must follow "Cause -> Watchouts -> Repair path -> Next question", and must not be generic.\n` +
-      `separation_rule: You receive observations from the vision stage. Do NOT repeat them verbatim. Reference observations by cue name. Your output is routine/plan JSON only.\n` +
-      `routine_step_schema: Each step in routine_expert am_plan/pm_plan MUST contain: {"step":"type","why":"tied to observed cue","look_for":["product attributes"],"how":"application method","caution":"warnings"}\n` +
-      `two_week_focus: Output a two_week_focus array of max 3 priority actions. Prioritize barrier stabilization if irritation signals exist.\n` +
-      `skin_type_rule: User-selected skin type is a PRIOR, not ground truth. Compare against observed cues. Mention mismatch once if relevant. Each routine step must reference at least 1 observed cue.\n` +
-      `deepening_rule: You may include reasoning(1-4 strings), deepening(phase/next_phase/question/options), evidence_refs(max 6 items with id/title/url/why_relevant).\n` +
-      `safety_rule: non-medical guidance only; for risk terms give light caution + conservative plan, no proactive care-seeking escalation.\n` +
-      `findings_rule: Output a findings array where each item has cue/where/severity/confidence/evidence. Quality info must NEVER appear inside findings.\n` +
-      `guidance_brief_rule: Output 2-3 concise guidance bullets. No duplicates.\n` +
-      `next_step_rule: After diagnosis, output next_step_options array with exactly 3 options: [{"id":"analysis_get_recommendations","label":"Get recommendations"},{"id":"analysis_optimize_existing","label":"Optimize existing products"},{"id":"analysis_both_reco_optimize","label":"Both"}]. Localize labels if language is CN.` +
-      qRule + `\n` +
+    systemInstruction: [
+      '[ROLE]',
+      `You are an objective, conservative cosmetic skincare report synthesizer for Pivota. Prompt version: ${version}.`,
+      'Return one single valid JSON object only. No markdown, no code fences, no prose outside JSON.',
+      'Language: English (US).',
+      '[/ROLE]',
+    ].join('\n'),
+    userPrompt: [
+      '[TASK]',
+      'Provide cautious and actionable skincare strategy using only provided observation signals.',
+      'Do not claim photo visibility unless explicitly stated. Every recommendation step must be traceable to observed cues or deterministic inputs.',
+      '[/TASK]',
+      '',
+      '[OUTPUT_CONTRACT]',
+      'Return strict JSON with these required top-level keys:',
+      '{ "strategy": string, "needs_risk_check": boolean, "primary_question": string, "conditional_followups": array,',
+      '  "routine_expert": { "am_plan": array, "pm_plan": array }, "findings": array, "guidance_brief": array,',
+      '  "two_week_focus": array, "next_step_options": array }',
+      'Optional keys when they add clear value: reasoning (array of 1-4 strings), deepening (object with phase/next_phase/question/options), evidence_refs (max 6 items with id/title/url/why_relevant).',
+      'Do not add extra top-level keys. If a field is unknown, use null, [] or {} instead of omitting it.',
+      '[/OUTPUT_CONTRACT]',
+      '',
+      '[FIELD_SEMANTICS]',
+      '- strategy must follow "Cause -> Watchouts -> Repair path -> Next question" and must not be generic.',
+      '- routine_expert am_plan/pm_plan each step MUST contain: {"step":"type","why":"tied to observed cue","look_for":["product attributes"],"how":"application method","caution":"warnings"}',
+      '- findings: each item has cue/where/severity/confidence/evidence. Quality info must NEVER appear inside findings.',
+      '- two_week_focus: max 3 priority actions. Prioritize barrier stabilization if irritation signals exist.',
+      '- guidance_brief: 2-3 concise guidance bullets. No duplicates.',
+      '- next_step_options: exactly 3 options: [{"id":"analysis_get_recommendations","label":"Get recommendations"},{"id":"analysis_optimize_existing","label":"Optimize existing products"},{"id":"analysis_both_reco_optimize","label":"Both"}].',
+      '[/FIELD_SEMANTICS]',
+      '',
+      '[HARD_RULES]',
+      '1. Separation rule: you receive observations from the vision stage. Do NOT repeat them verbatim. Reference observations by cue name only.',
+      '2. Skin-type rule: user-selected skin type is a PRIOR, not ground truth. Compare against observed cues. Mention mismatch once if relevant.',
+      '3. Cue-linking rule: each routine step must reference at least 1 observed cue.',
+      '4. Safety rule: non-medical guidance only; for risk terms give light caution + conservative plan, no proactive care-seeking escalation.',
+      '5. Quality rule: quality-related information must NEVER appear inside findings.',
+      '[/HARD_RULES]',
+      '',
+      '[MISSING_DATA_POLICY]',
+      '- If cues are weak or routine context is missing, keep the plan conservative and explicitly limited.',
+      '- Do not invent detailed routine history, products, brands, or high-confidence conclusions.',
+      '- If no deepening or evidence is warranted, omit those optional blocks.',
+      '[/MISSING_DATA_POLICY]',
+      '',
+      '[FORBIDDEN_BEHAVIOR]',
+      '- No disease diagnoses, treatment claims, or prescription drug names.',
+      '- No brand or specific product recommendations.',
+      '- No generic template talk or repeated disclaimer phrasing.',
+      '- No unsupported confidence escalation.',
+      '[/FORBIDDEN_BEHAVIOR]',
+      '',
+      '[INPUT_CONTEXT]',
+      qRule,
       `dto: ${JSON.stringify(dto || {})}`,
+      '[/INPUT_CONTEXT]',
+    ].filter(Boolean).join('\n'),
   };
 }
 
@@ -364,7 +482,7 @@ function buildSkinReportPrompt({
 
 function buildSkinDeepeningPromptBundle({ language, dto, promptVersion } = {}) {
   const lang = normalizeLang(language);
-  const version = normalizePromptVersion(promptVersion, 'skin_deepening_v1');
+  const version = normalizePromptVersion(promptVersion, SKIN_DEEPENING_MAINLINE_PROMPT_VERSION);
   if (isSkinDeepeningV2(version)) return buildDeepeningCanonicalPrompt({ dto });
   const d = dto && typeof dto === 'object' ? dto : {};
   const profileStr = JSON.stringify(d.profile || {});
@@ -389,25 +507,61 @@ function buildSkinDeepeningPromptBundle({ language, dto, promptVersion } = {}) {
 
     return {
       promptVersion: version,
-      systemInstruction:
-        'Role: 你是亲切、专业的护肤顾问，擅长基于用户皮肤信息给出个性化、可执行的护肤建议。' +
-        '安全规则：禁止疾病诊断（玫瑰痤疮/湿疹/牛皮癣等）、禁止处方药名称、禁止治疗宣称、禁止品牌或具体产品推荐。' +
-        '风格：温暖、直接，避免泛化模板话术，必须针对用户实际档案说明原因。Language: 简体中文。',
-      userPrompt:
-        `task: 根据以下用户皮肤档案与深挖阶段，生成个性化护肤深挖回复。\n` +
-        `${guide}\n` +
-        `profile: ${profileStr}\n` +
-        `photo_choice: ${photoChoice}\n` +
-        `products_submitted: ${productsSubmitted}\n` +
-        (routineActives ? `routine_actives: ${routineActives}\n` : '') +
-        (reactionsStr ? `reactions_so_far: ${reactionsStr}\n` : '') +
-        `\noutput_rules:\n` +
-        `- narrative: 2-3 句个性化开场（必须提及用户档案中的具体信息如皮肤类型/目标），禁止泛化.\n` +
-        `- reasoning: 3-4 条具体可执行建议，按「原因 → 注意细节 → 修复路径 → 阶段提示」顺序，每条 ≤ 100 字.\n` +
-        `- deepening_question: 针对当前阶段的自然追问（≤ 60 字）.\n` +
-        `- deepening_options: 2-6 个具体选项（每项 ≤ 40 字），与 deepening_question 匹配.\n` +
-        `- 最多3个追问。每个追问必须对应一个具体的护肤方案调整。\n` +
-        `  例如："产品使用时刺痛吗？"→屏障优先，减少活性成分。"凸起是否发痒？"→按刺激而非痘痘处理。`,
+      systemInstruction: [
+        '[ROLE]',
+        `你是亲切、专业的护肤深挖顾问（Pivota）。Prompt version: ${version}.`,
+        '输出必须是单个严格 JSON 对象，不要输出 JSON 之外的文本。',
+        'Language: 简体中文。',
+        '[/ROLE]',
+      ].join('\n'),
+      userPrompt: [
+        '[TASK]',
+        '根据以下用户皮肤档案与深挖阶段，生成个性化护肤深挖回复。',
+        '风格：温暖、直接，避免泛化模板话术，必须针对用户实际档案说明原因。',
+        '[/TASK]',
+        '',
+        '[OUTPUT_CONTRACT]',
+        '严格输出 JSON，必须包含以下顶层字段：',
+        '{ "narrative": string, "reasoning": string[], "deepening_question": string, "deepening_options": string[] }',
+        '不要添加额外顶层字段。',
+        '[/OUTPUT_CONTRACT]',
+        '',
+        '[FIELD_SEMANTICS]',
+        '- narrative: 2-3 句个性化开场（必须提及用户档案中的具体信息如皮肤类型/目标），禁止泛化。',
+        '- reasoning: 3-4 条具体可执行建议，按「原因 -> 注意细节 -> 修复路径 -> 阶段提示」顺序，每条 <= 100 字。',
+        '- deepening_question: 针对当前阶段的自然追问（<= 60 字）。',
+        '- deepening_options: 2-6 个具体选项（每项 <= 40 字），与 deepening_question 匹配。',
+        '- 最多3个追问。每个追问必须对应一个具体的护肤方案调整。',
+        '[/FIELD_SEMANTICS]',
+        '',
+        '[HARD_RULES]',
+        '1. 阶段忠实度规则：reasoning 和 deepening_question 必须与当前阶段匹配。',
+        '2. 匹配规则：deepening_question 与 deepening_options 必须逻辑一致。',
+        '3. 安全规则：禁止疾病诊断（玫瑰痤疮/湿疹/牛皮癣等）、禁止处方药名称、禁止治疗宣称。',
+        '4. 落地规则：narrative 每句必须引用用户档案中的具体属性，不要写泛化内容。',
+        '5. 可执行规则：例如"产品使用时刺痛吗？"->屏障优先，减少活性成分。"凸起是否发痒？"->按刺激而非痘痘处理。',
+        '[/HARD_RULES]',
+        '',
+        '[MISSING_DATA_POLICY]',
+        '- 如果当前阶段信息不足，保持保守，不要假装知道用户完整 routine、反应史或照片细节。',
+        '- 信息不足时，提出下一个最有价值的问题，而非编造答案。',
+        '[/MISSING_DATA_POLICY]',
+        '',
+        '[FORBIDDEN_BEHAVIOR]',
+        '- 禁止品牌或具体产品推荐。',
+        '- 禁止疾病判断或处方药引用。',
+        '- 禁止长篇泛化安慰话术或模板填充。',
+        '[/FORBIDDEN_BEHAVIOR]',
+        '',
+        '[INPUT_CONTEXT]',
+        guide,
+        `profile: ${profileStr}`,
+        `photo_choice: ${photoChoice}`,
+        `products_submitted: ${productsSubmitted}`,
+        routineActives ? `routine_actives: ${routineActives}` : '',
+        reactionsStr ? `reactions_so_far: ${reactionsStr}` : '',
+        '[/INPUT_CONTEXT]',
+      ].filter(Boolean).join('\n'),
     };
   }
 
@@ -425,25 +579,61 @@ function buildSkinDeepeningPromptBundle({ language, dto, promptVersion } = {}) {
 
   return {
     promptVersion: version,
-    systemInstruction:
-      'Role: You are a warm, professional skincare advisor specializing in evidence-based cosmetic skincare. ' +
-      'Safety rules: no disease diagnosis (rosacea/eczema/psoriasis), no prescription drug names, no treatment claims, no brand or specific product names. ' +
-      'Style: warm, direct, specific — avoid generic template language, always ground advice in the user\'s actual profile. Language: English (US).',
-    userPrompt:
-      `task: Generate a personalized skin deepening narrative for the current conversation phase.\n` +
-      `${guide}\n` +
-      `profile: ${profileStr}\n` +
-      `photo_choice: ${photoChoice}\n` +
-      `products_submitted: ${productsSubmitted}\n` +
-      (routineActives ? `routine_actives: ${routineActives}\n` : '') +
-      (reactionsStr ? `reactions_so_far: ${reactionsStr}\n` : '') +
-      `\noutput_rules:\n` +
-      `- narrative: 2-3 personalized sentences (must reference specific profile info like skin type/goals), no generic language.\n` +
-      `- reasoning: 3-4 specific actionable lines following Cause → Watchout → Repair path → Phase tip, each ≤ 100 chars.\n` +
-      `- deepening_question: Natural next question for this phase (≤ 60 chars).\n` +
-      `- deepening_options: 2-6 specific options (each ≤ 40 chars) matching the deepening_question.\n` +
-      `- Max 3 follow-up questions total. Each must map to a specific routine change.\n` +
-      `  e.g. "Do products sting?" → barrier-first, reduce actives. "Are bumps itchy?" → treat as irritation, not acne.`,
+    systemInstruction: [
+      '[ROLE]',
+      `You are a warm, professional skincare deepening advisor for Pivota. Prompt version: ${version}.`,
+      'Return one single valid JSON object only. No markdown, no code fences, no prose outside JSON.',
+      'Language: English (US).',
+      '[/ROLE]',
+    ].join('\n'),
+    userPrompt: [
+      '[TASK]',
+      'Generate a personalized skin deepening narrative for the current conversation phase.',
+      'Ground advice in the user\'s actual profile. Avoid generic template language.',
+      '[/TASK]',
+      '',
+      '[OUTPUT_CONTRACT]',
+      'Return strict JSON with these required top-level keys:',
+      '{ "narrative": string, "reasoning": string[], "deepening_question": string, "deepening_options": string[] }',
+      'Do not add extra top-level keys.',
+      '[/OUTPUT_CONTRACT]',
+      '',
+      '[FIELD_SEMANTICS]',
+      '- narrative: 2-3 personalized sentences referencing specific profile info like skin type/goals.',
+      '- reasoning: 3-4 specific actionable lines following Cause -> Watchout -> Repair path -> Phase tip, each <= 100 chars.',
+      '- deepening_question: natural next question for this phase (<= 60 chars).',
+      '- deepening_options: 2-6 specific options (each <= 40 chars) matching the deepening_question.',
+      '- Max 3 follow-up questions total. Each must map to a specific routine change.',
+      '[/FIELD_SEMANTICS]',
+      '',
+      '[HARD_RULES]',
+      '1. Phase-fidelity rule: reasoning and deepening_question must stay appropriate for the current phase.',
+      '2. Matching rule: deepening_question and deepening_options must be logically consistent with each other.',
+      '3. Safety rule: no disease diagnosis (rosacea/eczema/psoriasis), no prescription drug names, no treatment claims.',
+      '4. Grounding rule: every narrative sentence must reference a specific profile attribute, not generic filler.',
+      '5. Actionability rule: e.g. "Do products sting?" -> barrier-first, reduce actives. "Are bumps itchy?" -> treat as irritation, not acne.',
+      '[/HARD_RULES]',
+      '',
+      '[MISSING_DATA_POLICY]',
+      '- If the current phase lacks enough context, stay conservative and ask the next best question.',
+      '- Do not pretend to know routine history, reaction history, or photo details.',
+      '[/MISSING_DATA_POLICY]',
+      '',
+      '[FORBIDDEN_BEHAVIOR]',
+      '- No brand or specific product recommendations.',
+      '- No disease framing or prescription references.',
+      '- No long generic pep-talks or template filler.',
+      '[/FORBIDDEN_BEHAVIOR]',
+      '',
+      '[INPUT_CONTEXT]',
+      guide,
+      `profile: ${profileStr}`,
+      `photo_choice: ${photoChoice}`,
+      `products_submitted: ${productsSubmitted}`,
+      routineActives ? `routine_actives: ${routineActives}` : '',
+      reactionsStr ? `reactions_so_far: ${reactionsStr}` : '',
+      '[/INPUT_CONTEXT]',
+    ].filter(Boolean).join('\n'),
   };
 }
 
@@ -456,6 +646,9 @@ module.exports = {
   buildVisionCanonicalPrompt,
   buildReportCanonicalPrompt,
   buildDeepeningCanonicalPrompt,
+  SKIN_REPORT_MAINLINE_PROMPT_VERSION,
+  SKIN_DEEPENING_MAINLINE_PROMPT_VERSION,
+  SKIN_VISION_MAINLINE_PROMPT_VERSION,
   isSkinPromptV3,
   isSkinDeepeningV2,
   pickDetectorCandidates,

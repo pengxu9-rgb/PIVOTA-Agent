@@ -40,7 +40,9 @@ This checks `x-service-commit` from `/v1/session/bootstrap` against local `HEAD`
 If manual `railway up` is unavoidable:
 
 1. Record incident reason in PR/runbook.
-2. Immediately backfill by pushing the exact same code to GitHub `main`.
-3. Re-run commit match verification until pass.
+2. Deploy the exact same code already merged to GitHub `main`.
+3. Use `AURORA_GIT_SHA=<merged commit>` only as a temporary override if Railway does not inject a commit SHA for that manual deploy.
+4. Re-run commit match verification until pass.
+5. Clear any temporary `AURORA_GIT_SHA` override after the deployment chain is healthy again.
 
 Do not keep production in a state where deployed commit is not traceable to `main`.

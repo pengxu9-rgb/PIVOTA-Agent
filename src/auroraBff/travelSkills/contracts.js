@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 
 const { getTravelWeather, climateFallback } = require('../weatherAdapter');
+const { normalizeDestinationPlace, resolveDestinationInput } = require('../destinationResolver');
 const { buildEpiPayload } = require('../epiCalculator');
 const { getTravelAlerts } = require('../travelAlertsProvider');
 const { buildTravelReadiness } = require('../travelReadinessBuilder');
@@ -87,9 +88,11 @@ function pickTravelContextFromProfile(profile) {
   const travelPlan = isPlainObject(p.travel_plan) ? p.travel_plan : isPlainObject(p.travelPlan) ? p.travelPlan : {};
   return {
     destination: normalizeText(travelPlan.destination, 120),
+    destinationPlace: normalizeDestinationPlace(travelPlan.destination_place || travelPlan.destinationPlace),
     startDate: normalizeDateToken(travelPlan.start_date),
     endDate: normalizeDateToken(travelPlan.end_date),
     homeRegion: normalizeText(p.region, 140),
+    travelPlan,
   };
 }
 
@@ -104,6 +107,64 @@ function pickTravelContextFromIntent(canonicalIntent) {
     startDate: normalizeDateToken(dateRange.start),
     endDate: normalizeDateToken(dateRange.end),
   };
+}
+
+function buildDestinationClarificationAssistantText({ language, destination, candidates } = {}) {
+  const lang = normalizeLang(language);
+  const query = normalizeText(destination, 120);
+  const options = Array.isArray(candidates) ? candidates.map((row) => normalizeText(row && row.label, 160)).filter(Boolean) : [];
+  if (lang === 'CN') {
+    return [
+      query ? `我找到多个可能的目的地“${query}”，先确认具体地点，我再给你准确天气和护肤建议。` : '我找到多个可能的目的地，先确认具体地点，我再给你准确天气和护肤建议。',
+      options.length ? `可选：${options.slice(0, 3).join(' / ')}` : '',
+    ].filter(Boolean).join('\n');
+  }
+  return [
+    query
+      ? `I found multiple possible destinations for "${query}". Pick the exact place first and I’ll give you accurate weather and skincare guidance.`
+      : 'I found multiple possible destinations. Pick the exact place first and I’ll give you accurate weather and skincare guidance.',
+    options.length ? `Options: ${options.slice(0, 3).join(' / ')}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function buildDestinationClarificationChips({
+  language,
+  candidates,
+  baseTravelPlan,
+} = {}) {
+  const lang = normalizeLang(language);
+  const travelPlan = isPlainObject(baseTravelPlan) ? baseTravelPlan : {};
+  const out = [];
+  const rows = Array.isArray(candidates) ? candidates : [];
+  for (const [index, row] of rows.slice(0, 3).entries()) {
+    const candidate = normalizeDestinationPlace(row, { resolutionSource: 'user_selected' });
+    if (!candidate) continue;
+    out.push({
+      chip_id: `chip.travel.destination_candidate.${index + 1}`,
+      label: candidate.label,
+      kind: 'quick_reply',
+      data: {
+        reply_text:
+          lang === 'CN'
+            ? `目的地选 ${candidate.label}`
+            : `Destination ${candidate.label}`,
+        profile_patch: {
+          travel_plan: {
+            ...(normalizeText(travelPlan.start_date, 24) ? { start_date: normalizeText(travelPlan.start_date, 24) } : {}),
+            ...(normalizeText(travelPlan.end_date, 24) ? { end_date: normalizeText(travelPlan.end_date, 24) } : {}),
+            ...(Number.isFinite(Number(travelPlan.indoor_outdoor_ratio))
+              ? { indoor_outdoor_ratio: Number(travelPlan.indoor_outdoor_ratio) }
+              : {}),
+            ...(normalizeText(travelPlan.itinerary, 1200) ? { itinerary: normalizeText(travelPlan.itinerary, 1200) } : {}),
+            ...(normalizeText(travelPlan.trip_id, 80) ? { trip_id: normalizeText(travelPlan.trip_id, 80) } : {}),
+            destination: candidate.label,
+            destination_place: candidate,
+          },
+        },
+      },
+    });
+  }
+  return out;
 }
 
 function sha1(input) {
@@ -177,13 +238,23 @@ function normalizeLlmTraceOutcome(outcome) {
 
 function normalizeRecoSkipReason(reason) {
   const token = normalizeText(reason, 80).toLowerCase();
-  if (token === 'trigger_not_matched' || token === 'destination_missing' || token === 'no_products') return token;
+  if (
+    token === 'trigger_not_matched' ||
+    token === 'destination_missing' ||
+    token === 'destination_ambiguous' ||
+    token === 'no_products'
+  ) return token;
   return 'trigger_not_matched';
 }
 
 function normalizeStoreSkipReason(reason) {
   const token = normalizeText(reason, 80).toLowerCase();
-  if (token === 'trigger_not_matched' || token === 'destination_missing' || token === 'no_channels') return token;
+  if (
+    token === 'trigger_not_matched' ||
+    token === 'destination_missing' ||
+    token === 'destination_ambiguous' ||
+    token === 'no_channels'
+  ) return token;
   return 'trigger_not_matched';
 }
 
@@ -526,7 +597,9 @@ async function runTravelPipeline(input = {}) {
   const intentStartedAt = Date.now();
   const profileCtx = pickTravelContextFromProfile(profile);
   const intentCtx = pickTravelContextFromIntent(canonicalIntent);
-  const destination = intentCtx.destination || profileCtx.destination;
+  const destinationInput = intentCtx.destination || profileCtx.destination;
+  let destination = destinationInput;
+  let destinationPlace = profileCtx.destinationPlace || null;
   const startDate = intentCtx.startDate || profileCtx.startDate;
   const endDate = intentCtx.endDate || profileCtx.endDate;
   const homeRegion = profileCtx.homeRegion;
@@ -540,12 +613,157 @@ async function runTravelPipeline(input = {}) {
     startedAtMs: intentStartedAt,
     meta: {
       destination: destination || null,
+      destination_place_present: Boolean(destinationPlace),
       start_date: startDate || null,
       end_date: endDate || null,
       month_bucket: monthBucket,
       required_fields_count: requiredFields.length,
     },
   });
+
+  let destinationResolution = null;
+  if (!destinationPlace && destination && travelWeatherLiveEnabled) {
+    try {
+      destinationResolution = await resolveDestinationInput({
+        destination,
+        destinationPlace: null,
+        userLocale,
+        fetchImpl: global.fetch,
+        timeoutMs: 1600,
+        count: 8,
+      });
+      if (destinationResolution && destinationResolution.ok && !destinationResolution.ambiguous && destinationResolution.resolved_place) {
+        destinationPlace = destinationResolution.resolved_place;
+        destination = destinationPlace.label || destination;
+      }
+    } catch (_err) {
+      destinationResolution = null;
+    }
+  }
+
+  if (destinationResolution && destinationResolution.ambiguous) {
+    recordAuroraTravelKbHit({ mode: 'miss' });
+    pushTrace(trace, {
+      skill: 'travel_kb_read_skill',
+      status: 'skip',
+      startedAtMs: Date.now(),
+      meta: { reason: 'destination_ambiguous' },
+    });
+    recordAuroraTravelSkillSkip({ skill: 'travel_env_context_skill', reason: 'destination_ambiguous' });
+    pushTrace(trace, {
+      skill: 'travel_env_context_skill',
+      status: 'skip',
+      startedAtMs: Date.now(),
+      meta: { reason: 'destination_ambiguous' },
+    });
+    recordAuroraTravelSkillSkip({ skill: 'travel_readiness_skill', reason: 'destination_ambiguous' });
+    pushTrace(trace, {
+      skill: 'travel_readiness_skill',
+      status: 'skip',
+      startedAtMs: Date.now(),
+      meta: { reason: 'destination_ambiguous' },
+    });
+    recordAuroraTravelLlmSkip({ reason: 'destination_ambiguous' });
+    recordAuroraTravelLlmCall({ outcome: 'skip_destination_ambiguous' });
+    pushTrace(trace, {
+      skill: 'travel_llm_calibration_skill',
+      status: 'skip',
+      startedAtMs: Date.now(),
+      meta: {
+        triggered: false,
+        trigger_reason: null,
+        skip_reason: 'destination_ambiguous',
+        outcome: 'skip_destination_ambiguous',
+      },
+    });
+    recordAuroraTravelSkillSkip({ skill: 'travel_reco_preview_skill', reason: 'destination_ambiguous' });
+    pushTrace(trace, {
+      skill: 'travel_reco_preview_skill',
+      status: 'skip',
+      startedAtMs: Date.now(),
+      meta: { reason: 'destination_ambiguous' },
+    });
+    recordAuroraTravelSkillSkip({ skill: 'travel_store_channel_skill', reason: 'destination_ambiguous' });
+    pushTrace(trace, {
+      skill: 'travel_store_channel_skill',
+      status: 'skip',
+      startedAtMs: Date.now(),
+      meta: { reason: 'destination_ambiguous' },
+    });
+
+    const clarificationText = buildDestinationClarificationAssistantText({
+      language,
+      destination: destinationInput,
+      candidates: destinationResolution.candidates,
+    });
+    const clarificationChips = buildDestinationClarificationChips({
+      language,
+      candidates: destinationResolution.candidates,
+      baseTravelPlan: {
+        ...(isPlainObject(profileCtx.travelPlan) ? profileCtx.travelPlan : {}),
+        ...(normalizeText(startDate, 24) ? { start_date: startDate } : {}),
+        ...(normalizeText(endDate, 24) ? { end_date: endDate } : {}),
+      },
+    });
+    recordAuroraTravelReplyMode({ mode: 'clarification' });
+    recordAuroraTravelResponseSource({ source: 'clarification' });
+    pushTrace(trace, {
+      skill: 'travel_followup_reply_skill',
+      status: 'clarify',
+      startedAtMs: Date.now(),
+      meta: {
+        mode: 'clarification',
+        focus: 'destination',
+        has_official_alerts: false,
+      },
+    });
+    recordAuroraTravelKbWrite({ outcome: 'skip', reason: 'incomplete_structure' });
+    recordAuroraTravelSkillSkip({ skill: 'travel_kb_write_skill', reason: 'incomplete_structure' });
+    pushTrace(trace, {
+      skill: 'travel_kb_write_skill',
+      status: 'skip',
+      startedAtMs: Date.now(),
+      meta: { reason: 'incomplete_structure' },
+    });
+
+    return {
+      ok: true,
+      travel_skills_version: TRAVEL_SKILLS_VERSION,
+      travel_skills_trace: trace,
+      assistant_text: clarificationText,
+      suggested_chips: clarificationChips,
+      pending_clarification: {
+        type: 'destination_ambiguous',
+        normalized_query: destinationResolution.normalized_query || destinationInput || null,
+        candidates: Array.isArray(destinationResolution.candidates) ? destinationResolution.candidates.slice(0, 5) : [],
+      },
+      env_stress_patch: null,
+      travel_readiness: null,
+      travel_kb_hit: false,
+      travel_kb_write_queued: false,
+      travel_skill_invocation_matrix: {
+        llm_called: false,
+        llm_skip_reason: 'destination_ambiguous',
+        reco_called: false,
+        reco_skip_reason: 'destination_ambiguous',
+        store_called: false,
+        store_skip_reason: 'destination_ambiguous',
+        kb_write_queued: false,
+        kb_write_skip_reason: 'incomplete_structure',
+      },
+      travel_followup_state: {
+        focus: 'destination',
+        reply_sig: 'destination_ambiguous',
+        question_hash: questionHash,
+        updated_at_ms: nowMs,
+      },
+      reco_preview: null,
+      store_channel: null,
+      env_source: 'pending_clarification',
+      degraded: true,
+      quality_reason: 'destination_ambiguous',
+    };
+  }
 
   const kbReadStartedAt = Date.now();
   if (destination) {
@@ -590,6 +808,7 @@ async function runTravelPipeline(input = {}) {
     if (travelWeatherLiveEnabled) {
       destinationWeather = await getTravelWeather({
         destination,
+        destinationPlace: destinationPlace || null,
         startDate,
         endDate,
         userLocale,
@@ -597,6 +816,7 @@ async function runTravelPipeline(input = {}) {
     } else {
       destinationWeather = climateFallback({
         destination,
+        destinationPlace: destinationPlace || null,
         startDate,
         endDate,
         reason: 'live_disabled',
@@ -673,7 +893,14 @@ async function runTravelPipeline(input = {}) {
       },
     });
   } catch (err) {
-    destinationWeather = climateFallback({ destination, startDate, endDate, reason: 'live_error', userLocale });
+    destinationWeather = climateFallback({
+      destination,
+      destinationPlace: destinationPlace || null,
+      startDate,
+      endDate,
+      reason: 'live_error',
+      userLocale,
+    });
     alertsPayload = {
       source: 'degraded',
       reason: 'env_context_error',
@@ -760,6 +987,20 @@ async function runTravelPipeline(input = {}) {
       sensitivity: pickProfileText(profile, 'sensitivity', 'sensitivity', 40),
       barrierStatus: pickProfileText(profile, 'barrierStatus', 'barrier_status', 40),
       region: homeRegion || null,
+      goals: Array.isArray(profile.goals) ? profile.goals.slice(0, 8).map((g) => normalizeText(g, 60)).filter(Boolean) : [],
+      budgetTier: pickProfileText(profile, 'budgetTier', 'budget_tier', 40),
+      currentRoutine: normalizeText(
+        typeof profile.currentRoutine === 'string'
+          ? profile.currentRoutine
+          : isPlainObject(profile.currentRoutine) ? JSON.stringify(profile.currentRoutine) : '',
+        600,
+      ) || null,
+      contraindications: Array.isArray(profile.contraindications)
+        ? profile.contraindications.slice(0, 12).map((c) => normalizeText(c, 80)).filter(Boolean)
+        : [],
+      age_band: pickProfileText(profile, 'age_band', 'age_band', 24),
+      pregnancy_status: pickProfileText(profile, 'pregnancy_status', 'pregnancy_status', 24),
+      lactation_status: pickProfileText(profile, 'lactation_status', 'lactation_status', 24),
     },
     weather_source: normalizeText(destinationWeather && destinationWeather.source, 40) || null,
     weather_reason: normalizeText(destinationWeather && destinationWeather.reason, 80) || null,
@@ -777,7 +1018,7 @@ async function runTravelPipeline(input = {}) {
         language,
         travelLlmInput,
         baseTravelReadiness: travelReadiness,
-        timeoutMs: 1800,
+        timeoutMs: 3500,
         maxRetries: 1,
         logger,
       });

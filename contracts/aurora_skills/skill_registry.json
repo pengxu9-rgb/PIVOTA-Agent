@@ -1,0 +1,172 @@
+{
+  "$schema": "./skill_contract.schema.json",
+  "registry_version": "2.0.0",
+  "updated_utc": "2026-03-07T00:00:00Z",
+  "skills": [
+    {
+      "skill_id": "diagnosis_v2.start",
+      "version": "1.0.0",
+      "phase": 1,
+      "description": "Goal-first diagnosis entry point",
+      "output_card_types": ["skin_status", "triage", "diagnosis_gate"],
+      "precondition_rule_ids": [],
+      "quality_gate_id": "qg_diagnosis_start",
+      "requires_llm": true,
+      "task_mode": "diagnosis"
+    },
+    {
+      "skill_id": "diagnosis_v2.answer",
+      "version": "1.0.0",
+      "phase": 1,
+      "description": "Convert diagnosis answers into a blueprint and next actions",
+      "output_card_types": ["skin_status", "nudge"],
+      "precondition_rule_ids": ["pre_diagnosis_has_goal"],
+      "quality_gate_id": "qg_diagnosis_answer",
+      "requires_llm": true,
+      "task_mode": "diagnosis"
+    },
+    {
+      "skill_id": "routine.apply_blueprint",
+      "version": "1.0.0",
+      "phase": 1,
+      "description": "Build a routine skeleton from a diagnosis blueprint",
+      "output_card_types": ["routine"],
+      "precondition_rule_ids": ["pre_has_blueprint"],
+      "quality_gate_id": "qg_routine_apply",
+      "requires_llm": false,
+      "task_mode": "routine"
+    },
+    {
+      "skill_id": "routine.intake_products",
+      "version": "1.0.0",
+      "phase": 1,
+      "description": "Categorize user products into routine steps",
+      "output_card_types": ["routine"],
+      "precondition_rule_ids": ["pre_has_routine_skeleton"],
+      "quality_gate_id": "qg_routine_intake",
+      "requires_llm": true,
+      "task_mode": "routine"
+    },
+    {
+      "skill_id": "routine.audit_optimize",
+      "version": "1.0.0",
+      "phase": 1,
+      "description": "Audit a routine and apply optimizations",
+      "output_card_types": ["routine", "compatibility"],
+      "precondition_rule_ids": ["pre_has_routine_with_products"],
+      "quality_gate_id": "qg_routine_audit",
+      "requires_llm": true,
+      "task_mode": "routine"
+    },
+    {
+      "skill_id": "reco.step_based",
+      "version": "2.0.0",
+      "phase": 1,
+      "description": "Recommend products from routine, concerns, or ingredient context",
+      "output_card_types": ["effect_review", "text_response"],
+      "precondition_rule_ids": [],
+      "quality_gate_id": "qg_reco_step",
+      "requires_llm": true,
+      "task_mode": "recommendation"
+    },
+    {
+      "skill_id": "tracker.checkin_log",
+      "version": "1.0.0",
+      "phase": 1,
+      "description": "Log a skincare check-in",
+      "output_card_types": ["nudge"],
+      "precondition_rule_ids": [],
+      "quality_gate_id": "qg_checkin_log",
+      "requires_llm": false,
+      "task_mode": "tracker"
+    },
+    {
+      "skill_id": "tracker.checkin_insights",
+      "version": "1.0.0",
+      "phase": 1,
+      "description": "Analyze check-in trends",
+      "output_card_types": ["nudge", "effect_review"],
+      "precondition_rule_ids": [],
+      "quality_gate_id": "qg_checkin_insights",
+      "requires_llm": true,
+      "task_mode": "tracker"
+    },
+    {
+      "skill_id": "product.analyze",
+      "version": "1.0.0",
+      "phase": 2,
+      "description": "Analyze a single product",
+      "output_card_types": ["product_verdict", "text_response"],
+      "precondition_rule_ids": ["pre_has_product_anchor"],
+      "quality_gate_id": "qg_product_analyze",
+      "requires_llm": true,
+      "task_mode": "product_analysis"
+    },
+    {
+      "skill_id": "ingredient.report",
+      "version": "2.0.0",
+      "phase": 2,
+      "description": "Open ingredient Q&A plus detailed specific ingredient reports",
+      "output_card_types": ["aurora_ingredient_report", "text_response"],
+      "precondition_rule_ids": ["pre_has_ingredient_query"],
+      "quality_gate_id": "qg_ingredient_report",
+      "requires_llm": true,
+      "task_mode": "ingredient"
+    },
+    {
+      "skill_id": "dupe.suggest",
+      "version": "1.0.0",
+      "phase": 2,
+      "description": "Suggest alternative products",
+      "output_card_types": ["product_verdict"],
+      "precondition_rule_ids": ["pre_has_product_anchor"],
+      "quality_gate_id": "qg_dupe_suggest",
+      "requires_llm": true,
+      "task_mode": "dupe"
+    },
+    {
+      "skill_id": "dupe.compare",
+      "version": "1.0.0",
+      "phase": 2,
+      "description": "Compare an anchor product with one or more targets",
+      "output_card_types": ["compatibility"],
+      "precondition_rule_ids": ["pre_has_product_anchor", "pre_has_comparison_target"],
+      "quality_gate_id": "qg_dupe_compare",
+      "requires_llm": true,
+      "task_mode": "dupe"
+    },
+    {
+      "skill_id": "travel.apply_mode",
+      "version": "1.0.0",
+      "phase": 2,
+      "description": "Adjust routine behavior for travel",
+      "output_card_types": ["travel"],
+      "precondition_rule_ids": ["pre_has_travel_plan"],
+      "quality_gate_id": "qg_travel_apply",
+      "requires_llm": true,
+      "task_mode": "travel"
+    },
+    {
+      "skill_id": "explore.add_to_routine",
+      "version": "1.0.0",
+      "phase": 2,
+      "description": "Add an explored product into the routine",
+      "output_card_types": ["routine"],
+      "precondition_rule_ids": ["pre_has_product_anchor", "pre_has_routine_skeleton"],
+      "quality_gate_id": "qg_explore_add",
+      "requires_llm": false,
+      "task_mode": "explore"
+    },
+    {
+      "skill_id": "chat.freeform",
+      "version": "1.0.0",
+      "phase": 0,
+      "description": "Free-form skincare chat for questions that do not map to a structured skill",
+      "output_card_types": ["text_response", "aurora_ingredient_report"],
+      "precondition_rule_ids": [],
+      "quality_gate_id": null,
+      "requires_llm": true,
+      "task_mode": "chat"
+    }
+  ]
+}

@@ -2048,7 +2048,7 @@ test('/v1/chat: Start diagnosis chip enters diagnosis flow (no upstream loop)', 
 
   assert.equal(resp.status, 200);
   assert.equal(typeof resp.body?.assistant_message?.content, 'string');
-  assert.match(resp.body.assistant_message.content, /quick skin profile/i);
+  assert.match(resp.body.assistant_message.content, /which skin type fits you best/i);
   assert.equal(Array.isArray(resp.body?.suggested_chips), true);
   assert.ok(resp.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.skinType.')));
   assert.ok(resp.body.suggested_chips.every((c) => !String(c.chip_id).startsWith('chip.clarify.next.')));
@@ -2817,7 +2817,7 @@ test('/v1/chat: resume probe metrics detect intake-like resume output and do not
           .expect(200);
 
         const badResumeText = String(resp3.body?.assistant_message?.content || '');
-        assert.match(badResumeText, /quick skin profile/i);
+        assert.match(badResumeText, /(quick skin profile|quick skin-profile detail)/i);
 
         const snapAfterResume = snapshotVisionMetrics();
         const questionModeCount = getLabeledCounterValue(snapAfterResume.resumeResponseMode, { mode: 'question' });
@@ -4241,7 +4241,8 @@ test('/v1/chat: ingredient.lookup uses research path and second lookup can hit i
             geminiArgs.responseJsonSchema.required.includes('schema_version'),
           true,
         );
-        assert.match(String(geminiArgs?.systemPrompt || ''), /strictly parsable JSON only/i);
+        assert.match(String(geminiArgs?.systemPrompt || ''), /Prompt version: ingredient_research_v2_lite_hardened/i);
+        assert.match(String(geminiArgs?.systemPrompt || ''), /single valid JSON object/i);
         assert.match(String(geminiArgs?.userPrompt || ''), /schema_version\"\s*:\s*\"v2-lite\"/i);
         assert.equal(geminiCalls, 1);
 
@@ -9832,6 +9833,193 @@ test('/v1/analysis/skin: routine fit retries after clarify-like output, emits ro
   );
 });
 
+test('/v1/analysis/skin: routine fit falls back locally after upstream errors and still emits routine_fit_summary', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let routineFitCallCount = 0;
+
+      decisionModule.auroraChat = async (args = {}) => {
+        if (String(args.intent_hint || '').trim() === 'routine_fit_summary') {
+          routineFitCallCount += 1;
+          throw new Error('routine fit upstream unavailable');
+        }
+        return { answer: 'Mock Aurora reply.', intent: 'chat', cards: [] };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const memoryStore = require('../src/auroraBff/memoryStore');
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const uid = 'uid_analysis_routine_fit_fallback';
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': uid,
+            'X-Trace-ID': 'trace_analysis_routine_fit_fallback',
+            'X-Brief-ID': 'brief_analysis_routine_fit_fallback',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                serum: 'Vitamin C serum',
+                moisturizer: 'Barrier cream',
+                spf: 'SPF 50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const routineFitCard = findCardByType(cards, 'routine_fit_summary');
+        assert.ok(routineFitCard);
+        assert.equal(routineFitCallCount, 2);
+        assert.equal(['good_match', 'partial_match', 'needs_adjustment'].includes(routineFitCard.payload?.overall_fit), true);
+        assert.equal(Array.isArray(routineFitCard.payload?.next_questions), true);
+        assert.equal((routineFitCard.payload?.summary || '').length > 0, true);
+
+        const completedEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((event) => event && event.event_name === 'routine_fit_evaluation_completed')
+          : null;
+        assert.ok(completedEvent);
+        assert.equal(Boolean(completedEvent?.data?.fit_card_emitted), true);
+        assert.equal(Boolean(completedEvent?.data?.fallback_used), true);
+        assert.equal(completedEvent?.data?.fallback_reason, 'upstream_error');
+        assert.equal(completedEvent?.data?.fallback_source, 'deterministic_local');
+
+        const savedProfile = await memoryStore.getProfileForIdentity({ auroraUid: uid, userId: null });
+        assert.equal(typeof savedProfile?.lastAnalysis?.routine_fit?.summary, 'string');
+        assert.equal(Array.isArray(savedProfile?.lastAnalysis?.routine_fit?.next_questions), true);
+      } finally {
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[routeModuleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: routine fit uses dedicated timeout/model and classifies upstream timeout failures', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+      AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS: '3800',
+      AURORA_ROUTINE_FIT_TIMEOUT_MS: '12000',
+      AURORA_ROUTINE_FIT_MODEL_GEMINI: 'gemini-routine-fit-test',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      const capturedCalls = [];
+
+      decisionModule.auroraChat = async (args = {}) => {
+        if (String(args.intent_hint || '').trim() === 'routine_fit_summary') {
+          capturedCalls.push(args);
+          const err = new Error('timeout of 12000ms exceeded');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        return { answer: 'Mock Aurora reply.', intent: 'chat', cards: [] };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_analysis_routine_fit_timeout',
+            'X-Trace-ID': 'trace_analysis_routine_fit_timeout',
+            'X-Brief-ID': 'brief_analysis_routine_fit_timeout',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                serum: 'Niacinamide serum',
+                moisturizer: 'Barrier cream',
+                spf: 'SPF 50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        assert.equal(capturedCalls.length, 2);
+        assert.equal(capturedCalls[0]?.timeoutMs, 12000);
+        assert.equal(capturedCalls[0]?.llm_model, 'gemini-3-flash-preview');
+        assert.equal(capturedCalls[0]?.prompt_template_id, 'routine_fit_summary_v1');
+        assert.equal(typeof capturedCalls[0]?.prompt_hash, 'string');
+        assert.equal(capturedCalls[0]?.prompt_hash.length > 0, true);
+
+        const completedEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((event) => event && event.event_name === 'routine_fit_evaluation_completed')
+          : null;
+        assert.ok(completedEvent);
+        assert.equal(Boolean(completedEvent?.data?.fallback_used), true);
+        assert.equal(completedEvent?.data?.fallback_reason, 'upstream_timeout');
+        assert.equal(completedEvent?.data?.timeout_ms, 12000);
+        assert.equal(completedEvent?.data?.llm_model, 'gemini-3-flash-preview');
+
+        const upstreamFailureEvents = Array.isArray(resp.body?.events)
+          ? resp.body.events.filter((event) => event && event.event_name === 'routine_fit_upstream_failure')
+          : [];
+        assert.equal(upstreamFailureEvents.length, 2);
+        assert.equal(upstreamFailureEvents[0]?.data?.failure_class, 'upstream_timeout');
+        assert.equal(upstreamFailureEvents[0]?.data?.upstream_error_code, 'ECONNABORTED');
+        assert.equal(upstreamFailureEvents[0]?.data?.timeout_ms, 12000);
+      } finally {
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[routeModuleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of ingredient_hub or nudge fallback', async () => {
   await withEnv(
     {
@@ -9966,6 +10154,46 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
         await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
         delete require.cache[routeModuleId];
       }
+    },
+  );
+});
+
+test('/v1/chat: deep_dive_skin without reusable analysis context returns confidence_notice', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const response = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'uid_analysis_followup_missing_context',
+          'X-Trace-ID': 'trace_analysis_followup_missing_context',
+          'X-Brief-ID': 'brief_analysis_followup_missing_context',
+          'X-Lang': 'EN',
+        })
+        .send({
+          action: {
+            action_id: 'chip.aurora.next_action.deep_dive_skin',
+            kind: 'action',
+            data: { reply_text: 'Tell me more about my skin', trigger_source: 'analysis_story_v2' },
+          },
+          language: 'EN',
+        })
+        .expect(200);
+
+      assert.ok(findCardByType(response.body?.cards, 'confidence_notice'));
+      assert.equal(Boolean(findCardByType(response.body?.cards, 'nudge')), false);
+      assert.match(String(response.body?.assistant_text || response.body?.assistant_message?.content || ''), /recent skin analysis|run skin analysis again/i);
     },
   );
 });

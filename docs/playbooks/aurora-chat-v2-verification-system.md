@@ -179,7 +179,7 @@ PR gating is moved to `aurora-chat-pr-lite.yml`.
 ### `meta` missing
 Check:
 - `AURORA_CHAT_RESPONSE_META_ENABLED=true`
-- `/v1/chat` response follows ChatCards v1 (`assistant_text/cards/follow_up_questions/suggested_quick_replies/ops/safety/telemetry`)
+- `/v1/chat` response follows ChatCards v1 (`assistant_text/cards/follow_up_questions/suggested_quick_replies/ops/safety/telemetry`) and includes rollout meta in either top-level `meta` or `session_patch.meta`
 
 ### travel complete case unexpectedly asks fields
 Check:

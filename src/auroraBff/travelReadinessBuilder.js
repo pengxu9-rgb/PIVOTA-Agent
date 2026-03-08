@@ -85,113 +85,271 @@ function normalizeTravelAlerts(alerts, language) {
   return out;
 }
 
-function buildRecoBundle({ language, deltaVsHome, profile } = {}) {
+function routineContainsMakeup(currentRoutine) {
+  const text = normalizeText(currentRoutine, 600).toLowerCase();
+  if (!text) return false;
+  return /\b(makeup|foundation|concealer|powder|blush|eyeshadow|mascara|lip\s*stick)\b/.test(text) ||
+    /(彩妆|粉底|遮瑕|散粉|腮红|眼影|睫毛膏|口红|卸妆)/.test(text);
+}
+
+function buildRecoBundle({ language, deltaVsHome, profile, startDate, endDate, jetlagSleep } = {}) {
   const out = [];
   const delta = isPlainObject(deltaVsHome) ? deltaVsHome : {};
   const skinType = normalizeText(profile && profile.skinType, 48).toLowerCase();
-  const sensitive = normalizeText(profile && profile.sensitivity, 24).toLowerCase();
-  const barrier = normalizeText(profile && profile.barrierStatus, 48).toLowerCase();
+  const goals = Array.isArray(profile && profile.goals) ? profile.goals.map((g) => normalizeText(g, 60).toLowerCase()).filter(Boolean) : [];
+  const currentRoutine = normalizeText(profile && profile.currentRoutine, 600);
+  const hasMakeupInRoutine = routineContainsMakeup(currentRoutine);
+  const isPregnantOrLactating = Boolean(
+    normalizeText(profile && profile.pregnancy_status, 20) ||
+    normalizeText(profile && profile.lactation_status, 20),
+  );
 
   const uvDestination = toNumber(delta?.uv?.destination);
   const uvDelta = toNumber(delta?.uv?.delta);
-  if ((uvDestination != null && uvDestination >= 6) || (uvDelta != null && uvDelta >= 1.5)) {
+  const humidityDelta = toNumber(delta?.humidity?.delta);
+  const temperatureDelta = toNumber(delta?.temperature?.delta);
+  const highUv = (uvDestination != null && uvDestination >= 6) || (uvDelta != null && uvDelta >= 1.5);
+  const moderateUv = (uvDestination != null && uvDestination >= 5);
+
+  const tripDays = (function () {
+    const s = normalizeText(startDate, 24);
+    const e = normalizeText(endDate, 24);
+    if (!s || !e) return null;
+    const sd = new Date(`${s}T00:00:00Z`);
+    const ed = new Date(`${e}T00:00:00Z`);
+    if (!Number.isFinite(sd.getTime()) || !Number.isFinite(ed.getTime()) || ed < sd) return null;
+    return Math.floor((ed.getTime() - sd.getTime()) / 86400000) + 1;
+  })();
+
+  // --- 1. Sun protection (always) ---
+  if (highUv) {
     out.push({
       trigger: t(language, 'UV 升高', 'Elevated UV'),
-      action: t(
-        language,
-        '白天使用 SPF50+；户外每 2 小时补涂，出汗或擦拭后立即补涂。',
-        'Use SPF50+ in daytime; reapply every 2 hours outdoors, and immediately after sweat/wipe-off.',
+      action: t(language,
+        '面部 SPF50+ PA++++，户外每 2h 补涂；身体暴露部位同步涂抹身体防晒。',
+        'Face: SPF50+ PA++++, reapply every 2h outdoors. Body: apply body sunscreen on exposed areas.',
       ),
-      ingredient_logic: t(language, '优先高 UVA 防护 + 成膜稳定体系。', 'Prioritize high UVA protection and photostable film-formers.'),
+      ingredient_logic: t(language,
+        '优先光稳定 UVA 滤光剂（Tinosorb S/M）+ 抗氧化成膜体系；身体用大容量流体质地便于大面积涂抹。',
+        'Prioritize photostable UVA filters (Tinosorb S/M) + antioxidant film-formers; body SPF in fluid texture for easy large-area application.',
+      ),
       product_types: [
-        t(language, '防晒乳 SPF50+', 'SPF50+ sunscreen fluid'),
-        t(language, '便携补涂（防晒棒/小支）', 'Portable reapplication format'),
+        t(language, '面部防晒 SPF50+ PA++++', 'Face SPF50+ PA++++ sunscreen'),
+        t(language, '便携补涂（防晒棒/气垫）', 'Portable reapply format (stick/cushion)'),
+        t(language, '身体防晒 SPF30+', 'Body sunscreen SPF30+'),
       ],
-      reapply_rule: t(language, '户外 >90 分钟：2 小时补涂一次。', 'If outdoors >90 minutes: reapply every 2 hours.'),
+      reapply_rule: t(language, '户外 >90min 每 2h 补涂；出汗/擦拭/淋雨后立即补涂。', 'Outdoors >90min: reapply every 2h; immediately after sweat/wipe-off/rain.'),
+    });
+  } else {
+    out.push({
+      trigger: t(language, '日常防晒', 'Daily sun protection'),
+      action: t(language,
+        '面部 SPF30-50 通勤可用；连续户外超 90 分钟升至 SPF50 并补涂。',
+        'Face: SPF30-50 for commuting; switch to SPF50+ and reapply if outdoors over 90 minutes continuously.',
+      ),
+      ingredient_logic: t(language, '轻薄成膜优先，兼顾防护力和肤感。', 'Light film-forming priority, balancing protection and skin feel.'),
+      product_types: [
+        t(language, '面部防晒 SPF30-50', 'Face SPF30-50 sunscreen'),
+      ],
+      reapply_rule: t(language, '长户外时每 2h 补涂。', 'Reapply every 2h during extended outdoor exposure.'),
     });
   }
 
-  const humidityDelta = toNumber(delta?.humidity?.delta);
-  const temperatureDelta = toNumber(delta?.temperature?.delta);
+  // --- 2. Moisturization & barrier (always, differentiated by humidity) ---
   if ((humidityDelta != null && humidityDelta >= 8) || (temperatureDelta != null && temperatureDelta >= 3)) {
     out.push({
       trigger: t(language, '湿热上升', 'Warmer / more humid'),
-      action: t(
-        language,
-        '早上改轻薄保湿，夜间保留修护霜；活性产品避免同晚叠加。',
-        'Switch to lighter AM hydration, keep PM repair cream, and avoid same-night active stacking.',
+      action: t(language,
+        'AM 改凝胶霜/水乳质地，PM 保留中等修护霜；避免同晚叠加多种活性。',
+        'AM: switch to gel-cream/lotion texture. PM: keep medium repair cream. Avoid same-night multi-active stacking.',
       ),
-      ingredient_logic: t(language, '控油同时维持屏障水分平衡。', 'Balance oil control with barrier hydration.'),
+      ingredient_logic: t(language, '控油 + 维持屏障水分平衡；避免厚重封层加重闷痘。', 'Oil control + barrier hydration balance; avoid heavy occlusives that risk congestion.'),
       product_types: [
-        t(language, '轻薄凝胶面霜', 'Light gel-cream moisturizer'),
-        t(language, '补水修护面膜', 'Hydrating recovery mask'),
+        t(language, '凝胶面霜（AM）', 'Gel-cream moisturizer (AM)'),
+        t(language, '中等修护面霜（PM）', 'Medium barrier repair cream (PM)'),
       ],
-      reapply_rule: t(language, '飞行/长时空调后当晚优先补水修护一次。', 'After flight or long AC exposure, run one recovery hydration session at night.'),
+      reapply_rule: t(language, '白天按出油/紧绷状态动态调整保湿。', 'Adjust daytime hydration dynamically by oiliness/tightness.'),
     });
   } else {
     out.push({
       trigger: t(language, '温差/干燥', 'Temperature swing / dryness'),
-      action: t(
-        language,
-        '早晚使用中等修护面霜；风大时在鼻翼/颧骨局部加一层封层。',
-        'Use medium barrier cream AM/PM; add a thin occlusive layer on exposed zones when windy.',
+      action: t(language,
+        'AM/PM 均用修护面霜；干燥/风大时鼻翼和颧骨局部加封层。',
+        'Use barrier repair cream AM/PM; add thin occlusive on nose/cheekbones when dry or windy.',
       ),
-      ingredient_logic: t(language, '优先神经酰胺、泛醇、舒缓修护体系。', 'Prioritize ceramides, panthenol, and soothing repair systems.'),
+      ingredient_logic: t(language, '神经酰胺 + 泛醇 + 舒缓修护体系；封层用凡士林或角鲨烷。', 'Ceramides + panthenol + soothing repair; seal with petrolatum or squalane.'),
       product_types: [
         t(language, '修护面霜', 'Barrier repair cream'),
         t(language, '舒缓精华', 'Soothing serum'),
       ],
-      reapply_rule: t(language, '白天按干燥紧绷感补涂保湿。', 'Reapply moisturizer in daytime based on tightness/dryness.'),
+      reapply_rule: t(language, '白天按紧绷感补涂保湿。', 'Reapply moisturizer in daytime based on tightness.'),
     });
   }
 
+  // --- 3. Masks (scenario-differentiated) ---
   out.push({
-    trigger: t(language, '飞行与作息变化', 'Flight and schedule shift'),
-    action: t(
-      language,
-      '落地当晚先做补水修护，不建议叠加高强度酸/维A。',
-      'On arrival night, prioritize hydration and recovery; avoid stacking strong acids/retinoids.',
+    trigger: t(language, '面膜（按场景）', 'Masks (scenario-based)'),
+    action: t(language,
+      '飞行日：补水舒缓面膜 1 次；高 UV 户外后：晒后修复面膜；干燥环境：深层补水面膜。',
+      'Flight day: 1x hydrating-soothing mask. After high-UV outdoor day: post-sun repair mask. Dry climate: deep hydration mask.',
     ),
-    ingredient_logic: t(language, '降低刺激阈值风险。', 'Reduce irritation-threshold risk during transition.'),
+    ingredient_logic: t(language,
+      '飞行修护：透明质酸 + 积雪草。晒后修复：芦荟 + 尿囊素 + 烟酰胺（冷却抗炎）。深层补水：聚谷氨酸 + 神经酰胺。',
+      'Flight recovery: hyaluronic acid + centella asiatica. Post-sun: aloe vera + allantoin + niacinamide (cooling anti-inflammatory). Deep hydration: polyglutamic acid + ceramides.',
+    ),
     product_types: [
-      t(language, '修护面膜', 'Recovery mask'),
-      t(language, '温和洁面', 'Gentle cleanser'),
+      t(language, '补水舒缓面膜（飞行修护）', 'Hydrating-soothing mask (flight recovery)'),
+      ...(highUv ? [t(language, '晒后修复面膜（冷却型）', 'Post-sun repair mask (cooling)')] : []),
+      t(language, '深层补水面膜', 'Deep hydration mask'),
     ],
-    reapply_rule: t(language, '次日晚再恢复常规活性频次。', 'Resume regular active cadence from the second night onward.'),
+    reapply_rule: t(language, '每场景限 1 次，不叠加使用。', 'Max 1 per scenario, do not stack.'),
   });
 
-  if (sensitive === 'high' || barrier.includes('impaired')) {
+  // --- 4. Post-sun repair (UV >= 6) ---
+  if (highUv) {
     out.push({
-      trigger: t(language, '敏感/屏障易受损', 'Sensitive / barrier-vulnerable'),
-      action: t(
-        language,
-        '旅行期把主活性降到每晚最多一种，优先稳态。',
-        'During travel, keep at most one main active per night and prioritize stability.',
+      trigger: t(language, '晒后修复', 'Post-sun repair'),
+      action: t(language,
+        '户外日晒后当晚使用晒后舒缓凝胶 + 修护精华，替代常规活性步骤。',
+        'After outdoor sun exposure, apply post-sun soothing gel + repair serum at night, replacing regular actives.',
       ),
-      ingredient_logic: t(language, '减少刺激叠加，避免屏障波动。', 'Minimize cumulative irritation and barrier instability.'),
-      product_types: [
-        t(language, '低刺激修护乳', 'Low-irritation repair lotion'),
-      ],
-      reapply_rule: t(language, '若出现刺痛/泛红，暂停活性 48 小时。', 'If stinging/redness appears, pause actives for 48 hours.'),
-    });
-  } else if (skinType.includes('oily')) {
-    out.push({
-      trigger: t(language, '油皮易闷痘', 'Oily skin congestion risk'),
-      action: t(
-        language,
-        '优先轻薄防晒与非封闭型保湿，减少高致痘负担配方。',
-        'Prioritize lightweight sunscreen and non-occlusive hydration to reduce congestion load.',
+      ingredient_logic: t(language,
+        '芦荟凝胶（冷却舒缓）+ 泛醇/积雪草苷修护 + 烟酰胺抗炎；避免叠加酸类。',
+        'Aloe vera gel (cooling) + panthenol/madecassoside repair + niacinamide anti-inflammatory; skip acids.',
       ),
-      ingredient_logic: t(language, '维持清爽肤感并控制毛孔负担。', 'Maintain breathable finish and reduce pore burden.'),
       product_types: [
-        t(language, '控油防晒', 'Oil-control sunscreen'),
-        t(language, '清爽保湿乳', 'Lightweight moisturizer'),
+        t(language, '晒后舒缓凝胶', 'After-sun soothing gel'),
+        t(language, '修护精华（泛醇/积雪草）', 'Repair serum (panthenol/centella)'),
       ],
-      reapply_rule: t(language, '中午按出油情况吸油后补防晒。', 'At midday, blot excess oil then reapply sunscreen.'),
+      reapply_rule: t(language, '日晒当晚 + 次日早各用一次，直到皮肤恢复。', 'Apply evening of sun day + next morning, until skin recovers.'),
     });
   }
 
-  return out.slice(0, 4);
+  // --- 5. Cleansing + makeup removal ---
+  if (hasMakeupInRoutine) {
+    out.push({
+      trigger: t(language, '卸妆 + 双重清洁', 'Makeup removal + double cleanse'),
+      action: t(language,
+        '旅行必带卸妆膏/油（彻底溶解防晒+彩妆）+ 温和洁面二步清洁。不彻底清洁是旅行闷痘首因。',
+        'Pack cleansing balm/oil (dissolves SPF+makeup thoroughly) + gentle cleanser for double cleanse. Incomplete removal is the #1 cause of travel breakouts.',
+      ),
+      ingredient_logic: t(language, '油脂溶解体系 + pH 5.5 弱酸性洁面；避免皂基和高 SLS 配方。', 'Oil-based dissolution + pH 5.5 gentle cleanser; avoid soap-based and high-SLS formulas.'),
+      product_types: [
+        t(language, '卸妆膏/卸妆油（旅行装）', 'Cleansing balm/oil (travel size)'),
+        t(language, '温和洁面', 'Gentle cleanser'),
+      ],
+      reapply_rule: t(language, '每晚必做双重清洁。', 'Double cleanse every night without exception.'),
+    });
+  }
+
+  // --- 6. Antioxidant protection ---
+  if (moderateUv || goals.includes('dark_spots') || goals.includes('wrinkles')) {
+    out.push({
+      trigger: t(language, '抗氧化防护', 'Antioxidant protection'),
+      action: t(language,
+        'AM 防晒前叠加抗氧化精华，增强光防护 + 对抗环境自由基（飞机舱、污染、紫外线）。',
+        'Layer antioxidant serum under AM sunscreen to boost photoprotection + combat environmental free radicals (cabin air, pollution, UV).',
+      ),
+      ingredient_logic: t(language,
+        isPregnantOrLactating
+          ? '烟酰胺 + 维生素 E + 阿魏酸（孕哺期安全抗氧化组合）。'
+          : '维生素 C（旅行期用 10-15% 低浓度减少刺激）+ 维生素 E + 阿魏酸协同。',
+        isPregnantOrLactating
+          ? 'Niacinamide + vitamin E + ferulic acid (pregnancy-safe antioxidant combo).'
+          : 'Vitamin C (use 10-15% lower concentration during travel to reduce irritation) + vitamin E + ferulic acid synergy.',
+      ),
+      product_types: [
+        t(language, '抗氧化精华', 'Antioxidant serum'),
+      ],
+      reapply_rule: t(language, '每天 AM 使用 1 次，防晒前。', 'Apply once every AM, before sunscreen.'),
+    });
+  }
+
+  // --- 7. Brightening / dark-spot care (conditional on goals) ---
+  if (goals.includes('dark_spots') || goals.includes('brightening')) {
+    out.push({
+      trigger: t(language, '美白/祛斑护理', 'Brightening / dark-spot care'),
+      action: t(language,
+        isPregnantOrLactating
+          ? '旅行期用烟酰胺 + 熊果苷温和提亮；严格防晒是最有效的旅行祛斑策略。回程后恢复常规美白流程。'
+          : '旅行期降级使用低浓度维 C（10%）或传明酸精华；严格防晒是最有效的旅行祛斑策略。回程后恢复高浓度美白流程。',
+        isPregnantOrLactating
+          ? 'Travel: use niacinamide + arbutin for gentle brightening; strict SPF is the most effective travel anti-spot strategy. Resume regular brightening post-trip.'
+          : 'Travel: downgrade to low-concentration vitamin C (10%) or tranexamic acid serum; strict SPF is the most effective travel anti-spot strategy. Resume full brightening post-trip.',
+      ),
+      ingredient_logic: t(language,
+        isPregnantOrLactating
+          ? '烟酰胺（安全美白）+ 熊果苷（酪氨酸酶抑制）。避免氢醌和高浓度维 A。'
+          : '传明酸（抑制黑色素转运）/ 熊果苷（酪氨酸酶抑制）/ 烟酰胺（抗炎提亮）。',
+        isPregnantOrLactating
+          ? 'Niacinamide (safe brightening) + arbutin (tyrosinase inhibition). Avoid hydroquinone and high-dose retinoids.'
+          : 'Tranexamic acid (melanin transport inhibition) / arbutin (tyrosinase inhibition) / niacinamide (anti-inflammatory brightening).',
+      ),
+      product_types: [
+        t(language, '温和美白精华', 'Gentle brightening serum'),
+      ],
+      reapply_rule: t(language, 'PM 使用 1 次；旅行期不升浓度。', 'Apply once PM; do not increase concentration during travel.'),
+    });
+  }
+
+  // --- 8. Body care (outdoor > 2 days) ---
+  if (tripDays != null && tripDays > 2 && moderateUv) {
+    out.push({
+      trigger: t(language, '身体护理', 'Body care'),
+      action: t(language,
+        '身体暴露部位涂抹身体防晒 SPF30+；户外日结束后使用身体乳或晒后身体凝胶修护。',
+        'Apply body SPF30+ on exposed areas; after outdoor days, use body lotion or after-sun body gel for repair.',
+      ),
+      ingredient_logic: t(language,
+        '身体防晒：大容量防水配方。身体乳：乳木果油 + 芦荟 + 维生素 E 修护。',
+        'Body SPF: large-volume water-resistant formula. Body lotion: shea butter + aloe + vitamin E repair.',
+      ),
+      product_types: [
+        t(language, '身体防晒 SPF30+', 'Body sunscreen SPF30+'),
+        t(language, '身体乳/晒后身体凝胶', 'Body lotion / after-sun body gel'),
+      ],
+      reapply_rule: t(language, '身体防晒每 2h 补涂一次（游泳后立即补）。', 'Reapply body SPF every 2h (immediately after swimming).'),
+    });
+  }
+
+  // --- 9. Eye care (jet-lag or long flight) ---
+  const jetlagHours = toNumber(jetlagSleep && jetlagSleep.hours_diff);
+  if (jetlagHours != null && jetlagHours >= 5) {
+    out.push({
+      trigger: t(language, '眼部护理', 'Eye care'),
+      action: t(language,
+        '时差较大时准备眼霜 + 冷敷眼贴，飞行后和落地前 2 晚优先做眼周消肿和保湿。',
+        'For larger jet-lag gaps, pack eye cream + cooling eye patches and prioritize depuffing + hydration after the flight and for the first 2 nights.',
+      ),
+      ingredient_logic: t(language, '咖啡因帮助消肿，透明质酸/神经酰胺帮助补水并减少眼周紧绷。', 'Caffeine helps depuff, while hyaluronic acid / ceramides support hydration and reduce peri-eye tightness.'),
+      product_types: [
+        t(language, '眼霜（咖啡因/透明质酸）', 'Eye cream (caffeine / hyaluronic acid)'),
+        t(language, '冷敷眼贴', 'Cooling eye patches'),
+      ],
+      reapply_rule: t(language, '飞行后当晚使用 1 次，落地后前 2 晚持续。', 'Use once on flight-arrival night and continue for the first 2 nights after landing.'),
+    });
+  }
+
+  // --- 10. Emergency kit (always) ---
+  out.push({
+    trigger: t(language, '应急备用', 'Emergency kit'),
+    action: t(language,
+      '备齐痘痘贴（旅行突发）、润唇膏（SPF 款优先）、护手霜、止痒药膏。',
+      'Pack pimple patches (travel flare-ups), SPF lip balm, hand cream, and anti-itch cream.',
+    ),
+    ingredient_logic: t(language,
+      '痘痘贴含水杨酸或水胶体；润唇膏含 SPF15+ 和角鲨烷。',
+      'Pimple patches with salicylic acid or hydrocolloid; lip balm with SPF15+ and squalane.',
+    ),
+    product_types: [
+      t(language, '痘痘贴', 'Pimple patches'),
+      t(language, 'SPF 润唇膏', 'SPF lip balm'),
+      t(language, '护手霜', 'Hand cream'),
+    ],
+    reapply_rule: t(language, '按需使用。', 'Use as needed.'),
+  });
+
+  return out.slice(0, 10);
 }
 
 function buildStoreExamples({ language, destination } = {}) {
@@ -234,7 +392,16 @@ function buildMetricDelta(homeValue, destinationValue, unit) {
   return { home: h, destination: d, delta, unit };
 }
 
-function buildSummaryTags({ temperature, humidity, uv, wind, precip, hasHomeBaseline }) {
+function buildSummaryTags({
+  temperature,
+  humidity,
+  uv,
+  wind,
+  precip,
+  hasHomeBaseline,
+  destinationSummary,
+  absoluteTagsEnabled = false,
+}) {
   const tags = [];
   const push = (v) => {
     if (!v || tags.includes(v)) return;
@@ -261,6 +428,26 @@ function buildSummaryTags({ temperature, humidity, uv, wind, precip, hasHomeBase
   if (windDelta != null && windDelta >= 5) push('windier');
   const precipDelta = toNumber(precip && precip.delta);
   if (precipDelta != null && precipDelta >= 1.5) push('wetter');
+
+  if (absoluteTagsEnabled || !hasHomeBaseline) {
+    const temperatureMax = toNumber(destinationSummary && destinationSummary.temperature_max_c);
+    const humidityMean = toNumber(destinationSummary && destinationSummary.humidity_mean);
+    const uvMax = toNumber(destinationSummary && destinationSummary.uv_index_max);
+    const windMax = toNumber(destinationSummary && destinationSummary.wind_kph_max);
+    const precipMean = toNumber(destinationSummary && destinationSummary.precipitation_mm);
+
+    if (temperatureMax != null) {
+      if (temperatureMax >= 30) push('hot');
+      else if (temperatureMax <= 10) push('cold');
+    }
+    if (humidityMean != null) {
+      if (humidityMean >= 72) push('humid');
+      else if (humidityMean <= 40) push('dry');
+    }
+    if (uvMax != null && uvMax >= 6) push('high_uv');
+    if (windMax != null && windMax >= 28) push('windy');
+    if (precipMean != null && precipMean >= 3) push('rainy');
+  }
 
   return tags.slice(0, 8);
 }
@@ -422,7 +609,7 @@ function normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, language) {
         price: null,
         currency: null,
       });
-      if (out.length >= 3) return out;
+      if (out.length >= 6) return out;
     }
   }
   return out;
@@ -472,43 +659,83 @@ function buildPersonalFocus({ language, profile, destinationSummary, summaryTags
     out.push({ focus, why, what_to_do: whatToDo });
   };
 
+  const skinType = normalizeText(profile && profile.skinType, 40).toLowerCase();
   const barrier = normalizeText(profile && profile.barrierStatus, 40).toLowerCase();
   const sensitivity = normalizeText(profile && profile.sensitivity, 40).toLowerCase();
+  const goals = Array.isArray(profile && profile.goals) ? profile.goals.map((g) => normalizeText(g, 60).toLowerCase()).filter(Boolean) : [];
+  const isPregnantOrLactating = Boolean(
+    normalizeText(profile && profile.pregnancy_status, 20) ||
+    normalizeText(profile && profile.lactation_status, 20),
+  );
+
+  if (isPregnantOrLactating) {
+    push(
+      t(language, '孕哺期成分安全', 'Pregnancy/lactation safety'),
+      t(language, '孕哺期须避免维A酸、高浓度水杨酸、氢醌等成分。', 'Must avoid retinoids, high-dose salicylic acid (>2%), hydroquinone during pregnancy/lactation.'),
+      t(language, '旅行产品检查成分表，优先使用烟酰胺、透明质酸、神经酰胺等安全成分。', 'Check ingredient lists of travel products; prioritize niacinamide, hyaluronic acid, ceramides.'),
+    );
+  }
 
   if (barrier.includes('impaired') || barrier.includes('damaged')) {
     push(
       t(language, '屏障优先', 'Barrier first'),
-      t(language, '屏障偏弱时更容易泛红刺痛。', 'Compromised barrier increases redness/stinging risk.'),
-      t(language, '减少高频酸/维A，先稳住修护 3-5 天。', 'Reduce frequent acids/retinoids and stabilize for 3-5 days first.'),
+      t(language, '屏障偏弱时环境变化更容易导致泛红刺痛。', 'Compromised barrier makes skin more vulnerable to environmental changes.'),
+      t(language, '旅行前 3-5 天开始减少酸/维A频次，专注修护稳定。', 'Start reducing acids/retinoids 3-5 days before departure and focus on repair.'),
     );
   }
 
   if (sensitivity === 'high' || sensitivity.includes('sensitive')) {
     push(
       t(language, '刺激阈值管理', 'Irritation threshold control'),
-      t(language, '敏感阈值较低，叠加活性风险更高。', 'Lower irritation threshold raises active-stacking risk.'),
-      t(language, '同晚只保留一种主活性。', 'Keep one main active per night.'),
+      t(language, '旅行中环境切换会进一步降低敏感阈值。', 'Environment shifts during travel further lower the irritation threshold.'),
+      t(language, '同晚只保留一种最温和的活性；新产品回程后再试。', 'Keep one mildest active per night; try new products only after returning.'),
+    );
+  }
+
+  if (goals.includes('dark_spots') || goals.includes('brightening')) {
+    push(
+      t(language, '旅行美白策略', 'Travel brightening strategy'),
+      t(language, '旅行期 UV 暴露增加，高浓度美白品可能引发反弹色沉。', 'Increased UV exposure during travel can cause rebound hyperpigmentation with high-concentration brightening products.'),
+      t(language, '降级到低浓度（维C 10%或传明酸），严格防晒；回程后恢复强度。', 'Downgrade to low concentration (vitamin C 10% or tranexamic acid), strict SPF; resume intensity post-trip.'),
+    );
+  }
+
+  if (goals.includes('acne')) {
+    push(
+      t(language, '旅行控痘策略', 'Travel acne management'),
+      t(language, '旅行中饮食变化和防晒叠加易加重闷痘。', 'Diet changes and heavy SPF layering during travel can worsen congestion.'),
+      t(language, '晚间彻底双重清洁移除防晒；备水杨酸点涂和痘痘贴应急。', 'Thorough double cleanse at night to remove SPF; pack salicylic acid spot treatment and pimple patches.'),
+    );
+  }
+
+  if (skinType.includes('oily')) {
+    push(
+      t(language, '旅行控油与防闷痘', 'Travel oil-control and congestion management'),
+      t(language, '湿热或长时间防晒叠加时，油皮更容易出现闷痘和出油失衡。', 'Heat, humidity, and repeated SPF layers can make oily skin more congestion-prone during travel.'),
+      t(language, '优先轻薄防晒 + 非封闭型保湿；如果用了防水防晒或彩妆，晚上务必双重清洁。', 'Prefer lightweight SPF + non-occlusive hydration; if you wore water-resistant SPF or makeup, double cleanse at night.'),
     );
   }
 
   const uvMax = toNumber(destinationSummary && destinationSummary.uv_index_max);
   if ((uvMax != null && uvMax >= 7) || summaryTags.includes('higher_uv')) {
-    push(
-      t(language, '日晒防护', 'UV defense'),
-      t(language, '目的地 UV 偏高。', 'Destination UV is elevated.'),
-      t(language, '防晒补涂与物理遮挡并行。', 'Combine reapplication with physical shade/cover.'),
-    );
+    if (!out.some((item) => /UV|防晒|SPF|sun/i.test(normalizeText(item.focus, 40)))) {
+      push(
+        t(language, '高 UV 防护', 'High UV defense'),
+        t(language, '目的地 UV 偏高，色沉和光老化风险增加。', 'Destination UV is elevated, increasing hyperpigmentation and photoaging risk.'),
+        t(language, '防晒补涂与物理遮挡（帽子、墨镜）并行；避免正午 10-14 时直接暴晒。', 'Combine SPF reapplication with physical cover (hat, sunglasses); avoid direct sun 10am-2pm.'),
+      );
+    }
   }
 
   if (!out.length) {
     push(
       t(language, '稳态优先', 'Stability first'),
-      t(language, '旅行期更适合先稳住再进阶。', 'Travel periods are better for stabilization before escalation.'),
-      t(language, '简化步骤，避免一次新增多件产品。', 'Simplify steps and avoid introducing many new products at once.'),
+      t(language, '旅行期环境和作息变化大，皮肤适应力下降。', 'Environment and schedule changes during travel reduce skin adaptability.'),
+      t(language, '简化步骤至核心 3-4 步（清洁+保湿+防晒+修护），避免一次新增多件产品。', 'Simplify to core 3-4 steps (cleanse+moisturize+SPF+repair); avoid introducing multiple new products at once.'),
     );
   }
 
-  return out.slice(0, 3);
+  return out.slice(0, 4);
 }
 
 function buildJetlagSleep({ language, profile, destinationWeather, homeWeather, destination, nowMs }) {
@@ -627,6 +854,8 @@ function buildTravelReadiness({
   const destinationSummary = isPlainObject(destinationWeather && destinationWeather.summary)
     ? destinationWeather.summary
     : null;
+  const weatherSource = normalizeText(destinationWeather && destinationWeather.source, 40).toLowerCase();
+  const weatherReason = normalizeText(destinationWeather && destinationWeather.reason, 80) || null;
   const homeSummary = isPlainObject(homeWeather && homeWeather.summary) ? homeWeather.summary : null;
   const hasHomeBaseline = Boolean(homeSummary);
   const forecastWindow = normalizeForecastWindowRows(destinationWeather && destinationWeather.forecast_window);
@@ -638,7 +867,16 @@ function buildTravelReadiness({
   const wind = buildMetricDelta(homeSummary && homeSummary.wind_kph_max, destinationSummary && destinationSummary.wind_kph_max, 'kph');
   const precip = buildMetricDelta(homeSummary && homeSummary.precipitation_mm, destinationSummary && destinationSummary.precipitation_mm, 'mm');
 
-  const summaryTags = buildSummaryTags({ temperature, humidity, uv, wind, precip, hasHomeBaseline });
+  const summaryTags = buildSummaryTags({
+    temperature,
+    humidity,
+    uv,
+    wind,
+    precip,
+    hasHomeBaseline,
+    destinationSummary,
+    absoluteTagsEnabled: weatherSource !== 'weather_api',
+  });
   const adaptiveActions = buildAdaptiveActions({ language: lang, summaryTags });
   const personalFocus = buildPersonalFocus({ language: lang, profile, destinationSummary, summaryTags });
   const jetlagSleep = buildJetlagSleep({
@@ -660,6 +898,9 @@ function buildTravelReadiness({
       precip,
     },
     profile,
+    startDate,
+    endDate,
+    jetlagSleep,
   });
   const storeExamples = buildStoreExamples({ language: lang, destination: destinationText });
   const previewProductsFromCatalog = normalizePreviewProducts(recommendationCandidates, lang);
@@ -676,6 +917,7 @@ function buildTravelReadiness({
         normalizeText(epiPayload && epiPayload.env_source, 40) ||
         normalizeText(destinationWeather && destinationWeather.source, 40) ||
         null,
+      weather_reason: weatherReason,
       epi: toNumber(epiPayload && epiPayload.epi),
     },
     delta_vs_home: {

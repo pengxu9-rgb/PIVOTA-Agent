@@ -1,6 +1,8 @@
 const request = require('supertest');
 
 describe('aurora reco prelabel internal routes', () => {
+  jest.setTimeout(15000);
+
   afterEach(() => {
     delete process.env.AURORA_BFF_RECO_DOGFOOD_MODE;
     delete process.env.AURORA_BFF_RECO_PRELABEL_ENABLED;

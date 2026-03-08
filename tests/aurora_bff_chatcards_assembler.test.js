@@ -94,6 +94,51 @@ describe('chatCardsAssembler safety mapping', () => {
     expect(out.follow_up_questions).toHaveLength(0);
   });
 
+  test('anchor wait event upgrades compat telemetry gate_type to hard', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        session_patch: {
+          meta: {
+            gate_type: 'soft',
+            required_fields: ['anchor'],
+          },
+        },
+        events: [
+          {
+            event_name: 'fitcheck_anchor_requested',
+            data: { reason_codes: ['anchor_missing'] },
+          },
+          {
+            event_name: 'anchor_collection_waiting_input',
+            data: { intent: 'evaluate_product' },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'evaluate_product',
+    });
+
+    expect(out.telemetry.gate_type).toBe('hard');
+    expect(out.telemetry.required_fields).toEqual(['anchor']);
+  });
+
+  test('safety block event falls back to soft compat telemetry without explicit meta', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        events: [
+          {
+            event_name: 'safety_gate_block',
+            data: { block_level: 'BLOCK' },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'ingredient_science',
+    });
+
+    expect(out.telemetry.gate_type).toBe('soft');
+  });
+
   test('keeps pending clarification follow-up questions and enforces option bounds', () => {
     const out = buildChatCardsResponse({
       envelope: makeEnvelope({
@@ -125,5 +170,50 @@ describe('chatCardsAssembler safety mapping', () => {
     expect(Array.isArray(out.follow_up_questions[0].options)).toBe(true);
     expect(out.follow_up_questions[0].options).toHaveLength(2);
     expect(out.follow_up_questions[0].options.map((item) => item.id)).toEqual(['oily', 'dry']);
+  });
+
+  test('scoped fallback turns analysis follow-up empty cards into analysis_story_v2', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        assistant_message: {
+          role: 'assistant',
+          content: 'From your latest analysis, your skin trends combination with high sensitivity.',
+        },
+        events: [
+          {
+            event_name: 'analysis_followup_action_routed',
+            data: { action_id: 'chip.aurora.next_action.deep_dive_skin', fell_back_to_generic: false },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'unknown',
+    });
+
+    expect(out.cards).toHaveLength(1);
+    expect(out.cards[0].type).toBe('analysis_story_v2');
+    expect(out.cards[0].title).toBe('Analysis story');
+  });
+
+  test('non-analysis empty successful responses keep existing nudge fallback', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        assistant_message: {
+          role: 'assistant',
+          content: 'Here is a generic assistant-only reply.',
+        },
+        events: [
+          {
+            event_name: 'some_other_success_event',
+            data: {},
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'unknown',
+    });
+
+    expect(out.cards).toHaveLength(1);
+    expect(out.cards[0].type).toBe('nudge');
   });
 });

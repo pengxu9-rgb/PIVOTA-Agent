@@ -363,8 +363,10 @@ function buildSearchDebugBundle({
     build_sha:
       String(
         process.env.BUILD_SHA ||
-          process.env.GIT_COMMIT_SHA ||
           process.env.RAILWAY_GIT_COMMIT_SHA ||
+          process.env.GIT_COMMIT_SHA ||
+          process.env.SOURCE_VERSION ||
+          process.env.AURORA_GIT_SHA ||
           process.env.VERCEL_GIT_COMMIT_SHA ||
           '',
       ).trim() || null,

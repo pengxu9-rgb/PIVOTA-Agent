@@ -28,6 +28,8 @@ This document covers deploying and operating the Aurora BFF/Orchestrator inside 
 ### Upstreams
 
 - `AURORA_DECISION_BASE_URL` (Aurora decision system base, e.g. `https://...`)
+  - Runtime machine path: `${AURORA_DECISION_BASE_URL}/api/upstream/chat`
+  - The public `/api/chat` on that service is not the BFF machine endpoint anymore; it is reserved for public facade/proxy traffic.
 - `PIVOTA_BACKEND_BASE_URL` (pivota-backend base). If unset, the service falls back to `PIVOTA_API_BASE`.
 - `PIVOTA_BACKEND_AGENT_API_KEY` (or compatible API key env) for photo upload/download-url bridge when checkout token is absent.
 
@@ -147,6 +149,16 @@ TARGET_COMMIT="$TARGET_COMMIT" ./scripts/verify_deployed_commit_matches.sh "$BAS
 ```
 
 If `x-service-commit` does not match target commit, stop diagnosis/fallback analysis and resolve deployment drift first.
+
+Drift triage order:
+
+1. Confirm the deployed `x-service-deployment-id` actually changed.
+2. If deployment id changed but `x-service-commit` did not, inspect stale commit override vars first:
+   - `AURORA_GIT_SHA`
+   - `GIT_COMMIT_SHA`
+   - `SOURCE_VERSION`
+3. Prefer platform-injected commit vars (`RAILWAY_GIT_COMMIT_SHA`) over manual overrides.
+4. Keep manual commit overrides temporary; clear them after recovery.
 
 Execution cadence:
 

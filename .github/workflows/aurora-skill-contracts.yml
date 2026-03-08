@@ -1,0 +1,33 @@
+name: Aurora Skill Contracts
+
+on:
+  pull_request:
+    paths:
+      - "contracts/aurora_skills/**"
+      - "src/auroraBff/**"
+      - "tests/golden_fixtures/**"
+      - "tests/skills/**"
+      - "scripts/verify_aurora_contracts_sync.cjs"
+      - ".github/workflows/aurora-skill-contracts.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "contracts/aurora_skills/**"
+      - "src/auroraBff/**"
+      - "tests/golden_fixtures/**"
+      - "tests/skills/**"
+      - "scripts/verify_aurora_contracts_sync.cjs"
+
+jobs:
+  aurora-skill-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node scripts/verify_aurora_contracts_sync.cjs
+      - run: node tests/skills/test_skill_contract.js

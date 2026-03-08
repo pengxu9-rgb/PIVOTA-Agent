@@ -284,7 +284,17 @@ function mountUiEventRoutes(app, { logger } = {}) {
                 'ui event sink is not configured; /v1/events currently has no durable sink',
               );
             }
-            logger?.info?.({ event_name: evt.event_name, source: parsed.data.source }, 'ui event received');
+            logger?.info?.(
+              {
+                event_name: evt.event_name,
+                source: parsed.data.source,
+                brief_id: evt.brief_id,
+                trace_id: evt.trace_id,
+                card_type: safeString(props.card_type ?? props.cardType),
+                card_id: safeString(props.card_id ?? props.cardId),
+              },
+              'ui event received',
+            );
           }
         }
       } catch (err) {

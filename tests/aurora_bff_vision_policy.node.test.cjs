@@ -44,6 +44,10 @@ function withEnv(patch, fn) {
 }
 
 function loadAuroraRoutesModule() {
+  const gateId = require.resolve('../src/lib/geminiGlobalGate');
+  delete require.cache[gateId];
+  const globalClientId = require.resolve('../src/auroraBff/auroraGeminiGlobalClient');
+  delete require.cache[globalClientId];
   const gatewayId = require.resolve('../src/auroraBff/skinLlmGateway');
   delete require.cache[gatewayId];
   const moduleId = require.resolve('../src/auroraBff/routes');

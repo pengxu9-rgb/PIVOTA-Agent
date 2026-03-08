@@ -35,6 +35,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_KB_SERVE_POLICY;
     delete process.env.AURORA_PRODUCT_GUARDRAIL_MODE;
     delete process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER;
+    delete process.env.AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MIN_MATCH_SCORE;
@@ -586,6 +587,101 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(candidates.length).toBeGreaterThan(0);
     expect(candidates.some((q) => /theordinary|ordinary/i.test(String(q || '')))).toBe(true);
     expect(candidates.some((q) => /peptide|serum/i.test(String(q || '')))).toBe(true);
+  });
+
+  test('computeAnchorNameSimilarity returns high score for exact brand/name match', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'CeraVe Moisturizing Cream',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Moisturizing Cream',
+        display_name: 'CeraVe Moisturizing Cream',
+      },
+    });
+    expect(out).toEqual(expect.objectContaining({ overlap: 3, total: 3 }));
+    expect(out.score).toBeCloseTo(1, 3);
+  });
+
+  test('computeAnchorNameSimilarity supports partial overlap', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'CeraVe PM Lotion',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Moisturizing Lotion',
+      },
+    });
+    expect(out.total).toBeGreaterThan(1);
+    expect(out.overlap).toBeGreaterThanOrEqual(1);
+    expect(out.score).toBeGreaterThan(0);
+    expect(out.score).toBeLessThan(1);
+  });
+
+  test('computeAnchorNameSimilarity returns 0 overlap for unrelated names', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'The Ordinary Copper Peptides',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Hydrating Cleanser',
+      },
+    });
+    expect(out).toEqual(expect.objectContaining({ overlap: 0 }));
+    expect(out.score).toBe(0);
+  });
+
+  test('computeAnchorNameSimilarity handles empty input text', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: '',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Moisturizing Cream',
+      },
+    });
+    expect(out).toEqual({ score: 0, overlap: 0, total: 0 });
+  });
+
+  test('computeAnchorNameSimilarity handles empty candidate object', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'CeraVe Moisturizing Cream',
+      candidate: null,
+    });
+    expect(out.total).toBe(3);
+    expect(out.overlap).toBe(0);
+    expect(out.score).toBe(0);
+  });
+
+  test('computeAnchorNameSimilarity keeps single-token scoring deterministic', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'cream',
+      candidate: {
+        brand: 'CeraVe',
+        name: 'Moisturizing Cream',
+      },
+    });
+    expect(out.total).toBe(1);
+    expect(out.score === 0 || out.score === 1).toBe(true);
+  });
+
+  test('buildProductCatalogQueryCandidates can keep inputText as first query candidate when requested', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const candidates = __internal.buildProductCatalogQueryCandidates({
+      inputText: 'The Ordinary Multi Peptide Copper Peptides 1 Serum',
+      inputUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      parsedProduct: {
+        brand: 'The Ordinary',
+        name: 'Multi Peptide Copper Peptides 1 Serum',
+      },
+      preferInputTextFirst: true,
+    });
+    expect(Array.isArray(candidates)).toBe(true);
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(String(candidates[0] || '').toLowerCase()).toContain('ordinary');
+    expect(String(candidates[0] || '').toLowerCase()).toContain('peptide');
   });
 
   test('route competitor pools filters non-skincare candidates across competitors/related/dupes', () => {
@@ -2073,6 +2169,156 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.recovery_path).toContain('heuristic_url');
   });
 
+  test('/v1/product/parse clears stale ambiguous trust code after catalog fallback upgrades anchor trust', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product_parse',
+        structured: {
+          parse: {
+            product: {
+              brand: 'CeraVe',
+              name: 'Moisturizing Cream',
+              display_name: 'CeraVe Moisturizing Cream',
+              category: 'product',
+            },
+            confidence: 0.62,
+            missing_info: [],
+          },
+        },
+      });
+
+    nock('http://catalog.test')
+      .persist()
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: 'p_cerave_1', merchant_id: 'm_catalog_1' },
+        candidates: [
+          {
+            product_id: 'p_cerave_1',
+            sku_id: 'sku_cerave_1',
+            merchant_id: 'm_catalog_1',
+            brand: 'CeraVe',
+            name: 'Moisturizing Cream',
+            display_name: 'CeraVe Moisturizing Cream',
+            category: 'skincare',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_trust_recalc_1')
+      .send({ text: 'CeraVe Moisturizing Cream' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeTruthy();
+    expect(card.payload.product.product_id).toBe('p_cerave_1');
+    expect(card.payload.anchor_trust).toEqual(
+      expect.objectContaining({
+        level: 'trusted',
+        usable_for_anchor_id: true,
+      }),
+    );
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('catalog_fallback_used');
+    expect(card.payload.missing_info).not.toContain('anchor_soft_blocked_ambiguous');
+  });
+
+  test('/v1/product/parse enforces non-skincare block even when global strict filter is disabled', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+
+    nock('http://aurora.test')
+      .post('/api/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product_parse',
+        structured: {
+          parse: {
+            product: {
+              product_id: 'sku_brush_force_block_1',
+              brand: 'Lab Series',
+              name: 'Foundation Brush',
+              display_name: 'Lab Series Foundation Brush',
+              category: 'makeup brush',
+            },
+            confidence: 0.74,
+            missing_info: [],
+          },
+        },
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_force_non_skincare_block_1')
+      .send({ text: 'Lab Series Foundation Brush' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeNull();
+    expect(card.payload.anchor_trust).toEqual(
+      expect.objectContaining({
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+      }),
+    );
+    expect(card.payload.anchor_trust.reasons || []).toContain('anchor_soft_blocked_non_skincare');
+    expect(card.payload.missing_info || []).toContain('anchor_soft_blocked_non_skincare');
+  });
+
+  test('evaluateAnchorTrustForProductIntel never reports trusted when soft-block reasons exist', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const trust = __internal.evaluateAnchorTrustForProductIntel({
+      candidate: {
+        brand: 'Unknown',
+        name: 'Moisturizer',
+        category: 'product',
+      },
+      inputText: 'Moisturizer',
+      inputUrl: 'https://example.com/product/moisturizer',
+      source: 'unit_test',
+    });
+
+    expect(Array.isArray(trust.reason_codes)).toBe(true);
+    expect(trust.reason_codes).toContain('anchor_soft_blocked_ambiguous');
+    expect(String(trust.trust_level || '')).not.toBe('trusted');
+    expect(Boolean(trust.usable_for_anchor_id)).toBe(false);
+    expect(trust.trusted_anchor).toBeNull();
+  });
+
+  test('sanitizeCompetitorCandidates drops generic related placeholders', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const rows = __internal.sanitizeCompetitorCandidates(
+      [
+        { name: 'Moisturizer' },
+        { name: 'SPF 50' },
+        { name: 'Daily UV Shield SPF 50', brand: 'BrandX' },
+      ],
+      10,
+      { pool: 'related_products' },
+    );
+    const names = rows.map((row) => String(row?.name || ''));
+    expect(names).toContain('Daily UV Shield SPF 50');
+    expect(names).not.toContain('Moisturizer');
+    expect(names).not.toContain('SPF 50');
+  });
+
   test('/v1/product/analyze resolves anchor via catalog resolve fast-path before deep-scan', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
@@ -2164,6 +2410,16 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(card.payload.assessment.verdict).toBe('Suitable');
+    expect(card.payload?.provenance?.anchor_trust).toEqual(
+      expect.objectContaining({
+        usable_for_anchor_id: true,
+      }),
+    );
+    expect(card.payload?.assessment?.anchor_product).toEqual(
+      expect.objectContaining({
+        product_id: 'p_catalog_1',
+      }),
+    );
   });
 
   test('/v1/product/analyze fast-returns clear unknown when anchor cannot be resolved and fallback is disabled', async () => {
@@ -2236,7 +2492,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('product_not_resolved');
     expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
-    expect(card.payload.assessment.reasons.join(' ')).toMatch(/no-anchor deep scan|无锚点 Deep Scan/i);
+    const reasonsText = card.payload.assessment.reasons.join(' ');
+    expect(reasonsText).not.toMatch(/no-anchor deep scan|无锚点 Deep Scan/i);
+    expect(reasonsText.length).toBeGreaterThan(0);
     expect(card.payload.low_confidence).toBe(true);
     expect(card.payload.low_relevance).toBe(true);
     expect(card.payload.internal_debug_codes).toBeUndefined();
@@ -2467,7 +2725,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.missing_info).toContain('on_page_fetch_blocked');
     expect(card.payload.provenance?.url_fetch?.failure_code).toBe('url_fetch_forbidden_403');
     expect(Array.isArray(card.payload.assessment?.reasons)).toBe(true);
-    expect(card.payload.assessment.reasons.join(' ')).toMatch(/INCI|official page|官方页面/i);
+    const reasonsText = card.payload.assessment.reasons.join(' ');
+    expect(reasonsText).not.toMatch(/INCI|official page|官方页面|Next step|下一步/i);
+    expect(reasonsText.length).toBeGreaterThan(0);
   });
 
   test('/v1/product/analyze uses regulatory source when official page is blocked', async () => {
@@ -3468,7 +3728,22 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
             analyze: {
               assessment: {
                 verdict: 'Unknown',
+                summary: 'SkinCeuticals C E Ferulic is ideal for brightening.',
+                hero_ingredient: {
+                  name: 'L-Ascorbic Acid 15%',
+                  why: 'Matches SkinCeuticals antioxidant profile',
+                  source: 'heuristic',
+                },
+                formula_intent: ['SkinCeuticals antioxidant blend with vitamin C'],
                 reasons: ['Evidence is limited.'],
+                best_for: ['Fans of SkinCeuticals'],
+                not_for: ['Those avoiding SkinCeuticals'],
+                anchor_product: {
+                  product_id: '7ba1d001-df26-4768-9b8b-29f67aa49eaf',
+                  brand: 'SkinCeuticals',
+                  name: 'C E Ferulic',
+                  display_name: 'SkinCeuticals C E Ferulic',
+                },
               },
               evidence: {
                 science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
@@ -3500,6 +3775,203 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload?.provenance?.anchor_trust).toEqual(
       expect.objectContaining({
         usable_for_anchor_id: false,
+      }),
+    );
+    expect(card.payload?.assessment?.anchor_product).toBeUndefined();
+    expect(card.payload?.assessment?.anchorProduct).toBeUndefined();
+    expect(String(card.payload?.assessment?.summary || '')).not.toMatch(/SkinCeuticals/i);
+    expect(JSON.stringify(card.payload?.assessment?.formula_intent || [])).not.toMatch(/SkinCeuticals/i);
+    expect(JSON.stringify(card.payload?.assessment?.reasons || [])).not.toMatch(/SkinCeuticals/i);
+    expect(JSON.stringify(card.payload?.assessment?.best_for || [])).not.toMatch(/SkinCeuticals/i);
+    expect(JSON.stringify(card.payload?.assessment?.not_for || [])).not.toMatch(/SkinCeuticals/i);
+    const heroIngredient = card.payload?.assessment?.hero_ingredient || null;
+    if (heroIngredient) {
+      expect(String(heroIngredient.name || '')).not.toMatch(/\b15%\s*$/);
+      expect(String(heroIngredient.source || '')).toBe('category_heuristic');
+      expect(String(heroIngredient.why || '')).not.toMatch(/SkinCeuticals/i);
+    }
+  });
+
+  test('deepScanRoutineProductCandidate blocks non-skincare anchor ids under routine strict guard even in aggressive telemetry mode', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_RULE_RELAX_MODE = 'aggressive';
+    process.env.AURORA_PRODUCT_GUARDRAIL_MODE = 'telemetry_only';
+    process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'false';
+    process.env.AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE = 'strict_non_skincare';
+
+    nock('http://catalog.test')
+      .persist()
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: '9859793420616', merchant_id: 'merch_efbc46b4619cfbdf' },
+        candidates: [
+          {
+            product_id: '9859793420616',
+            sku_id: '9859793420616',
+            brand: 'Brush Studio',
+            name: 'Small Eyeshadow Brush',
+            display_name: 'Small Eyeshadow Brush',
+            category: 'makeup brush',
+          },
+        ],
+      });
+
+    let deepScanBody = null;
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/chat')
+      .reply(200, (_uri, requestBody) => {
+        deepScanBody = requestBody;
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'product_analyze',
+          structured: {
+            analyze: {
+              assessment: {
+                verdict: 'Unknown',
+                reasons: ['Evidence is limited.'],
+                anchor_product: {
+                  product_id: '7ba1d001-df26-4768-9b8b-29f67aa49eaf',
+                  brand: 'SkinCeuticals',
+                  name: 'C E Ferulic',
+                  display_name: 'SkinCeuticals C E Ferulic',
+                },
+              },
+              evidence: {
+                science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+                social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                expert_notes: [],
+              },
+            },
+          },
+        };
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const result = await __internal.deepScanRoutineProductCandidate({
+      candidate: {
+        slot: 'am',
+        step: 'cleanser',
+        rank: 0,
+        product_text: 'Biotherm Force Cleanser',
+      },
+      ctx: {
+        request_id: 'req_routine_anchor_guard_1',
+        trace_id: 'trace_routine_anchor_guard_1',
+        lang: 'EN',
+      },
+      profileSummary: {
+        skinType: 'oily',
+        sensitivity: 'medium',
+        barrierStatus: 'healthy',
+        goals: ['acne', 'pores'],
+      },
+      recentLogsSummary: [],
+      logger: null,
+      includeCard: true,
+    });
+
+    expect(deepScanBody).toBeTruthy();
+    expect(deepScanBody.anchor_product_id).toBeUndefined();
+    expect(result.anchor_used).toBe(false);
+    expect(result.anchor_blocked_non_skincare).toBe(true);
+    expect(result.card).toBeTruthy();
+    expect(result.card.payload?.provenance?.anchor_trust).toEqual(
+      expect.objectContaining({
+        usable_for_anchor_id: false,
+        guard_policy: 'routine_strict_non_skincare_v1',
+      }),
+    );
+    expect(result.card.payload?.missing_info || []).toEqual(expect.arrayContaining(['anchor_soft_blocked_non_skincare']));
+    expect(result.card.payload?.assessment?.anchor_product).toBeUndefined();
+    expect(result.card.payload?.assessment?.anchorProduct).toBeUndefined();
+  });
+
+  test('deepScanRoutineProductCandidate uses frontend resolved shortcut and skips catalog resolve', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+
+    const catalogScope = nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: 'should_not_be_called' },
+        candidates: [],
+      });
+
+    let deepScanBody = null;
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/chat')
+      .reply(200, (_uri, requestBody) => {
+        deepScanBody = requestBody;
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'product_analyze',
+          structured: {
+            analyze: {
+              assessment: {
+                verdict: 'Likely Suitable',
+                reasons: ['Looks fine.'],
+              },
+              evidence: {
+                science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+                social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                expert_notes: [],
+              },
+            },
+          },
+        };
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const result = await __internal.deepScanRoutineProductCandidate({
+      candidate: {
+        slot: 'am',
+        step: 'moisturizer',
+        rank: 0,
+        product_text: 'CeraVe Moisturizing Cream',
+        resolved_product_id: 'prod_cerave_001',
+        resolved_product: {
+          product_id: 'prod_cerave_001',
+          sku_id: 'sku_cerave_001',
+          brand: 'CeraVe',
+          name: 'Moisturizing Cream',
+          display_name: 'CeraVe Moisturizing Cream',
+        },
+      },
+      ctx: {
+        request_id: 'req_routine_frontend_resolved_1',
+        trace_id: 'trace_routine_frontend_resolved_1',
+        lang: 'EN',
+      },
+      profileSummary: {
+        skinType: 'normal',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['hydrate'],
+      },
+      recentLogsSummary: [],
+      logger: null,
+      includeCard: true,
+    });
+
+    expect(deepScanBody).toBeTruthy();
+    expect(['sku_cerave_001', 'prod_cerave_001']).toContain(String(deepScanBody.anchor_product_id || ''));
+    expect(catalogScope.isDone()).toBe(false);
+    expect(result.anchor_used).toBe(true);
+    expect(result.card).toBeTruthy();
+    expect(result.card.payload?.provenance?.anchor_trust).toEqual(
+      expect.objectContaining({
+        source: 'frontend_resolved',
+        usable_for_anchor_id: true,
       }),
     );
   });
@@ -3644,6 +4116,285 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const skinFitLevel = String(out?.confidence_by_block?.skin_fit?.level || '');
     expect(skinFitScore).toBeLessThanOrEqual(0.58);
     expect(skinFitLevel).not.toBe('high');
+  });
+
+  test('enrichProductAnalysisPayload strips [more] ingredient tokens from ingredient_intel', () => {
+    const { enrichProductAnalysisPayload } = require('../src/auroraBff/normalize');
+    const out = enrichProductAnalysisPayload(
+      {
+        assessment: {
+          verdict: 'Likely Suitable',
+          reasons: ['Evidence indicates barrier support.'],
+        },
+        evidence: {
+          science: {
+            key_ingredients: ['[more] Ceramide AP', 'Glycerin', 'Panthenol'],
+            mechanisms: ['Barrier support'],
+            fit_notes: [],
+            risk_notes: [],
+          },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: 0.8,
+          missing_info: [],
+        },
+        confidence: 0.8,
+        missing_info: [],
+      },
+      { lang: 'EN' },
+    );
+    const ingredientIntel = out?.ingredient_intel && typeof out.ingredient_intel === 'object' ? out.ingredient_intel : {};
+    const inciRaw = String(ingredientIntel.inci_raw || '');
+    const inciNames = Array.isArray(ingredientIntel.inci_normalized)
+      ? ingredientIntel.inci_normalized.map((item) => String(item?.inci || ''))
+      : [];
+
+    expect(inciRaw).not.toMatch(/\[more\]/i);
+    expect(inciNames).toContain('Ceramide AP');
+    expect(inciNames.some((name) => /\[more\]/i.test(name))).toBe(false);
+  });
+
+  test('enforceUnknownVerdictQuality strips diagnostic/template reason lines for non-unknown verdicts', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.enforceUnknownVerdictQuality(
+      {
+        assessment: {
+          verdict: 'Caution',
+          summary: 'Contains retinoid-like ingredients with irritation risk.',
+          reasons: [
+            'Official-page INCI extraction was blocked; INCIDecoder was used as a supplemental source.',
+            'Detected key ingredients: Key Ingredients, Niacinamide.',
+            'Contains retinoid-like ingredients with higher irritation/dryness risk early on.',
+          ],
+        },
+        evidence: {
+          science: {
+            key_ingredients: ['Niacinamide', 'Retinol'],
+            mechanisms: ['Barrier support'],
+            fit_notes: [],
+            risk_notes: ['Contains retinoid-like ingredients with higher irritation/dryness risk early on.'],
+          },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          missing_info: [],
+        },
+        missing_info: ['version_verification_needed'],
+      },
+      { lang: 'EN' },
+    );
+
+    const reasons = Array.isArray(out?.assessment?.reasons) ? out.assessment.reasons : [];
+    const reasonsText = reasons.join(' ');
+    expect(reasonsText).not.toMatch(/Official-page INCI extraction was blocked/i);
+    expect(reasonsText).not.toMatch(/Detected key ingredients/i);
+    expect(reasons.length).toBeGreaterThan(0);
+  });
+
+  test('applyUnknownVerdictQualityGateToEnvelope sanitizes ingredient_intel and related generic candidates', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.applyUnknownVerdictQualityGateToEnvelope(
+      {
+        cards: [
+          {
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Likely Suitable',
+                summary: 'Hydration support observed.',
+                reasons: [
+                  'Detected key ingredients: [more] Ceramide AP, Glycerin.',
+                  'Hydration support observed.',
+                ],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['[more] Ceramide AP', 'Key Ingredients', 'Glycerin'],
+                  mechanisms: ['Hydration support'],
+                  fit_notes: [],
+                  risk_notes: [],
+                },
+                social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+                expert_notes: [],
+                missing_info: [],
+              },
+              ingredient_intel: {
+                inci_raw: '[more] Ceramide AP, Key Ingredients, Glycerin',
+                inci_normalized: ['[more] Ceramide AP', 'Key Ingredients', 'Glycerin'],
+                actives: [{ name: '[more] Ceramide AP', rationale: 'Barrier support' }],
+              },
+              related_products: {
+                candidates: [
+                  { name: 'Moisturizer' },
+                  { name: 'SPF 50' },
+                  { name: 'Daily UV Shield SPF 50', brand: 'BrandX', category: 'skincare' },
+                ],
+              },
+              competitors: { candidates: [] },
+              dupes: { candidates: [] },
+              missing_info: [],
+            },
+          },
+        ],
+      },
+      { lang: 'EN' },
+    );
+
+    const card = Array.isArray(out?.cards) ? out.cards.find((item) => item?.type === 'product_analysis') : null;
+    const payload = card?.payload || {};
+    const reasonsText = Array.isArray(payload?.assessment?.reasons) ? payload.assessment.reasons.join(' ') : '';
+    expect(reasonsText).not.toMatch(/Detected key ingredients/i);
+
+    const ingredientIntel = payload?.ingredient_intel || {};
+    const inciRaw = String(ingredientIntel.inci_raw || '');
+    const inciRows = Array.isArray(ingredientIntel.inci_normalized) ? ingredientIntel.inci_normalized : [];
+    const inciNames = inciRows.map((item) => (typeof item === 'string' ? item : String(item?.inci || ''))).filter(Boolean);
+    expect(inciRaw).not.toMatch(/\[more\]/i);
+    expect(inciRaw).not.toMatch(/key ingredients/i);
+    expect(inciNames).toContain('Ceramide AP');
+    expect(inciNames.some((name) => /\[more\]/i.test(name))).toBe(false);
+    expect(inciNames.some((name) => /key ingredients/i.test(name))).toBe(false);
+
+    const relatedNames = (payload?.related_products?.candidates || []).map((row) => String(row?.name || ''));
+    expect(relatedNames).toContain('Daily UV Shield SPF 50');
+    expect(relatedNames).not.toContain('Moisturizer');
+    expect(relatedNames).not.toContain('SPF 50');
+  });
+
+  test('applyUnknownVerdictQualityGateToEnvelope normalizes March 7 style mixed-shape payloads into stable public blocks', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.applyUnknownVerdictQualityGateToEnvelope(
+      {
+        cards: [
+          {
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Likely Suitable',
+                verdict_level: 'needs_verification',
+                summary: 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                reasons: [
+                  'Fit signal: lower irritation exposure and redness risk; keep acne/comedone control on track.',
+                  'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                ],
+                how_to_use: {
+                  when: 'AM only',
+                  frequency: 'daily',
+                  order_in_routine: 'Layer from thinnest to thickest; keep hydration before occlusive steps.',
+                  pairing_rules: 'Use daytime SPF as the final AM step.',
+                  stop_signs: ['Persistent stinging beyond 30-60 seconds'],
+                },
+                watchouts: [
+                  {
+                    text: 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                    recommendation: 'Patch test first; stop if stinging or redness persists.',
+                    status: 'possible',
+                  },
+                ],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['Acetyl Hexapeptide-8', 'Sodium Hyaluronate'],
+                  mechanisms: 'Humectant blend suggests hydration support and moisture retention.',
+                  fit_notes: ['Ingredient-source consistency is limited; cross-check with package INCI.'],
+                  risk_notes: 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+                },
+                social_signals: {
+                  typical_positive: 'hydration',
+                  typical_negative: ['drying feel'],
+                  risk_for_groups: 'Sensitive skin: start low and monitor for stinging/redness.',
+                },
+                sources: [
+                  {
+                    url: 'https://www.labseries.com/product/example',
+                    type: 'official_page',
+                    label: 'labseries.com',
+                    confidence: 0.78,
+                  },
+                  'bad-source-row',
+                ],
+                expert_notes: 'INCIDecoder supplement loaded (60 ingredients, match=0.67).',
+                missing_info: 'version_verification_needed',
+                key_ingredients_by_function: {
+                  function: 'Humectants',
+                  ingredients: 'Sodium Hyaluronate',
+                  confidence: 'medium',
+                },
+              },
+              social_signals: {
+                overall_summary: {
+                  top_pos_themes: 'hydration',
+                  top_neg_themes: ['drying feel'],
+                  watchouts: 'Sensitive skin: start low and monitor for stinging/redness.',
+                },
+                platforms: [{ name: 'BrandSite' }, 'bad-platform-row'],
+              },
+              competitors: { candidates: null },
+              dupes: null,
+              related_products: {
+                candidates: {
+                  brand: 'Lab Series',
+                  name: 'Daily Defense SPF Lotion',
+                  similarity_score: 0.725,
+                  category: 'skincare',
+                  source: { type: 'on_page_related' },
+                },
+              },
+              missing_info: ['incidecoder_source_used', 'version_verification_needed'],
+              inci_status: {
+                extraction: 'success',
+                consensus_tier: 'low',
+                verification_required: true,
+                sources: {
+                  type: 'inci_decoder',
+                  url: 'https://incidecoder.com/products/lab-series-pro-ls-all-in-one-face-treatment',
+                  confidence: 0.82,
+                },
+              },
+              provenance: 'url_realtime_product_intel_async_backfill',
+            },
+          },
+        ],
+      },
+      { lang: 'EN' },
+    );
+
+    const card = Array.isArray(out?.cards) ? out.cards.find((item) => item?.type === 'product_analysis') : null;
+    const payload = card?.payload || {};
+
+    expect(payload?.assessment?.verdict).toBe('Likely Suitable');
+    expect(payload?.assessment?.verdict_level).toBe('needs_verification');
+    expect(String(payload?.assessment?.data_quality_banner || '')).toMatch(/incidecoder/i);
+    expect(Array.isArray(payload?.assessment?.how_to_use?.pairing_rules)).toBe(true);
+    expect(payload?.assessment?.how_to_use?.pairing_rules).toContain('Use daytime SPF as the final AM step.');
+    expect(Array.isArray(payload?.assessment?.watchouts)).toBe(true);
+    expect(payload?.assessment?.watchouts[0]).toEqual(
+      expect.objectContaining({
+        issue: expect.stringMatching(/fragrance-related/i),
+        status: 'possible',
+      }),
+    );
+
+    expect(Array.isArray(payload?.evidence?.science?.mechanisms)).toBe(true);
+    expect(payload?.evidence?.science?.mechanisms).toContain('Humectant blend suggests hydration support and moisture retention.');
+    expect(Array.isArray(payload?.evidence?.social_signals?.typical_positive)).toBe(true);
+    expect(payload?.evidence?.social_signals?.typical_positive).toContain('hydration');
+    expect(Array.isArray(payload?.evidence?.expert_notes)).toBe(true);
+    expect(payload?.evidence?.expert_notes).toContain('INCIDecoder supplement loaded (60 ingredients, match=0.67).');
+    expect(Array.isArray(payload?.evidence?.sources)).toBe(true);
+    expect(payload?.evidence?.sources).toHaveLength(1);
+
+    expect(Array.isArray(payload?.social_signals?.overall_summary?.top_pos_themes)).toBe(true);
+    expect(payload?.social_signals?.overall_summary?.top_pos_themes).toContain('hydration');
+    expect(Array.isArray(payload?.social_signals?.platforms)).toBe(true);
+    expect(payload?.social_signals?.platforms).toHaveLength(1);
+
+    expect(Array.isArray(payload?.competitors?.candidates)).toBe(true);
+    expect(Array.isArray(payload?.dupes?.candidates)).toBe(true);
+    expect(Array.isArray(payload?.related_products?.candidates)).toBe(true);
+    expect(payload?.related_products?.candidates).toHaveLength(1);
+    expect(Array.isArray(payload?.inci_status?.sources)).toBe(true);
+    expect(payload?.inci_status?.sources).toHaveLength(1);
+    expect(typeof payload?.provenance).toBe('object');
   });
 
   test('shouldPersistProductIntelKb blocks KB write when INCIDecoder is the only evidence source', () => {

@@ -288,6 +288,10 @@ function createGeminiGlobalGate({
   ratePerMin,
   circuitFailThreshold,
   circuitCooldownMs,
+  timeoutStreakThreshold,
+  timeoutMinSamples,
+  timeoutRatioThresholdPct,
+  timeoutWindowMs,
 } = {}) {
   const semaphore = createSemaphore(concurrencyMax || 6);
   const bucket = createTokenBucket({ ratePerMin: ratePerMin || 300 });
@@ -297,6 +301,14 @@ function createGeminiGlobalGate({
   });
   const metrics = createMetricsTracker();
   const keyPool = createKeyPool();
+  const timeoutPolicy = {
+    streakThreshold: Math.max(1, Number(timeoutStreakThreshold) || 3),
+    minSamples: Math.max(1, Number(timeoutMinSamples) || 8),
+    ratioThresholdPct: Math.max(1, Math.min(100, Number(timeoutRatioThresholdPct) || 60)),
+    windowMs: Math.max(1000, Number(timeoutWindowMs) || 60_000),
+  };
+  const timeoutSamples = [];
+  let timeoutStreak = 0;
 
   function is429OrRateLimit(err) {
     if (!err) return false;
@@ -315,11 +327,15 @@ function createGeminiGlobalGate({
     if (!err) return false;
     const msg = String(err.message || '').toLowerCase();
     const code = String(err.code || '').toLowerCase();
+    const name = String(err.name || '').toLowerCase();
     return (
+      name === 'aborterror' ||
       code.includes('timeout') ||
+      code.includes('abort') ||
       msg.includes('timeout') ||
       msg.includes('timed out') ||
-      msg.includes('deadline')
+      msg.includes('deadline') ||
+      msg.includes('aborted')
     );
   }
 
@@ -328,6 +344,40 @@ function createGeminiGlobalGate({
     const status = Number(err.status || err.statusCode || 0);
     const msg = String(err.message || '').toLowerCase();
     return status === 503 || msg.includes('503') || msg.includes('unavailable') || msg.includes('high demand');
+  }
+
+  function compactTimeoutSamples(now = Date.now()) {
+    const cutoff = now - timeoutPolicy.windowMs;
+    while (timeoutSamples.length && timeoutSamples[0].ts < cutoff) timeoutSamples.shift();
+  }
+
+  function recordTimeoutSample(timedOut) {
+    const now = Date.now();
+    compactTimeoutSamples(now);
+    timeoutSamples.push({ ts: now, timeout: timedOut === true });
+    if (timedOut === true) timeoutStreak += 1;
+    else timeoutStreak = 0;
+  }
+
+  function getTimeoutWindowStats() {
+    compactTimeoutSamples(Date.now());
+    const samples = timeoutSamples.length;
+    let timeoutCount = 0;
+    for (const row of timeoutSamples) {
+      if (row && row.timeout === true) timeoutCount += 1;
+    }
+    const timeoutRatioPct = samples > 0 ? (timeoutCount / samples) * 100 : 0;
+    const roundedRatioPct = Math.round(timeoutRatioPct * 100) / 100;
+    const byStreak = timeoutStreak >= timeoutPolicy.streakThreshold;
+    const byRatio = samples >= timeoutPolicy.minSamples && roundedRatioPct >= timeoutPolicy.ratioThresholdPct;
+    return {
+      samples,
+      timeoutCount,
+      timeoutRatioPct: roundedRatioPct,
+      timeoutStreak,
+      wouldTrigger: byStreak || byRatio,
+      triggerReason: byStreak ? 'streak' : byRatio ? 'ratio' : null,
+    };
   }
 
   async function withGate(route, fn, { bypassCircuit = false } = {}) {
@@ -354,18 +404,27 @@ function createGeminiGlobalGate({
     const release = await semaphore.acquire();
     try {
       const result = await fn();
+      recordTimeoutSample(false);
       if (!bypassCircuit) circuit.recordSuccess();
       metrics.record({ route, status: 'success', latencyMs: Date.now() - startedAt });
       return result;
     } catch (err) {
       if (is429OrRateLimit(err)) {
+        recordTimeoutSample(false);
         if (!bypassCircuit) circuit.recordFailure();
         metrics.record({ route, status: 'rate_limited', latencyMs: Date.now() - startedAt });
       } else if (isTimeout(err)) {
+        recordTimeoutSample(true);
+        const timeoutStats = getTimeoutWindowStats();
+        if (!bypassCircuit && timeoutStats.wouldTrigger) {
+          circuit.recordFailure();
+        }
         metrics.record({ route, status: 'timeout', latencyMs: Date.now() - startedAt });
       } else if (isTransientOverload(err)) {
+        recordTimeoutSample(false);
         metrics.record({ route, status: 'overloaded', latencyMs: Date.now() - startedAt });
       } else {
+        recordTimeoutSample(false);
         if (!bypassCircuit) circuit.recordFailure();
         metrics.record({ route, status: 'error', latencyMs: Date.now() - startedAt });
       }
@@ -381,6 +440,7 @@ function createGeminiGlobalGate({
   }
 
   function snapshot() {
+    const timeoutStats = getTimeoutWindowStats();
     return {
       gate: {
         concurrencyMax: semaphore.snapshot().max,
@@ -393,6 +453,13 @@ function createGeminiGlobalGate({
         semaphore: semaphore.snapshot(),
         bucket: bucket.snapshot(),
         circuit: circuit.snapshot(),
+        timeout_policy: {
+          window_ms: timeoutPolicy.windowMs,
+          streak_threshold: timeoutPolicy.streakThreshold,
+          min_samples: timeoutPolicy.minSamples,
+          ratio_threshold_pct: timeoutPolicy.ratioThresholdPct,
+        },
+        timeout_tracker: timeoutStats,
       },
     };
   }
@@ -407,6 +474,13 @@ function getGeminiGlobalGate() {
     ratePerMin: Math.max(1, parseEnvInt(process.env.GEMINI_GLOBAL_RATE_PER_MIN, 300)),
     circuitFailThreshold: Math.max(1, parseEnvInt(process.env.GEMINI_GLOBAL_CIRCUIT_FAIL_THRESHOLD, 8)),
     circuitCooldownMs: Math.max(1, parseEnvInt(process.env.GEMINI_GLOBAL_CIRCUIT_COOLDOWN_MS, 45_000)),
+    timeoutStreakThreshold: Math.max(1, parseEnvInt(process.env.GEMINI_GLOBAL_CIRCUIT_TIMEOUT_STREAK_THRESHOLD, 3)),
+    timeoutMinSamples: Math.max(1, parseEnvInt(process.env.GEMINI_GLOBAL_CIRCUIT_TIMEOUT_MIN_SAMPLES, 8)),
+    timeoutRatioThresholdPct: Math.max(
+      1,
+      Math.min(100, parseEnvInt(process.env.GEMINI_GLOBAL_CIRCUIT_TIMEOUT_RATIO_THRESHOLD_PCT, 60)),
+    ),
+    timeoutWindowMs: Math.max(1000, parseEnvInt(process.env.GEMINI_GLOBAL_CIRCUIT_TIMEOUT_WINDOW_MS, 60_000)),
   });
   return _gate;
 }

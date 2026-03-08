@@ -6,6 +6,7 @@ const {
   buildSkinReportPromptBundle,
   buildSkinDeepeningPromptBundle,
   isSkinPromptV3,
+  isSkinDeepeningV2,
 } = require('../src/auroraBff/skinLlmPrompts');
 const {
   SkinReportCanonicalSchema,
@@ -31,6 +32,11 @@ const { __internal: routesInternal } = require('../src/auroraBff/routes');
 
 test('skin prompt v3: canonical vision and report prompts ignore locale-specific reasoning', () => {
   assert.equal(isSkinPromptV3('skin_v3'), true);
+  assert.equal(isSkinPromptV3('skin_v3_canonical'), true);
+  assert.equal(isSkinPromptV3('skin_report_v3_canonical'), true);
+  assert.equal(isSkinPromptV3('skin_vision_v3_canonical'), true);
+  assert.equal(isSkinPromptV3('skin_report_v3_hardened'), false);
+  assert.equal(isSkinPromptV3('skin_vision_v2_hardened'), false);
 
   const vision = buildSkinVisionPromptBundle({
     language: 'zh-CN',
@@ -56,6 +62,36 @@ test('skin prompt v3: canonical vision and report prompts ignore locale-specific
   });
   assert.equal(deepening.promptVersion, 'skin_deepening_v2_canonical');
   assert.match(deepening.systemInstruction, /Reason in English only/);
+});
+
+test('skin prompt v3: explicit canonical ids still route to canonical builders while hardened ids stay mainline', () => {
+  assert.equal(isSkinDeepeningV2('skin_deepening_v2_canonical'), true);
+  assert.equal(isSkinDeepeningV2('skin_deepening_v2_hardened'), false);
+  assert.equal(isSkinDeepeningV2('skin_v3'), false);
+
+  const reportCanonical = buildSkinReportPromptBundle({
+    language: 'en-US',
+    promptVersion: 'skin_report_v3_canonical',
+    dto: { quality: { grade: 'pass' } },
+  });
+  assert.equal(reportCanonical.promptVersion, 'skin_report_v3_canonical');
+  assert.match(reportCanonical.systemInstruction, /Reason in English only/);
+
+  const visionCanonical = buildSkinVisionPromptBundle({
+    language: 'en-US',
+    promptVersion: 'skin_vision_v3_canonical',
+    dto: { quality: { grade: 'pass' } },
+  });
+  assert.equal(visionCanonical.promptVersion, 'skin_vision_v3_canonical');
+  assert.match(visionCanonical.systemInstruction, /Reason in English only/);
+
+  const deepeningMainline = buildSkinDeepeningPromptBundle({
+    language: 'en-US',
+    promptVersion: 'skin_deepening_v2_hardened',
+    dto: { phase: 'photo_optin' },
+  });
+  assert.equal(deepeningMainline.promptVersion, 'skin_deepening_v2_hardened');
+  assert.doesNotMatch(deepeningMainline.systemInstruction, /Reason in English only/);
 });
 
 test('skin prompt v3: vision semantic guard rejects empty pass-quality output and renderer localizes zh output', () => {
@@ -120,7 +156,24 @@ test('skin prompt v3: vision canonical pruning drops same-region surface cue ove
   });
   assert.deepEqual(
     canonical.observations.map((row) => `${row.cue}:${row.region}`),
-    ['redness:cheeks', 'shine:t_zone', 'bumps:chin'],
+    ['redness:cheeks', 'shine:t_zone'],
+  );
+});
+
+test('skin prompt v3: vision normalization scopes nose shine to t-zone and drops weaker duplicate cue regions', () => {
+  const canonical = normalizeVisionCanonicalLayer({
+    visibility_status: 'sufficient',
+    needs_risk_check: false,
+    observations: [
+      { cue: 'shine', region: 'nose', severity: 'moderate', confidence: 'high', evidence: 'noticeable shine across nose bridge' },
+      { cue: 'shine', region: 'forehead', severity: 'mild', confidence: 'med', evidence: 'light reflection on forehead' },
+      { cue: 'bumps', region: 'forehead', severity: 'moderate', confidence: 'high', evidence: 'clustered bumps on forehead' },
+      { cue: 'bumps', region: 'chin', severity: 'mild', confidence: 'med', evidence: 'few smaller bumps on chin' },
+    ],
+  });
+  assert.deepEqual(
+    canonical.observations.map((row) => `${row.cue}:${row.region}:${row.severity}`),
+    ['bumps:forehead:moderate', 'shine:t_zone:mild'],
   );
 });
 
@@ -269,6 +322,27 @@ test('skin prompt v3: deepening transport canonical must adjudicate before valid
   assert.equal(validateDeepeningCanonicalLayer(adjudicated, { allowAdviceOmit: true }).ok, true);
   assert.equal(evaluateDeepeningCanonicalSemantic(adjudicated).ok, true);
   assert.equal(adjudicated.summary_priority, 'barrier');
+});
+
+test('skin prompt v3: deepening adjudication pins phase and question intent to deterministic context', () => {
+  const adjudicated = adjudicateDeepeningCanonicalLayer(
+    {
+      phase: 'refined',
+      question_intent: 'confirm_plan',
+    },
+    {
+      inheritedPriority: 'barrier',
+      deepeningContext: {
+        phase: 'reactions',
+        question_intent: 'reaction_check',
+        reaction_flags: ['tightness'],
+        suggested_advice_items: ['confirm_tolerance'],
+      },
+    },
+  );
+  assert.equal(adjudicated.phase, 'reactions');
+  assert.equal(adjudicated.question_intent, 'reaction_check');
+  assert.deepEqual(adjudicated.advice_items, ['protect_barrier', 'confirm_tolerance', 'stabilize_barrier']);
 });
 
 test('skin prompt v3: report LLM transport schema excludes deepening while internal canonical keeps it', () => {

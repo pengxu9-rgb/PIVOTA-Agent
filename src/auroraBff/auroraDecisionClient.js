@@ -1106,7 +1106,7 @@ async function auroraChat({
     err.code = 'AURORA_NOT_CONFIGURED';
     throw err;
   }
-  const url = `${base}/api/chat`;
+  const url = `${base}/api/upstream/chat`;
   const payload = { query: finalQuery };
   if (llm_provider) payload.llm_provider = llm_provider;
   if (llm_model) payload.llm_model = llm_model;

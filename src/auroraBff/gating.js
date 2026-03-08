@@ -1,3 +1,5 @@
+const DIAGNOSIS_V2_ENABLED = process.env.DIAGNOSIS_V2_ENABLED === 'true';
+
 const {
   isRecommendationLikeText,
   isSuitabilityLikeText,
@@ -129,6 +131,7 @@ function stateChangeAllowed(triggerSource) {
 }
 
 const CORE_PROFILE_FIELDS = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+const DIAGNOSIS_GATE_PROMPT_VERSION = 'diagnosis_gate_prompt_v2';
 
 function orderMissingFields(missing) {
   const list = Array.isArray(missing) ? missing.filter(Boolean) : [];
@@ -253,7 +256,7 @@ function buildPendingClarificationForGate({ language, missing, message, wants })
   };
 }
 
-function shouldDiagnosisGate({ message, triggerSource, profile }) {
+function shouldDiagnosisGateV1({ message, triggerSource, profile }) {
   const wantsRecs = looksLikeRecommendationRequest(message);
   const wantsFit = looksLikeSuitabilityRequest(message);
   const wantsDiag = looksLikeDiagnosisStart(message);
@@ -294,14 +297,37 @@ function shouldDiagnosisGate({ message, triggerSource, profile }) {
   };
 }
 
+function shouldDiagnosisGate(opts) {
+  if (DIAGNOSIS_V2_ENABLED) {
+    return shouldDiagnosisGateV2(opts);
+  }
+  return shouldDiagnosisGateV1(opts);
+}
+
+function shouldDiagnosisGateV2({ message, triggerSource, profile }) {
+  const wantsDiag = looksLikeDiagnosisStart(message);
+  const chipStartDiag = String(triggerSource || '') === 'chip' || String(triggerSource || '') === 'action';
+
+  if (!wantsDiag && !chipStartDiag) {
+    return shouldDiagnosisGateV1({ message, triggerSource, profile });
+  }
+
+  return {
+    gated: false,
+    v2_redirect: true,
+    reason: 'diagnosis_v2',
+    triggerSource,
+  };
+}
+
 function buildDiagnosisPrompt(language, missing) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const current = pickCurrentMissingField(missing);
   const meta = buildDiagnosisQuestionMeta(lang, current);
   const prefix =
     lang === 'CN'
-      ? '我可以帮你，但我需要先做一个极简肤况确认，避免瞎猜。'
-      : "I can help — but first I need a quick skin profile so I don't guess.";
+      ? '在我继续之前，我先确认一个肤况信息，避免瞎猜。'
+      : "Before I continue, I need one quick skin-profile detail so I don't guess.";
   if (!meta) {
     return prefix;
   }
@@ -421,6 +447,8 @@ function hasUsableArtifactForRecommendations(artifact, opts = {}) {
 }
 
 module.exports = {
+  DIAGNOSIS_V2_ENABLED,
+  DIAGNOSIS_GATE_PROMPT_VERSION,
   profileCompleteness,
   looksLikeRecommendationRequest,
   looksLikeSuitabilityRequest,
@@ -428,6 +456,8 @@ module.exports = {
   recommendationsAllowed,
   stateChangeAllowed,
   shouldDiagnosisGate,
+  shouldDiagnosisGateV1,
+  shouldDiagnosisGateV2,
   buildDiagnosisPrompt,
   buildDiagnosisChips,
   buildPendingClarificationForGate,

@@ -1,0 +1,20 @@
+{
+  "description": "Golden fixture: When all returned items have similarity=0, confidence=0, tradeoffs=[], they must be treated as hollow and gated",
+  "scenario": "LLM returns items but all have zero quality signals",
+  "hollow_item_example": {
+    "product": { "brand": "SomeBrand", "name": "SomeProduct" },
+    "similarity": 0,
+    "confidence": 0,
+    "tradeoffs": [],
+    "kind": "dupe"
+  },
+  "expected": {
+    "payload.verified": false,
+    "payload.empty_state_reason": "all_items_hollow",
+    "payload.quality.quality_ok": false,
+    "payload.quality.quality_issues_contains": "all_items_hollow",
+    "payload.dupes": { "_description": "hollow items filtered out" },
+    "payload.comparables": { "_description": "hollow items filtered out" },
+    "payload.meta.quality_gate_enforced": true
+  }
+}

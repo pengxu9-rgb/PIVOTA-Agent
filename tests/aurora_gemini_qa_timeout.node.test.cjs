@@ -116,6 +116,23 @@ test('runtime QA story generation uses dedicated flash model and structured sche
   );
 });
 
+test('routes module loads when product intel model env is set under force-gemini', () => {
+  withEnv(
+    {
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-pro-preview',
+      AURORA_PRODUCT_INTEL_LLM_MODEL: 'gemini-3-flash-preview',
+      AURORA_PRODUCT_INTEL_ESCALATION_MODEL: 'gemini-3-flash-preview',
+    },
+    () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      assert.doesNotThrow(() => require('../src/auroraBff/routes'));
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('runtime QA product relevance uses structured schema and flash model', async () => {
   await withEnv(
     {
