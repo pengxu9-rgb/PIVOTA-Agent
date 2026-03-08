@@ -10060,3 +10060,43 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
     },
   );
 });
+
+test('/v1/chat: deep_dive_skin without reusable analysis context returns confidence_notice', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const response = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'uid_analysis_followup_missing_context',
+          'X-Trace-ID': 'trace_analysis_followup_missing_context',
+          'X-Brief-ID': 'brief_analysis_followup_missing_context',
+          'X-Lang': 'EN',
+        })
+        .send({
+          action: {
+            action_id: 'chip.aurora.next_action.deep_dive_skin',
+            kind: 'action',
+            data: { reply_text: 'Tell me more about my skin', trigger_source: 'analysis_story_v2' },
+          },
+          language: 'EN',
+        })
+        .expect(200);
+
+      assert.ok(findCardByType(response.body?.cards, 'confidence_notice'));
+      assert.equal(Boolean(findCardByType(response.body?.cards, 'nudge')), false);
+      assert.match(String(response.body?.assistant_text || response.body?.assistant_message?.content || ''), /recent skin analysis|run skin analysis again/i);
+    },
+  );
+});

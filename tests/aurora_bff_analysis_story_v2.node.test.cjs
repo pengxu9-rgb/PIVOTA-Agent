@@ -491,6 +491,17 @@ test('analysis follow-up helpers: use lastAnalysis context and emit deterministi
   assert.equal(routineFollowup.cards.some((card) => card.type === 'routine_fit_summary'), true);
   assert.doesNotMatch(routineFollowup.assistant_text, /nudge/i);
 
+  const deepDiveFollowup = internal.buildAnalysisFollowupContent({
+    actionId: 'chip.aurora.next_action.deep_dive_skin',
+    lastAnalysis,
+    language: 'EN',
+    requestId: 'req_deep',
+    replyText: 'Tell me more about my skin',
+  });
+  assert.equal(deepDiveFollowup.missing_context, false);
+  assert.equal(deepDiveFollowup.cards.some((card) => card.type === 'analysis_story_v2'), true);
+  assert.doesNotMatch(deepDiveFollowup.assistant_text, /nudge/i);
+
   const ingredientFollowup = internal.buildAnalysisFollowupContent({
     actionId: 'chip.aurora.next_action.ingredient_plan',
     lastAnalysis,
@@ -507,4 +518,13 @@ test('analysis follow-up helpers: use lastAnalysis context and emit deterministi
   });
   assert.equal(safetyFollowup.cards.some((card) => card.type === 'confidence_notice'), true);
   assert.match(safetyFollowup.assistant_text, /watchouts|safety|risk/i);
+
+  const missingContextFollowup = internal.buildAnalysisFollowupContent({
+    actionId: 'chip.aurora.next_action.deep_dive_skin',
+    lastAnalysis: null,
+    language: 'EN',
+    requestId: 'req_missing',
+  });
+  assert.equal(missingContextFollowup.cards.some((card) => card.type === 'confidence_notice'), true);
+  assert.equal(missingContextFollowup.missing_context, true);
 });
