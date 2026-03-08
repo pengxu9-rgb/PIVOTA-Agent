@@ -27,6 +27,12 @@ const {
 const { buildKbGroundingForPrompt } = require('./routineKbLoader');
 const { normalizeCurrentRoutineToV2 } = require('./routineSchemaV2');
 const {
+  normalizeRoutineStateValue,
+  normalizeRoutineStateFromProfile,
+  getRoutineStateSummaryValue,
+  buildMissingRoutineFields,
+} = require('./routineState');
+const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
@@ -21381,7 +21387,7 @@ function extractProfilePatchFromSession(session) {
 }
 
 function extractProfilePatchFromRoutinePayload(routineInput) {
-  const routineRoot = tryParseRoutineObject(routineInput) || (isPlainObject(routineInput) ? routineInput : null);
+  const routineRoot = (isPlainObject(routineInput) ? routineInput : null) || tryParseRoutineObject(routineInput);
   if (!routineRoot) return null;
 
   const candidates = [];
@@ -22392,19 +22398,7 @@ function summarizeProfileForContext(profile, options = {}) {
     Object.prototype.hasOwnProperty.call(options, 'profileV2Enabled')
       ? Boolean(options.profileV2Enabled)
       : AURORA_PROFILE_V2_ENABLED;
-  const currentRoutineRaw = profile.currentRoutine;
-  let currentRoutine = null;
-  if (typeof currentRoutineRaw === 'string') {
-    const t = currentRoutineRaw.trim();
-    currentRoutine = t ? t.slice(0, 4000) : null;
-  } else if (currentRoutineRaw && typeof currentRoutineRaw === 'object') {
-    try {
-      const json = JSON.stringify(currentRoutineRaw);
-      currentRoutine = json.length > 5000 ? `${json.slice(0, 5000)}…` : json;
-    } catch {
-      currentRoutine = null;
-    }
-  }
+  const currentRoutine = getRoutineStateSummaryValue(profile.currentRoutine ?? profile.current_routine);
 
   const itineraryRaw = profile.itinerary;
   let itinerary = null;
@@ -24386,57 +24380,19 @@ function pickFirstString(...values) {
 }
 
 function tryParseRoutineObject(value) {
-  if (!value) return null;
-  if (isPlainObject(value)) return value;
-  if (typeof value !== 'string') return null;
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    return isPlainObject(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  return normalizeRoutineStateValue(value).current_routine_struct;
 }
 
 function hasRoutineData(profile) {
-  const p = isPlainObject(profile) ? profile : {};
-  const routine = tryParseRoutineObject(p.currentRoutine) || tryParseRoutineObject(p.current_routine);
-  if (!routine) return false;
-  const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
-  const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
-  const hasFilled = (rows) =>
-    rows.some((row) => {
-      if (!row) return false;
-      if (typeof row === 'string') return Boolean(String(row).trim());
-      if (!isPlainObject(row)) return false;
-      return Boolean(
-        String(row.product || '').trim() ||
-          String(row.name || '').trim() ||
-          String(row.step || '').trim() ||
-          String(row.ingredient || '').trim(),
-      );
-    });
-  return hasFilled(am) || hasFilled(pm);
+  return normalizeRoutineStateFromProfile(profile).has_current_routine;
 }
 
 function deriveRoutineMissingFields(profile) {
-  const p = isPlainObject(profile) ? profile : {};
-  const routine = tryParseRoutineObject(p.currentRoutine) || tryParseRoutineObject(p.current_routine);
-  if (!routine) return ['currentRoutine.am', 'currentRoutine.pm'];
-  const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
-  const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
-  const hasFilled = (rows) =>
-    rows.some((row) => {
-      if (!row) return false;
-      if (typeof row === 'string') return Boolean(String(row).trim());
-      if (!isPlainObject(row)) return false;
-      return Boolean(String(row.product || '').trim() || String(row.name || '').trim() || String(row.step || '').trim());
-    });
-  const missing = [];
-  if (!hasFilled(am)) missing.push('currentRoutine.am');
-  if (!hasFilled(pm)) missing.push('currentRoutine.pm');
-  return missing.length ? missing : [];
+  const profileState = normalizeRoutineStateFromProfile(profile);
+  if (Array.isArray(profileState.missing_routine_fields) && profileState.missing_routine_fields.length) {
+    return profileState.missing_routine_fields;
+  }
+  return buildMissingRoutineFields(profileState.current_routine_struct);
 }
 
 function normalizeRoutineIntakeSlot(rawSlot) {
@@ -45159,12 +45115,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         let photoQuality = classifyPhotoQuality(photos);
 
         let profileSummary = summarizeProfileForContext(profile);
+        const previousRoutineState = normalizeRoutineStateFromProfile(profile);
+        const previousRoutine = previousRoutineState.current_routine_struct;
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
-        const routineFromRequest = parsed.data.currentRoutine;
+        const routineFromRequest =
+          parsed.data.currentRoutine !== undefined ? parsed.data.currentRoutine : parsed.data.current_routine;
+        const requestedRoutineState =
+          routineFromRequest !== undefined ? normalizeRoutineStateValue(routineFromRequest) : null;
         const routineDerivedProfilePatch = extractProfilePatchFromRoutinePayload(routineFromRequest);
 
         if (routineFromRequest !== undefined) {
-          const normalizedRoutine = normalizeCurrentRoutineToV2(routineFromRequest);
+          const normalizedRoutine =
+            (requestedRoutineState && requestedRoutineState.current_routine_struct) ||
+            (requestedRoutineState && requestedRoutineState.current_routine_text) ||
+            normalizeCurrentRoutineToV2(routineFromRequest);
           // Best-effort persistence. Analysis should still proceed even if storage is unavailable.
           profile = {
             ...(profile || {}),
@@ -45187,23 +45151,62 @@ function mountAuroraBffRoutes(app, { logger }) {
           profileSummary = summarizeProfileForContext(profile);
         }
 
-        const routineCandidate = routineFromRequest !== undefined ? routineFromRequest : profileSummary && profileSummary.currentRoutine;
-        const hasRoutine = Boolean(
-          routineCandidate != null &&
-            (typeof routineCandidate === 'string'
-              ? String(routineCandidate).trim().length > 0
-              : Array.isArray(routineCandidate)
-                ? routineCandidate.length > 0
-                : typeof routineCandidate === 'object'
-                  ? Object.keys(routineCandidate).length > 0
-                  : false),
-        );
-        const routineProductCandidates =
-          AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED && hasRoutine
-            ? extractRoutineProductCandidatesForDeepScan(routineCandidate, {
+        const effectiveRoutineState =
+          routineFromRequest !== undefined ? normalizeRoutineStateValue(profile && profile.currentRoutine) : previousRoutineState;
+        const routineCandidate = effectiveRoutineState.routine_candidate;
+        const hasRoutine = Boolean(effectiveRoutineState.has_current_routine);
+        const routineStateMeta = {
+          source_shape: effectiveRoutineState.source_shape,
+          missing_routine_fields: Array.isArray(effectiveRoutineState.missing_routine_fields)
+            ? effectiveRoutineState.missing_routine_fields.slice(0, 4)
+            : [],
+        };
+        const analysisFieldMissing = [];
+        const qualityReportReasons = [];
+        const photoFailureCodes = [];
+        const analysisSubstageEvents = [];
+        const recordAnalysisSubstageFailure = (stage, err, extra = {}) => {
+          const failureMeta = classifyRoutineFitUpstreamFailure(err);
+          const failureClass = String(failureMeta.failure_class || 'substage_error');
+          analysisFieldMissing.push({ field: `analysis.${stage}`, reason: failureClass });
+          analysisSubstageEvents.push(
+            makeEvent(ctx, 'analysis_substage_failed', {
+              stage,
+              failure_class: failureClass,
+              upstream_status: failureMeta.upstream_status,
+              upstream_error_code: failureMeta.upstream_error_code,
+              routine_source_shape: routineStateMeta.source_shape,
+              missing_routine_fields: routineStateMeta.missing_routine_fields,
+              ...extra,
+            }),
+          );
+          logger?.warn(
+            {
+              err: err && err.message ? err.message : String(err),
+              request_id: ctx.request_id,
+              stage,
+              failure_class: failureClass,
+              upstream_status: failureMeta.upstream_status,
+              upstream_error_code: failureMeta.upstream_error_code,
+              routine_source_shape: routineStateMeta.source_shape,
+              missing_routine_fields: routineStateMeta.missing_routine_fields,
+            },
+            'aurora bff: analysis substage degraded after failure',
+          );
+        };
+        let routineProductCandidates = [];
+        if (AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED && hasRoutine) {
+          try {
+            routineProductCandidates = extractRoutineProductCandidatesForDeepScan(routineCandidate, {
               maxTotal: AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT,
-            })
-            : [];
+            });
+          } catch (err) {
+            recordAnalysisSubstageFailure('routine_product_candidate_extract', err, {
+              candidate_count: 0,
+            });
+            routineProductCandidates = [];
+          }
+        }
         profiler.end('quality', { kind: 'memory', has_routine: hasRoutine, logs_n: recentLogsSummary.length });
 
         // "Dual input" policy:
@@ -45229,9 +45232,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         const visionAvailable = visionAvailability.available && !rollout.llmKillSwitch;
         const reportAvailable = Boolean(selectedVisionProvider.apiKeyConfigured) && !rollout.llmKillSwitch;
 
-        const analysisFieldMissing = [];
-        const qualityReportReasons = [];
-        const photoFailureCodes = [];
         let usedPhotos = false;
         let analysisSource = 'rule_based';
         let visionRuntime = null;
@@ -45651,21 +45651,28 @@ function mountAuroraBffRoutes(app, { logger }) {
           llmInputHash = reportDto.input_hash || llmInputHash;
           llmInputHashPrefix = buildInputHashPrefix(llmInputHash);
           recordAuroraSkinMainlineProvider({ provider: 'gemini' });
-          const lifecycleStage = detectRoutineLifecycleStage({
-            routineCandidate: hasRoutine ? routineCandidate : null,
-            previousRoutine,
-            intent: parsed.data.intent || null,
-          });
           let lifecycleInstructions = '';
-          if (lifecycleStage) {
-            const lifecycleCtx = buildRoutineLifecycleContext({
-              stage: lifecycleStage,
+          try {
+            const lifecycleStage = detectRoutineLifecycleStage({
               routineCandidate: hasRoutine ? routineCandidate : null,
               previousRoutine,
-              profileSummary,
-              language: ctx.lang,
+              intent: parsed.data.intent || null,
             });
-            lifecycleInstructions = buildLifecyclePromptInstructions(lifecycleCtx, ctx.lang);
+            if (lifecycleStage) {
+              const lifecycleCtx = buildRoutineLifecycleContext({
+                stage: lifecycleStage,
+                routineCandidate: hasRoutine ? routineCandidate : null,
+                previousRoutine,
+                profileSummary,
+                language: ctx.lang,
+              });
+              lifecycleInstructions = buildLifecyclePromptInstructions(lifecycleCtx, ctx.lang);
+            }
+          } catch (err) {
+            recordAnalysisSubstageFailure('routine_lifecycle_context', err, {
+              llm_stage: 'report',
+            });
+            lifecycleInstructions = '';
           }
           const supplementaryInstructions = buildSupplementaryPromptInstructions({
             routineCandidate: hasRoutine ? routineCandidate : null,
@@ -46417,9 +46424,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         let routineFitFallbackUsed = false;
         let routineFitFallbackReason = null;
         if (routineFitPlan.shouldEvaluateRoutineFit) {
+          try {
           routineProductEvents.push(
             makeEvent(ctx, 'routine_fit_evaluation_started', {
               total_candidates: routineProductCandidates.length,
+              routine_source_shape: routineStateMeta.source_shape,
+              missing_routine_fields: routineStateMeta.missing_routine_fields,
             }),
           );
 
@@ -46576,6 +46586,14 @@ function mountAuroraBffRoutes(app, { logger }) {
               llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
             }),
           );
+          } catch (err) {
+            routineFitFailureReason = routineFitFailureReason || 'substage_exception';
+            recordAnalysisSubstageFailure('routine_fit_summary', err, {
+              candidate_count: routineProductCandidates.length,
+              timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+              llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
+            });
+          }
         }
 
         if (routineFitCard && analysisSummaryPayload && typeof analysisSummaryPayload === 'object') {
@@ -46695,6 +46713,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: sessionPatch,
           events: [
             ...routineProductEvents,
+            ...analysisSubstageEvents,
             ...pregnancyPolicyEvents,
             makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: renderedAnalysisSource }),
           ],
@@ -47272,10 +47291,17 @@ function mountAuroraBffRoutes(app, { logger }) {
     try {
       requireAuroraUid(ctx);
       const rawBody = isPlainObject(req.body) ? req.body : {};
-      const derivedProfilePatch = extractProfilePatchFromRoutinePayload(rawBody.currentRoutine ?? rawBody.current_routine);
+      const normalizedBody = { ...rawBody };
+      if (normalizedBody.currentRoutine === undefined && rawBody.current_routine !== undefined) {
+        normalizedBody.currentRoutine = rawBody.current_routine;
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedBody, 'current_routine')) {
+        delete normalizedBody.current_routine;
+      }
+      const derivedProfilePatch = extractProfilePatchFromRoutinePayload(normalizedBody.currentRoutine);
       const parsed = UserProfilePatchSchema.safeParse({
         ...(derivedProfilePatch && typeof derivedProfilePatch === 'object' ? derivedProfilePatch : {}),
-        ...rawBody,
+        ...normalizedBody,
       });
       if (!parsed.success) {
         const envelope = buildEnvelope(ctx, {
@@ -47289,7 +47315,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const identity = await resolveIdentity(req, ctx);
-      const updated = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, parsed.data);
+      const cleanPatch = { ...parsed.data };
+      if (Object.prototype.hasOwnProperty.call(cleanPatch, 'currentRoutine')) {
+        const routineState = normalizeRoutineStateValue(cleanPatch.currentRoutine);
+        cleanPatch.currentRoutine = routineState.current_routine_struct || routineState.current_routine_text || null;
+      }
+      const updated = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, cleanPatch);
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -47298,7 +47329,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           { card_id: `profile_${ctx.request_id}`, type: 'profile', payload: { profile: summarizeProfileForContext(updated) } },
         ],
         session_patch: { profile: summarizeProfileForContext(updated) },
-        events: [makeEvent(ctx, 'profile_saved', { fields: Object.keys(parsed.data) })],
+        events: [makeEvent(ctx, 'profile_saved', { fields: Object.keys(cleanPatch) })],
       });
       return res.json(envelope);
     } catch (err) {

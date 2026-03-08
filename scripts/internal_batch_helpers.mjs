@@ -611,7 +611,7 @@ function collectProductSuppressionReasons(modules) {
 
 export function summarizeAnalysisEnvelope(json) {
   const { root, cards } = readEnvelopeLikeRoot(json);
-  const analysisCard = findCardByType(cards, 'analysis_summary');
+  const analysisCard = findCardByType(cards, 'analysis_story_v2') || findCardByType(cards, 'analysis_summary');
   const photoModulesCard = findCardByType(cards, 'photo_modules_v1');
 
   const analysisPayload = isObject(analysisCard && analysisCard.payload) ? analysisCard.payload : {};
