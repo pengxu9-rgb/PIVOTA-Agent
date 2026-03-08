@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { normalizeDestinationPlace } = require('./destinationResolver');
 
 const DATE_TOKEN_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -84,6 +85,7 @@ function normalizeLegacyTravelPlan(raw) {
   if (!isPlainObject(raw)) return null;
 
   const destination = normalizeDestinationText(raw.destination, 100);
+  const destinationPlace = normalizeDestinationPlace(raw.destination_place || raw.destinationPlace);
   const startDate = normalizeDateToken(raw.start_date);
   let endDate = normalizeDateToken(raw.end_date);
   const ratio = clampRatio(raw.indoor_outdoor_ratio);
@@ -97,6 +99,7 @@ function normalizeLegacyTravelPlan(raw) {
 
   const out = {
     ...(destination ? { destination } : {}),
+    ...(destinationPlace ? { destination_place: destinationPlace } : {}),
     ...(startDate ? { start_date: startDate } : {}),
     ...(endDate ? { end_date: endDate } : {}),
     ...(ratio != null ? { indoor_outdoor_ratio: ratio } : {}),
@@ -135,6 +138,7 @@ function normalizeTravelPlanItem(raw, options = {}) {
   return {
     trip_id: tripId,
     destination: base.destination,
+    ...(base.destination_place ? { destination_place: base.destination_place } : {}),
     start_date: base.start_date,
     end_date: base.end_date,
     ...(base.indoor_outdoor_ratio != null ? { indoor_outdoor_ratio: base.indoor_outdoor_ratio } : {}),
@@ -405,6 +409,9 @@ function toLegacyTravelPlan(trip) {
   const updatedAt = Number.isFinite(Number(trip.updated_at_ms)) ? safeInt(trip.updated_at_ms, Date.now()) : null;
   return {
     ...(destination ? { destination } : {}),
+    ...(normalizeDestinationPlace(trip.destination_place || trip.destinationPlace) ? {
+      destination_place: normalizeDestinationPlace(trip.destination_place || trip.destinationPlace),
+    } : {}),
     ...(startDate ? { start_date: startDate } : {}),
     ...(endDate ? { end_date: endDate } : {}),
     ...(ratio != null ? { indoor_outdoor_ratio: ratio } : {}),
@@ -562,6 +569,17 @@ function applyTravelExtractionToProfile(profile, extraction = {}, options = {}) 
     ...(ratio != null ? { indoor_outdoor_ratio: ratio } : {}),
     updated_at_ms: nowMs,
   };
+  const currentDestination = normalizeDestinationText(
+    currentState && currentState.legacy_travel_plan && currentState.legacy_travel_plan.destination,
+    100,
+  );
+  if (
+    destination &&
+    currentDestination &&
+    destination.toLowerCase() !== currentDestination.toLowerCase()
+  ) {
+    delete nextLegacy.destination_place;
+  }
 
   const normalizedLegacy = normalizeLegacyTravelPlan(nextLegacy);
   if (!normalizedLegacy) {

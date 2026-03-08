@@ -51,6 +51,26 @@ function withModuleOverrides(overrides, fn) {
     });
 }
 
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async json() {
+      return body;
+    },
+  };
+}
+
+function withMockFetch(fetchImpl, fn) {
+  const previous = global.fetch;
+  global.fetch = fetchImpl;
+  return Promise.resolve()
+    .then(() => fn())
+    .finally(() => {
+      global.fetch = previous;
+    });
+}
+
 function loadFreshPipeline() {
   const contractsId = require.resolve(ROOT_CONTRACTS);
   const kbStoreId = require.resolve(ROOT_KB_STORE);
@@ -81,6 +101,17 @@ function buildProfile() {
     region: 'San Francisco, CA',
     travel_plan: {
       destination: 'Tokyo',
+      destination_place: {
+        label: 'Tokyo, Japan',
+        canonical_name: 'Tokyo',
+        latitude: 35.6895,
+        longitude: 139.69171,
+        country_code: 'JP',
+        country: 'Japan',
+        admin1: 'Tokyo',
+        timezone: 'Asia/Tokyo',
+        resolution_source: 'auto_resolved',
+      },
       start_date: '2026-03-10',
       end_date: '2026-03-15',
     },
@@ -467,6 +498,85 @@ test('travel skills pipeline: reco/store skip reasons are explicit when triggere
           assert.equal(storeOut.travel_skill_invocation_matrix?.store_skip_reason, 'no_channels');
         },
       );
+    },
+  );
+});
+
+test('travel skills pipeline: ambiguous destination returns clarification chips instead of fake weather', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'true',
+    },
+    async () => {
+      await withMockFetch(async (url) => {
+        if (String(url).includes('geocoding-api.open-meteo.com')) {
+          return jsonResponse({
+            results: [
+              {
+                name: 'Paris',
+                latitude: 48.85341,
+                longitude: 2.3488,
+                country: 'France',
+                country_code: 'FR',
+                admin1: 'Ile-de-France',
+                timezone: 'Europe/Paris',
+                population: 2148000,
+                feature_code: 'PPLA',
+              },
+              {
+                name: 'Paris',
+                latitude: 33.66094,
+                longitude: -95.55551,
+                country: 'United States',
+                country_code: 'US',
+                admin1: 'Texas',
+                timezone: 'America/Chicago',
+                population: 24900,
+                feature_code: 'PPLA2',
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      }, async () => {
+        const { runTravelPipeline } = loadFreshPipeline();
+        const out = await runTravelPipeline(
+          buildInput('Build my Paris travel plan.', {
+            travelWeatherLiveEnabled: true,
+            profile: {
+              ...buildProfile(),
+              travel_plan: {
+                destination: 'Paris',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            },
+            canonicalIntent: {
+              intent: 'travel_planning',
+              entities: {
+                destination: 'Paris',
+                date_range: { start: '2026-03-10', end: '2026-03-15' },
+              },
+            },
+          }),
+        );
+
+        assert.equal(out.ok, true);
+        assert.equal(out.env_source, 'pending_clarification');
+        assert.equal(out.quality_reason, 'destination_ambiguous');
+        assert.equal(out.pending_clarification?.type, 'destination_ambiguous');
+        assert.ok(Array.isArray(out.pending_clarification?.candidates));
+        assert.ok(out.pending_clarification.candidates.length >= 2);
+        assert.equal(out.travel_readiness, null);
+        assert.ok(Array.isArray(out.suggested_chips));
+        assert.ok(out.suggested_chips.length >= 2);
+        assert.equal(out.travel_skill_invocation_matrix?.llm_skip_reason, 'destination_ambiguous');
+        const envTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_env_context_skill');
+        const replyTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_followup_reply_skill');
+        assert.equal(envTrace?.status, 'skip');
+        assert.equal(replyTrace?.status, 'clarify');
+      });
     },
   );
 });

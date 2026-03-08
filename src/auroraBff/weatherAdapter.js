@@ -1,5 +1,6 @@
 const { getAuroraKbV0 } = require('./kbV0/loader');
 const { recordAuroraKbV0ClimateFallback } = require('./visionMetrics');
+const { normalizeDestinationPlace, resolveDestinationInput } = require('./destinationResolver');
 
 const OPEN_METEO_GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
@@ -396,17 +397,15 @@ function buildDefaultSummaryForMonth(monthRaw) {
   };
 }
 
-function buildStaticClimateFallback({ destination, startDate, endDate, reason } = {}) {
-  const name = String(destination || '').trim();
+function buildStaticClimateFallback({ destination, destinationPlace, startDate, endDate, reason } = {}) {
+  const explicitPlace = normalizeDestinationPlace(destinationPlace, {
+    resolutionSource: destinationPlace && destinationPlace.resolution_source,
+  });
+  const name = String(explicitPlace && explicitPlace.label ? explicitPlace.label : destination || '').trim();
   const { start, end } = clampDateRange(startDate, endDate);
   const month = Number((start || '').slice(5, 7)) || new Date().getUTCMonth() + 1;
   const metricReason = String(reason || 'unknown').trim().toLowerCase() || 'unknown';
   const summary = buildDefaultSummaryForMonth(month);
-  const forecastWindow = buildSyntheticForecastWindow({
-    startDate: start,
-    endDate: end,
-    summary,
-  });
 
   return {
     ok: true,
@@ -414,11 +413,19 @@ function buildStaticClimateFallback({ destination, startDate, endDate, reason } 
     destination: name || null,
     reason: metricReason,
     date_range: { start, end },
-    location: { name: name || null, latitude: null, longitude: null, timezone: null },
+    location: {
+      name: name || null,
+      latitude: explicitPlace ? explicitPlace.latitude : null,
+      longitude: explicitPlace ? explicitPlace.longitude : null,
+      timezone: explicitPlace ? explicitPlace.timezone : null,
+      country: explicitPlace ? explicitPlace.country : null,
+      country_code: explicitPlace ? explicitPlace.country_code : null,
+      admin1: explicitPlace ? explicitPlace.admin1 : null,
+    },
     summary,
-    forecast_window: forecastWindow,
+    forecast_window: [],
     data_freshness_utc: new Date().toISOString(),
-    days_covered: forecastWindow.length,
+    days_covered: 0,
     raw: {
       climate_profile: {
         region_id: null,
@@ -447,8 +454,11 @@ function safeClimateFallback(args = {}) {
   }
 }
 
-function climateFallback({ destination, startDate, endDate, reason, userLocale } = {}) {
-  const name = String(destination || '').trim();
+function climateFallback({ destination, destinationPlace, startDate, endDate, reason, userLocale } = {}) {
+  const explicitPlace = normalizeDestinationPlace(destinationPlace, {
+    resolutionSource: destinationPlace && destinationPlace.resolution_source,
+  });
+  const name = String(explicitPlace && explicitPlace.label ? explicitPlace.label : destination || '').trim();
   const { start, end } = clampDateRange(startDate, endDate);
   const month = Number((start || '').slice(5, 7)) || new Date().getUTCMonth() + 1;
   const selected = selectClimateRegion({ destination: name, month, userLocale });
@@ -474,23 +484,25 @@ function climateFallback({ destination, startDate, endDate, reason, userLocale }
       };
     })()
     : defaultSummary;
-  const forecastWindow = buildSyntheticForecastWindow({
-    startDate: start,
-    endDate: end,
-    summary,
-  });
-
   return {
     ok: true,
     source: 'climate_fallback',
     destination: name || null,
     reason: metricReason,
     date_range: { start, end },
-    location: { name: name || null, latitude: null, longitude: null, timezone: null },
+    location: {
+      name: name || null,
+      latitude: explicitPlace ? explicitPlace.latitude : null,
+      longitude: explicitPlace ? explicitPlace.longitude : null,
+      timezone: explicitPlace ? explicitPlace.timezone : null,
+      country: explicitPlace ? explicitPlace.country : null,
+      country_code: explicitPlace ? explicitPlace.country_code : null,
+      admin1: explicitPlace ? explicitPlace.admin1 : null,
+    },
     summary,
-    forecast_window: forecastWindow,
+    forecast_window: [],
     data_freshness_utc: new Date().toISOString(),
-    days_covered: forecastWindow.length,
+    days_covered: 0,
     raw: {
       climate_profile: selected
         ? {
@@ -511,6 +523,7 @@ function climateFallback({ destination, startDate, endDate, reason, userLocale }
 
 async function getTravelWeather({
   destination,
+  destinationPlace,
   startDate,
   endDate,
   userLocale,
@@ -518,10 +531,14 @@ async function getTravelWeather({
   geocodeTimeoutMs = 1600,
   forecastTimeoutMs = 1800,
 } = {}) {
-  const name = String(destination || '').trim();
+  const explicitPlace = normalizeDestinationPlace(destinationPlace, {
+    resolutionSource: destinationPlace && destinationPlace.resolution_source,
+  });
+  const name = String(explicitPlace && explicitPlace.label ? explicitPlace.label : destination || '').trim();
   const { start, end } = clampDateRange(startDate, endDate);
   const fallback = (reason) => safeClimateFallback({
     destination: name,
+    destinationPlace: explicitPlace,
     startDate: start,
     endDate: end,
     reason,
@@ -532,6 +549,7 @@ async function getTravelWeather({
     if (!name) {
       return safeClimateFallback({
         destination: '',
+        destinationPlace: explicitPlace,
         startDate: start,
         endDate: end,
         reason: 'destination_missing',
@@ -547,18 +565,34 @@ async function getTravelWeather({
       };
     }
 
-    const geoUrl = `${OPEN_METEO_GEOCODE_URL}?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
-    const geocode = await callJson(geoUrl, fetchImpl, geocodeTimeoutMs);
-    if (!geocode.ok) {
-      return {
-        ...fallback(`geocode_${geocode.reason || 'failed'}`),
-        reason: `geocode_${geocode.reason || 'failed'}`,
-      };
+    let resolvedPlace = explicitPlace;
+    if (!resolvedPlace) {
+      const geocode = await resolveDestinationInput({
+        destination: name,
+        destinationPlace: null,
+        userLocale,
+        fetchImpl,
+        timeoutMs: geocodeTimeoutMs,
+        count: 8,
+      });
+      if (!geocode.ok) {
+        return {
+          ...fallback(geocode.reason || 'geocode_failed'),
+          reason: geocode.reason || 'geocode_failed',
+        };
+      }
+      if (geocode.ambiguous || !geocode.resolved_place) {
+        const reason = geocode.ambiguous ? 'destination_ambiguous' : geocode.reason || 'geocode_no_results';
+        return {
+          ...fallback(reason),
+          reason,
+        };
+      }
+      resolvedPlace = geocode.resolved_place;
     }
 
-    const result = Array.isArray(geocode.data && geocode.data.results) ? geocode.data.results[0] : null;
-    const lat = Number(result && result.latitude);
-    const lon = Number(result && result.longitude);
+    const lat = Number(resolvedPlace && resolvedPlace.latitude);
+    const lon = Number(resolvedPlace && resolvedPlace.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return {
         ...fallback('geocode_no_results'),
@@ -584,17 +618,17 @@ async function getTravelWeather({
     return {
       ok: true,
       source: 'weather_api',
-      reason: null,
-      destination: name,
+      reason: 'weather_api_ok',
+      destination: resolvedPlace && resolvedPlace.label ? resolvedPlace.label : name,
       date_range: dateRange,
       location: {
-        name: String(result.name || name),
+        name: String((resolvedPlace && resolvedPlace.label) || name),
         latitude: lat,
         longitude: lon,
-        timezone: String(forecast.data.timezone || result.timezone || ''),
-        country: String(result.country || ''),
-        country_code: String(result.country_code || ''),
-        admin1: String(result.admin1 || ''),
+        timezone: String(forecast.data.timezone || (resolvedPlace && resolvedPlace.timezone) || ''),
+        country: String((resolvedPlace && resolvedPlace.country) || ''),
+        country_code: String((resolvedPlace && resolvedPlace.country_code) || ''),
+        admin1: String((resolvedPlace && resolvedPlace.admin1) || ''),
       },
       summary,
       forecast_window: forecastWindow,
