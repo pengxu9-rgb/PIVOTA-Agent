@@ -19799,6 +19799,43 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     };
   }
 
+  const buildDeepDiveStoryPayload = () => {
+    const story = {
+      schema_version: 'aurora.analysis_story.v2',
+      confidence_overall: {
+        ...(confidence.level ? { level: confidence.level } : { level: lang === 'CN' ? '待确认' : 'unconfirmed' }),
+        ...(Number.isFinite(Number(confidence.score)) ? { score: Number(confidence.score) } : {}),
+      },
+      skin_profile: {
+        ...(pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType)
+          ? { skin_type_tendency: pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType) }
+          : {}),
+        ...(pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity)
+          ? { sensitivity_tendency: pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity) }
+          : {}),
+        current_strengths: strengths,
+      },
+      priority_findings: findingLines.map((line, idx) => ({
+        priority: idx + 1,
+        title: line,
+        detail: line,
+        evidence_region_or_module: [],
+      })),
+      target_state: guidanceBrief.slice(0, 2),
+      core_principles: guidanceBrief.slice(0, 2),
+      am_plan: [],
+      pm_plan: [],
+      timeline: {
+        first_4_weeks: guidanceBrief.slice(0, 2),
+        week_8_12_expectation: [],
+      },
+      safety_notes: [],
+      disclaimer_non_medical: true,
+    };
+    story.ui_card_v1 = buildAnalysisStoryUiCardV1({ story, evidence: null, language: lang });
+    return coerceAnalysisStoryV2(story, story);
+  };
+
   if (actionId === 'chip.aurora.next_action.deep_dive_skin') {
     const skinType = pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType) || (lang === 'CN' ? '待确认' : 'unconfirmed');
     const sensitivity = pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity) || (lang === 'CN' ? '待确认' : 'unconfirmed');
@@ -19820,9 +19857,19 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
           guidanceBrief.length ? `Next focus: ${guidanceBrief.slice(0, 2).join('; ')}.` : '',
           confidence.level ? `Confidence for this read is ${confidence.level}.` : '',
         ].filter(Boolean).join(' ');
+    const storyPayload = buildDeepDiveStoryPayload();
     return {
       assistant_text: summary,
-      cards: [],
+      cards: [
+        {
+          card_id: `analysis_followup_story_${requestId}`,
+          type: 'analysis_story_v2',
+          payload: {
+            ...storyPayload,
+            summary,
+          },
+        },
+      ],
       suggested_chips: suggestedChips,
       missing_context: false,
       used_last_analysis: true,

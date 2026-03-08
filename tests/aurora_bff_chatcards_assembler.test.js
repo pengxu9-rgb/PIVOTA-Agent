@@ -171,4 +171,49 @@ describe('chatCardsAssembler safety mapping', () => {
     expect(out.follow_up_questions[0].options).toHaveLength(2);
     expect(out.follow_up_questions[0].options.map((item) => item.id)).toEqual(['oily', 'dry']);
   });
+
+  test('scoped fallback turns analysis follow-up empty cards into analysis_story_v2', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        assistant_message: {
+          role: 'assistant',
+          content: 'From your latest analysis, your skin trends combination with high sensitivity.',
+        },
+        events: [
+          {
+            event_name: 'analysis_followup_action_routed',
+            data: { action_id: 'chip.aurora.next_action.deep_dive_skin', fell_back_to_generic: false },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'unknown',
+    });
+
+    expect(out.cards).toHaveLength(1);
+    expect(out.cards[0].type).toBe('analysis_story_v2');
+    expect(out.cards[0].title).toBe('Analysis story');
+  });
+
+  test('non-analysis empty successful responses keep existing nudge fallback', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        assistant_message: {
+          role: 'assistant',
+          content: 'Here is a generic assistant-only reply.',
+        },
+        events: [
+          {
+            event_name: 'some_other_success_event',
+            data: {},
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'unknown',
+    });
+
+    expect(out.cards).toHaveLength(1);
+    expect(out.cards[0].type).toBe('nudge');
+  });
 });

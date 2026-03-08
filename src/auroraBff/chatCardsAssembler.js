@@ -14,6 +14,37 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function hasAnalysisFollowupRoutedEvent(envelope) {
+  return asArray(envelope && envelope.events).some((evt) => {
+    if (!isPlainObject(evt)) return false;
+    return asString(evt.event_name).toLowerCase() === 'analysis_followup_action_routed';
+  });
+}
+
+function buildAnalysisFollowupStoryFallbackCard({ requestId, language = 'EN', assistantText = '' } = {}) {
+  const text = asString(assistantText);
+  const fallbackText = text || (language === 'CN' ? '我会先基于最近一次分析继续解释。' : 'I will continue from your latest analysis.');
+  return {
+    id: `analysis_followup_${requestId}`,
+    type: 'analysis_story_v2',
+    priority: 1,
+    title: language === 'CN' ? '分析解读' : 'Analysis story',
+    tags: [language === 'CN' ? '分析追问' : 'Analysis follow-up'],
+    sections: [
+      {
+        kind: 'bullets',
+        title: language === 'CN' ? '这次追问的解读' : 'Follow-up explanation',
+        items: [fallbackText],
+      },
+      {
+        kind: 'analysis_story_structured',
+        summary: fallbackText,
+      },
+    ],
+    actions: [],
+  };
+}
+
 const CHATCARDS_EXPERIMENT_EVENT_TYPES = new Set([
   'recos_requested',
   'loop_breaker_triggered',
@@ -357,7 +388,7 @@ function normalizeOps({ envelope, threadOps } = {}) {
   };
 }
 
-function normalizeCards({ envelope, requestId, language }) {
+function normalizeCards({ envelope, requestId, language, assistantText = '' }) {
   const legacyCards = asArray(envelope && envelope.cards);
   const mapped = [];
   for (let idx = 0; idx < legacyCards.length; idx += 1) {
@@ -375,6 +406,16 @@ function normalizeCards({ envelope, requestId, language }) {
     const title = asString(card.title);
     return Boolean(title);
   });
+
+  if (compact.length === 0 && hasAnalysisFollowupRoutedEvent(envelope) && asString(assistantText)) {
+    return [
+      buildAnalysisFollowupStoryFallbackCard({
+        requestId,
+        language,
+        assistantText,
+      }),
+    ];
+  }
 
   if (compact.length === 0) {
     return [
@@ -455,7 +496,7 @@ function buildChatCardsResponse({
     (uiLanguage === 'CN'
       ? '我先给你一个低风险可执行建议，再按你的补充逐步细化。'
       : 'I will start with a low-risk actionable suggestion, then refine with your context.');
-  const cards = normalizeCards({ envelope: base, requestId, language: uiLanguage });
+  const cards = normalizeCards({ envelope: base, requestId, language: uiLanguage, assistantText });
   const { quickReplies, followUpQuestions } = normalizeFollowUpAndQuickReplies({
     envelope: base,
     language: uiLanguage,
