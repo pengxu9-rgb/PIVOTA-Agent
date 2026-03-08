@@ -209,9 +209,16 @@ if any(
 ):
     raise AssertionError("passive pregnancy_optional_profile card should be suppressed")
 
-analysis_card = next((card for card in cards if card.get("type") == "analysis_summary"), None)
+analysis_card = next(
+    (
+        card
+        for card in cards
+        if card.get("type") in {"analysis_story_v2", "analysis_summary"}
+    ),
+    None,
+)
 if analysis_card is None:
-    raise AssertionError("analysis_summary card missing")
+    raise AssertionError("analysis_story_v2 or analysis_summary card missing")
 modules_card = next((card for card in cards if card.get("type") == "photo_modules_v1"), None)
 
 analysis_payload = analysis_card.get("payload") or {}

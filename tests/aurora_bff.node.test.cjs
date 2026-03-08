@@ -7835,6 +7835,193 @@ test('/v1/profile/update: nested profile fields inside currentRoutine are persis
   );
 });
 
+test('/v1/profile/update: current_routine alias is accepted and normalized into currentRoutine storage', async () => {
+  await withEnv(
+    {
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/profile/update')
+        .set({
+          'X-Aurora-UID': `test_uid_profile_current_routine_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_profile_current_routine',
+          'X-Brief-ID': 'test_brief_profile_current_routine',
+          'X-Lang': 'EN',
+        })
+        .send({
+          current_routine: [
+            { slot: 'am', step: 'cleanser', product: 'Gentle cleanser' },
+            { slot: 'pm', step: 'treatment', product: 'Retinol serum' },
+          ],
+        })
+        .expect(200);
+
+      const profilePayload = (resp.body?.cards || []).find((card) => card?.type === 'profile')?.payload?.profile || {};
+      assert.equal(typeof profilePayload.currentRoutine, 'string');
+      assert.match(String(profilePayload.currentRoutine || ''), /Gentle cleanser/);
+      assert.match(String(profilePayload.currentRoutine || ''), /Retinol serum/);
+    },
+  );
+});
+
+test('/v1/analysis/skin: current_routine legacy input is accepted and still returns canonical story card', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/analysis/skin')
+        .set({
+          'X-Aurora-UID': `test_uid_analysis_current_routine_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_analysis_current_routine',
+          'X-Brief-ID': 'test_brief_analysis_current_routine',
+          'X-Lang': 'EN',
+        })
+        .send({
+          use_photo: false,
+          current_routine: [
+            { slot: 'am', step: 'cleanser', product: 'Gentle cleanser' },
+            { slot: 'pm', step: 'treatment', product: 'Retinol serum' },
+          ],
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.ok(findCardByType(cards, 'analysis_story_v2'));
+      assert.equal(cards.some((card) => card && card.type === 'error'), false);
+    },
+  );
+});
+
+test('/v1/analysis/skin: plain-text currentRoutine stays non-fatal and still returns canonical story card', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/analysis/skin')
+        .set({
+          'X-Aurora-UID': `test_uid_analysis_plain_text_routine_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_analysis_plain_text_routine',
+          'X-Brief-ID': 'test_brief_analysis_plain_text_routine',
+          'X-Lang': 'EN',
+        })
+        .send({
+          use_photo: false,
+          currentRoutine: 'AM: gentle cleanser, vitamin C, SPF 50. PM: cleanser, retinol, moisturizer.',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.ok(findCardByType(cards, 'analysis_story_v2'));
+      assert.equal(cards.some((card) => card && card.type === 'error'), false);
+    },
+  );
+});
+
+test('/v1/analysis/skin: currentRoutine report path tolerates missing previous routine and stays non-fatal', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+      GEMINI_API_KEY: 'test_gemini_key',
+    },
+    async () => {
+      const gatewayModuleId = require.resolve('../src/auroraBff/skinLlmGateway');
+      delete require.cache[gatewayModuleId];
+      const gatewayModule = require('../src/auroraBff/skinLlmGateway');
+      const originalRunGeminiReportStrategy = gatewayModule.runGeminiReportStrategy;
+      const originalIsGeminiSkinGatewayAvailable = gatewayModule.isGeminiSkinGatewayAvailable;
+      let reportCalls = 0;
+
+      gatewayModule.isGeminiSkinGatewayAvailable = () => true;
+      gatewayModule.runGeminiReportStrategy = async () => {
+        reportCalls += 1;
+        return {
+          ok: false,
+          reason: 'report_output_invalid',
+          schema_violation: false,
+          semantic_violation: false,
+          prompt_version: 'test_prompt',
+        };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': `test_uid_analysis_routine_report_${Date.now()}`,
+            'X-Trace-ID': 'test_trace_analysis_routine_report',
+            'X-Brief-ID': 'test_brief_analysis_routine_report',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: { cleanser: 'Gentle cleanser', spf: 'SPF 50' },
+              pm: { cleanser: 'Gentle cleanser', treatment: 'Retinol serum', moisturizer: 'Barrier cream' },
+            },
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        assert.ok(findCardByType(cards, 'analysis_story_v2'));
+        assert.equal(reportCalls > 0, true);
+        assert.equal(cards.some((card) => card && card.type === 'error'), false);
+      } finally {
+        gatewayModule.runGeminiReportStrategy = originalRunGeminiReportStrategy;
+        gatewayModule.isGeminiSkinGatewayAvailable = originalIsGeminiSkinGatewayAvailable;
+        delete require.cache[routeModuleId];
+        delete require.cache[gatewayModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/product/analyze: returns verdict + enriched reasons', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
