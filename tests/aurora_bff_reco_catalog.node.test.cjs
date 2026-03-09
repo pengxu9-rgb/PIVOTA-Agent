@@ -232,6 +232,55 @@ test('/v1/chat: reco_products uses catalog grounded PDP-ready items when enabled
   }
 });
 
+test('/v1/chat: generic reco keeps trusted catalog-grounded items even when heuristic relevance is sparse', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) {
+      throw new Error(`Unexpected axios.get: ${url}`);
+    }
+    const q = String(config?.params?.query || '').trim().toLowerCase();
+    const mk = (suffix) => ({
+      product_id: `pid_sparse_${suffix}`,
+      merchant_id: `mid_sparse_${suffix}`,
+      brand: 'NeutralBrand',
+      name: `Everyday ${suffix}`,
+      display_name: `Everyday ${suffix}`,
+    });
+    if (q.includes('cleanser')) return { status: 200, data: { products: [mk('200ml')] } };
+    if (q.includes('moisturizer')) return { status: 200, data: { products: [mk('cream')] } };
+    if (q.includes('sunscreen')) return { status: 200, data: { products: [mk('spf')] } };
+    return { status: 200, data: { products: [mk('fallback')] } };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'test_uid', briefId: 'test_brief' });
+    const resp = await invokeRecoChat(app);
+
+    assert.equal(resp.status, 200);
+    const recoCard = getRecoCard(resp.body);
+    assert.ok(recoCard);
+    const recos = getRecoItems(resp.body);
+    assert.ok(recos.length > 0);
+    assert.equal(recoCard?.payload?.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.equal(String(recoCard?.payload?.products_empty_reason || ''), '');
+    const recoEvent = Array.isArray(resp.body?.events)
+      ? resp.body.events.find((evt) => evt && evt.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.reason || null, null);
+    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('The Ordinary recommendation: confidence gate returns non-reco card when artifact is missing', async () => {
   await withEnv(
     {

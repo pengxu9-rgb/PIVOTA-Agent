@@ -20840,14 +20840,20 @@ function normalizeRecoContractTelemetryReason(value) {
   return '';
 }
 
+function normalizeRecoProductsEmptyReason(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function deriveRecoContractStatus({
   promptContractOk,
   recommendations,
   llmFailureClass,
   fieldMissing,
+  productsEmptyReason,
 } = {}) {
   if (promptContractOk === false) return 'prompt_contract_mismatch';
   if (Array.isArray(recommendations) && recommendations.length > 0) return 'recommendations_ready';
+  if (normalizeRecoProductsEmptyReason(productsEmptyReason)) return 'recommendations_empty';
   const normalizedFailure = normalizeRecoFailureClass(llmFailureClass || '');
   if (normalizedFailure === 'timeout') return 'upstream_timeout';
   if (normalizedFailure === 'schema_invalid') return 'schema_invalid';
@@ -20890,17 +20896,20 @@ function buildRecoMainlineContract({
   fieldMissing = null,
   structuredSource = '',
   catalogSkipReason = null,
+  productsEmptyReason = null,
 } = {}) {
   const recoRows = Array.isArray(recommendations) ? recommendations : [];
   const hasRecommendations = recoRows.length > 0;
   const failureClass = normalizeRecoFailureClass(llmFailureClass);
   const normalizedSourceMode = String(sourceMode || '').trim().toLowerCase() || 'rules_only';
   const upstreamCode = String(upstreamFailureCode || '').trim().toUpperCase();
+  const normalizedProductsEmptyReason = normalizeRecoProductsEmptyReason(productsEmptyReason);
   const contractStatus = deriveRecoContractStatus({
     promptContractOk,
     recommendations: recoRows,
     llmFailureClass: failureClass,
     fieldMissing,
+    productsEmptyReason: normalizedProductsEmptyReason,
   });
   let normalizedTelemetryReason = normalizeRecoContractTelemetryReason(
     deriveRecoTelemetryFailureReason({
@@ -20919,6 +20928,7 @@ function buildRecoMainlineContract({
     llmFailureClass: failureClass,
     upstreamFailureCode: upstreamCode,
     contractStatus,
+    productsEmptyReason: normalizedProductsEmptyReason,
   });
   let upstreamStatus = 'ok';
   if (!hasRecommendations) {
@@ -20941,6 +20951,7 @@ function buildRecoMainlineContract({
     upstream_status: upstreamStatus,
     mainline_status: mainlineStatus,
     catalog_skip_reason: pickFirstTrimmed(catalogSkipReason) || null,
+    products_empty_reason: normalizedProductsEmptyReason || null,
   };
 }
 
@@ -20960,6 +20971,7 @@ function attachRecoContractMeta(payload, contract) {
       ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
       ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
       ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
+      ...(contractObj.products_empty_reason ? { products_empty_reason: contractObj.products_empty_reason } : {}),
     },
   };
 }
@@ -20971,12 +20983,16 @@ function deriveRecoMainlineStatus({
   llmFailureClass,
   upstreamFailureCode,
   contractStatus,
+  productsEmptyReason,
 } = {}) {
   if (Array.isArray(recommendations) && recommendations.length > 0) return 'grounded_success';
   const catalogSkip = String(catalogSkipReason || '').trim().toLowerCase();
   if (catalogSkip === 'disabled') return 'catalog_skipped_disabled';
   if (catalogSkip === 'fail_fast_open') return 'catalog_skipped_fail_fast';
   if (catalogSkip === 'queries_empty') return 'catalog_queries_empty';
+  if (normalizeRecoProductsEmptyReason(productsEmptyReason)) {
+    return 'empty_structured';
+  }
   if (normalizeRecoFailureClass(llmFailureClass || '') === 'timeout' || isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
     return 'upstream_timeout';
   }
@@ -20985,9 +21001,6 @@ function deriveRecoMainlineStatus({
   }
   if (contractStatus === 'empty_structured' || contractStatus === 'recommendations_empty') {
     return 'empty_structured';
-  }
-  if (String(structuredSource || '').trim().toLowerCase() === 'catalog_grounded') {
-    return 'grounded_success';
   }
   return 'empty_structured';
 }
@@ -21025,6 +21038,7 @@ function buildRecoRequestedEventData({
     ...(pickFirstTrimmed(failureClass, meta.failure_class) ? { failure_class: pickFirstTrimmed(failureClass, meta.failure_class) } : {}),
     ...(pickFirstTrimmed(meta.mainline_status) ? { mainline_status: pickFirstTrimmed(meta.mainline_status) } : {}),
     ...(pickFirstTrimmed(meta.catalog_skip_reason) ? { catalog_skip_reason: pickFirstTrimmed(meta.catalog_skip_reason) } : {}),
+    ...(pickFirstTrimmed(meta.products_empty_reason, payloadObj.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(meta.products_empty_reason, payloadObj.products_empty_reason) } : {}),
     ...(pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) ? { upstream_failure_code: pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) } : {}),
     ...(isPlainObject(llmTraceRef) ? { llm_trace_ref: llmTraceRef } : {}),
   };
@@ -26306,6 +26320,29 @@ function buildExternalSearchCta(candidate, reason = 'search_fallback') {
   };
 }
 
+function isTrustedCatalogGroundedRecoCandidate(row, payload) {
+  const candidate = isPlainObject(row) ? row : {};
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const sourceMode = String(
+    pickFirstTrimmed(
+      payloadObj.recommendation_meta && payloadObj.recommendation_meta.source_mode,
+      payloadObj.source,
+      candidate.source,
+    ) || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (sourceMode !== 'catalog_grounded') return false;
+  const hasStableId = Boolean(
+    pickFirstTrimmed(candidate.product_id, candidate.productId, candidate.sku_id, candidate.skuId),
+  );
+  if (!hasStableId) return false;
+  if (isResolverExternalOpenContractRow(candidate)) return true;
+  if (hasOpenableUrl(candidate)) return true;
+  const directUrl = extractCandidateOpenUrl(candidate);
+  return PRODUCT_INTEL_HTTP_URL_RE.test(directUrl);
+}
+
 function buildStrictFilterFallbackSearchCtas(payload, maxItems = 3) {
   const p = isPlainObject(payload) ? payload : {};
   const science = isPlainObject(p.evidence) && isPlainObject(p.evidence.science) ? p.evidence.science : {};
@@ -27133,6 +27170,7 @@ async function sanitizeRecoCandidatesForUi(
 
         const blacklistHit = isBlacklistedCategoryOrTitle(row);
         const skincareHit = isSkincareCategory(row);
+        const trustedCatalogGrounded = isTrustedCatalogGroundedRecoCandidate(row, payload);
         const relevanceDecision = await evaluateIngredientCandidateWithQaMode(row, {
           qaMode: effectiveQaMode,
           singleProvider: effectiveSingleProvider,
@@ -27145,9 +27183,9 @@ async function sanitizeRecoCandidatesForUi(
         const resolverExternalBypass = allowResolverExternalRecommendations === true && isResolverExternalOpenContractRow(row);
         const relevanceRejectReason = blacklistHit
           ? 'blacklisted_category_or_title'
-          : strictFilter && !skincareHit
+          : strictFilter && !skincareHit && !trustedCatalogGrounded
             ? 'non_skincare_category'
-            : !(relevanceDecision && relevanceDecision.pass === true)
+            : !(relevanceDecision && relevanceDecision.pass === true) && !trustedCatalogGrounded
               ? pickFirstString(relevanceDecision && relevanceDecision.reject_reason, 'llm_relevance_reject')
               : '';
 
@@ -39667,6 +39705,7 @@ async function generateProductRecommendations({
     recommendations: finalRecommendations,
     llmFailureClass,
     fieldMissing: norm.field_missing,
+    productsEmptyReason: norm.payload?.products_empty_reason,
   });
   const mainlineStatus = deriveRecoMainlineStatus({
     recommendations: finalRecommendations,
@@ -39675,6 +39714,7 @@ async function generateProductRecommendations({
     llmFailureClass,
     upstreamFailureCode,
     contractStatus,
+    productsEmptyReason: norm.payload?.products_empty_reason,
   });
   const telemetryFailureReason = deriveRecoTelemetryFailureReason({
     llmFailureClass,
@@ -39715,6 +39755,7 @@ async function generateProductRecommendations({
       catalog_skip_reason: catalogSkipReason,
       upstream_failure_code: upstreamFailureCode || null,
       mainline_status: mainlineStatus,
+      ...(pickFirstTrimmed(norm.payload?.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(norm.payload?.products_empty_reason) } : {}),
       llm_prompt_chars: typeof query === 'string' ? query.length : 0,
       llm_schema_chars: Number(promptBundle.schema_chars || 0),
       llm_mode: promptBundle.prompt_spec.llm_mode,
@@ -39734,6 +39775,7 @@ async function generateProductRecommendations({
     fieldMissing: norm.field_missing,
     structuredSource,
     catalogSkipReason,
+    productsEmptyReason: nextPayload.products_empty_reason,
   });
   const warningContract = applyRecoWarningVisibilityContract(nextPayload);
   nextPayload = {
@@ -44854,6 +44896,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             fieldMissing: norm?.field_missing,
             structuredSource: norm?.payload?.recommendation_meta?.source_mode,
             catalogSkipReason: norm?.payload?.recommendation_meta?.catalog_skip_reason,
+            productsEmptyReason: norm?.payload?.products_empty_reason,
           });
       if (parsed.data.include_alternatives) {
         const alt = await enrichRecommendationsWithAlternatives({
@@ -44893,6 +44936,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         fieldMissing: norm?.field_missing,
         structuredSource: payload?.recommendation_meta?.source_mode,
         catalogSkipReason: payload?.recommendation_meta?.catalog_skip_reason,
+        productsEmptyReason: payload?.products_empty_reason,
       });
       if (isPlainObject(payload)) {
         const nextPayload = attachRecoContractMeta(payload, finalDirectContract);
@@ -44978,6 +45022,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         fieldMissing: guardedRecoCard?.field_missing,
         structuredSource: guardedRecoCard?.payload?.recommendation_meta?.source_mode,
         catalogSkipReason: guardedRecoCard?.payload?.recommendation_meta?.catalog_skip_reason,
+        productsEmptyReason: guardedRecoCard?.payload?.products_empty_reason,
       });
       const nextSessionPatch = isPlainObject(guardedEnvelope.session_patch) ? { ...guardedEnvelope.session_patch } : {};
       if (hasGuardedRecommendations) {
@@ -49617,7 +49662,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
       }
 
-      const envelopeWithGuardrails =
+      let envelopeWithGuardrails =
         guardrailResult && guardrailResult.envelope && typeof guardrailResult.envelope === 'object'
           ? { ...guardrailResult.envelope }
           : envelopeWithContract;
@@ -49648,6 +49693,24 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
           'aurora bff: product-intel guardrail applied',
         );
+      }
+      const postGuardRecoInvariant = guardEligible
+        ? applyRecoCardContractInvariant({ envelope: envelopeWithGuardrails, ctx, language: ctx.lang })
+        : { envelope: envelopeWithGuardrails, applied: false, reason: null, droppedCount: 0 };
+      if (postGuardRecoInvariant.applied) {
+        logger?.warn(
+          {
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            reason: postGuardRecoInvariant.reason,
+            dropped_count: postGuardRecoInvariant.droppedCount,
+          },
+          'aurora bff: reco contract invariant rewrote empty recommendations after guardrail',
+        );
+        recordAuroraSkinFlowMetric({ stage: 'reco_output_contract_degraded', hit: true });
+      }
+      if (postGuardRecoInvariant.envelope && typeof postGuardRecoInvariant.envelope === 'object') {
+        envelopeWithGuardrails = { ...postGuardRecoInvariant.envelope };
       }
 
       const threadOps = (() => {
@@ -54449,10 +54512,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             if (matcherHandle && typeof matcherHandle.unref === 'function') matcherHandle.unref();
           }
         }
-        const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
+        const initialHasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
           ? norm.payload.recommendations.length > 0
           : false;
-        if (!hasRecs && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
+        if (!initialHasRecs && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
           recoTimeoutDegraded = true;
         }
         if (recoTimeoutDegraded) {
@@ -54536,11 +54599,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
           return sendChatEnvelope(envelope);
         }
-        recordAuroraSkinFlowMetric({ stage: 'reco_generated', hit: Boolean(hasRecs) });
-        if (hasRecs) {
-          logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
-        }
-        const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
         const promptContractOkFromTrace =
           isPlainObject(upstreamDebug && upstreamDebug.llm_prompt_trace)
             ? upstreamDebug.llm_prompt_trace.prompt_contract_ok !== false
@@ -54594,19 +54652,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
             used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
             used_safety_flags: lowConfidenceArtifact,
-            primary_failure_reason: hasRecs ? null : 'artifact_missing',
+            primary_failure_reason: payloadHasRecs ? null : 'artifact_missing',
             telemetry_failure_reason: recoTelemetryFailureReason || null,
             failure_class: llmFailureClass || null,
             catalog_skip_reason: recoCatalogSkipReason || null,
             upstream_failure_code: upstreamFailureCode || null,
-            mainline_status: recoMainlineStatus || (hasRecs ? 'grounded_success' : 'empty_structured'),
+            mainline_status: recoMainlineStatus || (initialHasRecs ? 'grounded_success' : 'empty_structured'),
             ...(recoLlmTrace ? { llm_trace: recoLlmTrace } : {}),
           };
           payload.metadata = {
             ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
             llm_trace_ref: llmTraceRef,
             llm_failure_class: llmFailureClass || null,
-            mainline_status: recoMainlineStatus || (hasRecs ? 'grounded_success' : 'empty_structured'),
+            mainline_status: recoMainlineStatus || (initialHasRecs ? 'grounded_success' : 'empty_structured'),
             catalog_skip_reason: recoCatalogSkipReason || null,
           };
           const finalRecoContract = buildRecoMainlineContract({
@@ -54619,11 +54677,21 @@ function mountAuroraBffRoutes(app, { logger }) {
             fieldMissing: norm?.field_missing,
             structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
             catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
+            productsEmptyReason: payload.products_empty_reason,
           });
           recoContract = finalRecoContract;
           const nextPayload = attachRecoContractMeta(payload, finalRecoContract);
           payload.recommendation_meta = nextPayload.recommendation_meta;
         }
+
+        const finalHasRecs = Array.isArray(payload && payload.recommendations)
+          ? payload.recommendations.length > 0
+          : false;
+        recordAuroraSkinFlowMetric({ stage: 'reco_generated', hit: Boolean(finalHasRecs) });
+        if (finalHasRecs) {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
+        }
+        const nextState = finalHasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
 
         const recoAssistantBase = buildRouteAwareAssistantText({
           route: 'reco',
@@ -54635,7 +54703,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
           : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
 
-        const assistantTextRaw = hasRecs
+        const assistantTextRaw = finalHasRecs
           ? (recoAssistantBase ||
             (ctx.lang === 'CN'
               ? profileScore >= 3
@@ -54650,7 +54718,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const safetyWarnText =
           safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.WARN ? buildSafetyNoticeText(safetyDecision) : '';
         const refinementTail =
-          hasRecs
+          finalHasRecs
             ? (ctx.lang === 'CN'
               ? '如你愿意，可继续补充肤质/敏感度/当前 routine；我会基于本次上下文自动重算并优化推荐。'
               : 'If you want, add skin type/sensitivity/current routine and I will automatically re-run recommendations with your latest context.')
@@ -54684,7 +54752,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
 
-        const cards = hasRecs
+        const cards = finalHasRecs
           ? [
             {
               card_id: `reco_${ctx.request_id}`,
@@ -54860,7 +54928,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           cards,
           session_patch: sessionPatch,
           events: applyRecoContractToRecoRequestedEvents(
-            hasRecs ? [makeEvent(ctx, 'value_moment', { kind: 'product_reco' })] : [],
+            finalHasRecs ? [makeEvent(ctx, 'value_moment', { kind: 'product_reco' })] : [],
             recoContract,
             {
               ctx,

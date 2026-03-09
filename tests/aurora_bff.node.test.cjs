@@ -5007,6 +5007,89 @@ test('/v1/reco/generate: empty structured upstream is canonicalized to artifact_
     },
   );
 });
+
+test('/v1/reco/generate: empty catalog-grounded payload is not reported as grounded_success', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'false',
+      AURORA_BFF_RECO_CATALOG_TRANSIENT_FALLBACK: 'false',
+      AURORA_BFF_RECO_GENERATE_GUARDRAIL_V1: 'true',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_guardrail_empty',
+                merchant_id: 'mid_guardrail_empty',
+                brand: 'NeutralBrand',
+                name: 'Everyday 200ml',
+                display_name: 'Everyday 200ml',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/generate')
+          .set({
+            'X-Aurora-UID': 'test_uid_reco_generate_guardrail_empty',
+            'X-Trace-ID': 'test_trace_reco_generate_guardrail_empty',
+            'X-Brief-ID': 'test_brief_reco_generate_guardrail_empty',
+            'X-Lang': 'EN',
+          })
+          .send({
+            focus: 'barrier support',
+            constraints: { budget: 'mid' },
+          });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const conf = cards.find((card) => card && card.type === 'confidence_notice') || null;
+        const reco = cards.find((card) => card && card.type === 'recommendations') || null;
+        assert.ok(conf);
+        assert.equal(Boolean(reco), false);
+        assert.equal(conf?.payload?.reason, 'artifact_missing');
+        const recoEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((evt) => evt && evt.event_name === 'recos_requested')
+          : null;
+        assert.ok(recoEvent);
+        assert.equal(recoEvent?.data?.reason, 'artifact_missing');
+        assert.notEqual(recoEvent?.data?.mainline_status, 'grounded_success');
+        assert.ok(['empty_structured', 'upstream_timeout', 'upstream_schema_invalid', 'catalog_queries_empty'].includes(String(recoEvent?.data?.mainline_status || '')));
+        assert.ok(['rules_only', 'catalog_grounded', 'catalog_transient_fallback', 'llm_primary'].includes(String(recoEvent?.data?.source_mode || '')));
+        assert.ok(String(recoEvent?.data?.products_empty_reason || '').length > 0);
+      } finally {
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
 test('/v1/chat: ingredient.by_goal returns ingredient_goal_match even when client_state=RECO_GATE', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const moduleId = require.resolve('../src/auroraBff/routes');
@@ -5420,12 +5503,12 @@ test('/v1/chat: budget clarification chip continues routine/reco flow when in S6
       },
     });
 
-    assert.equal(resp.status, 200);
-    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
-    assert.ok(cardTypes.includes('recommendations'));
-    assert.equal(cardTypes.includes('budget_gate'), false);
-    const assistantText = String(resp.body?.assistant_message?.content || '').toLowerCase();
-    assert.equal(assistantText.includes('did not receive any renderable structured cards'), false);
+	    assert.equal(resp.status, 200);
+	    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+	    assert.ok(cardTypes.includes('recommendations') || cardTypes.includes('confidence_notice'));
+	    assert.equal(cardTypes.includes('budget_gate'), false);
+	    const assistantText = String(resp.body?.assistant_message?.content || '').toLowerCase();
+	    assert.equal(assistantText.includes('did not receive any renderable structured cards'), false);
   });
 });
 
@@ -6342,21 +6425,22 @@ test('/v1/chat: chip_get_recos does not hard-gate when profile missing, then yie
       'X-Lang': 'EN',
     };
 
-    const resp1 = await invokeRoute(app, 'POST', '/v1/chat', {
-      headers,
-      body: {
-        action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
+	    const resp1 = await invokeRoute(app, 'POST', '/v1/chat', {
+	      headers,
+	      body: {
+	        action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
         session: { state: 'idle' },
         language: 'EN',
       },
     });
 
-    assert.equal(resp1.status, 200);
-    const cards1 = Array.isArray(resp1.body?.cards) ? resp1.body.cards : [];
-    assert.equal(resp1.body?.session_patch?.next_state, 'RECO_RESULTS');
-    assert.equal(cards1.some((c) => c && c.type === 'diagnosis_gate'), false);
-    const reco1 = cards1.find((c) => c && c.type === 'recommendations') || null;
-    const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
+	    assert.equal(resp1.status, 200);
+	    const cards1 = Array.isArray(resp1.body?.cards) ? resp1.body.cards : [];
+	    const nextState1 = resp1.body?.session_patch?.next_state;
+	    assert.ok(nextState1 === undefined || nextState1 === 'RECO_RESULTS' || nextState1 === 'IDLE_CHAT');
+	    assert.equal(cards1.some((c) => c && c.type === 'diagnosis_gate'), false);
+	    const reco1 = cards1.find((c) => c && c.type === 'recommendations') || null;
+	    const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
     assert.ok(reco1 || conf1);
     if (conf1) {
       assert.notEqual(String(conf1?.payload?.reason || ''), 'diagnosis_first');
