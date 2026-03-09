@@ -4486,7 +4486,7 @@ test('/v1/chat: ingredient reco opt-in first query already carries ingredient_co
       assert.equal(resp.status, 200);
       assert.equal(capturedQueries.length > 0, true);
       const firstQuery = capturedQueries[0];
-      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_1/i);
+      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_2/i);
       assert.match(firstQuery, /SYSTEM_PROMPT:/i);
       assert.match(firstQuery, /USER_PROMPT_JSON:/i);
       assert.match(firstQuery, /"ingredient_context"\s*:/i);
@@ -4601,17 +4601,17 @@ test('ingredient reco context keeps candidates and injects constraint prompt eve
   }
 });
 
-test('reco prompt bundle uses v1_1 for generic mode and tags ingredient mode separately', () => {
+test('reco prompt bundle uses v1_2 for generic mode and tags ingredient mode separately', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const genericSpec = __internal.resolveRecoMainPromptSpec({});
-    assert.equal(genericSpec.template_id, 'reco_main_v1_1');
+    assert.equal(genericSpec.template_id, 'reco_main_v1_2');
     assert.equal(genericSpec.llm_mode, 'goal_based_products');
 
     const ingredientSpec = __internal.resolveRecoMainPromptSpec({
       ingredientContext: { goal: 'barrier', sensitivity: 'high', candidates: ['Ceramide NP'] },
     });
-    assert.equal(ingredientSpec.template_id, 'reco_main_v1_1');
+    assert.equal(ingredientSpec.template_id, 'reco_main_v1_2');
     assert.equal(ingredientSpec.llm_mode, 'ingredient_filtered_products');
 
     const bundle = __internal.buildAuroraProductRecommendationsPromptBundle({
@@ -4621,7 +4621,7 @@ test('reco prompt bundle uses v1_1 for generic mode and tags ingredient mode sep
       globalStatus: { budget_known: true, itinerary_provided: false, recent_logs_provided: false },
       candidates: [{ product_id: 'prod_1', brand: 'Brand', name: 'Barrier Cream' }],
     });
-    assert.match(bundle.query, /PROMPT_TEMPLATE_ID=reco_main_v1_1/i);
+    assert.match(bundle.query, /PROMPT_TEMPLATE_ID=reco_main_v1_2/i);
     assert.equal(bundle.prompt_spec.llm_mode, 'goal_based_products');
     assert.ok(Number(bundle.schema_chars) > 0);
   } finally {
@@ -4641,21 +4641,89 @@ test('reco prompt contract: query must contain template/system/user blocks and h
     const expectedHash = crypto.createHash('sha1').update(String(query || '')).digest('hex').slice(0, 16);
     const okResult = __internal.validateRecoPromptContract({
       query,
-      expectedTemplateId: 'reco_main_v1_1',
+      expectedTemplateId: 'reco_main_v1_2',
       expectedPromptHash: expectedHash,
     });
     assert.equal(okResult.ok, true);
     assert.equal(Array.isArray(okResult.issues), true);
     assert.equal(okResult.issues.length, 0);
-    assert.equal(okResult.template_id, 'reco_main_v1_1');
+    assert.equal(okResult.template_id, 'reco_main_v1_2');
 
     const badResult = __internal.validateRecoPromptContract({
       query: String(query || '').replace('USER_PROMPT_JSON:', 'USER_PROMPT_BLOCK:'),
-      expectedTemplateId: 'reco_main_v1_1',
+      expectedTemplateId: 'reco_main_v1_2',
       expectedPromptHash: expectedHash,
     });
     assert.equal(badResult.ok, false);
     assert.equal(badResult.issues.includes('missing_user_prompt_json_block'), true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('sanitizeRecoCandidatesForUi keeps ungrounded editorial recommendations without PDP url', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.sanitizeRecoCandidatesForUi([
+      {
+        type: 'recommendations',
+        payload: {
+          recommendations: [
+            {
+              grounding_status: 'ungrounded',
+              product_type: 'serum',
+              brand: 'Editorial',
+              name: 'Barrier Support Serum',
+              display_name: 'Editorial Barrier Support Serum',
+              concern_match: ['barrier', 'redness'],
+              reasons: ['Supports barrier recovery with a low-irritation format.'],
+            },
+          ],
+        },
+      },
+    ], {
+      strictFilter: true,
+      qaMode: 'off',
+      allowOpenAiFallback: false,
+    });
+
+    const recoCard = Array.isArray(out.cards) ? out.cards.find((card) => card?.type === 'recommendations') : null;
+    const recs = Array.isArray(recoCard?.payload?.recommendations) ? recoCard.payload.recommendations : [];
+    assert.equal(recs.length, 1);
+    assert.equal(recs[0]?.grounding_status, 'ungrounded');
+    assert.equal(String(recoCard?.payload?.products_empty_reason || ''), '');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('quality contract ignores missing purchase path for ungrounded editorial recommendations', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const result = __internal.evaluateQualityContractForEnvelope({
+      envelope: {
+        cards: [
+          {
+            type: 'recommendations',
+            payload: {
+              recommendations: [
+                {
+                  grounding_status: 'ungrounded',
+                  product_type: 'moisturizer',
+                  brand: 'Editorial',
+                  name: 'Barrier Cream',
+                },
+              ],
+            },
+          },
+        ],
+      },
+      policyMeta: { intent_canonical: 'reco_products' },
+      assistantText: 'Here are recommendations.',
+      profile: {},
+    });
+    assert.equal(result.url_invariant_pass, true);
+    assert.equal(result.critical_fail_reasons.includes('missing_product_urls_in_recommendations'), false);
   } finally {
     delete require.cache[moduleId];
   }
@@ -4989,17 +5057,18 @@ test('/v1/reco/generate: uses grounded generic reco mainline instead of legacy r
   );
 });
 
-test('/v1/reco/generate: empty structured upstream is canonicalized to artifact_missing with telemetry', async () => {
+test('/v1/reco/generate: keeps ungrounded recommendation plan when catalog grounding is unavailable', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
       DATABASE_URL: undefined,
       AURORA_BFF_USE_MOCK: 'false',
-      AURORA_DECISION_BASE_URL: '',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
-      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
       AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -5007,10 +5076,22 @@ test('/v1/reco/generate: empty structured upstream is canonicalized to artifact_
       const decisionModule = require('../src/auroraBff/auroraDecisionClient');
       const originalAuroraChat = decisionModule.auroraChat;
       decisionModule.auroraChat = async () => ({
-        intent: 'recommend',
-        answer: 'not valid structured reco output',
-        structured: null,
-        context: {},
+        answer: JSON.stringify({
+          recommendations: [
+            {
+              product_type: 'serum',
+              use_case: 'fade post-acne marks with low irritation',
+              concern_match: ['dark_spots', 'acne_marks'],
+              skin_fit: ['oily', 'sensitive'],
+              constraint_notes: ['fragrance_free_preferred'],
+              query_terms: ['azelaic acid serum', 'niacinamide serum'],
+              reasons: ['Targets acne marks while staying low irritation.'],
+            },
+          ],
+          confidence: 0.84,
+          missing_info: [],
+          warnings: [],
+        }),
       });
 
       const moduleId = require.resolve('../src/auroraBff/routes');
@@ -5024,30 +5105,33 @@ test('/v1/reco/generate: empty structured upstream is canonicalized to artifact_
         const resp = await supertest(app)
           .post('/v1/reco/generate')
           .set({
-            'X-Aurora-UID': 'test_uid_reco_generate_empty_structured',
-            'X-Trace-ID': 'test_trace_reco_generate_empty_structured',
-            'X-Brief-ID': 'test_brief_reco_generate_empty_structured',
+            'X-Aurora-UID': 'test_uid_reco_generate_ungrounded',
+            'X-Trace-ID': 'test_trace_reco_generate_ungrounded',
+            'X-Brief-ID': 'test_brief_reco_generate_ungrounded',
             'X-Lang': 'EN',
           })
           .send({
-            focus: 'barrier support',
-            constraints: { budget: 'mid' },
+            focus: 'post-acne marks',
+            constraints: { fragrance_free: true },
           });
 
         assert.equal(resp.status, 200);
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-        const conf = cards.find((card) => card && card.type === 'confidence_notice') || null;
-        assert.ok(conf);
-        assert.equal(conf?.payload?.reason, 'artifact_missing');
         const recoCard = cards.find((card) => card && card.type === 'recommendations') || null;
-        assert.equal(Boolean(recoCard), false);
-
+        assert.ok(recoCard);
+        const recs = Array.isArray(recoCard?.payload?.recommendations) ? recoCard.payload.recommendations : [];
+        assert.equal(recs.length >= 1, true);
+        assert.equal(recoCard?.payload?.grounding_status, 'ungrounded');
+        assert.equal(recoCard?.payload?.recommendation_meta?.source_mode, 'llm_primary');
+        assert.equal(String(recoCard?.payload?.source || ''), 'llm_editorial_v1');
+        assert.equal(String(recoCard?.payload?.mainline_status || ''), 'catalog_skipped_disabled');
         const recoEvent = Array.isArray(resp.body?.events)
           ? resp.body.events.find((evt) => evt && evt.event_name === 'recos_requested')
           : null;
         assert.ok(recoEvent);
-        assert.equal(recoEvent?.data?.reason, 'artifact_missing');
-        assert.equal(recoEvent?.data?.telemetry_reason, 'empty_structured');
+        assert.equal(String(recoEvent?.data?.reason || ''), '');
+        assert.equal(String(recoEvent?.data?.grounding_status || ''), 'ungrounded');
+        assert.equal(Number(recoEvent?.data?.ungrounded_count || 0) >= 1, true);
       } finally {
         decisionModule.auroraChat = originalAuroraChat;
         delete require.cache[moduleId];
