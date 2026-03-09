@@ -481,7 +481,9 @@ const AURORA_DECISION_BASE_URL = String(process.env.AURORA_DECISION_BASE_URL || 
 const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '')
   .replace(/\/$/, '');
 const RECO_PROMPTS_ROOT_DIR = path.resolve(__dirname, '../../prompts');
-const RECO_MAIN_PROMPT_TEMPLATE_ID = 'reco_main_v1_0';
+const RECO_MAIN_PROMPT_TEMPLATE_ID = String(
+  process.env.RECO_MAIN_PROMPT_TEMPLATE_ID || 'reco_main_v1_2',
+).trim();
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
@@ -19469,8 +19471,12 @@ function buildConfidenceNoticeCardPayload({
   const messageByReason = {
     artifact_missing:
       lang === 'CN'
-        ? '还没有可用的诊断结果，请先上传照片或先做一次低置信度分析。'
-        : 'No diagnosis artifact is available yet. Please upload photos or run a low-confidence baseline analysis first.',
+        ? '当前推荐结果不够充分，请补充皮肤档案或稍后重试。'
+        : 'Recommendation results are insufficient. Please refine your skin profile or retry shortly.',
+    strict_filter_dropped:
+      lang === 'CN'
+        ? '已生成推荐方案，但目前可购商品暂不满足质量门槛。以下是方案概要，你可以参考或稍后重试。'
+        : 'A recommendation plan was generated but available catalog items did not pass quality gates. Here is the plan summary; you can refer to it or retry later.',
     low_confidence:
       lang === 'CN'
         ? '当前诊断置信度较低，已降级为温和基础方案。建议补拍 daylight + indoor_white 提升准确度。'
@@ -19931,6 +19937,47 @@ function inferCardGuardReasonFromEvents(events) {
   return 'artifact_missing';
 }
 
+function deriveRecoEmptyReason({ hasRecs, productsEmptyReason, groundedCount, artifactGateOk } = {}) {
+  if (hasRecs) return null;
+  const emptyReason = String(productsEmptyReason || '').trim();
+  const grounded = Number.isFinite(Number(groundedCount)) ? Number(groundedCount) : 0;
+  if (artifactGateOk === false) return 'artifact_missing';
+  if (grounded > 0 && emptyReason === 'strict_filter_fallback_only') return 'strict_filter_dropped';
+  if (emptyReason) return emptyReason;
+  return 'artifact_missing';
+}
+
+function normalizeRecoRequestedEventsForPrimaryReason(events, primaryReason) {
+  const rows = Array.isArray(events) ? events : [];
+  const normalizedReason = String(primaryReason || '').trim().toLowerCase() === 'timeout_degraded'
+    ? 'timeout_degraded'
+    : 'artifact_missing';
+  const next = [];
+  let hasRecoRequested = false;
+  for (const evt of rows) {
+    if (!evt || typeof evt !== 'object' || Array.isArray(evt)) {
+      next.push(evt);
+      continue;
+    }
+    if (String(evt.event_name || '').trim() !== 'recos_requested') {
+      next.push(evt);
+      continue;
+    }
+    hasRecoRequested = true;
+    const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? { ...evt.data } : {};
+    const previousReason = String(data.reason || '').trim().toLowerCase();
+    if (normalizedReason === 'artifact_missing') {
+      if (previousReason && previousReason !== 'artifact_missing') {
+        data.telemetry_reason = previousReason;
+      }
+      data.reason = 'artifact_missing';
+    } else {
+      data.reason = 'timeout_degraded';
+    }
+    next.push({ ...evt, data });
+  }
+  return { events: next, hasRecoRequested };
+}
 function ensureNonEmptyChatCardsEnvelope({ envelope, ctx, language } = {}) {
   const baseEnvelope = envelope && typeof envelope === 'object' && !Array.isArray(envelope)
     ? { ...envelope }
@@ -26285,6 +26332,18 @@ async function sanitizeRecoCandidatesForUi(
         llmFallbackEmpty: llmFallbackEmptyForCard,
       });
 
+      const planOnlyRecs = kept.length === 0 && recs.length > 0
+        ? recs.map((r) => {
+            if (!isPlainObject(r)) return r;
+            const { pdp_open, url, pdp_url, price, availability, ...rest } = r;
+            const sku = isPlainObject(rest.sku) ? { ...rest.sku } : {};
+            delete sku.url;
+            delete sku.pdp_url;
+            delete sku.price;
+            delete sku.availability;
+            return { ...rest, sku };
+          })
+        : [];
       nextCards.push({
         ...card,
         payload: {
@@ -26292,6 +26351,7 @@ async function sanitizeRecoCandidatesForUi(
           recommendations: kept,
           ...(finalExternalSearchCtas.length ? { external_search_ctas: finalExternalSearchCtas } : {}),
           ...(productsEmptyReason ? { products_empty_reason: productsEmptyReason } : {}),
+          ...(planOnlyRecs.length > 0 ? { plan_only_recommendations: planOnlyRecs } : {}),
         },
         ...(mergedFieldMissing.length ? { field_missing: mergedFieldMissing } : {}),
       });
@@ -43056,6 +43116,23 @@ function mountAuroraBffRoutes(app, { logger }) {
         norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
       }
       const payload = norm.payload;
+      if (
+        isPlainObject(payload) &&
+        !(Array.isArray(payload.recommendations) && payload.recommendations.length > 0) &&
+        Array.isArray(payload.plan_only_recommendations) &&
+        payload.plan_only_recommendations.length > 0 &&
+        String(payload.products_empty_reason || '').trim() === 'strict_filter_fallback_only'
+      ) {
+        payload.recommendations = payload.plan_only_recommendations;
+        payload.grounding_status = 'plan_only';
+        payload.mainline_status = 'plan_only_fallback';
+        logger?.info(
+          { request_id: ctx.request_id, plan_count: payload.recommendations.length },
+          'aurora bff: /v1/reco/generate strict filter cleared grounded recs, falling back to plan_only recommendations',
+        );
+      }
+      const recoMeta = isPlainObject(payload?.recommendation_meta) ? payload.recommendation_meta : {};
+      const hasPayloadRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
       const suggestedChips = [];
       const nextActions = upstream && Array.isArray(upstream.next_actions) ? upstream.next_actions : [];
@@ -43098,7 +43175,29 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
         ],
         session_patch: payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {},
-        events: [makeEvent({ ...ctx, trigger_source: 'action' }, 'recos_requested', { explicit: true })],
+        events: [
+          makeEvent({ ...ctx, trigger_source: 'action' }, 'recos_requested', {
+            explicit: true,
+            source: String(payload?.source || recoMeta.source_mode || 'catalog_grounded_v1'),
+            source_mode: String(recoMeta.source_mode || ''),
+            grounding_status: String(payload?.grounding_status || recoMeta.grounding_status || ''),
+            grounded_count: Number.isFinite(Number(payload?.grounded_count)) ? Number(payload.grounded_count) : 0,
+            ungrounded_count: Number.isFinite(Number(payload?.ungrounded_count)) ? Number(payload.ungrounded_count) : 0,
+            mainline_status: String(payload?.mainline_status || recoMeta.mainline_status || ''),
+            catalog_skip_reason: String(payload?.catalog_skip_reason || recoMeta.catalog_skip_reason || ''),
+            telemetry_reason: String(payload?.telemetry_reason || recoMeta.telemetry_failure_reason || ''),
+            ...(recoMeta.prompt_template_id ? { prompt_template_id: recoMeta.prompt_template_id } : {}),
+            ...(() => {
+              const emptyReason = deriveRecoEmptyReason({
+                hasRecs: hasPayloadRecommendations,
+                productsEmptyReason: payload?.products_empty_reason,
+                groundedCount: Number.isFinite(Number(payload?.grounded_count)) ? Number(payload.grounded_count) : 0,
+                artifactGateOk: true,
+              });
+              return emptyReason ? { reason: emptyReason } : {};
+            })(),
+          }),
+        ],
       });
       if (!AURORA_RECO_GENERATE_GUARDRAIL_V1) return res.json(envelope);
       const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
@@ -47309,13 +47408,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         setResponseHeader('x-aurora-policy-version', String(rolloutContext.policy_version || policyMeta.policy_version || 'legacy'));
       }
       const guardEligible = statusCode < 400 && shouldApplyRecoOutputGuard({ envelope: normalized, ctx });
-      const lowMediumFiltered = {
-        envelope: normalized,
-        applied: false,
-        filteredCount: 0,
-        totalCount: 0,
-        fallbackApplied: false,
-      };
+      const lowMediumFiltered = guardEligible
+        ? applyLowOrMediumRecoGuardToEnvelope({ envelope: normalized, ctx, language: ctx.lang })
+        : { envelope: normalized, applied: false, filteredCount: 0, totalCount: 0, fallbackApplied: false };
       if (lowMediumFiltered.applied) {
         logger?.info(
           {
@@ -52238,9 +52333,26 @@ function mountAuroraBffRoutes(app, { logger }) {
             if (matcherHandle && typeof matcherHandle.unref === 'function') matcherHandle.unref();
           }
         }
-        const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
+        let hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
           ? norm.payload.recommendations.length > 0
           : false;
+        if (
+          !hasRecs &&
+          isPlainObject(norm?.payload) &&
+          Array.isArray(norm.payload.plan_only_recommendations) &&
+          norm.payload.plan_only_recommendations.length > 0 &&
+          String(norm.payload.products_empty_reason || '').trim() === 'strict_filter_fallback_only'
+        ) {
+          norm.payload.recommendations = norm.payload.plan_only_recommendations;
+          norm.payload.grounding_status = 'plan_only';
+          norm.payload.mainline_status = 'plan_only_fallback';
+          hasRecs = true;
+          recordAuroraSkinFlowMetric({ stage: 'reco_plan_only_fallback', hit: true });
+          logger?.info(
+            { request_id: ctx.request_id, plan_count: norm.payload.recommendations.length },
+            'aurora bff: strict filter cleared grounded recs, falling back to plan_only recommendations',
+          );
+        }
         if (!hasRecs && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
           recoTimeoutDegraded = true;
         }
@@ -52355,6 +52467,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
             used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
             used_safety_flags: lowConfidenceArtifact,
+            grounding_status: pickFirstTrimmed(payload.grounding_status, metaExisting.grounding_status) || null,
+            grounded_count: Number.isFinite(Number(payload.grounded_count)) ? Number(payload.grounded_count) : Number(metaExisting.grounded_count || 0) || 0,
+            ungrounded_count: Number.isFinite(Number(payload.ungrounded_count)) ? Number(payload.ungrounded_count) : Number(metaExisting.ungrounded_count || 0) || 0,
+            mainline_status: pickFirstTrimmed(payload.mainline_status, metaExisting.mainline_status) || null,
+            catalog_skip_reason: pickFirstTrimmed(payload.catalog_skip_reason, metaExisting.catalog_skip_reason) || null,
+            telemetry_failure_reason: pickFirstTrimmed(payload.telemetry_reason, metaExisting.telemetry_failure_reason) || null,
+            prompt_template_id: RECO_MAIN_PROMPT_TEMPLATE_ID,
             ...(recoLlmTrace ? { llm_trace: recoLlmTrace } : {}),
           };
           payload.metadata = {
@@ -52588,7 +52707,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               kb_write_status: kbWriteStatus,
               ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
               ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
-              ...(!hasRecs ? { reason: 'artifact_missing' } : {}),
+              ...(() => {
+                const emptyReason = deriveRecoEmptyReason({
+                  hasRecs,
+                  productsEmptyReason: payload?.products_empty_reason,
+                  groundedCount: Number.isFinite(Number(payload?.grounded_count)) ? Number(payload.grounded_count) : 0,
+                  artifactGateOk: artifactGate ? artifactGate.ok : true,
+                });
+                return emptyReason ? { reason: emptyReason } : {};
+              })(),
             }),
           ],
         });
@@ -54141,6 +54268,7 @@ const __internal = {
   mergePhotoFindingsIntoAnalysis,
   hasRenderableCards,
   inferCardGuardReasonFromEvents,
+  deriveRecoEmptyReason,
   ensureNonEmptyChatCardsEnvelope,
   shouldApplyRecoOutputGuard,
   looksLikeStallPhrase,
