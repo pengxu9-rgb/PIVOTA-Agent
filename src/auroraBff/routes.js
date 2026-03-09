@@ -20031,8 +20031,12 @@ function buildConfidenceNoticeCardPayload({
   const messageByReason = {
     artifact_missing:
       lang === 'CN'
-        ? '还没有可用的诊断结果，请先上传照片或先做一次低置信度分析。'
-        : 'No diagnosis artifact is available yet. Please upload photos or run a low-confidence baseline analysis first.',
+        ? '当前还没有可展示的推荐结果。你可以补充更多需求，或稍后再试一次。'
+        : 'No recommendation result is ready to show yet. Add more context or retry shortly.',
+    strict_filter_dropped:
+      lang === 'CN'
+        ? '当前可购候选没有全部通过护肤过滤，我先保留推荐方案供你参考。'
+        : 'Grounded purchasable candidates were filtered out, so I’m preserving the recommendation plan for reference.',
     low_confidence:
       lang === 'CN'
         ? '当前诊断置信度较低，已降级为温和基础方案。建议补拍 daylight + indoor_white 提升准确度。'
@@ -21278,6 +21282,73 @@ function normalizeRecoProductsEmptyReason(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function deriveRecoEmptyReason(payload, contract) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const contractObj = isPlainObject(contract) ? contract : {};
+  const productsEmptyReason = normalizeRecoProductsEmptyReason(
+    payloadObj.products_empty_reason || contractObj.products_empty_reason,
+  );
+  const groundedCount = Number.isFinite(Number(payloadObj.grounded_count))
+    ? Number(payloadObj.grounded_count)
+    : Number.isFinite(Number(contractObj.grounded_count))
+      ? Number(contractObj.grounded_count)
+      : 0;
+  const ungroundedCount = Number.isFinite(Number(payloadObj.ungrounded_count))
+    ? Number(payloadObj.ungrounded_count)
+    : Number.isFinite(Number(contractObj.ungrounded_count))
+      ? Number(contractObj.ungrounded_count)
+      : 0;
+  if (groundedCount > 0 || ungroundedCount > 0) return '';
+  if (productsEmptyReason === 'strict_filter_fallback_only') return 'strict_filter_dropped';
+  return pickFirstTrimmed(contractObj.primary_failure_reason, 'artifact_missing') || 'artifact_missing';
+}
+
+function restorePlanOnlyRecommendations(payload, { sourceMode = '' } = {}) {
+  if (!isPlainObject(payload)) return payload;
+  const nextPayload = { ...payload };
+  const currentRecommendations = Array.isArray(nextPayload.recommendations) ? nextPayload.recommendations : [];
+  if (currentRecommendations.length > 0) return nextPayload;
+  if (normalizeRecoProductsEmptyReason(nextPayload.products_empty_reason) !== 'strict_filter_fallback_only') {
+    return nextPayload;
+  }
+  const planOnlyRecommendations = Array.isArray(nextPayload.plan_only_recommendations)
+    ? nextPayload.plan_only_recommendations
+        .filter((row) => isPlainObject(row))
+        .map((row) => ({
+          ...row,
+          grounding_status: pickFirstTrimmed(row.grounding_status, 'ungrounded') || 'ungrounded',
+          metadata: {
+            ...(isPlainObject(row.metadata) ? row.metadata : {}),
+            reco_render_mode: pickFirstTrimmed(row?.metadata?.reco_render_mode, 'plan_only') || 'plan_only',
+          },
+        }))
+    : [];
+  if (!planOnlyRecommendations.length) return nextPayload;
+  const normalizedSourceMode = pickFirstTrimmed(
+    sourceMode,
+    nextPayload.recommendation_meta && nextPayload.recommendation_meta.source_mode,
+    nextPayload.source,
+    'llm_primary',
+  ) || 'llm_primary';
+  const existingMeta = isPlainObject(nextPayload.recommendation_meta) ? nextPayload.recommendation_meta : {};
+  nextPayload.recommendations = planOnlyRecommendations;
+  nextPayload.grounding_status = 'ungrounded';
+  nextPayload.grounded_count = 0;
+  nextPayload.ungrounded_count = planOnlyRecommendations.length;
+  nextPayload.mainline_status = 'plan_only_fallback';
+  nextPayload.source = pickFirstTrimmed(nextPayload.source, normalizedSourceMode) || normalizedSourceMode;
+  nextPayload.recommendation_meta = {
+    ...existingMeta,
+    source_mode: pickFirstTrimmed(existingMeta.source_mode, normalizedSourceMode) || normalizedSourceMode,
+    grounding_status: 'ungrounded',
+    grounded_count: 0,
+    ungrounded_count: planOnlyRecommendations.length,
+    mainline_status: 'plan_only_fallback',
+    products_empty_reason: 'strict_filter_fallback_only',
+  };
+  return nextPayload;
+}
+
 function deriveRecoContractStatus({
   promptContractOk,
   recommendations,
@@ -21399,13 +21470,18 @@ function buildRecoMainlineContract({
     else if (normalizedTelemetryReason === 'catalog_transient_failure') upstreamStatus = 'catalog_transient_failure';
     else upstreamStatus = 'artifact_missing';
   }
+  const primaryFailureReason = hasRecommendations
+    ? null
+    : normalizedProductsEmptyReason === 'strict_filter_fallback_only'
+      ? 'strict_filter_dropped'
+      : 'artifact_missing';
 
   return {
     ok: hasRecommendations,
     contract_status: contractStatus,
     source_mode: normalizedSourceMode,
     source: String(source || '').trim() || null,
-    primary_failure_reason: hasRecommendations ? null : 'artifact_missing',
+    primary_failure_reason: primaryFailureReason,
     telemetry_failure_reason: normalizedTelemetryReason || null,
     failure_class: failureClass || null,
     upstream_status: upstreamStatus,
@@ -27883,6 +27959,9 @@ async function sanitizeRecoCandidatesForUi(
         payload: {
           ...payload,
           recommendations: kept,
+          ...(kept.length === 0 && recs.length > 0 && normalizeRecoProductsEmptyReason(productsEmptyReason) === 'strict_filter_fallback_only'
+            ? { plan_only_recommendations: recs }
+            : {}),
           ...(finalExternalSearchCtas.length ? { external_search_ctas: finalExternalSearchCtas } : {}),
           ...(productsEmptyReason ? { products_empty_reason: productsEmptyReason } : {}),
         },
@@ -45605,9 +45684,38 @@ function mountAuroraBffRoutes(app, { logger }) {
         finalDirectContract.prompt_template_id,
       ) || finalDirectContract.prompt_template_id;
       if (isPlainObject(payload)) {
-        const nextPayload = attachRecoContractMeta(payload, finalDirectContract);
+        const nextPayload = attachRecoContractMeta(
+          restorePlanOnlyRecommendations(payload, {
+            sourceMode: finalDirectContract.source_mode,
+          }),
+          finalDirectContract,
+        );
         Object.assign(payload, nextPayload);
       }
+      if (Array.isArray(payload?.recommendations) && payload.recommendations.length > 0) {
+        Object.assign(
+          finalDirectContract,
+          buildRecoMainlineContract({
+            recommendations: payload.recommendations,
+            sourceMode: payload?.recommendation_meta?.source_mode || finalDirectContract.source_mode,
+            source: payload?.source || finalDirectContract.source,
+            llmFailureClass: upstreamReco?.llmFailureClass,
+            upstreamFailureCode: upstreamReco?.upstreamFailureCode,
+            promptContractOk: payload?.prompt_contract_ok !== false,
+            fieldMissing: norm.field_missing,
+            structuredSource: payload?.recommendation_meta?.source_mode,
+            catalogSkipReason: payload?.recommendation_meta?.catalog_skip_reason,
+            productsEmptyReason: payload?.products_empty_reason,
+            groundingStatus: payload?.grounding_status || payload?.recommendation_meta?.grounding_status,
+            groundedCount: payload?.grounded_count || payload?.recommendation_meta?.grounded_count,
+            ungroundedCount: payload?.ungrounded_count || payload?.recommendation_meta?.ungrounded_count,
+            mainlineStatusOverride: payload?.mainline_status || payload?.recommendation_meta?.mainline_status,
+            promptTemplateId: payload?.prompt_template_id || payload?.recommendation_meta?.prompt_template_id,
+          }),
+        );
+      }
+      const directNoRecoReason = deriveRecoEmptyReason(payload, finalDirectContract);
+      const hasPlanOrGroundedRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -45632,7 +45740,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             llmTraceRef,
             failureClass: upstreamReco && upstreamReco.llmFailureClass ? upstreamReco.llmFailureClass : '',
             upstreamFailureCode: upstreamReco?.upstreamFailureCode,
-            ...(!hasPayloadRecommendations ? { reason: 'artifact_missing' } : {}),
+            ...(!hasPlanOrGroundedRecommendations && directNoRecoReason ? { reason: directNoRecoReason } : {}),
           }),
         }).events,
       });
@@ -45647,8 +45755,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 type: 'confidence_notice',
                 payload: buildConfidenceNoticeCardPayload({
                   language: ctx.lang,
-                  reason: finalDirectContract.primary_failure_reason || 'artifact_missing',
-                  confidence: { score: 0.35, level: 'low', rationale: [finalDirectContract.telemetry_failure_reason || 'artifact_missing'] },
+                  reason: directNoRecoReason || 'artifact_missing',
+                  confidence: { score: 0.35, level: 'low', rationale: [finalDirectContract.telemetry_failure_reason || directNoRecoReason || 'artifact_missing'] },
                   actions: ['retry_recommendations', 'refine_profile'],
                 }),
               },
@@ -45720,10 +45828,41 @@ function mountAuroraBffRoutes(app, { logger }) {
         finalContract.prompt_template_id,
       ) || finalContract.prompt_template_id;
       if (isPlainObject(guardedRecoCard?.payload)) {
-        guardedRecoCard.payload = attachRecoContractMeta(guardedRecoCard.payload, finalContract);
+        guardedRecoCard.payload = attachRecoContractMeta(
+          restorePlanOnlyRecommendations(guardedRecoCard.payload, {
+            sourceMode: finalContract.source_mode,
+          }),
+          finalContract,
+        );
       }
+      if (Array.isArray(guardedRecoCard?.payload?.recommendations) && guardedRecoCard.payload.recommendations.length > 0) {
+        Object.assign(
+          finalContract,
+          buildRecoMainlineContract({
+            recommendations: guardedRecoCard.payload.recommendations,
+            sourceMode: guardedRecoCard.payload?.recommendation_meta?.source_mode || finalContract.source_mode,
+            source: guardedRecoCard.payload?.source || finalContract.source,
+            llmFailureClass: finalContract.failure_class,
+            upstreamFailureCode: upstreamReco?.upstreamFailureCode,
+            promptContractOk: guardedRecoCard.payload?.prompt_contract_ok !== false,
+            fieldMissing: guardedRecoCard?.field_missing,
+            structuredSource: guardedRecoCard.payload?.recommendation_meta?.source_mode,
+            catalogSkipReason: guardedRecoCard.payload?.recommendation_meta?.catalog_skip_reason,
+            productsEmptyReason: guardedRecoCard.payload?.products_empty_reason,
+            groundingStatus: guardedRecoCard.payload?.grounding_status || guardedRecoCard.payload?.recommendation_meta?.grounding_status,
+            groundedCount: guardedRecoCard.payload?.grounded_count || guardedRecoCard.payload?.recommendation_meta?.grounded_count,
+            ungroundedCount: guardedRecoCard.payload?.ungrounded_count || guardedRecoCard.payload?.recommendation_meta?.ungrounded_count,
+            mainlineStatusOverride: guardedRecoCard.payload?.mainline_status || guardedRecoCard.payload?.recommendation_meta?.mainline_status,
+            promptTemplateId: guardedRecoCard.payload?.prompt_template_id || guardedRecoCard.payload?.recommendation_meta?.prompt_template_id,
+          }),
+        );
+      }
+      const finalNoRecoReason = deriveRecoEmptyReason(guardedRecoCard?.payload, finalContract);
       const nextSessionPatch = isPlainObject(guardedEnvelope.session_patch) ? { ...guardedEnvelope.session_patch } : {};
-      if (hasGuardedRecommendations) {
+      const hasFinalRecommendations = Array.isArray(guardedRecoCard?.payload?.recommendations)
+        ? guardedRecoCard.payload.recommendations.length > 0
+        : hasGuardedRecommendations;
+      if (hasFinalRecommendations) {
         nextSessionPatch.next_state = 'S7_PRODUCT_RECO';
       } else {
         delete nextSessionPatch.next_state;
@@ -45731,16 +45870,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           guardedEnvelope.suggested_chips = buildRecoEntryChips(ctx.lang);
         }
         guardedEnvelope.cards = [
-          {
-            card_id: `conf_${ctx.request_id}_reco_missing`,
-            type: 'confidence_notice',
-            payload: buildConfidenceNoticeCardPayload({
-              language: ctx.lang,
-              reason: finalContract.primary_failure_reason || 'artifact_missing',
-              confidence: { score: 0.35, level: 'low', rationale: [finalContract.telemetry_failure_reason || 'artifact_missing'] },
-              actions: ['retry_recommendations', 'refine_profile'],
-            }),
-          },
+              {
+                card_id: `conf_${ctx.request_id}_reco_missing`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: finalNoRecoReason || 'artifact_missing',
+                  confidence: { score: 0.35, level: 'low', rationale: [finalContract.telemetry_failure_reason || finalNoRecoReason || 'artifact_missing'] },
+                  actions: ['retry_recommendations', 'refine_profile'],
+                }),
+              },
           ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
         ];
       }
@@ -55428,7 +55567,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             ungrounded_count: Number.isFinite(Number(payload.ungrounded_count)) ? Number(payload.ungrounded_count) : Number(metaExisting.ungrounded_count || 0) || 0,
             prompt_template_id: pickFirstTrimmed(
               payload.prompt_template_id,
-              metaExisting.prompt_template_id,
               recoMetaPromptTemplateId,
               RECO_MAIN_PROMPT_TEMPLATE_ID,
             ),
@@ -55481,8 +55619,33 @@ function mountAuroraBffRoutes(app, { logger }) {
             finalRecoContract.prompt_template_id,
           ) || finalRecoContract.prompt_template_id;
           recoContract = finalRecoContract;
-          const nextPayload = attachRecoContractMeta(payload, finalRecoContract);
+          const nextPayload = attachRecoContractMeta(
+            restorePlanOnlyRecommendations(payload, {
+              sourceMode: finalRecoContract.source_mode,
+            }),
+            finalRecoContract,
+          );
           Object.assign(payload, nextPayload);
+          if (Array.isArray(payload.recommendations) && payload.recommendations.length > 0) {
+            recoContract = buildRecoMainlineContract({
+              recommendations: payload.recommendations,
+              sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+              source: payload.source,
+              llmFailureClass: llmFailureClass || recoContract?.failure_class,
+              upstreamFailureCode,
+              promptContractOk: payload.prompt_contract_ok !== false,
+              fieldMissing: norm?.field_missing,
+              structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+              catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
+              productsEmptyReason: payload.products_empty_reason,
+              groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
+              groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
+              ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
+              mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
+              promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
+            });
+            Object.assign(payload, attachRecoContractMeta(payload, recoContract));
+          }
         }
 
         const finalHasRecs = Array.isArray(payload && payload.recommendations)
@@ -55570,11 +55733,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               type: 'confidence_notice',
               payload: buildConfidenceNoticeCardPayload({
                 language: ctx.lang,
-                reason: recoContract?.primary_failure_reason || 'artifact_missing',
+                reason: deriveRecoEmptyReason(payload, recoContract) || 'artifact_missing',
                 confidence: {
                   score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.35,
                   level: 'low',
-                  rationale: [recoContract?.telemetry_failure_reason || 'artifact_missing'],
+                  rationale: [recoContract?.telemetry_failure_reason || deriveRecoEmptyReason(payload, recoContract) || 'artifact_missing'],
                 },
                 actions: ['retry_recommendations', 'upload_daylight_and_indoor_white', 'update_current_routine'],
               }),
@@ -55751,7 +55914,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 kb_write_status: kbWriteStatus,
                 ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
                 ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
-                ...(!finalHasRecs ? { reason: 'artifact_missing' } : {}),
+                ...(!finalHasRecs && deriveRecoEmptyReason(payload, recoContract) ? { reason: deriveRecoEmptyReason(payload, recoContract) } : {}),
               },
             },
           ).events,
