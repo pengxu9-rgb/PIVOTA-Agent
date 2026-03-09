@@ -2942,8 +2942,8 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
         const thirdCatalogDebug = thirdDebug?.reco_catalog_debug;
         assert.equal(thirdCatalogDebug?.probe_while_open, true);
         assert.equal(thirdCatalogDebug?.fail_fast_after?.open, true);
-        assert.equal(thirdCatalogDebug?.search_timeout_effective_ms, 1200);
-        assert.equal(searchTimeouts[1], 1200);
+        assert.equal(thirdCatalogDebug?.search_timeout_effective_ms, 1500);
+        assert.equal(searchTimeouts[1], 1500);
       } finally {
         Date.now = originalNow;
         axios.get = originalGet;

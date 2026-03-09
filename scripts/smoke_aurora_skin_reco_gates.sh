@@ -134,11 +134,17 @@ run_case_low_confidence() {
 
   jq_assert_json "low confidence emits reco-stage output (product_verdict/recommendations/notice)" '
     .cards | any(.type=="product_verdict" or .type=="recommendations")
-      or any((.type=="confidence_notice") and (.payload.reason=="low_confidence" or .payload.reason=="artifact_missing" or .payload.reason=="timeout_degraded"))
+      or any((.type=="confidence_notice") and (.payload.reason=="artifact_missing"))
   ' "$reco_json"
-  jq_assert_json "low confidence event flag true when stream is present" '
+  jq_assert_json "low confidence event keeps artifact_missing primary reason when stream is present" '
     if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | any((.event_name=="recos_requested") and (.data.low_confidence==true) and (((.data.reason=="low_confidence") or (.data.reason=="artifact_missing")) or (.data.telemetry_reason=="timeout_degraded"))))
+    then ((.events // []) | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing")))
+    else true
+    end
+  ' "$reco_json"
+  jq_assert_json "low confidence timeout stays telemetry-only when present" '
+    if ((.events // []) | any(.event_name=="recos_requested"))
+    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.telemetry_reason // "")=="timeout_degraded" or (.data.telemetry_reason // "")=="")))
     else true
     end
   ' "$reco_json"
@@ -217,28 +223,51 @@ run_case_medium_confidence() {
     }'
   )"
 
-  jq_assert_json "medium/high path emits grounded recommendations or canonical artifact_missing notice" '
-    .cards | any(.type=="product_verdict" or .type=="recommendations")
-      or any((.type=="confidence_notice") and (.payload.reason=="artifact_missing" or .payload.reason=="timeout_degraded"))
+  jq_assert_json "medium/high path returns grounded product output" '
+    .cards | any(
+      (.type=="product_verdict")
+      or ((.type=="recommendations") and (((.payload.recommendations // []) | length) >= 1))
+    )
   ' "$reco_json"
-  jq_assert_json "recos_requested source and canonical reason present (optional stream)" '
+  jq_assert_json "recos_requested source present when stream exists" '
     if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0)) and ((((.data.reason // "") | length) == 0) or (.data.reason=="artifact_missing"))))
+    then ((.events // []) | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0)))
     else true
     end
   ' "$reco_json"
-  jq_assert_json "medium/high path not marked low_confidence in reco event (optional stream)" '
+  jq_assert_json "medium/high path not marked low_confidence (optional stream)" '
     if ((.events // []) | any(.event_name=="recos_requested"))
     then ((.events // []) | any((.event_name=="recos_requested") and (.data.low_confidence==false)))
     else true
     end
   ' "$reco_json"
-  jq_assert_json "medium/high timeout only appears in telemetry when no reco is returned" '
-    if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | map(select(.event_name=="recos_requested")) | all((.data.reason // "") != "timeout_degraded"))
-    else true
-    end
-  ' "$reco_json"
+}
+
+run_case_direct_reco_generate() {
+  local uid="uid_direct_reco_${RUN_ID}"
+  local trace="trace_direct_reco_${RUN_ID}"
+  local brief="brief_direct_reco_${RUN_ID}"
+
+  say "case 4: direct /v1/reco/generate grounded output"
+  seed_core_profile "$uid" "$trace" "$brief"
+
+  local direct_json
+  direct_json="$(
+    post_json "$uid" "$trace" "$brief" "/v1/reco/generate" '{
+      "focus":"barrier support",
+      "constraints":{"budget":"mid","fragrance_free":"preferred"}
+    }'
+  )"
+
+  jq_assert_json "direct reco returns recommendations card" '
+    .cards | any((.type=="recommendations") and (((.payload.recommendations // []) | length) >= 1))
+  ' "$direct_json"
+  jq_assert_json "direct reco recos_requested stream exists" '
+    (.events // []) | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))
+  ' "$direct_json"
+  jq_assert_json "direct reco does not surface upstream_schema_invalid as primary reason" '
+    (.cards | any((.type=="confidence_notice") and (.payload.reason=="upstream_schema_invalid"))) | not
+  ' "$direct_json"
 }
 
 run_case_safety_block() {
@@ -246,7 +275,7 @@ run_case_safety_block() {
   local trace="trace_gate_safety_${RUN_ID}"
   local brief="brief_gate_safety_${RUN_ID}"
 
-  say "case 4: safety block"
+  say "case 5: safety block"
   seed_core_profile "$uid" "$trace" "$brief"
 
   local safety_json
@@ -293,6 +322,7 @@ curl_do -sSI "${BASE}/v1/session/bootstrap" | grep -i '^x-service-commit:' || tr
 run_case_artifact_missing
 run_case_low_confidence
 run_case_medium_confidence
+run_case_direct_reco_generate
 run_case_safety_block
 
 say "summary"

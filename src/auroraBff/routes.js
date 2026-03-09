@@ -504,7 +504,12 @@ const AURORA_DECISION_BASE_URL = String(process.env.AURORA_DECISION_BASE_URL || 
 const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '')
   .replace(/\/$/, '');
 const RECO_PROMPTS_ROOT_DIR = path.resolve(__dirname, '../../prompts');
-const RECO_MAIN_PROMPT_TEMPLATE_ID = 'reco_main_v1_0';
+const RECO_MAIN_PROMPT_TEMPLATE_ID = String(
+  process.env.RECO_MAIN_PROMPT_TEMPLATE_ID || 'reco_main_v1_1',
+).trim() || 'reco_main_v1_1';
+const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
+  process.env.RECO_INGREDIENT_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
+).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
@@ -923,7 +928,12 @@ let ingredientResearchCacheLoadedFromDisk = false;
 let ingredientResearchCachePersistTimer = null;
 let ingredientResearchCachePersistPending = false;
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
-const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
+const RECO_CATALOG_GROUNDED_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const RECO_CATALOG_SEARCH_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 1800);
@@ -977,23 +987,23 @@ const RECO_CATALOG_FAIL_FAST_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const RECO_CATALOG_FAIL_FAST_THRESHOLD = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD || 1);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
   return Math.max(1, Math.min(8, v));
 })();
 const RECO_CATALOG_FAIL_FAST_COOLDOWN_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS || 90000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS || 15000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 15000;
   return Math.max(3000, Math.min(300000, v));
 })();
 const RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS || 8000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS || 5000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
   return Math.max(500, Math.min(60000, v));
 })();
 const RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS || 1200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS || 1500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1500;
   return Math.max(300, Math.min(6000, v));
 })();
 const RECO_CATALOG_SEARCH_BASE_URLS = String(
@@ -1790,8 +1800,8 @@ const AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS = (() => {
   return Math.max(200, Math.min(20000, v));
 })();
 const AURORA_BFF_CHAT_RECO_BUDGET_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 9000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
+  const n = Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 13000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 13000;
   return Math.max(1000, Math.min(60000, v));
 })();
 const AURORA_BFF_CHAT_ROUTINE_BUDGET_MS = (() => {
@@ -1882,14 +1892,14 @@ const RECO_ALTERNATIVES_CACHE_MAX_KEYS = (() => {
 const recoAlternativesResponseCache = new Map();
 
 const RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS || 4500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4500;
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS || 12000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 12000;
   return Math.max(2000, Math.min(22000, v));
 })();
 
 const RECO_UPSTREAM_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 3500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 3500;
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
   const bounded = Math.max(3000, Math.min(22000, v));
   return Math.min(bounded, RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS);
 })();
@@ -20403,6 +20413,15 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
     if (contractObj.source_mode && !pickFirstTrimmed(data.source_mode)) {
       data.source_mode = contractObj.source_mode;
     }
+    if (contractObj.mainline_status && !pickFirstTrimmed(data.mainline_status)) {
+      data.mainline_status = contractObj.mainline_status;
+    }
+    if (contractObj.catalog_skip_reason && !pickFirstTrimmed(data.catalog_skip_reason)) {
+      data.catalog_skip_reason = contractObj.catalog_skip_reason;
+    }
+    if (contractObj.upstream_status && !pickFirstTrimmed(data.upstream_status)) {
+      data.upstream_status = contractObj.upstream_status;
+    }
     if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
       Object.assign(data, eventData);
     }
@@ -20416,6 +20435,9 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
       ...(contractObj.primary_failure_reason ? { reason: contractObj.primary_failure_reason } : {}),
       ...(contractObj.telemetry_failure_reason ? { telemetry_reason: contractObj.telemetry_failure_reason } : {}),
       ...(contractObj.failure_class ? { failure_class: contractObj.failure_class } : {}),
+      ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
+      ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
+      ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
       ...(eventData && typeof eventData === 'object' && !Array.isArray(eventData) ? eventData : {}),
     };
     next.unshift(makeEvent(ctx || {}, 'recos_requested', data));
@@ -20796,7 +20818,8 @@ function normalizeRecoFailureClass(value) {
     token === 'provider_error' ||
     token === 'policy_skip' ||
     token === 'precheck_fail' ||
-    token === 'empty_structured'
+    token === 'empty_structured' ||
+    token === 'schema_invalid'
   ) {
     return token;
   }
@@ -20807,11 +20830,52 @@ function normalizeRecoContractTelemetryReason(value) {
   const token = String(value || '').trim().toLowerCase();
   if (
     token === 'timeout_degraded' ||
+    token === 'upstream_schema_invalid' ||
     token === 'prompt_contract_mismatch' ||
     token === 'empty_structured' ||
     token === 'catalog_transient_failure'
   ) {
     return token;
+  }
+  return '';
+}
+
+function deriveRecoContractStatus({
+  promptContractOk,
+  recommendations,
+  llmFailureClass,
+  fieldMissing,
+} = {}) {
+  if (promptContractOk === false) return 'prompt_contract_mismatch';
+  if (Array.isArray(recommendations) && recommendations.length > 0) return 'recommendations_ready';
+  const normalizedFailure = normalizeRecoFailureClass(llmFailureClass || '');
+  if (normalizedFailure === 'timeout') return 'upstream_timeout';
+  if (normalizedFailure === 'schema_invalid') return 'schema_invalid';
+  if (normalizedFailure === 'empty_structured') return 'empty_structured';
+  const missingRows = Array.isArray(fieldMissing) ? fieldMissing : [];
+  const recoFieldMissing = missingRows.find((row) => row && row.field === 'recommendations') || null;
+  const missingReason = String(recoFieldMissing && recoFieldMissing.reason ? recoFieldMissing.reason : '').trim().toLowerCase();
+  if (missingReason === 'upstream_missing_or_empty') return 'recommendations_empty';
+  return 'upstream_missing_or_unstructured';
+}
+
+function deriveRecoTelemetryFailureReason({
+  llmFailureClass,
+  upstreamFailureCode,
+  contractStatus,
+} = {}) {
+  const normalizedFailure = normalizeRecoFailureClass(llmFailureClass || '');
+  if (normalizedFailure === 'timeout' || isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
+    return 'timeout_degraded';
+  }
+  if (normalizedFailure === 'schema_invalid' || contractStatus === 'schema_invalid') {
+    return 'upstream_schema_invalid';
+  }
+  if (contractStatus === 'empty_structured' || contractStatus === 'recommendations_empty') {
+    return 'empty_structured';
+  }
+  if (contractStatus === 'prompt_contract_mismatch') {
+    return 'prompt_contract_mismatch';
   }
   return '';
 }
@@ -20823,30 +20887,43 @@ function buildRecoMainlineContract({
   llmFailureClass,
   upstreamFailureCode,
   promptContractOk = true,
+  fieldMissing = null,
+  structuredSource = '',
+  catalogSkipReason = null,
 } = {}) {
   const recoRows = Array.isArray(recommendations) ? recommendations : [];
   const hasRecommendations = recoRows.length > 0;
   const failureClass = normalizeRecoFailureClass(llmFailureClass);
   const normalizedSourceMode = String(sourceMode || '').trim().toLowerCase() || 'rules_only';
   const upstreamCode = String(upstreamFailureCode || '').trim().toUpperCase();
-
-  let telemetryFailureReason = '';
-  if (!hasRecommendations) {
-    if (failureClass === 'timeout' || isTransientRecoUpstreamFailureCode(upstreamCode)) {
-      telemetryFailureReason = 'timeout_degraded';
-    } else if (failureClass === 'precheck_fail' || promptContractOk === false || upstreamCode === 'PROMPT_CONTRACT_MISMATCH') {
-      telemetryFailureReason = 'prompt_contract_mismatch';
-    } else if (failureClass === 'empty_structured' || failureClass === 'provider_error') {
-      telemetryFailureReason = 'empty_structured';
-    } else if (normalizedSourceMode === 'catalog_transient_fallback') {
-      telemetryFailureReason = 'catalog_transient_failure';
-    }
+  const contractStatus = deriveRecoContractStatus({
+    promptContractOk,
+    recommendations: recoRows,
+    llmFailureClass: failureClass,
+    fieldMissing,
+  });
+  let normalizedTelemetryReason = normalizeRecoContractTelemetryReason(
+    deriveRecoTelemetryFailureReason({
+      llmFailureClass: failureClass,
+      upstreamFailureCode: upstreamCode,
+      contractStatus,
+    }),
+  );
+  if (!normalizedTelemetryReason && !hasRecommendations && normalizedSourceMode === 'catalog_transient_fallback') {
+    normalizedTelemetryReason = 'catalog_transient_failure';
   }
-
-  const normalizedTelemetryReason = normalizeRecoContractTelemetryReason(telemetryFailureReason);
+  const mainlineStatus = deriveRecoMainlineStatus({
+    recommendations: recoRows,
+    structuredSource: structuredSource || normalizedSourceMode,
+    catalogSkipReason,
+    llmFailureClass: failureClass,
+    upstreamFailureCode: upstreamCode,
+    contractStatus,
+  });
   let upstreamStatus = 'ok';
   if (!hasRecommendations) {
     if (normalizedTelemetryReason === 'timeout_degraded') upstreamStatus = 'timeout';
+    else if (normalizedTelemetryReason === 'upstream_schema_invalid') upstreamStatus = 'schema_invalid';
     else if (normalizedTelemetryReason === 'prompt_contract_mismatch') upstreamStatus = 'prompt_contract_mismatch';
     else if (normalizedTelemetryReason === 'empty_structured') upstreamStatus = 'schema_invalid';
     else if (normalizedTelemetryReason === 'catalog_transient_failure') upstreamStatus = 'catalog_transient_failure';
@@ -20855,13 +20932,15 @@ function buildRecoMainlineContract({
 
   return {
     ok: hasRecommendations,
-    contract_status: hasRecommendations ? 'grounded' : 'artifact_missing',
+    contract_status: contractStatus,
     source_mode: normalizedSourceMode,
     source: String(source || '').trim() || null,
     primary_failure_reason: hasRecommendations ? null : 'artifact_missing',
     telemetry_failure_reason: normalizedTelemetryReason || null,
     failure_class: failureClass || null,
     upstream_status: upstreamStatus,
+    mainline_status: mainlineStatus,
+    catalog_skip_reason: pickFirstTrimmed(catalogSkipReason) || null,
   };
 }
 
@@ -20879,8 +20958,77 @@ function attachRecoContractMeta(payload, contract) {
       ...(contractObj.telemetry_failure_reason ? { telemetry_failure_reason: contractObj.telemetry_failure_reason } : {}),
       ...(contractObj.failure_class ? { failure_class: contractObj.failure_class } : {}),
       ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
+      ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
+      ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
     },
   };
+}
+
+function deriveRecoMainlineStatus({
+  recommendations,
+  structuredSource,
+  catalogSkipReason,
+  llmFailureClass,
+  upstreamFailureCode,
+  contractStatus,
+} = {}) {
+  if (Array.isArray(recommendations) && recommendations.length > 0) return 'grounded_success';
+  const catalogSkip = String(catalogSkipReason || '').trim().toLowerCase();
+  if (catalogSkip === 'disabled') return 'catalog_skipped_disabled';
+  if (catalogSkip === 'fail_fast_open') return 'catalog_skipped_fail_fast';
+  if (catalogSkip === 'queries_empty') return 'catalog_queries_empty';
+  if (normalizeRecoFailureClass(llmFailureClass || '') === 'timeout' || isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
+    return 'upstream_timeout';
+  }
+  if (normalizeRecoFailureClass(llmFailureClass || '') === 'schema_invalid' || contractStatus === 'schema_invalid') {
+    return 'upstream_schema_invalid';
+  }
+  if (contractStatus === 'empty_structured' || contractStatus === 'recommendations_empty') {
+    return 'empty_structured';
+  }
+  if (String(structuredSource || '').trim().toLowerCase() === 'catalog_grounded') {
+    return 'grounded_success';
+  }
+  return 'empty_structured';
+}
+
+function buildRecoRequestedEventData({
+  explicit = true,
+  payload,
+  source = '',
+  reason = '',
+  telemetryReason = '',
+  failureClass = '',
+  llmTraceRef = null,
+  lowConfidence = null,
+  confidenceLevel = '',
+  sourceDetail = '',
+  recomputeFromProfileUpdate = false,
+  blocked = false,
+  upstreamFailureCode = '',
+} = {}) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const recommendations = Array.isArray(payloadObj.recommendations) ? payloadObj.recommendations : [];
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const data = {
+    explicit: explicit === true,
+    source: String(source || payloadObj.source || meta.source_mode || 'rules_only').trim() || 'rules_only',
+    ...(pickFirstTrimmed(sourceDetail) ? { source_detail: pickFirstTrimmed(sourceDetail) } : {}),
+    ...(recomputeFromProfileUpdate === true ? { recompute_from_profile_update: true } : {}),
+    ...(typeof lowConfidence === 'boolean' ? { low_confidence: lowConfidence } : {}),
+    ...(pickFirstTrimmed(confidenceLevel) ? { confidence_level: pickFirstTrimmed(confidenceLevel) } : {}),
+    ...(blocked === true ? { blocked: true } : {}),
+    ...(pickFirstTrimmed(reason, recommendations.length ? '' : meta.primary_failure_reason, recommendations.length ? '' : 'artifact_missing')
+      ? { reason: pickFirstTrimmed(reason, recommendations.length ? '' : meta.primary_failure_reason, recommendations.length ? '' : 'artifact_missing') }
+      : {}),
+    ...(pickFirstTrimmed(telemetryReason, meta.telemetry_failure_reason) ? { telemetry_reason: pickFirstTrimmed(telemetryReason, meta.telemetry_failure_reason) } : {}),
+    ...(pickFirstTrimmed(failureClass, meta.failure_class) ? { failure_class: pickFirstTrimmed(failureClass, meta.failure_class) } : {}),
+    ...(pickFirstTrimmed(meta.mainline_status) ? { mainline_status: pickFirstTrimmed(meta.mainline_status) } : {}),
+    ...(pickFirstTrimmed(meta.catalog_skip_reason) ? { catalog_skip_reason: pickFirstTrimmed(meta.catalog_skip_reason) } : {}),
+    ...(pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) ? { upstream_failure_code: pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) } : {}),
+    ...(isPlainObject(llmTraceRef) ? { llm_trace_ref: llmTraceRef } : {}),
+  };
+  return data;
 }
 
 function buildRecoInputCoverage({ profileSummary, recentLogs, requestText } = {}) {
@@ -20909,6 +21057,31 @@ function loadRecoPromptTemplateFile(fileName, { parseJson = false, fallback = ''
   }
   recoPromptTemplateCache.set(key, value);
   return value;
+}
+
+function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
+  const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
+  const ingredientMode = Boolean(
+    normalizedIngredientContext &&
+      typeof normalizedIngredientContext === 'object' &&
+      !Array.isArray(normalizedIngredientContext) &&
+      (
+        pickFirstTrimmed(
+          normalizedIngredientContext.query,
+          normalizedIngredientContext.goal,
+          normalizedIngredientContext.sensitivity,
+        ) ||
+        (Array.isArray(normalizedIngredientContext.candidates) && normalizedIngredientContext.candidates.length > 0)
+      ),
+  );
+  const templateId = ingredientMode ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID;
+  return {
+    ingredient_mode: ingredientMode,
+    llm_mode: ingredientMode ? 'ingredient_filtered_products' : 'goal_based_products',
+    template_id: templateId,
+    schema_file: `${templateId}.user_schema.json`,
+    system_file: `${templateId}.system.txt`,
+  };
 }
 
 function normalizeRecoPromptLanguage(lang) {
@@ -33503,6 +33676,7 @@ function buildRecoMainPromptPayload({
   globalStatus,
   candidates,
   ingredientContext,
+  promptSpec,
 } = {}) {
   const fallbackSchema = {
     meta: { lang: 'EN', intent: 'reco_products', region: 'US' },
@@ -33555,7 +33729,10 @@ function buildRecoMainPromptPayload({
       "If global_status.itinerary_provided is false, add top-level warning 'itinerary_unknown' (only once, not per item).",
     ],
   };
-  const template = loadRecoPromptTemplateFile('reco_main_v1_0.user_schema.json', { parseJson: true, fallback: fallbackSchema });
+  const template = loadRecoPromptTemplateFile(
+    promptSpec && promptSpec.schema_file ? promptSpec.schema_file : `${RECO_MAIN_PROMPT_TEMPLATE_ID}.user_schema.json`,
+    { parseJson: true, fallback: fallbackSchema },
+  );
   const payload = safeStructuredCloneJson(template) || safeStructuredCloneJson(fallbackSchema) || {};
   const profileObj = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
   const region = normalizeRecoPromptRegion(profileObj);
@@ -33605,6 +33782,7 @@ function buildRecoMainPromptPayload({
   payload.global_status = {
     ...(payload.global_status && typeof payload.global_status === 'object' ? payload.global_status : {}),
     budget_known: Boolean(globalStatus && globalStatus.budget_known),
+    candidates_provided: normalizedCandidates.length > 0,
     itinerary_provided: Boolean(globalStatus && globalStatus.itinerary_provided),
     recent_logs_provided: Boolean(globalStatus && globalStatus.recent_logs_provided),
   };
@@ -33620,11 +33798,19 @@ function buildRecoMainPromptPayload({
     );
     payload.hard_rules = uniqCaseInsensitiveStrings(rules, 24);
   }
+  if (promptSpec && promptSpec.ingredient_mode) {
+    payload.task = {
+      ...(payload.task && typeof payload.task === 'object' && !Array.isArray(payload.task) ? payload.task : {}),
+      ingredient_mode: true,
+      ingredient_mode_policy: 'respect ingredient_context strictly and prefer fewer grounded items over broad substitutions',
+    };
+  }
   payload.candidates = normalizedCandidates;
   return payload;
 }
 
-function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext }) {
+function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext } = {}) {
+  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext });
   const fallbackSystemPrompt = [
     'You are a skincare product ranking engine.',
     '',
@@ -33634,7 +33820,7 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
     'Keep output concise: reasons max 3 per item, each reason <= 22 words.',
     'If you cannot fill 5 items safely, return fewer items and lower confidence.',
   ].join('\n');
-  const systemPrompt = loadRecoPromptTemplateFile('reco_main_v1_0.system.txt', {
+  const systemPrompt = loadRecoPromptTemplateFile(promptSpec.system_file, {
     parseJson: false,
     fallback: fallbackSystemPrompt,
   });
@@ -33645,14 +33831,36 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
     globalStatus,
     candidates,
     ingredientContext,
+    promptSpec,
+  });
+  const schemaTemplate = loadRecoPromptTemplateFile(promptSpec.schema_file, {
+    parseJson: true,
+    fallback: {},
   });
   const promptBody = formatAuroraPromptQuery({
-    templateId: RECO_MAIN_PROMPT_TEMPLATE_ID,
+    templateId: promptSpec.template_id,
     systemPrompt,
     userPayload: payload,
   });
-  // Backward-compatible sentinel for existing mock/test detectors.
-  return `Task: Generate skincare product picks (NOT a full AM/PM routine).\n${promptBody}`;
+  return {
+    query: `Task: Generate skincare product picks (NOT a full AM/PM routine).\n${promptBody}`,
+    prompt_spec: promptSpec,
+    user_payload: payload,
+    system_prompt: systemPrompt,
+    prompt_chars: promptBody.length,
+    schema_chars: JSON.stringify(schemaTemplate && typeof schemaTemplate === 'object' ? schemaTemplate : {}).length,
+  };
+}
+
+function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext }) {
+  return buildAuroraProductRecommendationsPromptBundle({
+    profile,
+    requestText,
+    lang,
+    globalStatus,
+    candidates,
+    ingredientContext,
+  }).query;
 }
 
 function looksLikeRoutineRequest(message, action) {
@@ -39018,23 +39226,22 @@ async function generateProductRecommendations({
     itinerary_provided: hasItineraryContextForReco(profileSummary),
     recent_logs_provided: Array.isArray(recentLogs) && recentLogs.length > 0,
   };
-  const query =
-    `${prefix}` +
-    buildAuroraProductRecommendationsQuery({
-      profile: profileSummary || {},
-      requestText: userAsk,
-      lang: ctx.lang,
-      globalStatus,
-      candidates: catalogCandidatePool,
-      ingredientContext: normalizedIngredientContext,
-    });
+  const promptBundle = buildAuroraProductRecommendationsPromptBundle({
+    profile: profileSummary || {},
+    requestText: userAsk,
+    lang: ctx.lang,
+    globalStatus,
+    candidates: catalogCandidatePool,
+    ingredientContext: normalizedIngredientContext,
+  });
+  const query = `${prefix}${promptBundle.query}`;
   const llmTraceCoverage = buildRecoInputCoverage({
     profileSummary,
     recentLogs,
     requestText: userAsk,
   });
   const llmTraceSeed = buildRecoPromptTrace({
-    templateId: RECO_MAIN_PROMPT_TEMPLATE_ID,
+    templateId: promptBundle.prompt_spec.template_id,
     query,
     latencyMs: null,
     cacheHit: false,
@@ -39042,9 +39249,12 @@ async function generateProductRecommendations({
     model: null,
     coverage: llmTraceCoverage,
   });
+  llmTraceSeed.schema_chars = Number(promptBundle.schema_chars || 0);
+  llmTraceSeed.llm_mode = String(promptBundle.prompt_spec.llm_mode || '').trim() || null;
+  llmTraceSeed.candidate_count = Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0;
   const promptContractBase = validateRecoPromptContract({
     query,
-    expectedTemplateId: RECO_MAIN_PROMPT_TEMPLATE_ID,
+    expectedTemplateId: promptBundle.prompt_spec.template_id,
     expectedPromptHash: llmTraceSeed.prompt_hash,
   });
   const promptContract = AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH
@@ -39075,7 +39285,7 @@ async function generateProductRecommendations({
         request_id: ctx.request_id,
         trace_id: ctx.trace_id,
         prompt_contract_issues: promptContract.issues,
-        expected_template_id: RECO_MAIN_PROMPT_TEMPLATE_ID,
+        expected_template_id: promptBundle.prompt_spec.template_id,
         actual_template_id: promptContract.template_id,
         expected_prompt_hash: promptContract.prompt_hash_expected,
         actual_prompt_hash: promptContract.prompt_hash_actual,
@@ -39132,6 +39342,17 @@ async function generateProductRecommendations({
     if (!llmStructured) {
       llmStructured = structuredFallback;
       llmStructuredSource = structuredFallback ? 'llm_structured_fallback' : null;
+    }
+    if (
+      promptContract.ok &&
+      !llmFailureClass &&
+      llmStructured &&
+      typeof llmStructured === 'object' &&
+      !Array.isArray(llmStructured) &&
+      !Array.isArray(llmStructured.recommendations)
+    ) {
+      llmFailureClass = 'schema_invalid';
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'schema_invalid' });
     }
   }
 
@@ -39216,6 +39437,9 @@ async function generateProductRecommendations({
       llm_failure_class: llmFailureClass || null,
       llm_prompt_trace: llmTrace,
       llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
+      llm_prompt_template_id: promptBundle.prompt_spec.template_id,
+      llm_prompt_schema_chars: Number(promptBundle.schema_chars || 0),
+      llm_prompt_mode: promptBundle.prompt_spec.llm_mode,
       llm_skipped_reason: hasCatalogGroundedRecommendations ? 'catalog_grounded_primary' : null,
       llm_candidate_count: Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0,
     }
@@ -39429,6 +39653,7 @@ async function generateProductRecommendations({
       reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
     },
   };
+  const finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
   const sourceMode = structuredSource === 'llm_primary'
     ? 'llm_primary'
     : structuredSource === 'catalog_grounded'
@@ -39436,6 +39661,35 @@ async function generateProductRecommendations({
       : structuredSource === 'catalog_transient_fallback'
         ? 'catalog_transient_fallback'
         : 'rules_only';
+  const catalogSkipReason = pickFirstTrimmed(catalogDebug && catalogDebug.skipped_reason) || null;
+  const contractStatus = deriveRecoContractStatus({
+    promptContractOk: promptContract.ok,
+    recommendations: finalRecommendations,
+    llmFailureClass,
+    fieldMissing: norm.field_missing,
+  });
+  const mainlineStatus = deriveRecoMainlineStatus({
+    recommendations: finalRecommendations,
+    structuredSource,
+    catalogSkipReason,
+    llmFailureClass,
+    upstreamFailureCode,
+    contractStatus,
+  });
+  const telemetryFailureReason = deriveRecoTelemetryFailureReason({
+    llmFailureClass,
+    upstreamFailureCode,
+    contractStatus,
+  });
+  const primaryFailureReason = finalRecommendations.length > 0 ? '' : 'artifact_missing';
+  if (upstreamDebug) {
+    upstreamDebug.contract_status = contractStatus;
+    upstreamDebug.mainline_status = mainlineStatus;
+    upstreamDebug.primary_failure_reason = primaryFailureReason || null;
+    upstreamDebug.telemetry_failure_reason = telemetryFailureReason || null;
+    upstreamDebug.catalog_skip_reason = catalogSkipReason;
+    upstreamDebug.upstream_failure_code = upstreamFailureCode || null;
+  }
   let nextPayload = {
     ...norm.payload,
     source: sourceMode === 'llm_primary'
@@ -39454,6 +39708,19 @@ async function generateProductRecommendations({
       used_itinerary: itineraryAvailable,
       used_safety_flags: false,
       prompt_contract_ok: promptContract.ok,
+      primary_failure_reason: primaryFailureReason || null,
+      telemetry_failure_reason: telemetryFailureReason || null,
+      failure_class: llmFailureClass || null,
+      contract_status: contractStatus,
+      catalog_skip_reason: catalogSkipReason,
+      upstream_failure_code: upstreamFailureCode || null,
+      mainline_status: mainlineStatus,
+      llm_prompt_chars: typeof query === 'string' ? query.length : 0,
+      llm_schema_chars: Number(promptBundle.schema_chars || 0),
+      llm_mode: promptBundle.prompt_spec.llm_mode,
+      catalog_query_count: Number.isFinite(Number(catalogDebug && catalogDebug.query_count))
+        ? Number(catalogDebug.query_count)
+        : 0,
       llm_trace: llmTrace,
     },
   };
@@ -39464,6 +39731,9 @@ async function generateProductRecommendations({
     llmFailureClass,
     upstreamFailureCode,
     promptContractOk: promptContract.ok,
+    fieldMissing: norm.field_missing,
+    structuredSource,
+    catalogSkipReason,
   });
   const warningContract = applyRecoWarningVisibilityContract(nextPayload);
   nextPayload = {
@@ -39491,6 +39761,14 @@ async function generateProductRecommendations({
     llmFailureClass,
     llmTrace,
     contract: recoContract,
+    contractStatus,
+    mainlineStatus,
+    primaryFailureReason,
+    telemetryFailureReason,
+    catalogSkipReason,
+    llmPromptChars: typeof query === 'string' ? query.length : 0,
+    llmSchemaChars: Number(promptBundle.schema_chars || 0),
+    llmMode: promptBundle.prompt_spec.llm_mode,
   };
 }
 
@@ -40839,6 +41117,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         pivota_backend_base_configured: false,
       },
       'aurora bff: invalid product-intel fallback configuration (backend base url missing)',
+    );
+  }
+  if (!RECO_CATALOG_GROUNDED_ENABLED) {
+    logger?.warn?.(
+      {
+        env_flag: 'AURORA_BFF_RECO_CATALOG_GROUNDED',
+        grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
+      },
+      'aurora bff: grounded reco catalog path disabled; generic reco may degrade to artifact_missing',
     );
   }
 
@@ -44564,6 +44851,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             llmFailureClass: upstreamReco?.llmFailureClass,
             upstreamFailureCode: upstreamReco?.upstreamFailureCode,
             promptContractOk: norm?.payload?.prompt_contract_ok !== false,
+            fieldMissing: norm?.field_missing,
+            structuredSource: norm?.payload?.recommendation_meta?.source_mode,
+            catalogSkipReason: norm?.payload?.recommendation_meta?.catalog_skip_reason,
           });
       if (parsed.data.include_alternatives) {
         const alt = await enrichRecommendationsWithAlternatives({
@@ -44600,6 +44890,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         llmFailureClass: upstreamReco?.llmFailureClass || baseContract.failure_class,
         upstreamFailureCode: upstreamReco?.upstreamFailureCode,
         promptContractOk: payload?.prompt_contract_ok !== false,
+        fieldMissing: norm?.field_missing,
+        structuredSource: payload?.recommendation_meta?.source_mode,
+        catalogSkipReason: payload?.recommendation_meta?.catalog_skip_reason,
       });
       if (isPlainObject(payload)) {
         const nextPayload = attachRecoContractMeta(payload, finalDirectContract);
@@ -44622,10 +44915,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         events: applyRecoContractToRecoRequestedEvents([], finalDirectContract, {
           ctx: { ...ctx, trigger_source: 'action' },
           emitIfMissing: true,
-          eventData: {
+          eventData: buildRecoRequestedEventData({
             explicit: true,
-            ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
-          },
+            payload,
+            source: String(payload?.source || payload?.recommendation_meta?.source_mode || 'catalog_grounded_v1'),
+            llmTraceRef,
+            failureClass: upstreamReco && upstreamReco.llmFailureClass ? upstreamReco.llmFailureClass : '',
+            upstreamFailureCode: upstreamReco?.upstreamFailureCode,
+          }),
         }).events,
       });
       if (!AURORA_RECO_GENERATE_GUARDRAIL_V1) {
@@ -44678,6 +44975,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         llmFailureClass: baseContract.failure_class || upstreamReco?.llmFailureClass,
         upstreamFailureCode: upstreamReco?.upstreamFailureCode,
         promptContractOk: guardedRecoCard?.payload?.prompt_contract_ok !== false,
+        fieldMissing: guardedRecoCard?.field_missing,
+        structuredSource: guardedRecoCard?.payload?.recommendation_meta?.source_mode,
+        catalogSkipReason: guardedRecoCard?.payload?.recommendation_meta?.catalog_skip_reason,
       });
       const nextSessionPatch = isPlainObject(guardedEnvelope.session_patch) ? { ...guardedEnvelope.session_patch } : {};
       if (hasGuardedRecommendations) {
@@ -44704,10 +45004,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       guardedEnvelope.events = applyRecoContractToRecoRequestedEvents(guardedEnvelope.events, finalContract, {
         ctx: { ...ctx, trigger_source: 'action' },
         emitIfMissing: true,
-        eventData: {
+        eventData: buildRecoRequestedEventData({
           explicit: true,
-          ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
-        },
+          payload: guardedRecoCard?.payload,
+          source: String(guardedRecoCard?.payload?.source || guardedRecoCard?.payload?.recommendation_meta?.source_mode || baseContract.source || 'rules_only'),
+          llmTraceRef,
+          failureClass: finalContract.failure_class,
+          upstreamFailureCode: upstreamReco?.upstreamFailureCode,
+        }),
       }).events;
       guardedEnvelope.session_patch = nextSessionPatch;
       return res.json(guardedEnvelope);
@@ -53914,6 +54218,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         let llmFailureClass = '';
         let recoLlmTrace = null;
         let recoContract = null;
+        let recoMainlineStatus = '';
+        let recoCatalogSkipReason = '';
+        let recoTelemetryFailureReason = '';
         if (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0) {
           try {
             const upstreamReco = await generateProductRecommendations({
@@ -53934,6 +54241,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             llmFailureClass = normalizeRecoFailureClass(upstreamReco.llmFailureClass || '');
             recoLlmTrace = isPlainObject(upstreamReco.llmTrace) ? upstreamReco.llmTrace : null;
             recoContract = isPlainObject(upstreamReco.contract) ? upstreamReco.contract : null;
+            recoMainlineStatus = String(upstreamReco.mainlineStatus || '').trim();
+            recoCatalogSkipReason = String(upstreamReco.catalogSkipReason || '').trim();
+            recoTelemetryFailureReason = String(upstreamReco.telemetryFailureReason || '').trim();
           } catch (err) {
             const transientCode = classifyRecoUpstreamFailureCode(err);
             if (!isTransientRecoUpstreamFailureCode(transientCode)) {
@@ -53942,6 +54252,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoTimeoutDegraded = true;
             llmFailureClass = 'timeout';
             upstreamFailureCode = transientCode || '';
+            upstreamFailureCode = transientCode || '';
+            recoMainlineStatus = 'upstream_timeout';
+            recoTelemetryFailureReason = 'timeout_degraded';
             recordAuroraRecoLlmCall({ stage: 'main', outcome: 'timeout' });
             logger?.warn(
               {
@@ -53965,7 +54278,24 @@ function mountAuroraBffRoutes(app, { logger }) {
             llmFailureClass,
             upstreamFailureCode,
             promptContractOk: norm?.payload?.prompt_contract_ok !== false,
+            fieldMissing: norm?.field_missing,
+            structuredSource: norm?.payload?.recommendation_meta?.source_mode,
+            catalogSkipReason: pickFirstTrimmed(norm?.payload?.recommendation_meta?.catalog_skip_reason, recoCatalogSkipReason),
           });
+        }
+        if (!recoMainlineStatus && isPlainObject(norm?.payload?.recommendation_meta)) {
+          recoMainlineStatus = String(norm.payload.recommendation_meta.mainline_status || '').trim();
+          recoCatalogSkipReason = String(norm.payload.recommendation_meta.catalog_skip_reason || '').trim();
+          recoTelemetryFailureReason = String(norm.payload.recommendation_meta.telemetry_failure_reason || '').trim();
+        }
+        if (!recoMainlineStatus && recoContract && recoContract.mainline_status) {
+          recoMainlineStatus = String(recoContract.mainline_status || '').trim();
+        }
+        if (!recoCatalogSkipReason && recoContract && recoContract.catalog_skip_reason) {
+          recoCatalogSkipReason = String(recoContract.catalog_skip_reason || '').trim();
+        }
+        if (!recoTelemetryFailureReason && recoContract && recoContract.telemetry_failure_reason) {
+          recoTelemetryFailureReason = String(recoContract.telemetry_failure_reason || '').trim();
         }
         const generatedRecoCount = Array.isArray(norm?.payload?.recommendations) ? norm.payload.recommendations.length : 0;
         const generatedPayloadSource = String(norm?.payload?.source || '').trim().toLowerCase();
@@ -54187,13 +54517,20 @@ function mountAuroraBffRoutes(app, { logger }) {
               ctx,
               emitIfMissing: true,
               eventData: {
-                explicit: true,
+                ...buildRecoRequestedEventData({
+                  explicit: true,
+                  source: 'upstream_timeout',
+                  sourceDetail: normalizeRecoSourceDetail(recoEntrySourceDetail),
+                  recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
+                  reason: 'artifact_missing',
+                  telemetryReason: 'timeout_degraded',
+                  failureClass: 'timeout',
+                  llmTraceRef,
+                  upstreamFailureCode,
+                }),
                 gated: true,
-                source: 'upstream_timeout',
-                source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
-                recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
-                ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
-                ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
+                ...(recoMainlineStatus ? { mainline_status: recoMainlineStatus } : { mainline_status: 'upstream_timeout' }),
+                ...(recoCatalogSkipReason ? { catalog_skip_reason: recoCatalogSkipReason } : {}),
               },
             }).events,
           });
@@ -54257,12 +54594,20 @@ function mountAuroraBffRoutes(app, { logger }) {
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
             used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
             used_safety_flags: lowConfidenceArtifact,
+            primary_failure_reason: hasRecs ? null : 'artifact_missing',
+            telemetry_failure_reason: recoTelemetryFailureReason || null,
+            failure_class: llmFailureClass || null,
+            catalog_skip_reason: recoCatalogSkipReason || null,
+            upstream_failure_code: upstreamFailureCode || null,
+            mainline_status: recoMainlineStatus || (hasRecs ? 'grounded_success' : 'empty_structured'),
             ...(recoLlmTrace ? { llm_trace: recoLlmTrace } : {}),
           };
           payload.metadata = {
             ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
             llm_trace_ref: llmTraceRef,
             llm_failure_class: llmFailureClass || null,
+            mainline_status: recoMainlineStatus || (hasRecs ? 'grounded_success' : 'empty_structured'),
+            catalog_skip_reason: recoCatalogSkipReason || null,
           };
           const finalRecoContract = buildRecoMainlineContract({
             recommendations: payload.recommendations,
@@ -54271,6 +54616,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             llmFailureClass: llmFailureClass || recoContract?.failure_class,
             upstreamFailureCode,
             promptContractOk: payload.prompt_contract_ok !== false,
+            fieldMissing: norm?.field_missing,
+            structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+            catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
           });
           recoContract = finalRecoContract;
           const nextPayload = attachRecoContractMeta(payload, finalRecoContract);
@@ -54518,13 +54866,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               ctx,
               emitIfMissing: true,
               eventData: {
-                explicit: true,
-                source: recoSource,
-                source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
-                recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
-                low_confidence: lowConfidenceArtifact,
-                confidence_level: artifactConfidenceLevel,
-                ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
+                ...buildRecoRequestedEventData({
+                  explicit: true,
+                  payload,
+                  source: recoSource,
+                  sourceDetail: normalizeRecoSourceDetail(recoEntrySourceDetail),
+                  recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
+                  lowConfidence: lowConfidenceArtifact,
+                  confidenceLevel: artifactConfidenceLevel,
+                  llmTraceRef,
+                }),
                 kb_write_status: kbWriteStatus,
                 ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
                 ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
@@ -56097,6 +56448,9 @@ const __internal = {
   recoverProductsWithLlmFallbackFromQueries,
   normalizeIngredientRecoContextValue,
   mergeIngredientRecoContextValue,
+  buildIngredientRecoUpstreamPrompt,
+  resolveRecoMainPromptSpec,
+  buildAuroraProductRecommendationsPromptBundle,
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
   buildAuroraRecoAlternativesQuery,

@@ -4437,7 +4437,7 @@ test('/v1/chat: ingredient reco opt-in first query already carries ingredient_co
       assert.equal(resp.status, 200);
       assert.equal(capturedQueries.length > 0, true);
       const firstQuery = capturedQueries[0];
-      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_0/i);
+      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_1/i);
       assert.match(firstQuery, /SYSTEM_PROMPT:/i);
       assert.match(firstQuery, /USER_PROMPT_JSON:/i);
       assert.match(firstQuery, /"ingredient_context"\s*:/i);
@@ -4552,6 +4552,34 @@ test('ingredient reco context keeps candidates and injects constraint prompt eve
   }
 });
 
+test('reco prompt bundle uses v1_1 for generic mode and tags ingredient mode separately', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const genericSpec = __internal.resolveRecoMainPromptSpec({});
+    assert.equal(genericSpec.template_id, 'reco_main_v1_1');
+    assert.equal(genericSpec.llm_mode, 'goal_based_products');
+
+    const ingredientSpec = __internal.resolveRecoMainPromptSpec({
+      ingredientContext: { goal: 'barrier', sensitivity: 'high', candidates: ['Ceramide NP'] },
+    });
+    assert.equal(ingredientSpec.template_id, 'reco_main_v1_1');
+    assert.equal(ingredientSpec.llm_mode, 'ingredient_filtered_products');
+
+    const bundle = __internal.buildAuroraProductRecommendationsPromptBundle({
+      profile: { skinType: 'combination', barrierStatus: 'healthy', goals: ['barrier repair'] },
+      requestText: 'Recommend products for barrier support',
+      lang: 'EN',
+      globalStatus: { budget_known: true, itinerary_provided: false, recent_logs_provided: false },
+      candidates: [{ product_id: 'prod_1', brand: 'Brand', name: 'Barrier Cream' }],
+    });
+    assert.match(bundle.query, /PROMPT_TEMPLATE_ID=reco_main_v1_1/i);
+    assert.equal(bundle.prompt_spec.llm_mode, 'goal_based_products');
+    assert.ok(Number(bundle.schema_chars) > 0);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco prompt contract: query must contain template/system/user blocks and hash must match', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -4564,17 +4592,17 @@ test('reco prompt contract: query must contain template/system/user blocks and h
     const expectedHash = crypto.createHash('sha1').update(String(query || '')).digest('hex').slice(0, 16);
     const okResult = __internal.validateRecoPromptContract({
       query,
-      expectedTemplateId: 'reco_main_v1_0',
+      expectedTemplateId: 'reco_main_v1_1',
       expectedPromptHash: expectedHash,
     });
     assert.equal(okResult.ok, true);
     assert.equal(Array.isArray(okResult.issues), true);
     assert.equal(okResult.issues.length, 0);
-    assert.equal(okResult.template_id, 'reco_main_v1_0');
+    assert.equal(okResult.template_id, 'reco_main_v1_1');
 
     const badResult = __internal.validateRecoPromptContract({
       query: String(query || '').replace('USER_PROMPT_JSON:', 'USER_PROMPT_BLOCK:'),
-      expectedTemplateId: 'reco_main_v1_0',
+      expectedTemplateId: 'reco_main_v1_1',
       expectedPromptHash: expectedHash,
     });
     assert.equal(badResult.ok, false);
@@ -4899,6 +4927,8 @@ test('/v1/reco/generate: uses grounded generic reco mainline instead of legacy r
           : null;
         assert.ok(recoEvent);
         assert.equal(String(recoEvent?.data?.source || '').includes('catalog_grounded'), true);
+        assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+        assert.equal(recoEvent?.data?.reason || null, null);
         assert.ok(searchCalls >= 1);
       } finally {
         axios.get = originalGet;
