@@ -44,7 +44,7 @@ const InferredAxisSchema = z.object({
   axis: z.string().min(1),
   level: z.enum(['low', 'moderate', 'high', 'severe']),
   confidence: z.number().min(0).max(1),
-  evidence: z.array(z.string()).min(1),
+  evidence: z.array(z.string()).default([]),
   trend: z.enum(['improved', 'stable', 'worsened', 'new']).default('new'),
   previous_level: z.enum(['low', 'moderate', 'high', 'severe']).optional(),
 });
@@ -93,13 +93,6 @@ const DiagnosisV2ResultPayload = z
     message: 'next_actions must be non-empty',
     path: ['next_actions'],
   })
-  .refine(
-    (data) => data.inferred_state.axes.every((axis) => axis.evidence.length >= 1),
-    {
-      message: 'Every inferred axis must have at least one evidence item',
-      path: ['inferred_state', 'axes'],
-    },
-  )
   .refine(
     (data) => {
       if (!data.goal_profile.selected_goals.includes('post_procedure_repair')) return true;

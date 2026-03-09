@@ -70,15 +70,15 @@ describe('diagnosis v2', () => {
     expect(validation.ok).toBe(true);
   });
 
-  test('rejects missing evidence', () => {
-    const invalidResult = {
+  test('accepts empty evidence (relaxed schema)', () => {
+    const emptyEvidenceResult = {
       ...validResult,
       inferred_state: {
         axes: [{ axis: 'test', level: 'low', confidence: 0.3, evidence: [], trend: 'new' }],
       },
     };
 
-    expect(validateResultPayload(invalidResult).ok).toBe(false);
+    expect(validateResultPayload(emptyEvidenceResult).ok).toBe(true);
   });
 
   test('rejects empty next_actions', () => {

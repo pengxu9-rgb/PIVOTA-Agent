@@ -1,3 +1,5 @@
+'use strict';
+
 function extractJsonObject(text) {
   if (!text || typeof text !== 'string') return null;
 
@@ -8,7 +10,7 @@ function extractJsonObject(text) {
       const parsed = JSON.parse(candidate);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
     } catch {
-      // continue
+      // continue to next candidate
     }
   }
   return null;
@@ -54,7 +56,7 @@ function extractJsonObjectByKeys(text, requiredKeys) {
         if (bestScore === keys.length) return best;
       }
     } catch {
-      // continue
+      // continue to next candidate
     }
   }
 
@@ -75,7 +77,7 @@ function extractBraced(text, startIdx) {
         escape = false;
         continue;
       }
-      if (ch === '\\\\') {
+      if (ch === '\\') {
         escape = true;
         continue;
       }

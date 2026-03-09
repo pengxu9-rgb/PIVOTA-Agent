@@ -58,12 +58,36 @@ function isProviderUnavailableError(err) {
   return err && (err.code === 'LLM_PROVIDER_UNAVAILABLE' || err.name === 'LlmProviderUnavailableError');
 }
 
+function classifyError(err) {
+  if (!err) return { code: 'INTERNAL_ERROR', reason: 'unknown' };
+  if (err.code === 'LLM_PROVIDER_UNAVAILABLE' || err.name === 'LlmProviderUnavailableError') {
+    return { code: 'LLM_PROVIDER_UNAVAILABLE', reason: err.message };
+  }
+  if (err.code === 'LLM_PROVIDER_TIMEOUT') {
+    return { code: 'LLM_TIMEOUT', reason: err.message };
+  }
+  if (err.validationErrors) {
+    return { code: 'VALIDATION_FAILED', reason: 'result_schema_mismatch', details: err.validationErrors };
+  }
+  if (err.message?.includes('stage1') || err.message?.includes('Stage 1')) {
+    return { code: 'STAGE1_FAILED', reason: err.message };
+  }
+  if (err.message?.includes('stage2') || err.message?.includes('Stage 2')) {
+    return { code: 'STAGE2_FAILED', reason: err.message };
+  }
+  if (err.message?.includes('stage3') || err.message?.includes('Stage 3')) {
+    return { code: 'STAGE3_FAILED', reason: err.message };
+  }
+  return { code: 'INTERNAL_ERROR', reason: err.message || 'unknown' };
+}
+
 function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
   app.post('/v1/diagnosis/start', async (req, res) => {
     if (!DIAGNOSIS_V2_ENABLED) {
       return res.status(404).json({ ok: false, error: 'DIAGNOSIS_V2_NOT_ENABLED' });
     }
 
+    const t0 = Date.now();
     try {
       const parsed = StartRequestSchema.safeParse(req.body || {});
       if (!parsed.success) {
@@ -95,6 +119,7 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
         llmProvider,
       });
 
+      logger?.info({ elapsed_ms: Date.now() - t0 }, 'diagnosis v2 start OK');
       return res.status(200).json({
         ok: true,
         stage: 'intro',
@@ -105,11 +130,12 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
         is_cold_start: stage1Result.isColdStart,
       });
     } catch (err) {
+      const classified = classifyError(err);
+      logger?.error({ err: err.message, stack: err.stack, elapsed_ms: Date.now() - t0, ...classified }, 'diagnosis v2 start failed');
       if (isProviderUnavailableError(err)) {
         return res.status(503).json({ ok: false, error: 'LLM_PROVIDER_UNAVAILABLE' });
       }
-      logger?.error({ err: err.message, stack: err.stack }, 'diagnosis v2 start failed');
-      return res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' });
+      return res.status(500).json({ ok: false, error: classified.code, reason: classified.reason });
     }
   });
 
@@ -118,6 +144,7 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
       return res.status(404).json({ ok: false, error: 'DIAGNOSIS_V2_NOT_ENABLED' });
     }
 
+    const t0 = Date.now();
     try {
       const parsed = AnswerRequestSchema.safeParse(req.body || {});
       if (!parsed.success) {
@@ -184,9 +211,13 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
         prompt_version: result.promptVersion,
       });
 
+      logger?.info({ elapsed_ms: Date.now() - t0 }, 'diagnosis v2 answer OK');
       res.write('event: done\ndata: {}\n\n');
       res.end();
     } catch (err) {
+      const classified = classifyError(err);
+      logger?.error({ err: err.message, stack: err.stack, elapsed_ms: Date.now() - t0, ...classified }, 'diagnosis v2 answer failed');
+
       if (isProviderUnavailableError(err)) {
         if (!res.headersSent) {
           return res.status(503).json({ ok: false, error: 'LLM_PROVIDER_UNAVAILABLE' });
@@ -196,13 +227,13 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
         return;
       }
 
-      logger?.error({ err: err.message, stack: err.stack }, 'diagnosis v2 answer failed');
+      const ssePayload = { error: classified.code, reason: classified.reason };
       if (!res.headersSent) {
-        return res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' });
+        return res.status(500).json({ ok: false, ...ssePayload });
       }
 
       try {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: 'INTERNAL_ERROR' })}\n\n`);
+        res.write(`event: error\ndata: ${JSON.stringify(ssePayload)}\n\n`);
         res.end();
       } catch (_) {
         // Connection may already be closed.
