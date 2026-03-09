@@ -432,11 +432,12 @@ const {
 } = require('./gatePolicyRegistry');
 const { getTravelWeather } = require('./weatherAdapter');
 const { buildEpiPayload } = require('./epiCalculator');
+const travelSkillsContracts = require('./travelSkills/contracts');
 const {
   runTravelPipeline,
   buildDestinationClarificationAssistantText,
   buildDestinationClarificationChips,
-} = require('./travelSkills/contracts');
+} = travelSkillsContracts;
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
@@ -21007,8 +21008,107 @@ function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
 
 function normalizeRecoSourceDetail(raw) {
   const token = String(raw || '').trim().toLowerCase();
-  if (token === 'goal_driven' || token === 'ingredient_driven' || token === 'profile_refine_rerun') return token;
+  if (
+    token === 'goal_driven' ||
+    token === 'ingredient_driven' ||
+    token === 'profile_refine_rerun' ||
+    token === 'travel_handoff'
+  ) return token;
   return 'goal_driven';
+}
+
+function extractLastTravelReadinessFromSession(session) {
+  if (!isPlainObject(session)) return null;
+  const raw = isPlainObject(session.last_travel_readiness)
+    ? session.last_travel_readiness
+    : isPlainObject(session.lastTravelReadiness)
+      ? session.lastTravelReadiness
+      : isPlainObject(session.meta) && isPlainObject(session.meta.last_travel_readiness)
+        ? session.meta.last_travel_readiness
+        : isPlainObject(session.meta) && isPlainObject(session.meta.lastTravelReadiness)
+          ? session.meta.lastTravelReadiness
+          : null;
+  if (!isPlainObject(raw)) return null;
+
+  const shoppingPreview = isPlainObject(raw.shopping_preview)
+    ? raw.shopping_preview
+    : isPlainObject(raw.shoppingPreview)
+      ? raw.shoppingPreview
+      : null;
+  const confidence = isPlainObject(raw.confidence) ? raw.confidence : null;
+  const out = {
+    destination: pickFirstTrimmed(raw.destination, raw.city, raw.destination_name, raw.destinationName) || null,
+    start_date: pickFirstTrimmed(raw.start_date, raw.startDate) || null,
+    end_date: pickFirstTrimmed(raw.end_date, raw.endDate) || null,
+    env_source: pickFirstTrimmed(raw.env_source, raw.envSource) || null,
+    reco_bundle: Array.isArray(raw.reco_bundle) ? raw.reco_bundle.slice(0, 8) : [],
+    ...(shoppingPreview ? { shopping_preview: shoppingPreview } : {}),
+    ...(confidence ? { confidence } : {}),
+  };
+  return Object.values(out).some((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (isPlainObject(value)) return Object.keys(value).length > 0;
+    return Boolean(value);
+  })
+    ? out
+    : null;
+}
+
+function hasTravelPlanContextForReco(profile) {
+  const profileObj = isPlainObject(profile) ? profile : null;
+  const travelPlan = isPlainObject(profileObj?.travel_plan)
+    ? profileObj.travel_plan
+    : isPlainObject(profileObj?.travelPlan)
+      ? profileObj.travelPlan
+      : null;
+  if (!travelPlan) return false;
+  return Boolean(
+    pickFirstTrimmed(
+      travelPlan.destination,
+      travelPlan.destination_name,
+      travelPlan.destinationName,
+      travelPlan.start_date,
+      travelPlan.startDate,
+      travelPlan.end_date,
+      travelPlan.endDate,
+    ),
+  );
+}
+
+function buildTravelRecoHandoffContext({ session, profile } = {}) {
+  const travelReadiness = extractLastTravelReadinessFromSession(session);
+  return {
+    travel_readiness: travelReadiness,
+    has_travel_plan: hasTravelPlanContextForReco(profile),
+    destination: pickFirstTrimmed(
+      travelReadiness?.destination,
+      profile?.travel_plan?.destination,
+      profile?.travelPlan?.destination,
+    ) || null,
+    start_date: pickFirstTrimmed(
+      travelReadiness?.start_date,
+      profile?.travel_plan?.start_date,
+      profile?.travelPlan?.start_date,
+    ) || null,
+    end_date: pickFirstTrimmed(
+      travelReadiness?.end_date,
+      profile?.travel_plan?.end_date,
+      profile?.travelPlan?.end_date,
+    ) || null,
+  };
+}
+
+function isTravelRecoHandoffRequest({ actionId, actionData, profile, session } = {}) {
+  const normalizedActionId = String(actionId || '').trim().toLowerCase();
+  if (normalizedActionId !== 'chip.start.reco_products' && normalizedActionId !== 'chip_start_reco_products') return false;
+
+  const sourceCardType = String(actionData?.source_card_type || actionData?.sourceCardType || '').trim().toLowerCase();
+  const triggerSource = String(actionData?.trigger_source || actionData?.triggerSource || '').trim().toLowerCase();
+  if (triggerSource === 'travel_handoff') return true;
+  if (sourceCardType === 'travel' || sourceCardType === 'env_stress' || sourceCardType === 'environment_stress') return true;
+
+  const context = buildTravelRecoHandoffContext({ session, profile });
+  return Boolean(context.travel_readiness || context.has_travel_plan);
 }
 
 function sanitizeRecoRequestContext(raw = {}) {
@@ -26278,9 +26378,124 @@ async function deepScanRoutineProductCandidate({
 }
 
 function coerceRecoCandidateForGuardrail(candidate) {
-  const base = isPlainObject(candidate) ? { ...candidate } : null;
+  const recoverRecoCandidateFromRawPdpResponse = (raw, carry = null) => {
+    const source = isPlainObject(raw) ? raw : null;
+    if (!source) return null;
+    const hasPdpVersion = Boolean(String(source.pdp_version || source.pdpVersion || '').trim());
+    const hasSubject = isPlainObject(source.subject);
+    const hasModules = Array.isArray(source.modules);
+    if (!hasSubject || (!hasPdpVersion && !hasModules && String(source.status || '').trim().toLowerCase() !== 'success')) {
+      return null;
+    }
+
+    const modules = Array.isArray(source.modules) ? source.modules : [];
+    const canonicalModule = modules.find((module) => isPlainObject(module) && String(module.type || '').trim().toLowerCase() === 'canonical');
+    const canonicalData = isPlainObject(canonicalModule?.data) ? canonicalModule.data : {};
+    const pdpPayload = isPlainObject(canonicalData.pdp_payload) ? canonicalData.pdp_payload : {};
+    const pdpProduct = isPlainObject(pdpPayload.product) ? pdpPayload.product : {};
+    const rawBrand = isPlainObject(pdpProduct.brand) ? pdpProduct.brand : {};
+    const categoryPath = Array.isArray(pdpProduct.category_path)
+      ? pdpProduct.category_path
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      : [];
+    const categoryFallback = categoryPath.length ? categoryPath[categoryPath.length - 1] : '';
+    const canonicalRef = normalizeCanonicalProductRef(
+      source.subject?.canonical_product_ref ||
+      source.subject?.canonicalProductRef ||
+      canonicalData.canonical_product_ref ||
+      canonicalData.canonicalProductRef ||
+      source.canonical_product_ref ||
+      source.canonicalProductRef,
+      { requireMerchant: false, allowOpaqueProductId: true },
+    );
+    const productId = pickFirstTrimmed(
+      canonicalRef?.product_id,
+      pdpProduct.product_id,
+      pdpProduct.productId,
+      source.subject?.id,
+    );
+    const merchantId = pickFirstTrimmed(
+      canonicalRef?.merchant_id,
+      pdpProduct.merchant_id,
+      pdpProduct.merchantId,
+    );
+    const brand = pickFirstTrimmed(
+      rawBrand.name,
+      pdpProduct.brand_name,
+      pdpProduct.brandName,
+      pdpProduct.brand,
+    );
+    const title = pickFirstTrimmed(
+      pdpProduct.title,
+      pdpProduct.name,
+      carry?.name,
+      carry?.title,
+      carry?.display_name,
+      carry?.displayName,
+      categoryFallback,
+    );
+    const category = pickFirstTrimmed(
+      carry?.category,
+      carry?.category_name,
+      pdpProduct.category,
+      pdpProduct.category_name,
+      pdpProduct.categoryName,
+      categoryFallback,
+    );
+    const directUrl = pickFirstTrimmed(
+      carry?.pdp_url,
+      carry?.url,
+      carry?.product_url,
+      pdpProduct.pdp_url,
+      pdpProduct.pdpUrl,
+      pdpProduct.url,
+      pdpProduct.product_url,
+      pdpProduct.productUrl,
+      pdpProduct.image_url,
+    );
+    const hasHumanReadableIdentity = Boolean(title || brand || category || directUrl || productId);
+    if (!hasHumanReadableIdentity) return null;
+
+    const nextSku = {
+      ...(productId ? { product_id: productId } : {}),
+      ...(merchantId ? { merchant_id: merchantId } : {}),
+      ...(brand ? { brand } : {}),
+      ...(title ? { name: title, title, display_name: title } : {}),
+      ...(category ? { category } : {}),
+      ...(categoryPath.length ? { category_path: categoryPath } : {}),
+      ...(directUrl ? { url: directUrl, pdp_url: directUrl } : {}),
+    };
+    return {
+      ...(isPlainObject(carry) ? carry : {}),
+      ...(productId ? { product_id: productId } : {}),
+      ...(merchantId ? { merchant_id: merchantId } : {}),
+      ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
+      ...(brand ? { brand } : {}),
+      ...(title ? { name: title, title, display_name: title, displayName: title } : {}),
+      ...(category ? { category, category_name: category } : {}),
+      ...(categoryPath.length ? { category_path: categoryPath } : {}),
+      ...(directUrl ? { pdp_url: directUrl, url: directUrl, product_url: directUrl, purchase_path: directUrl } : {}),
+      sku: nextSku,
+      metadata: {
+        ...(isPlainObject(carry?.metadata) ? carry.metadata : {}),
+        pdp_contract_repaired: true,
+        pdp_contract_source: 'get_pdp_v2',
+      },
+    };
+  };
+
+  let base = isPlainObject(candidate) ? { ...candidate } : null;
   if (!base) return null;
-  const sku = isPlainObject(base.sku) ? base.sku : isPlainObject(base.product) ? base.product : null;
+  const recoveredBase = recoverRecoCandidateFromRawPdpResponse(base);
+  if (recoveredBase) base = recoveredBase;
+
+  let sku = isPlainObject(base.sku) ? base.sku : isPlainObject(base.product) ? base.product : null;
+  const recoveredSku = recoverRecoCandidateFromRawPdpResponse(sku, base);
+  if (recoveredSku) {
+    base = recoveredSku;
+    sku = isPlainObject(base.sku) ? base.sku : isPlainObject(base.product) ? base.product : null;
+  }
   if (!sku) return base;
   const next = { ...base };
 
@@ -26448,6 +26663,64 @@ function isBlacklistedCategoryOrTitle(candidate) {
     .join(' ');
   if (!joined) return false;
   return PRODUCT_INTEL_BLACKLIST_RE.test(joined);
+}
+
+const TRAVEL_RECO_ALLOWED_RE = /\b(spf|sunscreen|sun screen|sun stick|uv|cleanser|face wash|moistur|moisturizer|gel cream|gel-cream|cream|lotion|serum|essence|mask|mist|balm|barrier|repair|hydrating|hydration|soothing|after sun|lip balm|防晒|洁面|洗面奶|保湿|补水|面霜|乳液|精华|面膜|喷雾|修护|屏障|舒缓|晒后|润唇)\b/i;
+const TRAVEL_RECO_BLOCK_RE = /\b(brush|applicator|blender|tool|makeup|eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume|hair|comb|razor|shaver|accessor|化妆刷|彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水|梳子|剃须|配件)\b/i;
+
+function isTravelRecoPayload(payload) {
+  const meta = isPlainObject(payload?.recommendation_meta) ? payload.recommendation_meta : {};
+  const taskMode = String(payload?.task_mode || meta.task_mode || '').trim().toLowerCase();
+  const triggerSource = String(meta.trigger_source || meta.triggerSource || '').trim().toLowerCase();
+  const handoffSource = String(meta.handoff_source || meta.handoffSource || '').trim().toLowerCase();
+  return (
+    taskMode === 'travel_readiness_products' ||
+    triggerSource === 'travel_handoff' ||
+    handoffSource === 'travel_readiness'
+  );
+}
+
+function isTravelRecoAllowedCandidate(candidate) {
+  const row = coerceRecoCandidateForGuardrail(candidate);
+  if (!row) return false;
+  const sku = isPlainObject(row.sku) ? row.sku : isPlainObject(row.product) ? row.product : {};
+  const joined = [
+    row.step,
+    row.slot,
+    row.category,
+    row.category_name,
+    row.category_path,
+    row.product_type,
+    row.type,
+    row.brand,
+    row.name,
+    row.title,
+    row.display_name,
+    row.displayName,
+    row.why_match,
+    row.why,
+    row.reasons,
+    row.notes,
+    row.tags,
+    sku.category,
+    sku.category_name,
+    sku.category_path,
+    sku.product_type,
+    sku.type,
+    sku.brand,
+    sku.name,
+    sku.title,
+    sku.display_name,
+    sku.displayName,
+    sku.tags,
+  ]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!joined) return false;
+  if (TRAVEL_RECO_BLOCK_RE.test(joined)) return false;
+  return TRAVEL_RECO_ALLOWED_RE.test(joined);
 }
 
 function isSearchLikeUrl(url) {
@@ -27701,6 +27974,7 @@ async function sanitizeRecoCandidatesForUi(
 
     if (type === 'recommendations') {
       const recs = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+      const travelRecoMode = isTravelRecoPayload(payload);
       const kept = [];
       const externalSearchCtas = Array.isArray(payload.external_search_ctas) ? payload.external_search_ctas.slice(0, 6) : [];
       let droppedForCard = 0;
@@ -27709,6 +27983,8 @@ async function sanitizeRecoCandidatesForUi(
       let missingUrlFallbackForCard = 0;
       let strictFilterFallbackForCard = 0;
       let nonHttpsDemotedForCard = 0;
+      let pdpContractRepairedForCard = 0;
+      let pdpContractDroppedForCard = 0;
       let recoveryRecoveredForCard = 0;
       let recoveryAttemptedForCard = 0;
       let llmFallbackRecoveredForCard = 0;
@@ -27720,9 +27996,31 @@ async function sanitizeRecoCandidatesForUi(
       for (const rec of recs) {
         const row = coerceRecoCandidateForGuardrail(rec);
         if (!row) continue;
+        const pdpContractRepaired = Boolean(isPlainObject(row.metadata) && row.metadata.pdp_contract_repaired === true);
+        if (pdpContractRepaired) {
+          pdpContractRepairedForCard += 1;
+        }
+        if (
+          String(row.pdp_version || row.pdpVersion || '').trim() ||
+          (isPlainObject(row.subject) && (Array.isArray(row.modules) || String(row.status || '').trim()))
+        ) {
+          dropped += 1;
+          droppedForCard += 1;
+          pdpContractDroppedForCard += 1;
+          rejected.push({
+            query: pickFirstString(row.name, row.title, row.display_name, row.displayName),
+            candidate_title: pickFirstString(row.name, row.title, row.display_name, row.displayName),
+            candidate_url: extractCandidateOpenUrl(row) || null,
+            candidate_source: pickFirstString(row.source, row.brand).toLowerCase() || null,
+            reject_reason: 'reco_contract_invalid_raw_pdp_response',
+            rule_id: 'reco_guardrail',
+          });
+          continue;
+        }
 
         const blacklistHit = isBlacklistedCategoryOrTitle(row);
         const skincareHit = isSkincareCategory(row);
+        const travelAllowed = !travelRecoMode || isTravelRecoAllowedCandidate(row);
         const trustedCatalogGrounded = isTrustedCatalogGroundedRecoCandidate(row, payload);
         const relevanceDecision = await evaluateIngredientCandidateWithQaMode(row, {
           qaMode: effectiveQaMode,
@@ -27736,6 +28034,8 @@ async function sanitizeRecoCandidatesForUi(
         const resolverExternalBypass = allowResolverExternalRecommendations === true && isResolverExternalOpenContractRow(row);
         const relevanceRejectReason = blacklistHit
           ? 'blacklisted_category_or_title'
+          : travelRecoMode && !travelAllowed
+            ? 'travel_non_skincare_category'
           : strictFilter && !skincareHit && !trustedCatalogGrounded
             ? 'non_skincare_category'
             : !(relevanceDecision && relevanceDecision.pass === true) && !trustedCatalogGrounded
@@ -27920,6 +28220,8 @@ async function sanitizeRecoCandidatesForUi(
 
       const mergedFieldMissing = mergeFieldMissing(card.field_missing, [
         ...(droppedForCard > 0 ? [{ field: 'payload.recommendations', reason: 'strict_skincare_filter' }] : []),
+        ...(pdpContractRepairedForCard > 0 ? [{ field: 'payload.recommendations', reason: 'pdp_contract_repaired' }] : []),
+        ...(pdpContractDroppedForCard > 0 ? [{ field: 'payload.recommendations', reason: 'pdp_contract_invalid_dropped' }] : []),
         ...(searchDemotedForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'search_url_demoted' }] : []),
         ...(contractDemotedForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'open_contract_only_demoted' }] : []),
         ...(missingUrlFallbackForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'product_url_missing_fallback' }] : []),
@@ -27937,7 +28239,7 @@ async function sanitizeRecoCandidatesForUi(
       const finalExternalSearchCtas = AURORA_DISCOVERY_CARD_IN_LIST_ENABLED
         ? dedupeExternalSearchCtas(externalSearchCtas, 8)
         : [];
-      const productsEmptyReason = deriveProductsEmptyReason({
+      const derivedProductsEmptyReason = deriveProductsEmptyReason({
         keptCount: kept.length,
         externalSearchCount: finalExternalSearchCtas.length,
         strictFallbackCount: strictFilterFallbackForCard,
@@ -27953,6 +28255,15 @@ async function sanitizeRecoCandidatesForUi(
         llmFallbackError: llmFallbackErrorForCard,
         llmFallbackEmpty: llmFallbackEmptyForCard,
       });
+      const productsEmptyReason =
+        derivedProductsEmptyReason ||
+        (
+          kept.length === 0 &&
+          finalExternalSearchCtas.length === 0 &&
+          pdpContractDroppedForCard > 0
+            ? 'reco_contract_invalid'
+            : ''
+        );
 
       nextCards.push({
         ...card,
@@ -29823,6 +30134,14 @@ function isTravelOrEnvCard(card) {
   });
 }
 
+function isRenderableRecommendationCard(card) {
+  if (!isPlainObject(card)) return false;
+  if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return false;
+  const payload = getCardPayload(card);
+  const recommendations = Array.isArray(payload?.recommendations) ? payload.recommendations : [];
+  return recommendations.length > 0;
+}
+
 function suppressAnalysisCardsForTravelEnvTurn(cards, { canonicalIntent } = {}) {
   const list = Array.isArray(cards) ? cards : [];
   if (!list.length) return list;
@@ -29871,6 +30190,7 @@ function buildRoutineRulesOnlyFallbackCardsForChat({ ctx, message, profile, rece
 function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantText, profile } = {}) {
   const cards = Array.isArray(envelope && envelope.cards) ? envelope.cards : [];
   const intent = String(policyMeta && policyMeta.intent_canonical ? policyMeta.intent_canonical : '').trim().toLowerCase();
+  const hasTravelEnvMainline = isTravelOrEnvIntent(intent) || cards.some((card) => isTravelOrEnvCard(card));
   const placeholderStall = looksLikeMockPlaceholder(assistantText);
   const phraseStall = looksLikeStallPhrase(assistantText) && !hasRenderableCards(cards);
   const gateOnlyStall =
@@ -29885,7 +30205,7 @@ function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantTex
 
   const missingModules = [];
   const moduleFailFromDegradedSignal = hasDegradedModuleFailSignal(envelope);
-  if (isRoutineContractIntent(intent)) {
+  if (isRoutineContractIntent(intent) && !hasTravelEnvMainline) {
     const expert = findRoutineExpertNodeFromEnvelope(envelope);
     if (!hasRoutineExpertRequiredModules(expert)) {
       critical.push('module_fail');
@@ -33692,9 +34012,20 @@ async function enrichRecommendationsWithPdpOpenContract({
 }
 
 function coerceRecoItemForUi(item, { lang } = {}) {
-  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+  const baseCandidate = coerceRecoCandidateForGuardrail(item);
+  const base = baseCandidate && typeof baseCandidate === 'object' && !Array.isArray(baseCandidate) ? baseCandidate : null;
   if (!base) return item;
   const ungrounded = isRecoUngroundedItem(base);
+  const whyCandidateNormalized = normalizeWhyCandidateObject(base.why_candidate ?? base.whyCandidate, {
+    lang: String(lang || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN',
+  });
+  const whyCandidateNotes = isPlainObject(whyCandidateNormalized)
+    ? uniqCaseInsensitiveStrings([
+        pickFirstString(whyCandidateNormalized.summary),
+        ...asStringArray(whyCandidateNormalized.reasons_user_visible ?? whyCandidateNormalized.reasonsUserVisible, 6),
+        ...asStringArray(whyCandidateNormalized.reasons, 6),
+      ]).slice(0, 6)
+    : asStringArray(whyCandidateNormalized, 6);
 
   const skuCandidate =
     base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
@@ -33814,13 +34145,18 @@ function coerceRecoItemForUi(item, { lang } = {}) {
     category ||
     (String(lang || '').toUpperCase() === 'CN' ? '推荐' : 'Recommendation');
 
-  const notesRaw =
-    Array.isArray(base.notes) ? base.notes
-      : Array.isArray(base.reasons) ? base.reasons
-        : Array.isArray(base.why) ? base.why
-          : typeof base.reason === 'string' ? [base.reason]
-            : typeof base.why === 'string' ? [base.why]
-              : [];
+  const notesRaw = uniqCaseInsensitiveStrings([
+    ...asStringArray(base.notes, 8),
+    ...asStringArray(base.reasons, 8),
+    ...asStringArray(base.why, 8),
+    ...whyCandidateNotes,
+    ...asStringArray(base.compare_highlights ?? base.compareHighlights, 6),
+    ...asStringArray(base.tradeoff_notes ?? base.tradeoffNotes, 6),
+    ...asStringArray(base.best_use ?? base.bestUse, 2),
+    ...asStringArray(base.expected_outcome ?? base.expectedOutcome, 2),
+    pickFirstString(base.reason),
+    typeof base.why === 'string' ? base.why : '',
+  ]);
 
   const notes = Array.isArray(notesRaw)
     ? notesRaw
@@ -49913,12 +50249,23 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (!card || typeof card !== 'object') continue;
         if (String(card.type || '').trim().toLowerCase() !== 'recommendations') continue;
         const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+        const payloadMeta =
+          payload.recommendation_meta && typeof payload.recommendation_meta === 'object' && !Array.isArray(payload.recommendation_meta)
+            ? payload.recommendation_meta
+            : {};
         const source = String(payload.source || '').trim().toLowerCase();
+        const existingSourceMode = String(payloadMeta.source_mode || payloadMeta.sourceMode || '').trim().toLowerCase();
+        const triggerSource = String(payloadMeta.trigger_source || payloadMeta.triggerSource || '').trim().toLowerCase();
+        const handoffSource = String(payloadMeta.handoff_source || payloadMeta.handoffSource || '').trim().toLowerCase();
+        if (existingSourceMode === 'travel_handoff' || triggerSource === 'travel_handoff' || handoffSource === 'travel_readiness') {
+          return 'travel_handoff';
+        }
         if (source.includes('llm_primary')) return 'llm_primary';
         if (source === 'llm' || source.startsWith('llm_')) return 'llm_primary';
         if (source.includes('catalog_grounded')) return 'catalog_grounded';
         if (source.includes('catalog_transient_fallback')) return 'catalog_transient_fallback';
         if (source.includes('artifact_matcher')) return 'artifact_matcher';
+        if (source.includes('travel_handoff') || source.includes('travel_reco_preview')) return 'travel_handoff';
         if (source.includes('upstream')) return 'upstream_fallback';
       }
 
@@ -49933,6 +50280,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (source.includes('catalog_grounded')) return 'catalog_grounded';
         if (source.includes('catalog_transient_fallback')) return 'catalog_transient_fallback';
         if (source.includes('artifact_matcher')) return 'artifact_matcher';
+        if (source.includes('travel_handoff') || source.includes('travel_reco_preview')) return 'travel_handoff';
         if (source.includes('upstream')) return 'upstream_fallback';
       }
 
@@ -50380,6 +50728,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           return type === 'ingredient_hub' || type === 'ingredient_goal_match';
         });
         if (hasIngredientEntryCards) return baseEnvelope;
+        if (currentCards.some((card) => isTravelOrEnvCard(card) || isRenderableRecommendationCard(card))) {
+          return baseEnvelope;
+        }
 
         const intentCanonical = String(policyMeta && policyMeta.intent_canonical ? policyMeta.intent_canonical : '')
           .trim()
@@ -54691,6 +55042,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? 'profile_refine_rerun'
         : ingredientDrivenRecommendationRequested
           ? 'ingredient_driven'
+          : isTravelRecoHandoffRequest({
+            actionId,
+            actionData: normalizedActionPayload,
+            profile,
+            session: parsed.data.session,
+          })
+            ? 'travel_handoff'
           : 'goal_driven';
       const recoRequestMessage = String(message || '').trim();
       let recoSource = '';
@@ -54834,12 +55192,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         const recoProductCandidates = Array.isArray(
           ingredientActionData?.product_candidates || ingredientActionData?.productCandidates,
         ) ? (ingredientActionData.product_candidates || ingredientActionData.productCandidates) : [];
+        const travelRecoContext = buildTravelRecoHandoffContext({
+          session: parsed.data.session,
+          profile,
+        });
+        const travelRecoHandoff =
+          recoEntrySourceDetail === 'travel_handoff' &&
+          !ingredientRecoOptInRequested;
         const recoTaskMode = ingredientRecoOptInRequested
           ? (recoProductCandidates.length > 0
             ? 'ingredient_filtered_products'
             : recoIngredientCandidates.length > 0
               ? 'ingredient_filtered_products'
               : 'ingredient_lookup_no_candidates')
+          : travelRecoHandoff
+            ? 'travel_readiness_products'
           : 'goal_based_products';
         recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
         recordAuroraRecoEntrySource({ source: recoEntrySourceDetail });
@@ -54978,6 +55345,166 @@ function mountAuroraBffRoutes(app, { logger }) {
             session_patch: {},
             events: [
               makeEvent(ctx, 'recos_requested', { explicit: true, blocked: true, reason: 'safety_boundary' }),
+            ],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        if (travelRecoHandoff) {
+          const buildTravelRecoPreview =
+            travelSkillsContracts &&
+            travelSkillsContracts.__internal &&
+            typeof travelSkillsContracts.__internal.buildRecoPreview === 'function'
+              ? travelSkillsContracts.__internal.buildRecoPreview
+              : null;
+          const travelReadiness = isPlainObject(travelRecoContext.travel_readiness)
+            ? { ...travelRecoContext.travel_readiness }
+            : null;
+          const sessionPatch = {};
+          appendLatestRecoContextToSessionPatch(sessionPatch, {
+            intent: 'reco_products',
+            source_detail: recoEntrySourceDetail,
+            trigger_source: 'travel_handoff',
+            action_id: actionId || '',
+            message: recoRequestMessage,
+            include_alternatives: includeAlternatives === true,
+            goal: 'travel_protective_products',
+          });
+          if (!travelReadiness || !buildTravelRecoPreview) {
+            const destinationText = travelRecoContext.destination || null;
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeChatAssistantMessage(
+                ctx.lang === 'CN'
+                  ? (destinationText
+                    ? `我还缺少 ${destinationText} 这次行程的旅行护肤准备上下文，请先回到旅行建议卡片再点一次“查看完整推荐”。`
+                    : '我还缺少这次行程的旅行护肤准备上下文，请先回到旅行建议卡片再点一次“查看完整推荐”。')
+                  : (destinationText
+                    ? `I still need the travel-readiness context for ${destinationText}. Return to the travel card and open full recommendations again.`
+                    : 'I still need the travel-readiness context for this trip. Return to the travel card and open full recommendations again.'),
+              ),
+              suggested_chips: refinementChips,
+              cards: [
+                {
+                  card_id: `conf_${ctx.request_id}`,
+                  type: 'confidence_notice',
+                  payload: buildConfidenceNoticeCardPayload({
+                    language: ctx.lang,
+                    reason: 'travel_context_missing',
+                    confidence: { score: 0.2, level: 'low', rationale: ['travel_reco_context_missing'] },
+                    actions: ['return_to_travel_card', 'retry_recommendations'],
+                    details: ['travel_handoff_requires_last_travel_readiness'],
+                  }),
+                },
+              ],
+              session_patch: sessionPatch,
+              events: [
+                makeEvent(ctx, 'recos_requested', {
+                  explicit: true,
+                  gated: true,
+                  reason: 'travel_context_missing',
+                  source: 'travel_handoff',
+                  source_detail: 'travel_handoff',
+                }),
+              ],
+            });
+            return sendChatEnvelope(envelope);
+          }
+
+          const travelPreview = buildTravelRecoPreview({
+            travelReadiness,
+            profile,
+            language: ctx.lang,
+          });
+          const travelRecommendations = Array.isArray(travelPreview?.recommendations)
+            ? travelPreview.recommendations.slice(0, 8)
+            : [];
+          if (!travelRecommendations.length) {
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeChatAssistantMessage(
+                ctx.lang === 'CN'
+                  ? '我拿到了旅行上下文，但这轮没有形成可展示的旅行护肤候选。请回到旅行卡片补充目的地条件，或稍后重试。'
+                  : 'I have the trip context, but this round did not yield a displayable travel-skincare shortlist. Add more trip conditions in the travel card or retry shortly.',
+              ),
+              suggested_chips: refinementChips,
+              cards: [
+                {
+                  card_id: `conf_${ctx.request_id}`,
+                  type: 'confidence_notice',
+                  payload: buildConfidenceNoticeCardPayload({
+                    language: ctx.lang,
+                    reason: 'travel_reco_empty',
+                    confidence: { score: 0.28, level: 'low', rationale: ['travel_reco_preview_empty'] },
+                    actions: ['retry_recommendations', 'return_to_travel_card'],
+                    details: ['travel_handoff_no_supported_products'],
+                  }),
+                },
+              ],
+              session_patch: sessionPatch,
+              events: [
+                makeEvent(ctx, 'recos_requested', {
+                  explicit: true,
+                  gated: true,
+                  reason: 'travel_reco_empty',
+                  source: 'travel_handoff',
+                  source_detail: 'travel_handoff',
+                }),
+              ],
+            });
+            return sendChatEnvelope(envelope);
+          }
+
+          const travelConfidenceScore = Number(travelPreview?.confidence?.score);
+          const travelConfidenceLevel = pickFirstTrimmed(
+            travelPreview?.confidence?.level,
+            travelReadiness?.confidence?.level,
+            'medium',
+          );
+          const payload = {
+            intent: 'reco_products',
+            profile: summarizeProfileForContext(profile),
+            recommendations: travelRecommendations,
+            source: 'travel_reco_preview_v1',
+            recommendation_confidence_score: Number.isFinite(travelConfidenceScore) ? travelConfidenceScore : 0.62,
+            recommendation_confidence_level: travelConfidenceLevel || 'medium',
+            task_mode: recoTaskMode,
+            recommendation_meta: {
+              task_mode: recoTaskMode,
+              source_mode: 'travel_handoff',
+              trigger_source: 'travel_handoff',
+              handoff_source: 'travel_readiness',
+              used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+              used_itinerary: true,
+              used_safety_flags: false,
+              env_source: pickFirstTrimmed(travelReadiness.env_source, travelRecoContext.travel_readiness?.env_source) || null,
+              destination: travelRecoContext.destination || null,
+              start_date: travelRecoContext.start_date || null,
+              end_date: travelRecoContext.end_date || null,
+            },
+            metadata: {
+              travel_handoff: true,
+            },
+          };
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(
+              ctx.lang === 'CN'
+                ? '我按这次旅行环境把候选收紧到防晒、清洁和修护保湿这条主线，优先给你可随行、低跑偏的护肤推荐。'
+                : 'I narrowed this shortlist to travel-relevant sunscreen, cleansing, and barrier-repair products for this trip.',
+            ),
+            suggested_chips: refinementChips,
+            cards: [
+              {
+                card_id: `reco_${ctx.request_id}`,
+                type: 'recommendations',
+                payload,
+              },
+            ],
+            session_patch: sessionPatch,
+            events: [
+              makeEvent(ctx, 'recos_requested', {
+                explicit: true,
+                source: 'travel_handoff',
+                source_detail: 'travel_handoff',
+              }),
             ],
           });
           return sendChatEnvelope(envelope);
@@ -57471,6 +57998,8 @@ const __internal = {
   isBlacklistedCategoryOrTitle,
   isSearchLikeUrl,
   hasOpenableUrl,
+  coerceRecoCandidateForGuardrail,
+  coerceRecoItemForUi,
   sanitizeRecoCandidatesForUi,
   collectPurchasableFallbackQueries,
   buildPurchasableFallbackCandidates,
