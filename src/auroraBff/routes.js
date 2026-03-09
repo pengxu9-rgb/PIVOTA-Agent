@@ -48867,25 +48867,20 @@ function mountAuroraBffRoutes(app, { logger }) {
 	      };
 
       const analysisBudgetStartedAtMs = Date.now();
+      const effectiveBudgetMs = AURORA_RULE_RELAX_AGGRESSIVE
+        ? Math.max(AURORA_BFF_ANALYSIS_BUDGET_MS, 50000)
+        : AURORA_BFF_ANALYSIS_BUDGET_MS;
       let output = null;
       try {
-        if (AURORA_RULE_RELAX_AGGRESSIVE) {
-          output = await runOnce({
+        output = await withTimeout(
+          runOnce({
             pipelineVersion: outputPipelineVersion,
             persistLastAnalysis: true,
             shadowRun: false,
-          });
-        } else {
-          output = await withTimeout(
-            runOnce({
-              pipelineVersion: outputPipelineVersion,
-              persistLastAnalysis: true,
-              shadowRun: false,
-            }),
-            AURORA_BFF_ANALYSIS_BUDGET_MS,
-            'AURORA_ANALYSIS_BUDGET_TIMEOUT',
-          );
-        }
+          }),
+          effectiveBudgetMs,
+          'AURORA_ANALYSIS_BUDGET_TIMEOUT',
+        );
       } catch (err) {
         if (!(err && err.code === 'AURORA_ANALYSIS_BUDGET_TIMEOUT')) throw err;
         logger?.warn(
