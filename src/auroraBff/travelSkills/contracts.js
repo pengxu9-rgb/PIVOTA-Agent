@@ -4,7 +4,7 @@ const { getTravelWeather, climateFallback } = require('../weatherAdapter');
 const { normalizeDestinationPlace, resolveDestinationInput } = require('../destinationResolver');
 const { buildEpiPayload } = require('../epiCalculator');
 const { getTravelAlerts } = require('../travelAlertsProvider');
-const { buildTravelReadiness } = require('../travelReadinessBuilder');
+const { buildTravelReadiness, __internal: { buildCategorizedKit: _buildCategorizedKit } } = require('../travelReadinessBuilder');
 const { calibrateTravelReadinessWithLlm } = require('../travelLlmCalibrator');
 const { composeTravelReply } = require('../travelReplyComposer');
 const { getTravelContextKbEntry, upsertTravelContextKbEntry } = require('../travelKbStore');
@@ -1025,6 +1025,15 @@ async function runTravelPipeline(input = {}) {
 
       if (isPlainObject(llmResult) && isPlainObject(llmResult.travel_readiness)) {
         travelReadiness = llmResult.travel_readiness;
+        const shoppingPatch = isPlainObject(travelReadiness.shopping_preview) ? travelReadiness.shopping_preview : {};
+        travelReadiness.categorized_kit = _buildCategorizedKit({
+          language,
+          recoBundle: Array.isArray(travelReadiness.reco_bundle) ? travelReadiness.reco_bundle : [],
+          deltaVsHome: isPlainObject(travelReadiness.delta_vs_home) ? travelReadiness.delta_vs_home : {},
+          brandCandidates: Array.isArray(shoppingPatch.brand_candidates) ? shoppingPatch.brand_candidates : [],
+          categoryRecommendations: Array.isArray(travelReadiness.category_recommendations) ? travelReadiness.category_recommendations : [],
+          previewProducts: Array.isArray(shoppingPatch.products) ? shoppingPatch.products : [],
+        });
       }
 
       const llmRawOutcome = normalizeText(llmResult && llmResult.outcome, 40) || 'error';
