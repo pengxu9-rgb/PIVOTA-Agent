@@ -83,6 +83,7 @@ function deriveUiNextState({ cards = [], session_patch = {} } = {}) {
   if (has('product_parse') || has('product_analysis') || has('offers_resolved')) return 'PRODUCT_LINK_EVAL';
 
   const ns = String(session_patch && session_patch.next_state ? session_patch.next_state : '').trim();
+  if (ns === 'S7_PRODUCT_RECO') return 'RECO_RESULTS';
   if (UI_STATES.has(ns)) return ns;
 
   return 'IDLE_CHAT';

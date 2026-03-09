@@ -504,7 +504,7 @@ const AURORA_DECISION_BASE_URL = String(process.env.AURORA_DECISION_BASE_URL || 
 const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '')
   .replace(/\/$/, '');
 const RECO_PROMPTS_ROOT_DIR = path.resolve(__dirname, '../../prompts');
-const RECO_MAIN_PROMPT_TEMPLATE_ID = 'reco_main_v1_0';
+const RECO_MAIN_PROMPT_TEMPLATE_ID = 'reco_main_v1_2';
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
@@ -923,7 +923,7 @@ let ingredientResearchCacheLoadedFromDisk = false;
 let ingredientResearchCachePersistTimer = null;
 let ingredientResearchCachePersistPending = false;
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
-const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
+const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || 'true').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const RECO_CATALOG_SEARCH_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 1800);
@@ -977,23 +977,23 @@ const RECO_CATALOG_FAIL_FAST_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const RECO_CATALOG_FAIL_FAST_THRESHOLD = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD || 1);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
   return Math.max(1, Math.min(8, v));
 })();
 const RECO_CATALOG_FAIL_FAST_COOLDOWN_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS || 90000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS || 15000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 15000;
   return Math.max(3000, Math.min(300000, v));
 })();
 const RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS || 8000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS || 5000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
   return Math.max(500, Math.min(60000, v));
 })();
 const RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS || 1200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS || 1500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1500;
   return Math.max(300, Math.min(6000, v));
 })();
 const RECO_CATALOG_SEARCH_BASE_URLS = String(
@@ -1790,8 +1790,8 @@ const AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS = (() => {
   return Math.max(200, Math.min(20000, v));
 })();
 const AURORA_BFF_CHAT_RECO_BUDGET_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 9000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
+  const n = Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 13000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 13000;
   return Math.max(1000, Math.min(60000, v));
 })();
 const AURORA_BFF_CHAT_ROUTINE_BUDGET_MS = (() => {
@@ -1882,14 +1882,14 @@ const RECO_ALTERNATIVES_CACHE_MAX_KEYS = (() => {
 const recoAlternativesResponseCache = new Map();
 
 const RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS || 4500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4500;
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS || 12000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 12000;
   return Math.max(2000, Math.min(22000, v));
 })();
 
 const RECO_UPSTREAM_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 3500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 3500;
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
   const bounded = Math.max(3000, Math.min(22000, v));
   return Math.min(bounded, RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS);
 })();
@@ -13342,6 +13342,350 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
   }
 
   return deduped;
+}
+
+function normalizeRecoGroundingStatus(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (token === 'grounded' || token === 'partially_grounded' || token === 'ungrounded') return token;
+  if (token === 'editorial') return 'ungrounded';
+  return '';
+}
+
+function isRecoUngroundedItem(item) {
+  if (!isPlainObject(item)) return false;
+  const token = normalizeRecoGroundingStatus(
+    item.grounding_status
+    || item.groundingStatus
+    || item?.recommendation_meta?.grounding_status
+    || item?.metadata?.grounding_status,
+  );
+  return token === 'ungrounded';
+}
+
+function normalizeRecoPlanStringArray(raw, max = 6) {
+  return uniqCaseInsensitiveStrings(asStringArray(raw), max);
+}
+
+function humanizeRecoProductType(productType, lang = 'EN') {
+  const token = String(productType || '').trim().toLowerCase();
+  const isCn = String(lang || '').trim().toUpperCase() === 'CN';
+  const mapEn = {
+    cleanser: 'gentle cleanser',
+    moisturizer: 'barrier-friendly moisturizer',
+    sunscreen: 'broad-spectrum sunscreen',
+    serum: 'targeted serum',
+    treatment: 'targeted treatment',
+    other: 'skincare product',
+  };
+  const mapCn = {
+    cleanser: '温和洁面',
+    moisturizer: '屏障友好保湿',
+    sunscreen: '广谱防晒',
+    serum: '功效精华',
+    treatment: '针对性护理',
+    other: '护肤产品',
+  };
+  return (isCn ? mapCn[token] : mapEn[token]) || (isCn ? '护肤产品' : 'skincare product');
+}
+
+function normalizeRecoPlanQueryTerms(raw, max = 4) {
+  const input = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string'
+      ? raw.split(/[,\n;|/]+/)
+      : [];
+  return uniqCaseInsensitiveStrings(
+    input
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .map((item) => item.slice(0, 80)),
+    max,
+  );
+}
+
+function deriveRecoPlanQueryTerms(item, lang = 'EN') {
+  const base = isPlainObject(item) ? item : {};
+  const provided = normalizeRecoPlanQueryTerms(base.query_terms || base.queryTerms, 4);
+  if (provided.length) return provided;
+  const productType = pickFirstTrimmed(base.product_type, base.productType, base.step, base.category, 'skincare');
+  const concernMatch = normalizeRecoPlanStringArray(base.concern_match || base.concernMatch, 3);
+  const useCase = pickFirstTrimmed(base.use_case, base.useCase);
+  const displayName = pickFirstTrimmed(base.display_name, base.displayName, base.name, base.title);
+  const out = [];
+  if (displayName) out.push(displayName);
+  if (useCase) out.push(useCase);
+  if (productType && concernMatch.length) {
+    for (const concern of concernMatch) {
+      out.push(`${productType} ${concern}`.trim());
+    }
+  }
+  if (productType) out.push(productType);
+  if (String(lang || '').toUpperCase() === 'CN' && productType) {
+    out.push(`${productType} 护肤`);
+  } else if (productType) {
+    out.push(`${productType} skincare`);
+  }
+  return normalizeRecoPlanQueryTerms(out, 4);
+}
+
+function normalizeRecoPlanRecommendation(item, { lang = 'EN', index = 0 } = {}) {
+  const base = isPlainObject(item) ? { ...item } : {};
+  const slotRaw = String(base.slot || '').trim().toLowerCase();
+  const slot = slotRaw === 'am' || slotRaw === 'pm' ? slotRaw : 'other';
+  const productType = pickFirstTrimmed(base.product_type, base.productType, base.step, base.category, 'other')
+    .trim()
+    .toLowerCase();
+  const step = pickFirstTrimmed(base.step, humanizeRecoProductType(productType, lang), 'Recommendation');
+  const concernMatch = normalizeRecoPlanStringArray(base.concern_match || base.concernMatch, 4);
+  const skinFit = normalizeRecoPlanStringArray(base.skin_fit || base.skinFit, 4);
+  const constraintNotes = normalizeRecoPlanStringArray(base.constraint_notes || base.constraintNotes, 4);
+  const useCase = pickFirstTrimmed(base.use_case, base.useCase, concernMatch[0], humanizeRecoProductType(productType, lang));
+  const displayName = pickFirstTrimmed(
+    base.display_name,
+    base.displayName,
+    base.name,
+    base.title,
+    useCase,
+    humanizeRecoProductType(productType, lang),
+  );
+  const name = pickFirstTrimmed(base.name, displayName, useCase, humanizeRecoProductType(productType, lang));
+  const brand = pickFirstTrimmed(base.brand);
+  const reasons = normalizeRecoPlanStringArray(base.reasons || base.notes || base.why, 3);
+  const queryTerms = deriveRecoPlanQueryTerms(base, lang);
+  const score = Number.isFinite(Number(base.score)) ? Math.max(0, Math.min(100, Math.trunc(Number(base.score)))) : Math.max(60, 92 - index * 4);
+  const skuBase = isPlainObject(base.sku) ? { ...base.sku } : {};
+  return {
+    ...base,
+    slot,
+    step,
+    score,
+    product_type: productType || 'other',
+    brand: brand || null,
+    name: name || null,
+    title: pickFirstTrimmed(base.title, displayName, name) || null,
+    display_name: displayName || null,
+    use_case: useCase || null,
+    concern_match: concernMatch,
+    skin_fit: skinFit,
+    constraint_notes: constraintNotes,
+    query_terms: queryTerms,
+    reasons,
+    grounding_status: normalizeRecoGroundingStatus(base.grounding_status) || 'ungrounded',
+    sku: {
+      ...skuBase,
+      ...(brand ? { brand } : {}),
+      ...(name ? { name } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(productType ? { category: productType, product_type: productType } : {}),
+    },
+  };
+}
+
+function buildRecoGroundingQueriesFromPlanItem(item, { lang = 'EN' } = {}) {
+  const base = normalizeRecoPlanRecommendation(item, { lang });
+  const queries = [];
+  const primaryTerms = normalizeRecoPlanQueryTerms(base.query_terms, 4);
+  for (const term of primaryTerms) queries.push(term);
+  const productType = pickFirstTrimmed(base.product_type, base.step, 'skincare');
+  const concernMatch = normalizeRecoPlanStringArray(base.concern_match, 2);
+  if (productType && concernMatch.length) {
+    for (const concern of concernMatch) {
+      queries.push(`${productType} ${concern}`.trim());
+    }
+  }
+  const displayName = pickFirstTrimmed(base.display_name, base.name, base.use_case);
+  if (displayName) queries.push(displayName);
+  return normalizeRecoPlanQueryTerms(queries, 4);
+}
+
+function mergeRecoPlanWithGroundedCandidate(planItem, product) {
+  const plan = normalizeRecoPlanRecommendation(planItem);
+  const normalizedProduct = normalizeRecoCatalogProduct(product);
+  if (!isPlainObject(normalizedProduct)) {
+    return { ...plan, grounding_status: 'ungrounded' };
+  }
+  const canonicalRef = normalizeCanonicalProductRef(
+    normalizedProduct.canonical_product_ref || {
+      product_id: pickFirstString(normalizedProduct.product_id, normalizedProduct.productId),
+      merchant_id: pickFirstString(normalizedProduct.merchant_id, normalizedProduct.merchantId),
+    },
+    { requireMerchant: true, allowOpaqueProductId: false },
+  );
+  const mergedReasons = uniqCaseInsensitiveStrings(
+    [
+      ...normalizeRecoPlanStringArray(plan.reasons, 3),
+      ...normalizeRecoPlanStringArray([pickFirstTrimmed(normalizedProduct.why_match, normalizedProduct.retrieval_reason)], 2),
+    ],
+    4,
+  );
+  return {
+    ...plan,
+    grounding_status: 'grounded',
+    product_id: pickFirstTrimmed(normalizedProduct.product_id, normalizedProduct.productId, plan.product_id),
+    merchant_id: pickFirstTrimmed(normalizedProduct.merchant_id, normalizedProduct.merchantId, plan.merchant_id),
+    brand: pickFirstTrimmed(normalizedProduct.brand, plan.brand),
+    name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title, plan.name),
+    title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name, plan.title),
+    display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name, plan.display_name),
+    category: pickFirstTrimmed(normalizedProduct.category, normalizedProduct.category_name, normalizedProduct.product_type, plan.product_type),
+    retrieval_source: pickFirstTrimmed(normalizedProduct.retrieval_source, normalizedProduct.retrievalSource, 'catalog'),
+    retrieval_reason: pickFirstTrimmed(normalizedProduct.retrieval_reason, normalizedProduct.retrievalReason, 'catalog_query_match'),
+    ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
+    ...(pickFirstTrimmed(normalizedProduct.purchase_path, normalizedProduct.purchasePath) ? { purchase_path: pickFirstTrimmed(normalizedProduct.purchase_path, normalizedProduct.purchasePath) } : {}),
+    ...(pickFirstTrimmed(normalizedProduct.canonical_pdp_url, normalizedProduct.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstTrimmed(normalizedProduct.canonical_pdp_url, normalizedProduct.canonicalPdpUrl) } : {}),
+    ...(isPlainObject(normalizedProduct.pdp_open) ? { pdp_open: normalizedProduct.pdp_open } : {}),
+    reasons: mergedReasons,
+    sku: {
+      ...normalizedProduct,
+      ...(plan.product_type ? { product_type: plan.product_type } : {}),
+    },
+  };
+}
+
+async function groundRecoRecommendationsFromCatalog({
+  recommendations,
+  ctx,
+  logger,
+} = {}) {
+  const recs = (Array.isArray(recommendations) ? recommendations : [])
+    .map((item, index) => normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index }))
+    .filter((item) => isPlainObject(item));
+
+  if (!recs.length) {
+    return {
+      recommendations: [],
+      grounding_status: 'ungrounded',
+      grounded_count: 0,
+      ungrounded_count: 0,
+      mainline_status: 'empty_structured',
+      catalog_skip_reason: null,
+      telemetry_reason: null,
+      debug: {
+        enabled: RECO_CATALOG_GROUNDED_ENABLED,
+        query_count: 0,
+        candidate_count_before_filter: 0,
+        candidate_count_after_filter: 0,
+        candidates_rejected: 0,
+      },
+    };
+  }
+
+  if (!RECO_CATALOG_GROUNDED_ENABLED) {
+    return {
+      recommendations: recs,
+      grounding_status: 'ungrounded',
+      grounded_count: 0,
+      ungrounded_count: recs.length,
+      mainline_status: 'catalog_skipped_disabled',
+      catalog_skip_reason: 'disabled',
+      telemetry_reason: null,
+      debug: {
+        enabled: false,
+        query_count: 0,
+        candidate_count_before_filter: 0,
+        candidate_count_after_filter: 0,
+        candidates_rejected: 0,
+      },
+    };
+  }
+
+  const failFastSnapshot = getRecoCatalogFailFastSnapshot(Date.now());
+  if (failFastSnapshot && failFastSnapshot.open) {
+    return {
+      recommendations: recs,
+      grounding_status: 'ungrounded',
+      grounded_count: 0,
+      ungrounded_count: recs.length,
+      mainline_status: 'catalog_skipped_fail_fast',
+      catalog_skip_reason: 'fail_fast_open',
+      telemetry_reason: 'timeout_degraded',
+      debug: {
+        enabled: true,
+        query_count: 0,
+        candidate_count_before_filter: 0,
+        candidate_count_after_filter: 0,
+        candidates_rejected: 0,
+        fail_fast: failFastSnapshot,
+      },
+    };
+  }
+
+  const usedProductIds = new Set();
+  const next = [];
+  let queryCount = 0;
+  let candidateCountBeforeFilter = 0;
+  let candidateCountAfterFilter = 0;
+  let candidatesRejected = 0;
+  let timeoutCount = 0;
+
+  for (const rec of recs) {
+    const queries = buildRecoGroundingQueriesFromPlanItem(rec, { lang: ctx && ctx.lang ? ctx.lang : 'EN' });
+    let groundedProduct = null;
+    for (const query of queries) {
+      queryCount += 1;
+      const out = await searchPivotaBackendProducts({
+        query,
+        limit: 6,
+        logger,
+        timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+        allowExternalSeed: false,
+        fastMode: true,
+      });
+      const reason = String(out && out.reason ? out.reason : '').trim().toLowerCase();
+      if (reason === 'upstream_timeout') timeoutCount += 1;
+      const products = Array.isArray(out && out.products) ? out.products : [];
+      candidateCountBeforeFilter += products.length;
+      for (const product of products) {
+        const normalized = normalizeRecoCatalogProduct(product);
+        if (!isPlainObject(normalized)) continue;
+        const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
+        if (productId && usedProductIds.has(productId)) continue;
+        if (isBlacklistedCategoryOrTitle(normalized) || !isSkincareCategory(normalized)) {
+          candidatesRejected += 1;
+          continue;
+        }
+        groundedProduct = normalized;
+        if (productId) usedProductIds.add(productId);
+        candidateCountAfterFilter += 1;
+        break;
+      }
+      if (groundedProduct) break;
+    }
+    next.push(groundedProduct ? mergeRecoPlanWithGroundedCandidate(rec, groundedProduct) : rec);
+  }
+
+  const groundedCount = next.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
+  const ungroundedCount = Math.max(0, next.length - groundedCount);
+  const groundingStatus =
+    groundedCount === 0
+      ? 'ungrounded'
+      : groundedCount === next.length
+        ? 'grounded'
+        : 'partially_grounded';
+  const mainlineStatus =
+    groundingStatus === 'grounded'
+      ? 'grounded_success'
+      : groundingStatus === 'partially_grounded'
+        ? 'partially_grounded'
+        : 'ungrounded_success';
+
+  return {
+    recommendations: next,
+    grounding_status: groundingStatus,
+    grounded_count: groundedCount,
+    ungrounded_count: ungroundedCount,
+    mainline_status: mainlineStatus,
+    catalog_skip_reason: null,
+    telemetry_reason: timeoutCount > 0 ? 'timeout_degraded' : null,
+    debug: {
+      enabled: true,
+      query_count: queryCount,
+      candidate_count_before_filter: candidateCountBeforeFilter,
+      candidate_count_after_filter: candidateCountAfterFilter,
+      candidates_rejected: candidatesRejected,
+      timeout_count: timeoutCount,
+    },
+  };
 }
 
 function shouldUseRecoCatalogTransientFallback(catalogDebug) {
@@ -26992,6 +27336,18 @@ async function sanitizeRecoCandidatesForUi(
           continue;
         }
 
+        if (isRecoUngroundedItem(row)) {
+          kept.push({
+            ...row,
+            grounding_status: 'ungrounded',
+            metadata: {
+              ...(isPlainObject(row.metadata) ? row.metadata : {}),
+              reco_render_mode: 'editorial',
+            },
+          });
+          continue;
+        }
+
         if (resolverExternalBypass) {
           kept.push(row);
           continue;
@@ -28924,6 +29280,7 @@ function hasMissingRecommendationPurchasePath(cards) {
     const recs = Array.isArray(payload.recommendations) ? payload.recommendations : [];
     if (!recs.length) continue;
     for (const row of recs) {
+      if (isRecoUngroundedItem(row)) continue;
       const purchasePath = row && typeof row === 'object'
         ? (row.purchase_path || row.purchasePath || row.url || (row.sku && row.sku.purchase_path) || (row.product && row.product.purchase_path))
         : '';
@@ -29225,9 +29582,17 @@ function pickRecoNames(payload, max = 3) {
   for (const r of recos) {
     if (!r || typeof r !== 'object') continue;
     const sku = isPlainObject(r.sku) ? r.sku : isPlainObject(r.product) ? r.product : null;
-    const brand = typeof sku?.brand === 'string' ? sku.brand.trim() : '';
-    const name = typeof sku?.name === 'string' ? sku.name.trim() : '';
-    const title = [brand, name].filter(Boolean).join(' ').trim() || (typeof r.title === 'string' ? r.title.trim() : '');
+    const brand = pickFirstTrimmed(sku?.brand, r.brand);
+    const name = pickFirstTrimmed(
+      sku?.name,
+      sku?.display_name,
+      sku?.displayName,
+      r.name,
+      r.display_name,
+      r.displayName,
+      r.title,
+    );
+    const title = [brand, name].filter(Boolean).join(' ').trim() || pickFirstTrimmed(r.title, r.use_case);
     if (!title) continue;
     const key = title.toLowerCase();
     if (seen.has(key)) continue;
@@ -32906,6 +33271,7 @@ async function enrichRecommendationsWithPdpOpenContract({
 function coerceRecoItemForUi(item, { lang } = {}) {
   const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
   if (!base) return item;
+  const ungrounded = isRecoUngroundedItem(base);
 
   const skuCandidate =
     base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
@@ -32967,17 +33333,19 @@ function coerceRecoItemForUi(item, { lang } = {}) {
       ? { ...pdpOpenBase.external }
       : null;
   const explicitExternalUrl = normalizeHttpUrl(pdpExternalBase?.url);
-  const candidateExternalUrl = explicitExternalUrl
-    || normalizeHttpUrl(base.pdp_url)
-    || normalizeHttpUrl(base.pdpUrl)
-    || normalizeHttpUrl(base.url)
-    || normalizeHttpUrl(base.product_url)
-    || normalizeHttpUrl(base.productUrl)
-    || normalizeHttpUrl(base.link)
-    || normalizeHttpUrl(skuCandidate?.pdp_url)
-    || normalizeHttpUrl(skuCandidate?.pdpUrl)
-    || normalizeHttpUrl(skuCandidate?.url)
-    || '';
+  const candidateExternalUrl = ungrounded
+    ? ''
+    : explicitExternalUrl
+      || normalizeHttpUrl(base.pdp_url)
+      || normalizeHttpUrl(base.pdpUrl)
+      || normalizeHttpUrl(base.url)
+      || normalizeHttpUrl(base.product_url)
+      || normalizeHttpUrl(base.productUrl)
+      || normalizeHttpUrl(base.link)
+      || normalizeHttpUrl(skuCandidate?.pdp_url)
+      || normalizeHttpUrl(skuCandidate?.pdpUrl)
+      || normalizeHttpUrl(skuCandidate?.url)
+      || '';
   const externalQuery =
     pickFirstTrimmed(
       pdpExternalBase?.query,
@@ -32990,7 +33358,7 @@ function coerceRecoItemForUi(item, { lang } = {}) {
   const hasReadableIdentity = Boolean(displayName || name || brand);
   const hasOpenableExternal = Boolean(candidateExternalUrl || externalQuery);
   const syntheticExternalId =
-    !productId && !skuId && (hasReadableIdentity || hasOpenableExternal)
+    !ungrounded && !productId && !skuId && (hasReadableIdentity || hasOpenableExternal)
       ? `ext_${stableHashInt(
         [
           brand,
@@ -33053,7 +33421,11 @@ function coerceRecoItemForUi(item, { lang } = {}) {
   const nextMetadata =
     base.metadata && typeof base.metadata === 'object' && !Array.isArray(base.metadata) ? { ...base.metadata } : {};
   let nextPdpOpen = pdpOpenBase;
-  if (!hasInternalHandle && hasOpenableExternal) {
+  if (ungrounded) {
+    nextMetadata.pdp_open_path = 'editorial';
+    nextMetadata.pdp_open_mode = 'editorial';
+    nextPdpOpen = null;
+  } else if (!hasInternalHandle && hasOpenableExternal) {
     nextMetadata.pdp_open_path = 'external';
     nextMetadata.pdp_open_mode = 'external';
     nextPdpOpen = {
@@ -33074,6 +33446,7 @@ function coerceRecoItemForUi(item, { lang } = {}) {
     ...base,
     slot,
     step,
+    ...(ungrounded ? { grounding_status: 'ungrounded' } : {}),
     ...(nextSku ? { sku: nextSku } : {}),
     ...(nextPdpOpen ? { pdp_open: nextPdpOpen } : {}),
     ...(Object.keys(nextMetadata).length ? { metadata: nextMetadata } : {}),
@@ -33505,26 +33878,38 @@ function buildRecoMainPromptPayload({
   ingredientContext,
 } = {}) {
   const fallbackSchema = {
-    meta: { lang: 'EN', intent: 'reco_products', region: 'US' },
+    meta: { lang: 'EN', intent: 'reco_products', region: 'US', no_clarify: true },
     profile: { skinType: null, sensitivity: null, barrierStatus: null, goals: [], contraindications: [] },
     global_status: { budget_known: false, itinerary_provided: false, recent_logs_provided: false },
     candidates: [],
     task: {
-      type: 'product_picks_not_routine',
+      type: 'user_adaptive_recommendation_plan',
       max_recommendations: 5,
-      ranking_priorities: ['low irritation / barrier-safe', 'acne efficacy', 'balanced value in US'],
-      default_policy_when_profile_missing: [
+      ranking_priorities: ['fit to profile and goals', 'low irritation / barrier-aware', 'practical skincare step coverage'],
+      defaults_when_profile_missing: [
         'prefer fragrance-free',
-        'avoid harsh alcohols and high-irritant leave-ons',
-        'prefer simpler formulas and barrier-friendly bases',
-        'prefer acne actives with lower irritation risk when possible',
+        'avoid harsh leave-on actives when barrier or sensitivity is unclear',
+        'prefer simpler barrier-friendly formulas',
+        'return fewer recommendations instead of weak guesses',
       ],
     },
     output_schema: {
       recommendations: [
         {
+          slot: 'other',
           step: 'cleanser|treatment|moisturizer|sunscreen|other',
           score: 'integer 0-100',
+          product_type: 'cleanser|treatment|moisturizer|sunscreen|serum|other',
+          brand: 'string|null',
+          name: 'string|null',
+          display_name: 'string|null',
+          use_case: 'string',
+          concern_match: ['string'],
+          skin_fit: ['string'],
+          constraint_notes: ['string'],
+          query_terms: ['string'],
+          reasons: ['string (max 3)'],
+          example_profile: 'string|null',
           sku: {
             brand: 'string|null',
             name: 'string|null',
@@ -33532,10 +33917,7 @@ function buildRecoMainPromptPayload({
             sku_id: 'string|null',
             product_id: 'string|null',
             category: 'string|null',
-            price_usd: 'number|null',
           },
-          reasons: ['string (max 3)'],
-          evidence_pack: { keyActives: ['string'], sensitivityFlags: ['string'], pairingRules: ['string'] },
           missing_info: ['string'],
           warnings: ['string'],
         },
@@ -33547,15 +33929,16 @@ function buildRecoMainPromptPayload({
     },
     hard_rules: [
       'Do not ask clarifying questions.',
-      'Do not output checkout links.',
-      'Do not repeat the same product_id or sku_id.',
-      'If candidates[] is non-empty, every recommendation must copy sku_id/product_id/brand/name from a candidate exactly.',
-      "At least one reason per item must reference the user's profile OR explicitly reference missing profile fields conservatively (e.g., 'skin type not provided').",
+      'Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare.',
+      'Do not output routines or AM/PM plans.',
+      'Do not invent purchase links, product ids, or availability.',
+      'Use candidates[] only as optional grounding hints, not as a hard restriction.',
+      "At least one reason per item must reference the user's profile or constraints.",
       "If global_status.recent_logs_provided is false, add top-level warning 'recent_logs_missing' (only once, not per item).",
       "If global_status.itinerary_provided is false, add top-level warning 'itinerary_unknown' (only once, not per item).",
     ],
   };
-  const template = loadRecoPromptTemplateFile('reco_main_v1_0.user_schema.json', { parseJson: true, fallback: fallbackSchema });
+  const template = loadRecoPromptTemplateFile('reco_main_v1_2.user_schema.json', { parseJson: true, fallback: fallbackSchema });
   const payload = safeStructuredCloneJson(template) || safeStructuredCloneJson(fallbackSchema) || {};
   const profileObj = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
   const region = normalizeRecoPromptRegion(profileObj);
@@ -33626,15 +34009,16 @@ function buildRecoMainPromptPayload({
 
 function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext }) {
   const fallbackSystemPrompt = [
-    'You are a skincare product ranking engine.',
+    'You are a precision skincare recommendation planner.',
     '',
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
-    'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null and add to missing_info/warnings.',
-    'If candidates[] is provided and non-empty: you MUST select only from candidates[] (no new products).',
-    'Keep output concise: reasons max 3 per item, each reason <= 22 words.',
-    'If you cannot fill 5 items safely, return fewer items and lower confidence.',
+    'Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.',
+    'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null.',
+    'Candidates are optional grounding hints only. Do not constrain recommendation quality to candidates[].',
+    'Return fewer recommendations instead of weak guesses.',
+    'Keep output concise: reasons max 3 per item, query_terms max 4 per item.',
   ].join('\n');
-  const systemPrompt = loadRecoPromptTemplateFile('reco_main_v1_0.system.txt', {
+  const systemPrompt = loadRecoPromptTemplateFile('reco_main_v1_2.system.txt', {
     parseJson: false,
     fallback: fallbackSystemPrompt,
   });
@@ -33652,7 +34036,7 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
     userPayload: payload,
   });
   // Backward-compatible sentinel for existing mock/test detectors.
-  return `Task: Generate skincare product picks (NOT a full AM/PM routine).\n${promptBody}`;
+  return `Task: Generate a user-adaptive skincare recommendation plan (NOT a full AM/PM routine).\n${promptBody}`;
 }
 
 function looksLikeRoutineRequest(message, action) {
@@ -38985,32 +39369,12 @@ async function generateProductRecommendations({
   let upstreamFailureCode = '';
   let llmFailureClass = '';
   let llmLatencyMs = null;
-
-  const catalogOut = await buildRecoGenerateFromCatalog({
-    ctx,
-    profileSummary,
-    ingredientContext: normalizedIngredientContext,
-    debug,
-    logger,
-  });
-  const catalogStructured =
-    catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
-      ? catalogOut.structured
-      : null;
-  const catalogCandidatePool =
-    catalogOut && typeof catalogOut === 'object' && Array.isArray(catalogOut.candidate_pool)
-      ? catalogOut.candidate_pool
-      : [];
-  const catalogDebug =
-    catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
-      ? catalogOut.debug
-      : null;
-  const pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
-  const pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
-  const useCatalogTransientFallback = shouldUseRecoCatalogTransientFallback(catalogDebug);
-  const catalogTransientFallbackStructured = useCatalogTransientFallback
-    ? buildRecoCatalogTransientFallbackStructured({ ctx })
-    : null;
+  let catalogStructured = null;
+  let catalogCandidatePool = [];
+  let catalogDebug = null;
+  let pdpFastFallbackReasonCode = null;
+  let pdpFastExternalFallbackReasonCode = null;
+  let catalogTransientFallbackStructured = null;
 
   let answerJson = null;
   const globalStatus = {
@@ -39025,7 +39389,7 @@ async function generateProductRecommendations({
       requestText: userAsk,
       lang: ctx.lang,
       globalStatus,
-      candidates: catalogCandidatePool,
+      candidates: [],
       ingredientContext: normalizedIngredientContext,
     });
   const llmTraceCoverage = buildRecoInputCoverage({
@@ -39058,11 +39422,6 @@ async function generateProductRecommendations({
   let llmStructured = null;
   let llmStructuredSource = null;
   const llmStartedAtMs = Date.now();
-  const hasCatalogGroundedRecommendations = Boolean(
-    catalogStructured &&
-    Array.isArray(catalogStructured.recommendations) &&
-    catalogStructured.recommendations.length > 0,
-  );
   if (!promptContract.ok) {
     llmLatencyMs = 0;
     upstreamFailureCode = 'PROMPT_CONTRACT_MISMATCH';
@@ -39082,8 +39441,6 @@ async function generateProductRecommendations({
       },
       'aurora bff: reco prompt contract mismatch; skip upstream call',
     );
-  } else if (hasCatalogGroundedRecommendations) {
-    llmLatencyMs = 0;
   } else {
     try {
       upstream = await auroraChat({
@@ -39144,6 +39501,34 @@ async function generateProductRecommendations({
     ...(llmFailureClass ? { error_class: llmFailureClass } : {}),
   };
 
+  if (!llmStructured) {
+    const catalogOut = await buildRecoGenerateFromCatalog({
+      ctx,
+      profileSummary,
+      ingredientContext: normalizedIngredientContext,
+      debug,
+      logger,
+    });
+    catalogStructured =
+      catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
+        ? catalogOut.structured
+        : null;
+    catalogCandidatePool =
+      catalogOut && typeof catalogOut === 'object' && Array.isArray(catalogOut.candidate_pool)
+        ? catalogOut.candidate_pool
+        : [];
+    catalogDebug =
+      catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
+        ? catalogOut.debug
+        : null;
+    pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
+    pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
+    const useCatalogTransientFallback = shouldUseRecoCatalogTransientFallback(catalogDebug);
+    catalogTransientFallbackStructured = useCatalogTransientFallback
+      ? buildRecoCatalogTransientFallbackStructured({ ctx })
+      : null;
+  }
+
   let structured = llmStructured || catalogStructured || catalogTransientFallbackStructured;
   let structuredSource = llmStructured
     ? 'llm_primary'
@@ -39153,7 +39538,7 @@ async function generateProductRecommendations({
       ? 'catalog_transient_fallback'
         : null;
   if (promptContract.ok && !llmFailureClass) {
-    if (hasCatalogGroundedRecommendations && !llmStructured) {
+    if (catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0 && !llmStructured) {
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'catalog_grounded_primary' });
     } else {
       const llmOutcome = llmStructured ? 'success' : 'empty_structured';
@@ -39216,20 +39601,86 @@ async function generateProductRecommendations({
       llm_failure_class: llmFailureClass || null,
       llm_prompt_trace: llmTrace,
       llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
-      llm_skipped_reason: hasCatalogGroundedRecommendations ? 'catalog_grounded_primary' : null,
+      llm_skipped_reason:
+        !llmStructured && catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0
+          ? 'catalog_grounded_primary'
+          : null,
       llm_candidate_count: Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0,
     }
     : null;
-  const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
+  let mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
+  let groundingResult = null;
+  if (mapped && Array.isArray(mapped.recommendations) && mapped.recommendations.length && structuredSource === 'llm_primary') {
+    groundingResult = await groundRecoRecommendationsFromCatalog({
+      recommendations: mapped.recommendations,
+      ctx,
+      logger,
+    });
+    mapped = {
+      ...mapped,
+      recommendations: groundingResult.recommendations,
+      grounding_status: groundingResult.grounding_status,
+      grounded_count: groundingResult.grounded_count,
+      ungrounded_count: groundingResult.ungrounded_count,
+    };
+    if (!catalogDebug && isPlainObject(groundingResult.debug)) {
+      catalogDebug = groundingResult.debug;
+    }
+  }
   if (mapped && Array.isArray(mapped.recommendations)) {
     mapped.recommendations = mapped.recommendations.map((r) => coerceRecoItemForUi(r, { lang: ctx.lang }));
   }
 
   const norm = normalizeRecoGenerate(mapped);
+  const effectiveGroundingStatus =
+    normalizeRecoGroundingStatus(mapped && mapped.grounding_status)
+    || (structuredSource === 'catalog_grounded'
+      ? 'grounded'
+      : structuredSource === 'catalog_transient_fallback'
+        ? 'partially_grounded'
+        : '');
+  const effectiveGroundedCount =
+    Number.isFinite(Number(mapped && mapped.grounded_count))
+      ? Math.max(0, Math.trunc(Number(mapped && mapped.grounded_count)))
+      : (structuredSource === 'catalog_grounded' ? (Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations.length : 0) : 0);
+  const effectiveUngroundedCount =
+    Number.isFinite(Number(mapped && mapped.ungrounded_count))
+      ? Math.max(0, Math.trunc(Number(mapped && mapped.ungrounded_count)))
+      : 0;
+  const effectiveMainlineStatus = pickFirstTrimmed(
+    groundingResult && groundingResult.mainline_status,
+    mapped && mapped.mainline_status,
+    structuredSource === 'catalog_grounded'
+      ? 'grounded_success'
+      : structuredSource === 'catalog_transient_fallback'
+        ? 'partially_grounded'
+        : Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length
+          ? effectiveGroundingStatus === 'grounded'
+            ? 'grounded_success'
+            : effectiveGroundingStatus === 'partially_grounded'
+              ? 'partially_grounded'
+              : 'ungrounded_success'
+          : 'empty_structured',
+  );
+  const effectiveCatalogSkipReason = pickFirstTrimmed(
+    groundingResult && groundingResult.catalog_skip_reason,
+    mapped && mapped.catalog_skip_reason,
+  ) || null;
+  const effectiveTelemetryReason = pickFirstTrimmed(
+    groundingResult && groundingResult.telemetry_reason,
+    mapped && mapped.telemetry_reason,
+    llmFailureClass === 'timeout' || upstreamFailureCode === 'UPSTREAM_TIMEOUT' ? 'timeout_degraded' : '',
+  ) || null;
   norm.payload = {
     ...norm.payload,
     intent: 'reco_products',
     profile: profileSummary || null,
+    grounding_status: effectiveGroundingStatus,
+    grounded_count: effectiveGroundedCount,
+    ungrounded_count: effectiveUngroundedCount,
+    mainline_status: effectiveMainlineStatus,
+    ...(effectiveCatalogSkipReason ? { catalog_skip_reason: effectiveCatalogSkipReason } : {}),
+    ...(effectiveTelemetryReason ? { telemetry_reason: effectiveTelemetryReason } : {}),
     ...(ingredientContext && typeof ingredientContext === 'object'
       ? { ingredient_context: ingredientContext }
       : {}),
@@ -39403,21 +39854,54 @@ async function generateProductRecommendations({
     });
   }
 
-  const skipPdpOpenEnrichByBudget = Number.isFinite(deadlineAtMs) && Date.now() >= (deadlineAtMs - 250);
-  const pdpOpenOut = skipPdpOpenEnrichByBudget
-    ? {
-      recommendations: Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [],
-      path_stats: { skipped_due_budget: true },
-      fail_reason_counts: {},
-      time_to_pdp_ms_stats: {},
+  const recoRowsForPdp = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [];
+  const groundedRecoRows = [];
+  const ungroundedRecoRows = [];
+  recoRowsForPdp.forEach((row, index) => {
+    if (isRecoUngroundedItem(row)) {
+      ungroundedRecoRows.push({ index, row });
+    } else {
+      groundedRecoRows.push({ index, row });
     }
-    : await enrichRecommendationsWithPdpOpenContract({
-      recommendations: norm.payload.recommendations,
-      logger,
-      fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
-      lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-    });
-  const pdpDeduped = dedupeRecoRecommendationsStrict(pdpOpenOut.recommendations, { maxItems: 8 });
+  });
+  const skipPdpOpenEnrichByBudget = Number.isFinite(deadlineAtMs) && Date.now() >= (deadlineAtMs - 250);
+  const pdpOpenOut = !groundedRecoRows.length
+    ? {
+      recommendations: [],
+      path_stats: { internal: 0, external: 0, none: 0, unknown: 0 },
+      fail_reason_counts: {},
+      time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
+    }
+    : skipPdpOpenEnrichByBudget
+      ? {
+        recommendations: groundedRecoRows.map((entry) => entry.row),
+        path_stats: { skipped_due_budget: true },
+        fail_reason_counts: {},
+        time_to_pdp_ms_stats: {},
+      }
+      : await enrichRecommendationsWithPdpOpenContract({
+        recommendations: groundedRecoRows.map((entry) => entry.row),
+        logger,
+        fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
+        lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
+      });
+  const recombinedRecommendations = [];
+  let groundedCursor = 0;
+  let ungroundedCursor = 0;
+  for (let index = 0; index < recoRowsForPdp.length; index += 1) {
+    const ungroundedEntry = ungroundedRecoRows[ungroundedCursor];
+    if (ungroundedEntry && ungroundedEntry.index === index) {
+      recombinedRecommendations.push(ungroundedEntry.row);
+      ungroundedCursor += 1;
+      continue;
+    }
+    const groundedEntry = groundedRecoRows[groundedCursor];
+    if (groundedEntry && groundedEntry.index === index) {
+      recombinedRecommendations.push(pdpOpenOut.recommendations[groundedCursor] || groundedEntry.row);
+      groundedCursor += 1;
+    }
+  }
+  const pdpDeduped = dedupeRecoRecommendationsStrict(recombinedRecommendations, { maxItems: 8 });
   norm.payload = {
     ...norm.payload,
     recommendations: pdpDeduped.recommendations,
@@ -39429,17 +39913,17 @@ async function generateProductRecommendations({
       reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
     },
   };
-  const sourceMode = structuredSource === 'llm_primary'
-    ? 'llm_primary'
-    : structuredSource === 'catalog_grounded'
+  const sourceMode = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0
+    ? structuredSource === 'catalog_grounded'
       ? 'catalog_grounded'
       : structuredSource === 'catalog_transient_fallback'
         ? 'catalog_transient_fallback'
-        : 'rules_only';
+        : 'llm_primary'
+    : 'rules_only';
   let nextPayload = {
     ...norm.payload,
     source: sourceMode === 'llm_primary'
-      ? 'llm_primary_v1'
+      ? (effectiveGroundingStatus === 'ungrounded' ? 'llm_editorial_v1' : 'llm_primary_v1')
       : sourceMode === 'catalog_grounded'
         ? 'catalog_grounded_v1'
         : sourceMode === 'catalog_transient_fallback'
@@ -39454,6 +39938,14 @@ async function generateProductRecommendations({
       used_itinerary: itineraryAvailable,
       used_safety_flags: false,
       prompt_contract_ok: promptContract.ok,
+      grounding_status: effectiveGroundingStatus || null,
+      grounded_count: effectiveGroundedCount,
+      ungrounded_count: effectiveUngroundedCount,
+      mainline_status: effectiveMainlineStatus || null,
+      catalog_skip_reason: effectiveCatalogSkipReason,
+      telemetry_failure_reason: effectiveTelemetryReason,
+      prompt_template_id: RECO_MAIN_PROMPT_TEMPLATE_ID,
+      llm_prompt_chars: typeof query === 'string' ? query.length : 0,
       llm_trace: llmTrace,
     },
   };
@@ -44578,8 +45070,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       const payload = norm.payload;
       const llmTraceRef = buildRecoLlmTraceRef(upstreamReco && upstreamReco.llmTrace);
+      const recoMeta = isPlainObject(payload?.recommendation_meta) ? payload.recommendation_meta : {};
+      const hasPayloadRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
-      const suggestedChips = Array.isArray(payload.recommendations) && payload.recommendations.length > 0
+      const suggestedChips = hasPayloadRecommendations
         ? []
         : buildRecoEntryChips(ctx.lang);
       if (gateAdvisoryChips.length > 0) {
@@ -44625,6 +45119,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           eventData: {
             explicit: true,
             ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
+            source: String(payload?.source || recoMeta.source_mode || 'catalog_grounded_v1'),
+            source_mode: String(recoMeta.source_mode || ''),
+            grounding_status: String(payload?.grounding_status || recoMeta.grounding_status || ''),
+            grounded_count: Number.isFinite(Number(payload?.grounded_count)) ? Number(payload.grounded_count) : 0,
+            ungrounded_count: Number.isFinite(Number(payload?.ungrounded_count)) ? Number(payload.ungrounded_count) : 0,
+            mainline_status: String(payload?.mainline_status || recoMeta.mainline_status || ''),
+            catalog_skip_reason: String(payload?.catalog_skip_reason || recoMeta.catalog_skip_reason || ''),
+            telemetry_reason: String(payload?.telemetry_reason || recoMeta.telemetry_failure_reason || ''),
+            ...(recoMeta.prompt_template_id ? { prompt_template_id: recoMeta.prompt_template_id } : {}),
+            ...(!hasPayloadRecommendations ? { reason: 'artifact_missing' } : {}),
           },
         }).events,
       });
@@ -53381,7 +53885,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         const { norm, suggestedChips } = routineRecoOut;
 
         const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
-        const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+        const nextState = stateChangeAllowed(ctx.trigger_source) && (hasRecs || wantsProductRecommendations)
+          ? 'S7_PRODUCT_RECO'
+          : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
         const nextChips = Array.isArray(suggestedChips) ? [...suggestedChips] : [];
         if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
@@ -54190,6 +54696,11 @@ function mountAuroraBffRoutes(app, { logger }) {
                 explicit: true,
                 gated: true,
                 source: 'upstream_timeout',
+                source_mode: 'rules_only',
+                grounding_status: 'ungrounded',
+                grounded_count: 0,
+                ungrounded_count: 0,
+                mainline_status: 'upstream_timeout',
                 source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
                 recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
                 ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
@@ -54203,7 +54714,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (hasRecs) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
         }
-        const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+        const nextState = stateChangeAllowed(ctx.trigger_source) && (hasRecs || wantsProductRecommendations)
+          ? 'S7_PRODUCT_RECO'
+          : undefined;
         const promptContractOkFromTrace =
           isPlainObject(upstreamDebug && upstreamDebug.llm_prompt_trace)
             ? upstreamDebug.llm_prompt_trace.prompt_contract_ok !== false
@@ -54242,21 +54755,32 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           payload.source = String(payload.source || '').trim() || recoSource;
           const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
-          payload.recommendation_meta = {
-            ...metaExisting,
-            task_mode: recoTaskMode,
-            source_mode: matcherFallbackUsed
+          const derivedSourceMode = pickFirstTrimmed(
+            metaExisting.source_mode,
+            matcherFallbackUsed
               ? 'artifact_matcher'
               : generatedPrimaryUsed
                 ? (generatedSourceMode || 'catalog_grounded')
                 : llmPrimaryUsed
                   ? 'llm_primary'
                   : 'rules_only',
+          );
+          payload.recommendation_meta = {
+            ...metaExisting,
+            task_mode: recoTaskMode,
+            source_mode: derivedSourceMode,
             trigger_source: normalizeRecoSourceDetail(recoEntrySourceDetail),
             recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
             used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
             used_safety_flags: lowConfidenceArtifact,
+            grounding_status: pickFirstTrimmed(payload.grounding_status, metaExisting.grounding_status) || null,
+            grounded_count: Number.isFinite(Number(payload.grounded_count)) ? Number(payload.grounded_count) : Number(metaExisting.grounded_count || 0) || 0,
+            ungrounded_count: Number.isFinite(Number(payload.ungrounded_count)) ? Number(payload.ungrounded_count) : Number(metaExisting.ungrounded_count || 0) || 0,
+            mainline_status: pickFirstTrimmed(payload.mainline_status, metaExisting.mainline_status) || null,
+            catalog_skip_reason: pickFirstTrimmed(payload.catalog_skip_reason, metaExisting.catalog_skip_reason) || null,
+            telemetry_failure_reason: pickFirstTrimmed(payload.telemetry_reason, metaExisting.telemetry_failure_reason) || null,
+            prompt_template_id: pickFirstTrimmed(metaExisting.prompt_template_id, RECO_MAIN_PROMPT_TEMPLATE_ID),
             ...(recoLlmTrace ? { llm_trace: recoLlmTrace } : {}),
           };
           payload.metadata = {
@@ -54520,14 +55044,24 @@ function mountAuroraBffRoutes(app, { logger }) {
               eventData: {
                 explicit: true,
                 source: recoSource,
+                source_mode: String(payload?.recommendation_meta?.source_mode || ''),
                 source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
                 recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
                 low_confidence: lowConfidenceArtifact,
                 confidence_level: artifactConfidenceLevel,
+                grounding_status: String(payload?.grounding_status || payload?.recommendation_meta?.grounding_status || ''),
+                grounded_count: Number.isFinite(Number(payload?.grounded_count)) ? Number(payload.grounded_count) : 0,
+                ungrounded_count: Number.isFinite(Number(payload?.ungrounded_count)) ? Number(payload.ungrounded_count) : 0,
+                mainline_status: String(payload?.mainline_status || payload?.recommendation_meta?.mainline_status || ''),
+                catalog_skip_reason: String(payload?.catalog_skip_reason || payload?.recommendation_meta?.catalog_skip_reason || ''),
+                telemetry_reason: String(payload?.telemetry_reason || payload?.recommendation_meta?.telemetry_failure_reason || ''),
+                ...(payload?.recommendation_meta?.prompt_template_id ? { prompt_template_id: payload.recommendation_meta.prompt_template_id } : {}),
                 ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
+                ...(llmFailureClass ? { failure_class: llmFailureClass } : {}),
                 kb_write_status: kbWriteStatus,
                 ...(kbQuarantineReasons.length ? { kb_quarantine_reasons: kbQuarantineReasons } : {}),
                 ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
+                ...(!hasRecs ? { reason: 'artifact_missing' } : {}),
               },
             },
           ).events,
