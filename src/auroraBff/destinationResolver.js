@@ -69,7 +69,8 @@ function callJson(url, fetchImpl, timeoutMs) {
 
 function featureCodeWeight(featureCodeRaw) {
   const code = normalizeText(featureCodeRaw, 24).toUpperCase();
-  if (code === 'PPLC' || code === 'PCLI') return 40;
+  if (code === 'PCLI' || code === 'PCLD' || code === 'PCLS' || code === 'PCLIX') return 44;
+  if (code === 'PPLC') return 40;
   if (code === 'PPLA' || code === 'PPLA2') return 28;
   if (code === 'PPL' || code === 'PPLL') return 18;
   if (code === 'AIRP' || code === 'ISL' || code === 'MT') return -22;
@@ -324,11 +325,11 @@ async function resolveDestinationQuery({
     };
   }
 
-  const exactPlaceMatches = candidates.filter(
+  const exactNamedMatches = candidates.filter(
     (candidate) => candidate._name_key === queryKey && featureCodeLooksPlace(candidate._feature_code),
   );
-  if (exactPlaceMatches.length >= 2) {
-    const rankedExactMatches = exactPlaceMatches.slice().sort(compareCandidates);
+  if (exactNamedMatches.length >= 2) {
+    const rankedExactMatches = exactNamedMatches.slice().sort(compareCandidates);
     const top = rankedExactMatches[0];
     const second = rankedExactMatches[1];
     const gap = Number(top._score || 0) - Number(second._score || 0);

@@ -437,6 +437,48 @@ function buildStaticClimateFallback({ destination, destinationPlace, startDate, 
   };
 }
 
+function buildPendingDestinationClarification({
+  destination,
+  destinationPlace,
+  startDate,
+  endDate,
+  reason,
+  normalizedQuery,
+  candidates,
+} = {}) {
+  const explicitPlace = normalizeDestinationPlace(destinationPlace, {
+    resolutionSource: destinationPlace && destinationPlace.resolution_source,
+  });
+  const name = String(explicitPlace && explicitPlace.label ? explicitPlace.label : destination || '').trim();
+  const { start, end } = clampDateRange(startDate, endDate);
+  const rows = Array.isArray(candidates) ? candidates.map((row) => normalizeDestinationPlace(row)).filter(Boolean) : [];
+  return {
+    ok: true,
+    source: 'pending_clarification',
+    destination: name || null,
+    reason: String(reason || 'destination_ambiguous').trim().toLowerCase() || 'destination_ambiguous',
+    normalized_query: String(normalizedQuery || name || '').trim() || null,
+    candidates: rows.slice(0, 5),
+    date_range: { start, end },
+    location: {
+      name: name || null,
+      latitude: explicitPlace ? explicitPlace.latitude : null,
+      longitude: explicitPlace ? explicitPlace.longitude : null,
+      timezone: explicitPlace ? explicitPlace.timezone : null,
+      country: explicitPlace ? explicitPlace.country : null,
+      country_code: explicitPlace ? explicitPlace.country_code : null,
+      admin1: explicitPlace ? explicitPlace.admin1 : null,
+    },
+    summary: null,
+    forecast_window: [],
+    data_freshness_utc: new Date().toISOString(),
+    days_covered: 0,
+    raw: {
+      clarification_type: 'destination_ambiguous',
+    },
+  };
+}
+
 function safeClimateFallback(args = {}) {
   try {
     return climateFallback(args);
@@ -583,6 +625,17 @@ async function getTravelWeather({
       }
       if (geocode.ambiguous || !geocode.resolved_place) {
         const reason = geocode.ambiguous ? 'destination_ambiguous' : geocode.reason || 'geocode_no_results';
+        if (geocode.ambiguous) {
+          return buildPendingDestinationClarification({
+            destination: name,
+            destinationPlace: explicitPlace,
+            startDate: start,
+            endDate: end,
+            reason,
+            normalizedQuery: geocode.normalized_query,
+            candidates: geocode.candidates,
+          });
+        }
         return {
           ...fallback(reason),
           reason,
@@ -651,6 +704,7 @@ async function getTravelWeather({
 module.exports = {
   getTravelWeather,
   climateFallback,
+  buildPendingDestinationClarification,
   __internal: {
     buildWeatherSummary,
     buildForecastWindow,

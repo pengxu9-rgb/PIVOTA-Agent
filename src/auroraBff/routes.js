@@ -432,7 +432,11 @@ const {
 } = require('./gatePolicyRegistry');
 const { getTravelWeather } = require('./weatherAdapter');
 const { buildEpiPayload } = require('./epiCalculator');
-const { runTravelPipeline } = require('./travelSkills/contracts');
+const {
+  runTravelPipeline,
+  buildDestinationClarificationAssistantText,
+  buildDestinationClarificationChips,
+} = require('./travelSkills/contracts');
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
@@ -53069,6 +53073,51 @@ function mountAuroraBffRoutes(app, { logger }) {
             endDate,
             userLocale: templateCtx.accept_language || ctx.lang,
           });
+          if (weather && weather.source === 'pending_clarification' && weather.reason === 'destination_ambiguous') {
+            const candidates = Array.isArray(weather.candidates) ? weather.candidates : [];
+            const pendingTravelClarification = {
+              type: 'destination_ambiguous',
+              normalized_query: String(weather.normalized_query || destination || '').trim() || null,
+              candidates: candidates.slice(0, 5),
+            };
+            const clarificationText = buildDestinationClarificationAssistantText({
+              language: ctx.lang,
+              destination: weather.normalized_query || destination,
+              candidates,
+            });
+            const clarificationChips = buildDestinationClarificationChips({
+              language: ctx.lang,
+              candidates,
+              baseTravelPlan: {
+                ...(travelPlan && typeof travelPlan === 'object' && !Array.isArray(travelPlan) ? travelPlan : {}),
+                ...(startDate ? { start_date: startDate } : {}),
+                ...(endDate ? { end_date: endDate } : {}),
+              },
+            });
+            const sessionPatch =
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {};
+            sessionPatch.pending_clarification = pendingTravelClarification;
+            sessionPatch.meta = {
+              ...(sessionPatch.meta && typeof sessionPatch.meta === 'object' && !Array.isArray(sessionPatch.meta)
+                ? sessionPatch.meta
+                : {}),
+              travel_pending_clarification: pendingTravelClarification,
+            };
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeChatAssistantMessage(clarificationText, 'markdown'),
+              suggested_chips: clarificationChips,
+              cards: [],
+              session_patch: sessionPatch,
+              events: [
+                makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario }),
+                makeEvent(ctx, 'travel_destination_clarification', {
+                  normalized_query: pendingTravelClarification.normalized_query,
+                  candidates_count: candidates.length,
+                }),
+              ],
+            });
+            return sendChatEnvelope(envelope);
+          }
           const epiPayload = buildEpiPayload({
             weather,
             profile,

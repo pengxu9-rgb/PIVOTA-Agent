@@ -182,3 +182,100 @@ test('weather adapter returns geocode_no_results instead of unexpected_exception
   assert.equal(out.reason, 'geocode_no_results');
   assert.equal(out.forecast_window.length, 0);
 });
+
+test('weather adapter returns destination clarification instead of silent fallback for ambiguous cities', async () => {
+  const out = await getTravelWeather({
+    destination: 'Athens',
+    startDate: '2026-03-12',
+    endDate: '2026-03-15',
+    userLocale: 'EN',
+    fetchImpl: async (url) => {
+      if (String(url).includes('geocoding-api.open-meteo.com')) {
+        return jsonResponse({
+          results: [
+            {
+              name: 'Athens',
+              latitude: 37.98376,
+              longitude: 23.72784,
+              country_code: 'GR',
+              country: 'Greece',
+              admin1: 'Attica',
+              timezone: 'Europe/Athens',
+              feature_code: 'PPLC',
+              population: 664046,
+            },
+            {
+              name: 'Athens',
+              latitude: 33.96095,
+              longitude: -83.37794,
+              country_code: 'US',
+              country: 'United States',
+              admin1: 'Georgia',
+              timezone: 'America/New_York',
+              feature_code: 'PPLA2',
+              population: 127315,
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.source, 'pending_clarification');
+  assert.equal(out.reason, 'destination_ambiguous');
+  assert.equal(Array.isArray(out.candidates), true);
+  assert.ok(out.candidates.some((row) => String(row.label || '').includes('Athens, Attica, Greece')));
+  assert.equal(out.forecast_window.length, 0);
+});
+
+test('weather adapter returns live weather for Athens, Greece once destination is explicit', async () => {
+  const out = await getTravelWeather({
+    destination: 'Athens, Greece',
+    startDate: '2026-03-12',
+    endDate: '2026-03-15',
+    userLocale: 'EN',
+    fetchImpl: async (url) => {
+      if (String(url).includes('geocoding-api.open-meteo.com')) {
+        return jsonResponse({
+          results: [
+            {
+              name: 'Athens',
+              latitude: 37.98376,
+              longitude: 23.72784,
+              country_code: 'GR',
+              country: 'Greece',
+              admin1: 'Attica',
+              timezone: 'Europe/Athens',
+              feature_code: 'PPLC',
+              population: 664046,
+            },
+          ],
+        });
+      }
+      if (String(url).includes('api.open-meteo.com')) {
+        return jsonResponse({
+          timezone: 'Europe/Athens',
+          daily: {
+            time: ['2026-03-12', '2026-03-13', '2026-03-14', '2026-03-15'],
+            temperature_2m_max: [18.1, 17.6, 15.8, 15.8],
+            temperature_2m_min: [5.6, 5.1, 4.0, 6.7],
+            uv_index_max: [5.9, 5.9, 5.7, 5.8],
+            precipitation_sum: [0, 0, 0, 0],
+            wind_speed_10m_max: [5.9, 11.8, 9.8, 15.8],
+            relative_humidity_2m_mean: [62, 54, 67, 62],
+            weather_code: [3, 3, 3, 3],
+          },
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.source, 'weather_api');
+  assert.equal(out.reason, 'weather_api_ok');
+  assert.equal(String(out.location.country_code || ''), 'GR');
+  assert.ok(Number(out.summary.temperature_max_c) < 22);
+});

@@ -7726,7 +7726,7 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
           region: 'San Francisco, CA',
           travel_plans: [
             {
-              destination: 'Paris',
+              destination: 'Paris, France',
               start_date: '2026-03-10',
               end_date: '2026-03-15',
             },
@@ -8057,6 +8057,121 @@ test('/v1/chat: travel pipeline ok=false falls back to local weather path withou
         contracts.runTravelPipeline = originalRunTravelPipeline;
         delete require.cache[routesModuleId];
         delete require.cache[contractsModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: local travel weather path returns destination clarification instead of silent fallback on ambiguity', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const contractsModuleId = require.resolve('../src/auroraBff/travelSkills/contracts');
+      const weatherAdapterModuleId = require.resolve('../src/auroraBff/weatherAdapter');
+      delete require.cache[routesModuleId];
+      delete require.cache[contractsModuleId];
+      delete require.cache[weatherAdapterModuleId];
+      const contracts = require('../src/auroraBff/travelSkills/contracts');
+      const weatherAdapter = require('../src/auroraBff/weatherAdapter');
+      const originalRunTravelPipeline = contracts.runTravelPipeline;
+      const originalGetTravelWeather = weatherAdapter.getTravelWeather;
+
+      try {
+        contracts.runTravelPipeline = async () => ({
+          ok: false,
+          quality_reason: 'core_signals_missing',
+        });
+        weatherAdapter.getTravelWeather = async () => ({
+          ok: true,
+          source: 'pending_clarification',
+          reason: 'destination_ambiguous',
+          normalized_query: 'Athens',
+          candidates: [
+            {
+              label: 'Athens, Attica, Greece',
+              canonical_name: 'Athens',
+              latitude: 37.98376,
+              longitude: 23.72784,
+              country_code: 'GR',
+              country: 'Greece',
+              admin1: 'Attica',
+              timezone: 'Europe/Athens',
+              resolution_source: 'auto_resolved',
+            },
+            {
+              label: 'Athens, Georgia, United States',
+              canonical_name: 'Athens',
+              latitude: 33.96095,
+              longitude: -83.37794,
+              country_code: 'US',
+              country: 'United States',
+              admin1: 'Georgia',
+              timezone: 'America/New_York',
+              resolution_source: 'auto_resolved',
+            },
+          ],
+          forecast_window: [],
+        });
+
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const headers = {
+          'X-Aurora-UID': `test_uid_travel_ambiguous_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_ambiguous',
+          'X-Brief-ID': 'test_brief_ambiguous',
+          'X-Lang': 'EN',
+        };
+
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headers)
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            region: 'San Francisco, CA',
+            travel_plans: [
+              {
+                destination: 'Athens',
+                start_date: '2026-03-12',
+                end_date: '2026-03-15',
+              },
+            ],
+          })
+          .expect(200);
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'How is the weather there?',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+        const assistant = String(resp.body?.assistant_message?.content || '');
+        assert.equal(cards.some((c) => c && c.type === 'env_stress'), false);
+        assert.ok(/multiple possible destinations/i.test(assistant));
+        assert.ok(chips.some((chip) => String(chip?.label || '').includes('Athens, Attica, Greece')));
+        assert.equal(resp.body?.session_patch?.pending_clarification?.type, 'destination_ambiguous');
+      } finally {
+        contracts.runTravelPipeline = originalRunTravelPipeline;
+        weatherAdapter.getTravelWeather = originalGetTravelWeather;
+        delete require.cache[routesModuleId];
+        delete require.cache[contractsModuleId];
+        delete require.cache[weatherAdapterModuleId];
       }
     },
   );
