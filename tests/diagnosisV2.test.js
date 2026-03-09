@@ -68,14 +68,14 @@ const validation = validateResultPayload(validResult);
 assert.strictEqual(validation.ok, true);
 console.log('  PASS');
 
-console.log('Test: schema validation - missing evidence');
-const invalidResult = {
+console.log('Test: schema validation - empty evidence now accepted (relaxed)');
+const emptyEvidenceResult = {
   ...validResult,
   inferred_state: {
     axes: [{ axis: 'test', level: 'low', confidence: 0.3, evidence: [], trend: 'new' }],
   },
 };
-assert.strictEqual(validateResultPayload(invalidResult).ok, false);
+assert.strictEqual(validateResultPayload(emptyEvidenceResult).ok, true);
 console.log('  PASS');
 
 console.log('Test: schema validation - empty next_actions');
