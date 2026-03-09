@@ -855,10 +855,13 @@ function buildTravelReadiness({
     ? destinationWeather.summary
     : null;
   const weatherSource = normalizeText(destinationWeather && destinationWeather.source, 40).toLowerCase();
+  const usesLiveWeather = weatherSource === 'weather_api';
   const weatherReason = normalizeText(destinationWeather && destinationWeather.reason, 80) || null;
   const homeSummary = isPlainObject(homeWeather && homeWeather.summary) ? homeWeather.summary : null;
   const hasHomeBaseline = Boolean(homeSummary);
-  const forecastWindow = normalizeForecastWindowRows(destinationWeather && destinationWeather.forecast_window);
+  const forecastWindow = usesLiveWeather
+    ? normalizeForecastWindowRows(destinationWeather && destinationWeather.forecast_window)
+    : [];
   const alerts = normalizeTravelAlerts(travelAlerts, lang);
 
   const temperature = buildMetricDelta(homeSummary && homeSummary.temperature_max_c, destinationSummary && destinationSummary.temperature_max_c, 'C');
@@ -921,11 +924,11 @@ function buildTravelReadiness({
       epi: toNumber(epiPayload && epiPayload.epi),
     },
     delta_vs_home: {
-      temperature,
-      humidity,
-      uv,
-      wind,
-      precip,
+      temperature: usesLiveWeather ? temperature : null,
+      humidity: usesLiveWeather ? humidity : null,
+      uv: usesLiveWeather ? uv : null,
+      wind: usesLiveWeather ? wind : null,
+      precip: usesLiveWeather ? precip : null,
       summary_tags: summaryTags,
       baseline_status: hasHomeBaseline ? 'ok' : 'baseline_unavailable',
     },

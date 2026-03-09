@@ -1453,7 +1453,11 @@ async function runTravelPipeline(input = {}) {
 module.exports = {
   TRAVEL_SKILLS_VERSION,
   runTravelPipeline,
+  buildDestinationClarificationAssistantText,
+  buildDestinationClarificationChips,
   __internal: {
+    buildDestinationClarificationAssistantText,
+    buildDestinationClarificationChips,
     shouldTriggerRecoPreview,
     shouldTriggerStoreChannel,
     shouldTriggerLlmCalibration,
