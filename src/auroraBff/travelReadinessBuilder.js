@@ -583,14 +583,7 @@ function normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, language) {
   for (const row of Array.isArray(recoBundle) ? recoBundle : []) {
     if (!isPlainObject(row)) continue;
     const category = normalizeText(row.trigger, 80) || t(language, '旅行护肤', 'Travel skincare');
-    const reasons = uniqStrings(
-      [
-        normalizeText(row.action, 180),
-        normalizeText(row.ingredient_logic, 180),
-        t(language, '基于旅行环境差异的规则化建议。', 'Rule-based recommendation from travel condition deltas.'),
-      ],
-      3,
-    );
+    const reapplyRule = normalizeText(row.reapply_rule, 180);
     const productTypes = Array.isArray(row.product_types) ? row.product_types : [];
     for (const productType of productTypes) {
       const name = normalizeText(productType, 140);
@@ -598,6 +591,14 @@ function normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, language) {
       const key = name.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
+      const reasons = uniqStrings(
+        [
+          t(language, `类目：${category}`, `Category: ${category}`),
+          reapplyRule || null,
+          normalizeText(row.ingredient_logic, 180) || null,
+        ].filter(Boolean),
+        3,
+      );
       out.push({
         rank: out.length + 1,
         product_id: null,
@@ -834,6 +835,233 @@ function buildConfidence({ language, profile, recentLogs, destinationWeather, ha
   };
 }
 
+const TRIGGER_TO_CATEGORY_ID = Object.freeze({
+  'uv 升高': 'sun_protection',
+  'elevated uv': 'sun_protection',
+  '日常防晒': 'sun_protection',
+  'daily sun protection': 'sun_protection',
+  '湿热上升': 'moisturization',
+  'warmer / more humid': 'moisturization',
+  '温差/干燥': 'moisturization',
+  'temperature swing / dryness': 'moisturization',
+  '面膜（按场景）': 'masks',
+  'masks (scenario-based)': 'masks',
+  '晒后修复': 'post_sun',
+  'post-sun repair': 'post_sun',
+  '卸妆 + 双重清洁': 'cleansing',
+  'makeup removal + double cleanse': 'cleansing',
+  '抗氧化防护': 'antioxidant',
+  'antioxidant protection': 'antioxidant',
+  '美白/祛斑护理': 'brightening',
+  'brightening / dark-spot care': 'brightening',
+  '身体护理': 'body_care',
+  'body care': 'body_care',
+  '眼部护理': 'eye_care',
+  'eye care': 'eye_care',
+  '应急备用': 'emergency',
+  'emergency kit': 'emergency',
+});
+
+const CATEGORY_KEYWORDS_BY_ID = Object.freeze({
+  sun_protection: ['sunscreen', 'spf', 'uv', '防晒', 'sun protect'],
+  moisturization: ['moistur', 'barrier', 'cream', 'hydrat', '保湿', '修护', '面霜', 'ceramide'],
+  cleansing: ['cleans', 'oil', 'balm', '洁面', '卸妆'],
+  antioxidant: ['antioxid', 'vitamin c', '抗氧化', 'vit c'],
+  brightening: ['bright', 'whiten', 'dark spot', '美白', '祛斑', 'tranexamic'],
+  masks: ['mask', '面膜'],
+  post_sun: ['after-sun', 'post-sun', 'aloe', '晒后', '芦荟'],
+  body_care: ['body', '身体'],
+  eye_care: ['eye', '眼'],
+  emergency: ['patch', 'lip balm', '痘痘贴', '润唇'],
+});
+
+const CANONICAL_CATEGORY_IDS = Object.freeze(Object.keys(CATEGORY_KEYWORDS_BY_ID));
+
+function triggerToCategoryId(trigger) {
+  const key = normalizeText(trigger, 120).toLowerCase();
+  return TRIGGER_TO_CATEGORY_ID[key] || key.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+function findCategoryIdByKeywords(values) {
+  const haystack = (Array.isArray(values) ? values : [])
+    .map((value) => normalizeText(value, 240))
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (!haystack) return null;
+  for (const categoryId of CANONICAL_CATEGORY_IDS) {
+    const keywords = CATEGORY_KEYWORDS_BY_ID[categoryId] || [];
+    if (keywords.some((keyword) => haystack.includes(keyword))) return categoryId;
+  }
+  return null;
+}
+
+function resolvePreviewProductCategoryId(item) {
+  if (!isPlainObject(item)) return null;
+  const exactCategoryId = triggerToCategoryId(normalizeText(item.category, 80));
+  if (CANONICAL_CATEGORY_IDS.includes(exactCategoryId)) return exactCategoryId;
+  return findCategoryIdByKeywords([
+    item.category,
+    item.name,
+    item.brand,
+    Array.isArray(item.reasons) ? item.reasons.join(' ') : '',
+  ]);
+}
+
+function pushCategorizedKitSuggestion(out, seenKeys, suggestion) {
+  if (!Array.isArray(out) || !seenKeys || out.length >= 4 || !isPlainObject(suggestion)) return;
+  const product = normalizeText(suggestion.product, 140) || null;
+  const brand = normalizeText(suggestion.brand, 80) || null;
+  const reason = normalizeText(suggestion.reason, 200) || null;
+  const matchStatus = normalizeText(suggestion.match_status, 40) || null;
+  const dedupeKey = product ? product.toLowerCase() : brand ? brand.toLowerCase() : '';
+  if (!dedupeKey || seenKeys.has(dedupeKey)) return;
+  seenKeys.add(dedupeKey);
+  out.push({
+    brand,
+    product,
+    reason,
+    match_status: matchStatus,
+  });
+}
+
+function buildClimateLink(categoryId, deltaVsHome, language) {
+  const delta = isPlainObject(deltaVsHome) ? deltaVsHome : {};
+  const fmt = (metric) => {
+    if (!isPlainObject(metric)) return null;
+    const h = toNumber(metric.home);
+    const d = toNumber(metric.destination);
+    const dd = toNumber(metric.delta);
+    const unit = normalizeText(metric.unit, 10);
+    if (d == null) return null;
+    const signed = dd != null ? (dd > 0 ? `+${roundTo(dd, 1)}` : `${roundTo(dd, 1)}`) : null;
+    if (h != null && signed != null) {
+      return `${roundTo(h, 1)}${unit} → ${roundTo(d, 1)}${unit} (${signed}${unit})`;
+    }
+    return `${roundTo(d, 1)}${unit}`;
+  };
+
+  const metricMap = {
+    sun_protection: { metric: delta.uv, labelCn: 'UV', labelEn: 'UV' },
+    post_sun: { metric: delta.uv, labelCn: 'UV', labelEn: 'UV' },
+    body_care: { metric: delta.uv, labelCn: 'UV', labelEn: 'UV' },
+    antioxidant: { metric: delta.uv, labelCn: 'UV', labelEn: 'UV' },
+    moisturization: null,
+    masks: null,
+    cleansing: null,
+    brightening: { metric: delta.uv, labelCn: 'UV', labelEn: 'UV' },
+    eye_care: null,
+    emergency: null,
+  };
+
+  if (categoryId === 'moisturization') {
+    const parts = [];
+    const hFmt = fmt(delta.humidity);
+    const tFmt = fmt(delta.temperature);
+    if (hFmt) parts.push(`${t(language, '湿度', 'Humidity')} ${hFmt}`);
+    if (tFmt) parts.push(`${t(language, '温度', 'Temp')} ${tFmt}`);
+    return parts.length ? parts.join(' · ') : null;
+  }
+
+  const entry = metricMap[categoryId];
+  if (!entry) return null;
+  const formatted = fmt(entry.metric);
+  if (!formatted) return null;
+  return `${t(language, entry.labelCn, entry.labelEn)} ${formatted}`;
+}
+
+function buildCategorizedKit({ language, recoBundle, deltaVsHome, brandCandidates, categoryRecommendations, previewProducts }) {
+  const bundle = Array.isArray(recoBundle) ? recoBundle : [];
+  const brands = Array.isArray(brandCandidates) ? brandCandidates : [];
+  const catRecs = Array.isArray(categoryRecommendations) ? categoryRecommendations : [];
+  const previews = Array.isArray(previewProducts) ? previewProducts : [];
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const previewProductsByCategoryId = {};
+  for (const preview of previews) {
+    const categoryId = resolvePreviewProductCategoryId(preview);
+    if (!categoryId) continue;
+    if (!Array.isArray(previewProductsByCategoryId[categoryId])) previewProductsByCategoryId[categoryId] = [];
+    previewProductsByCategoryId[categoryId].push(preview);
+  }
+
+  const kit = [];
+  const seenIds = new Set();
+
+  for (const row of bundle) {
+    if (!isPlainObject(row)) continue;
+    const trigger = normalizeText(row.trigger, 120);
+    if (!trigger) continue;
+    const id = triggerToCategoryId(trigger);
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+
+    const productTypes = Array.isArray(row.product_types) ? row.product_types : [];
+    const preparations = productTypes
+      .map((pt) => normalizeText(pt, 140))
+      .filter(Boolean)
+      .map((name) => ({ name, detail: normalizeText(row.reapply_rule, 200) || null }));
+
+    const climateLink = buildClimateLink(id, deltaVsHome, lang);
+
+    const suggestions = [];
+    const suggestionKeys = new Set();
+
+    const matchedCatRec = catRecs.find((cr) => {
+      if (!isPlainObject(cr)) return false;
+      const catId = triggerToCategoryId(normalizeText(cr.category, 40));
+      return catId === id;
+    });
+    if (matchedCatRec && Array.isArray(matchedCatRec.products)) {
+      for (const prod of matchedCatRec.products.slice(0, 3)) {
+        pushCategorizedKitSuggestion(suggestions, suggestionKeys, {
+          reason: normalizeText(prod.usage, 200) || normalizeText(prod.ingredient_logic, 200) || null,
+          product: normalizeText(prod.name, 140) || null,
+          match_status: 'llm_generated',
+        });
+        if (suggestions.length >= 4) break;
+      }
+    }
+
+    const matchedPreviewProducts = Array.isArray(previewProductsByCategoryId[id]) ? previewProductsByCategoryId[id] : [];
+    for (const preview of matchedPreviewProducts) {
+      const reasons = uniqStrings(Array.isArray(preview && preview.reasons) ? preview.reasons : [], 3);
+      pushCategorizedKitSuggestion(suggestions, suggestionKeys, {
+        brand: normalizeText(preview && preview.brand, 80) || null,
+        product: normalizeText(preview && preview.name, 140) || null,
+        reason: reasons.length ? reasons.join(' · ') : null,
+        match_status: normalizeText(preview && preview.match_status, 40) || null,
+      });
+      if (suggestions.length >= 4) break;
+    }
+
+    for (const b of brands) {
+      if (!isPlainObject(b)) continue;
+      const matchedCategoryId = findCategoryIdByKeywords([b.reason, b.brand]);
+      if (matchedCategoryId !== id) continue;
+      pushCategorizedKitSuggestion(suggestions, suggestionKeys, {
+        brand: normalizeText(b.brand, 80) || null,
+        product: null,
+        reason: normalizeText(b.reason, 200) || null,
+        match_status: normalizeText(b.match_status, 40) || null,
+      });
+      if (suggestions.length >= 4) break;
+    }
+
+    kit.push({
+      id,
+      title: trigger,
+      climate_link: climateLink,
+      why: normalizeText(row.action, 280) || null,
+      ingredient_logic: normalizeText(row.ingredient_logic, 260) || null,
+      preparations,
+      reapply_rule: normalizeText(row.reapply_rule, 200) || null,
+      brand_suggestions: suggestions.length ? suggestions : null,
+    });
+  }
+
+  return kit;
+}
+
 function buildTravelReadiness({
   language = 'EN',
   profile = {},
@@ -910,6 +1138,14 @@ function buildTravelReadiness({
   const previewProducts = previewProductsFromCatalog.length
     ? previewProductsFromCatalog
     : normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, lang);
+  const categorizedKit = buildCategorizedKit({
+    language: lang,
+    recoBundle,
+    deltaVsHome: { temperature, humidity, uv, wind, precip },
+    brandCandidates: [],
+    categoryRecommendations: [],
+    previewProducts,
+  });
 
   return {
     destination_context: {
@@ -938,6 +1174,7 @@ function buildTravelReadiness({
     personal_focus: personalFocus,
     jetlag_sleep: jetlagSleep,
     reco_bundle: recoBundle,
+    categorized_kit: categorizedKit,
     store_examples: storeExamples,
     shopping_preview: {
       products: previewProducts,
@@ -962,6 +1199,7 @@ module.exports = {
     buildConfidence,
     normalizePreviewProducts,
     normalizeFallbackPreviewProductsFromRecoBundle,
+    buildCategorizedKit,
     getTimezoneOffsetHours,
     resolveTimezoneFromHints,
   },

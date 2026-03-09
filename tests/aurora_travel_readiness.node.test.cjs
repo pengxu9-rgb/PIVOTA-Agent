@@ -73,6 +73,16 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.ok(Array.isArray(payload.reco_bundle));
   assert.ok(payload.reco_bundle.some((item) => item && item.trigger === 'Eye care'));
   assert.ok(payload.reco_bundle.some((item) => item && item.trigger === 'Brightening / dark-spot care'));
+  assert.ok(Array.isArray(payload.categorized_kit));
+  const sunProtection = payload.categorized_kit.find((item) => item && item.id === 'sun_protection');
+  const moisturization = payload.categorized_kit.find((item) => item && item.id === 'moisturization');
+  assert.ok(sunProtection);
+  assert.match(String(sunProtection.climate_link || ''), /UV/i);
+  assert.ok(Array.isArray(sunProtection.brand_suggestions));
+  assert.ok(sunProtection.brand_suggestions.some((item) => item && item.product === 'UV Shield SPF50'));
+  assert.ok(moisturization);
+  assert.ok(Array.isArray(moisturization.brand_suggestions));
+  assert.ok(moisturization.brand_suggestions.some((item) => item && item.product === 'Barrier Rescue Serum'));
   assert.ok(Array.isArray(payload.shopping_preview.products));
   assert.ok(payload.shopping_preview.products.length >= 1);
   assert.ok(Array.isArray(payload.shopping_preview.buying_channels));
@@ -239,4 +249,13 @@ test('buildTravelReadiness backfills shopping preview products from reco_bundle 
   assert.ok(payload.shopping_preview.products[0].name.length > 0);
   assert.ok(Array.isArray(payload.shopping_preview.products[0].reasons));
   assert.ok(payload.shopping_preview.products[0].reasons.length >= 1);
+  assert.ok(Array.isArray(payload.categorized_kit));
+  const bridgedPreviewName = payload.shopping_preview.products[0].name;
+  assert.ok(
+    payload.categorized_kit.some(
+      (entry) =>
+        Array.isArray(entry && entry.brand_suggestions) &&
+        entry.brand_suggestions.some((item) => item && item.product === bridgedPreviewName),
+    ),
+  );
 });

@@ -207,7 +207,31 @@ test('travel skills pipeline: destination-present request triggers llm skill wit
                 start_date: '2026-03-10',
                 end_date: '2026-03-15',
               },
+              delta_vs_home: {
+                uv: { home: 4, destination: 7, delta: 3, unit: '' },
+              },
               forecast_window: [{ date: '2026-03-10' }],
+              reco_bundle: [
+                {
+                  trigger: 'Elevated UV',
+                  action: 'Use SPF50+ sunscreen',
+                  ingredient_logic: 'Photostable filters',
+                  product_types: ['Face SPF50+ sunscreen'],
+                  reapply_rule: 'Reapply every 2 hours outdoors.',
+                },
+              ],
+              shopping_preview: {
+                products: [
+                  {
+                    name: 'UV Shield SPF50',
+                    brand: 'BrandB',
+                    category: 'sun_protection',
+                    reasons: ['High UV destination support.'],
+                    match_status: 'catalog_verified',
+                  },
+                ],
+                buying_channels: ['pharmacy'],
+              },
               adaptive_actions: ['use_spf'],
               alerts: [],
               confidence: { score: 0.95, level: 'high' },
@@ -242,6 +266,11 @@ test('travel skills pipeline: destination-present request triggers llm skill wit
           assert.equal(Number.isFinite(Number(llmTrace.meta?.prompt_chars)), true);
           assert.equal(Number(llmTrace.meta.prompt_chars) > 0, true);
           assert.equal(String(llmTrace.meta.prompt_hash || '').includes('Task: improve the travel_readiness payload'), false);
+          assert.ok(Array.isArray(out.travel_readiness?.categorized_kit));
+          const sunProtection = out.travel_readiness.categorized_kit.find((item) => item && item.id === 'sun_protection');
+          assert.ok(sunProtection);
+          assert.ok(Array.isArray(sunProtection.brand_suggestions));
+          assert.ok(sunProtection.brand_suggestions.some((item) => item && item.product === 'UV Shield SPF50'));
 
           const metrics = snapshotTravelMetrics();
           const llmTriggerEntries = Array.isArray(metrics.auroraTravelLlmTrigger) ? metrics.auroraTravelLlmTrigger : [];
