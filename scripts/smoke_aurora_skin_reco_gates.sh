@@ -131,11 +131,11 @@ run_case_low_confidence() {
 
   jq_assert_json "low confidence emits reco-stage output (product_verdict/recommendations/notice)" '
     .cards | any(.type=="product_verdict" or .type=="recommendations")
-      or any((.type=="confidence_notice") and (.payload.reason=="low_confidence" or .payload.reason=="timeout_degraded"))
+      or any((.type=="confidence_notice") and (.payload.reason=="artifact_missing"))
   ' "$reco_json"
   jq_assert_json "low confidence event flag true when stream is present" '
     if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.low_confidence==true) or (.data.reason=="low_confidence") or (.data.reason=="timeout_degraded"))))
+    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.low_confidence==true) or (.data.reason=="artifact_missing"))))
     else true
     end
   ' "$reco_json"
@@ -211,23 +211,53 @@ run_case_medium_confidence() {
     }'
   )"
 
-  jq_assert_json "medium/high path emits product_verdict/recommendations or timeout_degraded notice" '
+  jq_assert_json "medium/high path emits product_verdict/recommendations" '
     .cards | any(.type=="product_verdict" or .type=="recommendations")
-      or any((.type=="confidence_notice") and (.payload.reason=="timeout_degraded"))
   ' "$reco_json"
-  jq_assert_json "no artifact_missing in medium/high path" '(.cards | any((.type=="confidence_notice") and (.payload.reason=="artifact_missing"))) | not' "$reco_json"
-  jq_assert_json "recos_requested source or timeout reason present (optional stream)" '
+  jq_assert_json "medium/high path has at least one recommendation or verdict payload" '
+    (.cards | map(select(.type=="recommendations" or .type=="product_verdict")) | length) >= 1
+  ' "$reco_json"
+  jq_assert_json "recos_requested source and parity fields present (optional stream)" '
     if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0) or (.data.reason=="timeout_degraded"))))
+    then ((.events // []) | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0) and (((.data.mainline_status // "") | length) > 0))))
     else true
     end
   ' "$reco_json"
-  jq_assert_json "medium/high path not marked low_confidence unless timeout_degraded (optional stream)" '
+  jq_assert_json "medium/high path not marked artifact_missing when recommendations exist (optional stream)" '
     if ((.events // []) | any(.event_name=="recos_requested"))
-    then ((.events // []) | any((.event_name=="recos_requested") and ((.data.low_confidence==false) or (.data.reason=="timeout_degraded"))))
+    then ((.events // []) | any((.event_name=="recos_requested") and (((.data.reason // "") != "artifact_missing") or (.data.grounded_count > 0) or (.data.ungrounded_count > 0))))
     else true
     end
   ' "$reco_json"
+}
+
+run_case_direct_reco_generate() {
+  local uid="uid_gate_direct_reco_${RUN_ID}"
+  local trace="trace_gate_direct_reco_${RUN_ID}"
+  local brief="brief_gate_direct_reco_${RUN_ID}"
+
+  say "case 4: direct reco generate"
+  seed_core_profile "$uid" "$trace" "$brief"
+
+  local direct_json
+  direct_json="$(
+    post_json "$uid" "$trace" "$brief" "/v1/reco/generate" '{
+      "focus":"dark spots and acne marks",
+      "constraints":{"fragrance_free":true},
+      "include_alternatives":false
+    }'
+  )"
+
+  jq_assert_json "direct reco generate returns recommendation payload" '
+    .cards | any((.type=="recommendations") and (((.payload.recommendations // []) | length) >= 1))
+  ' "$direct_json"
+  jq_assert_json "direct reco event is present with stable semantics" '
+    ((.events // []) | any((.event_name=="recos_requested")
+      and (((.data.source // "") | length) > 0)
+      and (((.data.mainline_status // "") | length) > 0)
+      and (((.data.reason // "") != "artifact_missing") or (.data.grounded_count > 0) or (.data.ungrounded_count > 0))
+    ))
+  ' "$direct_json"
 }
 
 run_case_safety_block() {
@@ -282,6 +312,7 @@ curl_do -sSI "${BASE}/v1/session/bootstrap" | grep -i '^x-service-commit:' || tr
 run_case_artifact_missing
 run_case_low_confidence
 run_case_medium_confidence
+run_case_direct_reco_generate
 run_case_safety_block
 
 say "summary"
