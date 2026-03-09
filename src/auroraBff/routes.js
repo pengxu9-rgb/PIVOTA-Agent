@@ -19747,13 +19747,17 @@ function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
   const tokens = collectRecoContractReasonTokens({ payload, fieldMissing });
   if (tokens.includes('low_confidence_treatment_filtered')) return 'low_confidence_treatment_filtered';
   if (tokens.includes('low_confidence')) return 'low_confidence';
-  if (tokens.includes('artifact_missing')) return 'artifact_missing';
   if (tokens.includes('ingredient_constraint_no_match') || tokens.includes('ingredient_no_verified_candidates')) {
     return 'ingredient_constraint_no_match';
   }
-  if (tokens.includes('upstream_missing_or_unstructured')) return 'upstream_schema_invalid';
-  if (tokens.includes('upstream_missing_or_empty')) return 'upstream_empty_recommendations';
-  return 'upstream_empty_recommendations';
+  if (
+    tokens.includes('artifact_missing') ||
+    tokens.includes('upstream_missing_or_unstructured') ||
+    tokens.includes('upstream_missing_or_empty')
+  ) {
+    return 'artifact_missing';
+  }
+  return 'artifact_missing';
 }
 
 function buildRecoInvariantNoticeCard({ ctx, language, reason, details } = {}) {
@@ -19796,6 +19800,8 @@ function applyRecoCardContractInvariant({ envelope, ctx, language } = {}) {
   let applied = false;
   let droppedCount = 0;
   let reason = null;
+  let invariantContract = null;
+  let invariantLlmTraceRef = null;
   const nextCards = [];
   for (const card of baseEnvelope.cards) {
     if (!isPlainObject(card)) {
@@ -19814,6 +19820,25 @@ function applyRecoCardContractInvariant({ envelope, ctx, language } = {}) {
     }
     applied = true;
     droppedCount += 1;
+    const nextContract = buildRecoMainlineContract({
+      recommendations: [],
+      sourceMode: pickFirstTrimmed(payload?.recommendation_meta?.source_mode),
+      source: pickFirstTrimmed(payload?.source),
+      llmFailureClass: pickFirstTrimmed(payload?.recommendation_meta?.failure_class),
+      upstreamFailureCode: pickFirstTrimmed(payload?.recommendation_meta?.upstream_failure_code),
+      promptContractOk: payload?.prompt_contract_ok !== false,
+      fieldMissing: card.field_missing,
+      structuredSource: pickFirstTrimmed(payload?.recommendation_meta?.source_mode),
+      catalogSkipReason: pickFirstTrimmed(payload?.recommendation_meta?.catalog_skip_reason),
+      productsEmptyReason: pickFirstTrimmed(
+        payload?.recommendation_meta?.products_empty_reason,
+        payload?.products_empty_reason,
+      ),
+    });
+    invariantContract = invariantContract || nextContract;
+    if (!invariantLlmTraceRef) {
+      invariantLlmTraceRef = buildRecoLlmTraceRef(payload?.recommendation_meta?.llm_trace);
+    }
     reason = reason || inferRecoContractNoticeReason({ payload, fieldMissing: card.field_missing });
   }
 
@@ -19852,13 +19877,23 @@ function applyRecoCardContractInvariant({ envelope, ctx, language } = {}) {
       generic_reco_card_removed: true,
     }),
   );
+  const normalizedRecoEvents = applyRecoContractToRecoRequestedEvents(nextEvents, invariantContract, {
+    ctx,
+    emitIfMissing: true,
+    eventData: {
+      explicit: true,
+      ...(pickFirstTrimmed(invariantContract?.source, invariantContract?.source_mode) ? { source: pickFirstTrimmed(invariantContract?.source, invariantContract?.source_mode) } : {}),
+      ...(isPlainObject(invariantLlmTraceRef) ? { llm_trace_ref: invariantLlmTraceRef } : {}),
+      ...(pickFirstTrimmed(invariantContract?.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(invariantContract?.products_empty_reason) } : {}),
+    },
+  });
 
   return {
     envelope: {
       ...baseEnvelope,
       cards: nextCards,
       session_patch: nextSessionPatch,
-      events: nextEvents,
+      events: normalizedRecoEvents.events,
     },
     applied: true,
     reason,
@@ -20401,35 +20436,62 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
       continue;
     }
     const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? { ...evt.data } : {};
-    if (contractObj.telemetry_failure_reason && !pickFirstTrimmed(data.telemetry_reason)) {
-      data.telemetry_reason = contractObj.telemetry_failure_reason;
+    if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
+      Object.assign(data, eventData);
     }
-    if (contractObj.failure_class && !pickFirstTrimmed(data.failure_class)) {
+    if (contractObj.primary_failure_reason) {
+      const previousReason = String(data.reason || '').trim().toLowerCase();
+      if (previousReason && previousReason !== String(contractObj.primary_failure_reason || '').trim().toLowerCase() && !pickFirstTrimmed(data.telemetry_reason)) {
+        data.telemetry_reason = previousReason;
+      }
+      data.reason = contractObj.primary_failure_reason;
+    } else {
+      delete data.reason;
+    }
+    if (contractObj.telemetry_failure_reason) {
+      data.telemetry_reason = contractObj.telemetry_failure_reason;
+    } else {
+      delete data.telemetry_reason;
+    }
+    if (contractObj.failure_class) {
       data.failure_class = contractObj.failure_class;
+    } else {
+      delete data.failure_class;
     }
     if (contractObj.source && !pickFirstTrimmed(data.source)) {
       data.source = contractObj.source;
     }
-    if (contractObj.source_mode && !pickFirstTrimmed(data.source_mode)) {
+    if (contractObj.source_mode) {
       data.source_mode = contractObj.source_mode;
+    } else {
+      delete data.source_mode;
     }
-    if (contractObj.mainline_status && !pickFirstTrimmed(data.mainline_status)) {
+    if (contractObj.mainline_status) {
       data.mainline_status = contractObj.mainline_status;
+    } else {
+      delete data.mainline_status;
     }
-    if (contractObj.catalog_skip_reason && !pickFirstTrimmed(data.catalog_skip_reason)) {
+    if (contractObj.catalog_skip_reason) {
       data.catalog_skip_reason = contractObj.catalog_skip_reason;
+    } else {
+      delete data.catalog_skip_reason;
     }
-    if (contractObj.upstream_status && !pickFirstTrimmed(data.upstream_status)) {
+    if (contractObj.products_empty_reason) {
+      data.products_empty_reason = contractObj.products_empty_reason;
+    } else {
+      delete data.products_empty_reason;
+    }
+    if (contractObj.upstream_status) {
       data.upstream_status = contractObj.upstream_status;
-    }
-    if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
-      Object.assign(data, eventData);
+    } else {
+      delete data.upstream_status;
     }
     next.push({ ...evt, data });
   }
   if (!hasRecoRequested && emitIfMissing) {
     const data = {
       explicit: true,
+      ...(eventData && typeof eventData === 'object' && !Array.isArray(eventData) ? eventData : {}),
       ...(contractObj.source ? { source: contractObj.source } : {}),
       ...(contractObj.source_mode ? { source_mode: contractObj.source_mode } : {}),
       ...(contractObj.primary_failure_reason ? { reason: contractObj.primary_failure_reason } : {}),
@@ -20437,8 +20499,8 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
       ...(contractObj.failure_class ? { failure_class: contractObj.failure_class } : {}),
       ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
       ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
+      ...(contractObj.products_empty_reason ? { products_empty_reason: contractObj.products_empty_reason } : {}),
       ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
-      ...(eventData && typeof eventData === 'object' && !Array.isArray(eventData) ? eventData : {}),
     };
     next.unshift(makeEvent(ctx || {}, 'recos_requested', data));
     hasRecoRequested = true;
@@ -56588,6 +56650,7 @@ const __internal = {
   applyLowConfidenceRecoGuard,
   envelopeRequiresConservativeRecoGuard,
   applyLowOrMediumRecoGuardToEnvelope,
+  applyRecoContractToRecoRequestedEvents,
   resolveSkinDeepeningPromptVersion,
   extractSkinDeepeningSymptoms,
   resolveSkinDeepeningPhase,

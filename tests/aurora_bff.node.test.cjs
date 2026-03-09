@@ -291,7 +291,7 @@ test('shouldApplyRecoOutputGuard: non-reco empty envelope should not trigger gua
   }
 });
 
-test('applyRecoCardContractInvariant: generic empty recommendations degrade to confidence_notice', () => {
+test('applyRecoCardContractInvariant: generic empty recommendations degrade to artifact_missing and normalize reco events', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const envelope = {
@@ -319,12 +319,61 @@ test('applyRecoCardContractInvariant: generic empty recommendations degrade to c
     });
 
     assert.equal(out.applied, true);
-    assert.equal(out.reason, 'upstream_empty_recommendations');
+    assert.equal(out.reason, 'artifact_missing');
     assert.equal(Array.isArray(out.envelope.cards), true);
     assert.equal(out.envelope.cards.some((card) => card && card.type === 'recommendations'), false);
     assert.equal(out.envelope.cards.some((card) => card && card.type === 'confidence_notice'), true);
-    assert.equal(out.envelope.cards.find((card) => card && card.type === 'confidence_notice').payload.reason, 'upstream_empty_recommendations');
+    assert.equal(out.envelope.cards.find((card) => card && card.type === 'confidence_notice').payload.reason, 'artifact_missing');
     assert.equal(Boolean(out.envelope.session_patch && out.envelope.session_patch.next_state), false);
+    const recoEvent = Array.isArray(out.envelope?.events)
+      ? out.envelope.events.find((evt) => evt && evt.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.reason, 'artifact_missing');
+    assert.equal(recoEvent?.data?.telemetry_reason, 'empty_structured');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyRecoContractToRecoRequestedEvents: contract canonical fields override stale eventData success meta', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.applyRecoContractToRecoRequestedEvents([], {
+      primary_failure_reason: 'artifact_missing',
+      telemetry_failure_reason: 'empty_structured',
+      failure_class: null,
+      source_mode: 'catalog_grounded',
+      source: 'catalog_grounded_v1',
+      mainline_status: 'empty_structured',
+      catalog_skip_reason: null,
+      upstream_status: 'artifact_missing',
+      products_empty_reason: 'strict_filter_fallback_only',
+    }, {
+      ctx: { request_id: 'req_contract_evt', trace_id: 'trace_contract_evt' },
+      emitIfMissing: true,
+      eventData: {
+        explicit: true,
+        source: 'catalog_grounded_v1',
+        source_mode: 'catalog_grounded',
+        mainline_status: 'grounded_success',
+        upstream_status: 'ok',
+        reason: 'artifact_missing',
+        llm_trace_ref: { template_id: 'reco_main_v1_1' },
+      },
+    });
+
+    const recoEvent = Array.isArray(out?.events)
+      ? out.events.find((evt) => evt && evt.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.reason, 'artifact_missing');
+    assert.equal(recoEvent?.data?.telemetry_reason, 'empty_structured');
+    assert.equal(recoEvent?.data?.source_mode, 'catalog_grounded');
+    assert.equal(recoEvent?.data?.mainline_status, 'empty_structured');
+    assert.equal(recoEvent?.data?.upstream_status, 'artifact_missing');
+    assert.equal(recoEvent?.data?.products_empty_reason, 'strict_filter_fallback_only');
+    assert.equal(recoEvent?.data?.llm_trace_ref?.template_id, 'reco_main_v1_1');
   } finally {
     delete require.cache[moduleId];
   }
