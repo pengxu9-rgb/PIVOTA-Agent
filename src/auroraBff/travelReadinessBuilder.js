@@ -392,7 +392,16 @@ function buildMetricDelta(homeValue, destinationValue, unit) {
   return { home: h, destination: d, delta, unit };
 }
 
-function buildSummaryTags({ temperature, humidity, uv, wind, precip, hasHomeBaseline }) {
+function buildSummaryTags({
+  temperature,
+  humidity,
+  uv,
+  wind,
+  precip,
+  hasHomeBaseline,
+  destinationSummary,
+  absoluteTagsEnabled = false,
+}) {
   const tags = [];
   const push = (v) => {
     if (!v || tags.includes(v)) return;
@@ -419,6 +428,26 @@ function buildSummaryTags({ temperature, humidity, uv, wind, precip, hasHomeBase
   if (windDelta != null && windDelta >= 5) push('windier');
   const precipDelta = toNumber(precip && precip.delta);
   if (precipDelta != null && precipDelta >= 1.5) push('wetter');
+
+  if (absoluteTagsEnabled || !hasHomeBaseline) {
+    const temperatureMax = toNumber(destinationSummary && destinationSummary.temperature_max_c);
+    const humidityMean = toNumber(destinationSummary && destinationSummary.humidity_mean);
+    const uvMax = toNumber(destinationSummary && destinationSummary.uv_index_max);
+    const windMax = toNumber(destinationSummary && destinationSummary.wind_kph_max);
+    const precipMean = toNumber(destinationSummary && destinationSummary.precipitation_mm);
+
+    if (temperatureMax != null) {
+      if (temperatureMax >= 30) push('hot');
+      else if (temperatureMax <= 10) push('cold');
+    }
+    if (humidityMean != null) {
+      if (humidityMean >= 72) push('humid');
+      else if (humidityMean <= 40) push('dry');
+    }
+    if (uvMax != null && uvMax >= 6) push('high_uv');
+    if (windMax != null && windMax >= 28) push('windy');
+    if (precipMean != null && precipMean >= 3) push('rainy');
+  }
 
   return tags.slice(0, 8);
 }
@@ -825,6 +854,8 @@ function buildTravelReadiness({
   const destinationSummary = isPlainObject(destinationWeather && destinationWeather.summary)
     ? destinationWeather.summary
     : null;
+  const weatherSource = normalizeText(destinationWeather && destinationWeather.source, 40).toLowerCase();
+  const weatherReason = normalizeText(destinationWeather && destinationWeather.reason, 80) || null;
   const homeSummary = isPlainObject(homeWeather && homeWeather.summary) ? homeWeather.summary : null;
   const hasHomeBaseline = Boolean(homeSummary);
   const forecastWindow = normalizeForecastWindowRows(destinationWeather && destinationWeather.forecast_window);
@@ -836,7 +867,16 @@ function buildTravelReadiness({
   const wind = buildMetricDelta(homeSummary && homeSummary.wind_kph_max, destinationSummary && destinationSummary.wind_kph_max, 'kph');
   const precip = buildMetricDelta(homeSummary && homeSummary.precipitation_mm, destinationSummary && destinationSummary.precipitation_mm, 'mm');
 
-  const summaryTags = buildSummaryTags({ temperature, humidity, uv, wind, precip, hasHomeBaseline });
+  const summaryTags = buildSummaryTags({
+    temperature,
+    humidity,
+    uv,
+    wind,
+    precip,
+    hasHomeBaseline,
+    destinationSummary,
+    absoluteTagsEnabled: weatherSource !== 'weather_api',
+  });
   const adaptiveActions = buildAdaptiveActions({ language: lang, summaryTags });
   const personalFocus = buildPersonalFocus({ language: lang, profile, destinationSummary, summaryTags });
   const jetlagSleep = buildJetlagSleep({
@@ -877,6 +917,7 @@ function buildTravelReadiness({
         normalizeText(epiPayload && epiPayload.env_source, 40) ||
         normalizeText(destinationWeather && destinationWeather.source, 40) ||
         null,
+      weather_reason: weatherReason,
       epi: toNumber(epiPayload && epiPayload.epi),
     },
     delta_vs_home: {

@@ -908,6 +908,16 @@ function normalizeCanonicalRegionStrict(raw) {
   return normalizeCanonicalRegionToken(raw);
 }
 
+function normalizeCueScopedRegion(cue, region) {
+  const normalizedCue = normalizeCanonicalCueStrict(cue);
+  const normalizedRegion = normalizeCanonicalRegionStrict(region);
+  if (!normalizedCue || !normalizedRegion) return normalizedRegion;
+  if (normalizedCue === 'shine' && (normalizedRegion === 'nose' || normalizedRegion === 'forehead')) {
+    return 't_zone';
+  }
+  return normalizedRegion;
+}
+
 function normalizeVisionVisibility(raw) {
   return normalizeEnumValue(raw, VisionVisibilityValues, 'insufficient');
 }
@@ -1025,6 +1035,19 @@ function pruneVisionCanonicalObservations(observations, { visibilityStatus } = {
   const cappedVisibility = visibilityStatus === 'limited' ? 'limited' : 'sufficient';
   const kept = [];
   for (const row of list) {
+    const sameCueIndex = kept.findIndex((item) => item.cue === row.cue);
+    if (sameCueIndex >= 0) {
+      const current = kept[sameCueIndex];
+      const allowSameCueSplit =
+        row.cue === 'redness' &&
+        current.region !== row.region &&
+        canonicalObservationScore(row) >= 240 &&
+        canonicalObservationScore(current) >= 240;
+      if (!allowSameCueSplit) {
+        if (canonicalObservationScore(row) > canonicalObservationScore(current)) kept[sameCueIndex] = row;
+        continue;
+      }
+    }
     const conflictIndex = kept.findIndex((item) => item.region === row.region && !canCoexistInSameRegion(item, row));
     if (conflictIndex >= 0) {
       const current = kept[conflictIndex];
@@ -1038,7 +1061,16 @@ function pruneVisionCanonicalObservations(observations, { visibilityStatus } = {
     if (scoreDiff) return scoreDiff;
     return `${a.cue}:${a.region}`.localeCompare(`${b.cue}:${b.region}`);
   });
-  return kept.slice(0, cappedVisibility === 'limited' ? 2 : 3);
+  const capped = kept.slice(0, cappedVisibility === 'limited' ? 2 : 3);
+  if (cappedVisibility === 'limited' || capped.length <= 2) return capped;
+  const [first, second, third] = capped;
+  const topTwoStrong = canonicalObservationScore(first) >= 240 && canonicalObservationScore(second) >= 220;
+  const thirdIsSecondary =
+    third.cue === 'uneven_tone' ||
+    third.cue === 'texture' ||
+    (third.cue === 'bumps' && observationSeverityRank(third.severity) <= 1) ||
+    observationConfidenceRank(third.confidence) < 3;
+  return topTwoStrong && thirdIsSecondary ? capped.slice(0, 2) : capped;
 }
 
 function normalizeCanonicalObservationArray(raw, { maxItems = 8, strict = false } = {}) {
@@ -1047,11 +1079,15 @@ function normalizeCanonicalObservationArray(raw, { maxItems = 8, strict = false 
   for (const row of list) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
     const cue = strict ? normalizeCanonicalCueStrict(row.cue) : normalizeCanonicalCue(row.cue);
-    const region = strict ? normalizeCanonicalRegionStrict(row.region != null ? row.region : row.where) : normalizeCanonicalRegion(row.region != null ? row.region : row.where);
-    const severity = normalizeObservationSeverity(row.severity);
+    const region = normalizeCueScopedRegion(
+      cue,
+      strict ? normalizeCanonicalRegionStrict(row.region != null ? row.region : row.where) : normalizeCanonicalRegion(row.region != null ? row.region : row.where),
+    );
+    let severity = normalizeObservationSeverity(row.severity);
     const confidence = normalizeObservationConfidence(row.confidence);
     const evidence = clampText(row.evidence, 220);
     if (!cue || !region || !evidence) continue;
+    if (cue === 'shine' && severity === 'moderate') severity = 'mild';
     const key = `${cue}:${region}`;
     const next = { cue, region, severity, confidence, evidence };
     const prev = bestByKey.get(key);
@@ -1783,8 +1819,10 @@ function resolveDeterministicDeepeningAdviceItems({ summaryPriority, phase, deep
 function adjudicateDeepeningCanonicalLayer(payload, { inheritedPriority, deepeningContext } = {}) {
   const base = normalizeCanonicalDeepening(payload, { strict: false, inheritedPriority });
   if (!base) return null;
-  const phase = normalizeEnumValue(base.phase || (deepeningContext && deepeningContext.phase), DEEPENING_PHASE_VALUES, 'photo_optin');
+  const contextPhase = normalizeEnumValue(deepeningContext && deepeningContext.phase, DEEPENING_PHASE_VALUES, '');
+  const phase = contextPhase || normalizeEnumValue(base.phase, DEEPENING_PHASE_VALUES, 'photo_optin');
   const summaryPriority = normalizeSummaryPriority(inheritedPriority || base.summary_priority);
+  const contextIntent = normalizeFollowUpIntent(deepeningContext && deepeningContext.question_intent);
   return {
     phase,
     summary_priority: summaryPriority,
@@ -1793,7 +1831,10 @@ function adjudicateDeepeningCanonicalLayer(payload, { inheritedPriority, deepeni
       phase,
       deepeningContext,
     }),
-    question_intent: normalizeFollowUpIntent(base.question_intent || (deepeningContext && deepeningContext.question_intent) || defaultQuestionIntentForPhase(phase)),
+    question_intent:
+      contextIntent ||
+      normalizeFollowUpIntent(base.question_intent) ||
+      defaultQuestionIntentForPhase(phase),
   };
 }
 

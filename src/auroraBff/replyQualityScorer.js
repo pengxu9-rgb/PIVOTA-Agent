@@ -1,4 +1,5 @@
 const rubric = require('./specs/reply_quality_rubric.json');
+const { hasNonEmptyRecommendationsCard } = require('./recoContract');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -29,10 +30,6 @@ function getSessionPatch(envelope) {
 
 function getSuggestedChips(envelope) {
   return Array.isArray(envelope && envelope.suggested_chips) ? envelope.suggested_chips : [];
-}
-
-function hasRecommendationsCard(cards) {
-  return cards.some((card) => String(card && card.type || '').trim().toLowerCase() === 'recommendations');
 }
 
 function hasPendingClarificationCurrent(sessionPatch) {
@@ -118,7 +115,7 @@ function scoreReplyQuality(envelope = {}) {
         if (!passed) reason = 'text_chars_exceeded';
       }
     } else if (id === 'recommendations_state_gate') {
-      const hasReco = hasRecommendationsCard(cards);
+      const hasReco = hasNonEmptyRecommendationsCard(cards);
       applicable = hasReco;
       if (hasReco) {
         const nextState = String(sessionPatch.next_state || '').trim();

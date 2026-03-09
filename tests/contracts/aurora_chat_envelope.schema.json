@@ -143,7 +143,16 @@
                   "properties": {
                     "reason": {
                       "type": "string",
-                      "enum": ["artifact_missing", "low_confidence", "safety_block", "timeout_degraded"]
+                      "enum": [
+                        "artifact_missing",
+                        "low_confidence",
+                        "safety_block",
+                        "timeout_degraded",
+                        "upstream_empty_recommendations",
+                        "upstream_schema_invalid",
+                        "ingredient_constraint_no_match",
+                        "low_confidence_treatment_filtered"
+                      ]
                     },
                     "actions": { "type": "array" }
                   },

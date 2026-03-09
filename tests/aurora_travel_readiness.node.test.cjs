@@ -19,6 +19,7 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
     endDate: '2026-03-15',
     destinationWeather: {
       source: 'weather_api',
+      reason: 'weather_api_ok',
       location: { timezone: 'Europe/Paris' },
       summary: {
         temperature_max_c: 11,
@@ -59,6 +60,7 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.equal(payload.destination_context.destination, 'Paris');
   assert.equal(payload.destination_context.start_date, '2026-03-10');
   assert.equal(payload.destination_context.end_date, '2026-03-15');
+  assert.equal(payload.destination_context.weather_reason, 'weather_api_ok');
   assert.equal(payload.delta_vs_home.baseline_status, 'ok');
   assert.ok(Array.isArray(payload.delta_vs_home.summary_tags));
   assert.ok(payload.delta_vs_home.summary_tags.includes('colder'));
@@ -92,11 +94,12 @@ test('buildTravelReadiness marks baseline_unavailable when home baseline cannot 
     destination: 'Paris',
     destinationWeather: {
       source: 'climate_fallback',
+      reason: 'geocode_no_results',
       location: { timezone: 'Europe/Paris' },
       summary: {
-        temperature_max_c: 16,
-        humidity_mean: 70,
-        uv_index_max: 6,
+        temperature_max_c: 32,
+        humidity_mean: 82,
+        uv_index_max: 9.2,
         wind_kph_max: 18,
         precipitation_mm: 2.2,
       },
@@ -106,8 +109,12 @@ test('buildTravelReadiness marks baseline_unavailable when home baseline cannot 
   });
 
   assert.equal(payload.delta_vs_home.baseline_status, 'baseline_unavailable');
+  assert.equal(payload.destination_context.weather_reason, 'geocode_no_results');
   assert.ok(Array.isArray(payload.delta_vs_home.summary_tags));
   assert.ok(payload.delta_vs_home.summary_tags.includes('baseline_unavailable'));
+  assert.ok(payload.delta_vs_home.summary_tags.includes('hot'));
+  assert.ok(payload.delta_vs_home.summary_tags.includes('humid'));
+  assert.ok(payload.delta_vs_home.summary_tags.includes('high_uv'));
   assert.equal(payload.confidence.level, 'medium');
 
   const genericPayload = buildTravelReadiness({
@@ -116,11 +123,12 @@ test('buildTravelReadiness marks baseline_unavailable when home baseline cannot 
     destination: 'Paris',
     destinationWeather: {
       source: 'climate_fallback',
+      reason: 'geocode_no_results',
       location: { timezone: 'Europe/Paris' },
       summary: {
-        temperature_max_c: 16,
-        humidity_mean: 70,
-        uv_index_max: 6,
+        temperature_max_c: 32,
+        humidity_mean: 82,
+        uv_index_max: 9.2,
         wind_kph_max: 18,
         precipitation_mm: 2.2,
       },
@@ -131,7 +139,9 @@ test('buildTravelReadiness marks baseline_unavailable when home baseline cannot 
 
   assert.equal(typeof genericPayload, 'object');
   assert.ok(Array.isArray(genericPayload.personal_focus));
-  assert.equal(genericPayload.personal_focus[0].focus, 'Stability first');
+  assert.ok(genericPayload.personal_focus.some((item) => item && typeof item.focus === 'string'));
+  assert.ok(genericPayload.personal_focus.some((item) => item && item.focus === 'High UV defense'));
+  assert.ok(genericPayload.delta_vs_home.summary_tags.includes('hot'));
   assert.ok(genericPayload.confidence.missing_inputs.includes('current_routine'));
 });
 

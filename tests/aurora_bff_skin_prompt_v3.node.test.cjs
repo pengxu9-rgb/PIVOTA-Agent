@@ -156,7 +156,24 @@ test('skin prompt v3: vision canonical pruning drops same-region surface cue ove
   });
   assert.deepEqual(
     canonical.observations.map((row) => `${row.cue}:${row.region}`),
-    ['redness:cheeks', 'shine:t_zone', 'bumps:chin'],
+    ['redness:cheeks', 'shine:t_zone'],
+  );
+});
+
+test('skin prompt v3: vision normalization scopes nose shine to t-zone and drops weaker duplicate cue regions', () => {
+  const canonical = normalizeVisionCanonicalLayer({
+    visibility_status: 'sufficient',
+    needs_risk_check: false,
+    observations: [
+      { cue: 'shine', region: 'nose', severity: 'moderate', confidence: 'high', evidence: 'noticeable shine across nose bridge' },
+      { cue: 'shine', region: 'forehead', severity: 'mild', confidence: 'med', evidence: 'light reflection on forehead' },
+      { cue: 'bumps', region: 'forehead', severity: 'moderate', confidence: 'high', evidence: 'clustered bumps on forehead' },
+      { cue: 'bumps', region: 'chin', severity: 'mild', confidence: 'med', evidence: 'few smaller bumps on chin' },
+    ],
+  });
+  assert.deepEqual(
+    canonical.observations.map((row) => `${row.cue}:${row.region}:${row.severity}`),
+    ['bumps:forehead:moderate', 'shine:t_zone:mild'],
   );
 });
 
@@ -305,6 +322,27 @@ test('skin prompt v3: deepening transport canonical must adjudicate before valid
   assert.equal(validateDeepeningCanonicalLayer(adjudicated, { allowAdviceOmit: true }).ok, true);
   assert.equal(evaluateDeepeningCanonicalSemantic(adjudicated).ok, true);
   assert.equal(adjudicated.summary_priority, 'barrier');
+});
+
+test('skin prompt v3: deepening adjudication pins phase and question intent to deterministic context', () => {
+  const adjudicated = adjudicateDeepeningCanonicalLayer(
+    {
+      phase: 'refined',
+      question_intent: 'confirm_plan',
+    },
+    {
+      inheritedPriority: 'barrier',
+      deepeningContext: {
+        phase: 'reactions',
+        question_intent: 'reaction_check',
+        reaction_flags: ['tightness'],
+        suggested_advice_items: ['confirm_tolerance'],
+      },
+    },
+  );
+  assert.equal(adjudicated.phase, 'reactions');
+  assert.equal(adjudicated.question_intent, 'reaction_check');
+  assert.deepEqual(adjudicated.advice_items, ['protect_barrier', 'confirm_tolerance', 'stabilize_barrier']);
 });
 
 test('skin prompt v3: report LLM transport schema excludes deepening while internal canonical keeps it', () => {

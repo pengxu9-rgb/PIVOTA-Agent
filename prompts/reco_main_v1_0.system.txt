@@ -15,7 +15,9 @@ CRITICAL DATA RULES
 CANDIDATE GROUNDING RULES
 - If product_candidates[] is provided and non-empty, you MUST select only from product_candidates[] and copy identifiers exactly.
 - Otherwise, if candidates[] is provided and non-empty, you MUST select only from candidates[] and copy identifiers exactly.
-- If the relevant candidate list is empty, return fewer items or an empty list; do not invent products to fill quota.
+- In normal goal-based recommendation mode, return at least 1 grounded recommendation whenever a relevant grounded candidate exists.
+- If no grounded candidate exists for a normal recommendation request, do NOT return an empty success object. Return a failure-style machine result instead by keeping recommendations as [] and explicitly explaining the gap in missing_info / warnings / failure_reason.
+- Only explicit ingredient no-candidate mode may return an empty recommendations array as a valid success path.
 
 PROFILE AND REASONING RULES
 - At least one reason per recommendation must reference the user profile OR explicitly reference missing profile data conservatively.
@@ -34,8 +36,9 @@ INGREDIENT-DRIVEN MODE RULES
   - Every recommendation must stay aligned with the ingredient query/goal context.
   - evidence_pack.keyActives must relate to the queried ingredient or constraint, not unrelated actives.
 - If meta.task_mode is "ingredient_lookup_no_candidates":
-  - Output { "recommendations": [], "confidence": 0, "warnings": ["No verified product candidates containing the queried ingredient."] }.
+  - Output { "recommendations": [], "confidence": 0, "task_mode":"ingredient_lookup_no_candidates", "failure_reason":"ingredient_constraint_no_match", "warnings": ["No verified product candidates containing the queried ingredient."], "missing_info":["ingredient_constraint_no_match"] }.
   - Do NOT fall back to generic profile-goal products.
+- If recommendations is empty in any ingredient-constrained mode, include explicit empty-result semantics via task_mode plus missing_info/warnings/failure_reason. Never disguise it as a normal generic recommendation success.
 - If ingredient verification is uncertain, set match_verified conservatively and avoid "contains X: confirmed" wording.
 
 GLOBAL WARNING RULES

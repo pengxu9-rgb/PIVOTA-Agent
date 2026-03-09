@@ -20046,6 +20046,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    }
 	    if (err.response) {
 	      const upstreamStatus = err.response.status || 502;
+	      const upstreamUrl = err.config?.url || null;
 	      const upstreamRequestId =
 	        err.response.headers?.['x-request-id'] ||
 	        err.response.headers?.['x-requestid'] ||
@@ -20062,7 +20063,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          gateway_request_id: gatewayRequestId,
 	          operation,
 	          upstream_status: upstreamStatus,
-	          upstream_url: err.config?.url || url,
+	          upstream_url: upstreamUrl,
 	          upstream_request_id: upstreamRequestId,
 	        },
 	        'Upstream error',
@@ -20082,10 +20083,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    }
 
     if (err.code === 'ECONNABORTED') {
+      const upstreamUrl = err.config?.url || null;
       logger.error(
         {
           operation,
-          url: err.config?.url || url,
+          url: upstreamUrl,
           timeout_ms: err.config?.timeout,
         },
         'Upstream timeout',
@@ -20093,20 +20095,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       return res.status(504).json({
         error: 'UPSTREAM_TIMEOUT',
         operation,
-        upstream_url: err.config?.url || url,
+        upstream_url: upstreamUrl,
         timeout_ms: err.config?.timeout || null,
       });
 	    }
 
 		    const transportCode = err && err.code ? String(err.code) : null;
 		    const transportMessage = err && err.message ? String(err.message) : null;
+		    const upstreamUrl = err.config?.url || null;
 		    logger.error(
-		      { err: transportMessage, code: transportCode, upstream_url: err.config?.url || url },
+		      { err: transportMessage, code: transportCode, upstream_url: upstreamUrl },
 		      'Unexpected upstream error'
 		    );
 		    return res.status(502).json({
 		      error: 'UPSTREAM_UNAVAILABLE',
-		      upstream_url: err.config?.url || url,
+		      upstream_url: upstreamUrl,
 		      transport_code: transportCode,
 		      transport_message: transportMessage,
 		    });

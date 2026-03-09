@@ -1,4 +1,5 @@
 const UI_RECO_STATES = new Set(['RECO_GATE', 'RECO_CONSTRAINTS', 'RECO_RESULTS']);
+const { hasNonEmptyRecommendationsCard } = require('./recoContract');
 
 const FIELD_MISSING_REASON_ENUM = Object.freeze([
   'not_provided_by_user',
@@ -115,7 +116,7 @@ function selectTemplate(context = {}) {
   const gateCard = findCard(cards, 'diagnosis_gate');
   const gateWants = String(gateCard && gateCard.payload && gateCard.payload.wants ? gateCard.payload.wants : '').trim().toLowerCase();
 
-  if (has('recommendations') && UI_RECO_STATES.has(nextState || 'RECO_RESULTS')) {
+  if (hasNonEmptyRecommendationsCard(cards) && UI_RECO_STATES.has(nextState || 'RECO_RESULTS')) {
     return {
       id: 'recommendations_output.standard',
       module: 'recommendations_output',
@@ -186,7 +187,7 @@ function selectTemplate(context = {}) {
     };
   }
 
-  if (gateWants === 'recommendation' && !has('recommendations')) {
+  if (gateWants === 'recommendation' && !hasNonEmptyRecommendationsCard(cards)) {
     return {
       id: 'recommendations_output.degraded',
       module: 'recommendations_output',

@@ -33,6 +33,17 @@ test('quality audit: recommendations card outside RECO_* state triggers invarian
   assert.equal(invariant.reason, 'recommendations_outside_reco_state');
 });
 
+test('quality audit: empty recommendations card is not treated as reco success', () => {
+  const report = auditEnvelope(makeEnvelope({
+    cards: [{ card_id: 'reco_1', type: 'recommendations', payload: { recommendations: [] } }],
+    session_patch: { next_state: 'IDLE_CHAT' },
+  }));
+
+  const invariant = getInvariant(report, 'recommendations_reco_state');
+  assert.equal(Boolean(invariant && invariant.applicable), false);
+  assert.equal(invariant.reason, 'not_applicable');
+});
+
 test('quality audit: pending clarification enforces chips budget and <=1 question', () => {
   const report = auditEnvelope(makeEnvelope({
     assistant_message: { role: 'assistant', format: 'text', content: '你偏油还是偏干？你的目标是什么？' },

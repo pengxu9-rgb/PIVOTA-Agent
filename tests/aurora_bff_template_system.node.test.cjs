@@ -19,6 +19,15 @@ test('templateSystem: selectTemplate chooses recommendations_output.standard in 
   assert.equal(decision.variant, 'standard');
 });
 
+test('templateSystem: empty recommendations card does not count as recommendations_output.standard', () => {
+  const decision = selectTemplate({
+    cards: [{ type: 'recommendations', payload: { recommendations: [] } }],
+    session_patch: { next_state: 'RECO_RESULTS' },
+  });
+
+  assert.notEqual(decision.module, 'recommendations_output');
+});
+
 test('templateSystem: selectTemplate chooses diagnosis_clarification when pending_clarification exists', () => {
   const decision = selectTemplate({
     cards: [],

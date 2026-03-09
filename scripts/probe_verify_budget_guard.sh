@@ -150,7 +150,11 @@ for i in $(seq 1 "$CALLS"); do
     -H "X-Aurora-UID: $AURORA_UID" \
     -H "X-Lang: $LANG_HEADER" \
     --data "$analysis_payload")"
-  printf '%s' "$analysis_json" | jq -r '.cards[] | select(.type=="analysis_summary") | "  used_photos=\(.payload.used_photos) quality=\(.payload.quality_report.photo_quality.grade) source=\(.payload.analysis_source)"'
+  printf '%s' "$analysis_json" | jq -r '
+    .cards[]
+    | select(.type=="analysis_story_v2" or .type=="analysis_summary")
+    | "  card=\(.type) used_photos=\(.payload.used_photos) quality=\(.payload.quality_report.photo_quality.grade) source=\(.payload.analysis_source)"
+  '
   sleep "$SLEEP_BETWEEN_SEC"
 done
 

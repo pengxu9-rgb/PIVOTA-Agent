@@ -146,6 +146,17 @@ function findCardByType(cards, type) {
   return null;
 }
 
+function isProductsSearchUrl(url) {
+  const target = String(url || '');
+  return (
+    target.includes('/products/search') ||
+    target.includes('/products/search-lite') ||
+    target.includes('/v1/products/search') ||
+    target.includes('/v1/catalog/search') ||
+    target.includes('/agent/v1/products/search')
+  );
+}
+
 test('normalizeClarificationField: maps common skinType ids (ASCII/CN) to canonical field', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -179,7 +190,7 @@ test('normalizeClarificationField: never returns empty; falls back to stable has
   assert.ok(Number(snap.clarificationIdNormalizedEmptyCount) >= 3);
 });
 
-test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards degrade to timeout confidence notice when timeout events present', () => {
+test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards keep artifact_missing as primary reason even when timeout telemetry exists', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const recoEnvelope = {
@@ -200,12 +211,41 @@ test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards degrade to timeout
       language: 'CN',
     });
     assert.equal(guarded.applied, true);
-    assert.equal(guarded.reason, 'timeout_degraded');
+    assert.equal(guarded.reason, 'artifact_missing');
     const cards = Array.isArray(guarded.envelope.cards) ? guarded.envelope.cards : [];
     assert.equal(cards.length, 1);
     assert.equal(cards[0].type, 'confidence_notice');
-    assert.equal(cards[0]?.payload?.reason, 'timeout_degraded');
+    assert.equal(cards[0]?.payload?.reason, 'artifact_missing');
     assert.ok(Array.isArray(cards[0]?.payload?.actions) && cards[0].payload.actions.length > 0);
+    const recoEvents = Array.isArray(guarded.envelope?.events)
+      ? guarded.envelope.events.filter((evt) => evt && evt.event_name === 'recos_requested')
+      : [];
+    assert.ok(recoEvents.length >= 1);
+    assert.equal(recoEvents.some((evt) => evt?.data?.reason === 'artifact_missing'), true);
+    assert.equal(recoEvents.some((evt) => evt?.data?.telemetry_reason === 'timeout_degraded'), true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('ensureNonEmptyChatCardsEnvelope: timeout remains primary only when no reco request context exists', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const recoEnvelope = {
+      assistant_message: null,
+      suggested_chips: [],
+      cards: [],
+      session_patch: {},
+      events: [{ event_name: 'analysis_timeout_degraded', data: { budget_ms: 30000 } }],
+    };
+    const guarded = __internal.ensureNonEmptyChatCardsEnvelope({
+      envelope: recoEnvelope,
+      ctx: { request_id: 'req_guard_timeout_only', trace_id: 'trace_guard_timeout_only' },
+      language: 'EN',
+    });
+    assert.equal(guarded.applied, true);
+    assert.equal(guarded.reason, 'timeout_degraded');
+    assert.equal(guarded.envelope?.cards?.[0]?.payload?.reason, 'timeout_degraded');
   } finally {
     delete require.cache[moduleId];
   }
@@ -246,6 +286,130 @@ test('shouldApplyRecoOutputGuard: non-reco empty envelope should not trigger gua
       events: [{ event_name: 'value_moment', data: { kind: 'chat_reply' } }],
     };
     assert.equal(__internal.shouldApplyRecoOutputGuard({ envelope: nonRecoEnvelope, ctx: { state: 'idle' } }), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyRecoCardContractInvariant: generic empty recommendations degrade to artifact_missing and normalize reco events', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: { role: 'assistant', content: 'Fallback guidance.', format: 'markdown' },
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: 'reco_empty',
+          type: 'recommendations',
+          payload: {
+            recommendations: [],
+            warnings: ['recent_logs_missing'],
+          },
+          field_missing: [{ field: 'recommendations', reason: 'upstream_missing_or_empty' }],
+        },
+      ],
+      session_patch: { next_state: 'S7_PRODUCT_RECO' },
+      events: [{ event_name: 'recos_requested', data: { explicit: true } }],
+    };
+
+    const out = __internal.applyRecoCardContractInvariant({
+      envelope,
+      ctx: { request_id: 'req_empty_reco', trace_id: 'trace_empty_reco' },
+      language: 'EN',
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.reason, 'artifact_missing');
+    assert.equal(Array.isArray(out.envelope.cards), true);
+    assert.equal(out.envelope.cards.some((card) => card && card.type === 'recommendations'), false);
+    assert.equal(out.envelope.cards.some((card) => card && card.type === 'confidence_notice'), true);
+    assert.equal(out.envelope.cards.find((card) => card && card.type === 'confidence_notice').payload.reason, 'artifact_missing');
+    assert.equal(Boolean(out.envelope.session_patch && out.envelope.session_patch.next_state), false);
+    const recoEvent = Array.isArray(out.envelope?.events)
+      ? out.envelope.events.find((evt) => evt && evt.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.reason, 'artifact_missing');
+    assert.equal(recoEvent?.data?.telemetry_reason, 'empty_structured');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyRecoContractToRecoRequestedEvents: contract canonical fields override stale eventData success meta', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.applyRecoContractToRecoRequestedEvents([], {
+      primary_failure_reason: 'artifact_missing',
+      telemetry_failure_reason: 'empty_structured',
+      failure_class: null,
+      source_mode: 'catalog_grounded',
+      source: 'catalog_grounded_v1',
+      mainline_status: 'empty_structured',
+      catalog_skip_reason: null,
+      upstream_status: 'artifact_missing',
+      products_empty_reason: 'strict_filter_fallback_only',
+    }, {
+      ctx: { request_id: 'req_contract_evt', trace_id: 'trace_contract_evt' },
+      emitIfMissing: true,
+      eventData: {
+        explicit: true,
+        source: 'catalog_grounded_v1',
+        source_mode: 'catalog_grounded',
+        mainline_status: 'grounded_success',
+        upstream_status: 'ok',
+        reason: 'artifact_missing',
+        llm_trace_ref: { template_id: 'reco_main_v1_1' },
+      },
+    });
+
+    const recoEvent = Array.isArray(out?.events)
+      ? out.events.find((evt) => evt && evt.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.reason, 'artifact_missing');
+    assert.equal(recoEvent?.data?.telemetry_reason, 'empty_structured');
+    assert.equal(recoEvent?.data?.source_mode, 'catalog_grounded');
+    assert.equal(recoEvent?.data?.mainline_status, 'empty_structured');
+    assert.equal(recoEvent?.data?.upstream_status, 'artifact_missing');
+    assert.equal(recoEvent?.data?.products_empty_reason, 'strict_filter_fallback_only');
+    assert.equal(recoEvent?.data?.llm_trace_ref?.template_id, 'reco_main_v1_1');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyRecoCardContractInvariant: explicit ingredient no-candidate empty mode is preserved', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: { role: 'assistant', content: 'No ingredient match yet.', format: 'markdown' },
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: 'reco_empty_ingredient',
+          type: 'recommendations',
+          payload: {
+            recommendations: [],
+            task_mode: 'ingredient_lookup_no_candidates',
+            products_empty_reason: 'ingredient_constraint_no_match',
+            empty_match_actions: [{ action_id: 'broaden_to_goal', label: 'Broaden' }],
+          },
+        },
+      ],
+      session_patch: {},
+      events: [{ event_name: 'recos_requested', data: { explicit: true } }],
+    };
+
+    const out = __internal.applyRecoCardContractInvariant({
+      envelope,
+      ctx: { request_id: 'req_empty_ing_reco', trace_id: 'trace_empty_ing_reco' },
+      language: 'EN',
+    });
+
+    assert.equal(out.applied, false);
+    assert.equal(Array.isArray(out.envelope.cards), true);
+    assert.equal(out.envelope.cards[0].type, 'recommendations');
   } finally {
     delete require.cache[moduleId];
   }
@@ -4322,7 +4486,7 @@ test('/v1/chat: ingredient reco opt-in first query already carries ingredient_co
       assert.equal(resp.status, 200);
       assert.equal(capturedQueries.length > 0, true);
       const firstQuery = capturedQueries[0];
-      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_0/i);
+      assert.match(firstQuery, /PROMPT_TEMPLATE_ID=reco_main_v1_1/i);
       assert.match(firstQuery, /SYSTEM_PROMPT:/i);
       assert.match(firstQuery, /USER_PROMPT_JSON:/i);
       assert.match(firstQuery, /"ingredient_context"\s*:/i);
@@ -4437,6 +4601,34 @@ test('ingredient reco context keeps candidates and injects constraint prompt eve
   }
 });
 
+test('reco prompt bundle uses v1_1 for generic mode and tags ingredient mode separately', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const genericSpec = __internal.resolveRecoMainPromptSpec({});
+    assert.equal(genericSpec.template_id, 'reco_main_v1_1');
+    assert.equal(genericSpec.llm_mode, 'goal_based_products');
+
+    const ingredientSpec = __internal.resolveRecoMainPromptSpec({
+      ingredientContext: { goal: 'barrier', sensitivity: 'high', candidates: ['Ceramide NP'] },
+    });
+    assert.equal(ingredientSpec.template_id, 'reco_main_v1_1');
+    assert.equal(ingredientSpec.llm_mode, 'ingredient_filtered_products');
+
+    const bundle = __internal.buildAuroraProductRecommendationsPromptBundle({
+      profile: { skinType: 'combination', barrierStatus: 'healthy', goals: ['barrier repair'] },
+      requestText: 'Recommend products for barrier support',
+      lang: 'EN',
+      globalStatus: { budget_known: true, itinerary_provided: false, recent_logs_provided: false },
+      candidates: [{ product_id: 'prod_1', brand: 'Brand', name: 'Barrier Cream' }],
+    });
+    assert.match(bundle.query, /PROMPT_TEMPLATE_ID=reco_main_v1_1/i);
+    assert.equal(bundle.prompt_spec.llm_mode, 'goal_based_products');
+    assert.ok(Number(bundle.schema_chars) > 0);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco prompt contract: query must contain template/system/user blocks and hash must match', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -4449,17 +4641,17 @@ test('reco prompt contract: query must contain template/system/user blocks and h
     const expectedHash = crypto.createHash('sha1').update(String(query || '')).digest('hex').slice(0, 16);
     const okResult = __internal.validateRecoPromptContract({
       query,
-      expectedTemplateId: 'reco_main_v1_0',
+      expectedTemplateId: 'reco_main_v1_1',
       expectedPromptHash: expectedHash,
     });
     assert.equal(okResult.ok, true);
     assert.equal(Array.isArray(okResult.issues), true);
     assert.equal(okResult.issues.length, 0);
-    assert.equal(okResult.template_id, 'reco_main_v1_0');
+    assert.equal(okResult.template_id, 'reco_main_v1_1');
 
     const badResult = __internal.validateRecoPromptContract({
       query: String(query || '').replace('USER_PROMPT_JSON:', 'USER_PROMPT_BLOCK:'),
-      expectedTemplateId: 'reco_main_v1_0',
+      expectedTemplateId: 'reco_main_v1_1',
       expectedPromptHash: expectedHash,
     });
     assert.equal(badResult.ok, false);
@@ -4625,6 +4817,328 @@ test('/v1/reco/alternatives: no candidates returns explainable empty and never c
   );
 });
 
+test('/v1/reco/alternatives: structured candidate pool returns selector_grounded before synthetic fallback', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS: '6500',
+      AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS: '2000',
+    },
+    async () => {
+      resetVisionMetrics();
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        let geminiCalls = 0;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return { ok: true, json: { products: [{ id: 'fake_1', why: 'should_not_happen' }] } };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_selector_grounded',
+            'X-Trace-ID': 'test_trace_alt_selector_grounded',
+            'X-Brief-ID': 'test_brief_alt_selector_grounded',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'unknown product text with selector candidates',
+            max_total: 3,
+            product: {
+              name: 'Anchor product',
+              alternatives: [
+                {
+                  product_id: 'prod_alt_1',
+                  merchant_id: 'mid_alt',
+                  brand: 'Brand One',
+                  name: 'Barrier Cream One',
+                  display_name: 'Barrier Cream One',
+                  pdp_url: 'https://example.com/alt-1',
+                  compare_highlights: ['barrier-first'],
+                },
+                {
+                  product_id: 'prod_alt_2',
+                  merchant_id: 'mid_alt',
+                  brand: 'Brand Two',
+                  name: 'Barrier Cream Two',
+                  display_name: 'Barrier Cream Two',
+                  pdp_url: 'https://example.com/alt-2',
+                  compare_highlights: ['low irritation'],
+                },
+              ],
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'selector_grounded');
+        assert.equal(resp.body?.fallback_source, null);
+        assert.equal(resp.body?.failure_class, null);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.ok(resp.body.alternatives.length > 0);
+        assert.equal(geminiCalls, 0);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/generate: uses grounded generic reco mainline instead of legacy routine path', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let searchCalls = 0;
+      decisionModule.auroraChat = async () => {
+        const err = new Error('upstream timeout');
+        err.code = 'ECONNABORTED';
+        throw err;
+      };
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        searchCalls += 1;
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: `prod_reco_${searchCalls}`,
+                merchant_id: 'mid_reco',
+                brand: 'BrandReco',
+                name: `Reco Product ${searchCalls}`,
+                display_name: `Reco Product ${searchCalls}`,
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes } = routeModule;
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/generate')
+          .set({
+            'X-Aurora-UID': 'test_uid_reco_generate_grounded',
+            'X-Trace-ID': 'test_trace_reco_generate_grounded',
+            'X-Brief-ID': 'test_brief_reco_generate_grounded',
+            'X-Lang': 'EN',
+          })
+          .send({
+            focus: 'barrier support',
+            constraints: { budget: 'mid', fragrance_free: 'preferred' },
+          });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const recoCard = cards.find((card) => card && card.type === 'recommendations') || null;
+        assert.ok(recoCard);
+        const recos = Array.isArray(recoCard?.payload?.recommendations) ? recoCard.payload.recommendations : [];
+        assert.ok(recos.length > 0);
+        assert.equal(recoCard?.payload?.recommendation_meta?.source_mode, 'catalog_grounded');
+        const recoEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((evt) => evt && evt.event_name === 'recos_requested')
+          : null;
+        assert.ok(recoEvent);
+        assert.equal(String(recoEvent?.data?.source || '').includes('catalog_grounded'), true);
+        assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+        assert.equal(recoEvent?.data?.reason || null, null);
+        assert.ok(searchCalls >= 1);
+      } finally {
+        axios.get = originalGet;
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/generate: empty structured upstream is canonicalized to artifact_missing with telemetry', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      decisionModule.auroraChat = async () => ({
+        intent: 'recommend',
+        answer: 'not valid structured reco output',
+        structured: null,
+        context: {},
+      });
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/generate')
+          .set({
+            'X-Aurora-UID': 'test_uid_reco_generate_empty_structured',
+            'X-Trace-ID': 'test_trace_reco_generate_empty_structured',
+            'X-Brief-ID': 'test_brief_reco_generate_empty_structured',
+            'X-Lang': 'EN',
+          })
+          .send({
+            focus: 'barrier support',
+            constraints: { budget: 'mid' },
+          });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const conf = cards.find((card) => card && card.type === 'confidence_notice') || null;
+        assert.ok(conf);
+        assert.equal(conf?.payload?.reason, 'artifact_missing');
+        const recoCard = cards.find((card) => card && card.type === 'recommendations') || null;
+        assert.equal(Boolean(recoCard), false);
+
+        const recoEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((evt) => evt && evt.event_name === 'recos_requested')
+          : null;
+        assert.ok(recoEvent);
+        assert.equal(recoEvent?.data?.reason, 'artifact_missing');
+        assert.equal(recoEvent?.data?.telemetry_reason, 'empty_structured');
+      } finally {
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/generate: empty catalog-grounded payload is not reported as grounded_success', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'false',
+      AURORA_BFF_RECO_CATALOG_TRANSIENT_FALLBACK: 'false',
+      AURORA_BFF_RECO_GENERATE_GUARDRAIL_V1: 'true',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_guardrail_empty',
+                merchant_id: 'mid_guardrail_empty',
+                brand: 'NeutralBrand',
+                name: 'Everyday 200ml',
+                display_name: 'Everyday 200ml',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/generate')
+          .set({
+            'X-Aurora-UID': 'test_uid_reco_generate_guardrail_empty',
+            'X-Trace-ID': 'test_trace_reco_generate_guardrail_empty',
+            'X-Brief-ID': 'test_brief_reco_generate_guardrail_empty',
+            'X-Lang': 'EN',
+          })
+          .send({
+            focus: 'barrier support',
+            constraints: { budget: 'mid' },
+          });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const conf = cards.find((card) => card && card.type === 'confidence_notice') || null;
+        const reco = cards.find((card) => card && card.type === 'recommendations') || null;
+        assert.ok(conf);
+        assert.equal(Boolean(reco), false);
+        assert.equal(conf?.payload?.reason, 'artifact_missing');
+        const recoEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((evt) => evt && evt.event_name === 'recos_requested')
+          : null;
+        assert.ok(recoEvent);
+        assert.equal(recoEvent?.data?.reason, 'artifact_missing');
+        assert.notEqual(recoEvent?.data?.mainline_status, 'grounded_success');
+        assert.ok(['empty_structured', 'upstream_timeout', 'upstream_schema_invalid', 'catalog_queries_empty'].includes(String(recoEvent?.data?.mainline_status || '')));
+        assert.ok(['rules_only', 'catalog_grounded', 'catalog_transient_fallback', 'llm_primary'].includes(String(recoEvent?.data?.source_mode || '')));
+        assert.ok(String(recoEvent?.data?.products_empty_reason || '').length > 0);
+      } finally {
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
 test('/v1/chat: ingredient.by_goal returns ingredient_goal_match even when client_state=RECO_GATE', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const moduleId = require.resolve('../src/auroraBff/routes');
@@ -5038,12 +5552,12 @@ test('/v1/chat: budget clarification chip continues routine/reco flow when in S6
       },
     });
 
-    assert.equal(resp.status, 200);
-    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
-    assert.ok(cardTypes.includes('recommendations'));
-    assert.equal(cardTypes.includes('budget_gate'), false);
-    const assistantText = String(resp.body?.assistant_message?.content || '').toLowerCase();
-    assert.equal(assistantText.includes('did not receive any renderable structured cards'), false);
+	    assert.equal(resp.status, 200);
+	    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+	    assert.ok(cardTypes.includes('recommendations') || cardTypes.includes('confidence_notice'));
+	    assert.equal(cardTypes.includes('budget_gate'), false);
+	    const assistantText = String(resp.body?.assistant_message?.content || '').toLowerCase();
+	    assert.equal(assistantText.includes('did not receive any renderable structured cards'), false);
   });
 });
 
@@ -5960,21 +6474,22 @@ test('/v1/chat: chip_get_recos does not hard-gate when profile missing, then yie
       'X-Lang': 'EN',
     };
 
-    const resp1 = await invokeRoute(app, 'POST', '/v1/chat', {
-      headers,
-      body: {
-        action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
+	    const resp1 = await invokeRoute(app, 'POST', '/v1/chat', {
+	      headers,
+	      body: {
+	        action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
         session: { state: 'idle' },
         language: 'EN',
       },
     });
 
-    assert.equal(resp1.status, 200);
-    const cards1 = Array.isArray(resp1.body?.cards) ? resp1.body.cards : [];
-    assert.equal(resp1.body?.session_patch?.next_state, 'RECO_RESULTS');
-    assert.equal(cards1.some((c) => c && c.type === 'diagnosis_gate'), false);
-    const reco1 = cards1.find((c) => c && c.type === 'recommendations') || null;
-    const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
+	    assert.equal(resp1.status, 200);
+	    const cards1 = Array.isArray(resp1.body?.cards) ? resp1.body.cards : [];
+	    const nextState1 = resp1.body?.session_patch?.next_state;
+	    assert.ok(nextState1 === undefined || nextState1 === 'RECO_RESULTS' || nextState1 === 'IDLE_CHAT');
+	    assert.equal(cards1.some((c) => c && c.type === 'diagnosis_gate'), false);
+	    const reco1 = cards1.find((c) => c && c.type === 'recommendations') || null;
+	    const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
     assert.ok(reco1 || conf1);
     if (conf1) {
       assert.notEqual(String(conf1?.payload?.reason || ''), 'diagnosis_first');
@@ -6010,7 +6525,7 @@ test('/v1/chat: chip_get_recos does not hard-gate when profile missing, then yie
       assert.equal(Array.isArray(recs), true);
       const recommendationMeta = reco && reco.payload && typeof reco.payload === 'object' ? reco.payload.recommendation_meta : null;
       if (recommendationMeta && typeof recommendationMeta === 'object') {
-        assert.ok(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
+        assert.ok(['llm_primary', 'catalog_grounded', 'catalog_transient_fallback', 'artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
         assert.equal(typeof recommendationMeta.used_recent_logs, 'boolean');
         assert.equal(typeof recommendationMeta.used_itinerary, 'boolean');
         assert.equal(typeof recommendationMeta.used_safety_flags, 'boolean');
@@ -6372,6 +6887,86 @@ test('/v1/chat: overlong template without renderable cards does NOT claim "cards
     assert.equal(assistant.includes('见下方'), false);
     assert.equal(/\bcards\s+below\b/i.test(assistant), false);
   });
+});
+
+test('/v1/chat: reco timeout keeps artifact_missing as primary reason and timeout only in telemetry', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      decisionModule.auroraChat = async () => {
+        const err = new Error('upstream timeout');
+        err.code = 'ECONNABORTED';
+        throw err;
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({
+            'X-Aurora-UID': 'test_uid_reco_timeout_primary_reason',
+            'X-Trace-ID': 'test_trace_reco_timeout_primary_reason',
+            'X-Brief-ID': 'test_brief_reco_timeout_primary_reason',
+            'X-Lang': 'EN',
+          })
+          .send({
+            action: {
+              action_id: 'chip.start.reco_products',
+              kind: 'chip',
+              data: {
+                reply_text: 'Recommend products now',
+                profile_patch: {
+                  skinType: 'oily',
+                  sensitivity: 'low',
+                  barrierStatus: 'healthy',
+                  goals: ['acne'],
+                },
+              },
+            },
+            language: 'EN',
+            session: { state: 'S2_DIAGNOSIS' },
+          });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const conf = cards.find((card) => card && card.type === 'confidence_notice') || null;
+        assert.ok(conf);
+        assert.equal(conf?.payload?.reason, 'artifact_missing');
+
+        const recoEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((evt) => evt && evt.event_name === 'recos_requested')
+          : null;
+        assert.ok(recoEvent);
+        assert.equal(recoEvent?.data?.reason, 'artifact_missing');
+        assert.equal(recoEvent?.data?.telemetry_reason, 'timeout_degraded');
+        assert.equal(recoEvent?.data?.failure_class, 'timeout');
+      } finally {
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
 });
 
 test('/v1/chat: short "cards below" stub does not claim hidden cards', async () => {
@@ -7831,6 +8426,193 @@ test('/v1/profile/update: nested profile fields inside currentRoutine are persis
       assert.equal(profilePayload.barrierStatus, 'impaired');
       assert.equal(profilePayload.sensitivity, 'high');
       assert.deepEqual(profilePayload.goals, ['brightening', 'barrier_repair']);
+    },
+  );
+});
+
+test('/v1/profile/update: current_routine alias is accepted and normalized into currentRoutine storage', async () => {
+  await withEnv(
+    {
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/profile/update')
+        .set({
+          'X-Aurora-UID': `test_uid_profile_current_routine_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_profile_current_routine',
+          'X-Brief-ID': 'test_brief_profile_current_routine',
+          'X-Lang': 'EN',
+        })
+        .send({
+          current_routine: [
+            { slot: 'am', step: 'cleanser', product: 'Gentle cleanser' },
+            { slot: 'pm', step: 'treatment', product: 'Retinol serum' },
+          ],
+        })
+        .expect(200);
+
+      const profilePayload = (resp.body?.cards || []).find((card) => card?.type === 'profile')?.payload?.profile || {};
+      assert.equal(typeof profilePayload.currentRoutine, 'string');
+      assert.match(String(profilePayload.currentRoutine || ''), /Gentle cleanser/);
+      assert.match(String(profilePayload.currentRoutine || ''), /Retinol serum/);
+    },
+  );
+});
+
+test('/v1/analysis/skin: current_routine legacy input is accepted and still returns canonical story card', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/analysis/skin')
+        .set({
+          'X-Aurora-UID': `test_uid_analysis_current_routine_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_analysis_current_routine',
+          'X-Brief-ID': 'test_brief_analysis_current_routine',
+          'X-Lang': 'EN',
+        })
+        .send({
+          use_photo: false,
+          current_routine: [
+            { slot: 'am', step: 'cleanser', product: 'Gentle cleanser' },
+            { slot: 'pm', step: 'treatment', product: 'Retinol serum' },
+          ],
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.ok(findCardByType(cards, 'analysis_story_v2'));
+      assert.equal(cards.some((card) => card && card.type === 'error'), false);
+    },
+  );
+});
+
+test('/v1/analysis/skin: plain-text currentRoutine stays non-fatal and still returns canonical story card', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/analysis/skin')
+        .set({
+          'X-Aurora-UID': `test_uid_analysis_plain_text_routine_${Date.now()}`,
+          'X-Trace-ID': 'test_trace_analysis_plain_text_routine',
+          'X-Brief-ID': 'test_brief_analysis_plain_text_routine',
+          'X-Lang': 'EN',
+        })
+        .send({
+          use_photo: false,
+          currentRoutine: 'AM: gentle cleanser, vitamin C, SPF 50. PM: cleanser, retinol, moisturizer.',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.ok(findCardByType(cards, 'analysis_story_v2'));
+      assert.equal(cards.some((card) => card && card.type === 'error'), false);
+    },
+  );
+});
+
+test('/v1/analysis/skin: currentRoutine report path tolerates missing previous routine and stays non-fatal', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+      GEMINI_API_KEY: 'test_gemini_key',
+    },
+    async () => {
+      const gatewayModuleId = require.resolve('../src/auroraBff/skinLlmGateway');
+      delete require.cache[gatewayModuleId];
+      const gatewayModule = require('../src/auroraBff/skinLlmGateway');
+      const originalRunGeminiReportStrategy = gatewayModule.runGeminiReportStrategy;
+      const originalIsGeminiSkinGatewayAvailable = gatewayModule.isGeminiSkinGatewayAvailable;
+      let reportCalls = 0;
+
+      gatewayModule.isGeminiSkinGatewayAvailable = () => true;
+      gatewayModule.runGeminiReportStrategy = async () => {
+        reportCalls += 1;
+        return {
+          ok: false,
+          reason: 'report_output_invalid',
+          schema_violation: false,
+          semantic_violation: false,
+          prompt_version: 'test_prompt',
+        };
+      };
+
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': `test_uid_analysis_routine_report_${Date.now()}`,
+            'X-Trace-ID': 'test_trace_analysis_routine_report',
+            'X-Brief-ID': 'test_brief_analysis_routine_report',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: { cleanser: 'Gentle cleanser', spf: 'SPF 50' },
+              pm: { cleanser: 'Gentle cleanser', treatment: 'Retinol serum', moisturizer: 'Barrier cream' },
+            },
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        assert.ok(findCardByType(cards, 'analysis_story_v2'));
+        assert.equal(reportCalls > 0, true);
+        assert.equal(cards.some((card) => card && card.type === 'error'), false);
+      } finally {
+        gatewayModule.runGeminiReportStrategy = originalRunGeminiReportStrategy;
+        gatewayModule.isGeminiSkinGatewayAvailable = originalIsGeminiSkinGatewayAvailable;
+        delete require.cache[routeModuleId];
+        delete require.cache[gatewayModuleId];
+      }
     },
   );
 });
