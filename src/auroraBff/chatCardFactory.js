@@ -588,6 +588,12 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   if (type === 'aurora_ingredient_report') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '成分报告' : 'Ingredient report' })];
   }
+  if (type === 'returning_triage') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '回访分流' : 'Returning triage' })];
+  }
+  if (type === 'skin_progress') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '肌肤进展' : 'Skin progress' })];
+  }
   if (type === 'diagnosis_gate') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '先做一个极简肤况确认' : 'Quick skin profile first' })];
   }

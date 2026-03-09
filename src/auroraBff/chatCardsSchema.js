@@ -13,6 +13,8 @@ const CHAT_CARD_TYPES = [
   'ingredient_hub',
   'ingredient_goal_match',
   'aurora_ingredient_report',
+  'returning_triage',
+  'skin_progress',
   'diagnosis_gate',
   'analysis_summary',
   'analysis_story_v2',

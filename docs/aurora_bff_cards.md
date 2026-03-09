@@ -36,6 +36,111 @@ Emitted when the user asks for **recommendations** or **fit-check**, but the pro
 - `profile`: profile summary (nullable)
 - `recent_logs`: recent tracker logs (array)
 
+### `returning_triage`
+
+Emitted by `POST /v1/chat` when a returning diagnosis user re-enters the diagnosis flow and the BFF can build a prior baseline from stored diagnosis artifacts, profile fields, or recent tracker logs.
+
+`payload`:
+- `title`: string
+- `tags`: string[]
+- `sections`: array with exactly 2 entries:
+  - `previous_diagnosis_summary`
+  - `returning_action_selection`
+- `actions`: array with exactly 4 entries:
+  - `chip.action.reassess`
+  - `chip.action.update_goals`
+  - `chip.action.check_progress`
+  - `chip.action.new_photo`
+
+`previous_diagnosis_summary`:
+- `kind`: `"previous_diagnosis_summary"`
+- `title_en`: string
+- `title_zh`: string
+- `skin_type`: string | null
+- `goals`: string[]
+- `primary_concerns`: string[]
+- `blueprint_id`: string | null
+- `summary_text`: string | null
+
+Contract rules:
+- `summary_text` must always be present.
+- If the LLM summary path fails or returns unusable output, set `summary_text` to `null` instead of omitting it.
+- `summary_text` must not invent photo-based findings when the saved baseline did not use a photo.
+
+`returning_action_selection`:
+- `kind`: `"returning_action_selection"`
+- `title_en`: string
+- `title_zh`: string
+- `options`: array of 4 objects, one for each action row
+
+Each option row:
+- `id`: `"reassess" | "update_goals" | "check_progress" | "new_photo"`
+- `action`: `"navigate_skill" | "trigger_photo"`
+- `target_skill_id`: string | null
+- `action_id`: string
+- `label_en`: string
+- `label_zh`: string
+- `description_en`: string
+- `description_zh`: string
+
+### `skin_progress`
+
+Emitted by `POST /v1/chat` when the user asks to review progress and the BFF can build a baseline from prior diagnosis data or profile-backed fallbacks.
+
+`payload`:
+- `title`: string
+- `tags`: string[]
+- `sections`: array with exactly 4 entries in this order:
+  - `progress_baseline`
+  - `progress_delta`
+  - `progress_highlights`
+  - `progress_recommendation`
+- `actions`: array with exactly 4 entries:
+  - `chip.action.reassess`
+  - `chip.start.routine`
+  - `chip.action.new_photo`
+  - `chip.start.checkin`
+
+`progress_baseline`:
+- `kind`: `"progress_baseline"`
+- `title_en`: string
+- `title_zh`: string
+- `skin_type`: string | null
+- `primary_concerns`: string[]
+- `goals`: string[]
+- `blueprint_id`: string | null
+
+`progress_delta`:
+- `kind`: `"progress_delta"`
+- `title_en`: string
+- `title_zh`: string
+- `overall_trend`: `"improving" | "stable" | "declining" | "mixed"`
+- `concern_deltas`: array of objects:
+  - `concern_id`: string
+  - `direction`: `"improved" | "stable" | "worsened"`
+  - `magnitude`: `"slight" | "moderate" | "significant"`
+  - `note_en`: string
+  - `note_zh`: string
+- `confidence`: number
+- `checkins_analyzed`: number
+
+`progress_highlights`:
+- `kind`: `"progress_highlights"`
+- `improvements`: string[]
+- `regressions`: string[]
+- `stable`: string[]
+
+`progress_recommendation`:
+- `kind`: `"progress_recommendation"`
+- `text_en`: string
+- `text_zh`: string
+
+Contract rules:
+- `concern_deltas` must contain structured objects, not plain strings.
+- All 4 section kinds must always be emitted; do not silently drop `progress_highlights` or `progress_recommendation`.
+- When no highlight items exist yet, use empty arrays rather than omitting the keys.
+- When no photo baseline exists, every text-bearing field in `concern_deltas[*].note_*`, `improvements`, `regressions`, `stable`, `text_en`, and `text_zh` must avoid photo/image/visual claims.
+
 ### `gate_notice`
 
 Emitted when the BFF suppresses recommendation/offer/checkout outputs because the user did not explicitly request them.
