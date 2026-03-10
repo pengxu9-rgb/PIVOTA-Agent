@@ -2,6 +2,13 @@
 
 const { applyDupeCompareQualityGate } = require('../src/auroraBff/qualityGates/dupeCompareGate');
 const { normalizeDupeCompare } = require('../src/auroraBff/normalize');
+const { executeDupeCompare } = require('../src/auroraBff/usecases/dupeCompare');
+const {
+  buildDupeCompareParsePrompt,
+  buildDupeCompareMainPrompt,
+  buildDupeCompareDeepScanPrompt,
+  mergeCompareProductContext,
+} = require('../src/auroraBff/dupeCompareContract');
 
 // ---------------------------------------------------------------------------
 // P0-A: normalizeDupeCompare original/dupe never null
@@ -65,6 +72,136 @@ describe('normalizeDupeCompare: original and dupe non-null guarantee', () => {
     expect(result.payload.dupe.name).toBe('Moisturizing Cream');
     expect(result.payload.dupe.product_id).toBe('cerave_1');
     expect(result.payload.dupe.product).toBeUndefined();
+  });
+
+  test('accepts structured tradeoffs and nested similarity score while preserving legacy tradeoff strings', () => {
+    const result = normalizeDupeCompare({
+      original: { summary_en: 'Rich barrier cream' },
+      dupe: {
+        summary_en: 'Lighter barrier cream',
+        similarity_score: 78,
+        price_comparison: 'unknown',
+        similarity_rationale: 'Both appear positioned as barrier-supportive moisturizers.',
+      },
+      tradeoffs: [
+        {
+          axis: 'texture',
+          difference_en: 'The dupe appears lighter and less occlusive.',
+          impact: 'better_for_some',
+          who_it_matters_for: 'matters for oily skin users seeking a lighter finish',
+        },
+      ],
+      evidence: {
+        science: [
+          {
+            claim_en: 'Both appear positioned around barrier-supportive hydration.',
+            strength: 'limited',
+            supports: ['comparison'],
+            uncertainties: ['full_ingredient_list_missing'],
+          },
+        ],
+        social_signals: [],
+        expert_notes: [
+          {
+            claim_en: 'Similarity looks role-level rather than formula-level.',
+            strength: 'limited',
+            supports: ['comparison'],
+            uncertainties: ['ingredient_overlap_unclear'],
+          },
+        ],
+      },
+      confidence: 0.42,
+      missing_info: ['full_ingredient_list_missing'],
+    });
+
+    expect(result.payload.similarity).toBe(78);
+    expect(result.payload.tradeoffs).toEqual([
+      'Texture: The dupe appears lighter and less occlusive. (matters for oily skin users seeking a lighter finish)',
+    ]);
+    expect(result.payload.tradeoffs_detail.structured_tradeoffs).toEqual([
+      expect.objectContaining({
+        axis: 'texture',
+        impact: 'better_for_some',
+      }),
+    ]);
+    expect(result.payload.evidence.expert_notes).toContain('Similarity looks role-level rather than formula-level.');
+    expect(result.payload.evidence.structured_claims.science).toEqual([
+      expect.objectContaining({ strength: 'limited' }),
+    ]);
+  });
+
+  test('classifies legacy string tradeoffs into a structured taxonomy', () => {
+    const result = normalizeDupeCompare({
+      original: { brand: 'La Mer', name: 'Creme de la Mer' },
+      dupe: { brand: 'CeraVe', name: 'Moisturizing Cream' },
+      tradeoffs: ['Texture/finish: Dupe is lighter and more affordable for oily skin users.'],
+      confidence: 0.6,
+    });
+
+    expect(result.payload.tradeoffs_detail.structured_tradeoffs).toEqual([
+      expect.objectContaining({
+        axis: 'texture',
+        impact: 'better_for_some',
+      }),
+    ]);
+  });
+});
+
+describe('dupeCompareContract prompt builders', () => {
+  test('main compare prompt encodes the strong contract and keeps Task markers for runtime mocks', () => {
+    const prompt = buildDupeCompareMainPrompt({
+      prefix: 'CTX\n',
+      originalText: 'Original Example',
+      dupeText: 'Dupe Example',
+    });
+
+    expect(prompt).toContain('[ROLE]');
+    expect(prompt).toContain('[OUTPUT_CONTRACT]');
+    expect(prompt).toContain('Task: Compare the ORIGINAL product against the DUPE/ALTERNATIVE product');
+    expect(prompt).toContain('"similarity_rationale"');
+    expect(prompt).toContain('"similarity_score"');
+    expect(prompt).toContain('"price_comparison"');
+    expect(prompt).toContain('"axis": "actives"');
+    expect(prompt).toContain('same formula');
+    expect(prompt).toContain('exact dupe');
+    expect(prompt).toContain('full_ingredient_list_missing');
+  });
+
+  test('parse and deepscan prompts stay conservative and axis-aligned', () => {
+    const parsePrompt = buildDupeCompareParsePrompt({ prefix: '', input: 'Example Product' });
+    const deepScanPrompt = buildDupeCompareDeepScanPrompt({
+      prefix: '',
+      productText: 'Example Product',
+      strict: true,
+    });
+
+    expect(parsePrompt).toContain('Task: Parse the supplied product input');
+    expect(parsePrompt).toContain('Do not invent INCI decks, concentrations, hidden actives, prices, or formula relationships.');
+    expect(deepScanPrompt).toContain('Task: Deep-scan this product');
+    expect(deepScanPrompt).toContain('"texture"');
+    expect(deepScanPrompt).toContain('"hydration_profile"');
+    expect(deepScanPrompt).toContain('"key_ingredients_missing"');
+  });
+});
+
+describe('mergeCompareProductContext', () => {
+  test('keeps trusted anchor identity while attaching compare annotations', () => {
+    const merged = mergeCompareProductContext(
+      { brand: 'Lab Series', name: 'Daily Rescue', url: 'https://example.com/daily-rescue' },
+      {
+        summary_en: 'Lightweight daily moisturizer',
+        hero_ingredients: ['glycerin', 'niacinamide'],
+        similarity_rationale: 'Both appear positioned as lightweight daily moisturizers.',
+        similarity_score: 81,
+        price_comparison: 'unknown',
+      },
+    );
+
+    expect(merged.brand).toBe('Lab Series');
+    expect(merged.name).toBe('Daily Rescue');
+    expect(merged.summary_en).toBe('Lightweight daily moisturizer');
+    expect(merged.hero_ingredients).toEqual(['glycerin', 'niacinamide']);
+    expect(merged.similarity_score).toBe(81);
   });
 });
 
@@ -166,6 +303,54 @@ describe('applyDupeCompareQualityGate: Chinese language', () => {
     expect(result.payload.basic_compare.length).toBeGreaterThanOrEqual(2);
     expect(result.payload.basic_compare[0]).toMatch(/上游|建议/);
     expect(result.payload.limited_action_hint).toMatch(/有限对比/);
+  });
+});
+
+describe('executeDupeCompare: request validation', () => {
+  const baseServices = {
+    resolveIdentity: async () => ({ auroraUid: 'uid_test', userId: 'user_test' }),
+    getProfileForIdentity: async () => null,
+    getRecentSkinLogsForIdentity: async () => [],
+    summarizeProfileForContext: () => null,
+    executeCompareInner: async () => ({
+      payload: {
+        original: { brand: 'Original', name: 'Original Product' },
+        dupe: { brand: 'Dupe', name: 'Dupe Product' },
+        tradeoffs: ['lighter'],
+        basic_compare: ['Texture: lighter'],
+        compare_quality: 'full',
+        meta: {},
+      },
+      field_missing: [],
+    }),
+  };
+
+  test('returns original is required when original cannot be resolved', async () => {
+    const result = await executeDupeCompare({
+      ctx: { lang: 'EN' },
+      input: {
+        original: {},
+        dupe: { brand: 'Dupe', name: 'Dupe Product' },
+      },
+      services: baseServices,
+      logger: null,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error_details).toBe('original is required');
+  });
+
+  test('returns dupe is required when dupe cannot be resolved', async () => {
+    const result = await executeDupeCompare({
+      ctx: { lang: 'EN' },
+      input: {
+        original: { brand: 'Original', name: 'Original Product' },
+        dupe: {},
+      },
+      services: baseServices,
+      logger: null,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error_details).toBe('dupe is required');
   });
 });
 

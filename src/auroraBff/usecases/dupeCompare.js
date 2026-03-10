@@ -1,7 +1,7 @@
 'use strict';
 
 const { applyDupeCompareQualityGate } = require('../qualityGates/dupeCompareGate');
-const { buildProductInputText, extractAnchorIdFromProductLike } = require('../mappers/dupeSuggestMapper');
+const { buildProductInputText } = require('../mappers/dupeSuggestMapper');
 
 /**
  * Execute the dupe_compare orchestration.
@@ -36,11 +36,14 @@ async function executeDupeCompare({ ctx, input, services, logger }) {
   const dupeInput = buildProductInputText(input.dupe, input.dupe_url);
 
   if (!originalInput || !dupeInput) {
+    const missingFields = [];
+    if (!originalInput) missingFields.push('original');
+    if (!dupeInput) missingFields.push('dupe');
     return {
       ok: false,
       status_code: 400,
       error_code: 'BAD_REQUEST',
-      error_details: 'original and dupe are required',
+      error_details: missingFields.length === 1 ? `${missingFields[0]} is required` : 'original and dupe are required',
       payload: null,
       event_kind: 'error',
     };
