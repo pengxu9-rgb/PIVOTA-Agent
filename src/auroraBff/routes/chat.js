@@ -27,6 +27,35 @@ function __resetRouterForTests() {
   routerSingleton = null;
 }
 
+function normalizeLocaleToken(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  const normalized = raw.replace(/_/g, '-');
+  const lower = normalized.toLowerCase();
+
+  if (lower === 'cn' || lower === 'zh' || lower === 'zh-cn' || lower === 'zh-hans') {
+    return 'zh-CN';
+  }
+  if (lower === 'en' || lower === 'en-us') {
+    return 'en-US';
+  }
+  if (lower.startsWith('zh-') || lower.startsWith('en-')) {
+    return normalized;
+  }
+  return raw;
+}
+
+function resolveRequestLocale(body, headers, bodyContext) {
+  const rawLocale =
+    (bodyContext && bodyContext.locale) ||
+    body.locale ||
+    body.language ||
+    headers['accept-language']?.split(',')[0] ||
+    'en';
+  return normalizeLocaleToken(rawLocale) || 'en';
+}
+
 async function handleChat(req, res) {
   try {
     const skillRequest = buildSkillRequest(req);
@@ -91,6 +120,10 @@ function buildSkillRequest(req) {
   const body = req.body || {};
   const userMessage = body.message || body.text || body.params?.user_message || body.params?.message || body.params?.text || null;
   const bodyContext = body.context && typeof body.context === 'object' ? body.context : {};
+  const session = body.session && typeof body.session === 'object' ? body.session : {};
+  const sessionProfile = session.profile && typeof session.profile === 'object' ? session.profile : null;
+  const priorMessages = Array.isArray(body.messages) ? body.messages : [];
+  const locale = resolveRequestLocale(body, req.headers || {}, bodyContext);
 
   return {
     skill_id: body.skill_id || null,
@@ -102,14 +135,15 @@ function buildSkillRequest(req) {
       user_message: userMessage,
       message: userMessage,
       text: userMessage,
+      ...(priorMessages.length > 0 ? { messages: priorMessages } : {}),
     },
     context: {
-      profile: bodyContext.profile || req._userProfile || {},
+      profile: bodyContext.profile || req._userProfile || sessionProfile || {},
       recent_logs: bodyContext.recent_logs || req._recentLogs || [],
       travel_plan: bodyContext.travel_plan || null,
       current_routine: bodyContext.current_routine || null,
       inventory: bodyContext.inventory || [],
-      locale: body.locale || req.headers['accept-language']?.split(',')[0] || 'en',
+      locale,
       safety_flags: bodyContext.safety_flags || [],
     },
     thread_state: body.thread_state || req._threadState || {},

@@ -251,6 +251,40 @@ describe('find_products_multi context building', () => {
     expect(intent.query_class).toBe('category');
   });
 
+  test('face sunscreen expansion adds SPF-oriented skincare terms', async () => {
+    const { adjustedPayload } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'Face sunscreen' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'Face sunscreen' }],
+      },
+      metadata: {},
+    });
+
+    const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
+    expect(expanded).toContain('face sunscreen');
+    expect(expanded).toContain('spf');
+    expect(expanded).toContain('broad spectrum');
+    expect(expanded).not.toContain('brush');
+  });
+
+  test('hydrating moisturizer expansion adds moisturizer-specific recall terms', async () => {
+    const { adjustedPayload } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'hydrating moisturizer' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'hydrating moisturizer' }],
+      },
+      metadata: {},
+    });
+
+    const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
+    expect(expanded).toContain('face moisturizer');
+    expect(expanded).toContain('barrier moisturizer');
+    expect(expanded).toContain('cream');
+    expect(expanded).not.toContain('foundation');
+  });
+
   test('perfume query uses fragrance semantic expansion without makeup drift', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {

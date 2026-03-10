@@ -18,10 +18,19 @@
    - 只要存在品牌/商品名匹配商品：匹配占比 ≥ 70%，且 Top 5 尽量都为匹配商品。
    - 只有当匹配商品不足以凑满 N 时，才允许加入 internal 替代（≤30%），并且必须同品类/同功效；替代项必须排在列表后部；reason 必须包含“替代/相似推荐”字样。
    - 如果完全没有任何匹配商品：必须在 reason 中明确说明“无品牌/商品名匹配，按最接近替代排序”。
+4.5) generic beauty/skincare 查询规则：
+   - 如果 user_query 没有明确品牌/商品名，而是在找功效/成分/品类（如 niacinamide serum、face sunscreen、hydrating moisturizer、toner、cleanser），不要强行按品牌优先。
+   - 这类查询必须优先考虑：同产品形态 > 同关键成分/功效 > 同品类近似替代。
+   - serum/essence/ampoule 视为同类；moisturizer/cream/gel cream/lotion 视为保湿类近邻；sunscreen/sunblock/spf/broad spectrum 视为防晒类近邻；cleanser/face wash/cleansing 视为清洁类近邻；toner/lotion/face mist 视为化妆水类近邻。
+   - 若 user_query 明确是 skincare/护肤/スキンケア，则 brush/sponge/puff/applicator/beauty tool/fragrance/perfume 这类候选视为不相关，除非候选池里根本没有任何同类护肤候选。
 5) source 只能作为同等相关度下的 tie-breaker，不能压过品牌/商品名匹配优先级。
 
 【排序建议（用于相关度 tie-break）】
 - query 关键词命中（title/brand/category/tags）更高优先
+- generic beauty/skincare 查询时：
+  - 同产品形态优先（例如 serum > cream > tool，不能把 brush 排到 serum 前）
+  - 成分/功效命中优先（例如 niacinamide、retinol、vitamin c、ceramide、cica、hyaluronic、salicylic、azelaic、aha、bha、spf、pa）
+  - 使用场景与功能匹配优先（例如 face sunscreen 更看重 spf/pa/broad spectrum；hydrating moisturizer 更看重 hydrating/barrier/cream；niacinamide serum 更看重 niacinamide/serum/treatment）
 - 同品类/同功效优先
 - in_stock / 可售优先（若候选字段可用）
 - 图片/信息完整度更高优先（若候选字段可用）
@@ -34,4 +43,3 @@
     ...
   ]
 }
-

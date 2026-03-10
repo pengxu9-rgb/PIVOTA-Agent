@@ -8,6 +8,32 @@ const GEMINI_MODELS = Object.freeze({
 
 const FREEFORM_PROMPT_VERSION = 'inline_system_prompt_v2';
 
+const ENUMS = Object.freeze({
+  STEP_LABELS: ['cleanser', 'toner', 'essence', 'serum', 'moisturizer', 'sunscreen', 'treatment', 'mask', 'oil', 'other'],
+  TIME_OF_DAY: ['am', 'pm', 'both', 'unknown'],
+  PRICE_COMPARISON: ['cheaper', 'same', 'more_expensive', 'unknown'],
+  DUPE_BUCKET: ['dupe', 'cheaper_alternative', 'premium_alternative', 'price_unknown_alternative', 'functional_alternative'],
+  EVIDENCE_LEVELS: ['strong', 'moderate', 'limited', 'uncertain'],
+  SENSATION_TRENDS: ['improving', 'stable', 'fluctuating', 'worsening'],
+  SUGGESTED_ACTIONS: ['continue', 'optimize', 'dupe', 'escalate'],
+  UV_LEVELS: ['low', 'moderate', 'high', 'extreme'],
+  HUMIDITY_LEVELS: ['low', 'medium', 'high'],
+  RISK_SEVERITIES: ['low', 'medium', 'high'],
+  INTENT_LABELS: [
+    'general_chat', 'routine_advice', 'skin_diagnosis', 'recommend_products',
+    'product_analysis', 'ingredient_report', 'ingredient_query', 'dupe_suggest',
+    'dupe_compare', 'travel_mode', 'tracker_trends', 'checkin_log', 'safety_escalation',
+  ],
+});
+
+function enumLine(fieldName, enumKey) {
+  return `- ${fieldName} should be one of ${ENUMS[enumKey].join(', ')}.`;
+}
+
+function enumList(enumKey) {
+  return ENUMS[enumKey].join(', ');
+}
+
 function uuidv4() {
   return crypto.randomUUID();
 }
@@ -18,11 +44,73 @@ function compactText(value) {
 }
 
 function toJsonString(value) {
-  return typeof value === 'string' ? value : JSON.stringify(value);
+  return JSON.stringify(value ?? null);
 }
 
 function splitSseLines(buffer) {
   return buffer.split(/\r?\n/);
+}
+
+function _validateNode(value, schema) {
+  if (!schema || typeof schema !== 'object') return true;
+
+  if (schema.nullable && value === null) return true;
+
+  const expectedType = schema.type;
+  if (expectedType) {
+    if (expectedType === 'object') {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    } else if (expectedType === 'array') {
+      if (!Array.isArray(value)) return false;
+    } else if (expectedType === 'string') {
+      if (typeof value !== 'string') return false;
+    } else if (expectedType === 'number') {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+    } else if (expectedType === 'boolean') {
+      if (typeof value !== 'boolean') return false;
+    }
+  }
+
+  if (Array.isArray(schema.enum)) {
+    if (!schema.enum.includes(value)) return false;
+  }
+
+  if (expectedType === 'number') {
+    if (typeof schema.min === 'number' && value < schema.min) return false;
+    if (typeof schema.max === 'number' && value > schema.max) return false;
+  }
+
+  if (expectedType === 'object' && typeof value === 'object' && value !== null) {
+    if (Array.isArray(schema.required)) {
+      for (const key of schema.required) {
+        if (!(key in value)) return false;
+      }
+    }
+    if (schema.additionalProperties === false && schema.properties) {
+      const allowed = new Set(Object.keys(schema.properties));
+      for (const key of Object.keys(value)) {
+        if (!allowed.has(key)) return false;
+      }
+    }
+    if (schema.properties) {
+      for (const [key, propSchema] of Object.entries(schema.properties)) {
+        if (key in value) {
+          if (!_validateNode(value[key], propSchema)) return false;
+        }
+      }
+    }
+  }
+
+  if (expectedType === 'array' && Array.isArray(value)) {
+    if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) return false;
+    if (schema.items) {
+      for (const item of value) {
+        if (!_validateNode(item, schema.items)) return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 function buildFreeformChatSystemPrompt() {
@@ -51,6 +139,8 @@ function buildFreeformChatSystemPrompt() {
     '5. Grounding rule: do not invent brands, formulas, ingredient decks, or guaranteed outcomes.',
     '6. Ingredient rule: if you mention ingredients, keep the list short and grounded, usually no more than 3.',
     '7. Clarification rule: ask a follow-up question only when it materially changes the guidance; do not dodge the original question.',
+    '8. Escalation rule: when the user describes severe or acute symptoms (pain, infection signs, rapid worsening, bleeding, eye swelling), briefly recommend seeking professional dermatology or medical care. Do not attempt to treat or diagnose.',
+    '9. Safety-flag binding rule: when safety_flags are present in context, treat them as hard constraints that override general advice. If a safety flag blocks a topic, acknowledge the constraint explicitly.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
@@ -71,12 +161,12 @@ function buildFreeformChatSystemPrompt() {
 function buildDiagnosisBlueprintStructuredPrompt() {
   return [
     '[ROLE]',
-    'You are Aurora, an evidence-aware skincare diagnosis planner for Pivota.',
+    'You are Aurora, an evidence-aware skin assessment planner for Pivota.',
     'Return one single valid JSON object only. No markdown, no code fences, no prose outside JSON.',
     '[/ROLE]',
     '',
     '[TASK]',
-    'Generate a conservative diagnosis blueprint using the selected goals, profile, recent logs, photo availability, safety flags, and locale.',
+    'Generate a conservative skin assessment blueprint using the selected goals, profile, recent logs, photo availability, safety flags, and locale.',
     'Your job is to organize a useful skincare blueprint, not to diagnose a disease or invent visual evidence.',
     '[/TASK]',
     '',
@@ -89,7 +179,7 @@ function buildDiagnosisBlueprintStructuredPrompt() {
     '  "severity_scores": object,',
     '  "confidence": number,',
     '  "visual_observations": [{"area": string, "note_en": string, "note_zh": string|null}]|null,',
-    '  "nudge": object|null,',
+    '  "nudge": {"text_en": string, "text_zh": string|null, "action": string|null}|null,',
     '  "next_recommended_skills": string[]',
     '}',
     'Do not add extra top-level keys. If a field is unknown, use null, [] or {} instead of omitting it.',
@@ -143,12 +233,12 @@ function buildDiagnosisBlueprintStructuredPrompt() {
 function buildDiagnosisStartStructuredPrompt() {
   return [
     '[ROLE]',
-    'You are Aurora, a skincare intake guide for Pivota diagnosis onboarding.',
+    'You are Aurora, a skincare intake guide for Pivota assessment onboarding.',
     'Return one single valid JSON object only. No markdown, no code fences, no prose outside JSON.',
     '[/ROLE]',
     '',
     '[TASK]',
-    'Generate a small set of personalized follow-up questions for diagnosis onboarding using the known skin type, concerns, and locale.',
+    'Generate a small set of personalized follow-up questions for assessment onboarding using the known skin type, concerns, and locale.',
     'The goal is to reduce ambiguity before deeper analysis. Ask only questions that materially improve skincare guidance.',
     '[/TASK]',
     '',
@@ -243,8 +333,8 @@ function buildRoutineCategorizationStructuredPrompt() {
     '- product_input should preserve the user-provided product text or anchor.',
     '- resolved_name should be a cleaned version of the provided product name, not a guessed branded formula.',
     '- brand should be null when the brand is not explicit.',
-    '- step_assignment should use a stable step label such as cleanser, toner, essence, serum, moisturizer, sunscreen, treatment, mask, oil, or other.',
-    '- time_of_day should be am, pm, both, or unknown.',
+    `${enumLine('step_assignment', 'STEP_LABELS')}`,
+    `${enumLine('time_of_day', 'TIME_OF_DAY')}`,
     '- concepts should capture only explicit or strongly implied concepts such as SUNSCREEN or RETINOID.',
     '- unresolved should contain items that are too ambiguous to classify safely.',
     '[/FIELD_SEMANTICS]',
@@ -295,8 +385,8 @@ function buildRoutineAuditStructuredPrompt() {
     '[OUTPUT_CONTRACT]',
     'Return exactly these top-level keys:',
     '{',
-    '  "optimized_am_steps": array,',
-    '  "optimized_pm_steps": array,',
+    '  "optimized_am_steps": [{"step_id": string, "products": [{"product_id": string|null, "name": string, "brand": string|null, "concepts": string[], "time_of_day": string}]}],',
+    '  "optimized_pm_steps": [{"step_id": string, "products": [{"product_id": string|null, "name": string, "brand": string|null, "concepts": string[], "time_of_day": string}]}],',
     '  "changes": [{"code": string, "action": string, "reason_en": string, "reason_zh": string|null}],',
     '  "compatibility_issues": [{"concepts": string[], "risk": string, "note_en": string, "note_zh": string|null}]',
     '}',
@@ -308,7 +398,7 @@ function buildRoutineAuditStructuredPrompt() {
     '- Preserve original steps when no safe improvement is needed.',
     '- changes should summarize the concrete edits you applied, not generic advice.',
     '- compatibility_issues should capture the remaining or important risk pairs the user should understand after optimization.',
-    '- risk should be a short severity token such as low, medium, or high.',
+    `${enumLine('risk', 'RISK_SEVERITIES')}`,
     '- Keep change and issue wording concise, practical, and non-medical.',
     '[/FIELD_SEMANTICS]',
     '',
@@ -439,56 +529,65 @@ function buildDupeSuggestStructuredPrompt() {
     '[/ROLE]',
     '',
     '[TASK]',
-    'Compare the anchor product against the supplied candidate pool and surface the most plausible dupes conservatively.',
-    'You may only reason about the explicit anchor and provided candidates. Do not invent extra products or claim formula identity without support.',
+    'Find dupes and alternatives for the anchor product below.',
+    'Use only the supplied anchor and candidate pool. Do not invent products or claim formula identity without support.',
     '[/TASK]',
     '',
     '[OUTPUT_CONTRACT]',
     'Return exactly these top-level keys:',
     '{',
     '  "anchor_summary": {',
-    '    "name": string,',
     '    "brand": string|null,',
-    '    "key_ingredients": string[]',
+    '    "name": string|null,',
+    '    "category": string|null,',
+    '    "key_ingredients": string[],',
+    '    "primary_use_case": string|null',
     '  },',
     '  "candidates": [',
     '    {',
     '      "name": string,',
     '      "brand": string|null,',
-    '      "price_comparison": string,',
+    '      "product_id": string|null,',
+    '      "url": string|null,',
+    '      "bucket": string,',
+    '      "why_this_fits": string,',
+    '      "key_similarities": string[],',
+    '      "key_differences": string[],',
+    '      "tradeoff": string,',
     '      "confidence": number,',
-    '      "differences": string[],',
-    '      "tradeoffs": string[]',
+    '      "why_not_the_same_product": string|null',
     '    }',
     '  ]',
     '}',
     'Do not add extra top-level keys. If a field is unknown, use null, [] or {} instead of omitting it.',
     '[/OUTPUT_CONTRACT]',
     '',
-    '[FIELD_SEMANTICS]',
-    '- anchor_summary should stay short and grounded in the supplied anchor only.',
-    '- key_ingredients may be [] when the anchor ingredients are not explicit.',
-    '- candidates should include only the supplied candidate pool, ranked from strongest to weakest plausible dupe.',
-    '- price_comparison should be one of cheaper, same_price, more_expensive, or unknown_price.',
-    '- confidence must be between 0 and 1.',
-    '- differences should capture concrete ways the candidate differs from the anchor.',
-    '- tradeoffs should describe what the user gives up or changes by choosing the candidate.',
-    '[/FIELD_SEMANTICS]',
+    '[DEFINITIONS]',
+    `Allowed bucket values: ${enumList('DUPE_BUCKET')}.`,
+    'Dupe: the closest substitute to the anchor in the same category or use-case with minimal tradeoffs. Bucket value: "dupe".',
+    'Alternative: a viable substitute that serves the same primary goal but has clear differences.',
+    '- Use "cheaper_alternative" for lower-price substitutes.',
+    '- Use "premium_alternative" for higher-price substitutes.',
+    '- Use "price_unknown_alternative" when price is unavailable.',
+    '- Use "functional_alternative" for similar function but different approach or category.',
+    '[/DEFINITIONS]',
     '',
     '[HARD_RULES]',
     '1. Candidate-pool-only rule: never invent or introduce a product that is not in candidates.',
-    '2. Empty-pool rule: if candidates is empty, return candidates=[].',
-    '3. Fairness rule: do not describe any candidate as an exact duplicate or identical formula unless that is explicit in the supplied data.',
-    '4. Tradeoff rule: every returned candidate must include at least one concrete difference and one concrete tradeoff.',
-    '5. Ranking rule: prefer fewer, more plausible dupes over a long weak list.',
-    '6. Tone rule: keep comparison language factual, non-marketing, and profile-aware when profile context matters.',
+    '2. Self-reference prohibition: NEVER include the anchor product itself as a candidate.',
+    '3. Self-reference prohibition: reject any candidate that matches the anchor by same canonical product reference, same normalized URL, same normalized brand + same normalized product name, or same normalized brand + very high product-name similarity.',
+    '4. Same-brand rule: same-brand candidates are allowed only when they are clearly a different product line or use-case. Any same-brand candidate MUST include why_not_the_same_product.',
+    '5. Minimum explanation rule: every returned candidate must include why_this_fits, 1-2 key_similarities, 2-3 key_differences, and one concrete tradeoff. why_this_fits must explain why this candidate is considered a close match to the anchor, not just why it is a good product.',
+    '6. Ranking rule: prefer fewer, stronger candidates over a longer weak list.',
+    '7. Tone rule: keep comparison language factual, non-marketing, and grounded in the supplied context.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
-    '- If candidate similarity is weak, lower confidence rather than exaggerating the match.',
-    '- If price information is missing, use price_comparison="unknown_price".',
-    '- If the anchor has unclear ingredient detail, keep anchor_summary.key_ingredients sparse.',
-    '- If a candidate lacks clear support, omit it instead of filling with vague praise.',
+    '- If candidates[] is empty, return candidates=[].',
+    '- If the candidate pool is weak, return fewer items rather than weak placeholders.',
+    '- If a candidate lacks enough evidence to explain similarities, differences, and tradeoff, omit it.',
+    '- If price information is missing, use bucket="price_unknown_alternative".',
+    '- Confidence must be between 0 and 1.',
     '[/MISSING_DATA_POLICY]',
     '',
     '[FORBIDDEN_BEHAVIOR]',
@@ -499,7 +598,8 @@ function buildDupeSuggestStructuredPrompt() {
     '[/FORBIDDEN_BEHAVIOR]',
     '',
     '[INPUT_CONTEXT]',
-    'anchor={{anchor}}',
+    'anchor_identity={{anchor_identity}}',
+    'anchor_fingerprint={{anchor_fingerprint}}',
     'candidates={{candidates}}',
     'profile={{profile}}',
     'locale={{locale}}',
@@ -534,6 +634,7 @@ function buildDupeCompareStructuredPrompt() {
     '      "texture_comparison": {"en": string, "zh": string|null},',
     '      "suitability_comparison": {"en": string, "zh": string|null},',
     '      "price_comparison": string,',
+    '      "similarity_rationale": string,',
     '      "verdict_en": string,',
     '      "verdict_zh": string|null',
     '    }',
@@ -548,7 +649,8 @@ function buildDupeCompareStructuredPrompt() {
     '- comparisons should include only the supplied targets, in the original order unless a very clear comparison order improves readability.',
     '- key_ingredients_match must be a conservative number between 0 and 1.',
     '- texture_comparison and suitability_comparison should be short, practical comparison statements.',
-    '- price_comparison should be one of cheaper, same, more_expensive, or unknown.',
+    `${enumLine('price_comparison', 'PRICE_COMPARISON')}`,
+    '- similarity_rationale should briefly explain why this target was considered comparable to the anchor in the first place.',
     '- verdict_en should summarize the main tradeoff in one short sentence; verdict_zh may be null when locale is not Chinese.',
     '- mode should be full when multiple useful fields are available, otherwise limited.',
     '[/FIELD_SEMANTICS]',
@@ -608,26 +710,27 @@ function buildCheckinInsightsStructuredPrompt() {
     '    "uncertain": string[]',
     '  }|null,',
     '  "suggested_action": string,',
-    '  "detailed_review": object|null',
+    '  "detailed_review": {"review_en": string, "review_zh": string|null, "key_observations": string[]}|null',
     '}',
     'Do not add extra top-level keys. If a field is unknown, use null, [] or {} instead of omitting it.',
     '[/OUTPUT_CONTRACT]',
     '',
     '[FIELD_SEMANTICS]',
     '- trend_summary should be a short, user-facing summary of what the logs suggest.',
-    '- sensation_trend can be tokens such as improving, stable, fluctuating, worsening, or null.',
+    `- sensation_trend should be one of ${enumList('SENSATION_TRENDS')}, or null.`,
     '- days_tracked should reflect the observed tracking span conservatively.',
     '- attribution should separate likely_positive, likely_negative, and uncertain factors; use null when there is no useful attribution.',
-    '- suggested_action must be one of continue, optimize, or dupe.',
+    `${enumLine('suggested_action', 'SUGGESTED_ACTIONS')}`,
     '- detailed_review is optional and should stay concise, structured, and grounded in the logs.',
     '[/FIELD_SEMANTICS]',
     '',
     '[HARD_RULES]',
-    '1. No-photo rule: if has_photos=false, do not describe visible changes, photo evidence, appearance shifts, or anything that implies the model can see the skin.',
+    '1. No-photo rule: if has_photo=false, do not describe visible changes, photo evidence, appearance shifts, or anything that implies the model can see the skin.',
     '2. Grounding rule: trend_summary and attribution must be grounded in the supplied checkin_logs and routine only.',
     '3. Causality rule: do not claim certainty when the data only supports a weak or mixed pattern; use attribution.uncertain or attribution=null instead.',
-    '4. Action rule: suggested_action must stay within continue, optimize, or dupe so downstream routing remains valid.',
+    `4. Action rule: suggested_action must be one of ${enumList('SUGGESTED_ACTIONS')} so downstream routing remains valid.`,
     '5. Tone rule: keep the summary calm, practical, and non-judgmental.',
+    '6. Escalation rule: if logs suggest worsening irritation, persistent pain, or infection-like symptoms, set suggested_action to escalate and include a brief safety note in trend_summary.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
@@ -638,7 +741,7 @@ function buildCheckinInsightsStructuredPrompt() {
     '[/MISSING_DATA_POLICY]',
     '',
     '[FORBIDDEN_BEHAVIOR]',
-    '- No visual claims when has_photos=false.',
+    '- No visual claims when has_photo=false.',
     '- No medical diagnosis or treatment claims.',
     '- No invented causes, ingredients, or routine changes.',
     '- No alarmist or shaming language.',
@@ -648,7 +751,7 @@ function buildCheckinInsightsStructuredPrompt() {
     'checkin_logs={{checkin_logs}}',
     'profile={{profile}}',
     'routine={{routine}}',
-    'has_photos={{has_photos}}',
+    'has_photo={{has_photo}}',
     'locale={{locale}}',
     '[/INPUT_CONTEXT]',
   ].join('\n');
@@ -682,19 +785,7 @@ function buildIntentClassifierStructuredPrompt() {
     '[/OUTPUT_CONTRACT]',
     '',
     '[ALLOWED_INTENTS]',
-    'Use exactly one of these labels:',
-    '- general_chat',
-    '- routine_advice',
-    '- skin_diagnosis',
-    '- recommend_products',
-    '- product_analysis',
-    '- ingredient_report',
-    '- ingredient_query',
-    '- dupe_suggest',
-    '- dupe_compare',
-    '- travel_mode',
-    '- tracker_trends',
-    '- checkin_log',
+    `Use exactly one of these labels: ${enumList('INTENT_LABELS')}.`,
     '[/ALLOWED_INTENTS]',
     '',
     '[FIELD_SEMANTICS]',
@@ -713,6 +804,7 @@ function buildIntentClassifierStructuredPrompt() {
     '4. Recommendation rule: use recommend_products only when the user is clearly asking for products, not just education.',
     '5. Entity rule: do not invent entities that are not explicit in the user message.',
     '6. Confidence rule: keep confidence below 0.5 when routing is weak enough that free-form fallback is safer.',
+    '7. Safety-escalation rule: use safety_escalation when the message describes acute symptoms, severe irritation, infection-like complaints, rapid worsening, or other medical-grade concerns.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
@@ -772,9 +864,9 @@ function buildIngredientQueryAnswerStructuredPrompt() {
     '[FIELD_SEMANTICS]',
     '- answer_en should directly answer the question in 1-3 concise sentences.',
     '- answer_zh may be null when locale is not Chinese.',
-    '- ingredients_mentioned should list at most 3 ingredient options or examples relevant to the question.',
+    '- ingredients_mentioned must contain at most 3 ingredient options or examples relevant to the question.',
     '- pros_* and cons_* should stay short, practical, and ingredient-level.',
-    '- evidence_level should be a brief token such as strong, moderate, limited, or uncertain.',
+    `${enumLine('evidence_level', 'EVIDENCE_LEVELS')}`,
     '- safety_notes should be generic safe-use reminders only when useful.',
     '- followup_suggestions should be short prompts for deeper ingredient exploration, max 2.',
     '[/FIELD_SEMANTICS]',
@@ -859,17 +951,17 @@ function buildProductAnalyzeStructuredPrompt() {
     '- suitability.score: numeric score between 0 and 1.',
     '- suitability.summary_en: concise evidence-aware verdict for the user profile.',
     '- suitability.summary_zh: Chinese summary when confident; otherwise null.',
-    '- usage: describe timing and frequency conservatively and practically.',
+    `- usage: describe timing and frequency conservatively and practically. ${enumLine('usage.time_of_day', 'TIME_OF_DAY')}`,
     '- key_ingredients: list only ingredients that are explicit in the anchor/context or strongly implied by a verified ingredient list. If not known, return [].',
     '- risk_flags: include only meaningful risks supported by explicit inputs. If no clear risk, return [].',
     '- No repetition across suitability.summary_en, usage notes, and risk flags.',
     '[/FIELD_SEMANTICS]',
     '',
     '[HARD_RULES]',
-    '1. SPF / sunscreen rule: if the product is sunscreen or has_spf=true, usage.time_of_day MUST be "AM only".',
+    '1. SPF / sunscreen rule: if the product is sunscreen or has_spf=true, usage.time_of_day MUST be "am".',
     '2. SPF / sunscreen rule: if the product is sunscreen or has_spf=true, usage.frequency MUST be "daily".',
     '3. SPF / sunscreen rule: if the product is sunscreen or has_spf=true, usage.reapply MUST be present with outdoor reapplication guidance.',
-    '4. SPF / sunscreen rule: NEVER suggest "PM first", "2-3x/week", or "every other day" for sunscreen usage.',
+    '4. SPF / sunscreen rule: NEVER suggest "pm", "2-3x/week", or "every other day" for sunscreen usage.',
     '5. Retinoid rule: if the product clearly contains retinoids, prefer PM-only framing and conservative onboarding frequency.',
     '6. Pregnancy rule: if safety_flags indicate pregnancy blocking and the product clearly contains retinoids, be conservative and include a blocking risk flag.',
     '7. Unknown-ingredient rule: if ingredient_list is missing, incomplete, or unverified, do not fabricate key ingredients or confirmed risk statements.',
@@ -917,10 +1009,10 @@ function buildIngredientReportStructuredPrompt() {
     '  "description_zh": string|null,',
     '  "benefits": [{"benefit_en": string, "benefit_zh": string|null, "evidence_level": string|null}],',
     '  "claims": [{"text_en": string, "text_zh": string|null, "evidence_badge": string}],',
-    '  "how_to_use": object|null,',
-    '  "watchouts": array,',
-    '  "interactions": array,',
-    '  "related_ingredients": array',
+    '  "how_to_use": {"frequency": string, "step": string, "tips_en": string[], "tips_zh": string[]}|null,',
+    '  "watchouts": [{"text_en": string, "text_zh": string|null, "severity": string}] (max 5),',
+    '  "interactions": [{"ingredient": string, "effect_en": string, "effect_zh": string|null, "risk": string}] (max 5),',
+    '  "related_ingredients": string[] (max 5)',
     '}',
     'Do not add extra top-level keys. If a field is unknown, use null, [] or {} instead of omitting it.',
     '[/OUTPUT_CONTRACT]',
@@ -929,7 +1021,7 @@ function buildIngredientReportStructuredPrompt() {
     '- ingredient_name: the queried ingredient name or the best normalized ingredient label.',
     '- claims: keep this as ingredient-level statements, not product recommendations or shopping claims.',
     '- Every claims item MUST include text_en, text_zh (or null), and evidence_badge.',
-    '- evidence_badge should be one of strong, moderate, limited, uncertain.',
+    `${enumLine('evidence_badge', 'EVIDENCE_LEVELS')}`,
     '- If the ingredient identity is unverified, claims should be cautious and may use evidence_badge="uncertain".',
     '- benefits can be empty, but claims must still be present as an array.',
     '- Avoid repetition across description_en, benefits, claims, and watchouts.',
@@ -985,10 +1077,10 @@ function buildTravelApplyModeStructuredPrompt() {
     '[/OUTPUT_CONTRACT]',
     '',
     '[FIELD_SEMANTICS]',
-    '- uv_level should prefer low, moderate, high, or extreme.',
-    '- humidity should prefer low, medium, or high.',
+    `${enumLine('uv_level', 'UV_LEVELS')}`,
+    `${enumLine('humidity', 'HUMIDITY_LEVELS')}`,
     '- reduce_irritation indicates whether the user should scale back strong actives during travel.',
-    '- packing_list should be practical essentials, not a long catalog.',
+    '- packing_list should be practical essentials (max 6 items), not a long catalog.',
     '- inferred_climate should summarize the likely climate or echo the provided archetype.',
     '[/FIELD_SEMANTICS]',
     '',
@@ -1089,20 +1181,20 @@ class LlmGateway {
     };
   }
 
-  async chat({ userMessage, systemPrompt, context, locale, onChunk }) {
+  async chat({ userMessage, systemPrompt, context, locale, onChunk, priorMessages }) {
     const callId = uuidv4();
     const promptHash = this._hash(compactText(userMessage));
     const startMs = Date.now();
-    const messages = this._buildChatMessages(userMessage, systemPrompt, context, locale);
+    const messages = this._buildChatMessages(userMessage, systemPrompt, context, locale, priorMessages);
 
     const provider = this._useStubResponses ? 'stub' : this._provider;
     let text;
 
     if (this._useStubResponses) {
       const stub = this._buildStubChatResponse(userMessage, context);
-      text = JSON.stringify(stub);
-      if (typeof onChunk === 'function' && compactText(stub.answer_en)) {
-        const chunks = this._chunkText(stub.answer_en, 3);
+      text = compactText(stub.answer_en);
+      if (typeof onChunk === 'function' && text) {
+        const chunks = this._chunkText(text, 3);
         for (const chunk of chunks) {
           onChunk(chunk);
         }
@@ -1135,13 +1227,25 @@ class LlmGateway {
   async _callStructuredProvider(prompt, { templateId, schemaId, params } = {}) {
     const schema = schemaId ? this._schemaRegistry.get(schemaId) : null;
     const requiredKeys = Array.isArray(schema?.required) ? schema.required : [];
+    const allKeys = schema?.properties ? Object.keys(schema.properties) : requiredKeys;
     const systemParts = [
       'Return valid JSON only. Do not use markdown fences or commentary outside the JSON object.',
-      requiredKeys.length > 0
-        ? `Return exactly one JSON object with all required top-level fields present: ${requiredKeys.join(', ')}.`
+      allKeys.length > 0
+        ? `Return exactly one JSON object with these top-level fields: ${allKeys.join(', ')}. Do not add extra top-level keys.`
         : '',
       'If a field is unknown, return null, [] or {} instead of omitting the key.',
     ].filter(Boolean);
+
+    if (schema?.properties) {
+      for (const [key, prop] of Object.entries(schema.properties)) {
+        if (Array.isArray(prop.enum) && prop.enum.length <= 15) {
+          const vals = prop.enum.filter((v) => v !== null);
+          if (vals.length > 0) {
+            systemParts.push(`Field "${key}" must be one of: ${vals.join(', ')}.`);
+          }
+        }
+      }
+    }
 
     const messages = [
       {
@@ -1306,7 +1410,7 @@ class LlmGateway {
       .join('');
   }
 
-  _buildChatMessages(userMessage, systemPrompt, context, locale) {
+  _buildChatMessages(userMessage, systemPrompt, context, locale, priorMessages) {
     const profile = context && typeof context.profile === 'object' ? context.profile : {};
     const safetyFlags = Array.isArray(context?.safety_flags) ? context.safety_flags : [];
     const systemParts = [compactText(systemPrompt) || AURORA_SYSTEM_PROMPT];
@@ -1328,8 +1432,24 @@ class LlmGateway {
       systemParts.push(`Preferred locale: ${locale}`);
     }
 
+    const history = [];
+    if (Array.isArray(priorMessages)) {
+      const MAX_PRIOR_TURNS = 10;
+      const recent = priorMessages.slice(-MAX_PRIOR_TURNS);
+      for (const msg of recent) {
+        if (!msg || typeof msg !== 'object') continue;
+        const role = String(msg.role || '').toLowerCase();
+        const content = compactText(msg.content || msg.text || msg.message || '');
+        if (!content) continue;
+        if (role === 'user' || role === 'assistant') {
+          history.push({ role, content });
+        }
+      }
+    }
+
     return [
       { role: 'system', content: systemParts.join('\n') },
+      ...history,
       { role: 'user', content: compactText(userMessage) },
     ];
   }
@@ -1354,7 +1474,10 @@ class LlmGateway {
   _interpolate(templateText, params) {
     let output = templateText;
     for (const [key, value] of Object.entries(params || {})) {
-      output = output.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), toJsonString(value));
+      output = output.replace(
+        new RegExp(`\\{\\{${key}\\}\\}`, 'g'),
+        () => toJsonString(value)
+      );
     }
     return output;
   }
@@ -1370,12 +1493,7 @@ class LlmGateway {
     const schema = this._schemaRegistry.get(schemaId);
     if (!schema) return parsed;
 
-    for (const field of schema.required || []) {
-      if (!(field in parsed)) {
-        return null;
-      }
-    }
-    return parsed;
+    return _validateNode(parsed, schema) ? parsed : null;
   }
 
   _tryParseJson(text) {
@@ -1493,7 +1611,7 @@ class LlmGateway {
         return {
           product_input: text || `product_${index + 1}`,
           resolved_name: text || `Product ${index + 1}`,
-          brand: compactText(product?.brand) || 'Stub Brand',
+          brand: compactText(product?.brand) || null,
           step_assignment: stepAssignment,
           time_of_day: stepAssignment === 'sunscreen' ? 'am' : 'both',
           concepts: stepAssignment === 'sunscreen' ? ['SUNSCREEN'] : [],
@@ -1545,8 +1663,8 @@ class LlmGateway {
           },
           candidates: [
             {
-              product_id: 'stub_product_1',
-              brand: 'CeraVe',
+              product_id: null,
+              brand: null,
               name: targetIngredient ? `${targetIngredient} Treatment Serum` : 'Hydrating Barrier Serum',
               why: {
                 en: `A practical option if you are targeting ${label}.`,
@@ -1556,15 +1674,15 @@ class LlmGateway {
               price_tier: 'mid',
             },
             {
-              product_id: 'stub_product_2',
-              brand: 'La Roche-Posay',
+              product_id: null,
+              brand: null,
               name: targetIngredient ? `${targetIngredient} Support Gel` : 'Calming Repair Essence',
               why: {
                 en: `Supports ${label} concerns with a gentle profile.`,
                 zh: `以相对温和的方式支持${label}相关诉求。`,
               },
               suitability_score: 0.79,
-              price_tier: 'premium',
+              price_tier: null,
             },
           ],
         },
@@ -1611,14 +1729,14 @@ class LlmGateway {
       },
       usage: isSpf
         ? {
-            time_of_day: 'AM only',
+            time_of_day: 'am',
             frequency: 'daily',
             reapply: 'every 2 hours when outdoors',
             application_note_en: 'Apply generously as the last morning step.',
             application_note_zh: '早晨作为最后一步足量使用。',
           }
         : {
-            time_of_day: isRetinoid ? 'PM only' : 'both',
+            time_of_day: isRetinoid ? 'pm' : 'both',
             frequency: isRetinoid ? '1-2x/week' : 'daily',
             application_note_en: 'Introduce gradually if your skin is sensitive.',
             application_note_zh: '如果皮肤敏感，建议逐步建立耐受。',
@@ -1634,7 +1752,7 @@ class LlmGateway {
     const ingredient = compactText(params?.ingredient_query) || 'Niacinamide';
     return {
       ingredient_name: ingredient,
-      inci_name: ingredient.toUpperCase(),
+      inci_name: null,
       category: 'active',
       description_en: `${ingredient} is commonly used in skincare to support targeted concerns.`,
       description_zh: `${ingredient} 是护肤中常见的功效成分，常用于针对性改善皮肤问题。`,
@@ -1684,21 +1802,28 @@ class LlmGateway {
   }
 
   _buildStubDupeSuggest(params) {
-    const anchor = params?.anchor || params?.product_anchor || {};
+    const anchor = params?.anchor_identity || params?.anchor || params?.product_anchor || {};
     const candidates = Array.isArray(params?.candidates) ? params.candidates : [];
     return {
       anchor_summary: {
-        name: compactText(anchor?.name) || 'Anchor Product',
         brand: compactText(anchor?.brand) || 'Anchor Brand',
+        name: compactText(anchor?.name) || 'Anchor Product',
+        category: compactText(anchor?.category) || 'moisturizer',
         key_ingredients: ['Niacinamide'],
+        primary_use_case: 'hydration',
       },
       candidates: candidates.slice(0, 3).map((candidate, index) => ({
-        name: compactText(candidate?.name) || `Alternative ${index + 1}`,
-        brand: compactText(candidate?.brand) || 'Stub Brand',
-        price_comparison: candidate?.price_comparison || (index === 0 ? 'cheaper' : 'same_price'),
-        confidence: 0.78,
-        differences: ['Lighter texture', 'Slightly different finish'],
-        tradeoffs: ['May feel less hydrating'],
+        name: compactText(candidate?.name || candidate?.product?.name) || `Alternative ${index + 1}`,
+        brand: compactText(candidate?.brand || candidate?.product?.brand) || null,
+        product_id: compactText(candidate?.product_id || candidate?.product?.product_id) || null,
+        url: compactText(candidate?.url || candidate?.product?.url) || null,
+        bucket: candidate?.bucket || (index === 0 ? 'dupe' : 'cheaper_alternative'),
+        why_this_fits: 'Similar hydration profile and lightweight daily use case.',
+        key_similarities: ['Lightweight lotion texture', 'Daily hydration focus'],
+        key_differences: ['May feel a bit less rich', 'Different supporting ingredient mix'],
+        tradeoff: 'May feel slightly less cushioning on very dry skin.',
+        confidence: index === 0 ? 0.84 : 0.76,
+        why_not_the_same_product: null,
       })),
     };
   }
@@ -1715,7 +1840,7 @@ class LlmGateway {
       comparisons: targets.map((target, index) => ({
         target: {
           name: compactText(target?.name) || `Target ${index + 1}`,
-          brand: compactText(target?.brand) || 'Stub Brand',
+          brand: compactText(target?.brand) || null,
         },
         key_ingredients_match: 0.74,
         texture_comparison: {
@@ -1727,6 +1852,7 @@ class LlmGateway {
           zh: '两者整体都可考虑，但实际耐受度可能不同。',
         },
         price_comparison: 'same',
+        similarity_rationale: 'Both serve a similar daily hydration use case with overlapping ingredient profiles.',
         verdict_en: 'The formulas are directionally similar.',
         verdict_zh: '两者配方方向整体相近。',
       })),
@@ -1878,79 +2004,79 @@ class LlmGateway {
     const templates = [
       {
         id: 'diagnosis_v2_start_personalized',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'diagnosis',
         text: buildDiagnosisStartStructuredPrompt(),
       },
       {
         id: 'diagnosis_v2_answer_blueprint',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'diagnosis',
         text: buildDiagnosisBlueprintStructuredPrompt(),
       },
       {
         id: 'routine_categorize_products',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'routine',
         text: buildRoutineCategorizationStructuredPrompt(),
       },
       {
         id: 'routine_audit_optimize',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'routine',
         text: buildRoutineAuditStructuredPrompt(),
       },
       {
         id: 'reco_step_based',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'recommendation',
         text: buildRecoStepBasedStructuredPrompt(),
       },
       {
         id: 'tracker_checkin_insights',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'tracker',
         text: buildCheckinInsightsStructuredPrompt(),
       },
       {
         id: 'product_analyze',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'product_analysis',
         text: buildProductAnalyzeStructuredPrompt(),
       },
       {
         id: 'ingredient_report',
-        version: '2.1.0',
+        version: '2.2.0',
         taskMode: 'ingredient',
         text: buildIngredientReportStructuredPrompt(),
       },
       {
         id: 'ingredient_query_answer',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'ingredient',
         text: buildIngredientQueryAnswerStructuredPrompt(),
       },
       {
         id: 'dupe_suggest',
-        version: '1.1.0',
+        version: '2.1.0',
         taskMode: 'dupe',
         text: buildDupeSuggestStructuredPrompt(),
       },
       {
         id: 'dupe_compare',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'dupe',
         text: buildDupeCompareStructuredPrompt(),
       },
       {
         id: 'travel_apply_mode',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'travel',
         text: buildTravelApplyModeStructuredPrompt(),
       },
       {
         id: 'intent_classifier',
-        version: '1.1.0',
+        version: '1.2.0',
         taskMode: 'chat',
         text: buildIntentClassifierStructuredPrompt(),
       },
@@ -1963,19 +2089,478 @@ class LlmGateway {
 
   _registerDefaultSchemas() {
     const schemas = [
-      { id: 'DiagnosisStartOutput', required: ['follow_up_questions'] },
-      { id: 'DiagnosisBlueprintOutput', required: ['blueprint_id', 'inferred_skin_type', 'primary_concerns'] },
-      { id: 'ProductCategorizationOutput', required: ['categorized_products'] },
-      { id: 'RoutineAuditOutput', required: ['optimized_am_steps', 'optimized_pm_steps', 'changes', 'compatibility_issues'] },
-      { id: 'StepRecommendationOutput', required: ['step_recommendations'] },
-      { id: 'CheckinInsightsOutput', required: ['trend_summary', 'suggested_action'] },
-      { id: 'ProductAnalysisOutput', required: ['product_name', 'product_type', 'suitability', 'usage'] },
-      { id: 'IngredientReportOutput', required: ['ingredient_name', 'claims'] },
-      { id: 'IngredientQueryOutput', required: ['answer_en', 'ingredients_mentioned'] },
-      { id: 'DupeSuggestOutput', required: ['anchor_summary', 'candidates'] },
-      { id: 'DupeCompareOutput', required: ['anchor_summary', 'comparisons'] },
-      { id: 'TravelModeOutput', required: ['uv_level', 'humidity'] },
-      { id: 'IntentClassifierOutput', required: ['intent', 'confidence', 'entities'] },
+      {
+        id: 'DiagnosisStartOutput',
+        type: 'object',
+        required: ['follow_up_questions'],
+        additionalProperties: false,
+        properties: {
+          follow_up_questions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['question_en', 'options'],
+              properties: {
+                question_en: { type: 'string' },
+                question_zh: { type: 'string', nullable: true },
+                options: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+        },
+      },
+      {
+        id: 'DiagnosisBlueprintOutput',
+        type: 'object',
+        required: ['blueprint_id', 'inferred_skin_type', 'primary_concerns', 'severity_scores', 'confidence', 'visual_observations', 'nudge', 'next_recommended_skills'],
+        additionalProperties: false,
+        properties: {
+          blueprint_id: { type: 'string' },
+          inferred_skin_type: { type: 'string' },
+          primary_concerns: { type: 'array', items: { type: 'string' } },
+          severity_scores: { type: 'object' },
+          confidence: { type: 'number', min: 0, max: 1 },
+          visual_observations: { type: 'array', nullable: true },
+          nudge: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              text_en: { type: 'string' },
+              text_zh: { type: 'string', nullable: true },
+              action: { type: 'string', nullable: true },
+            },
+          },
+          next_recommended_skills: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      {
+        id: 'ProductCategorizationOutput',
+        type: 'object',
+        required: ['categorized_products', 'unresolved'],
+        additionalProperties: false,
+        properties: {
+          categorized_products: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['product_input', 'resolved_name', 'step_assignment', 'time_of_day'],
+              properties: {
+                product_input: { type: 'string' },
+                resolved_name: { type: 'string' },
+                brand: { type: 'string', nullable: true },
+                step_assignment: { type: 'string' },
+                time_of_day: { type: 'string', enum: ENUMS.TIME_OF_DAY },
+                concepts: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+          unresolved: { type: 'array' },
+        },
+      },
+      {
+        id: 'RoutineAuditOutput',
+        type: 'object',
+        required: ['optimized_am_steps', 'optimized_pm_steps', 'changes', 'compatibility_issues'],
+        additionalProperties: false,
+        properties: {
+          optimized_am_steps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['step_id'],
+              properties: {
+                step_id: { type: 'string' },
+                products: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    required: ['name'],
+                    properties: {
+                      product_id: { type: 'string', nullable: true },
+                      name: { type: 'string' },
+                      brand: { type: 'string', nullable: true },
+                      concepts: { type: 'array', items: { type: 'string' } },
+                      time_of_day: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          optimized_pm_steps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['step_id'],
+              properties: {
+                step_id: { type: 'string' },
+                products: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    required: ['name'],
+                    properties: {
+                      product_id: { type: 'string', nullable: true },
+                      name: { type: 'string' },
+                      brand: { type: 'string', nullable: true },
+                      concepts: { type: 'array', items: { type: 'string' } },
+                      time_of_day: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          changes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['code', 'action', 'reason_en'],
+              properties: {
+                code: { type: 'string' },
+                action: { type: 'string' },
+                reason_en: { type: 'string' },
+                reason_zh: { type: 'string', nullable: true },
+              },
+            },
+          },
+          compatibility_issues: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['concepts', 'risk', 'note_en'],
+              properties: {
+                concepts: { type: 'array', items: { type: 'string' } },
+                risk: { type: 'string', enum: ENUMS.RISK_SEVERITIES },
+                note_en: { type: 'string' },
+                note_zh: { type: 'string', nullable: true },
+              },
+            },
+          },
+        },
+      },
+      {
+        id: 'StepRecommendationOutput',
+        type: 'object',
+        required: ['step_recommendations'],
+        additionalProperties: false,
+        properties: {
+          step_recommendations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['step_id', 'step_name', 'candidates'],
+              properties: {
+                step_id: { type: 'string' },
+                step_name: { type: 'object', required: ['en'], properties: { en: { type: 'string' }, zh: { type: 'string', nullable: true } } },
+                candidates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    required: ['name', 'why', 'suitability_score'],
+                    properties: {
+                      product_id: { type: 'string', nullable: true },
+                      brand: { type: 'string', nullable: true },
+                      name: { type: 'string' },
+                      why: { type: 'object', required: ['en'], properties: { en: { type: 'string' }, zh: { type: 'string', nullable: true } } },
+                      suitability_score: { type: 'number', min: 0, max: 1 },
+                      price_tier: { type: 'string', nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        id: 'CheckinInsightsOutput',
+        type: 'object',
+        required: ['trend_summary', 'sensation_trend', 'days_tracked', 'attribution', 'suggested_action', 'detailed_review'],
+        additionalProperties: false,
+        properties: {
+          trend_summary: { type: 'object', required: ['en'], properties: { en: { type: 'string' }, zh: { type: 'string', nullable: true } } },
+          sensation_trend: { type: 'string', nullable: true, enum: [...ENUMS.SENSATION_TRENDS, null] },
+          days_tracked: { type: 'number', min: 0 },
+          attribution: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              likely_positive: { type: 'array', items: { type: 'string' } },
+              likely_negative: { type: 'array', items: { type: 'string' } },
+              uncertain: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          suggested_action: { type: 'string', enum: ENUMS.SUGGESTED_ACTIONS },
+          detailed_review: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              review_en: { type: 'string' },
+              review_zh: { type: 'string', nullable: true },
+              key_observations: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
+      },
+      {
+        id: 'ProductAnalysisOutput',
+        type: 'object',
+        required: ['product_name', 'product_type', 'has_spf', 'suitability', 'usage', 'key_ingredients', 'risk_flags'],
+        additionalProperties: false,
+        properties: {
+          product_name: { type: 'string' },
+          brand: { type: 'string', nullable: true },
+          product_type: { type: 'string' },
+          has_spf: { type: 'boolean' },
+          suitability: {
+            type: 'object',
+            required: ['score', 'summary_en'],
+            properties: {
+              score: { type: 'number', min: 0, max: 1 },
+              summary_en: { type: 'string' },
+              summary_zh: { type: 'string', nullable: true },
+            },
+          },
+          usage: {
+            type: 'object',
+            required: ['time_of_day', 'frequency'],
+            properties: {
+              time_of_day: { type: 'string' },
+              frequency: { type: 'string' },
+              reapply: { type: 'string', nullable: true },
+              application_note_en: { type: 'string' },
+              application_note_zh: { type: 'string', nullable: true },
+            },
+          },
+          key_ingredients: { type: 'array' },
+          risk_flags: { type: 'array' },
+        },
+      },
+      {
+        id: 'IngredientReportOutput',
+        type: 'object',
+        required: ['ingredient_name', 'inci_name', 'category', 'description_en', 'benefits', 'claims', 'how_to_use', 'watchouts', 'interactions', 'related_ingredients'],
+        additionalProperties: false,
+        properties: {
+          ingredient_name: { type: 'string' },
+          inci_name: { type: 'string', nullable: true },
+          category: { type: 'string' },
+          description_en: { type: 'string' },
+          description_zh: { type: 'string', nullable: true },
+          benefits: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['benefit_en'],
+              properties: {
+                benefit_en: { type: 'string' },
+                benefit_zh: { type: 'string', nullable: true },
+                evidence_level: { type: 'string', nullable: true, enum: [...ENUMS.EVIDENCE_LEVELS, null] },
+              },
+            },
+          },
+          claims: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['text_en', 'evidence_badge'],
+              properties: {
+                text_en: { type: 'string' },
+                text_zh: { type: 'string', nullable: true },
+                evidence_badge: { type: 'string', enum: ENUMS.EVIDENCE_LEVELS },
+              },
+            },
+          },
+          how_to_use: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              frequency: { type: 'string' },
+              step: { type: 'string' },
+              tips_en: { type: 'array', items: { type: 'string' } },
+              tips_zh: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          watchouts: {
+            type: 'array',
+            maxItems: 5,
+            items: {
+              type: 'object',
+              required: ['text_en'],
+              properties: {
+                text_en: { type: 'string' },
+                text_zh: { type: 'string', nullable: true },
+                severity: { type: 'string' },
+              },
+            },
+          },
+          interactions: {
+            type: 'array',
+            maxItems: 5,
+            items: {
+              type: 'object',
+              properties: {
+                ingredient: { type: 'string' },
+                effect_en: { type: 'string' },
+                effect_zh: { type: 'string', nullable: true },
+                risk: { type: 'string' },
+              },
+            },
+          },
+          related_ingredients: { type: 'array', maxItems: 5, items: { type: 'string' } },
+        },
+      },
+      {
+        id: 'IngredientQueryOutput',
+        type: 'object',
+        required: ['answer_en', 'ingredients_mentioned', 'safety_notes', 'followup_suggestions'],
+        additionalProperties: false,
+        properties: {
+          answer_en: { type: 'string' },
+          answer_zh: { type: 'string', nullable: true },
+          ingredients_mentioned: {
+            type: 'array',
+            maxItems: 3,
+            items: {
+              type: 'object',
+              required: ['name'],
+              properties: {
+                name: { type: 'string' },
+                inci: { type: 'string', nullable: true },
+                relevance: { type: 'string', nullable: true },
+                pros_en: { type: 'array', items: { type: 'string' } },
+                pros_zh: { type: 'array', items: { type: 'string' } },
+                cons_en: { type: 'array', items: { type: 'string' } },
+                cons_zh: { type: 'array', items: { type: 'string' } },
+                evidence_level: { type: 'string', nullable: true, enum: [...ENUMS.EVIDENCE_LEVELS, null] },
+                best_for: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+          safety_notes: { type: 'array', items: { type: 'string' } },
+          followup_suggestions: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      {
+        id: 'DupeSuggestOutput',
+        type: 'object',
+        required: ['anchor_summary', 'candidates'],
+        additionalProperties: false,
+        properties: {
+          anchor_summary: {
+            type: 'object',
+            required: ['name'],
+            properties: {
+              brand: { type: 'string', nullable: true },
+              name: { type: 'string', nullable: true },
+              category: { type: 'string', nullable: true },
+              key_ingredients: { type: 'array', items: { type: 'string' } },
+              primary_use_case: { type: 'string', nullable: true },
+            },
+          },
+          candidates: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['name', 'bucket', 'why_this_fits', 'key_similarities', 'key_differences', 'tradeoff', 'confidence'],
+              properties: {
+                name: { type: 'string' },
+                brand: { type: 'string', nullable: true },
+                product_id: { type: 'string', nullable: true },
+                url: { type: 'string', nullable: true },
+                bucket: { type: 'string', enum: ENUMS.DUPE_BUCKET },
+                why_this_fits: { type: 'string' },
+                key_similarities: { type: 'array', items: { type: 'string' } },
+                key_differences: { type: 'array', items: { type: 'string' } },
+                tradeoff: { type: 'string' },
+                confidence: { type: 'number', min: 0, max: 1 },
+                why_not_the_same_product: { type: 'string', nullable: true },
+              },
+            },
+          },
+        },
+      },
+      {
+        id: 'DupeCompareOutput',
+        type: 'object',
+        required: ['anchor_summary', 'comparisons', 'mode'],
+        additionalProperties: false,
+        properties: {
+          anchor_summary: {
+            type: 'object',
+            required: ['name'],
+            properties: {
+              name: { type: 'string' },
+              brand: { type: 'string', nullable: true },
+              key_ingredients: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          comparisons: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['target', 'key_ingredients_match', 'texture_comparison', 'suitability_comparison', 'price_comparison', 'similarity_rationale', 'verdict_en'],
+              properties: {
+                target: { type: 'object', required: ['name'], properties: { name: { type: 'string' }, brand: { type: 'string', nullable: true } } },
+                key_ingredients_match: { type: 'number', min: 0, max: 1 },
+                texture_comparison: { type: 'object', required: ['en'], properties: { en: { type: 'string' }, zh: { type: 'string', nullable: true } } },
+                suitability_comparison: { type: 'object', required: ['en'], properties: { en: { type: 'string' }, zh: { type: 'string', nullable: true } } },
+                price_comparison: { type: 'string', enum: ENUMS.PRICE_COMPARISON },
+                similarity_rationale: { type: 'string' },
+                verdict_en: { type: 'string' },
+                verdict_zh: { type: 'string', nullable: true },
+              },
+            },
+          },
+          mode: { type: 'string', enum: ['full', 'limited'] },
+        },
+      },
+      {
+        id: 'TravelModeOutput',
+        type: 'object',
+        required: ['uv_level', 'humidity', 'reduce_irritation', 'packing_list', 'inferred_climate'],
+        additionalProperties: false,
+        properties: {
+          uv_level: { type: 'string', enum: ENUMS.UV_LEVELS },
+          humidity: { type: 'string', enum: ENUMS.HUMIDITY_LEVELS },
+          reduce_irritation: { type: 'boolean' },
+          packing_list: {
+            type: 'array',
+            maxItems: 6,
+            items: {
+              type: 'object',
+              required: ['product_type', 'reason_en'],
+              properties: {
+                product_type: { type: 'string' },
+                reason_en: { type: 'string' },
+                reason_zh: { type: 'string', nullable: true },
+              },
+            },
+          },
+          inferred_climate: { type: 'string', nullable: true },
+        },
+      },
+      {
+        id: 'IntentClassifierOutput',
+        type: 'object',
+        required: ['intent', 'confidence', 'entities'],
+        additionalProperties: false,
+        properties: {
+          intent: { type: 'string', enum: ENUMS.INTENT_LABELS },
+          confidence: { type: 'number', min: 0, max: 1 },
+          entities: {
+            type: 'object',
+            required: ['user_question'],
+            properties: {
+              ingredients: { type: 'array', items: { type: 'string' } },
+              products: { type: 'array', items: { type: 'string' } },
+              concerns: { type: 'array', items: { type: 'string' } },
+              user_question: { type: 'string' },
+            },
+          },
+        },
+      },
     ];
 
     for (const schema of schemas) {

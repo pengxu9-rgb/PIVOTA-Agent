@@ -16,16 +16,28 @@ function joinBrandAndName(brandRaw, nameRaw) {
   return `${brand} ${name}`.trim();
 }
 
+function unwrapProductLike(inputObj) {
+  const base = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
+  if (!base) return null;
+  const nestedProduct = base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product : null;
+  const nestedSku = base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku : null;
+  if (nestedProduct) return nestedProduct;
+  if (nestedSku) return nestedSku;
+  return base;
+}
+
 function buildProductInputText(inputObj, url) {
   if (typeof url === 'string' && url.trim()) return url.trim();
-  const o = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
+  const o = unwrapProductLike(inputObj);
   if (!o) return null;
   const brand = typeof o.brand === 'string' ? o.brand.trim() : '';
   const name = typeof o.name === 'string' ? o.name.trim() : '';
   const display = typeof o.display_name === 'string' ? o.display_name.trim() : typeof o.displayName === 'string' ? o.displayName.trim() : '';
+  const productName = typeof o.product_name === 'string' ? o.product_name.trim() : typeof o.productName === 'string' ? o.productName.trim() : '';
+  const title = typeof o.title === 'string' ? o.title.trim() : '';
   const sku = typeof o.sku_id === 'string' ? o.sku_id.trim() : typeof o.skuId === 'string' ? o.skuId.trim() : '';
   const pid = typeof o.product_id === 'string' ? o.product_id.trim() : typeof o.productId === 'string' ? o.productId.trim() : '';
-  const bestName = display || name;
+  const bestName = display || name || productName || title;
   if (brand && bestName) return joinBrandAndName(brand, bestName);
   if (bestName) return bestName;
   if (sku) return sku;
@@ -34,12 +46,13 @@ function buildProductInputText(inputObj, url) {
 }
 
 function extractAnchorIdFromProductLike(obj) {
-  if (!obj || typeof obj !== 'object') return null;
+  const source = unwrapProductLike(obj);
+  if (!source) return null;
   const raw =
-    (typeof obj.sku_id === 'string' && obj.sku_id) ||
-    (typeof obj.skuId === 'string' && obj.skuId) ||
-    (typeof obj.product_id === 'string' && obj.product_id) ||
-    (typeof obj.productId === 'string' && obj.productId) ||
+    (typeof source.sku_id === 'string' && source.sku_id) ||
+    (typeof source.skuId === 'string' && source.skuId) ||
+    (typeof source.product_id === 'string' && source.product_id) ||
+    (typeof source.productId === 'string' && source.productId) ||
     null;
   const v = raw ? String(raw).trim() : '';
   return v || null;
@@ -61,7 +74,15 @@ function buildOriginalStub(url, inputText) {
 
 function resolveOriginalForPayload(originalObj, url, inputText) {
   if (originalObj && typeof originalObj === 'object' && !Array.isArray(originalObj)) {
-    return { original: originalObj, anchor_resolution_status: 'confirmed' };
+    const base = unwrapProductLike(originalObj) || originalObj;
+    const name = buildProductInputText(base, null);
+    const original = {
+      ...base,
+      ...(name && !base.name ? { name } : {}),
+      ...(name && !base.display_name && !base.displayName ? { display_name: name } : {}),
+      ...(typeof url === 'string' && url.trim() && !base.url && !base.product_url && !base.productUrl ? { url: url.trim() } : {}),
+    };
+    return { original, anchor_resolution_status: 'confirmed' };
   }
   return { original: buildOriginalStub(url, inputText), anchor_resolution_status: 'failed' };
 }

@@ -120,7 +120,7 @@
       "assertions": {
         "cards_must_include_types": ["product_verdict"],
         "quality_ok": true,
-        "usage_time_of_day": "AM only",
+        "usage_time_of_day": "am",
         "usage_must_include_reapply": true,
         "usage_must_not_include": ["PM-first", "2-3x/week", "every other day"]
       }

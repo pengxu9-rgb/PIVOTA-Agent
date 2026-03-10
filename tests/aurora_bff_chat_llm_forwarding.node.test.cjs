@@ -36,6 +36,7 @@ test('/v1/chat forwards llm_provider + llm_model from body to aurora upstream', 
     {
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -86,6 +87,7 @@ test('/v1/chat accepts llm provider/model via headers when body does not include
     {
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -137,6 +139,7 @@ test('/v1/chat uses configurable upstream timeout for main chat call', async () 
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_CHAT_UPSTREAM_TIMEOUT_MS: '34567',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -186,6 +189,7 @@ test('/v1/chat exposes llm routing metadata in session patch and events', async 
     {
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -248,6 +252,7 @@ test('/v1/chat keeps requested llm metadata on profile-gate early return (no ups
     {
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');

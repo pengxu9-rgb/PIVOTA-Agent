@@ -2939,11 +2939,25 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	        if (lang === 'ja') extra.push('メイクブラシ');
 	      }
       } else if (intent?.primary_domain === 'beauty') {
-        const fragranceQueryDetected = hasFragranceQuerySignal(q);
+      const fragranceQueryDetected = hasFragranceQuerySignal(q);
 	      const wantsSkincare =
 	        /护肤|護膚|skincare|skin\s*care|serum|toner|essence|moisturizer|cleanser|sunscreen|cream/i.test(
 	          q,
 	        );
+        const wantsSunscreen =
+          /\b(sunscreen|spf\b|sunblock|broad spectrum|uv)\b/i.test(q) ||
+          /防晒|防曬|日焼け止め/.test(q);
+        const wantsMoisturizer =
+          /\b(moisturi(?:z|s)er|cream|face moisturizer|barrier moisturizer|barrier cream)\b/i.test(q) ||
+          /保湿|保濕|乳液|面霜|クリーム/.test(q);
+        const wantsSerum =
+          /\b(serum|essence|ampoule|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha)\b/i.test(
+            q,
+          ) || /精华|精華|美容液/.test(q);
+        const wantsToner =
+          /\b(toner|lotion|face mist)\b/i.test(q) || /化妆水|化妝水/.test(q);
+        const wantsCleanser =
+          /\b(cleanser|face wash|cleansing)\b/i.test(q) || /洁面|潔面|洗面奶|洗顔料/.test(q);
 	      const wantsDateLook = /约会|約會|\bdate\b|\bnight\s*out\b/i.test(q);
       if (fragranceQueryDetected) {
         extra.push(
@@ -2960,11 +2974,44 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         if (lang === 'fr') extra.push('parfum', 'fragrance');
         if (lang === 'ja') extra.push('香水', 'フレグランス');
       } else if (!brandQueryWithoutCategory && wantsSkincare) {
-        extra.push('skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
-        if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
-        if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'tónico', 'hidratante');
-        if (lang === 'fr') extra.push('soin de la peau', 'sérum', 'tonique', 'hydratant');
-        if (lang === 'ja') extra.push('スキンケア', '美容液', '化粧水', '乳液');
+        extra.push('skincare');
+        if (wantsSunscreen) {
+          extra.push('face sunscreen', 'spf', 'broad spectrum', 'sun protection');
+          if (lang === 'zh') extra.push('护肤', '防晒', '面部防晒');
+          if (lang === 'es') extra.push('cuidado de la piel', 'protector solar', 'spf');
+          if (lang === 'fr') extra.push('soin de la peau', 'crème solaire', 'spf');
+          if (lang === 'ja') extra.push('スキンケア', '日焼け止め', '顔用日焼け止め');
+        } else if (wantsMoisturizer) {
+          extra.push('face moisturizer', 'barrier moisturizer', 'barrier cream', 'cream');
+          if (lang === 'zh') extra.push('护肤', '保湿', '乳液', '面霜', '屏障面霜');
+          if (lang === 'es') extra.push('cuidado de la piel', 'hidratante facial', 'crema barrera');
+          if (lang === 'fr') extra.push('soin de la peau', 'hydratant visage', 'crème barrière');
+          if (lang === 'ja') extra.push('スキンケア', '保湿', '乳液', 'クリーム');
+        } else if (wantsSerum) {
+          extra.push('serum', 'treatment serum', 'face serum');
+          if (lang === 'zh') extra.push('护肤', '精华', '面部精华');
+          if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'sérum facial');
+          if (lang === 'fr') extra.push('soin de la peau', 'sérum', 'sérum visage');
+          if (lang === 'ja') extra.push('スキンケア', '美容液', 'フェイスセラム');
+        } else if (wantsToner) {
+          extra.push('toner', 'face toner', 'lotion');
+          if (lang === 'zh') extra.push('护肤', '化妆水');
+          if (lang === 'es') extra.push('cuidado de la piel', 'tónico');
+          if (lang === 'fr') extra.push('soin de la peau', 'tonique');
+          if (lang === 'ja') extra.push('スキンケア', '化粧水');
+        } else if (wantsCleanser) {
+          extra.push('cleanser', 'face wash', 'gentle cleanser');
+          if (lang === 'zh') extra.push('护肤', '洁面', '洗面奶');
+          if (lang === 'es') extra.push('cuidado de la piel', 'limpiador', 'limpiador facial');
+          if (lang === 'fr') extra.push('soin de la peau', 'nettoyant', 'nettoyant visage');
+          if (lang === 'ja') extra.push('スキンケア', '洗顔料');
+        } else {
+          extra.push('serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
+          if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
+          if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'tónico', 'hidratante');
+          if (lang === 'fr') extra.push('soin de la peau', 'sérum', 'tonique', 'hydratant');
+          if (lang === 'ja') extra.push('スキンケア', '美容液', '化粧水', '乳液');
+        }
 	      } else if (!brandQueryWithoutCategory) {
 	        extra.push('makeup', 'foundation', 'concealer', 'mascara', 'lipstick');
 	        if (wantsDateLook) extra.push('date makeup', 'longwear', 'natural glow');

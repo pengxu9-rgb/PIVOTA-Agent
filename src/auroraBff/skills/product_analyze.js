@@ -110,7 +110,7 @@ class ProductAnalyzeSkill extends BaseSkill {
       ingredientConcepts.includes('SUNSCREEN');
     if (isSPF) {
       fixes.usage = {
-        time_of_day: 'AM only',
+        time_of_day: 'am',
         frequency: 'daily',
         reapply: 'every 2 hours when outdoors',
         application_note_en: 'Apply as last skincare step before makeup. Reapply every 2h outdoors.',
@@ -125,7 +125,7 @@ class ProductAnalyzeSkill extends BaseSkill {
     );
     if (hasStrongRetinoid) {
       fixes.usage = fixes.usage || analysis.usage || {};
-      fixes.usage.time_of_day = 'PM only';
+      fixes.usage.time_of_day = 'pm';
       fixes.usage.initial_frequency = '1-2x/week, build up gradually';
       fixes.usage.initial_frequency_zh = '每周1-2次，逐步增加';
     }

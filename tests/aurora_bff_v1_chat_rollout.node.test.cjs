@@ -63,6 +63,39 @@ test('V1ChatRequestSchema accepts optional context on legacy /v1/chat bodies', (
   assert.equal(parsed.success, true);
 });
 
+test('buildSkillRequest normalizes frontend language tokens and forwards session/profile history', () => {
+  resetAuroraModules();
+  const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
+
+  const skillRequest = buildSkillRequest({
+    body: {
+      message: 'Recommend a calming mask',
+      language: 'CN',
+      session: {
+        profile: {
+          skin_type: 'dry',
+          goals: ['hydration'],
+        },
+      },
+      messages: [
+        { role: 'assistant', content: 'Welcome back.' },
+        { role: 'user', content: 'I want something calming.' },
+      ],
+    },
+    headers: {},
+  });
+
+  assert.equal(skillRequest.context.locale, 'zh-CN');
+  assert.deepEqual(skillRequest.context.profile, {
+    skin_type: 'dry',
+    goals: ['hydration'],
+  });
+  assert.deepEqual(skillRequest.params.messages, [
+    { role: 'assistant', content: 'Welcome back.' },
+    { role: 'user', content: 'I want something calming.' },
+  ]);
+});
+
 test('/v1/chat delegates v2-compatible message+context bodies when skill_router_v2 is enabled', async () => {
   await withEnv(
     {
@@ -87,6 +120,42 @@ test('/v1/chat delegates v2-compatible message+context bodies when skill_router_
       assert.ok(Array.isArray(response.body.next_actions));
       assert.equal(response.body.cards.some((card) => card && card.card_type === 'text_response'), true);
       assert.equal(response.body.cards.some((card) => Object.prototype.hasOwnProperty.call(card || {}, 'type')), false);
+    },
+  );
+});
+
+test('/v1/chat delegates current frontend freeform payload shape when skill_router_v2 is enabled', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set({
+          ...buildHeaders(),
+          'X-Lang': 'CN',
+        })
+        .send({
+          session: {
+            state: 'S2_DIAGNOSIS',
+            profile: { skin_type: 'dry' },
+          },
+          message: 'Recommend a facial mask that suits me.',
+          language: 'CN',
+          client_state: 'S2_DIAGNOSIS',
+        })
+        .expect(200);
+
+      assert.ok(Array.isArray(response.body.cards));
+      assert.ok(Array.isArray(response.body.next_actions));
+      assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'card_type')), true);
+      assert.equal(Object.prototype.hasOwnProperty.call(response.body, 'assistant_message'), false);
     },
   );
 });

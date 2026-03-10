@@ -2742,6 +2742,11 @@ function normalizeDupeCompare(raw) {
     anchor_resolution_status: 'failed',
     anchor_resolution_reason: reason,
   });
+  const unwrapProductLike = (value) => {
+    const obj = asPlainObject(value);
+    if (!obj) return null;
+    return asPlainObject(obj.product) || asPlainObject(obj.sku) || obj;
+  };
 
   const o = asPlainObject(raw);
   if (!o) {
@@ -2761,9 +2766,9 @@ function normalizeDupeCompare(raw) {
 
   const field_missing = [];
 
-  const original = asPlainObject(o.original || o.original_product || o.originalProduct)
+  const original = unwrapProductLike(o.original || o.original_product || o.originalProduct)
     || _stubObj('upstream_missing');
-  const dupe = asPlainObject(o.dupe || o.dupe_product || o.dupeProduct)
+  const dupe = unwrapProductLike(o.dupe || o.dupe_product || o.dupeProduct)
     || _stubObj('upstream_missing');
 
   const similarityRaw = asNumberOrNull(o.similarity ?? o.similarity_score ?? o.similarityScore);

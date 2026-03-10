@@ -36,7 +36,7 @@ class TrackerCheckinInsightsSkill extends BaseSkill {
         checkin_logs: logs,
         profile: context.profile,
         routine: context.current_routine,
-        has_photos: hasPhotos,
+        has_photo: hasPhotos,
         locale: context.locale || 'en',
       },
       schema: 'CheckinInsightsOutput',
@@ -81,34 +81,46 @@ class TrackerCheckinInsightsSkill extends BaseSkill {
 
     const nextActions = [];
 
-    if (insights.suggested_action === 'optimize') {
+    if (insights.suggested_action === 'escalate') {
+      sections.push({
+        type: 'safety_escalation',
+        message_en: 'Your recent check-ins suggest symptoms that may benefit from professional evaluation. Please consider pausing strong actives and consulting a dermatologist or medical professional.',
+        message_zh: '你最近的打卡记录显示可能需要专业评估的症状。建议暂停强功效成分，并咨询皮肤科医生或医疗专业人士。',
+      });
+      nextActions.push({
+        action_type: 'show_chip',
+        label: { en: 'Pause strong actives', zh: '暂停强功效成分' },
+      });
+    } else {
+      if (insights.suggested_action === 'optimize') {
+        nextActions.push({
+          action_type: 'navigate_skill',
+          target_skill_id: 'routine.audit_optimize',
+          label: { en: 'Optimize my routine', zh: '优化我的护肤流程' },
+        });
+      }
+
+      if (insights.suggested_action === 'dupe') {
+        nextActions.push({
+          action_type: 'navigate_skill',
+          target_skill_id: 'dupe.suggest',
+          label: { en: 'Find alternatives', zh: '寻找替代品' },
+        });
+      }
+
+      if (!hasPhotos) {
+        nextActions.push({
+          action_type: 'trigger_photo',
+          label: { en: 'Add a progress photo', zh: '添加进展照片' },
+        });
+      }
+
       nextActions.push({
         action_type: 'navigate_skill',
-        target_skill_id: 'routine.audit_optimize',
-        label: { en: 'Optimize my routine', zh: '优化我的护肤流程' },
+        target_skill_id: 'tracker.checkin_log',
+        label: { en: 'Log another check-in', zh: '继续打卡' },
       });
     }
-
-    if (insights.suggested_action === 'dupe') {
-      nextActions.push({
-        action_type: 'navigate_skill',
-        target_skill_id: 'dupe.suggest',
-        label: { en: 'Find alternatives', zh: '寻找替代品' },
-      });
-    }
-
-    if (!hasPhotos) {
-      nextActions.push({
-        action_type: 'trigger_photo',
-        label: { en: 'Add a progress photo', zh: '添加进展照片' },
-      });
-    }
-
-    nextActions.push({
-      action_type: 'navigate_skill',
-      target_skill_id: 'tracker.checkin_log',
-      label: { en: 'Log another check-in', zh: '继续打卡' },
-    });
 
     return {
       cards,
