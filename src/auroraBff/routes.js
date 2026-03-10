@@ -26016,6 +26016,14 @@ function decodeUrlTokenSafe(value) {
   }
 }
 
+function extractFirstHttpUrlFromText(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const match = text.match(/https?:\/\/[^\s)>\]}]+/i);
+  if (!match || !match[0]) return '';
+  return String(match[0]).replace(/[),.;!?]+$/g, '').trim();
+}
+
 function titleCaseCompactToken(value) {
   const token = String(value || '').trim();
   if (!token) return '';
@@ -26068,11 +26076,39 @@ function inferBrandFromHostname(hostname) {
     .trim();
 }
 
+function inferHeuristicProductMetaFromUrl(parsedUrl) {
+  const pathText = decodeUrlTokenSafe(parsedUrl?.pathname || '')
+    .replace(/[-_/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (!pathText) return { category: 'product' };
+
+  const meta = { category: 'product' };
+  const hasSkincareSignal = /(skincare|cleanser|serum|essence|moistur|cream|toner|mask|sunscreen|spf|lotion|barrier|retinol|niacinamide|face)/.test(pathText);
+  if (hasSkincareSignal) meta.category = 'skincare';
+
+  if (/(moistur|cream|lotion|gel)/.test(pathText) && /(spf|sunscreen)/.test(pathText)) {
+    meta.product_type = 'spf_moisturizer';
+  } else if (/(spf|sunscreen)/.test(pathText)) {
+    meta.product_type = 'spf';
+  } else if (/(cleanser|face wash|facewash|foam)/.test(pathText)) {
+    meta.product_type = 'cleanser';
+  } else if (/(serum|essence|ampoule|booster)/.test(pathText)) {
+    meta.product_type = 'serum';
+  } else if (/(toner|softener)/.test(pathText)) {
+    meta.product_type = 'toner';
+  } else if (/(moistur|cream|lotion|gel|barrier)/.test(pathText)) {
+    meta.product_type = 'moisturizer';
+  }
+
+  return meta;
+}
+
 function buildHeuristicProductFromInput({ inputText, inputUrl } = {}) {
   const explicitUrl = String(inputUrl || '').trim();
   const text = String(inputText || '').trim();
-  const fallbackUrlMatch = text.match(/https?:\/\/[^\s)>\]}]+/i);
-  const rawUrl = explicitUrl || (fallbackUrlMatch && fallbackUrlMatch[0] ? String(fallbackUrlMatch[0]).trim() : '');
+  const rawUrl = explicitUrl || extractFirstHttpUrlFromText(text);
   if (!rawUrl) return null;
   const sanitizedRawUrl = rawUrl.replace(/[),.;!?]+$/g, '');
   let parsed = null;
@@ -26102,12 +26138,14 @@ function buildHeuristicProductFromInput({ inputText, inputUrl } = {}) {
     .trim();
   const displayName = [hostBrand, nameFromPath].filter(Boolean).join(' ').trim() || nameFromPath || hostBrand;
   if (!displayName) return null;
+  const inferredMeta = inferHeuristicProductMetaFromUrl(parsed);
   return {
     ...(hostBrand ? { brand: hostBrand } : {}),
     ...(nameFromPath ? { name: nameFromPath } : {}),
     display_name: displayName,
     url: parsed.toString(),
-    category: 'product',
+    category: inferredMeta.category,
+    ...(inferredMeta.product_type ? { product_type: inferredMeta.product_type } : {}),
   };
 }
 
@@ -44395,6 +44433,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         trigger_reason: 'primary',
       };
 
+      const embeddedInputUrl = extractFirstHttpUrlFromText(parsed.data.text || '');
       const input = parsed.data.url || parsed.data.text;
       const query = `Task: Parse the user's product input into a normalized product entity.\n` +
         `Return ONLY a JSON object with keys: product (object), confidence (0..1), missing_info (string[]).\n` +
@@ -44436,8 +44475,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       const norm = normalizeProductParse(mapped);
       let payload = norm.payload;
       let fieldMissing = Array.isArray(norm.field_missing) ? norm.field_missing.slice() : [];
+      const upstreamParseCandidate =
+        payload && payload.product && typeof payload.product === 'object' && !Array.isArray(payload.product)
+          ? payload.product
+          : null;
       const parseInputText = String(parsed.data.text || input || '').trim();
-      const parseInputUrl = String(parsed.data.url || '').trim();
+      const parseInputUrl = String(parsed.data.url || embeddedInputUrl || '').trim();
       let parseAnchorTrust = {
         trusted_anchor: null,
         display_anchor: null,
@@ -44495,7 +44538,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       };
       applyParseAnchorTrust({ source: 'upstream_parse' });
-      if (!payload.product && input) {
+      const parseHasExplicitNonSkincareBlock =
+        Array.isArray(parseAnchorTrust.reason_codes) &&
+        parseAnchorTrust.reason_codes.includes('anchor_soft_blocked_non_skincare');
+      if (!payload.product && input && !parseHasExplicitNonSkincareBlock && !upstreamParseCandidate) {
         const heuristicProduct = buildHeuristicProductFromInput({
           inputText: parsed.data.text || input,
           inputUrl: parsed.data.url || null,
@@ -44521,7 +44567,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // URL-first semantics: if we already have a display anchor from URL but trust is soft-blocked,
       // avoid forcing catalog fallback to manufacture an ID (prevents category drift).
-      const parseInputIsUrl = /^https?:\/\//i.test(parseInputUrl);
+      const parseInputIsUrl = Boolean(parseInputUrl);
       const parseHasSoftBlockedAnchor =
         String(parseAnchorTrust.trust_level || '').trim().toLowerCase() === 'soft_blocked' &&
         Array.isArray(parseAnchorTrust.reason_codes) &&

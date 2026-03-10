@@ -2169,6 +2169,54 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.recovery_path).toContain('heuristic_url');
   });
 
+  test('/v1/product/parse treats text-only product URLs as URL input and skips catalog drift', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('http://catalog.test')
+      .persist()
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: false,
+        reason: 'no_candidates',
+      });
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'dog_leash_1',
+            sku_id: 'dog_leash_1',
+            brand: 'Pet Daily',
+            name: 'Rope Dog Leash',
+            display_name: 'Rope Dog Leash — Comfortable Grip, Strong Clip for Daily Walks',
+            category: 'pet accessories',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_text_url_parse_1')
+      .send({ text: 'https://www.labseries.com/product/32020/123634/skincare/moisturizerspf/daily-rescue-energizing-lightweight-lotion-moisturizer/daily-rescue' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.product).toBeTruthy();
+    expect(card.payload.product.url).toContain('labseries.com');
+    expect(card.payload.product.display_name).toContain('Labseries');
+    expect(card.payload.parse_source).toBe('heuristic_url');
+    expect(card.payload.missing_info).toContain('heuristic_url_parse');
+    expect(card.payload.missing_info).not.toContain('catalog_fallback_used');
+    expect(card.payload.product.display_name).not.toContain('Dog Leash');
+  });
+
   test('/v1/product/parse clears stale ambiguous trust code after catalog fallback upgrades anchor trust', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
@@ -3647,7 +3695,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
 
     nock('http://aurora.test')
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, {
         schema_version: 'aurora.chat.v1',
         intent: 'product_parse',
