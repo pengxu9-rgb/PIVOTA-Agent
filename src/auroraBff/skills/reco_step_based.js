@@ -1,4 +1,5 @@
 const BaseSkill = require('./BaseSkill');
+const { runRecoStepBasedCatalogBridge, __internal: recoBridgeInternal } = require('../usecases/recoStepBasedCatalogBridge');
 
 class RecoStepBasedSkill extends BaseSkill {
   constructor() {
@@ -41,58 +42,41 @@ class RecoStepBasedSkill extends BaseSkill {
     return { met: true, failures: [] };
   }
 
-  async execute(request, llmGateway) {
-    const llmResult = await llmGateway.call({
-      templateId: 'reco_step_based',
-      taskMode: 'recommendation',
-      params: {
-        profile: request.context?.profile || {},
-        routine: request.context?.current_routine || null,
-        inventory: request.context?.inventory || [],
-        target_step: request.params?.target_step || null,
-        target_ingredient: request.params?.target_ingredient || null,
-        concerns: request.params?._extracted_concerns || [],
-        safety_flags: request.context?.safety_flags || [],
-        locale: request.context?.locale || 'en',
-      },
-      schema: 'StepRecommendationOutput',
-    });
-
-    const recommendations = llmResult.parsed?.step_recommendations || [];
-    const sections = recommendations
-      .filter((recommendation) => Array.isArray(recommendation.candidates) && recommendation.candidates.length > 0)
-      .map((recommendation) => ({
-        type: 'step_recommendation',
-        step_id: recommendation.step_id,
-        step_name: recommendation.step_name,
-        candidates: recommendation.candidates.map((candidate) => ({
-          product_id: candidate.product_id,
-          brand: candidate.brand,
-          name: candidate.name,
-          why: candidate.why,
-          suitability_score: candidate.suitability_score,
-          price_tier: candidate.price_tier,
-        })),
-      }));
-
-    if (sections.length === 0) {
-      sections.push({
-        type: 'empty_state_message',
-        message_en: "I couldn't find specific recommendations right now. Share a bit more about your concern or target ingredient.",
-        message_zh: '暂时没有找到具体推荐。可以再补充一点你的皮肤问题或目标成分。',
-      });
+  async execute(request, _llmGateway) {
+    let recoResult;
+    try {
+      recoResult = await runRecoStepBasedCatalogBridge({ request, logger: console });
+    } catch (err) {
+      console.error('[reco.step_based] catalog bridge failed:', err?.message || err);
+      recoResult = {
+        norm: {
+          payload: {
+            recommendations: [],
+            recommendation_meta: {
+              source_mode: 'bridge_error',
+              telemetry_failure_reason: String(err?.message || 'unknown').slice(0, 200),
+            },
+          },
+        },
+      };
     }
+    const payload = recoResult?.norm?.payload && typeof recoResult.norm.payload === 'object'
+      ? recoResult.norm.payload
+      : {};
+    const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+    const targetStep = String(request.params?.target_step || '').trim();
+    const targetIngredient = String(request.params?.target_ingredient || '').trim();
 
     const nextActions = [];
-    if (request.params?.target_ingredient) {
+    if (targetIngredient) {
       nextActions.push({
         action_type: 'navigate_skill',
         target_skill_id: 'ingredient.report',
         label: {
-          en: `Learn more about ${request.params.target_ingredient}`,
-          zh: `了解更多关于${request.params.target_ingredient}`,
+          en: `Learn more about ${targetIngredient}`,
+          zh: `了解更多关于${targetIngredient}`,
         },
-        params: { ingredient_query: request.params.target_ingredient },
+        params: { ingredient_query: targetIngredient },
       });
     }
     nextActions.push({
@@ -101,11 +85,61 @@ class RecoStepBasedSkill extends BaseSkill {
       label: { en: 'Analyze a specific product', zh: '分析具体产品' },
     });
 
+    if (recommendations.length > 0) {
+      return {
+        cards: [
+          {
+            card_type: 'recommendations',
+            metadata: {
+              ...payload,
+              recommendations,
+              source_mode: payload?.recommendation_meta?.source_mode || null,
+              query_count: Number(payload?.recommendation_meta?.catalog_query_count || 0),
+              target_step: targetStep || null,
+              target_ingredient: targetIngredient || null,
+            },
+          },
+        ],
+        ops: {
+          thread_ops: [],
+          profile_patch: {},
+          routine_patch: {},
+          experiment_events: [
+            {
+              event: 'reco_shown',
+              step_count: recommendations.length,
+              has_routine: Boolean(request.context?.current_routine),
+              source_mode: payload?.recommendation_meta?.source_mode || null,
+              grounding_status: payload?.grounding_status || null,
+            },
+          ],
+        },
+        next_actions: nextActions,
+        _taskMode: 'recommendation',
+        _llmCalls: payload?.recommendation_meta?.source_mode === 'rules_only' ? 0 : 1,
+      };
+    }
+
+    const noResultMessage = this._buildNoResultMessage({
+      language: recoBridgeInternal.normalizeRecoLang(request.context?.locale),
+      targetStep,
+      targetIngredient,
+      sourceMode: payload?.recommendation_meta?.source_mode || '',
+      catalogSkipReason: payload?.catalog_skip_reason || payload?.recommendation_meta?.catalog_skip_reason || '',
+      telemetryReason: payload?.telemetry_reason || payload?.recommendation_meta?.telemetry_failure_reason || '',
+    });
+
     return {
       cards: [
         {
-          card_type: 'effect_review',
-          sections,
+          card_type: 'text_response',
+          sections: [
+            {
+              type: 'text_answer',
+              text_en: noResultMessage.en,
+              text_zh: noResultMessage.zh,
+            },
+          ],
         },
       ],
       ops: {
@@ -114,16 +148,17 @@ class RecoStepBasedSkill extends BaseSkill {
         routine_patch: {},
         experiment_events: [
           {
-            event: 'reco_shown',
-            step_count: sections.length,
+            event: 'reco_empty',
+            step_count: 0,
             has_routine: Boolean(request.context?.current_routine),
+            source_mode: payload?.recommendation_meta?.source_mode || null,
+            grounding_status: payload?.grounding_status || null,
           },
         ],
       },
       next_actions: nextActions,
-      _promptHash: llmResult.promptHash,
       _taskMode: 'recommendation',
-      _llmCalls: 1,
+      _llmCalls: payload?.recommendation_meta?.source_mode === 'rules_only' ? 0 : 1,
     };
   }
 
@@ -157,12 +192,57 @@ class RecoStepBasedSkill extends BaseSkill {
             }
           }
         }
+        for (const reco of card.metadata?.recommendations || []) {
+          for (const concept of reco.concepts || []) {
+            if (blockedConcepts.has(concept)) {
+              issues.push({
+                code: 'BLOCKED_CONCEPT_IN_RECO',
+                message: `Recommended product contains blocked concept: ${concept}`,
+                severity: 'error',
+              });
+            }
+          }
+        }
       }
     }
 
     return {
       quality_ok: issues.filter((issue) => issue.severity === 'error').length === 0,
       issues,
+    };
+  }
+
+  _buildNoResultMessage({ language, targetStep, targetIngredient, sourceMode, catalogSkipReason, telemetryReason }) {
+    const isCn = String(language || '').toUpperCase() === 'CN';
+    const stepLabel = recoBridgeInternal.localizeStepLabel(targetStep, language);
+    const transient = String(telemetryReason || '').trim().toLowerCase() === 'timeout_degraded'
+      || String(sourceMode || '').trim().toLowerCase() === 'catalog_transient_fallback'
+      || String(catalogSkipReason || '').trim().toLowerCase() === 'fail_fast_open';
+
+    if (transient) {
+      return {
+        en: `Catalog grounding is unstable right now, so I couldn't confirm a strong ${stepLabel || 'skincare'} match. Try again shortly or give me a target ingredient.`,
+        zh: `商品库当前有些不稳定，我暂时没法确认合适的${stepLabel || '护肤'}候选。你可以稍后重试，或直接告诉我目标成分。`,
+      };
+    }
+
+    if (targetIngredient) {
+      return {
+        en: `I couldn't find a strong catalog-grounded match for products with ${targetIngredient}. Share your main concern, budget, or a product example and I can narrow it down.`,
+        zh: `我暂时没找到足够匹配、且有商品库锚定的 ${targetIngredient} 产品。补充你的主要诉求、预算或一个参考产品，我可以继续收窄。`,
+      };
+    }
+
+    if (targetStep) {
+      return {
+        en: `I couldn't find a strong catalog-grounded ${stepLabel} match yet. Share your main concern or a target ingredient and I can narrow it down.`,
+        zh: `我暂时没找到足够匹配、且有商品库锚定的${stepLabel}候选。告诉我你的主要问题或目标成分，我可以继续收窄。`,
+      };
+    }
+
+    return {
+      en: "I couldn't find a strong catalog-grounded match yet. Share your main concern, target ingredient, or preferred product type and I can narrow it down.",
+      zh: '我暂时没找到足够匹配、且有商品库锚定的候选。告诉我你的主要问题、目标成分或想找的产品类型，我可以继续收窄。',
     };
   }
 }

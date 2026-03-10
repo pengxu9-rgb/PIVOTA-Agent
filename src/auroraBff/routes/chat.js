@@ -89,13 +89,25 @@ function normalizeProfileShape(value) {
   const budgetTier = pickFirstTrimmed(value.budget_tier, value.budgetTier);
   const pregnancyStatus = pickFirstTrimmed(value.pregnancy_status, value.pregnancyStatus);
 
-  if (skinType) normalized.skin_type = skinType;
+  if (skinType) {
+    normalized.skin_type = skinType;
+    normalized.skinType = normalized.skinType || skinType;
+  }
   if (concerns.length > 0) normalized.concerns = concerns;
   if (goals.length > 0) normalized.goals = goals;
   if (sensitivity) normalized.sensitivity = sensitivity;
-  if (barrierStatus) normalized.barrier_status = barrierStatus;
-  if (budgetTier) normalized.budget_tier = budgetTier;
-  if (pregnancyStatus) normalized.pregnancy_status = pregnancyStatus;
+  if (barrierStatus) {
+    normalized.barrier_status = barrierStatus;
+    normalized.barrierStatus = normalized.barrierStatus || barrierStatus;
+  }
+  if (budgetTier) {
+    normalized.budget_tier = budgetTier;
+    normalized.budgetTier = normalized.budgetTier || budgetTier;
+  }
+  if (pregnancyStatus) {
+    normalized.pregnancy_status = pregnancyStatus;
+    normalized.pregnancyStatus = normalized.pregnancyStatus || pregnancyStatus;
+  }
 
   return normalized;
 }

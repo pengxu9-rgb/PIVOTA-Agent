@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { getGeminiGlobalGate } = require('../../lib/geminiGlobalGate');
+const { extractRecoTargetStepFromText } = require('../recoTargetStep');
 
 const GEMINI_MODELS = Object.freeze({
   structured: 'gemini-2.0-flash',
@@ -778,6 +779,7 @@ function buildIntentClassifierStructuredPrompt() {
     '    "ingredients": string[],',
     '    "products": string[],',
     '    "concerns": string[],',
+    '    "target_step": string|null,',
     '    "user_question": string',
     '  }',
     '}',
@@ -793,8 +795,9 @@ function buildIntentClassifierStructuredPrompt() {
     '- entities.ingredients: ingredient names only, max 3.',
     '- entities.products: product names or product anchors only, max 3.',
     '- entities.concerns: skincare concerns only, max 3.',
+    '- entities.target_step: one stable skincare product-step label when explicit, such as cleanser, toner, essence, serum, moisturizer, sunscreen, treatment, mask, or oil; otherwise null.',
     '- entities.user_question: echo the original user message in a clean form.',
-    '- Use empty arrays when no ingredient, product, or concern is clearly present.',
+    '- Use empty arrays when no ingredient, product, or concern is clearly present, and use null when no target_step is explicit.',
     '[/FIELD_SEMANTICS]',
     '',
     '[HARD_RULES]',
@@ -802,9 +805,10 @@ function buildIntentClassifierStructuredPrompt() {
     '2. Ingredient-query rule: use ingredient_query for open questions like "what ingredient is best for acne?" and ingredient_report for direct ingredient lookups like "tell me about niacinamide".',
     '3. Product-analysis rule: use product_analysis only when the user is asking to analyze or evaluate a specific product.',
     '4. Recommendation rule: use recommend_products only when the user is clearly asking for products, not just education.',
-    '5. Entity rule: do not invent entities that are not explicit in the user message.',
-    '6. Confidence rule: keep confidence below 0.5 when routing is weak enough that free-form fallback is safer.',
-    '7. Safety-escalation rule: use safety_escalation when the message describes acute symptoms, severe irritation, infection-like complaints, rapid worsening, or other medical-grade concerns.',
+    '5. Step-entity rule: set entities.target_step only when the product type is explicit in the user message, such as mask, serum, sunscreen, cleanser, moisturizer, or their Chinese equivalents.',
+    '6. Entity rule: do not invent entities that are not explicit in the user message.',
+    '7. Confidence rule: keep confidence below 0.5 when routing is weak enough that free-form fallback is safer.',
+    '8. Safety-escalation rule: use safety_escalation when the message describes acute symptoms, severe irritation, infection-like complaints, rapid worsening, or other medical-grade concerns.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
@@ -1884,6 +1888,8 @@ class LlmGateway {
     const lower = userMessage.toLowerCase();
     const ingredientMentions = this._extractIngredientMentions(lower);
     const concern = this._inferConcern(lower);
+    const concernEntities = concern && concern !== 'general skin concerns' ? [concern] : [];
+    const targetStep = extractRecoTargetStepFromText(userMessage);
     let intent = 'general_chat';
 
     if (lower.includes('dupe') || lower.includes('alternative')) {
@@ -1908,7 +1914,8 @@ class LlmGateway {
       entities: {
         ingredients: ingredientMentions,
         products: lower.includes('spf') ? ['SPF product'] : [],
-        concerns: concern ? [concern] : [],
+        concerns: concernEntities,
+        target_step: targetStep,
         user_question: userMessage,
       },
     };
@@ -2076,7 +2083,7 @@ class LlmGateway {
       },
       {
         id: 'intent_classifier',
-        version: '1.2.0',
+        version: '1.3.0',
         taskMode: 'chat',
         text: buildIntentClassifierStructuredPrompt(),
       },
@@ -2556,6 +2563,7 @@ class LlmGateway {
               ingredients: { type: 'array', items: { type: 'string' } },
               products: { type: 'array', items: { type: 'string' } },
               concerns: { type: 'array', items: { type: 'string' } },
+              target_step: { type: 'string', nullable: true, enum: [...ENUMS.STEP_LABELS, null] },
               user_question: { type: 'string' },
             },
           },

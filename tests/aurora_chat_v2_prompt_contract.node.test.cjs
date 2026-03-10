@@ -70,8 +70,8 @@ test('intent_classifier prompt version is aligned between runtime registry and m
   const runtimeTemplate = gateway._promptRegistry.get('intent_classifier');
   const manifestTemplate = readPromptManifest().templates.find((entry) => entry.template_id === 'intent_classifier');
 
-  assert.equal(runtimeTemplate?.version, '1.2.0');
-  assert.equal(manifestTemplate?.version, '1.2.0');
+  assert.equal(runtimeTemplate?.version, '1.3.0');
+  assert.equal(manifestTemplate?.version, '1.3.0');
 });
 
 test('ingredient_query_answer prompt version is aligned between runtime registry and manifest', () => {
@@ -222,13 +222,28 @@ test('intent_classifier prompt encodes conservative routing and explicit label r
   assert.match(text, /single valid JSON object only/i);
   assert.match(text, /"intent": string/i);
   assert.match(text, /"confidence": number/i);
+  assert.match(text, /"target_step": string\|null/i);
   assert.match(text, /Use exactly one of these labels/i);
   assert.match(text, /general_chat/i);
   assert.match(text, /ingredient_query/i);
   assert.match(text, /Conservative-routing rule/i);
+  assert.match(text, /Step-entity rule/i);
   assert.match(text, /keep confidence below 0\.5/i);
   assert.match(text, /do not invent entities/i);
   assert.match(text, /user_message=\{\{user_message\}\}/i);
+});
+
+test('intent_classifier stub extracts target_step for explicit product-type asks', async () => {
+  const gateway = new LlmGateway({ stubResponses: true });
+  const result = await gateway.call({
+    templateId: 'intent_classifier',
+    taskMode: 'chat',
+    params: { user_message: 'Recommend a facial mask that suits me.' },
+    schema: 'IntentClassifierOutput',
+  });
+
+  assert.equal(result.parsed?.intent, 'recommend_products');
+  assert.equal(result.parsed?.entities?.target_step, 'mask');
 });
 
 test('ingredient_query_answer prompt encodes answer-first and ingredient-education rules', () => {
