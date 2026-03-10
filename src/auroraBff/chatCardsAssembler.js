@@ -418,6 +418,19 @@ function normalizeCards({ envelope, requestId, language, assistantText = '' }) {
   }
 
   if (compact.length === 0) {
+    const assistantText = asString(envelope && envelope.assistant_message && envelope.assistant_message.content);
+    const suggestedChips = asArray(envelope && envelope.suggested_chips);
+    const pendingClarification = isPlainObject(
+      envelope &&
+      envelope.session_patch &&
+      envelope.session_patch.pending_clarification,
+    )
+      ? envelope.session_patch.pending_clarification
+      : null;
+    const hasActionableFollowUp = suggestedChips.length > 0 || Boolean(pendingClarification);
+    if (assistantText && hasActionableFollowUp) {
+      return [];
+    }
     return [
       {
         id: `nudge_${requestId}`,

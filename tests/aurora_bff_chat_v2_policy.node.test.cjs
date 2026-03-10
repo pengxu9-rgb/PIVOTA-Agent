@@ -48,6 +48,15 @@ test('intent canonical maps ingredient diagnosis opt-in action to diagnosis_star
   assert.equal(out.source, 'action_id');
 });
 
+test('intent canonical maps diag.skip_photo_analyze action to diagnosis_start', () => {
+  const out = inferCanonicalIntent({
+    message: '',
+    actionId: 'diag.skip_photo_analyze',
+  });
+  assert.equal(out.intent, INTENT_ENUM.DIAGNOSIS_START);
+  assert.equal(out.source, 'action_id');
+});
+
 test('intent canonical maps "Send a link" to evaluate intent (anchor collect)', () => {
   const out = inferCanonicalIntent({
     message: 'Send a link',

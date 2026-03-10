@@ -1916,6 +1916,13 @@ const RECO_ALTERNATIVES_CACHE_TTL_MS = (() => {
   return Math.max(60000, Math.min(24 * 60 * 60 * 1000, v));
 })();
 
+const RECO_INLINE_ALTERNATIVES_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_INLINE_ALTERNATIVES_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
 const RECO_ALTERNATIVES_CACHE_MAX_KEYS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_CACHE_MAX_KEYS || 256);
   const v = Number.isFinite(n) ? Math.trunc(n) : 256;
@@ -22846,8 +22853,8 @@ function extractProfilePatchFromSession(session) {
   }
 
   // Mixed types
-  if (rawProfile.currentRoutine != null) patch.currentRoutine = rawProfile.currentRoutine;
-  if (rawProfile.current_routine != null) patch.currentRoutine = rawProfile.current_routine;
+  if (rawProfile.currentRoutine != null) patch.currentRoutine = normalizeRoutineInputWithPmShortcut(rawProfile.currentRoutine);
+  if (rawProfile.current_routine != null) patch.currentRoutine = normalizeRoutineInputWithPmShortcut(rawProfile.current_routine);
   if (rawProfile.itinerary != null) patch.itinerary = rawProfile.itinerary;
   if (rawProfile.travel_plan && typeof rawProfile.travel_plan === 'object' && !Array.isArray(rawProfile.travel_plan)) {
     patch.travel_plan = rawProfile.travel_plan;
@@ -25897,12 +25904,143 @@ function pickFirstString(...values) {
   return '';
 }
 
+function parseRoutineSameAsAmFlag(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return false;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(token)) return true;
+  return [
+    'same_as_am',
+    'same as am',
+    'same-as-am',
+    'copy_am',
+    'copy am',
+    'sameam',
+    '同am',
+    '同 am',
+    '和am一样',
+    '跟am一样',
+    '同早上',
+  ].includes(token);
+}
+
+function hasFilledRoutineRows(rows) {
+  return rows.some((row) => {
+    if (!row) return false;
+    if (typeof row === 'string') return Boolean(String(row).trim());
+    if (!isPlainObject(row)) return false;
+    return Boolean(
+      String(row.product || '').trim() ||
+      String(row.name || '').trim() ||
+      String(row.step || '').trim() ||
+      String(row.ingredient || '').trim()
+    );
+  });
+}
+
+function cloneRoutineRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => {
+    if (Array.isArray(row)) return row.slice();
+    if (isPlainObject(row)) return { ...row };
+    return row;
+  });
+}
+
+function applyPmSameAsAmShortcut(routine) {
+  if (!isPlainObject(routine)) return routine;
+
+  const amRows = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pmRows = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  const pmNode = routine.pm;
+  const pmNodeText = typeof pmNode === 'string' ? pmNode : '';
+
+  const sameAsAmRequested =
+    parseRoutineSameAsAmFlag(routine.pm_same_as_am) ||
+    parseRoutineSameAsAmFlag(routine.pmSameAsAm) ||
+    parseRoutineSameAsAmFlag(routine.same_as_am) ||
+    parseRoutineSameAsAmFlag(routine.sameAsAm) ||
+    parseRoutineSameAsAmFlag(routine.pm_copy_from_am) ||
+    parseRoutineSameAsAmFlag(routine.pmCopyFromAm) ||
+    parseRoutineSameAsAmFlag(pmNodeText) ||
+    (isPlainObject(pmNode) && (
+      parseRoutineSameAsAmFlag(pmNode.same_as_am) ||
+      parseRoutineSameAsAmFlag(pmNode.sameAsAm) ||
+      parseRoutineSameAsAmFlag(pmNode.pm_same_as_am) ||
+      parseRoutineSameAsAmFlag(pmNode.pmSameAsAm)
+    ));
+
+  if (!sameAsAmRequested) return routine;
+  if (!hasFilledRoutineRows(amRows)) return routine;
+  if (hasFilledRoutineRows(pmRows)) return routine;
+
+  const copied = cloneRoutineRows(amRows);
+  return {
+    ...routine,
+    pm: copied,
+    pm_steps: cloneRoutineRows(amRows),
+  };
+}
+
 function tryParseRoutineObject(value) {
-  return normalizeRoutineStateValue(value).current_routine_struct;
+  if (!value) return null;
+  if (isPlainObject(value)) {
+    const rawResolved = applyPmSameAsAmShortcut(value);
+    const normalized = normalizeRoutineStateValue(rawResolved);
+    if (normalized && isPlainObject(normalized.current_routine_struct)) {
+      const structured = normalized.current_routine_struct;
+      return Array.isArray(rawResolved.pm_steps) && !Array.isArray(structured.pm_steps)
+        ? { ...structured, pm_steps: cloneRoutineRows(rawResolved.pm_steps) }
+        : structured;
+    }
+    return rawResolved;
+  }
+  if (typeof value !== 'string') {
+    const normalized = normalizeRoutineStateValue(value);
+    return normalized && isPlainObject(normalized.current_routine_struct)
+      ? normalized.current_routine_struct
+      : null;
+  }
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (isPlainObject(parsed)) {
+      const rawResolved = applyPmSameAsAmShortcut(parsed);
+      const normalized = normalizeRoutineStateValue(rawResolved);
+      if (normalized && isPlainObject(normalized.current_routine_struct)) {
+        const structured = normalized.current_routine_struct;
+        return Array.isArray(rawResolved.pm_steps) && !Array.isArray(structured.pm_steps)
+          ? { ...structured, pm_steps: cloneRoutineRows(rawResolved.pm_steps) }
+          : structured;
+      }
+      return rawResolved;
+    }
+    return null;
+  } catch {
+    const normalized = normalizeRoutineStateValue(value);
+    return normalized && isPlainObject(normalized.current_routine_struct)
+      ? normalized.current_routine_struct
+      : null;
+  }
+}
+
+function normalizeRoutineInputWithPmShortcut(value) {
+  if (value == null) return value;
+  const parsed = tryParseRoutineObject(value);
+  return parsed || value;
 }
 
 function hasRoutineData(profile) {
-  return normalizeRoutineStateFromProfile(profile).has_current_routine;
+  const profileState = normalizeRoutineStateFromProfile(profile);
+  if (profileState.has_current_routine) return true;
+  const p = isPlainObject(profile) ? profile : {};
+  const routine = tryParseRoutineObject(p.currentRoutine) || tryParseRoutineObject(p.current_routine);
+  if (!routine) return false;
+  const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  return hasFilledRoutineRows(am) || hasFilledRoutineRows(pm);
 }
 
 function deriveRoutineMissingFields(profile) {
@@ -25910,7 +26048,18 @@ function deriveRoutineMissingFields(profile) {
   if (Array.isArray(profileState.missing_routine_fields) && profileState.missing_routine_fields.length) {
     return profileState.missing_routine_fields;
   }
-  return buildMissingRoutineFields(profileState.current_routine_struct);
+  if (profileState.current_routine_struct) {
+    return buildMissingRoutineFields(profileState.current_routine_struct);
+  }
+  const p = isPlainObject(profile) ? profile : {};
+  const routine = tryParseRoutineObject(p.currentRoutine) || tryParseRoutineObject(p.current_routine);
+  if (!routine) return ['currentRoutine.am', 'currentRoutine.pm'];
+  const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  const missing = [];
+  if (!hasFilledRoutineRows(am)) missing.push('currentRoutine.am');
+  if (!hasFilledRoutineRows(pm)) missing.push('currentRoutine.pm');
+  return missing;
 }
 
 function normalizeRoutineIntakeSlot(rawSlot) {
@@ -30021,6 +30170,7 @@ async function applyRecommendationOutputGuardrailsForRoute({
       recommendations: Array.isArray(payload.recommendations) ? payload.recommendations : [],
       logger,
       lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
+      flow: 'product_intel_guardrail',
     });
     cardsWithPdpOpen.push({
       ...card,
@@ -48018,7 +48168,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         const previousRoutine = previousRoutineState.current_routine_struct;
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
         const routineFromRequest =
-          parsed.data.currentRoutine !== undefined ? parsed.data.currentRoutine : parsed.data.current_routine;
+          parsed.data.currentRoutine !== undefined
+            ? normalizeRoutineInputWithPmShortcut(parsed.data.currentRoutine)
+            : parsed.data.current_routine !== undefined
+              ? normalizeRoutineInputWithPmShortcut(parsed.data.current_routine)
+              : undefined;
         const requestedRoutineState =
           routineFromRequest !== undefined ? normalizeRoutineStateValue(routineFromRequest) : null;
         const routineDerivedProfilePatch = extractProfilePatchFromRoutinePayload(routineFromRequest);
@@ -55648,8 +55802,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(
               ctx.lang === 'CN'
-                ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
-                : 'Got it. I generated a simple AM/PM routine (see the card below).',
+                ? rawBudget
+                  ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
+                  : '预算是可选项；我先生成了一个简洁 AM/PM routine（见下方卡片）。'
+                : rawBudget
+                  ? 'Got it. I generated a simple AM/PM routine (see the card below).'
+                  : 'Budget is optional; I generated a simple AM/PM routine first (see the card below).',
             ),
             suggested_chips: suggestedChips,
             cards: [
@@ -57447,7 +57605,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         fieldMissing.push({ field: 'cards', reason: 'recommendations_not_requested' });
       }
 
-      if (allowRecs && includeAlternatives && Array.isArray(cards) && cards.length) {
+      const includeAlternativesInline = includeAlternatives && (RECO_INLINE_ALTERNATIVES_ENABLED || USE_AURORA_BFF_MOCK);
+      if (allowRecs && includeAlternativesInline && Array.isArray(cards) && cards.length) {
         const recoIdx = cards.findIndex((c) => {
           if (!c || typeof c !== 'object') return false;
           const t = typeof c.type === 'string' ? c.type.trim().toLowerCase() : '';
@@ -58726,6 +58885,7 @@ const __internal = {
   computeAnchorNameSimilarity,
   mapCatalogProductToAnchorProduct,
   evaluateAnchorTrustForProductIntel,
+  normalizeRoutineInputWithPmShortcut,
   resolveCatalogProductForProductInput,
   extractRoutineProductCandidatesForDeepScan,
   deepScanRoutineProductCandidate,
