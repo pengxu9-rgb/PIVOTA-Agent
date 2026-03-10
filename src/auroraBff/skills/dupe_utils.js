@@ -27,6 +27,7 @@ const DROP_REASON = {
   SAME_NORMALIZED_URL: 'same_normalized_url',
   SAME_BRAND_SAME_NAME: 'same_brand_and_same_name',
   SAME_BRAND_HIGH_SIMILARITY: 'same_brand_high_name_similarity',
+  NO_BRAND_FULL_NAME_MATCH: 'brand_missing_full_name_match',
   NO_BRAND_SAME_URL: 'brand_missing_same_url',
   CROSS_BRAND_EXTREME_SIMILARITY: 'cross_brand_extreme_name_similarity',
 };
@@ -276,6 +277,9 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   const anchorUrl = anchorFingerprint?.url_norm || '';
   const anchorProductId = anchorIdentity?.product_id || null;
   const anchorRawName = anchorIdentity?.name || anchorIdentity?.display_name || '';
+  const anchorDisplayName = normalizeProductName(
+    anchorIdentity?.display_name || [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
+  );
 
   if (anchorProductId && candidateProductId && String(anchorProductId) === String(candidateProductId)) {
     return { isSelfRef: true, reason: DROP_REASON.SAME_CANONICAL_REF };
@@ -284,6 +288,10 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   if (anchorUrl && candidateUrl && anchorUrl === candidateUrl) {
     if (!candidateBrand) return { isSelfRef: true, reason: DROP_REASON.NO_BRAND_SAME_URL };
     return { isSelfRef: true, reason: DROP_REASON.SAME_NORMALIZED_URL };
+  }
+
+  if (!candidateBrand && candidateName && anchorDisplayName && candidateName === anchorDisplayName) {
+    return { isSelfRef: true, reason: DROP_REASON.NO_BRAND_FULL_NAME_MATCH };
   }
 
   if (!candidateBrand && anchorName && candidateName && anchorName === candidateName && !candidateUrl && !candidateProductId) {

@@ -112,6 +112,28 @@ test('scenario 2: same brand same name different URL is filtered', () => {
   expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_SAME_NAME);
 });
 
+test('scenario 2b: brand-missing catalog candidate with exact full-name match is filtered', () => {
+  const anchor = {
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'Serum',
+  };
+  const candidates = [
+    {
+      product_id: '9886499864904',
+      name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      category: 'Serum',
+      url: 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=aurora_chatbox',
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.NO_BRAND_FULL_NAME_MATCH);
+});
+
 test('scenario 3: same brand different product line is allowed', () => {
   const anchor = {
     brand: 'Lab Series',
