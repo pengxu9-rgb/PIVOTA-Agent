@@ -9,9 +9,14 @@ const {
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
 } = require('./brandLexicon');
+const {
+  buildBeautyQueryProfile,
+  classifyBeautyBucketFromText,
+  isBeautyBucketCompatibleForQuery,
+} = require('./beautyQueryProfile');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v39';
+const POLICY_VERSION = 'find_products_multi_policy_v40';
 const STRATEGY_VERSION = 'ambiguity_gate_v2';
 const SEARCH_AMBIGUITY_GATE_ENABLED =
   String(process.env.SEARCH_AMBIGUITY_GATE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -575,40 +580,7 @@ function reorderProductsForConstraints(products, intent, rawQuery) {
 
 function classifyBeautyBucketForDiversity(product) {
   const text = buildProductText(product);
-  if (!text) return 'other';
-
-  const isToolLike =
-    /\b(brush|brushes|sponge|puff|applicator|curler|tweezer|tool|tools|brush set)\b/i.test(text) ||
-    /(化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|睫毛夹|睫毛夾|工具)/.test(text);
-  if (isToolLike) {
-    return 'tools';
-  }
-
-  if (
-    /\b(foundation|concealer|primer|powder|cushion|bb cream|cc cream|setting spray)\b/i.test(text) ||
-    /(粉底|遮瑕|妆前|妝前|定妆|定妝|气垫|氣墊|散粉|粉饼|粉餅)/.test(text)
-  ) {
-    return 'base_makeup';
-  }
-  if (
-    /\b(eyeshadow|eye shadow|eyeliner|mascara|brow|eyebrow)\b/i.test(text) ||
-    /(眼影|眼线|眼線|睫毛膏|眉笔|眉筆|眉粉)/.test(text)
-  ) {
-    return 'eye_makeup';
-  }
-  if (
-    /\b(lipstick|lip gloss|lip tint|lip balm|lip liner)\b/i.test(text) ||
-    /(口红|口紅|唇釉|唇膏|唇蜜|唇线|唇線)/.test(text)
-  ) {
-    return 'lip_makeup';
-  }
-  if (
-    /\b(toner|serum|essence|lotion|moisturizer|sunscreen|cleanser|cream)\b/i.test(text) ||
-    /(化妆水|化妝水|精华|精華|乳液|面霜|防晒|防曬|洁面|潔面|面膜)/.test(text)
-  ) {
-    return 'skincare';
-  }
-  return 'other';
+  return classifyBeautyBucketFromText(text);
 }
 
 function computeBeautyCategoryMixTopN(products, topN = 10) {
@@ -632,29 +604,22 @@ function isBeautyLookupLikeQuery(rawQuery) {
 }
 
 function isBeautySkincareSpecificQuery(rawQuery) {
-  const q = String(rawQuery || '');
-  if (!q) return false;
-  return (
-    /\b(skincare|skin care|serum|toner|essence|ampoule|moisturi(?:z|s)er|cream|cleanser|sunscreen|spf\b|sunblock|mask)\b/i.test(
-      q,
-    ) ||
-    /护肤|護膚|精华|精華|化妆水|化妝水|乳液|面霜|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料|クリーム/.test(
-      q,
-    )
-  );
+  return buildBeautyQueryProfile({ rawQuery }).bucket === 'skincare';
 }
 
-function shouldApplyBeautyDiversity(intent, rawQuery) {
+function shouldApplyBeautyDiversity(intent, rawQuery, queryClassInput = null) {
   if (!BEAUTY_DIVERSITY_ENABLED) return false;
-  if (intent?.primary_domain !== 'beauty') return false;
+  const queryClass = normalizeQueryClass(queryClassInput ?? intent?.query_class, {
+    defaultValue: null,
+  });
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery,
+    queryClass,
+    intent,
+  });
+  if (!beautyQueryProfile?.isBeautyQuery) return false;
   if (isBeautyLookupLikeQuery(rawQuery)) return false;
-  if (hasFragranceQuerySignal(rawQuery)) return false;
-  if (isBeautySkincareSpecificQuery(rawQuery)) return false;
-  const queryClass = normalizeQueryClass(intent?.query_class, { defaultValue: null });
-  if (queryClass === 'lookup' || queryClass === 'attribute') return false;
-  const scenario = String(intent?.scenario?.name || '');
-  if (scenario === 'beauty_tools' || scenario === 'eye_shadow_brush') return false;
-  return true;
+  return beautyQueryProfile.allowBeautyDiversity;
 }
 
 function isBeautyToolAnchoredQuery(rawQuery) {
@@ -1449,6 +1414,44 @@ function applyDomainHardFilter(products, intent, rawQuery, options = {}) {
     pass2_triggered: false,
     strict_kept: list.length,
     strict_dropped: 0,
+  };
+}
+
+function applyBeautyBucketBackstop(products, intent, rawQuery, queryClass) {
+  const list = Array.isArray(products) ? products : [];
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery,
+    queryClass,
+    intent,
+  });
+  const bucket = beautyQueryProfile?.bucket || null;
+  const bucketMixBefore = computeBeautyCategoryMixTopN(list, Math.max(1, list.length || 1));
+
+  if (!beautyQueryProfile?.isSpecificBeautyQuery || !bucket) {
+    return {
+      products: list,
+      applied: false,
+      dropped: 0,
+      bucket,
+      bucket_mix_before: bucketMixBefore,
+      bucket_mix_after: bucketMixBefore,
+      emptied: false,
+      reason: 'not_applicable',
+    };
+  }
+
+  const filtered = list.filter((product) =>
+    isBeautyBucketCompatibleForQuery(classifyBeautyBucketForDiversity(product), bucket),
+  );
+  return {
+    products: filtered,
+    applied: true,
+    dropped: Math.max(0, list.length - filtered.length),
+    bucket,
+    bucket_mix_before: bucketMixBefore,
+    bucket_mix_after: computeBeautyCategoryMixTopN(filtered, Math.max(1, filtered.length || 1)),
+    emptied: list.length > 0 && filtered.length === 0,
+    reason: filtered.length < list.length ? 'beauty_bucket_filtered' : 'pass',
   };
 }
 
@@ -3086,6 +3089,21 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const brandScope = brandQueryDetected
     ? metadata?.brand_scope || (categoryHintDetected ? 'category_scoped' : 'broad')
     : null;
+  const metadataQueryClass = normalizeQueryClass(
+    metadata?.query_class ??
+      metadata?.queryClass ??
+      metadata?.search_decision?.query_class ??
+      metadata?.searchDecision?.queryClass,
+    { defaultValue: null },
+  );
+  let queryClass = metadataQueryClass || inferQueryClassFromIntentAndQuery(intent, rawQuery);
+  if (
+    brandQueryDetected &&
+    !categoryHintDetected &&
+    !['mission', 'scenario', 'gift', 'non_shopping'].includes(String(queryClass || ''))
+  ) {
+    queryClass = 'exploratory';
+  }
 
   const filteredResult = filterProductsByIntent(list, intent, { rawQuery });
   let { filtered, reason_codes: filterReasonCodes } = filteredResult;
@@ -3161,10 +3179,10 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     Number(domainFilterResult?.dropped || 0) > 0 ? 'filtered' : 'pass',
     Number(domainFilterResult?.dropped || 0) > 0 ? 'domain_filtered' : null,
     90,
-    null,
+    queryClass,
   );
   let diversityDebug = null;
-  if (shouldApplyBeautyDiversity(intent, rawQuery) && !brandQueryDetected) {
+  if (shouldApplyBeautyDiversity(intent, rawQuery, queryClass) && !brandQueryDetected) {
     const diversityResult = applyBeautyDiversityPolicy(filtered, {
       topN: BEAUTY_DIVERSITY_TOPN,
       minBuckets: BEAUTY_DIVERSITY_MIN_BUCKETS,
@@ -3207,22 +3225,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     }
   }
   let after = filtered.length;
-
-  const metadataQueryClass = normalizeQueryClass(
-    metadata?.query_class ??
-      metadata?.queryClass ??
-      metadata?.search_decision?.query_class ??
-      metadata?.searchDecision?.queryClass,
-    { defaultValue: null },
-  );
-  let queryClass = metadataQueryClass || inferQueryClassFromIntentAndQuery(intent, rawQuery);
-  if (
-    brandQueryDetected &&
-    !categoryHintDetected &&
-    !['mission', 'scenario', 'gift', 'non_shopping'].includes(String(queryClass || ''))
-  ) {
-    queryClass = 'exploratory';
-  }
   const associationPlanFromMeta =
     metadata?.association_plan && typeof metadata.association_plan === 'object'
       ? metadata.association_plan
@@ -3324,6 +3326,23 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       : domainCondenserResult?.debug?.reason || null,
     120,
     null,
+  );
+  const beautyBucketFilterResult = applyBeautyBucketBackstop(
+    filtered,
+    intent,
+    rawQuery,
+    queryClass,
+  );
+  filtered = Array.isArray(beautyBucketFilterResult.products)
+    ? beautyBucketFilterResult.products
+    : filtered;
+  pushGateTrace(
+    'beauty_bucket_backstop',
+    Boolean(beautyBucketFilterResult?.applied),
+    Number(beautyBucketFilterResult?.dropped || 0) > 0 ? 'filtered' : 'pass',
+    beautyBucketFilterResult?.reason || null,
+    40,
+    queryClass,
   );
   const scenarioDerivedAnchorActive =
     SEARCH_SCENARIO_ANCHOR_MODE === 'derived' &&
@@ -3561,6 +3580,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (postQualityHardFail) reasonCodes.add('LOW_CONF_POST');
   if (brandQueryBypassAmbiguity) reasonCodes.add('BRAND_QUERY_BYPASS_AMBIGUITY');
   if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
+  if (beautyBucketFilterResult?.dropped > 0) reasonCodes.add('BEAUTY_BUCKET_FILTERED');
   if (domainCondenserResult?.debug?.applied) reasonCodes.add('DOMAIN_CONDENSED');
 
   const augmented = setResponseProductList(response, key, filtered);
@@ -3572,7 +3592,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       ? existingMeta.route_debug
       : null;
   const policyDebug = filteredResult?.debug || null;
-  const shouldAttachPolicyDebug = DEBUG_STATS_ENABLED || existingRouteDebug || diversityDebug;
+  const shouldAttachPolicyDebug =
+    DEBUG_STATS_ENABLED ||
+    existingRouteDebug ||
+    diversityDebug ||
+    beautyBucketFilterResult?.applied;
   const mergedMetadata =
     shouldAttachPolicyDebug
       ? {
@@ -3583,6 +3607,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               ...(existingRouteDebug?.policy || {}),
               ...(policyDebug ? { filter_debug: policyDebug } : {}),
               ...(diversityDebug ? { diversity: diversityDebug } : {}),
+              ...(beautyBucketFilterResult?.applied
+                ? { beauty_bucket_filter: beautyBucketFilterResult }
+                : {}),
               ambiguity: {
                 score_pre: ambiguityScorePre,
                 score_post: ambiguityScorePost,
@@ -3599,6 +3626,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
                 domain_filter_key: domainFilterResult?.domain_key || null,
                 domain_filter_mode: domainFilterResult?.mode_used || null,
                 domain_filter_pass2: Boolean(domainFilterResult?.pass2_triggered),
+                beauty_query_bucket: beautyBucketFilterResult?.bucket || null,
+                beauty_bucket_filter_dropped: Number(beautyBucketFilterResult?.dropped || 0),
                 post_quality: postQuality,
               },
             },
