@@ -6,7 +6,7 @@ const IngredientReportSkill = require('../src/auroraBff/skills/ingredient_report
 const ProductAnalyzeSkill = require('../src/auroraBff/skills/product_analyze');
 const RecoStepBasedSkill = require('../src/auroraBff/skills/reco_step_based');
 const { __internal: skillRouterInternal } = require('../src/auroraBff/orchestrator/skill_router');
-const routesModule = require('../src/auroraBff/routes');
+const recoHybridResolver = require('../src/auroraBff/usecases/recoHybridResolveCandidates');
 
 test('travel_apply_mode adds reduce_actives when high-UV travel overlaps with retinoid routine', async () => {
   const skill = new TravelApplyModeSkill();
@@ -189,32 +189,51 @@ test('skill_router derives target_step from a freeform mask request', () => {
 });
 
 test('reco_step_based returns a recommendations card when grounded catalog recommendations exist', async () => {
-  const originalGenerate = routesModule.__internal.generateProductRecommendations;
-  routesModule.__internal.generateProductRecommendations = async () => ({
-    norm: {
-      payload: {
-        recommendations: [
-          {
-            product_id: 'prod_mask_1',
-            merchant_id: 'merchant_mask_1',
-            brand: 'Winona',
-            name: 'Hydrating Repair Mask',
-            reasons: ['Supports barrier comfort and hydration.'],
-          },
-        ],
-        grounding_status: 'grounded',
-        grounded_count: 1,
-        ungrounded_count: 0,
-        recommendation_meta: {
-          source_mode: 'catalog_grounded',
-          catalog_query_count: 3,
-        },
+  const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
+  recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
+    rows: [
+      {
+        product_id: 'prod_mask_1',
+        merchant_id: 'merchant_mask_1',
+        brand: 'Winona',
+        name: 'Hydrating Repair Mask',
+        reasons: ['Supports barrier comfort and hydration.'],
+        match_state: 'exact',
       },
+    ],
+    recommendation_meta: {
+      source_mode: 'llm_catalog_hybrid',
+      llm_seed_count: 6,
+      exact_match_count: 1,
+      fuzzy_match_count: 0,
+      unresolved_seed_count: 0,
     },
   });
 
   try {
     const skill = new RecoStepBasedSkill();
+    const gateway = {
+      async call() {
+        return {
+          parsed: {
+            answer_en: 'I would start with calming hydrating masks.',
+            answer_zh: null,
+            products: [
+              {
+                brand: 'Winona',
+                name: 'Hydrating Repair Mask',
+                product_type: 'mask',
+                why: { en: 'Supports barrier comfort and hydration.', zh: null },
+                suitability_score: 0.88,
+                price_tier: 'mid',
+                search_aliases: ['winona hydrating repair mask'],
+              },
+            ],
+          },
+          promptHash: 'stub_prompt_hash',
+        };
+      },
+    };
     const response = await skill.run(
       {
         skill_id: 'reco.step_based',
@@ -236,40 +255,49 @@ test('reco_step_based returns a recommendations card when grounded catalog recom
         },
         thread_state: {},
       },
-      null,
+      gateway,
     );
 
+    const textCard = response.cards.find((card) => card.card_type === 'text_response');
     const recoCard = response.cards.find((card) => card.card_type === 'recommendations');
+    assert.ok(textCard);
     assert.ok(recoCard);
     assert.equal(Array.isArray(recoCard.metadata?.recommendations), true);
     assert.equal(recoCard.metadata?.recommendations?.[0]?.product_id, 'prod_mask_1');
-    assert.equal(recoCard.metadata?.source_mode, 'catalog_grounded');
+    assert.equal(recoCard.metadata?.source_mode, 'llm_catalog_hybrid');
     assert.equal(response.cards.some((card) => card.card_type === 'effect_review'), false);
   } finally {
-    routesModule.__internal.generateProductRecommendations = originalGenerate;
+    recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
   }
 });
 
 test('reco_step_based returns text_response when grounded recommendation search yields no candidates', async () => {
-  const originalGenerate = routesModule.__internal.generateProductRecommendations;
-  routesModule.__internal.generateProductRecommendations = async () => ({
-    norm: {
-      payload: {
-        recommendations: [],
-        grounding_status: 'ungrounded',
-        grounded_count: 0,
-        ungrounded_count: 0,
-        recommendation_meta: {
-          source_mode: 'catalog_grounded',
-          catalog_query_count: 4,
-          telemetry_failure_reason: null,
-        },
-      },
+  const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
+  recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
+    rows: [],
+    recommendation_meta: {
+      source_mode: 'llm_catalog_hybrid',
+      llm_seed_count: 6,
+      exact_match_count: 0,
+      fuzzy_match_count: 0,
+      unresolved_seed_count: 6,
     },
   });
 
   try {
     const skill = new RecoStepBasedSkill();
+    const gateway = {
+      async call() {
+        return {
+          parsed: {
+            answer_en: "I couldn't build a confident shortlist yet. Tell me if you want hydration, acne support, or barrier repair.",
+            answer_zh: null,
+            products: [],
+          },
+          promptHash: 'stub_prompt_hash',
+        };
+      },
+    };
     const response = await skill.run(
       {
         skill_id: 'reco.step_based',
@@ -291,14 +319,14 @@ test('reco_step_based returns text_response when grounded recommendation search 
         },
         thread_state: {},
       },
-      null,
+      gateway,
     );
 
     const textCard = response.cards.find((card) => card.card_type === 'text_response');
     assert.ok(textCard);
     assert.equal(response.cards.some((card) => card.card_type === 'recommendations'), false);
-    assert.match(String(textCard.sections?.[0]?.text_en || ''), /catalog-grounded mask match/i);
+    assert.match(String(textCard.sections?.[0]?.text_en || ''), /confident shortlist/i);
   } finally {
-    routesModule.__internal.generateProductRecommendations = originalGenerate;
+    recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
   }
 });

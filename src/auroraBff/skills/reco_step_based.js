@@ -1,5 +1,26 @@
 const BaseSkill = require('./BaseSkill');
-const { runRecoStepBasedCatalogBridge, __internal: recoBridgeInternal } = require('../usecases/recoStepBasedCatalogBridge');
+const recoHybridResolver = require('../usecases/recoHybridResolveCandidates');
+
+function normalizeRecoLang(locale) {
+  const raw = String(locale || '').trim().toLowerCase();
+  return raw === 'cn' || raw === 'zh' || raw.startsWith('zh-') ? 'CN' : 'EN';
+}
+
+function localizeStepLabel(step, lang = 'EN') {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const map = {
+    cleanser: isCn ? '洁面' : 'cleanser',
+    toner: isCn ? '化妆水' : 'toner',
+    essence: isCn ? '精华水' : 'essence',
+    serum: isCn ? '精华' : 'serum',
+    moisturizer: isCn ? '保湿霜' : 'moisturizer',
+    sunscreen: isCn ? '防晒' : 'sunscreen',
+    treatment: isCn ? '功效产品' : 'treatment',
+    mask: isCn ? '面膜' : 'mask',
+    oil: isCn ? '护肤油' : 'face oil',
+  };
+  return map[String(step || '').trim().toLowerCase()] || (isCn ? '护肤产品' : 'skincare product');
+}
 
 class RecoStepBasedSkill extends BaseSkill {
   constructor() {
@@ -24,8 +45,9 @@ class RecoStepBasedSkill extends BaseSkill {
     const hasRoutine = Boolean(routine && ((routine.am_steps || []).length > 0 || (routine.pm_steps || []).length > 0));
     const hasConcernContext = Array.isArray(concerns) && concerns.length > 0;
     const hasTargetContext = Boolean(targetIngredient || targetStep);
+    const hasUserQuestion = Boolean(this._getUserQuestion(request));
 
-    if (!hasProfile && !hasRoutine && !hasConcernContext && !hasTargetContext) {
+    if (!hasProfile && !hasRoutine && !hasConcernContext && !hasTargetContext && !hasUserQuestion) {
       return {
         met: false,
         failures: [
@@ -42,62 +64,60 @@ class RecoStepBasedSkill extends BaseSkill {
     return { met: true, failures: [] };
   }
 
-  async execute(request, _llmGateway) {
-    let recoResult;
-    try {
-      recoResult = await runRecoStepBasedCatalogBridge({ request, logger: console });
-    } catch (err) {
-      console.error('[reco.step_based] catalog bridge failed:', err?.message || err);
-      recoResult = {
-        norm: {
-          payload: {
-            recommendations: [],
-            recommendation_meta: {
-              source_mode: 'bridge_error',
-              telemetry_failure_reason: String(err?.message || 'unknown').slice(0, 200),
-            },
-          },
-        },
-      };
-    }
-    const payload = recoResult?.norm?.payload && typeof recoResult.norm.payload === 'object'
-      ? recoResult.norm.payload
-      : {};
-    const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+  async execute(request, llmGateway) {
+    const lang = normalizeRecoLang(request.context?.locale);
     const targetStep = String(request.params?.target_step || '').trim();
     const targetIngredient = String(request.params?.target_ingredient || '').trim();
+    const userQuestion = this._getUserQuestion(request);
 
-    const nextActions = [];
-    if (targetIngredient) {
-      nextActions.push({
-        action_type: 'navigate_skill',
-        target_skill_id: 'ingredient.report',
-        label: {
-          en: `Learn more about ${targetIngredient}`,
-          zh: `了解更多关于${targetIngredient}`,
+    let candidateOutput = {
+      answer_en: '',
+      answer_zh: null,
+      products: [],
+    };
+    let promptHash = null;
+
+    try {
+      const llmResult = await llmGateway.call({
+        templateId: 'reco_step_based',
+        taskMode: 'recommendation',
+        params: {
+          profile: request.context?.profile || {},
+          routine: request.context?.current_routine || null,
+          inventory: Array.isArray(request.context?.inventory) ? request.context.inventory : [],
+          target_step: targetStep || null,
+          target_ingredient: targetIngredient || null,
+          concerns: Array.isArray(request.params?._extracted_concerns) ? request.params._extracted_concerns : [],
+          safety_flags: Array.isArray(request.context?.safety_flags) ? request.context.safety_flags : [],
+          locale: request.context?.locale || 'en-US',
+          user_question: userQuestion || null,
         },
-        params: { ingredient_query: targetIngredient },
+        schema: 'RecoHybridCandidateOutput',
       });
-    }
-    nextActions.push({
-      action_type: 'navigate_skill',
-      target_skill_id: 'product.analyze',
-      label: { en: 'Analyze a specific product', zh: '分析具体产品' },
-    });
-
-    if (recommendations.length > 0) {
+      if (llmResult?.parsed && typeof llmResult.parsed === 'object') {
+        candidateOutput = llmResult.parsed;
+      }
+      promptHash = llmResult?.promptHash || null;
+    } catch (err) {
+      console.error('[reco.step_based] llm candidate generation failed:', err?.message || err);
+      const fallbackMessage = this._buildNoResultMessage({
+        language: lang,
+        targetStep,
+        targetIngredient,
+        sourceMode: 'llm_error',
+        telemetryReason: String(err?.message || 'llm_error').slice(0, 200),
+      });
       return {
         cards: [
           {
-            card_type: 'recommendations',
-            metadata: {
-              ...payload,
-              recommendations,
-              source_mode: payload?.recommendation_meta?.source_mode || null,
-              query_count: Number(payload?.recommendation_meta?.catalog_query_count || 0),
-              target_step: targetStep || null,
-              target_ingredient: targetIngredient || null,
-            },
+            card_type: 'text_response',
+            sections: [
+              {
+                type: 'text_answer',
+                text_en: fallbackMessage.en,
+                text_zh: fallbackMessage.zh,
+              },
+            ],
           },
         ],
         ops: {
@@ -106,27 +126,117 @@ class RecoStepBasedSkill extends BaseSkill {
           routine_patch: {},
           experiment_events: [
             {
-              event: 'reco_shown',
-              step_count: recommendations.length,
+              event: 'reco_llm_error',
+              step_count: 0,
               has_routine: Boolean(request.context?.current_routine),
-              source_mode: payload?.recommendation_meta?.source_mode || null,
-              grounding_status: payload?.grounding_status || null,
+              source_mode: 'llm_error',
             },
           ],
         },
-        next_actions: nextActions,
+        next_actions: this._buildNextActions({ targetIngredient }),
         _taskMode: 'recommendation',
-        _llmCalls: payload?.recommendation_meta?.source_mode === 'rules_only' ? 0 : 1,
+        _promptHash: null,
+        _llmCalls: 1,
+      };
+    }
+
+    let resolved;
+    try {
+      resolved = await recoHybridResolver.runRecoHybridResolveCandidates({
+        request,
+        candidateOutput,
+        logger: console,
+      });
+    } catch (err) {
+      console.error('[reco.step_based] hybrid resolver failed:', err?.message || err);
+      resolved = {
+        rows: [],
+        recommendation_meta: {
+          source_mode: 'llm_catalog_hybrid',
+          llm_seed_count: Array.isArray(candidateOutput.products) ? candidateOutput.products.length : 0,
+          exact_match_count: 0,
+          fuzzy_match_count: 0,
+          unresolved_seed_count: 0,
+          target_step: targetStep || null,
+          target_ingredient: targetIngredient || null,
+          telemetry_failure_reason: String(err?.message || 'resolver_error').slice(0, 200),
+        },
+      };
+    }
+
+    const recommendations = Array.isArray(resolved?.rows) ? resolved.rows : [];
+    const recommendationMeta = resolved?.recommendation_meta && typeof resolved.recommendation_meta === 'object'
+      ? resolved.recommendation_meta
+      : {
+          source_mode: 'llm_catalog_hybrid',
+          llm_seed_count: Array.isArray(candidateOutput.products) ? candidateOutput.products.length : 0,
+          exact_match_count: 0,
+          fuzzy_match_count: 0,
+          unresolved_seed_count: 0,
+          target_step: targetStep || null,
+          target_ingredient: targetIngredient || null,
+        };
+
+    const cards = [];
+    const answerEn = String(candidateOutput?.answer_en || '').trim();
+    const answerZh = String(candidateOutput?.answer_zh || '').trim();
+    if (answerEn || answerZh) {
+      cards.push({
+        card_type: 'text_response',
+        sections: [
+          {
+            type: 'text_answer',
+            text_en: answerEn || this._buildNoResultMessage({ language: 'EN', targetStep, targetIngredient }).en,
+            text_zh: answerZh || null,
+          },
+        ],
+      });
+    }
+
+    if (recommendations.length > 0) {
+      cards.push({
+        card_type: 'recommendations',
+        metadata: {
+          recommendations,
+          recommendation_meta: recommendationMeta,
+          source_mode: recommendationMeta.source_mode || 'llm_catalog_hybrid',
+          target_step: targetStep || null,
+          target_ingredient: targetIngredient || null,
+          query_count: Number(recommendationMeta.query_count || 0),
+        },
+      });
+    }
+
+    if (cards.length > 0) {
+      return {
+        cards,
+        ops: {
+          thread_ops: [],
+          profile_patch: {},
+          routine_patch: {},
+          experiment_events: [
+            {
+              event: recommendations.length > 0 ? 'reco_shown' : 'reco_empty',
+              step_count: recommendations.length,
+              has_routine: Boolean(request.context?.current_routine),
+              source_mode: recommendationMeta.source_mode || null,
+              grounding_status: 'llm_catalog_hybrid',
+            },
+          ],
+        },
+        next_actions: this._buildNextActions({ targetIngredient }),
+        _taskMode: 'recommendation',
+        _promptHash: promptHash,
+        _llmCalls: 1,
       };
     }
 
     const noResultMessage = this._buildNoResultMessage({
-      language: recoBridgeInternal.normalizeRecoLang(request.context?.locale),
+      language: lang,
       targetStep,
       targetIngredient,
-      sourceMode: payload?.recommendation_meta?.source_mode || '',
-      catalogSkipReason: payload?.catalog_skip_reason || payload?.recommendation_meta?.catalog_skip_reason || '',
-      telemetryReason: payload?.telemetry_reason || payload?.recommendation_meta?.telemetry_failure_reason || '',
+      sourceMode: recommendationMeta.source_mode || '',
+      telemetryReason: recommendationMeta.telemetry_failure_reason || '',
     });
 
     return {
@@ -151,14 +261,15 @@ class RecoStepBasedSkill extends BaseSkill {
             event: 'reco_empty',
             step_count: 0,
             has_routine: Boolean(request.context?.current_routine),
-            source_mode: payload?.recommendation_meta?.source_mode || null,
-            grounding_status: payload?.grounding_status || null,
+            source_mode: recommendationMeta.source_mode || null,
+            grounding_status: 'llm_catalog_hybrid',
           },
         ],
       },
-      next_actions: nextActions,
+      next_actions: this._buildNextActions({ targetIngredient }),
       _taskMode: 'recommendation',
-      _llmCalls: payload?.recommendation_meta?.source_mode === 'rules_only' ? 0 : 1,
+      _promptHash: promptHash,
+      _llmCalls: 1,
     };
   }
 
@@ -212,11 +323,42 @@ class RecoStepBasedSkill extends BaseSkill {
     };
   }
 
+  _getUserQuestion(request) {
+    return String(
+      request.params?._user_question ||
+      request.params?.user_message ||
+      request.params?.message ||
+      request.params?.text ||
+      '',
+    ).trim();
+  }
+
+  _buildNextActions({ targetIngredient }) {
+    const nextActions = [];
+    if (targetIngredient) {
+      nextActions.push({
+        action_type: 'navigate_skill',
+        target_skill_id: 'ingredient.report',
+        label: {
+          en: `Learn more about ${targetIngredient}`,
+          zh: `了解更多关于${targetIngredient}`,
+        },
+        params: { ingredient_query: targetIngredient },
+      });
+    }
+    nextActions.push({
+      action_type: 'navigate_skill',
+      target_skill_id: 'product.analyze',
+      label: { en: 'Analyze a specific product', zh: '分析具体产品' },
+    });
+    return nextActions;
+  }
+
   _buildNoResultMessage({ language, targetStep, targetIngredient, sourceMode, catalogSkipReason, telemetryReason }) {
-    const isCn = String(language || '').toUpperCase() === 'CN';
-    const stepLabel = recoBridgeInternal.localizeStepLabel(targetStep, language);
+    const stepLabel = localizeStepLabel(targetStep, language);
     const transient = String(telemetryReason || '').trim().toLowerCase() === 'timeout_degraded'
       || String(sourceMode || '').trim().toLowerCase() === 'catalog_transient_fallback'
+      || String(sourceMode || '').trim().toLowerCase() === 'llm_error'
       || String(catalogSkipReason || '').trim().toLowerCase() === 'fail_fast_open';
 
     if (transient) {
@@ -228,21 +370,21 @@ class RecoStepBasedSkill extends BaseSkill {
 
     if (targetIngredient) {
       return {
-        en: `I couldn't find a strong catalog-grounded match for products with ${targetIngredient}. Share your main concern, budget, or a product example and I can narrow it down.`,
-        zh: `我暂时没找到足够匹配、且有商品库锚定的 ${targetIngredient} 产品。补充你的主要诉求、预算或一个参考产品，我可以继续收窄。`,
+        en: `I couldn't find a strong match for products with ${targetIngredient}. Share your main concern, budget, or a product example and I can narrow it down.`,
+        zh: `我暂时没找到足够匹配的 ${targetIngredient} 产品。补充你的主要诉求、预算或一个参考产品，我可以继续收窄。`,
       };
     }
 
     if (targetStep) {
       return {
-        en: `I couldn't find a strong catalog-grounded ${stepLabel} match yet. Share your main concern or a target ingredient and I can narrow it down.`,
-        zh: `我暂时没找到足够匹配、且有商品库锚定的${stepLabel}候选。告诉我你的主要问题或目标成分，我可以继续收窄。`,
+        en: `I couldn't find a strong ${stepLabel} match yet. Share your main concern or a target ingredient and I can narrow it down.`,
+        zh: `我暂时没找到足够匹配的${stepLabel}候选。告诉我你的主要问题或目标成分，我可以继续收窄。`,
       };
     }
 
     return {
-      en: "I couldn't find a strong catalog-grounded match yet. Share your main concern, target ingredient, or preferred product type and I can narrow it down.",
-      zh: '我暂时没找到足够匹配、且有商品库锚定的候选。告诉我你的主要问题、目标成分或想找的产品类型，我可以继续收窄。',
+      en: "I couldn't build a confident product shortlist yet. Share your main concern, target ingredient, or preferred product type and I can narrow it down.",
+      zh: '我暂时还没法形成足够可靠的推荐清单。告诉我你的主要问题、目标成分或想找的产品类型，我可以继续收窄。',
     };
   }
 }

@@ -123,7 +123,16 @@ const AnalysisMetaSchema = z
 
 const RecommendationMetaSchema = z
   .object({
-    source_mode: z.enum(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only']),
+    source_mode: z.enum([
+      'llm_primary',
+      'artifact_matcher',
+      'upstream_fallback',
+      'rules_only',
+      'catalog_grounded',
+      'catalog_transient_fallback',
+      'bridge_error',
+      'llm_catalog_hybrid',
+    ]),
     used_recent_logs: z.boolean(),
     used_itinerary: z.boolean(),
     used_safety_flags: z.boolean(),
