@@ -44,7 +44,9 @@ function withEnv(patch, fn) {
 
 function loadAuroraRoutesModule() {
   const moduleId = require.resolve('../src/auroraBff/routes');
+  const skinLlmPolicyModuleId = require.resolve('../src/auroraBff/skinLlmPolicy');
   delete require.cache[moduleId];
+  delete require.cache[skinLlmPolicyModuleId];
   const mod = require('../src/auroraBff/routes');
   return { moduleId, mod };
 }
@@ -423,6 +425,7 @@ test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN 
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
+      AURORA_RULE_RELAX_MODE: 'conservative',
       AURORA_DECISION_BASE_URL: '',
       AURORA_SKIN_VISION_ENABLED: 'true',
       AURORA_SKIN_VISION_PROVIDER: 'openai',

@@ -40,6 +40,17 @@ function getSessionPatch(envelope) {
   return {};
 }
 
+function isIngredientQueryFirstProtected({ cards, sessionPatch } = {}) {
+  const list = Array.isArray(cards) ? cards : [];
+  const patch = isPlainObject(sessionPatch) ? sessionPatch : {};
+  const meta = isPlainObject(patch.meta) ? patch.meta : {};
+  const hasIngredientCard =
+    hasCardType(list, 'ingredient_hub') ||
+    hasCardType(list, 'ingredient_goal_match') ||
+    hasCardType(list, 'aurora_ingredient_report');
+  return hasIngredientCard || meta.ingredient_query_first_applied === true;
+}
+
 function getPendingClarification(envelope) {
   const patch = getSessionPatch(envelope);
   const state = isPlainObject(patch.state) ? patch.state : {};
@@ -126,8 +137,14 @@ function selectTemplate({ envelope, ctx } = {}) {
   const sessionPatch = getSessionPatch(envelope);
   const nextState = safeString(sessionPatch.next_state).trim();
   const { pending, currentNormId, unknownCount } = getPendingClarification(envelope);
+  const diagnosisGatePresent = hasCardType(cards, 'diagnosis_gate');
+  const ingredientQueryFirstProtected = isIngredientQueryFirstProtected({ cards, sessionPatch });
 
-  if (pending || hasCardType(cards, 'diagnosis_gate')) {
+  if (ingredientQueryFirstProtected && !diagnosisGatePresent) {
+    return 'default.keep';
+  }
+
+  if (pending || diagnosisGatePresent) {
     return unknownCount >= 2 ? 'diagnosis_clarification.degraded' : 'diagnosis_clarification.standard';
   }
 

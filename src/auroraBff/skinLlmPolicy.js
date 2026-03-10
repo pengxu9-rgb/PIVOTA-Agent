@@ -4,6 +4,15 @@ function normalizeToken(value) {
     .toLowerCase();
 }
 
+const AURORA_RULE_RELAX_MODE = (() => {
+  const raw = String(process.env.AURORA_RULE_RELAX_MODE || 'aggressive')
+    .trim()
+    .toLowerCase();
+  return raw === 'conservative' ? 'conservative' : 'aggressive';
+})();
+
+const AURORA_RULE_RELAX_AGGRESSIVE = AURORA_RULE_RELAX_MODE === 'aggressive';
+
 function classifyPhotoQuality(photos) {
   const list = Array.isArray(photos) ? photos : [];
   if (!list.length) return { grade: 'unknown', reasons: ['no_photos'] };
@@ -112,6 +121,41 @@ function shouldCallLlm({
   const reasons = [];
   let downgrade_confidence = false;
 
+  if (AURORA_RULE_RELAX_AGGRESSIVE) {
+    if (k === 'vision') {
+      if (!userRequestedPhoto) return { decision: 'skip', reasons: ['photo_not_requested'], downgrade_confidence: false };
+      if (!visionAvailable) {
+        const rawReason = String(visionUnavailabilityReason || '').trim();
+        const normalizedReason = rawReason && /^VISION_[A-Z0-9_]+$/.test(rawReason) ? rawReason : 'vision_unavailable';
+        return { decision: 'skip', reasons: [normalizedReason], downgrade_confidence: false };
+      }
+      const lowQuality = q === 'fail' || q === 'degraded' || q === 'unknown';
+      const relaxedReasons = [];
+      if (!hasPrimaryInput) relaxedReasons.push('missing_primary_input_relaxed');
+      relaxedReasons.push(lowQuality ? 'quality_low_confidence' : 'quality_pass');
+      return {
+        decision: 'call',
+        reasons: relaxedReasons,
+        downgrade_confidence: lowQuality || !hasPrimaryInput,
+      };
+    }
+
+    if (k === 'report') {
+      if (!reportAvailable) return { decision: 'skip', reasons: ['report_unavailable'], downgrade_confidence: false };
+      const lowQuality = q === 'fail' || q === 'degraded' || q === 'unknown';
+      const relaxedReasons = [];
+      if (!hasPrimaryInput) relaxedReasons.push('missing_primary_input_relaxed');
+      if (lowQuality) relaxedReasons.push('quality_low_confidence');
+      else if (uncertainFlag === false && confidence === 'high') relaxedReasons.push('detector_confident_template_relaxed');
+      else relaxedReasons.push('detector_uncertain');
+      return {
+        decision: 'call',
+        reasons: relaxedReasons,
+        downgrade_confidence: lowQuality || !hasPrimaryInput,
+      };
+    }
+  }
+
   if (!hasPrimaryInput) {
     return { decision: 'skip', reasons: ['missing_primary_input'], downgrade_confidence: false };
   }
@@ -210,15 +254,18 @@ const REASON_TEXT = Object.freeze({
   EN: Object.freeze({
     llm_kill_switch: 'LLM kill switch is enabled; skipping all model calls.',
     missing_primary_input: 'Missing routine / recent logs; returning a conservative baseline first.',
+    missing_primary_input_relaxed: 'Primary input is missing, but relaxed mode keeps model calls on for partial structured output.',
     photo_not_requested: 'Photo analysis was not requested.',
     vision_unavailable: 'Photo model is unavailable (missing key or disabled).',
     report_unavailable: 'Report model is unavailable (upstream not configured).',
     photo_quality_fail_retake: 'Photo quality failed; skip AI analysis and retake to avoid wrong guesses.',
+    quality_low_confidence: 'Photo quality is weak, but relaxed mode still runs model analysis with low-confidence labeling.',
     degraded_mode_vision: 'Photo quality is degraded: only using the photo model and downgrading confidence.',
     degraded_mode_report: 'Photo quality is degraded: only using the report model and downgrading confidence.',
     degraded_skip_vision: 'Photo quality is degraded: skipping the photo model to avoid unstable results.',
     degraded_skip_report: 'Photo quality is degraded: skipping the report model to avoid unstable results.',
     detector_confident_template: 'Signals are strong enough; using a deterministic template instead of calling an LLM.',
+    detector_confident_template_relaxed: 'Signals are strong, but relaxed mode still calls model for richer structured output.',
     detector_uncertain: 'Signals are uncertain; calling an LLM to explain / arbitrate.',
     photo_fetch_failed_force_report: 'Photo upload passed but image bytes were unavailable; forcing report LLM for conservative guidance.',
     photo_upload_force_report: 'Photo upload detected; forcing report LLM for a consolidated explanation.',
@@ -239,15 +286,18 @@ const REASON_TEXT = Object.freeze({
   CN: Object.freeze({
     llm_kill_switch: '已开启 LLM 总开关：强制跳过所有模型调用。',
     missing_primary_input: '缺少当前流程/最近打卡等关键信息；我会先给更保守的基线。',
+    missing_primary_input_relaxed: '缺少主要输入，但放宽模式仍会调用模型返回部分结构化结果。',
     photo_not_requested: '你没有选择使用照片解析。',
     vision_unavailable: '照片解析模型不可用（缺少 key 或未启用）。',
     report_unavailable: '报告模型不可用（上游未配置或不可达）。',
     photo_quality_fail_retake: '照片未通过质量检查；为避免误判我会跳过 AI 结论，建议重拍。',
+    quality_low_confidence: '照片质量较弱，但放宽模式仍会调用模型，并显式标记低置信度。',
     degraded_mode_vision: '照片质量一般：只调用照片解析模型，并强制降低置信度。',
     degraded_mode_report: '照片质量一般：只调用报告模型，并强制降低置信度。',
     degraded_skip_vision: '照片质量一般：为避免不稳定结果，跳过照片解析模型。',
     degraded_skip_report: '照片质量一般：为避免不稳定结果，跳过报告模型。',
     detector_confident_template: '已有足够确定的信号：用确定性模板生成更稳的报告（不再调用模型）。',
+    detector_confident_template_relaxed: '已有较强确定性信号，但放宽模式仍会调用模型补充结构化输出。',
     detector_uncertain: '信号不确定：调用模型做解释/仲裁。',
     photo_fetch_failed_force_report: '照片上传通过但图像字节不可用：强制调用报告模型给出保守建议。',
     photo_upload_force_report: '检测到用户上传照片：强制调用报告模型做汇总解释。',

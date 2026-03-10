@@ -59,7 +59,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.'))).toBe(true);
   });
 
-  test('Recommendation gate: strips recommendation cards unless explicit', async () => {
+  test('Ingredient science text query routes to ingredient report without recommendation cards', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -68,7 +68,10 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(false);
-    expect(res.body.cards.some((c) => c.type === 'gate_notice')).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'aurora_ingredient_report')).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'gate_notice')).toBe(false);
+    expect(res.body.session_patch.next_state).toBe('IDLE_CHAT');
+    expect(String(res.body.assistant_message.content || '')).toMatch(/ingredient report|成分报告/i);
   });
 
   test('Recommendation gate: blocks structured commerce payload unless explicit', async () => {
@@ -184,7 +187,7 @@ describe('Aurora BFF (/v1)', () => {
     ).toBe(true);
   });
 
-  test('Diagnosis: DIAG_PROFILE with complete profile returns photo opt-in chips (no diagnosis_gate loop)', async () => {
+  test('Diagnosis: DIAG_PROFILE with complete profile returns explicit photo choice gate', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -208,9 +211,41 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(false);
-    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.intake.upload_photos')).toBe(true);
-    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.intake.skip_analysis')).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
+    const upload = res.body.suggested_chips.find((c) => c.chip_id === 'chip.intake.upload_photos');
+    const skip = res.body.suggested_chips.find((c) => c.chip_id === 'chip.intake.skip_analysis');
+    expect(Boolean(upload)).toBe(true);
+    expect(Boolean(skip)).toBe(true);
+    expect(upload.data.action_id).toBe('diag.upload_photo');
+    expect(upload.data.trigger_source).toBe('action');
+    expect(upload.data.client_action).toBe('open_camera');
+    expect(skip.data.action_id).toBe('diag.skip_photo_analyze');
+    expect(skip.data.trigger_source).toBe('action');
+    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip_keep_chatting')).toBe(false);
+  });
+
+  test('Diagnosis: diag.skip_photo_analyze returns low-confidence baseline analysis + story', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_diag_skip_photo_1')
+      .set('X-Lang', 'EN')
+      .send({
+        action: {
+          action_id: 'diag.skip_photo_analyze',
+          kind: 'action',
+          data: {},
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    const summary = res.body.cards.find((c) => c.type === 'analysis_summary');
+    expect(summary).toBeTruthy();
+    expect(summary.payload.low_confidence).toBe(true);
+    expect(summary.payload.analysis_source).toBe('baseline_low_confidence');
+    expect(res.body.cards.some((c) => c.type === 'analysis_story_v2')).toBe(true);
+    expect(String(res.body.assistant_message.content || '')).toMatch(/low-confidence|photos anytime|补图|提升准确度/i);
   });
 
   test('Routine: initial request returns recommendations with optional budget optimization', async () => {
@@ -264,13 +299,24 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     for (const res of [first, second]) {
-      expect(res.body.assistant_message.content).toMatch(/预算/);
+      expect(res.body.assistant_message.content).toMatch(/预算是可选项|routine/);
+      expect(res.body.assistant_message.content).not.toMatch(/已收到预算信息/);
       expect(res.body.session_patch.next_state).toBe('RECO_RESULTS');
       expect(res.body.session_patch?.state?._internal_next_state).toBe('S7_PRODUCT_RECO');
-      const hasBudgetGate = res.body.cards.some((c) => c.type === 'budget_gate');
-      const hasRecoCard = res.body.cards.some((c) => c.type === 'recommendations');
-      expect(hasBudgetGate || hasRecoCard).toBe(true);
-      expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('chip.budget.'))).toBe(true);
+      expect(res.body.cards.some((c) => c.type === 'budget_gate')).toBe(false);
+      expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(true);
+      expect(res.body.session_patch?.meta?.passive_gate_suppressed).toBe(true);
+      expect(Array.isArray(res.body.session_patch?.meta?.suppressed_gate_ids)).toBe(true);
+      expect(res.body.session_patch.meta.suppressed_gate_ids).toContain('budget_gate');
+      expect(
+        Array.isArray(res.body.events) &&
+        res.body.events.some(
+          (evt) => {
+            const payload = evt?.event_data || evt?.data || {};
+            return evt?.event_name === 'gate_advisory_inline' && payload.gate_id === 'budget_gate' && payload.suppressed === true;
+          },
+        ),
+      ).toBe(true);
     }
   });
 

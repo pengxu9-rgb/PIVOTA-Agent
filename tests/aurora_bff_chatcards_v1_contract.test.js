@@ -87,6 +87,41 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
     expect(res.body.follow_up_questions.length).toBeLessThanOrEqual(3);
   });
 
+  test('diagnosis photo-choice turn keeps actionable quick replies and avoids fallback nudge', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_chatcards_v1_diag_gate_1')
+      .set('X-Lang', 'EN')
+      .send({
+        client_state: 'DIAG_PROFILE',
+        action: {
+          action_id: 'profile.patch',
+          kind: 'action',
+          data: {
+            profile_patch: {
+              skinType: 'oily',
+              barrierStatus: 'healthy',
+              sensitivity: 'low',
+              goals: ['acne'],
+            },
+          },
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    expect(res.body.version).toBe('1.0');
+    expect(res.body.cards.some((card) => card && card.type === 'nudge')).toBe(false);
+    const upload = res.body.suggested_quick_replies.find((item) => item && item.id === 'chip.intake.upload_photos');
+    const skip = res.body.suggested_quick_replies.find((item) => item && item.id === 'chip.intake.skip_analysis');
+    expect(upload).toBeTruthy();
+    expect(skip).toBeTruthy();
+    expect(upload.metadata.action_id).toBe('diag.upload_photo');
+    expect(upload.metadata.client_action).toBe('open_camera');
+    expect(skip.metadata.action_id).toBe('diag.skip_photo_analyze');
+  });
+
   test('topic shift A -> B -> A stays on v1 and returns thread ops without 500', async () => {
     const app = require('../src/server');
     const uid = `uid_chatcards_v1_topic_shift_${Date.now()}`;

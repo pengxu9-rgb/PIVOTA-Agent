@@ -283,6 +283,9 @@ const {
   _internals: productGroundingResolverInternals = {},
 } = require('../services/productGroundingResolver');
 let resolveProductRefDirectImpl = resolveProductRefDirect;
+let enrichRecommendationsWithAlternativesForTest = null;
+let enrichRecommendationsWithPdpOpenContractForTest = null;
+let buildRoutineRulesOnlyFallbackCardsForChatForTest = null;
 const {
   normalizeBudgetHint,
   mapConcerns,
@@ -1406,6 +1409,12 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_CONCURRENCY || 2);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2;
   return Math.max(1, Math.min(4, v));
+})();
+
+const RECO_ALTERNATIVES_STAGE_BUDGET_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_STAGE_BUDGET_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  return Math.max(200, Math.min(8000, v));
 })();
 
 const RECO_INLINE_ALTERNATIVES_ENABLED = (() => {
@@ -13450,7 +13459,7 @@ function normalizePhotoQcStatus(rawStatus) {
     .trim()
     .toLowerCase();
   if (!token) return '';
-  if (token === 'passed' || token === 'pass' || token === 'ok' || token === 'success' || token === 'succeeded') {
+  if (token === 'passed' || token === 'pass' || token === 'ok' || token === 'success' || token === 'succeeded' || token === 'done' || token === 'complete') {
     return 'passed';
   }
   if (token === 'degraded' || token === 'warn' || token === 'warning' || token === 'low') {
@@ -18042,13 +18051,20 @@ function buildRecoEntryChips(language) {
       chip_id: 'chip.intake.upload_photos',
       label: lang === 'CN' ? '上传 daylight + indoor_white' : 'Upload daylight + indoor_white',
       kind: 'quick_reply',
-      data: {},
+      data: {
+        action_id: 'diag.upload_photo',
+        trigger_source: 'action',
+        client_action: 'open_camera',
+      },
     },
     {
       chip_id: 'chip.intake.skip_analysis',
       label: lang === 'CN' ? '先用低置信度方案' : 'Use low-confidence baseline',
       kind: 'quick_reply',
-      data: {},
+      data: {
+        action_id: 'diag.skip_photo_analyze',
+        trigger_source: 'action',
+      },
     },
   ];
 }
@@ -18914,8 +18930,8 @@ function extractProfilePatchFromSession(session) {
   }
 
   // Mixed types
-  if (rawProfile.currentRoutine != null) patch.currentRoutine = rawProfile.currentRoutine;
-  if (rawProfile.current_routine != null) patch.currentRoutine = rawProfile.current_routine;
+  if (rawProfile.currentRoutine != null) patch.currentRoutine = normalizeRoutineInputWithPmShortcut(rawProfile.currentRoutine);
+  if (rawProfile.current_routine != null) patch.currentRoutine = normalizeRoutineInputWithPmShortcut(rawProfile.current_routine);
   if (rawProfile.itinerary != null) patch.itinerary = rawProfile.itinerary;
   if (rawProfile.travel_plan && typeof rawProfile.travel_plan === 'object' && !Array.isArray(rawProfile.travel_plan)) {
     patch.travel_plan = rawProfile.travel_plan;
@@ -20409,6 +20425,16 @@ function stripInternalRefsDeep(value, { parentKey } = {}) {
   return out;
 }
 
+function looksLikeOverlongStructuredTemplate(answer) {
+  const t = typeof answer === 'string' ? answer : '';
+  if (t.length <= 600) return false;
+  return (
+    /\bpart\s*\d+\s*:/i.test(t) ||
+    /\b(budget analysis|am\s*\(|pm\s*\(|am\s*:|pm\s*:)\b/i.test(t) ||
+    /(^|\n)#+\s*(am|pm|budget|safety)\b/i.test(t)
+  );
+}
+
 function sanitizeUpstreamAnswer(answer, { language, hasRenderableCards, stripInternalRefs } = {}) {
   let t = typeof answer === 'string' ? answer : '';
   if (stripInternalRefs) t = stripInternalKbRefsFromText(t);
@@ -20449,11 +20475,7 @@ function sanitizeUpstreamAnswer(answer, { language, hasRenderableCards, stripInt
   //
   // IMPORTANT: do not reference "cards below" unless we are confident the UI will
   // actually render at least one card (e.g. structured citations, env_stress, recos).
-  const looksLikeOverlongTemplate =
-    t.length > 600 &&
-    (/\bpart\s*\d+\s*:/i.test(t) ||
-      /\b(budget analysis|am\s*\(|pm\s*\(|am\s*:|pm\s*:)\b/i.test(t) ||
-      /(^|\n)#+\s*(am|pm|budget|safety)\b/i.test(t));
+  const looksLikeOverlongTemplate = looksLikeOverlongStructuredTemplate(t);
   if (looksLikeOverlongTemplate) {
     if (hasRenderableCards) {
       return hasRenderableCardsMessage;
@@ -21028,18 +21050,103 @@ function pickFirstString(...values) {
   return '';
 }
 
+function parseRoutineSameAsAmFlag(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return false;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(token)) return true;
+  return [
+    'same_as_am',
+    'same as am',
+    'same-as-am',
+    'copy_am',
+    'copy am',
+    'sameam',
+    '同am',
+    '同 am',
+    '和am一样',
+    '跟am一样',
+    '同早上',
+  ].includes(token);
+}
+
+function hasFilledRoutineRows(rows) {
+  return rows.some((row) => {
+    if (!row) return false;
+    if (typeof row === 'string') return Boolean(String(row).trim());
+    if (!isPlainObject(row)) return false;
+    return Boolean(
+      String(row.product || '').trim() ||
+      String(row.name || '').trim() ||
+      String(row.step || '').trim() ||
+      String(row.ingredient || '').trim(),
+    );
+  });
+}
+
+function cloneRoutineRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => {
+    if (Array.isArray(row)) return row.slice();
+    if (isPlainObject(row)) return { ...row };
+    return row;
+  });
+}
+
+function applyPmSameAsAmShortcut(routine) {
+  if (!isPlainObject(routine)) return routine;
+
+  const amRows = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pmRows = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  const pmNode = routine.pm;
+  const pmNodeText = typeof pmNode === 'string' ? pmNode : '';
+
+  const sameAsAmRequested =
+    parseRoutineSameAsAmFlag(routine.pm_same_as_am) ||
+    parseRoutineSameAsAmFlag(routine.pmSameAsAm) ||
+    parseRoutineSameAsAmFlag(routine.same_as_am) ||
+    parseRoutineSameAsAmFlag(routine.sameAsAm) ||
+    parseRoutineSameAsAmFlag(routine.pm_copy_from_am) ||
+    parseRoutineSameAsAmFlag(routine.pmCopyFromAm) ||
+    parseRoutineSameAsAmFlag(pmNodeText) ||
+    (isPlainObject(pmNode) && (
+      parseRoutineSameAsAmFlag(pmNode.same_as_am) ||
+      parseRoutineSameAsAmFlag(pmNode.sameAsAm) ||
+      parseRoutineSameAsAmFlag(pmNode.pm_same_as_am) ||
+      parseRoutineSameAsAmFlag(pmNode.pmSameAsAm)
+    ));
+
+  if (!sameAsAmRequested) return routine;
+  if (!hasFilledRoutineRows(amRows)) return routine;
+  if (hasFilledRoutineRows(pmRows)) return routine;
+
+  const copied = cloneRoutineRows(amRows);
+  return {
+    ...routine,
+    pm: copied,
+    pm_steps: cloneRoutineRows(amRows),
+  };
+}
+
 function tryParseRoutineObject(value) {
   if (!value) return null;
-  if (isPlainObject(value)) return value;
+  if (isPlainObject(value)) return applyPmSameAsAmShortcut(value);
   if (typeof value !== 'string') return null;
   const raw = String(value || '').trim();
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    return isPlainObject(parsed) ? parsed : null;
+    return isPlainObject(parsed) ? applyPmSameAsAmShortcut(parsed) : null;
   } catch {
     return null;
   }
+}
+
+function normalizeRoutineInputWithPmShortcut(value) {
+  if (value == null) return value;
+  const parsed = tryParseRoutineObject(value);
+  return parsed || value;
 }
 
 function hasRoutineData(profile) {
@@ -21048,19 +21155,7 @@ function hasRoutineData(profile) {
   if (!routine) return false;
   const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
   const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
-  const hasFilled = (rows) =>
-    rows.some((row) => {
-      if (!row) return false;
-      if (typeof row === 'string') return Boolean(String(row).trim());
-      if (!isPlainObject(row)) return false;
-      return Boolean(
-        String(row.product || '').trim() ||
-          String(row.name || '').trim() ||
-          String(row.step || '').trim() ||
-          String(row.ingredient || '').trim(),
-      );
-    });
-  return hasFilled(am) || hasFilled(pm);
+  return hasFilledRoutineRows(am) || hasFilledRoutineRows(pm);
 }
 
 function deriveRoutineMissingFields(profile) {
@@ -21069,16 +21164,9 @@ function deriveRoutineMissingFields(profile) {
   if (!routine) return ['currentRoutine.am', 'currentRoutine.pm'];
   const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
   const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
-  const hasFilled = (rows) =>
-    rows.some((row) => {
-      if (!row) return false;
-      if (typeof row === 'string') return Boolean(String(row).trim());
-      if (!isPlainObject(row)) return false;
-      return Boolean(String(row.product || '').trim() || String(row.name || '').trim() || String(row.step || '').trim());
-    });
   const missing = [];
-  if (!hasFilled(am)) missing.push('currentRoutine.am');
-  if (!hasFilled(pm)) missing.push('currentRoutine.pm');
+  if (!hasFilledRoutineRows(am)) missing.push('currentRoutine.am');
+  if (!hasFilledRoutineRows(pm)) missing.push('currentRoutine.pm');
   return missing.length ? missing : [];
 }
 
@@ -24606,9 +24694,10 @@ async function applyRecommendationOutputGuardrailsForRoute({
       continue;
     }
 
-    const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
+    const pdpOpenOut = await safelyEnrichRecommendationsWithPdpOpenContract({
       recommendations: Array.isArray(payload.recommendations) ? payload.recommendations : [],
       logger,
+      flow: 'product_intel_guardrail',
     });
     cardsWithPdpOpen.push({
       ...card,
@@ -24620,6 +24709,7 @@ async function applyRecommendationOutputGuardrailsForRoute({
           pdp_open_path_stats: pdpOpenOut.path_stats,
           resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
           time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+          ...(pdpOpenOut.skipped ? { pdp_open_enrichment_skipped: true } : {}),
         },
       },
     });
@@ -25014,6 +25104,46 @@ function buildRoutineRulesOnlyFallbackCardsForChat({ ctx, message, profile, rece
       }),
     },
   ];
+}
+
+function callBuildRoutineRulesOnlyFallbackCardsForChat(args = {}) {
+  if (typeof buildRoutineRulesOnlyFallbackCardsForChatForTest === 'function') {
+    return buildRoutineRulesOnlyFallbackCardsForChatForTest(args);
+  }
+  return buildRoutineRulesOnlyFallbackCardsForChat(args);
+}
+
+function safelyBuildRoutineRulesOnlyFallbackCardsForChat({
+  ctx,
+  message,
+  profile,
+  recentLogs,
+  language,
+  reason,
+  logger,
+  flow = 'chat',
+} = {}) {
+  try {
+    return callBuildRoutineRulesOnlyFallbackCardsForChat({
+      ctx,
+      message,
+      profile,
+      recentLogs,
+      language,
+      reason,
+    });
+  } catch (err) {
+    logger?.warn(
+      {
+        err: err && err.message ? err.message : String(err),
+        request_id: ctx && ctx.request_id ? ctx.request_id : null,
+        trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
+        flow,
+      },
+      'aurora bff: routine fallback card builder failed; preserving existing envelope',
+    );
+    return [];
+  }
 }
 
 function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantText, profile } = {}) {
@@ -29894,6 +30024,89 @@ function mergeFieldMissing(a, b) {
   return out;
 }
 
+async function buildRecoAlternativesLocalFallback({
+  queryText,
+  lang,
+  maxTotal,
+  logger,
+} = {}) {
+  const query = String(queryText || '').trim();
+  const language = String(lang || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  if (!query) {
+    return {
+      alternatives: [],
+      reason: 'query_missing',
+      source_mode: 'none',
+    };
+  }
+
+  const searchOut = await searchPivotaBackendProducts({
+    query,
+    limit: Math.max(limit + 2, 4),
+    logger,
+    timeoutMs: Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, 1800),
+    minTimeoutMs: 200,
+    mode: 'main_path',
+    searchAllMerchants: true,
+    forceLocalSearchFallback: true,
+  });
+  const products = Array.isArray(searchOut && searchOut.products) ? searchOut.products : [];
+  if (!products.length) {
+    return {
+      alternatives: [],
+      reason: normalizeResolveReasonCode(searchOut && searchOut.reason ? searchOut.reason : '', 'no_candidates'),
+      source_mode: 'none',
+    };
+  }
+
+  const alternativesRaw = [];
+  for (let i = 0; i < products.length && alternativesRaw.length < limit; i += 1) {
+    const normalized = normalizeRecoCatalogProduct(products[i]);
+    if (!normalized) continue;
+    const productName = pickFirstTrimmed(normalized.display_name, normalized.name);
+    if (!productName) continue;
+    const similarity = Math.max(0.52, 0.86 - i * 0.1);
+    const reasonText =
+      language === 'CN'
+        ? i === 0
+          ? '目录回退：上游未返回可用替代项，先给你可购的相近选择。'
+          : '目录回退：按可得性与相近度给出的候选。'
+        : i === 0
+          ? 'Catalog fallback: upstream returned no usable alternatives, so here are purchasable close matches.'
+          : 'Catalog fallback candidate prioritized by availability and similarity.';
+    const availabilityNote =
+      language === 'CN'
+        ? '目录检索候选（本地回退）'
+        : 'Catalog search candidate (local fallback)';
+    const product = {
+      ...(normalized.product_id ? { product_id: normalized.product_id } : {}),
+      ...(normalized.sku_id ? { sku_id: normalized.sku_id } : {}),
+      ...(normalized.brand ? { brand: normalized.brand } : {}),
+      name: productName,
+      ...(normalized.category ? { category: normalized.category } : {}),
+    };
+    if (normalized.price && typeof normalized.price === 'object' && !Array.isArray(normalized.price)) {
+      product.price = normalized.price;
+    }
+    alternativesRaw.push({
+      kind: i === 0 ? 'similar' : 'dupe',
+      product,
+      similarity_score: similarity,
+      tradeoffs: { availability_note: availabilityNote },
+      reasons: [reasonText],
+      evidence: {},
+      missing_info: ['llm_candidates_missing'],
+    });
+  }
+
+  return {
+    alternatives: mapAuroraAlternativesToRecoAlternatives(alternativesRaw, { lang: language, maxTotal: limit }),
+    reason: null,
+    source_mode: 'local_fallback',
+  };
+}
+
 async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, maxTotal, debug, logger }) {
   const inputText = String(productInput || '').trim();
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
@@ -30069,6 +30282,9 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
   let lastIntent = null;
   let lastError = null;
   let lastLlmTrace = null;
+  let sourceMode = 'llm_primary';
+  let fallbackReasonCode = null;
+  let fallbackAttempted = false;
   for (const attempt of attempts) {
     const profileSnapshot = buildProfileSnapshot(profileObj, {
       forceConservative: attempt.forceConservative,
@@ -30238,11 +30454,39 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     if (lastIntent !== 'clarify') break;
   }
 
+  if (!mapped.length) {
+    fallbackAttempted = true;
+    try {
+      const fallbackOut = await buildRecoAlternativesLocalFallback({
+        queryText: bestInput,
+        lang: ctx.lang,
+        maxTotal: maxTotal ?? 3,
+        logger,
+      });
+      fallbackReasonCode = fallbackOut && fallbackOut.reason ? String(fallbackOut.reason) : null;
+      if (Array.isArray(fallbackOut && fallbackOut.alternatives) && fallbackOut.alternatives.length) {
+        mapped = fallbackOut.alternatives;
+        sourceMode = String(fallbackOut.source_mode || 'local_fallback').trim().toLowerCase() || 'local_fallback';
+      }
+    } catch (err) {
+      fallbackReasonCode = 'local_fallback_error';
+      logger?.warn(
+        {
+          err: err && err.message ? err.message : String(err),
+          request_id: ctx && ctx.request_id ? ctx.request_id : null,
+          trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
+        },
+        'aurora bff: reco alternatives local fallback failed',
+      );
+    }
+  }
+
   if (lastError && !mapped.length) {
     return {
       ok: false,
       alternatives: [],
-      field_missing: [{ field: 'alternatives', reason: 'upstream_error' }],
+      field_missing: [{ field: 'alternatives', reason: fallbackReasonCode || 'upstream_error' }],
+      source_mode: sourceMode,
       ...(debug
         ? {
           debug: {
@@ -30250,6 +30494,8 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
             anchor_id: anchor || null,
             product_json_preview: productJson ? productJson.slice(0, 300) : null,
             error: lastError && lastError.message ? lastError.message : String(lastError),
+            local_fallback_attempted: fallbackAttempted,
+            local_fallback_reason: fallbackReasonCode,
             attempts: attemptDebug,
           },
         }
@@ -30263,7 +30509,11 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     alternatives: mapped,
     field_missing: mapped.length
       ? []
-      : [{ field: 'alternatives', reason: lastStructured ? 'upstream_missing_or_empty' : 'upstream_missing_or_unstructured' }],
+      : [{
+          field: 'alternatives',
+          reason: fallbackReasonCode || (lastStructured ? 'upstream_missing_or_empty' : 'upstream_missing_or_unstructured'),
+        }],
+    source_mode: sourceMode,
     ...(debug
       ? {
         debug: {
@@ -30281,6 +30531,8 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
               : [],
           alternatives_raw_count: Array.isArray(lastAlternativesRaw) ? lastAlternativesRaw.length : 0,
           alternatives_mapped_count: mapped.length,
+          local_fallback_attempted: fallbackAttempted,
+          local_fallback_reason: fallbackReasonCode,
           attempts: attemptDebug,
         },
       }
@@ -30377,6 +30629,150 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
   return { recommendations: enriched, field_missing, ...(debugInfo ? { debug: debugInfo } : {}) };
 }
 
+function buildEmptyPdpOpenEnrichmentMeta() {
+  return {
+    path_stats: { group: 0, ref: 0, resolve: 0, external: 0 },
+    fail_reason_counts: { db_error: 0, upstream_timeout: 0, no_candidates: 0 },
+    time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
+  };
+}
+
+async function callEnrichRecommendationsWithAlternatives(args = {}) {
+  if (typeof enrichRecommendationsWithAlternativesForTest === 'function') {
+    return enrichRecommendationsWithAlternativesForTest(args);
+  }
+  return enrichRecommendationsWithAlternatives(args);
+}
+
+async function safelyEnrichRecommendationsWithAlternatives({
+  ctx,
+  profileSummary,
+  recentLogs,
+  recommendations,
+  debug,
+  logger,
+  timeoutMs = null,
+  timeoutCode = null,
+  flow = 'reco',
+} = {}) {
+  const baseRecommendations = Array.isArray(recommendations) ? recommendations : [];
+  try {
+    if (Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 && timeoutCode) {
+      return await withTimeout(
+        callEnrichRecommendationsWithAlternatives({
+          ctx,
+          profileSummary,
+          recentLogs,
+          recommendations: baseRecommendations,
+          debug,
+          logger,
+        }),
+        timeoutMs,
+        timeoutCode,
+      );
+    }
+
+    return await callEnrichRecommendationsWithAlternatives({
+      ctx,
+      profileSummary,
+      recentLogs,
+      recommendations: baseRecommendations,
+      debug,
+      logger,
+    });
+  } catch (err) {
+    if (timeoutCode && err && err.code === timeoutCode) {
+      logger?.warn(
+        {
+          request_id: ctx && ctx.request_id ? ctx.request_id : null,
+          trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
+          budget_ms: timeoutMs,
+          flow,
+        },
+        'aurora bff: alternatives enrichment timed out; degraded alternatives only',
+      );
+      recordAuroraSkinFlowMetric({ stage: 'reco_alternatives_budget_exhausted', hit: true });
+      return {
+        recommendations: baseRecommendations,
+        field_missing: [{ field: 'recommendations[].alternatives', reason: 'alternatives_budget_exhausted' }],
+        ...(debug
+          ? {
+            debug: {
+              degraded: true,
+              reason: 'alternatives_budget_exhausted',
+              budget_ms: timeoutMs,
+            },
+          }
+          : {}),
+      };
+    }
+
+    logger?.warn(
+      {
+        err: err && err.message ? err.message : String(err),
+        code: err && err.code ? err.code : null,
+        request_id: ctx && ctx.request_id ? ctx.request_id : null,
+        trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
+        flow,
+      },
+      'aurora bff: alternatives enrichment failed; continuing without alternatives',
+    );
+    return {
+      recommendations: baseRecommendations,
+      field_missing: [{ field: 'recommendations[].alternatives', reason: 'alternatives_unavailable' }],
+      ...(debug
+        ? {
+          debug: {
+            degraded: true,
+            reason: 'alternatives_unavailable',
+            error_code: err && err.code ? String(err.code) : null,
+          },
+        }
+        : {}),
+    };
+  }
+}
+
+async function callEnrichRecommendationsWithPdpOpenContract(args = {}) {
+  if (typeof enrichRecommendationsWithPdpOpenContractForTest === 'function') {
+    return enrichRecommendationsWithPdpOpenContractForTest(args);
+  }
+  return enrichRecommendationsWithPdpOpenContract(args);
+}
+
+async function safelyEnrichRecommendationsWithPdpOpenContract({
+  recommendations,
+  logger,
+  fastExternalFallbackReasonCode = null,
+  ctx = null,
+  flow = 'reco',
+} = {}) {
+  const baseRecommendations = Array.isArray(recommendations) ? recommendations : [];
+  try {
+    return await callEnrichRecommendationsWithPdpOpenContract({
+      recommendations: baseRecommendations,
+      logger,
+      fastExternalFallbackReasonCode,
+    });
+  } catch (err) {
+    logger?.warn(
+      {
+        err: err && err.message ? err.message : String(err),
+        code: err && err.code ? err.code : null,
+        request_id: ctx && ctx.request_id ? ctx.request_id : null,
+        trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
+        flow,
+      },
+      'aurora bff: pdp enrichment failed; continuing without pdp enrichment',
+    );
+    return {
+      recommendations: baseRecommendations,
+      ...buildEmptyPdpOpenEnrichmentMeta(),
+      skipped: true,
+    };
+  }
+}
+
 async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraints, includeAlternatives, logger }) {
   const profileSummary = summarizeProfileForContext(profile);
   const query = buildAuroraRoutineQuery({
@@ -30413,12 +30809,15 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   norm.payload = { ...norm.payload, intent: 'routine', profile: profileSummary || null };
 
   if (includeAlternatives) {
-    const alt = await enrichRecommendationsWithAlternatives({
+    const alt = await safelyEnrichRecommendationsWithAlternatives({
       ctx,
       profileSummary,
       recentLogs,
       recommendations: norm.payload.recommendations,
       logger,
+      timeoutMs: RECO_ALTERNATIVES_STAGE_BUDGET_MS,
+      timeoutCode: 'AURORA_RECO_ALTERNATIVES_BUDGET_TIMEOUT',
+      flow: 'routine_reco',
     });
     norm.payload = { ...norm.payload, recommendations: alt.recommendations };
     norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
@@ -30429,9 +30828,11 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
     norm.payload.missing_info = norm.payload.missing_info.filter((code) => String(code) !== 'budget_unknown');
   }
 
-  const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
+  const pdpOpenOut = await safelyEnrichRecommendationsWithPdpOpenContract({
     recommendations: norm.payload.recommendations,
     logger,
+    ctx,
+    flow: 'routine_reco',
   });
   norm.payload = {
     ...norm.payload,
@@ -30441,6 +30842,7 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
       pdp_open_path_stats: pdpOpenOut.path_stats,
       resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
       time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+      ...(pdpOpenOut.skipped ? { pdp_open_enrichment_skipped: true } : {}),
     },
   };
 
@@ -30756,13 +31158,16 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   }
 
   if (includeAlternatives) {
-    const alt = await enrichRecommendationsWithAlternatives({
+    const alt = await safelyEnrichRecommendationsWithAlternatives({
       ctx,
       profileSummary,
       recentLogs,
       recommendations: norm.payload.recommendations,
       debug,
       logger,
+      timeoutMs: RECO_ALTERNATIVES_STAGE_BUDGET_MS,
+      timeoutCode: 'AURORA_RECO_ALTERNATIVES_BUDGET_TIMEOUT',
+      flow: 'product_reco',
     });
     norm.payload = { ...norm.payload, recommendations: alt.recommendations };
     norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
@@ -30859,10 +31264,12 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     });
   }
 
-  const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
+  const pdpOpenOut = await safelyEnrichRecommendationsWithPdpOpenContract({
     recommendations: norm.payload.recommendations,
     logger,
     fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
+    ctx,
+    flow: 'product_reco',
   });
   norm.payload = {
     ...norm.payload,
@@ -30872,15 +31279,25 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       pdp_open_path_stats: pdpOpenOut.path_stats,
       resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
       time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+      ...(pdpOpenOut.skipped ? { pdp_open_enrichment_skipped: true } : {}),
     },
   };
   const sourceMode = structuredSource === 'llm_primary' ? 'llm_primary' : 'rules_only';
+  const alternativesBudgetExhausted = Array.isArray(norm.field_missing)
+    && norm.field_missing.some(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        String(item.field || '').trim() === 'recommendations[].alternatives' &&
+        String(item.reason || '').trim() === 'alternatives_budget_exhausted',
+    );
   norm.payload = {
     ...norm.payload,
     source: sourceMode === 'llm_primary' ? 'llm_primary_v1' : 'catalog_transient_fallback',
     recommendation_meta: {
       ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
       source_mode: sourceMode,
+      alternatives_degraded: alternativesBudgetExhausted,
       used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
       used_itinerary: Boolean(itinerary),
       used_safety_flags: false,
@@ -34760,12 +35177,13 @@ function mountAuroraBffRoutes(app, { logger }) {
       const mapped = mapAuroraRoutineToRecoGenerate(routine, upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null);
       const norm = normalizeRecoGenerate(mapped);
       if (parsed.data.include_alternatives) {
-        const alt = await enrichRecommendationsWithAlternatives({
+        const alt = await safelyEnrichRecommendationsWithAlternatives({
           ctx,
           profileSummary,
           recentLogs,
           recommendations: norm.payload.recommendations,
           logger,
+          flow: 'reco_generate_route',
         });
         norm.payload = { ...norm.payload, recommendations: alt.recommendations };
         norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
@@ -34935,6 +35353,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ok: out && out.ok !== false,
         alternatives: Array.isArray(out && out.alternatives) ? out.alternatives : [],
         field_missing: Array.isArray(out && out.field_missing) ? out.field_missing : [],
+        source_mode: out && typeof out.source_mode === 'string' && out.source_mode.trim() ? out.source_mode.trim() : 'llm_primary',
         llm_trace: out && out.llm_trace && typeof out.llm_trace === 'object' ? out.llm_trace : null,
         ...(includeDebug && out && out.debug && typeof out.debug === 'object' ? { debug: out.debug } : {}),
       });
@@ -35893,7 +36312,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let profileSummary = summarizeProfileForContext(profile);
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
-        const routineFromRequest = parsed.data.currentRoutine;
+        const routineFromRequest = normalizeRoutineInputWithPmShortcut(parsed.data.currentRoutine);
 
         if (routineFromRequest !== undefined) {
           // Best-effort persistence. Analysis should still proceed even if storage is unavailable.
@@ -36398,7 +36817,11 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const baseVisionReasons = Array.isArray(visionDecision.reasons) ? visionDecision.reasons.filter(Boolean) : [];
         const firstVisionFailureReason = pickPrimaryVisionReason(baseVisionReasons);
-        const unavailabilityOnSkip = Boolean(visionDecision.decision === 'skip' && firstVisionFailureReason);
+        const unavailabilityOnSkip = Boolean(
+          visionDecision.decision === 'skip' &&
+            firstVisionFailureReason &&
+            isVisionFailureReason(firstVisionFailureReason),
+        );
         const visionRetryDefault = {
           attempted: 0,
           final: 'fail',
@@ -36532,6 +36955,14 @@ function mountAuroraBffRoutes(app, { logger }) {
               : null;
           if (analysis && Object.prototype.hasOwnProperty.call(analysis, '__geometry_sanitizer')) {
             delete analysis.__geometry_sanitizer;
+          }
+          if (
+            analysis &&
+            photoNotUsed &&
+            photoFailureCode &&
+            Object.prototype.hasOwnProperty.call(analysis, 'evidence_refs')
+          ) {
+            delete analysis.evidence_refs;
           }
         }
 
@@ -38634,13 +39065,15 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const existingCards = Array.isArray(baseEnvelope.cards) ? baseEnvelope.cards.slice() : [];
         const existingEvents = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice() : [];
-        const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+        const fallbackCards = safelyBuildRoutineRulesOnlyFallbackCardsForChat({
           ctx,
           message: requestMessage,
           profile,
           recentLogs,
           language: ctx.lang,
           reason: 'default',
+          logger,
+          flow: 'quality_contract_guard',
         });
         const fallbackAnalysisCard = fallbackCards.find((card) => card && card.type === 'analysis_summary');
         const fallbackConfidenceCard = fallbackCards.find((card) => card && card.type === 'confidence_notice');
@@ -39152,7 +39585,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           : parsed.data.clarification_id || null;
       latestClarificationId = clarificationId || null;
       const includeAlternatives = extractIncludeAlternativesFromAction(normalizedActionPayload);
-      const includeAlternativesInline = includeAlternatives && RECO_INLINE_ALTERNATIVES_ENABLED;
+      // Keep production inline-alternatives behind the rollout flag, but allow explicit offline/mock
+      // requests to exercise the full routine contract in test and local acceptance flows.
+      const includeAlternativesInline = includeAlternatives && (RECO_INLINE_ALTERNATIVES_ENABLED || USE_AURORA_BFF_MOCK);
       const debugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
       const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
@@ -39688,14 +40123,29 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return sendChatEnvelope(envelope);
       }
-      const buildRoutineTimeoutDegradedEnvelope = ({ detail, upstreamFailureCode } = {}) => {
+      const buildRoutineDegradedEnvelope = ({
+        detail,
+        upstreamFailureCode,
+        noticeReason = 'timeout_degraded',
+        eventReason = null,
+        eventSource = null,
+        confidenceRationale = null,
+        confidenceScore = null,
+      } = {}) => {
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const normalizedNoticeReason = String(noticeReason || '').trim().toLowerCase() === 'timeout_degraded'
+          ? 'timeout_degraded'
+          : 'default';
         const detailText =
           typeof detail === 'string' && detail.trim()
             ? detail.trim()
-            : lang === 'CN'
-              ? 'routine 生成阶段超时，已切换保守降级路径。'
-              : 'Routine generation timed out, so it was switched to a conservative degraded path.';
+            : normalizedNoticeReason === 'timeout_degraded'
+              ? lang === 'CN'
+                ? 'routine 生成阶段超时，已切换保守降级路径。'
+                : 'Routine generation timed out, so it was switched to a conservative degraded path.'
+              : lang === 'CN'
+                ? 'routine 生成阶段遇到运行时问题，已切换保守降级路径。'
+                : 'Routine generation hit a runtime issue, so it was switched to a conservative degraded path.';
         const detailCodeText =
           upstreamFailureCode && String(upstreamFailureCode).trim()
             ? lang === 'CN'
@@ -39724,9 +40174,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(
-            lang === 'CN'
-              ? 'routine 生成暂时超时。我已切到保守降级，不返回空卡；你可以继续补充当前流程，或直接重试。'
-              : 'Routine generation timed out. I switched to a conservative degraded path without returning empty cards; continue intake or retry directly.',
+            normalizedNoticeReason === 'timeout_degraded'
+              ? lang === 'CN'
+                ? 'routine 生成暂时超时。我已切到保守降级，不返回空卡；你可以继续补充当前流程，或直接重试。'
+                : 'Routine generation timed out. I switched to a conservative degraded path without returning empty cards; continue intake or retry directly.'
+              : lang === 'CN'
+                ? 'routine 生成遇到运行时问题。我已切到保守降级，不返回空卡；你可以继续补充当前流程，或直接重试。'
+                : 'Routine generation hit a runtime issue. I switched to a conservative degraded path without returning empty cards; continue intake or retry directly.',
           ),
           suggested_chips: chips,
           cards: [
@@ -39734,7 +40188,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               card_id: `analysis_${ctx.request_id}`,
               type: 'analysis_summary',
               payload: {
-                analysis_source: 'rules_only_timeout_degraded',
+                analysis_source: normalizedNoticeReason === 'timeout_degraded' ? 'rules_only_timeout_degraded' : 'rules_only_fallback',
                 low_confidence: true,
                 analysis: {
                   routine_expert: rulesOnlyExpert,
@@ -39746,8 +40200,20 @@ function mountAuroraBffRoutes(app, { logger }) {
               type: 'confidence_notice',
               payload: buildConfidenceNoticeCardPayload({
                 language: ctx.lang,
-                reason: 'timeout_degraded',
-                confidence: { score: 0.38, level: 'low', rationale: ['routine_budget_timeout'] },
+                reason: normalizedNoticeReason,
+                confidence: {
+                  score: Number.isFinite(Number(confidenceScore))
+                    ? Number(confidenceScore)
+                    : normalizedNoticeReason === 'timeout_degraded'
+                      ? 0.38
+                      : 0.42,
+                  level: 'low',
+                  rationale: Array.isArray(confidenceRationale) && confidenceRationale.length
+                    ? confidenceRationale
+                    : normalizedNoticeReason === 'timeout_degraded'
+                      ? ['routine_budget_timeout']
+                      : ['routine_runtime_degraded'],
+                },
                 actions: ['update_current_routine', 'retry_recommendations'],
                 details: [detailText, ...(detailCodeText ? [detailCodeText] : [])],
               }),
@@ -39758,8 +40224,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             makeEvent(ctx, 'recos_requested', {
               explicit: true,
               gated: true,
-              reason: 'timeout_degraded',
-              source: 'upstream_timeout',
+              reason: eventReason || (normalizedNoticeReason === 'timeout_degraded' ? 'timeout_degraded' : 'runtime_degraded'),
+              source: eventSource || (normalizedNoticeReason === 'timeout_degraded' ? 'upstream_timeout' : 'runtime_error'),
               route: 'routine',
               ...(detailCodeText ? { upstream_failure_code: String(upstreamFailureCode).trim().slice(0, 64) } : {}),
             }),
@@ -40331,6 +40797,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           normalizeAgentState(requestedTransition.requested_next_state) === 'DIAG_PROFILE') ||
         looksLikeDiagnosisStart(message),
       );
+      const diagnosisSkipPhotoAnalyzeRequested = Boolean(
+        actionId === 'diag.skip_photo_analyze' ||
+        actionId === 'diag_skip_photo_analyze' ||
+        actionId === 'chip.intake.skip_analysis',
+      );
       const diagnosisFlowContinuationAllowed = Boolean(
         !diagnosisEntryRequested &&
         !recommendationEntryRequested &&
@@ -40339,6 +40810,92 @@ function mountAuroraBffRoutes(app, { logger }) {
         !conflictIntentRequested &&
         !looksLikeWeatherOrEnvironmentQuestion(message),
       );
+      if (diagnosisSkipPhotoAnalyzeRequested) {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const profileSummaryForSkip = summarizeChatProfileForContext(profile);
+        const baselineAnalysis = buildLowConfidenceBaselineSkinAnalysis({
+          profile: profileSummaryForSkip || profile,
+          language: ctx.lang,
+        });
+        const skipReasonText =
+          lang === 'CN'
+            ? '当前为低置信初步分析；补充照片（自然光 + 室内白光）可提升准确度。'
+            : 'This is a low-confidence baseline; adding daylight + indoor-white photos will improve accuracy.';
+        const skipPayload = {
+          analysis: baselineAnalysis,
+          low_confidence: true,
+          photos_provided: false,
+          photo_qc: [],
+          used_photos: false,
+          analysis_source: 'baseline_low_confidence',
+          quality_report: {
+            photo_quality: { grade: 'unknown', reasons: ['photo_skipped_by_user'] },
+            detector_confidence: 0,
+            degraded_mode: SKIN_DEGRADED_MODE,
+            llm: {
+              vision: { decision: 'skip', reasons: ['photo_skipped_by_user'] },
+              report: { decision: 'skip', reasons: ['photo_skipped_by_user'] },
+            },
+            reasons: [skipReasonText],
+          },
+          recommendation_ready: false,
+          photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+          analysis_meta: {
+            gate_relax_mode: AURORA_RULE_RELAX_MODE,
+            low_quality_tolerated: false,
+          },
+        };
+        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S5_ANALYSIS_SUMMARY' : undefined;
+        const sessionPatch = nextState ? { next_state: nextState } : {};
+        if (profileSummaryForSkip) sessionPatch.profile = profileSummaryForSkip;
+        logger?.info({ kind: 'metric', name: 'diag_photo_choice_skip_tap_total', value: 1 }, 'metric');
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            lang === 'CN'
+              ? '已按“先不上传”返回低置信初步分析。你可以随时补图，我会基于照片升级准确度。'
+              : "I returned a low-confidence baseline since you chose to skip photos for now. You can add photos anytime to upgrade accuracy.",
+          ),
+          suggested_chips: buildRecoEntryChips(ctx.lang),
+          cards: [
+            {
+              card_id: `analysis_${ctx.request_id}`,
+              type: 'analysis_summary',
+              payload: skipPayload,
+            },
+            {
+              card_id: `conf_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: 'low_confidence',
+                confidence: { score: 0.4, level: 'low', rationale: ['photo_skipped_by_user'] },
+                actions: ['upload_daylight_and_indoor_white', 'update_current_routine'],
+                details: [skipReasonText],
+              }),
+            },
+          ],
+          session_patch: sessionPatch,
+          events: [
+            makeEvent(ctx, 'value_moment', {
+              kind: 'skin_analysis',
+              used_photos: false,
+              analysis_source: 'baseline_low_confidence',
+              reason: 'photo_skipped_by_user',
+            }),
+            makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_skip_photo_analyze' }),
+          ],
+          analysis_meta: {
+            detector_source: 'baseline_low_confidence',
+            llm_vision_called: false,
+            llm_report_called: false,
+            artifact_usable: false,
+            gate_relax_mode: AURORA_RULE_RELAX_MODE,
+            low_quality_tolerated: false,
+            degrade_reason: 'photo_skipped_by_user',
+          },
+        });
+        return sendChatEnvelope(envelope);
+      }
       const anchorCollectionSignal = (() => {
         const text = String(message || '').trim().toLowerCase();
         const aid = String(actionId || '').trim().toLowerCase();
@@ -41036,59 +41593,74 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? canonicalIntent.entities.date_range.end
               : '');
 
-          const weather = await getTravelWeather({
-            destination,
-            startDate,
-            endDate,
-          });
-          const epiPayload = buildEpiPayload({
-            weather,
-            profile,
-            language: ctx.lang,
-            userReportedConditions: { condition: message },
-          });
-          policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
-          policyMeta.degraded = policyMeta.env_source !== 'weather_api';
+          if (destination) {
+            try {
+              const weather = await getTravelWeather({
+                destination,
+                startDate,
+                endDate,
+              });
+              const epiPayload = buildEpiPayload({
+                weather,
+                profile,
+                language: ctx.lang,
+                userReportedConditions: { condition: message },
+              });
+              policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
+              policyMeta.degraded = policyMeta.env_source !== 'weather_api';
 
-          const localEss = Number(envStressUi && envStressUi.ess);
-          envStressUi = {
-            ...(envStressUi || {}),
-            ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
-            epi: epiPayload.epi,
-            components: epiPayload.components,
-            reco_weights: epiPayload.reco_weights,
-            env_source: epiPayload.env_source,
-            travel_context: weather.date_range || null,
-          };
+              const localEss = Number(envStressUi && envStressUi.ess);
+              envStressUi = {
+                ...(envStressUi || {}),
+                ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
+                epi: epiPayload.epi,
+                components: epiPayload.components,
+                reco_weights: epiPayload.reco_weights,
+                env_source: epiPayload.env_source,
+                travel_context: weather.date_range || null,
+              };
 
-          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-          const destinationText =
-            weather && weather.location && weather.location.name
-              ? String(weather.location.name)
-              : String(destination || '');
-          const dateHint =
-            weather && weather.date_range && weather.date_range.start
-              ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
-              : '';
-          const epiLinesCn = [
-            `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
-            destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
-            '建议（AM）：',
-            ...epiPayload.strategy.am.map((line) => `- ${line}`),
-            '建议（PM）：',
-            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-          ].filter(Boolean);
-          const epiLinesEn = [
-            `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
-            destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
-            'AM strategy:',
-            ...epiPayload.strategy.am.map((line) => `- ${line}`),
-            'PM strategy:',
-            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-          ].filter(Boolean);
-          advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
+              const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+              const destinationText =
+                weather && weather.location && weather.location.name
+                  ? String(weather.location.name)
+                  : String(destination || '');
+              const dateHint =
+                weather && weather.date_range && weather.date_range.start
+                  ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
+                  : '';
+              const epiLinesCn = [
+                `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
+                destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
+                '建议（AM）：',
+                ...epiPayload.strategy.am.map((line) => `- ${line}`),
+                '建议（PM）：',
+                ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+                ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+              ].filter(Boolean);
+              const epiLinesEn = [
+                `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
+                destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
+                'AM strategy:',
+                ...epiPayload.strategy.am.map((line) => `- ${line}`),
+                'PM strategy:',
+                ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+                ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+              ].filter(Boolean);
+              advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
+            } catch (weatherErr) {
+              policyMeta.env_source = 'local_template';
+              policyMeta.degraded = true;
+              logger?.warn(
+                {
+                  err: weatherErr && weatherErr.message ? weatherErr.message : String(weatherErr),
+                  request_id: ctx.request_id,
+                  trace_id: ctx.trace_id,
+                },
+                'aurora bff: travel weather live fetch failed; degraded to local template',
+              );
+            }
+          }
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
@@ -41167,15 +41739,79 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         ];
 
+        const envCards = envStressUi
+          ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
+          : [];
+        const envEvents = [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })];
+        const asksProductItemsInEnvTurn =
+          /(products?|product list|serum|essence|toner|moisturizer|cream|cleanser|sunscreen|防晒|产品|单品|精华|面霜|洁面|乳液)/i
+            .test(String(message || ''));
+        const wantsEnvRecoFusion =
+          allowRecoCards &&
+          recoInteractionAllowed &&
+          asksProductItemsInEnvTurn &&
+          looksLikeRecommendationRequest(message) &&
+          !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+          !looksLikeSuitabilityRequest(message) &&
+          !looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+        if (wantsEnvRecoFusion) {
+          try {
+            const envRecoOut = await withTimeout(
+              generateProductRecommendations({
+                ctx,
+                profile,
+                recentLogs,
+                message,
+                includeAlternatives: false,
+                debug: debugUpstream,
+                logger,
+              }),
+              Math.min(AURORA_BFF_CHAT_RECO_BUDGET_MS, 3500),
+              'AURORA_CHAT_ENV_RECO_BUDGET_TIMEOUT',
+            );
+            const recoPayload = !debugUpstream
+              ? stripInternalRefsDeep(envRecoOut.norm && envRecoOut.norm.payload ? envRecoOut.norm.payload : null)
+              : envRecoOut.norm && envRecoOut.norm.payload
+                ? envRecoOut.norm.payload
+                : null;
+            const recoList = Array.isArray(recoPayload && recoPayload.recommendations) ? recoPayload.recommendations : [];
+            if (recoPayload && recoList.length > 0) {
+              envCards.push({
+                card_id: `reco_${ctx.request_id}`,
+                type: 'recommendations',
+                payload: recoPayload,
+                ...(Array.isArray(envRecoOut.norm && envRecoOut.norm.field_missing) && envRecoOut.norm.field_missing.length
+                  ? { field_missing: envRecoOut.norm.field_missing.slice(0, 8) }
+                  : {}),
+              });
+              envEvents.push(
+                makeEvent(ctx, 'recos_requested', {
+                  explicit: true,
+                  source: String(recoPayload.source || '').trim() || 'env_reco_fusion',
+                  source_detail: 'env_reco_fusion',
+                }),
+              );
+            }
+          } catch (envRecoErr) {
+            logger?.warn(
+              {
+                err: envRecoErr && envRecoErr.message ? envRecoErr.message : String(envRecoErr),
+                code: envRecoErr && envRecoErr.code ? envRecoErr.code : null,
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+              },
+              'aurora bff: env/reco fusion generation failed; continuing with env-only response',
+            );
+          }
+        }
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
-          cards: envStressUi
-            ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
-            : [],
+          cards: envCards,
           session_patch:
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-          events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
+          events: envEvents,
         });
         return sendChatEnvelope(envelope);
       }
@@ -41340,10 +41976,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
         const prompt =
           lang === 'CN'
-            ? '已收到你的肤况信息。要不要再上传一张照片让我更准？你也可以先跳过照片，我会给一份低置信度的安全基线。'
-            : "Got it — I saved your skin profile. Want to upload a photo for a more accurate analysis? You can also skip photos and I’ll give a low-confidence, safe baseline first.";
+            ? '我还没开始正式分析。上传照片会更准确；你也可以先不上传，我会先给低置信度的初步分析。'
+            : "Analysis has not started yet. Upload a photo for higher accuracy, or skip for a low-confidence baseline first.";
 
         const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+        const profileSummaryForGate = summarizeChatProfileForContext(profile);
+        logger?.info({ kind: 'metric', name: 'diag_photo_choice_shown_total', value: 1 }, 'metric');
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(prompt),
           suggested_chips: [
@@ -41351,24 +41989,41 @@ function mountAuroraBffRoutes(app, { logger }) {
               chip_id: 'chip.intake.upload_photos',
               label: lang === 'CN' ? '上传照片（更准）' : 'Upload a photo (more accurate)',
               kind: 'quick_reply',
-              data: {},
+              data: {
+                action_id: 'diag.upload_photo',
+                trigger_source: 'action',
+                client_action: 'open_camera',
+              },
             },
             {
               chip_id: 'chip.intake.skip_analysis',
               label: lang === 'CN' ? '跳过照片（低置信度）' : 'Skip photo (low confidence)',
               kind: 'quick_reply',
-              data: {},
-            },
-            {
-              chip_id: 'chip_keep_chatting',
-              label: lang === 'CN' ? '继续聊聊' : 'Just keep chatting',
-              kind: 'quick_reply',
-              data: {},
+              data: {
+                action_id: 'diag.skip_photo_analyze',
+                trigger_source: 'action',
+              },
             },
           ],
-          cards: [],
-          session_patch: nextState ? { next_state: nextState, profile: summarizeChatProfileForContext(profile) } : { profile: summarizeChatProfileForContext(profile) },
-          events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_profile_complete' })],
+          cards: [
+            {
+              card_id: `diag_${ctx.request_id}`,
+              type: 'diagnosis_gate',
+              payload: {
+                reason: 'diagnosis_photo_choice',
+                analysis_started: false,
+                missing_fields: [],
+                wants: 'diagnosis',
+                profile: profileSummaryForGate,
+                recent_logs: recentLogs,
+              },
+            },
+          ],
+          session_patch: nextState ? { next_state: nextState, profile: profileSummaryForGate } : { profile: profileSummaryForGate },
+          events: [
+            makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_profile_complete' }),
+            makeEvent(ctx, 'diag_photo_choice_shown', { next_state: nextState || null }),
+          ],
         });
         return sendChatEnvelope(envelope);
       }
@@ -41663,25 +42318,48 @@ function mountAuroraBffRoutes(app, { logger }) {
               )
               : await routineRecoPromise;
           } catch (err) {
-            if (!AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || !(err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT')) {
-              throw err;
+            if (AURORA_BFF_CHAT_ROUTINE_V2_ENABLED && err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT') {
+              logger?.warn(
+                {
+                  request_id: ctx.request_id,
+                  trace_id: ctx.trace_id,
+                  budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+                },
+                'aurora bff: routine generation timeout, degraded to confidence_notice',
+              );
+              logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
+              recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+              return sendChatEnvelope(
+                buildRoutineDegradedEnvelope({
+                  detail:
+                    ctx.lang === 'CN'
+                      ? '预算分支 routine 生成超时，建议继续补充 AM/PM 后重试。'
+                      : 'Routine generation in budget flow timed out; continue AM/PM intake and retry.',
+                }),
+              );
             }
             logger?.warn(
               {
                 request_id: ctx.request_id,
                 trace_id: ctx.trace_id,
-                budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+                code: err && err.code ? err.code : null,
+                err: err && err.message ? err.message : String(err),
               },
-              'aurora bff: routine generation timeout, degraded to confidence_notice',
+              'aurora bff: routine generation failed, degraded to confidence_notice',
             );
-            logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
-            recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+            recordAuroraSkinFlowMetric({ stage: 'routine_runtime_degraded', hit: true });
             return sendChatEnvelope(
-              buildRoutineTimeoutDegradedEnvelope({
+              buildRoutineDegradedEnvelope({
                 detail:
                   ctx.lang === 'CN'
-                    ? '预算分支 routine 生成超时，建议继续补充 AM/PM 后重试。'
-                    : 'Routine generation in budget flow timed out; continue AM/PM intake and retry.',
+                    ? '预算分支 routine 生成失败，已切到保守降级；你可以继续补充 AM/PM 后重试。'
+                    : 'Routine generation in budget flow failed, so I switched to a conservative degraded path; continue AM/PM intake and retry.',
+                upstreamFailureCode: err && (err.code || err.message) ? err.code || err.message : null,
+                noticeReason: 'default',
+                eventReason: 'runtime_degraded',
+                eventSource: 'runtime_error',
+                confidenceRationale: ['routine_runtime_degraded'],
+                confidenceScore: 0.42,
               }),
             );
           }
@@ -41695,7 +42373,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(
               ctx.lang === 'CN'
-                ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
+                ? (
+                  rawBudget
+                    ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
+                    : '预算是可选项；我先生成了一个简洁 AM/PM routine（见下方卡片）。'
+                )
                 : 'Got it. I generated a simple AM/PM routine (see the card below).',
             ),
             suggested_chips: suggestedChips,
@@ -41745,25 +42427,48 @@ function mountAuroraBffRoutes(app, { logger }) {
             )
             : await routineRecoPromise;
         } catch (err) {
-          if (!AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || !(err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT')) {
-            throw err;
+          if (AURORA_BFF_CHAT_ROUTINE_V2_ENABLED && err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT') {
+            logger?.warn(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+              },
+              'aurora bff: routine generation timeout, degraded to confidence_notice',
+            );
+            logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
+            recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+            return sendChatEnvelope(
+              buildRoutineDegradedEnvelope({
+                detail:
+                  ctx.lang === 'CN'
+                    ? 'routine 生成超时，建议继续补充 AM/PM 或直接重试。'
+                    : 'Routine generation timed out; continue AM/PM intake or retry directly.',
+              }),
+            );
           }
           logger?.warn(
             {
               request_id: ctx.request_id,
               trace_id: ctx.trace_id,
-              budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+              code: err && err.code ? err.code : null,
+              err: err && err.message ? err.message : String(err),
             },
-            'aurora bff: routine generation timeout, degraded to confidence_notice',
+            'aurora bff: routine generation failed, degraded to confidence_notice',
           );
-          logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
-          recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+          recordAuroraSkinFlowMetric({ stage: 'routine_runtime_degraded', hit: true });
           return sendChatEnvelope(
-            buildRoutineTimeoutDegradedEnvelope({
+            buildRoutineDegradedEnvelope({
               detail:
                 ctx.lang === 'CN'
-                  ? 'routine 生成超时，建议继续补充 AM/PM 或直接重试。'
-                  : 'Routine generation timed out; continue AM/PM intake or retry directly.',
+                  ? 'routine 生成失败，已切到保守降级；你可以继续补充 AM/PM 或直接重试。'
+                  : 'Routine generation failed, so I switched to a conservative degraded path; continue AM/PM intake or retry directly.',
+              upstreamFailureCode: err && (err.code || err.message) ? err.code || err.message : null,
+              noticeReason: 'default',
+              eventReason: 'runtime_degraded',
+              eventSource: 'runtime_error',
+              confidenceRationale: ['routine_runtime_degraded'],
+              confidenceScore: 0.42,
             }),
           );
         }
@@ -42461,6 +43166,14 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const sessionPatch = nextState ? { next_state: nextState } : {};
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
+        const alternativesBudgetExhausted = Array.isArray(norm && norm.field_missing)
+          && norm.field_missing.some(
+            (item) =>
+              item &&
+              typeof item === 'object' &&
+              String(item.field || '').trim() === 'recommendations[].alternatives' &&
+              String(item.reason || '').trim() === 'alternatives_budget_exhausted',
+          );
 
         if (latestArtifact) {
           const baseRecoRunContext = {
@@ -42553,9 +43266,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               low_confidence: lowConfidenceArtifact,
               confidence_level: artifactConfidenceLevel,
               recompute_from_profile_update: recomputeFromProfileUpdate,
+              ...(alternativesBudgetExhausted ? { alternatives_degraded: true } : {}),
               ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
               ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
             }),
+            ...(alternativesBudgetExhausted
+              ? [makeEvent(ctx, 'reco_alternatives_budget_exhausted', { budget_ms: RECO_ALTERNATIVES_STAGE_BUDGET_MS })]
+              : []),
           ],
         });
         return sendChatEnvelope(envelope);
@@ -42785,12 +43502,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (recoIdx !== -1) {
           const card = cards[recoIdx];
           const basePayload = card.payload && typeof card.payload === 'object' ? card.payload : {};
-          const alt = await enrichRecommendationsWithAlternatives({
+          const alt = await safelyEnrichRecommendationsWithAlternatives({
             ctx,
             profileSummary,
             recentLogs,
             recommendations: basePayload.recommendations,
             logger,
+            flow: 'chat_card_reco',
           });
           const nextCard = {
             ...card,
@@ -43721,7 +44439,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? inferRouteFromMessageIntent(responseIntentMessage, { allowRecoCards: allowRecs })
           : null;
       const routeHint = resolveRouteHint(routeHintFromCards, routeHintFromMessage);
-      if (routeHint && routeHint.route) {
+      const skipEnvRouteUpgradeForCollapsedTemplate = Boolean(
+        routeHint &&
+          routeHint.route === 'env' &&
+          !routeHintFromMessage &&
+          hasRenderableCards &&
+          looksLikeOverlongStructuredTemplate(answer),
+      );
+      if (routeHint && routeHint.route && !skipEnvRouteUpgradeForCollapsedTemplate) {
         const routeStructured = buildRouteAwareAssistantText({
           route: routeHint.route,
           payload: routeHint.payload,
@@ -43823,13 +44548,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       const needsRoutineFallbackModules = !hasRoutineExpertRequiredModules(existingRoutineExpert);
       const stallLikeResponse = looksLikeStallPhrase(safeAnswer) || looksLikeGenericStructuredNotice(safeAnswer);
       if (routineLikeContext && needsRoutineFallbackModules && (!assembledRenderable || stallLikeResponse)) {
-        const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+        const fallbackCards = safelyBuildRoutineRulesOnlyFallbackCardsForChat({
           ctx,
           message,
           profile,
           recentLogs,
           language: ctx.lang,
           reason: stallLikeResponse ? 'default' : 'timeout_degraded',
+          logger,
+          flow: 'chat_response_guard',
         });
         assembledCards.unshift(...fallbackCards);
         safeAnswer =
@@ -43998,6 +44725,7 @@ const __internal = {
   buildRealtimeCompetitorQueryPlan,
   mapCatalogProductToAnchorProduct,
   evaluateAnchorTrustForProductIntel,
+  normalizeRoutineInputWithPmShortcut,
   resolveCatalogProductForProductInput,
   extractRoutineProductCandidatesForDeepScan,
   deepScanRoutineProductCandidate,
@@ -44080,6 +44808,10 @@ const __internal = {
   updateRecoRecentExposureTokens,
   enrichRecoItemWithPdpOpenContract,
   enrichRecommendationsWithPdpOpenContract,
+  generateRoutineReco,
+  generateProductRecommendations,
+  safelyEnrichRecommendationsWithAlternatives,
+  safelyEnrichRecommendationsWithPdpOpenContract,
   getPdpPrefetchStateSnapshot,
   runPdpHotsetPrewarmBatch,
   resolveRecoPdpByStableIds,
@@ -44090,6 +44822,25 @@ const __internal = {
   },
   __resetResolveProductRefForTest() {
     resolveProductRefDirectImpl = resolveProductRefDirect;
+  },
+  __setEnrichRecommendationsWithAlternativesForTest(fn) {
+    enrichRecommendationsWithAlternativesForTest = typeof fn === 'function' ? fn : null;
+  },
+  __resetEnrichRecommendationsWithAlternativesForTest() {
+    enrichRecommendationsWithAlternativesForTest = null;
+  },
+  __setEnrichRecommendationsWithPdpOpenContractForTest(fn) {
+    enrichRecommendationsWithPdpOpenContractForTest = typeof fn === 'function' ? fn : null;
+  },
+  __resetEnrichRecommendationsWithPdpOpenContractForTest() {
+    enrichRecommendationsWithPdpOpenContractForTest = null;
+  },
+  safelyBuildRoutineRulesOnlyFallbackCardsForChat,
+  __setBuildRoutineRulesOnlyFallbackCardsForChatForTest(fn) {
+    buildRoutineRulesOnlyFallbackCardsForChatForTest = typeof fn === 'function' ? fn : null;
+  },
+  __resetBuildRoutineRulesOnlyFallbackCardsForChatForTest() {
+    buildRoutineRulesOnlyFallbackCardsForChatForTest = null;
   },
   __setVisionRunnersForTest(runners = {}) {
     const geminiFn = runners && typeof runners.gemini === 'function' ? runners.gemini : null;
