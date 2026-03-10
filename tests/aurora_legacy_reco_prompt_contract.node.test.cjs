@@ -28,6 +28,18 @@ test('legacy reco alternatives system prompt encodes candidate-only and uncertai
   assert.match(text, /Respect profile sensitivity and barrier context/i);
 });
 
+test('hybrid reco alternatives system prompt encodes open-world fallback and anchor-only constraints', () => {
+  const promptPath = path.join(__dirname, '..', 'prompts', 'reco_alternatives_hybrid_v1.system.txt');
+  const text = fs.readFileSync(promptPath, 'utf8');
+
+  assert.match(text, /dupe-finding workflow/i);
+  assert.match(text, /open-world products/i);
+  assert.match(text, /candidate_origin/i);
+  assert.match(text, /If meta\.profile_mode is "anchor_only"/i);
+  assert.match(text, /Never invent product IDs, SKUs, URLs, prices/i);
+  assert.match(text, /If no alternative is strong enough, return \{"alternatives": \[\]\}/i);
+});
+
 test('legacy reco main system prompt encodes task_mode and candidate grounding rules', () => {
   const promptPath = path.join(__dirname, '..', 'prompts', 'reco_main_v1_0.system.txt');
   const text = fs.readFileSync(promptPath, 'utf8');
@@ -146,6 +158,50 @@ test('legacy reco alternatives query includes hardened prompt blocks and schema-
   }
 });
 
+test('hybrid reco alternatives query includes recommendation_mode, anchor_only profile mode, and open-world rules', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const promptPack = __internal.buildAuroraRecoAlternativesQuery({
+      lang: 'EN',
+      profileSnapshot: {
+        skinType: 'unknown',
+        sensitivity: 'unknown',
+        barrierStatus: 'unknown',
+        goals: [],
+        context_present: false,
+      },
+      productInput: 'Lab Series Daily Rescue Energizing Lightweight Lotion Moisturizer',
+      productObj: {
+        brand: 'Lab Series',
+        name: 'Daily Rescue Energizing Lightweight Lotion Moisturizer',
+      },
+      maxTotal: 3,
+      region: 'US',
+      anchorId: '',
+      candidates: [],
+      mode: 'open_world_only',
+      profileMode: 'anchor_only',
+    });
+
+    const contract = __internal.validateRecoPromptContract({
+      query: promptPack.query,
+      expectedTemplateId: 'reco_alternatives_hybrid_v1',
+    });
+
+    assert.equal(contract.ok, true);
+    assert.match(promptPack.query, /PROMPT_TEMPLATE_ID=reco_alternatives_hybrid_v1/i);
+    assert.match(promptPack.query, /"recommendation_mode"\s*:\s*"open_world_only"/i);
+    assert.match(promptPack.query, /"profile_mode"\s*:\s*"anchor_only"/i);
+    assert.match(promptPack.query, /"profile_context_present"\s*:\s*false/i);
+    assert.match(promptPack.query, /"skinType"\s*:\s*"unknown"/i);
+    assert.match(promptPack.query, /"goals"\s*:\s*\[\s*\]/i);
+    assert.match(promptPack.systemPrompt, /do NOT personalize to an assumed user/i);
+    assert.match(promptPack.systemPrompt, /Never invent product IDs, SKUs, URLs, prices/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('legacy reco main query includes task_mode and candidate constraint payload', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -191,7 +247,7 @@ test('legacy reco main query includes task_mode and candidate constraint payload
 
     const contract = __internal.validateRecoPromptContract({
       query,
-      expectedTemplateId: 'reco_main_v1_0',
+      expectedTemplateId: 'reco_main_v1_2',
     });
 
     assert.equal(contract.ok, true);

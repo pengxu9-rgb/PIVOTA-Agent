@@ -94,9 +94,16 @@ function mountDupeRoutes(app, deps) {
         return res.status(400).json(envelope);
       }
 
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+      const profileSummary = summarizeProfileForContext(profile);
+
       const result = await executeDupeSuggest({
         ctx,
         input: parsed.data,
+        profileSummary,
+        recentLogs,
         services: _dupeSuggestServices,
         logger,
         flags: _dupeSuggestFlags,

@@ -910,12 +910,30 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
 
     const productCategory = asString(product.category || product.product_type || product.type);
     const hasSharedActives = missingActives.length === 0 && addedBenefits.length > 0;
-    const kind = classifyAlternativeKind(priceDeltaUsd, {
+    const explicitKind = (asString(a.kind) || '').toLowerCase();
+    const kind = explicitKind === 'dupe' || explicitKind === 'similar' || explicitKind === 'premium'
+      ? explicitKind
+      : classifyAlternativeKind(priceDeltaUsd, {
       similarity,
       categoryMatch: Boolean(productCategory),
       hasSharedActives,
     });
     const priceTier = classifyPriceTier(priceDeltaUsd);
+    const candidateOriginToken = (asString(a.candidate_origin) || '').toLowerCase();
+    const groundingStatusToken = (asString(a.grounding_status) || '').toLowerCase();
+    const rankingModeToken = (asString(a.ranking_mode) || '').toLowerCase();
+    const candidateOrigin = candidateOriginToken === 'open_world' ? 'open_world' : candidateOriginToken === 'catalog' ? 'catalog' : null;
+    const groundingStatus = groundingStatusToken === 'catalog_verified'
+      ? 'catalog_verified'
+      : groundingStatusToken === 'name_only'
+        ? 'name_only'
+        : candidateOrigin === 'catalog'
+          ? 'catalog_verified'
+          : candidateOrigin === 'open_world'
+            ? 'name_only'
+            : null;
+    const rankingMode = rankingModeToken === 'personalized' ? 'personalized' : rankingModeToken === 'anchor_only' ? 'anchor_only' : null;
+    const profileFitReason = pickCleanAltNotes(asStringArray(a.profile_fit_reason || a.profileFitReason), 3);
 
     const tradeoffs = [];
     if (missingActives.length) {
@@ -1010,8 +1028,12 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
       kind,
       price_tier: priceTier,
       product,
+      ...(candidateOrigin ? { candidate_origin: candidateOrigin } : {}),
+      ...(groundingStatus ? { grounding_status: groundingStatus } : {}),
+      ...(rankingMode ? { ranking_mode: rankingMode } : {}),
       ...(similarity != null ? { similarity } : {}),
       ...(reasons.length ? { reasons: uniqueStrings(reasons).slice(0, 2) } : {}),
+      ...(profileFitReason.length ? { profile_fit_reason: profileFitReason } : {}),
       tradeoffs: uniqueStrings(tradeoffs),
       ...(Object.keys(tradeoffs_detail).length ? { tradeoffs_detail } : {}),
       evidence,

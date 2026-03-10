@@ -1,0 +1,80 @@
+{
+  "meta": {
+    "lang": "EN",
+    "intent": "alternatives_selector",
+    "region": "US",
+    "recommendation_mode": "hybrid_fallback",
+    "profile_mode": "anchor_only",
+    "profile_context_present": false
+  },
+  "profile": {
+    "skinType": "unknown",
+    "sensitivity": "unknown",
+    "barrierStatus": "unknown",
+    "goals": []
+  },
+  "target_product": {
+    "anchor_id": "string|null",
+    "brand": "string|null",
+    "name": "string|null",
+    "query": "string|null",
+    "region_variant": "US|EU|unknown",
+    "known_actives": [],
+    "notes": null
+  },
+  "task": {
+    "max_alternatives": 6,
+    "reco_trigger": "explicit_user_action",
+    "recommendation_mode": "hybrid_fallback",
+    "profile_mode": "anchor_only"
+  },
+  "hard_rules": [
+    "Prefer context.candidates first and supplement with open-world products only when the pool is insufficient.",
+    "For open-world products, never invent product_id, sku_id, url, price, exact INCI, or exact formula identity.",
+    "If profile_mode is anchor_only, do not make personalized skin-fit claims.",
+    "If no suitable alternative exists, return {\"alternatives\": []}."
+  ],
+  "output_item_schema": {
+    "kind": "dupe|similar|premium",
+    "candidate_origin": "catalog|open_world",
+    "grounding_status": "catalog_verified|name_only",
+    "ranking_mode": "personalized|anchor_only",
+    "product": {
+      "brand": "string|null",
+      "name": "string|null",
+      "product_id": "string|null",
+      "sku_id": "string|null",
+      "url": "string|null",
+      "category": "string|null"
+    },
+    "similarity_score": "integer 0-100",
+    "reasons": [
+      "string (max 2)"
+    ],
+    "profile_fit_reason": [
+      "string (max 2)"
+    ],
+    "tradeoffs": {
+      "missing_actives": [
+        "string"
+      ],
+      "added_benefits": [
+        "string"
+      ],
+      "texture_finish_differences": [
+        "string"
+      ],
+      "availability_note": "string|null",
+      "price_delta_usd": "number|null"
+    },
+    "evidence": {
+      "kb_citations": [
+        "string"
+      ]
+    },
+    "missing_info": [
+      "string"
+    ]
+  },
+  "candidates": []
+}

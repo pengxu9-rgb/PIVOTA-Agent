@@ -279,6 +279,31 @@ describe('legacy /v1/dupe/compare request compatibility', () => {
     expect(card.payload.dupe).toBeTruthy();
   });
 
+  test('accepts open-world name-only candidates that only expose brand + product_name', async () => {
+    const app = makeApp();
+    const response = await request(app)
+      .post('/v1/dupe/compare')
+      .set(makeHeaders())
+      .send({
+        original: {
+          brand: 'Lab Series',
+          name: 'Daily Rescue Energizing Lightweight Lotion Moisturizer',
+        },
+        dupe: {
+          brand: 'Open Brand',
+          product_name: 'Sensitive Daily Lotion',
+          candidate_origin: 'open_world',
+          grounding_status: 'name_only',
+        },
+      })
+      .expect(200);
+
+    const card = getCard(response.body, 'dupe_compare');
+    expect(card).toBeTruthy();
+    expect(card.payload.original).toBeTruthy();
+    expect(card.payload.dupe).toBeTruthy();
+  });
+
   test('returns explicit BAD_REQUEST detail when original is missing', async () => {
     const app = makeApp();
     const response = await request(app)
