@@ -151,7 +151,7 @@ function buildDupeSuggestQualityAssessment({
   if (!verifiedAnchor) qualityIssues.push('anchor_unresolved');
   if (!hasMeaningfulQuality) qualityIssues.push('insufficient_evidence');
   if (items.length > 0 && !verifiedPrices) qualityIssues.push('all_prices_unknown');
-  if (candidatePoolMeta && Number(candidatePoolMeta.count || 0) === 0) qualityIssues.push('candidate_pool_empty');
+  if (items.length === 0 && candidatePoolMeta && Number(candidatePoolMeta.count || 0) === 0) qualityIssues.push('candidate_pool_empty');
   const qualityOk = Boolean(verified) && qualityIssues.length === 0;
   return {
     validated_schema: true,

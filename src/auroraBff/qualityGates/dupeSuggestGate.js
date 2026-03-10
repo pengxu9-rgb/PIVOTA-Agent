@@ -31,15 +31,19 @@ function applyDupeSuggestQualityGate(payload, { lang = 'EN' } = {}) {
 
   const noResults = allItems.length === 0;
 
-  if (!poolEmpty && !allHollow && !noResults) {
+  if (!allHollow && !noResults) {
     return { gated: false, payload, reason: null };
   }
 
-  const reason = poolEmpty
-    ? 'candidate_pool_empty'
-    : allHollow
+  const requestedEmptyReason = String(
+    payload.empty_state_reason
+      || (payload.meta && payload.meta.final_empty_reason)
+      || '',
+  ).trim();
+  const fallbackReason = poolEmpty ? 'candidate_pool_empty' : 'no_meaningful_results';
+  const reason = allHollow
       ? 'all_items_hollow'
-      : 'no_meaningful_results';
+      : requestedEmptyReason || fallbackReason;
 
   const actionHint = lang === 'CN'
     ? '当前数据不足以给出可靠的平替推荐。请提供产品链接或更完整的名称后重试。'

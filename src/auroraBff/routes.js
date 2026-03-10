@@ -532,6 +532,7 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
   process.env.RECO_INGREDIENT_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
 ).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
+const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
@@ -2344,13 +2345,15 @@ function setDupeDeepscanCache(key, value) {
   }
 }
 
-function makeRecoAlternativesRefreshKey({ anchorId, productInput, lang, maxTotal } = {}) {
+function makeRecoAlternativesRefreshKey({ anchorId, productInput, lang, maxTotal, recommendationMode = 'pool_only', profileMode = 'anchor_only' } = {}) {
   const anchor = String(anchorId || '').trim().toLowerCase();
   const input = String(productInput || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 220);
   const language = normalizeRecoPromptLanguage(lang);
   const limit = Number.isFinite(Number(maxTotal)) ? Math.max(1, Math.min(8, Math.trunc(Number(maxTotal)))) : 6;
+  const modeToken = normalizeRecoDedupeToken(recommendationMode) || 'pool_only';
+  const profileToken = normalizeRecoDedupeToken(profileMode) || 'anchor_only';
   if (!anchor && !input) return '';
-  return `alt:${language}:${limit}:${stableHashBase36(`${anchor}::${input}`).slice(0, 20)}`;
+  return `alt:${language}:${limit}:${modeToken}:${profileToken}:${stableHashBase36(`${anchor}::${input}`).slice(0, 20)}`;
 }
 
 function getRecoAlternativesRefreshCache(key) {
@@ -39339,17 +39342,19 @@ function dedupeRecoRecommendationsStrict(recommendations, { maxItems = 8 } = {})
   };
 }
 
-function buildRecoAlternativesCacheKey({ inputText, anchorId, productObj, lang } = {}) {
+function buildRecoAlternativesCacheKey({ inputText, anchorId, productObj, lang, recommendationMode = 'pool_only', profileMode = 'anchor_only' } = {}) {
   const langToken = normalizeRecoDedupeToken(lang || 'EN') || 'en';
+  const modeToken = normalizeRecoDedupeToken(recommendationMode) || 'pool_only';
+  const profileToken = normalizeRecoDedupeToken(profileMode) || 'anchor_only';
   const anchorToken = normalizeRecoDedupeToken(anchorId);
-  if (anchorToken) return `anchor:${langToken}:${anchorToken}`;
+  if (anchorToken) return `anchor:${langToken}:${modeToken}:${profileToken}:${anchorToken}`;
   const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
   const productIdToken = normalizeRecoDedupeToken(
     pickFirstTrimmed(product.product_id, product.productId, product.sku_id, product.skuId),
   );
-  if (productIdToken) return `product:${langToken}:${productIdToken}`;
+  if (productIdToken) return `product:${langToken}:${modeToken}:${profileToken}:${productIdToken}`;
   const inputToken = normalizeRecoNameToken(inputText);
-  return inputToken ? `input:${langToken}:${inputToken}` : '';
+  return inputToken ? `input:${langToken}:${modeToken}:${profileToken}:${inputToken}` : '';
 }
 
 function readRecoAlternativesCache(cacheKey, { allowStale = false } = {}) {
@@ -39458,10 +39463,44 @@ function buildAlternativesProfileSnapshot(profileObjRaw) {
     4,
   );
   return {
-    skinType: skinTypeKnown || 'Combo/Mixed',
-    sensitivity: sensitivityKnown || 'Medium',
-    barrierStatus: barrierKnown || 'Impaired',
-    goals: goalsKnown.length ? goalsKnown : ['Hydration'],
+    skinType: skinTypeKnown || 'unknown',
+    sensitivity: sensitivityKnown || 'unknown',
+    barrierStatus: barrierKnown || 'unknown',
+    goals: goalsKnown,
+    context_present: Boolean(skinTypeKnown || sensitivityKnown || barrierKnown || goalsKnown.length),
+  };
+}
+
+function normalizeAlternativesProfileMode(raw) {
+  return String(raw || '').trim().toLowerCase() === 'personalized' ? 'personalized' : 'anchor_only';
+}
+
+function normalizeRecoAlternativesMode(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (token === 'hybrid_fallback') return 'hybrid_fallback';
+  if (token === 'open_world_only') return 'open_world_only';
+  return 'pool_only';
+}
+
+function resolveRecoAlternativesPromptSpec(modeRaw) {
+  const mode = normalizeRecoAlternativesMode(modeRaw);
+  if (mode === 'pool_only') {
+    return {
+      mode,
+      templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+      systemFile: 'reco_alternatives_v1_0.system.txt',
+      schemaFile: 'reco_alternatives_v1_0.user_schema.json',
+      queryLine: 'Select up to task.max_alternatives alternatives ONLY from context.candidates.',
+    };
+  }
+  return {
+    mode,
+    templateId: RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID,
+    systemFile: 'reco_alternatives_hybrid_v1.system.txt',
+    schemaFile: 'reco_alternatives_hybrid_v1.user_schema.json',
+    queryLine: mode === 'open_world_only'
+      ? 'Generate up to task.max_alternatives conservative anchor-based alternatives using target_product; open-world products are allowed under the hard rules.'
+      : 'Use context.candidates first and supplement with conservative open-world alternatives only when the pool is insufficient.',
   };
 }
 
@@ -39558,14 +39597,25 @@ function buildRecoAlternativesPromptPayload({
   region,
   candidates = [],
   anchorId = '',
+  mode = 'pool_only',
+  profileMode = 'anchor_only',
 } = {}) {
+  const promptSpec = resolveRecoAlternativesPromptSpec(mode);
+  const normalizedProfileMode = normalizeAlternativesProfileMode(profileMode);
   const fallbackSchema = {
-    meta: { lang: 'EN', intent: 'alternatives_selector', region: 'US' },
+    meta: {
+      lang: 'EN',
+      intent: 'alternatives_selector',
+      region: 'US',
+      recommendation_mode: promptSpec.mode,
+      profile_mode: normalizedProfileMode,
+      profile_context_present: false,
+    },
     profile: {
-      skinType: 'Combo/Mixed',
-      sensitivity: 'Medium',
-      barrierStatus: 'Impaired',
-      goals: ['Hydration'],
+      skinType: 'unknown',
+      sensitivity: 'unknown',
+      barrierStatus: 'unknown',
+      goals: [],
     },
     target_product: {
       anchor_id: null,
@@ -39579,36 +39629,47 @@ function buildRecoAlternativesPromptPayload({
     task: {
       max_alternatives: 3,
       reco_trigger: 'explicit_user_action',
+      recommendation_mode: promptSpec.mode,
+      profile_mode: normalizedProfileMode,
     },
     hard_rules: [
-      'Select ONLY from candidates[].',
+      promptSpec.mode === 'pool_only'
+        ? 'Select ONLY from candidates[].'
+        : 'Prefer context.candidates first; supplement with open-world products only when the pool is insufficient.',
       'If no suitable candidate exists, return {"alternatives": []}.',
       'Never claim exact formula equivalence when target_product.known_actives is empty or uncertain.',
       'Every returned item must include concrete reasons and tradeoffs.',
     ],
     output_item_schema: {
-      type: 'dupe|similar|premium',
+      kind: 'dupe|similar|premium',
+      candidate_origin: promptSpec.mode === 'pool_only' ? 'catalog' : 'catalog|open_world',
+      grounding_status: promptSpec.mode === 'pool_only' ? 'catalog_verified' : 'catalog_verified|name_only',
+      ranking_mode: 'personalized|anchor_only',
       product: {
         brand: 'string|null',
         name: 'string|null',
         product_id: 'string|null',
         sku_id: 'string|null',
+        url: 'string|null',
       },
       similarity_score: 'integer 0-100',
       reasons: ['string (max 2)'],
+      profile_fit_reason: ['string (max 2)'],
       tradeoffs: {
-        pros: ['string (max 2)'],
-        cons: ['string (max 2)'],
+        missing_actives: ['string'],
+        added_benefits: ['string'],
+        texture_finish_differences: ['string'],
+        availability_note: 'string|null',
+        price_delta_usd: 'number|null',
       },
       evidence: {
-        keyActives: ['string'],
-        sensitivityFlags: ['string'],
+        kb_citations: ['string'],
       },
       missing_info: ['string'],
     },
     candidates: [],
   };
-  const template = loadRecoPromptTemplateFile('reco_alternatives_v1_0.user_schema.json', {
+  const template = loadRecoPromptTemplateFile(promptSpec.schemaFile, {
     parseJson: true,
     fallback: fallbackSchema,
   });
@@ -39636,13 +39697,16 @@ function buildRecoAlternativesPromptPayload({
     lang: langCode,
     intent: 'alternatives_selector',
     region: String(region || 'US').trim() || 'US',
+    recommendation_mode: promptSpec.mode,
+    profile_mode: normalizedProfileMode,
+    profile_context_present: profileObj.context_present === true,
   };
   payload.profile = {
     ...(payload.profile && typeof payload.profile === 'object' ? payload.profile : {}),
-    skinType: pickFirstTrimmed(profileObj.skinType, 'Combo/Mixed') || 'Combo/Mixed',
-    sensitivity: pickFirstTrimmed(profileObj.sensitivity, 'Medium') || 'Medium',
-    barrierStatus: pickFirstTrimmed(profileObj.barrierStatus, 'Impaired') || 'Impaired',
-    goals: uniqCaseInsensitiveStrings(Array.isArray(profileObj.goals) ? profileObj.goals : ['Hydration'], 4),
+    skinType: pickFirstTrimmed(profileObj.skinType, 'unknown') || 'unknown',
+    sensitivity: pickFirstTrimmed(profileObj.sensitivity, 'unknown') || 'unknown',
+    barrierStatus: pickFirstTrimmed(profileObj.barrierStatus, 'unknown') || 'unknown',
+    goals: uniqCaseInsensitiveStrings(Array.isArray(profileObj.goals) ? profileObj.goals : [], 4),
   };
   payload.target_product = {
     ...(payload.target_product && typeof payload.target_product === 'object' ? payload.target_product : {}),
@@ -39658,9 +39722,18 @@ function buildRecoAlternativesPromptPayload({
     ...(payload.task && typeof payload.task === 'object' ? payload.task : {}),
     max_alternatives: limit,
     reco_trigger: 'explicit_user_action',
+    recommendation_mode: promptSpec.mode,
+    profile_mode: normalizedProfileMode,
   };
   const rules = Array.isArray(payload.hard_rules) ? payload.hard_rules.slice(0, 16) : [];
-  rules.push('Select ONLY from candidates[] and copy identifiers from the chosen candidate exactly.');
+  if (promptSpec.mode === 'pool_only') {
+    rules.push('Select ONLY from candidates[] and copy identifiers from the chosen candidate exactly.');
+  } else {
+    rules.push('Use context.candidates first when they are viable.');
+    rules.push('Open-world products are allowed only when the local pool is insufficient.');
+    rules.push('For open-world products, do not invent product_id, sku_id, url, price, or exact INCI details.');
+    rules.push('If profile_mode is anchor_only, do not make skin-fit claims for a specific user.');
+  }
   rules.push('If no candidate is strong enough, return alternatives: [].');
   rules.push('Do not claim exact dupe or identical formula when target_product.known_actives is empty or uncertain.');
   rules.push('Every returned alternative must include reasons, tradeoffs, and missing_info when uncertainty remains.');
@@ -39677,14 +39750,33 @@ function buildRecoAlternativesPromptPayload({
   return payload;
 }
 
-function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput, productObj, maxTotal, region, candidates, anchorId }) {
-  const fallbackSystemPrompt = [
-    'You are a strict skincare recommendation selector.',
-    'Output MUST be valid JSON only. No markdown and no extra keys.',
-    'Never invent product names, brands, or URLs.',
-    'Select ONLY from context.candidates and keep each reason short.',
-  ].join('\n');
-  const systemPrompt = loadRecoPromptTemplateFile('reco_alternatives_v1_0.system.txt', {
+function buildAuroraRecoAlternativesQuery({
+  lang,
+  profileSnapshot,
+  productInput,
+  productObj,
+  maxTotal,
+  region,
+  candidates,
+  anchorId,
+  mode = 'pool_only',
+  profileMode = 'anchor_only',
+}) {
+  const promptSpec = resolveRecoAlternativesPromptSpec(mode);
+  const fallbackSystemPrompt = promptSpec.mode === 'pool_only'
+    ? [
+      'You are a strict skincare recommendation selector.',
+      'Output MUST be valid JSON only. No markdown and no extra keys.',
+      'Never invent product names, brands, or URLs.',
+      'Select ONLY from context.candidates and keep each reason short.',
+    ].join('\n')
+    : [
+      'You are a strict skincare alternatives selector for a dupe-finding workflow.',
+      'Output MUST be valid JSON only. No markdown and no extra keys.',
+      'Use context.candidates first, but you may supplement with conservative open-world products under the hard rules.',
+      'Never invent product IDs, SKUs, URLs, prices, exact INCI lists, or formula identity.',
+    ].join('\n');
+  const systemPrompt = loadRecoPromptTemplateFile(promptSpec.systemFile, {
     parseJson: false,
     fallback: fallbackSystemPrompt,
   });
@@ -39697,16 +39789,19 @@ function buildAuroraRecoAlternativesQuery({ lang, profileSnapshot, productInput,
     region,
     candidates,
     anchorId,
+    mode: promptSpec.mode,
+    profileMode,
   });
   const promptBody = formatAuroraPromptQuery({
-    templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+    templateId: promptSpec.templateId,
     systemPrompt,
     userPayload: payload,
   });
   return {
+    templateId: promptSpec.templateId,
     systemPrompt,
     payload,
-    query: `Task: Select up to ${Math.max(1, Math.min(6, Number(maxTotal) || 3))} alternatives ONLY from context.candidates.\n${promptBody}`,
+    query: `Task: ${promptSpec.queryLine}\n${promptBody}`,
   };
 }
 
@@ -39738,6 +39833,8 @@ function mapSelectorCandidatesToAlternatives(candidates, { maxTotal = 3, lang = 
   if (!rows.length) return [];
   const raw = rows.map((candidate, idx) => ({
     kind: 'similar',
+    candidate_origin: 'catalog',
+    grounding_status: 'catalog_verified',
     product: {
       ...(candidate.product_id ? { product_id: candidate.product_id } : {}),
       ...(candidate.sku_id ? { sku_id: candidate.sku_id } : {}),
@@ -39764,6 +39861,40 @@ function mapSelectorCandidatesToAlternatives(candidates, { maxTotal = 3, lang = 
   return mapAuroraAlternativesToRecoAlternatives(raw, { lang, maxTotal });
 }
 
+function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3 } = {}) {
+  const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const out = [];
+  const seen = new Set();
+  const pushOne = (item) => {
+    const row = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+    if (!row) return;
+    const product = row.product && typeof row.product === 'object' && !Array.isArray(row.product) ? row.product : {};
+    const key = pickFirstTrimmed(
+      product.product_id,
+      product.productId,
+      product.sku_id,
+      product.skuId,
+      row.product_id,
+      row.sku_id,
+      product.brand && product.name ? `${product.brand}:${product.name}` : null,
+      product.name,
+    );
+    const stableKey = String(key || '').trim().toLowerCase();
+    if (!stableKey || seen.has(stableKey)) return;
+    seen.add(stableKey);
+    out.push(row);
+  };
+  for (const row of Array.isArray(primary) ? primary : []) {
+    pushOne(row);
+    if (out.length >= limit) return out.slice(0, limit);
+  }
+  for (const row of Array.isArray(fallback) ? fallback : []) {
+    pushOne(row);
+    if (out.length >= limit) break;
+  }
+  return out.slice(0, limit);
+}
+
 async function fetchRecoAlternativesForProduct({
   ctx,
   profileSummary,
@@ -39779,10 +39910,15 @@ async function fetchRecoAlternativesForProduct({
   options,
 }) {
   const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+  const recommendationMode = normalizeRecoAlternativesMode(opts.recommendation_mode);
+  const profileMode = normalizeAlternativesProfileMode(opts.profile_mode);
   const disableFallback = opts.disable_fallback === true;
   const disableAsyncRefresh = opts.disable_async_refresh === true;
   const skipAnchorPrecheck = opts.skip_anchor_precheck === true;
   const preferRefreshCache = opts.prefer_refresh_cache !== false;
+  const disableSyntheticLocalFallback = opts.disable_synthetic_local_fallback === true;
+  const allowAnchorlessOpenWorld = recommendationMode !== 'pool_only';
+  const usesOpenWorldPrompt = recommendationMode === 'hybrid_fallback' || recommendationMode === 'open_world_only';
 
   const inputText = String(productInput || '').trim();
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
@@ -39806,6 +39942,8 @@ async function fetchRecoAlternativesForProduct({
     productInput: bestInput,
     lang: ctx.lang,
     maxTotal,
+    recommendationMode,
+    profileMode,
   });
 
   if (preferRefreshCache && refreshKey) {
@@ -39815,12 +39953,15 @@ async function fetchRecoAlternativesForProduct({
         ok: true,
         alternatives: cached.alternatives.slice(0, Math.max(1, Math.min(8, Number(maxTotal) || 6))),
         field_missing: [],
-        source_mode: 'llm',
+        source_mode: recommendationMode === 'pool_only' ? 'llm' : recommendationMode,
         fallback_source: 'refresh_cache',
         refresh_pending: false,
         refresh_after_ms: 0,
         failure_class: null,
         attempt_count: 0,
+        recommendation_mode: recommendationMode,
+        profile_mode: profileMode,
+        template_id: cached.llm_trace && cached.llm_trace.template_id ? cached.llm_trace.template_id : null,
         ...(cached.llm_trace ? { llm_trace: cached.llm_trace } : {}),
       };
     }
@@ -39832,12 +39973,14 @@ async function fetchRecoAlternativesForProduct({
       ok: false,
       alternatives: [],
       field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }],
-      source_mode: 'local_fallback',
+      source_mode: recommendationMode === 'pool_only' ? 'local_fallback' : recommendationMode,
       fallback_source: 'none',
       refresh_pending: false,
       refresh_after_ms: 0,
       failure_class: 'precheck_fail',
       attempt_count: 0,
+      recommendation_mode: recommendationMode,
+      profile_mode: profileMode,
     };
   }
 
@@ -39854,7 +39997,7 @@ async function fetchRecoAlternativesForProduct({
       ok: true,
       alternatives: [],
       field_missing: [{ field: 'alternatives', reason: 'alternatives_budget_exhausted' }],
-      source_mode: 'local_fallback',
+      source_mode: recommendationMode === 'pool_only' ? 'local_fallback' : recommendationMode,
       fallback_source: 'none',
       refresh_pending: false,
       refresh_after_ms: 0,
@@ -39862,6 +40005,8 @@ async function fetchRecoAlternativesForProduct({
       attempt_count: 0,
       no_result_reason: 'alternatives_budget_exhausted',
       timeout_root_cause: 'budget_exceeded',
+      recommendation_mode: recommendationMode,
+      profile_mode: profileMode,
     };
   }
 
@@ -39933,7 +40078,7 @@ async function fetchRecoAlternativesForProduct({
         // ignore kb fallback errors
       }
     }
-    if (!out.length) {
+    if (!out.length && !disableSyntheticLocalFallback) {
       const base = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
       const brand = pickFirstTrimmed(base.brand, base.manufacturer) || null;
       const name = pickFirstTrimmed(base.display_name, base.displayName, base.name, inputText, anchor) || null;
@@ -39979,11 +40124,15 @@ async function fetchRecoAlternativesForProduct({
       const precheckReasonCode =
         resolved && resolved.resolve_reason_code ? normalizeResolveReasonCode(resolved.resolve_reason_code, null) : null;
       const canProceedWithoutAnchor =
-        Boolean(bestInput) &&
-        RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED &&
-        (precheckReasonCode === 'db_error' ||
-          precheckReasonCode === 'upstream_timeout' ||
-          precheckReasonCode === 'rate_limited');
+        Boolean(bestInput) && (
+          allowAnchorlessOpenWorld ||
+          (
+            RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED &&
+            (precheckReasonCode === 'db_error' ||
+              precheckReasonCode === 'upstream_timeout' ||
+              precheckReasonCode === 'rate_limited')
+          )
+        );
       anchorPrecheck = {
         resolved: Boolean(resolvedAnchor),
         reason: precheckReasonCode,
@@ -39997,6 +40146,8 @@ async function fetchRecoAlternativesForProduct({
           productInput: bestInput,
           lang: ctx.lang,
           maxTotal,
+          recommendationMode,
+          profileMode,
         });
       } else if (canProceedWithoutAnchor) {
         refreshKey = makeRecoAlternativesRefreshKey({
@@ -40004,6 +40155,8 @@ async function fetchRecoAlternativesForProduct({
           productInput: bestInput,
           lang: ctx.lang,
           maxTotal,
+          recommendationMode,
+          profileMode,
         });
       } else {
         recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
@@ -40012,12 +40165,14 @@ async function fetchRecoAlternativesForProduct({
             ok: true,
             alternatives: selectorGroundedAlternatives,
             field_missing: [],
-            source_mode: 'selector_grounded',
+            source_mode: recommendationMode === 'hybrid_fallback' ? 'hybrid_fallback' : 'selector_grounded',
             fallback_source: null,
             refresh_pending: false,
             refresh_after_ms: 0,
             failure_class: null,
             attempt_count: 0,
+            recommendation_mode: recommendationMode,
+            profile_mode: profileMode,
             ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
           };
         }
@@ -40032,6 +40187,8 @@ async function fetchRecoAlternativesForProduct({
             refresh_after_ms: 0,
             failure_class: 'anchor_missing_precheck',
             attempt_count: 0,
+            recommendation_mode: recommendationMode,
+            profile_mode: profileMode,
           };
         }
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
@@ -40039,12 +40196,15 @@ async function fetchRecoAlternativesForProduct({
           ok: true,
           alternatives: localFallback.alternatives,
           field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
-          source_mode: 'local_fallback',
+          source_mode: recommendationMode === 'pool_only' ? 'local_fallback' : recommendationMode,
           fallback_source: localFallback.fallback_source,
           refresh_pending: false,
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
+          no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world_fallback' : null),
+          recommendation_mode: recommendationMode,
+          profile_mode: profileMode,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -40055,29 +40215,33 @@ async function fetchRecoAlternativesForProduct({
         error: err && err.message ? err.message : String(err),
         continue_without_anchor: Boolean(bestInput),
       };
-      if (bestInput && RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED) {
+      if (bestInput && (allowAnchorlessOpenWorld || RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED)) {
         refreshKey = makeRecoAlternativesRefreshKey({
           anchorId: null,
           productInput: bestInput,
           lang: ctx.lang,
           maxTotal,
+          recommendationMode,
+          profileMode,
         });
       } else {
         recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
       }
-      if (bestInput && RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED) {
+      if (bestInput && (allowAnchorlessOpenWorld || RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED)) {
         // Continue with anchorless LLM path when local precheck is unavailable.
       } else if (!disableFallback && selectorGroundedAlternatives.length) {
         return {
           ok: true,
           alternatives: selectorGroundedAlternatives,
           field_missing: [],
-          source_mode: 'selector_grounded',
+          source_mode: recommendationMode === 'hybrid_fallback' ? 'hybrid_fallback' : 'selector_grounded',
           fallback_source: null,
           refresh_pending: false,
           refresh_after_ms: 0,
           failure_class: null,
           attempt_count: 0,
+          recommendation_mode: recommendationMode,
+          profile_mode: profileMode,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
         };
       } else if (!disableFallback) {
@@ -40086,12 +40250,15 @@ async function fetchRecoAlternativesForProduct({
           ok: true,
           alternatives: localFallback.alternatives,
           field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
-          source_mode: 'local_fallback',
+          source_mode: recommendationMode === 'pool_only' ? 'local_fallback' : recommendationMode,
           fallback_source: localFallback.fallback_source,
           refresh_pending: false,
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
+          no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world_fallback' : null),
+          recommendation_mode: recommendationMode,
+          profile_mode: profileMode,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       } else {
@@ -40105,6 +40272,8 @@ async function fetchRecoAlternativesForProduct({
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
+          recommendation_mode: recommendationMode,
+          profile_mode: profileMode,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -40120,7 +40289,7 @@ async function fetchRecoAlternativesForProduct({
     lang: ctx.lang,
     trigger_source: ctx.trigger_source,
     intent: 'alternatives',
-    action_id: 'chip.action.dupe_compare',
+    action_id: pickFirstTrimmed(opts.context_action_id, 'chip.action.dupe_compare'),
   });
   const queryPack = buildAuroraRecoAlternativesQuery({
     lang: ctx.lang,
@@ -40131,11 +40300,13 @@ async function fetchRecoAlternativesForProduct({
     region: normalizeRecoPromptRegion(profileSummary),
     candidates: selectorCandidatePool,
     anchorId: anchor,
+    mode: recommendationMode,
+    profileMode,
   });
   const query = `${prefix}${queryPack.query}`;
 
   const traceSeed = buildRecoPromptTrace({
-    templateId: RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID,
+    templateId: queryPack.templateId,
     query,
     latencyMs: null,
     cacheHit: false,
@@ -40177,16 +40348,22 @@ async function fetchRecoAlternativesForProduct({
           : 'provider_error';
     recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: llmFailureClass });
     if (!disableFallback && selectorGroundedAlternatives.length) {
+      const alternatives = recommendationMode === 'hybrid_fallback'
+        ? mergeRecoAlternativesForHybrid([], selectorGroundedAlternatives, { maxTotal })
+        : selectorGroundedAlternatives;
       return {
         ok: true,
-        alternatives: selectorGroundedAlternatives,
+        alternatives,
         field_missing: [],
-        source_mode: 'selector_grounded',
+        source_mode: recommendationMode === 'hybrid_fallback' ? 'hybrid_fallback' : 'selector_grounded',
         fallback_source: null,
         refresh_pending: false,
         refresh_after_ms: 0,
         failure_class: null,
         attempt_count: 1,
+        recommendation_mode: recommendationMode,
+        profile_mode: profileMode,
+        template_id: queryPack.templateId,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
@@ -40194,6 +40371,31 @@ async function fetchRecoAlternativesForProduct({
           error_class: llmFailureClass,
         },
         ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
+      };
+    }
+    if (usesOpenWorldPrompt) {
+      return {
+        ok: true,
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'upstream_error' }],
+        source_mode: recommendationMode,
+        fallback_source: 'none',
+        refresh_pending: false,
+        refresh_after_ms: 0,
+        failure_class: llmFailureClass,
+        attempt_count: 1,
+        no_result_reason: recommendationMode === 'open_world_only'
+          ? 'no_viable_results_after_fallback'
+          : null,
+        recommendation_mode: recommendationMode,
+        profile_mode: profileMode,
+        template_id: queryPack.templateId,
+        llm_trace: {
+          ...traceSeed,
+          latency_ms: Date.now() - startedAtMs,
+          cache_hit: false,
+          error_class: llmFailureClass,
+        },
       };
     }
     const localFallback = disableFallback ? { alternatives: [], fallback_source: 'none' } : await buildLocalFallbackAlternatives({ failureClass: llmFailureClass });
@@ -40207,6 +40409,9 @@ async function fetchRecoAlternativesForProduct({
       refresh_after_ms: !disableFallback && Boolean(anchor) && Boolean(refreshKey) ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
       failure_class: llmFailureClass,
       attempt_count: 1,
+      recommendation_mode: recommendationMode,
+      profile_mode: profileMode,
+      template_id: queryPack.templateId,
       llm_trace: {
         ...traceSeed,
         latency_ms: Date.now() - startedAtMs,
@@ -40224,10 +40429,17 @@ async function fetchRecoAlternativesForProduct({
       ? answerJson
       : structuredFallback || answerJson;
   const alternativesRaw = Array.isArray(structured?.alternatives) ? structured.alternatives : [];
-  const mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
+  let mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
     lang: ctx.lang,
     maxTotal: maxTotal ?? 3,
   });
+  if (recommendationMode === 'hybrid_fallback') {
+    mapped = mergeRecoAlternativesForHybrid(mapped, selectorGroundedAlternatives, { maxTotal });
+  }
+  const upstreamNoResultReason = pickFirstTrimmed(
+    structured && structured.no_result_reason,
+    structured && structured.result_meta && structured.result_meta.no_result_reason,
+  );
   let llmOutcome = 'success';
   if (!mapped.length) {
     llmOutcome = String(upstream && upstream.intent || '').trim().toLowerCase() === 'clarify' ? 'empty_structured_clarify' : 'empty_structured';
@@ -40242,7 +40454,14 @@ async function fetchRecoAlternativesForProduct({
 
   if (mapped.length) {
     writeRecoAlternativesCache(
-      buildRecoAlternativesCacheKey({ inputText: bestInput, anchorId: anchor, productObj, lang: ctx.lang }),
+      buildRecoAlternativesCacheKey({
+        inputText: bestInput,
+        anchorId: anchor,
+        productObj,
+        lang: ctx.lang,
+        recommendationMode,
+        profileMode,
+      }),
       mapped,
       llmTrace,
     );
@@ -40250,30 +40469,59 @@ async function fetchRecoAlternativesForProduct({
       ok: true,
       alternatives: mapped,
       field_missing: [],
-      source_mode: 'llm',
+      source_mode: recommendationMode === 'pool_only' ? 'llm' : recommendationMode,
       fallback_source: null,
       refresh_pending: false,
       refresh_after_ms: 0,
       failure_class: null,
       attempt_count: 1,
+      recommendation_mode: recommendationMode,
+      profile_mode: profileMode,
+      template_id: queryPack.templateId,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
   }
 
   if (!disableFallback && selectorGroundedAlternatives.length) {
+    const alternatives = recommendationMode === 'hybrid_fallback'
+      ? mergeRecoAlternativesForHybrid([], selectorGroundedAlternatives, { maxTotal })
+      : selectorGroundedAlternatives;
     return {
       ok: true,
-      alternatives: selectorGroundedAlternatives,
+      alternatives,
       field_missing: [],
-      source_mode: 'selector_grounded',
+      source_mode: recommendationMode === 'hybrid_fallback' ? 'hybrid_fallback' : 'selector_grounded',
       fallback_source: null,
       refresh_pending: false,
       refresh_after_ms: 0,
       failure_class: null,
       attempt_count: 1,
+      recommendation_mode: recommendationMode,
+      profile_mode: profileMode,
+      template_id: queryPack.templateId,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null, selector_grounded: true } } : {}),
+    };
+  }
+
+  if (usesOpenWorldPrompt) {
+    return {
+      ok: true,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+      source_mode: recommendationMode,
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: llmOutcome === 'empty_structured_clarify' ? 'empty_structured_clarify' : 'empty_structured',
+      attempt_count: 1,
+      no_result_reason: upstreamNoResultReason || 'no_viable_results_after_fallback',
+      recommendation_mode: recommendationMode,
+      profile_mode: profileMode,
+      template_id: queryPack.templateId,
+      llm_trace: llmTrace,
+      ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
   }
 
@@ -40300,6 +40548,10 @@ async function fetchRecoAlternativesForProduct({
             disable_async_refresh: true,
             skip_anchor_precheck: true,
             prefer_refresh_cache: false,
+            recommendation_mode: recommendationMode,
+            profile_mode: profileMode,
+            context_action_id: pickFirstTrimmed(opts.context_action_id, 'chip.action.dupe_compare'),
+            disable_synthetic_local_fallback: disableSyntheticLocalFallback,
           },
         });
         if (refreshed && Array.isArray(refreshed.alternatives) && refreshed.alternatives.length) {
@@ -40327,6 +40579,9 @@ async function fetchRecoAlternativesForProduct({
     refresh_after_ms: shouldRefresh ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
     failure_class: llmOutcome === 'empty_structured_clarify' ? 'empty_structured_clarify' : 'empty_structured',
     attempt_count: 1,
+    recommendation_mode: recommendationMode,
+    profile_mode: profileMode,
+    template_id: queryPack.templateId,
     llm_trace: llmTrace,
     ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
   };
