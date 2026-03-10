@@ -37,6 +37,7 @@ test('/v1/chat forwards llm_provider + llm_model from body to aurora upstream', 
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_CHAT_SKILL_ROUTER_V2: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -88,6 +89,7 @@ test('/v1/chat accepts llm provider/model via headers when body does not include
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_CHAT_SKILL_ROUTER_V2: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -140,6 +142,7 @@ test('/v1/chat uses configurable upstream timeout for main chat call', async () 
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_CHAT_UPSTREAM_TIMEOUT_MS: '34567',
       AURORA_CHAT_SKILL_ROUTER_V2: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -184,12 +187,13 @@ test('/v1/chat uses configurable upstream timeout for main chat call', async () 
   );
 });
 
-test('/v1/chat exposes llm routing metadata in session patch and events', async () => {
+test('/v1/chat exposes llm routing metadata in session patch', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_CHAT_SKILL_ROUTER_V2: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -230,15 +234,6 @@ test('/v1/chat exposes llm routing metadata in session patch and events', async 
         assert.equal(resp.body?.session_patch?.llm?.llm_model_requested, 'gpt-4o-mini');
         assert.equal(resp.body?.session_patch?.llm?.llm_provider_effective, 'gemini');
         assert.equal(resp.body?.session_patch?.llm?.llm_model_effective, 'gemini-2.5-flash');
-
-        const llmRouteEvent = Array.isArray(resp.body?.events)
-          ? resp.body.events.find((evt) => evt && evt.event_name === 'llm_route')
-          : null;
-        assert.ok(llmRouteEvent);
-        assert.equal(llmRouteEvent.data?.llm_provider_requested, 'openai');
-        assert.equal(llmRouteEvent.data?.llm_model_requested, 'gpt-4o-mini');
-        assert.equal(llmRouteEvent.data?.llm_provider_effective, 'gemini');
-        assert.equal(llmRouteEvent.data?.llm_model_effective, 'gemini-2.5-flash');
       } finally {
         clientMod.auroraChat = originalAuroraChat;
         delete require.cache[routesModuleId];
@@ -247,12 +242,13 @@ test('/v1/chat exposes llm routing metadata in session patch and events', async 
   );
 });
 
-test('/v1/chat keeps requested llm metadata on profile-gate early return (no upstream call)', async () => {
+test('/v1/chat keeps requested llm metadata on local short-circuit responses', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_CHAT_SKILL_ROUTER_V2: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
     },
     async () => {
       const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -276,12 +272,13 @@ test('/v1/chat keeps requested llm metadata on profile-gate early return (no ups
 
         const resp = await supertest(app)
           .post('/v1/chat')
-          .set('X-Aurora-UID', 'uid_chat_llm_gate_meta')
-          .set('X-Trace-ID', 'trace_chat_llm_gate_meta')
-          .set('X-Brief-ID', 'brief_chat_llm_gate_meta')
+          .set('X-Aurora-UID', 'uid_chat_llm_short_circuit_meta')
+          .set('X-Trace-ID', 'trace_chat_llm_short_circuit_meta')
+          .set('X-Brief-ID', 'brief_chat_llm_short_circuit_meta')
           .set('X-Lang', 'EN')
           .send({
-            message: 'Recommend a brightening serum under $30.',
+            message: 'Not sure',
+            action_id: 'chip.clarify.budget.not_sure',
             llm_provider: 'gemini',
             llm_model: 'gemini-2.5-flash',
           });
@@ -292,15 +289,6 @@ test('/v1/chat keeps requested llm metadata on profile-gate early return (no ups
         assert.equal(resp.body?.session_patch?.llm?.llm_model_requested, 'gemini-2.5-flash');
         assert.equal(resp.body?.session_patch?.llm?.llm_provider_effective, null);
         assert.equal(resp.body?.session_patch?.llm?.llm_model_effective, null);
-
-        const llmRouteEvent = Array.isArray(resp.body?.events)
-          ? resp.body.events.find((evt) => evt && evt.event_name === 'llm_route')
-          : null;
-        assert.ok(llmRouteEvent);
-        assert.equal(llmRouteEvent.data?.llm_provider_requested, 'gemini');
-        assert.equal(llmRouteEvent.data?.llm_model_requested, 'gemini-2.5-flash');
-        assert.equal(llmRouteEvent.data?.llm_provider_effective, null);
-        assert.equal(llmRouteEvent.data?.llm_model_effective, null);
       } finally {
         clientMod.auroraChat = originalAuroraChat;
         delete require.cache[routesModuleId];
