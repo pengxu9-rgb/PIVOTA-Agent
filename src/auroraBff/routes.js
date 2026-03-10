@@ -39649,8 +39649,8 @@ function resolveRecoAlternativesPromptSpec(modeRaw) {
     systemFile: 'reco_alternatives_hybrid_v1.system.txt',
     schemaFile: 'reco_alternatives_hybrid_v1.user_schema.json',
     queryLine: mode === 'open_world_only'
-      ? 'Generate up to task.max_alternatives conservative anchor-based alternatives using target_product; open-world products are allowed under the hard rules.'
-      : 'Use context.candidates first and supplement with conservative open-world alternatives only when the pool is insufficient.',
+      ? 'Generate up to task.max_alternatives distinct, conservative, anchor-based alternatives for target_product. In open_world_only mode, aim to return 2-4 viable real-product alternatives for common anchors whenever possible. A viable open-world item must have a non-null product.brand, a non-null product.name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty; do not return hollow or placeholder items.'
+      : 'Use context.candidates first and supplement with distinct, conservative open-world alternatives only when the local pool is insufficient. Every returned item must be viable: distinct from the anchor, non-placeholder, and supported by anchor-linked reasons plus at least one concrete tradeoff or uncertainty.',
   };
 }
 
@@ -39736,6 +39736,214 @@ function buildRecoAlternativesCandidatePool({ sharedCandidates = [], productObj 
     if (out.length >= limit) break;
   }
   return out.slice(0, limit);
+}
+
+const RECO_ALTERNATIVES_GENERIC_INGREDIENT_RE =
+  /\b(water|aqua|glycerin|butylene glycol|propylene glycol|caprylic|capric|dimethicone|silica|parfum|fragrance|phenoxyethanol|carbomer|citric acid|sodium hydroxide)\b/i;
+
+function pushRecoPromptText(out, seen, raw, { max = 6, maxLen = 80 } = {}) {
+  const text = String(raw || '').trim().replace(/\s+/g, ' ');
+  if (!text) return;
+  const trimmed = text.slice(0, maxLen);
+  const key = trimmed.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push(trimmed);
+  if (out.length > max) out.length = max;
+}
+
+function collectRecoPromptTextList(values, { max = 6, maxLen = 80 } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(values) ? values : []) {
+    if (out.length >= max) break;
+    if (typeof entry === 'string' || typeof entry === 'number') {
+      pushRecoPromptText(out, seen, entry, { max, maxLen });
+      continue;
+    }
+    if (!isPlainObject(entry)) continue;
+    pushRecoPromptText(
+      out,
+      seen,
+      pickFirstTrimmed(
+        entry.name,
+        entry.display_name,
+        entry.displayName,
+        entry.ingredient_name,
+        entry.inci,
+        entry.claim,
+        entry.claim_en,
+        entry.text,
+        entry.text_en,
+        entry.label,
+        entry.title,
+        entry.value,
+        entry.benefit,
+        entry.benefit_en,
+      ),
+      { max, maxLen },
+    );
+  }
+  return out.slice(0, max);
+}
+
+function inferRecoAlternativesUsageRole(...values) {
+  const text = values.filter(Boolean).join(' ').toLowerCase();
+  if (!text) return 'unknown';
+  if (/\b(spf|sunscreen|sun fluid|sun cream|sun lotion|uv)\b/.test(text)) return 'sunscreen';
+  if (/\b(cleanser|cleansing|face wash|foam wash|gel cleanser|wash)\b/.test(text)) return 'cleanser';
+  if (/\b(toner|mist)\b/.test(text)) return 'toner';
+  if (/\b(essence)\b/.test(text)) return 'essence';
+  if (/\b(serum|ampoule)\b/.test(text)) return 'serum';
+  if (/\b(moisturizer|moisturiser|cream|lotion|gel cream|water gel|emulsion)\b/.test(text)) return 'moisturizer';
+  if (/\b(mask)\b/.test(text)) return 'mask';
+  if (/\b(facial oil|face oil|oil)\b/.test(text)) return 'oil';
+  if (/\b(treatment|exfoliant|peel|spot|retinol|retinoid|acid)\b/.test(text)) return 'treatment';
+  return 'unknown';
+}
+
+function inferRecoAlternativesClaimHints(...values) {
+  const text = values.filter(Boolean).join(' ').toLowerCase();
+  const out = [];
+  const seen = new Set();
+  const push = (value) => pushRecoPromptText(out, seen, value, { max: 6, maxLen: 48 });
+  if (!text) return out;
+  if (/\b(hydrat|moist|hyaluronic|plump)\b/.test(text)) push('hydration');
+  if (/\b(barrier|repair|soothing|calm|redness)\b/.test(text)) push('barrier support');
+  if (/\b(bright|dark spot|tone|vitamin c|glow|niacinamide)\b/.test(text)) push('brightening');
+  if (/\b(acne|blemish|clarifying|salicylic|bha|breakout|pore)\b/.test(text)) push('blemish care');
+  if (/\b(retinol|retinoid|firm|wrinkle|aging|ageing|line)\b/.test(text)) push('anti-aging');
+  if (/\b(oil control|oil-free|matt|shine)\b/.test(text)) push('oil control');
+  if (/\b(spf|sunscreen|uv)\b/.test(text)) push('sun protection');
+  if (/\b(exfoliat|aha|bha|pha|acid|peel)\b/.test(text)) push('exfoliation');
+  return out;
+}
+
+function inferRecoAlternativesTextureHints(...values) {
+  const text = values.filter(Boolean).join(' ').toLowerCase();
+  const out = [];
+  const seen = new Set();
+  const push = (value) => pushRecoPromptText(out, seen, value, { max: 5, maxLen: 40 });
+  if (!text) return out;
+  if (/\bwater gel\b/.test(text)) push('water-gel texture');
+  if (/\bgel(-cream)?\b/.test(text)) push('gel texture');
+  if (/\blotion\b/.test(text)) push('lotion texture');
+  if (/\bcream\b/.test(text)) push('cream texture');
+  if (/\bserum\b/.test(text)) push('serum texture');
+  if (/\bbalm\b/.test(text)) push('balm texture');
+  if (/\boil\b/.test(text)) push('oil texture');
+  if (/\blightweight\b/.test(text)) push('lightweight finish');
+  if (/\brich\b/.test(text)) push('richer finish');
+  if (/\bmatte\b/.test(text)) push('matte finish');
+  if (/\bdewy\b/.test(text)) push('dewy finish');
+  return out;
+}
+
+function buildRecoAlternativesTargetSignals(product, { productInput = '', lang = 'EN' } = {}) {
+  const row = isPlainObject(product) ? product : {};
+  const category = pickFirstTrimmed(row.category, row.category_name, row.product_type, row.productType, row.type) || null;
+  const productType = pickFirstTrimmed(row.product_type, row.productType, row.type, row.category, row.category_name) || null;
+  const name = pickFirstTrimmed(row.display_name, row.displayName, row.name, row.product_name, productInput);
+  const brand = pickFirstTrimmed(row.brand, row.manufacturer);
+
+  const explicitHeroIngredients = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(row.hero_ingredients) ? row.hero_ingredients : []),
+      ...(Array.isArray(row.heroIngredients) ? row.heroIngredients : []),
+      ...(Array.isArray(row.known_actives) ? row.known_actives : []),
+      ...(Array.isArray(row.keyActives) ? row.keyActives : []),
+      ...(Array.isArray(row.key_actives) ? row.key_actives : []),
+    ],
+    { max: 6, maxLen: 48 },
+  );
+
+  const ingredientLabels = collectRecoPromptTextList(Array.isArray(row.ingredients) ? row.ingredients : [], {
+    max: 8,
+    maxLen: 48,
+  });
+  const heroIngredients = uniqCaseInsensitiveStrings(
+    [
+      ...explicitHeroIngredients,
+      ...ingredientLabels.filter((entry) => !RECO_ALTERNATIVES_GENERIC_INGREDIENT_RE.test(entry)).slice(0, 5),
+    ],
+    5,
+  );
+
+  const explicitClaims = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(row.claims) ? row.claims : []),
+      ...(Array.isArray(row.notable_claims) ? row.notable_claims : []),
+      ...(Array.isArray(row.notableClaims) ? row.notableClaims : []),
+      ...(Array.isArray(row.benefits) ? row.benefits : []),
+      ...(Array.isArray(row.highlights) ? row.highlights : []),
+      ...(Array.isArray(row.compare_highlights) ? row.compare_highlights : []),
+    ],
+    { max: 6, maxLen: 56 },
+  );
+  const claimHints = inferRecoAlternativesClaimHints(
+    name,
+    category,
+    productType,
+    productInput,
+    explicitClaims.join(' '),
+    heroIngredients.join(' '),
+  );
+  const primaryClaims = uniqCaseInsensitiveStrings([...explicitClaims, ...claimHints], 6);
+
+  const explicitKnownActives = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(row.known_actives) ? row.known_actives : []),
+      ...(Array.isArray(row.keyActives) ? row.keyActives : []),
+      ...(Array.isArray(row.key_actives) ? row.key_actives : []),
+    ],
+    { max: 8, maxLen: 48 },
+  );
+  const activeTokens = extractKnownActivesFromText(
+    [name, productInput, heroIngredients.join(', '), primaryClaims.join(', ')].filter(Boolean).join(' '),
+    lang,
+  );
+  const knownActives = uniqCaseInsensitiveStrings(
+    [
+      ...explicitKnownActives,
+      ...heroIngredients,
+      ...activeTokens.map((token) => mapRoutineActiveTokenToIngredientQuery(token, lang) || token.replace(/_/g, ' ')),
+    ],
+    8,
+  );
+
+  const textureHints = uniqCaseInsensitiveStrings(
+    [
+      ...collectRecoPromptTextList([row.texture, row.finish, ...(Array.isArray(row.texture_hints) ? row.texture_hints : [])], {
+        max: 5,
+        maxLen: 40,
+      }),
+      ...inferRecoAlternativesTextureHints(name, category, productType, explicitClaims.join(' '), productInput),
+    ],
+    5,
+  );
+
+  const usageRole = inferRecoAlternativesUsageRole(name, category, productType, primaryClaims.join(' '));
+  const notes = pickFirstTrimmed(
+    row.notes,
+    row.anchor_notes,
+    row.summary,
+    row.description,
+    row.subtitle,
+    primaryClaims.length ? primaryClaims.join('; ') : '',
+  ) || null;
+
+  return {
+    brand: brand || null,
+    name: name || null,
+    category,
+    productType,
+    usageRole,
+    heroIngredients,
+    knownActives,
+    primaryClaims,
+    textureHints,
+    notes,
+  };
 }
 
 function buildRecoAlternativesPromptPayload({
@@ -39828,16 +40036,7 @@ function buildRecoAlternativesPromptPayload({
   const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
   const limit = Number.isFinite(Number(maxTotal)) ? Math.max(1, Math.min(6, Math.trunc(Number(maxTotal)))) : 3;
   const langCode = normalizeRecoPromptLanguage(lang);
-  const name = pickFirstTrimmed(product.display_name, product.name, product.product_name, productInput) || null;
-  const brand = pickFirstTrimmed(product.brand, product.manufacturer) || null;
-  const knownActives = uniqCaseInsensitiveStrings(
-    [
-      ...(Array.isArray(product.known_actives) ? product.known_actives : []),
-      ...(Array.isArray(product.keyActives) ? product.keyActives : []),
-      ...(Array.isArray(product.key_actives) ? product.key_actives : []),
-    ],
-    8,
-  );
+  const targetSignals = buildRecoAlternativesTargetSignals(product, { productInput, lang: langCode });
   const normalizedCandidates = (Array.isArray(candidates) ? candidates : [])
     .map((row) => (row && typeof row === 'object' && !Array.isArray(row) ? row : null))
     .filter(Boolean)
@@ -39861,12 +40060,18 @@ function buildRecoAlternativesPromptPayload({
   payload.target_product = {
     ...(payload.target_product && typeof payload.target_product === 'object' ? payload.target_product : {}),
     anchor_id: String(anchorId || '').trim() || null,
-    brand,
-    name,
+    brand: targetSignals.brand,
+    name: targetSignals.name,
     query: String(productInput || '').trim().slice(0, 180) || null,
     region_variant: pickFirstTrimmed(product.region_variant, product.regionVariant, product.region) || 'unknown',
-    known_actives: knownActives,
-    notes: pickFirstTrimmed(product.notes, product.anchor_notes) || null,
+    category: targetSignals.category,
+    product_type: targetSignals.productType,
+    usage_role: targetSignals.usageRole,
+    hero_ingredients: targetSignals.heroIngredients,
+    known_actives: targetSignals.knownActives,
+    primary_claims: targetSignals.primaryClaims,
+    texture_hints: targetSignals.textureHints,
+    notes: targetSignals.notes,
   };
   payload.task = {
     ...(payload.task && typeof payload.task === 'object' ? payload.task : {}),
@@ -39883,6 +40088,9 @@ function buildRecoAlternativesPromptPayload({
     rules.push('Open-world products are allowed only when the local pool is insufficient.');
     rules.push('For open-world products, do not invent product_id, sku_id, url, price, or exact INCI details.');
     rules.push('If profile_mode is anchor_only, do not make skin-fit claims for a specific user.');
+    rules.push('If target_product has a clear brand/name, query, or recognizable role pattern, aim to return 2-4 viable distinct alternatives when possible.');
+    rules.push('A viable alternative must be distinct from the anchor, have non-null brand and name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.');
+    rules.push('Do not return [] just because context.candidates is empty, full INCI is unknown, or price is unknown.');
   }
   rules.push('If no candidate is strong enough, return alternatives: [].');
   rules.push('Do not claim exact dupe or identical formula when target_product.known_actives is empty or uncertain.');
@@ -39921,9 +40129,10 @@ function buildAuroraRecoAlternativesQuery({
       'Select ONLY from context.candidates and keep each reason short.',
     ].join('\n')
     : [
-      'You are a strict skincare alternatives selector for a dupe-finding workflow.',
+      'You are a strict but productive skincare alternatives selector for a dupe-finding workflow.',
       'Output MUST be valid JSON only. No markdown and no extra keys.',
       'Use context.candidates first, but you may supplement with conservative open-world products under the hard rules.',
+      'For common skincare anchors, prefer a short list of distinct viable alternatives over [] when you can name real products conservatively.',
       'Never invent product IDs, SKUs, URLs, prices, exact INCI lists, or formula identity.',
     ].join('\n');
   const systemPrompt = loadRecoPromptTemplateFile(promptSpec.systemFile, {

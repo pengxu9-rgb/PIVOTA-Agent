@@ -19,7 +19,13 @@
     "name": "string|null",
     "query": "string|null",
     "region_variant": "US|EU|unknown",
+    "category": "string|null",
+    "product_type": "string|null",
+    "usage_role": "cleanser|toner|essence|serum|moisturizer|sunscreen|treatment|mask|oil|unknown",
+    "hero_ingredients": [],
     "known_actives": [],
+    "primary_claims": [],
+    "texture_hints": [],
     "notes": null
   },
   "task": {
