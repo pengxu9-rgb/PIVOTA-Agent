@@ -41267,15 +41267,19 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   norm.payload = { ...norm.payload, intent: 'routine', profile: profileSummary || null };
 
   if (includeAlternatives) {
-    const alt = await enrichRecommendationsWithAlternatives({
-      ctx,
-      profileSummary,
-      recentLogs,
-      recommendations: norm.payload.recommendations,
-      logger,
-    });
-    norm.payload = { ...norm.payload, recommendations: alt.recommendations };
-    norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+    try {
+      const alt = await enrichRecommendationsWithAlternatives({
+        ctx,
+        profileSummary,
+        recentLogs,
+        recommendations: norm.payload.recommendations,
+        logger,
+      });
+      norm.payload = { ...norm.payload, recommendations: alt.recommendations };
+      norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+    } catch (altErr) {
+      logger?.warn({ err: altErr?.message, code: altErr?.code }, 'aurora bff: routine enrichRecommendationsWithAlternatives failed, continuing without alternatives');
+    }
   }
 
   const budgetKnown = normalizeBudgetHint(profileSummary && profileSummary.budgetTier);
@@ -41283,21 +41287,25 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
     norm.payload.missing_info = norm.payload.missing_info.filter((code) => String(code) !== 'budget_unknown');
   }
 
-  const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
-    recommendations: norm.payload.recommendations,
-    logger,
-    lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-  });
-  norm.payload = {
-    ...norm.payload,
-    recommendations: pdpOpenOut.recommendations,
-    metadata: {
-      ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-      pdp_open_path_stats: pdpOpenOut.path_stats,
-      resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
-      time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
-    },
-  };
+  try {
+    const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
+      recommendations: norm.payload.recommendations,
+      logger,
+      lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
+    });
+    norm.payload = {
+      ...norm.payload,
+      recommendations: pdpOpenOut.recommendations,
+      metadata: {
+        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+        pdp_open_path_stats: pdpOpenOut.path_stats,
+        resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+        time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+      },
+    };
+  } catch (pdpErr) {
+    logger?.warn({ err: pdpErr?.message, code: pdpErr?.code }, 'aurora bff: routine enrichRecommendationsWithPdpOpenContract failed, continuing without PDP enrichment');
+  }
 
   const suggestedChips = [];
   const nextActions = upstream && Array.isArray(upstream.next_actions) ? upstream.next_actions : [];
@@ -47150,15 +47158,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             promptTemplateId: norm?.payload?.recommendation_meta?.prompt_template_id,
           });
       if (parsed.data.include_alternatives) {
-        const alt = await enrichRecommendationsWithAlternatives({
-          ctx,
-          profileSummary,
-          recentLogs,
-          recommendations: norm.payload.recommendations,
-          logger,
-        });
-        norm.payload = { ...norm.payload, recommendations: alt.recommendations };
-        norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+        try {
+          const alt = await enrichRecommendationsWithAlternatives({
+            ctx,
+            profileSummary,
+            recentLogs,
+            recommendations: norm.payload.recommendations,
+            logger,
+          });
+          norm.payload = { ...norm.payload, recommendations: alt.recommendations };
+          norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+        } catch (altErr) {
+          logger?.warn({ err: altErr?.message, code: altErr?.code }, 'aurora bff: generic-reco enrichRecommendationsWithAlternatives failed, continuing without alternatives');
+        }
       }
       const payload = norm.payload;
       const llmTraceRef = buildRecoLlmTraceRef(upstreamReco && upstreamReco.llmTrace);
@@ -51948,24 +51960,28 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const existingCards = Array.isArray(baseEnvelope.cards) ? baseEnvelope.cards.slice() : [];
         const existingEvents = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice() : [];
-        const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
-          ctx,
-          message: requestMessage,
-          profile,
-          recentLogs,
-          language: ctx.lang,
-          reason: 'default',
-        });
-        const fallbackAnalysisCard = fallbackCards.find((card) => card && card.type === 'analysis_summary');
-        const fallbackConfidenceCard = fallbackCards.find((card) => card && card.type === 'confidence_notice');
-        if (fallbackAnalysisCard) {
-          existingCards.push(fallbackAnalysisCard);
-        }
-        if (
-          fallbackConfidenceCard &&
-          !existingCards.some((card) => card && typeof card === 'object' && String(card.type || '').trim() === 'confidence_notice')
-        ) {
-          existingCards.push(fallbackConfidenceCard);
+        try {
+          const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+            ctx,
+            message: requestMessage,
+            profile,
+            recentLogs,
+            language: ctx.lang,
+            reason: 'default',
+          });
+          const fallbackAnalysisCard = fallbackCards.find((card) => card && card.type === 'analysis_summary');
+          const fallbackConfidenceCard = fallbackCards.find((card) => card && card.type === 'confidence_notice');
+          if (fallbackAnalysisCard) {
+            existingCards.push(fallbackAnalysisCard);
+          }
+          if (
+            fallbackConfidenceCard &&
+            !existingCards.some((card) => card && typeof card === 'object' && String(card.type || '').trim() === 'confidence_notice')
+          ) {
+            existingCards.push(fallbackConfidenceCard);
+          }
+        } catch (fallbackErr) {
+          logger?.warn({ err: fallbackErr?.message }, 'aurora bff: buildRoutineRulesOnlyFallbackCardsForChat failed inside sendChatEnvelope');
         }
         existingEvents.push(
           makeEvent(ctx, 'routine_rules_fallback', {
@@ -56402,25 +56418,27 @@ function mountAuroraBffRoutes(app, { logger }) {
               )
               : await routineRecoPromise;
           } catch (err) {
-            if (!AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || !(err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT')) {
-              throw err;
-            }
+            const isTimeout = err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT';
+            const failureClass = isTimeout ? 'timeout' : (err && err.code) || 'unknown';
             logger?.warn(
               {
                 request_id: ctx.request_id,
                 trace_id: ctx.trace_id,
                 budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+                failure_class: failureClass,
+                err: err?.message,
               },
-              'aurora bff: routine generation timeout, degraded to confidence_notice',
+              `aurora bff: routine generation failed (${failureClass}), degraded to confidence_notice`,
             );
             logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
-            recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+            recordAuroraSkinFlowMetric({ stage: isTimeout ? 'routine_timeout_degraded' : 'routine_error_degraded', hit: true });
             return sendChatEnvelope(
               buildRoutineTimeoutDegradedEnvelope({
                 detail:
                   ctx.lang === 'CN'
-                    ? '预算分支 routine 生成超时，建议继续补充 AM/PM 后重试。'
-                    : 'Routine generation in budget flow timed out; continue AM/PM intake and retry.',
+                    ? '预算分支 routine 生成失败，建议继续补充 AM/PM 后重试。'
+                    : 'Routine generation in budget flow failed; continue AM/PM intake and retry.',
+                upstreamFailureCode: failureClass,
               }),
             );
           }
@@ -56484,25 +56502,27 @@ function mountAuroraBffRoutes(app, { logger }) {
             )
             : await routineRecoPromise;
         } catch (err) {
-          if (!AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || !(err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT')) {
-            throw err;
-          }
+          const isTimeout = err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT';
+          const failureClass = isTimeout ? 'timeout' : (err && err.code) || 'unknown';
           logger?.warn(
             {
               request_id: ctx.request_id,
               trace_id: ctx.trace_id,
               budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+              failure_class: failureClass,
+              err: err?.message,
             },
-            'aurora bff: routine generation timeout, degraded to confidence_notice',
+            `aurora bff: routine generation failed (${failureClass}), degraded to confidence_notice`,
           );
           logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
-          recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+          recordAuroraSkinFlowMetric({ stage: isTimeout ? 'routine_timeout_degraded' : 'routine_error_degraded', hit: true });
           return sendChatEnvelope(
             buildRoutineTimeoutDegradedEnvelope({
               detail:
                 ctx.lang === 'CN'
-                  ? 'routine 生成超时，建议继续补充 AM/PM 或直接重试。'
-                  : 'Routine generation timed out; continue AM/PM intake or retry directly.',
+                  ? 'routine 生成失败，建议继续补充 AM/PM 或直接重试。'
+                  : 'Routine generation failed; continue AM/PM intake or retry directly.',
+              upstreamFailureCode: failureClass,
             }),
           );
         }
@@ -58243,19 +58263,23 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (recoIdx !== -1) {
           const card = cards[recoIdx];
           const basePayload = card.payload && typeof card.payload === 'object' ? card.payload : {};
-          const alt = await enrichRecommendationsWithAlternatives({
-            ctx,
-            profileSummary,
-            recentLogs,
-            recommendations: basePayload.recommendations,
-            logger,
-          });
-          const nextCard = {
-            ...card,
-            payload: { ...basePayload, recommendations: alt.recommendations },
-            field_missing: mergeFieldMissing(card.field_missing, alt.field_missing),
-          };
-          cards = cards.map((c, i) => (i === recoIdx ? nextCard : c));
+          try {
+            const alt = await enrichRecommendationsWithAlternatives({
+              ctx,
+              profileSummary,
+              recentLogs,
+              recommendations: basePayload.recommendations,
+              logger,
+            });
+            const nextCard = {
+              ...card,
+              payload: { ...basePayload, recommendations: alt.recommendations },
+              field_missing: mergeFieldMissing(card.field_missing, alt.field_missing),
+            };
+            cards = cards.map((c, i) => (i === recoIdx ? nextCard : c));
+          } catch (altErr) {
+            logger?.warn({ err: altErr?.message, code: altErr?.code }, 'aurora bff: main-path enrichRecommendationsWithAlternatives failed, continuing without alternatives');
+          }
         }
       }
 
@@ -59306,19 +59330,23 @@ function mountAuroraBffRoutes(app, { logger }) {
       const needsRoutineFallbackModules = !hasRoutineExpertRequiredModules(existingRoutineExpert);
       const stallLikeResponse = looksLikeStallPhrase(safeAnswer) || looksLikeGenericStructuredNotice(safeAnswer);
       if (routineLikeContext && needsRoutineFallbackModules && (!assembledRenderable || stallLikeResponse)) {
-        const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
-          ctx,
-          message,
-          profile,
-          recentLogs,
-          language: ctx.lang,
-          reason: stallLikeResponse ? 'default' : 'timeout_degraded',
-        });
-        assembledCards.unshift(...fallbackCards);
-        safeAnswer =
-          ctx.lang === 'CN'
-            ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
-            : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+        try {
+          const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+            ctx,
+            message,
+            profile,
+            recentLogs,
+            language: ctx.lang,
+            reason: stallLikeResponse ? 'default' : 'timeout_degraded',
+          });
+          assembledCards.unshift(...fallbackCards);
+          safeAnswer =
+            ctx.lang === 'CN'
+              ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
+              : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+        } catch (fallbackErr) {
+          logger?.warn({ err: fallbackErr?.message }, 'aurora bff: buildRoutineRulesOnlyFallbackCardsForChat failed in main path');
+        }
       }
 
       const travelSuppressedCards = suppressAnalysisCardsForTravelEnvTurn(assembledCards, {

@@ -10,6 +10,7 @@ const CHAT_CARD_TYPES = [
   'effect_review',
   'travel',
   'nudge',
+  'error',
   'ingredient_hub',
   'ingredient_goal_match',
   'aurora_ingredient_report',
