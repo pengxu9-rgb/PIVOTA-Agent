@@ -30238,6 +30238,11 @@ function applyDupeSuggestSanitizeToEnvelope(envelope, { lang = 'EN' } = {}) {
 
 function normalizeDupeCompareRequestPayload(input) {
   const body = isPlainObject(input) ? input : {};
+  const unwrapProductLike = (value) => {
+    const obj = isPlainObject(value) ? value : null;
+    if (!obj) return null;
+    return isPlainObject(obj.product) ? obj.product : isPlainObject(obj.sku) ? obj.sku : obj;
+  };
   const originalRaw = isPlainObject(body.original) ? body.original : null;
   const dupeRaw = isPlainObject(body.dupe) ? body.dupe : null;
   const original = unwrapProductLike(originalRaw);
