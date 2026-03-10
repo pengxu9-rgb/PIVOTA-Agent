@@ -128,7 +128,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
 
     nock('http://aurora.test')
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, {
         schema_version: 'aurora.chat.v1',
         intent: 'product',
@@ -159,7 +159,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.PIVOTA_BACKEND_BASE_URL;
 
     nock('http://aurora.test')
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, {
         schema_version: 'aurora.chat.v1',
         intent: 'product',
@@ -2224,7 +2224,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
 
     nock('http://aurora.test')
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, {
         schema_version: 'aurora.chat.v1',
         intent: 'product_parse',
@@ -2291,7 +2291,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
 
     nock('http://aurora.test')
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, {
         schema_version: 'aurora.chat.v1',
         intent: 'product_parse',
@@ -2377,7 +2377,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     let deepScanCalls = 0;
     nock('http://aurora.test')
       .persist()
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, (_uri, body) => {
         const query = typeof body?.query === 'string' ? body.query : '';
         if (/Task:\s*Parse\b/i.test(query)) {
@@ -2483,7 +2483,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     let deepScanCalls = 0;
     nock('http://aurora.test')
       .persist()
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, (_uri, body) => {
         const query = typeof body?.query === 'string' ? body.query : '';
         if (/Task:\s*Parse\b/i.test(query)) {
@@ -2569,7 +2569,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     let auroraCalls = 0;
     nock('http://aurora.test')
       .persist()
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, () => {
         auroraCalls += 1;
         return { schema_version: 'aurora.chat.v1', intent: 'chat', answer: 'stub' };
@@ -2852,7 +2852,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://aurora.test')
       .persist()
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, { schema_version: 'aurora.chat.v1', intent: 'chat', answer: 'stub' });
 
     nock('https://brand.example')
@@ -3746,7 +3746,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     let deepScanBody = null;
     nock('http://aurora.test')
       .persist()
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, (uri, requestBody) => {
         const query = String(requestBody && requestBody.query ? requestBody.query : '');
         if (/Parse the user's product input/i.test(query)) {
@@ -3871,7 +3871,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     let deepScanBody = null;
     nock('http://aurora.test')
       .persist()
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, (_uri, requestBody) => {
         deepScanBody = requestBody;
         return {
@@ -3957,7 +3957,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     let deepScanBody = null;
     nock('http://aurora.test')
       .persist()
-      .post('/api/chat')
+      .post('/api/upstream/chat')
       .reply(200, (_uri, requestBody) => {
         deepScanBody = requestBody;
         return {

@@ -5235,6 +5235,28 @@ function tokenizeAnchorCompareText(value) {
   );
 }
 
+function computeAnchorNameSimilarity({ inputText = '', candidate = null } = {}) {
+  const inputTokens = tokenizeAnchorCompareText(inputText);
+  if (!inputTokens.length) return { score: 0, overlap: 0, total: 0 };
+  const row =
+    normalizeRecoCatalogProduct(candidate) ||
+    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+  const candidateTokens = new Set(
+    tokenizeAnchorCompareText(
+      [
+        pickFirstTrimmed(row?.brand, row?.brand_name, row?.brandName),
+        pickFirstTrimmed(row?.name, row?.display_name, row?.displayName, row?.title),
+        pickFirstTrimmed(row?.display_name, row?.displayName),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    ),
+  );
+  const overlap = inputTokens.filter((token) => candidateTokens.has(token)).length;
+  const score = inputTokens.length ? Number((overlap / inputTokens.length).toFixed(3)) : 0;
+  return { score, overlap, total: inputTokens.length };
+}
+
 function extractUrlAnchorSignals(inputUrl) {
   const urlText = String(inputUrl || '').trim();
   if (!/^https?:\/\//i.test(urlText)) return null;
@@ -5361,7 +5383,11 @@ function evaluateAnchorTrustForProductIntel({
   }
 
   const reasonCodes = [];
-  if (!guard.ok && (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category')) {
+  if (
+    guard.low_relevance === true ||
+    guard.reason === 'non_skincare_soft' ||
+    (!guard.ok && (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category'))
+  ) {
     reasonCodes.push('anchor_soft_blocked_non_skincare');
   }
   if (urlConsistency != null && urlConsistency < 0.35) {
@@ -5372,9 +5398,6 @@ function evaluateAnchorTrustForProductIntel({
   }
 
   let usableForAnchorId = guard.ok && hasId && reasonCodes.length === 0;
-  if (AURORA_RULE_RELAX_AGGRESSIVE || AURORA_PRODUCT_GUARDRAIL_TELEMETRY_ONLY) {
-    usableForAnchorId = Boolean(hasId);
-  }
   if (!PRODUCT_INTEL_URL_ANCHOR_TRUST_GUARD_ENABLED) {
     usableForAnchorId = Boolean(hasId);
   }
@@ -26176,13 +26199,37 @@ async function deepScanRoutineProductCandidate({
   const row = candidate && typeof candidate === 'object' ? candidate : null;
   if (!row) return { card: null, backfilled: false, failure_reason: 'candidate_missing' };
   const lang = String(ctx && ctx.lang ? ctx.lang : 'EN').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const routineAnchorGuardMode = String(process.env.AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE || '').trim().toLowerCase();
+  const routineStrictNonSkincareGuard = routineAnchorGuardMode === 'strict_non_skincare';
   const inputText = String(row.product_text || '').trim();
   const productUrl = /^https?:\/\/\S+/i.test(String(row.product_url || '').trim()) ? String(row.product_url || '').trim() : '';
   if (!inputText && !productUrl) return { card: null, backfilled: false, failure_reason: 'product_input_missing' };
 
   const profileCtx = isPlainObject(profileSummary) ? profileSummary : {};
   const logsCtx = Array.isArray(recentLogsSummary) ? recentLogsSummary.slice(0, 7) : [];
-  let parsedProduct = isPlainObject(row.parsed_product_hint) ? { ...row.parsed_product_hint } : null;
+  const frontendResolvedCandidateRaw = isPlainObject(row.resolved_product) ? { ...row.resolved_product } : null;
+  const frontendResolvedId = pickFirstTrimmed(row.resolved_product_id, row.resolvedProductId);
+  if (
+    frontendResolvedCandidateRaw &&
+    frontendResolvedId &&
+    !pickFirstTrimmed(
+      frontendResolvedCandidateRaw.product_id,
+      frontendResolvedCandidateRaw.productId,
+      frontendResolvedCandidateRaw.sku_id,
+      frontendResolvedCandidateRaw.skuId,
+    )
+  ) {
+    frontendResolvedCandidateRaw.product_id = frontendResolvedId;
+  }
+  const frontendResolvedAnchor = frontendResolvedCandidateRaw
+    ? (
+      mapCatalogProductToAnchorProduct(frontendResolvedCandidateRaw, { fallbackName: inputText }) ||
+      buildAnchorDisplayFromCandidate(frontendResolvedCandidateRaw, { fallbackName: inputText, fallbackUrl: productUrl })
+    )
+    : null;
+  let parsedProduct =
+    frontendResolvedAnchor ||
+    (isPlainObject(row.parsed_product_hint) ? { ...row.parsed_product_hint } : null);
   if (!parsedProduct && productUrl) {
     parsedProduct = buildHeuristicProductFromInput({ inputText, inputUrl: productUrl });
   }
@@ -26204,7 +26251,7 @@ async function deepScanRoutineProductCandidate({
       strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
     });
     const trustCodes = Array.isArray(trust.reason_codes) ? trust.reason_codes : [];
-    const nonSkincareSoftBlocked = !AURORA_RULE_RELAX_AGGRESSIVE && trustCodes.includes('anchor_soft_blocked_non_skincare');
+    const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
     if (trust.display_anchor && !nonSkincareSoftBlocked && (!parsedProduct || preferDisplay || trust.usable_for_anchor_id)) {
       parsedProduct = trust.display_anchor;
     }
@@ -26224,7 +26271,11 @@ async function deepScanRoutineProductCandidate({
     }
     return trust;
   };
-  applyRoutineAnchorGuard(parsedProduct, 'routine_candidate_hint', { preferDisplay: true });
+  applyRoutineAnchorGuard(
+    parsedProduct,
+    frontendResolvedAnchor ? 'frontend_resolved' : 'routine_candidate_hint',
+    { preferDisplay: true },
+  );
 
   let primaryAnchorResolution = null;
   if (!anchorId && inputText) {
@@ -26497,6 +26548,9 @@ async function deepScanRoutineProductCandidate({
       parsedProduct &&
       pickFirstTrimmed(parsedProduct.product_id, parsedProduct.sku_id, parsedProduct.display_name, parsedProduct.name, parsedProduct.url),
     );
+    const routineAnchorBlockedNonSkincare =
+      Array.isArray(routineAnchorTrustContext.reasons) &&
+      routineAnchorTrustContext.reasons.includes('anchor_soft_blocked_non_skincare');
     payload = applyProductAnalysisGapContract({
       ...payload,
       missing_info: uniqCaseInsensitiveStrings(
@@ -26518,6 +26572,9 @@ async function deepScanRoutineProductCandidate({
           reasons: Array.isArray(routineAnchorTrustContext.reasons) ? routineAnchorTrustContext.reasons.slice(0, 6) : [],
           source: String(routineAnchorTrustContext.source || 'unknown'),
           candidate_quality: String(routineAnchorTrustContext.candidate_quality || 'none'),
+          ...(routineStrictNonSkincareGuard && routineAnchorBlockedNonSkincare
+            ? { guard_policy: 'routine_strict_non_skincare_v1' }
+            : {}),
           ...(Number.isFinite(Number(routineAnchorTrustContext.url_consistency))
             ? { url_consistency: Number(routineAnchorTrustContext.url_consistency) }
             : {}),
@@ -26590,6 +26647,10 @@ async function deepScanRoutineProductCandidate({
       }
       : null,
     backfilled: true,
+    anchor_used: routineAnchorTrustContext.usable_for_anchor_id === true,
+    anchor_blocked_non_skincare: Array.isArray(routineAnchorTrustContext.reasons)
+      ? routineAnchorTrustContext.reasons.includes('anchor_soft_blocked_non_skincare')
+      : false,
     key_quality: keyQuality,
     routine_context: routineContext,
   };
@@ -43612,14 +43673,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
         });
         const trustCodes = Array.isArray(parseAnchorTrust.reason_codes) ? parseAnchorTrust.reason_codes : [];
-        const nonSkincareSoftBlocked = !AURORA_RULE_RELAX_AGGRESSIVE && trustCodes.includes('anchor_soft_blocked_non_skincare');
+        const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
         const existingMissing = Array.isArray(payload.missing_info) ? payload.missing_info : [];
+        const stableMissing = existingMissing.filter((token) => {
+          const normalized = String(token || '').trim().toLowerCase();
+          return !normalized.startsWith('anchor_soft_blocked_') && normalized !== 'anchor_id_not_used_due_to_low_trust';
+        });
         payload = {
           ...payload,
           product: nonSkincareSoftBlocked ? null : parseAnchorTrust.display_anchor || null,
           missing_info: uniqCaseInsensitiveStrings(
             [
-              ...existingMissing,
+              ...stableMissing,
               ...trustCodes,
               ...((!nonSkincareSoftBlocked && parseAnchorTrust.display_anchor) && !parseAnchorTrust.usable_for_anchor_id
                 ? ['anchor_id_not_used_due_to_low_trust']
@@ -43640,7 +43705,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               : {}),
           },
         };
-        if (!AURORA_RULE_RELAX_AGGRESSIVE && trustCodes.includes('anchor_soft_blocked_non_skincare')) {
+        if (trustCodes.includes('anchor_soft_blocked_non_skincare')) {
           fieldMissing = fieldMissing.filter((item) => String(item && item.field ? item.field : '').trim() !== 'product');
           fieldMissing.push({ field: 'product', reason: 'non_skincare_filtered_anchor_soft_blocked_non_skincare' });
           recoveryPath.push(`${source}_anchor_soft_blocked_non_skincare`);
@@ -44017,7 +44082,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         collectAnchorTrust(trust);
         const trustCodes = Array.isArray(trust.reason_codes) ? trust.reason_codes : [];
-        const nonSkincareSoftBlocked = !AURORA_RULE_RELAX_AGGRESSIVE && trustCodes.includes('anchor_soft_blocked_non_skincare');
+        const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
         if (trust.display_anchor && !nonSkincareSoftBlocked && (!parsedProduct || preferDisplay || trust.usable_for_anchor_id)) {
           parsedProduct = trust.display_anchor;
         }
@@ -57629,7 +57694,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
             });
             const trustCodes = Array.isArray(trust.reason_codes) ? trust.reason_codes : [];
-            const nonSkincareSoftBlocked = !AURORA_RULE_RELAX_AGGRESSIVE && trustCodes.includes('anchor_soft_blocked_non_skincare');
+            const nonSkincareSoftBlocked = trustCodes.includes('anchor_soft_blocked_non_skincare');
             if (trust.display_anchor && !nonSkincareSoftBlocked && (!parsedProduct || preferDisplay || trust.usable_for_anchor_id)) {
               parsedProduct = trust.display_anchor;
             }
@@ -58361,6 +58426,7 @@ const __internal = {
   buildRecoCatalogSearchBaseUrlCandidates,
   buildProductCatalogQueryCandidates,
   buildRealtimeCompetitorQueryPlan,
+  computeAnchorNameSimilarity,
   mapCatalogProductToAnchorProduct,
   evaluateAnchorTrustForProductIntel,
   resolveCatalogProductForProductInput,
