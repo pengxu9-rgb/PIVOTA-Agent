@@ -71,6 +71,9 @@ class ProductAnalyzeSkill extends BaseSkill {
           action_type: 'navigate_skill',
           target_skill_id: 'explore.add_to_routine',
           label: { en: 'Add to my routine', zh: '加入我的护肤流程' },
+          params: {
+            product_anchor: params.product_anchor,
+          },
         },
         {
           action_type: 'navigate_skill',
