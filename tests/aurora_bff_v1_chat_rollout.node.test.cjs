@@ -63,7 +63,7 @@ test('V1ChatRequestSchema accepts optional context on legacy /v1/chat bodies', (
   assert.equal(parsed.success, true);
 });
 
-test('buildSkillRequest normalizes frontend language tokens and forwards session/profile history', () => {
+test('buildSkillRequest normalizes frontend language, camelCase profile fields, and routine slot maps', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
 
@@ -73,8 +73,19 @@ test('buildSkillRequest normalizes frontend language tokens and forwards session
       language: 'CN',
       session: {
         profile: {
-          skin_type: 'dry',
+          skinType: 'dry',
           goals: ['hydration'],
+          budgetTier: '$50',
+          currentRoutine: {
+            routine_id: 'routine_map_123',
+            am: {
+              cleanser: 'Gentle Cleanser',
+              sunscreen: 'SPF 50',
+            },
+            pm: {
+              moisturizer: 'Barrier Cream',
+            },
+          },
         },
       },
       messages: [
@@ -86,10 +97,15 @@ test('buildSkillRequest normalizes frontend language tokens and forwards session
   });
 
   assert.equal(skillRequest.context.locale, 'zh-CN');
-  assert.deepEqual(skillRequest.context.profile, {
-    skin_type: 'dry',
-    goals: ['hydration'],
-  });
+  assert.equal(skillRequest.context.profile.skinType, 'dry');
+  assert.equal(skillRequest.context.profile.skin_type, 'dry');
+  assert.deepEqual(skillRequest.context.profile.goals, ['hydration']);
+  assert.deepEqual(skillRequest.context.profile.concerns, ['hydration']);
+  assert.equal(skillRequest.context.profile.budget_tier, '$50');
+  assert.equal(skillRequest.context.current_routine?.routine_id, 'routine_map_123');
+  assert.equal(skillRequest.context.current_routine?.am_steps?.length, 2);
+  assert.equal(skillRequest.context.current_routine?.am_steps?.[0]?.products?.[0]?.name, 'Gentle Cleanser');
+  assert.equal(skillRequest.context.current_routine?.pm_steps?.length, 1);
   assert.deepEqual(skillRequest.params.messages, [
     { role: 'assistant', content: 'Welcome back.' },
     { role: 'user', content: 'I want something calming.' },
@@ -172,7 +188,7 @@ test('/v1/chat delegates v2-compatible message+context bodies when skill_router_
   );
 });
 
-test('/v1/chat delegates current frontend freeform payload shape when skill_router_v2 is enabled', async () => {
+test('/v1/chat turns current frontend reco freeform payload with camelCase profile into non-empty reco output', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
@@ -191,18 +207,32 @@ test('/v1/chat delegates current frontend freeform payload shape when skill_rout
         })
         .send({
           session: {
-            state: 'S2_DIAGNOSIS',
-            profile: { skin_type: 'dry' },
+            state: 'IDLE_CHAT',
+            profile: {
+              skinType: 'combination',
+              goals: ['hydration', 'brightening'],
+              currentRoutine: {
+                am: {
+                  cleanser: 'Gentle Cleanser',
+                  sunscreen: 'SPF 50',
+                },
+                pm: {
+                  moisturizer: 'Barrier Cream',
+                },
+              },
+            },
           },
           message: 'Recommend a facial mask that suits me.',
           language: 'CN',
-          client_state: 'S2_DIAGNOSIS',
+          client_state: { state: 'IDLE_CHAT' },
+          messages: [{ role: 'user', content: 'I want something hydrating.' }],
         })
         .expect(200);
 
       assert.ok(Array.isArray(response.body.cards));
       assert.ok(Array.isArray(response.body.next_actions));
-      assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'card_type')), true);
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'effect_review'), true);
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'empty_state'), false);
       assert.equal(Object.prototype.hasOwnProperty.call(response.body, 'assistant_message'), false);
     },
   );

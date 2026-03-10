@@ -11,8 +11,15 @@ class RecoStepBasedSkill extends BaseSkill {
     const concerns = request.params?._extracted_concerns || [];
     const targetIngredient = request.params?.target_ingredient || null;
     const targetStep = request.params?.target_step || null;
+    const profileConcerns = Array.isArray(profile.concerns)
+      ? profile.concerns
+      : Array.isArray(profile.goals)
+        ? profile.goals
+        : [];
 
-    const hasProfile = Boolean(profile.skin_type) || (Array.isArray(profile.concerns) && profile.concerns.length > 0);
+    const hasProfile =
+      Boolean(profile.skin_type || profile.skinType || profile.sensitivity || profile.barrier_status || profile.barrierStatus) ||
+      profileConcerns.length > 0;
     const hasRoutine = Boolean(routine && ((routine.am_steps || []).length > 0 || (routine.pm_steps || []).length > 0));
     const hasConcernContext = Array.isArray(concerns) && concerns.length > 0;
     const hasTargetContext = Boolean(targetIngredient || targetStep);

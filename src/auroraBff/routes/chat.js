@@ -70,6 +70,74 @@ function pickFirstTrimmed(...values) {
   return null;
 }
 
+function compactStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+}
+
+function normalizeProfileShape(value) {
+  if (!isPlainObject(value)) return {};
+
+  const normalized = { ...value };
+  const skinType = pickFirstTrimmed(value.skin_type, value.skinType);
+  const concerns = compactStringArray(Array.isArray(value.concerns) ? value.concerns : value.goals);
+  const goals = compactStringArray(Array.isArray(value.goals) ? value.goals : value.concerns);
+  const sensitivity = pickFirstTrimmed(value.sensitivity, value.sensitivityLevel);
+  const barrierStatus = pickFirstTrimmed(value.barrier_status, value.barrierStatus);
+  const budgetTier = pickFirstTrimmed(value.budget_tier, value.budgetTier);
+  const pregnancyStatus = pickFirstTrimmed(value.pregnancy_status, value.pregnancyStatus);
+
+  if (skinType) normalized.skin_type = skinType;
+  if (concerns.length > 0) normalized.concerns = concerns;
+  if (goals.length > 0) normalized.goals = goals;
+  if (sensitivity) normalized.sensitivity = sensitivity;
+  if (barrierStatus) normalized.barrier_status = barrierStatus;
+  if (budgetTier) normalized.budget_tier = budgetTier;
+  if (pregnancyStatus) normalized.pregnancy_status = pregnancyStatus;
+
+  return normalized;
+}
+
+function normalizeRoutineProducts(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeRoutineProducts(item))
+      .flat()
+      .filter((item) => isPlainObject(item));
+  }
+
+  if (typeof value === 'string') {
+    const name = value.trim();
+    return name ? [{ name }] : [];
+  }
+
+  if (!isPlainObject(value)) return [];
+
+  if (Array.isArray(value.products)) {
+    return normalizeRoutineProducts(value.products);
+  }
+
+  const name = pickFirstTrimmed(value.name, value.display_name, value.product_name, value.label, value.title);
+  return name ? [{ ...value, name }] : [];
+}
+
+function coerceRoutineStepsFromSlots(value) {
+  if (!isPlainObject(value)) return [];
+
+  return Object.entries(value)
+    .map(([stepId, rawValue]) => {
+      const products = normalizeRoutineProducts(rawValue);
+      if (products.length === 0) return null;
+      return {
+        step_id: stepId,
+        products,
+      };
+    })
+    .filter(Boolean);
+}
+
 function coerceRoutineShape(value) {
   if (!value) return null;
 
@@ -98,6 +166,15 @@ function coerceRoutineShape(value) {
       ...(value.routine_id ? { routine_id: value.routine_id } : {}),
       am_steps: Array.isArray(value.am) ? value.am : [],
       pm_steps: Array.isArray(value.pm) ? value.pm : [],
+      ...(value.notes != null ? { notes: value.notes } : {}),
+    };
+  }
+
+  if (isPlainObject(value.am) || isPlainObject(value.pm)) {
+    return {
+      ...(value.routine_id ? { routine_id: value.routine_id } : {}),
+      am_steps: coerceRoutineStepsFromSlots(value.am),
+      pm_steps: coerceRoutineStepsFromSlots(value.pm),
       ...(value.notes != null ? { notes: value.notes } : {}),
     };
   }
@@ -199,7 +276,7 @@ function buildSkillRequest(req) {
   );
   const priorMessages = Array.isArray(body.messages) ? body.messages : [];
   const locale = resolveRequestLocale(body, req.headers || {}, bodyContext);
-  const resolvedProfile = bodyContext.profile || req._userProfile || sessionProfile || {};
+  const resolvedProfile = normalizeProfileShape(bodyContext.profile || req._userProfile || sessionProfile || {});
   const currentRoutine = resolveCurrentRoutine(bodyContext, [
     bodyContext.profile,
     req._userProfile,
