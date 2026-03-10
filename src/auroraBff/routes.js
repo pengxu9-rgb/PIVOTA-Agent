@@ -21406,6 +21406,40 @@ function normalizeStructuredSummaryFailure(result, fallbackReason = 'llm_call_fa
   };
 }
 
+function normalizeRecoveredSummaryText(value, { maxLen = 320 } = {}) {
+  const text = String(value || '')
+    .replace(/\\n/g, ' ')
+    .replace(/\\"/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[}",\]]+$/g, '')
+    .trim();
+  if (!text) return null;
+  return text.slice(0, maxLen);
+}
+
+function recoverReturningSummaryTextFromRaw(rawText, { language } = {}) {
+  const raw = String(rawText || '').trim();
+  if (!raw) return null;
+  const preferredKeys =
+    language === 'CN'
+      ? ['summary_text', 'summary_zh', 'summary_en']
+      : ['summary_text', 'summary_en', 'summary_zh'];
+  for (const key of preferredKeys) {
+    const closedMatch = raw.match(new RegExp(`"${key}"\\s*:\\s*"([^"]{1,600})"`));
+    if (closedMatch && closedMatch[1]) {
+      const recovered = normalizeRecoveredSummaryText(closedMatch[1]);
+      if (recovered) return recovered;
+    }
+    const openEndedMatch = raw.match(new RegExp(`"${key}"\\s*:\\s*"([\\s\\S]{1,600})$`));
+    if (openEndedMatch && openEndedMatch[1]) {
+      const recovered = normalizeRecoveredSummaryText(openEndedMatch[1]);
+      if (recovered) return recovered;
+    }
+  }
+  return null;
+}
+
 async function callStructuredSummaryJson({
   llmProvider,
   llmModel,
@@ -21437,6 +21471,7 @@ async function callStructuredSummaryJson({
         provider,
         model: effectiveModel,
         json: null,
+        raw_text: result && result.raw_text ? String(result.raw_text) : null,
         ...normalizeStructuredSummaryFailure(result, 'openai_json_failed'),
       };
     }
@@ -21468,6 +21503,7 @@ async function callStructuredSummaryJson({
       provider,
       model: effectiveModel,
       json: null,
+      raw_text: result && result.raw_text ? String(result.raw_text) : null,
       ...normalizeStructuredSummaryFailure(result, 'gemini_json_failed'),
     };
   }
@@ -21532,6 +21568,19 @@ async function fetchReturningSummaryText({
       route: 'aurora_returning_summary',
     });
     if (!result.ok || !result.json) {
+      const recoveredText = recoverReturningSummaryTextFromRaw(result.raw_text, { language });
+      if (recoveredText) {
+        return {
+          text: recoveredText,
+          llm_used: true,
+          provider: result.provider || resolveStructuredSummaryProvider(llmProvider),
+          model: result.model || String(llmModel || '').trim() || null,
+          failure_reason: null,
+          failure_detail: null,
+          parse_status: result.parse_status ? `recovered_${String(result.parse_status).trim()}` : 'recovered_raw_text',
+          timeout_stage: result.timeout_stage,
+        };
+      }
       return {
         text: null,
         llm_used: false,
