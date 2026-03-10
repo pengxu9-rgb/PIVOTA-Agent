@@ -14746,6 +14746,13 @@ async function callGeminiJsonObject({
         : null;
   const sanitizedSchema =
     requestedSchema && typeof requestedSchema === 'object' ? sanitizeGeminiJsonSchema(requestedSchema) : null;
+  const shouldAttachResponseSchema = Boolean(
+    sanitizedSchema &&
+      (
+        INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED ||
+        FORCE_GEMINI_STRUCTURED_SCHEMA_ROUTES.has(String(route || '').trim())
+      )
+  );
   const effectiveMaxOutputTokens =
     Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
       ? Math.max(64, Math.min(4096, Math.trunc(Number(maxOutputTokens))))
@@ -14782,7 +14789,7 @@ async function callGeminiJsonObject({
             responseMimeType: 'application/json',
             thinkingConfig: { includeThoughts: false },
             ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
-            ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && sanitizedSchema ? { responseSchema: sanitizedSchema } : {}),
+            ...(shouldAttachResponseSchema ? { responseSchema: sanitizedSchema } : {}),
           },
         },
       });
@@ -21260,6 +21267,10 @@ const PROGRESS_DELTA_REQUIRED_KEYS = Object.freeze([
 const PROGRESS_ALLOWED_TRENDS = new Set(['improving', 'stable', 'declining', 'mixed']);
 const PROGRESS_ALLOWED_DIRECTIONS = new Set(['improved', 'stable', 'worsened']);
 const PROGRESS_ALLOWED_MAGNITUDES = new Set(['slight', 'moderate', 'significant']);
+const FORCE_GEMINI_STRUCTURED_SCHEMA_ROUTES = new Set([
+  'aurora_returning_summary',
+  'aurora_progress_delta',
+]);
 const RETURNING_SUMMARY_JSON_SCHEMA = Object.freeze({
   type: 'object',
   properties: {
