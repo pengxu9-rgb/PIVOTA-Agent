@@ -631,10 +631,27 @@ function isBeautyLookupLikeQuery(rawQuery) {
   return hasBrand && (hasAvailabilityCue || q.length <= 32);
 }
 
+function isBeautySkincareSpecificQuery(rawQuery) {
+  const q = String(rawQuery || '');
+  if (!q) return false;
+  return (
+    /\b(skincare|skin care|serum|toner|essence|ampoule|moisturi(?:z|s)er|cream|cleanser|sunscreen|spf\b|sunblock|mask)\b/i.test(
+      q,
+    ) ||
+    /护肤|護膚|精华|精華|化妆水|化妝水|乳液|面霜|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料|クリーム/.test(
+      q,
+    )
+  );
+}
+
 function shouldApplyBeautyDiversity(intent, rawQuery) {
   if (!BEAUTY_DIVERSITY_ENABLED) return false;
   if (intent?.primary_domain !== 'beauty') return false;
   if (isBeautyLookupLikeQuery(rawQuery)) return false;
+  if (hasFragranceQuerySignal(rawQuery)) return false;
+  if (isBeautySkincareSpecificQuery(rawQuery)) return false;
+  const queryClass = normalizeQueryClass(intent?.query_class, { defaultValue: null });
+  if (queryClass === 'lookup' || queryClass === 'attribute') return false;
   const scenario = String(intent?.scenario?.name || '');
   if (scenario === 'beauty_tools' || scenario === 'eye_shadow_brush') return false;
   return true;
@@ -2747,6 +2764,16 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     const lang = intent?.language || 'en';
     const target = intent?.target_object?.type || 'unknown';
     const scenario = intent?.scenario?.name || 'general';
+    const normalizedQueryClass = normalizeQueryClass(queryClass, { defaultValue: null });
+
+    if (
+      intent?.primary_domain === 'beauty' &&
+      normalizedQueryClass === 'lookup' &&
+      scenario !== 'beauty_tools' &&
+      scenario !== 'eye_shadow_brush'
+    ) {
+      return q;
+    }
 
     const extra = [];
     extra.push(...buildAnchorAliasTerms(q, intent, queryClass));

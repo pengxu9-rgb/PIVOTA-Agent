@@ -230,6 +230,27 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('mascara');
   });
 
+  test('generic sunscreen query routes to beauty attribute instead of lookup', () => {
+    const intent = extractIntentRuleBased('Face SPF50+ PA++++ sunscreen', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.query_class).toBe('attribute');
+  });
+
+  test('generic moisturizer query stays in beauty and does not default to lookup', () => {
+    const intent = extractIntentRuleBased('hydrating moisturizer', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.query_class).toBe('attribute');
+  });
+
+  test('face sunscreen query is treated as beauty category search', () => {
+    const intent = extractIntentRuleBased('Face sunscreen', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.query_class).toBe('category');
+  });
+
   test('perfume query uses fragrance semantic expansion without makeup drift', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
