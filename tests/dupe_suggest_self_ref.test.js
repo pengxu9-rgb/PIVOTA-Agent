@@ -12,6 +12,8 @@ const {
   normalizeUrl,
   sanitizeCandidateFields,
   sanitizeCandidates,
+  stripRecommendationSuffix,
+  hasSyntheticRecommendationSuffix,
 } = require('../src/auroraBff/skills/dupe_utils');
 
 test('normalizeBrand lowercases and strips punctuation', () => {
@@ -35,6 +37,8 @@ test('normalizeProductName strips legacy dupe suffix tokens', () => {
   expect(result).not.toContain('budget');
   expect(result).not.toContain('dupe');
   expect(result).toContain('niacinamide');
+  expect(stripRecommendationSuffix('Niacinamide 10% + Zinc 1% (similar option)')).toBe('Niacinamide 10% + Zinc 1%');
+  expect(hasSyntheticRecommendationSuffix('Niacinamide 10% + Zinc 1% (premium option)')).toBe(true);
 });
 
 test('normalizeUrl strips tracking params and trailing slash', () => {
@@ -125,6 +129,27 @@ test('scenario 2b: brand-missing catalog candidate with exact full-name match is
       name: 'The Ordinary Niacinamide 10% + Zinc 1%',
       category: 'Serum',
       url: 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=aurora_chatbox',
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.NO_BRAND_FULL_NAME_MATCH);
+});
+
+test('scenario 2c: brand-missing legacy synthetic suffix candidate is filtered', () => {
+  const anchor = {
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'Serum',
+  };
+  const candidates = [
+    {
+      name: 'The Ordinary Niacinamide 10% + Zinc 1% (budget dupe)',
+      category: 'Serum',
+      confidence: 0.78,
     },
   ];
 

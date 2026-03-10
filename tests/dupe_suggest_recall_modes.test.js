@@ -36,6 +36,124 @@ function makeBaseServices(overrides = {}) {
 }
 
 describe('executeDupeSuggest recall modes', () => {
+  test('escalates hollow pool-only results to open-world instead of returning empty', async () => {
+    const fetchRecoAlternativesForProduct = jest
+      .fn()
+      .mockResolvedValueOnce({
+        alternatives: [
+          {
+            kind: 'similar',
+            candidate_origin: 'catalog',
+            grounding_status: 'catalog_verified',
+            ranking_mode: 'anchor_only',
+            product: { brand: 'Weak Catalog', name: 'Weak Catalog Lotion', product_id: 'weak_1' },
+            similarity: 0,
+            confidence: 0,
+            reasons: ['Grounded alternatives derived from resolved candidate pool.'],
+            tradeoffs: ['Category: moisturizer'],
+            missing_info: ['tradeoffs_detail_missing'],
+          },
+        ],
+        field_missing: [],
+        source_mode: 'pool_only',
+        template_id: 'reco_alternatives_v1_0',
+      })
+      .mockResolvedValueOnce({
+        alternatives: [
+          {
+            kind: 'similar',
+            candidate_origin: 'open_world',
+            grounding_status: 'name_only',
+            ranking_mode: 'anchor_only',
+            product: { brand: 'Weak Hybrid', name: 'Weak Hybrid Lotion' },
+            similarity: 0,
+            confidence: 0,
+            reasons: ['Based on resolved product candidates.'],
+            tradeoffs: ['Category: moisturizer'],
+            missing_info: ['tradeoffs_detail_missing'],
+          },
+        ],
+        field_missing: [],
+        source_mode: 'hybrid_fallback',
+        template_id: 'reco_alternatives_hybrid_v1',
+      })
+      .mockResolvedValueOnce({
+        alternatives: [
+          {
+            kind: 'dupe',
+            candidate_origin: 'open_world',
+            grounding_status: 'name_only',
+            ranking_mode: 'anchor_only',
+            product: { brand: 'Open Brand', name: 'Real Lightweight Moisturizer' },
+            similarity: 73,
+            confidence: 0.46,
+            reasons: ['Similar lightweight daily moisturizer role'],
+            tradeoffs: ['Exact formula overlap remains uncertain'],
+            missing_info: ['formula_overlap_uncertain'],
+          },
+        ],
+        field_missing: [],
+        source_mode: 'open_world_only',
+        template_id: 'reco_alternatives_hybrid_v1',
+      });
+
+    const services = makeBaseServices({
+      searchPivotaBackendProducts: jest.fn().mockResolvedValue({
+        ok: true,
+        products: [
+          { product_id: 'cand_1', sku_id: 'cand_1', brand: 'Catalog', display_name: 'Catalog Lotion 1', category: 'moisturizer' },
+          { product_id: 'cand_2', sku_id: 'cand_2', brand: 'Catalog', display_name: 'Catalog Lotion 2', category: 'moisturizer' },
+          { product_id: 'cand_3', sku_id: 'cand_3', brand: 'Catalog', display_name: 'Catalog Lotion 3', category: 'moisturizer' },
+        ],
+      }),
+      fetchRecoAlternativesForProduct,
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original: {
+          brand: 'Anchor Brand',
+          name: 'Anchor Lightweight Lotion',
+          category: 'moisturizer',
+        },
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload.dupes).toHaveLength(1);
+    expect(result.payload.meta.recommendation_mode_initial).toBe('pool_only');
+    expect(result.payload.meta.recommendation_mode_final).toBe('open_world_only');
+    expect(result.payload.meta.escalated_to_open_world).toBe(true);
+    expect(result.payload.meta.viability_failure_reasons).toEqual(expect.arrayContaining(['all_items_hollow', 'placeholder_only']));
+    expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      options: expect.objectContaining({
+        recommendation_mode: 'pool_only',
+        disable_synthetic_local_fallback: true,
+      }),
+    }));
+    expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      options: expect.objectContaining({
+        recommendation_mode: 'hybrid_fallback',
+        disable_synthetic_local_fallback: true,
+      }),
+    }));
+    expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      options: expect.objectContaining({
+        recommendation_mode: 'open_world_only',
+        disable_synthetic_local_fallback: true,
+      }),
+    }));
+  });
+
   test('treats stale verified KB entries as incompatible and regenerates fresh results', async () => {
     const staleKbEntry = {
       verified: true,
@@ -122,6 +240,7 @@ describe('executeDupeSuggest recall modes', () => {
       contract_version: 2,
       source_meta: expect.objectContaining({
         contract_version: 2,
+        recommendation_mode_initial: 'open_world_only',
       }),
     }));
   });
@@ -172,6 +291,7 @@ describe('executeDupeSuggest recall modes', () => {
     expect(result.payload.meta.recommendation_mode).toBe('open_world_only');
     expect(result.payload.meta.profile_mode).toBe('anchor_only');
     expect(result.payload.meta.profile_context_present).toBe(false);
+    expect(result.payload.meta.has_anchor_identity).toBe(true);
     expect(result.payload.meta.final_source_mix).toContain('open_world');
     expect(result.payload.meta.source_hit_counts.open_world_fallback).toBe(1);
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledWith(expect.objectContaining({
@@ -265,6 +385,7 @@ describe('executeDupeSuggest recall modes', () => {
     expect(result.payload.meta.recommendation_mode).toBe('hybrid_fallback');
     expect(result.payload.meta.profile_mode).toBe('personalized');
     expect(result.payload.meta.profile_context_present).toBe(true);
+    expect(result.payload.meta.has_anchor_identity).toBe(true);
     expect(result.payload.meta.source_hit_counts.catalog_search).toBeGreaterThanOrEqual(1);
     expect(result.payload.meta.source_hit_counts.open_world_fallback).toBe(1);
     expect(result.payload.meta.final_source_mix).toEqual(expect.arrayContaining(['catalog', 'open_world']));

@@ -119,6 +119,16 @@ function normalizeProductName(name) {
   return norm;
 }
 
+function stripRecommendationSuffix(name) {
+  if (!name) return '';
+  return String(name).replace(BUCKET_SUFFIX_PATTERN, '').trim();
+}
+
+function hasSyntheticRecommendationSuffix(name) {
+  if (!name) return false;
+  return BUCKET_SUFFIX_PATTERN.test(String(name).trim());
+}
+
 function normalizeUrl(url) {
   if (!url) return '';
   try {
@@ -187,7 +197,7 @@ function buildAnchorFingerprint(anchor) {
 function detectUrlAsName(name) {
   if (!name) return { isUrlName: false, extractedName: null };
   const trimmed = String(name).trim();
-  const withoutSuffix = trimmed.replace(BUCKET_SUFFIX_PATTERN, '').trim();
+  const withoutSuffix = stripRecommendationSuffix(trimmed);
   if (!URL_PATTERN.test(withoutSuffix)) {
     return { isUrlName: false, extractedName: null };
   }
@@ -236,7 +246,7 @@ function sanitizeCandidateFields(candidate) {
     },
   ];
 
-  const nextUrl = identity.url || sourceName.replace(BUCKET_SUFFIX_PATTERN, '').trim();
+  const nextUrl = identity.url || stripRecommendationSuffix(sourceName);
   const nextName = detected.extractedName || identity.brand || 'Unknown Product';
   const sanitized = patchCandidateIdentity(candidate, { name: nextName, url: nextUrl });
 
@@ -280,6 +290,7 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   const anchorDisplayName = normalizeProductName(
     anchorIdentity?.display_name || [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
   );
+  const anchorFullName = normalizeProductName([anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '));
 
   if (anchorProductId && candidateProductId && String(anchorProductId) === String(candidateProductId)) {
     return { isSelfRef: true, reason: DROP_REASON.SAME_CANONICAL_REF };
@@ -290,7 +301,8 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
     return { isSelfRef: true, reason: DROP_REASON.SAME_NORMALIZED_URL };
   }
 
-  if (!candidateBrand && candidateName && anchorDisplayName && candidateName === anchorDisplayName) {
+  if (!candidateBrand && candidateName && (anchorDisplayName || anchorFullName)
+    && (candidateName === anchorDisplayName || candidateName === anchorFullName)) {
     return { isSelfRef: true, reason: DROP_REASON.NO_BRAND_FULL_NAME_MATCH };
   }
 
@@ -397,6 +409,8 @@ module.exports = {
   sanitizeCandidateFields,
   sanitizeCandidates,
   detectUrlAsName,
+  stripRecommendationSuffix,
+  hasSyntheticRecommendationSuffix,
   detectSelfReference,
   filterSelfReferences,
   deduplicateCandidates,
