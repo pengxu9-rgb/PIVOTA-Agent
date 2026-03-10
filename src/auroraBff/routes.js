@@ -32700,9 +32700,11 @@ function buildProductInputText(inputObj, url) {
   const brand = typeof o.brand === 'string' ? o.brand.trim() : '';
   const name = typeof o.name === 'string' ? o.name.trim() : '';
   const display = typeof o.display_name === 'string' ? o.display_name.trim() : typeof o.displayName === 'string' ? o.displayName.trim() : '';
+  const productName = typeof o.product_name === 'string' ? o.product_name.trim() : typeof o.productName === 'string' ? o.productName.trim() : '';
+  const title = typeof o.title === 'string' ? o.title.trim() : '';
   const sku = typeof o.sku_id === 'string' ? o.sku_id.trim() : typeof o.skuId === 'string' ? o.skuId.trim() : '';
   const pid = typeof o.product_id === 'string' ? o.product_id.trim() : typeof o.productId === 'string' ? o.productId.trim() : '';
-  const bestName = display || name;
+  const bestName = display || name || productName || title;
   if (brand && bestName) return joinBrandAndName(brand, bestName);
   if (bestName) return bestName;
   if (sku) return sku;

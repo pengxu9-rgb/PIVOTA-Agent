@@ -54,7 +54,20 @@ function getCandidateIdentity(candidate) {
   const product = getCandidateProduct(candidate);
   return {
     brand: pickFirstString(product.brand, row.brand) || null,
-    name: pickFirstString(product.name, product.display_name, product.displayName, row.name, row.display_name, row.displayName) || null,
+    name: pickFirstString(
+      product.name,
+      product.display_name,
+      product.displayName,
+      product.product_name,
+      product.productName,
+      product.title,
+      row.name,
+      row.display_name,
+      row.displayName,
+      row.product_name,
+      row.productName,
+      row.title,
+    ) || null,
     display_name: pickFirstString(product.display_name, product.displayName, row.display_name, row.displayName) || null,
     url: pickFirstString(product.url, product.product_url, product.productUrl, row.url, row.product_url, row.productUrl) || null,
     product_id: pickFirstString(product.product_id, product.productId, product.sku_id, product.skuId, row.product_id, row.productId, row.sku_id, row.skuId) || null,
@@ -151,8 +164,8 @@ function buildAnchorIdentity(anchor) {
     product_id: anchor.product_id || anchor.productId || anchor.sku_id || anchor.skuId || null,
     merchant_id: anchor.merchant_id || anchor.merchantId || null,
     brand: anchor.brand || null,
-    name: anchor.name || null,
-    display_name: anchor.display_name || anchor.displayName || null,
+    name: anchor.name || anchor.product_name || anchor.productName || anchor.title || null,
+    display_name: anchor.display_name || anchor.displayName || anchor.product_name || anchor.productName || anchor.title || null,
     url: anchor.url || anchor.product_url || anchor.productUrl || null,
     category: anchor.category || anchor.product_type || anchor.type || null,
   };

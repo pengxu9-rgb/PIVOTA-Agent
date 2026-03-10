@@ -110,6 +110,50 @@ describe('legacy /v1/dupe suggest sanitization', () => {
     expect(result.payload.empty_state_reason).toBeTruthy();
   });
 
+  test('sanitizeDupeSuggestPayload removes self-references when original only has legacy product_name', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const { resolveOriginalForPayload } = require('../src/auroraBff/mappers/dupeSuggestMapper');
+    const resolvedOriginal = resolveOriginalForPayload(
+      {
+        brand: 'The Ordinary',
+        product_name: 'Niacinamide 10% + Zinc 1%',
+      },
+      'https://www.sephora.com/product/the-ordinary-niacinamide-10-zinc-1-P427417',
+      '',
+    );
+
+    expect(resolvedOriginal.original.name).toContain('Niacinamide 10% + Zinc 1%');
+    expect(resolvedOriginal.original.url).toBe('https://www.sephora.com/product/the-ordinary-niacinamide-10-zinc-1-P427417');
+
+    const result = __internal.sanitizeDupeSuggestPayload(
+      {
+        original: resolvedOriginal.original,
+        dupes: [
+          {
+            kind: 'dupe',
+            product: {
+              brand: 'The Ordinary',
+              name: 'The Ordinary Niacinamide 10 Zinc 1 P427417',
+              url: 'https://www.sephora.com/product/the-ordinary-niacinamide-10-zinc-1-P427417',
+            },
+            confidence: 0.78,
+          },
+        ],
+        comparables: [],
+        meta: {},
+      },
+      { lang: 'EN' },
+    );
+
+    expect(result.payload.dupes).toHaveLength(0);
+    expect(result.payload.meta.self_ref_dropped_count).toBe(1);
+    expect(result.field_missing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: 'dupe_suggest_self_reference_filtered' }),
+      ]),
+    );
+  });
+
   test('sanitizeDupeSuggestPayload keeps same-brand different-line candidate and auto-adds justification', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const result = __internal.sanitizeDupeSuggestPayload(
@@ -252,6 +296,31 @@ describe('legacy /v1/dupe/compare request compatibility', () => {
     expect(card.payload.original).toBeTruthy();
     expect(card.payload.dupe).toBeTruthy();
     expect(card.payload.dupe.name || card.payload.dupe.display_name).toBeTruthy();
+  });
+
+  test('accepts legacy dupe_suggest original payloads that only expose product_name', async () => {
+    const app = makeApp();
+    const response = await request(app)
+      .post('/v1/dupe/compare')
+      .set(makeHeaders())
+      .send({
+        original: {
+          brand: 'The Ordinary',
+          product_name: 'Niacinamide 10% + Zinc 1%',
+          url: 'https://www.sephora.com/product/the-ordinary-niacinamide-10-zinc-1-P427417',
+        },
+        dupe: {
+          brand: 'MockDupeBrand',
+          name: 'Mock Dupe Serum',
+          url: 'https://example.com/mock-dupe-serum',
+        },
+      })
+      .expect(200);
+
+    const card = getCard(response.body, 'dupe_compare');
+    expect(card).toBeTruthy();
+    expect(card.payload.original).toBeTruthy();
+    expect(card.payload.dupe).toBeTruthy();
   });
 
   test('returns explicit BAD_REQUEST detail when original is missing', async () => {
