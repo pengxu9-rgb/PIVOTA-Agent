@@ -21263,10 +21263,11 @@ const PROGRESS_ALLOWED_MAGNITUDES = new Set(['slight', 'moderate', 'significant'
 const RETURNING_SUMMARY_JSON_SCHEMA = Object.freeze({
   type: 'object',
   properties: {
+    summary_text: { type: 'string' },
     summary_en: { type: 'string' },
     summary_zh: { type: 'string' },
   },
-  required: ['summary_en', 'summary_zh'],
+  required: ['summary_text'],
 });
 const PROGRESS_DELTA_JSON_SCHEMA = Object.freeze({
   type: 'object',
@@ -21490,10 +21491,11 @@ function buildReturningSummaryPrompt({ language, baseline, recentLogs, profileSu
     'Template: diagnosis_v2_returning_summary',
     'Write a concise, non-medical recap of the user\'s prior skin baseline.',
     'Do not mention any photo unless the context explicitly contains one.',
-    'Keep summary_en and summary_zh to one short sentence each, under 30 words each.',
-    'Do not add explanations, markdown, or any keys beyond summary_en and summary_zh.',
+    `Return exactly one key named summary_text in ${lang === 'CN' ? 'Simplified Chinese' : 'English'}.`,
+    'Keep summary_text to one short sentence, under 25 words.',
+    'Do not add explanations, markdown, or any extra keys.',
     'Schema:',
-    '{ "summary_en": string, "summary_zh": string }',
+    '{ "summary_text": string }',
     `Context: ${JSON.stringify(context)}`,
   ].join('\n');
 }
@@ -21530,10 +21532,13 @@ async function fetchReturningSummaryText({
         timeout_stage: result.timeout_stage,
       };
     }
-    const text =
-      language === 'CN'
-        ? String(result.json.summary_zh || result.json.summary_en || '').trim()
-        : String(result.json.summary_en || result.json.summary_zh || '').trim();
+    const text = String(
+      result.json.summary_text ||
+        (language === 'CN'
+          ? result.json.summary_zh || result.json.summary_en
+          : result.json.summary_en || result.json.summary_zh) ||
+        '',
+    ).trim();
     if (!text) {
       return {
         text: null,
