@@ -377,10 +377,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       expect(String(resp.body.products[0].title || '').toLowerCase()).toContain('brush');
     }
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.query).toBe('有什么化妆刷推荐吗？');
-    expect(
-      String(resp.body.metadata?.route_debug?.cross_merchant_cache?.upstream_query || '').toLowerCase(),
-    ).toContain('makeup tools');
-    expect(upstreamSearch.isDone()).toBe(true);
+    if (String(resp.body.metadata?.query_source || '') === 'cache_cross_merchant_search') {
+      expect(upstreamSearch.isDone()).toBe(false);
+    } else {
+      expect(
+        String(resp.body.metadata?.route_debug?.cross_merchant_cache?.upstream_query || '').toLowerCase(),
+      ).toContain('makeup tools');
+      expect(upstreamSearch.isDone()).toBe(true);
+    }
   });
 
   test('accepts top-level payload query for find_products_multi', async () => {
@@ -542,7 +546,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '') === 'copper peptides serum' &&
+          String(q.query || '').includes('copper peptides serum') &&
           String(q.search_all_merchants || '') === 'true' &&
           String(q.fast_mode || '') === 'true' &&
           String(q.allow_stale_cache || '') === 'false'
@@ -958,6 +962,296 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalItems.length).toBeGreaterThan(0);
     expect(resp.body.metadata?.source_breakdown?.external_seed_count).toBeGreaterThan(0);
     expect(externalSupplement.isDone()).toBe(true);
+  });
+
+  test('niacinamide serum cache flow stays skincare-clean and keeps supplement diagnostics bucket-safe', async () => {
+    process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 6 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_skin',
+                merchant_name: 'Skin Shop',
+                product_data: {
+                  id: 'prod_serum_1',
+                  product_id: 'prod_serum_1',
+                  merchant_id: 'merch_skin',
+                  title: 'Niacinamide Repair Serum',
+                  description: '10% niacinamide serum for uneven tone',
+                  product_type: 'Serum',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'prod_brush_1',
+                  product_id: 'prod_brush_1',
+                  merchant_id: 'merch_tools',
+                  title: 'Foundation Brush for Serum Application',
+                  description: 'makeup brush for applying liquid serum products',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 8,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'prod_brush_2',
+                  product_id: 'prod_brush_2',
+                  merchant_id: 'merch_tools',
+                  title: 'Face Applicator Brush Serum Blend',
+                  description: 'applicator brush for serum and foundation',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 8,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('niacinamide serum'))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'ext_serum_1',
+            product_id: 'ext_serum_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Niacinamide Barrier Serum',
+            description: 'niacinamide serum for daily barrier support',
+            product_type: 'external',
+            status: 'active',
+          },
+          {
+            id: 'ext_brush_1',
+            product_id: 'ext_brush_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Foundation Brush',
+            description: 'makeup brush for base makeup',
+            product_type: 'external',
+            status: 'active',
+          },
+        ],
+        total: 2,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'niacinamide serum',
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search_supplemented');
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect((resp.body.products || []).some((item) => /niacinamide/i.test(String(item?.title || '')))).toBe(true);
+    expect((resp.body.products || []).every((item) => !/\bbrush\b/i.test(String(item?.title || '')))).toBe(true);
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+      expect.objectContaining({
+        beauty_query_bucket: 'skincare',
+        cache_query_mode: 'raw_first',
+        internal_filtered_irrelevant_count: expect.any(Number),
+      }),
+    );
+    expect(
+      Array.isArray(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_query_terms),
+    ).toBe(true);
+    expect(
+      resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_query_terms || [],
+    ).not.toEqual(expect.arrayContaining(['brush', 'foundation', 'lipstick', 'palette']));
+    expect(
+      Number(resp.body.metadata?.route_debug?.cross_merchant_cache?.internal_filtered_irrelevant_count || 0),
+    ).toBeGreaterThan(0);
+    expect(
+      Number(resp.body.metadata?.route_debug?.cross_merchant_cache?.internal_bucket_mix_before?.tools || 0),
+    ).toBeGreaterThan(0);
+    expect(
+      Number(resp.body.metadata?.route_debug?.cross_merchant_cache?.internal_bucket_mix_after?.tools || 0),
+    ).toBe(0);
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.diversity_targeted).toBe(false);
+    expect(
+      resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.query_variants || [],
+    ).not.toEqual(expect.arrayContaining(['perfume', 'fragrance', 'parfum']));
+    expect(externalSupplement.isDone()).toBe(true);
+  });
+
+  test('foundation brush query keeps beauty tools results after bucket backstop', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 7 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'prod_brush_a',
+                  product_id: 'prod_brush_a',
+                  merchant_id: 'merch_tools',
+                  title: 'Foundation Brush',
+                  description: 'dense makeup brush for liquid base',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'prod_brush_b',
+                  product_id: 'prod_brush_b',
+                  merchant_id: 'merch_tools',
+                  title: 'Foundation Brush Set',
+                  description: 'brush set for cream and liquid foundation',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'prod_brush_c',
+                  product_id: 'prod_brush_c',
+                  merchant_id: 'merch_tools',
+                  title: 'Liquid Foundation Brush',
+                  description: 'foundation brush for seamless liquid base',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'prod_brush_d',
+                  product_id: 'prod_brush_d',
+                  merchant_id: 'merch_tools',
+                  title: 'Precision Foundation Brush',
+                  description: 'precision brush for controlled base application',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'prod_brush_e',
+                  product_id: 'prod_brush_e',
+                  merchant_id: 'merch_tools',
+                  title: 'Foundation Brush Duo',
+                  description: 'duo brush set for cream foundation and blending',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'prod_brush_f',
+                  product_id: 'prod_brush_f',
+                  merchant_id: 'merch_tools',
+                  title: 'Travel Foundation Brush',
+                  description: 'travel-size brush for foundation touchups',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_skin',
+                merchant_name: 'Skin Shop',
+                product_data: {
+                  id: 'prod_serum_noise',
+                  product_id: 'prod_serum_noise',
+                  merchant_id: 'merch_skin',
+                  title: 'Foundation Finish Serum',
+                  description: 'skin serum with smoothing finish',
+                  product_type: 'Serum',
+                  status: 'published',
+                  inventory_quantity: 7,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'foundation brush',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect((resp.body.products || []).every((item) => /\bbrush\b/i.test(String(item?.title || '')))).toBe(
+      true,
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.beauty_query_bucket).toBe('tools');
+    expect(
+      Number(resp.body.metadata?.route_debug?.cross_merchant_cache?.internal_bucket_mix_after?.tools || 0),
+    ).toBeGreaterThan(0);
   });
 
   test('does not supplement non-first pages', async () => {

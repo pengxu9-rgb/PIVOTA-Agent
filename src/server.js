@@ -43,6 +43,13 @@ const {
   applyFindProductsMultiPolicy,
 } = require('./findProductsMulti/policy');
 const {
+  buildBeautyQueryProfile,
+  classifyBeautyBucketFromText: classifySharedBeautyBucketFromText,
+  detectBeautyQueryBucket: detectSharedBeautyQueryBucket,
+  getBeautyCacheExpansionTerms,
+  isBeautyBucketCompatibleForQuery,
+} = require('./findProductsMulti/beautyQueryProfile');
+const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
@@ -4748,6 +4755,51 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   return overlapCount >= (ingredientIntent ? 1 : 2);
 }
 
+function filterBeautySpecificCacheProducts(products, queryText, options = {}) {
+  const list = Array.isArray(products) ? products : [];
+  const beautyQueryProfile =
+    options?.beautyQueryProfile && typeof options.beautyQueryProfile === 'object'
+      ? options.beautyQueryProfile
+      : buildBeautyQueryProfile({
+          rawQuery: queryText,
+          queryClass: options?.queryClass || options?.intent?.query_class,
+          intent: options?.intent,
+        });
+  const bucket = beautyQueryProfile?.bucket || null;
+  const beforeMix = computeBeautyBucketMix(list, Math.max(1, list.length || 1));
+
+  if (!beautyQueryProfile?.isSpecificBeautyQuery || !bucket || list.length === 0) {
+    return {
+      products: list,
+      applied: false,
+      filtered_irrelevant_count: 0,
+      bucket,
+      bucket_mix_before: beforeMix,
+      bucket_mix_after: beforeMix,
+    };
+  }
+
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const filtered = list.filter((product) =>
+    isSupplementCandidateRelevant(product, queryText, {
+      normalizedQuery,
+      anchorTokens,
+      queryTokens,
+    }),
+  );
+  const afterMix = computeBeautyBucketMix(filtered, Math.max(1, filtered.length || 1));
+  return {
+    products: filtered,
+    applied: true,
+    filtered_irrelevant_count: Math.max(0, list.length - filtered.length),
+    bucket,
+    bucket_mix_before: beforeMix,
+    bucket_mix_after: afterMix,
+  };
+}
+
 function inferCacheProductDomainKey(product) {
   if (!product || typeof product !== 'object') return 'general';
   const pivotaDomain = String(
@@ -5029,12 +5081,13 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   const startedAtMs = Date.now();
   const brandDetection = detectBrandEntities(queryText, { candidateProducts: [] });
   const hasExplicitCategory = hasExplicitCategoryHint(queryText, null);
+  const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery: queryText });
   const brandTerms = Array.isArray(brandDetection?.brands)
     ? brandDetection.brands.map((item) => normalizeSearchTextForMatch(item)).filter(Boolean)
     : [];
   const baseVariants = buildBrandQueryVariants(queryText, brandTerms);
   const fragranceVariants =
-    hasFragranceQuerySignal(queryText) || hasExplicitCategory
+    beautyQueryProfile?.bucket === 'fragrance'
       ? ['perfume', 'fragrance', 'parfum', 'cologne', 'body mist', 'eau de parfum']
       : [];
   const queryVariants = Array.from(
@@ -5143,6 +5196,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       brand_query_detected: Boolean(brandDetection?.brand_like),
       brand_entities: brandTerms,
       brand_scope: hasExplicitCategory ? 'category_scoped' : 'broad',
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
       filtered_out_irrelevant_count: filteredOutIrrelevantCount,
       query_variants: queryVariants,
       upstream_status: upstreamStatus,
@@ -7916,9 +7970,17 @@ function looksSkuLikeQuery(q) {
   return /^[a-z0-9-]{6,}$/.test(s);
 }
 
-function tokenizeQueryForCache(q) {
+function tokenizeQueryForCache(q, options = {}) {
   const rawInput = String(q || '').trim();
   const lowerInput = rawInput.toLowerCase();
+  const beautyQueryProfile =
+    options?.beautyQueryProfile && typeof options.beautyQueryProfile === 'object'
+      ? options.beautyQueryProfile
+      : buildBeautyQueryProfile({
+          rawQuery: rawInput,
+          queryClass: options?.queryClass || options?.intent?.query_class,
+          intent: options?.intent,
+        });
   const sanitizedInput = sanitizeSearchQueryForRelevance(rawInput);
   const resolverInput = sanitizedInput || rawInput;
   const resolverNormalized = normalizeResolverText(resolverInput);
@@ -7940,22 +8002,8 @@ function tokenizeQueryForCache(q) {
       raw.push('harness', 'leash', 'collar');
     }
   }
-  if (hasBeautyMakeupSearchSignal(rawInput)) {
-    raw.push(
-      'makeup',
-      'cosmetic',
-      'beauty',
-      'foundation',
-      'concealer',
-      'lipstick',
-      'blush',
-      'mascara',
-      'eyeshadow',
-      'brush',
-      'palette',
-      'fenty',
-      'tom ford',
-    );
+  if (hasBeautyMakeupSearchSignal(rawInput) || beautyQueryProfile?.isBeautyQuery) {
+    raw.push(...getBeautyCacheExpansionTerms(beautyQueryProfile));
   }
   const stop = new Set([
     'a',
@@ -8373,70 +8421,7 @@ function hasBeautyMakeupSearchSignal(queryText) {
 }
 
 function classifyBeautyBucketFromText(text) {
-  const q = String(text || '');
-  if (!q) return 'other';
-  const hasSkincareTreatmentSignal =
-    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha)\b/i.test(
-      q,
-    ) ||
-    /护肤|護膚|精华|精華|化妆水|化妝水|乳液|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料/.test(
-      q,
-    );
-
-  if (
-    /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(q) ||
-    /香水|香氛|古龙|古龍|フレグランス|コロン/.test(q)
-  ) {
-    return 'fragrance';
-  }
-  if (
-    /\b(brush|brushes|blender|sponge|puff|applicator|tool|tools|brush\s*set|powder puff|eyelash curler)\b/i.test(
-      q,
-    ) ||
-    /化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|工具|刷子|パフ|ブラシ|ビューラー/.test(q)
-  ) {
-    return 'tools';
-  }
-  if (hasSkincareTreatmentSignal) {
-    return 'skincare';
-  }
-  if (
-    /\b(foundation|concealer|primer|powder|cushion|bb\s*cream|cc\s*cream|setting\s*powder)\b/i.test(
-      q,
-    ) ||
-    /粉底|遮瑕|妆前|妝前|散粉|蜜粉|气垫|氣墊/.test(q)
-  ) {
-    return 'base_makeup';
-  }
-  if (
-    /\b(eyeshadow|eye\s*shadow|mascara|eyeliner|brow|eyebrow)\b/i.test(q) ||
-    /眼影|睫毛膏|眼线|眼線|眉笔|眉筆|眉粉/.test(q)
-  ) {
-    return 'eye_makeup';
-  }
-  if (
-    /\b(lipstick|lip\s*tint|lip\s*gloss|lip\s*balm|lip\s*liner|lip)\b/i.test(q) ||
-    /口红|口紅|唇膏|唇彩|唇釉|润唇|潤唇/.test(q)
-  ) {
-    return 'lip_makeup';
-  }
-  if (
-    /\b(skincare|skin care|serum|toner|essence|ampoule|moisturi(?:z|s)er|cream|cleanser|sunscreen|spf\b|sunblock|face wash|mask)\b/i.test(
-      q,
-    ) ||
-    /护肤|護膚|精华|精華|化妆水|化妝水|乳液|面霜|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料|クリーム/.test(
-      q,
-    )
-  ) {
-    return 'skincare';
-  }
-  if (
-    /\b(makeup|cosmetic|cosmetics|beauty)\b/i.test(q) ||
-    /化妆|化妝|美妆|美妝|彩妆|彩妝|约会妆|約會妝/.test(q)
-  ) {
-    return 'general';
-  }
-  return 'other';
+  return classifySharedBeautyBucketFromText(text);
 }
 
 function hasBeautyCatalogProductSignal(candidateText) {
@@ -8450,36 +8435,7 @@ function classifyBeautyBucketFromProduct(product) {
 }
 
 function detectBeautyQueryBucket(queryText) {
-  const bucket = classifyBeautyBucketFromText(queryText);
-  if (bucket === 'skincare' || bucket === 'tools' || bucket === 'fragrance') return bucket;
-  if (
-    bucket === 'general' ||
-    bucket === 'base_makeup' ||
-    bucket === 'eye_makeup' ||
-    bucket === 'lip_makeup'
-  ) {
-    return 'general';
-  }
-  return null;
-}
-
-function isBeautyBucketCompatibleForQuery(candidateBucket, queryBucket) {
-  const bucket = String(candidateBucket || 'other');
-  const query = String(queryBucket || '');
-  if (!query) return bucket !== 'other';
-  if (query === 'skincare') return bucket === 'skincare';
-  if (query === 'tools') return bucket === 'tools';
-  if (query === 'fragrance') return bucket === 'fragrance';
-  if (query === 'general') {
-    return (
-      bucket === 'base_makeup' ||
-      bucket === 'eye_makeup' ||
-      bucket === 'lip_makeup' ||
-      bucket === 'skincare' ||
-      bucket === 'fragrance'
-    );
-  }
-  return bucket !== 'other';
+  return detectSharedBeautyQueryBucket(queryText);
 }
 
 function getResolverFallbackResolveQueryUsed(result, queryText = '') {
@@ -8569,10 +8525,13 @@ function computeBeautyBucketMix(products, topN = 10) {
   return buckets;
 }
 
-function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit) {
-  if (!intent || intent.primary_domain !== 'beauty') return false;
-  const scenario = String(intent?.scenario?.name || '');
-  if (scenario === 'beauty_tools' || scenario === 'eye_shadow_brush') return false;
+function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit, options = {}) {
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery: options?.rawQuery || '',
+    queryClass: options?.queryClass || intent?.query_class,
+    intent,
+  });
+  if (!beautyQueryProfile?.allowBeautyDiversity) return false;
   const topN = Math.max(1, Number(limit || 10));
   const mix = computeBeautyBucketMix(products, topN);
   const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare'];
@@ -8682,7 +8641,10 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     AND ${buildSellableStatusPredicate("product_data->>'status'")}
   `;
 
-  const terms = tokenizeQueryForCache(q);
+  const terms = tokenizeQueryForCache(q, {
+    intent: options?.intent,
+    queryClass: options?.intent?.query_class,
+  });
   const skuLike = looksSkuLikeQuery(q);
   const { toy_intent, outfit_intent, lingerie_intent } = detectToyOutfitIntentFromQuery(q);
   const intentTarget = String(options?.intent?.target_object?.type || '').toLowerCase();
@@ -9181,11 +9143,30 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
+  const beautyQueryProfile =
+    options?.beautyQueryProfile && typeof options.beautyQueryProfile === 'object'
+      ? options.beautyQueryProfile
+      : buildBeautyQueryProfile({
+          rawQuery: queryText,
+          queryClass: options?.queryClass || options?.intent?.query_class,
+          intent: options?.intent,
+        });
 
-  const terms = tokenizeQueryForCache(q);
+  const terms = tokenizeQueryForCache(q, {
+    intent: options?.intent,
+    queryClass: options?.queryClass || options?.intent?.query_class,
+    beautyQueryProfile,
+  });
   if (terms.length === 0) {
     return await loadCrossMerchantBrowseFromCache(safePage, safeLimit, { inStockOnly });
   }
+
+  const applyBeautySpecificFilter = (products) =>
+    filterBeautySpecificCacheProducts(products, queryText, {
+      intent: options?.intent,
+      queryClass: options?.queryClass || options?.intent?.query_class,
+      beautyQueryProfile,
+    });
 
   const skuLike = looksSkuLikeQuery(q);
   const buildQueryFilter = (fieldPrefix = 'pc.') => {
@@ -9314,22 +9295,27 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
   const strictTotal = Number(countRes.rows?.[0]?.total || 0);
   const strictRanked = toRankedUniqueProducts(rowsRes.rows || []);
+  const strictFiltered = applyBeautySpecificFilter(strictRanked.products);
   retrievalSources.push({
     source: 'lexical_cache',
     used: true,
-    count: strictRanked.products.length,
+    count: strictFiltered.products.length,
     candidate_count: strictRanked.candidateCount,
     total: strictTotal,
+    filtered_irrelevant_count: strictFiltered.filtered_irrelevant_count,
   });
 
-  if (strictRanked.products.length > 0) {
-    await applyShopifyCurrencyOverride(strictRanked.products);
+  if (strictFiltered.products.length > 0) {
+    await applyShopifyCurrencyOverride(strictFiltered.products);
     return {
-      products: strictRanked.products,
+      products: strictFiltered.products,
       total: strictTotal,
       page: safePage,
-      page_size: strictRanked.products.length,
+      page_size: strictFiltered.products.length,
       retrieval_sources: retrievalSources,
+      query_terms: terms,
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
+      internal_filter_debug: strictFiltered,
     };
   }
 
@@ -9363,15 +9349,17 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     ]);
     const relaxedTotal = Number(relaxedCountRes.rows?.[0]?.total || 0);
     const relaxedRanked = toRankedUniqueProducts(relaxedRowsRes.rows || []);
+    const relaxedFiltered = applyBeautySpecificFilter(relaxedRanked.products);
     retrievalSources.push({
       source: 'lexical_cache_relaxed_no_onboarding',
       used: true,
-      count: relaxedRanked.products.length,
+      count: relaxedFiltered.products.length,
       candidate_count: relaxedRanked.candidateCount,
       total: relaxedTotal,
+      filtered_irrelevant_count: relaxedFiltered.filtered_irrelevant_count,
     });
 
-    if (relaxedRanked.products.length === 0 && hasPetSearchSignal(q)) {
+    if (relaxedFiltered.products.length === 0 && hasPetSearchSignal(q)) {
       const preferHarnessResults = hasPetHarnessSearchSignal(q);
       const petSignalFilter = preferHarnessResults
         ? buildPetHarnessSignalSql(1)
@@ -9394,26 +9382,31 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
         [...petSignalFilter.params, pageOffset, pageFetch],
       );
       const petRanked = toRankedUniqueProducts(petRowsRes.rows || []);
+      const petFiltered = applyBeautySpecificFilter(petRanked.products);
       retrievalSources.push({
         source: preferHarnessResults ? 'pet_harness_browse_fallback' : 'pet_browse_fallback',
         used: true,
-        count: petRanked.products.length,
+        count: petFiltered.products.length,
         candidate_count: petRanked.candidateCount,
+        filtered_irrelevant_count: petFiltered.filtered_irrelevant_count,
       });
 
-      if (petRanked.products.length > 0) {
-        await applyShopifyCurrencyOverride(petRanked.products);
+      if (petFiltered.products.length > 0) {
+        await applyShopifyCurrencyOverride(petFiltered.products);
         return {
-          products: petRanked.products,
-          total: Math.max(strictTotal, relaxedTotal, petRanked.products.length),
+          products: petFiltered.products,
+          total: Math.max(strictTotal, relaxedTotal, petFiltered.products.length),
           page: safePage,
-          page_size: petRanked.products.length,
+          page_size: petFiltered.products.length,
           retrieval_sources: retrievalSources,
+          query_terms: terms,
+          beauty_query_bucket: beautyQueryProfile?.bucket || null,
+          internal_filter_debug: petFiltered,
         };
       }
     }
 
-    if (relaxedRanked.products.length === 0 && hasBeautyMakeupSearchSignal(q)) {
+    if (relaxedFiltered.products.length === 0 && hasBeautyMakeupSearchSignal(q)) {
       const beautySignalFilter = buildBeautySignalSql(1);
       const beautyRowsSql = `
         SELECT pc.merchant_id,
@@ -9433,32 +9426,40 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
         [...beautySignalFilter.params, pageOffset, pageFetch],
       );
       const beautyRanked = toRankedUniqueProducts(beautyRowsRes.rows || []);
+      const beautyFiltered = applyBeautySpecificFilter(beautyRanked.products);
       retrievalSources.push({
         source: 'beauty_browse_fallback',
         used: true,
-        count: beautyRanked.products.length,
+        count: beautyFiltered.products.length,
         candidate_count: beautyRanked.candidateCount,
+        filtered_irrelevant_count: beautyFiltered.filtered_irrelevant_count,
       });
 
-      if (beautyRanked.products.length > 0) {
-        await applyShopifyCurrencyOverride(beautyRanked.products);
+      if (beautyFiltered.products.length > 0) {
+        await applyShopifyCurrencyOverride(beautyFiltered.products);
         return {
-          products: beautyRanked.products,
-          total: Math.max(strictTotal, relaxedTotal, beautyRanked.products.length),
+          products: beautyFiltered.products,
+          total: Math.max(strictTotal, relaxedTotal, beautyFiltered.products.length),
           page: safePage,
-          page_size: beautyRanked.products.length,
+          page_size: beautyFiltered.products.length,
           retrieval_sources: retrievalSources,
+          query_terms: terms,
+          beauty_query_bucket: beautyQueryProfile?.bucket || null,
+          internal_filter_debug: beautyFiltered,
         };
       }
     }
 
-    await applyShopifyCurrencyOverride(relaxedRanked.products);
+    await applyShopifyCurrencyOverride(relaxedFiltered.products);
     return {
-      products: relaxedRanked.products,
-      total: Math.max(strictTotal, relaxedTotal, relaxedRanked.products.length),
+      products: relaxedFiltered.products,
+      total: Math.max(strictTotal, relaxedTotal, relaxedFiltered.products.length),
       page: safePage,
-      page_size: relaxedRanked.products.length,
+      page_size: relaxedFiltered.products.length,
       retrieval_sources: retrievalSources,
+      query_terms: terms,
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
+      internal_filter_debug: relaxedFiltered,
     };
   } catch (err) {
     retrievalSources.push({
@@ -9472,6 +9473,9 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       page: safePage,
       page_size: 0,
       retrieval_sources: retrievalSources,
+      query_terms: terms,
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
+      internal_filter_debug: applyBeautySpecificFilter([]),
     };
   }
 }
@@ -16675,23 +16679,84 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // Shopping Agent query search (no explicit merchant scope): prefer cache-first
       // lexical recall so we avoid upstream timeout cascades for common brand queries.
       const cacheQueryText = String(rawUserQuery || queryText || '').trim();
-      const cacheSearchQueryText = String(
+      const expandedCacheSearchQueryText = String(
         findProductsExpansionMeta?.expanded_query || cacheQueryText,
       ).trim();
+      const cachePolicyQueryClass = String(
+        traceQueryClass || effectiveIntent?.query_class || '',
+      ).toLowerCase();
+      const cacheBeautyQueryProfile = buildBeautyQueryProfile({
+        rawQuery: cacheQueryText,
+        queryClass: cachePolicyQueryClass,
+        intent: effectiveIntent,
+      });
+      const preferRawBeautyCacheQuery =
+        cacheBeautyQueryProfile?.isSpecificBeautyQuery &&
+        ['attribute', 'category', 'lookup'].includes(String(cachePolicyQueryClass || ''));
       const isCrossMerchantQuerySearch =
-        !isCreatorUi && cacheSearchQueryText.length > 0 && !hasMerchantScope;
+        !isCreatorUi &&
+        (cacheQueryText.length > 0 || expandedCacheSearchQueryText.length > 0) &&
+        !hasMerchantScope;
       if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
         try {
           const cacheStageStartedAt = Date.now();
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
-          const fromCache = await withStageBudget(
-            searchCrossMerchantFromCache(cacheSearchQueryText, page, limit, {
-              inStockOnly,
-            }),
-            FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+          const baseCacheSearchQueryText =
+            preferRawBeautyCacheQuery || !expandedCacheSearchQueryText
+              ? cacheQueryText
+              : expandedCacheSearchQueryText;
+          const runCacheSearch = async (queryTextForCache, beautyQueryProfile, stageLabel) => {
+            const elapsedMs = Math.max(0, Date.now() - cacheStageStartedAt);
+            const remainingBudgetMs = Math.max(
+              100,
+              FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS - elapsedMs,
+            );
+            return await withStageBudget(
+              searchCrossMerchantFromCache(queryTextForCache, page, limit, {
+                inStockOnly,
+                intent: effectiveIntent,
+                queryClass: cachePolicyQueryClass,
+                beautyQueryProfile,
+              }),
+              remainingBudgetMs,
+              stageLabel,
+            );
+          };
+          let activeCacheSearchQueryText = baseCacheSearchQueryText;
+          let fromCache = await runCacheSearch(
+            activeCacheSearchQueryText,
+            cacheBeautyQueryProfile,
             'cache_stage',
           );
+          let cacheQueryMode = preferRawBeautyCacheQuery ? 'raw_first' : null;
+          if (
+            preferRawBeautyCacheQuery &&
+            expandedCacheSearchQueryText &&
+            expandedCacheSearchQueryText !== cacheQueryText
+          ) {
+            const expandedBeautyQueryProfile = buildBeautyQueryProfile({
+              rawQuery: expandedCacheSearchQueryText,
+              queryClass: cachePolicyQueryClass,
+              intent: effectiveIntent,
+            });
+            const compatibleExpandedBucket =
+              expandedBeautyQueryProfile?.bucket === cacheBeautyQueryProfile?.bucket;
+            const rawCacheProducts = Array.isArray(fromCache?.products) ? fromCache.products : [];
+            if (compatibleExpandedBucket && rawCacheProducts.length === 0) {
+              const retried = await runCacheSearch(
+                expandedCacheSearchQueryText,
+                cacheBeautyQueryProfile,
+                'cache_stage_retry',
+              );
+              const retriedProducts = Array.isArray(retried?.products) ? retried.products : [];
+              if (retriedProducts.length > 0) {
+                fromCache = retried;
+                activeCacheSearchQueryText = expandedCacheSearchQueryText;
+                cacheQueryMode = 'expanded_retry';
+              }
+            }
+          }
           const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
           const lookupAnchorTokens = extractSearchAnchorTokens(cacheQueryText);
           const isLookupQuery =
@@ -16735,6 +16800,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               effectiveIntent,
               internalProductsAfterAnchor,
               safeResultLimit,
+              {
+                rawQuery: cacheQueryText,
+                queryClass: cachePolicyQueryClass,
+              },
             );
           const cacheHit = internalProductsAfterAnchor.length > 0;
           let supplementedProducts = internalProductsAfterAnchor;
@@ -16816,7 +16885,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 try {
                   const supplement = await fetchExternalSeedSupplementFromBackend({
                     queryParams: {
-                      query: cacheSearchQueryText,
+                      query: activeCacheSearchQueryText,
                       ...(search.category ? { category: search.category } : {}),
                       ...(search.price_min != null || search.min_price != null
                         ? { min_price: search.price_min ?? search.min_price }
@@ -16904,9 +16973,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
             : true;
-          const cachePolicyQueryClass = String(
-            traceQueryClass || effectiveIntent?.query_class || '',
-          ).toLowerCase();
           const genericRecommendQuery =
             /推荐|隨便|随便|any(?:thing|thing else)?\b|whatever|random|surprise me|show me/i.test(
               cacheQueryText,
@@ -16942,7 +17008,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             attempted: true,
             mode: 'search',
             query: cacheQueryText,
-            cache_query: cacheSearchQueryText,
+            cache_query: activeCacheSearchQueryText,
+            cache_query_mode: cacheQueryMode,
+            cache_query_terms: Array.isArray(fromCache?.query_terms) ? fromCache.query_terms : [],
             upstream_query: queryText,
             latency_ms: Math.max(0, Date.now() - cacheStageStartedAt),
             page,
@@ -16959,6 +17027,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cache_relevance_gate_relaxed: relaxCacheRelevanceGate,
             total: Number(fromCache.total || 0),
             retrieval_sources: fromCache.retrieval_sources || null,
+            beauty_query_bucket: fromCache?.beauty_query_bucket || cacheBeautyQueryProfile?.bucket || null,
+            internal_filtered_irrelevant_count: Number(
+              fromCache?.internal_filter_debug?.filtered_irrelevant_count || 0,
+            ),
+            internal_bucket_mix_before: fromCache?.internal_filter_debug?.bucket_mix_before || null,
+            internal_bucket_mix_after: fromCache?.internal_filter_debug?.bucket_mix_after || null,
             supplement: supplementMeta,
           };
           const merchantsReturned = uniqueStrings(
@@ -17086,7 +17160,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cacheQueryText !== queryText &&
             !isLookupQuery &&
             !cacheBrandLikeQuery &&
-            ['category', 'exploratory'].includes(cachePolicyQueryClass);
+            ['category', 'exploratory'].includes(cachePolicyQueryClass) &&
+            !cacheBeautyQueryProfile?.isSpecificBeautyQuery;
           if (forceSearchFirstForExpandedQuery) {
             effectiveCacheHit = false;
           }
@@ -17647,7 +17722,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             attempted: true,
             mode: 'search',
             query: cacheQueryText,
-            cache_query: cacheSearchQueryText,
+            cache_query:
+              (preferRawBeautyCacheQuery ? cacheQueryText : expandedCacheSearchQueryText) ||
+              cacheQueryText,
+            cache_query_mode: preferRawBeautyCacheQuery ? 'raw_first' : null,
+            cache_query_terms: [],
             upstream_query: queryText,
             page: search.page || 1,
             limit: search.limit || search.page_size || 20,
@@ -17655,6 +17734,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cache_hit: false,
             timeout_budget_ms: FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
             stage_timeout: String(err?.code || '').toUpperCase() === 'STAGE_TIMEOUT',
+            beauty_query_bucket: cacheBeautyQueryProfile?.bucket || null,
             error: String(err && err.message ? err.message : err),
           };
           logger.warn(
