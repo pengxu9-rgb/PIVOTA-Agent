@@ -16,9 +16,19 @@ function joinBrandAndName(brandRaw, nameRaw) {
   return `${brand} ${name}`.trim();
 }
 
+function unwrapProductLike(inputObj) {
+  const base = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
+  if (!base) return null;
+  const nestedProduct = base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product : null;
+  const nestedSku = base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku : null;
+  if (nestedProduct) return nestedProduct;
+  if (nestedSku) return nestedSku;
+  return base;
+}
+
 function buildProductInputText(inputObj, url) {
   if (typeof url === 'string' && url.trim()) return url.trim();
-  const o = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
+  const o = unwrapProductLike(inputObj);
   if (!o) return null;
   const brand = typeof o.brand === 'string' ? o.brand.trim() : '';
   const name = typeof o.name === 'string' ? o.name.trim() : '';
@@ -34,12 +44,13 @@ function buildProductInputText(inputObj, url) {
 }
 
 function extractAnchorIdFromProductLike(obj) {
-  if (!obj || typeof obj !== 'object') return null;
+  const source = unwrapProductLike(obj);
+  if (!source) return null;
   const raw =
-    (typeof obj.sku_id === 'string' && obj.sku_id) ||
-    (typeof obj.skuId === 'string' && obj.skuId) ||
-    (typeof obj.product_id === 'string' && obj.product_id) ||
-    (typeof obj.productId === 'string' && obj.productId) ||
+    (typeof source.sku_id === 'string' && source.sku_id) ||
+    (typeof source.skuId === 'string' && source.skuId) ||
+    (typeof source.product_id === 'string' && source.product_id) ||
+    (typeof source.productId === 'string' && source.productId) ||
     null;
   const v = raw ? String(raw).trim() : '';
   return v || null;
