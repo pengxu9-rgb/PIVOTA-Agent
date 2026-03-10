@@ -1089,11 +1089,11 @@ class LlmGateway {
     };
   }
 
-  async chat({ userMessage, systemPrompt, context, locale, onChunk }) {
+  async chat({ userMessage, systemPrompt, context, locale, onChunk, priorMessages }) {
     const callId = uuidv4();
     const promptHash = this._hash(compactText(userMessage));
     const startMs = Date.now();
-    const messages = this._buildChatMessages(userMessage, systemPrompt, context, locale);
+    const messages = this._buildChatMessages(userMessage, systemPrompt, context, locale, priorMessages);
 
     const provider = this._useStubResponses ? 'stub' : this._provider;
     let text;
@@ -1306,7 +1306,7 @@ class LlmGateway {
       .join('');
   }
 
-  _buildChatMessages(userMessage, systemPrompt, context, locale) {
+  _buildChatMessages(userMessage, systemPrompt, context, locale, priorMessages) {
     const profile = context && typeof context.profile === 'object' ? context.profile : {};
     const safetyFlags = Array.isArray(context?.safety_flags) ? context.safety_flags : [];
     const systemParts = [compactText(systemPrompt) || AURORA_SYSTEM_PROMPT];
@@ -1328,8 +1328,23 @@ class LlmGateway {
       systemParts.push(`Preferred locale: ${locale}`);
     }
 
+    const history = [];
+    if (Array.isArray(priorMessages)) {
+      const recent = priorMessages.slice(-10);
+      for (const msg of recent) {
+        if (!msg || typeof msg !== 'object') continue;
+        const role = String(msg.role || '').toLowerCase();
+        const content = compactText(msg.content || msg.text || msg.message || '');
+        if (!content) continue;
+        if (role === 'user' || role === 'assistant') {
+          history.push({ role, content });
+        }
+      }
+    }
+
     return [
       { role: 'system', content: systemParts.join('\n') },
+      ...history,
       { role: 'user', content: compactText(userMessage) },
     ];
   }

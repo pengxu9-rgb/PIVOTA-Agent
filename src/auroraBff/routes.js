@@ -1230,16 +1230,16 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
 
 function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
-  const hasLegacyInteractiveKeys =
+  const hasInteractiveKeys =
     payload.action != null ||
     payload.action_id != null ||
-    payload.client_state != null ||
-    payload.session != null ||
-    (Array.isArray(payload.messages) && payload.messages.length > 0) ||
     payload.selected_option_index != null ||
     payload.clarification_id != null ||
     payload.requested_transition != null;
-  if (hasLegacyInteractiveKeys) return false;
+  if (hasInteractiveKeys) return false;
+
+  const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
+  if (hasMessage) return true;
 
   const hasV2Context = isPlainObject(payload.context);
   if (hasV2Context) return true;

@@ -270,11 +270,13 @@ class SkillRouter {
     const startMs = Date.now();
 
     try {
+      const priorMessages = Array.isArray(request.params?.messages) ? request.params.messages : undefined;
       const chatResult = await this._llmGateway.chat({
         userMessage,
         context: request.context,
         locale: request.context?.locale,
         onChunk,
+        priorMessages,
       });
 
       const parsed = chatResult.parsed || {};
