@@ -75,9 +75,9 @@
     },
     {
       "template_id": "dupe_suggest",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "task_mode": "dupe",
-      "input_params": ["anchor", "candidates", "profile", "locale"],
+      "input_params": ["anchor_identity", "anchor_fingerprint", "candidates", "profile", "locale"],
       "output_schema": "DupeSuggestOutput"
     },
     {
