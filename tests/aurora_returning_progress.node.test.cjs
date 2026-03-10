@@ -252,6 +252,58 @@ test('/v1/chat returning_triage recovers summary_text from truncated LLM json wh
   );
 });
 
+test('/v1/chat returning_triage falls back to deterministic summary text for truncated LLM output without recoverable json', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
+    },
+    async () => {
+      const { request, restore } = createAppWithPatchedAuroraChat({
+        geminiJsonImpl: async ({ userPrompt }) => {
+          if (String(userPrompt || '').includes('Template: diagnosis_v2_returning_summary')) {
+            return {
+              ok: false,
+              reason: 'PARSE_TRUNCATED_JSON',
+              detail: 'finish_reason=MAX_TOKENS',
+              parse_status: 'parse_truncated',
+              raw_text: 'Here is the JSON requested: {"partial": true',
+            };
+          }
+          return failJson('unexpected_prompt');
+        },
+      });
+
+      try {
+        const uid = buildTestUid('returning_triage_deterministic');
+        await seedCompleteProfile(request, uid);
+        await seedDiagnosisArtifactForUid(uid, createDiagnosisArtifactFixture({ usePhoto: false }));
+
+        const res = await request
+          .post('/v1/chat')
+          .set(headersFor(uid))
+          .send({
+            action: {
+              action_id: 'chip.start.diagnosis',
+              kind: 'chip',
+              data: { reply_text: 'Start diagnosis' },
+            },
+          })
+          .expect(200);
+
+        const card = findCard(res.body, 'returning_triage');
+        const summary = findSection(card, 'previous_diagnosis_summary');
+        assert.ok(summary);
+        assert.equal(typeof summary.summary_text, 'string');
+        assert.match(summary.summary_text, /baseline|goals|check-ins/i);
+      } finally {
+        restore();
+      }
+    },
+  );
+});
+
 test('/v1/chat chip_start_diagnosis also emits returning_triage for returning users', async () => {
   await withEnv(
     {

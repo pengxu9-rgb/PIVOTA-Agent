@@ -21440,6 +21440,28 @@ function recoverReturningSummaryTextFromRaw(rawText, { language } = {}) {
   return null;
 }
 
+function buildDeterministicReturningSummaryText({ baseline, recentLogs, language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const skinType = String(baseline && baseline.skin_type || '').trim();
+  const goals = normalizeArrayOfStrings(baseline && baseline.goals, { max: 3, maxLen: 40 });
+  const concerns = normalizeArrayOfStrings(baseline && baseline.primary_concerns, { max: 3, maxLen: 40 });
+  const logsCount = Array.isArray(recentLogs) ? recentLogs.length : 0;
+  if (lang === 'CN') {
+    const parts = [];
+    if (skinType) parts.push(`你之前的基线以${skinType}肤质为主`);
+    if (goals.length) parts.push(`目标集中在${goals.join('、')}`);
+    else if (concerns.length) parts.push(`重点问题包括${concerns.join('、')}`);
+    if (logsCount > 0) parts.push(`并且已有${logsCount}次近期打卡可供参考`);
+    return `${parts.join('，') || '你之前的诊断基线和近期记录已经在档。'}。`;
+  }
+  const parts = [];
+  if (skinType) parts.push(`Your last baseline pointed to ${skinType} skin`);
+  if (goals.length) parts.push(`with goals around ${goals.join(', ')}`);
+  else if (concerns.length) parts.push(`with key concerns around ${concerns.join(', ')}`);
+  if (logsCount > 0) parts.push(`and ${logsCount} recent check-ins on file`);
+  return `${parts.join(' ') || 'Your previous diagnosis baseline and recent check-ins are on file.'}.`;
+}
+
 async function callStructuredSummaryJson({
   llmProvider,
   llmModel,
@@ -21581,8 +21603,12 @@ async function fetchReturningSummaryText({
           timeout_stage: result.timeout_stage,
         };
       }
+      const deterministicText =
+        String(result.failure_reason || '').trim() === 'PARSE_TRUNCATED_JSON'
+          ? buildDeterministicReturningSummaryText({ baseline, recentLogs, language })
+          : null;
       return {
-        text: null,
+        text: deterministicText,
         llm_used: false,
         provider: result.provider || resolveStructuredSummaryProvider(llmProvider),
         model: result.model || String(llmModel || '').trim() || null,
