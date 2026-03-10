@@ -67,6 +67,45 @@ test('hybrid resolver keeps only exact internal row when exact resolve succeeds'
   assert.equal(result.recommendation_meta.unresolved_seed_count, 0);
 });
 
+test('hybrid resolver preserves internal group targets from exact offers-style resolve results', async () => {
+  const result = await runRecoHybridResolveCandidates({
+    request: makeRequest(),
+    candidateOutput: makeCandidateOutput([
+      {
+        brand: 'Laneige',
+        name: 'Water Sleeping Mask',
+        product_type: 'mask',
+        why: { en: 'Good for overnight hydration.', zh: null },
+        suitability_score: 0.86,
+        search_aliases: ['laneige water sleeping mask'],
+      },
+    ]),
+    deps: {
+      async resolveProduct() {
+        return {
+          ok: true,
+          transient: false,
+          product: {
+            product_group_id: 'pg_mask_1',
+            canonical_product_ref: { product_id: 'prod_mask_group_1', merchant_id: 'merchant_mask_group_1' },
+            brand: 'Laneige',
+            name: 'Water Sleeping Mask',
+            category: 'mask',
+          },
+        };
+      },
+      async searchProducts() {
+        throw new Error('should not search when exact resolve hits');
+      },
+    },
+  });
+
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].match_state, 'exact');
+  assert.equal(result.rows[0].subject_product_group_id, 'pg_mask_1');
+  assert.equal(result.rows[0].pdp_open?.path, 'group');
+});
+
 test('hybrid resolver keeps fuzzy internal row plus raw llm seed when exact resolve misses', async () => {
   const result = await runRecoHybridResolveCandidates({
     request: makeRequest(),
@@ -196,6 +235,77 @@ test('hybrid resolver fuzzy scoring rejects non-skincare items like makeup brush
   });
 
   assert.equal(score, 0);
+});
+
+test('hybrid resolver can keep internal similar products when names differ but concern and step align', async () => {
+  const result = await runRecoHybridResolveCandidates({
+    request: makeRequest({
+      params: {
+        target_step: 'mask',
+        _extracted_concerns: ['hydration', 'barrier repair'],
+      },
+    }),
+    candidateOutput: makeCandidateOutput([
+      {
+        brand: 'Summer Fridays',
+        name: 'Jet Lag Mask',
+        product_type: 'mask',
+        why: { en: 'Hydrates and helps support the skin barrier.', zh: null },
+        suitability_score: 0.84,
+        search_aliases: ['summer fridays jet lag mask'],
+      },
+    ]),
+    deps: {
+      async resolveProduct() {
+        return { ok: false, transient: false, product: null };
+      },
+      async searchProducts() {
+        return {
+          ok: true,
+          transient: false,
+          products: [
+            {
+              product_id: 'prod_mask_barrier_1',
+              merchant_id: 'merchant_mask_barrier_1',
+              canonical_product_ref: { product_id: 'prod_mask_barrier_1', merchant_id: 'merchant_mask_barrier_1' },
+              brand: 'Pivota',
+              name: 'Overnight Barrier Repair Mask',
+              category: 'mask',
+              tags: ['hydration', 'barrier repair'],
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.rows[0].match_state, 'fuzzy');
+  assert.equal(result.rows[0].product_id, 'prod_mask_barrier_1');
+  assert.equal(result.recommendation_meta.fuzzy_match_count, 1);
+});
+
+test('normalizeProduct accepts legacy catalog rows with nested refs and group ids', () => {
+  const normalized = __internal.normalizeProduct({
+    title: 'Overnight Recovery Mask',
+    brand_name: 'Legacy Brand',
+    merchant: { merchant_id: 'merchant_legacy_1' },
+    subject: { product_group_id: 'group_legacy_1', category: 'mask' },
+    product_ref: { product_id: 'prod_legacy_1', merchant_id: 'merchant_legacy_1' },
+    pdp_open: {
+      path: 'ref',
+      product_ref: { product_id: 'prod_legacy_1', merchant_id: 'merchant_legacy_1' },
+    },
+    topic_keywords: ['hydration'],
+    ingredient_tokens: ['ceramide'],
+  });
+
+  assert.equal(normalized.product_id, 'prod_legacy_1');
+  assert.equal(normalized.product_group_id, 'group_legacy_1');
+  assert.equal(normalized.category, 'mask');
+  assert.equal(normalized.canonical_product_ref?.product_id, 'prod_legacy_1');
+  assert.equal(normalized.pdp_open?.path, 'ref');
+  assert.deepEqual(normalized.ingredients, ['ceramide']);
 });
 
 test('hybrid resolver caps six seeds to at most twelve displayed rows', async () => {
