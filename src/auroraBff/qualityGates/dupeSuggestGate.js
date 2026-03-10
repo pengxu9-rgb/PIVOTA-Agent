@@ -1,5 +1,20 @@
 'use strict';
 
+const HOLLOW_TRADEOFF_PATTERNS = [
+  /^category:\s*/i,
+  /^fallback_reason:\s*/i,
+  /^price delta:\s*unknown$/i,
+];
+
+function hasMeaningfulTradeoffs(item) {
+  const tradeoffs = Array.isArray(item?.tradeoffs) ? item.tradeoffs : [];
+  return tradeoffs.some((entry) => {
+    const text = typeof entry === 'string' ? entry.trim() : '';
+    if (!text) return false;
+    return !HOLLOW_TRADEOFF_PATTERNS.some((pattern) => pattern.test(text));
+  });
+}
+
 /**
  * Hard quality gate for dupe_suggest payloads.
  *
@@ -11,7 +26,7 @@ function isHollowItem(item) {
   if (!item || typeof item !== 'object') return true;
   const sim = Number(item.similarity);
   const hasSimilarity = Number.isFinite(sim) && sim > 0;
-  const hasTradeoffs = Array.isArray(item.tradeoffs) && item.tradeoffs.length > 0;
+  const hasTradeoffs = hasMeaningfulTradeoffs(item);
   const conf = Number(item.confidence);
   const hasConfidence = Number.isFinite(conf) && conf > 0;
   return !hasSimilarity && !hasTradeoffs && !hasConfidence;
@@ -76,4 +91,4 @@ function applyDupeSuggestQualityGate(payload, { lang = 'EN' } = {}) {
   return { gated: true, payload: gatedPayload, reason };
 }
 
-module.exports = { isHollowItem, applyDupeSuggestQualityGate };
+module.exports = { isHollowItem, hasMeaningfulTradeoffs, applyDupeSuggestQualityGate };
