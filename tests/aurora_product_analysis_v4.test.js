@@ -133,6 +133,16 @@ describe('Product Analysis V4 unit tests', () => {
       expect(result.verification_required).toBe(true);
     });
 
+    test('keeps verification_required=true when llm_verification_used is the only source', () => {
+      const result = buildInciStatus({
+        gapCodes: ['llm_verification_used'],
+        consensusResult: { merged: ['Water', 'Glycerin', 'Niacinamide'], confidence_tier: 'med' },
+        sources: [{ type: 'llm_verification', confidence: 0.6, ingredient_count: 3 }],
+      });
+      expect(result.extraction).toBe('success');
+      expect(result.verification_required).toBe(true);
+    });
+
     test('includes normalized sources', () => {
       const result = buildInciStatus({
         gapCodes: [],
@@ -469,7 +479,7 @@ describe('Product Analysis V4 unit tests', () => {
       expect(watchouts.every((w) => w.issue)).toBe(true);
       const fragranceWatchout = watchouts.find((w) => w.issue === 'Fragrance present');
       expect(fragranceWatchout).toBeDefined();
-      expect(fragranceWatchout.status).toBe('unknown');
+      expect(fragranceWatchout.status).toBe('possible');
     });
 
     test('upgrades legacy payload to V4 fields when prompt version is v4', () => {

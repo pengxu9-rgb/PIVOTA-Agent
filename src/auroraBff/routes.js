@@ -6532,6 +6532,117 @@ async function fetchRetailIngredientSupplement({
   };
 }
 
+async function fetchLlmIngredientVerification({
+  brand = '',
+  productName = '',
+  extractedInci = [],
+  timeoutMs = 6000,
+  logger,
+} = {}) {
+  const brandText = String(brand || '').trim();
+  const nameText = String(productName || '').trim();
+  const productLabel = [brandText, nameText].filter(Boolean).join(' ');
+  if (!productLabel) {
+    return { ok: false, reason: 'no_product_identifier', ingredients: [], confidence: 0 };
+  }
+  const extractedList = Array.isArray(extractedInci) ? extractedInci.filter(Boolean) : [];
+  const hasExtracted = extractedList.length >= 4;
+
+  const systemPrompt = [
+    'You are a cosmetics INCI expert. Output STRICT JSON only.',
+    'Your task: recall the full INCI ingredient list for a specific skincare product from your training knowledge.',
+    'If you are not confident about this product, set confidence to 0 and return an empty ingredients array.',
+    'Do NOT fabricate ingredients. Only return ingredients you are reasonably sure are in this product.',
+  ].join('\n');
+
+  const userPrompt = hasExtracted
+    ? [
+        `Product: ${productLabel}`,
+        '',
+        `We extracted these ingredients from the product page: ${extractedList.slice(0, 40).join(', ')}`,
+        '',
+        'Please:',
+        '1. Recall the full INCI list for this product from your knowledge.',
+        '2. Cross-check against the extracted list and flag any discrepancies (missing or extra ingredients).',
+        '3. Provide a confidence score (0-1) for how sure you are about this product\'s INCI.',
+        '',
+        'Return JSON: {"ingredients": string[], "confidence": number, "discrepancies": {"missing_from_extracted": string[], "extra_in_extracted": string[]}}',
+      ].join('\n')
+    : [
+        `Product: ${productLabel}`,
+        '',
+        'We could not extract ingredients from any source for this product.',
+        'Please recall the full INCI ingredient list from your knowledge.',
+        'If you are unsure, return empty ingredients with confidence 0.',
+        '',
+        'Return JSON: {"ingredients": string[], "confidence": number, "discrepancies": {"missing_from_extracted": string[], "extra_in_extracted": string[]}}',
+      ].join('\n');
+
+  try {
+    const resp = await callGeminiJsonObjectImpl({
+      model: ANALYSIS_STORY_MODEL_GEMINI,
+      systemPrompt,
+      userPrompt,
+      timeoutMs: Math.max(2000, Math.min(8000, Number(timeoutMs) || 6000)),
+      temperature: 0,
+      maxOutputTokens: 2048,
+      route: 'aurora_llm_inci_verification',
+    });
+
+    if (!resp.ok || !resp.json || typeof resp.json !== 'object') {
+      logger?.warn?.({ reason: resp.reason }, 'aurora bff: LLM ingredient verification call failed');
+      return { ok: false, reason: String(resp.reason || 'llm_verification_failed'), ingredients: [], confidence: 0 };
+    }
+
+    const json = resp.json;
+    const llmIngredients = Array.isArray(json.ingredients)
+      ? json.ingredients.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const rawConfidence = Number(json.confidence);
+    const confidence = Number.isFinite(rawConfidence) ? Math.max(0, Math.min(1, rawConfidence)) : 0;
+
+    if (confidence < 0.3 || llmIngredients.length < 3) {
+      return { ok: false, reason: 'llm_low_confidence', ingredients: llmIngredients, confidence };
+    }
+
+    const discrepancies = json.discrepancies && typeof json.discrepancies === 'object' ? json.discrepancies : {};
+    const matchScore = hasExtracted ? computeLlmInciMatchScore(extractedList, llmIngredients) : confidence * 0.7;
+
+    return {
+      ok: true,
+      ingredients: llmIngredients,
+      confidence,
+      match_score: Number(matchScore.toFixed(3)),
+      discrepancies: {
+        missing_from_extracted: Array.isArray(discrepancies.missing_from_extracted)
+          ? discrepancies.missing_from_extracted.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 10)
+          : [],
+        extra_in_extracted: Array.isArray(discrepancies.extra_in_extracted)
+          ? discrepancies.extra_in_extracted.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 10)
+          : [],
+      },
+      source: {
+        type: 'llm_verification',
+        confidence: Number(Math.min(0.68, confidence * 0.72).toFixed(2)),
+        ingredient_count: llmIngredients.length,
+      },
+    };
+  } catch (err) {
+    logger?.warn?.({ err: err?.message || String(err) }, 'aurora bff: LLM ingredient verification threw');
+    return { ok: false, reason: 'llm_verification_error', ingredients: [], confidence: 0 };
+  }
+}
+
+function computeLlmInciMatchScore(extractedList, llmList) {
+  const extractedNorm = new Set(
+    (Array.isArray(extractedList) ? extractedList : []).map((s) => String(s || '').trim().toLowerCase()).filter(Boolean),
+  );
+  const llmNorm = (Array.isArray(llmList) ? llmList : []).map((s) => String(s || '').trim().toLowerCase()).filter(Boolean);
+  if (!extractedNorm.size || !llmNorm.length) return 0;
+  const overlap = llmNorm.filter((item) => extractedNorm.has(item)).length;
+  return overlap / Math.max(extractedNorm.size, llmNorm.length);
+}
+
 const CONCENTRATION_PERCENT_RE = /\b(\d{1,2}(?:\.\d{1,2})?)\s*%/gi;
 const CONCENTRATION_CONTEXT_RE = /\b(acid|retinol|retinal|retinoid|niacinamide|vitamin\s*c|ascorb|peptide|copper|zinc|benzoyl|salicylic|glycolic|lactic|mandelic|serum|solution)\b/i;
 
@@ -7300,38 +7411,49 @@ function buildIngredientConsensus({
   regulatory = [],
   retail = [],
   inciDecoder = [],
+  llmVerified = [],
+  llmMatchScore = 0,
 } = {}) {
   const officialNorm = canonicalizeIngredientCandidates([...(Array.isArray(official) ? official : []), ...(Array.isArray(regulatory) ? regulatory : [])], { max: 220 });
   const retailNorm = canonicalizeIngredientCandidates(retail, { max: 180 });
   const inciNorm = canonicalizeIngredientCandidates(inciDecoder, { max: 180 });
-  const union = canonicalizeIngredientCandidates([...officialNorm, ...retailNorm, ...inciNorm], { max: 260 });
+  const llmNorm = canonicalizeIngredientCandidates(llmVerified, { max: 180 });
+  const union = canonicalizeIngredientCandidates([...officialNorm, ...retailNorm, ...inciNorm, ...llmNorm], { max: 260 });
   const officialSet = new Set(officialNorm.map((item) => item.toLowerCase()));
   const retailSet = new Set(retailNorm.map((item) => item.toLowerCase()));
   const inciSet = new Set(inciNorm.map((item) => item.toLowerCase()));
+  const llmSet = new Set(llmNorm.map((item) => item.toLowerCase()));
   const overlapRetailOfficial = retailNorm.filter((item) => officialSet.has(item.toLowerCase())).length;
   const overlapInciOfficial = inciNorm.filter((item) => officialSet.has(item.toLowerCase())).length;
+  const overlapLlmOfficial = llmNorm.filter((item) => officialSet.has(item.toLowerCase())).length;
   const crossSourceCovered = union.filter((item) => {
     const key = item.toLowerCase();
     let sourceHits = 0;
     if (officialSet.has(key)) sourceHits += 1;
     if (retailSet.has(key)) sourceHits += 1;
     if (inciSet.has(key)) sourceHits += 1;
+    if (llmSet.has(key)) sourceHits += 1;
     return sourceHits >= 2;
   }).length;
   const hasOfficial = officialNorm.length > 0;
+  const hasLlm = llmNorm.length > 0;
+  const effectiveLlmMatchScore = Number(llmMatchScore) || 0;
   const highConflict = hasOfficial
     ? (
       (retailNorm.length > 0 && overlapRetailOfficial / Math.max(1, retailNorm.length) < 0.25) ||
       (inciNorm.length > 0 && overlapInciOfficial / Math.max(1, inciNorm.length) < 0.2)
     )
     : false;
-  const confidenceTier = hasOfficial && crossSourceCovered >= 3
-    ? 'high'
-    : hasOfficial || crossSourceCovered >= 2
-      ? 'med'
-      : union.length
-        ? 'low'
-        : 'none';
+  const llmCorroboratesOfficial = hasOfficial && hasLlm && effectiveLlmMatchScore > 0.7;
+  const llmAloneReasonable = !hasOfficial && hasLlm && effectiveLlmMatchScore > 0.5;
+  const confidenceTier =
+    (hasOfficial && crossSourceCovered >= 3) || llmCorroboratesOfficial
+      ? 'high'
+      : hasOfficial || crossSourceCovered >= 2 || llmAloneReasonable
+        ? 'med'
+        : union.length
+          ? 'low'
+          : 'none';
 
   return {
     merged: union,
@@ -7341,9 +7463,12 @@ function buildIngredientConsensus({
       official_count: officialNorm.length,
       retail_count: retailNorm.length,
       inci_decoder_count: inciNorm.length,
+      llm_verified_count: llmNorm.length,
       overlap_retail_official: overlapRetailOfficial,
       overlap_inci_official: overlapInciOfficial,
+      overlap_llm_official: overlapLlmOfficial,
       cross_source_covered: crossSourceCovered,
+      llm_match_score: effectiveLlmMatchScore,
     },
   };
 }
@@ -7448,9 +7573,18 @@ function classifyProductType({ name = '', url = '', inciList = [] } = {}) {
 function buildInciStatus({ gapCodes = [], consensusResult = null, sources = [] } = {}) {
   const codes = Array.isArray(gapCodes) ? gapCodes.map((c) => String(c || '').toLowerCase()) : [];
 
+  const hasNonLlmSource =
+    codes.includes('incidecoder_source_used') ||
+    codes.includes('regulatory_source_used') ||
+    codes.includes('retail_source_used') ||
+    (Array.isArray(sources) && sources.some((s) => {
+      const t = String(s?.type || '').trim().toLowerCase();
+      return t && t !== 'llm_verification';
+    }));
+
   const extraction = codes.includes('on_page_fetch_blocked')
     ? 'blocked'
-    : (consensusResult?.merged?.length > 0 || codes.includes('incidecoder_source_used') || codes.includes('regulatory_source_used'))
+    : (consensusResult?.merged?.length > 0 || codes.includes('incidecoder_source_used') || codes.includes('regulatory_source_used') || codes.includes('llm_verification_used'))
       ? 'success'
       : 'missing';
 
@@ -7461,7 +7595,8 @@ function buildInciStatus({ gapCodes = [], consensusResult = null, sources = [] }
     return 'low';
   })();
 
-  const verification_required = consensusTier === 'low' || extraction === 'blocked' || extraction === 'missing';
+  const llmOnlySource = codes.includes('llm_verification_used') && !hasNonLlmSource;
+  const verification_required = consensusTier === 'low' || extraction === 'blocked' || extraction === 'missing' || llmOnlySource;
   const total_ingredients = Array.isArray(consensusResult?.merged) ? consensusResult.merged.length : 0;
 
   const normalizedSources = Array.isArray(sources)
@@ -12091,11 +12226,33 @@ async function buildProductAnalysisFromUrlIngredients({
     incidecoderSupplement && incidecoderSupplement.ok && Array.isArray(incidecoderSupplement.ingredients)
       ? incidecoderSupplement.ingredients
       : [];
+  const descriptor = buildProductDescriptorFromInput({ parsedProduct: parsedProductObj, productUrl: parsedUrl.toString() });
+  let llmVerificationResult = null;
+  try {
+    llmVerificationResult = await fetchLlmIngredientVerification({
+      brand: descriptor.brand,
+      productName: descriptor.name,
+      extractedInci: [...inciList, ...regulatoryActiveInci, ...retailInci, ...incidecoderInci],
+      timeoutMs: 6000,
+      logger,
+    });
+  } catch (err) {
+    logger?.warn?.({ err: err?.message || String(err) }, 'aurora bff: LLM ingredient verification failed');
+    llmVerificationResult = null;
+  }
+  const llmVerifiedInci =
+    llmVerificationResult && llmVerificationResult.ok && Array.isArray(llmVerificationResult.ingredients)
+      ? llmVerificationResult.ingredients
+      : [];
+  const llmMatchScore =
+    llmVerificationResult && llmVerificationResult.ok ? (llmVerificationResult.match_score || 0) : 0;
   const ingredientConsensus = buildIngredientConsensus({
     official: inciList,
     regulatory: regulatoryActiveInci,
     retail: retailInci,
     inciDecoder: incidecoderInci,
+    llmVerified: llmVerifiedInci,
+    llmMatchScore,
   });
   const normalizedInci = ingredientConsensus.merged;
   const officialInciNormalized = canonicalizeIngredientCandidates([...inciList, ...regulatoryActiveInci], { max: 140 });
@@ -12106,6 +12263,7 @@ async function buildProductAnalysisFromUrlIngredients({
     ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used'] : []),
     ...(retailSupplement && retailSupplement.ok ? ['retail_source_used'] : []),
     ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used'] : []),
+    ...(llmVerificationResult && llmVerificationResult.ok ? ['llm_verification_used'] : []),
     ...(!normalizedInci.length ? ['evidence_missing'] : []),
   ];
   const inciStatusSources = [
@@ -12139,6 +12297,14 @@ async function buildProductAnalysisFromUrlIngredients({
         url: String(incidecoderSupplement.source?.url || incidecoderSupplement.source_url || ''),
         confidence: Number(incidecoderSupplement.source?.confidence || 0.55),
         ingredient_count: canonicalizeIngredientCandidates(incidecoderInci, { max: 220 }).length,
+      }]
+      : []),
+    ...(llmVerificationResult && llmVerificationResult.ok && llmVerificationResult.source
+      ? [{
+        type: 'llm_verification',
+        url: '',
+        confidence: Number(llmVerificationResult.source?.confidence || 0.55),
+        ingredient_count: llmVerifiedInci.length,
       }]
       : []),
   ];
@@ -12187,8 +12353,8 @@ async function buildProductAnalysisFromUrlIngredients({
   const verdict =
     !hasAnyIngredientSignals
       ? isCn
-        ? '未知'
-        : 'Unknown'
+        ? '需进一步验证'
+        : 'Needs Verification'
       : highSensitivity && (hasAcidLike || hasFragranceLike || hasCommonSunscreenIrritants)
       ? isCn
         ? '谨慎'
@@ -12631,8 +12797,10 @@ async function buildProductAnalysisFromUrlIngredients({
   if (retailSupplement && retailSupplement.ok) {
     evidenceMissingInfo.push('retail_source_used', 'version_verification_needed');
   } else if (retailSupplement && retailSupplement.reason) {
-    const retailReason = String(retailSupplement.reason || '').trim().toLowerCase();
-    if (retailReason.includes('no_match') || retailReason.includes('retail')) evidenceMissingInfo.push('retail_source_no_match');
+    if (!html) {
+      const retailReason = String(retailSupplement.reason || '').trim().toLowerCase();
+      if (retailReason.includes('no_match') || retailReason.includes('retail')) evidenceMissingInfo.push('retail_source_no_match');
+    }
   }
   if (incidecoderSupplement && incidecoderSupplement.ok) {
     evidenceMissingInfo.push('incidecoder_source_used', 'version_verification_needed');
@@ -12640,6 +12808,9 @@ async function buildProductAnalysisFromUrlIngredients({
     const reasonToken = String(incidecoderSupplement.reason || '').trim().toLowerCase();
     if (reasonToken === 'incidecoder_no_match') evidenceMissingInfo.push('incidecoder_no_match');
     else if (reasonToken.includes('fetch')) evidenceMissingInfo.push('incidecoder_fetch_failed');
+  }
+  if (llmVerificationResult && llmVerificationResult.ok) {
+    evidenceMissingInfo.push('llm_verification_used');
   }
   if (!normalizedInci.length) evidenceMissingInfo.push('evidence_missing');
   if (ingredientConsensus.has_conflict) evidenceMissingInfo.push('ingredient_source_conflict');
@@ -12756,7 +12927,7 @@ async function buildProductAnalysisFromUrlIngredients({
       regulatorySupplement && regulatorySupplement.ok ? 'regulatory' : '',
       retailSupplement && retailSupplement.ok ? 'retail_page' : '',
       incidecoderSupplement && incidecoderSupplement.ok ? 'inci_decoder' : '',
-      'llm_extraction',
+      llmVerificationResult && llmVerificationResult.ok ? 'llm_verification' : '',
     ],
     6,
   );
@@ -12957,13 +13128,14 @@ async function buildProductAnalysisFromUrlIngredients({
         ...(!fetchOut?.ok && fetchOut?.unblock_attempted && fetchOut?.unblock_failed ? ['url_fetch_vendor_unblock_failed'] : []),
         ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
         ...(retailSupplement && retailSupplement.ok ? ['retail_source_used', 'version_verification_needed'] : []),
-        ...(retailSupplement && !retailSupplement.ok && retailSupplement.reason ? ['retail_source_no_match'] : []),
+        ...(retailSupplement && !retailSupplement.ok && retailSupplement.reason && !html ? ['retail_source_no_match'] : []),
         ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
         ...(
           incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason
             ? [String(incidecoderSupplement.reason)]
             : []
         ),
+        ...(llmVerificationResult && llmVerificationResult.ok ? ['llm_verification_used'] : []),
         ...(!normalizedInci.length ? ['evidence_missing'] : []),
         ...(!anchorPrice ? ['price_unknown'] : []),
         ...(socialMissing ? ['social_signals_missing'] : []),
@@ -13045,9 +13217,10 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(!fetchOut?.ok && fetchOut?.unblock_attempted && fetchOut?.unblock_failed ? ['url_fetch_vendor_unblock_failed'] : []),
       ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
       ...(retailSupplement && retailSupplement.ok ? ['retail_source_used', 'version_verification_needed'] : []),
-      ...(retailSupplement && !retailSupplement.ok && retailSupplement.reason ? ['retail_source_no_match'] : []),
+      ...(retailSupplement && !retailSupplement.ok && retailSupplement.reason && !html ? ['retail_source_no_match'] : []),
       ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
       ...(incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason ? [String(incidecoderSupplement.reason)] : []),
+      ...(llmVerificationResult && llmVerificationResult.ok ? ['llm_verification_used'] : []),
       ...(!normalizedInci.length ? ['evidence_missing'] : []),
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
@@ -24959,15 +25132,17 @@ function buildProductDeepScanPromptV4({
     '3. If consensus_tier is low or verification_required is true: verdict_level MUST be "needs_verification" or "cautiously_ok". Do NOT return "recommended".',
     '4. Do NOT use placeholder strings as ingredient names.',
     `5. Fragrance/parfum risk: ONLY mark as confirmed when INCI is verified AND contains fragrance/parfum/known allergens. INCI verified: ${!inciVerificationRequired}.`,
-    '6. watchouts items MUST have: {issue: string, status: "confirmed"|"possible"|"unknown", what_to_do: string}.',
+    '6. watchouts items MUST have: {issue: string, status: "confirmed"|"possible", what_to_do: string}.',
+    '   - Use "confirmed" when INCI is verified AND the ingredient is present in the list.',
+    '   - Use "possible" for all other watchouts -- when there is textual evidence, brand claims, known ingredient categories, or LLM knowledge even if INCI is not fully cross-verified.',
+    '   - Do NOT use "unknown" -- if there is enough evidence to raise a watchout, there is enough to call it "possible".',
     '7. key_ingredients_by_function items MUST have: {function: string, ingredients: string[], confidence: "high"|"medium"|"low"}.',
-    ...(!anchorResolved
-      ? [
-          '8. Do NOT guess or assume a specific brand or SKU when no catalog anchor is resolved.',
-          '9. Do NOT populate anchor_product in the response.',
-          '10. Keep the analysis generic to the product category/function, not a specific product formulation.',
-        ]
-      : []),
+    ...(!anchorResolved ? [
+      '8. CRITICAL: No anchor product was resolved from catalog. Do NOT guess or assume a specific brand or SKU.',
+      '   Do NOT default to well-known products (e.g. SkinCeuticals C E Ferulic for "vitamin C serum").',
+      '   Analyze based on product CATEGORY and described FUNCTION only. Use generic ingredient class names.',
+      '   Do NOT populate anchor_product. Keep all analysis category-level, not brand-specific.',
+    ] : []),
   ].join('\n');
 
   const schemaDescription = `{
@@ -24977,7 +25152,7 @@ function buildProductDeepScanPromptV4({
     "data_quality_banner": string|null,
     "top_takeaways": string[],
     "best_for": string[],
-    "watchouts": [{issue: string, status: "confirmed"|"possible"|"unknown", what_to_do: string}],
+    "watchouts": [{issue: string, status: "confirmed"|"possible", what_to_do: string}],
     "how_to_use": {
       "when": string,
       "frequency": string,
@@ -25001,7 +25176,7 @@ function buildProductDeepScanPromptV4({
     ? `INCI Status: extraction=${inciExtraction}, consensus_tier=${inciConsensusTier}, ` +
       `verification_required=${inciVerificationRequired}, total_ingredients=${totalIngredients}. ` +
       (inciVerificationRequired
-        ? 'INCI not fully verified — qualify fragrance/allergen risk as possible/unknown, not confirmed. '
+        ? 'INCI not fully verified — qualify all watchout risks as "possible", not "confirmed". Do NOT use "unknown" status. '
         : 'INCI verified — confirmed risk claims are acceptable. ')
     : '';
 
@@ -26938,7 +27113,7 @@ function buildRoutineProductAnalysisFallbackPayload({
 
   return {
     assessment: {
-      verdict: isCn ? '未知' : 'Unknown',
+      verdict: isCn ? '需进一步验证' : 'Needs Verification',
       reasons: [
         isCn
           ? `暂时无法对「${productName || '该产品'}」完成完整成分判定，我先给你可执行的保守方案。`
@@ -42266,18 +42441,21 @@ function buildV4TopTakeawaysFromLegacy(assessment) {
 
 function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } = {}) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
+  const inciVerified = !(inciStatus && inciStatus.verification_required);
   const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
   if (Array.isArray(assessment?.watchouts) && assessment.watchouts.length) {
     return assessment.watchouts
       .map((item) => (isPlainObject(item) ? item : null))
       .filter(Boolean)
-      .map((item) => ({
-        issue: String(item.issue || item.name || item.text || '').trim(),
-        status: ['confirmed', 'possible', 'unknown'].includes(String(item.status || '').toLowerCase())
-          ? String(item.status || '').toLowerCase()
-          : 'unknown',
-        what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim(),
-      }))
+      .map((item) => {
+        const rawStatus = String(item.status || '').toLowerCase();
+        const normalizedStatus = ['confirmed', 'possible'].includes(rawStatus) ? rawStatus : 'possible';
+        return {
+          issue: String(item.issue || item.name || item.text || '').trim(),
+          status: !inciVerified && normalizedStatus === 'confirmed' ? 'possible' : normalizedStatus,
+          what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim(),
+        };
+      })
       .filter((item) => item.issue && !isFitSignalLine(item.issue) && !isDataQualityDiagnosticLine(item.issue))
       .slice(0, 4);
   }
@@ -42296,16 +42474,11 @@ function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } 
     ],
     8,
   );
-  const inciVerified = !(inciStatus && inciStatus.verification_required);
   const out = [];
   for (const risk of riskNotes) {
     const text = String(risk || '').trim();
     if (!text) continue;
-    const status = inciVerified
-      ? 'confirmed'
-      : /fragrance|parfum|香精|essential oil/i.test(text)
-        ? 'possible'
-        : 'unknown';
+    const status = inciVerified ? 'confirmed' : 'possible';
     const whatToDo = /retinol|retinal|adapalene|tretinoin|acid|aha|bha|pha|salicylic|glycolic|lactic|维a|果酸|水杨酸/i.test(text)
       ? (isCn ? '从低频开始，并避免同晚叠加强活性。' : 'Start low-frequency and avoid stacking strong actives in the same routine.')
       : /fragrance|parfum|essential oil|香精|精油/i.test(text)
@@ -42323,7 +42496,7 @@ function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } 
   if (!out.length && inciStatus?.verification_required) {
     out.push({
       issue: isCn ? '当前成分证据尚未完全验证。' : 'Current ingredient evidence is not fully verified.',
-      status: 'unknown',
+      status: 'possible',
       what_to_do: isCn
         ? '请对照包装 INCI 或官方页面后再依据成分细节做决策。'
         : 'Cross-check package INCI or official source before relying on ingredient-specific guidance.',
@@ -42936,9 +43109,9 @@ function validateAndRepairAtomicLists(assessment) {
         if (!isPlainObject(item)) return null;
         return {
           issue: String(item.issue || item.name || item.text || '').trim() || null,
-          status: ['confirmed', 'possible', 'unknown'].includes(String(item.status || '').toLowerCase())
+          status: ['confirmed', 'possible'].includes(String(item.status || '').toLowerCase())
             ? String(item.status || '').toLowerCase()
-            : 'unknown',
+            : 'possible',
           what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim() || null,
         };
       })
@@ -45401,7 +45574,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
           const fallbackUnknownPayload = {
             assessment: {
-              verdict: isCn ? '未知' : 'Unknown',
+              verdict: isCn ? '需进一步验证' : 'Needs Verification',
               reasons: isCn
                 ? [
                     '该产品尚未建立稳定的 catalog/KB 锚点，我们已尝试一次无锚点 Deep Scan，但证据仍不足。',
@@ -52881,7 +53054,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
           followupPayloadSeed = applyProductAnalysisGapContract({
             assessment: {
-              verdict: 'Unknown',
+              verdict: 'Needs Verification',
               reasons: followupReasons,
               anchor_product: anchorForPayload,
             },

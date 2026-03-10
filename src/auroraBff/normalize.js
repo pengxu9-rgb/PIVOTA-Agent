@@ -105,6 +105,7 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'regulatory_source_used': 'regulatory_source_used',
   'retail_source_used': 'retail_source_used',
   'retail_source_no_match': 'retail_source_no_match',
+  'llm_verification_used': 'llm_verification_used',
   'incidecoder_source_used': 'incidecoder_source_used',
   'incidecoder_no_match': 'incidecoder_no_match',
   'incidecoder_fetch_failed': 'incidecoder_fetch_failed',
