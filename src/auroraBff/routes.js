@@ -21490,6 +21490,8 @@ function buildReturningSummaryPrompt({ language, baseline, recentLogs, profileSu
     'Template: diagnosis_v2_returning_summary',
     'Write a concise, non-medical recap of the user\'s prior skin baseline.',
     'Do not mention any photo unless the context explicitly contains one.',
+    'Keep summary_en and summary_zh to one short sentence each, under 30 words each.',
+    'Do not add explanations, markdown, or any keys beyond summary_en and summary_zh.',
     'Schema:',
     '{ "summary_en": string, "summary_zh": string }',
     `Context: ${JSON.stringify(context)}`,
@@ -21513,7 +21515,7 @@ async function fetchReturningSummaryText({
       userPrompt: prompt,
       responseSchema: RETURNING_SUMMARY_JSON_SCHEMA,
       timeoutMs: 9000,
-      maxOutputTokens: 240,
+      maxOutputTokens: 400,
       route: 'aurora_returning_summary',
     });
     if (!result.ok || !result.json) {
