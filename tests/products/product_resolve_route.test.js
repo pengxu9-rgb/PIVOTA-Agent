@@ -805,4 +805,16 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.status).toBe(400);
     expect(resp.body.error).toBe('MISSING_PARAMETERS');
   });
+
+  test('resolver tokenizer drops symbol-derived standalone candidates', () => {
+    const resolver = require('../../src/services/productGroundingResolver');
+    const normalized = resolver._internals.normalizeTextForResolver('Face SPF50+ PA++++ sunscreen');
+    const tokens = resolver._internals.tokenizeNormalizedResolverQuery(normalized);
+
+    expect(tokens).not.toContain('plus');
+    expect(tokens).not.toContain('percent');
+    expect(resolver._internals.isStrongStandaloneResolverToken('plus')).toBe(false);
+    expect(resolver._internals.isStrongStandaloneResolverToken('percent')).toBe(false);
+    expect(resolver._internals.isStrongStandaloneResolverToken('ipsa')).toBe(true);
+  });
 });

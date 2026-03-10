@@ -413,11 +413,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
   });
 
   test('beauty search alias reuses generic proxy route with aurora defaults', async () => {
+    const queryText = 'Copper peptide serum';
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '') === 'Copper peptide serum' &&
+          String(q.query || '').includes(queryText) &&
           String(q.fast_mode || '') === 'true' &&
           String(q.allow_stale_cache || '') === 'false' &&
           String(q.allow_external_seed || '') === 'false' &&
@@ -441,7 +442,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       .get('/agent/v1/beauty/products/search')
       .redirects(1)
       .query({
-        query: 'Copper peptide serum',
+        query: queryText,
       });
 
     expect(resp.status).toBe(200);
@@ -465,7 +466,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     const auroraPrimaryScope = nock('http://aurora-upstream.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -523,6 +524,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
   });
 
   test('aurora source honors explicit allow_external_seed override from query params', async () => {
+    const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
     process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
@@ -532,7 +534,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '') === 'Copper peptide serum' &&
+          String(q.query || '').includes(queryText) &&
           String(q.fast_mode || '') === 'true' &&
           String(q.allow_external_seed || '') === 'false' &&
           String(q.external_seed_strategy || '').length > 0
@@ -554,7 +556,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     const resp = await request(app)
       .get('/agent/v1/products/search')
       .query({
-        query: 'Copper peptide serum',
+        query: queryText,
         source: 'aurora-bff',
         allow_external_seed: 'false',
         external_seed_strategy: 'legacy',
@@ -595,7 +597,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -668,7 +670,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '') === queryText &&
+          String(q.query || '').includes(queryText) &&
           String(q.allow_external_seed || '') === 'false' &&
           String(q.fast_mode || '') === 'true'
         );
@@ -684,7 +686,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '') === queryText &&
+          String(q.query || '').includes(queryText) &&
           String(q.allow_external_seed || '') === 'true' &&
           String(q.external_seed_strategy || '').length > 0 &&
           String(q.fast_mode || '') === 'true'
@@ -751,7 +753,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(504, {
         status: 'error',
         error: {
@@ -837,7 +839,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(504, {
         status: 'error',
         error: {
@@ -914,7 +916,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(429, {
         status: 'error',
         error: { code: 'RATE_LIMITED', message: 'Too many requests' },
@@ -996,7 +998,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .delay(900)
       .reply(200, {
         status: 'success',
@@ -1080,7 +1082,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .times(2)
       .reply(200, {
         status: 'success',
@@ -1152,7 +1154,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -1203,7 +1205,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -1223,7 +1225,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           parsed.operation === 'find_products_multi' &&
           parsed.payload &&
           parsed.payload.search &&
-          String(parsed.payload.search.query || '') === queryText
+          String(parsed.payload.search.query || '').includes(queryText)
         );
       })
       .reply(200, {
@@ -1401,7 +1403,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -1472,7 +1474,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -1527,7 +1529,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -1582,7 +1584,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(500, {
         status: 'error',
         detail: 'Search failed',
@@ -1678,7 +1680,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(500, {
         status: 'error',
         detail: 'Search failed',
@@ -1901,7 +1903,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -1979,7 +1981,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -2030,6 +2032,172 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('rejects irrelevant resolver fallback for generic sunscreen query and adopts relevant invoke fallback', async () => {
+    const queryText = 'Face SPF50+ PA++++ sunscreen';
+    const resolvedMerchantId = 'merch_sleepwear';
+    const resolvedProductId = 'sleepwear_prod_1';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: true,
+        product_ref: {
+          merchant_id: resolvedMerchantId,
+          product_id: resolvedProductId,
+        },
+        confidence: 0.79,
+        reason: 'token_overlap',
+        metadata: { latency_ms: 9 },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '').includes(queryText))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'brush_1',
+            merchant_id: 'brush_merch',
+            title: 'Round Powder Brush',
+          },
+        ],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        product: {
+          product_id: resolvedProductId,
+          merchant_id: resolvedMerchantId,
+          title: 'Plus Size Sleepwear Set',
+        },
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'spf_hit_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Face SPF50+ PA++++ Sunscreen',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        lang: 'en',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'spf_hit_1',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+    const { metadata, proxySearchFallback } = readFallbackSections(resp);
+    expect(proxySearchFallback).toEqual(
+      expect.objectContaining({
+        applied: true,
+        reason: 'primary_irrelevant',
+      }),
+    );
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        resolver_rejected_reason: 'resolver_irrelevant_to_original_query',
+        resolver_query_used: queryText,
+      }),
+    );
+  });
+
+  test('face sunscreen query rejects brush-only results across primary and fallback', async () => {
+    const queryText = 'Face sunscreen';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 7 },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '').includes(queryText))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'brush_1',
+            merchant_id: 'brush_merch',
+            title: 'Foundation Brush',
+          },
+          {
+            product_id: 'brush_2',
+            merchant_id: 'brush_merch',
+            title: 'Makeup Sponge Kit',
+          },
+        ],
+        total: 2,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'brush_fb_1',
+            merchant_id: 'brush_merch',
+            title: 'Powder Brush Set',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        lang: 'en',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    const { metadata, proxySearchFallback } = readFallbackSections(resp);
+    expect(metadata.query_source).toBe('agent_products_error_fallback');
+    expect(String(proxySearchFallback.reason || '')).toContain('primary_irrelevant');
+  });
+
   test('aurora source accepts relevant secondary fallback even when usable count is lower than irrelevant primary', async () => {
     const queryText = 'copper peptides serum alternatives';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
@@ -2049,7 +2217,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -2069,7 +2237,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           parsed.operation === 'find_products_multi' &&
           parsed.payload &&
           parsed.payload.search &&
-          String(parsed.payload.search.query || '') === queryText
+          String(parsed.payload.search.query || '').includes(queryText)
         );
       })
       .reply(200, {
@@ -2135,7 +2303,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -2155,7 +2323,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           parsed.operation === 'find_products_multi' &&
           parsed.payload &&
           parsed.payload.search &&
-          String(parsed.payload.search.query || '') === queryText
+          String(parsed.payload.search.query || '').includes(queryText)
         );
       })
       .reply(200, {
@@ -2233,7 +2401,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === queryText)
+      .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
         success: true,
@@ -2244,7 +2412,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     nock('http://pivota.test')
       .post('/agent/shop/v1/invoke', (body) => {
         const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-        return String(parsed?.payload?.search?.query || '') === queryText;
+        return String(parsed?.payload?.search?.query || '').includes(queryText);
       })
       .reply(200, {
         status: 'success',

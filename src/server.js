@@ -184,6 +184,14 @@ const tokenizeResolverQuery =
           .toLowerCase()
           .split(/\s+/)
           .filter(Boolean);
+const isStrongStandaloneResolverToken =
+  typeof productGroundingResolverInternals.isStrongStandaloneResolverToken === 'function'
+    ? productGroundingResolverInternals.isStrongStandaloneResolverToken
+    : (value) => {
+        const token = String(value || '').trim().toLowerCase();
+        if (!token) return false;
+        return /^(?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|[a-z0-9-]{12,})$/i.test(token);
+      };
 
 const getAuroraPdpPrefetchStateSnapshot =
   typeof auroraBffInternal.getPdpPrefetchStateSnapshot === 'function'
@@ -4282,7 +4290,9 @@ function buildResolverQueryCandidates(queryText) {
   if (anchorTokens.length > 0) {
     pushCandidate(anchorTokens.join(' '));
     for (const token of anchorTokens.slice(0, 3)) {
-      pushCandidate(token);
+      if (isStrongStandaloneResolverToken(token)) {
+        pushCandidate(token);
+      }
     }
   }
 
@@ -4594,28 +4604,8 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
     return false;
   }
 
-  if (hasBeautyMakeupSearchSignal(queryText)) {
-    for (const product of products.slice(0, 8)) {
-      if (!hasUsableSearchProduct(product)) continue;
-      const candidateText = buildFallbackCandidateText(product);
-      if (!candidateText) continue;
-      if (hasBeautyCatalogProductSignal(candidateText)) return true;
-    }
-    return false;
-  }
-
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const lookupTokens = expandLookupAnchorTokens(queryText, anchorTokens);
-  if (isLookupStyleSearchQuery(queryText, anchorTokens) && lookupTokens.length > 0) {
-    for (const product of products.slice(0, 8)) {
-      if (!hasUsableSearchProduct(product)) continue;
-      const candidateText = buildFallbackCandidateText(product);
-      if (!candidateText) continue;
-      if (lookupTokens.some((token) => candidateText.includes(token))) return true;
-    }
-    return false;
-  }
-
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
   const meaningfulTokens = ingredientIntent
@@ -4625,6 +4615,34 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
   const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens]));
   const longQuery = effectiveTokens.length >= 2;
   const requiredOverlap = ingredientIntent ? 1 : 2;
+  const beautyQueryBucket = detectBeautyQueryBucket(queryText);
+
+  if (beautyQueryBucket) {
+    for (const product of products.slice(0, 8)) {
+      if (!hasUsableSearchProduct(product)) continue;
+      const candidateBucket = classifyBeautyBucketFromProduct(product);
+      if (!isBeautyBucketCompatibleForQuery(candidateBucket, beautyQueryBucket)) continue;
+      const candidateText = buildFallbackCandidateText(product);
+      if (!candidateText) continue;
+      if (candidateText.includes(normalizedQuery)) return true;
+      if (!effectiveTokens.length) return true;
+      if (effectiveTokens.length === 1) return candidateText.includes(effectiveTokens[0]);
+      if (!longQuery) return true;
+      const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
+      if (overlapCount >= requiredOverlap) return true;
+    }
+    return false;
+  }
+
+  if (isLookupStyleSearchQuery(queryText, anchorTokens) && lookupTokens.length > 0) {
+    for (const product of products.slice(0, 8)) {
+      if (!hasUsableSearchProduct(product)) continue;
+      const candidateText = buildFallbackCandidateText(product);
+      if (!candidateText) continue;
+      if (lookupTokens.some((token) => candidateText.includes(token))) return true;
+    }
+    return false;
+  }
 
   for (const product of products.slice(0, 8)) {
     if (!hasUsableSearchProduct(product)) continue;
@@ -4685,8 +4703,10 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     if (!hasStrictPetHarnessCatalogSignal(candidateText)) return false;
   }
 
-  if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
-    return false;
+  const beautyQueryBucket = detectBeautyQueryBucket(queryText);
+  if (beautyQueryBucket) {
+    const candidateBucket = classifyBeautyBucketFromText(candidateText);
+    if (!isBeautyBucketCompatibleForQuery(candidateBucket, beautyQueryBucket)) return false;
   }
 
   const normalizedQuery =
@@ -6063,6 +6083,7 @@ function shouldUseResolverFirstSearch({
     return false;
   }
 
+  const strongResolverQuery = isStrongResolverFirstQuery(queryText);
   const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
   const forceSearchFirstClasses = new Set([
     'category',
@@ -6072,13 +6093,17 @@ function shouldUseResolverFirstSearch({
     'gift',
     'non_shopping',
   ]);
-  if (FPM_GATE_SIMPLIFY_V1 && normalizedQueryClass && forceSearchFirstClasses.has(normalizedQueryClass)) {
+  if (
+    FPM_GATE_SIMPLIFY_V1 &&
+    normalizedQueryClass &&
+    forceSearchFirstClasses.has(normalizedQueryClass) &&
+    !strongResolverQuery
+  ) {
     return false;
   }
 
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
-  const strongResolverQuery = isStrongResolverFirstQuery(queryText);
   const lookupOnlyClasses = new Set(['lookup', 'attribute']);
   if (
     FPM_GATE_SIMPLIFY_V1 &&
@@ -8344,66 +8369,187 @@ function hasStrictPetHarnessCatalogSignal(candidateText) {
 }
 
 function hasBeautyMakeupSearchSignal(queryText) {
-  const q = String(queryText || '');
-  if (!q) return false;
-  return (
-    /\b(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow)\b/i.test(
-      q,
-    ) ||
-    /化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|约会妆|約會妝/.test(
-      q,
-    )
-  );
+  return detectBeautyQueryBucket(queryText) != null;
 }
 
-function hasBeautyCatalogProductSignal(candidateText) {
-  const text = String(candidateText || '');
-  if (!text) return false;
-  return (
-    /\b(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|fenty|tom ford|winona|ipsa)\b/i.test(
-      text,
+function classifyBeautyBucketFromText(text) {
+  const q = String(text || '');
+  if (!q) return 'other';
+  const hasSkincareTreatmentSignal =
+    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha)\b/i.test(
+      q,
     ) ||
-    /(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水)/.test(
-      text,
-    )
-  );
-}
-
-function classifyBeautyBucketFromProduct(product) {
-  const text = buildFallbackCandidateText(product);
-  if (!text) return 'other';
+    /护肤|護膚|精华|精華|化妆水|化妝水|乳液|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料/.test(
+      q,
+    );
 
   if (
-    /\b(brush|brushes|blender|sponge|puff|applicator|tool|tools|brush\s*set)\b/i.test(text) ||
-    /化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|工具|刷子|パフ|ブラシ/.test(text)
+    /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(q) ||
+    /香水|香氛|古龙|古龍|フレグランス|コロン/.test(q)
+  ) {
+    return 'fragrance';
+  }
+  if (
+    /\b(brush|brushes|blender|sponge|puff|applicator|tool|tools|brush\s*set|powder puff|eyelash curler)\b/i.test(
+      q,
+    ) ||
+    /化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|工具|刷子|パフ|ブラシ|ビューラー/.test(q)
   ) {
     return 'tools';
   }
+  if (hasSkincareTreatmentSignal) {
+    return 'skincare';
+  }
   if (
-    /\b(foundation|concealer|primer|powder|cushion|bb\s*cream|cc\s*cream|setting\s*powder)\b/i.test(text) ||
-    /粉底|遮瑕|妆前|妝前|散粉|蜜粉|气垫|氣墊/.test(text)
+    /\b(foundation|concealer|primer|powder|cushion|bb\s*cream|cc\s*cream|setting\s*powder)\b/i.test(
+      q,
+    ) ||
+    /粉底|遮瑕|妆前|妝前|散粉|蜜粉|气垫|氣墊/.test(q)
   ) {
     return 'base_makeup';
   }
   if (
-    /\b(eyeshadow|eye\s*shadow|mascara|eyeliner|brow|eyebrow)\b/i.test(text) ||
-    /眼影|睫毛膏|眼线|眼線|眉笔|眉筆|眉粉/.test(text)
+    /\b(eyeshadow|eye\s*shadow|mascara|eyeliner|brow|eyebrow)\b/i.test(q) ||
+    /眼影|睫毛膏|眼线|眼線|眉笔|眉筆|眉粉/.test(q)
   ) {
     return 'eye_makeup';
   }
   if (
-    /\b(lipstick|lip\s*tint|lip\s*gloss|lip\s*balm|lip\s*liner|lip)\b/i.test(text) ||
-    /口红|口紅|唇膏|唇彩|唇釉|润唇|潤唇/.test(text)
+    /\b(lipstick|lip\s*tint|lip\s*gloss|lip\s*balm|lip\s*liner|lip)\b/i.test(q) ||
+    /口红|口紅|唇膏|唇彩|唇釉|润唇|潤唇/.test(q)
   ) {
     return 'lip_makeup';
   }
   if (
-    /\b(skincare|serum|toner|essence|moisturizer|cream|cleanser|sunscreen)\b/i.test(text) ||
-    /护肤|護膚|精华|精華|化妆水|化妝水|乳液|面霜|洁面|潔面|防晒|防曬/.test(text)
+    /\b(skincare|skin care|serum|toner|essence|ampoule|moisturi(?:z|s)er|cream|cleanser|sunscreen|spf\b|sunblock|face wash|mask)\b/i.test(
+      q,
+    ) ||
+    /护肤|護膚|精华|精華|化妆水|化妝水|乳液|面霜|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料|クリーム/.test(
+      q,
+    )
   ) {
     return 'skincare';
   }
+  if (
+    /\b(makeup|cosmetic|cosmetics|beauty)\b/i.test(q) ||
+    /化妆|化妝|美妆|美妝|彩妆|彩妝|约会妆|約會妝/.test(q)
+  ) {
+    return 'general';
+  }
   return 'other';
+}
+
+function hasBeautyCatalogProductSignal(candidateText) {
+  return classifyBeautyBucketFromText(candidateText) !== 'other';
+}
+
+function classifyBeautyBucketFromProduct(product) {
+  const text = buildFallbackCandidateText(product);
+  const bucket = classifyBeautyBucketFromText(text);
+  return bucket === 'general' ? 'other' : bucket;
+}
+
+function detectBeautyQueryBucket(queryText) {
+  const bucket = classifyBeautyBucketFromText(queryText);
+  if (bucket === 'skincare' || bucket === 'tools' || bucket === 'fragrance') return bucket;
+  if (
+    bucket === 'general' ||
+    bucket === 'base_makeup' ||
+    bucket === 'eye_makeup' ||
+    bucket === 'lip_makeup'
+  ) {
+    return 'general';
+  }
+  return null;
+}
+
+function isBeautyBucketCompatibleForQuery(candidateBucket, queryBucket) {
+  const bucket = String(candidateBucket || 'other');
+  const query = String(queryBucket || '');
+  if (!query) return bucket !== 'other';
+  if (query === 'skincare') return bucket === 'skincare';
+  if (query === 'tools') return bucket === 'tools';
+  if (query === 'fragrance') return bucket === 'fragrance';
+  if (query === 'general') {
+    return (
+      bucket === 'base_makeup' ||
+      bucket === 'eye_makeup' ||
+      bucket === 'lip_makeup' ||
+      bucket === 'skincare' ||
+      bucket === 'fragrance'
+    );
+  }
+  return bucket !== 'other';
+}
+
+function getResolverFallbackResolveQueryUsed(result, queryText = '') {
+  return String(
+    result?.resolve_query_used || result?.data?.metadata?.resolve_query_used || queryText || '',
+  ).trim() || null;
+}
+
+function isStrongResolverLookupQuery(queryText, queryClass = null) {
+  const raw = String(queryText || '').trim();
+  if (!raw) return false;
+  const normalizedClass = String(queryClass || '').trim().toLowerCase();
+  if (normalizedClass === 'lookup') return true;
+  if (isKnownLookupAliasQuery(raw)) return true;
+  const hasModelLikeToken = /\b[a-z]{1,6}\d{2,}\b/i.test(raw);
+  const hasBeautySpfToken = /\bspf\d{2,3}\b/i.test(raw);
+  if ((hasModelLikeToken && !hasBeautySpfToken) || /\b(sku|model|型号|型號)\b/i.test(raw)) {
+    return true;
+  }
+  return false;
+}
+
+function getResolverFallbackAdoptionDecision({ result, queryText, queryClass = null }) {
+  const resolveQueryUsed = getResolverFallbackResolveQueryUsed(result, queryText);
+  if (!result || result.status < 200 || result.status >= 300 || Number(result.usableCount || 0) <= 0 || !result.data) {
+    return {
+      adopt: false,
+      reason: 'resolver_empty',
+      resolveQueryUsed,
+    };
+  }
+  if (!queryText) {
+    return {
+      adopt: true,
+      reason: null,
+      resolveQueryUsed,
+    };
+  }
+  if (isStrongResolverLookupQuery(queryText, queryClass)) {
+    return {
+      adopt: true,
+      reason: null,
+      resolveQueryUsed,
+    };
+  }
+  if (detectBeautyQueryBucket(queryText)) {
+    return {
+      adopt: false,
+      reason: 'resolver_irrelevant_to_original_query',
+      resolveQueryUsed,
+    };
+  }
+  const resolverQuerySource = String(result?.data?.metadata?.query_source || '').trim().toLowerCase();
+  const resolverDetailSource = String(result?.data?.metadata?.resolve_detail_source || '').trim().toLowerCase();
+  if (
+    resolverQuerySource === 'agent_products_resolver_ref_fallback' ||
+    resolverDetailSource === 'reference_only'
+  ) {
+    return {
+      adopt: false,
+      reason: 'resolver_irrelevant_to_original_query',
+      resolveQueryUsed,
+    };
+  }
+  const relevant = isProxySearchFallbackRelevant(result.data, queryText);
+  return {
+    adopt: relevant,
+    reason: relevant ? null : 'resolver_irrelevant_to_original_query',
+    resolveQueryUsed,
+  };
 }
 
 function computeBeautyBucketMix(products, topN = 10) {
@@ -10528,6 +10674,8 @@ async function proxyAgentSearchToBackend(req, res) {
     miss: false,
     latency_ms: null,
   };
+  let resolverRejectedReason = null;
+  let resolverRejectedQueryUsed = null;
   const proxySearchQueryClass = isLookupStyleSearchQuery(
     queryText,
     extractSearchAnchorTokens(queryText),
@@ -10718,6 +10866,17 @@ async function proxyAgentSearchToBackend(req, res) {
             ? out.metadata
             : {}),
           guard_source_normalized: normalizeAgentSource(source) || null,
+          resolver_rejected_reason:
+            responseMetadata.resolver_rejected_reason ||
+            fallbackStrategy?.resolver_rejected_reason ||
+            resolverRejectedReason ||
+            null,
+          resolver_query_used:
+            responseMetadata.resolver_query_used ||
+            responseMetadata.resolve_query_used ||
+            fallbackStrategy?.resolver_query_used ||
+            resolverRejectedQueryUsed ||
+            null,
           secondary_fallback_skipped: Boolean(
             fallbackStrategy &&
               typeof fallbackStrategy === 'object' &&
@@ -10784,19 +10943,28 @@ async function proxyAgentSearchToBackend(req, res) {
         resolverFirstResult.status < 300 &&
         resolverFirstResult.usableCount > 0
       ) {
-        resolverStage.hit = true;
-        return respondSearch(resolverFirstResult.status, resolverFirstResult.data, {
-          finalDecision: 'resolver_returned',
-          primaryPathUsed: 'resolver_first',
-          fallbackTriggered: true,
-          fallbackReason: 'resolver_first',
-          upstreamStage: {
-            called: false,
-            timeout: false,
-            status: null,
-            latency_ms: 0,
-          },
+        const resolverAdoption = getResolverFallbackAdoptionDecision({
+          result: resolverFirstResult,
+          queryText,
+          queryClass: proxySearchQueryClass,
         });
+        if (resolverAdoption.adopt) {
+          resolverStage.hit = true;
+          return respondSearch(resolverFirstResult.status, resolverFirstResult.data, {
+            finalDecision: 'resolver_returned',
+            primaryPathUsed: 'resolver_first',
+            fallbackTriggered: true,
+            fallbackReason: 'resolver_first',
+            upstreamStage: {
+              called: false,
+              timeout: false,
+              status: null,
+              latency_ms: 0,
+            },
+          });
+        }
+        resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
+        resolverRejectedQueryUsed = resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
       }
       resolverStage.miss = true;
     } catch (resolverErr) {
@@ -10877,6 +11045,8 @@ async function proxyAgentSearchToBackend(req, res) {
       primary_monoculture_dominant_brand: null,
       primary_monoculture_external_ratio: 0,
       fallback_adopt_usable_threshold: null,
+      resolver_rejected_reason: null,
+      resolver_query_used: null,
     };
 
     const runPrimarySearchRequest = async ({ params, timeoutMs, pass }) => {
@@ -10998,7 +11168,7 @@ async function proxyAgentSearchToBackend(req, res) {
       const needPass2 = primaryRun.usable_count < pass2TargetUsable || primaryRun.should_fallback;
       if (!needPass2) {
         fallbackStrategy.pass2_skipped_reason = 'pass1_sufficient';
-      } else if (!PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED) {
+      } else if (guardedQueryParams.allow_external_seed !== true) {
         fallbackStrategy.pass2_skipped_reason = 'external_seed_disabled';
       } else {
         const remainingBudgetMs = Math.max(0, primaryDeadlineMs - Date.now());
@@ -11012,7 +11182,11 @@ async function proxyAgentSearchToBackend(req, res) {
           const pass2QueryParams = {
             ...guardedQueryParams,
             allow_external_seed: true,
-            external_seed_strategy: PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
+            external_seed_strategy:
+              firstQueryParamValue(
+                guardedQueryParams.external_seed_strategy ??
+                  guardedQueryParams.externalSeedStrategy,
+              ) || PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
             fast_mode: true,
           };
           fallbackStrategy.pass2_attempted = true;
@@ -11125,16 +11299,27 @@ async function proxyAgentSearchToBackend(req, res) {
               resolverFallback.status < 300 &&
               resolverFallback.usableCount > 0
             ) {
-              resolverStage.hit = true;
-              fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
-              return respondSearch(resolverFallback.status, resolverFallback.data, {
-                finalDecision: 'resolver_returned',
-                primaryPathUsed: 'proxy_search_primary',
-                fallbackTriggered: true,
-                fallbackReason: 'resolver_after_primary',
-                upstreamStage,
-                fallbackStrategy,
+              const resolverAdoption = getResolverFallbackAdoptionDecision({
+                result: resolverFallback,
+                queryText,
+                queryClass: proxySearchQueryClass,
               });
+              if (resolverAdoption.adopt) {
+                resolverStage.hit = true;
+                fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
+                return respondSearch(resolverFallback.status, resolverFallback.data, {
+                  finalDecision: 'resolver_returned',
+                  primaryPathUsed: 'proxy_search_primary',
+                  fallbackTriggered: true,
+                  fallbackReason: 'resolver_after_primary',
+                  upstreamStage,
+                  fallbackStrategy,
+                });
+              }
+              fallbackStrategy.resolver_rejected_reason = resolverAdoption.reason;
+              fallbackStrategy.resolver_query_used = resolverAdoption.resolveQueryUsed;
+              resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
+              resolverRejectedQueryUsed = resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
             }
           } catch (resolverErr) {
             logger.warn(
@@ -11484,6 +11669,8 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_upstream_base: auroraFallbackOverrides.active
         ? getProxySearchApiBase(source)
         : null,
+      resolver_rejected_reason: null,
+      resolver_query_used: null,
     };
     if (queryText) {
       if (allowResolverFallbackOnException) {
@@ -11513,21 +11700,32 @@ async function proxyAgentSearchToBackend(req, res) {
               resolverFallback.status < 300 &&
               resolverFallback.usableCount > 0
             ) {
-              resolverStage.hit = true;
-              fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
-              return respondSearch(resolverFallback.status, resolverFallback.data, {
-                finalDecision: 'resolver_returned',
-                primaryPathUsed: 'proxy_search_primary',
-                fallbackTriggered: true,
-                fallbackReason: 'resolver_after_exception',
-                upstreamStage: {
-                  called: true,
-                  timeout: primaryTimedOut,
-                  status: Number(err?.response?.status || err?.status || 0) || 0,
-                  latency_ms: Math.max(0, Date.now() - startedAtMs),
-                },
-                fallbackStrategy,
+              const resolverAdoption = getResolverFallbackAdoptionDecision({
+                result: resolverFallback,
+                queryText,
+                queryClass: proxySearchQueryClass,
               });
+              if (resolverAdoption.adopt) {
+                resolverStage.hit = true;
+                fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
+                return respondSearch(resolverFallback.status, resolverFallback.data, {
+                  finalDecision: 'resolver_returned',
+                  primaryPathUsed: 'proxy_search_primary',
+                  fallbackTriggered: true,
+                  fallbackReason: 'resolver_after_exception',
+                  upstreamStage: {
+                    called: true,
+                    timeout: primaryTimedOut,
+                    status: Number(err?.response?.status || err?.status || 0) || 0,
+                    latency_ms: Math.max(0, Date.now() - startedAtMs),
+                  },
+                  fallbackStrategy,
+                });
+              }
+              fallbackStrategy.resolver_rejected_reason = resolverAdoption.reason;
+              fallbackStrategy.resolver_query_used = resolverAdoption.resolveQueryUsed;
+              resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
+              resolverRejectedQueryUsed = resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
             }
             resolverStage.miss = true;
           } catch (resolverErr) {
@@ -17563,6 +17761,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(priceMin != null ? { min_price: priceMin } : {}),
           ...(priceMax != null ? { max_price: priceMax } : {}),
           ...(searchAllMerchants ? { search_all_merchants: true } : {}),
+          ...(search.allow_external_seed !== undefined
+            ? { allow_external_seed: search.allow_external_seed }
+            : {}),
+          ...(search.allow_stale_cache !== undefined
+            ? { allow_stale_cache: search.allow_stale_cache }
+            : {}),
+          ...(search.fast_mode !== undefined ? { fast_mode: search.fast_mode } : {}),
+          ...(search.external_seed_strategy
+            ? { external_seed_strategy: search.external_seed_strategy }
+            : {}),
           in_stock_only: search.in_stock_only !== false,
           limit,
           offset,
@@ -17624,6 +17832,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(search.category ? { category: search.category } : {}),
           ...(priceMin != null ? { min_price: priceMin } : {}),
           ...(priceMax != null ? { max_price: priceMax } : {}),
+          ...(search.allow_external_seed !== undefined
+            ? { allow_external_seed: search.allow_external_seed }
+            : {}),
+          ...(search.allow_stale_cache !== undefined
+            ? { allow_stale_cache: search.allow_stale_cache }
+            : {}),
+          ...(search.fast_mode !== undefined ? { fast_mode: search.fast_mode } : {}),
+          ...(search.external_seed_strategy
+            ? { external_seed_strategy: search.external_seed_strategy }
+            : {}),
           in_stock_only: search.in_stock_only !== false,
           limit,
           offset,
@@ -18167,6 +18385,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     };
 
     let response;
+    let resolverRejectedReason = null;
+    let resolverRejectedQueryUsed = null;
     const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
     const resolverQueryText = String(rawUserQuery || searchQueryText || '').trim();
     const resolverQueryParams = resolverQueryText ? { ...queryParams, query: resolverQueryText } : queryParams;
@@ -18238,15 +18458,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           resolverFirstResult.status < 300 &&
           resolverFirstResult.usableCount > 0
         ) {
-          response = { status: resolverFirstResult.status, data: resolverFirstResult.data };
-          addFpmGateTrace({
-            gateId: 'resolver_first_result',
-            applied: true,
-            decision: 'adopted',
-            reason: 'resolver_hit',
-            costMsEstimate: 15,
+          const resolverAdoption = getResolverFallbackAdoptionDecision({
+            result: resolverFirstResult,
+            queryText: resolverQueryText,
             queryClass: traceQueryClass,
           });
+          if (resolverAdoption.adopt) {
+            response = { status: resolverFirstResult.status, data: resolverFirstResult.data };
+            addFpmGateTrace({
+              gateId: 'resolver_first_result',
+              applied: true,
+              decision: 'adopted',
+              reason: 'resolver_hit',
+              costMsEstimate: 15,
+              queryClass: traceQueryClass,
+            });
+          } else {
+            resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
+            resolverRejectedQueryUsed =
+              resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
+            addFpmGateTrace({
+              gateId: 'resolver_first_result',
+              applied: true,
+              decision: 'rejected',
+              reason: resolverAdoption.reason || 'resolver_rejected',
+              costMsEstimate: 15,
+              queryClass: traceQueryClass,
+            });
+          }
         } else {
           addFpmGateTrace({
             gateId: 'resolver_first_result',
@@ -18491,17 +18730,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 resolverFallback.status < 300 &&
                 resolverFallback.usableCount > 0
               ) {
-                response = {
-                  status: resolverFallback.status,
-                  data: withProxySearchFallbackMetadata(resolverFallback.data, {
-                    applied: true,
-                    reason: 'resolver_after_exception',
-                    route: 'invoke_exception_resolver',
-                    upstream_status: upstreamStatus,
-                    upstream_error_code: upstreamCode || err?.code || null,
-                    upstream_error_message: upstreamMessage || err?.message || null,
-                  }),
-                };
+                const resolverAdoption = getResolverFallbackAdoptionDecision({
+                  result: resolverFallback,
+                  queryText,
+                  queryClass: traceQueryClass,
+                });
+                if (resolverAdoption.adopt) {
+                  response = {
+                    status: resolverFallback.status,
+                    data: withProxySearchFallbackMetadata(resolverFallback.data, {
+                      applied: true,
+                      reason: 'resolver_after_exception',
+                      route: 'invoke_exception_resolver',
+                      upstream_status: upstreamStatus,
+                      upstream_error_code: upstreamCode || err?.code || null,
+                      upstream_error_message: upstreamMessage || err?.message || null,
+                    }),
+                  };
+                } else {
+                  resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
+                  resolverRejectedQueryUsed =
+                    resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
+                }
               }
             } catch (resolverErr) {
               logger.warn(
@@ -18907,8 +19157,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               resolverFallback.status < 300 &&
               resolverFallback.usableCount > 0
             ) {
-              upstreamData = resolverFallback.data;
-              replacedByFallback = true;
+              const resolverAdoption = getResolverFallbackAdoptionDecision({
+                result: resolverFallback,
+                queryText,
+                queryClass: traceQueryClass,
+              });
+              if (resolverAdoption.adopt) {
+                upstreamData = resolverFallback.data;
+                replacedByFallback = true;
+              } else {
+                resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
+                resolverRejectedQueryUsed =
+                  resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
+              }
             }
           } catch (resolverErr) {
             logger.warn(
@@ -19883,6 +20144,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...enriched,
           metadata: {
             ...existingMetaForGates,
+            resolver_rejected_reason:
+              existingMetaForGates.resolver_rejected_reason || resolverRejectedReason || null,
+            resolver_query_used:
+              existingMetaForGates.resolver_query_used ||
+              existingMetaForGates.resolve_query_used ||
+              resolverRejectedQueryUsed ||
+              null,
             gate_trace: combinedGateTrace,
             gate_summary: {
               applied_count: combinedGateTrace.filter((item) => item && item.applied).length,

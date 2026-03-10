@@ -547,6 +547,17 @@ const BEAUTY_PRODUCT_NON_TOOL_SIGNALS_JA = [
   'ファンデーション',
 ];
 const BEAUTY_BRAND_ALIAS_SIGNALS = ['ipsa', '茵芙莎', 'winona', '薇诺娜'];
+const BEAUTY_STRONG_LOOKUP_SIGNALS = [
+  ...BEAUTY_BRAND_ALIAS_SIGNALS,
+  'the ordinary',
+  'ordinary',
+  'sk ii',
+  'sk-ii',
+  'skii',
+  'time reset aqua',
+  '流金水',
+  '神仙水',
+];
 const BEAUTY_GENERAL_SIGNALS_ZH = [
   '化妆',
   '化妝',
@@ -667,6 +678,54 @@ function hasBeautyBrandOrProductSignal(text) {
     /有货|库存|有没有|能买吗|哪里买|available|availability|in stock|where to buy/.test(lower);
 
   return hasBrandOrProductCue || hasAvailabilityCue;
+}
+
+function hasBeautyGenericProductSignal(text) {
+  const t = String(text || '');
+  if (!t) return false;
+  return (
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_ZH) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_EN) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_ES) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_FR) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_JA)
+  );
+}
+
+function hasBeautyAttributeModifier(text) {
+  const t = String(text || '');
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  return (
+    /\b(spf\s*\d{1,3}|pa\+{1,4}|hydrating|moisturi(?:z|s)ing|brightening|soothing|repair(?:ing)?|niacinamide|retinol|retinal|ceramide|hyaluronic|salicylic|glycolic|peptide|vitamin c|azelaic|tranexamic|fragrance[-\s]?free)\b/i.test(
+      lower,
+    ) ||
+    /\b\d{1,3}\s*%/.test(lower) ||
+    /(防晒指数|防曬指數|保湿|保濕|补水|補水|舒缓|舒緩|修护|修護|烟酰胺|菸鹼醯胺|神经酰胺|神經醯胺|玻尿酸|视黄醇|視黃醇|水杨酸|水楊酸|果酸|壬二酸|传明酸|傳明酸|维他命c|維他命c)/.test(
+      t,
+    ) ||
+    /(日焼け止め指数|保湿|うるおい|ナイアシンアミド|セラミド|ヒアルロン酸|レチノール|ビタミンc)/.test(
+      t,
+    )
+  );
+}
+
+function hasBeautyStrongLookupSignal(text) {
+  const t = String(text || '');
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  const hasStrongAlias = includesAny(t, BEAUTY_STRONG_LOOKUP_SIGNALS);
+  if (!hasStrongAlias) return false;
+
+  const hasAvailabilityCue =
+    /有货|库存|有没有|能买吗|哪里买|available|availability|in stock|where to buy/.test(lower);
+  const hasSpecificProductCue =
+    hasBeautyGenericProductSignal(t) ||
+    hasBeautyAttributeModifier(t) ||
+    /\b\d{1,3}\s*%/.test(lower);
+  const tokenCount = lower.split(/\s+/g).filter(Boolean).length;
+
+  return hasAvailabilityCue || hasSpecificProductCue || tokenCount <= 2;
 }
 
 function isToyBreedContext(text) {
@@ -890,6 +949,9 @@ function classifyQueryClass({
   categoryRequired,
   budget,
   hasBeautyBrandOrProductSignalLocal,
+  hasBeautyGenericProductSignalLocal,
+  hasBeautyStrongLookupSignalLocal,
+  hasBeautyAttributeModifierLocal,
   hasOuterwearSignal,
   hasPetSignal,
   hasLingerieSignal,
@@ -900,10 +962,12 @@ function classifyQueryClass({
 }) {
   const text = String(latest || '');
   const lower = text.toLowerCase();
+  const hasModelLikeLookupToken =
+    /\b[a-z]{1,6}\d{2,}\b/i.test(text) && !/\bspf\d{1,3}\b/i.test(lower);
   const hasLookupToken =
-    /\b[a-z]{1,6}\d{2,}\b/i.test(text) ||
+    hasModelLikeLookupToken ||
     /\b(sku|model|型号|型號)\b/i.test(text) ||
-    hasBeautyBrandOrProductSignalLocal;
+    hasBeautyStrongLookupSignalLocal;
   const hasGiftSignal =
     includesAny(text, GIFT_SIGNALS_ZH) || includesAny(text, GIFT_SIGNALS_EN);
   const hasMissionSignal =
@@ -914,10 +978,14 @@ function classifyQueryClass({
     includesAny(text, NON_SHOPPING_SIGNALS_ZH) || includesAny(text, NON_SHOPPING_SIGNALS_EN);
   const hasAttributeSignal =
     Boolean(budget) ||
+    (hasBeautyGenericProductSignalLocal && hasBeautyAttributeModifierLocal) ||
     /预算|預算|以内|以內|以上|至少|不超过|不超過|无香|無香|防水|防风|防風|size|color|material|budget|under|above|at least|waterproof|windproof|fragrance[-\s]?free/i.test(
       lower,
     );
   const hasDirectCategorySignal =
+    (hasBeautyGenericProductSignalLocal &&
+      !hasBeautyAttributeModifierLocal &&
+      !hasBeautyStrongLookupSignalLocal) ||
     /香水|香氛|古龙|古龍|个护|個護|perfume|fragrance|cologne|body\s*mist|personal\s*care/i.test(
       lower,
     );
@@ -1030,6 +1098,9 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     (/アイシャドウ/.test(latest) && /ブラシ/.test(latest));
 
   const hasBeautyBrandOrProductSignalLocal = hasBeautyBrandOrProductSignal(latest);
+  const hasBeautyGenericProductSignalLocal = hasBeautyGenericProductSignal(latest);
+  const hasBeautyAttributeModifierLocal = hasBeautyAttributeModifier(latest);
+  const hasBeautyStrongLookupSignalLocal = hasBeautyStrongLookupSignal(latest);
   const hasBeautyGeneralSignalLocal =
     includesAny(latest, BEAUTY_GENERAL_SIGNALS_ZH) ||
     includesAny(latest, BEAUTY_GENERAL_SIGNALS_EN) ||
@@ -1233,6 +1304,12 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     categoryRequired = [];
     scenarioName = 'general';
     scenarioSignals = [];
+  } else if (hasBeautyGenericProductSignalLocal || hasBeautyStrongLookupSignalLocal) {
+    primary_domain = 'beauty';
+    targetType = 'human';
+    categoryRequired = [];
+    scenarioName = 'general';
+    scenarioSignals = [];
   } else if (hasWomenClothingSignal) {
     primary_domain = 'human_apparel';
     targetType = 'human';
@@ -1321,18 +1398,18 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
 	        : hasSleepwearSignal
 	          ? 0.85
 	          : 0.6
-	      : primary_domain === 'beauty'
-	        ? scenarioName === 'eye_shadow_brush'
-	          ? hasEyeShadowBrushSignal
-	            ? 0.9
-	            : 0.6
-	          : scenarioName === 'beauty_tools'
-	            ? hasBeautyToolSignal
-	              ? 0.85
-	              : 0.6
-	            : hasBeautyGeneralSignalLocal
-	              ? 0.8
-	              : 0.6
+      : primary_domain === 'beauty'
+        ? scenarioName === 'eye_shadow_brush'
+          ? hasEyeShadowBrushSignal
+            ? 0.9
+            : 0.6
+          : scenarioName === 'beauty_tools'
+            ? hasBeautyToolSignal
+              ? 0.85
+              : 0.6
+            : hasBeautyGeneralSignalLocal || hasBeautyGenericProductSignalLocal || hasBeautyStrongLookupSignalLocal
+              ? 0.8
+              : 0.6
       : primary_domain === 'toy_accessory'
         ? includesAny(latest, TOY_KEYWORDS)
           ? 0.9
@@ -1359,6 +1436,9 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     categoryRequired,
     budget,
     hasBeautyBrandOrProductSignalLocal,
+    hasBeautyGenericProductSignalLocal,
+    hasBeautyStrongLookupSignalLocal,
+    hasBeautyAttributeModifierLocal,
     hasOuterwearSignal,
     hasPetSignal,
     hasLingerieSignal,

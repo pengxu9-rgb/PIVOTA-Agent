@@ -46,6 +46,8 @@ const LATIN_STOPWORDS = new Set([
   'need',
   'product',
   'products',
+  'percent',
+  'plus',
   'sell',
   'selling',
   'stock',
@@ -402,6 +404,43 @@ function tokenizeNormalizedResolverQuery(normalized) {
   }
 
   return out;
+}
+
+function isStrongStandaloneResolverToken(token) {
+  const raw = String(token || '').trim();
+  if (!raw) return false;
+
+  const normalized = normalizeTextForResolver(raw);
+  if (!normalized) return false;
+  const queryTokens = tokenizeNormalizedResolverQuery(normalized);
+  if (queryTokens.length !== 1) return false;
+
+  const [queryToken] = queryTokens;
+  if (!queryToken) return false;
+  if (LATIN_STOPWORDS.has(queryToken)) return false;
+  if (/^(plus|percent|and)$/i.test(queryToken)) return false;
+  if (/^(spf\d+|pa\+{0,4}|sunscreen|serum|essence|toner|lotion|moisturizer|moisturiser|cleanser|cream|foundation|cushion|lipstick|makeup|beauty|skincare|cosmetics?)$/i.test(queryToken)) {
+    return false;
+  }
+
+  if (resolveKnownStableProductRef({ query: raw, normalizedQuery: normalized, queryTokens })) {
+    return true;
+  }
+
+  if (HAS_HAN_RE.test(queryToken)) {
+    const stripped = stripGenericCjkQueryTokens(stripCommonCjkQueryAffixes(queryToken));
+    if (!stripped || stripped.length < 2) return false;
+    if (/^(护肤|護膚|化妆|化妝|防晒|防曬|精华|精華|乳液|面霜|洁面|潔面|香水|刷子|工具|スキンケア|化粧|日焼け止め|美容液)$/.test(stripped)) {
+      return false;
+    }
+    return stripped.length >= 3;
+  }
+
+  if (/^[a-z0-9-]{12,}$/i.test(queryToken) && /[a-z]/i.test(queryToken) && /\d/.test(queryToken)) {
+    return true;
+  }
+
+  return false;
 }
 
 function isExternalProduct(product) {
@@ -1345,6 +1384,7 @@ module.exports = {
   _internals: {
     normalizeTextForResolver,
     tokenizeNormalizedResolverQuery,
+    isStrongStandaloneResolverToken,
     resolveKnownStableProductRef,
     scoreAndRankCandidates,
     resolveFromRankedCandidates,
