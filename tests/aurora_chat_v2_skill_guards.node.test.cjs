@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const TravelApplyModeSkill = require('../src/auroraBff/skills/travel_apply_mode');
 const IngredientReportSkill = require('../src/auroraBff/skills/ingredient_report');
+const ProductAnalyzeSkill = require('../src/auroraBff/skills/product_analyze');
 
 test('travel_apply_mode adds reduce_actives when high-UV travel overlaps with retinoid routine', async () => {
   const skill = new TravelApplyModeSkill();
@@ -107,4 +108,66 @@ test('ingredient_report injects a cautious ingredient_claims section when LLM re
   assert.ok(claimsSection.claims.length >= 1);
   assert.ok(claimsSection.claims.every((claim) => claim.evidence_badge));
   assert.ok(claimsSection.claims.every((claim) => !String(claim.text_en || '').toLowerCase().includes('products containing')));
+});
+
+test('product_analyze carries product_anchor into add_to_routine next action params', async () => {
+  const skill = new ProductAnalyzeSkill();
+  const gateway = {
+    async call() {
+      return {
+        parsed: {
+          product_name: 'Defense Lotion SPF 35',
+          brand: 'Lab Series',
+          product_type: 'sunscreen',
+          suitability: {
+            verdict_en: 'Suitable for daytime use.',
+            verdict_zh: '适合白天使用。',
+          },
+          usage: {
+            time_of_day: 'am',
+            frequency: 'daily',
+          },
+          key_ingredients: [],
+          risk_flags: [],
+        },
+        promptHash: 'stub_prompt_hash',
+      };
+    },
+  };
+
+  const productAnchor = {
+    brand: 'Lab Series',
+    name: 'Defense Lotion SPF 35',
+    product_type: 'sunscreen',
+    product_id: 'prod_123',
+  };
+
+  const response = await skill.run(
+    {
+      skill_id: 'product.analyze',
+      context: {
+        profile: {},
+        recent_logs: [],
+        travel_plan: null,
+        current_routine: {
+          routine_id: 'routine_123',
+          am_steps: [{ step_id: 'am_cleanser', products: [{ name: 'Gentle Cleanser' }] }],
+          pm_steps: [],
+        },
+        inventory: [],
+        locale: 'en',
+        safety_flags: [],
+      },
+      params: {
+        product_anchor: productAnchor,
+      },
+      thread_state: {},
+    },
+    gateway
+  );
+
+  const addToRoutine = response.next_actions.find((action) => action.target_skill_id === 'explore.add_to_routine');
+
+  assert.ok(addToRoutine);
+  assert.deepEqual(addToRoutine.params?.product_anchor, productAnchor);
 });

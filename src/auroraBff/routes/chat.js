@@ -56,6 +56,69 @@ function resolveRequestLocale(body, headers, bodyContext) {
   return normalizeLocaleToken(rawLocale) || 'en';
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pickFirstTrimmed(...values) {
+  for (const value of values) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
+}
+
+function coerceRoutineShape(value) {
+  if (!value) return null;
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      return coerceRoutineShape(JSON.parse(trimmed));
+    } catch {
+      return null;
+    }
+  }
+
+  if (!isPlainObject(value)) return null;
+
+  if (Array.isArray(value.am_steps) || Array.isArray(value.pm_steps)) {
+    return {
+      ...value,
+      am_steps: Array.isArray(value.am_steps) ? value.am_steps : [],
+      pm_steps: Array.isArray(value.pm_steps) ? value.pm_steps : [],
+    };
+  }
+
+  if (Array.isArray(value.am) || Array.isArray(value.pm)) {
+    return {
+      ...(value.routine_id ? { routine_id: value.routine_id } : {}),
+      am_steps: Array.isArray(value.am) ? value.am : [],
+      pm_steps: Array.isArray(value.pm) ? value.pm : [],
+      ...(value.notes != null ? { notes: value.notes } : {}),
+    };
+  }
+
+  return null;
+}
+
+function resolveCurrentRoutine(bodyContext, profileSources) {
+  const directRoutine = coerceRoutineShape(bodyContext.current_routine);
+  if (directRoutine) return directRoutine;
+
+  for (const profile of profileSources) {
+    const routine = coerceRoutineShape(
+      isPlainObject(profile) ? (profile.currentRoutine ?? profile.current_routine ?? null) : null,
+    );
+    if (routine) return routine;
+  }
+
+  return null;
+}
+
 async function handleChat(req, res) {
   try {
     const skillRequest = buildSkillRequest(req);
@@ -118,30 +181,69 @@ async function handleChatStream(req, res) {
 
 function buildSkillRequest(req) {
   const body = req.body || {};
-  const userMessage = body.message || body.text || body.params?.user_message || body.params?.message || body.params?.text || null;
-  const bodyContext = body.context && typeof body.context === 'object' ? body.context : {};
-  const session = body.session && typeof body.session === 'object' ? body.session : {};
-  const sessionProfile = session.profile && typeof session.profile === 'object' ? session.profile : null;
+  const bodyContext = isPlainObject(body.context) ? body.context : {};
+  const bodyParams = isPlainObject(body.params) ? body.params : {};
+  const session = isPlainObject(body.session) ? body.session : {};
+  const sessionProfile = isPlainObject(session.profile) ? session.profile : null;
+  const action = isPlainObject(body.action) ? body.action : {};
+  const actionData = isPlainObject(action.data) ? action.data : {};
+  const actionId = pickFirstTrimmed(body.action_id, action.action_id);
+  const userMessage = pickFirstTrimmed(
+    body.message,
+    body.text,
+    bodyParams.user_message,
+    bodyParams.message,
+    bodyParams.text,
+    actionData.reply_text,
+    actionData.replyText,
+  );
   const priorMessages = Array.isArray(body.messages) ? body.messages : [];
   const locale = resolveRequestLocale(body, req.headers || {}, bodyContext);
+  const resolvedProfile = bodyContext.profile || req._userProfile || sessionProfile || {};
+  const currentRoutine = resolveCurrentRoutine(bodyContext, [
+    bodyContext.profile,
+    req._userProfile,
+    sessionProfile,
+  ]);
+  const anchorProductId = pickFirstTrimmed(
+    body.anchor_product_id,
+    body.anchorProductId,
+    bodyParams.anchor_product_id,
+    actionData.anchor_product_id,
+  );
+  const anchorProductUrl = pickFirstTrimmed(
+    body.anchor_product_url,
+    body.anchorProductUrl,
+    bodyParams.anchor_product_url,
+    actionData.anchor_product_url,
+  );
+  const productAnchor = isPlainObject(bodyParams.product_anchor)
+    ? bodyParams.product_anchor
+    : isPlainObject(actionData.product_anchor)
+      ? actionData.product_anchor
+      : null;
 
   return {
     skill_id: body.skill_id || null,
     skill_version: body.skill_version || '1.0.0',
     intent: body.intent || body.canonical_intent || null,
     params: {
-      ...(body.params || {}),
-      entry_source: body.entry_source || body.trigger_source || body.params?.entry_source || null,
+      ...actionData,
+      ...bodyParams,
+      entry_source: body.entry_source || body.trigger_source || bodyParams.entry_source || actionId || null,
       user_message: userMessage,
       message: userMessage,
       text: userMessage,
+      ...(productAnchor ? { product_anchor: productAnchor } : {}),
+      ...(anchorProductId ? { anchor_product_id: anchorProductId } : {}),
+      ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
       ...(priorMessages.length > 0 ? { messages: priorMessages } : {}),
     },
     context: {
-      profile: bodyContext.profile || req._userProfile || sessionProfile || {},
+      profile: resolvedProfile,
       recent_logs: bodyContext.recent_logs || req._recentLogs || [],
       travel_plan: bodyContext.travel_plan || null,
-      current_routine: bodyContext.current_routine || null,
+      current_routine: currentRoutine,
       inventory: bodyContext.inventory || [],
       locale,
       safety_flags: bodyContext.safety_flags || [],

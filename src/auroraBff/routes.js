@@ -1238,13 +1238,23 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
 
 function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
-  const hasInteractiveKeys =
-    payload.action != null ||
-    payload.action_id != null ||
+  const action = isPlainObject(payload.action) ? payload.action : {};
+  const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
+  const canDelegateActionToV2 = actionId === 'chip.action.add_to_routine';
+
+  if (
     payload.selected_option_index != null ||
     payload.clarification_id != null ||
-    payload.requested_transition != null;
-  if (hasInteractiveKeys) return false;
+    payload.requested_transition != null
+  ) {
+    return false;
+  }
+
+  if ((payload.action != null || payload.action_id != null) && !canDelegateActionToV2) {
+    return false;
+  }
+
+  if (canDelegateActionToV2) return true;
 
   const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
   if (hasMessage) return true;
