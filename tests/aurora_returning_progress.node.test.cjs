@@ -17,8 +17,24 @@ function findCard(body, type) {
 }
 
 function findSection(card, kind) {
-  const sections = Array.isArray(card && card.sections) ? card.sections : [];
+  const sections = Array.isArray(card && card.sections)
+    ? card.sections
+    : Array.isArray(card && card.payload && card.payload.sections)
+      ? card.payload.sections
+      : [];
   return sections.find((section) => section && section.kind === kind) || null;
+}
+
+function cardSections(card) {
+  if (Array.isArray(card && card.sections)) return card.sections;
+  if (Array.isArray(card && card.payload && card.payload.sections)) return card.payload.sections;
+  return [];
+}
+
+function cardActions(card) {
+  if (Array.isArray(card && card.actions)) return card.actions;
+  if (Array.isArray(card && card.payload && card.payload.actions)) return card.payload.actions;
+  return [];
 }
 
 function quickReplyIds(body) {
@@ -35,7 +51,7 @@ function experimentEventTypes(body) {
 
 function collectProgressTexts(card) {
   const out = [];
-  for (const section of Array.isArray(card && card.sections) ? card.sections : []) {
+  for (const section of cardSections(card)) {
     if (!section || typeof section !== 'object') continue;
     if (Array.isArray(section.concern_deltas)) {
       for (const row of section.concern_deltas) {
@@ -50,6 +66,23 @@ function collectProgressTexts(card) {
     if (typeof section.text_zh === 'string') out.push(section.text_zh.trim());
   }
   return out.filter(Boolean);
+}
+
+function okJson(json) {
+  return {
+    ok: true,
+    json,
+    parse_status: 'parsed',
+    timeout_stage: null,
+  };
+}
+
+function failJson(reason = 'forced_failure', detail = null) {
+  return {
+    ok: false,
+    reason,
+    detail,
+  };
 }
 
 async function seedProgressLogs(request, uid) {
@@ -73,16 +106,16 @@ test('/v1/chat returning diagnosis entry emits returning_triage with LLM summary
       AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
     },
     async () => {
-      const { request, restore } = createAppWithPatchedAuroraChat(async ({ query }) => {
-        if (String(query || '').includes('Template: diagnosis_v2_returning_summary')) {
-          return {
-            answer: JSON.stringify({
+      const { request, restore } = createAppWithPatchedAuroraChat({
+        geminiJsonImpl: async ({ userPrompt }) => {
+          if (String(userPrompt || '').includes('Template: diagnosis_v2_returning_summary')) {
+            return okJson({
               summary_en: 'Your skin baseline points to oily, acne-prone skin with hydration as a secondary goal.',
               summary_zh: '你的历史基线显示偏油、易长痘，同时补水也是次优先目标。',
-            }),
-          };
-        }
-        return { answer: 'Mock Aurora reply.', cards: [{ type: 'recommendations', payload: { recommendations: [{ sku_id: 'mock_sku_generic' }] } }] };
+            });
+          }
+          return failJson('unexpected_prompt');
+        },
       });
 
       try {
@@ -113,8 +146,8 @@ test('/v1/chat returning diagnosis entry emits returning_triage with LLM summary
           quickReplyIds(res.body).filter((id) => id.startsWith('chip.action.')).sort(),
           ['chip.action.check_progress', 'chip.action.new_photo', 'chip.action.reassess', 'chip.action.update_goals'],
         );
-        assert.equal(Array.isArray(card.actions), true);
-        assert.equal(card.actions.length, 4);
+        assert.equal(Array.isArray(cardActions(card)), true);
+        assert.equal(cardActions(card).length, 4);
       } finally {
         restore();
       }
@@ -130,11 +163,13 @@ test('/v1/chat returning_triage falls back to summary_text=null when LLM output 
       AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
     },
     async () => {
-      const { request, restore } = createAppWithPatchedAuroraChat(async ({ query }) => {
-        if (String(query || '').includes('Template: diagnosis_v2_returning_summary')) {
-          throw new Error('forced llm failure');
-        }
-        return { answer: 'Mock Aurora reply.', cards: [{ type: 'recommendations', payload: { recommendations: [{ sku_id: 'mock_sku_generic' }] } }] };
+      const { request, restore } = createAppWithPatchedAuroraChat({
+        geminiJsonImpl: async ({ userPrompt }) => {
+          if (String(userPrompt || '').includes('Template: diagnosis_v2_returning_summary')) {
+            return failJson('forced_llm_failure', 'forced llm failure');
+          }
+          return failJson('unexpected_prompt');
+        },
       });
 
       try {
@@ -158,6 +193,94 @@ test('/v1/chat returning_triage falls back to summary_text=null when LLM output 
         const summary = findSection(card, 'previous_diagnosis_summary');
         assert.ok(summary);
         assert.equal(summary.summary_text, null);
+      } finally {
+        restore();
+      }
+    },
+  );
+});
+
+test('/v1/chat chip_start_diagnosis also emits returning_triage for returning users', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
+    },
+    async () => {
+      const { request, restore } = createAppWithPatchedAuroraChat({
+        geminiJsonImpl: async ({ userPrompt }) => {
+          if (String(userPrompt || '').includes('Template: diagnosis_v2_returning_summary')) {
+            return okJson({
+              summary_en: 'Baseline is ready for a returning triage check.',
+              summary_zh: '已准备好老用户分流摘要。',
+            });
+          }
+          return failJson('unexpected_prompt');
+        },
+      });
+
+      try {
+        const uid = buildTestUid('returning_triage_alias');
+        await seedCompleteProfile(request, uid);
+        await seedDiagnosisArtifactForUid(uid, createDiagnosisArtifactFixture({ usePhoto: true }));
+
+        const res = await request
+          .post('/v1/chat')
+          .set(headersFor(uid))
+          .send({
+            action: {
+              action_id: 'chip_start_diagnosis',
+              kind: 'chip',
+              data: { reply_text: 'Start diagnosis' },
+            },
+          })
+          .expect(200);
+
+        assert.ok(findCard(res.body, 'returning_triage'));
+      } finally {
+        restore();
+      }
+    },
+  );
+});
+
+test('/v1/chat explicit diagnosis text emits returning_triage for returning users', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
+    },
+    async () => {
+      const { request, restore } = createAppWithPatchedAuroraChat({
+        geminiJsonImpl: async ({ userPrompt }) => {
+          if (String(userPrompt || '').includes('Template: diagnosis_v2_returning_summary')) {
+            return okJson({
+              summary_en: 'This is the returning-user summary for a text-triggered diagnosis.',
+              summary_zh: '这是文本触发诊断时的老用户摘要。',
+            });
+          }
+          return failJson('unexpected_prompt');
+        },
+      });
+
+      try {
+        const uid = buildTestUid('returning_triage_text');
+        await seedCompleteProfile(request, uid);
+        await seedDiagnosisArtifactForUid(uid, createDiagnosisArtifactFixture({ usePhoto: false }));
+
+        const res = await request
+          .post('/v1/chat')
+          .set(headersFor(uid))
+          .send({ message: 'I want to start a skin diagnosis again.' })
+          .expect(200);
+
+        const card = findCard(res.body, 'returning_triage');
+        assert.ok(card);
+        const summary = findSection(card, 'previous_diagnosis_summary');
+        assert.equal(typeof summary.summary_text, 'string');
+        assert.ok(summary.summary_text.length > 0);
       } finally {
         restore();
       }
@@ -211,17 +334,17 @@ test('/v1/chat chip.action.check_progress emits skin_progress with experiment ev
       AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
     },
     async () => {
-      const { request, restore } = createAppWithPatchedAuroraChat(async ({ query }) => {
-        if (String(query || '').includes('Template: diagnosis_v2_progress_delta')) {
-          return {
-            answer: JSON.stringify({
+      const { request, restore } = createAppWithPatchedAuroraChat({
+        geminiJsonImpl: async ({ userPrompt }) => {
+          if (String(userPrompt || '').includes('Template: diagnosis_v2_progress_delta')) {
+            return okJson({
               overall_trend: 'improving',
               concern_deltas: [
                 {
                   concern_id: 'acne',
                   direction: 'improved',
                   magnitude: 'moderate',
-                  note_en: 'Acne looks calmer across recent check-ins.',
+                  note_en: 'Acne has been calmer across recent check-ins.',
                   note_zh: '最近几次打卡里，痘痘整体更稳定了。',
                 },
               ],
@@ -232,10 +355,10 @@ test('/v1/chat chip.action.check_progress emits skin_progress with experiment ev
               stable: ['Redness is broadly stable.'],
               recommendation_en: 'Keep your routine stable for one more week and log one more check-in.',
               recommendation_zh: '再稳定一周当前 routine，并补一次打卡。',
-            }),
-          };
-        }
-        return { answer: 'Mock Aurora reply.' };
+            });
+          }
+          return failJson('unexpected_prompt');
+        },
       });
 
       try {
@@ -258,7 +381,7 @@ test('/v1/chat chip.action.check_progress emits skin_progress with experiment ev
 
         const card = findCard(res.body, 'skin_progress');
         assert.ok(card);
-        const sectionKinds = (Array.isArray(card.sections) ? card.sections : []).map((section) => section && section.kind);
+        const sectionKinds = cardSections(card).map((section) => section && section.kind);
         assert.deepEqual(sectionKinds, ['progress_baseline', 'progress_delta', 'progress_highlights', 'progress_recommendation']);
         assert.equal((res.body.ops && res.body.ops.thread_ops && res.body.ops.thread_ops[0] && res.body.ops.thread_ops[0].summary) || 'progress_viewed', 'progress_viewed');
         assert.ok(experimentEventTypes(res.body).includes('progress_viewed'));
@@ -277,10 +400,10 @@ test('/v1/chat skin_progress rejects no-photo hallucinations and falls back to d
       AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
     },
     async () => {
-      const { request, restore } = createAppWithPatchedAuroraChat(async ({ query }) => {
-        if (String(query || '').includes('Template: diagnosis_v2_progress_delta')) {
-          return {
-            answer: JSON.stringify({
+      const { request, restore } = createAppWithPatchedAuroraChat({
+        geminiJsonImpl: async ({ userPrompt }) => {
+          if (String(userPrompt || '').includes('Template: diagnosis_v2_progress_delta')) {
+            return okJson({
               overall_trend: 'improving',
               concern_deltas: [
                 {
@@ -298,10 +421,10 @@ test('/v1/chat skin_progress rejects no-photo hallucinations and falls back to d
               stable: [],
               recommendation_en: 'Your photo shows clear progress.',
               recommendation_zh: '你的照片显示进展不错。',
-            }),
-          };
-        }
-        return { answer: 'Mock Aurora reply.' };
+            });
+          }
+          return failJson('unexpected_prompt');
+        },
       });
 
       try {
@@ -325,7 +448,53 @@ test('/v1/chat skin_progress rejects no-photo hallucinations and falls back to d
         const card = findCard(res.body, 'skin_progress');
         assert.ok(card);
         const texts = collectProgressTexts(card).join('\n');
-        assert.doesNotMatch(texts, /photo|image|visible|looks?|appears?|从照片|照片|图片/i);
+        assert.doesNotMatch(texts, /photo|image|picture|visual|visible|looks?|appears?|show(?:s|ing)?|从照片|照片|图片|看起来|显示出/i);
+      } finally {
+        restore();
+      }
+    },
+  );
+});
+
+test('/v1/chat skin_progress stays photo-agnostic when LLM is unavailable', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_CHATCARDS_RESPONSE_CONTRACT: 'dual',
+    },
+    async () => {
+      const { request, restore } = createAppWithPatchedAuroraChat({
+        geminiJsonImpl: async ({ userPrompt }) => {
+          if (String(userPrompt || '').includes('Template: diagnosis_v2_progress_delta')) {
+            return failJson('forced_llm_failure', 'progress llm unavailable');
+          }
+          return failJson('unexpected_prompt');
+        },
+      });
+
+      try {
+        const uid = buildTestUid('skin_progress_llm_failure');
+        await seedCompleteProfile(request, uid);
+        await seedDiagnosisArtifactForUid(uid, createDiagnosisArtifactFixture({ usePhoto: false }));
+        await seedProgressLogs(request, uid);
+
+        const res = await request
+          .post('/v1/chat')
+          .set(headersFor(uid))
+          .send({
+            action: {
+              action_id: 'chip.action.check_progress',
+              kind: 'chip',
+              data: { reply_text: 'Check my progress' },
+            },
+          })
+          .expect(200);
+
+        const card = findCard(res.body, 'skin_progress');
+        assert.ok(card);
+        const texts = collectProgressTexts(card).join('\n');
+        assert.doesNotMatch(texts, /photo|image|picture|visual|visible|looks?|appears?|show(?:s|ing)?|从照片|照片|图片|看起来|显示出/i);
       } finally {
         restore();
       }

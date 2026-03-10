@@ -53,16 +53,116 @@ function headersFor(uid, lang = 'EN') {
   };
 }
 
-function createAppWithPatchedAuroraChat(auroraChatImpl) {
+function cloneValue(value) {
+  if (value == null) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function memoryIdentityKey({ auroraUid, userId } = {}) {
+  const user = String(userId || '').trim();
+  if (user) return `u:${user}`;
+  const guest = String(auroraUid || '').trim();
+  if (guest) return `g:${guest}`;
+  return 'anon';
+}
+
+function createInMemoryMemoryStore() {
+  const profiles = new Map();
+  const recentLogs = new Map();
+  const chatContexts = new Map();
+  let nextLogId = 1;
+
+  return {
+    async getProfileForIdentity({ auroraUid, userId }) {
+      return cloneValue(profiles.get(memoryIdentityKey({ auroraUid, userId })) || null);
+    },
+    async upsertProfileForIdentity({ auroraUid, userId }, patch) {
+      const key = memoryIdentityKey({ auroraUid, userId });
+      const prev = profiles.get(key) || {};
+      const next = { ...cloneValue(prev), ...(patch && typeof patch === 'object' ? cloneValue(patch) : {}) };
+      profiles.set(key, next);
+      return cloneValue(next);
+    },
+    async getRecentSkinLogsForIdentity({ auroraUid, userId }) {
+      const key = memoryIdentityKey({ auroraUid, userId });
+      const rows = Array.isArray(recentLogs.get(key)) ? recentLogs.get(key).slice() : [];
+      rows.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')));
+      return cloneValue(rows);
+    },
+    async upsertSkinLogForIdentity({ auroraUid, userId }, log) {
+      const key = memoryIdentityKey({ auroraUid, userId });
+      const rows = Array.isArray(recentLogs.get(key)) ? recentLogs.get(key).slice() : [];
+      const incoming = log && typeof log === 'object' ? cloneValue(log) : {};
+      const index = rows.findIndex((row) => String(row && row.date || '') === String(incoming.date || ''));
+      const now = new Date().toISOString();
+      const saved = {
+        ...(index >= 0 ? rows[index] : {}),
+        ...incoming,
+        id: index >= 0 ? rows[index].id : String(nextLogId++),
+        aurora_uid: String(auroraUid || '').trim() || null,
+        routine_id: incoming.routine_id || null,
+        targetProduct: incoming.targetProduct || incoming.target_product || null,
+        sensation: incoming.sensation || null,
+        created_at: index >= 0 ? rows[index].created_at : now,
+        updated_at: now,
+      };
+      if (index >= 0) rows[index] = saved;
+      else rows.unshift(saved);
+      recentLogs.set(key, rows);
+      return cloneValue(saved);
+    },
+    async getChatContextForIdentity({ auroraUid, userId }) {
+      return cloneValue(chatContexts.get(memoryIdentityKey({ auroraUid, userId })) || null);
+    },
+    async upsertChatContextForIdentity({ auroraUid, userId }, patch) {
+      const key = memoryIdentityKey({ auroraUid, userId });
+      const prev = chatContexts.get(key) || {};
+      const next = { ...cloneValue(prev), ...(patch && typeof patch === 'object' ? cloneValue(patch) : {}) };
+      chatContexts.set(key, next);
+      return cloneValue(next);
+    },
+  };
+}
+
+function createAppWithPatchedAuroraChat(options = {}) {
+  const normalized =
+    typeof options === 'function'
+      ? { auroraChatImpl: options }
+      : options && typeof options === 'object'
+        ? options
+        : {};
+  const { auroraChatImpl, geminiJsonImpl, openAiJsonImpl, useMemoryStore = true } = normalized;
   const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
   delete require.cache[clientModuleId];
   const clientMod = require(clientModuleId);
   const originalAuroraChat = clientMod.auroraChat;
   if (typeof auroraChatImpl === 'function') clientMod.auroraChat = auroraChatImpl;
 
+  const memoryStoreModuleId = require.resolve('../src/auroraBff/memoryStore');
+  delete require.cache[memoryStoreModuleId];
+  const memoryStoreMod = require(memoryStoreModuleId);
+  const originalMemoryStoreFns = {};
+  if (useMemoryStore) {
+    const patchedMemoryStore = createInMemoryMemoryStore();
+    for (const [key, value] of Object.entries(patchedMemoryStore)) {
+      originalMemoryStoreFns[key] = memoryStoreMod[key];
+      memoryStoreMod[key] = value;
+    }
+  }
+
   const routesModuleId = require.resolve('../src/auroraBff/routes');
   delete require.cache[routesModuleId];
   const routesMod = require(routesModuleId);
+  const internalHooks =
+    routesMod && routesMod.__internal && typeof routesMod.__internal === 'object'
+      ? routesMod.__internal
+      : {};
+  if (typeof geminiJsonImpl === 'function' && typeof internalHooks.__setCallGeminiJsonObjectForTest === 'function') {
+    internalHooks.__setCallGeminiJsonObjectForTest(geminiJsonImpl);
+  }
+  if (typeof openAiJsonImpl === 'function' && typeof internalHooks.__setCallOpenAiJsonObjectForTest === 'function') {
+    internalHooks.__setCallOpenAiJsonObjectForTest(openAiJsonImpl);
+  }
   const app = express();
   app.use(express.json({ limit: '2mb' }));
   routesMod.mountAuroraBffRoutes(app, { logger: null });
@@ -73,8 +173,14 @@ function createAppWithPatchedAuroraChat(auroraChatImpl) {
     routesMod,
     restore() {
       clientMod.auroraChat = originalAuroraChat;
+      if (typeof internalHooks.__resetCallGeminiJsonObjectForTest === 'function') internalHooks.__resetCallGeminiJsonObjectForTest();
+      if (typeof internalHooks.__resetCallOpenAiJsonObjectForTest === 'function') internalHooks.__resetCallOpenAiJsonObjectForTest();
+      for (const [key, value] of Object.entries(originalMemoryStoreFns)) {
+        memoryStoreMod[key] = value;
+      }
       delete require.cache[routesModuleId];
       delete require.cache[clientModuleId];
+      delete require.cache[memoryStoreModuleId];
     },
   };
 }

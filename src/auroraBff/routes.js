@@ -21260,6 +21260,42 @@ const PROGRESS_DELTA_REQUIRED_KEYS = Object.freeze([
 const PROGRESS_ALLOWED_TRENDS = new Set(['improving', 'stable', 'declining', 'mixed']);
 const PROGRESS_ALLOWED_DIRECTIONS = new Set(['improved', 'stable', 'worsened']);
 const PROGRESS_ALLOWED_MAGNITUDES = new Set(['slight', 'moderate', 'significant']);
+const RETURNING_SUMMARY_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    summary_en: { type: 'string' },
+    summary_zh: { type: 'string' },
+  },
+  required: ['summary_en', 'summary_zh'],
+});
+const PROGRESS_DELTA_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    overall_trend: { type: 'string' },
+    concern_deltas: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          concern_id: { type: 'string' },
+          direction: { type: 'string' },
+          magnitude: { type: 'string' },
+          note_en: { type: 'string' },
+          note_zh: { type: 'string' },
+        },
+        required: ['concern_id', 'direction', 'magnitude', 'note_en', 'note_zh'],
+      },
+    },
+    confidence: { type: 'number' },
+    checkins_analyzed: { type: 'number' },
+    improvements: { type: 'array', items: { type: 'string' } },
+    regressions: { type: 'array', items: { type: 'string' } },
+    stable: { type: 'array', items: { type: 'string' } },
+    recommendation_en: { type: 'string' },
+    recommendation_zh: { type: 'string' },
+  },
+  required: PROGRESS_DELTA_REQUIRED_KEYS,
+});
 const RETURNING_PROGRESS_VISUAL_CLAIM_RE =
   /\b(photo|image|picture|visual|visible|visibly|looks?|looks like|appears?|seen|show(?:s|ing)?|complexion|from the photo)\b|照片|图片|看起来|看得出|显示出|从照片/i;
 
@@ -21344,18 +21380,95 @@ function hasReturningDiagnosisBaseline({ baseline, recentLogs } = {}) {
   );
 }
 
-function safeJsonObjectFromUpstream(upstream, requiredKeys = []) {
-  const fromStructured =
-    upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
-      ? upstream.structured
-      : null;
-  if (fromStructured) return fromStructured;
-  const answer = upstream && typeof upstream.answer === 'string' ? upstream.answer : '';
-  const byKeys = extractJsonObjectByKeys(answer, requiredKeys);
-  if (byKeys && typeof byKeys === 'object' && !Array.isArray(byKeys)) return byKeys;
-  const parsed = parseJsonOnlyObject(unwrapCodeFence(answer));
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-  return null;
+function resolveStructuredSummaryProvider(llmProvider) {
+  return normalizeChatLlmProvider(llmProvider) === 'openai' ? 'openai' : 'gemini';
+}
+
+function normalizeStructuredSummaryFailure(result, fallbackReason = 'llm_call_failed') {
+  const row = result && typeof result === 'object' ? result : {};
+  return {
+    failure_reason: String(row.reason || fallbackReason || '').trim() || fallbackReason,
+    failure_detail: row.detail ? String(row.detail).trim() : null,
+    parse_status: row.parse_status ? String(row.parse_status).trim() : null,
+    timeout_stage: row.timeout_stage ? String(row.timeout_stage).trim() : null,
+  };
+}
+
+async function callStructuredSummaryJson({
+  llmProvider,
+  llmModel,
+  systemPrompt,
+  userPrompt,
+  responseSchema,
+  timeoutMs,
+  maxOutputTokens,
+  route,
+} = {}) {
+  const provider = resolveStructuredSummaryProvider(llmProvider);
+  const effectiveModel =
+    String(llmModel || '').trim() ||
+    (provider === 'openai'
+      ? String(ANALYSIS_STORY_MODEL_OPENAI || '').trim() || null
+      : String(AURORA_DIAG_FORCE_GEMINI_MODEL || ANALYSIS_STORY_MODEL_GEMINI || '').trim() || null);
+  if (provider === 'openai') {
+    const result = await callOpenAiJsonObjectImpl({
+      model: effectiveModel,
+      systemPrompt,
+      userPrompt,
+      timeoutMs,
+      maxTokens: maxOutputTokens,
+      temperature: 0,
+    });
+    if (!result || result.ok !== true || !result.json || typeof result.json !== 'object') {
+      return {
+        ok: false,
+        provider,
+        model: effectiveModel,
+        json: null,
+        ...normalizeStructuredSummaryFailure(result, 'openai_json_failed'),
+      };
+    }
+    return {
+      ok: true,
+      provider,
+      model: effectiveModel,
+      json: result.json,
+      parse_status: 'parsed',
+      timeout_stage: null,
+      failure_reason: null,
+      failure_detail: null,
+    };
+  }
+
+  const result = await callGeminiJsonObjectImpl({
+    model: effectiveModel,
+    systemPrompt,
+    userPrompt,
+    timeoutMs,
+    temperature: 0,
+    maxOutputTokens,
+    responseSchema,
+    route,
+  });
+  if (!result || result.ok !== true || !result.json || typeof result.json !== 'object') {
+    return {
+      ok: false,
+      provider,
+      model: effectiveModel,
+      json: null,
+      ...normalizeStructuredSummaryFailure(result, 'gemini_json_failed'),
+    };
+  }
+  return {
+    ok: true,
+    provider,
+    model: effectiveModel,
+    json: result.json,
+    parse_status: result.parse_status ? String(result.parse_status).trim() : 'parsed',
+    timeout_stage: result.timeout_stage ? String(result.timeout_stage).trim() : null,
+    failure_reason: null,
+    failure_detail: null,
+  };
 }
 
 function buildReturningSummaryPrompt({ language, baseline, recentLogs, profileSummary } = {}) {
@@ -21391,24 +21504,67 @@ async function fetchReturningSummaryText({
   llmProvider,
   llmModel,
 } = {}) {
+  const prompt = buildReturningSummaryPrompt({ language, baseline, recentLogs, profileSummary });
   try {
-    const upstream = await auroraChat({
-      baseUrl: AURORA_DECISION_BASE_URL,
-      query: buildReturningSummaryPrompt({ language, baseline, recentLogs, profileSummary }),
+    const result = await callStructuredSummaryJson({
+      llmProvider,
+      llmModel,
+      systemPrompt: 'You are a strict skincare returning-summary generator. Output strict JSON only.',
+      userPrompt: prompt,
+      responseSchema: RETURNING_SUMMARY_JSON_SCHEMA,
       timeoutMs: 9000,
-      retries: 0,
-      ...(llmProvider ? { llm_provider: llmProvider } : {}),
-      ...(llmModel ? { llm_model: llmModel } : {}),
+      maxOutputTokens: 240,
+      route: 'aurora_returning_summary',
     });
-    const parsed = safeJsonObjectFromUpstream(upstream, RETURNING_SUMMARY_REQUIRED_KEYS);
-    if (!parsed) return null;
+    if (!result.ok || !result.json) {
+      return {
+        text: null,
+        llm_used: false,
+        provider: result.provider || resolveStructuredSummaryProvider(llmProvider),
+        model: result.model || String(llmModel || '').trim() || null,
+        failure_reason: result.failure_reason,
+        failure_detail: result.failure_detail,
+        parse_status: result.parse_status,
+        timeout_stage: result.timeout_stage,
+      };
+    }
     const text =
       language === 'CN'
-        ? String(parsed.summary_zh || parsed.summary_en || '').trim()
-        : String(parsed.summary_en || parsed.summary_zh || '').trim();
-    return text ? text.slice(0, 500) : null;
-  } catch (_err) {
-    return null;
+        ? String(result.json.summary_zh || result.json.summary_en || '').trim()
+        : String(result.json.summary_en || result.json.summary_zh || '').trim();
+    if (!text) {
+      return {
+        text: null,
+        llm_used: false,
+        provider: result.provider,
+        model: result.model,
+        failure_reason: 'empty_summary_text',
+        failure_detail: null,
+        parse_status: result.parse_status,
+        timeout_stage: result.timeout_stage,
+      };
+    }
+    return {
+      text: text.slice(0, 500),
+      llm_used: true,
+      provider: result.provider,
+      model: result.model,
+      failure_reason: null,
+      failure_detail: null,
+      parse_status: result.parse_status,
+      timeout_stage: result.timeout_stage,
+    };
+  } catch (err) {
+    return {
+      text: null,
+      llm_used: false,
+      provider: resolveStructuredSummaryProvider(llmProvider),
+      model: String(llmModel || '').trim() || null,
+      failure_reason: err && err.code ? String(err.code) : 'returning_summary_exception',
+      failure_detail: err && err.message ? String(err.message) : null,
+      parse_status: null,
+      timeout_stage: null,
+    };
   }
 }
 
@@ -21565,7 +21721,7 @@ function computeConcernDeltaFromLogs(concernId, recentLogs, language) {
   else if (normalized <= -1) direction = 'worsened';
   const noteEn =
     direction === 'improved'
-      ? `${concernId} looks better across recent check-ins.`
+      ? `${concernId} has improved across recent check-ins.`
       : direction === 'worsened'
         ? `${concernId} has trended worse across recent check-ins.`
         : `${concernId} has stayed broadly stable across recent check-ins.`;
@@ -21608,20 +21764,20 @@ function buildDeterministicProgressSummary({ baseline, recentLogs, language } = 
   const confidence = Math.max(0.28, Math.min(0.82, 0.3 + Math.min(logsCount, 5) * 0.08 + concernDeltas.length * 0.06));
   const recommendationEn =
     overallTrend === 'declining'
-      ? 'Your recent check-ins look less stable. Re-assess now or add a fresh photo before making bigger routine changes.'
+      ? 'Your recent check-ins indicate less stability. Re-assess now and avoid bigger routine changes until the pattern is clearer.'
       : overallTrend === 'improving'
-        ? 'Progress looks positive overall. Keep variables stable, log another check-in, and only change one thing at a time.'
+        ? 'Recent check-ins point to a positive overall trend. Keep variables stable, log another check-in, and only change one thing at a time.'
         : overallTrend === 'mixed'
           ? 'Some areas improved while others stayed flat. Keep logging consistently and reassess if the weaker areas persist.'
-          : 'Progress looks mostly stable. Add another check-in or a fresh photo if you want a stronger before-vs-now read.';
+          : 'Recent check-ins point to a mostly stable pattern. Keep logging consistently and reassess if you want a stronger trend signal.';
   const recommendationZh =
     overallTrend === 'declining'
-      ? '最近几次打卡显示状态不够稳定。建议现在重新评估，或先补一张新照片，再决定是否做更大的 routine 调整。'
+      ? '最近几次打卡提示状态不够稳定。建议现在重新评估，并在趋势更清晰前避免做更大的 routine 调整。'
       : overallTrend === 'improving'
         ? '整体趋势偏正向。先保持变量稳定，继续打卡，并且一次只调整一个因素。'
-        : overallTrend === 'mixed'
+      : overallTrend === 'mixed'
           ? '有些方向在改善，有些方向还比较平。建议继续稳定打卡，如果弱项持续不变，再做一次重新评估。'
-          : '整体趋势较稳定。如果你想看更明确的前后对比，可以补一次打卡或上传一张新照片。';
+          : '最近几次打卡提示整体趋势较稳定。建议继续稳定打卡；如果你想看更清晰的趋势，再做一次重新评估。';
 
   return {
     overall_trend: overallTrend,
@@ -21747,19 +21903,68 @@ async function fetchProgressSummaryFromLlm({
   llmProvider,
   llmModel,
 } = {}) {
+  const hasPhoto = Boolean(baseline && baseline.has_photo);
+  const prompt = buildProgressPrompt({ language, baseline, recentLogs, profileSummary });
   try {
-    const upstream = await auroraChat({
-      baseUrl: AURORA_DECISION_BASE_URL,
-      query: buildProgressPrompt({ language, baseline, recentLogs, profileSummary }),
+    const result = await callStructuredSummaryJson({
+      llmProvider,
+      llmModel,
+      systemPrompt: 'You are a strict skincare progress summarizer. Output strict JSON only.',
+      userPrompt: prompt,
+      responseSchema: PROGRESS_DELTA_JSON_SCHEMA,
       timeoutMs: 10000,
-      retries: 0,
-      ...(llmProvider ? { llm_provider: llmProvider } : {}),
-      ...(llmModel ? { llm_model: llmModel } : {}),
+      maxOutputTokens: 720,
+      route: 'aurora_progress_delta',
     });
-    const parsed = safeJsonObjectFromUpstream(upstream, PROGRESS_DELTA_REQUIRED_KEYS);
-    return normalizeProgressLlmOutput(parsed, { hasPhoto: Boolean(baseline && baseline.has_photo) });
-  } catch (_err) {
-    return null;
+    if (!result.ok || !result.json) {
+      return {
+        progress: null,
+        llm_used: false,
+        provider: result.provider || resolveStructuredSummaryProvider(llmProvider),
+        model: result.model || String(llmModel || '').trim() || null,
+        failure_reason: result.failure_reason,
+        failure_detail: result.failure_detail,
+        parse_status: result.parse_status,
+        timeout_stage: result.timeout_stage,
+      };
+    }
+    const normalized = normalizeProgressLlmOutput(result.json, { hasPhoto });
+    if (!normalized) {
+      return {
+        progress: null,
+        llm_used: false,
+        provider: result.provider,
+        model: result.model,
+        failure_reason:
+          !hasPhoto && containsVisualClaimWithoutPhoto(result.json)
+            ? 'visual_claim_without_photo'
+            : 'invalid_progress_payload',
+        failure_detail: null,
+        parse_status: result.parse_status,
+        timeout_stage: result.timeout_stage,
+      };
+    }
+    return {
+      progress: normalized,
+      llm_used: true,
+      provider: result.provider,
+      model: result.model,
+      failure_reason: null,
+      failure_detail: null,
+      parse_status: result.parse_status,
+      timeout_stage: result.timeout_stage,
+    };
+  } catch (err) {
+    return {
+      progress: null,
+      llm_used: false,
+      provider: resolveStructuredSummaryProvider(llmProvider),
+      model: String(llmModel || '').trim() || null,
+      failure_reason: err && err.code ? String(err.code) : 'progress_summary_exception',
+      failure_detail: err && err.message ? String(err.message) : null,
+      parse_status: null,
+      timeout_stage: null,
+    };
   }
 }
 
@@ -53862,6 +54067,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         !conflictIntentRequested &&
         !looksLikeWeatherOrEnvironmentQuestion(message),
       );
+      const clientInDiagnosisState = String(clientAgentState || '').startsWith('DIAG_');
+      const requestInDiagnosisState =
+        String(ctx.state || '').startsWith('S2_') ||
+        String(ctx.state || '').startsWith('S3_');
+      const enteredDiagnosisFromFreshStart = Boolean(
+        diagnosisEntryRequested &&
+          !reassessRequested &&
+          !clientInDiagnosisState &&
+          !requestInDiagnosisState
+      );
       const anchorCollectionSignal = (() => {
         const text = String(message || '').trim().toLowerCase();
         const aid = String(actionId || '').trim().toLowerCase();
@@ -55397,7 +55612,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           return sendChatEnvelope(envelope);
         }
 
-        const progressFromLlm = await fetchProgressSummaryFromLlm({
+        const progressLlmResult = await fetchProgressSummaryFromLlm({
           baseline: progressBaseline,
           recentLogs,
           profileSummary: profileSummaryForPatch,
@@ -55405,13 +55620,35 @@ function mountAuroraBffRoutes(app, { logger }) {
           llmProvider,
           llmModel,
         });
-        const progressSummary =
-          progressFromLlm ||
+        if (!progressLlmResult.llm_used && progressLlmResult.failure_reason) {
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              provider: progressLlmResult.provider || null,
+              model: progressLlmResult.model || null,
+              reason: progressLlmResult.failure_reason,
+              detail: progressLlmResult.failure_detail || null,
+              parse_status: progressLlmResult.parse_status || null,
+              timeout_stage: progressLlmResult.timeout_stage || null,
+            },
+            'aurora bff: progress summary llm fallback',
+          );
+        }
+        let progressSummary =
+          progressLlmResult.progress ||
           buildDeterministicProgressSummary({
             baseline: progressBaseline,
             recentLogs,
             language: ctx.lang,
           });
+        if (!progressBaseline.has_photo && containsVisualClaimWithoutPhoto(progressSummary)) {
+          progressSummary = buildDeterministicProgressSummary({
+            baseline: progressBaseline,
+            recentLogs,
+            language: ctx.lang,
+          });
+        }
         const diagnosisState = 'progress_viewed';
         const sessionPatch = {
           profile: profileSummaryForPatch,
@@ -55440,10 +55677,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             makeEvent(ctx, 'progress_viewed', {
               diagnosis_state: diagnosisState,
               baseline_available: true,
-              llm_used: Boolean(progressFromLlm),
+              llm_used: Boolean(progressLlmResult.llm_used),
               has_photo: Boolean(progressBaseline.has_photo),
+              failure_reason: progressLlmResult.failure_reason || null,
             }),
-            makeEvent(ctx, 'value_moment', { kind: 'progress_viewed', llm_used: Boolean(progressFromLlm) }),
+            makeEvent(ctx, 'value_moment', {
+              kind: 'progress_viewed',
+              llm_used: Boolean(progressLlmResult.llm_used),
+              failure_reason: progressLlmResult.failure_reason || null,
+            }),
           ],
         });
         return sendChatEnvelope(envelope);
@@ -55475,7 +55717,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
         const profileSummaryForDiagnosis = summarizeChatProfileForContext(profile);
 
-        if (diagnosisEntryRequested && !reassessRequested && !inDiagnosisState) {
+        if (enteredDiagnosisFromFreshStart) {
           const latestArtifactForDiagnosis = await loadLatestDiagnosisArtifactForRoute({
             identity,
             session: parsed.data.session,
@@ -55487,7 +55729,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             artifact: latestArtifactForDiagnosis,
           });
           if (hasReturningDiagnosisBaseline({ baseline: returningBaseline, recentLogs })) {
-            const summaryText = await fetchReturningSummaryText({
+            const summaryResult = await fetchReturningSummaryText({
               baseline: returningBaseline,
               recentLogs,
               profileSummary: profileSummaryForDiagnosis,
@@ -55495,6 +55737,21 @@ function mountAuroraBffRoutes(app, { logger }) {
               llmProvider,
               llmModel,
             });
+            if (!summaryResult.llm_used && summaryResult.failure_reason) {
+              logger?.info(
+                {
+                  request_id: ctx.request_id,
+                  trace_id: ctx.trace_id,
+                  provider: summaryResult.provider || null,
+                  model: summaryResult.model || null,
+                  reason: summaryResult.failure_reason,
+                  detail: summaryResult.failure_detail || null,
+                  parse_status: summaryResult.parse_status || null,
+                  timeout_stage: summaryResult.timeout_stage || null,
+                },
+                'aurora bff: returning summary llm fallback',
+              );
+            }
             const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
             const sessionPatch = nextState
               ? { next_state: nextState, profile: profileSummaryForDiagnosis, recent_logs: recentLogs }
@@ -55512,7 +55769,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 buildReturningTriageCard({
                   ctx,
                   baseline: returningBaseline,
-                  summaryText,
+                  summaryText: summaryResult.text,
                   language: ctx.lang,
                 }),
               ],
@@ -55521,8 +55778,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                 makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'returning_triage' }),
                 makeEvent(ctx, 'value_moment', {
                   kind: 'returning_triage',
-                  has_summary_text: Boolean(summaryText),
+                  has_summary_text: Boolean(summaryResult.text),
                   has_photo: Boolean(returningBaseline.has_photo),
+                  llm_used: Boolean(summaryResult.llm_used),
+                  failure_reason: summaryResult.failure_reason || null,
                 }),
               ],
             });
