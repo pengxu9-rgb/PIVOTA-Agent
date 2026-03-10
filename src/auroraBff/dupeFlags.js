@@ -20,6 +20,8 @@ const dupeFlags = Object.freeze({
   DUPE_KB_ASYNC_BACKFILL_ENABLED: _envBool('AURORA_BFF_DUPE_KB_ASYNC_BACKFILL', true),
 
   AURORA_DUPE_SUGGEST_SANITIZE_V1: _envBool('AURORA_DUPE_SUGGEST_SANITIZE_V1', true),
+
+  AURORA_BFF_USE_EXTRACTED_DUPE_ROUTES: _envBool('AURORA_BFF_USE_EXTRACTED_DUPE_ROUTES', true),
 });
 
 module.exports = { dupeFlags };

@@ -1,7 +1,13 @@
 'use strict';
 
 const { executeDupeSuggest } = require('../usecases/dupeSuggest');
-const { applyDupeCompareQualityGate } = require('../qualityGates/dupeCompareGate');
+const { executeDupeCompare } = require('../usecases/dupeCompare');
+const {
+  buildDupeCompareParsePrompt,
+  buildDupeCompareMainPrompt,
+  buildDupeCompareDeepScanPrompt,
+  mergeCompareProductContext,
+} = require('../dupeCompareContract');
 const { dupeFlags } = require('../dupeFlags');
 
 /**
@@ -36,6 +42,7 @@ function mountDupeRoutes(app, deps) {
     getRecentSkinLogsForIdentity,
     summarizeProfileForContext,
     buildProductInputText,
+    normalizeDupeCompareRequestPayload,
     normalizeDupeCompare,
     mapAuroraAlternativesToDupeCompare,
     mapAuroraProductAnalysis,
@@ -121,7 +128,7 @@ function mountDupeRoutes(app, deps) {
         events: [makeEvent(ctx, result.event_kind || 'value_moment', { kind: 'dupe_suggest', source: result.event_source || 'llm', quality_gated: result.quality_gated })],
       });
       const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
-        ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
+        ? applyDupeSuggestSanitizeToEnvelope(envelope, { lang: ctx.lang }).envelope
         : envelope;
       return res.json(sanitizedEnvelope);
     } catch (err) {
@@ -143,11 +150,7 @@ function mountDupeRoutes(app, deps) {
     profileSummary, recentLogs, logger: _logger,
     parsePrefix, analyzePrefix, comparePrefix,
   }) {
-    const productQuery = (input) => (
-      `${parsePrefix}Task: Parse the user's product input into a normalized product entity.\n` +
-      `Return ONLY a JSON object with keys: product, confidence, missing_info (string[]).\n` +
-      `Input: ${input}`
-    );
+    const productQuery = (input) => buildDupeCompareParsePrompt({ prefix: parsePrefix, input });
 
     const parseOne = async ({ inputText, anchorObj, anchorUrl, side }) => {
       try {
@@ -199,12 +202,11 @@ function mountDupeRoutes(app, deps) {
     const originalText = buildProductInputText(originalAnchor, originalUrl) || originalInput;
     const dupeText = buildProductInputText(dupeAnchor, dupeUrl) || dupeInput;
 
-    const compareQuery =
-      `${comparePrefix}Task: Compare the original product vs the dupe/alternative.\n` +
-      `Return ONLY a JSON object with keys: original, dupe, tradeoffs (string[]), evidence, confidence (0..1), missing_info (string[]).\n` +
-      `Evidence must include science/social_signals/expert_notes.\n` +
-      `Original: ${originalText}\n` +
-      `Dupe: ${dupeText}`;
+    const compareQuery = buildDupeCompareMainPrompt({
+      prefix: comparePrefix,
+      originalText,
+      dupeText,
+    });
 
     let compareUpstream = null;
     try {
@@ -525,8 +527,8 @@ function mountDupeRoutes(app, deps) {
     const norm = normalizeDupeCompare(mapped);
     let payload = norm.payload;
     let field_missing = norm.field_missing;
-    if (!payload.original && originalAnchor) payload = { ...payload, original: originalAnchor };
-    if (!payload.dupe && dupeAnchor) payload = { ...payload, dupe: dupeAnchor };
+    if (originalAnchor) payload = { ...payload, original: mergeCompareProductContext(originalAnchor, payload.original) };
+    if (dupeAnchor) payload = { ...payload, dupe: mergeCompareProductContext(dupeAnchor, payload.dupe) };
 
     const uniqStrings = (arr) => {
       const out = [];
@@ -559,13 +561,12 @@ function mountDupeRoutes(app, deps) {
         const cached = getDupeDeepscanCache(cacheKey);
         if (cached) return cached;
 
-        const buildQuery = (strict = false) => (
-          `${analyzePrefix}Task: Deep-scan this product for a product-level ingredient/benefit/risk snapshot.\n` +
-          `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-          `Evidence must include science/social_signals/expert_notes.\n` +
-          `${strict ? 'If possible, include at least 4 items in evidence.science.key_ingredients; if unavailable, return [] and add missing_info: \"key_ingredients_missing\".\n' : ''}` +
-          `Product: ${bestText}`
-        );
+        const buildQuery = (strict = false) =>
+          buildDupeCompareDeepScanPrompt({
+            prefix: analyzePrefix,
+            productText: bestText,
+            strict,
+          });
 
         const runScan = async (queryText, timeoutMs) =>
           auroraChat({
@@ -1029,48 +1030,41 @@ function mountDupeRoutes(app, deps) {
         return res.status(400).json(envelope);
       }
 
-      const originalInput = buildProductInputText(parsed.data.original, parsed.data.original_url);
-      const dupeInput = buildProductInputText(parsed.data.dupe, parsed.data.dupe_url);
-      if (!originalInput || !dupeInput) {
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage('Invalid request.'),
-          suggested_chips: [],
-          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: 'original and dupe are required' } }],
-          session_patch: {},
-          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
-        });
-        return res.status(400).json(envelope);
-      }
-
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
-      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
-      const profileSummary = summarizeProfileForContext(profile);
+      const compareInput = normalizeDupeCompareRequestPayload(parsed.data);
       const upstreamMeta = { lang: ctx.lang, state: ctx.state || 'idle', trigger_source: ctx.trigger_source };
       const parsePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
       const analyzePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
       const comparePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'dupe_compare', action_id: 'chip.action.dupe_compare' });
 
-      const result = await _executeCompareInner(ctx, {
-        originalInput, dupeInput,
-        originalObj: parsed.data.original || null,
-        dupeObj: parsed.data.dupe || null,
-        originalUrl: parsed.data.original_url || null,
-        dupeUrl: parsed.data.dupe_url || null,
-        profileSummary, recentLogs, logger,
-        parsePrefix, analyzePrefix, comparePrefix,
+      const result = await executeDupeCompare({
+        ctx,
+        input: compareInput,
+        services: {
+          resolveIdentity: () => resolveIdentity(req, ctx),
+          getProfileForIdentity,
+          getRecentSkinLogsForIdentity,
+          summarizeProfileForContext,
+          executeCompareInner: (innerCtx, innerInput) =>
+            _executeCompareInner(innerCtx, {
+              ...innerInput,
+              logger,
+              parsePrefix,
+              analyzePrefix,
+              comparePrefix,
+            }),
+        },
+        logger,
       });
 
-      let { payload, field_missing } = result;
-
-      // P0-C: Apply dupe_compare quality gate
-      const compareGateResult = applyDupeCompareQualityGate(payload, { lang: ctx.lang });
-      const finalComparePayload = compareGateResult.payload;
-      if (compareGateResult.gated) {
-        logger?.info(
-          { event: 'dupe_compare_quality_gate', request_id: ctx.request_id, reason: compareGateResult.reason },
-          'aurora bff: dupe_compare quality gate enforced',
-        );
+      if (!result.ok) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: result.error_code || 'BAD_REQUEST', details: result.error_details } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: result.error_code || 'BAD_REQUEST' })],
+        });
+        return res.status(result.status_code || 400).json(envelope);
       }
 
       const envelope = buildEnvelope(ctx, {
@@ -1080,12 +1074,12 @@ function mountDupeRoutes(app, deps) {
           {
             card_id: `dupe_${ctx.request_id}`,
             type: 'dupe_compare',
-            payload: finalComparePayload,
-            ...(field_missing?.length ? { field_missing: field_missing.slice(0, 8) } : {}),
+            payload: result.payload,
+            ...(result.field_missing?.length ? { field_missing: result.field_missing.slice(0, 8) } : {}),
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_compare', quality_gated: compareGateResult.gated })],
+        events: [makeEvent(ctx, result.event_kind || 'value_moment', { kind: 'dupe_compare', quality_gated: result.quality_gated === true })],
       });
       return res.json(envelope);
     } catch (err) {

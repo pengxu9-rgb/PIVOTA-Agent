@@ -308,4 +308,31 @@ describe('legacy /v1/dupe/compare request compatibility', () => {
     expect(card.payload.error).toBe('BAD_REQUEST');
     expect(card.payload.details).toBe('dupe is required');
   });
+  test('legacy compare route stays compatible after extracted-route switch', async () => {
+    const app = makeApp();
+    const response = await request(app)
+      .post('/v1/dupe/compare')
+      .set(makeHeaders())
+      .send({
+        original: {
+          brand: 'The Ordinary',
+          product_name: 'Niacinamide 10% + Zinc 1%',
+          url: 'https://www.sephora.com/product/the-ordinary-niacinamide-10-zinc-1-P427417',
+        },
+        dupe: {
+          kind: 'dupe',
+          product: {
+            brand: 'MockDupeBrand',
+            product_name: 'Mock Dupe Serum',
+            url: 'https://example.com/mock-dupe-serum',
+          },
+        },
+      })
+      .expect(200);
+
+    const card = getCard(response.body, 'dupe_compare');
+    expect(card).toBeTruthy();
+    expect(card.payload.original).toBeTruthy();
+    expect(card.payload.dupe).toBeTruthy();
+  });
 });

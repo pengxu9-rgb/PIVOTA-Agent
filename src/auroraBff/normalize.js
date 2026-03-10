@@ -1,4 +1,9 @@
 const { normalizeCanonicalScoreBreakdown, normalizeWhyCandidateObject } = require('./recoScoreExplain');
+const {
+  DUPE_COMPARE_TRADEOFF_AXES,
+  DUPE_COMPARE_IMPACTS,
+  DUPE_COMPARE_EVIDENCE_STRENGTHS,
+} = require('./dupeCompareContract');
 
 function uniqueStrings(items) {
   const out = [];
@@ -23,6 +28,184 @@ function asStringArray(value) {
   if (Array.isArray(value)) return uniqueStrings(value);
   if (typeof value === 'string') return uniqueStrings([value]);
   return [];
+}
+
+function asObjectArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => asPlainObject(item)).filter(Boolean);
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const text = typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+const DUPE_COMPARE_TRADEOFF_AXIS_SET = new Set(DUPE_COMPARE_TRADEOFF_AXES);
+const DUPE_COMPARE_IMPACT_SET = new Set(DUPE_COMPARE_IMPACTS);
+const DUPE_COMPARE_EVIDENCE_STRENGTH_SET = new Set(DUPE_COMPARE_EVIDENCE_STRENGTHS);
+const DUPE_COMPARE_EVIDENCE_SUPPORTS = new Set(['original', 'dupe', 'comparison']);
+
+function normalizeDupeCompareEvidenceClaim(raw) {
+  const row = asPlainObject(raw);
+  if (!row) return null;
+
+  const claim_en = firstNonEmptyString(
+    row.claim_en,
+    row.claimEn,
+    row.claim,
+    row.note,
+    row.text,
+    row.summary_en,
+    row.summaryEn,
+  );
+  if (!claim_en) return null;
+
+  const rawStrength = firstNonEmptyString(row.strength, row.evidence_level, row.evidenceLevel).toLowerCase();
+  const strength = DUPE_COMPARE_EVIDENCE_STRENGTH_SET.has(rawStrength) ? rawStrength : 'uncertain';
+  const supports = uniqueStrings(asStringArray(row.supports))
+    .map((item) => item.toLowerCase())
+    .filter((item) => DUPE_COMPARE_EVIDENCE_SUPPORTS.has(item));
+  const uncertainties = uniqueStrings(
+    asStringArray(row.uncertainties || row.missing_info || row.missingInfo || row.caveats),
+  );
+
+  return {
+    claim_en,
+    strength,
+    ...(supports.length ? { supports } : {}),
+    ...(uncertainties.length ? { uncertainties } : {}),
+  };
+}
+
+function normalizeDupeCompareEvidenceClaims(value) {
+  return asObjectArray(value)
+    .map((row) => normalizeDupeCompareEvidenceClaim(row))
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function inferDupeCompareTradeoffAxis(text) {
+  const lower = String(text || '').trim().toLowerCase();
+  if (!lower) return 'unknown';
+  if (/^(texture|texture\/finish|finish)\s*:/.test(lower)) return lower.startsWith('finish') ? 'finish' : 'texture';
+  if (/^(hydration)\s*:/.test(lower)) return 'hydration';
+  if (/^(irritation risk|fragrance risk|risk)\s*:/.test(lower)) return 'irritation_risk';
+  if (/^(hero ingredient shift|key ingredient|actives?)\s*:/.test(lower)) return 'actives';
+  if (/^(price)\s*:/.test(lower)) return 'price';
+  if (/(spf|sunscreen|uv|sun protection)/.test(lower)) return 'spf_role';
+  if (/(fragrance|parfum|scent|essential oil|limonene|linalool|citral)/.test(lower)) return 'fragrance';
+  if (/(irritation|sensitive|stinging|burn|retinoid|acid|aha|bha|pha|exfoliant|risk)/.test(lower)) return 'irritation_risk';
+  if (/(texture|cream|gel|lotion|balm|oil|spread|occlusive|lightweight|richer)/.test(lower)) return 'texture';
+  if (/(finish|matte|dewy|greasy|glow|light feel)/.test(lower)) return 'finish';
+  if (/(hydration|moistur|humectant|barrier|seal|sealing)/.test(lower)) return 'hydration';
+  if (/(price|affordable|\$|usd|expensive|cheaper|cost)/.test(lower)) return 'price';
+  if (/(pump|jar|tube|dropper|packaging|bottle)/.test(lower)) return 'packaging';
+  if (/(niacinamide|vitamin c|tranexamic|azelaic|retinol|retinal|ceramide|peptide|active|ingredient|brightening|hero ingredient)/.test(lower)) return 'actives';
+  if (/(oily|dry|combination|acne|sensitive skin|skin type|suitability|daily use|use case)/.test(lower)) return 'suitability';
+  return 'unknown';
+}
+
+function inferDupeCompareTradeoffImpact(text) {
+  const lower = String(text || '').trim().toLowerCase();
+  if (!lower) return 'uncertain';
+  if (/(higher risk|less suitable|missing|avoid|caution|worse|irritation risk|not ideal)/.test(lower)) return 'worse_for_some';
+  if (/(lighter|more affordable|better for|gentler|more suitable|easier|lighter feel)/.test(lower)) return 'better_for_some';
+  return 'uncertain';
+}
+
+function inferDupeCompareTradeoffAudience(axis, text) {
+  const lower = String(text || '').trim().toLowerCase();
+  if (axis === 'texture' || axis === 'finish') {
+    if (/(oily|shine|greasy)/.test(lower)) return 'matters for oily skin users seeking a lighter finish';
+    if (/(dry|rich|seal|occlusive)/.test(lower)) return 'matters for dry skin users who need more sealing comfort';
+    return 'matters for users who care about feel and finish';
+  }
+  if (axis === 'hydration') return 'matters for users deciding between lighter hydration and richer moisture support';
+  if (axis === 'irritation_risk') return 'matters for sensitive or barrier-impaired users';
+  if (axis === 'fragrance') return 'matters for fragrance-sensitive users';
+  if (axis === 'price') return 'matters for budget-sensitive users';
+  if (axis === 'packaging') return 'matters for users who care about hygiene and portability';
+  if (axis === 'actives') return 'matters for users seeking specific active benefits';
+  if (axis === 'spf_role') return 'matters for users relying on daytime UV protection';
+  if (axis === 'suitability') return 'matters for skin-type and use-case fit';
+  return 'matters for users comparing limited product details';
+}
+
+function normalizeDupeCompareTradeoff(raw) {
+  const row = asPlainObject(raw);
+  if (!row) return null;
+
+  const difference_en = firstNonEmptyString(
+    row.difference_en,
+    row.differenceEn,
+    row.difference,
+    row.summary_en,
+    row.summaryEn,
+    row.claim_en,
+    row.claimEn,
+    row.note,
+    row.text,
+  );
+  if (!difference_en) return null;
+
+  const rawAxis = firstNonEmptyString(row.axis).toLowerCase();
+  const axis = DUPE_COMPARE_TRADEOFF_AXIS_SET.has(rawAxis) ? rawAxis : inferDupeCompareTradeoffAxis(difference_en);
+  const rawImpact = firstNonEmptyString(row.impact).toLowerCase();
+  const impact = DUPE_COMPARE_IMPACT_SET.has(rawImpact) ? rawImpact : inferDupeCompareTradeoffImpact(difference_en);
+  const who_it_matters_for =
+    firstNonEmptyString(row.who_it_matters_for, row.whoItMattersFor, row.audience, row.for_users, row.forUsers)
+    || inferDupeCompareTradeoffAudience(axis, difference_en);
+  const difference_localized = firstNonEmptyString(row.difference_localized, row.differenceLocalized);
+
+  return {
+    axis,
+    difference_en,
+    impact,
+    who_it_matters_for,
+    ...(difference_localized ? { difference_localized } : {}),
+  };
+}
+
+function uniqueDupeCompareTradeoffs(items) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(items) ? items : []) {
+    const row = normalizeDupeCompareTradeoff(item);
+    if (!row) continue;
+    const key = `${row.axis}::${row.difference_en.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+function classifyDupeCompareTradeoffString(text) {
+  const clean = firstNonEmptyString(text);
+  if (!clean) return null;
+  const axis = inferDupeCompareTradeoffAxis(clean);
+  return {
+    axis,
+    difference_en: clean,
+    impact: inferDupeCompareTradeoffImpact(clean),
+    who_it_matters_for: inferDupeCompareTradeoffAudience(axis, clean),
+  };
+}
+
+function formatDupeCompareTradeoff(row) {
+  const tradeoff = normalizeDupeCompareTradeoff(row);
+  if (!tradeoff) return '';
+  const difference = firstNonEmptyString(tradeoff.difference_localized, tradeoff.difference_en);
+  if (!difference) return '';
+  if (/^[^:]{1,28}:\s/.test(difference)) return difference;
+  const axisLabel = tradeoff.axis === 'unknown' ? '' : tradeoff.axis.replace(/_/g, ' ');
+  const who = firstNonEmptyString(tradeoff.who_it_matters_for);
+  if (!axisLabel) return who ? `${difference} (${who})` : difference;
+  const title = axisLabel.charAt(0).toUpperCase() + axisLabel.slice(1);
+  return who ? `${title}: ${difference} (${who})` : `${title}: ${difference}`;
 }
 
 const INGREDIENT_UI_NOISE_TOKENS = new Set([
@@ -647,29 +830,52 @@ function normalizeEvidence(raw) {
   }
 
   const scienceRaw = asPlainObject(ev.science);
-  if (!scienceRaw) field_missing.push({ field: 'evidence.science', reason: 'upstream_missing_or_invalid' });
+  const scienceClaims = normalizeDupeCompareEvidenceClaims(ev.science);
+  if (!scienceRaw && !scienceClaims.length) field_missing.push({ field: 'evidence.science', reason: 'upstream_missing_or_invalid' });
 
   const socialRaw = asPlainObject(ev.social_signals || ev.socialSignals);
-  if (!socialRaw) field_missing.push({ field: 'evidence.social_signals', reason: 'upstream_missing_or_invalid' });
+  const socialClaims = normalizeDupeCompareEvidenceClaims(ev.social_signals || ev.socialSignals);
+  if (!socialRaw && !socialClaims.length) field_missing.push({ field: 'evidence.social_signals', reason: 'upstream_missing_or_invalid' });
 
   const expertNotesRaw = ev.expert_notes ?? ev.expertNotes;
-  const expert_notes = asStringArray(expertNotesRaw);
+  const expertClaimObjects = normalizeDupeCompareEvidenceClaims(expertNotesRaw);
+  const expert_notes = uniqueStrings([
+    ...asStringArray(expertNotesRaw),
+    ...expertClaimObjects.map((item) => item.claim_en),
+  ]);
   if (!expert_notes.length) field_missing.push({ field: 'evidence.expert_notes', reason: 'upstream_missing_or_empty' });
 
   const science = {
     key_ingredients: readScienceKeyIngredients(scienceRaw),
-    mechanisms: asStringArray(scienceRaw?.mechanisms),
-    fit_notes: asStringArray(scienceRaw?.fit_notes ?? scienceRaw?.fitNotes),
-    risk_notes: asStringArray(scienceRaw?.risk_notes ?? scienceRaw?.riskNotes),
+    mechanisms: uniqueStrings([
+      ...asStringArray(scienceRaw?.mechanisms),
+      ...scienceClaims.map((item) => item.claim_en),
+    ]),
+    fit_notes: uniqueStrings([
+      ...asStringArray(scienceRaw?.fit_notes ?? scienceRaw?.fitNotes),
+      ...scienceClaims
+        .filter((item) => Array.isArray(item.supports) && item.supports.some((token) => token === 'original' || token === 'dupe'))
+        .map((item) => item.claim_en),
+    ]),
+    risk_notes: uniqueStrings([
+      ...asStringArray(scienceRaw?.risk_notes ?? scienceRaw?.riskNotes),
+      ...scienceClaims.flatMap((item) => asStringArray(item.uncertainties)),
+    ]),
   };
 
   const social_signals = {
     ...(asRecordOfNumbers(socialRaw?.platform_scores ?? socialRaw?.platformScores)
       ? { platform_scores: asRecordOfNumbers(socialRaw?.platform_scores ?? socialRaw?.platformScores) }
       : {}),
-    typical_positive: asStringArray(socialRaw?.typical_positive ?? socialRaw?.typicalPositive),
+    typical_positive: uniqueStrings([
+      ...asStringArray(socialRaw?.typical_positive ?? socialRaw?.typicalPositive),
+      ...socialClaims.map((item) => item.claim_en),
+    ]),
     typical_negative: asStringArray(socialRaw?.typical_negative ?? socialRaw?.typicalNegative),
-    risk_for_groups: asStringArray(socialRaw?.risk_for_groups ?? socialRaw?.riskForGroups),
+    risk_for_groups: uniqueStrings([
+      ...asStringArray(socialRaw?.risk_for_groups ?? socialRaw?.riskForGroups),
+      ...socialClaims.flatMap((item) => asStringArray(item.uncertainties)),
+    ]),
   };
 
   const sources = [];
@@ -694,6 +900,11 @@ function normalizeEvidence(raw) {
 
   const missing_info = uniqueStrings(asStringArray(ev.missing_info ?? ev.missingInfo));
   const confidence = asNumberOrNull(ev.confidence);
+  const structuredClaims = {
+    ...(scienceClaims.length ? { science: scienceClaims } : {}),
+    ...(socialClaims.length ? { social_signals: socialClaims } : {}),
+    ...(expertClaimObjects.length ? { expert_notes: expertClaimObjects } : {}),
+  };
 
   return {
     evidence: {
@@ -702,6 +913,7 @@ function normalizeEvidence(raw) {
       expert_notes,
       confidence,
       missing_info,
+      ...(Object.keys(structuredClaims).length ? { structured_claims: structuredClaims } : {}),
       ...(sources.length ? { sources } : {}),
     },
     field_missing,
@@ -2771,13 +2983,43 @@ function normalizeDupeCompare(raw) {
   const dupe = unwrapProductLike(o.dupe || o.dupe_product || o.dupeProduct)
     || _stubObj('upstream_missing');
 
-  const similarityRaw = asNumberOrNull(o.similarity ?? o.similarity_score ?? o.similarityScore);
+  const similarityRaw = asNumberOrNull(
+    o.similarity
+      ?? o.similarity_score
+      ?? o.similarityScore
+      ?? o.dupe?.similarity_score
+      ?? o.dupe?.similarityScore,
+  );
   const similarity = similarityRaw == null ? null : similarityRaw > 1 ? similarityRaw : similarityRaw * 100;
 
-  const tradeoffs = asStringArray(o.tradeoffs);
+  const tradeoffsRaw = Array.isArray(o.tradeoffs) ? o.tradeoffs : [];
+  const tradeoffsDetailRaw = asPlainObject(o.tradeoffs_detail || o.tradeoffsDetail) || null;
+  const tradeoffStrings = Array.isArray(o.tradeoffs)
+    ? asStringArray(tradeoffsRaw.filter((item) => typeof item === 'string'))
+    : asStringArray(o.tradeoffs);
+  const primaryTradeoff = normalizeDupeCompareTradeoff(tradeoffsDetailRaw?.primary_tradeoff || tradeoffsDetailRaw?.primaryTradeoff || null);
+  const tradeoffObjects = uniqueDupeCompareTradeoffs([
+    ...(primaryTradeoff ? [primaryTradeoff] : []),
+    ...uniqueDupeCompareTradeoffs(tradeoffsRaw),
+    ...uniqueDupeCompareTradeoffs(
+      tradeoffsDetailRaw?.structured_tradeoffs
+      || tradeoffsDetailRaw?.structuredTradeoffs,
+    ),
+    ...tradeoffStrings
+      .map((item) => classifyDupeCompareTradeoffString(item))
+      .filter(Boolean),
+  ]);
+  const tradeoffs = tradeoffStrings.length
+    ? tradeoffStrings
+    : uniqueStrings(tradeoffObjects.map((item) => formatDupeCompareTradeoff(item)).filter(Boolean));
   if (!tradeoffs.length) field_missing.push({ field: 'tradeoffs', reason: 'upstream_missing_or_empty' });
 
-  const tradeoffsDetail = asPlainObject(o.tradeoffs_detail || o.tradeoffsDetail) || null;
+  const tradeoffsDetail = (tradeoffsDetailRaw || tradeoffObjects.length)
+    ? {
+        ...(tradeoffsDetailRaw || {}),
+        ...(tradeoffObjects.length ? { structured_tradeoffs: tradeoffObjects } : {}),
+      }
+    : null;
 
   const evOut = normalizeEvidence(o.evidence);
   field_missing.push(...evOut.field_missing);

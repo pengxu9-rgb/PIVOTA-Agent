@@ -196,6 +196,14 @@ const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
+const { mountDupeRoutes } = require('./routes/dupeRoutes');
+const { dupeFlags } = require('./dupeFlags');
+const {
+  buildDupeCompareParsePrompt,
+  buildDupeCompareMainPrompt,
+  buildDupeCompareDeepScanPrompt,
+  mergeCompareProductContext,
+} = require('./dupeCompareContract');
 
 function resolveSkinDeepeningPromptVersion(promptVersion) {
   const token = String(promptVersion || '').trim().toLowerCase();
@@ -798,6 +806,7 @@ const AURORA_DUPE_SUGGEST_SANITIZE_V1 = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_BFF_USE_EXTRACTED_DUPE_ROUTES = dupeFlags.AURORA_BFF_USE_EXTRACTED_DUPE_ROUTES === true;
 const AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES = (() => {
   const n = Number(process.env.AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES || 4);
   const v = Number.isFinite(n) ? Math.trunc(n) : 4;
@@ -45153,6 +45162,46 @@ function mountAuroraBffRoutes(app, { logger }) {
     }
   });
 
+  if (AURORA_BFF_USE_EXTRACTED_DUPE_ROUTES) {
+    mountDupeRoutes(app, {
+      logger,
+      buildRequestContext,
+      requireAuroraUid,
+      DupeSuggestRequestSchema,
+      DupeCompareRequestSchema,
+      buildEnvelope,
+      makeAssistantMessage,
+      makeEvent,
+      applyDupeSuggestSanitizeToEnvelope,
+      getDupeKbEntry,
+      upsertDupeKbEntry,
+      normalizeDupeKbKey,
+      searchPivotaBackendProducts,
+      buildRecoAlternativesCandidatePool,
+      fetchRecoAlternativesForProduct,
+      auroraChat,
+      buildContextPrefix,
+      getUpstreamStructuredOrJson,
+      extractJsonObjectByKeys,
+      resolveIdentity,
+      getProfileForIdentity,
+      getRecentSkinLogsForIdentity,
+      summarizeProfileForContext,
+      buildProductInputText,
+      normalizeDupeCompareRequestPayload,
+      normalizeDupeCompare,
+      mapAuroraAlternativesToDupeCompare,
+      mapAuroraProductAnalysis,
+      normalizeProductAnalysis,
+      enrichProductAnalysisPayload,
+      extractAnchorIdFromProductLike,
+      mergeFieldMissing,
+      getDupeDeepscanCache,
+      setDupeDeepscanCache,
+    });
+  }
+
+  if (!AURORA_BFF_USE_EXTRACTED_DUPE_ROUTES) {
   app.post('/v1/dupe/suggest', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
@@ -45461,11 +45510,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const productQuery = (input) => (
-        `${parsePrefix}Task: Parse the user's product input into a normalized product entity.\n` +
-        `Return ONLY a JSON object with keys: product, confidence, missing_info (string[]).\n` +
-        `Input: ${input}`
-      );
+      const productQuery = (input) => buildDupeCompareParsePrompt({ prefix: parsePrefix, input });
 
       const parseOne = async ({ inputText, anchorObj, anchorUrl }) => {
         try {
@@ -45503,12 +45548,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       const originalText = buildProductInputText(originalAnchor, compareInput.original_url) || originalInput;
       const dupeText = buildProductInputText(dupeAnchor, compareInput.dupe_url) || dupeInput;
 
-      const compareQuery =
-        `${comparePrefix}Task: Compare the original product vs the dupe/alternative.\n` +
-        `Return ONLY a JSON object with keys: original, dupe, tradeoffs (string[]), evidence, confidence (0..1), missing_info (string[]).\n` +
-        `Evidence must include science/social_signals/expert_notes.\n` +
-        `Original: ${originalText}\n` +
-        `Dupe: ${dupeText}`;
+      const compareQuery = buildDupeCompareMainPrompt({
+        prefix: comparePrefix,
+        originalText,
+        dupeText,
+      });
 
       let compareUpstream = null;
       try {
@@ -45815,26 +45859,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const norm = normalizeDupeCompare(mapped);
       let payload = norm.payload;
       let field_missing = norm.field_missing;
-      const payloadOriginalText = buildProductInputText(payload.original);
-      const payloadDupeText = buildProductInputText(payload.dupe);
-      const requestedOriginalText = buildProductInputText(originalAnchor, compareInput.original_url);
-      const requestedDupeText = buildProductInputText(dupeAnchor, compareInput.dupe_url);
-      if ((!payload.original || payload.original._stub) && originalAnchor) payload = { ...payload, original: originalAnchor };
-      if (
-        dupeAnchor && (
-          !payload.dupe ||
-          payload.dupe._stub ||
-          !payloadDupeText ||
-          (requestedDupeText
-            && requestedOriginalText
-            && payloadDupeText
-            && payloadOriginalText
-            && requestedDupeText.toLowerCase() !== requestedOriginalText.toLowerCase()
-            && payloadDupeText.toLowerCase() === payloadOriginalText.toLowerCase())
-        )
-      ) {
-        payload = { ...payload, dupe: dupeAnchor };
-      }
+      if (originalAnchor) payload = { ...payload, original: mergeCompareProductContext(originalAnchor, payload.original) };
+      if (dupeAnchor) payload = { ...payload, dupe: mergeCompareProductContext(dupeAnchor, payload.dupe) };
 
       const uniqStrings = (arr) => {
         const out = [];
@@ -45867,13 +45893,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           const cached = getDupeDeepscanCache(cacheKey);
           if (cached) return cached;
 
-          const buildQuery = (strict = false) => (
-            `${analyzePrefix}Task: Deep-scan this product for a product-level ingredient/benefit/risk snapshot.\n` +
-            `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-            `Evidence must include science/social_signals/expert_notes.\n` +
-            `${strict ? 'If possible, include at least 4 items in evidence.science.key_ingredients; if unavailable, return [] and add missing_info: \"key_ingredients_missing\".\n' : ''}` +
-            `Product: ${bestText}`
-          );
+          const buildQuery = (strict = false) =>
+            buildDupeCompareDeepScanPrompt({
+              prefix: analyzePrefix,
+              productText: bestText,
+              strict,
+            });
 
           const runScan = async (queryText, timeoutMs) =>
             auroraChat({
@@ -46318,6 +46343,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       return res.status(status).json(envelope);
     }
   });
+
+  }
 
   app.post('/v1/reco/generate', async (req, res) => {
     const ctx = buildRequestContext(req, {});
