@@ -14,6 +14,7 @@ const DupeCompareSkill = require('../skills/dupe_compare');
 const TravelApplyModeSkill = require('../skills/travel_apply_mode');
 const ExploreAddToRoutineSkill = require('../skills/explore_add_to_routine');
 const QualityGateEngine = require('./quality_gate_engine');
+const { extractRecoTargetStepFromText, normalizeRecoTargetStep } = require('../recoTargetStep');
 
 const SKILL_MAP = Object.freeze({
   'diagnosis_v2.start': DiagnosisStartSkill,
@@ -94,6 +95,17 @@ function extractUserMessage(request) {
     request?.params?.text ||
     null
   );
+}
+
+function deriveTargetStep(request, classification) {
+  const explicit = normalizeRecoTargetStep(
+    request?.params?.target_step
+    || classification?.entities?.target_step,
+  );
+  if (explicit) return explicit;
+
+  const userMessage = extractUserMessage(request);
+  return extractRecoTargetStepFromText(userMessage);
 }
 
 class SkillRouter {
@@ -250,6 +262,12 @@ class SkillRouter {
     }
     if (!request.params._extracted_concerns && Array.isArray(entities.concerns) && entities.concerns.length > 0) {
       request.params._extracted_concerns = entities.concerns.slice(0, 3);
+    }
+    if (!request.params.target_step) {
+      const targetStep = deriveTargetStep(request, classification);
+      if (targetStep) {
+        request.params.target_step = targetStep;
+      }
     }
   }
 
@@ -446,4 +464,10 @@ class SkillRouter {
   }
 }
 
-module.exports = { SkillRouter, resolveSkillId };
+module.exports = {
+  SkillRouter,
+  resolveSkillId,
+  __internal: {
+    deriveTargetStep,
+  },
+};

@@ -191,49 +191,112 @@ test('/v1/chat delegates v2-compatible message+context bodies when skill_router_
 test('/v1/chat turns current frontend reco freeform payload with camelCase profile into non-empty reco output', async () => {
   await withEnv(
     {
-      AURORA_BFF_USE_MOCK: 'true',
-      AURORA_CHAT_V2_STUB_RESPONSES: '1',
       AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
     },
     async () => {
       const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      const routesModule = require('../src/auroraBff/routes');
+      const originalGenerate = routesModule.__internal.generateProductRecommendations;
+      routesModule.__internal.generateProductRecommendations = async () => ({
+        norm: {
+          payload: {
+            recommendations: [
+              {
+                product_id: 'prod_mask_1',
+                merchant_id: 'merchant_mask_1',
+                brand: 'Winona',
+                name: 'Hydrating Repair Mask',
+                reasons: ['Supports hydration and barrier comfort.'],
+              },
+            ],
+            grounding_status: 'grounded',
+            grounded_count: 1,
+            ungrounded_count: 0,
+            recommendation_meta: {
+              source_mode: 'catalog_grounded',
+              catalog_query_count: 3,
+            },
+          },
+        },
+      });
       __resetRouterForTests();
-
-      const response = await supertest(createApp())
-        .post('/v1/chat')
-        .set({
-          ...buildHeaders(),
-          'X-Lang': 'CN',
-        })
-        .send({
-          session: {
-            state: 'IDLE_CHAT',
-            profile: {
-              skinType: 'combination',
-              goals: ['hydration', 'brightening'],
-              currentRoutine: {
-                am: {
-                  cleanser: 'Gentle Cleanser',
-                  sunscreen: 'SPF 50',
-                },
-                pm: {
-                  moisturizer: 'Barrier Cream',
+      try {
+        const response = await supertest(createApp())
+          .post('/v1/chat')
+          .set({
+            ...buildHeaders(),
+            'X-Lang': 'CN',
+          })
+          .send({
+            session: {
+              state: 'IDLE_CHAT',
+              profile: {
+                skinType: 'combination',
+                goals: ['hydration', 'brightening'],
+                currentRoutine: {
+                  am: {
+                    cleanser: 'Gentle Cleanser',
+                    sunscreen: 'SPF 50',
+                  },
+                  pm: {
+                    moisturizer: 'Barrier Cream',
+                  },
                 },
               },
             },
-          },
-          message: 'Recommend a facial mask that suits me.',
-          language: 'CN',
-          client_state: { state: 'IDLE_CHAT' },
-          messages: [{ role: 'user', content: 'I want something hydrating.' }],
-        })
-        .expect(200);
+            message: 'Recommend a facial mask that suits me.',
+            language: 'CN',
+            client_state: { state: 'IDLE_CHAT' },
+            messages: [{ role: 'user', content: 'I want something hydrating.' }],
+          })
+          .expect(200);
 
-      assert.ok(Array.isArray(response.body.cards));
-      assert.ok(Array.isArray(response.body.next_actions));
-      assert.equal(response.body.cards.some((card) => card && card.card_type === 'effect_review'), true);
-      assert.equal(response.body.cards.some((card) => card && card.card_type === 'empty_state'), false);
-      assert.equal(Object.prototype.hasOwnProperty.call(response.body, 'assistant_message'), false);
+        assert.ok(Array.isArray(response.body.cards));
+        assert.ok(Array.isArray(response.body.next_actions));
+        assert.equal(response.body.cards.some((card) => card && card.card_type === 'recommendations'), true);
+        assert.equal(response.body.cards.some((card) => card && card.card_type === 'effect_review'), false);
+        assert.equal(response.body.cards.some((card) => card && card.card_type === 'empty_state'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(response.body, 'assistant_message'), false);
+      } finally {
+        routesModule.__internal.generateProductRecommendations = originalGenerate;
+      }
+    },
+  );
+});
+
+test('/v1/chat allows target_step reco requests even without profile and calls catalog bridge', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      const routesModule = require('../src/auroraBff/routes');
+      const originalGenerate = routesModule.__internal.generateProductRecommendations;
+      let generateCalled = false;
+      routesModule.__internal.generateProductRecommendations = async () => {
+        generateCalled = true;
+        return { norm: { payload: { recommendations: [{ product_id: 'p1', name: 'Test Mask' }], recommendation_meta: { source_mode: 'catalog_grounded' } } } };
+      };
+      __resetRouterForTests();
+
+      try {
+        const response = await supertest(createApp())
+          .post('/v1/chat')
+          .set(buildHeaders())
+          .send({
+            message: 'Recommend a facial mask that suits me.',
+            context: { locale: 'en', profile: {} },
+          })
+          .expect(200);
+
+        assert.equal(generateCalled, true);
+        assert.equal(response.body.cards.some((card) => card && card.card_type === 'recommendations'), true);
+      } finally {
+        routesModule.__internal.generateProductRecommendations = originalGenerate;
+      }
     },
   );
 });

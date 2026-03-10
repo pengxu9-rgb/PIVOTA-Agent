@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 const TravelApplyModeSkill = require('../src/auroraBff/skills/travel_apply_mode');
 const IngredientReportSkill = require('../src/auroraBff/skills/ingredient_report');
 const ProductAnalyzeSkill = require('../src/auroraBff/skills/product_analyze');
+const RecoStepBasedSkill = require('../src/auroraBff/skills/reco_step_based');
+const { __internal: skillRouterInternal } = require('../src/auroraBff/orchestrator/skill_router');
+const routesModule = require('../src/auroraBff/routes');
 
 test('travel_apply_mode adds reduce_actives when high-UV travel overlaps with retinoid routine', async () => {
   const skill = new TravelApplyModeSkill();
@@ -170,4 +173,132 @@ test('product_analyze carries product_anchor into add_to_routine next action par
 
   assert.ok(addToRoutine);
   assert.deepEqual(addToRoutine.params?.product_anchor, productAnchor);
+});
+
+test('skill_router derives target_step from a freeform mask request', () => {
+  const targetStep = skillRouterInternal.deriveTargetStep(
+    {
+      params: {
+        user_message: 'Recommend a facial mask that suits me.',
+      },
+    },
+    null,
+  );
+
+  assert.equal(targetStep, 'mask');
+});
+
+test('reco_step_based returns a recommendations card when grounded catalog recommendations exist', async () => {
+  const originalGenerate = routesModule.__internal.generateProductRecommendations;
+  routesModule.__internal.generateProductRecommendations = async () => ({
+    norm: {
+      payload: {
+        recommendations: [
+          {
+            product_id: 'prod_mask_1',
+            merchant_id: 'merchant_mask_1',
+            brand: 'Winona',
+            name: 'Hydrating Repair Mask',
+            reasons: ['Supports barrier comfort and hydration.'],
+          },
+        ],
+        grounding_status: 'grounded',
+        grounded_count: 1,
+        ungrounded_count: 0,
+        recommendation_meta: {
+          source_mode: 'catalog_grounded',
+          catalog_query_count: 3,
+        },
+      },
+    },
+  });
+
+  try {
+    const skill = new RecoStepBasedSkill();
+    const response = await skill.run(
+      {
+        skill_id: 'reco.step_based',
+        context: {
+          profile: { skinType: 'dry', goals: ['hydration'] },
+          recent_logs: [],
+          travel_plan: null,
+          current_routine: null,
+          inventory: [],
+          locale: 'en-US',
+          safety_flags: [],
+        },
+        params: {
+          user_message: 'Recommend a facial mask that suits me.',
+          message: 'Recommend a facial mask that suits me.',
+          text: 'Recommend a facial mask that suits me.',
+          target_step: 'mask',
+          entry_source: 'text',
+        },
+        thread_state: {},
+      },
+      null,
+    );
+
+    const recoCard = response.cards.find((card) => card.card_type === 'recommendations');
+    assert.ok(recoCard);
+    assert.equal(Array.isArray(recoCard.metadata?.recommendations), true);
+    assert.equal(recoCard.metadata?.recommendations?.[0]?.product_id, 'prod_mask_1');
+    assert.equal(recoCard.metadata?.source_mode, 'catalog_grounded');
+    assert.equal(response.cards.some((card) => card.card_type === 'effect_review'), false);
+  } finally {
+    routesModule.__internal.generateProductRecommendations = originalGenerate;
+  }
+});
+
+test('reco_step_based returns text_response when grounded recommendation search yields no candidates', async () => {
+  const originalGenerate = routesModule.__internal.generateProductRecommendations;
+  routesModule.__internal.generateProductRecommendations = async () => ({
+    norm: {
+      payload: {
+        recommendations: [],
+        grounding_status: 'ungrounded',
+        grounded_count: 0,
+        ungrounded_count: 0,
+        recommendation_meta: {
+          source_mode: 'catalog_grounded',
+          catalog_query_count: 4,
+          telemetry_failure_reason: null,
+        },
+      },
+    },
+  });
+
+  try {
+    const skill = new RecoStepBasedSkill();
+    const response = await skill.run(
+      {
+        skill_id: 'reco.step_based',
+        context: {
+          profile: { skinType: 'combination', goals: ['brightening'] },
+          recent_logs: [],
+          travel_plan: null,
+          current_routine: null,
+          inventory: [],
+          locale: 'en-US',
+          safety_flags: [],
+        },
+        params: {
+          user_message: 'Recommend a facial mask that suits me.',
+          message: 'Recommend a facial mask that suits me.',
+          text: 'Recommend a facial mask that suits me.',
+          target_step: 'mask',
+          entry_source: 'text',
+        },
+        thread_state: {},
+      },
+      null,
+    );
+
+    const textCard = response.cards.find((card) => card.card_type === 'text_response');
+    assert.ok(textCard);
+    assert.equal(response.cards.some((card) => card.card_type === 'recommendations'), false);
+    assert.match(String(textCard.sections?.[0]?.text_en || ''), /catalog-grounded mask match/i);
+  } finally {
+    routesModule.__internal.generateProductRecommendations = originalGenerate;
+  }
 });
