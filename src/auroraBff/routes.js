@@ -32712,6 +32712,35 @@ function buildProductInputText(inputObj, url) {
   return null;
 }
 
+function buildDupeSuggestOriginalPayload(inputObj, url, inputText) {
+  const urlText = typeof url === 'string' ? url.trim() : '';
+  const base = unwrapProductLike(inputObj);
+  if (!base) {
+    const text = String(inputText || '').trim();
+    const nameGuess = text || (urlText ? urlText.split('/').filter(Boolean).pop() || '' : '');
+    return {
+      original: {
+        _stub: true,
+        ...(urlText ? { url: urlText } : {}),
+        ...(nameGuess ? { name: nameGuess, name_guess: nameGuess } : {}),
+        anchor_resolution_status: 'failed',
+        anchor_resolution_reason: urlText ? 'url_resolution_failed' : 'no_product_object',
+      },
+      anchor_resolution_status: 'failed',
+    };
+  }
+
+  const name = buildProductInputText(base, null);
+  const original = {
+    ...base,
+    ...(name && !base.name ? { name } : {}),
+    ...(name && !base.display_name && !base.displayName ? { display_name: name } : {}),
+    ...(urlText && !base.url && !base.product_url && !base.productUrl ? { url: urlText } : {}),
+  };
+
+  return { original, anchor_resolution_status: 'confirmed' };
+}
+
 function unwrapProductLike(inputObj) {
   const base = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
   if (!base) return null;
@@ -46165,9 +46194,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       const kbVerified = kbEntry && kbEntry.verified === true;
       const canServeKb = kbEntry && kbVerified && !forceRefresh && !forceValidate;
       if (canServeKb) {
+        const resolvedOriginal = buildDupeSuggestOriginalPayload(kbEntry.original || originalObj, originalUrl, inputText);
         const payload = {
           kb_key: kbKey,
-          original: kbEntry.original || originalObj || null,
+          original: resolvedOriginal.original,
+          anchor_resolution_status: resolvedOriginal.anchor_resolution_status,
           dupes: Array.isArray(kbEntry.dupes) ? kbEntry.dupes : [],
           comparables: Array.isArray(kbEntry.comparables) ? kbEntry.comparables : [],
           verified: true,
@@ -46239,9 +46270,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         kbEntry = await getDupeKbEntry(kbKey);
         const stableVerified = kbEntry && kbEntry.verified === true;
         if (kbEntry && stableVerified && !forceRefresh && !forceValidate) {
+          const resolvedOriginal = buildDupeSuggestOriginalPayload(kbEntry.original || originalObj, originalUrl, inputText);
           const payload = {
             kb_key: kbKey,
-            original: kbEntry.original || originalObj || null,
+            original: resolvedOriginal.original,
+            anchor_resolution_status: resolvedOriginal.anchor_resolution_status,
             dupes: Array.isArray(kbEntry.dupes) ? kbEntry.dupes : [],
             comparables: Array.isArray(kbEntry.comparables) ? kbEntry.comparables : [],
             verified: true,
@@ -46283,10 +46316,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       const comparables = mapped.filter((it) => kindOf(it) !== 'dupe').slice(0, maxComparables);
 
       const verified = dupes.length > 0 || comparables.length > 0;
+      const resolvedOriginal = buildDupeSuggestOriginalPayload(originalObj, originalUrl, inputText);
       if (kbKey) {
         const kbWritePayload = {
           kb_key: kbKey,
-          original: originalObj || null,
+          original: resolvedOriginal.original,
           dupes,
           comparables,
           verified,
@@ -46314,7 +46348,8 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const payload = {
         kb_key: kbKey,
-        original: originalObj || null,
+        original: resolvedOriginal.original,
+        anchor_resolution_status: resolvedOriginal.anchor_resolution_status,
         dupes,
         comparables,
         verified,
@@ -59807,6 +59842,7 @@ const __internal = {
   applyRecommendationOutputGuardrailsForRoute,
   sanitizeDupeSuggestPayload,
   applyDupeSuggestSanitizeToEnvelope,
+  buildDupeSuggestOriginalPayload,
   isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,

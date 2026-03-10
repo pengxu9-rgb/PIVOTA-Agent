@@ -154,6 +154,23 @@ describe('legacy /v1/dupe suggest sanitization', () => {
     );
   });
 
+  test('buildDupeSuggestOriginalPayload enriches legacy product_name payloads with name and url', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const result = __internal.buildDupeSuggestOriginalPayload(
+      {
+        brand: 'The Ordinary',
+        product_name: 'Niacinamide 10% + Zinc 1%',
+      },
+      'https://www.sephora.com/product/the-ordinary-niacinamide-10-zinc-1-P427417',
+      '',
+    );
+
+    expect(result.anchor_resolution_status).toBe('confirmed');
+    expect(result.original.name).toContain('Niacinamide 10% + Zinc 1%');
+    expect(result.original.display_name).toContain('Niacinamide 10% + Zinc 1%');
+    expect(result.original.url).toBe('https://www.sephora.com/product/the-ordinary-niacinamide-10-zinc-1-P427417');
+  });
+
   test('sanitizeDupeSuggestPayload keeps same-brand different-line candidate and auto-adds justification', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const result = __internal.sanitizeDupeSuggestPayload(
