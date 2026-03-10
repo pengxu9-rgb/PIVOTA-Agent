@@ -3,6 +3,9 @@
 const { normalizeProductUrlInput } = require('../services/urlAliasNormalizer');
 const { applyDupeSuggestQualityGate } = require('../qualityGates/dupeSuggestGate');
 const {
+  getCandidateIdentity,
+} = require('../skills/dupe_utils');
+const {
   buildProductInputText,
   extractAnchorIdFromProductLike,
   resolveOriginalForPayload,
@@ -10,6 +13,147 @@ const {
   normalizeCandidatePoolMeta,
   buildDupeSuggestQualityAssessment,
 } = require('../mappers/dupeSuggestMapper');
+
+const DUPE_KB_CONTRACT_VERSION = 2;
+const SYNTHETIC_SUFFIX_PATTERN = /\s*\((budget\s+dupe|similar\s+option|premium\s+option|dupe|alternative|平替|相似|升级)\)\s*$/i;
+
+function asPlainObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value;
+}
+
+function pickFirstString(...values) {
+  for (const raw of values) {
+    if (typeof raw !== 'string') continue;
+    const text = raw.trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function uniqueStrings(values) {
+  if (!Array.isArray(values)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of values) {
+    const text = String(raw || '').trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+function getKbSourceMeta(kbEntry) {
+  return asPlainObject(kbEntry && kbEntry.source_meta) || {};
+}
+
+function getKbContractVersion(kbEntry) {
+  const sourceMeta = getKbSourceMeta(kbEntry);
+  const topLevel = Number(kbEntry && kbEntry.contract_version);
+  const nested = Number(sourceMeta.contract_version);
+  if (Number.isFinite(topLevel)) return Math.max(0, Math.trunc(topLevel));
+  if (Number.isFinite(nested)) return Math.max(0, Math.trunc(nested));
+  return 0;
+}
+
+function hasRequiredKbRecallMeta(sourceMeta) {
+  return Boolean(
+    pickFirstString(sourceMeta.recommendation_mode)
+    && pickFirstString(sourceMeta.profile_mode),
+  );
+}
+
+function itemHasLocalFallbackSeed(item) {
+  const row = asPlainObject(item);
+  if (!row) return false;
+  const missing = [
+    ...(Array.isArray(row.missing_info) ? row.missing_info : []),
+    ...(Array.isArray(row.evidence && row.evidence.missing_info) ? row.evidence.missing_info : []),
+  ];
+  return missing.some((token) => String(token || '').trim().toLowerCase() === 'local_fallback_seed');
+}
+
+function itemHasSyntheticSuffix(item) {
+  const identity = getCandidateIdentity(item);
+  return SYNTHETIC_SUFFIX_PATTERN.test(String(identity.name || '').trim());
+}
+
+function buildKbMetaFromSourceMeta(sourceMetaRaw, candidatePoolMetaRaw) {
+  const sourceMeta = asPlainObject(sourceMetaRaw) || {};
+  const candidatePoolMeta = normalizeCandidatePoolMeta(candidatePoolMetaRaw || sourceMeta.candidate_pool_meta || null);
+  return {
+    served_from_kb: true,
+    validated_now: false,
+    recommendation_mode: pickFirstString(sourceMeta.recommendation_mode) || null,
+    profile_mode: pickFirstString(sourceMeta.profile_mode) || null,
+    profile_context_present: sourceMeta.profile_context_present === true,
+    attempted_queries: Array.isArray(sourceMeta.attempted_queries) ? sourceMeta.attempted_queries.slice(0, 6) : [],
+    source_hit_counts: asPlainObject(sourceMeta.source_hit_counts) || {
+      catalog_search: 0,
+      product_embedded: 0,
+      open_world_fallback: 0,
+    },
+    final_source_mix: Array.isArray(sourceMeta.final_source_mix) ? sourceMeta.final_source_mix.slice(0, 4) : [],
+    final_empty_reason: pickFirstString(sourceMeta.final_empty_reason) || null,
+    pre_filter_candidate_count: Number.isFinite(Number(sourceMeta.pre_filter_candidate_count))
+      ? Math.max(0, Math.trunc(Number(sourceMeta.pre_filter_candidate_count)))
+      : null,
+    post_filter_candidate_count: Number.isFinite(Number(sourceMeta.post_filter_candidate_count))
+      ? Math.max(0, Math.trunc(Number(sourceMeta.post_filter_candidate_count)))
+      : null,
+    candidate_pool_meta: candidatePoolMeta,
+    contract_version: getKbContractVersion({ source_meta: sourceMeta }),
+  };
+}
+
+function evaluateKbCompatibility({ kbEntry, resolvedOriginal, sanitizeDupeSuggestPayload, lang = 'EN' }) {
+  if (!kbEntry || typeof kbEntry !== 'object') {
+    return { canServe: false, reasons: ['kb_missing'], sourceMeta: {}, sanitizedPayload: null };
+  }
+  const sourceMeta = getKbSourceMeta(kbEntry);
+  const reasons = [];
+  const items = [
+    ...(Array.isArray(kbEntry.dupes) ? kbEntry.dupes : []),
+    ...(Array.isArray(kbEntry.comparables) ? kbEntry.comparables : []),
+  ];
+
+  if (getKbContractVersion(kbEntry) < DUPE_KB_CONTRACT_VERSION) reasons.push('kb_contract_stale');
+  if (!hasRequiredKbRecallMeta(sourceMeta)) reasons.push('kb_recall_meta_missing');
+  if (items.some((item) => itemHasLocalFallbackSeed(item))) reasons.push('kb_local_fallback_seed_present');
+  if (items.some((item) => itemHasSyntheticSuffix(item))) reasons.push('kb_synthetic_suffix_candidate_present');
+
+  let sanitizedPayload = null;
+  if (typeof sanitizeDupeSuggestPayload === 'function') {
+    const sanitized = sanitizeDupeSuggestPayload(
+      {
+        original: resolvedOriginal.original,
+        dupes: Array.isArray(kbEntry.dupes) ? kbEntry.dupes : [],
+        comparables: Array.isArray(kbEntry.comparables) ? kbEntry.comparables : [],
+        meta: buildKbMetaFromSourceMeta(sourceMeta, sourceMeta.candidate_pool_meta || null),
+      },
+      { lang },
+    );
+    sanitizedPayload = sanitized && sanitized.payload && typeof sanitized.payload === 'object'
+      ? sanitized.payload
+      : null;
+    const before = items.length;
+    const after = sanitizedPayload
+      ? (Array.isArray(sanitizedPayload.dupes) ? sanitizedPayload.dupes.length : 0)
+        + (Array.isArray(sanitizedPayload.comparables) ? sanitizedPayload.comparables.length : 0)
+      : before;
+    if (before > 0 && after === 0) reasons.push('kb_sanitize_cleared_all_candidates');
+  }
+
+  return {
+    canServe: reasons.length === 0,
+    reasons: uniqueStrings(reasons),
+    sourceMeta,
+    sanitizedPayload,
+  };
+}
 
 function hasMeaningfulProfileSummary(profileSummary) {
   const profile = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
@@ -73,6 +217,9 @@ function buildTerminalEmptyReason({ recommendationMode, profileMode, upstreamNoR
   if (upstreamReason === 'all_candidates_conflict_with_profile' && profileMode === 'personalized') {
     return upstreamReason;
   }
+  if (upstreamReason === 'anchor_insufficient_for_open_world_fallback') {
+    return upstreamReason;
+  }
   if (recommendationMode === 'open_world_only') {
     return 'no_viable_results_after_fallback';
   }
@@ -100,6 +247,7 @@ function buildTerminalEmptyReason({ recommendationMode, profileMode, upstreamNoR
  *   buildContextPrefix(meta) → string
  *   getUpstreamStructuredOrJson(upstream) → object | null
  *   extractJsonObjectByKeys(text, keys) → object | null
+ *   sanitizeDupeSuggestPayload(payload, opts) → { payload, field_missing }
  *
  * flags shape:
  *   AURORA_DECISION_BASE_URL: string
@@ -119,6 +267,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     buildContextPrefix,
     getUpstreamStructuredOrJson,
     extractJsonObjectByKeys,
+    sanitizeDupeSuggestPayload,
   } = services;
 
   function buildDupeSuggestTestSeedCandidates({ inputText, productObj, maxCandidates = 16 } = {}) {
@@ -273,6 +422,8 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
 
   // --- helper: build KB-served response payload --------------------------
   const buildKbPayload = (kbEntry, kbKey, resolvedOriginal) => {
+    const sourceMeta = getKbSourceMeta(kbEntry);
+    const candidatePoolMeta = normalizeCandidatePoolMeta(sourceMeta.candidate_pool_meta || null);
     const dupesKb = Array.isArray(kbEntry.dupes) ? kbEntry.dupes : [];
     const comparablesKb = Array.isArray(kbEntry.comparables) ? kbEntry.comparables : [];
     const hasMeaningfulQualityKb = [...dupesKb, ...comparablesKb].some(
@@ -285,8 +436,9 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
       comparables: comparablesKb,
       verified: verifiedKb,
       hasMeaningfulQuality: hasMeaningfulQualityKb,
-      candidatePoolMeta: null,
+      candidatePoolMeta,
     });
+    const meta = buildKbMetaFromSourceMeta(sourceMeta, candidatePoolMeta);
     return {
       kb_key: kbKey,
       original: resolvedOriginal.original,
@@ -298,20 +450,27 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
       source: kbEntry.source || 'kb',
       quality: qualityAssessmentKb,
       qualityAssessment: qualityAssessmentKb,
-      candidate_pool_meta: null,
-      meta: { served_from_kb: true, validated_now: false, candidate_pool_meta: null },
+      candidate_pool_meta: candidatePoolMeta,
+      ...(pickFirstString(sourceMeta.final_empty_reason) ? { empty_state_reason: pickFirstString(sourceMeta.final_empty_reason) } : {}),
+      meta,
     };
   };
 
   // 1) KB fast-path
   let kbKey = _buildKbKey({ anchor: anchorId, url: originalUrl, text: inputText });
   let kbEntry = kbKey ? await getDupeKbEntry(kbKey) : null;
-  const canServeKb1 = kbEntry && kbEntry.verified === true && !forceRefresh && !forceValidate;
+  const resolvedFromInput = resolveOriginalForPayload(kbEntry && kbEntry.original ? kbEntry.original : originalObj, originalUrl, inputText);
+  const kbCompatibility1 = evaluateKbCompatibility({
+    kbEntry,
+    resolvedOriginal: resolvedFromInput,
+    sanitizeDupeSuggestPayload,
+    lang: ctx.lang,
+  });
+  const canServeKb1 = kbEntry && kbEntry.verified === true && !forceRefresh && !forceValidate && kbCompatibility1.canServe;
   if (canServeKb1) {
-    const resolved = resolveOriginalForPayload(kbEntry.original || originalObj, originalUrl, inputText);
     return {
       ok: true,
-      payload: buildKbPayload(kbEntry, kbKey, resolved),
+      payload: buildKbPayload(kbEntry, kbKey, resolvedFromInput),
       event_kind: 'value_moment',
       event_source: 'kb',
     };
@@ -382,12 +541,18 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
   if (stableKey && stableKey !== kbKey) {
     kbKey = stableKey;
     kbEntry = await getDupeKbEntry(kbKey);
-    const canServeKb2 = kbEntry && kbEntry.verified === true && !forceRefresh && !forceValidate;
+    const resolvedStable = resolveOriginalForPayload(kbEntry && kbEntry.original ? kbEntry.original : originalObj, originalUrl, inputText);
+    const kbCompatibility2 = evaluateKbCompatibility({
+      kbEntry,
+      resolvedOriginal: resolvedStable,
+      sanitizeDupeSuggestPayload,
+      lang: ctx.lang,
+    });
+    const canServeKb2 = kbEntry && kbEntry.verified === true && !forceRefresh && !forceValidate && kbCompatibility2.canServe;
     if (canServeKb2) {
-      const resolved = resolveOriginalForPayload(kbEntry.original || originalObj, originalUrl, inputText);
       return {
         ok: true,
-        payload: buildKbPayload(kbEntry, kbKey, resolved),
+        payload: buildKbPayload(kbEntry, kbKey, resolvedStable),
         event_kind: 'value_moment',
         event_source: 'kb',
       };
@@ -411,26 +576,40 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
 
   // 4) Fetch alternatives from LLM
   const _llmAltsStart = Date.now();
-  const upstreamOut = await fetchRecoAlternativesForProduct({
-    ctx,
-    profileSummary,
-    recentLogs,
-    productInput: inputText,
-    productObj: originalObj,
-    anchorId,
-    maxTotal: total,
-    candidatePool: poolResult.candidates,
-    debug: false,
-    logger,
-    options: {
-      recommendation_mode: recommendationMode,
-      profile_mode: profileMode,
-      context_action_id: 'chip.action.find_dupe',
-      disable_synthetic_local_fallback: recommendationMode !== 'pool_only',
-    },
-  });
+  const modeSequence = Array.from(new Set([
+    recommendationMode,
+    ...(recommendationMode === 'pool_only' ? ['hybrid_fallback'] : []),
+    ...(recommendationMode !== 'open_world_only' ? ['open_world_only'] : []),
+  ]));
+  let finalRecommendationMode = recommendationMode;
+  let upstreamOut = null;
+  let mapped = [];
 
-  const mapped = Array.isArray(upstreamOut.alternatives) ? upstreamOut.alternatives : [];
+  for (const mode of modeSequence) {
+    finalRecommendationMode = mode;
+    upstreamOut = await fetchRecoAlternativesForProduct({
+      ctx,
+      profileSummary,
+      recentLogs,
+      productInput: inputText,
+      productObj: originalObj,
+      anchorId,
+      maxTotal: total,
+      candidatePool: poolResult.candidates,
+      debug: false,
+      logger,
+      options: {
+        recommendation_mode: mode,
+        profile_mode: profileMode,
+        context_action_id: 'chip.action.find_dupe',
+        disable_synthetic_local_fallback: true,
+      },
+    });
+    mapped = Array.isArray(upstreamOut && upstreamOut.alternatives)
+      ? upstreamOut.alternatives.filter((item) => !itemHasLocalFallbackSeed(item) && !itemHasSyntheticSuffix(item))
+      : [];
+    if (mapped.length > 0) break;
+  }
   const kindOf = (it) => String(it && typeof it === 'object' ? it.kind : '').trim().toLowerCase();
   const dupes = mapped.filter((it) => kindOf(it) === 'dupe').slice(0, maxDupes);
   const comparables = mapped.filter((it) => kindOf(it) !== 'dupe').slice(0, maxComparables);
@@ -444,11 +623,11 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
   const terminalEmptyReason = hasResults
     ? null
     : buildTerminalEmptyReason({
-      recommendationMode,
+      recommendationMode: finalRecommendationMode,
       profileMode,
       upstreamNoResultReason: upstreamOut && upstreamOut.no_result_reason,
     });
-  const finalSourceMix = buildFinalSourceMix(finalItems, recommendationMode, poolResult && poolResult.meta);
+  const finalSourceMix = buildFinalSourceMix(finalItems, finalRecommendationMode, poolResult && poolResult.meta);
   const sourceHitCounts = buildSourceHitCounts(poolResult && poolResult.meta, finalItems);
 
   // LLM trace
@@ -460,7 +639,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     event: 'llm_call_trace',
     task_mode: 'dupe_suggest',
     step: 'alternatives',
-    template_id: upstreamOut.template_id || (recommendationMode === 'pool_only' ? 'reco_alternatives_v1_0' : 'reco_alternatives_hybrid_v1'),
+    template_id: upstreamOut.template_id || (finalRecommendationMode === 'pool_only' ? 'reco_alternatives_v1_0' : 'reco_alternatives_hybrid_v1'),
     has_candidates: poolResult.candidates.length > 0,
     candidate_count: poolResult.candidates.length,
     has_anchor: Boolean(anchorId),
@@ -472,7 +651,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     has_meaningful_quality: hasMeaningfulQuality,
     source_mode: upstreamOut.source_mode || null,
     fallback_source: upstreamOut.fallback_source || null,
-    recommendation_mode: recommendationMode,
+    recommendation_mode: finalRecommendationMode,
     profile_mode: profileMode,
   }, 'aurora bff: dupe_suggest alternatives llm trace');
 
@@ -491,9 +670,19 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         generated_at: new Date().toISOString(),
         max_dupes: maxDupes,
         max_comparables: maxComparables,
-        recommendation_mode: recommendationMode,
+        recommendation_mode: finalRecommendationMode,
         profile_mode: profileMode,
+        profile_context_present: profileMode === 'personalized',
+        attempted_queries: Array.isArray(poolResult?.meta?.attempted_queries) ? poolResult.meta.attempted_queries.slice(0, 6) : [],
+        source_hit_counts: sourceHitCounts,
+        final_source_mix: finalSourceMix,
+        final_empty_reason: terminalEmptyReason,
+        pre_filter_candidate_count: Array.isArray(poolResult.candidates) ? poolResult.candidates.length : 0,
+        post_filter_candidate_count: mapped.length,
+        candidate_pool_meta: normalizeCandidatePoolMeta(poolResult && poolResult.meta),
+        contract_version: DUPE_KB_CONTRACT_VERSION,
       },
+      contract_version: DUPE_KB_CONTRACT_VERSION,
     };
     if (DUPE_KB_ASYNC_BACKFILL_ENABLED) {
       upsertDupeKbEntry(kbWritePayload).catch((err) => {
@@ -538,7 +727,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
       force_refresh: forceRefresh,
       force_validate: forceValidate,
       kb_backfill_mode: DUPE_KB_ASYNC_BACKFILL_ENABLED ? 'async' : 'sync',
-      recommendation_mode: recommendationMode,
+      recommendation_mode: finalRecommendationMode,
       profile_mode: profileMode,
       profile_context_present: profileMode === 'personalized',
       attempted_queries: Array.isArray(poolResult?.meta?.attempted_queries) ? poolResult.meta.attempted_queries.slice(0, 6) : [],
@@ -550,7 +739,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
       candidate_pool_meta: candidatePoolMeta,
       llm_trace: {
         task_mode: 'dupe_suggest',
-        template_id: upstreamOut.template_id || (recommendationMode === 'pool_only' ? 'reco_alternatives_v1_0' : 'reco_alternatives_hybrid_v1'),
+        template_id: upstreamOut.template_id || (finalRecommendationMode === 'pool_only' ? 'reco_alternatives_v1_0' : 'reco_alternatives_hybrid_v1'),
         candidate_count: poolResult.candidates.length,
         has_anchor: Boolean(anchorId),
         output_item_count: mapped.length,

@@ -30,6 +30,13 @@ test('normalizeProductName removes spec and marketing words', () => {
   expect(result).toContain('rescue');
 });
 
+test('normalizeProductName strips legacy dupe suffix tokens', () => {
+  const result = normalizeProductName('The Ordinary Niacinamide 10% + Zinc 1% (budget dupe)');
+  expect(result).not.toContain('budget');
+  expect(result).not.toContain('dupe');
+  expect(result).toContain('niacinamide');
+});
+
 test('normalizeUrl strips tracking params and trailing slash', () => {
   const url = 'https://www.labseries.com/product/32020/123634/skincare/?utm_source=google&ref=abc';
   const norm = normalizeUrl(url);
@@ -319,6 +326,26 @@ test('brand missing but URL identical is filtered', () => {
   const { kept, dropped } = filterSelfReferences(candidates, anchor);
   expect(kept).toHaveLength(0);
   expect(dropped[0]._drop_reason).toBe(DROP_REASON.NO_BRAND_SAME_URL);
+});
+
+test('brand missing but anchor+suffix name is filtered as self reference', () => {
+  const anchor = {
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+  };
+  const candidates = [
+    {
+      brand: null,
+      name: 'Niacinamide 10% + Zinc 1% (premium option)',
+      bucket: 'dupe',
+      confidence: 0.7,
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_SAME_NAME);
 });
 
 test('buildAnchorIdentity passes null for missing fields', () => {

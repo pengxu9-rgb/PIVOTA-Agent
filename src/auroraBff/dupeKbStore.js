@@ -109,6 +109,8 @@ function mapRowToEntry(row) {
   if (!row) return null;
   const kbKey = normalizeKey(row.kb_key);
   if (!kbKey) return null;
+  const sourceMeta = row.source_meta && typeof row.source_meta === 'object' ? row.source_meta : coerceJson(row.source_meta);
+  const contractVersion = Number(row.contract_version ?? (sourceMeta && sourceMeta.contract_version));
 
   return {
     kb_key: kbKey,
@@ -119,7 +121,8 @@ function mapRowToEntry(row) {
     verified_at: row.verified_at ? new Date(row.verified_at).toISOString() : null,
     verified_by: row.verified_by ? String(row.verified_by) : null,
     source: row.source ? String(row.source) : null,
-    source_meta: row.source_meta && typeof row.source_meta === 'object' ? row.source_meta : coerceJson(row.source_meta),
+    source_meta: sourceMeta,
+    contract_version: Number.isFinite(contractVersion) ? Math.max(0, Math.trunc(contractVersion)) : null,
     created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
     updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
   };
@@ -236,6 +239,9 @@ async function upsertDupeKbEntry(entry) {
     verified_by: entry.verified_by || null,
     source: entry.source || null,
     source_meta: entry.source_meta || null,
+    contract_version: Number.isFinite(Number(entry.contract_version ?? (entry.source_meta && entry.source_meta.contract_version)))
+      ? Math.max(0, Math.trunc(Number(entry.contract_version ?? entry.source_meta.contract_version)))
+      : null,
   };
 
   touchLru(state.memIndex, kbKey, normalized);
@@ -247,4 +253,3 @@ module.exports = {
   getDupeKbEntry,
   upsertDupeKbEntry,
 };
-

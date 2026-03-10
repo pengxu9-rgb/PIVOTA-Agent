@@ -19,7 +19,8 @@ const SPEC_WORDS = /\b(\d+\s*)(ml|oz|fl\.?\s*oz|g|gram|mg|l|pack|ct|count|refill
 const MARKETING_WORDS = /\b(new|updated|limited|edition|exclusive|special|reformulated|improved|original|classic|travel\s*size|mini|full\s*size|jumbo|value|bonus)\b/gi;
 const TRACKING_PARAMS = /[?&](utm_\w+|ref|entry|source|medium|campaign|gclid|fbclid|affiliate|clickid|irclickid|srsltid|mc_[a-z]+)=[^&]*/gi;
 const URL_PATTERN = /^https?:\/\//i;
-const BUCKET_SUFFIX_PATTERN = /\s*\((budget\s+dupe|similar\s+option|premium\s+option|dupe|alternative)\)\s*$/i;
+const BUCKET_SUFFIX_PATTERN = /\s*\((budget\s+dupe|similar\s+option|premium\s+option|dupe|alternative|平替|相似|升级)\)\s*$/i;
+const BUCKET_SUFFIX_WORDS = /\b(budget\s+dupe|similar\s+option|premium\s+option|dupe|alternative)\b/gi;
 
 const DROP_REASON = {
   SAME_CANONICAL_REF: 'same_canonical_product_ref',
@@ -107,6 +108,9 @@ function normalizeBrand(brand) {
 function normalizeProductName(name) {
   if (!name) return '';
   let norm = String(name).toLowerCase();
+  norm = norm.replace(BUCKET_SUFFIX_PATTERN, ' ');
+  norm = norm.replace(BUCKET_SUFFIX_WORDS, ' ');
+  norm = norm.replace(/(平替|相似|升级)/g, ' ');
   norm = norm.replace(/[^\w\s-]/g, ' ');
   norm = norm.replace(SPEC_WORDS, ' ');
   norm = norm.replace(MARKETING_WORDS, ' ');
@@ -280,6 +284,17 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   if (anchorUrl && candidateUrl && anchorUrl === candidateUrl) {
     if (!candidateBrand) return { isSelfRef: true, reason: DROP_REASON.NO_BRAND_SAME_URL };
     return { isSelfRef: true, reason: DROP_REASON.SAME_NORMALIZED_URL };
+  }
+
+  if (!candidateBrand && anchorName && candidateName && anchorName === candidateName && !candidateUrl && !candidateProductId) {
+    return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_SAME_NAME };
+  }
+
+  if (!candidateBrand && anchorName && candidateName && !candidateUrl && !candidateProductId) {
+    const similarity = nameSimilarity(identity.name || candidateName, anchorRawName);
+    if (similarity >= sameBrandThreshold) {
+      return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_HIGH_SIMILARITY };
+    }
   }
 
   if (anchorBrand && candidateBrand && anchorBrand === candidateBrand) {

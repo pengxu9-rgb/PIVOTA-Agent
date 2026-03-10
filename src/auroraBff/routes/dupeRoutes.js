@@ -37,6 +37,7 @@ function mountDupeRoutes(app, deps) {
     buildContextPrefix,
     getUpstreamStructuredOrJson,
     extractJsonObjectByKeys,
+    sanitizeDupeSuggestPayload,
     resolveIdentity,
     getProfileForIdentity,
     getRecentSkinLogsForIdentity,
@@ -72,6 +73,7 @@ function mountDupeRoutes(app, deps) {
     buildContextPrefix,
     getUpstreamStructuredOrJson,
     extractJsonObjectByKeys,
+    sanitizeDupeSuggestPayload,
   };
   const _dupeSuggestFlags = {
     AURORA_DECISION_BASE_URL,
@@ -549,6 +551,25 @@ function mountDupeRoutes(app, deps) {
       }
       return out;
     };
+    const coerceCompareProduct = (product) => {
+      const row = product && typeof product === 'object' ? { ...product } : product;
+      if (!row || typeof row !== 'object') return row;
+      const brand = typeof row.brand === 'string' ? row.brand.trim() : '';
+      const name = [
+        row.name,
+        row.display_name,
+        row.displayName,
+        row.product_name,
+        row.productName,
+        row.title,
+      ].map((value) => (typeof value === 'string' ? value.trim() : '')).find(Boolean) || '';
+      return {
+        ...row,
+        brand,
+        name,
+        ...(name && !row.display_name ? { display_name: name } : {}),
+      };
+    };
 
     const isMissingTradeoffs = !Array.isArray(payload.tradeoffs) || payload.tradeoffs.length === 0;
     if (isMissingTradeoffs) {
@@ -1004,6 +1025,8 @@ function mountDupeRoutes(app, deps) {
       }
       payload = {
         ...payload,
+        original: coerceCompareProduct(payload.original),
+        dupe: coerceCompareProduct(payload.dupe),
         tradeoffs: [note],
         compare_quality: 'limited',
         limited_reason: 'tradeoffs_detail_missing',
@@ -1013,8 +1036,10 @@ function mountDupeRoutes(app, deps) {
     } else {
       payload = {
         ...payload,
+        original: coerceCompareProduct(payload.original),
+        dupe: coerceCompareProduct(payload.dupe),
         compare_quality: String(payload.compare_quality || '').trim().toLowerCase() === 'limited' ? 'limited' : 'full',
-        ...(payload.limited_reason ? { limited_reason: payload.limited_reason } : {}),
+        limited_reason: typeof payload.limited_reason === 'string' ? payload.limited_reason : '',
       };
     }
 
