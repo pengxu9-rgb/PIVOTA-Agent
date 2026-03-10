@@ -531,15 +531,7 @@ function normalizeAuroraIngredientsFlowStage(stage) {
   if (
     token === 'entry_opened' ||
     token === 'mode_selected' ||
-    token === 'text_query_routed' ||
-    token === 'text_route_drift' ||
     token === 'answer_served' ||
-    token === 'research_requested' ||
-    token === 'research_completed' ||
-    token === 'research_provider_attempt' ||
-    token === 'research_provider_final' ||
-    token === 'kb_hit' ||
-    token === 'kb_miss' ||
     token === 'optin_diagnosis' ||
     token === 'reco_optin' ||
     token === 'unwanted_diagnosis'
@@ -553,12 +545,6 @@ function normalizeAuroraIngredientsFlowOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'hit');
   if (token === 'hit' || token === 'miss') return token;
   return 'hit';
-}
-
-function normalizeAuroraIngredientsFlowProvider(provider) {
-  const token = cleanMetricToken(provider, 'unknown');
-  if (token === 'gemini' || token === 'openai' || token === 'none' || token === 'unknown') return token;
-  return 'unknown';
 }
 
 function normalizeAuroraAnalysisSource(source) {
@@ -1909,23 +1895,19 @@ function recordAuroraSkinFlowMetric({ stage, outcome, hit, delta } = {}) {
   );
 }
 
-function recordAuroraIngredientsFlowMetric({ stage, outcome, hit, delta, provider } = {}) {
+function recordAuroraIngredientsFlowMetric({ stage, outcome, hit, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
   const normalizedOutcome =
     typeof outcome === 'string'
       ? normalizeAuroraIngredientsFlowOutcome(outcome)
       : normalizeAuroraIngredientsFlowOutcome(hit === false ? 'miss' : 'hit');
-  const labels = {
-    stage: normalizeAuroraIngredientsFlowStage(stage),
-    outcome: normalizedOutcome,
-  };
-  if (provider != null && String(provider || '').trim()) {
-    labels.provider = normalizeAuroraIngredientsFlowProvider(provider);
-  }
   incCounter(
     auroraIngredientsFlowCounter,
-    labels,
+    {
+      stage: normalizeAuroraIngredientsFlowStage(stage),
+      outcome: normalizedOutcome,
+    },
     amount,
   );
 }

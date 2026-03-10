@@ -511,6 +511,9 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   if (type === 'confidence_notice') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '置信度提示' : 'Confidence notice' })];
   }
+  if (type === 'error') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '错误' : 'Error' })];
+  }
   if (type === 'env_stress' || type === 'travel') {
     return [buildTravelCard({ card, requestId, index, language })];
   }

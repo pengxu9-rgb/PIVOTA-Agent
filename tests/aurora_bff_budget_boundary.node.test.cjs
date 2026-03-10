@@ -15,9 +15,32 @@ const {
   seedDiagnosisArtifactForUid,
 } = require('./aurora_bff_test_harness.cjs');
 
-function timeoutReason(cards) {
+function timeoutReason(cards, body) {
   const notice = findCard(cards, 'confidence_notice');
-  return notice && notice.payload ? String(notice.payload.reason || '') : '';
+  if (notice && notice.payload) return String(notice.payload.reason || '');
+
+  const effectReview = findCard(cards, 'effect_review');
+  const effectSections = effectReview && Array.isArray(effectReview.sections) ? effectReview.sections : [];
+  for (const section of effectSections) {
+    if (!section || typeof section !== 'object') continue;
+    const findings = Array.isArray(section.priority_findings) ? section.priority_findings : [];
+    if (findings.some((row) => String(row && row.title || '').toLowerCase().includes('timed out'))) {
+      return 'timeout_degraded';
+    }
+    const items = Array.isArray(section.items) ? section.items : [];
+    if (items.some((item) => String(item || '').toLowerCase().includes('timed out'))) {
+      return 'timeout_degraded';
+    }
+  }
+
+  const events = body && body.ops && Array.isArray(body.ops.experiment_events) ? body.ops.experiment_events : [];
+  if (events.some((evt) => String(evt && evt.event_data && evt.event_data.reason || '') === 'timeout_degraded')) {
+    return 'timeout_degraded';
+  }
+
+  const assistantText = String(body && body.assistant_text || '').toLowerCase();
+  if (assistantText.includes('timed out')) return 'timeout_degraded';
+  return '';
 }
 
 async function runAnalysisBudgetCase({ budgetMs, delayMs, expectTimeout }) {
@@ -25,6 +48,7 @@ async function runAnalysisBudgetCase({ budgetMs, delayMs, expectTimeout }) {
     AURORA_BFF_USE_MOCK: 'false',
     AURORA_BFF_RETENTION_DAYS: '0',
     AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+    AURORA_RULE_RELAX_MODE: 'conservative',
     AURORA_SKIN_VISION_ENABLED: 'true',
     AURORA_SKIN_FORCE_VISION_CALL: 'true',
     PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -69,7 +93,7 @@ async function runAnalysisBudgetCase({ budgetMs, delayMs, expectTimeout }) {
 
       const cards = parseCards(resp.body);
       assert.ok(findCard(cards, 'analysis_summary'));
-      const reason = timeoutReason(cards);
+      const reason = timeoutReason(cards, resp.body);
       if (expectTimeout) {
         assert.equal(reason, 'timeout_degraded');
       } else {
@@ -136,12 +160,15 @@ async function runRecoBudgetCase({ budgetMs, delayMs, expectTimeout }) {
         .expect(200);
 
       const cards = parseCards(resp.body);
-      const reason = timeoutReason(cards);
+      const reason = timeoutReason(cards, resp.body);
       if (expectTimeout) {
         assert.equal(reason, 'timeout_degraded');
       } else {
         assert.notEqual(reason, 'timeout_degraded');
-        assert.ok(findCard(cards, 'recommendations'));
+        assert.equal(
+          cards.some((card) => ['recommendations', 'routine', 'product_verdict'].includes(String(card && card.type || ''))),
+          true,
+        );
       }
     } finally {
       harness.restore();

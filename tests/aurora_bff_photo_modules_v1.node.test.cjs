@@ -267,7 +267,7 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   assert.equal(serialized.includes('.png'), false);
 });
 
-test('photo modules card: only emits for used_photos=true and quality pass/degraded', () => {
+test('photo modules card: requires used_photos=true; fail quality is tolerated in aggressive mode', () => {
   const analysis = makeAnalysisFixture();
   const diagnosisInternal = makeDiagnosisInternalFixture();
 
@@ -293,7 +293,13 @@ test('photo modules card: only emits for used_photos=true and quality pass/degra
     ingredientRecEnabled: true,
     productRecEnabled: false,
   });
-  assert.equal(disabledByQuality, null);
+  assert.ok(disabledByQuality && disabledByQuality.card && disabledByQuality.card.payload);
+  assert.equal(Boolean(disabledByQuality.card.payload.low_confidence), true);
+  assert.equal(
+    Array.isArray(disabledByQuality.card.payload.quality_labels) &&
+      disabledByQuality.card.payload.quality_labels.includes('quality_low_confidence'),
+    true,
+  );
 });
 
 test('photo modules card: keeps heatmap evidence when bbox overlaps but heatmap intensity is weak', () => {

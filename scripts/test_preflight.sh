@@ -2,12 +2,7 @@
 set -euo pipefail
 
 PROJECT_DIR_NAME="PIVOTA-Agent-hotfix"
-CI_PROJECT_DIR_NAME="${CI_PROJECT_DIR_NAME:-PIVOTA-Agent}"
 REQUIRED_NODE_MAJOR="20"
-SCAN_TIMEOUT_SECONDS="${TEST_PREFLIGHT_SCAN_TIMEOUT_SECONDS:-15}"
-MAX_SCAN_FILES="${TEST_PREFLIGHT_MAX_SCAN_FILES:-1200}"
-MAX_DALESS_PROBE="${TEST_PREFLIGHT_MAX_DALESS_PROBE:-8}"
-MAX_BLOCKING_DALESS="${TEST_PREFLIGHT_MAX_BLOCKING_DALESS:-5}"
 
 fail() {
   echo "[test:preflight] ERROR: $*" >&2
@@ -47,9 +42,8 @@ if [[ "$cwd" == *"/_deploy_tmp_"* ]]; then
   fail "do not run tests inside _deploy_tmp_ directories: $cwd"
 fi
 
-cwd_base="$(basename "$cwd")"
-if [[ "$cwd_base" != "$PROJECT_DIR_NAME" && "$cwd_base" != "$CI_PROJECT_DIR_NAME" ]]; then
-  fail "run tests from project root '$PROJECT_DIR_NAME' (or CI root '$CI_PROJECT_DIR_NAME'). current: $cwd"
+if [[ "$(basename "$cwd")" != "$PROJECT_DIR_NAME" ]]; then
+  fail "run tests from project root '$PROJECT_DIR_NAME'. current: $cwd"
 fi
 
 if [[ "$cwd" == *"/Desktop/"* && "${ALLOW_DESKTOP_WORKSPACE:-0}" != "1" ]]; then
@@ -85,42 +79,26 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   if ls -lO "$resolved_zod" 2>/dev/null | grep -q "dataless"; then
     probe_readable "$resolved_zod" || fail "resolved zod file is dataless and unreadable: $resolved_zod"
   fi
-  scan_status=0
-  scan_files="$(
-    perl -e 'alarm shift @ARGV; exec @ARGV' "$SCAN_TIMEOUT_SECONDS" \
-      git ls-files -- package.json package-lock.json src tests scripts jest.config.js 2>/dev/null \
-      | awk 'NF && !seen[$0]++'
-  )" || scan_status=$?
-  if [[ "$scan_status" -ne 0 ]]; then
-    fail "git ls-files timed out/failed during dataless scan (status=$scan_status)."
-  fi
+  scan_files="$(git ls-files -- package.json package-lock.json src tests scripts jest.config.js 2>/dev/null || true)"
   blocking_dataless=()
   checked_dataless=0
-  scanned_files=0
+  max_dataless_probe=12
   if [[ -n "$scan_files" ]]; then
     while IFS= read -r file; do
       [[ -z "$file" ]] && continue
-      scanned_files=$((scanned_files + 1))
-      if (( scanned_files > MAX_SCAN_FILES )); then
-        fail "tracked file scan exceeded MAX_SCAN_FILES=$MAX_SCAN_FILES (possible index stall or oversized scope)."
-      fi
       if ls -ldO "$file" 2>/dev/null | grep -q "dataless"; then
-        if (( checked_dataless >= MAX_DALESS_PROBE )); then
+        if (( checked_dataless >= max_dataless_probe )); then
           blocking_dataless+=("$file")
-        else
-          checked_dataless=$((checked_dataless + 1))
-          probe_readable "$file" || blocking_dataless+=("$file")
+          continue
         fi
-        if (( ${#blocking_dataless[@]} >= MAX_BLOCKING_DALESS )); then
-          break
-        fi
+        checked_dataless=$((checked_dataless + 1))
+        probe_readable "$file" || blocking_dataless+=("$file")
       fi
     done <<< "$scan_files"
   fi
   if [[ ${#blocking_dataless[@]} -gt 0 ]]; then
     echo "[test:preflight] ERROR: dataless unreadable files detected; test run aborted." >&2
     printf '%s\n' "${blocking_dataless[@]:0:20}" | sed 's/^/[test:preflight]   /' >&2
-    echo "[test:preflight] scanned_files=$scanned_files checked_dataless=$checked_dataless" >&2
     echo "[test:preflight] Move repo to local path (for example ~/dev), ensure files are fully hydrated, then run npm ci." >&2
     exit 1
   fi
