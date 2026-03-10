@@ -8,7 +8,8 @@ const MAX_SEEDS = 6;
 const SEARCH_LIMIT = 8;
 const RESOLVE_TIMEOUT_MS = 1800;
 const SEARCH_TIMEOUT_MS = 1800;
-const FUZZY_THRESHOLD = 0.6;
+const SHOP_INVOKE_TIMEOUT_MS = 2200;
+const FUZZY_THRESHOLD = 0.45;
 
 const STEP_ALIASES = Object.freeze({
   cleanser: ['cleanser', 'face wash', 'facial wash', 'cleansing gel', 'cleansing foam', '洁面', '洗面奶', '清洁'],
@@ -102,6 +103,147 @@ function normalizeCanonicalProductRef(input, { requireMerchant = true, allowOpaq
     product_id: productId,
     ...(merchantId ? { merchant_id: merchantId } : {}),
   };
+}
+
+function normalizeResolveReasonCode(raw, fallback = 'no_candidates') {
+  const code = String(raw || '').trim().toLowerCase();
+  if (code === 'db_error' || code === 'upstream_timeout' || code === 'no_candidates') return code;
+  return fallback;
+}
+
+function mapResolveFailureCode({ resolveBody, statusCode, error } = {}) {
+  const explicit = normalizeResolveReasonCode(
+    resolveBody?.reason_code || resolveBody?.reasonCode || resolveBody?.metadata?.resolve_reason_code,
+    '',
+  );
+  const reason = String(resolveBody?.reason || '').trim().toLowerCase();
+  const sources = Array.isArray(resolveBody?.metadata?.sources) ? resolveBody.metadata.sources : [];
+  const sourceReasons = sources
+    .map((item) => String(item?.reason || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  if (explicit === 'db_error' || explicit === 'upstream_timeout') return explicit;
+  if (sourceReasons.some((token) => token.startsWith('db_') || token === 'products_cache_missing')) return 'db_error';
+  if (sourceReasons.some((token) => token.includes('timeout') || token.startsWith('upstream_'))) return 'upstream_timeout';
+  if (explicit === 'no_candidates') return explicit;
+  if (reason === 'no_candidates' || reason === 'low_confidence' || reason === 'empty_query') return 'no_candidates';
+  if (reason.startsWith('db_') || reason === 'products_cache_missing') return 'db_error';
+  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
+
+  const status = Number(statusCode || 0);
+  if (status >= 500 || status === 429 || status === 408) return 'upstream_timeout';
+
+  const errText = String(error?.code || error?.message || error || '').trim().toLowerCase();
+  if (errText.includes('timeout') || errText.includes('econnaborted') || errText.includes('etimedout')) return 'upstream_timeout';
+  if (errText.includes('db_') || errText.includes('database') || errText.includes('postgres')) return 'db_error';
+  return 'no_candidates';
+}
+
+function mapOfferResolveFailureCode({ responseBody, statusCode, error } = {}) {
+  const explicit = normalizeResolveReasonCode(
+    responseBody?.reason_code || responseBody?.reasonCode || responseBody?.metadata?.reason_code || responseBody?.metadata?.resolve_reason_code,
+    '',
+  );
+  if (explicit) return explicit;
+
+  const reason = String(
+    responseBody?.reason ||
+    responseBody?.error ||
+    responseBody?.code ||
+    responseBody?.message ||
+    '',
+  )
+    .trim()
+    .toLowerCase();
+  if (reason.startsWith('db_') || reason.includes('database') || reason.includes('postgres')) return 'db_error';
+  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
+  if (reason === 'no_candidates' || reason === 'not_found' || reason === 'not_found_in_cache') return 'no_candidates';
+
+  const status = Number(statusCode || 0);
+  if (status >= 500 || status === 429 || status === 408) return 'upstream_timeout';
+
+  const errText = String(error?.code || error?.message || error || '').trim().toLowerCase();
+  if (errText.includes('timeout') || errText.includes('econnaborted') || errText.includes('etimedout')) return 'upstream_timeout';
+  if (errText.includes('db_') || errText.includes('database') || errText.includes('postgres')) return 'db_error';
+  return 'no_candidates';
+}
+
+function extractCanonicalFromOffersResolveBody(body) {
+  const payload = isPlainObject(body) ? body : null;
+  const mapping = isPlainObject(payload?.mapping) ? payload.mapping : null;
+  let canonicalProductGroupId = pickFirstTrimmed(
+    mapping?.canonical_product_group_id,
+    mapping?.canonicalProductGroupId,
+    mapping?.canonical_product_group?.id,
+    mapping?.canonical_product_group?.product_group_id,
+  );
+
+  const canonicalRefCandidates = [
+    mapping?.canonical_ref,
+    mapping?.canonical_product_ref,
+    payload?.canonical_product_ref,
+  ];
+  let canonicalProductRef = null;
+  for (const candidate of canonicalRefCandidates) {
+    const normalized = normalizeCanonicalProductRef(candidate, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (normalized) {
+      canonicalProductRef = normalized;
+      break;
+    }
+  }
+
+  if (!canonicalProductRef) {
+    const canonicalProduct = isPlainObject(mapping?.canonical_product) ? mapping.canonical_product : null;
+    const fallbackRef = normalizeCanonicalProductRef(
+      {
+        product_id: pickFirstTrimmed(canonicalProduct?.product_id, canonicalProduct?.id),
+        merchant_id: pickFirstTrimmed(
+          canonicalProduct?.merchant_id,
+          canonicalProduct?.merchantId,
+          canonicalProduct?.merchant?.merchant_id,
+        ),
+      },
+      { requireMerchant: true, allowOpaqueProductId: false },
+    );
+    if (fallbackRef) canonicalProductRef = fallbackRef;
+  }
+
+  const pdpTargets = [
+    payload?.pdp_target?.v1,
+    payload?.pdpTarget?.v1,
+    mapping?.pdp_target?.v1,
+    mapping?.pdpTarget?.v1,
+  ].filter((candidate) => isPlainObject(candidate));
+
+  for (const target of pdpTargets) {
+    if (!canonicalProductGroupId) {
+      const fromSubject = pickFirstTrimmed(
+        target?.subject?.product_group_id,
+        target?.subject?.productGroupId,
+        target?.subject?.id,
+        target?.product_group_id,
+        target?.productGroupId,
+      );
+      if (fromSubject) canonicalProductGroupId = fromSubject;
+    }
+    if (!canonicalProductRef) {
+      const fromTargetRef =
+        normalizeCanonicalProductRef(target?.canonical_product_ref, {
+          requireMerchant: true,
+          allowOpaqueProductId: false,
+        }) ||
+        normalizeCanonicalProductRef(target?.product_ref, {
+          requireMerchant: true,
+          allowOpaqueProductId: false,
+        });
+      if (fromTargetRef) canonicalProductRef = fromTargetRef;
+    }
+  }
+
+  return { canonicalProductRef, canonicalProductGroupId };
 }
 
 function tokenize(value) {
@@ -220,44 +362,133 @@ function normalizeSeed(rawSeed, index) {
 
 function normalizeProduct(raw) {
   const base = isPlainObject(raw) ? raw : {};
-  const productId = pickFirstTrimmed(base.product_id, base.productId, base.id);
+  const productId = pickFirstTrimmed(
+    base.product_id,
+    base.productId,
+    base.id,
+    base.product?.product_id,
+    base.product?.productId,
+  );
   const merchantId = pickFirstTrimmed(
     base.merchant_id,
     base.merchantId,
     isPlainObject(base.merchant) ? base.merchant.merchant_id : '',
     isPlainObject(base.merchant) ? base.merchant.id : '',
+    base.product?.merchant_id,
+    base.product?.merchantId,
+    isPlainObject(base.product?.merchant) ? base.product.merchant.merchant_id : '',
   );
-  const brand = pickFirstTrimmed(base.brand, base.brand_name, base.brandName, isPlainObject(base.vendor) ? base.vendor.name : '');
-  const name = pickFirstTrimmed(base.name, base.title, base.display_name, base.displayName);
+  const brand = pickFirstTrimmed(
+    base.brand,
+    base.brand_name,
+    base.brandName,
+    base.vendor,
+    isPlainObject(base.vendor) ? base.vendor.name : '',
+    base.product?.brand,
+    base.product?.brand_name,
+    base.product?.brandName,
+  );
+  const name = pickFirstTrimmed(
+    base.name,
+    base.title,
+    base.display_name,
+    base.displayName,
+    base.product?.name,
+    base.product?.title,
+    base.product?.display_name,
+    base.product?.displayName,
+  );
   const displayName = pickFirstTrimmed(base.display_name, base.displayName, name);
+  const productGroupId = pickFirstTrimmed(
+    base.product_group_id,
+    base.productGroupId,
+    isPlainObject(base.subject) ? base.subject.product_group_id : '',
+    isPlainObject(base.subject) ? base.subject.id : '',
+    base.product?.product_group_id,
+    base.product?.productGroupId,
+  );
   const categoryPath = Array.isArray(base.category_path)
     ? base.category_path.map((value) => String(value || '').trim()).filter(Boolean)
     : [];
-  const category = pickFirstTrimmed(base.category, base.category_name, base.categoryName, base.product_type, base.productType, categoryPath[categoryPath.length - 1]);
-  const imageUrl = pickFirstTrimmed(base.image_url, base.imageUrl, base.thumbnail_url, base.thumbnailUrl);
-  const pdpUrl = pickFirstTrimmed(base.pdp_url, base.pdpUrl, base.url, base.product_url, base.productUrl, base.link);
+  const category = pickFirstTrimmed(
+    base.category,
+    base.category_name,
+    base.categoryName,
+    base.product_type,
+    base.productType,
+    isPlainObject(base.subject) ? base.subject.category : '',
+    base.product?.category,
+    base.product?.product_type,
+    base.product?.productType,
+    categoryPath[categoryPath.length - 1],
+  );
+  const imageUrl = pickFirstTrimmed(
+    base.image_url,
+    base.imageUrl,
+    base.thumbnail_url,
+    base.thumbnailUrl,
+    base.product?.image_url,
+    base.product?.imageUrl,
+    base.product?.thumbnail_url,
+    base.product?.thumbnailUrl,
+  );
+  const pdpUrl = pickFirstTrimmed(
+    base.canonical_pdp_url,
+    base.canonicalPdpUrl,
+    base.pdp_url,
+    base.pdpUrl,
+    base.url,
+    base.product_url,
+    base.productUrl,
+    base.link,
+    base.purchase_path,
+    base.purchasePath,
+    base.product?.canonical_pdp_url,
+    base.product?.canonicalPdpUrl,
+    base.product?.pdp_url,
+    base.product?.pdpUrl,
+    base.product?.url,
+    base.product?.product_url,
+    base.product?.productUrl,
+  );
   const canonicalProductRef = normalizeCanonicalProductRef(
     isPlainObject(base.canonical_product_ref)
       ? base.canonical_product_ref
       : isPlainObject(base.canonicalProductRef)
         ? base.canonicalProductRef
-        : { product_id: productId, merchant_id: merchantId },
+        : isPlainObject(base.product_ref)
+          ? base.product_ref
+          : isPlainObject(base.productRef)
+            ? base.productRef
+            : isPlainObject(base.product?.canonical_product_ref)
+              ? base.product.canonical_product_ref
+              : isPlainObject(base.product?.canonicalProductRef)
+                ? base.product.canonicalProductRef
+                : isPlainObject(base.pdp_open?.product_ref)
+                  ? base.pdp_open.product_ref
+      : { product_id: productId, merchant_id: merchantId },
     { requireMerchant: true, allowOpaqueProductId: false },
   );
-  const tags = uniqCaseInsensitiveStrings(Array.isArray(base.tags) ? base.tags : [], 16);
+  const tags = uniqCaseInsensitiveStrings([
+    ...(Array.isArray(base.tags) ? base.tags : []),
+    ...(Array.isArray(base.skin_type_tags) ? base.skin_type_tags : []),
+    ...(Array.isArray(base.topic_keywords) ? base.topic_keywords : []),
+  ], 16);
   const ingredients = uniqCaseInsensitiveStrings([
     ...(Array.isArray(base.ingredients) ? base.ingredients : []),
     ...(Array.isArray(base.inci_list) ? base.inci_list : []),
     ...(Array.isArray(base.inciList) ? base.inciList : []),
+    ...(Array.isArray(base.ingredient_tokens) ? base.ingredient_tokens : []),
   ], 32);
 
-  if (!name && !displayName && !productId) return null;
+  if (!name && !displayName && !productId && !productGroupId && !canonicalProductRef) return null;
   return {
-    product_id: productId || '',
-    merchant_id: merchantId || '',
+    product_id: productId || canonicalProductRef?.product_id || '',
+    merchant_id: merchantId || canonicalProductRef?.merchant_id || '',
     brand: brand || null,
     name: name || displayName || '',
     display_name: displayName || name || '',
+    ...(productGroupId ? { product_group_id: productGroupId } : {}),
     category: category || null,
     product_type: normalizeProductType(category) || pickFirstTrimmed(base.product_type, base.productType) || null,
     category_path: categoryPath,
@@ -266,7 +497,33 @@ function normalizeProduct(raw) {
     canonical_product_ref: canonicalProductRef,
     tags,
     ingredients,
+    ...(isPlainObject(base.pdp_open) ? { pdp_open: base.pdp_open } : {}),
+    ...(pickFirstTrimmed(base.source, base.source_type, base.sourceType) ? { source: pickFirstTrimmed(base.source, base.source_type, base.sourceType) } : {}),
+    ...(pickFirstTrimmed(base.retrieval_source, base.retrievalSource) ? { retrieval_source: pickFirstTrimmed(base.retrieval_source, base.retrievalSource) } : {}),
+    ...(pickFirstTrimmed(base.retrieval_reason, base.retrievalReason) ? { retrieval_reason: pickFirstTrimmed(base.retrieval_reason, base.retrievalReason) } : {}),
   };
+}
+
+function normalizeConcernTerms(rawValues) {
+  return uniqCaseInsensitiveStrings(
+    (Array.isArray(rawValues) ? rawValues : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .flatMap((value) => value.split(/[|,/;]+/g).map((token) => token.trim()).filter(Boolean)),
+    8,
+  );
+}
+
+function collectSeedSignalTerms(seed, { targetIngredient, concerns = [] } = {}) {
+  return uniqCaseInsensitiveStrings([
+    ...(targetIngredient ? [targetIngredient] : []),
+    ...normalizeConcernTerms(concerns),
+    localizeText(seed?.why, 'EN'),
+    localizeText(seed?.why, 'CN'),
+    seed?.product_type,
+    seed?.name,
+    ...(Array.isArray(seed?.search_aliases) ? seed.search_aliases : []),
+  ], 16);
 }
 
 function productText(product) {
@@ -312,7 +569,22 @@ function ingredientSignalScore(product, targetIngredient) {
   return joined.includes(query) ? 1 : 0;
 }
 
-function scoreFuzzyCandidate({ seed, product, targetStep, targetIngredient }) {
+function concernSignalScore(product, concernTerms = []) {
+  const joined = productText(product).toLowerCase();
+  if (!joined) return 0;
+  const terms = normalizeConcernTerms(concernTerms);
+  if (!terms.length) return 0.15;
+  let best = 0;
+  for (const term of terms) {
+    const normalized = term.toLowerCase();
+    if (!normalized) continue;
+    if (joined.includes(normalized)) return 1;
+    best = Math.max(best, overlapScore(normalized, joined));
+  }
+  return best;
+}
+
+function scoreFuzzyCandidate({ seed, product, targetStep, targetIngredient, concerns = [] }) {
   if (!product || !isSkincareCandidate(product)) return 0;
   const stepScore = stepCompatibilityScore(product, targetStep, seed.product_type);
   if (targetStep && stepScore <= 0) return 0;
@@ -323,8 +595,9 @@ function scoreFuzzyCandidate({ seed, product, targetStep, targetIngredient }) {
     ...seed.search_aliases.map((alias) => overlapScore(alias, joinBrandAndName(product.brand, product.name))),
   );
   const ingredientScore = ingredientSignalScore(product, targetIngredient);
+  const concernScore = concernSignalScore(product, concerns);
   const brandScore = seed.brand && product.brand && String(seed.brand).trim().toLowerCase() === String(product.brand).trim().toLowerCase() ? 1 : 0;
-  const score = (stepScore * 0.45) + (nameScore * 0.35) + (ingredientScore * 0.15) + (brandScore * 0.05);
+  const score = (stepScore * 0.35) + (nameScore * 0.25) + (ingredientScore * 0.2) + (concernScore * 0.15) + (brandScore * 0.05);
   return Math.max(0, Math.min(1, score));
 }
 
@@ -336,11 +609,22 @@ function buildResolveQueries(seed) {
   ], 8);
 }
 
-function buildSearchQueries(seed) {
+function buildSearchQueries(seed, { targetStep, targetIngredient, concerns = [] } = {}) {
+  const desiredStep = normalizeProductType(targetStep) || normalizeProductType(seed.product_type);
+  const stepAliases = desiredStep ? (STEP_ALIASES[desiredStep] || []).slice(0, 4) : [];
+  const concernTerms = normalizeConcernTerms(concerns).slice(0, 3);
+  const signalTerms = collectSeedSignalTerms(seed, { targetIngredient, concerns })
+    .filter((term) => String(term || '').trim().split(/\s+/).length <= 4)
+    .slice(0, 4);
   return uniqCaseInsensitiveStrings([
     seed.name,
     joinBrandAndName(seed.brand, seed.name),
     ...seed.search_aliases,
+    ...signalTerms,
+    ...(seed.brand && desiredStep ? [`${seed.brand} ${desiredStep}`] : []),
+    ...stepAliases,
+    ...(targetIngredient && desiredStep ? [`${targetIngredient} ${desiredStep}`, `${desiredStep} ${targetIngredient}`] : []),
+    ...concernTerms.flatMap((term) => desiredStep ? [`${term} ${desiredStep}`] : [term]),
   ], 8);
 }
 
@@ -348,7 +632,10 @@ async function defaultResolveProduct({ query, lang, hints }) {
   if (!PIVOTA_BACKEND_BASE_URL) {
     return { ok: false, reason: 'pivota_backend_not_configured', transient: false, product: null };
   }
-  const payload = {
+  const hintBrand = pickFirstTrimmed(hints?.brand);
+  const hintTitle = pickFirstTrimmed(hints?.title, hints?.name);
+  const hintDisplayName = joinBrandAndName(hintBrand, hintTitle) || hintTitle || query;
+  const resolvePayload = {
     query,
     lang: String(lang || 'EN').toUpperCase() === 'CN' ? 'zh' : 'en',
     options: {
@@ -362,8 +649,69 @@ async function defaultResolveProduct({ query, lang, hints }) {
     caller: 'aurora_chatbox',
   };
 
+  if (PIVOTA_BACKEND_AGENT_API_KEY) {
+    let offerResp = null;
+    let offerErr = null;
+    try {
+      offerResp = await axios.post(
+        `${PIVOTA_BACKEND_BASE_URL}/agent/shop/v1/invoke`,
+        {
+          operation: 'offers.resolve',
+          payload: {
+            product: {
+              ...(hintBrand ? { brand: hintBrand } : {}),
+              ...(hintTitle ? { name: hintTitle, display_name: hintDisplayName } : {}),
+              ...(query ? { query } : {}),
+            },
+            ...(query ? { query } : {}),
+          },
+        },
+        {
+          headers: buildPivotaHeaders(),
+          timeout: SHOP_INVOKE_TIMEOUT_MS,
+          validateStatus: () => true,
+        },
+      );
+    } catch (error) {
+      offerErr = error;
+    }
+
+    const offerBody = isPlainObject(offerResp?.data) ? offerResp.data : null;
+    const offerStatus = Number.isFinite(Number(offerResp?.status)) ? Math.trunc(Number(offerResp.status)) : 0;
+    if (offerStatus === 200 && String(offerBody?.status || '').trim().toLowerCase() === 'success') {
+      const { canonicalProductRef, canonicalProductGroupId } = extractCanonicalFromOffersResolveBody(offerBody);
+      if (canonicalProductRef || canonicalProductGroupId) {
+        return {
+          ok: true,
+          reason: null,
+          transient: false,
+          product: {
+            ...(canonicalProductRef ? {
+              product_id: canonicalProductRef.product_id,
+              merchant_id: canonicalProductRef.merchant_id,
+              canonical_product_ref: canonicalProductRef,
+            } : {}),
+            ...(canonicalProductGroupId ? { product_group_id: canonicalProductGroupId } : {}),
+            ...(hintBrand ? { brand: hintBrand } : {}),
+            name: hintTitle || query,
+            display_name: hintDisplayName,
+          },
+        };
+      }
+    }
+
+    const offerReason = mapOfferResolveFailureCode({
+      responseBody: offerBody,
+      statusCode: offerStatus,
+      error: offerErr,
+    });
+    if (offerReason === 'upstream_timeout' || offerReason === 'db_error') {
+      return { ok: false, reason: offerReason, transient: true, product: null };
+    }
+  }
+
   try {
-    const resp = await axios.post(`${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/resolve`, payload, {
+    const resp = await axios.post(`${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/resolve`, resolvePayload, {
       headers: buildPivotaHeaders(),
       timeout: RESOLVE_TIMEOUT_MS,
       validateStatus: () => true,
@@ -387,12 +735,13 @@ async function defaultResolveProduct({ query, lang, hints }) {
         },
       };
     }
-    const transient = resp.status === 408 || resp.status === 429 || resp.status === 500 || resp.status === 502 || resp.status === 503 || resp.status === 504;
-    return { ok: false, reason: transient ? 'resolve_transient' : 'resolve_unresolved', transient, product: null };
+    const failureReason = mapResolveFailureCode({ resolveBody: body, statusCode: resp.status });
+    const transient = failureReason === 'upstream_timeout' || failureReason === 'db_error';
+    return { ok: false, reason: failureReason, transient, product: null };
   } catch (error) {
-    const message = String(error?.message || '');
-    const transient = /timeout|econnaborted|network|socket/i.test(message);
-    return { ok: false, reason: transient ? 'resolve_transient' : 'resolve_error', transient, product: null };
+    const failureReason = mapResolveFailureCode({ error });
+    const transient = failureReason === 'upstream_timeout' || failureReason === 'db_error';
+    return { ok: false, reason: failureReason, transient, product: null };
   }
 }
 
@@ -401,7 +750,7 @@ async function defaultSearchProducts({ query }) {
     return { ok: false, reason: 'pivota_backend_not_configured', transient: false, products: [] };
   }
 
-  const paths = ['/agent/v1/products/search', '/agent/v1/beauty/products/search'];
+  const paths = ['/agent/v1/beauty/products/search', '/agent/v1/products/search'];
   for (const path of paths) {
     try {
       const resp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}${path}`, {
@@ -414,7 +763,9 @@ async function defaultSearchProducts({ query }) {
           in_stock_only: false,
           limit: SEARCH_LIMIT,
           offset: 0,
-          source: 'aurora_hybrid',
+          source: 'aurora-bff',
+          allow_external_seed: false,
+          fast_mode: true,
         },
       });
       if (resp.status === 404) continue;
@@ -475,10 +826,31 @@ function buildInternalRow(seed, product, { lang, targetStep, matchState }) {
   const exactLabel = String(matchState || '').toLowerCase() === 'exact'
     ? (lang === 'CN' ? 'Pivota 商品库精确匹配' : 'Exact Pivota catalog match')
     : (lang === 'CN' ? 'Pivota 商品库相似匹配' : 'Similar Pivota catalog match');
+  const canonicalProductRef = normalizeCanonicalProductRef(product.canonical_product_ref || product.product_ref || null, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  const subjectProductGroupId = pickFirstTrimmed(product.product_group_id, product.subject_product_group_id);
+  const pdpOpen = isPlainObject(product.pdp_open)
+    ? product.pdp_open
+    : subjectProductGroupId
+      ? {
+          path: 'group',
+          subject: { type: 'product_group', id: subjectProductGroupId, product_group_id: subjectProductGroupId },
+          get_pdp_v2_payload: { subject: { type: 'product_group', id: subjectProductGroupId } },
+        }
+      : canonicalProductRef
+        ? {
+            path: 'ref',
+            product_ref: canonicalProductRef,
+            get_pdp_v2_payload: { product_ref: canonicalProductRef },
+          }
+        : null;
   return {
     ...(product.product_id ? { product_id: product.product_id } : {}),
     ...(product.merchant_id ? { merchant_id: product.merchant_id } : {}),
-    ...(product.canonical_product_ref ? { canonical_product_ref: product.canonical_product_ref } : {}),
+    ...(subjectProductGroupId ? { subject_product_group_id: subjectProductGroupId, product_group_id: subjectProductGroupId } : {}),
+    ...(canonicalProductRef ? { canonical_product_ref: canonicalProductRef } : {}),
     ...(product.brand ? { brand: product.brand } : {}),
     name: product.name || seed.name,
     display_name: joinBrandAndName(product.brand, product.name || seed.name) || product.display_name || seed.name,
@@ -503,11 +875,14 @@ function buildInternalRow(seed, product, { lang, targetStep, matchState }) {
       llm_seed_id: seed.seed_id,
       source_mode: 'llm_catalog_hybrid',
     },
+    ...(pdpOpen ? { pdp_open: pdpOpen } : {}),
   };
 }
 
 function makeProductKey(product) {
   if (!product) return '';
+  const productGroupId = pickFirstTrimmed(product.product_group_id, product.subject_product_group_id);
+  if (productGroupId) return `group:${productGroupId}`;
   const ref = normalizeCanonicalProductRef(product.canonical_product_ref || product.canonicalProductRef || null, {
     requireMerchant: true,
     allowOpaqueProductId: false,
@@ -561,13 +936,15 @@ async function resolveExactMatch(seed, { lang, resolveProduct, targetStep }) {
   return { product: null, transientFailure: false };
 }
 
-async function resolveFuzzyMatches(seed, { lang, searchProducts, targetStep, targetIngredient }) {
+async function resolveFuzzyMatches(seed, { lang, searchProducts, targetStep, targetIngredient, concerns = [] }) {
   const candidates = [];
   const seen = new Set();
-  for (const query of buildSearchQueries(seed)) {
+  let queryCount = 0;
+  for (const query of buildSearchQueries(seed, { targetStep, targetIngredient, concerns })) {
+    queryCount += 1;
     const result = await searchProducts({ query, lang, limit: SEARCH_LIMIT });
     if (result?.transient) {
-      return { products: [], transientFailure: true };
+      return { products: [], transientFailure: true, queryCount };
     }
     if (!result?.ok) continue;
     for (const raw of Array.isArray(result.products) ? result.products : []) {
@@ -576,7 +953,7 @@ async function resolveFuzzyMatches(seed, { lang, searchProducts, targetStep, tar
       const key = makeProductKey(product);
       if (!key || seen.has(key)) continue;
       seen.add(key);
-      const score = scoreFuzzyCandidate({ seed, product, targetStep, targetIngredient });
+      const score = scoreFuzzyCandidate({ seed, product, targetStep, targetIngredient, concerns });
       if (score < FUZZY_THRESHOLD) continue;
       candidates.push({ product, score });
     }
@@ -585,6 +962,7 @@ async function resolveFuzzyMatches(seed, { lang, searchProducts, targetStep, tar
   return {
     transientFailure: false,
     products: candidates.slice(0, 2).map((item) => item.product),
+    queryCount,
   };
 }
 
@@ -592,6 +970,11 @@ async function runRecoHybridResolveCandidates({ request, candidateOutput, logger
   const lang = normalizeLang(request?.context?.locale);
   const targetStep = String(request?.params?.target_step || '').trim();
   const targetIngredient = String(request?.params?.target_ingredient || '').trim();
+  const concerns = normalizeConcernTerms([
+    ...(Array.isArray(request?.params?._extracted_concerns) ? request.params._extracted_concerns : []),
+    ...(Array.isArray(request?.context?.profile?.concerns) ? request.context.profile.concerns : []),
+    ...(Array.isArray(request?.context?.profile?.goals) ? request.context.profile.goals : []),
+  ]);
   const resolveProduct = typeof deps?.resolveProduct === 'function' ? deps.resolveProduct : defaultResolveProduct;
   const searchProducts = typeof deps?.searchProducts === 'function' ? deps.searchProducts : defaultSearchProducts;
   const rawSeeds = Array.isArray(candidateOutput?.products) ? candidateOutput.products : [];
@@ -606,6 +989,7 @@ async function runRecoHybridResolveCandidates({ request, candidateOutput, logger
   let exactMatchCount = 0;
   let fuzzyMatchCount = 0;
   let unresolvedSeedCount = 0;
+  let queryCount = 0;
 
   for (const seed of seeds) {
     let exact = null;
@@ -639,9 +1023,10 @@ async function runRecoHybridResolveCandidates({ request, candidateOutput, logger
     let fuzzyProducts = [];
     let fuzzyTransientFailure = false;
     try {
-      const fuzzy = await resolveFuzzyMatches(seed, { lang, searchProducts, targetStep, targetIngredient });
+      const fuzzy = await resolveFuzzyMatches(seed, { lang, searchProducts, targetStep, targetIngredient, concerns });
       fuzzyProducts = fuzzy.products;
       fuzzyTransientFailure = fuzzy.transientFailure;
+      queryCount += Number.isFinite(Number(fuzzy.queryCount)) ? Math.trunc(Number(fuzzy.queryCount)) : 0;
     } catch (error) {
       logger?.warn?.({ err: error?.message || String(error), seed: seed.name }, 'aurora reco hybrid fuzzy search failed');
       fuzzyTransientFailure = true;
@@ -679,6 +1064,7 @@ async function runRecoHybridResolveCandidates({ request, candidateOutput, logger
       unresolved_seed_count: unresolvedSeedCount,
       target_step: targetStep || null,
       target_ingredient: targetIngredient || null,
+      query_count: queryCount,
     },
   };
 }
