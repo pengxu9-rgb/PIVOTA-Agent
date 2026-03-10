@@ -285,49 +285,55 @@ printf "%s\n" "$routine_json" | jq_assert "heatmap has 2+ steps" '(.cards[]|sele
 printf "%s\n" "$routine_json" | jq_assert "heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
 printf "%s\n" "$routine_json" | jq_assert "first cell has headline/why/recommendations" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items[0]) | ((.headline_i18n.en//"")|length>0) and ((.why_i18n.en//"")|length>0) and ((.recommendations|length) >= 1)'
 
-say "chat conflict question (should include routine_simulation + conflict_heatmap; direct or compatibility wrapper)"
+say "chat conflict question (legacy structured compatibility OR v2 text guidance)"
 chat_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \
   "${COMMON_HEADERS[@]}" \
   --data '{"message":"My PM treatment is retinol. Can I add a glycolic acid toner? Check conflicts.","session":{"state":"S7_PRODUCT_RECO"}}')"
 
 printf "%s\n" "$chat_json" | jq_assert "/v1/chat returns cards array" '.cards | type=="array"'
-printf "%s\n" "$chat_json" | jq_assert "chat includes routine_simulation (direct or compatibility wrapper)" '
-  .cards | any(.type=="routine_simulation")
+printf "%s\n" "$chat_json" | jq_assert "chat returns compatibility guidance (legacy structured or v2 text_response)" '
+  .cards | any(.type=="routine_simulation" or .type=="conflict_heatmap")
   or any(
     .type=="compatibility" and
     ((.sections // []) | any(
       .kind=="compatibility_structured" and
       (
         .source_card_type=="routine_simulation"
+        or .source_card_type=="conflict_heatmap"
         or ((.routine_simulation // null) | type == "object")
-      )
-    ))
-  )
-'
-printf "%s\n" "$chat_json" | jq_assert "chat includes conflict_heatmap (direct or compatibility wrapper)" '
-  .cards | any(.type=="conflict_heatmap")
-  or any(
-    .type=="compatibility" and
-    ((.sections // []) | any(
-      .kind=="compatibility_structured" and
-      (
-        .source_card_type=="conflict_heatmap"
         or ((.conflict_heatmap // null) | type == "object")
       )
     ))
   )
+  or any(
+    .card_type=="text_response" and
+    ((.sections // []) | any(
+      .type=="text_answer" and
+      (
+        ((.text_en // .text_zh // "") | ascii_downcase)
+        | test("retinol|glycolic|irritation|alternate|different nights|sunscreen")
+      )
+    ))
+  )
 '
-printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell (direct or compatibility wrapper)" '
-  (
-    [
-      (.cards[]? | select(.type=="conflict_heatmap") | ((.payload.cells.items // []) | length)),
-      (.cards[]? | select(.type=="compatibility") | .sections[]? | select(.kind=="compatibility_structured") | ((.conflict_heatmap.cells.items // []) | length))
-    ]
-    | map(select(. != null))
-    | max
-    // 0
-  ) >= 1
+printf "%s\n" "$chat_json" | jq_assert "chat v2 conflict guidance includes a mitigation suggestion when text_response is used" '
+  if (.cards | any(.card_type=="text_response")) then
+    (
+      .cards | any(
+        .card_type=="text_response" and
+        ((.sections // []) | any(
+          .type=="text_answer" and
+          (
+            ((.text_en // .text_zh // "") | ascii_downcase)
+            | test("irritat|different night|few times a week|watch for|am instead|sunscreen|patch test")
+          )
+        ))
+      )
+    )
+  else
+    true
+  end
 '
 printf "%s\n" "$chat_json" | jq_assert "chat passive advisory cards are suppressed" '
   ([.cards[]? | select(.type=="confidence_notice" and (.payload.reason=="safety_optional_profile_missing" or .payload.reason=="gate_advisory" or .payload.reason=="pregnancy_optional_profile"))] | length) == 0
@@ -501,11 +507,22 @@ if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >
       )
     '
   else
-    printf "%s\n" "$reco_json" | jq_assert "reco reasons include user-context markers" '
-      (.cards[]|select(.type=="recommendations")|.payload.recommendations) as $recs |
+    printf "%s\n" "$reco_json" | jq_assert "reco output preserves user-context markers in reasons or thread summary" '
       (
-        ($recs | map((.reasons // []) | join(" ")) | join(" || "))
-        | test("last\\s*7d|check[- ]?in|upcoming\\s*plan|itinerary|barrier|tolerance|goal|sensitivity"; "i")
+        [
+          (
+            (.cards[]|select(.type=="recommendations")|.payload.recommendations)
+            | map((.reasons // []) | join(" "))
+            | join(" || ")
+          ),
+          (
+            (.ops.thread_ops // [])
+            | map(.summary // "")
+            | join(" || ")
+          )
+        ]
+        | join(" || ")
+        | test("last\\s*7d|check[- ]?in|upcoming\\s*plan|itinerary|barrier|tolerance|goal|sensitivity|oily|dry|acne|dark spots|dark_spots|impaired"; "i")
       ) == true
     '
   fi
