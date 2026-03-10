@@ -30,11 +30,102 @@ function makeBaseServices(overrides = {}) {
     buildContextPrefix: jest.fn(() => ''),
     getUpstreamStructuredOrJson: jest.fn(() => null),
     extractJsonObjectByKeys: jest.fn(() => null),
+    sanitizeDupeSuggestPayload: jest.fn((payload) => ({ payload, field_missing: [] })),
     ...overrides,
   };
 }
 
 describe('executeDupeSuggest recall modes', () => {
+  test('treats stale verified KB entries as incompatible and regenerates fresh results', async () => {
+    const staleKbEntry = {
+      verified: true,
+      original: {
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+      },
+      dupes: [
+        {
+          kind: 'dupe',
+          product: {
+            brand: null,
+            name: 'The Ordinary Niacinamide 10% + Zinc 1% (budget dupe)',
+            product_id: null,
+            url: null,
+          },
+          similarity: 78,
+          tradeoffs: ['fallback_reason: empty_structured'],
+          missing_info: ['local_fallback_seed'],
+        },
+      ],
+      comparables: [],
+      source_meta: {},
+    };
+    const services = makeBaseServices({
+      getDupeKbEntry: jest.fn().mockResolvedValue(staleKbEntry),
+      sanitizeDupeSuggestPayload: jest.fn(() => ({
+        payload: {
+          original: staleKbEntry.original,
+          dupes: [],
+          comparables: [],
+          meta: {
+            sanitize_v1: {
+              self_ref_dropped_count: 1,
+              candidate_count_before: 1,
+              candidate_count_after: 0,
+            },
+          },
+        },
+        field_missing: [],
+      })),
+      fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
+        alternatives: [
+          {
+            kind: 'dupe',
+            candidate_origin: 'open_world',
+            grounding_status: 'name_only',
+            ranking_mode: 'anchor_only',
+            product: { brand: 'Geek & Gorgeous', name: 'B-Bomb' },
+            similarity: 71,
+            reasons: ['Similar niacinamide serum role'],
+            tradeoffs: ['Formula overlap is still uncertain'],
+            confidence: 0.36,
+            missing_info: ['full_ingredient_list_missing'],
+          },
+        ],
+        field_missing: [],
+        source_mode: 'open_world_only',
+        template_id: 'reco_alternatives_hybrid_v1',
+      }),
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original_text: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.event_source).toBe('llm');
+    expect(result.payload.meta.served_from_kb).toBe(false);
+    expect(result.payload.dupes).toHaveLength(1);
+    expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalled();
+    expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
+      contract_version: 2,
+      source_meta: expect.objectContaining({
+        contract_version: 2,
+      }),
+    }));
+  });
+
   test('uses anchor-only open-world fallback when profile is absent and pool is empty', async () => {
     const services = makeBaseServices({
       fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
@@ -88,6 +179,7 @@ describe('executeDupeSuggest recall modes', () => {
       recentLogs: [],
       options: expect.objectContaining({
         recommendation_mode: 'open_world_only',
+        disable_synthetic_local_fallback: true,
         profile_mode: 'anchor_only',
       }),
     }));
@@ -181,9 +273,86 @@ describe('executeDupeSuggest recall modes', () => {
       recentLogs: expect.any(Array),
       options: expect.objectContaining({
         recommendation_mode: 'hybrid_fallback',
+        disable_synthetic_local_fallback: true,
         profile_mode: 'personalized',
       }),
     }));
+  });
+
+  test('escalates from pool_only to hybrid/open-world instead of using synthetic local fallback', async () => {
+    const fetchRecoAlternativesForProduct = jest
+      .fn()
+      .mockResolvedValueOnce({
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+        source_mode: 'llm',
+        no_result_reason: 'no_viable_results_after_fallback',
+        template_id: 'reco_alternatives_v1_0',
+      })
+      .mockResolvedValueOnce({
+        alternatives: [
+          {
+            kind: 'dupe',
+            candidate_origin: 'catalog',
+            grounding_status: 'catalog_verified',
+            ranking_mode: 'anchor_only',
+            product: { brand: 'Catalog Brand', name: 'Resolved Hybrid Alternative', product_id: 'cand_2' },
+            similarity: 77,
+            reasons: ['Hybrid fallback rescued a grounded candidate'],
+            tradeoffs: ['Ingredient overlap is still partial'],
+            confidence: 0.47,
+          },
+        ],
+        field_missing: [],
+        source_mode: 'hybrid_fallback',
+        template_id: 'reco_alternatives_hybrid_v1',
+      });
+    const services = makeBaseServices({
+      searchPivotaBackendProducts: jest.fn().mockResolvedValue({
+        ok: true,
+        products: [
+          { product_id: 'cand_1', sku_id: 'cand_1', brand: 'Catalog Brand', display_name: 'Candidate 1', category: 'serum' },
+          { product_id: 'cand_2', sku_id: 'cand_2', brand: 'Catalog Brand', display_name: 'Candidate 2', category: 'serum' },
+          { product_id: 'cand_3', sku_id: 'cand_3', brand: 'Catalog Brand', display_name: 'Candidate 3', category: 'serum' },
+        ],
+      }),
+      fetchRecoAlternativesForProduct,
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original: {
+          brand: 'Anchor Brand',
+          name: 'Anchor Serum',
+          category: 'serum',
+        },
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload.dupes).toHaveLength(1);
+    expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      options: expect.objectContaining({
+        recommendation_mode: 'pool_only',
+        disable_synthetic_local_fallback: true,
+      }),
+    }));
+    expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      options: expect.objectContaining({
+        recommendation_mode: 'hybrid_fallback',
+        disable_synthetic_local_fallback: true,
+      }),
+    }));
+    expect(result.payload.meta.recommendation_mode).toBe('hybrid_fallback');
   });
 });
 

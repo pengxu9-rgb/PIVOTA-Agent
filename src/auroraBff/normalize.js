@@ -3029,6 +3029,10 @@ function normalizeDupeCompare(raw) {
 
   const missing_info = uniqueStrings(asStringArray(o.missing_info ?? o.missingInfo));
   if (evOut.evidence.missing_info?.length) missing_info.push(...evOut.evidence.missing_info);
+  const compareQuality = String(o.compare_quality ?? o.compareQuality ?? '').trim().toLowerCase() === 'limited' ? 'limited' : 'full';
+  const limitedReason = typeof (o.limited_reason ?? o.limitedReason) === 'string'
+    ? String(o.limited_reason ?? o.limitedReason).trim()
+    : '';
 
   return {
     payload: {
@@ -3039,6 +3043,8 @@ function normalizeDupeCompare(raw) {
       tradeoffs,
       evidence: evOut.evidence,
       confidence,
+      compare_quality: compareQuality,
+      limited_reason: limitedReason,
       missing_info: uniqueStrings(missing_info),
     },
     field_missing,

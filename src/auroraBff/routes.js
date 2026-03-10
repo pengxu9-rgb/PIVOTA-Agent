@@ -45593,6 +45593,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       buildContextPrefix,
       getUpstreamStructuredOrJson,
       extractJsonObjectByKeys,
+      sanitizeDupeSuggestPayload,
       resolveIdentity,
       getProfileForIdentity,
       getRecentSkinLogsForIdentity,
