@@ -5057,6 +5057,14 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const source = String(firstQueryParamValue(query.source) || '').trim().toLowerCase();
   if (source) metadata.source = source;
 
+  if (!metadata.source && !search.catalog_surface && textQuery) {
+    const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery: textQuery });
+    if (beautyQueryProfile?.isBeautyQuery) {
+      metadata.source = 'aurora-bff';
+      search.catalog_surface = 'beauty';
+    }
+  }
+
   const payload = { search };
   if (Object.keys(metadata).length > 0) payload.metadata = metadata;
   return payload;

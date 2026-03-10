@@ -135,6 +135,75 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(typeof structured.message).toBe('string');
   });
 
+  test('error card maps to type error (not nudge) and passes schema validation', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'error',
+        card_id: 'err_test_123',
+        payload: { error: 'CHAT_FAILED' },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(Array.isArray(cards)).toBe(true);
+    expect(cards.length).toBe(1);
+    expect(cards[0].type).toBe('error');
+    expect(cards[0].type).not.toBe('nudge');
+    expect(cards[0].title).toBe('Something went wrong');
+    expect(cards[0].payload.error_code).toBe('CHAT_FAILED');
+    expect(cards[0].actions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'retry' })]),
+    );
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
+  test('error card maps correctly for CN language', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'error',
+        card_id: 'err_test_cn',
+        payload: { error: 'UPSTREAM_TIMEOUT' },
+      },
+      { requestId: 'req_card_factory', language: 'CN', index: 0 },
+    );
+
+    expect(cards[0].type).toBe('error');
+    expect(cards[0].title).toBe('出了点问题');
+    expect(cards[0].tags).toEqual(['错误']);
+    expect(cards[0].payload.error_code).toBe('UPSTREAM_TIMEOUT');
+  });
+
+  test('unknown card type still falls back to nudge (not error)', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'some_future_type',
+        card_id: 'unknown_type_card',
+        payload: { message: 'Future feature hint.' },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards.length).toBe(1);
+    expect(cards[0].type).toBe('nudge');
+    expect(cards[0].type).not.toBe('error');
+  });
+
+  test('error card preserves detail from payload.detail field', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'error',
+        card_id: 'err_detail',
+        payload: { error: 'ENRICHMENT_FAILED', detail: 'Catalog search returned non-200' },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards[0].type).toBe('error');
+    const bulletSection = cards[0].sections.find((s) => s.kind === 'bullets');
+    expect(bulletSection).toBeTruthy();
+    expect(bulletSection.items[0]).toBe('Catalog search returned non-200');
+  });
+
   test('routine_fit_summary card passes through with schema-compatible type', () => {
     const cards = mapLegacyCardToSpecCards(
       {

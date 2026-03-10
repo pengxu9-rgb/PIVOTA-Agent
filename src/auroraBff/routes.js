@@ -5,6 +5,14 @@ const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { z } = require('zod');
+const { applyDupeSuggestQualityGate } = require('./qualityGates/dupeSuggestGate');
+const {
+  deduplicateCandidates: dedupeDupeCandidatesV2,
+  filterSelfReferences: filterDupeSelfReferencesV2,
+  getCandidateIdentity: getDupeCandidateIdentityV2,
+  normalizeBrand: normalizeDupeBrandV2,
+  sanitizeCandidates: sanitizeDupeCandidatesV2,
+} = require('./skills/dupe_utils');
 const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const { createStageProfiler } = require('./skinAnalysisProfiling');
@@ -6602,7 +6610,12 @@ async function fetchLlmIngredientVerification({
     const confidence = Number.isFinite(rawConfidence) ? Math.max(0, Math.min(1, rawConfidence)) : 0;
 
     if (confidence < 0.3 || llmIngredients.length < 3) {
-      return { ok: false, reason: 'llm_low_confidence', ingredients: llmIngredients, confidence };
+      return {
+        ok: false,
+        reason: 'llm_low_confidence',
+        ingredients: llmIngredients,
+        confidence,
+      };
     }
 
     const discrepancies = json.discrepancies && typeof json.discrepancies === 'object' ? json.discrepancies : {};
@@ -7573,15 +7586,6 @@ function classifyProductType({ name = '', url = '', inciList = [] } = {}) {
 function buildInciStatus({ gapCodes = [], consensusResult = null, sources = [] } = {}) {
   const codes = Array.isArray(gapCodes) ? gapCodes.map((c) => String(c || '').toLowerCase()) : [];
 
-  const hasNonLlmSource =
-    codes.includes('incidecoder_source_used') ||
-    codes.includes('regulatory_source_used') ||
-    codes.includes('retail_source_used') ||
-    (Array.isArray(sources) && sources.some((s) => {
-      const t = String(s?.type || '').trim().toLowerCase();
-      return t && t !== 'llm_verification';
-    }));
-
   const extraction = codes.includes('on_page_fetch_blocked')
     ? 'blocked'
     : (consensusResult?.merged?.length > 0 || codes.includes('incidecoder_source_used') || codes.includes('regulatory_source_used') || codes.includes('llm_verification_used'))
@@ -7595,8 +7599,7 @@ function buildInciStatus({ gapCodes = [], consensusResult = null, sources = [] }
     return 'low';
   })();
 
-  const llmOnlySource = codes.includes('llm_verification_used') && !hasNonLlmSource;
-  const verification_required = consensusTier === 'low' || extraction === 'blocked' || extraction === 'missing' || llmOnlySource;
+  const verification_required = consensusTier === 'low' || extraction === 'blocked' || extraction === 'missing';
   const total_ingredients = Array.isArray(consensusResult?.merged) ? consensusResult.merged.length : 0;
 
   const normalizedSources = Array.isArray(sources)
@@ -12226,6 +12229,7 @@ async function buildProductAnalysisFromUrlIngredients({
     incidecoderSupplement && incidecoderSupplement.ok && Array.isArray(incidecoderSupplement.ingredients)
       ? incidecoderSupplement.ingredients
       : [];
+
   const descriptor = buildProductDescriptorFromInput({ parsedProduct: parsedProductObj, productUrl: parsedUrl.toString() });
   let llmVerificationResult = null;
   try {
@@ -12246,6 +12250,7 @@ async function buildProductAnalysisFromUrlIngredients({
       : [];
   const llmMatchScore =
     llmVerificationResult && llmVerificationResult.ok ? (llmVerificationResult.match_score || 0) : 0;
+
   const ingredientConsensus = buildIngredientConsensus({
     official: inciList,
     regulatory: regulatoryActiveInci,
@@ -12353,8 +12358,8 @@ async function buildProductAnalysisFromUrlIngredients({
   const verdict =
     !hasAnyIngredientSignals
       ? isCn
-        ? '需进一步验证'
-        : 'Needs Verification'
+        ? '未知'
+        : 'Unknown'
       : highSensitivity && (hasAcidLike || hasFragranceLike || hasCommonSunscreenIrritants)
       ? isCn
         ? '谨慎'
@@ -12927,7 +12932,7 @@ async function buildProductAnalysisFromUrlIngredients({
       regulatorySupplement && regulatorySupplement.ok ? 'regulatory' : '',
       retailSupplement && retailSupplement.ok ? 'retail_page' : '',
       incidecoderSupplement && incidecoderSupplement.ok ? 'inci_decoder' : '',
-      llmVerificationResult && llmVerificationResult.ok ? 'llm_verification' : '',
+      'llm_extraction',
     ],
     6,
   );
@@ -13217,10 +13222,9 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(!fetchOut?.ok && fetchOut?.unblock_attempted && fetchOut?.unblock_failed ? ['url_fetch_vendor_unblock_failed'] : []),
       ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used', 'version_verification_needed'] : []),
       ...(retailSupplement && retailSupplement.ok ? ['retail_source_used', 'version_verification_needed'] : []),
-      ...(retailSupplement && !retailSupplement.ok && retailSupplement.reason && !html ? ['retail_source_no_match'] : []),
+      ...(retailSupplement && !retailSupplement.ok && retailSupplement.reason ? ['retail_source_no_match'] : []),
       ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used', 'version_verification_needed'] : []),
       ...(incidecoderSupplement && !incidecoderSupplement.ok && incidecoderSupplement.reason ? [String(incidecoderSupplement.reason)] : []),
-      ...(llmVerificationResult && llmVerificationResult.ok ? ['llm_verification_used'] : []),
       ...(!normalizedInci.length ? ['evidence_missing'] : []),
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
@@ -14919,13 +14923,6 @@ async function callGeminiJsonObject({
         : null;
   const sanitizedSchema =
     requestedSchema && typeof requestedSchema === 'object' ? sanitizeGeminiJsonSchema(requestedSchema) : null;
-  const shouldAttachResponseSchema = Boolean(
-    sanitizedSchema &&
-      (
-        INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED ||
-        FORCE_GEMINI_STRUCTURED_SCHEMA_ROUTES.has(String(route || '').trim())
-      )
-  );
   const effectiveMaxOutputTokens =
     Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
       ? Math.max(64, Math.min(4096, Math.trunc(Number(maxOutputTokens))))
@@ -14962,7 +14959,7 @@ async function callGeminiJsonObject({
             responseMimeType: 'application/json',
             thinkingConfig: { includeThoughts: false },
             ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
-            ...(shouldAttachResponseSchema ? { responseSchema: sanitizedSchema } : {}),
+            ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && sanitizedSchema ? { responseSchema: sanitizedSchema } : {}),
           },
         },
       });
@@ -21425,1025 +21422,6 @@ function buildRecoEntryChips(language) {
   ];
 }
 
-const RETURNING_SUMMARY_REQUIRED_KEYS = Object.freeze(['summary_en', 'summary_zh']);
-const PROGRESS_DELTA_REQUIRED_KEYS = Object.freeze([
-  'overall_trend',
-  'concern_deltas',
-  'confidence',
-  'checkins_analyzed',
-  'improvements',
-  'regressions',
-  'stable',
-  'recommendation_en',
-  'recommendation_zh',
-]);
-const PROGRESS_ALLOWED_TRENDS = new Set(['improving', 'stable', 'declining', 'mixed']);
-const PROGRESS_ALLOWED_DIRECTIONS = new Set(['improved', 'stable', 'worsened']);
-const PROGRESS_ALLOWED_MAGNITUDES = new Set(['slight', 'moderate', 'significant']);
-const FORCE_GEMINI_STRUCTURED_SCHEMA_ROUTES = new Set([
-  'aurora_returning_summary',
-  'aurora_progress_delta',
-]);
-const RETURNING_SUMMARY_JSON_SCHEMA = Object.freeze({
-  type: 'object',
-  properties: {
-    summary_text: { type: 'string' },
-    summary_en: { type: 'string' },
-    summary_zh: { type: 'string' },
-  },
-  required: ['summary_text'],
-});
-const PROGRESS_DELTA_JSON_SCHEMA = Object.freeze({
-  type: 'object',
-  properties: {
-    overall_trend: { type: 'string' },
-    concern_deltas: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          concern_id: { type: 'string' },
-          direction: { type: 'string' },
-          magnitude: { type: 'string' },
-          note_en: { type: 'string' },
-          note_zh: { type: 'string' },
-        },
-        required: ['concern_id', 'direction', 'magnitude', 'note_en', 'note_zh'],
-      },
-    },
-    confidence: { type: 'number' },
-    checkins_analyzed: { type: 'number' },
-    improvements: { type: 'array', items: { type: 'string' } },
-    regressions: { type: 'array', items: { type: 'string' } },
-    stable: { type: 'array', items: { type: 'string' } },
-    recommendation_en: { type: 'string' },
-    recommendation_zh: { type: 'string' },
-  },
-  required: PROGRESS_DELTA_REQUIRED_KEYS,
-});
-const RETURNING_PROGRESS_VISUAL_CLAIM_RE =
-  /\b(photo|image|picture|visual|visible|visibly|looks?|looks like|appears?|seen|show(?:s|ing)?|complexion|from the photo)\b|照片|图片|看起来|看得出|显示出|从照片/i;
-
-function normalizeArrayOfStrings(value, { max = 8, maxLen = 180 } = {}) {
-  const source = Array.isArray(value) ? value : value == null ? [] : [value];
-  const out = [];
-  const seen = new Set();
-  for (const row of source) {
-    const text = String(row || '').trim();
-    if (!text) continue;
-    const key = text.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(text.slice(0, maxLen));
-    if (out.length >= max) break;
-  }
-  return out;
-}
-
-function readArtifactValue(node) {
-  if (!node || typeof node !== 'object' || Array.isArray(node)) {
-    const text = String(node || '').trim();
-    return text || null;
-  }
-  const text = String(node.value || '').trim();
-  return text || null;
-}
-
-function readArtifactGoals(node) {
-  if (node && typeof node === 'object' && !Array.isArray(node) && Array.isArray(node.values)) {
-    return normalizeArrayOfStrings(node.values, { max: 8, maxLen: 80 });
-  }
-  return normalizeArrayOfStrings(node, { max: 8, maxLen: 80 });
-}
-
-function readArtifactConcernIds(artifact) {
-  const source = Array.isArray(artifact && artifact.concerns) ? artifact.concerns : [];
-  const out = [];
-  const seen = new Set();
-  for (const item of source) {
-    const id =
-      item && typeof item === 'object' && !Array.isArray(item)
-        ? String(item.id || item.concern_id || item.concernId || '').trim()
-        : String(item || '').trim();
-    if (!id) continue;
-    const key = id.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(id.slice(0, 80));
-    if (out.length >= 8) break;
-  }
-  return out;
-}
-
-function buildDiagnosisBaseline({ profile, artifact } = {}) {
-  const profileGoals = normalizeArrayOfStrings(profile && profile.goals, { max: 8, maxLen: 80 });
-  const artifactGoals = readArtifactGoals(artifact && artifact.goals);
-  const goals = artifactGoals.length ? artifactGoals : profileGoals;
-  const concerns = readArtifactConcernIds(artifact);
-  return {
-    skin_type: readArtifactValue(artifact && artifact.skinType) || String(profile && profile.skinType || '').trim() || null,
-    goals,
-    primary_concerns: concerns.length ? concerns : goals,
-    blueprint_id:
-      String(
-        (artifact && (artifact.artifact_id || artifact.blueprint_id || artifact.blueprintId)) ||
-          '',
-      ).trim() || null,
-    has_photo:
-      Boolean(Array.isArray(artifact && artifact.photos) && artifact.photos.length > 0),
-  };
-}
-
-function hasReturningDiagnosisBaseline({ baseline, recentLogs } = {}) {
-  const row = baseline && typeof baseline === 'object' ? baseline : {};
-  return Boolean(
-    row.blueprint_id ||
-      row.skin_type ||
-      (Array.isArray(row.goals) && row.goals.length > 0) ||
-      (Array.isArray(row.primary_concerns) && row.primary_concerns.length > 0) ||
-      (Array.isArray(recentLogs) && recentLogs.length > 0),
-  );
-}
-
-function resolveStructuredSummaryProvider(llmProvider) {
-  return normalizeChatLlmProvider(llmProvider) === 'openai' ? 'openai' : 'gemini';
-}
-
-function normalizeStructuredSummaryFailure(result, fallbackReason = 'llm_call_failed') {
-  const row = result && typeof result === 'object' ? result : {};
-  return {
-    failure_reason: String(row.reason || fallbackReason || '').trim() || fallbackReason,
-    failure_detail: row.detail ? String(row.detail).trim() : null,
-    parse_status: row.parse_status ? String(row.parse_status).trim() : null,
-    timeout_stage: row.timeout_stage ? String(row.timeout_stage).trim() : null,
-  };
-}
-
-function normalizeRecoveredSummaryText(value, { maxLen = 320 } = {}) {
-  const text = String(value || '')
-    .replace(/\\n/g, ' ')
-    .replace(/\\"/g, '"')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[}",\]]+$/g, '')
-    .trim();
-  if (!text) return null;
-  return text.slice(0, maxLen);
-}
-
-function recoverReturningSummaryTextFromRaw(rawText, { language } = {}) {
-  const raw = String(rawText || '').trim();
-  if (!raw) return null;
-  const preferredKeys =
-    language === 'CN'
-      ? ['summary_text', 'summary_zh', 'summary_en']
-      : ['summary_text', 'summary_en', 'summary_zh'];
-  for (const key of preferredKeys) {
-    const closedMatch = raw.match(new RegExp(`"${key}"\\s*:\\s*"([^"]{1,600})"`));
-    if (closedMatch && closedMatch[1]) {
-      const recovered = normalizeRecoveredSummaryText(closedMatch[1]);
-      if (recovered) return recovered;
-    }
-    const openEndedMatch = raw.match(new RegExp(`"${key}"\\s*:\\s*"([\\s\\S]{1,600})$`));
-    if (openEndedMatch && openEndedMatch[1]) {
-      const recovered = normalizeRecoveredSummaryText(openEndedMatch[1]);
-      if (recovered) return recovered;
-    }
-  }
-  return null;
-}
-
-function buildDeterministicReturningSummaryText({ baseline, recentLogs, language } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const skinType = String(baseline && baseline.skin_type || '').trim();
-  const goals = normalizeArrayOfStrings(baseline && baseline.goals, { max: 3, maxLen: 40 });
-  const concerns = normalizeArrayOfStrings(baseline && baseline.primary_concerns, { max: 3, maxLen: 40 });
-  const logsCount = Array.isArray(recentLogs) ? recentLogs.length : 0;
-  if (lang === 'CN') {
-    const parts = [];
-    if (skinType) parts.push(`你之前的基线以${skinType}肤质为主`);
-    if (goals.length) parts.push(`目标集中在${goals.join('、')}`);
-    else if (concerns.length) parts.push(`重点问题包括${concerns.join('、')}`);
-    if (logsCount > 0) parts.push(`并且已有${logsCount}次近期打卡可供参考`);
-    return `${parts.join('，') || '你之前的诊断基线和近期记录已经在档。'}。`;
-  }
-  const parts = [];
-  if (skinType) parts.push(`Your last baseline pointed to ${skinType} skin`);
-  if (goals.length) parts.push(`with goals around ${goals.join(', ')}`);
-  else if (concerns.length) parts.push(`with key concerns around ${concerns.join(', ')}`);
-  if (logsCount > 0) parts.push(`and ${logsCount} recent check-ins on file`);
-  return `${parts.join(' ') || 'Your previous diagnosis baseline and recent check-ins are on file.'}.`;
-}
-
-async function callStructuredSummaryJson({
-  llmProvider,
-  llmModel,
-  systemPrompt,
-  userPrompt,
-  responseSchema,
-  timeoutMs,
-  maxOutputTokens,
-  route,
-} = {}) {
-  const provider = resolveStructuredSummaryProvider(llmProvider);
-  const effectiveModel =
-    String(llmModel || '').trim() ||
-    (provider === 'openai'
-      ? String(ANALYSIS_STORY_MODEL_OPENAI || '').trim() || null
-      : String(AURORA_DIAG_FORCE_GEMINI_MODEL || ANALYSIS_STORY_MODEL_GEMINI || '').trim() || null);
-  if (provider === 'openai') {
-    const result = await callOpenAiJsonObjectImpl({
-      model: effectiveModel,
-      systemPrompt,
-      userPrompt,
-      timeoutMs,
-      maxTokens: maxOutputTokens,
-      temperature: 0,
-    });
-    if (!result || result.ok !== true || !result.json || typeof result.json !== 'object') {
-      return {
-        ok: false,
-        provider,
-        model: effectiveModel,
-        json: null,
-        raw_text: result && result.raw_text ? String(result.raw_text) : null,
-        ...normalizeStructuredSummaryFailure(result, 'openai_json_failed'),
-      };
-    }
-    return {
-      ok: true,
-      provider,
-      model: effectiveModel,
-      json: result.json,
-      parse_status: 'parsed',
-      timeout_stage: null,
-      failure_reason: null,
-      failure_detail: null,
-    };
-  }
-
-  const result = await callGeminiJsonObjectImpl({
-    model: effectiveModel,
-    systemPrompt,
-    userPrompt,
-    timeoutMs,
-    temperature: 0,
-    maxOutputTokens,
-    responseSchema,
-    route,
-  });
-  if (!result || result.ok !== true || !result.json || typeof result.json !== 'object') {
-    return {
-      ok: false,
-      provider,
-      model: effectiveModel,
-      json: null,
-      raw_text: result && result.raw_text ? String(result.raw_text) : null,
-      ...normalizeStructuredSummaryFailure(result, 'gemini_json_failed'),
-    };
-  }
-  return {
-    ok: true,
-    provider,
-    model: effectiveModel,
-    json: result.json,
-    parse_status: result.parse_status ? String(result.parse_status).trim() : 'parsed',
-    timeout_stage: result.timeout_stage ? String(result.timeout_stage).trim() : null,
-    failure_reason: null,
-    failure_detail: null,
-  };
-}
-
-function buildReturningSummaryPrompt({ language, baseline, recentLogs, profileSummary } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const context = {
-    template_id: 'diagnosis_v2_returning_summary',
-    language: lang,
-    baseline: {
-      skin_type: baseline && baseline.skin_type ? baseline.skin_type : null,
-      goals: Array.isArray(baseline && baseline.goals) ? baseline.goals : [],
-      primary_concerns: Array.isArray(baseline && baseline.primary_concerns) ? baseline.primary_concerns : [],
-      blueprint_id: baseline && baseline.blueprint_id ? baseline.blueprint_id : null,
-    },
-    recent_logs: Array.isArray(recentLogs) ? recentLogs.slice(0, 4) : [],
-    profile: profileSummary && typeof profileSummary === 'object' ? profileSummary : null,
-  };
-  return [
-    'Return strict JSON only.',
-    'Template: diagnosis_v2_returning_summary',
-    'Write a concise, non-medical recap of the user\'s prior skin baseline.',
-    'Do not mention any photo unless the context explicitly contains one.',
-    `Return exactly one key named summary_text in ${lang === 'CN' ? 'Simplified Chinese' : 'English'}.`,
-    'Keep summary_text to one short sentence, under 25 words.',
-    'Do not add explanations, markdown, or any extra keys.',
-    'Schema:',
-    '{ "summary_text": string }',
-    `Context: ${JSON.stringify(context)}`,
-  ].join('\n');
-}
-
-async function fetchReturningSummaryText({
-  baseline,
-  recentLogs,
-  profileSummary,
-  language,
-  llmProvider,
-  llmModel,
-} = {}) {
-  const prompt = buildReturningSummaryPrompt({ language, baseline, recentLogs, profileSummary });
-  try {
-    const result = await callStructuredSummaryJson({
-      llmProvider,
-      llmModel,
-      systemPrompt: 'You are a strict skincare returning-summary generator. Output strict JSON only.',
-      userPrompt: prompt,
-      responseSchema: RETURNING_SUMMARY_JSON_SCHEMA,
-      timeoutMs: 9000,
-      maxOutputTokens: 400,
-      route: 'aurora_returning_summary',
-    });
-    if (!result.ok || !result.json) {
-      const recoveredText = recoverReturningSummaryTextFromRaw(result.raw_text, { language });
-      if (recoveredText) {
-        return {
-          text: recoveredText,
-          llm_used: true,
-          provider: result.provider || resolveStructuredSummaryProvider(llmProvider),
-          model: result.model || String(llmModel || '').trim() || null,
-          failure_reason: null,
-          failure_detail: null,
-          parse_status: result.parse_status ? `recovered_${String(result.parse_status).trim()}` : 'recovered_raw_text',
-          timeout_stage: result.timeout_stage,
-        };
-      }
-      const deterministicText =
-        String(result.failure_reason || '').trim() === 'PARSE_TRUNCATED_JSON'
-          ? buildDeterministicReturningSummaryText({ baseline, recentLogs, language })
-          : null;
-      return {
-        text: deterministicText,
-        llm_used: false,
-        provider: result.provider || resolveStructuredSummaryProvider(llmProvider),
-        model: result.model || String(llmModel || '').trim() || null,
-        failure_reason: result.failure_reason,
-        failure_detail: result.failure_detail,
-        parse_status: result.parse_status,
-        timeout_stage: result.timeout_stage,
-      };
-    }
-    const text = String(
-      result.json.summary_text ||
-        (language === 'CN'
-          ? result.json.summary_zh || result.json.summary_en
-          : result.json.summary_en || result.json.summary_zh) ||
-        '',
-    ).trim();
-    if (!text) {
-      return {
-        text: null,
-        llm_used: false,
-        provider: result.provider,
-        model: result.model,
-        failure_reason: 'empty_summary_text',
-        failure_detail: null,
-        parse_status: result.parse_status,
-        timeout_stage: result.timeout_stage,
-      };
-    }
-    return {
-      text: text.slice(0, 500),
-      llm_used: true,
-      provider: result.provider,
-      model: result.model,
-      failure_reason: null,
-      failure_detail: null,
-      parse_status: result.parse_status,
-      timeout_stage: result.timeout_stage,
-    };
-  } catch (err) {
-    return {
-      text: null,
-      llm_used: false,
-      provider: resolveStructuredSummaryProvider(llmProvider),
-      model: String(llmModel || '').trim() || null,
-      failure_reason: err && err.code ? String(err.code) : 'returning_summary_exception',
-      failure_detail: err && err.message ? String(err.message) : null,
-      parse_status: null,
-      timeout_stage: null,
-    };
-  }
-}
-
-function buildReturningTriageActionRows(language) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  return [
-    {
-      id: 'reassess',
-      type: 'navigate_skill',
-      action: 'navigate_skill',
-      target_skill_id: 'diagnosis_v2.answer',
-      action_id: 'chip.action.reassess',
-      label: lang === 'CN' ? '重新评估我的肌肤' : 'Re-assess my skin',
-      label_en: 'Re-assess my skin',
-      label_zh: '重新评估我的肌肤',
-      description_en: 'Start a new diagnosis flow from your saved baseline.',
-      description_zh: '基于你当前档案重新开始一次诊断。',
-    },
-    {
-      id: 'update_goals',
-      type: 'navigate_skill',
-      action: 'navigate_skill',
-      target_skill_id: 'diagnosis_v2.start',
-      action_id: 'chip.action.update_goals',
-      label: lang === 'CN' ? '更新我的目标' : 'Update my goals',
-      label_en: 'Update my goals',
-      label_zh: '更新我的目标',
-      description_en: 'Choose a new top concern or focus area.',
-      description_zh: '重新选择你当前最优先的护肤目标。',
-    },
-    {
-      id: 'check_progress',
-      type: 'navigate_skill',
-      action: 'navigate_skill',
-      target_skill_id: 'diagnosis_v2.progress',
-      action_id: 'chip.action.check_progress',
-      label: lang === 'CN' ? '查看我的进展' : 'Check my progress',
-      label_en: 'Check my progress',
-      label_zh: '查看我的进展',
-      description_en: 'Compare recent check-ins against your baseline.',
-      description_zh: '对比你最近的打卡变化和之前的基线。',
-    },
-    {
-      id: 'new_photo',
-      type: 'trigger_photo',
-      action: 'trigger_photo',
-      action_id: 'chip.action.new_photo',
-      label: lang === 'CN' ? '上传新照片分析' : 'Upload new photo for analysis',
-      label_en: 'Upload new photo for analysis',
-      label_zh: '上传新照片分析',
-      description_en: 'Add a fresh photo for a more current read.',
-      description_zh: '补一张新照片，让后续判断更贴近当前状态。',
-    },
-  ];
-}
-
-function buildReturningTriageQuickReplies(language) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  return buildReturningTriageActionRows(language).map((row) => ({
-    chip_id: row.action_id,
-    label: row.label,
-    kind: 'quick_reply',
-    data: {
-      reply_text: row.label,
-      trigger_source: 'returning_triage',
-      action_type: row.action,
-      ...(row.target_skill_id ? { target_skill_id: row.target_skill_id } : {}),
-    },
-  }));
-}
-
-function looksLikeProgressCheckRequest(message, actionId) {
-  const aid = String(actionId || '').trim().toLowerCase();
-  if (aid === 'chip.action.check_progress') return true;
-  if (aid === 'check_progress' || aid === 'skin_progress') return true;
-  const text = String(message || '').trim();
-  if (!text) return false;
-  return (
-    /check (my )?progress|skin progress|how has my skin changed|track my progress|review my progress/i.test(text) ||
-    /查看.*进展|肌肤.*变化|看看.*有没有变好|复盘.*进展|追踪.*进展/.test(text)
-  );
-}
-
-function normalizeProgressText(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 240);
-}
-
-function extractLogMetric(log, key) {
-  if (!log || typeof log !== 'object' || Array.isArray(log)) return null;
-  const value = Number(log[key]);
-  return Number.isFinite(value) ? value : null;
-}
-
-function sortLogsForProgress(recentLogs) {
-  return (Array.isArray(recentLogs) ? recentLogs.slice() : []).sort((left, right) => {
-    const a = Date.parse(String(left && left.date || ''));
-    const b = Date.parse(String(right && right.date || ''));
-    if (Number.isFinite(a) && Number.isFinite(b)) return a - b;
-    return 0;
-  });
-}
-
-function concernMetricConfig(concernId) {
-  const token = String(concernId || '').trim().toLowerCase();
-  if (!token) return null;
-  if (/(acne|breakout|pore|oil|blemish|痘|毛孔|出油)/.test(token)) {
-    return { metric: 'acne', inverse: true };
-  }
-  if (/(redness|sensitive|barrier|泛红|敏感|修护|屏障)/.test(token)) {
-    return { metric: 'redness', inverse: true };
-  }
-  if (/(hydrat|dry|dehyd|保湿|补水|干燥)/.test(token)) {
-    return { metric: 'hydration', inverse: false };
-  }
-  return null;
-}
-
-function computeConcernDeltaFromLogs(concernId, recentLogs, language) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const cfg = concernMetricConfig(concernId);
-  if (!cfg) {
-    const note = lang === 'CN' ? '近期打卡里没有可直接量化的对应指标。' : 'No directly tracked check-in metric maps to this concern yet.';
-    return {
-      concern_id: concernId,
-      direction: 'stable',
-      magnitude: 'slight',
-      note_en: 'No directly tracked check-in metric maps to this concern yet.',
-      note_zh: '近期打卡里没有可直接量化的对应指标。',
-      _bucket: 'stable',
-      _summary: note,
-    };
-  }
-  const logs = sortLogsForProgress(recentLogs).filter((row) => extractLogMetric(row, cfg.metric) != null);
-  if (logs.length < 2) {
-    return {
-      concern_id: concernId,
-      direction: 'stable',
-      magnitude: 'slight',
-      note_en: 'Not enough recent check-ins to estimate a change yet.',
-      note_zh: '最近可用打卡还不够，暂时无法判断变化趋势。',
-      _bucket: 'stable',
-      _summary: lang === 'CN' ? '最近可用打卡还不够，暂时无法判断变化趋势。' : 'Not enough recent check-ins to estimate a change yet.',
-    };
-  }
-  const first = extractLogMetric(logs[0], cfg.metric);
-  const last = extractLogMetric(logs[logs.length - 1], cfg.metric);
-  const delta = Number(last) - Number(first);
-  const normalized = cfg.inverse ? -delta : delta;
-  const magnitudeAbs = Math.abs(delta);
-  const magnitude =
-    magnitudeAbs >= 3 ? 'significant' : magnitudeAbs >= 2 ? 'moderate' : 'slight';
-  let direction = 'stable';
-  if (normalized >= 1) direction = 'improved';
-  else if (normalized <= -1) direction = 'worsened';
-  const noteEn =
-    direction === 'improved'
-      ? `${concernId} has improved across recent check-ins.`
-      : direction === 'worsened'
-        ? `${concernId} has trended worse across recent check-ins.`
-        : `${concernId} has stayed broadly stable across recent check-ins.`;
-  const noteZh =
-    direction === 'improved'
-      ? `${concernId} 在最近几次打卡里整体有所改善。`
-      : direction === 'worsened'
-        ? `${concernId} 在最近几次打卡里有走弱迹象。`
-        : `${concernId} 在最近几次打卡里整体较稳定。`;
-  const bucket = direction === 'improved' ? 'improvements' : direction === 'worsened' ? 'regressions' : 'stable';
-  return {
-    concern_id: concernId,
-    direction,
-    magnitude,
-    note_en: noteEn,
-    note_zh: noteZh,
-    _bucket: bucket,
-    _summary: lang === 'CN' ? noteZh : noteEn,
-  };
-}
-
-function buildDeterministicProgressSummary({ baseline, recentLogs, language } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const concerns = normalizeArrayOfStrings(
-    Array.isArray(baseline && baseline.primary_concerns) && baseline.primary_concerns.length
-      ? baseline.primary_concerns
-      : baseline && baseline.goals,
-    { max: 6, maxLen: 80 },
-  );
-  const concernIds = concerns.length ? concerns : ['overall_skin'];
-  const concernDeltas = concernIds.map((id) => computeConcernDeltaFromLogs(id, recentLogs, language));
-  const improving = concernDeltas.filter((item) => item._bucket === 'improvements');
-  const regressing = concernDeltas.filter((item) => item._bucket === 'regressions');
-  const stable = concernDeltas.filter((item) => item._bucket === 'stable');
-  let overallTrend = 'stable';
-  if (improving.length > 0 && regressing.length > 0) overallTrend = 'mixed';
-  else if (improving.length > 0) overallTrend = 'improving';
-  else if (regressing.length > 0) overallTrend = 'declining';
-  const logsCount = Array.isArray(recentLogs) ? recentLogs.length : 0;
-  const confidence = Math.max(0.28, Math.min(0.82, 0.3 + Math.min(logsCount, 5) * 0.08 + concernDeltas.length * 0.06));
-  const recommendationEn =
-    overallTrend === 'declining'
-      ? 'Your recent check-ins indicate less stability. Re-assess now and avoid bigger routine changes until the pattern is clearer.'
-      : overallTrend === 'improving'
-        ? 'Recent check-ins point to a positive overall trend. Keep variables stable, log another check-in, and only change one thing at a time.'
-        : overallTrend === 'mixed'
-          ? 'Some areas improved while others stayed flat. Keep logging consistently and reassess if the weaker areas persist.'
-          : 'Recent check-ins point to a mostly stable pattern. Keep logging consistently and reassess if you want a stronger trend signal.';
-  const recommendationZh =
-    overallTrend === 'declining'
-      ? '最近几次打卡提示状态不够稳定。建议现在重新评估，并在趋势更清晰前避免做更大的 routine 调整。'
-      : overallTrend === 'improving'
-        ? '整体趋势偏正向。先保持变量稳定，继续打卡，并且一次只调整一个因素。'
-      : overallTrend === 'mixed'
-          ? '有些方向在改善，有些方向还比较平。建议继续稳定打卡，如果弱项持续不变，再做一次重新评估。'
-          : '最近几次打卡提示整体趋势较稳定。建议继续稳定打卡；如果你想看更清晰的趋势，再做一次重新评估。';
-
-  return {
-    overall_trend: overallTrend,
-    concern_deltas: concernDeltas.map(({ _bucket, _summary, ...rest }) => rest),
-    confidence: Number(confidence.toFixed(2)),
-    checkins_analyzed: logsCount,
-    improvements: improving.map((item) => item._summary).slice(0, 4),
-    regressions: regressing.map((item) => item._summary).slice(0, 4),
-    stable: stable.map((item) => item._summary).slice(0, 4),
-    recommendation_en: recommendationEn,
-    recommendation_zh: recommendationZh,
-  };
-}
-
-function buildProgressPrompt({ language, baseline, recentLogs, profileSummary } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const context = {
-    template_id: 'diagnosis_v2_progress_delta',
-    language: lang,
-    has_photo: Boolean(baseline && baseline.has_photo),
-    baseline: {
-      skin_type: baseline && baseline.skin_type ? baseline.skin_type : null,
-      goals: Array.isArray(baseline && baseline.goals) ? baseline.goals : [],
-      primary_concerns: Array.isArray(baseline && baseline.primary_concerns) ? baseline.primary_concerns : [],
-      blueprint_id: baseline && baseline.blueprint_id ? baseline.blueprint_id : null,
-    },
-    recent_logs: Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [],
-    profile: profileSummary && typeof profileSummary === 'object' ? profileSummary : null,
-  };
-  return [
-    'Return strict JSON only.',
-    'Template: diagnosis_v2_progress_delta',
-    'Summarize change across recent check-ins against the prior diagnosis baseline.',
-    'When has_photo is false, do not mention any photo, image, visual appearance, or what can be seen.',
-    'Schema:',
-    '{',
-    '  "overall_trend": "improving"|"stable"|"declining"|"mixed",',
-    '  "concern_deltas": [{"concern_id": string, "direction": "improved"|"stable"|"worsened", "magnitude": "slight"|"moderate"|"significant", "note_en": string, "note_zh": string}],',
-    '  "confidence": number,',
-    '  "checkins_analyzed": number,',
-    '  "improvements": string[],',
-    '  "regressions": string[],',
-    '  "stable": string[],',
-    '  "recommendation_en": string,',
-    '  "recommendation_zh": string',
-    '}',
-    `Context: ${JSON.stringify(context)}`,
-  ].join('\n');
-}
-
-function collectProgressTextFragments(progress) {
-  const out = [];
-  const deltas = Array.isArray(progress && progress.concern_deltas) ? progress.concern_deltas : [];
-  for (const delta of deltas) {
-    if (!delta || typeof delta !== 'object' || Array.isArray(delta)) continue;
-    out.push(delta.note_en, delta.note_zh);
-  }
-  for (const key of ['improvements', 'regressions', 'stable']) {
-    out.push(...normalizeArrayOfStrings(progress && progress[key], { max: 8, maxLen: 240 }));
-  }
-  out.push(progress && progress.recommendation_en, progress && progress.recommendation_zh);
-  return out
-    .map((value) => String(value || '').trim())
-    .filter(Boolean);
-}
-
-function containsVisualClaimWithoutPhoto(progress) {
-  return collectProgressTextFragments(progress).some((text) => RETURNING_PROGRESS_VISUAL_CLAIM_RE.test(text));
-}
-
-function normalizeProgressLlmOutput(raw, { hasPhoto = false } = {}) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const trend = String(raw.overall_trend || '').trim().toLowerCase();
-  if (!PROGRESS_ALLOWED_TRENDS.has(trend)) return null;
-  const deltasRaw = Array.isArray(raw.concern_deltas) ? raw.concern_deltas : [];
-  const deltas = [];
-  for (const item of deltasRaw) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-    const concernId = String(item.concern_id || item.concernId || '').trim().slice(0, 80);
-    const direction = String(item.direction || '').trim().toLowerCase();
-    const magnitude = String(item.magnitude || '').trim().toLowerCase();
-    const noteEn = normalizeProgressText(item.note_en || item.noteEn);
-    const noteZh = normalizeProgressText(item.note_zh || item.noteZh);
-    if (!concernId) continue;
-    if (!PROGRESS_ALLOWED_DIRECTIONS.has(direction)) continue;
-    if (!PROGRESS_ALLOWED_MAGNITUDES.has(magnitude)) continue;
-    if (!noteEn && !noteZh) continue;
-    deltas.push({
-      concern_id: concernId,
-      direction,
-      magnitude,
-      note_en: noteEn || noteZh,
-      note_zh: noteZh || noteEn,
-    });
-    if (deltas.length >= 6) break;
-  }
-  if (deltas.length === 0) return null;
-  const confidenceRaw = Number(raw.confidence);
-  const checkinsAnalyzedRaw = Number(raw.checkins_analyzed || raw.checkinsAnalyzed);
-  const normalized = {
-    overall_trend: trend,
-    concern_deltas: deltas,
-    confidence: Number.isFinite(confidenceRaw) ? Math.max(0, Math.min(1, Number(confidenceRaw.toFixed(2)))) : 0.5,
-    checkins_analyzed: Number.isFinite(checkinsAnalyzedRaw) ? Math.max(0, Math.trunc(checkinsAnalyzedRaw)) : 0,
-    improvements: normalizeArrayOfStrings(raw.improvements, { max: 4, maxLen: 200 }),
-    regressions: normalizeArrayOfStrings(raw.regressions, { max: 4, maxLen: 200 }),
-    stable: normalizeArrayOfStrings(raw.stable, { max: 4, maxLen: 200 }),
-    recommendation_en: normalizeProgressText(raw.recommendation_en || raw.recommendationEn),
-    recommendation_zh: normalizeProgressText(raw.recommendation_zh || raw.recommendationZh),
-  };
-  if (!normalized.recommendation_en && !normalized.recommendation_zh) return null;
-  if (!normalized.recommendation_en) normalized.recommendation_en = normalized.recommendation_zh;
-  if (!normalized.recommendation_zh) normalized.recommendation_zh = normalized.recommendation_en;
-  if (!hasPhoto && containsVisualClaimWithoutPhoto(normalized)) return null;
-  return normalized;
-}
-
-async function fetchProgressSummaryFromLlm({
-  baseline,
-  recentLogs,
-  profileSummary,
-  language,
-  llmProvider,
-  llmModel,
-} = {}) {
-  const hasPhoto = Boolean(baseline && baseline.has_photo);
-  const prompt = buildProgressPrompt({ language, baseline, recentLogs, profileSummary });
-  try {
-    const result = await callStructuredSummaryJson({
-      llmProvider,
-      llmModel,
-      systemPrompt: 'You are a strict skincare progress summarizer. Output strict JSON only.',
-      userPrompt: prompt,
-      responseSchema: PROGRESS_DELTA_JSON_SCHEMA,
-      timeoutMs: 10000,
-      maxOutputTokens: 720,
-      route: 'aurora_progress_delta',
-    });
-    if (!result.ok || !result.json) {
-      return {
-        progress: null,
-        llm_used: false,
-        provider: result.provider || resolveStructuredSummaryProvider(llmProvider),
-        model: result.model || String(llmModel || '').trim() || null,
-        failure_reason: result.failure_reason,
-        failure_detail: result.failure_detail,
-        parse_status: result.parse_status,
-        timeout_stage: result.timeout_stage,
-      };
-    }
-    const normalized = normalizeProgressLlmOutput(result.json, { hasPhoto });
-    if (!normalized) {
-      return {
-        progress: null,
-        llm_used: false,
-        provider: result.provider,
-        model: result.model,
-        failure_reason:
-          !hasPhoto && containsVisualClaimWithoutPhoto(result.json)
-            ? 'visual_claim_without_photo'
-            : 'invalid_progress_payload',
-        failure_detail: null,
-        parse_status: result.parse_status,
-        timeout_stage: result.timeout_stage,
-      };
-    }
-    return {
-      progress: normalized,
-      llm_used: true,
-      provider: result.provider,
-      model: result.model,
-      failure_reason: null,
-      failure_detail: null,
-      parse_status: result.parse_status,
-      timeout_stage: result.timeout_stage,
-    };
-  } catch (err) {
-    return {
-      progress: null,
-      llm_used: false,
-      provider: resolveStructuredSummaryProvider(llmProvider),
-      model: String(llmModel || '').trim() || null,
-      failure_reason: err && err.code ? String(err.code) : 'progress_summary_exception',
-      failure_detail: err && err.message ? String(err.message) : null,
-      parse_status: null,
-      timeout_stage: null,
-    };
-  }
-}
-
-function buildProgressQuickReplies(language) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  return [
-    {
-      chip_id: 'chip.action.reassess',
-      label: lang === 'CN' ? '现在重新评估肌肤' : 'Re-assess my skin now',
-      kind: 'quick_reply',
-      data: { reply_text: lang === 'CN' ? '现在重新评估肌肤' : 'Re-assess my skin now', trigger_source: 'skin_progress' },
-    },
-    {
-      chip_id: 'chip.start.routine',
-      label: lang === 'CN' ? '优化我的护肤流程' : 'Optimize my routine',
-      kind: 'quick_reply',
-      data: { reply_text: lang === 'CN' ? '优化我的护肤流程' : 'Optimize my routine', trigger_source: 'skin_progress' },
-    },
-    {
-      chip_id: 'chip.action.new_photo',
-      label: lang === 'CN' ? '添加进展照片' : 'Add a progress photo',
-      kind: 'quick_reply',
-      data: { reply_text: lang === 'CN' ? '添加进展照片' : 'Add a progress photo', trigger_source: 'skin_progress' },
-    },
-    {
-      chip_id: 'chip.start.checkin',
-      label: lang === 'CN' ? '记录一次打卡' : 'Log a check-in',
-      kind: 'quick_reply',
-      data: { reply_text: lang === 'CN' ? '记录一次打卡' : 'Log a check-in', trigger_source: 'skin_progress' },
-    },
-  ];
-}
-
-function buildProgressActionRows(language) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  return [
-    {
-      type: 'navigate_skill',
-      action_id: 'chip.action.reassess',
-      target_skill_id: 'diagnosis_v2.answer',
-      label: lang === 'CN' ? '现在重新评估肌肤' : 'Re-assess my skin now',
-      label_en: 'Re-assess my skin now',
-      label_zh: '现在重新评估肌肤',
-    },
-    {
-      type: 'navigate_skill',
-      action_id: 'chip.start.routine',
-      target_skill_id: 'routine.audit_optimize',
-      label: lang === 'CN' ? '优化我的护肤流程' : 'Optimize my routine',
-      label_en: 'Optimize my routine',
-      label_zh: '优化我的护肤流程',
-    },
-    {
-      type: 'trigger_photo',
-      action_id: 'chip.action.new_photo',
-      label: lang === 'CN' ? '添加进展照片' : 'Add a progress photo',
-      label_en: 'Add a progress photo',
-      label_zh: '添加进展照片',
-    },
-    {
-      type: 'navigate_skill',
-      action_id: 'chip.start.checkin',
-      target_skill_id: 'tracker.checkin_log',
-      label: lang === 'CN' ? '记录一次打卡' : 'Log a check-in',
-      label_en: 'Log a check-in',
-      label_zh: '记录一次打卡',
-    },
-  ];
-}
-
-function buildProgressExperimentEvent(ctx, diagnosisState) {
-  return {
-    event_type: 'progress_viewed',
-    event_data: {
-      diagnosis_state: diagnosisState,
-      request_id: ctx && ctx.request_id ? ctx.request_id : null,
-      trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
-    },
-    timestamp_ms: Date.now(),
-    request_id: ctx && ctx.request_id ? ctx.request_id : null,
-    trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
-  };
-}
-
-async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
-  const preferredArtifactId = extractLatestArtifactIdFromSession(session);
-  try {
-    const latestArtifact = await getLatestDiagnosisArtifact({
-      auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
-      userId: identity && identity.userId ? identity.userId : null,
-      sessionId: ctx && ctx.brief_id ? ctx.brief_id : null,
-      maxAgeDays: 30,
-      preferArtifactId: preferredArtifactId,
-    });
-    if (
-      latestArtifact &&
-      latestArtifact.artifact_json &&
-      typeof latestArtifact.artifact_json === 'object' &&
-      !Array.isArray(latestArtifact.artifact_json)
-    ) {
-      return {
-        ...latestArtifact.artifact_json,
-        artifact_id: latestArtifact.artifact_id,
-        created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
-      };
-    }
-    return latestArtifact || null;
-  } catch (err) {
-    logger?.warn?.(
-      { err: err && err.message ? err.message : String(err), request_id: ctx && ctx.request_id ? ctx.request_id : null },
-      'aurora bff: failed to load latest diagnosis artifact for route',
-    );
-    return null;
-  }
-}
-
-function appendDiagnosisStateToSessionPatch(sessionPatch, diagnosisState) {
-  if (!sessionPatch || typeof sessionPatch !== 'object') return;
-  const nextMeta = isPlainObject(sessionPatch.meta) ? { ...sessionPatch.meta } : {};
-  const nextState = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
-  nextMeta.diagnosis_state = diagnosisState;
-  nextState.diagnosis_state = diagnosisState;
-  sessionPatch.meta = nextMeta;
-  sessionPatch.state = nextState;
-}
-
-function buildReturningTriageCard({ ctx, baseline, summaryText, language } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const actionRows = buildReturningTriageActionRows(language);
-  return {
-    card_id: `returning_triage_${ctx.request_id}`,
-    type: 'returning_triage',
-    payload: {
-      title: lang === 'CN' ? '欢迎回来：继续你的护肤诊断' : 'Welcome back: continue your skin diagnosis',
-      tags: [lang === 'CN' ? '历史诊断概览' : 'Previous diagnosis summary'],
-      sections: [
-        {
-          kind: 'previous_diagnosis_summary',
-          title_en: 'Your previous diagnosis summary',
-          title_zh: '你之前的诊断概况',
-          skin_type: baseline && baseline.skin_type ? baseline.skin_type : null,
-          goals: Array.isArray(baseline && baseline.goals) ? baseline.goals : [],
-          primary_concerns: Array.isArray(baseline && baseline.primary_concerns) ? baseline.primary_concerns : [],
-          blueprint_id: baseline && baseline.blueprint_id ? baseline.blueprint_id : null,
-          summary_text: summaryText || null,
-        },
-        {
-          kind: 'returning_action_selection',
-          title_en: 'What would you like to do?',
-          title_zh: '你接下来想做什么？',
-          options: actionRows.map((row) => ({
-            id: row.id,
-            action: row.action,
-            target_skill_id: row.target_skill_id,
-            label_en: row.label_en,
-            label_zh: row.label_zh,
-            description_en: row.description_en,
-            description_zh: row.description_zh,
-            action_id: row.action_id,
-          })),
-        },
-      ],
-      actions: actionRows,
-    },
-  };
-}
-
-function buildSkinProgressCard({ ctx, baseline, progress, language } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  return {
-    card_id: `skin_progress_${ctx.request_id}`,
-    type: 'skin_progress',
-    payload: {
-      title: lang === 'CN' ? '你的肌肤变化情况' : 'How your skin has changed',
-      tags: [lang === 'CN' ? '进展回顾' : 'Progress review'],
-      sections: [
-        {
-          kind: 'progress_baseline',
-          title_en: 'Your baseline',
-          title_zh: '你的起点基线',
-          skin_type: baseline && baseline.skin_type ? baseline.skin_type : null,
-          primary_concerns: Array.isArray(baseline && baseline.primary_concerns) ? baseline.primary_concerns : [],
-          goals: Array.isArray(baseline && baseline.goals) ? baseline.goals : [],
-          blueprint_id: baseline && baseline.blueprint_id ? baseline.blueprint_id : null,
-        },
-        {
-          kind: 'progress_delta',
-          title_en: 'Changes since last diagnosis',
-          title_zh: '和上次诊断相比的变化',
-          overall_trend: progress && progress.overall_trend ? progress.overall_trend : 'stable',
-          concern_deltas: Array.isArray(progress && progress.concern_deltas) ? progress.concern_deltas : [],
-          confidence: Number.isFinite(Number(progress && progress.confidence)) ? Number(progress.confidence) : 0,
-          checkins_analyzed: Number.isFinite(Number(progress && progress.checkins_analyzed))
-            ? Number(progress.checkins_analyzed)
-            : 0,
-        },
-        {
-          kind: 'progress_highlights',
-          improvements: normalizeArrayOfStrings(progress && progress.improvements, { max: 4, maxLen: 200 }),
-          regressions: normalizeArrayOfStrings(progress && progress.regressions, { max: 4, maxLen: 200 }),
-          stable: normalizeArrayOfStrings(progress && progress.stable, { max: 4, maxLen: 200 }),
-        },
-        {
-          kind: 'progress_recommendation',
-          text_en: String(progress && progress.recommendation_en || '').trim(),
-          text_zh: String(progress && progress.recommendation_zh || '').trim(),
-        },
-      ],
-      actions: buildProgressActionRows(language),
-    },
-  };
-}
-
 function requireAuroraUid(ctx) {
   const uid = String(ctx.aurora_uid || '').trim();
   if (!uid) {
@@ -25137,12 +24115,13 @@ function buildProductDeepScanPromptV4({
     '   - Use "possible" for all other watchouts -- when there is textual evidence, brand claims, known ingredient categories, or LLM knowledge even if INCI is not fully cross-verified.',
     '   - Do NOT use "unknown" -- if there is enough evidence to raise a watchout, there is enough to call it "possible".',
     '7. key_ingredients_by_function items MUST have: {function: string, ingredients: string[], confidence: "high"|"medium"|"low"}.',
-    ...(!anchorResolved ? [
-      '8. CRITICAL: No anchor product was resolved from catalog. Do NOT guess or assume a specific brand or SKU.',
-      '   Do NOT default to well-known products (e.g. SkinCeuticals C E Ferulic for "vitamin C serum").',
-      '   Analyze based on product CATEGORY and described FUNCTION only. Use generic ingredient class names.',
-      '   Do NOT populate anchor_product. Keep all analysis category-level, not brand-specific.',
-    ] : []),
+    ...(!anchorResolved
+      ? [
+          '8. Do NOT guess or assume a specific brand or SKU when no catalog anchor is resolved.',
+          '9. Do NOT populate anchor_product in the response.',
+          '10. Keep the analysis generic to the product category/function, not a specific product formulation.',
+        ]
+      : []),
   ].join('\n');
 
   const schemaDescription = `{
@@ -27151,7 +26130,7 @@ function buildRoutineProductAnalysisFallbackPayload({
 
   return {
     assessment: {
-      verdict: isCn ? '需进一步验证' : 'Needs Verification',
+      verdict: isCn ? '未知' : 'Unknown',
       reasons: [
         isCn
           ? `暂时无法对「${productName || '该产品'}」完成完整成分判定，我先给你可执行的保守方案。`
@@ -31019,58 +29998,142 @@ async function applyRecommendationOutputGuardrailsForRoute({
   };
 }
 
-function sanitizeDupeSuggestPayload(payload) {
+function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
   const base = isPlainObject(payload) ? { ...payload } : {};
+  const anchor = isPlainObject(base.original) ? base.original : null;
+  const anchorBrand = normalizeDupeBrandV2(anchor && anchor.brand);
+
   const sanitizeBucket = (rows, field) => {
     const source = Array.isArray(rows) ? rows : [];
+    const { sanitized, issues: sanitizeIssues } = sanitizeDupeCandidatesV2(source);
+    const selfRefResult = filterDupeSelfReferencesV2(sanitized, anchor);
+    const { deduplicated, duplicateIssues } = dedupeDupeCandidatesV2(selfRefResult.kept);
     const kept = [];
     const dropped = [];
-    for (const row of source) {
+    const filteredIssues = [...sanitizeIssues, ...duplicateIssues];
+
+    for (const row of selfRefResult.dropped) {
+      const identity = getDupeCandidateIdentityV2(row);
+      dropped.push({
+        field,
+        reason: row && row._drop_reason ? row._drop_reason : 'self_reference_filtered',
+        title: identity.name || pickFirstString(row.name, row.title, row.display_name, row.displayName),
+        brand: identity.brand || null,
+      });
+    }
+
+    for (const row of deduplicated) {
       if (!isPlainObject(row)) {
         kept.push(row);
         continue;
       }
-      const blacklistHit = isBlacklistedCategoryOrTitle(row);
-      const skincareHit = isSkincareCategory(row);
+      const identity = getDupeCandidateIdentityV2(row);
+      const contentRow = isPlainObject(row.product) ? row.product : row;
+      const blacklistHit = isBlacklistedCategoryOrTitle(contentRow);
+      const skincareHit = isSkincareCategory(contentRow);
       if (blacklistHit || !skincareHit) {
         dropped.push({
           field,
           reason: blacklistHit ? 'blacklisted_category_or_title' : 'non_skincare_category',
-          title: pickFirstString(row.name, row.title, row.display_name, row.displayName),
+          title: identity.name || pickFirstString(row.name, row.title, row.display_name, row.displayName),
         });
         continue;
       }
-      kept.push(row);
+      let nextRow = row;
+      const candidateBrand = normalizeDupeBrandV2(identity.brand);
+      if (anchorBrand && candidateBrand && anchorBrand === candidateBrand && !row.why_not_the_same_product) {
+        nextRow = {
+          ...row,
+          why_not_the_same_product: 'Same brand but different product line (auto-flagged: review needed)',
+        };
+      }
+      kept.push(nextRow);
     }
-    return { kept, dropped };
+
+    return {
+      kept,
+      dropped,
+      issues: filteredIssues,
+      stats: selfRefResult.stats,
+    };
   };
 
   const dupesOut = sanitizeBucket(base.dupes, 'payload.dupes');
   const comparablesOut = sanitizeBucket(base.comparables, 'payload.comparables');
   const dropped = [...dupesOut.dropped, ...comparablesOut.dropped];
+  const allKept = [...dupesOut.kept, ...comparablesOut.kept];
+  const qualityIssues = Array.isArray(base.quality?.quality_issues) ? [...base.quality.quality_issues] : [];
+  const sanitizeIssues = [...dupesOut.issues, ...comparablesOut.issues];
+  const dupesNonSkincareDropCount = dupesOut.dropped.filter((item) => item.reason === 'non_skincare_category' || item.reason === 'blacklisted_category_or_title').length;
+  const comparablesNonSkincareDropCount = comparablesOut.dropped.filter((item) => item.reason === 'non_skincare_category' || item.reason === 'blacklisted_category_or_title').length;
+  const selfRefDroppedCount = (dupesOut.stats?.self_ref_dropped_count || 0) + (comparablesOut.stats?.self_ref_dropped_count || 0);
+  const duplicateIssueCount = [...dupesOut.issues, ...comparablesOut.issues].filter((issue) => issue.code === 'DUPLICATE_IDENTITY_CANDIDATES').length;
+  const nameUrlIssueCount = [...dupesOut.issues, ...comparablesOut.issues].filter((issue) => issue.code === 'NAME_IS_URL').length;
+
+  if (selfRefDroppedCount > 0 && !qualityIssues.includes('self_reference_filtered')) qualityIssues.push('self_reference_filtered');
+  if (duplicateIssueCount > 0 && !qualityIssues.includes('duplicate_identity_filtered')) qualityIssues.push('duplicate_identity_filtered');
+  if (nameUrlIssueCount > 0 && !qualityIssues.includes('name_is_url_sanitized')) qualityIssues.push('name_is_url_sanitized');
+  if (dropped.some((item) => item.reason === 'non_skincare_category' || item.reason === 'blacklisted_category_or_title')
+      && !qualityIssues.includes('non_skincare_filtered')) {
+    qualityIssues.push('non_skincare_filtered');
+  }
+
+  const hasMeaningfulQuality = allKept.some((item) => {
+    const similarity = Number(item && item.similarity);
+    const confidence = Number(item && item.confidence);
+    return (Number.isFinite(similarity) && similarity > 0)
+      || (Array.isArray(item && item.tradeoffs) && item.tradeoffs.length > 0)
+      || (Number.isFinite(confidence) && confidence > 0);
+  });
+  const nextPayload = {
+    ...base,
+    dupes: dupesOut.kept,
+    comparables: comparablesOut.kept,
+    verified: allKept.length > 0 && hasMeaningfulQuality,
+    quality: {
+      ...(isPlainObject(base.quality) ? base.quality : {}),
+      validated_schema: true,
+      quality_ok: allKept.length > 0 && hasMeaningfulQuality,
+      quality_issues: qualityIssues,
+    },
+    qualityAssessment: {
+      ...(isPlainObject(base.qualityAssessment) ? base.qualityAssessment : isPlainObject(base.quality) ? base.quality : {}),
+      validated_schema: true,
+      quality_ok: allKept.length > 0 && hasMeaningfulQuality,
+      quality_issues: qualityIssues,
+    },
+    meta: {
+      ...(isPlainObject(base.meta) ? base.meta : {}),
+      sanitize_v1: {
+        dropped_non_skincare: dupesNonSkincareDropCount + comparablesNonSkincareDropCount,
+        self_ref_dropped_count: selfRefDroppedCount,
+        duplicate_issue_count: duplicateIssueCount,
+        name_is_url_issue_count: nameUrlIssueCount,
+        candidate_count_before: (Array.isArray(base.dupes) ? base.dupes.length : 0) + (Array.isArray(base.comparables) ? base.comparables.length : 0),
+        candidate_count_after: allKept.length,
+      },
+      self_ref_dropped_count: selfRefDroppedCount,
+      quality_issues: qualityIssues,
+    },
+  };
   const nextFieldMissing = mergeFieldMissing(base.field_missing, [
-    ...(dupesOut.dropped.length > 0 ? [{ field: 'payload.dupes', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
-    ...(comparablesOut.dropped.length > 0 ? [{ field: 'payload.comparables', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
+    ...(dupesNonSkincareDropCount > 0 ? [{ field: 'payload.dupes', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
+    ...(comparablesNonSkincareDropCount > 0 ? [{ field: 'payload.comparables', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
+    ...(selfRefDroppedCount > 0 ? [{ field: 'payload', reason: 'dupe_suggest_self_reference_filtered' }] : []),
+    ...(duplicateIssueCount > 0 ? [{ field: 'payload', reason: 'dupe_suggest_duplicate_identity_filtered' }] : []),
+    ...(nameUrlIssueCount > 0 ? [{ field: 'payload', reason: 'dupe_suggest_name_is_url_sanitized' }] : []),
   ]);
+  const gateResult = applyDupeSuggestQualityGate(nextPayload, { lang });
 
   return {
-    payload: {
-      ...base,
-      dupes: dupesOut.kept,
-      comparables: comparablesOut.kept,
-      meta: {
-        ...(isPlainObject(base.meta) ? base.meta : {}),
-        sanitize_v1: {
-          dropped_non_skincare: dropped.length,
-        },
-      },
-    },
+    payload: gateResult.payload,
     field_missing: nextFieldMissing,
     dropped,
+    issues: sanitizeIssues,
   };
 }
 
-function applyDupeSuggestSanitizeToEnvelope(envelope) {
+function applyDupeSuggestSanitizeToEnvelope(envelope, { lang = 'EN' } = {}) {
   const base = isPlainObject(envelope) ? { ...envelope } : envelope;
   if (!isPlainObject(base)) return { envelope: base, dropped: [] };
   const cards = Array.isArray(base.cards) ? base.cards : [];
@@ -31080,7 +30143,7 @@ function applyDupeSuggestSanitizeToEnvelope(envelope) {
     const type = String(card.type || '').trim().toLowerCase();
     if (type !== 'dupe_suggest') return card;
     const payload = isPlainObject(card.payload) ? card.payload : {};
-    const sanitized = sanitizeDupeSuggestPayload(payload);
+    const sanitized = sanitizeDupeSuggestPayload(payload, { lang });
     if (sanitized.dropped.length) dropped.push(...sanitized.dropped);
     return {
       ...card,
@@ -31091,6 +30154,35 @@ function applyDupeSuggestSanitizeToEnvelope(envelope) {
     };
   });
   return { envelope: { ...base, cards: nextCards }, dropped };
+}
+
+function normalizeDupeCompareRequestPayload(input) {
+  const body = isPlainObject(input) ? input : {};
+  const originalRaw = isPlainObject(body.original) ? body.original : null;
+  const dupeRaw = isPlainObject(body.dupe) ? body.dupe : null;
+  const original = unwrapProductLike(originalRaw);
+  const dupe = unwrapProductLike(dupeRaw);
+  const originalUrl = pickFirstTrimmed(
+    body.original_url,
+    originalRaw && originalRaw.url,
+    originalRaw && originalRaw.product_url,
+    original && original.url,
+    original && original.product_url,
+  ) || null;
+  const dupeUrl = pickFirstTrimmed(
+    body.dupe_url,
+    dupeRaw && dupeRaw.url,
+    dupeRaw && dupeRaw.product_url,
+    dupe && dupe.url,
+    dupe && dupe.product_url,
+  ) || null;
+
+  return {
+    original,
+    dupe,
+    original_url: originalUrl,
+    dupe_url: dupeUrl,
+  };
 }
 
 function persistRejectedCatalogCandidates(ctx, rejected) {
@@ -32572,19 +31664,31 @@ function mergeExternalVerificationIntoStructured(structured, contextRaw) {
 
 function buildProductInputText(inputObj, url) {
   if (typeof url === 'string' && url.trim()) return url.trim();
-  const o = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
+  const o = unwrapProductLike(inputObj);
   if (!o) return null;
   const brand = typeof o.brand === 'string' ? o.brand.trim() : '';
   const name = typeof o.name === 'string' ? o.name.trim() : '';
   const display = typeof o.display_name === 'string' ? o.display_name.trim() : typeof o.displayName === 'string' ? o.displayName.trim() : '';
+  const productName = typeof o.product_name === 'string' ? o.product_name.trim() : typeof o.productName === 'string' ? o.productName.trim() : '';
+  const title = typeof o.title === 'string' ? o.title.trim() : '';
   const sku = typeof o.sku_id === 'string' ? o.sku_id.trim() : typeof o.skuId === 'string' ? o.skuId.trim() : '';
   const pid = typeof o.product_id === 'string' ? o.product_id.trim() : typeof o.productId === 'string' ? o.productId.trim() : '';
-  const bestName = display || name;
+  const bestName = display || name || productName || title;
   if (brand && bestName) return joinBrandAndName(brand, bestName);
   if (bestName) return bestName;
   if (sku) return sku;
   if (pid) return pid;
   return null;
+}
+
+function unwrapProductLike(inputObj) {
+  const base = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
+  if (!base) return null;
+  const nestedProduct = base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product : null;
+  const nestedSku = base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku : null;
+  if (nestedProduct) return nestedProduct;
+  if (nestedSku) return nestedSku;
+  return base;
 }
 
 function pickFirstTrimmed(...values) {
@@ -40033,12 +39137,13 @@ async function mapWithConcurrency(items, limit, worker) {
 }
 
 function extractAnchorIdFromProductLike(obj) {
-  if (!obj || typeof obj !== 'object') return null;
+  const source = unwrapProductLike(obj);
+  if (!source) return null;
   const raw =
-    (typeof obj.sku_id === 'string' && obj.sku_id) ||
-    (typeof obj.skuId === 'string' && obj.skuId) ||
-    (typeof obj.product_id === 'string' && obj.product_id) ||
-    (typeof obj.productId === 'string' && obj.productId) ||
+    (typeof source.sku_id === 'string' && source.sku_id) ||
+    (typeof source.skuId === 'string' && source.skuId) ||
+    (typeof source.product_id === 'string' && source.product_id) ||
+    (typeof source.productId === 'string' && source.productId) ||
     null;
   const v = raw ? String(raw).trim() : '';
   return v || null;
@@ -41305,15 +40410,19 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   norm.payload = { ...norm.payload, intent: 'routine', profile: profileSummary || null };
 
   if (includeAlternatives) {
-    const alt = await enrichRecommendationsWithAlternatives({
-      ctx,
-      profileSummary,
-      recentLogs,
-      recommendations: norm.payload.recommendations,
-      logger,
-    });
-    norm.payload = { ...norm.payload, recommendations: alt.recommendations };
-    norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+    try {
+      const alt = await enrichRecommendationsWithAlternatives({
+        ctx,
+        profileSummary,
+        recentLogs,
+        recommendations: norm.payload.recommendations,
+        logger,
+      });
+      norm.payload = { ...norm.payload, recommendations: alt.recommendations };
+      norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+    } catch (altErr) {
+      logger?.warn({ err: altErr?.message, code: altErr?.code }, 'aurora bff: routine enrichRecommendationsWithAlternatives failed, continuing without alternatives');
+    }
   }
 
   const budgetKnown = normalizeBudgetHint(profileSummary && profileSummary.budgetTier);
@@ -41321,21 +40430,25 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
     norm.payload.missing_info = norm.payload.missing_info.filter((code) => String(code) !== 'budget_unknown');
   }
 
-  const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
-    recommendations: norm.payload.recommendations,
-    logger,
-    lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-  });
-  norm.payload = {
-    ...norm.payload,
-    recommendations: pdpOpenOut.recommendations,
-    metadata: {
-      ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-      pdp_open_path_stats: pdpOpenOut.path_stats,
-      resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
-      time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
-    },
-  };
+  try {
+    const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
+      recommendations: norm.payload.recommendations,
+      logger,
+      lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
+    });
+    norm.payload = {
+      ...norm.payload,
+      recommendations: pdpOpenOut.recommendations,
+      metadata: {
+        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+        pdp_open_path_stats: pdpOpenOut.path_stats,
+        resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+        time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+      },
+    };
+  } catch (pdpErr) {
+    logger?.warn({ err: pdpErr?.message, code: pdpErr?.code }, 'aurora bff: routine enrichRecommendationsWithPdpOpenContract failed, continuing without PDP enrichment');
+  }
 
   const suggestedChips = [];
   const nextActions = upstream && Array.isArray(upstream.next_actions) ? upstream.next_actions : [];
@@ -42479,21 +41592,18 @@ function buildV4TopTakeawaysFromLegacy(assessment) {
 
 function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } = {}) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
-  const inciVerified = !(inciStatus && inciStatus.verification_required);
   const assessment = isPlainObject(payload?.assessment) ? payload.assessment : null;
   if (Array.isArray(assessment?.watchouts) && assessment.watchouts.length) {
     return assessment.watchouts
       .map((item) => (isPlainObject(item) ? item : null))
       .filter(Boolean)
-      .map((item) => {
-        const rawStatus = String(item.status || '').toLowerCase();
-        const normalizedStatus = ['confirmed', 'possible'].includes(rawStatus) ? rawStatus : 'possible';
-        return {
-          issue: String(item.issue || item.name || item.text || '').trim(),
-          status: !inciVerified && normalizedStatus === 'confirmed' ? 'possible' : normalizedStatus,
-          what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim(),
-        };
-      })
+      .map((item) => ({
+        issue: String(item.issue || item.name || item.text || '').trim(),
+        status: ['confirmed', 'possible'].includes(String(item.status || '').toLowerCase())
+          ? String(item.status || '').toLowerCase()
+          : 'possible',
+        what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim(),
+      }))
       .filter((item) => item.issue && !isFitSignalLine(item.issue) && !isDataQualityDiagnosticLine(item.issue))
       .slice(0, 4);
   }
@@ -42512,6 +41622,7 @@ function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } 
     ],
     8,
   );
+  const inciVerified = !(inciStatus && inciStatus.verification_required);
   const out = [];
   for (const risk of riskNotes) {
     const text = String(risk || '').trim();
@@ -43147,9 +42258,9 @@ function validateAndRepairAtomicLists(assessment) {
         if (!isPlainObject(item)) return null;
         return {
           issue: String(item.issue || item.name || item.text || '').trim() || null,
-          status: ['confirmed', 'possible'].includes(String(item.status || '').toLowerCase())
+          status: ['confirmed', 'possible', 'unknown'].includes(String(item.status || '').toLowerCase())
             ? String(item.status || '').toLowerCase()
-            : 'possible',
+            : 'unknown',
           what_to_do: String(item.what_to_do || item.action || item.recommendation || '').trim() || null,
         };
       })
@@ -45620,7 +44731,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
           const fallbackUnknownPayload = {
             assessment: {
-              verdict: isCn ? '需进一步验证' : 'Needs Verification',
+              verdict: isCn ? '未知' : 'Unknown',
               reasons: isCn
                 ? [
                     '该产品尚未建立稳定的 catalog/KB 锚点，我们已尝试一次无锚点 Deep Scan，但证据仍不足。',
@@ -46047,9 +45158,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: {},
           events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'kb' })],
         });
-        const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
-          ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
-          : envelope;
+        const sanitizedEnvelope = applyDupeSuggestSanitizeToEnvelope(envelope, { lang: ctx.lang }).envelope;
         return res.json(sanitizedEnvelope);
       }
 
@@ -46123,9 +45232,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             session_patch: {},
             events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'kb' })],
           });
-          const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
-            ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
-            : envelope;
+          const sanitizedEnvelope = applyDupeSuggestSanitizeToEnvelope(envelope, { lang: ctx.lang }).envelope;
           return res.json(sanitizedEnvelope);
         }
       }
@@ -46212,9 +45319,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: {},
         events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'llm' })],
       });
-      const sanitizedEnvelope = AURORA_DUPE_SUGGEST_SANITIZE_V1
-        ? applyDupeSuggestSanitizeToEnvelope(envelope).envelope
-        : envelope;
+      const sanitizedEnvelope = applyDupeSuggestSanitizeToEnvelope(envelope, { lang: ctx.lang }).envelope;
       return res.json(sanitizedEnvelope);
     } catch (err) {
       const status = err.status || 500;
@@ -46245,6 +45350,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
+      const compareInput = normalizeDupeCompareRequestPayload(parsed.data);
+
       const identity = await resolveIdentity(req, ctx);
       const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
@@ -46259,14 +45366,20 @@ function mountAuroraBffRoutes(app, { logger }) {
       const analyzePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
       const comparePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'dupe_compare', action_id: 'chip.action.dupe_compare' });
 
-      const originalInput = buildProductInputText(parsed.data.original, parsed.data.original_url);
-      const dupeInput = buildProductInputText(parsed.data.dupe, parsed.data.dupe_url);
+      const originalInput = buildProductInputText(compareInput.original, compareInput.original_url);
+      const dupeInput = buildProductInputText(compareInput.dupe, compareInput.dupe_url);
 
       if (!originalInput || !dupeInput) {
+        const missingFields = [];
+        if (!originalInput) missingFields.push('original');
+        if (!dupeInput) missingFields.push('dupe');
+        const details = missingFields.length === 1
+          ? `${missingFields[0]} is required`
+          : 'original and dupe are required';
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage('Invalid request.'),
           suggested_chips: [],
-          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: 'original and dupe are required' } }],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details } }],
           session_patch: {},
           events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
         });
@@ -46296,8 +45409,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
 
       const [originalUpstream, dupeUpstream] = await Promise.all([
-        parseOne({ inputText: originalInput, anchorObj: parsed.data.original, anchorUrl: parsed.data.original_url }),
-        parseOne({ inputText: dupeInput, anchorObj: parsed.data.dupe, anchorUrl: parsed.data.dupe_url }),
+        parseOne({ inputText: originalInput, anchorObj: compareInput.original, anchorUrl: compareInput.original_url }),
+        parseOne({ inputText: dupeInput, anchorObj: compareInput.dupe, anchorUrl: compareInput.dupe_url }),
       ]);
 
       const originalStructured = getUpstreamStructuredOrJson(originalUpstream);
@@ -46309,11 +45422,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? (dupeStructured.parse.anchor_product || dupeStructured.parse.anchorProduct)
         : null;
 
-      const originalAnchor = originalAnchorFromUpstream || parsed.data.original || null;
-      const dupeAnchor = dupeAnchorFromUpstream || parsed.data.dupe || null;
+      const originalAnchor = originalAnchorFromUpstream || compareInput.original || null;
+      const dupeAnchor = dupeAnchorFromUpstream || compareInput.dupe || null;
 
-      const originalText = buildProductInputText(originalAnchor, parsed.data.original_url) || originalInput;
-      const dupeText = buildProductInputText(dupeAnchor, parsed.data.dupe_url) || dupeInput;
+      const originalText = buildProductInputText(originalAnchor, compareInput.original_url) || originalInput;
+      const dupeText = buildProductInputText(dupeAnchor, compareInput.dupe_url) || dupeInput;
 
       const compareQuery =
         `${comparePrefix}Task: Compare the original product vs the dupe/alternative.\n` +
@@ -46330,7 +45443,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           query: compareQuery,
           timeoutMs: 18000,
           ...(originalAnchorId ? { anchor_product_id: String(originalAnchorId) } : {}),
-          ...(parsed.data.original_url ? { anchor_product_url: parsed.data.original_url } : {}),
+          ...(compareInput.original_url ? { anchor_product_url: compareInput.original_url } : {}),
         });
       } catch (err) {
         // ignore; fall back below
@@ -46627,8 +45740,26 @@ function mountAuroraBffRoutes(app, { logger }) {
       const norm = normalizeDupeCompare(mapped);
       let payload = norm.payload;
       let field_missing = norm.field_missing;
-      if (!payload.original && originalAnchor) payload = { ...payload, original: originalAnchor };
-      if (!payload.dupe && dupeAnchor) payload = { ...payload, dupe: dupeAnchor };
+      const payloadOriginalText = buildProductInputText(payload.original);
+      const payloadDupeText = buildProductInputText(payload.dupe);
+      const requestedOriginalText = buildProductInputText(originalAnchor, compareInput.original_url);
+      const requestedDupeText = buildProductInputText(dupeAnchor, compareInput.dupe_url);
+      if ((!payload.original || payload.original._stub) && originalAnchor) payload = { ...payload, original: originalAnchor };
+      if (
+        dupeAnchor && (
+          !payload.dupe ||
+          payload.dupe._stub ||
+          !payloadDupeText ||
+          (requestedDupeText
+            && requestedOriginalText
+            && payloadDupeText
+            && payloadOriginalText
+            && requestedDupeText.toLowerCase() !== requestedOriginalText.toLowerCase()
+            && payloadDupeText.toLowerCase() === payloadOriginalText.toLowerCase())
+        )
+      ) {
+        payload = { ...payload, dupe: dupeAnchor };
+      }
 
       const uniqStrings = (arr) => {
         const out = [];
@@ -46779,8 +45910,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         };
 
         const [origScan, dupeScan] = await Promise.all([
-          scanOne({ productText: originalText, productObj: originalAnchor, productUrl: parsed.data.original_url }),
-          scanOne({ productText: dupeText, productObj: dupeAnchor, productUrl: parsed.data.dupe_url }),
+          scanOne({ productText: originalText, productObj: originalAnchor, productUrl: compareInput.original_url }),
+          scanOne({ productText: dupeText, productObj: dupeAnchor, productUrl: compareInput.dupe_url }),
         ]);
 
         const origPayload = origScan && origScan.payload && typeof origScan.payload === 'object' ? origScan.payload : null;
@@ -47196,15 +46327,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             promptTemplateId: norm?.payload?.recommendation_meta?.prompt_template_id,
           });
       if (parsed.data.include_alternatives) {
-        const alt = await enrichRecommendationsWithAlternatives({
-          ctx,
-          profileSummary,
-          recentLogs,
-          recommendations: norm.payload.recommendations,
-          logger,
-        });
-        norm.payload = { ...norm.payload, recommendations: alt.recommendations };
-        norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+        try {
+          const alt = await enrichRecommendationsWithAlternatives({
+            ctx,
+            profileSummary,
+            recentLogs,
+            recommendations: norm.payload.recommendations,
+            logger,
+          });
+          norm.payload = { ...norm.payload, recommendations: alt.recommendations };
+          norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+        } catch (altErr) {
+          logger?.warn({ err: altErr?.message, code: altErr?.code }, 'aurora bff: generic-reco enrichRecommendationsWithAlternatives failed, continuing without alternatives');
+        }
       }
       const payload = norm.payload;
       const llmTraceRef = buildRecoLlmTraceRef(upstreamReco && upstreamReco.llmTrace);
@@ -51994,24 +51129,28 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const existingCards = Array.isArray(baseEnvelope.cards) ? baseEnvelope.cards.slice() : [];
         const existingEvents = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice() : [];
-        const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
-          ctx,
-          message: requestMessage,
-          profile,
-          recentLogs,
-          language: ctx.lang,
-          reason: 'default',
-        });
-        const fallbackAnalysisCard = fallbackCards.find((card) => card && card.type === 'analysis_summary');
-        const fallbackConfidenceCard = fallbackCards.find((card) => card && card.type === 'confidence_notice');
-        if (fallbackAnalysisCard) {
-          existingCards.push(fallbackAnalysisCard);
-        }
-        if (
-          fallbackConfidenceCard &&
-          !existingCards.some((card) => card && typeof card === 'object' && String(card.type || '').trim() === 'confidence_notice')
-        ) {
-          existingCards.push(fallbackConfidenceCard);
+        try {
+          const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+            ctx,
+            message: requestMessage,
+            profile,
+            recentLogs,
+            language: ctx.lang,
+            reason: 'default',
+          });
+          const fallbackAnalysisCard = fallbackCards.find((card) => card && card.type === 'analysis_summary');
+          const fallbackConfidenceCard = fallbackCards.find((card) => card && card.type === 'confidence_notice');
+          if (fallbackAnalysisCard) {
+            existingCards.push(fallbackAnalysisCard);
+          }
+          if (
+            fallbackConfidenceCard &&
+            !existingCards.some((card) => card && typeof card === 'object' && String(card.type || '').trim() === 'confidence_notice')
+          ) {
+            existingCards.push(fallbackConfidenceCard);
+          }
+        } catch (fallbackErr) {
+          logger?.warn({ err: fallbackErr?.message }, 'aurora bff: buildRoutineRulesOnlyFallbackCardsForChat failed inside sendChatEnvelope');
         }
         existingEvents.push(
           makeEvent(ctx, 'routine_rules_fallback', {
@@ -53100,7 +52239,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
           followupPayloadSeed = applyProductAnalysisGapContract({
             assessment: {
-              verdict: 'Needs Verification',
+              verdict: 'Unknown',
               reasons: followupReasons,
               anchor_product: anchorForPayload,
             },
@@ -54356,14 +53495,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionId === 'chip.start.routine' ||
         looksLikeRecommendationRequest(message),
       );
-      const reassessRequested = actionId === 'chip.action.reassess';
-      const updateGoalsRequested = actionId === 'chip.action.update_goals';
-      const newPhotoRequested = actionId === 'chip.action.new_photo';
-      const progressEntryRequested = looksLikeProgressCheckRequest(message, actionId);
       const diagnosisEntryRequested = Boolean(
         actionId === 'chip.start.diagnosis' ||
         actionId === 'chip_start_diagnosis' ||
-        reassessRequested ||
         ingredientDiagnosisOptInRequested ||
         (requestedTransition &&
           typeof requestedTransition === 'object' &&
@@ -54373,21 +53507,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       const diagnosisFlowContinuationAllowed = Boolean(
         !diagnosisEntryRequested &&
         !recommendationEntryRequested &&
-        !progressEntryRequested &&
         !evaluateIntent &&
         !ingredientScienceIntentEffective &&
         !conflictIntentRequested &&
         !looksLikeWeatherOrEnvironmentQuestion(message),
-      );
-      const clientInDiagnosisState = String(clientAgentState || '').startsWith('DIAG_');
-      const requestInDiagnosisState =
-        String(ctx.state || '').startsWith('S2_') ||
-        String(ctx.state || '').startsWith('S3_');
-      const enteredDiagnosisFromFreshStart = Boolean(
-        diagnosisEntryRequested &&
-          !reassessRequested &&
-          !clientInDiagnosisState &&
-          !requestInDiagnosisState
       );
       const anchorCollectionSignal = (() => {
         const text = String(message || '').trim().toLowerCase();
@@ -55757,252 +54880,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(parseFailEnvelope);
       }
 
-      if (newPhotoRequested) {
-        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-        const prompt =
-          lang === 'CN'
-            ? '你可以上传一张新照片让我重新读取当前状态。你也可以先跳过照片，我会给一份低置信度的安全基线。'
-            : 'You can upload a fresh photo for a current read. You can also skip photos and I’ll give a low-confidence safe baseline first.';
-        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
-        const profileSummaryForPatch = summarizeChatProfileForContext(profile);
-        const sessionPatch = nextState
-          ? { next_state: nextState, profile: profileSummaryForPatch }
-          : { profile: profileSummaryForPatch };
-        appendDiagnosisStateToSessionPatch(sessionPatch, 'photo_refresh_requested');
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(prompt),
-          suggested_chips: [
-            {
-              chip_id: 'chip.intake.upload_photos',
-              label: lang === 'CN' ? '上传照片（更准）' : 'Upload a photo (more accurate)',
-              kind: 'quick_reply',
-              data: { trigger_source: 'returning_progress' },
-            },
-            {
-              chip_id: 'chip.intake.skip_analysis',
-              label: lang === 'CN' ? '跳过照片（低置信度）' : 'Skip photo (low confidence)',
-              kind: 'quick_reply',
-              data: { trigger_source: 'returning_progress' },
-            },
-          ],
-          cards: [],
-          session_patch: sessionPatch,
-          events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'photo_refresh_requested' })],
-        });
-        return sendChatEnvelope(envelope);
-      }
-
-      if (updateGoalsRequested) {
-        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-        const forcedMissing = ['goals'];
-        const prompt = buildDiagnosisPrompt(ctx.lang, forcedMissing);
-        const chips = buildDiagnosisChips(ctx.lang, forcedMissing);
-        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
-        const profileSummaryForPatch = summarizeChatProfileForContext(profile);
-        const pendingFromGate = buildPendingClarificationForGate({
-          language: ctx.lang,
-          missing: forcedMissing,
-          message: message || (lang === 'CN' ? '更新我的目标' : 'Update my goals'),
-          wants: 'diagnosis',
-        });
-        const sessionPatch = nextState
-          ? { next_state: nextState, profile: profileSummaryForPatch }
-          : { profile: profileSummaryForPatch };
-        if (pendingFromGate) sessionPatch.pending_clarification = pendingFromGate;
-        appendDiagnosisStateToSessionPatch(sessionPatch, 'update_goals');
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(prompt),
-          suggested_chips: chips,
-          cards: [
-            {
-              card_id: `diag_update_goals_${ctx.request_id}`,
-              type: 'diagnosis_gate',
-              payload: {
-                reason: 'update_goals',
-                missing_fields: forcedMissing,
-                wants: 'diagnosis',
-                profile: profileSummaryForPatch,
-                recent_logs: recentLogs,
-              },
-            },
-          ],
-          session_patch: sessionPatch,
-          events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'update_goals' })],
-        });
-        return sendChatEnvelope(envelope);
-      }
-
-      if (progressEntryRequested) {
-        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-        const latestArtifactForProgress = await loadLatestDiagnosisArtifactForRoute({
-          identity,
-          session: parsed.data.session,
-          ctx,
-          logger,
-        });
-        const profileSummaryForPatch = summarizeChatProfileForContext(profile);
-        const progressBaseline = buildDiagnosisBaseline({
-          profile: profileSummaryForPatch || profile,
-          artifact: latestArtifactForProgress,
-        });
-
-        if (!hasReturningDiagnosisBaseline({ baseline: progressBaseline, recentLogs })) {
-          const { missing } = profileCompleteness(profile);
-          const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
-          const missingCore = requiredCore.filter((field) => (Array.isArray(missing) ? missing.includes(field) : false));
-          if (missingCore.length > 0) {
-            const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
-            const chips = buildDiagnosisChips(ctx.lang, missingCore);
-            const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
-            const sessionPatch = nextState
-              ? { next_state: nextState, profile: profileSummaryForPatch }
-              : { profile: profileSummaryForPatch };
-            appendDiagnosisStateToSessionPatch(sessionPatch, 'progress_requires_baseline');
-            const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(prompt),
-              suggested_chips: chips,
-              cards: [
-                {
-                  card_id: `diag_progress_gate_${ctx.request_id}`,
-                  type: 'diagnosis_gate',
-                  payload: {
-                    reason: 'progress_requires_baseline',
-                    missing_fields: missingCore,
-                    wants: 'diagnosis',
-                    profile: profileSummaryForPatch,
-                    recent_logs: recentLogs,
-                  },
-                },
-              ],
-              session_patch: sessionPatch,
-              events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'progress_requires_baseline' })],
-            });
-            return sendChatEnvelope(envelope);
-          }
-
-          const prompt =
-            lang === 'CN'
-              ? '在查看进展前，我需要一个诊断基线。你可以先上传一张照片，或者先走一次低置信度基线分析。'
-              : 'I need a diagnosis baseline before I can review progress. Upload a photo first, or run one low-confidence baseline analysis.';
-          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
-          const sessionPatch = nextState
-            ? { next_state: nextState, profile: profileSummaryForPatch }
-            : { profile: profileSummaryForPatch };
-          appendDiagnosisStateToSessionPatch(sessionPatch, 'progress_requires_baseline');
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(prompt),
-            suggested_chips: [
-              {
-                chip_id: 'chip.intake.upload_photos',
-                label: lang === 'CN' ? '上传照片（建立基线）' : 'Upload a photo (create baseline)',
-                kind: 'quick_reply',
-                data: { trigger_source: 'progress_requires_baseline' },
-              },
-              {
-                chip_id: 'chip.intake.skip_analysis',
-                label: lang === 'CN' ? '先用低置信度基线' : 'Use a low-confidence baseline first',
-                kind: 'quick_reply',
-                data: { trigger_source: 'progress_requires_baseline' },
-              },
-            ],
-            cards: [
-              {
-                card_id: `conf_progress_${ctx.request_id}`,
-                type: 'confidence_notice',
-                payload: buildConfidenceNoticeCardPayload({
-                  language: ctx.lang,
-                  reason: 'artifact_missing',
-                  confidence: { score: 0, level: 'low', rationale: ['progress_requires_baseline'] },
-                  actions: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
-                  details: ['progress_requires_baseline'],
-                }),
-              },
-            ],
-            session_patch: sessionPatch,
-            events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'progress_requires_baseline' })],
-          });
-          return sendChatEnvelope(envelope);
-        }
-
-        const progressLlmResult = await fetchProgressSummaryFromLlm({
-          baseline: progressBaseline,
-          recentLogs,
-          profileSummary: profileSummaryForPatch,
-          language: ctx.lang,
-          llmProvider,
-          llmModel,
-        });
-        if (!progressLlmResult.llm_used && progressLlmResult.failure_reason) {
-          logger?.info(
-            {
-              request_id: ctx.request_id,
-              trace_id: ctx.trace_id,
-              provider: progressLlmResult.provider || null,
-              model: progressLlmResult.model || null,
-              reason: progressLlmResult.failure_reason,
-              detail: progressLlmResult.failure_detail || null,
-              parse_status: progressLlmResult.parse_status || null,
-              timeout_stage: progressLlmResult.timeout_stage || null,
-            },
-            'aurora bff: progress summary llm fallback',
-          );
-        }
-        let progressSummary =
-          progressLlmResult.progress ||
-          buildDeterministicProgressSummary({
-            baseline: progressBaseline,
-            recentLogs,
-            language: ctx.lang,
-          });
-        if (!progressBaseline.has_photo && containsVisualClaimWithoutPhoto(progressSummary)) {
-          progressSummary = buildDeterministicProgressSummary({
-            baseline: progressBaseline,
-            recentLogs,
-            language: ctx.lang,
-          });
-        }
-        const diagnosisState = 'progress_viewed';
-        const sessionPatch = {
-          profile: profileSummaryForPatch,
-          recent_logs: recentLogs,
-          experiment_events: [buildProgressExperimentEvent(ctx, diagnosisState)],
-        };
-        appendLatestArtifactToSessionPatch(sessionPatch, progressBaseline.blueprint_id);
-        appendDiagnosisStateToSessionPatch(sessionPatch, diagnosisState);
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
-            lang === 'CN'
-              ? '以下是你最近这段时间的肌肤变化回顾。'
-              : 'Here is how your skin has changed recently.',
-          ),
-          suggested_chips: buildProgressQuickReplies(ctx.lang),
-          cards: [
-            buildSkinProgressCard({
-              ctx,
-              baseline: progressBaseline,
-              progress: progressSummary,
-              language: ctx.lang,
-            }),
-          ],
-          session_patch: sessionPatch,
-          events: [
-            makeEvent(ctx, 'progress_viewed', {
-              diagnosis_state: diagnosisState,
-              baseline_available: true,
-              llm_used: Boolean(progressLlmResult.llm_used),
-              has_photo: Boolean(progressBaseline.has_photo),
-              failure_reason: progressLlmResult.failure_reason || null,
-            }),
-            makeEvent(ctx, 'value_moment', {
-              kind: 'progress_viewed',
-              llm_used: Boolean(progressLlmResult.llm_used),
-              failure_reason: progressLlmResult.failure_reason || null,
-            }),
-          ],
-        });
-        return sendChatEnvelope(envelope);
-      }
-
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
       const inDiagnosisState =
@@ -56027,79 +54904,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         const { score, missing } = profileCompleteness(profile);
         const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
         const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
-        const profileSummaryForDiagnosis = summarizeChatProfileForContext(profile);
-
-        if (enteredDiagnosisFromFreshStart) {
-          const latestArtifactForDiagnosis = await loadLatestDiagnosisArtifactForRoute({
-            identity,
-            session: parsed.data.session,
-            ctx,
-            logger,
-          });
-          const returningBaseline = buildDiagnosisBaseline({
-            profile: profileSummaryForDiagnosis || profile,
-            artifact: latestArtifactForDiagnosis,
-          });
-          if (hasReturningDiagnosisBaseline({ baseline: returningBaseline, recentLogs })) {
-            const summaryResult = await fetchReturningSummaryText({
-              baseline: returningBaseline,
-              recentLogs,
-              profileSummary: profileSummaryForDiagnosis,
-              language: ctx.lang,
-              llmProvider,
-              llmModel,
-            });
-            if (!summaryResult.llm_used && summaryResult.failure_reason) {
-              logger?.info(
-                {
-                  request_id: ctx.request_id,
-                  trace_id: ctx.trace_id,
-                  provider: summaryResult.provider || null,
-                  model: summaryResult.model || null,
-                  reason: summaryResult.failure_reason,
-                  detail: summaryResult.failure_detail || null,
-                  parse_status: summaryResult.parse_status || null,
-                  timeout_stage: summaryResult.timeout_stage || null,
-                },
-                'aurora bff: returning summary llm fallback',
-              );
-            }
-            const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
-            const sessionPatch = nextState
-              ? { next_state: nextState, profile: profileSummaryForDiagnosis, recent_logs: recentLogs }
-              : { profile: profileSummaryForDiagnosis, recent_logs: recentLogs };
-            appendLatestArtifactToSessionPatch(sessionPatch, returningBaseline.blueprint_id);
-            appendDiagnosisStateToSessionPatch(sessionPatch, 'returning_triage');
-            const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(
-                ctx.lang === 'CN'
-                  ? '欢迎回来。我先根据你之前的诊断和最近记录，给你一个快速分流。'
-                  : 'Welcome back. I’ll start with a quick triage from your previous diagnosis and recent logs.',
-              ),
-              suggested_chips: buildReturningTriageQuickReplies(ctx.lang),
-              cards: [
-                buildReturningTriageCard({
-                  ctx,
-                  baseline: returningBaseline,
-                  summaryText: summaryResult.text,
-                  language: ctx.lang,
-                }),
-              ],
-              session_patch: sessionPatch,
-              events: [
-                makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'returning_triage' }),
-                makeEvent(ctx, 'value_moment', {
-                  kind: 'returning_triage',
-                  has_summary_text: Boolean(summaryResult.text),
-                  has_photo: Boolean(returningBaseline.has_photo),
-                  llm_used: Boolean(summaryResult.llm_used),
-                  failure_reason: summaryResult.failure_reason || null,
-                }),
-              ],
-            });
-            return sendChatEnvelope(envelope);
-          }
-        }
 
         if (missingCore.length) {
           const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
@@ -56117,7 +54921,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   reason: 'diagnosis_start',
                   missing_fields: missingCore,
                   wants: 'diagnosis',
-                  profile: profileSummaryForDiagnosis,
+                  profile: summarizeChatProfileForContext(profile),
                   recent_logs: recentLogs,
                 },
               },
@@ -56158,7 +54962,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           ],
           cards: [],
-          session_patch: nextState ? { next_state: nextState, profile: profileSummaryForDiagnosis } : { profile: profileSummaryForDiagnosis },
+          session_patch: nextState ? { next_state: nextState, profile: summarizeChatProfileForContext(profile) } : { profile: summarizeChatProfileForContext(profile) },
           events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_profile_complete' })],
         });
         return sendChatEnvelope(envelope);
@@ -56448,25 +55252,27 @@ function mountAuroraBffRoutes(app, { logger }) {
               )
               : await routineRecoPromise;
           } catch (err) {
-            if (!AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || !(err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT')) {
-              throw err;
-            }
+            const isTimeout = err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT';
+            const failureClass = isTimeout ? 'timeout' : (err && err.code) || 'unknown';
             logger?.warn(
               {
                 request_id: ctx.request_id,
                 trace_id: ctx.trace_id,
                 budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+                failure_class: failureClass,
+                err: err?.message,
               },
-              'aurora bff: routine generation timeout, degraded to confidence_notice',
+              `aurora bff: routine generation failed (${failureClass}), degraded to confidence_notice`,
             );
             logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
-            recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+            recordAuroraSkinFlowMetric({ stage: isTimeout ? 'routine_timeout_degraded' : 'routine_error_degraded', hit: true });
             return sendChatEnvelope(
               buildRoutineTimeoutDegradedEnvelope({
                 detail:
                   ctx.lang === 'CN'
-                    ? '预算分支 routine 生成超时，建议继续补充 AM/PM 后重试。'
-                    : 'Routine generation in budget flow timed out; continue AM/PM intake and retry.',
+                    ? '预算分支 routine 生成失败，建议继续补充 AM/PM 后重试。'
+                    : 'Routine generation in budget flow failed; continue AM/PM intake and retry.',
+                upstreamFailureCode: failureClass,
               }),
             );
           }
@@ -56530,25 +55336,27 @@ function mountAuroraBffRoutes(app, { logger }) {
             )
             : await routineRecoPromise;
         } catch (err) {
-          if (!AURORA_BFF_CHAT_ROUTINE_V2_ENABLED || !(err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT')) {
-            throw err;
-          }
+          const isTimeout = err && err.code === 'AURORA_CHAT_ROUTINE_BUDGET_TIMEOUT';
+          const failureClass = isTimeout ? 'timeout' : (err && err.code) || 'unknown';
           logger?.warn(
             {
               request_id: ctx.request_id,
               trace_id: ctx.trace_id,
               budget_ms: AURORA_BFF_CHAT_ROUTINE_BUDGET_MS,
+              failure_class: failureClass,
+              err: err?.message,
             },
-            'aurora bff: routine generation timeout, degraded to confidence_notice',
+            `aurora bff: routine generation failed (${failureClass}), degraded to confidence_notice`,
           );
           logger?.info({ kind: 'metric', name: 'aurora.skin.routine.timeout_degraded_rate', value: 1 }, 'metric');
-          recordAuroraSkinFlowMetric({ stage: 'routine_timeout_degraded', hit: true });
+          recordAuroraSkinFlowMetric({ stage: isTimeout ? 'routine_timeout_degraded' : 'routine_error_degraded', hit: true });
           return sendChatEnvelope(
             buildRoutineTimeoutDegradedEnvelope({
               detail:
                 ctx.lang === 'CN'
-                  ? 'routine 生成超时，建议继续补充 AM/PM 或直接重试。'
-                  : 'Routine generation timed out; continue AM/PM intake or retry directly.',
+                  ? 'routine 生成失败，建议继续补充 AM/PM 或直接重试。'
+                  : 'Routine generation failed; continue AM/PM intake or retry directly.',
+              upstreamFailureCode: failureClass,
             }),
           );
         }
@@ -58289,19 +57097,23 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (recoIdx !== -1) {
           const card = cards[recoIdx];
           const basePayload = card.payload && typeof card.payload === 'object' ? card.payload : {};
-          const alt = await enrichRecommendationsWithAlternatives({
-            ctx,
-            profileSummary,
-            recentLogs,
-            recommendations: basePayload.recommendations,
-            logger,
-          });
-          const nextCard = {
-            ...card,
-            payload: { ...basePayload, recommendations: alt.recommendations },
-            field_missing: mergeFieldMissing(card.field_missing, alt.field_missing),
-          };
-          cards = cards.map((c, i) => (i === recoIdx ? nextCard : c));
+          try {
+            const alt = await enrichRecommendationsWithAlternatives({
+              ctx,
+              profileSummary,
+              recentLogs,
+              recommendations: basePayload.recommendations,
+              logger,
+            });
+            const nextCard = {
+              ...card,
+              payload: { ...basePayload, recommendations: alt.recommendations },
+              field_missing: mergeFieldMissing(card.field_missing, alt.field_missing),
+            };
+            cards = cards.map((c, i) => (i === recoIdx ? nextCard : c));
+          } catch (altErr) {
+            logger?.warn({ err: altErr?.message, code: altErr?.code }, 'aurora bff: main-path enrichRecommendationsWithAlternatives failed, continuing without alternatives');
+          }
         }
       }
 
@@ -59352,19 +58164,23 @@ function mountAuroraBffRoutes(app, { logger }) {
       const needsRoutineFallbackModules = !hasRoutineExpertRequiredModules(existingRoutineExpert);
       const stallLikeResponse = looksLikeStallPhrase(safeAnswer) || looksLikeGenericStructuredNotice(safeAnswer);
       if (routineLikeContext && needsRoutineFallbackModules && (!assembledRenderable || stallLikeResponse)) {
-        const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
-          ctx,
-          message,
-          profile,
-          recentLogs,
-          language: ctx.lang,
-          reason: stallLikeResponse ? 'default' : 'timeout_degraded',
-        });
-        assembledCards.unshift(...fallbackCards);
-        safeAnswer =
-          ctx.lang === 'CN'
-            ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
-            : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+        try {
+          const fallbackCards = buildRoutineRulesOnlyFallbackCardsForChat({
+            ctx,
+            message,
+            profile,
+            recentLogs,
+            language: ctx.lang,
+            reason: stallLikeResponse ? 'default' : 'timeout_degraded',
+          });
+          assembledCards.unshift(...fallbackCards);
+          safeAnswer =
+            ctx.lang === 'CN'
+              ? '我已切换到规则兜底并给出可执行的结构化 routine（见下方）。你可以继续补充信息，我会逐轮优化。'
+              : 'I switched to a rules-based fallback and produced an actionable structured routine below. You can add details and I will iteratively optimize.';
+        } catch (fallbackErr) {
+          logger?.warn({ err: fallbackErr?.message }, 'aurora bff: buildRoutineRulesOnlyFallbackCardsForChat failed in main path');
+        }
       }
 
       const travelSuppressedCards = suppressAnalysisCardsForTravelEnvTurn(assembledCards, {

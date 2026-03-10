@@ -126,7 +126,7 @@ const NODE_SPECS = [
     entrypoint: 'diagnosis_v2.start',
     consumer: 'DiagnosisStartSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::diagnosis_v2_start_personalized',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -154,7 +154,7 @@ const NODE_SPECS = [
     entrypoint: 'diagnosis_v2.answer',
     consumer: 'DiagnosisAnswerSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::diagnosis_v2_answer_blueprint',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -182,7 +182,7 @@ const NODE_SPECS = [
     entrypoint: 'routine.intake_products',
     consumer: 'RoutineIntakeProductsSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::routine_categorize_products',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -210,7 +210,7 @@ const NODE_SPECS = [
     entrypoint: 'routine.audit_optimize',
     consumer: 'RoutineAuditOptimizeSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::routine_audit_optimize',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -238,7 +238,7 @@ const NODE_SPECS = [
     entrypoint: 'reco.step_based',
     consumer: 'RecoStepBasedSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::reco_step_based',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -266,7 +266,7 @@ const NODE_SPECS = [
     entrypoint: 'tracker.checkin_insights',
     consumer: 'TrackerCheckinInsightsSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::tracker_checkin_insights',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -275,8 +275,8 @@ const NODE_SPECS = [
       consumer_required: ['sensation_trend', 'days_tracked', 'attribution|null', 'detailed_review|null'],
     },
     goal: 'Summarize check-in trends and next actions conservatively, especially when there are no photos.',
-    deterministic_boundary: ['Skill validator blocks visual references when no photos exist.', 'Prompt should already avoid photo-grounded wording unless has_photos=true.'],
-    hard_rules: ['If has_photos=false, do not describe visible changes.', 'Trend summaries must stay grounded in logs, not imagined progress.', 'Suggested action must be one the skill knows how to route.'],
+    deterministic_boundary: ['Skill validator blocks visual references when no photos exist.', 'Prompt should already avoid photo-grounded wording unless has_photo=true.'],
+    hard_rules: ['If has_photo=false, do not describe visible changes.', 'Trend summaries must stay grounded in logs, not imagined progress.', 'Suggested action must be one the skill knows how to route.'],
     missing_data_policy: ['If attribution is weak, use uncertain attribution or null.', 'If logs are noisy, keep the summary cautious and short.'],
     forbidden_behaviors: ['No visual claims without photos.', 'No fabricated causal certainty.', 'No judgmental tone.'],
     archetype: 'structured analyzer / planner',
@@ -294,7 +294,7 @@ const NODE_SPECS = [
     entrypoint: 'product.analyze',
     consumer: 'ProductAnalyzeSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::product_analyze',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -304,7 +304,7 @@ const NODE_SPECS = [
     },
     goal: 'Provide a grounded product suitability verdict and usage guidance that deterministic safety rules can safely refine.',
     deterministic_boundary: ['Deterministic layer enforces SPF, retinoid, pregnancy, and high-acid hard overrides.', 'Prompt should still return a coherent baseline usage object and grounded risk flags.'],
-    hard_rules: ['SPF/sunscreen: usage.time_of_day MUST be "AM only".', 'SPF/sunscreen: usage.frequency MUST be "daily".', 'SPF/sunscreen: usage.reapply MUST include outdoor reapplication guidance.', 'SPF/sunscreen: NEVER suggest "PM first", "2-3x/week", or "every other day".', 'Retinoid: prefer PM-only framing and conservative onboarding frequency.', 'Pregnancy: if safety_flags indicate pregnancy and product contains retinoids, include a blocking risk flag.', 'Unknown-ingredient: do not fabricate key ingredients when ingredient_list is weak or missing.', 'Evidence: when uncertainty is high, keep the verdict cautious rather than assertive.'],
+    hard_rules: ['SPF/sunscreen: usage.time_of_day MUST be "am".', 'SPF/sunscreen: usage.frequency MUST be "daily".', 'SPF/sunscreen: usage.reapply MUST include outdoor reapplication guidance.', 'SPF/sunscreen: NEVER suggest "pm", "2-3x/week", or "every other day" for sunscreen.', 'Retinoid: prefer pm-only framing and conservative onboarding frequency.', 'Pregnancy: if safety_flags indicate pregnancy and product contains retinoids, include a blocking risk flag.', 'Unknown-ingredient: do not fabricate key ingredients when ingredient_list is weak or missing.', 'Evidence: when uncertainty is high, keep the verdict cautious rather than assertive.'],
     missing_data_policy: ['Use null or [] for unknown ingredient facts.', 'Keep verdict cautious when formulation evidence is incomplete.'],
     forbidden_behaviors: ['No brand hallucination.', 'No concentration guessing.', 'No PM-first sunscreen guidance.'],
     archetype: 'structured analyzer / planner',
@@ -322,7 +322,7 @@ const NODE_SPECS = [
     entrypoint: 'ingredient.report',
     consumer: 'IngredientReportSkill._handleSpecificIngredient',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::ingredient_report',
-    current_version_or_variant: '2.1.0',
+    current_version_or_variant: '2.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -350,7 +350,7 @@ const NODE_SPECS = [
     entrypoint: 'ingredient.report::_handleIngredientQuestion',
     consumer: 'IngredientReportSkill._handleIngredientQuestion',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::ingredient_query_answer',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -378,7 +378,7 @@ const NODE_SPECS = [
     entrypoint: 'skill_router._classifyIntent',
     consumer: 'SkillRouter',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::intent_classifier',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -406,7 +406,7 @@ const NODE_SPECS = [
     entrypoint: 'dupe.suggest',
     consumer: 'DupeSuggestSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::dupe_suggest',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '2.1.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -434,7 +434,7 @@ const NODE_SPECS = [
     entrypoint: 'dupe.compare',
     consumer: 'DupeCompareSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::dupe_compare',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -462,7 +462,7 @@ const NODE_SPECS = [
     entrypoint: 'travel.apply_mode',
     consumer: 'TravelApplyModeSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::travel_apply_mode',
-    current_version_or_variant: '1.1.0',
+    current_version_or_variant: '1.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {

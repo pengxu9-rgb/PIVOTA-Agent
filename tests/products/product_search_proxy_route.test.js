@@ -455,6 +455,52 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('generic beauty search infers aurora defaults for skincare queries', async () => {
+    const queryText = 'niacinamide serum';
+    process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
+
+    const auroraPrimaryScope = nock('http://aurora-upstream.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '').includes(queryText) &&
+          String(q.fast_mode || '') === 'true' &&
+          String(q.allow_stale_cache || '') === 'false' &&
+          String(q.allow_external_seed || '') === 'false' &&
+          String(q.external_seed_strategy || '').length > 0
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'beauty_generic_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Niacinamide Serum',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+      });
+
+    expect(resp.status).toBe(200);
+    expect(auroraPrimaryScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'beauty_generic_1',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+  });
+
   test('aurora source uses dedicated upstream base for primary and invoke fallback', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
@@ -1110,6 +1156,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       .get('/agent/v1/products/search')
       .query({
         query: queryText,
+        source: 'shopping_agent',
       });
     const auroraTimeouts = resolverSpy.mock.calls
       .slice(0, callCountAfterAurora)

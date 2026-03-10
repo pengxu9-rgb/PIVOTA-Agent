@@ -402,6 +402,35 @@ function buildTravelCard({ card, requestId, index, language = 'EN' }) {
   };
 }
 
+function buildErrorCard({ card, requestId, index, language = 'EN' }) {
+  const payload = isPlainObject(card && card.payload) ? card.payload : {};
+  const errorCode = asString(payload.error || payload.code) || 'UNKNOWN';
+  const detail = asString(payload.detail || payload.message);
+  return {
+    id: normalizeCardId(card && card.card_id, 'error', requestId, index),
+    type: 'error',
+    priority: 1,
+    title: language === 'CN' ? '出了点问题' : 'Something went wrong',
+    tags: [language === 'CN' ? '错误' : 'Error'],
+    sections: [
+      {
+        kind: 'bullets',
+        title: language === 'CN' ? '详情' : 'Details',
+        items: [
+          detail ||
+            (language === 'CN'
+              ? '请求未能完成，请稍后重试。'
+              : 'The request could not be completed. Please try again shortly.'),
+        ],
+      },
+    ],
+    actions: [
+      { type: 'retry', label: language === 'CN' ? '重试' : 'Retry' },
+    ],
+    payload: { error_code: errorCode },
+  };
+}
+
 function buildNudgeCard({ card, requestId, index, language = 'EN' }) {
   const payload = isPlainObject(card && card.payload) ? card.payload : {};
   const message = asString(payload.message || payload.summary || payload.note);
@@ -588,12 +617,6 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   if (type === 'aurora_ingredient_report') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '成分报告' : 'Ingredient report' })];
   }
-  if (type === 'returning_triage') {
-    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '回访分流' : 'Returning triage' })];
-  }
-  if (type === 'skin_progress') {
-    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '肌肤进展' : 'Skin progress' })];
-  }
   if (type === 'diagnosis_gate') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '先做一个极简肤况确认' : 'Quick skin profile first' })];
   }
@@ -621,6 +644,7 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   if (type === 'triage') return [buildTriageCard({ card, requestId, index, language })];
   if (type === 'skin_status') return [buildSkinStatusCard({ card, requestId, index, language })];
   if (type === 'effect_review') return [buildEffectReviewCard({ card, requestId, index, language })];
+  if (type === 'error') return [buildErrorCard({ card, requestId, index, language })];
   return [buildNudgeCard({ card, requestId, index, language })];
 }
 
