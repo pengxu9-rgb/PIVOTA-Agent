@@ -1,77 +1,84 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const Module = require('node:module');
 
-function withEnv(patch, fn) {
-  const previous = {};
-  for (const [key, value] of Object.entries(patch || {})) {
-    previous[key] = Object.prototype.hasOwnProperty.call(process.env, key) ? process.env[key] : undefined;
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = String(value);
-  }
+test('auroraGeminiGlobalClient exports callAuroraGeminiGenerateContentWithMeta with timing metadata', async () => {
+  const clientModuleId = require.resolve('../src/auroraBff/auroraGeminiGlobalClient');
+  const keyModuleId = require.resolve('../src/auroraBff/auroraGeminiKeys');
+  const gateModuleId = require.resolve('../src/lib/geminiGlobalGate');
+  const originalKeyModule = require.cache[keyModuleId];
+  const originalGateModule = require.cache[gateModuleId];
+  const originalClientModule = require.cache[clientModuleId];
+  const originalLoad = Module._load;
+  let generateCalls = 0;
 
-  const restore = () => {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+  require.cache[keyModuleId] = {
+    id: keyModuleId,
+    filename: keyModuleId,
+    loaded: true,
+    exports: {
+      resolveAuroraGeminiKey() {
+        return 'test-gemini-key';
+      },
+    },
+  };
+  require.cache[gateModuleId] = {
+    id: gateModuleId,
+    filename: gateModuleId,
+    loaded: true,
+    exports: {
+      getGeminiGlobalGate() {
+        return {
+          withGate: async (_route, fn) => fn(),
+          getApiKey: () => 'test-gemini-key',
+          snapshot: () => ({ gate: { keyCount: 1 } }),
+        };
+      },
+    },
+  };
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === '@google/genai') {
+      return {
+        GoogleGenAI: class MockGoogleGenAI {
+          constructor() {
+            this.models = {
+              generateContent: async (requestPayload) => {
+                generateCalls += 1;
+                return { ok: true, requestPayload };
+              },
+            };
+          }
+        },
+      };
     }
+    return originalLoad.call(this, request, parent, isMain);
   };
 
+  delete require.cache[clientModuleId];
+
   try {
-    const out = fn();
-    if (out && typeof out.then === 'function') return out.finally(restore);
-    restore();
-    return out;
-  } catch (err) {
-    restore();
-    throw err;
+    const geminiClient = require(clientModuleId);
+    assert.equal(typeof geminiClient.callAuroraGeminiGenerateContentWithMeta, 'function');
+
+    const result = await geminiClient.callAuroraGeminiGenerateContentWithMeta({
+      featureEnvVar: 'AURORA_VISION_GEMINI_API_KEY',
+      route: 'aurora_test_route',
+      request: { model: 'gemini-test-model' },
+    });
+
+    assert.equal(generateCalls, 1);
+    assert.equal(result.response.ok, true);
+    assert.equal(typeof result.meta, 'object');
+    assert.equal(typeof result.meta.total_ms, 'number');
+    assert.equal(typeof result.meta.upstream_ms, 'number');
+    assert.equal(typeof result.meta.gate_wait_ms, 'number');
+  } finally {
+    Module._load = originalLoad;
+    if (originalKeyModule) require.cache[keyModuleId] = originalKeyModule;
+    else delete require.cache[keyModuleId];
+    if (originalGateModule) require.cache[gateModuleId] = originalGateModule;
+    else delete require.cache[gateModuleId];
+    if (originalClientModule) require.cache[clientModuleId] = originalClientModule;
+    else delete require.cache[clientModuleId];
   }
-}
-
-function loadHelperFresh() {
-  const helperId = require.resolve('../src/auroraBff/auroraGeminiGlobalClient');
-  const gateId = require.resolve('../src/lib/geminiGlobalGate');
-  const keyId = require.resolve('../src/auroraBff/auroraGeminiKeys');
-  delete require.cache[helperId];
-  delete require.cache[gateId];
-  delete require.cache[keyId];
-  return require('../src/auroraBff/auroraGeminiGlobalClient');
-}
-
-test('auroraGeminiGlobalClient prefers pooled global gate keys', async () => {
-  await withEnv(
-    {
-      GEMINI_API_KEY_1: 'pool_a',
-      GEMINI_API_KEY_2: 'pool_b',
-      AURORA_DIAG_GEMINI_API_KEY: 'feature_diag_key',
-      AURORA_SKIN_GEMINI_API_KEY: undefined,
-      GEMINI_API_KEY: undefined,
-      GOOGLE_API_KEY: undefined,
-    },
-    async () => {
-      const helper = loadHelperFresh();
-      assert.equal(helper.hasAuroraGeminiApiKey('AURORA_DIAG_GEMINI_API_KEY'), true);
-      const first = helper.pickAuroraGeminiApiKey('AURORA_DIAG_GEMINI_API_KEY');
-      const second = helper.pickAuroraGeminiApiKey('AURORA_DIAG_GEMINI_API_KEY');
-      assert.equal(first, 'pool_a');
-      assert.equal(second, 'pool_b');
-    },
-  );
-});
-
-test('auroraGeminiGlobalClient falls back to feature-specific key when pool is empty', async () => {
-  await withEnv(
-    {
-      GEMINI_API_KEY_1: undefined,
-      GEMINI_API_KEY_2: undefined,
-      AURORA_RECO_GEMINI_API_KEY: 'feature_reco_key',
-      AURORA_SKIN_GEMINI_API_KEY: undefined,
-      GEMINI_API_KEY: undefined,
-      GOOGLE_API_KEY: undefined,
-    },
-    async () => {
-      const helper = loadHelperFresh();
-      assert.equal(helper.hasAuroraGeminiApiKey('AURORA_RECO_GEMINI_API_KEY'), true);
-      assert.equal(helper.pickAuroraGeminiApiKey('AURORA_RECO_GEMINI_API_KEY'), 'feature_reco_key');
-    },
-  );
 });

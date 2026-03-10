@@ -66,9 +66,47 @@ async function callAuroraGeminiGenerateContent({
   return await gate.withGate(route, async () => resolved.client.models.generateContent(request));
 }
 
+async function callAuroraGeminiGenerateContentWithMeta({
+  featureEnvVar,
+  route = 'aurora_gemini',
+  request,
+  bypassCircuit = false,
+} = {}) {
+  const resolved = getAuroraGeminiClient(featureEnvVar);
+  if (!resolved.client) {
+    const err = new Error(resolved.init_error || 'MISSING_GEMINI_KEY');
+    err.code = resolved.init_error || 'MISSING_GEMINI_KEY';
+    throw err;
+  }
+  const gate = getGeminiGlobalGate();
+  const startedAt = Date.now();
+  let upstreamStartedAt = startedAt;
+  const response = await gate.withGate(
+    route,
+    async () => {
+      upstreamStartedAt = Date.now();
+      return resolved.client.models.generateContent(request);
+    },
+    { bypassCircuit },
+  );
+  const finishedAt = Date.now();
+  const totalMs = Math.max(0, finishedAt - startedAt);
+  const upstreamMs = Math.max(0, finishedAt - upstreamStartedAt);
+  const gateWaitMs = Math.max(0, totalMs - upstreamMs);
+  return {
+    response,
+    meta: {
+      gate_wait_ms: gateWaitMs,
+      upstream_ms: upstreamMs,
+      total_ms: totalMs,
+    },
+  };
+}
+
 module.exports = {
   hasAuroraGeminiApiKey,
   pickAuroraGeminiApiKey,
   getAuroraGeminiClient,
   callAuroraGeminiGenerateContent,
+  callAuroraGeminiGenerateContentWithMeta,
 };
