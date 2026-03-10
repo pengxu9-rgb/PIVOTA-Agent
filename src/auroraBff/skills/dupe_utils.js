@@ -94,6 +94,7 @@ function normalizeBrand(brand) {
 function normalizeProductName(name) {
   if (!name) return '';
   let norm = String(name).toLowerCase();
+  norm = norm.replace(BUCKET_SUFFIX_PATTERN, ' ');
   norm = norm.replace(/[^\w\s-]/g, ' ');
   norm = norm.replace(SPEC_WORDS, ' ');
   norm = norm.replace(MARKETING_WORDS, ' ');

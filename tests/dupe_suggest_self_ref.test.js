@@ -30,6 +30,11 @@ test('normalizeProductName removes spec and marketing words', () => {
   expect(result).toContain('rescue');
 });
 
+test('normalizeProductName strips bucket suffix labels used by legacy dupe output', () => {
+  const result = normalizeProductName('Daily Rescue Energizing Lightweight Lotion Moisturizer (budget dupe)');
+  expect(result).toBe('daily rescue energizing lightweight lotion moisturizer');
+});
+
 test('normalizeUrl strips tracking params and trailing slash', () => {
   const url = 'https://www.labseries.com/product/32020/123634/skincare/?utm_source=google&ref=abc';
   const norm = normalizeUrl(url);
@@ -96,6 +101,27 @@ test('scenario 2: same brand same name different URL is filtered', () => {
       url: 'https://www.sephora.com/product/lab-series-daily-rescue',
       bucket: 'dupe',
       confidence: 0.75,
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_SAME_NAME);
+});
+
+test('scenario 2b: same brand same name with budget-dupe suffix is filtered', () => {
+  const anchor = {
+    brand: 'Lab Series',
+    name: 'Daily Rescue Energizing Lightweight Lotion Moisturizer',
+    url: 'https://www.labseries.com/product/32020/123634/skincare/daily-rescue',
+  };
+  const candidates = [
+    {
+      brand: 'Lab Series',
+      name: 'Daily Rescue Energizing Lightweight Lotion Moisturizer (budget dupe)',
+      bucket: 'dupe',
+      confidence: 0.78,
     },
   ];
 

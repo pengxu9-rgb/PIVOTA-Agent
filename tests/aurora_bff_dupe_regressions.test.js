@@ -141,6 +141,50 @@ describe('legacy /v1/dupe suggest sanitization', () => {
     expect(result.payload.dupes).toHaveLength(1);
     expect(result.payload.dupes[0].why_not_the_same_product).toBeTruthy();
   });
+
+  test('sanitizeDupeSuggestPayload drops same-product rows that only append legacy bucket suffixes', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const result = __internal.sanitizeDupeSuggestPayload(
+      {
+        original: {
+          brand: 'Lab Series',
+          name: 'Daily Rescue Energizing Lightweight Lotion Moisturizer',
+          url: 'https://www.labseries.com/product/daily-rescue',
+        },
+        dupes: [
+          {
+            kind: 'dupe',
+            product: {
+              brand: 'Lab Series',
+              name: 'Daily Rescue Energizing Lightweight Lotion Moisturizer (budget dupe)',
+            },
+            similarity: 78,
+          },
+        ],
+        comparables: [
+          {
+            kind: 'similar',
+            product: {
+              brand: 'Lab Series',
+              name: 'Daily Rescue Energizing Lightweight Lotion Moisturizer (similar option)',
+            },
+            similarity: 74,
+          },
+        ],
+        meta: {},
+      },
+      { lang: 'EN' },
+    );
+
+    expect(result.payload.dupes).toHaveLength(0);
+    expect(result.payload.comparables).toHaveLength(0);
+    expect(result.payload.meta.self_ref_dropped_count).toBe(2);
+    expect(result.field_missing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: 'dupe_suggest_self_reference_filtered' }),
+      ]),
+    );
+  });
 });
 
 describe('legacy /v1/dupe/compare request compatibility', () => {
