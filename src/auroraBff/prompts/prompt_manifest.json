@@ -33,10 +33,10 @@
     },
     {
       "template_id": "reco_step_based",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "task_mode": "recommendation",
-      "input_params": ["profile", "routine", "inventory", "target_step", "target_ingredient", "concerns", "safety_flags", "locale"],
-      "output_schema": "StepRecommendationOutput"
+      "input_params": ["user_question", "profile", "routine", "inventory", "target_step", "target_ingredient", "concerns", "safety_flags", "locale"],
+      "output_schema": "RecoHybridCandidateOutput"
     },
     {
       "template_id": "tracker_checkin_insights",

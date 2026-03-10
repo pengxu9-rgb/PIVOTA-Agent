@@ -88,8 +88,8 @@ test('reco_step_based prompt version is aligned between runtime registry and man
   const runtimeTemplate = gateway._promptRegistry.get('reco_step_based');
   const manifestTemplate = readPromptManifest().templates.find((entry) => entry.template_id === 'reco_step_based');
 
-  assert.equal(runtimeTemplate?.version, '1.2.0');
-  assert.equal(manifestTemplate?.version, '1.2.0');
+  assert.equal(runtimeTemplate?.version, '2.0.0');
+  assert.equal(manifestTemplate?.version, '2.0.0');
 });
 
 test('dupe prompts are aligned between runtime registry and manifest', () => {
@@ -260,20 +260,22 @@ test('ingredient_query_answer prompt encodes answer-first and ingredient-educati
   assert.match(text, /user_question=\{\{user_question\}\}/i);
 });
 
-test('reco_step_based prompt encodes grounded recommendation and empty-state rules', () => {
+test('reco_step_based prompt encodes hybrid seed recommendation rules', () => {
   const gateway = new LlmGateway({ stubResponses: true });
   const template = gateway._promptRegistry.get('reco_step_based');
   const text = String(template?.text || '');
 
   assert.match(text, /single valid JSON object only/i);
-  assert.match(text, /"step_recommendations": \[/i);
-  assert.match(text, /"step_name": \{"en": string, "zh": string\|null\}/i);
+  assert.match(text, /"answer_en": string/i);
+  assert.match(text, /"products": \[/i);
+  assert.match(text, /"product_type": string\|null/i);
   assert.match(text, /"why": \{"en": string, "zh": string\|null\}/i);
-  assert.match(text, /Grounding rule/i);
-  assert.match(text, /Do not invent catalog products, brands, or IDs/i);
-  assert.match(text, /Empty-result rule/i);
-  assert.match(text, /return "step_recommendations": \[\]/i);
+  assert.match(text, /Specific-product rule/i);
+  assert.match(text, /Six-seed rule/i);
+  assert.match(text, /No-category-padding rule/i);
   assert.match(text, /Target fidelity rule/i);
+  assert.match(text, /tools, makeup brushes, color cosmetics/i);
+  assert.match(text, /user_question=\{\{user_question\}\}/i);
   assert.match(text, /Avoid recommending strong or blocked actives/i);
   assert.match(text, /inventory=\{\{inventory\}\}/i);
   assert.match(text, /target_ingredient=\{\{target_ingredient\}\}/i);

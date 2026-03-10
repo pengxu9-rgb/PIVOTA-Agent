@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const supertest = require('supertest');
+const recoHybridResolver = require('../src/auroraBff/usecases/recoHybridResolveCandidates');
 
 const routesModuleId = require.resolve('../src/auroraBff/routes');
 const chatRoutesModuleId = require.resolve('../src/auroraBff/routes/chat');
@@ -196,28 +197,24 @@ test('/v1/chat turns current frontend reco freeform payload with camelCase profi
     },
     async () => {
       const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
-      const routesModule = require('../src/auroraBff/routes');
-      const originalGenerate = routesModule.__internal.generateProductRecommendations;
-      routesModule.__internal.generateProductRecommendations = async () => ({
-        norm: {
-          payload: {
-            recommendations: [
-              {
-                product_id: 'prod_mask_1',
-                merchant_id: 'merchant_mask_1',
-                brand: 'Winona',
-                name: 'Hydrating Repair Mask',
-                reasons: ['Supports hydration and barrier comfort.'],
-              },
-            ],
-            grounding_status: 'grounded',
-            grounded_count: 1,
-            ungrounded_count: 0,
-            recommendation_meta: {
-              source_mode: 'catalog_grounded',
-              catalog_query_count: 3,
-            },
+      const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
+      recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
+        rows: [
+          {
+            product_id: 'prod_mask_1',
+            merchant_id: 'merchant_mask_1',
+            brand: 'Winona',
+            name: 'Hydrating Repair Mask',
+            reasons: ['Supports hydration and barrier comfort.'],
+            match_state: 'exact',
           },
+        ],
+        recommendation_meta: {
+          source_mode: 'llm_catalog_hybrid',
+          llm_seed_count: 6,
+          exact_match_count: 1,
+          fuzzy_match_count: 0,
+          unresolved_seed_count: 0,
         },
       });
       __resetRouterForTests();
@@ -259,13 +256,13 @@ test('/v1/chat turns current frontend reco freeform payload with camelCase profi
         assert.equal(response.body.cards.some((card) => card && card.card_type === 'empty_state'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(response.body, 'assistant_message'), false);
       } finally {
-        routesModule.__internal.generateProductRecommendations = originalGenerate;
+        recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
       }
     },
   );
 });
 
-test('/v1/chat allows target_step reco requests even without profile and calls catalog bridge', async () => {
+test('/v1/chat allows target_step reco requests even without profile and calls hybrid resolver', async () => {
   await withEnv(
     {
       AURORA_CHAT_SKILL_ROUTER_V2: 'true',
@@ -273,12 +270,20 @@ test('/v1/chat allows target_step reco requests even without profile and calls c
     },
     async () => {
       const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
-      const routesModule = require('../src/auroraBff/routes');
-      const originalGenerate = routesModule.__internal.generateProductRecommendations;
-      let generateCalled = false;
-      routesModule.__internal.generateProductRecommendations = async () => {
-        generateCalled = true;
-        return { norm: { payload: { recommendations: [{ product_id: 'p1', name: 'Test Mask' }], recommendation_meta: { source_mode: 'catalog_grounded' } } } };
+      const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
+      let resolveCalled = false;
+      recoHybridResolver.runRecoHybridResolveCandidates = async () => {
+        resolveCalled = true;
+        return {
+          rows: [{ product_id: 'p1', merchant_id: 'm1', name: 'Test Mask', match_state: 'exact' }],
+          recommendation_meta: {
+            source_mode: 'llm_catalog_hybrid',
+            llm_seed_count: 6,
+            exact_match_count: 1,
+            fuzzy_match_count: 0,
+            unresolved_seed_count: 0,
+          },
+        };
       };
       __resetRouterForTests();
 
@@ -292,10 +297,10 @@ test('/v1/chat allows target_step reco requests even without profile and calls c
           })
           .expect(200);
 
-        assert.equal(generateCalled, true);
+        assert.equal(resolveCalled, true);
         assert.equal(response.body.cards.some((card) => card && card.card_type === 'recommendations'), true);
       } finally {
-        routesModule.__internal.generateProductRecommendations = originalGenerate;
+        recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
       }
     },
   );
