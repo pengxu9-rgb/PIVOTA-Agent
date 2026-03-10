@@ -50,6 +50,22 @@ describe('normalizeDupeCompare: original and dupe non-null guarantee', () => {
     expect(result.payload.dupe.brand).toBe('CeraVe');
     expect(result.payload.dupe._stub).toBeUndefined();
   });
+
+  test('unwraps nested product-like dupe payloads from legacy compare requests', () => {
+    const result = normalizeDupeCompare({
+      original: { brand: 'La Mer', name: 'Creme de la Mer' },
+      dupe: {
+        kind: 'dupe',
+        product: { brand: 'CeraVe', name: 'Moisturizing Cream', product_id: 'cerave_1' },
+      },
+      tradeoffs: ['lighter', 'more affordable'],
+      confidence: 0.85,
+    });
+    expect(result.payload.dupe.brand).toBe('CeraVe');
+    expect(result.payload.dupe.name).toBe('Moisturizing Cream');
+    expect(result.payload.dupe.product_id).toBe('cerave_1');
+    expect(result.payload.dupe.product).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

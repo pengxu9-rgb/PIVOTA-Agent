@@ -100,8 +100,8 @@ test('dupe prompts are aligned between runtime registry and manifest', () => {
   const suggestManifest = manifest.templates.find((entry) => entry.template_id === 'dupe_suggest');
   const compareManifest = manifest.templates.find((entry) => entry.template_id === 'dupe_compare');
 
-  assert.equal(suggestRuntime?.version, '1.1.0');
-  assert.equal(suggestManifest?.version, '1.1.0');
+  assert.equal(suggestRuntime?.version, '2.0.0');
+  assert.equal(suggestManifest?.version, '2.0.0');
   assert.equal(compareRuntime?.version, '1.1.0');
   assert.equal(compareManifest?.version, '1.1.0');
 });
@@ -275,10 +275,13 @@ test('dupe_suggest prompt encodes candidate-pool-only and tradeoff rules', () =>
   assert.match(text, /"candidates": \[/i);
   assert.match(text, /Candidate-pool-only rule/i);
   assert.match(text, /never invent or introduce a product that is not in candidates/i);
-  assert.match(text, /Tradeoff rule/i);
-  assert.match(text, /one concrete difference and one concrete tradeoff/i);
-  assert.match(text, /price_comparison should be one of cheaper, same_price, more_expensive, or unknown_price/i);
-  assert.match(text, /anchor=\{\{anchor\}\}/i);
+  assert.match(text, /Self-reference prohibition/i);
+  assert.match(text, /same canonical product reference/i);
+  assert.match(text, /why_not_the_same_product/i);
+  assert.match(text, /"bucket": string/i);
+  assert.match(text, /"tradeoff": string/i);
+  assert.match(text, /anchor_identity=\{\{anchor_identity\}\}/i);
+  assert.match(text, /anchor_fingerprint=\{\{anchor_fingerprint\}\}/i);
   assert.match(text, /candidates=\{\{candidates\}\}/i);
 });
 
