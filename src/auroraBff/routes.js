@@ -40164,6 +40164,642 @@ function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3 } = {}
   return out.slice(0, limit);
 }
 
+function buildExternalSeedCompareIdentity(productObj, productInput) {
+  const row = isPlainObject(productObj) ? productObj : {};
+  const metadata = isPlainObject(row.metadata) ? row.metadata : {};
+  const llmSuggestion = isPlainObject(row.llm_suggestion)
+    ? row.llm_suggestion
+    : isPlainObject(metadata.llm_suggestion)
+      ? metadata.llm_suggestion
+      : {};
+  const aliases = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(row.search_aliases, 8),
+      ...asStringArray(row.searchAliases, 8),
+      ...asStringArray(llmSuggestion.search_aliases, 8),
+      ...asStringArray(llmSuggestion.searchAliases, 8),
+      pickFirstTrimmed(row.resolve_query, row.resolveQuery),
+      String(productInput || '').trim(),
+      buildProductInputText(row, null),
+    ],
+    8,
+  );
+  const langCode = normalizeRecoPromptLanguage(metadata.lang || row.lang || 'EN');
+  const targetSignals = buildRecoAlternativesTargetSignals(row, {
+    productInput: String(productInput || '').trim(),
+    lang: langCode,
+  });
+  const anchorLabel = joinBrandAndName(targetSignals.brand, targetSignals.name || String(productInput || '').trim());
+  const anchorNameTokens = tokenizeProductTextForSimilarity(anchorLabel);
+  const ingredientTokens = uniqCaseInsensitiveStrings(
+    [
+      ...targetSignals.heroIngredients,
+      ...targetSignals.knownActives,
+    ],
+    8,
+  );
+  const claimTokens = uniqCaseInsensitiveStrings(targetSignals.primaryClaims, 6);
+  const textureTokens = uniqCaseInsensitiveStrings(targetSignals.textureHints, 5);
+  return {
+    aliases,
+    targetSignals,
+    anchorLabel,
+    anchorNameTokens,
+    ingredientTokens,
+    claimTokens,
+    textureTokens,
+  };
+}
+
+function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', lang = 'EN' } = {}) {
+  const identity = buildExternalSeedCompareIdentity(productObj, productInput);
+  const target = identity.targetSignals;
+  const out = [];
+  const seen = new Set();
+  const pushQuery = (raw) => {
+    const query = String(raw || '').trim().replace(/\s+/g, ' ');
+    if (!query) return;
+    const key = query.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(query.slice(0, 180));
+  };
+
+  pushQuery(identity.anchorLabel);
+  for (const alias of identity.aliases) pushQuery(alias);
+
+  if (target.brand && target.name && target.usageRole !== 'unknown') {
+    pushQuery(`${target.brand} ${target.name} ${target.usageRole}`);
+  }
+  if (target.productType && target.usageRole !== 'unknown') {
+    pushQuery(`${target.productType} ${target.usageRole}`);
+  }
+  if (target.knownActives.length && target.usageRole !== 'unknown') {
+    pushQuery(`${target.knownActives[0]} ${target.usageRole}`);
+  }
+  if (target.primaryClaims.length && target.usageRole !== 'unknown') {
+    pushQuery(`${target.primaryClaims[0]} ${target.usageRole}`);
+  }
+  if (target.productType && target.primaryClaims.length) {
+    pushQuery(`${target.productType} ${target.primaryClaims[0]}`);
+  }
+  if (target.productType && String(productInput || '').trim()) {
+    pushQuery(`${target.productType} ${String(productInput || '').trim()}`);
+  }
+
+  if (!out.length) {
+    pushQuery(String(productInput || '').trim());
+  }
+  return out.slice(0, 6);
+}
+
+function isExternalSeedPlaceholderCandidate(candidate) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  const product = isPlainObject(row.product) ? row.product : {};
+  const joined = [
+    row.brand,
+    row.name,
+    row.display_name,
+    product.brand,
+    product.name,
+    product.display_name,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!joined) return true;
+  return /\b(budget dupe|similar option|premium option|placeholder|candidate)\b/i.test(joined);
+}
+
+function computeExternalSeedSignalOverlap(tokens, sourceText) {
+  const expected = (Array.isArray(tokens) ? tokens : [])
+    .map((token) => String(token || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (!expected.length) return 0;
+  const haystack = String(sourceText || '').trim().toLowerCase();
+  if (!haystack) return 0;
+  let hits = 0;
+  for (const token of expected) {
+    if (haystack.includes(token)) hits += 1;
+  }
+  return clamp01Score(hits / Math.max(1, expected.length));
+}
+
+function normalizePoolAlternativeRow(row, {
+  targetSignals,
+  anchorLabel = '',
+  anchorNameTokens = [],
+  ingredientTokens = [],
+  claimTokens = [],
+  textureTokens = [],
+  anchorId = '',
+} = {}) {
+  const normalized = normalizeRecoCatalogProduct(row);
+  if (!normalized) return null;
+  const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
+  const candidateLabel = joinBrandAndName(normalized.brand, pickFirstTrimmed(normalized.display_name, normalized.name));
+  if (!candidateLabel) return null;
+  if (!isSkincareCategory(normalized) || isBlacklistedCategoryOrTitle(normalized) || isExternalSeedPlaceholderCandidate(normalized)) {
+    return null;
+  }
+  const anchorToken = String(anchorId || '').trim().toLowerCase();
+  if (anchorToken && productId && productId.toLowerCase() === anchorToken) return null;
+  if (anchorLabel && candidateLabel.trim().toLowerCase() === String(anchorLabel || '').trim().toLowerCase()) return null;
+
+  const explicitCategoryRole = inferRecoAlternativesUsageRole(normalized.category);
+  const candidateRole = explicitCategoryRole !== 'unknown'
+    ? explicitCategoryRole
+    : inferRecoAlternativesUsageRole(
+        normalized.display_name,
+        normalized.name,
+        normalized.category,
+        candidateLabel,
+      );
+  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
+  if (targetRole && targetRole !== 'unknown' && candidateRole && candidateRole !== 'unknown' && candidateRole !== targetRole) {
+    return null;
+  }
+
+  const candidateText = [
+    candidateLabel,
+    normalized.category,
+    ...(Array.isArray(normalized.ingredient_tokens) ? normalized.ingredient_tokens : []),
+    ...(Array.isArray(normalized.skin_type_tags) ? normalized.skin_type_tags : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
+  const ingredientOverlap = computeExternalSeedSignalOverlap(ingredientTokens, candidateText);
+  const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, candidateText);
+  const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, candidateText);
+  const roleScore = !targetRole || targetRole === 'unknown'
+    ? 0.72
+    : candidateRole === targetRole
+      ? 1
+      : candidateRole === 'unknown'
+        ? 0.58
+        : 0.18;
+  const stableIdBonus = normalized.canonical_product_ref || normalized.product_group_id ? 0.1 : productId ? 0.06 : 0;
+  const retrievalBonus = normalized.retrieval_source === 'catalog' ? 0.06 : 0.03;
+  const mixedScore = clamp01Score(
+    roleScore * 0.44 +
+    nameOverlap * 0.14 +
+    ingredientOverlap * 0.18 +
+    claimOverlap * 0.12 +
+    textureOverlap * 0.06 +
+    stableIdBonus +
+    retrievalBonus,
+  );
+  if (mixedScore < 0.55) return null;
+
+  const pdpUrl = extractCandidateOpenUrl(normalized);
+  const pdpOpen = normalized.canonical_product_ref
+    ? { path: 'ref', product_ref: normalized.canonical_product_ref }
+    : normalized.product_group_id
+      ? { path: 'group', product_group_id: normalized.product_group_id }
+      : pdpUrl
+        ? { path: 'external', external: { url: pdpUrl, query: candidateLabel } }
+        : productId
+          ? {
+              path: 'resolve',
+              product_ref: {
+                product_id: normalized.product_id,
+                ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
+              },
+              external: { query: candidateLabel },
+            }
+          : { path: 'external', external: { query: candidateLabel } };
+
+  return {
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    ranking_mode: 'best_score_mixed',
+    product: {
+      ...(normalized.product_id ? { product_id: normalized.product_id } : {}),
+      ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
+      ...(normalized.product_group_id ? { product_group_id: normalized.product_group_id } : {}),
+      ...(normalized.sku_id ? { sku_id: normalized.sku_id } : {}),
+      ...(normalized.brand ? { brand: normalized.brand } : {}),
+      name: pickFirstTrimmed(normalized.display_name, normalized.name),
+      ...(normalized.category ? { category: normalized.category } : {}),
+      ...(pdpUrl ? { pdp_url: pdpUrl, url: pdpUrl } : {}),
+      ...(normalized.price && typeof normalized.price === 'object' ? { price: normalized.price } : {}),
+    },
+    ...(normalized.brand ? { brand: normalized.brand } : {}),
+    name: pickFirstTrimmed(normalized.display_name, normalized.name),
+    similarity_score: Math.max(1, Math.min(100, Math.round(mixedScore * 100))),
+    reasons: uniqCaseInsensitiveStrings(
+      [
+        roleScore >= 0.9 && targetRole && targetRole !== 'unknown'
+          ? `Same ${targetRole} step in the Pivota product pool.`
+          : '',
+        ingredientOverlap >= 0.34 ? 'Matches key active or ingredient signals from the anchor.' : '',
+        claimOverlap >= 0.34 ? 'Overlaps the anchor use case and claims.' : '',
+        textureOverlap >= 0.34 ? 'Texture profile is close to the anchor.' : '',
+        stableIdBonus >= 0.1 ? 'Has stable product identifiers in the current pool.' : '',
+      ],
+      3,
+    ),
+    tradeoff_notes: uniqCaseInsensitiveStrings(
+      [
+        normalized.retrieval_source === 'external_seed'
+          ? 'Pool hit is external-backed, so internal PDP coverage may vary.'
+          : '',
+        candidateRole === 'unknown' ? 'Exact usage role is inferred from sparse catalog text.' : '',
+      ],
+      2,
+    ),
+    best_use: targetRole && targetRole !== 'unknown' ? `Best for ${targetRole} compare.` : null,
+    pdp_open: pdpOpen,
+    metadata: {
+      compare_stage: 'pool_only',
+      retrieval_source: normalized.retrieval_source || null,
+      raw_similarity_score: Number(mixedScore.toFixed(3)),
+    },
+    _mixed_score: mixedScore,
+  };
+}
+
+async function collectExternalSeedPoolAlternatives({
+  ctx,
+  productInput,
+  productObj,
+  maxTotal = 3,
+  anchorId = '',
+  logger,
+} = {}) {
+  const identity = buildExternalSeedCompareIdentity(productObj, productInput);
+  const queryPlan = buildExternalSeedCompareSearchQueries({
+    productObj,
+    productInput,
+    lang: ctx?.lang || 'EN',
+  });
+  const normalizedLimit = Math.max(3, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const candidateRows = [];
+  const embeddedPool = buildRecoAlternativesCandidatePool({
+    sharedCandidates: [],
+    productObj,
+    anchorId,
+    maxCandidates: 12,
+  });
+  for (const row of embeddedPool) candidateRows.push(row);
+
+  for (const query of queryPlan) {
+    // eslint-disable-next-line no-await-in-loop
+    const searched = await searchPivotaBackendProducts({
+      query,
+      limit: 8,
+      logger,
+      timeoutMs: 1400,
+      minTimeoutMs: 240,
+      mode: 'main_path',
+      allowExternalSeed: true,
+      externalSeedStrategy: 'supplement_internal_first',
+      fastMode: true,
+    });
+    const list = Array.isArray(searched?.products) ? searched.products : [];
+    for (const row of list) candidateRows.push(row);
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const row of candidateRows) {
+    const normalized = normalizePoolAlternativeRow(row, {
+      targetSignals: identity.targetSignals,
+      anchorLabel: identity.anchorLabel,
+      anchorNameTokens: identity.anchorNameTokens,
+      ingredientTokens: identity.ingredientTokens,
+      claimTokens: identity.claimTokens,
+      textureTokens: identity.textureTokens,
+      anchorId,
+    });
+    if (!normalized) continue;
+    const product = isPlainObject(normalized.product) ? normalized.product : {};
+    const dedupeKey = pickFirstTrimmed(
+      product.product_id,
+      product.sku_id,
+      product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
+    ).toLowerCase();
+    if (!dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    deduped.push(normalized);
+  }
+
+  deduped.sort((left, right) => {
+    const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(left?.product?.name || '').localeCompare(String(right?.product?.name || ''));
+  });
+
+  return {
+    identity,
+    queries: queryPlan,
+    candidates: deduped.slice(0, Math.max(normalizedLimit, 6)),
+  };
+}
+
+function buildExternalSeedOpenWorldSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      alternatives: {
+        type: 'array',
+        minItems: 0,
+        maxItems: 6,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            brand: { type: 'string' },
+            name: { type: 'string' },
+            product_type: { type: ['string', 'null'] },
+            similarity_score: { type: ['number', 'null'] },
+            reasons: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 3,
+              items: { type: 'string' },
+            },
+            tradeoff_notes: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 3,
+              items: { type: 'string' },
+            },
+            best_use: { type: ['string', 'null'] },
+          },
+          required: ['brand', 'name', 'reasons', 'tradeoff_notes'],
+        },
+      },
+    },
+    required: ['alternatives'],
+  };
+}
+
+function normalizeOpenWorldAlternativeRow(candidate, {
+  targetSignals,
+  anchorLabel = '',
+  anchorNameTokens = [],
+  ingredientTokens = [],
+  claimTokens = [],
+  textureTokens = [],
+} = {}) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  const brand = pickFirstTrimmed(row.brand);
+  const name = pickFirstTrimmed(row.name, row.display_name, row.displayName);
+  const productType = pickFirstTrimmed(row.product_type, row.productType, targetSignals?.productType, targetSignals?.category);
+  if (!brand || !name) return null;
+  const candidateLabel = joinBrandAndName(brand, name);
+  if (!candidateLabel || candidateLabel.trim().toLowerCase() === String(anchorLabel || '').trim().toLowerCase()) return null;
+  const categoryProbe = { brand, name, category: productType, product_type: productType };
+  const explicitCategoryRole = inferRecoAlternativesUsageRole(productType);
+  const candidateRole = explicitCategoryRole !== 'unknown'
+    ? explicitCategoryRole
+    : inferRecoAlternativesUsageRole(candidateLabel, productType);
+  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
+  if (!isSkincareCategory(categoryProbe) && candidateRole !== targetRole) return null;
+  if (isBlacklistedCategoryOrTitle(categoryProbe) || isExternalSeedPlaceholderCandidate(categoryProbe)) return null;
+
+  const reasons = uniqCaseInsensitiveStrings(asStringArray(row.reasons, 3), 3);
+  const tradeoffNotes = uniqCaseInsensitiveStrings(asStringArray(row.tradeoff_notes, 3), 3);
+  if (!reasons.length || !tradeoffNotes.length) return null;
+
+  const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
+  const baseScoreRaw = Number(row.similarity_score);
+  const baseScore = Number.isFinite(baseScoreRaw) ? clamp01Score(baseScoreRaw > 1 ? baseScoreRaw / 100 : baseScoreRaw) : 0.62;
+  const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
+  const ingredientOverlap = computeExternalSeedSignalOverlap(ingredientTokens, sourceText);
+  const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, sourceText);
+  const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, sourceText);
+  const roleScore = !targetRole || targetRole === 'unknown'
+    ? 0.72
+    : candidateRole === targetRole
+      ? 1
+      : candidateRole === 'unknown'
+        ? 0.52
+        : 0.14;
+  const mixedScore = clamp01Score(
+    baseScore * 0.34 +
+    roleScore * 0.28 +
+    ingredientOverlap * 0.14 +
+    claimOverlap * 0.12 +
+    textureOverlap * 0.06 +
+    nameOverlap * 0.06,
+  );
+
+  return {
+    kind: 'similar',
+    candidate_origin: 'open_world',
+    grounding_status: 'name_only',
+    ranking_mode: 'best_score_mixed',
+    product: {
+      brand,
+      name,
+      ...(productType ? { category: productType } : {}),
+    },
+    brand,
+    name,
+    similarity_score: Math.max(1, Math.min(100, Math.round(mixedScore * 100))),
+    reasons,
+    tradeoff_notes: tradeoffNotes,
+    best_use: pickFirstTrimmed(row.best_use, row.bestUse) || null,
+    pdp_open: {
+      path: 'external',
+      external: {
+        query: candidateLabel,
+      },
+    },
+    metadata: {
+      compare_stage: 'open_world',
+      raw_similarity_score: Number(mixedScore.toFixed(3)),
+    },
+    _mixed_score: mixedScore,
+  };
+}
+
+async function fetchRecoAlternativesForExternalSeedProduct({
+  ctx,
+  productInput,
+  productObj,
+  anchorId = '',
+  maxTotal = 3,
+  logger,
+} = {}) {
+  const limit = Math.max(1, Math.min(3, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const pool = await collectExternalSeedPoolAlternatives({
+    ctx,
+    productInput,
+    productObj,
+    maxTotal: limit,
+    anchorId,
+    logger,
+  });
+  const targetSignals = pool.identity.targetSignals;
+  const poolCandidates = Array.isArray(pool.candidates) ? pool.candidates : [];
+  let openWorldRows = [];
+  let openWorldStatus = 'empty';
+  let llmTrace = null;
+
+  const poolSummary = poolCandidates.slice(0, 4).map((row) => {
+    const product = isPlainObject(row.product) ? row.product : {};
+    return {
+      brand: pickFirstTrimmed(product.brand),
+      name: pickFirstTrimmed(product.name),
+      similarity_score: Number.isFinite(Number(row.similarity_score)) ? Number(row.similarity_score) : null,
+      reasons: asStringArray(row.reasons, 2),
+    };
+  });
+
+  const systemPrompt = [
+    'You are a strict skincare compare assistant.',
+    'Output STRICT JSON only that matches the schema.',
+    'Suggest 3 to 6 real skincare alternatives for the anchor product.',
+    'Never invent URLs, product IDs, SKUs, exact INCI lists, or internal catalog references.',
+    'Each alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
+    'Reject makeup, tools, fragrance, body-only items, haircare, and placeholder products.',
+  ].join('\n');
+  const userPayload = {
+    lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
+    anchor: {
+      brand: targetSignals.brand,
+      name: targetSignals.name,
+      query: String(productInput || '').trim() || null,
+      product_type: targetSignals.productType,
+      usage_role: targetSignals.usageRole,
+      hero_ingredients: targetSignals.heroIngredients,
+      known_actives: targetSignals.knownActives,
+      primary_claims: targetSignals.primaryClaims,
+      texture_hints: targetSignals.textureHints,
+      notes: targetSignals.notes,
+    },
+    pool_summary: poolSummary,
+    task: {
+      max_alternatives: Math.max(3, limit),
+      selection_rule: 'Prefer Pivota product-pool candidates when they are already strong, then use open-world suggestions to fill the remaining best-score slots.',
+    },
+  };
+
+  try {
+    const startedAt = Date.now();
+    const resp = await callGeminiJsonObjectImpl({
+      model: ANALYSIS_STORY_MODEL_GEMINI,
+      systemPrompt,
+      userPrompt: JSON.stringify(userPayload, null, 2),
+      timeoutMs: 6000,
+      temperature: 0.2,
+      maxOutputTokens: 1200,
+      responseJsonSchema: buildExternalSeedOpenWorldSchema(),
+      route: 'aurora_reco_alternatives_open_world',
+    });
+    llmTrace = {
+      template_id: 'reco_alternatives_open_world_v1',
+      latency_ms: Math.max(0, Date.now() - startedAt),
+      error_class: resp?.ok === true ? null : classifyAlternativesFailureCode(resp?.reason),
+    };
+    if (resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)) {
+      openWorldRows = resp.json.alternatives
+        .map((row) => normalizeOpenWorldAlternativeRow(row, {
+          targetSignals,
+          anchorLabel: pool.identity.anchorLabel,
+          anchorNameTokens: pool.identity.anchorNameTokens,
+          ingredientTokens: pool.identity.ingredientTokens,
+          claimTokens: pool.identity.claimTokens,
+          textureTokens: pool.identity.textureTokens,
+        }))
+        .filter(Boolean);
+      openWorldStatus = openWorldRows.length ? 'success' : 'empty';
+    } else {
+      openWorldStatus = resp?.ok === false ? 'provider_error' : 'empty';
+    }
+  } catch (err) {
+    logger?.warn?.(
+      { err: err?.message || String(err), request_id: ctx?.request_id, trace_id: ctx?.trace_id },
+      'aurora bff: external seed compare open-world stage failed',
+    );
+    llmTrace = {
+      template_id: 'reco_alternatives_open_world_v1',
+      latency_ms: 0,
+      error_class: classifyAlternativesFailureCode(err?.code || err?.message),
+    };
+    openWorldStatus = 'provider_error';
+  }
+
+  const merged = [];
+  const seen = new Set();
+  for (const row of [...poolCandidates, ...openWorldRows].sort((left, right) => {
+    const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    if (String(left?.candidate_origin || '') !== String(right?.candidate_origin || '')) {
+      return String(left?.candidate_origin || '') === 'pool' ? -1 : 1;
+    }
+    return String(left?.product?.name || '').localeCompare(String(right?.product?.name || ''));
+  })) {
+    const product = isPlainObject(row.product) ? row.product : {};
+    const key = pickFirstTrimmed(
+      product.product_id,
+      product.sku_id,
+      product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
+    ).toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+    if (merged.length >= limit) break;
+  }
+
+  const cleanedAlternatives = merged.map((row) => {
+    const next = { ...(row || {}) };
+    delete next._mixed_score;
+    return next;
+  });
+  const poolSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length;
+  const openWorldSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length;
+  const compareMeta = {
+    pool_candidate_count: poolCandidates.length,
+    pool_selected_count: poolSelectedCount,
+    open_world_candidate_count: openWorldRows.length,
+    open_world_selected_count: openWorldSelectedCount,
+    ranking_mode: 'best_score_mixed',
+    pool_recall_status: poolCandidates.length >= 3 ? 'full' : poolCandidates.length > 0 ? 'partial' : 'empty',
+    open_world_status: openWorldStatus,
+  };
+
+  if (!cleanedAlternatives.length) {
+    return {
+      ok: true,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'no_viable_compare_candidates' }],
+      source_mode: 'pool_open_world_mixed',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: openWorldStatus === 'provider_error' ? 'provider_error' : null,
+      attempt_count: 1,
+      no_result_reason: openWorldStatus === 'provider_error'
+        ? 'open_world_provider_error_after_pool_empty'
+        : 'pool_and_open_world_empty',
+      llm_trace: llmTrace,
+      compare_meta: compareMeta,
+    };
+  }
+
+  return {
+    ok: true,
+    alternatives: cleanedAlternatives,
+    field_missing: [],
+    source_mode: 'pool_open_world_mixed',
+    fallback_source: null,
+    refresh_pending: false,
+    refresh_after_ms: 0,
+    failure_class: openWorldStatus === 'provider_error' && poolSelectedCount === 0 ? 'provider_error' : null,
+    attempt_count: 1,
+    llm_trace: llmTrace,
+    compare_meta: compareMeta,
+  };
+}
+
 async function fetchRecoAlternativesForProduct({
   ctx,
   profileSummary,
@@ -47340,25 +47976,26 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
       }
 
-      const out = await fetchRecoAlternativesForProduct({
-        ctx,
-        profileSummary: summarizeProfileForContext(profile),
-        recentLogs,
-        productInput,
-        productObj,
-        anchorId,
-        maxTotal,
-        debug: includeDebug,
-        logger,
-        ...(isExternalSeedCompare
-          ? {
-              options: {
-                recommendation_mode: 'hybrid_fallback',
-                disable_synthetic_local_fallback: true,
-              },
-            }
-          : {}),
-      });
+      const out = isExternalSeedCompare
+        ? await fetchRecoAlternativesForExternalSeedProduct({
+            ctx,
+            productInput,
+            productObj,
+            anchorId,
+            maxTotal,
+            logger,
+          })
+        : await fetchRecoAlternativesForProduct({
+            ctx,
+            profileSummary: summarizeProfileForContext(profile),
+            recentLogs,
+            productInput,
+            productObj,
+            anchorId,
+            maxTotal,
+            debug: includeDebug,
+            logger,
+          });
 
       return res.json({
         request_id: ctx.request_id,
@@ -47377,6 +48014,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,
         timeout_root_cause: out && out.timeout_root_cause ? String(out.timeout_root_cause) : null,
         llm_trace: out && out.llm_trace && typeof out.llm_trace === 'object' ? out.llm_trace : null,
+        ...(out && out.compare_meta && typeof out.compare_meta === 'object' ? { compare_meta: out.compare_meta } : {}),
         ...(includeDebug && out && out.debug && typeof out.debug === 'object' ? { debug: out.debug } : {}),
       });
     } catch (err) {
