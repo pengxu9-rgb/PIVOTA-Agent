@@ -5222,6 +5222,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
       AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '900',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -5229,7 +5230,6 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
       const decisionModule = require('../src/auroraBff/auroraDecisionClient');
       const originalAuroraChat = decisionModule.auroraChat;
       let auroraChatCalls = 0;
-      let geminiRequest = null;
       decisionModule.auroraChat = async () => {
         auroraChatCalls += 1;
         throw new Error('auroraChat should not be called for open_world_only');
@@ -5241,6 +5241,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         const routeModule = require('../src/auroraBff/routes');
         const { __internal } = routeModule;
         let geminiCalls = 0;
+        let geminiRequest = null;
         __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
           geminiCalls += 1;
           geminiRequest = args;
@@ -5312,6 +5313,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
         const parsedPrompt = JSON.parse(String(geminiRequest?.userPrompt || '{}'));
         assert.equal(parsedPrompt?.task?.max_alternatives, 2);
+        assert.equal(geminiRequest?.maxOutputTokens, 900);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
@@ -5333,6 +5335,7 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
       AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '900',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -5485,6 +5488,7 @@ test('fetchRecoAlternativesForProduct: open_world_only recovers complete alterna
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
       AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '900',
     },
     async () => {
       const moduleId = require.resolve('../src/auroraBff/routes');

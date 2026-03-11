@@ -1674,6 +1674,10 @@ const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL =
       ANALYSIS_STORY_MODEL_GEMINI ||
       'gemini-3-flash-preview',
   );
+const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS = Math.max(
+  256,
+  Math.min(2048, Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS || 900)),
+);
 const AURORA_RUNTIME_QA_ALLOW_PREVIEW =
   String(process.env.AURORA_RUNTIME_QA_ALLOW_PREVIEW || 'false').trim().toLowerCase() === 'true';
 const AURORA_EVAL_JUDGE_GEMINI_MODEL =
@@ -41031,7 +41035,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       userPrompt,
       timeoutMs: 6000,
       temperature: 0.2,
-      maxOutputTokens: 360,
+      maxOutputTokens: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
       route: 'aurora_reco_alternatives_open_world',
       ignoreForceModel: true,
     });
