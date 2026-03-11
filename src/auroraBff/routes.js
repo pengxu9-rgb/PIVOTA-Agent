@@ -40725,6 +40725,77 @@ function buildExternalSeedOpenWorldSchema() {
   };
 }
 
+function limitCompactStrings(values, limit, maxChars = 64) {
+  return uniqCaseInsensitiveStrings(asStringArray(values, limit), limit)
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .map((value) => value.slice(0, maxChars))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {}, productInput = '' } = {}) {
+  const compact = {};
+  const queryText = String(productInput || '').trim();
+  const brand = pickFirstTrimmed(targetSignals.brand);
+  const name = pickFirstTrimmed(targetSignals.name);
+  const category = pickFirstTrimmed(targetSignals.category);
+  const productType = pickFirstTrimmed(targetSignals.productType);
+  const usageRole = pickFirstTrimmed(targetSignals.usageRole);
+  const heroIngredients = limitCompactStrings(targetSignals.heroIngredients, 2, 40);
+  const knownActives = limitCompactStrings(targetSignals.knownActives, 2, 40);
+  const primaryClaims = limitCompactStrings(targetSignals.primaryClaims, 2, 56);
+  const textureHints = limitCompactStrings(targetSignals.textureHints, 1, 40);
+  const notes = String(targetSignals.notes || '').trim();
+
+  if (String(anchorId || '').trim()) compact.anchor_id = String(anchorId || '').trim();
+  if (brand) compact.brand = brand;
+  if (name) compact.name = name;
+  if (queryText) compact.query = queryText.slice(0, 140);
+  if (category) compact.category = category;
+  if (productType) compact.product_type = productType;
+  if (usageRole && usageRole.toLowerCase() !== 'unknown') compact.usage_role = usageRole;
+  if (heroIngredients.length) compact.hero_ingredients = heroIngredients;
+  if (knownActives.length) compact.known_actives = knownActives;
+  if (primaryClaims.length) compact.primary_claims = primaryClaims;
+  if (textureHints.length) compact.texture_hints = textureHints;
+
+  const anchorSignalCount =
+    Number(Boolean(brand)) +
+    Number(Boolean(name)) +
+    Number(Boolean(category)) +
+    Number(Boolean(productType)) +
+    Number(Boolean(usageRole && usageRole.toLowerCase() !== 'unknown')) +
+    heroIngredients.length +
+    knownActives.length +
+    primaryClaims.length +
+    textureHints.length;
+  if (notes && anchorSignalCount <= 2) {
+    compact.notes = notes.slice(0, 80);
+  }
+  return compact;
+}
+
+function buildFallbackOpenWorldTradeoffNote({ candidateRole = '', targetRole = '', productType = '', targetSignals = {} } = {}) {
+  const normalizedCandidateRole = String(candidateRole || '').trim().toLowerCase();
+  const normalizedTargetRole = String(targetRole || '').trim().toLowerCase();
+  if (
+    normalizedCandidateRole &&
+    normalizedTargetRole &&
+    normalizedCandidateRole !== 'unknown' &&
+    normalizedTargetRole !== 'unknown' &&
+    normalizedCandidateRole !== normalizedTargetRole
+  ) {
+    return `Role overlap is approximate rather than exact ${normalizedTargetRole} parity.`;
+  }
+  const targetProductType = pickFirstTrimmed(targetSignals.productType, targetSignals.category).toLowerCase();
+  const candidateProductType = String(productType || '').trim().toLowerCase();
+  if (targetProductType && candidateProductType && targetProductType !== candidateProductType) {
+    return 'Format overlap remains approximate rather than exact.';
+  }
+  return 'Formula overlap remains uncertain.';
+}
+
 function recoverCompleteOpenWorldAlternativesFromRawText(rawText) {
   const text = unwrapCodeFence(rawText);
   const keyMatch = /"alternatives"\s*:\s*\[/i.exec(text);
@@ -40799,11 +40870,19 @@ function normalizeOpenWorldAlternativeRow(candidate, {
     asStringArray(row.reasons, 3).concat(asLooseStringArray(row.reason, 1)),
     3,
   );
-  const tradeoffNotes = uniqCaseInsensitiveStrings(
+  const tradeoffNotesRaw = uniqCaseInsensitiveStrings(
     asStringArray(row.tradeoff_notes, 3).concat(asLooseStringArray(row.tradeoff_note, 1)),
     3,
   );
-  if (!reasons.length || !tradeoffNotes.length) return null;
+  if (!reasons.length) return null;
+  const tradeoffNotes = tradeoffNotesRaw.length
+    ? tradeoffNotesRaw
+    : [buildFallbackOpenWorldTradeoffNote({
+      candidateRole,
+      targetRole,
+      productType,
+      targetSignals,
+    })];
 
   const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
   const baseScoreRaw = Number(row.similarity_score);
@@ -40843,7 +40922,6 @@ function normalizeOpenWorldAlternativeRow(candidate, {
     similarity_score: Math.max(1, Math.min(100, Math.round(mixedScore * 100))),
     reasons,
     tradeoff_notes: tradeoffNotes,
-    best_use: pickFirstTrimmed(row.best_use, row.bestUse) || null,
     pdp_open: {
       path: 'external',
       external: {
@@ -40867,7 +40945,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   logger,
   profileMode = 'anchor_only',
 } = {}) {
-  const limit = Math.max(1, Math.min(2, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 2));
+  const limit = 1;
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const targetSignals = identity.targetSignals;
   const resolvedModel = resolveRecoAlternativesOpenWorldGeminiModel();
@@ -40922,32 +41000,18 @@ async function fetchRecoAlternativesForLocalOpenWorld({
 
   const systemPrompt = [
     'Return JSON only.',
-    'Output exactly {"alternatives":[...]} with at most 2 items.',
-    'Each item must use flat keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
-    'Return 1 short reason and 1 short tradeoff_note per item.',
-    'Do not output best_use, prose, markdown, URLs, SKUs, prices, or IDs.',
-    'Use anchor signals only. Suggest distinct real skincare products, not the anchor itself.',
-    'For common anchors, prefer 1-2 conservative viable alternatives over an empty list.',
+    'Output exactly {"alternatives":[...]} with at most 1 item.',
+    'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
+    'Return 1 distinct real skincare product when possible, otherwise {"alternatives":[]}.',
+    'Do not output arrays, extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
+    'Use anchor signals only.',
   ].join('\n');
   const userPayload = {
     lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
-    anchor: {
-      anchor_id: String(anchorId || '').trim() || null,
-      brand: targetSignals.brand,
-      name: targetSignals.name,
-      query: String(productInput || '').trim() || null,
-      category: targetSignals.category,
-      product_type: targetSignals.productType,
-      usage_role: targetSignals.usageRole,
-      hero_ingredients: Array.isArray(targetSignals.heroIngredients) ? targetSignals.heroIngredients : [],
-      known_actives: Array.isArray(targetSignals.knownActives) ? targetSignals.knownActives : [],
-      primary_claims: Array.isArray(targetSignals.primaryClaims) ? targetSignals.primaryClaims : [],
-      texture_hints: Array.isArray(targetSignals.textureHints) ? targetSignals.textureHints : [],
-      notes: targetSignals.notes || null,
-    },
+    anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput }),
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Use anchor signals only. Return 1-2 distinct viable skincare alternatives.',
+      selection_rule: 'Open-world only. Use anchor signals only. Return exactly 1 distinct viable skincare alternative when possible; otherwise [].',
     },
   };
   const userPrompt = JSON.stringify(userPayload);
@@ -40995,6 +41059,8 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       provider_total_ms: Number.isFinite(Number(resp?.total_ms)) ? Math.max(0, Math.trunc(Number(resp.total_ms))) : null,
       provider_upstream_ms: Number.isFinite(Number(resp?.upstream_ms)) ? Math.max(0, Math.trunc(Number(resp.upstream_ms))) : null,
       provider_result_reason: resp?.meta && typeof resp.meta === 'object' ? String(resp.meta.result_reason || '').trim() || null : null,
+      finish_reason: String(resp?.finish_reason || '').trim() || null,
+      parse_status: String(resp?.parse_status || '').trim() || null,
       ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
     };
 

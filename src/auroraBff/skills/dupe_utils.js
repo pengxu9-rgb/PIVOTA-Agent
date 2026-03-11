@@ -312,6 +312,7 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   const candidateBrand = normalizeBrand(identity.brand);
   const candidateName = normalizeProductName(identity.name || '');
   const candidateNameSansBrand = stripLeadingBrandTokensFromName(identity.name || '', identity.brand || '');
+  const candidateFullLabel = normalizeProductName([identity.brand, identity.name].filter(Boolean).join(' '));
   const candidateUrl = normalizeUrl(identity.url || '');
   const candidateProductId = identity.product_id || null;
 
@@ -320,11 +321,12 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   const anchorUrl = anchorFingerprint?.url_norm || '';
   const anchorProductId = anchorIdentity?.product_id || null;
   const anchorRawName = anchorIdentity?.name || anchorIdentity?.display_name || '';
+  const anchorDisplayRaw = anchorIdentity?.display_name || [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' ');
   const anchorDisplayName = normalizeProductName(
-    anchorIdentity?.display_name || [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
+    anchorDisplayRaw,
   );
   const anchorDisplaySansBrand = stripLeadingBrandTokensFromName(
-    anchorIdentity?.display_name || [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
+    anchorDisplayRaw,
     anchorIdentity?.brand || '',
   );
 
@@ -342,6 +344,14 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
     [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
     anchorIdentity?.brand || '',
   );
+  const exactFullLabels = new Set([anchorFullName, anchorDisplayName].filter(Boolean));
+
+  if (candidateFullLabel && exactFullLabels.has(candidateFullLabel)) {
+    return {
+      isSelfRef: true,
+      reason: candidateBrand ? DROP_REASON.SAME_BRAND_EXACT_LABEL : DROP_REASON.NO_BRAND_FULL_NAME_MATCH,
+    };
+  }
 
   if (
     !candidateBrand &&

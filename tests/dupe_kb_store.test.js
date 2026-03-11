@@ -44,7 +44,7 @@ describe('dupeKbStore purgeDupeKbEntriesByContractVersion', () => {
       dupes: [],
       comparables: [],
       verified: true,
-      source_meta: { contract_version: 'dupe_suggest_v4' },
+      source_meta: { contract_version: 'dupe_suggest_v5' },
     };
     const malformedEntry = {
       kb_key: 'text:ordinary-malformed',
@@ -60,7 +60,7 @@ describe('dupeKbStore purgeDupeKbEntriesByContractVersion', () => {
       dupes: [],
       comparables: [],
       verified: true,
-      source_meta: { contract_version: 'dupe_suggest_v5' },
+      source_meta: { contract_version: 'dupe_suggest_v6' },
     };
 
     fs.writeFileSync(
@@ -77,11 +77,11 @@ describe('dupeKbStore purgeDupeKbEntriesByContractVersion', () => {
     await getDupeKbEntry('text:ordinary-old');
     await getDupeKbEntry('text:ordinary-current');
 
-    const result = await purgeDupeKbEntriesByContractVersion('dupe_suggest_v5');
+    const result = await purgeDupeKbEntriesByContractVersion('dupe_suggest_v6');
 
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM aurora_dupe_kb'),
-      ['dupe_suggest_v5'],
+      ['dupe_suggest_v6'],
     );
     expect(result).toEqual({
       db_deleted: 2,

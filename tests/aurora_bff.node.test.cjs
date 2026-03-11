@@ -5260,7 +5260,6 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
                   product_type: 'serum',
                   similarity_score: 72,
                   reason: 'Niacinamide-led serum role overlaps with the anchor.',
-                  tradeoff_note: 'Zinc support is less explicit than the anchor.',
                 },
               ],
             },
@@ -5281,8 +5280,10 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
             name: 'Niacinamide 10% + Zinc 1%',
             product_type: 'serum',
             category: 'Serum',
-            ingredients: ['Niacinamide', 'Zinc PCA'],
-            claims: ['brightening', 'oil control'],
+            ingredients: ['Niacinamide', 'Zinc PCA', 'Pentylene Glycol'],
+            claims: ['brightening', 'oil control', 'pore care'],
+            texture_hints: ['lightweight', 'water-based'],
+            notes: 'A longer descriptive note that should not be forwarded when the anchor already has enough structured signals.',
           },
           anchorId: '',
           maxTotal: 3,
@@ -5311,7 +5312,16 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.grounding_status, 'name_only');
         assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
+        assert.deepEqual(out.alternatives[0]?.tradeoff_notes, ['Formula overlap remains uncertain.']);
         assert.equal(geminiRequest?.maxOutputTokens, 900);
+        const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
+        assert.equal(payload?.task?.max_alternatives, 1);
+        assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
+        assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
+        assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);
+        assert.deepEqual(payload?.anchor?.primary_claims ?? [], ['brightening', 'oil control']);
+        assert.deepEqual(payload?.anchor?.texture_hints ?? [], ['lightweight']);
+        assert.equal(Object.prototype.hasOwnProperty.call(payload?.anchor || {}, 'notes'), false);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
@@ -5403,6 +5413,8 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
         assert.equal(out?.llm_trace?.provider_total_ms, 321);
         assert.equal(out?.llm_trace?.provider_upstream_ms, 0);
         assert.equal(out?.llm_trace?.provider_result_reason, 'gemini_client_unavailable');
+        assert.equal(out?.llm_trace?.finish_reason, null);
+        assert.equal(out?.llm_trace?.parse_status, null);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
@@ -5474,6 +5486,8 @@ test('fetchRecoAlternativesForProduct: open_world_only recovers complete alterna
         assert.equal(out.alternatives.length, 1);
         assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
+        assert.equal(out?.llm_trace?.finish_reason, 'MAX_TOKENS');
+        assert.equal(out?.llm_trace?.parse_status, 'parse_truncated');
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();

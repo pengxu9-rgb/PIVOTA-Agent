@@ -18,7 +18,7 @@ const {
   hasSyntheticRecommendationSuffix,
 } = require('../skills/dupe_utils');
 
-const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v5';
+const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v6';
 let dupeKbContractPurgePromise = null;
 const PLACEHOLDER_REASON_PATTERNS = [
   /^grounded alternatives derived from resolved candidate pool\.?$/i,
@@ -165,6 +165,8 @@ function buildRecommendationPassTrace(pass, { fallbackTemplateId = null } = {}) 
     provider_model: String(llmTrace.provider_model || '').trim() || null,
     provider_timeout_stage: String(llmTrace.provider_timeout_stage || '').trim() || null,
     provider_result_reason: String(llmTrace.provider_result_reason || '').trim() || null,
+    finish_reason: String(llmTrace.finish_reason || '').trim() || null,
+    parse_status: String(llmTrace.parse_status || '').trim() || null,
     provider_total_ms: Number.isFinite(Number(llmTrace.provider_total_ms))
       ? Math.max(0, Math.trunc(Number(llmTrace.provider_total_ms)))
       : null,
