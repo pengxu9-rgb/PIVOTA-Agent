@@ -40769,7 +40769,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   logger,
   profileMode = 'anchor_only',
 } = {}) {
-  const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const limit = Math.max(1, Math.min(4, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const targetSignals = identity.targetSignals;
   const hasAnchorSignals = Boolean(
@@ -40826,8 +40826,9 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     'Output STRICT JSON only that matches the schema.',
     'Suggest conservative real-product alternatives for the anchor product using anchor signals only.',
     'Do not depend on local candidate pools, selector-grounded placeholders, or synthetic fallback items.',
-    'Prefer 1 to 4 distinct viable alternatives for common anchors when possible.',
-    'Every alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
+    'Prefer 1 to 3 distinct viable alternatives for common anchors. Return 4 only if clearly justified.',
+    'Every alternative must include a real brand, a real product name, 1 to 2 short anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
+    'Keep reasons and tradeoff notes compact. Do not write prose outside the JSON schema.',
     'Never invent URLs, product IDs, SKUs, prices, exact INCI lists, or formula identity.',
     'Never return the anchor itself or a trivial title variant.',
   ].join('\n');
@@ -40849,7 +40850,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     },
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Use anchor signals only. Return distinct, viable skincare alternatives.',
+      selection_rule: 'Open-world only. Use anchor signals only. Return compact, distinct, viable skincare alternatives.',
     },
   };
   const userPrompt = JSON.stringify(userPayload, null, 2);
@@ -40873,7 +40874,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       userPrompt,
       timeoutMs: 6000,
       temperature: 0.2,
-      maxOutputTokens: 1200,
+      maxOutputTokens: 1800,
       responseJsonSchema: buildExternalSeedOpenWorldSchema(),
       route: 'aurora_reco_alternatives_open_world',
     });
