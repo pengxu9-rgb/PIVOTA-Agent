@@ -5212,6 +5212,349 @@ test('/v1/reco/alternatives: structured candidate pool returns selector_grounded
   );
 });
 
+test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_anchor_mask',
+                merchant_id: 'mid_mask',
+                brand: 'Laneige',
+                name: 'Water Sleeping Mask',
+                display_name: 'Water Sleeping Mask',
+                product_type: 'mask',
+                category: 'Sleeping Mask',
+              },
+              {
+                product_id: 'prod_bad_brush',
+                merchant_id: 'mid_bad',
+                brand: 'Random',
+                name: 'Small Eyeshadow Brush',
+                display_name: 'Small Eyeshadow Brush',
+                product_type: 'makeup brush',
+                category: 'Makeup Brush',
+              },
+              {
+                product_id: 'prod_mask_1',
+                merchant_id: 'mid_mask',
+                brand: 'Fresh',
+                name: 'Rose Face Mask',
+                display_name: 'Rose Face Mask',
+                product_type: 'mask',
+                category: 'Face Mask',
+              },
+              {
+                product_id: 'prod_mask_2',
+                merchant_id: 'mid_mask',
+                brand: "Kiehl's",
+                name: 'Rare Earth Deep Pore Cleansing Mask',
+                display_name: 'Rare Earth Deep Pore Cleansing Mask',
+                product_type: 'mask',
+                category: 'Face Mask',
+              },
+              {
+                product_id: 'prod_mask_3',
+                merchant_id: 'mid_mask',
+                brand: 'Innisfree',
+                name: 'Super Volcanic Clay Mask 2X',
+                display_name: 'Super Volcanic Clay Mask 2X',
+                product_type: 'mask',
+                category: 'Clay Mask',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          throw new Error('provider down');
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_pool',
+            'X-Trace-ID': 'test_trace_alt_external_pool',
+            'X-Brief-ID': 'test_brief_alt_external_pool',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'Laneige Water Sleeping Mask',
+            max_total: 6,
+            product: {
+              brand: 'Laneige',
+              name: 'Water Sleeping Mask',
+              metadata: { match_state: 'llm_seed' },
+              pdp_open: {
+                path: 'external',
+                external: { query: 'Laneige Water Sleeping Mask' },
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.fallback_source, null);
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
+        assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 3);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 3);
+        const labels = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.equal(labels.some((name) => /water sleeping mask/i.test(name)), false);
+        assert.equal(labels.some((name) => /eyeshadow brush/i.test(name)), false);
+        assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'pool'), true);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external llm_seed compare mixes pool and open-world candidates', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_anchor_serum',
+                merchant_id: 'mid_serum',
+                brand: 'La Roche-Posay',
+                name: 'Effaclar Ultra Concentrated Serum',
+                display_name: 'Effaclar Ultra Concentrated Serum',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+              {
+                product_id: 'prod_serum_1',
+                merchant_id: 'mid_serum',
+                brand: 'Paula’s Choice',
+                name: '10% Azelaic Acid Booster',
+                display_name: '10% Azelaic Acid Booster',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'SkinCeuticals',
+                name: 'Blemish + Age Defense',
+                product_type: 'serum',
+                reasons: ['Targets blemish care and post-acne marks.'],
+                tradeoff_notes: ['Usually pricier than the anchor.'],
+                best_use: 'Oily, acne-prone skin',
+              },
+              {
+                brand: 'The Ordinary',
+                name: 'Niacinamide 10% + Zinc 1%',
+                product_type: 'serum',
+                reasons: ['Covers oil control and tone-evening goals.'],
+                tradeoff_notes: ['Can feel tackier on some routines.'],
+                best_use: 'Acne marks and shine control',
+              },
+            ],
+          },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_mixed',
+            'X-Trace-ID': 'test_trace_alt_external_mixed',
+            'X-Brief-ID': 'test_brief_alt_external_mixed',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'La Roche-Posay Effaclar Ultra Concentrated Serum',
+            max_total: 6,
+            product: {
+              brand: 'La Roche-Posay',
+              name: 'Effaclar Ultra Concentrated Serum',
+              metadata: { match_state: 'llm_seed' },
+              pdp_open: {
+                path: 'external',
+                external: { query: 'La Roche-Posay Effaclar Ultra Concentrated Serum' },
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.compare_meta?.pool_selected_count, 1);
+        assert.ok(Number(resp.body?.compare_meta?.open_world_selected_count || 0) >= 2);
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 3);
+        assert.ok(resp.body.alternatives.some((alt) => String(alt?.candidate_origin || '') === 'open_world'));
+        assert.ok(resp.body.alternatives.some((alt) => String(alt?.candidate_origin || '') === 'pool'));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external llm_seed compare returns explainable empty without synthetic fallback', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_anchor_seed',
+                merchant_id: 'mid_seed',
+                brand: 'Laneige',
+                name: 'Water Sleeping Mask',
+                display_name: 'Water Sleeping Mask',
+                product_type: 'mask',
+                category: 'Sleeping Mask',
+              },
+              {
+                product_id: 'prod_tool_seed',
+                merchant_id: 'mid_seed',
+                brand: 'Random',
+                name: 'Small Eyeshadow Brush',
+                display_name: 'Small Eyeshadow Brush',
+                product_type: 'makeup brush',
+                category: 'Makeup Brush',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: { alternatives: [] },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_empty',
+            'X-Trace-ID': 'test_trace_alt_external_empty',
+            'X-Brief-ID': 'test_brief_alt_external_empty',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'Laneige Water Sleeping Mask',
+            max_total: 6,
+            product: {
+              brand: 'Laneige',
+              name: 'Water Sleeping Mask',
+              metadata: { match_state: 'llm_seed' },
+              pdp_open: {
+                path: 'external',
+                external: { query: 'Laneige Water Sleeping Mask' },
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.fallback_source, 'none');
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 0);
+        assert.equal(resp.body?.compare_meta?.pool_recall_status, 'empty');
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'empty');
+        assert.equal(resp.body?.no_result_reason, 'pool_and_open_world_empty');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/generate: uses grounded generic reco mainline instead of legacy routine path', async () => {
   return withEnv(
     {
