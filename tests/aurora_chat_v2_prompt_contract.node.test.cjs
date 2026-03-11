@@ -299,10 +299,7 @@ test('reco_step_based prompt encodes hybrid seed recommendation rules', () => {
   assert.match(text, /Face-mask rule/i);
   assert.match(text, /search_aliases\[0\] MUST be the exact canonical brand \+ product name string/i);
   assert.match(text, /Matchability rule/i);
-<<<<<<< HEAD
-=======
   assert.match(text, /do not reject or withhold guidance only because the stored profile label differs/i);
->>>>>>> 207932d (Fix Aurora answer-first routing and Gemini spacing)
   assert.match(text, /tools, makeup brushes, color cosmetics/i);
   assert.match(text, /No lip masks, eye masks, body masks, or hair masks/i);
   assert.match(text, /user_question=\{\{user_question\}\}/i);
@@ -313,8 +310,6 @@ test('reco_step_based prompt encodes hybrid seed recommendation rules', () => {
   assert.match(text, /safety_flags=\{\{safety_flags\}\}/i);
 });
 
-<<<<<<< HEAD
-=======
 test('Gemini text stitcher preserves English spaces, punctuation, and CJK text', () => {
   const gateway = new LlmGateway({ stubResponses: true });
 
@@ -354,8 +349,6 @@ test('Gemini text stitcher preserves English spaces, punctuation, and CJK text',
   assert.equal(punctuation, 'Use niacinamide, if your skin tolerates it.');
   assert.equal(cjk, '可以先减少刺激性活性并加强保湿。');
 });
-
->>>>>>> 207932d (Fix Aurora answer-first routing and Gemini spacing)
 test('reco_step_based stub keeps mask requests on facial-mask products with exact-first aliases', async () => {
   const gateway = new LlmGateway({ stubResponses: true });
   const result = await gateway.call({
