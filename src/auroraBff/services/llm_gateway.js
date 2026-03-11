@@ -2276,7 +2276,25 @@ class LlmGateway {
               properties: {
                 question_en: { type: 'string' },
                 question_zh: { type: 'string', nullable: true },
-                options: { type: 'array', items: { type: 'string' } },
+                options: {
+                  type: 'array',
+                  items: {
+                    anyOf: [
+                      { type: 'string' },
+                      {
+                        type: 'object',
+                        additionalProperties: true,
+                        properties: {
+                          id: { type: 'string' },
+                          label: { type: 'string' },
+                          label_en: { type: 'string' },
+                          label_zh: { type: 'string', nullable: true },
+                          value: { type: 'string' },
+                        },
+                      },
+                    ],
+                  },
+                },
               },
             },
           },

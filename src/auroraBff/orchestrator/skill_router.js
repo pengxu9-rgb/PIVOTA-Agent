@@ -57,6 +57,7 @@ const INTENT_TO_SKILL = Object.freeze({
 
 const ENTRY_SOURCE_TO_SKILL = Object.freeze({
   'chip.start.diagnosis': 'diagnosis_v2.start',
+  'chip_start_diagnosis': 'diagnosis_v2.start',
   'chip.action.apply_blueprint': 'routine.apply_blueprint',
   'chip.action.intake_products': 'routine.intake_products',
   'chip.action.audit_optimize': 'routine.audit_optimize',

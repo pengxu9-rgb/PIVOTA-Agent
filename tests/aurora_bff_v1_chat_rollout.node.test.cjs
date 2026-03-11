@@ -493,6 +493,37 @@ test('/v1/chat delegates chip.action.add_to_routine to v2 when skill_router_v2 i
   );
 });
 
+test('/v1/chat delegates chip.start.diagnosis to v2 and returns diagnosis_gate', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: null,
+    },
+    async () => {
+      const app = createApp();
+      const res = await supertest(app)
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          action: {
+            action_id: 'chip.start.diagnosis',
+            kind: 'chip',
+            data: { reply_text: 'Start skin diagnosis' },
+          },
+          session: { profile: {} },
+        })
+        .expect(200);
+
+      assert.equal(Array.isArray(res.body.cards), true);
+      assert.equal(res.body.cards[0]?.card_type, 'diagnosis_gate');
+      assert.equal(
+        res.body.cards[0]?.sections?.some((section) => section.type === 'goal_selection'),
+        true,
+      );
+    },
+  );
+});
+
 test('/v1/chat delegates chip.start.dupes to v2 and returns the dupe-suggest anchor precondition', async () => {
   await withEnv(
     {

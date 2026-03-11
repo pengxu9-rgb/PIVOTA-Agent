@@ -1262,6 +1262,8 @@ function shouldDelegateV1ChatToV2(body) {
     'chip.action.add_to_routine',
     'chip.start.dupes',
     'chip.action.dupe_compare',
+    'chip.start.diagnosis',
+    'chip_start_diagnosis',
   ].includes(actionId);
 
   if (
