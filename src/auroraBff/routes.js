@@ -1697,7 +1697,7 @@ const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL =
   );
 const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS = Math.max(
   256,
-  Math.min(2048, Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS || 900)),
+  Math.min(2048, Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS || 2048)),
 );
 const AURORA_RUNTIME_QA_ALLOW_PREVIEW =
   String(process.env.AURORA_RUNTIME_QA_ALLOW_PREVIEW || 'false').trim().toLowerCase() === 'true';
@@ -15020,6 +15020,7 @@ async function callGeminiJsonObject({
   queueTimeoutMs = 0,
   upstreamTimeoutMs = 0,
   ignoreForceModel = false,
+  thinkingBudget = undefined,
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -15079,7 +15080,10 @@ async function callGeminiJsonObject({
           config: {
             temperature,
             responseMimeType: 'application/json',
-            thinkingConfig: { includeThoughts: false },
+            thinkingConfig: {
+              includeThoughts: false,
+              ...(Number.isFinite(thinkingBudget) ? { thinkingBudget: Math.max(0, Math.trunc(thinkingBudget)) } : {}),
+            },
             ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
             ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && sanitizedSchema ? { responseSchema: sanitizedSchema } : {}),
           },
@@ -42127,6 +42131,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       maxOutputTokens: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
       route: 'aurora_reco_alternatives_open_world',
       ignoreForceModel: true,
+      thinkingBudget: 0,
     });
     let rawRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
       ? resp.json.alternatives
@@ -42151,6 +42156,9 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       finish_reason: String(resp?.finish_reason || '').trim() || null,
       parse_status: String(resp?.parse_status || '').trim() || null,
       ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
+      thinking_budget_config: 0,
+      max_output_tokens_config: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
+      raw_text_length: typeof resp?.raw_text === 'string' ? resp.raw_text.length : null,
     };
 
     if (resp?.ok !== true && !rawRows.length) {
@@ -42357,6 +42365,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
       maxOutputTokens: 1200,
       responseJsonSchema: buildExternalSeedOpenWorldSchema(),
       route: 'aurora_reco_alternatives_open_world',
+      thinkingBudget: 0,
     });
     llmTrace = {
       template_id: 'reco_alternatives_open_world_v1',
