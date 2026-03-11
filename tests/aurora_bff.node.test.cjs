@@ -12236,6 +12236,125 @@ test('/v1/chat: implicit deep_dive_skin message is inferred when action_id is mi
   );
 });
 
+test('/v1/chat: implicit deep_dive_skin message can route from diagnosis artifact without persisted lastAnalysis', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const artifactStore = require('../src/auroraBff/diagnosisArtifactStore');
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      const uid = 'uid_analysis_followup_inferred_from_artifact_only';
+      const sessionId = 'brief_analysis_followup_inferred_from_artifact_only';
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'trace_analysis_followup_inferred_from_artifact_only',
+        'X-Brief-ID': sessionId,
+        'X-Lang': 'EN',
+      };
+      const llmCalls = [];
+      __internal.__setCallGeminiJsonObjectForTest(async (request) => {
+        llmCalls.push(request);
+        return {
+          ok: true,
+          json: {
+            conclusion: 'Photo-backed evidence still leans toward congestion and uneven tone.',
+            key_signals: ['Visible pore texture remains the clearest signal.', 'Tone irregularity still shows around the cheeks.'],
+            actions_now: ['Keep the routine simple and use consistent SPF.'],
+            avoid_now: ['Avoid layering multiple strong exfoliants together.'],
+            confidence_note: 'Medium confidence from the latest photo-backed analysis.',
+          },
+        };
+      });
+
+      try {
+        await artifactStore.saveDiagnosisArtifact({
+          auroraUid: uid,
+          userId: null,
+          sessionId,
+          artifact: {
+            artifact_id: 'da_test_inferred_from_artifact_only',
+            created_at: new Date().toISOString(),
+            use_photo: true,
+            overall_confidence: { level: 'medium', score: 0.71 },
+            concerns: [
+              { id: 'pores', title: 'Visible pore texture' },
+              { id: 'tone', title: 'Uneven tone' },
+            ],
+            photos: [{ slot: 'daylight', photo_id: 'photo_daylight_artifact_only', qc_status: 'passed' }],
+            analysis_context: {
+              analysis_source: 'vision_gemini',
+              used_photos: true,
+              quality_grade: 'pass',
+            },
+            analysis_story_snapshot: {
+              schema_version: 'aurora.analysis_story.v2',
+              confidence_overall: { level: 'medium' },
+              skin_profile: {
+                skin_type_tendency: 'oily',
+                sensitivity_tendency: 'medium',
+                current_strengths: ['Texture and pore visibility are the main signals.'],
+              },
+              priority_findings: [
+                {
+                  priority: 1,
+                  title: 'Visible pore texture remains the clearest signal.',
+                  detail: 'Visible pore texture remains the clearest signal.',
+                  evidence_region_or_module: [],
+                },
+              ],
+              target_state: ['Keep texture stable and reduce visible congestion.'],
+              core_principles: ['Stability first, then gradual refinement.'],
+              am_plan: [],
+              pm_plan: [],
+              timeline: { first_4_weeks: [], week_8_12_expectation: [] },
+              safety_notes: [],
+              disclaimer_non_medical: true,
+            },
+            source_mix: ['photo', 'profile'],
+          },
+          artifactId: 'da_test_inferred_from_artifact_only',
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const response = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            message: 'Tell me more about my skin',
+            language: 'EN',
+          })
+          .expect(200);
+
+        assert.ok(findCardByType(response.body?.cards, 'analysis_story_v2'));
+        assert.equal(Boolean(findCardByType(response.body?.cards, 'ingredient_hub')), false);
+        assert.equal(Boolean(findCardByType(response.body?.cards, 'nudge')), false);
+        assert.match(String(response.body?.assistant_message?.content || ''), /photo-backed|pore|tone/i);
+        assert.equal(llmCalls.length, 1);
+        const routedEvent = (Array.isArray(response.body?.events) ? response.body.events : []).find(
+          (event) => event && event.event_name === 'analysis_followup_action_routed',
+        );
+        assert.equal(routedEvent?.data?.action_id, 'chip.aurora.next_action.deep_dive_skin');
+        assert.equal(Boolean(routedEvent?.data?.inferred_from_message), true);
+      } finally {
+        __internal.__setCallGeminiJsonObjectForTest(null);
+        const memoryStore = require('../src/auroraBff/memoryStore');
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+        delete require.cache[routeModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: deep_dive_skin consumes photo refs and diagnosis artifact through llm path', async () => {
   await withEnv(
     {

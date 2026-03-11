@@ -25467,14 +25467,45 @@ function hasReusableSessionAnalysisContext(sessionAnalysisContext) {
   );
 }
 
+function hasReusableDiagnosisArtifactForDeepDive(diagnosisArtifact) {
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
+  if (!artifact) return false;
+  const photoRefs = normalizeAnalysisPhotoRefs(artifact.photos);
+  const storySnapshot = normalizeDeepDiveStorySnapshot(
+    artifact.analysis_story_snapshot || artifact.analysis_story_v2 || null,
+    null,
+  );
+  const concerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
+  const confidence =
+    artifact.overall_confidence && typeof artifact.overall_confidence === 'object'
+      ? artifact.overall_confidence
+      : null;
+  return Boolean(
+    photoRefs.length ||
+      storySnapshot ||
+      concerns.length ||
+      artifact.use_photo === true ||
+      (artifact.analysis_context &&
+        typeof artifact.analysis_context === 'object' &&
+        !Array.isArray(artifact.analysis_context) &&
+        artifact.analysis_context.used_photos === true) ||
+      pickFirstTrimmed(confidence && confidence.level),
+  );
+}
+
 function inferImplicitAnalysisFollowupActionId({
   explicitActionId,
   message,
   lastAnalysis,
   sessionAnalysisContext,
+  diagnosisArtifact,
 } = {}) {
   if (String(explicitActionId || '').trim()) return null;
-  if (!hasReusableAnalysisFollowupContext(lastAnalysis) && !hasReusableSessionAnalysisContext(sessionAnalysisContext)) {
+  if (
+    !hasReusableAnalysisFollowupContext(lastAnalysis) &&
+    !hasReusableSessionAnalysisContext(sessionAnalysisContext) &&
+    !hasReusableDiagnosisArtifactForDeepDive(diagnosisArtifact)
+  ) {
     return null;
   }
   const normalizedMessage = normalizeImplicitAnalysisFollowupMessage(message);
@@ -54856,11 +54887,25 @@ function mountAuroraBffRoutes(app, { logger }) {
         !Array.isArray(parsed.data.session.meta.analysis_context)
           ? parsed.data.session.meta.analysis_context
           : null;
+      const normalizedImplicitFollowupMessage = normalizeImplicitAnalysisFollowupMessage(message);
+      let latestDiagnosisArtifactForAnalysisFollowup = null;
+      if (
+        !String(actionId || '').trim() &&
+        IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.has(normalizedImplicitFollowupMessage)
+      ) {
+        latestDiagnosisArtifactForAnalysisFollowup = await loadLatestDiagnosisArtifactForRoute({
+          identity,
+          session: parsed.data.session,
+          ctx,
+          logger,
+        });
+      }
       const inferredAnalysisFollowupActionId = inferImplicitAnalysisFollowupActionId({
         explicitActionId: actionId,
         message,
         lastAnalysis: profile && profile.lastAnalysis,
         sessionAnalysisContext,
+        diagnosisArtifact: latestDiagnosisArtifactForAnalysisFollowup,
       });
       const normalizedEffectiveActionId =
         String(inferredAnalysisFollowupActionId || actionId || '').trim() || null;
@@ -55058,7 +55103,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? normalizedActionPayload.data
             : {};
         const latestDiagnosisArtifact = isDeepDiveAction
-          ? await loadLatestDiagnosisArtifactForRoute({
+          ? latestDiagnosisArtifactForAnalysisFollowup ||
+            await loadLatestDiagnosisArtifactForRoute({
               identity,
               session: parsed.data.session,
               ctx,

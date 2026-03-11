@@ -124,6 +124,12 @@ function shouldProxyAnalysisFollowupToLegacy(body) {
   return IMPLICIT_DEEP_DIVE_MESSAGES.has(normalizeImplicitDeepDiveMessage(message));
 }
 
+function getLegacyChatProxyTimeoutMs() {
+  const raw = Number(process.env.AURORA_CHAT_LEGACY_PROXY_TIMEOUT_MS);
+  if (!Number.isFinite(raw)) return 45000;
+  return Math.max(5000, Math.min(120000, Math.trunc(raw)));
+}
+
 function buildLegacyProxyHeaders(req) {
   const headers = {};
   const copyHeader = (name) => {
@@ -155,7 +161,7 @@ async function proxyAnalysisFollowupToLegacyChat(req) {
   const url = `http://127.0.0.1:${port}/v1/chat`;
   const response = await axios.post(url, req.body || {}, {
     headers: buildLegacyProxyHeaders(req),
-    timeout: 20000,
+    timeout: getLegacyChatProxyTimeoutMs(),
     validateStatus: () => true,
   });
   return {
