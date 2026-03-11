@@ -5311,6 +5311,91 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
   );
 });
 
+test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini failure details in trace', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let auroraChatCalls = 0;
+      decisionModule.auroraChat = async () => {
+        auroraChatCalls += 1;
+        throw new Error('auroraChat should not be called for open_world_only failure path');
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'gemini_client_unavailable',
+          detail: 'missing api key',
+          timeout_stage: 'queue',
+          total_ms: 321,
+          upstream_ms: 0,
+          meta: { result_reason: 'gemini_client_unavailable' },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_local_fail',
+            trace_id: 'trace_open_world_local_fail',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'CeraVe PM Facial Moisturizing Lotion',
+          productObj: {
+            brand: 'CeraVe',
+            name: 'PM Facial Moisturizing Lotion',
+            product_type: 'moisturizer',
+            category: 'Moisturizer',
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(auroraChatCalls, 0);
+        assert.equal(out?.ok, true);
+        assert.equal(out?.failure_class, 'provider_error');
+        assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
+        assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
+        assert.equal(out?.llm_trace?.provider_reason, 'gemini_client_unavailable');
+        assert.equal(out?.llm_trace?.provider_detail, 'missing api key');
+        assert.equal(out?.llm_trace?.provider_route, 'aurora_reco_alternatives_open_world');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-3-flash-preview');
+        assert.equal(out?.llm_trace?.provider_timeout_stage, 'queue');
+        assert.equal(out?.llm_trace?.provider_total_ms, 321);
+        assert.equal(out?.llm_trace?.provider_upstream_ms, 0);
+        assert.equal(out?.llm_trace?.provider_result_reason, 'gemini_client_unavailable');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
 test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
   return withEnv(
     {
