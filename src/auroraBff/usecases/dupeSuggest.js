@@ -41,6 +41,24 @@ function uniqStrings(values) {
   return out;
 }
 
+function mergeFieldMissingEntries(...lists) {
+  const out = [];
+  const seen = new Set();
+  for (const list of lists) {
+    for (const row of Array.isArray(list) ? list : []) {
+      if (!row || typeof row !== 'object') continue;
+      const field = String(row.field || '').trim();
+      const reason = String(row.reason || '').trim();
+      if (!field || !reason) continue;
+      const key = `${field.toLowerCase()}::${reason.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ field, reason });
+    }
+  }
+  return out;
+}
+
 function hasMeaningfulProfileSummary(profileSummary) {
   const profile = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
     ? profileSummary
@@ -996,14 +1014,14 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
       },
       ...(kbPersistAllowed ? {} : { kb_backfill_blocked_reason: kbGateResult.reason || 'kb_persist_gate_failed' }),
     },
-    ...(uniqStrings([
-      ...(Array.isArray(poolPass.upstreamOut && poolPass.upstreamOut.field_missing) ? poolPass.upstreamOut.field_missing : []),
-      ...(Array.isArray(openWorldPass && openWorldPass.upstreamOut && openWorldPass.upstreamOut.field_missing) ? openWorldPass.upstreamOut.field_missing : []),
-    ]).length ? {
-      field_missing: uniqStrings([
-        ...(Array.isArray(poolPass.upstreamOut && poolPass.upstreamOut.field_missing) ? poolPass.upstreamOut.field_missing : []),
-        ...(Array.isArray(openWorldPass && openWorldPass.upstreamOut && openWorldPass.upstreamOut.field_missing) ? openWorldPass.upstreamOut.field_missing : []),
-      ]),
+    ...(mergeFieldMissingEntries(
+      Array.isArray(poolPass.upstreamOut && poolPass.upstreamOut.field_missing) ? poolPass.upstreamOut.field_missing : [],
+      Array.isArray(openWorldPass && openWorldPass.upstreamOut && openWorldPass.upstreamOut.field_missing) ? openWorldPass.upstreamOut.field_missing : [],
+    ).length ? {
+      field_missing: mergeFieldMissingEntries(
+        Array.isArray(poolPass.upstreamOut && poolPass.upstreamOut.field_missing) ? poolPass.upstreamOut.field_missing : [],
+        Array.isArray(openWorldPass && openWorldPass.upstreamOut && openWorldPass.upstreamOut.field_missing) ? openWorldPass.upstreamOut.field_missing : [],
+      ),
     } : {}),
   };
 
@@ -1014,10 +1032,10 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     event_source: 'llm',
     quality_gated: false,
     event_reason: null,
-    field_missing: uniqStrings([
-      ...(Array.isArray(poolPass.upstreamOut && poolPass.upstreamOut.field_missing) ? poolPass.upstreamOut.field_missing : []),
-      ...(Array.isArray(openWorldPass && openWorldPass.upstreamOut && openWorldPass.upstreamOut.field_missing) ? openWorldPass.upstreamOut.field_missing : []),
-    ]),
+    field_missing: mergeFieldMissingEntries(
+      Array.isArray(poolPass.upstreamOut && poolPass.upstreamOut.field_missing) ? poolPass.upstreamOut.field_missing : [],
+      Array.isArray(openWorldPass && openWorldPass.upstreamOut && openWorldPass.upstreamOut.field_missing) ? openWorldPass.upstreamOut.field_missing : [],
+    ),
   };
 }
 

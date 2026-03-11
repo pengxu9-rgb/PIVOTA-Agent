@@ -453,6 +453,57 @@ describe('executeDupeSuggest recall modes', () => {
     expect(result.payload.meta.kb_backfill_blocked_reason).toBe('all_items_hollow');
     expect(services.upsertDupeKbEntry).not.toHaveBeenCalled();
   });
+
+  test('returns envelope-safe field_missing entries as objects, not strings', async () => {
+    const services = makeBaseServices({
+      fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
+        alternatives: [
+          {
+            kind: 'dupe',
+            candidate_origin: 'open_world',
+            grounding_status: 'name_only',
+            ranking_mode: 'anchor_only',
+            product: { brand: 'Good Molecules', name: 'Niacinamide Serum' },
+            similarity: 68,
+            confidence: 0.41,
+            reasons: ['Similar niacinamide-focused serum role'],
+            tradeoffs: ['Exact concentration overlap remains uncertain'],
+            missing_info: ['active_concentrations_missing'],
+          },
+        ],
+        field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+        source_mode: 'open_world_only',
+        template_id: 'reco_alternatives_hybrid_v1',
+      }),
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original: {
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          category: 'serum',
+        },
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.field_missing).toEqual([
+      { field: 'alternatives', reason: 'upstream_missing_or_empty' },
+    ]);
+    expect(result.payload.field_missing).toEqual([
+      { field: 'alternatives', reason: 'upstream_missing_or_empty' },
+    ]);
+  });
 });
 
 describe('applyDupeSuggestQualityGate', () => {
