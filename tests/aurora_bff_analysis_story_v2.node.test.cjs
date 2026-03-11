@@ -677,3 +677,69 @@ test('analysis deep-dive helpers: llm patch merges into baseline story without d
     internal.__resetCallGeminiJsonObjectForTest();
   }
 });
+
+test('analysis deep-dive helpers: truncated json recovers partial llm answer instead of falling back to baseline headline', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+  });
+  internal.__setCallGeminiJsonObjectForTest(async () => ({
+    ok: false,
+    reason: 'PARSE_TRUNCATED_JSON',
+    detail: 'finish_reason=MAX_TOKENS',
+    raw_text:
+      '{"conclusion":"The observed cheek redness is more consistent with mild dehydration and a compromised skin barrier.","key_signals":["Visible cheek redness more consistent with localized irritation.","Signs of mild',
+  }));
+
+  try {
+    const result = await internal.buildAnalysisDeepDiveContentWithLlm({
+      lastAnalysis: {
+        skin_profile: {
+          skin_type_tendency: 'combination',
+          sensitivity_tendency: 'high',
+          current_strengths: ['steady barrier'],
+        },
+        priority_findings: [{ title: 'Cheek redness' }, { detail: 'Mild dehydration' }],
+        confidence_overall: { level: 'medium', score: 0.72 },
+        guidance_brief: ['Keep barrier support stable', 'Reduce the AM active stack'],
+      },
+      diagnosisArtifact: {
+        artifact_id: 'da_test_truncated',
+        use_photo: true,
+        photos: [{ slot: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+        analysis_context: {
+          analysis_source: 'vision_gemini',
+          quality_grade: 'pass',
+        },
+      },
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'high',
+        goals: ['acne', 'pores'],
+      },
+      language: 'EN',
+      requestId: 'req_deep_dive_truncated',
+      replyText: 'Explain the redness pattern',
+      actionData: {
+        analysis_origin: 'photo',
+        source_card_type: 'analysis_story_v2',
+        photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+      },
+      sessionAnalysisContext: null,
+      logger: null,
+    });
+
+    const storyCard = result.cards.find((card) => card && card.type === 'analysis_story_v2');
+    assert.equal(result.llm_used, true);
+    assert.equal(result.llm_failure_reason, 'PARSE_TRUNCATED_JSON_RECOVERED');
+    assert.ok(storyCard);
+    assert.match(
+      String(storyCard.payload.ui_card_v1?.headline || ''),
+      /more consistent with mild dehydration and a compromised skin barrier/i,
+    );
+    assert.equal(Array.isArray(storyCard.payload.priority_findings), true);
+    assert.equal(storyCard.payload.priority_findings.length >= 1, true);
+    assert.doesNotMatch(String(storyCard.payload.ui_card_v1?.headline || ''), /Keep barrier support stable/i);
+  } finally {
+    internal.__resetCallGeminiJsonObjectForTest();
+  }
+});
