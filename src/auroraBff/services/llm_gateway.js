@@ -7,7 +7,7 @@ const GEMINI_MODELS = Object.freeze({
   chat: 'gemini-2.0-flash',
 });
 
-const FREEFORM_PROMPT_VERSION = 'inline_system_prompt_v2';
+const FREEFORM_PROMPT_VERSION = 'inline_system_prompt_v3';
 
 const ENUMS = Object.freeze({
   STEP_LABELS: ['cleanser', 'toner', 'essence', 'serum', 'moisturizer', 'sunscreen', 'treatment', 'mask', 'oil', 'other'],
@@ -42,6 +42,64 @@ function uuidv4() {
 function compactText(value) {
   if (value == null) return '';
   return String(value).trim();
+}
+
+function rawText(value) {
+  if (value == null) return '';
+  return String(value);
+}
+
+function isCjkChar(char) {
+  if (!char) return false;
+  return /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(char);
+}
+
+function isWordLikeChar(char) {
+  if (!char) return false;
+  return /[A-Za-z0-9]/.test(char);
+}
+
+function shouldInsertGeminiJoinSpace(left, right) {
+  if (!left || !right) return false;
+  const leftLast = left[left.length - 1];
+  const rightFirst = right[0];
+  if (!leftLast || !rightFirst) return false;
+  if (/\s/.test(leftLast) || /\s/.test(rightFirst)) return false;
+  if (isCjkChar(leftLast) || isCjkChar(rightFirst)) return false;
+  return isWordLikeChar(leftLast) && isWordLikeChar(rightFirst);
+}
+
+function stitchGeminiTextParts(parts) {
+  let output = '';
+  for (const part of Array.isArray(parts) ? parts : []) {
+    const next = rawText(part);
+    if (!next) continue;
+    if (shouldInsertGeminiJoinSpace(output, next)) {
+      output += ' ';
+    }
+    output += next;
+  }
+  return output;
+}
+
+function appendGeminiChunk(existing, nextChunk) {
+  const base = rawText(existing);
+  const chunk = rawText(nextChunk);
+  if (!chunk) {
+    return { text: base, delta: '' };
+  }
+  const needsJoinSpace = shouldInsertGeminiJoinSpace(base, chunk);
+  const delta = `${needsJoinSpace ? ' ' : ''}${chunk}`;
+  return {
+    text: base + delta,
+    delta,
+  };
+}
+
+function hasCollapsedSpacingArtifact(text) {
+  const visible = rawText(text);
+  if (!visible) return false;
+  return /\b(?:Ican|ican|skincarepartner|skincareroutine|youcan|wecan|theycan)\b/.test(visible);
 }
 
 function toJsonString(value) {
@@ -127,6 +185,8 @@ function buildFreeformChatSystemPrompt() {
     '',
     '[ANSWER_STYLE]',
     '- Answer the user’s actual question first.',
+    '- Profile labels like oily, dry, or sensitive are context, not blockers.',
+    '- If the user asks about a symptom or state that differs from the stored profile, still answer the asked issue first and add one short profile-specific watchout only if it is relevant.',
     '- Keep the tone practical, calm, and specific without sounding medical or promotional.',
     '- Prefer 1 short paragraph or 2 short paragraphs over long essays.',
     '- Follow the user locale when it is clear from context; otherwise default to clear English.',
@@ -142,6 +202,7 @@ function buildFreeformChatSystemPrompt() {
     '7. Clarification rule: ask a follow-up question only when it materially changes the guidance; do not dodge the original question.',
     '8. Escalation rule: when the user describes severe or acute symptoms (pain, infection signs, rapid worsening, bleeding, eye swelling), briefly recommend seeking professional dermatology or medical care. Do not attempt to treat or diagnose.',
     '9. Safety-flag binding rule: when safety_flags are present in context, treat them as hard constraints that override general advice. If a safety flag blocks a topic, acknowledge the constraint explicitly.',
+    '10. Profile-mismatch rule: do not refuse help only because the stored profile label differs from the current question. Example: oily skin can still feel dry or tight, and you should answer that problem first.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
@@ -155,6 +216,7 @@ function buildFreeformChatSystemPrompt() {
     '- No chain-of-thought, internal reasoning traces, or policy narration.',
     '- No shopping hype, miracle claims, or fake certainty.',
     '- No mismatch in stance between the opening answer and the rest of the response.',
+    '- No refusal like "I cannot help with dryness because your profile says oily".',
     '[/FORBIDDEN_BEHAVIOR]',
   ].join('\n');
 }
@@ -477,22 +539,26 @@ function buildRecoStepBasedStructuredPrompt() {
     '- why.en should explain the fit in one short practical sentence; why.zh may be null when locale is not Chinese.',
     '- suitability_score must be between 0 and 1.',
     '- price_tier should be one of budget, mid, premium, or unknown when available; otherwise null.',
-    '- search_aliases should contain short alternate strings the backend can use to match the product in catalog search.',
+    '- search_aliases should contain short alternate strings the backend can use to match the product in catalog search. search_aliases[0] MUST be the exact canonical brand + product name string.',
     '[/FIELD_SEMANTICS]',
     '',
     '[HARD_RULES]',
     '1. Specific-product rule: every entry in products must be a specific product recommendation, not a generic category like "hydrating serum" or "repair mask".',
     '2. Six-seed rule: default to 6 products. Fewer is allowed only when you cannot produce 6 specific products without making things up.',
     '3. Target fidelity rule: if target_ingredient or target_step is provided, recommendations must align to that target. Do not drift into unrelated categories.',
+    '3a. Face-mask rule: when target_step=mask (or the user asks for a facial/face/sleeping/clay/sheet/wash-off mask), recommend facial masks only. Do not output lip masks, eye masks, body masks, hair masks, tools, or accessories.',
     '4. Concern fidelity rule: when concerns are provided, the rationale must clearly reflect those concerns rather than generic skincare advice.',
     '5. Safety rule: respect safety_flags. Avoid recommending strong or blocked actives when pregnancy, sensitivity, barrier compromise, or post-procedure recovery is indicated.',
     '6. No-category-padding rule: do not fill missing slots with tools, makeup, accessories, or vague classes of products.',
     '7. Explanation rule: keep answer and reasons practical. No hype, no vague marketing language, no invented clinical certainty.',
+    '8. Matchability rule: prefer evergreen, globally recognizable product names that are easy to search. Avoid kits, bundles, minis, limited editions, nicknames, or collection-only names when a canonical product name exists.',
+    '9. Profile-mismatch rule: do not reject or withhold guidance only because the stored profile label differs from the current question. Answer the asked issue first, then add a short profile-specific caution if it is relevant.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
     '- If the user question is too vague to recommend products confidently, set products=[] and use answer_en / answer_zh to ask for the missing detail.',
     '- Missing profile alone does not require an empty answer if the user explicitly asked for a product type or ingredient.',
+    '- If target_step is explicit but profile/concerns are missing, answer_en should clearly frame the shortlist as a general starting set and the 6 products should still remain faithful to the target step.',
     '- If a candidate lacks a confident brand, use null for brand instead of guessing.',
     '- If target fidelity cannot be maintained safely, return products=[].',
     '- Do not convert uncertainty into fake specificity.',
@@ -500,6 +566,7 @@ function buildRecoStepBasedStructuredPrompt() {
     '',
     '[FORBIDDEN_BEHAVIOR]',
     '- No tools, makeup brushes, color cosmetics, perfume, or hair products.',
+    '- No lip masks, eye masks, body masks, or hair masks when the request is for a facial mask.',
     '- No invented SKUs, prices, ingredient decks, or medical claims.',
     '- No generic routine dump.',
     '- No contradiction of safety_flags or blocked concepts.',
@@ -878,6 +945,7 @@ function buildIngredientQueryAnswerStructuredPrompt() {
     '3. Evidence rule: keep claims conservative and cosmetic-skincare scoped; do not promise results or speak with medical certainty.',
     '4. Commerce rule: do not turn the answer into product recommendations or shopping language.',
     '5. Safety rule: if the question touches irritation, strong actives, pregnancy, or sensitivity, include practical safety_notes.',
+    '6. Profile-mismatch rule: do not refuse help only because skin_type, goals, or the stored profile label differ from the current question. Answer the asked issue first, then add a short profile-specific watchout if it matters.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
@@ -1190,6 +1258,7 @@ class LlmGateway {
 
     const provider = this._useStubResponses ? 'stub' : this._provider;
     let text;
+    let spacingArtifactDetected = false;
 
     if (this._useStubResponses) {
       const stub = this._buildStubChatResponse(userMessage, context);
@@ -1208,6 +1277,11 @@ class LlmGateway {
       }
     }
 
+    spacingArtifactDetected = hasCollapsedSpacingArtifact(text);
+    if (spacingArtifactDetected) {
+      console.warn('[LlmGateway] collapsed spacing artifact flagged in chat output');
+    }
+
     this._callLog.push({
       call_id: callId,
       template_id: '_chat',
@@ -1216,12 +1290,20 @@ class LlmGateway {
       provider,
       elapsed_ms: Date.now() - startMs,
       schema_valid: true,
+      answer_first_applied: true,
+      spacing_join_guard_applied: true,
+      collapsed_spacing_pattern_detected: spacingArtifactDetected,
     });
 
     return {
       text,
       parsed: this._tryParseJson(text),
       provider,
+      telemetry: {
+        answer_first_applied: true,
+        spacing_join_guard_applied: true,
+        collapsed_spacing_pattern_detected: spacingArtifactDetected,
+      },
     };
   }
 
@@ -1331,8 +1413,9 @@ class LlmGateway {
       await this._consumeSseStream(response, (payload) => {
         const text = this._extractGeminiText(payload);
         if (!text) return;
-        fullText += text;
-        onChunk(text);
+        const stitched = appendGeminiChunk(fullText, text);
+        fullText = stitched.text;
+        onChunk(stitched.delta);
       });
 
       if (!fullText) {
@@ -1405,10 +1488,7 @@ class LlmGateway {
   _extractGeminiText(data) {
     const parts = data?.candidates?.[0]?.content?.parts;
     if (!Array.isArray(parts)) return '';
-    return parts
-      .map((part) => compactText(part?.text))
-      .filter(Boolean)
-      .join('');
+    return stitchGeminiTextParts(parts.map((part) => part?.text));
   }
 
   _buildChatMessages(userMessage, systemPrompt, context, locale, priorMessages) {
@@ -1655,6 +1735,12 @@ class LlmGateway {
     const targetStep = compactText(params?.target_step) || (targetIngredient ? 'serum' : 'mask');
     const concerns = Array.isArray(params?.concerns) ? params.concerns : [];
     const label = targetIngredient || concerns[0] || 'hydration';
+    const exactAlias = (brand, name, fallback) => {
+      const brandText = compactText(brand);
+      const nameText = compactText(name);
+      if (brandText && nameText) return `${brandText} ${nameText}`.trim();
+      return compactText(fallback);
+    };
     return {
       answer_en: targetIngredient
         ? `Here are six product seeds I would start from for ${targetIngredient}.`
@@ -1673,7 +1759,10 @@ class LlmGateway {
           },
           suitability_score: 0.87,
           price_tier: 'mid',
-          search_aliases: [targetIngredient ? `${targetIngredient} repair serum` : 'cicaplast b5 mask', 'la roche posay cicaplast'],
+          search_aliases: [
+            exactAlias('La Roche-Posay', targetIngredient ? `${targetIngredient} Repair Serum` : 'Cicaplast B5 Mask', targetIngredient ? `${targetIngredient} repair serum` : 'cicaplast b5 mask'),
+            'la roche posay cicaplast',
+          ],
         },
         {
           brand: 'Avène',
@@ -1685,7 +1774,9 @@ class LlmGateway {
           },
           suitability_score: 0.82,
           price_tier: 'mid',
-          search_aliases: [targetIngredient ? `${targetIngredient} soothing emulsion` : 'avene soothing radiance mask'],
+          search_aliases: [
+            exactAlias('Avène', targetIngredient ? `${targetIngredient} Soothing Emulsion` : 'Soothing Radiance Mask', targetIngredient ? `${targetIngredient} soothing emulsion` : 'avene soothing radiance mask'),
+          ],
         },
         {
           brand: 'CeraVe',
@@ -1697,7 +1788,9 @@ class LlmGateway {
           },
           suitability_score: 0.8,
           price_tier: 'budget',
-          search_aliases: [targetIngredient ? `${targetIngredient} barrier lotion` : 'cerave hydrating recovery mask'],
+          search_aliases: [
+            exactAlias('CeraVe', targetIngredient ? `${targetIngredient} Barrier Lotion` : 'Hydrating Recovery Mask', targetIngredient ? `${targetIngredient} barrier lotion` : 'cerave hydrating recovery mask'),
+          ],
         },
         {
           brand: 'Paula’s Choice',
@@ -1709,7 +1802,9 @@ class LlmGateway {
           },
           suitability_score: 0.78,
           price_tier: 'premium',
-          search_aliases: [targetIngredient ? `${targetIngredient} booster` : 'paulas choice calm repairing mask'],
+          search_aliases: [
+            exactAlias('Paula’s Choice', targetIngredient ? `${targetIngredient} Booster` : 'Calm Repairing Mask', targetIngredient ? `${targetIngredient} booster` : 'paulas choice calm repairing mask'),
+          ],
         },
         {
           brand: 'Bioderma',
@@ -1721,7 +1816,9 @@ class LlmGateway {
           },
           suitability_score: 0.76,
           price_tier: 'mid',
-          search_aliases: [targetIngredient ? `${targetIngredient} comfort gel` : 'bioderma sensibio comfort mask'],
+          search_aliases: [
+            exactAlias('Bioderma', targetIngredient ? `${targetIngredient} Comfort Gel` : 'Sensibio Comfort Mask', targetIngredient ? `${targetIngredient} comfort gel` : 'bioderma sensibio comfort mask'),
+          ],
         },
         {
           brand: 'First Aid Beauty',
@@ -1733,7 +1830,9 @@ class LlmGateway {
           },
           suitability_score: 0.75,
           price_tier: 'mid',
-          search_aliases: [targetIngredient ? `${targetIngredient} repair cream` : 'first aid beauty oatmeal mask'],
+          search_aliases: [
+            exactAlias('First Aid Beauty', targetIngredient ? `${targetIngredient} Repair Cream` : 'Ultra Repair Instant Oatmeal Mask', targetIngredient ? `${targetIngredient} repair cream` : 'first aid beauty oatmeal mask'),
+          ],
         },
       ],
     };
@@ -1839,6 +1938,18 @@ class LlmGateway {
 
   _buildStubIngredientQuestion(params) {
     const question = compactText(params?.user_question);
+    const profile = params?.profile || {};
+    const isOilyProfile = String(profile?.skin_type || profile?.skinType || '').trim().toLowerCase() === 'oily';
+    const lowerQuestion = question.toLowerCase();
+    if (isOilyProfile && /(dry|dryness|tight|dehydrat)/i.test(lowerQuestion)) {
+      return {
+        answer_en: 'Even oily skin can feel dry or tight, especially if your barrier is stressed. Start with gentle cleansing, reduce over-cleansing or harsh actives for a few days, and add a lightweight barrier-supporting hydrator; because you usually run oily, watch out for heavy occlusive layering that can feel greasy or congesting.',
+        answer_zh: '即使偏油肌，也可能因为屏障受压而出现干燥或紧绷。可以先用更温和的清洁、暂时减少刺激性活性，并补一个轻薄的修护保湿；但因为你本身偏油，也要留意不要叠加过厚重的封闭型产品，以免闷或堵塞。',
+        ingredients_mentioned: this._stubIngredientsForConcern('hydration'),
+        safety_notes: ['Patch-test if your skin is already irritated.', 'Scale back strong actives temporarily if tightness is new or worsening.'],
+        followup_suggestions: ['Want a lightweight barrier-support routine?', 'Should I recommend products for dehydration?'],
+      };
+    }
     const concern = this._inferConcern(question);
     const ingredients = this._stubIngredientsForConcern(concern);
     return {
@@ -1966,15 +2077,25 @@ class LlmGateway {
     };
   }
 
-  _buildStubChatResponse(userMessage) {
+  _buildStubChatResponse(userMessage, context) {
     const lower = compactText(userMessage).toLowerCase();
+    const profile = context?.profile || {};
+    const isOilyProfile = String(profile?.skin_type || profile?.skinType || '').trim().toLowerCase() === 'oily';
+    if (isOilyProfile && /(dry|dryness|tight|dehydrat)/i.test(lower)) {
+      return {
+        answer_en: 'Even oily skin can feel dry or tight when the barrier is stressed or the routine is too stripping. Start by using a gentler cleanser, pause harsh actives for a few days if needed, and add a light barrier-supporting moisturizer or hydrating layer; because you usually run oily, watch out for piling on very heavy occlusives that can feel greasy or congesting.',
+        answer_zh: '偏油肌也可能因为屏障受损或清洁过度而觉得干、紧绷。可以先换更温和的清洁、必要时短暂停用刺激性活性，并加一层轻薄的修护保湿；但因为你本身偏油，也要留意不要叠加过厚重的封闭型产品，以免闷或堵塞。',
+        ingredients_mentioned: [],
+        followup_suggestions: ['Should I suggest barrier-friendly ingredients?', 'Want product ideas for dehydration?'],
+      };
+    }
     if (
       lower.includes('ingredient') ||
       lower.includes('retinol') ||
       lower.includes('niacinamide') ||
       lower.includes('best for')
     ) {
-      return this._buildStubIngredientQuestion({ user_question: userMessage });
+      return this._buildStubIngredientQuestion({ user_question: userMessage, profile });
     }
 
     return {
@@ -2080,7 +2201,7 @@ class LlmGateway {
       },
       {
         id: 'reco_step_based',
-        version: '2.0.0',
+        version: '2.2.0',
         taskMode: 'recommendation',
         text: buildRecoStepBasedStructuredPrompt(),
       },
@@ -2104,7 +2225,7 @@ class LlmGateway {
       },
       {
         id: 'ingredient_query_answer',
-        version: '1.2.0',
+        version: '1.3.0',
         taskMode: 'ingredient',
         text: buildIngredientQueryAnswerStructuredPrompt(),
       },

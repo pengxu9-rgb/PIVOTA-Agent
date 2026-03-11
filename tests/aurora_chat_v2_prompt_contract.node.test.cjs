@@ -79,8 +79,8 @@ test('ingredient_query_answer prompt version is aligned between runtime registry
   const runtimeTemplate = gateway._promptRegistry.get('ingredient_query_answer');
   const manifestTemplate = readPromptManifest().templates.find((entry) => entry.template_id === 'ingredient_query_answer');
 
-  assert.equal(runtimeTemplate?.version, '1.2.0');
-  assert.equal(manifestTemplate?.version, '1.2.0');
+  assert.equal(runtimeTemplate?.version, '1.3.0');
+  assert.equal(manifestTemplate?.version, '1.3.0');
 });
 
 test('reco_step_based prompt version is aligned between runtime registry and manifest', () => {
@@ -88,8 +88,8 @@ test('reco_step_based prompt version is aligned between runtime registry and man
   const runtimeTemplate = gateway._promptRegistry.get('reco_step_based');
   const manifestTemplate = readPromptManifest().templates.find((entry) => entry.template_id === 'reco_step_based');
 
-  assert.equal(runtimeTemplate?.version, '2.0.0');
-  assert.equal(manifestTemplate?.version, '2.0.0');
+  assert.equal(runtimeTemplate?.version, '2.2.0');
+  assert.equal(manifestTemplate?.version, '2.2.0');
 });
 
 test('dupe prompts are aligned between runtime registry and manifest', () => {
@@ -123,11 +123,13 @@ test('travel_apply_mode and ingredient_report prompt versions are aligned betwee
 test('chat.freeform system prompt version and contract are explicit', () => {
   const text = String(AURORA_SYSTEM_PROMPT || '');
 
-  assert.equal(FREEFORM_PROMPT_VERSION, 'inline_system_prompt_v2');
+  assert.equal(FREEFORM_PROMPT_VERSION, 'inline_system_prompt_v3');
   assert.match(text, /\[ROLE\]/i);
   assert.match(text, /Respond in plain natural language that can be streamed to the user as-is/i);
   assert.match(text, /Do not output JSON, markdown code fences/i);
   assert.match(text, /Answer the user’s actual question first/i);
+  assert.match(text, /Profile labels like oily, dry, or sensitive are context, not blockers/i);
+  assert.match(text, /do not refuse help only because the stored profile label differs from the current question/i);
   assert.match(text, /Retinoid rule: treat retinoids as PM-first/i);
   assert.match(text, /SPF rule: treat sunscreen as an AM-only step with reapply guidance/i);
   assert.match(text, /If the information is insufficient for a confident recommendation, say what is uncertain/i);
@@ -255,9 +257,29 @@ test('ingredient_query_answer prompt encodes answer-first and ingredient-educati
   assert.match(text, /"answer_en": string/i);
   assert.match(text, /"ingredients_mentioned": \[/i);
   assert.match(text, /Answer-first rule/i);
+  assert.match(text, /do not refuse help only because skin_type, goals, or the stored profile label differ/i);
   assert.match(text, /do not turn the answer into product recommendations/i);
   assert.match(text, /ingredients_mentioned must contain at most 3/i);
   assert.match(text, /user_question=\{\{user_question\}\}/i);
+});
+
+test('ingredient_query_answer stub still answers dryness questions when profile says oily', async () => {
+  const gateway = new LlmGateway({ stubResponses: true });
+  const result = await gateway.call({
+    templateId: 'ingredient_query_answer',
+    taskMode: 'ingredient',
+    params: {
+      user_question: 'My skin feels dry and tight lately. What ingredients should I focus on?',
+      profile: { skin_type: 'oily' },
+      safety_flags: [],
+      locale: 'en',
+    },
+    schema: 'IngredientQueryOutput',
+  });
+
+  assert.match(String(result.parsed?.answer_en || ''), /dry|tight|barrier|hydr/i);
+  assert.match(String(result.parsed?.answer_en || ''), /oily|greasy|occlusive|congest/i);
+  assert.doesNotMatch(String(result.parsed?.answer_en || ''), /cannot help with dryness because/i);
 });
 
 test('reco_step_based prompt encodes hybrid seed recommendation rules', () => {
@@ -274,12 +296,88 @@ test('reco_step_based prompt encodes hybrid seed recommendation rules', () => {
   assert.match(text, /Six-seed rule/i);
   assert.match(text, /No-category-padding rule/i);
   assert.match(text, /Target fidelity rule/i);
+  assert.match(text, /Face-mask rule/i);
+  assert.match(text, /search_aliases\[0\] MUST be the exact canonical brand \+ product name string/i);
+  assert.match(text, /Matchability rule/i);
+  assert.match(text, /do not reject or withhold guidance only because the stored profile label differs/i);
   assert.match(text, /tools, makeup brushes, color cosmetics/i);
+  assert.match(text, /No lip masks, eye masks, body masks, or hair masks/i);
   assert.match(text, /user_question=\{\{user_question\}\}/i);
   assert.match(text, /Avoid recommending strong or blocked actives/i);
+  assert.match(text, /general starting set/i);
   assert.match(text, /inventory=\{\{inventory\}\}/i);
   assert.match(text, /target_ingredient=\{\{target_ingredient\}\}/i);
   assert.match(text, /safety_flags=\{\{safety_flags\}\}/i);
+});
+
+test('Gemini text stitcher preserves English spaces, punctuation, and CJK text', () => {
+  const gateway = new LlmGateway({ stubResponses: true });
+
+  const english = gateway._extractGeminiText({
+    candidates: [{
+      content: {
+        parts: [
+          { text: 'I' },
+          { text: ' can help with dryness' },
+          { text: ' while noting oily-skin watchouts.' },
+        ],
+      },
+    }],
+  });
+  const punctuation = gateway._extractGeminiText({
+    candidates: [{
+      content: {
+        parts: [
+          { text: 'Use niacinamide' },
+          { text: ', if your skin tolerates it.' },
+        ],
+      },
+    }],
+  });
+  const cjk = gateway._extractGeminiText({
+    candidates: [{
+      content: {
+        parts: [
+          { text: '可以先减少刺激性活性' },
+          { text: '并加强保湿。' },
+        ],
+      },
+    }],
+  });
+
+  assert.equal(english, 'I can help with dryness while noting oily-skin watchouts.');
+  assert.equal(punctuation, 'Use niacinamide, if your skin tolerates it.');
+  assert.equal(cjk, '可以先减少刺激性活性并加强保湿。');
+});
+
+test('reco_step_based stub keeps mask requests on facial-mask products with exact-first aliases', async () => {
+  const gateway = new LlmGateway({ stubResponses: true });
+  const result = await gateway.call({
+    templateId: 'reco_step_based',
+    taskMode: 'recommendation',
+    params: {
+      user_question: 'Recommend a facial mask that suits me.',
+      profile: {},
+      routine: null,
+      inventory: [],
+      target_step: 'mask',
+      target_ingredient: null,
+      concerns: [],
+      safety_flags: [],
+      locale: 'en-US',
+    },
+    schema: 'RecoHybridCandidateOutput',
+  });
+
+  const products = Array.isArray(result.parsed?.products) ? result.parsed.products : [];
+  assert.equal(products.length, 6);
+  for (const product of products) {
+    const joined = `${product.brand || ''} ${product.name || ''}`.trim();
+    assert.match(String(product.product_type || ''), /mask/i);
+    assert.ok(product.search_aliases?.[0], 'search_aliases[0] must exist');
+    assert.equal(product.search_aliases[0], joined);
+    assert.doesNotMatch(joined, /\b(lip|eye|body|hair)\b/i);
+  }
 });
 
 test('dupe_suggest prompt encodes candidate-pool-only and tradeoff rules', () => {

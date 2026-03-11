@@ -69,6 +69,41 @@ test('POST /v2/chat accepts free-form payloads and returns text_response cards',
   assert.ok(Array.isArray(response.body.next_actions));
 });
 
+test('POST /v2/chat answers dryness questions even when profile says oily', async () => {
+  const app = createApp();
+  const response = await request(app)
+    .post('/v2/chat')
+    .send({
+      message: 'My skin feels dry and tight lately. What should I do?',
+      context: {
+        locale: 'en',
+        profile: { skin_type: 'oily' },
+      },
+    })
+    .expect(200);
+
+  const textAnswer = response.body.cards?.[0]?.sections?.find((section) => section.type === 'text_answer')?.text_en || '';
+  assert.equal(response.body.cards?.[0]?.card_type, 'text_response');
+  assert.match(textAnswer, /dry|tight|gentle|barrier|hydr/i);
+  assert.match(textAnswer, /oily|greasy|occlusive|congest/i);
+  assert.doesNotMatch(textAnswer, /cannot assist with dryness because your profile indicates oily skin/i);
+});
+
+test('POST /v2/chat prepends answer-first text on free-text skill routes', async () => {
+  const app = createApp();
+  const response = await request(app)
+    .post('/v2/chat')
+    .send({
+      message: 'Tell me about retinol',
+      context: { locale: 'en', profile: {} },
+    })
+    .expect(200);
+
+  const cardTypes = (response.body.cards || []).map((card) => card.card_type);
+  assert.equal(cardTypes[0], 'text_response');
+  assert.ok(cardTypes.includes('aurora_ingredient_report'));
+});
+
 test('POST /v2/chat/stream emits ordered SSE events with a single result', async () => {
   const app = createApp();
   const response = await request(app)

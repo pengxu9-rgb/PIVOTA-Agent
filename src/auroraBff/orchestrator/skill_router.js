@@ -98,6 +98,27 @@ function extractUserMessage(request) {
   );
 }
 
+function compactText(value) {
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function isFreeTextUserTurn(request, userMessage = extractUserMessage(request)) {
+  const entrySource = compactText(request?.params?.entry_source).toLowerCase();
+  return Boolean(compactText(userMessage)) && !entrySource.startsWith('chip.');
+}
+
+function detectProfileMismatchGuard(request, userMessage = extractUserMessage(request)) {
+  const lower = compactText(userMessage).toLowerCase();
+  const profileSkinType = compactText(request?.context?.profile?.skin_type || request?.context?.profile?.skinType).toLowerCase();
+  const asksAboutDryness = /(dry|dryness|tight|tightness|dehydrat)/i.test(lower);
+  const asksAboutOiliness = /(oil|oily|greasy|shine|shiny)/i.test(lower);
+  return (
+    (profileSkinType === 'oily' && asksAboutDryness) ||
+    (profileSkinType === 'dry' && asksAboutOiliness)
+  );
+}
+
 function deriveTargetStep(request, classification) {
   const explicit = normalizeRecoTargetStep(
     request?.params?.target_step
@@ -139,8 +160,11 @@ class SkillRouter {
       throw new Error(`Skill ${resolved.skillId} not found in registry`);
     }
 
+    this._preserveRawQuestion(request, resolved.userMessage);
+    const answerPrelude = await this._maybeBuildAnswerFirstPrelude(request, resolved.userMessage);
     const response = await skill.run(request, this._llmGateway);
-    return this._applyQualityGates(resolved.skillId, response, request);
+    const composed = this._composeSkillResponseWithAnswerPrelude(response, answerPrelude);
+    return this._applyQualityGates(resolved.skillId, composed, request);
   }
 
   async routeStream(request, onEvent) {
@@ -183,8 +207,11 @@ class SkillRouter {
       throw new Error(`Skill ${resolved.skillId} not found in registry`);
     }
 
+    this._preserveRawQuestion(request, resolved.userMessage);
+    const answerPrelude = await this._maybeBuildAnswerFirstPrelude(request, resolved.userMessage);
     const response = await skill.run(request, this._llmGateway);
-    const gatedResponse = this._applyQualityGates(resolved.skillId, response, request);
+    const composed = this._composeSkillResponseWithAnswerPrelude(response, answerPrelude);
+    const gatedResponse = this._applyQualityGates(resolved.skillId, composed, request);
     emit({ type: 'result', data: gatedResponse });
     return gatedResponse;
   }
@@ -285,6 +312,99 @@ class SkillRouter {
     return response;
   }
 
+  _preserveRawQuestion(request, userMessage) {
+    if (!compactText(userMessage)) return;
+    request.params = request.params || {};
+    if (!request.params._user_question) {
+      request.params._user_question = compactText(userMessage);
+    }
+  }
+
+  _responseStartsWithTextResponse(response) {
+    return response?.cards?.[0]?.card_type === 'text_response';
+  }
+
+  _buildTextResponseCard(answerEn, answerZh, safetyNotes) {
+    const card = {
+      card_type: 'text_response',
+      sections: [
+        {
+          type: 'text_answer',
+          text_en: answerEn,
+          text_zh: answerZh || null,
+        },
+      ],
+    };
+
+    if (Array.isArray(safetyNotes) && safetyNotes.length > 0) {
+      card.sections.push({
+        type: 'safety_notes',
+        notes: safetyNotes,
+      });
+    }
+
+    return card;
+  }
+
+  async _maybeBuildAnswerFirstPrelude(request, userMessage) {
+    if (!isFreeTextUserTurn(request, userMessage)) {
+      return {
+        applied: false,
+        profileMismatchGuardApplied: false,
+        spacingArtifactDetected: false,
+      };
+    }
+
+    const callId = crypto.randomUUID();
+    try {
+      const priorMessages = Array.isArray(request.params?.messages) ? request.params.messages : undefined;
+      const chatResult = await this._llmGateway.chat({
+        userMessage,
+        context: request.context,
+        locale: request.context?.locale,
+        priorMessages,
+      });
+      const parsed = chatResult.parsed || {};
+      const answerEn = parsed.answer_en || chatResult.text;
+      const answerZh = parsed.answer_zh || null;
+
+      return {
+        applied: true,
+        callId,
+        parsed,
+        card: this._buildTextResponseCard(answerEn, answerZh, parsed.safety_notes),
+        profileMismatchGuardApplied: detectProfileMismatchGuard(request, userMessage),
+        spacingArtifactDetected: chatResult?.telemetry?.collapsed_spacing_pattern_detected === true,
+      };
+    } catch (error) {
+      console.error('[SkillRouter] answer-first prelude failed:', error.message);
+      return {
+        applied: false,
+        profileMismatchGuardApplied: detectProfileMismatchGuard(request, userMessage),
+        spacingArtifactDetected: false,
+      };
+    }
+  }
+
+  _composeSkillResponseWithAnswerPrelude(response, prelude) {
+    const composed = response || {};
+    const telemetry = composed.telemetry || {};
+    telemetry.answer_first_applied = Boolean(prelude?.applied);
+    telemetry.profile_mismatch_guard_applied = Boolean(prelude?.profileMismatchGuardApplied);
+    telemetry.collapsed_spacing_pattern_detected = Boolean(prelude?.spacingArtifactDetected);
+    composed.telemetry = telemetry;
+
+    if (!prelude?.applied || !prelude.card) {
+      return composed;
+    }
+    if (this._responseStartsWithTextResponse(composed)) {
+      return composed;
+    }
+
+    composed.cards = [prelude.card, ...(Array.isArray(composed.cards) ? composed.cards : [])];
+    return composed;
+  }
+
   async _handleFreeFormChat(request, userMessage, { onChunk } = {}) {
     const callId = crypto.randomUUID();
     const startMs = Date.now();
@@ -303,16 +423,7 @@ class SkillRouter {
       const answerEn = parsed.answer_en || chatResult.text;
       const answerZh = parsed.answer_zh || null;
       const cards = [
-        {
-          card_type: 'text_response',
-          sections: [
-            {
-              type: 'text_answer',
-              text_en: answerEn,
-              text_zh: answerZh,
-            },
-          ],
-        },
+        this._buildTextResponseCard(answerEn, answerZh, parsed.safety_notes),
       ];
 
       if (Array.isArray(parsed.ingredients_mentioned) && parsed.ingredients_mentioned.length > 0) {
@@ -332,13 +443,6 @@ class SkillRouter {
               })),
             },
           ],
-        });
-      }
-
-      if (Array.isArray(parsed.safety_notes) && parsed.safety_notes.length > 0) {
-        cards[0].sections.push({
-          type: 'safety_notes',
-          notes: parsed.safety_notes,
         });
       }
 
@@ -396,6 +500,9 @@ class SkillRouter {
           task_mode: 'chat',
           elapsed_ms: Date.now() - startMs,
           llm_calls: 1,
+          answer_first_applied: true,
+          profile_mismatch_guard_applied: detectProfileMismatchGuard(request, userMessage),
+          collapsed_spacing_pattern_detected: chatResult?.telemetry?.collapsed_spacing_pattern_detected === true,
         },
         next_actions: nextActions,
       };
