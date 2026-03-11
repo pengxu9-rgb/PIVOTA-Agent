@@ -5225,6 +5225,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
       const decisionModule = require('../src/auroraBff/auroraDecisionClient');
       const originalAuroraChat = decisionModule.auroraChat;
       let auroraChatCalls = 0;
+      let geminiRequest = null;
       decisionModule.auroraChat = async () => {
         auroraChatCalls += 1;
         throw new Error('auroraChat should not be called for open_world_only');
@@ -5238,6 +5239,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         let geminiCalls = 0;
         __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
           geminiCalls += 1;
+          geminiRequest = args;
           assert.equal(args.route, 'aurora_reco_alternatives_open_world');
           return {
             ok: true,
@@ -5275,7 +5277,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
             claims: ['brightening', 'oil control'],
           },
           anchorId: '',
-          maxTotal: 3,
+          maxTotal: 6,
           candidatePool: [],
           logger: null,
           options: {
@@ -5300,6 +5302,9 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.grounding_status, 'name_only');
         assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
+        assert.equal(geminiRequest?.maxOutputTokens, 1800);
+        const parsedPrompt = JSON.parse(String(geminiRequest?.userPrompt || '{}'));
+        assert.equal(parsedPrompt?.task?.max_alternatives, 4);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
