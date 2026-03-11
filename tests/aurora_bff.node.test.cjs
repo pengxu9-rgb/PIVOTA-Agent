@@ -5424,6 +5424,45 @@ test('sanitizeGeminiJsonSchema converts nullable unions to Gemini-compatible nul
     delete require.cache[moduleId];
   }
 });
+
+test('parseGeminiJsonPayload recovers complete alternatives from truncated JSON', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  try {
+    const routeModule = require('../src/auroraBff/routes');
+    const { __internal } = routeModule;
+    const schema = __internal.buildExternalSeedOpenWorldSchema();
+    const truncated = JSON.stringify({
+      alternatives: [
+        {
+          brand: 'Good Molecules',
+          name: 'Niacinamide Serum',
+          product_type: 'serum',
+          similarity_score: 72,
+          reasons: ['Niacinamide-led serum overlap.'],
+          tradeoff_notes: ['Zinc support is less explicit.'],
+        },
+        {
+          brand: 'Naturium',
+          name: 'Niacinamide Serum 12% Plus Zinc 2%',
+          product_type: 'serum',
+          similarity_score: 68,
+          reasons: ['Niacinamide-led serum overlap.'],
+          tradeoff_notes: ['May feel stronger than the anchor.'],
+        },
+      ],
+    });
+    const chopped = truncated.slice(0, truncated.indexOf('"Naturium"') + 8);
+    const parsed = __internal.parseGeminiJsonPayload(chopped, schema);
+    assert.equal(parsed?.parse_status, 'recovered_truncated');
+    assert.equal(Array.isArray(parsed?.parsed?.alternatives), true);
+    assert.equal(parsed.parsed.alternatives.length, 1);
+    assert.equal(parsed.parsed.alternatives[0]?.brand, 'Good Molecules');
+    assert.equal(parsed.parsed.alternatives[0]?.name, 'Niacinamide Serum');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
 test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
   return withEnv(
     {
