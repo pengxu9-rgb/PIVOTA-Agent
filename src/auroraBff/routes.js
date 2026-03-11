@@ -20288,6 +20288,10 @@ function buildDiagnosisArtifactV1({
       ? 'llm'
       : null,
   ]);
+  const analysisStorySnapshot = buildDeepDiveFallbackStoryPayload({
+    lastAnalysis: analysis,
+    language: ctx && ctx.lang ? ctx.lang : 'EN',
+  });
 
   const artifact = {
     artifact_id: createArtifactId(),
@@ -20322,6 +20326,7 @@ function buildDiagnosisArtifactV1({
       quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
     },
     source_mix: sourceMix,
+    analysis_story_snapshot: analysisStorySnapshot,
     session_patch: {
       next_state: 'S5_ANALYSIS_SUMMARY',
       state: {
@@ -61595,6 +61600,7 @@ const __internal = {
   applyRecoCardContractInvariant,
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
+  buildDiagnosisArtifactV1,
   normalizeAnalysisPhotoRefs,
   buildDeepDiveFallbackStoryPayload,
   buildDeepDiveAnalysisEvidence,

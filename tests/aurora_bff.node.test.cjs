@@ -12356,6 +12356,55 @@ test('/v1/chat: implicit deep_dive_skin message can route from diagnosis artifac
   );
 });
 
+test('buildDiagnosisArtifactV1 stores analysis_story_snapshot for later deep dives', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { __internal } = require('../src/auroraBff/routes');
+      const artifact = __internal.buildDiagnosisArtifactV1({
+        ctx: { lang: 'EN', brief_id: 'brief_story_snapshot_artifact' },
+        identity: { auroraUid: 'uid_story_snapshot_artifact', userId: null },
+        profileSummary: {
+          skinType: 'oily',
+          sensitivity: 'medium',
+          barrierStatus: 'stable',
+          goals: ['acne', 'pores'],
+        },
+        recentLogsSummary: [],
+        analysis: {
+          skin_profile: {
+            skin_type_tendency: 'oily',
+            sensitivity_tendency: 'medium',
+            current_strengths: ['Oiliness is the strongest consistent signal.'],
+          },
+          priority_findings: [
+            { title: 'Visible pore texture remains the clearest signal.' },
+            { detail: 'Breakout activity remains a secondary signal.' },
+          ],
+          guidance_brief: ['Keep cleansing gentle and use consistent SPF.'],
+          confidence_overall: { level: 'medium', score: 0.72 },
+        },
+        analysisSource: 'vision_gemini',
+        usePhoto: true,
+        usedPhotos: true,
+        photos: [{ slot_id: 'daylight', photo_id: 'photo_story_snapshot_artifact', qc_status: 'passed' }],
+        photoQuality: { grade: 'pass' },
+      });
+
+      assert.equal(artifact?.analysis_story_snapshot?.confidence_overall?.level, 'medium');
+      assert.ok(Array.isArray(artifact?.analysis_story_snapshot?.priority_findings));
+      assert.ok((artifact?.analysis_story_snapshot?.priority_findings || []).length >= 2);
+      assert.equal(artifact?.analysis_story_snapshot?.disclaimer_non_medical, true);
+    },
+  );
+});
+
 test('/v1/chat: deep_dive_skin consumes photo refs and diagnosis artifact through llm path', async () => {
   await withEnv(
     {
