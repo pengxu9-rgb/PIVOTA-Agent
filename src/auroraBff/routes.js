@@ -5,7 +5,6 @@ const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { z } = require('zod');
-const { applyDupeSuggestQualityGate } = require('./qualityGates/dupeSuggestGate');
 const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
   filterSelfReferences: filterDupeSelfReferencesV2,
@@ -30131,6 +30130,9 @@ function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
   const base = isPlainObject(payload) ? { ...payload } : {};
   const anchor = isPlainObject(base.original) ? base.original : null;
   const anchorBrand = normalizeDupeBrandV2(anchor && anchor.brand);
+  const baseMeta = isPlainObject(base.meta) ? { ...base.meta } : {};
+  delete baseMeta.quality_gate_enforced;
+  delete baseMeta.quality_gate_reason;
 
   const sanitizeBucket = (rows, field) => {
     const source = Array.isArray(rows) ? rows : [];
@@ -30232,7 +30234,7 @@ function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
       quality_issues: qualityIssues,
     },
     meta: {
-      ...(isPlainObject(base.meta) ? base.meta : {}),
+      ...baseMeta,
       sanitize_v1: {
         dropped_non_skincare: dupesNonSkincareDropCount + comparablesNonSkincareDropCount,
         self_ref_dropped_count: selfRefDroppedCount,
@@ -30245,6 +30247,7 @@ function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
       quality_issues: qualityIssues,
     },
   };
+  delete nextPayload.action_hint;
   const nextFieldMissing = mergeFieldMissing(base.field_missing, [
     ...(dupesNonSkincareDropCount > 0 ? [{ field: 'payload.dupes', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
     ...(comparablesNonSkincareDropCount > 0 ? [{ field: 'payload.comparables', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
@@ -30252,10 +30255,9 @@ function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
     ...(duplicateIssueCount > 0 ? [{ field: 'payload', reason: 'dupe_suggest_duplicate_identity_filtered' }] : []),
     ...(nameUrlIssueCount > 0 ? [{ field: 'payload', reason: 'dupe_suggest_name_is_url_sanitized' }] : []),
   ]);
-  const gateResult = applyDupeSuggestQualityGate(nextPayload, { lang });
 
   return {
-    payload: gateResult.payload,
+    payload: nextPayload,
     field_missing: nextFieldMissing,
     dropped,
     issues: sanitizeIssues,
