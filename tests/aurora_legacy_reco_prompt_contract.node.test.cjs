@@ -51,6 +51,17 @@ test('hybrid reco alternatives system prompt encodes open-world fallback and anc
   assert.match(text, /do not wait for catalog grounding/i);
 });
 
+test('open-world reco system prompt encodes active-theme-only generation rules', () => {
+  const promptPath = path.join(__dirname, '..', 'prompts', 'reco_alternatives_open_world_v1.system.txt');
+  const text = fs.readFileSync(promptPath, 'utf8');
+
+  assert.match(text, /Output exactly one JSON object with keys: alternative, empty_reason/i);
+  assert.match(text, /If anchor\.active_themes is non-empty, you MUST return exactly 1 distinct real skincare product/i);
+  assert.match(text, /Pure role, texture, category, or claim overlap without active or ingredient theme overlap is NOT enough/i);
+  assert.match(text, /anchor_signal_insufficient_for_open_world/i);
+  assert.match(text, /The Ordinary Niacinamide 10% \+ Zinc 1%/i);
+});
+
 test('legacy reco main system prompt encodes task_mode and candidate grounding rules', () => {
   const promptPath = path.join(__dirname, '..', 'prompts', 'reco_main_v1_0.system.txt');
   const text = fs.readFileSync(promptPath, 'utf8');

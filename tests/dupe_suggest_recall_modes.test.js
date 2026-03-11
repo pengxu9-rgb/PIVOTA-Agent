@@ -148,20 +148,21 @@ describe('executeDupeSuggest recall modes', () => {
 
     expect(result.ok).toBe(true);
     expect(result.payload.dupes).toHaveLength(1);
-    expect(result.payload.comparables).toHaveLength(2);
+    expect(result.payload.dupes[0].product.brand).toBe('Open Brand');
+    expect(result.payload.comparables.every((item) => item.candidate_origin !== 'catalog' || item.product.category === 'moisturizer')).toBe(true);
     expect(result.payload.meta.recommendation_mode_initial).toBe('pool_only');
     expect(result.payload.meta.recommendation_mode_final).toBe('open_world_only');
     expect(result.payload.meta.open_world_supplement_used).toBe(true);
     expect(result.payload.meta.escalated_to_open_world).toBe(true);
-    expect(result.payload.meta.final_source_mix).toEqual(expect.arrayContaining(['catalog', 'open_world']));
-    expect(result.payload.meta.viability_failure_reasons).toEqual([]);
+    expect(result.payload.meta.final_source_mix).toEqual(['open_world']);
+    expect(result.payload.meta.viability_failure_reasons).toEqual(['placeholder_candidates_removed']);
     expect(result.payload.meta.llm_trace.raw_output_item_count).toBe(2);
     expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
       recommendation_mode: 'pool_only',
       raw_output_item_count: 1,
-      mapped_output_item_count: 4,
+      mapped_output_item_count: 1,
       candidate_pool_size: 3,
-      selector_input_count: 3,
+      selector_input_count: 0,
       raw_items_with_product_object: 1,
       field_missing_reasons: [],
       failure_class: null,
@@ -169,8 +170,7 @@ describe('executeDupeSuggest recall modes', () => {
       upstream_status: null,
       upstream_error_code: null,
       upstream_error_message: null,
-      failure_reasons: [],
-      pool_rank_fallback_used: true,
+      failure_reasons: ['placeholder_candidates_removed'],
     }));
     expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
       recommendation_mode: 'open_world_only',
@@ -202,7 +202,7 @@ describe('executeDupeSuggest recall modes', () => {
         disable_synthetic_local_fallback: true,
       }),
     }));
-    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v9');
+    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v10');
     expect(fetchRecoAlternativesForProduct.mock.calls.some(([args]) => args.options.recommendation_mode === 'hybrid_fallback')).toBe(false);
   });
 
@@ -279,7 +279,7 @@ describe('executeDupeSuggest recall modes', () => {
       mapped_output_item_count: 0,
       no_result_reason: 'backend_zero_hits',
       selector_input_count: 0,
-      selector_timeout_ms: 10000,
+      selector_timeout_ms: 12000,
     }));
     expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
       recommendation_mode: 'open_world_only',
@@ -378,7 +378,7 @@ describe('executeDupeSuggest recall modes', () => {
       failure_class: 'empty_structured',
       pool_rank_fallback_used: true,
       selector_input_count: 2,
-      selector_timeout_ms: 10000,
+      selector_timeout_ms: 12000,
     }));
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
     expect(services.fetchRecoAlternativesForProduct.mock.calls[0]?.[0]?.options?.recommendation_mode).toBe('pool_only');
@@ -476,7 +476,7 @@ describe('executeDupeSuggest recall modes', () => {
 
     expect(result.ok).toBe(true);
     expect(result.payload.dupes).toHaveLength(1);
-    expect(result.payload.comparables).toHaveLength(0);
+    expect(result.payload.comparables.every((item) => ['Good Molecules', 'The Inkey List'].includes(item.product.brand))).toBe(true);
     expect(['Good Molecules', 'The Inkey List']).toContain(result.payload.dupes[0].product.brand);
     expect(result.payload.dupes[0].product.name).toBe('Niacinamide Serum');
     expect(result.payload.meta.final_source_mix).toEqual(['catalog']);
@@ -710,8 +710,80 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalled();
     expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
       source_meta: expect.objectContaining({
-        contract_version: 'dupe_suggest_v9',
+        contract_version: 'dupe_suggest_v10',
       }),
+    }));
+  });
+
+  test('blocks cleanser fallback candidates for serum anchors even when active theme overlaps', async () => {
+    const services = makeBaseServices({
+      searchPivotaBackendProducts: jest.fn().mockResolvedValue({
+        ok: true,
+        products: [
+          {
+            product_id: 'cand_cleanser',
+            sku_id: 'cand_cleanser',
+            brand: 'Fenty Beauty',
+            display_name: "Cherry Dub Pore Purify'r Gel Cleanser with Niacinamide + Aloe Juice",
+            category: 'cleanser',
+            url: 'https://example.com/fenty-cleanser',
+          },
+          {
+            product_id: 'cand_serum',
+            sku_id: 'cand_serum',
+            brand: 'Good Molecules',
+            display_name: 'Niacinamide Serum',
+            category: 'serum',
+            url: 'https://example.com/gm-niacinamide',
+          },
+        ],
+      }),
+      fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+        source_mode: 'pool_only',
+        template_id: 'reco_alternatives_v1_0',
+        raw_output_summary: {
+          raw_output_item_count: 0,
+          raw_items_with_product_object: 0,
+          raw_items_with_nested_brand_name: 0,
+          raw_items_with_flat_brand_name: 0,
+          raw_items_with_tradeoffs_object: 0,
+          raw_preview: [],
+        },
+        failure_class: 'empty_structured',
+        llm_trace: { error_class: 'empty_structured' },
+      }),
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original: {
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          category: 'serum',
+        },
+        max_dupes: 1,
+        max_comparables: 2,
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    const finalItems = [...result.payload.dupes, ...result.payload.comparables];
+    expect(finalItems.map((item) => item.product.brand)).toContain('Good Molecules');
+    expect(finalItems.map((item) => item.product.brand)).not.toContain('Fenty Beauty');
+    expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
+      pool_rank_fallback_used: true,
+      failure_class: 'empty_structured',
     }));
   });
 

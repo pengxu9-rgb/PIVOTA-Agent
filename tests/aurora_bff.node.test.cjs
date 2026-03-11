@@ -5316,6 +5316,9 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 1);
         assert.match(String(payload?.task?.selection_rule || ''), /empty_reason/i);
+        assert.match(String(payload?.task?.selection_rule || ''), /active or ingredient theme overlap/i);
+        assert.match(String(payload?.task?.selection_rule || ''), /different brand/i);
+        assert.deepEqual(payload?.anchor?.active_themes ?? [], ['niacinamide', 'zinc']);
         assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
         assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
         assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);
