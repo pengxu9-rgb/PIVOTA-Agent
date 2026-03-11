@@ -12038,7 +12038,8 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
           .expect(200);
         assert.equal(Boolean(findCardByType(deepDive.body?.cards, 'ingredient_hub')), false);
         assert.equal(Boolean(findCardByType(deepDive.body?.cards, 'nudge')), false);
-        assert.match(String(deepDive.body?.assistant_message?.content || ''), /latest analysis|skin trends/i);
+        const deepDiveText = String(deepDive.body?.assistant_text || deepDive.body?.assistant_message?.content || '');
+        assert.match(deepDiveText, /latest analysis|skin trends|latest photo/i);
 
         const ingredientPlan = await supertest(app)
           .post('/v1/chat')
@@ -12141,6 +12142,334 @@ test('/v1/chat: deep_dive_skin without reusable analysis context returns confide
       assert.match(String(response.body?.assistant_text || response.body?.assistant_message?.content || ''), /recent skin analysis|run skin analysis again/i);
     },
   );
+});
+
+test('/v1/chat: implicit deep-dive message with recent analysis context stays on analysis follow-up route', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const response = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'uid_analysis_followup_implicit',
+          'X-Trace-ID': 'trace_analysis_followup_implicit',
+          'X-Brief-ID': 'brief_analysis_followup_implicit',
+          'X-Lang': 'EN',
+        })
+        .send({
+          message: 'Tell me more about my skin',
+          language: 'EN',
+          session: {
+            meta: {
+              analysis_context: {
+                analysis_origin: 'photo',
+                photo_refs: [{ slot_id: 'daylight', photo_id: 'upl_photo_123', qc_status: 'passed' }],
+                source_card_type: 'analysis_story_v2',
+                analysis_story_snapshot: {
+                  schema_version: 'aurora.analysis_story.v2',
+                  confidence_overall: { level: 'medium', score: 0.72 },
+                  skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'medium' },
+                  priority_findings: [
+                    { priority: 1, title: 'Cheek dryness', detail: 'Dry cheek patches', evidence_region_or_module: [] },
+                    { priority: 2, title: 'Texture on forehead', detail: 'Uneven forehead texture', evidence_region_or_module: [] },
+                    { priority: 3, title: 'Mild chin congestion', detail: 'Small clogged pores', evidence_region_or_module: [] },
+                  ],
+                  target_state: ['Reduce congestion', 'Keep hydration stable'],
+                  core_principles: ['Lower active stacking'],
+                  am_plan: [{ step: 'Use SPF', purpose: 'UV protection' }],
+                  pm_plan: [{ step: 'Use barrier serum', purpose: 'Support recovery' }],
+                  timeline: { first_4_weeks: ['Stabilize barrier'], week_8_12_expectation: ['Smoother texture'] },
+                  safety_notes: [],
+                  disclaimer_non_medical: true,
+                  ui_card_v1: {
+                    headline: 'Stabilize first, then reduce congestion.',
+                    key_points: ['Cheek dryness', 'Texture on forehead'],
+                    actions_now: ['Reduce active overlap'],
+                    avoid_now: ['Do not over-exfoliate'],
+                    confidence_label: 'medium',
+                    next_checkin: 'Re-check in 2 weeks.',
+                  },
+                },
+              },
+            },
+            profile: {
+              lastAnalysis: {
+                skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'medium' },
+                priority_findings: [{ title: 'Weak raw finding' }],
+                confidence_overall: { level: 'low', score: 0.41 },
+              },
+            },
+          },
+        })
+        .expect(200);
+
+      assert.ok(findCardByType(response.body?.cards, 'analysis_story_v2'));
+      assert.equal(Boolean(findCardByType(response.body?.cards, 'ingredient_hub')), false);
+      const actionEvent = (Array.isArray(response.body?.events) ? response.body.events : []).find(
+        (event) => event && event.event_name === 'analysis_followup_action_routed',
+      );
+      assert.equal(actionEvent?.data?.action_id, 'chip.aurora.next_action.deep_dive_skin');
+      assert.equal(actionEvent?.data?.routing_mode, 'implicit');
+      assert.equal(actionEvent?.data?.fell_back_to_generic, false);
+      assert.match(
+        String(response.body?.assistant_text || response.body?.assistant_message?.content || ''),
+        /latest analysis|latest photo|deep dive/i,
+      );
+    },
+  );
+});
+
+test('resolveImplicitAnalysisFollowupActionId recognizes deep-dive prompt and keeps missing-context flows inside analysis follow-up', () => {
+  const { __internal } = loadRouteInternals();
+  const resolveImplicitAnalysisFollowupActionId = __internal.resolveImplicitAnalysisFollowupActionId;
+  if (!resolveImplicitAnalysisFollowupActionId) { console.log('SKIP: resolveImplicitAnalysisFollowupActionId not exported'); return; }
+
+  assert.equal(
+    resolveImplicitAnalysisFollowupActionId({
+      message: 'Tell me more about my skin',
+      sessionAnalysisContext: { analysis_story_snapshot: { priority_findings: [{ title: 'Barrier stress' }] } },
+      lastAnalysis: null,
+      latestArtifactId: null,
+    }),
+    'chip.aurora.next_action.deep_dive_skin',
+  );
+  assert.equal(
+    resolveImplicitAnalysisFollowupActionId({
+      message: 'Tell me more about my skin',
+      sessionAnalysisContext: null,
+      lastAnalysis: null,
+      latestArtifactId: null,
+    }),
+    'chip.aurora.next_action.deep_dive_skin',
+  );
+  assert.equal(
+    resolveImplicitAnalysisFollowupActionId({
+      message: 'Tell me about sunscreen',
+      sessionAnalysisContext: null,
+      lastAnalysis: null,
+      latestArtifactId: null,
+    }),
+    null,
+  );
+});
+
+test('buildAssistantMessageFromStoryV2 produces aligned summary from story card', () => {
+  const { __internal } = loadRouteInternals();
+  const buildAssistantMessageFromStoryV2 = __internal.buildAssistantMessageFromStoryV2;
+  if (!buildAssistantMessageFromStoryV2) { console.log('SKIP: buildAssistantMessageFromStoryV2 not exported'); return; }
+
+  const storyPayload = {
+    confidence_overall: { level: 'medium', score: 0.68 },
+    skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'medium' },
+    priority_findings: [
+      { title: 'Mild dryness around cheeks' },
+      { title: 'Uneven texture on forehead' },
+      { title: 'Light hyperpigmentation' },
+    ],
+  };
+  const message = buildAssistantMessageFromStoryV2(storyPayload, { language: 'EN' });
+  assert.ok(message.includes('combination'), `Expected "combination" in message: ${message}`);
+  assert.ok(message.includes('medium'), `Expected "medium" in message: ${message}`);
+  assert.ok(!message.includes('unconfirmed'), `Message should NOT contain "unconfirmed": ${message}`);
+  assert.ok(message.includes('Mild dryness') || message.includes('Key findings'), `Expected findings in message: ${message}`);
+});
+
+test('buildAssistantMessageFromStoryV2 does not emit unconfirmed placeholders when story is still useful', () => {
+  const { __internal } = loadRouteInternals();
+  const buildAssistantMessageFromStoryV2 = __internal.buildAssistantMessageFromStoryV2;
+  if (!buildAssistantMessageFromStoryV2) { console.log('SKIP: buildAssistantMessageFromStoryV2 not exported'); return; }
+
+  const storyPayload = {
+    confidence_overall: { level: 'medium', score: 0.67 },
+    priority_findings: [
+      { title: 'Barrier stress around cheeks' },
+      { title: 'Congestion on chin' },
+    ],
+  };
+  const message = buildAssistantMessageFromStoryV2(storyPayload, { language: 'EN' });
+  assert.ok(message.startsWith('Analysis complete.'), `Expected aligned intro, got: ${message}`);
+  assert.ok(!message.includes('unconfirmed'), `Should not include placeholder confidence labels: ${message}`);
+  assert.ok(message.includes('Confidence for this read is **medium**.'), `Expected confidence line: ${message}`);
+});
+
+test('isDeepDiveStoryWeakerThanFallback detects weaker story', () => {
+  const { __internal } = loadRouteInternals();
+  const isDeepDiveStoryWeakerThanFallback = __internal.isDeepDiveStoryWeakerThanFallback;
+  if (!isDeepDiveStoryWeakerThanFallback) { console.log('SKIP: isDeepDiveStoryWeakerThanFallback not exported'); return; }
+
+  const strongBaseline = {
+    priority_findings: [{ title: 'A' }, { title: 'B' }, { title: 'C' }],
+    confidence_overall: { level: 'medium' },
+  };
+  const weakCandidate = {
+    priority_findings: [],
+    confidence_overall: { level: 'low' },
+  };
+  const okCandidate = {
+    priority_findings: [{ title: 'A' }, { title: 'B' }, { title: 'C' }, { title: 'D' }],
+    confidence_overall: { level: 'medium' },
+  };
+
+  assert.equal(isDeepDiveStoryWeakerThanFallback({ story: weakCandidate, fallbackStory: strongBaseline }), true);
+  assert.equal(isDeepDiveStoryWeakerThanFallback({ story: okCandidate, fallbackStory: strongBaseline }), false);
+});
+
+test('applyNonWeakeningDeepDiveUiPatch preserves fallback findings when llm patch would weaken the story', () => {
+  const { __internal } = loadRouteInternals();
+  const applyNonWeakeningDeepDiveUiPatch = __internal.applyNonWeakeningDeepDiveUiPatch;
+  if (!applyNonWeakeningDeepDiveUiPatch) { console.log('SKIP: applyNonWeakeningDeepDiveUiPatch not exported'); return; }
+
+  const fallbackStory = {
+    confidence_overall: { level: 'medium' },
+    priority_findings: [{ title: 'A' }, { title: 'B' }, { title: 'C' }],
+    ui_card_v1: {
+      headline: 'Fallback headline',
+      key_points: ['A', 'B', 'C'],
+      actions_now: ['Fallback action'],
+      avoid_now: [],
+      confidence_label: 'medium',
+    },
+    safety_notes: [],
+  };
+  const weakenedStory = {
+    ...fallbackStory,
+    priority_findings: [{ title: 'Only one weak point' }],
+    ui_card_v1: {
+      ...fallbackStory.ui_card_v1,
+      headline: 'Specific but weaker headline',
+      key_points: ['Only one weak point'],
+      actions_now: ['Patched action'],
+    },
+  };
+  const restored = applyNonWeakeningDeepDiveUiPatch({
+    story: weakenedStory,
+    fallbackStory,
+    uiPatch: {
+      headline: 'Specific but weaker headline',
+      actions_now: ['Patched action'],
+      key_points: ['Only one weak point'],
+    },
+  });
+
+  assert.equal(restored.priority_findings.length, 3);
+  assert.equal(restored.ui_card_v1.headline, 'Specific but weaker headline');
+  assert.deepEqual(restored.ui_card_v1.actions_now, ['Patched action']);
+});
+
+test('stream deep-dive: buildChatCardsResponse wraps followup into v1-parseable envelope', () => {
+  const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
+
+  const followupResult = {
+    assistant_text: 'This explanation stays grounded in your latest photo-based analysis. Key signals: Mild dryness; Uneven texture.',
+    cards: [
+      {
+        card_id: 'analysis_followup_story_req123',
+        type: 'analysis_story_v2',
+        payload: {
+          schema_version: 'aurora.analysis_story.v2',
+          confidence_overall: { level: 'medium', score: 0.72 },
+          skin_profile: { skin_type_tendency: 'combination' },
+          priority_findings: [
+            { priority: 1, title: 'Mild dryness', detail: 'Dry patches near cheeks', evidence_region_or_module: [] },
+            { priority: 2, title: 'Uneven texture', detail: 'Rough patches on forehead', evidence_region_or_module: [] },
+          ],
+          summary: 'Key signals: Mild dryness; Uneven texture.',
+        },
+      },
+    ],
+    suggested_chips: [
+      { chip_id: 'chip.aurora.next_action.ingredient_plan', label: 'Explain ingredient plan', kind: 'follow_up', data: { action_id: 'chip.aurora.next_action.ingredient_plan' } },
+    ],
+    used_last_analysis: true,
+    missing_context: false,
+    analysis_origin: 'photo',
+    photo_ref_count: 1,
+    used_diagnosis_artifact: true,
+    llm_used: false,
+  };
+
+  const legacyEnvelope = {
+    request_id: 'req123',
+    trace_id: 'trace123',
+    assistant_message: { role: 'assistant', content: followupResult.assistant_text, format: 'text' },
+    suggested_chips: followupResult.suggested_chips,
+    cards: followupResult.cards,
+    session_patch: {},
+    events: [
+      { event_name: 'analysis_followup_action_routed', data: { action_id: 'chip.aurora.next_action.deep_dive_skin', used_last_analysis: true, missing_context: false, fell_back_to_generic: false } },
+    ],
+  };
+
+  const ctx = { request_id: 'req123', trace_id: 'trace123', lang: 'EN', ui_lang: 'EN', match_lang: 'EN' };
+  const v1Response = buildChatCardsResponse({
+    envelope: legacyEnvelope,
+    ctx,
+    intent: 'analysis_followup',
+    intentConfidence: 1,
+    entities: [],
+    safetyDecision: null,
+    threadOps: [],
+  });
+
+  assert.equal(v1Response.version, '1.0');
+  assert.equal(v1Response.request_id, 'req123');
+  assert.equal(v1Response.trace_id, 'trace123');
+  assert.ok(typeof v1Response.assistant_text === 'string' && v1Response.assistant_text.length > 0);
+  assert.ok(Array.isArray(v1Response.cards));
+  assert.ok(v1Response.cards.length > 0);
+  const legacyCard = v1Response.cards[0];
+  assert.equal(legacyCard.type, 'analysis_story_v2');
+});
+
+test('stream deep-dive: v1 response from buildChatCardsResponse is parseable by frontend chatCardsParser logic', () => {
+  const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
+
+  const legacyEnvelope = {
+    request_id: 'req_parse_test',
+    trace_id: 'trace_parse_test',
+    assistant_message: { role: 'assistant', content: 'Deep dive: Mild dryness observed.', format: 'text' },
+    suggested_chips: [],
+    cards: [
+      {
+        card_id: 'analysis_followup_story_parse',
+        type: 'analysis_story_v2',
+        payload: {
+          confidence_overall: { level: 'medium' },
+          priority_findings: [{ priority: 1, title: 'Mild dryness', detail: 'Cheeks area', evidence_region_or_module: [] }],
+        },
+      },
+    ],
+    session_patch: {},
+    events: [{ event_name: 'analysis_followup_action_routed', data: { action_id: 'chip.aurora.next_action.deep_dive_skin', fell_back_to_generic: false } }],
+  };
+
+  const v1 = buildChatCardsResponse({
+    envelope: legacyEnvelope,
+    ctx: { request_id: 'req_parse_test', trace_id: 'trace_parse_test', lang: 'EN', ui_lang: 'EN', match_lang: 'EN' },
+    intent: 'analysis_followup',
+    intentConfidence: 1,
+  });
+
+  assert.equal(String(v1.version), '1.0');
+  assert.ok(String(v1.request_id).length > 0);
+  assert.ok(String(v1.trace_id).length > 0);
+  assert.ok(typeof v1.assistant_text === 'string' && v1.assistant_text.length > 0);
+  assert.ok(Array.isArray(v1.cards) && v1.cards.length > 0);
+  assert.ok(Array.isArray(v1.follow_up_questions));
+  assert.ok(Array.isArray(v1.suggested_quick_replies));
+  assert.ok(v1.safety && typeof v1.safety.risk_level === 'string');
+  assert.ok(v1.telemetry && typeof v1.telemetry.intent === 'string');
 });
 
 test('/v1/chat: deep_dive_skin consumes photo refs and diagnosis artifact through llm path', async () => {

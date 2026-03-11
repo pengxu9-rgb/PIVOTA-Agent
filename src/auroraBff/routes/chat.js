@@ -1,13 +1,12 @@
-const axios = require('axios');
 const { SkillRouter } = require('../orchestrator/skill_router');
 const LlmGateway = require('../services/llm_gateway');
 const { mapSkillResponseToChatCardsV1, mapSkillResponseToStreamEnvelope } = require('../mappers/card_mapper');
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
+const { buildChatCardsResponse } = require('../chatCardsAssembler');
 
 let routerSingleton = null;
-let legacyChatProxyOverride = null;
 
-const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
+const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
   'chip.aurora.next_action.ingredient_plan',
   'chip.aurora.next_action.routine_deep_dive',
@@ -43,11 +42,6 @@ function getRouter() {
 
 function __resetRouterForTests() {
   routerSingleton = null;
-  legacyChatProxyOverride = null;
-}
-
-function __setLegacyChatProxyForTests(fn) {
-  legacyChatProxyOverride = typeof fn === 'function' ? fn : null;
 }
 
 function normalizeLocaleToken(value) {
@@ -100,74 +94,22 @@ function compactStringArray(value) {
     .filter(Boolean);
 }
 
-function normalizeImplicitDeepDiveMessage(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-function shouldProxyAnalysisFollowupToLegacy(body) {
-  const payload = isPlainObject(body) ? body : {};
-  const action = isPlainObject(payload.action) ? payload.action : {};
-  const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
-  if (ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim())) {
-    return true;
+function extractLastUserMessageFromMessages(messages) {
+  const rows = Array.isArray(messages) ? messages : [];
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    if (!isPlainObject(row)) continue;
+    const role = String(row.role || '').trim().toLowerCase();
+    if (role && role !== 'user') continue;
+    const content = pickFirstTrimmed(row.content, row.text, row.message);
+    if (content) return content;
   }
-  const message = pickFirstTrimmed(
-    payload.message,
-    payload.text,
-    payload.query,
-    isPlainObject(action.data) ? action.data.reply_text : null,
-    isPlainObject(action.data) ? action.data.replyText : null,
-  );
-  return IMPLICIT_DEEP_DIVE_MESSAGES.has(normalizeImplicitDeepDiveMessage(message));
+  return null;
 }
 
-function getLegacyChatProxyTimeoutMs() {
-  const raw = Number(process.env.AURORA_CHAT_LEGACY_PROXY_TIMEOUT_MS);
-  if (!Number.isFinite(raw)) return 45000;
-  return Math.max(5000, Math.min(120000, Math.trunc(raw)));
-}
-
-function buildLegacyProxyHeaders(req) {
-  const headers = {};
-  const copyHeader = (name) => {
-    const value = req.get(name);
-    if (value != null && String(value).trim()) headers[name] = value;
-  };
-  [
-    'X-Aurora-UID',
-    'X-Trace-ID',
-    'X-Brief-ID',
-    'X-Lang',
-    'Accept-Language',
-    'X-Debug',
-    'X-Aurora-Debug',
-    'X-LLM-Provider',
-    'X-Aurora-LLM-Provider',
-    'X-LLM-Model',
-    'X-Aurora-LLM-Model',
-  ].forEach(copyHeader);
-  headers['Content-Type'] = 'application/json';
-  return headers;
-}
-
-async function proxyAnalysisFollowupToLegacyChat(req) {
-  if (legacyChatProxyOverride) {
-    return legacyChatProxyOverride(req);
-  }
-  const port = String(process.env.PORT || '3000').trim() || '3000';
-  const url = `http://127.0.0.1:${port}/v1/chat`;
-  const response = await axios.post(url, req.body || {}, {
-    headers: buildLegacyProxyHeaders(req),
-    timeout: getLegacyChatProxyTimeoutMs(),
-    validateStatus: () => true,
-  });
-  return {
-    status: Number(response.status) || 500,
-    data: response.data,
-  };
+function extractLatestArtifactIdFromSession(session) {
+  const state = isPlainObject(session && session.state) ? session.state : null;
+  return pickFirstTrimmed(state && state.latest_artifact_id);
 }
 
 function omitLegacyActionAliases(value) {
@@ -363,10 +305,6 @@ function resolveCurrentRoutine(bodyContext, profileSources) {
 
 async function handleChat(req, res) {
   try {
-    if (shouldProxyAnalysisFollowupToLegacy(req.body || {})) {
-      const proxied = await proxyAnalysisFollowupToLegacyChat(req);
-      return res.status(proxied.status).json(proxied.data);
-    }
     const skillRequest = buildSkillRequest(req);
     const skillResponse = await getRouter().route(skillRequest);
     res.json(mapSkillResponseToChatCardsV1(skillResponse));
@@ -377,6 +315,40 @@ async function handleChat(req, res) {
       message: 'An error occurred processing your request.',
     });
   }
+}
+
+function resolveAnalysisFollowupActionId(req, internal = {}) {
+  const body = req.body || {};
+  const action = isPlainObject(body.action) ? body.action : {};
+  const actionData = isPlainObject(action.data) ? action.data : {};
+  const explicitActionId = pickFirstTrimmed(body.action_id, action.action_id, actionData.action_id);
+  if (explicitActionId && ANALYSIS_FOLLOWUP_ACTION_IDS_V2.has(explicitActionId.trim())) {
+    return { actionId: explicitActionId.trim(), routingMode: 'explicit' };
+  }
+  const session = isPlainObject(body.session) ? body.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+  const sessionAnalysisContext = isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null;
+  const message = pickFirstTrimmed(
+    body.message,
+    body.query,
+    body.text,
+    actionData.reply_text,
+    actionData.replyText,
+    extractLastUserMessageFromMessages(body.messages),
+  );
+  if (typeof internal.resolveImplicitAnalysisFollowupActionId === 'function') {
+    const implicitActionId = internal.resolveImplicitAnalysisFollowupActionId({
+      actionId: explicitActionId,
+      message,
+      sessionAnalysisContext,
+      lastAnalysis: isPlainObject(session.profile) ? session.profile.lastAnalysis || null : null,
+      latestArtifactId: extractLatestArtifactIdFromSession(session),
+    });
+    if (implicitActionId && ANALYSIS_FOLLOWUP_ACTION_IDS_V2.has(String(implicitActionId).trim())) {
+      return { actionId: String(implicitActionId).trim(), routingMode: 'implicit' };
+    }
+  }
+  return { actionId: null, routingMode: null };
 }
 
 async function handleChatStream(req, res) {
@@ -392,11 +364,119 @@ async function handleChatStream(req, res) {
   };
 
   try {
-    if (shouldProxyAnalysisFollowupToLegacy(req.body || {})) {
-      const proxied = await proxyAnalysisFollowupToLegacyChat(req);
-      sendEvent('result', proxied.data);
-      sendEvent('done', {});
-      return;
+    let routes;
+    try { routes = require('../routes'); } catch { routes = null; }
+    const internal = routes && routes.__internal ? routes.__internal : {};
+    const followupResolution = resolveAnalysisFollowupActionId(req, internal);
+    const analysisFollowupActionId = followupResolution.actionId;
+    if (analysisFollowupActionId) {
+      sendEvent('thinking', { step: 'routing', message: 'Preparing follow-up analysis...' });
+      const body = req.body || {};
+      const action = isPlainObject(body.action) ? body.action : {};
+      const actionData = isPlainObject(action.data) ? action.data : {};
+      const session = isPlainObject(body.session) ? body.session : {};
+      const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
+      const replyText = pickFirstTrimmed(
+        actionData.reply_text,
+        actionData.replyText,
+        body.message,
+        body.query,
+        extractLastUserMessageFromMessages(body.messages),
+      );
+
+      const isDeepDive = analysisFollowupActionId === 'chip.aurora.next_action.deep_dive_skin';
+      let followupResult;
+
+      if (isDeepDive && typeof internal.buildAnalysisDeepDiveContentWithLlm === 'function') {
+        const lastAnalysis = sessionProfile.lastAnalysis || null;
+        const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+        const sessionAnalysisContext = isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null;
+        let diagnosisArtifact = null;
+        if (typeof internal.loadLatestDiagnosisArtifactForRoute === 'function') {
+          diagnosisArtifact = await internal.loadLatestDiagnosisArtifactForRoute({
+            identity: req._identity || {},
+            session,
+            ctx: { brief_id: session.brief_id || null, request_id: req.get?.('x-request-id') || null },
+            logger: console,
+          });
+        }
+        followupResult = await internal.buildAnalysisDeepDiveContentWithLlm({
+          lastAnalysis,
+          diagnosisArtifact,
+          profile: sessionProfile,
+          language: body.language || 'EN',
+          requestId: req.get?.('x-request-id') || 'stream',
+          replyText,
+          actionData,
+          sessionAnalysisContext,
+          logger: console,
+        });
+      } else if (typeof internal.buildAnalysisFollowupContent === 'function') {
+        followupResult = internal.buildAnalysisFollowupContent({
+          actionId: analysisFollowupActionId,
+          lastAnalysis: sessionProfile.lastAnalysis || null,
+          language: body.language || 'EN',
+          requestId: req.get?.('x-request-id') || 'stream',
+          replyText,
+        });
+      }
+
+      if (followupResult) {
+        const requestId = pickFirstTrimmed(req.get?.('x-request-id'), req.get?.('x-requestid')) || `stream_${Date.now()}`;
+        const traceId = pickFirstTrimmed(req.get?.('x-trace-id')) || requestId;
+        const lang = pickFirstTrimmed(body.language) || 'EN';
+        const legacyEnvelope = {
+          request_id: requestId,
+          trace_id: traceId,
+          assistant_message: {
+            role: 'assistant',
+            content: followupResult.assistant_text || '',
+            format: 'text',
+          },
+          suggested_chips: Array.isArray(followupResult.suggested_chips) ? followupResult.suggested_chips : [],
+          cards: Array.isArray(followupResult.cards) ? followupResult.cards : [],
+          session_patch: {},
+          events: [
+            {
+              event_name: 'analysis_followup_action_routed',
+              data: {
+                action_id: analysisFollowupActionId,
+                routing_mode: followupResolution.routingMode || 'explicit',
+                used_last_analysis: Boolean(followupResult.used_last_analysis),
+                missing_context: Boolean(followupResult.missing_context),
+                fell_back_to_generic: false,
+                ...(isDeepDive ? {
+                  analysis_origin: followupResult.analysis_origin || null,
+                  photo_ref_count: Number(followupResult.photo_ref_count || 0),
+                  used_diagnosis_artifact: Boolean(followupResult.used_diagnosis_artifact),
+                  used_analysis_story_snapshot: Boolean(followupResult.used_analysis_story_snapshot),
+                  fell_back_to_snapshot: Boolean(followupResult.fell_back_to_snapshot),
+                  llm_used: Boolean(followupResult.llm_used),
+                } : {}),
+              },
+            },
+          ],
+        };
+        const ctx = {
+          request_id: requestId,
+          trace_id: traceId,
+          lang: lang === 'CN' ? 'CN' : 'EN',
+          ui_lang: lang === 'CN' ? 'CN' : 'EN',
+          match_lang: lang === 'CN' ? 'CN' : 'EN',
+        };
+        const v1Response = buildChatCardsResponse({
+          envelope: legacyEnvelope,
+          ctx,
+          intent: 'analysis_followup',
+          intentConfidence: 1,
+          entities: [],
+          safetyDecision: null,
+          threadOps: [],
+        });
+        sendEvent('result', v1Response);
+        sendEvent('done', {});
+        return;
+      }
     }
     const skillRequest = buildSkillRequest(req);
     const thinkingSteps = [];
@@ -518,5 +598,4 @@ module.exports = {
   handleChat,
   handleChatStream,
   __resetRouterForTests,
-  __setLegacyChatProxyForTests,
 };

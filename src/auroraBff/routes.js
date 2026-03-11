@@ -1262,15 +1262,27 @@ function shouldDelegateV1ChatToV2(body) {
     'chip.action.add_to_routine',
     'chip.start.dupes',
     'chip.action.dupe_compare',
-    'chip.start.diagnosis',
-    'chip_start_diagnosis',
   ].includes(actionId);
+  const session = isPlainObject(payload.session) ? payload.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+  const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
+  const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
+    actionId,
+    message: pickFirstTrimmed(payload.message, extractLastUserMessageFromChatRequestMessages(payload.messages)),
+    sessionAnalysisContext: isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null,
+    lastAnalysis: sessionProfile.lastAnalysis || null,
+    latestArtifactId: extractLatestArtifactIdFromSession(session),
+  });
 
   if (
     payload.selected_option_index != null ||
     payload.clarification_id != null ||
     payload.requested_transition != null
   ) {
+    return false;
+  }
+
+  if (implicitAnalysisFollowupActionId) {
     return false;
   }
 
@@ -1293,6 +1305,101 @@ function shouldDelegateV1ChatToV2(body) {
       payload.canonical_intent,
     ),
   ) || isPlainObject(payload.params);
+}
+
+function extractLastUserMessageFromChatRequestMessages(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const row = list[index];
+    if (!isPlainObject(row)) continue;
+    const role = String(row.role || '').trim().toLowerCase();
+    if (role && role !== 'user') continue;
+    const content = pickFirstTrimmed(row.content, row.text, row.message);
+    if (content) return content;
+  }
+  return null;
+}
+
+function normalizeImplicitAnalysisFollowupPrompt(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[`"'“”‘’]/g, '')
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const IMPLICIT_DEEP_DIVE_PROMPT_TOKENS = new Set(
+  [
+    'Tell me more about my skin',
+    'Dive deeper into skin',
+    'Dive deeper into my skin',
+    'Deep dive into skin',
+    '深入了解我的皮肤状态',
+    '告诉我更多关于我的皮肤',
+    '进一步分析我的皮肤',
+  ].map((item) => normalizeImplicitAnalysisFollowupPrompt(item)),
+);
+
+function looksLikeImplicitDeepDivePrompt(value) {
+  const token = normalizeImplicitAnalysisFollowupPrompt(value);
+  return Boolean(token) && IMPLICIT_DEEP_DIVE_PROMPT_TOKENS.has(token);
+}
+
+function hasMeaningfulAnalysisStorySnapshot(value) {
+  if (!isPlainObject(value)) return false;
+  if (Array.isArray(value.priority_findings) && value.priority_findings.filter(Boolean).length > 0) return true;
+  if (rankAnalysisConfidenceLevel(value && value.confidence_overall && value.confidence_overall.level) > 0) return true;
+  if (pickFirstTrimmed(value && value.ui_card_v1 && value.ui_card_v1.headline)) return true;
+  if (Array.isArray(value.am_plan) && value.am_plan.filter(Boolean).length > 0) return true;
+  if (Array.isArray(value.pm_plan) && value.pm_plan.filter(Boolean).length > 0) return true;
+  return false;
+}
+
+function normalizeAnalysisStorySnapshotCandidate(value) {
+  if (!hasMeaningfulAnalysisStorySnapshot(value)) return null;
+  return coerceAnalysisStoryV2(value, value);
+}
+
+function hasReusableAnalysisContext({
+  sessionAnalysisContext,
+  lastAnalysis,
+  latestArtifactId,
+} = {}) {
+  const context = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
+  const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : {};
+  if (hasMeaningfulAnalysisStorySnapshot(context.analysis_story_snapshot)) return true;
+  if (normalizeAnalysisPhotoRefs(context.photo_refs).length > 0) return true;
+  if (hasMeaningfulAnalysisStorySnapshot(analysis.analysis_story_snapshot)) return true;
+  if (Array.isArray(analysis.priority_findings) && analysis.priority_findings.filter(Boolean).length > 0) return true;
+  if (pickFirstTrimmed(analysis && analysis.skin_profile && analysis.skin_profile.skin_type_tendency, analysis && analysis.skin_profile && analysis.skin_profile.skin_type)) return true;
+  if (String(latestArtifactId || '').trim()) return true;
+  return false;
+}
+
+function resolveImplicitAnalysisFollowupActionId({
+  actionId,
+  message,
+  sessionAnalysisContext,
+  lastAnalysis,
+  latestArtifactId,
+} = {}) {
+  const normalizedActionId = String(actionId || '').trim();
+  if (normalizedActionId && ANALYSIS_FOLLOWUP_ACTION_IDS.has(normalizedActionId)) {
+    return normalizedActionId;
+  }
+  if (!looksLikeImplicitDeepDivePrompt(message)) return null;
+  if (
+    hasReusableAnalysisContext({
+      sessionAnalysisContext,
+      lastAnalysis,
+      latestArtifactId,
+    })
+  ) {
+    return 'chip.aurora.next_action.deep_dive_skin';
+  }
+  return 'chip.aurora.next_action.deep_dive_skin';
 }
 const PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS || 3200);
@@ -20742,8 +20849,184 @@ function rankAnalysisConfidenceLevel(level) {
   return 0;
 }
 
+function deriveGuidanceBriefFromStorySnapshot(snapshot) {
+  const story = isPlainObject(snapshot) ? snapshot : {};
+  const ui = isPlainObject(story.ui_card_v1) ? story.ui_card_v1 : {};
+  return normalizeArrayOfStrings(
+    [
+      ...(Array.isArray(story.target_state) ? story.target_state : []),
+      ...(Array.isArray(story.core_principles) ? story.core_principles : []),
+      ...(Array.isArray(ui.actions_now) ? ui.actions_now : []),
+    ],
+    { max: 4, maxLen: 120 },
+  );
+}
+
+function normalizeDeepDivePlanSteps(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list
+    .map((item) => {
+      if (isPlainObject(item) && pickFirstTrimmed(item.step)) {
+        return {
+          step: pickFirstTrimmed(item.step),
+          purpose: pickFirstTrimmed(item.purpose) || '',
+        };
+      }
+      const text = pickFirstTrimmed(item);
+      return text ? { step: text, purpose: '' } : null;
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function buildLastAnalysisFromDiagnosisArtifact(diagnosisArtifact, analysisStorySnapshot) {
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
+  const snapshot = normalizeAnalysisStorySnapshotCandidate(analysisStorySnapshot);
+  const concerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
+  const concernFindings = concerns
+    .map((item, index) => {
+      const rawTitle = pickFirstTrimmed(item && item.title, item && item.concern_id, item && item.id);
+      if (!rawTitle) return null;
+      const title = rawTitle.replace(/_/g, ' ');
+      return {
+        priority: index + 1,
+        title,
+        detail: title,
+        evidence_region_or_module: [],
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+  const overallConfidence = isPlainObject(artifact.overall_confidence)
+    ? {
+        ...(Number.isFinite(Number(artifact.overall_confidence.score))
+          ? { score: Number(artifact.overall_confidence.score) }
+          : {}),
+        level: pickFirstTrimmed(artifact.overall_confidence.level)
+          || confidenceLevelFromScoreV1(Number(artifact.overall_confidence.score)),
+      }
+    : {};
+  const skinProfile = {
+    ...(pickFirstTrimmed(artifact && artifact.skinType && artifact.skinType.value)
+      ? { skin_type_tendency: pickFirstTrimmed(artifact.skinType.value) }
+      : {}),
+    ...(pickFirstTrimmed(artifact && artifact.sensitivity && artifact.sensitivity.value)
+      ? { sensitivity_tendency: pickFirstTrimmed(artifact.sensitivity.value) }
+      : {}),
+  };
+  const guidanceBrief = snapshot ? deriveGuidanceBriefFromStorySnapshot(snapshot) : [];
+  const base = {
+    ...(Object.keys(skinProfile).length ? { skin_profile: skinProfile } : {}),
+    ...(concernFindings.length ? { priority_findings: concernFindings } : {}),
+    ...(Object.keys(overallConfidence).length ? { confidence_overall: overallConfidence } : {}),
+    ...(guidanceBrief.length ? { guidance_brief: guidanceBrief } : {}),
+  };
+  if (!Object.keys(base).length && !snapshot) return {};
+  return mergeAnalysisSnapshotIntoLastAnalysis(base, snapshot);
+}
+
+function mergeAnalysisSnapshotIntoLastAnalysis(lastAnalysis, analysisStorySnapshot) {
+  const analysis = isPlainObject(lastAnalysis) ? { ...lastAnalysis } : {};
+  const snapshot = normalizeAnalysisStorySnapshotCandidate(analysisStorySnapshot);
+  if (!snapshot) return analysis;
+
+  const merged = { ...analysis, analysis_story_snapshot: snapshot };
+  const currentFindings = Array.isArray(analysis.priority_findings) ? analysis.priority_findings.filter(Boolean).length : 0;
+  const snapshotFindings = Array.isArray(snapshot.priority_findings) ? snapshot.priority_findings.filter(Boolean).length : 0;
+  if (snapshotFindings >= currentFindings && snapshotFindings > 0) {
+    merged.priority_findings = snapshot.priority_findings
+      .filter(Boolean)
+      .map((item, index) => ({
+        priority: Number.isFinite(Number(item && item.priority)) ? Number(item.priority) : index + 1,
+        title: pickFirstTrimmed(item && item.title, item && item.detail) || `Finding ${index + 1}`,
+        detail: pickFirstTrimmed(item && item.detail, item && item.title) || '',
+        evidence_region_or_module: Array.isArray(item && item.evidence_region_or_module) ? item.evidence_region_or_module : [],
+      }));
+  }
+  const currentConfidence = rankAnalysisConfidenceLevel(analysis && analysis.confidence_overall && analysis.confidence_overall.level);
+  const snapshotConfidence = rankAnalysisConfidenceLevel(snapshot && snapshot.confidence_overall && snapshot.confidence_overall.level);
+  if (snapshotConfidence >= currentConfidence && isPlainObject(snapshot.confidence_overall)) {
+    merged.confidence_overall = snapshot.confidence_overall;
+  }
+  const skinProfile = isPlainObject(analysis.skin_profile) ? { ...analysis.skin_profile } : {};
+  const snapshotSkinProfile = isPlainObject(snapshot.skin_profile) ? snapshot.skin_profile : {};
+  merged.skin_profile = {
+    ...skinProfile,
+    ...(!pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType)
+      && pickFirstTrimmed(snapshotSkinProfile.skin_type_tendency, snapshotSkinProfile.skin_type, snapshotSkinProfile.skinType)
+        ? { skin_type_tendency: pickFirstTrimmed(snapshotSkinProfile.skin_type_tendency, snapshotSkinProfile.skin_type, snapshotSkinProfile.skinType) }
+        : {}),
+    ...(!pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity)
+      && pickFirstTrimmed(snapshotSkinProfile.sensitivity_tendency, snapshotSkinProfile.sensitivity)
+        ? { sensitivity_tendency: pickFirstTrimmed(snapshotSkinProfile.sensitivity_tendency, snapshotSkinProfile.sensitivity) }
+        : {}),
+    current_strengths: Array.isArray(skinProfile.current_strengths) && skinProfile.current_strengths.length
+      ? skinProfile.current_strengths
+      : Array.isArray(snapshotSkinProfile.current_strengths)
+        ? snapshotSkinProfile.current_strengths.slice(0, 4)
+        : [],
+  };
+  const currentGuidance = Array.isArray(analysis.guidance_brief) ? analysis.guidance_brief.filter(Boolean) : [];
+  const snapshotGuidance = deriveGuidanceBriefFromStorySnapshot(snapshot);
+  if (snapshotGuidance.length >= currentGuidance.length && snapshotGuidance.length > 0) {
+    merged.guidance_brief = snapshotGuidance;
+  }
+  if ((!Array.isArray(analysis.am_plan) || !analysis.am_plan.length) && Array.isArray(snapshot.am_plan) && snapshot.am_plan.length) {
+    merged.am_plan = normalizeDeepDivePlanSteps(snapshot.am_plan);
+  }
+  if ((!Array.isArray(analysis.pm_plan) || !analysis.pm_plan.length) && Array.isArray(snapshot.pm_plan) && snapshot.pm_plan.length) {
+    merged.pm_plan = normalizeDeepDivePlanSteps(snapshot.pm_plan);
+  }
+  return merged;
+}
+
 function buildDeepDiveFallbackStoryPayload({ lastAnalysis, language } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
+  const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : {};
+  const snapshot = isPlainObject(analysis.analysis_story_snapshot) ? analysis.analysis_story_snapshot : null;
+  if (snapshot && Array.isArray(snapshot.priority_findings) && snapshot.priority_findings.filter(Boolean).length > 0) {
+    const snapshotFindings = snapshot.priority_findings.filter(Boolean).length;
+    const rawSignals = extractAnalysisFollowupSignals(lastAnalysis);
+    const rawFindings = rawSignals.findingLines.length;
+    if (snapshotFindings >= rawFindings) {
+      const normalizedFindings = snapshot.priority_findings.filter(Boolean).map((f, idx) => ({
+        priority: (isPlainObject(f) && Number.isFinite(f.priority)) ? f.priority : idx + 1,
+        title: pickFirstTrimmed(isPlainObject(f) ? f.title : f) || `Finding ${idx + 1}`,
+        detail: pickFirstTrimmed(isPlainObject(f) ? (f.detail || f.title) : f) || '',
+        evidence_region_or_module: Array.isArray(isPlainObject(f) ? f.evidence_region_or_module : null) ? f.evidence_region_or_module : [],
+      }));
+      const normalizePlanStep = (item) => {
+        if (isPlainObject(item) && typeof item.step === 'string') return item;
+        if (typeof item === 'string' && item.trim()) return { step: item.trim(), purpose: '' };
+        return null;
+      };
+      const normalizedAmPlan = Array.isArray(snapshot.am_plan) ? snapshot.am_plan.map(normalizePlanStep).filter(Boolean) : [];
+      const normalizedPmPlan = Array.isArray(snapshot.pm_plan) ? snapshot.pm_plan.map(normalizePlanStep).filter(Boolean) : [];
+      const uiCard = isPlainObject(snapshot.ui_card_v1) ? {
+        headline: pickFirstTrimmed(snapshot.ui_card_v1.headline) || 'Stabilize first, then improve step by step.',
+        key_points: Array.isArray(snapshot.ui_card_v1.key_points) ? snapshot.ui_card_v1.key_points.filter(Boolean) : [],
+        actions_now: Array.isArray(snapshot.ui_card_v1.actions_now) ? snapshot.ui_card_v1.actions_now.filter(Boolean) : [],
+        avoid_now: Array.isArray(snapshot.ui_card_v1.avoid_now) ? snapshot.ui_card_v1.avoid_now.filter(Boolean) : [],
+        confidence_label: pickFirstTrimmed(snapshot.ui_card_v1.confidence_label) || 'medium',
+        next_checkin: pickFirstTrimmed(snapshot.ui_card_v1.next_checkin) || 'Re-check in 2 weeks.',
+      } : null;
+      const merged = {
+        schema_version: snapshot.schema_version || 'aurora.analysis_story.v2',
+        confidence_overall: isPlainObject(snapshot.confidence_overall) ? snapshot.confidence_overall : { level: 'low' },
+        skin_profile: isPlainObject(snapshot.skin_profile) ? snapshot.skin_profile : { current_strengths: [] },
+        priority_findings: normalizedFindings,
+        target_state: Array.isArray(snapshot.target_state) ? snapshot.target_state : [],
+        core_principles: Array.isArray(snapshot.core_principles) ? snapshot.core_principles : [],
+        am_plan: normalizedAmPlan,
+        pm_plan: normalizedPmPlan,
+        timeline: isPlainObject(snapshot.timeline) ? snapshot.timeline : { first_4_weeks: [], week_8_12_expectation: [] },
+        safety_notes: Array.isArray(snapshot.safety_notes) ? snapshot.safety_notes : [],
+        disclaimer_non_medical: snapshot.disclaimer_non_medical !== false,
+        ui_card_v1: uiCard || buildAnalysisStoryUiCardV1({ story: { priority_findings: normalizedFindings, confidence_overall: snapshot.confidence_overall }, evidence: null, language: lang }),
+      };
+      return merged;
+    }
+  }
   const {
     skinProfile,
     guidanceBrief,
@@ -21153,6 +21436,29 @@ function applyDeepDiveLlmResponseToStory({ responsePayload, fallbackStory } = {}
   };
 }
 
+function applyNonWeakeningDeepDiveUiPatch({ story, fallbackStory, uiPatch } = {}) {
+  const candidate = isPlainObject(story) ? story : {};
+  const fallback = isPlainObject(fallbackStory) ? fallbackStory : {};
+  const patch = isPlainObject(uiPatch) ? uiPatch : null;
+  if (!patch || !isPlainObject(candidate.ui_card_v1)) return candidate;
+  if (!isDeepDiveStoryWeakerThanFallback({ story: candidate, fallbackStory: fallback })) return candidate;
+  const restored = {
+    ...fallback,
+    ui_card_v1: isPlainObject(fallback.ui_card_v1) ? { ...fallback.ui_card_v1 } : {},
+  };
+  if (pickFirstTrimmed(patch.headline)) {
+    restored.ui_card_v1.headline = pickFirstTrimmed(patch.headline);
+  }
+  if (Array.isArray(patch.actions_now) && patch.actions_now.length) {
+    restored.ui_card_v1.actions_now = patch.actions_now.slice(0, 3);
+  }
+  if (Array.isArray(patch.avoid_now) && patch.avoid_now.length) {
+    restored.ui_card_v1.avoid_now = patch.avoid_now.slice(0, 2);
+    restored.safety_notes = patch.avoid_now.slice(0, 2);
+  }
+  return restored;
+}
+
 function isDeepDiveStoryWeakerThanFallback({ story, fallbackStory } = {}) {
   const candidate = isPlainObject(story) ? story : {};
   const baseline = isPlainObject(fallbackStory) ? fallbackStory : {};
@@ -21160,8 +21466,11 @@ function isDeepDiveStoryWeakerThanFallback({ story, fallbackStory } = {}) {
   const baselineFindings = Array.isArray(baseline.priority_findings) ? baseline.priority_findings.filter(Boolean).length : 0;
   const candidateConfidence = rankAnalysisConfidenceLevel(candidate && candidate.confidence_overall && candidate.confidence_overall.level);
   const baselineConfidence = rankAnalysisConfidenceLevel(baseline && baseline.confidence_overall && baseline.confidence_overall.level);
-  if (baselineFindings > 0 && candidateFindings === 0) return true;
-  if (baselineConfidence >= 2 && candidateConfidence < baselineConfidence && candidateFindings < baselineFindings) return true;
+  const candidateHeadline = pickFirstTrimmed(candidate && candidate.ui_card_v1 && candidate.ui_card_v1.headline);
+  const baselineHeadline = pickFirstTrimmed(baseline && baseline.ui_card_v1 && baseline.ui_card_v1.headline);
+  if (baselineFindings > 0 && candidateFindings < baselineFindings) return true;
+  if (baselineConfidence > 0 && candidateConfidence < baselineConfidence) return true;
+  if (baselineHeadline && !candidateHeadline) return true;
   return false;
 }
 
@@ -21195,6 +21504,19 @@ function buildDeepDiveAssistantText({ story, language, replyText, analysisOrigin
   ].filter(Boolean).join(' ');
 }
 
+function resolveAnalysisStorySnapshotForDeepDive({ actionData, sessionAnalysisContext, lastAnalysis } = {}) {
+  const candidates = [
+    isPlainObject(actionData) ? actionData.analysis_story_snapshot : null,
+    isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext.analysis_story_snapshot : null,
+    isPlainObject(lastAnalysis) ? lastAnalysis.analysis_story_snapshot : null,
+  ];
+  for (const candidate of candidates) {
+    const snapshot = normalizeAnalysisStorySnapshotCandidate(candidate);
+    if (snapshot) return snapshot;
+  }
+  return null;
+}
+
 async function buildAnalysisDeepDiveContentWithLlm({
   lastAnalysis,
   diagnosisArtifact,
@@ -21206,9 +21528,21 @@ async function buildAnalysisDeepDiveContentWithLlm({
   sessionAnalysisContext,
   logger,
 } = {}) {
+  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
+  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
+  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
+  const resolvedSnapshot = resolveAnalysisStorySnapshotForDeepDive({
+    actionData: normalizedActionData,
+    sessionAnalysisContext: normalizedSessionContext,
+    lastAnalysis,
+  });
+  const baseAnalysis = isPlainObject(lastAnalysis) && Object.keys(lastAnalysis).length
+    ? lastAnalysis
+    : buildLastAnalysisFromDiagnosisArtifact(normalizedArtifact, resolvedSnapshot);
+  const resolvedLastAnalysis = mergeAnalysisSnapshotIntoLastAnalysis(baseAnalysis, resolvedSnapshot);
   const fallback = buildAnalysisFollowupContent({
     actionId: 'chip.aurora.next_action.deep_dive_skin',
-    lastAnalysis,
+    lastAnalysis: resolvedLastAnalysis,
     language,
     requestId,
     replyText,
@@ -21218,17 +21552,15 @@ async function buildAnalysisDeepDiveContentWithLlm({
       ...(fallback || {}),
       analysis_origin: 'profile',
       photo_ref_count: 0,
-      used_diagnosis_artifact: false,
+      used_diagnosis_artifact: Boolean(normalizedArtifact && normalizedArtifact.artifact_id),
+      used_analysis_story_snapshot: Boolean(resolvedSnapshot),
+      fell_back_to_snapshot: Boolean(resolvedSnapshot),
       llm_used: false,
       llm_model: null,
       llm_failure_reason: fallback ? 'analysis_context_missing' : 'unknown',
-      latest_artifact_id: null,
+      latest_artifact_id: normalizedArtifact && normalizedArtifact.artifact_id ? String(normalizedArtifact.artifact_id).trim() : null,
     };
   }
-
-  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
-  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
-  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
   const photoRefs = normalizeAnalysisPhotoRefs([
     ...normalizeAnalysisPhotoRefs(normalizedActionData.photo_refs),
     ...normalizeAnalysisPhotoRefs(normalizedSessionContext.photo_refs),
@@ -21239,9 +21571,9 @@ async function buildAnalysisDeepDiveContentWithLlm({
     photoRefs.length > 0 || (normalizedArtifact && normalizedArtifact.use_photo === true) || requestedOrigin === 'photo'
       ? 'photo'
       : 'profile';
-  const fallbackStory = buildDeepDiveFallbackStoryPayload({ lastAnalysis, language });
+  const fallbackStory = buildDeepDiveFallbackStoryPayload({ lastAnalysis: resolvedLastAnalysis, language });
   const evidence = buildDeepDiveAnalysisEvidence({
-    lastAnalysis,
+    lastAnalysis: resolvedLastAnalysis,
     diagnosisArtifact: normalizedArtifact,
     profile,
     language,
@@ -21302,22 +21634,27 @@ async function buildAnalysisDeepDiveContentWithLlm({
     }
   } catch (err) {
     llmFailureReason = err && err.message ? String(err.message) : 'deep_dive_llm_exception';
-    logger?.warn?.(
-      { err: llmFailureReason, request_id: requestId },
-      'aurora bff: skin deep-dive llm failed, using deterministic fallback',
+      logger?.warn?.(
+        { err: llmFailureReason, request_id: requestId },
+        'aurora bff: skin deep-dive llm failed, using deterministic fallback',
     );
   }
 
+  const safeCoerce = (candidate, fb) => {
+    const coerced = coerceAnalysisStoryV2(candidate, fb);
+    if (isDeepDiveStoryWeakerThanFallback({ story: coerced, fallbackStory: fb })) return fb;
+    return coerced;
+  };
   let reviewedStory = reviewAnalysisStoryV2Json({ story: storyPayload, evidence });
-  let repairedStory = coerceAnalysisStoryV2(
+  let repairedStory = safeCoerce(
     reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : storyPayload,
     fallbackStory,
   );
   if (isDeepDiveStoryWeakerThanFallback({ story: repairedStory, fallbackStory })) {
-    repairedStory = coerceAnalysisStoryV2(fallbackStory, fallbackStory);
+    repairedStory = fallbackStory;
   }
   reviewedStory = reviewAnalysisStoryV2Json({ story: repairedStory, evidence });
-  const finalStory = coerceAnalysisStoryV2(
+  const finalStory = safeCoerce(
     reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : repairedStory,
     fallbackStory,
   );
@@ -21341,13 +21678,25 @@ async function buildAnalysisDeepDiveContentWithLlm({
       ...(Array.isArray(llmUiPatch.avoid_now) && llmUiPatch.avoid_now.length ? { avoid_now: llmUiPatch.avoid_now.slice(0, 2) } : {}),
     };
   }
-  const assistantText = buildDeepDiveAssistantText({
+  const stabilizedFinalStory = applyNonWeakeningDeepDiveUiPatch({
     story: finalStory,
+    fallbackStory,
+    uiPatch: llmUiPatch,
+  });
+  const assistantText = buildDeepDiveAssistantText({
+    story: stabilizedFinalStory,
     language,
     replyText,
     analysisOrigin,
     confidenceNote: llmConfidenceNote,
   });
+  const fellBackToSnapshot = Boolean(
+    resolvedSnapshot && (
+      isDeepDiveStoryWeakerThanFallback({ story: storyPayload, fallbackStory }) ||
+      stabilizedFinalStory === fallbackStory ||
+      isDeepDiveStoryWeakerThanFallback({ story: stabilizedFinalStory, fallbackStory })
+    ),
+  );
 
   return {
     assistant_text: assistantText,
@@ -21356,7 +21705,7 @@ async function buildAnalysisDeepDiveContentWithLlm({
         card_id: `analysis_followup_story_${requestId}`,
         type: 'analysis_story_v2',
         payload: {
-          ...finalStory,
+          ...stabilizedFinalStory,
           summary: assistantText,
         },
       },
@@ -21365,6 +21714,8 @@ async function buildAnalysisDeepDiveContentWithLlm({
     missing_context: false,
     used_last_analysis: true,
     used_diagnosis_artifact: Boolean(normalizedArtifact && normalizedArtifact.artifact_id),
+    used_analysis_story_snapshot: Boolean(resolvedSnapshot),
+    fell_back_to_snapshot: fellBackToSnapshot,
     latest_artifact_id: normalizedArtifact && normalizedArtifact.artifact_id ? String(normalizedArtifact.artifact_id).trim() : null,
     analysis_origin: analysisOrigin,
     photo_ref_count: photoRefs.length,
@@ -21372,6 +21723,44 @@ async function buildAnalysisDeepDiveContentWithLlm({
     llm_model: llmUsed ? AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI : null,
     llm_failure_reason: llmFailureReason,
   };
+}
+
+function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
+  const isCn = language === 'CN';
+  const story = isPlainObject(storyPayload) ? storyPayload : {};
+  const conf = isPlainObject(story.confidence_overall) ? story.confidence_overall : {};
+  const sp = isPlainObject(story.skin_profile) ? story.skin_profile : {};
+  const skinType = pickFirstTrimmed(sp.skin_type_tendency, sp.skin_type);
+  const sensitivity = pickFirstTrimmed(sp.sensitivity_tendency, sp.sensitivity);
+  const confLevel = pickFirstTrimmed(conf.level);
+  const findings = Array.isArray(story.priority_findings)
+    ? story.priority_findings.map((f) => pickFirstTrimmed(f && f.title, f && f.detail)).filter(Boolean).slice(0, 3)
+    : [];
+  const lines = [];
+  if (isCn) {
+    const descriptors = [];
+    const skinLabel = skinType ? ({ oily: '偏油', dry: '偏干', combination: '混合', normal: '中性' }[skinType] || skinType) : null;
+    const sensLabel = sensitivity ? ({ low: '低', medium: '中等', high: '高' }[sensitivity] || sensitivity) : null;
+    lines.push('分析完成。');
+    if (skinLabel) descriptors.push(`肤质倾向为 **${skinLabel}**`);
+    if (sensLabel) descriptors.push(`敏感度 **${sensLabel}**`);
+    if (descriptors.length) lines.push(`你的${descriptors.join('，')}。`);
+    if (confLevel) lines.push(`本次判断置信度为 **${confLevel === 'high' ? '高' : confLevel === 'medium' ? '中' : confLevel === 'low' ? '低' : confLevel}**。`);
+    if (findings.length) lines.push(`主要发现：${findings.join('；')}。`);
+  } else {
+    lines.push('Analysis complete.');
+    if (skinType && sensitivity) {
+      lines.push(`Your skin trends **${skinType}** with **${sensitivity}** sensitivity.`);
+    } else if (skinType) {
+      lines.push(`Your skin trends **${skinType}** in this read.`);
+    } else if (sensitivity) {
+      lines.push(`This read suggests **${sensitivity}** sensitivity.`);
+    }
+    if (confLevel) lines.push(`Confidence for this read is **${confLevel}**.`);
+    if (findings.length) lines.push(`Key findings: ${findings.join('; ')}.`);
+  }
+  lines.push(isCn ? '有什么想深入了解的？' : 'What would you like to explore?');
+  return lines.join(' ');
 }
 
 function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, requestId, replyText } = {}) {
@@ -52451,7 +52840,18 @@ function mountAuroraBffRoutes(app, { logger }) {
 	          });
 	        }
 
-	        return { envelope, report, profile_for_guardrails: profile };
+        return {
+          envelope,
+          report,
+          profile_for_guardrails: profile,
+          profile_summary_for_assistant: profileSummary,
+          analysis_for_persist: analysisSummaryPayload,
+          photo_refs: normalizeAnalysisPhotoRefs([
+            ...(Array.isArray(passedPhotos) ? passedPhotos : []),
+            ...(Array.isArray(degradedPhotos) ? degradedPhotos : []),
+            ...(Array.isArray(failedPhotos) ? failedPhotos : []),
+          ]),
+        };
 	      };
 
       const analysisBudgetStartedAtMs = Date.now();
@@ -52626,7 +53026,71 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (guardrailResult && Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
         persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
       }
-      return res.json(guardrailResult && guardrailResult.envelope ? guardrailResult.envelope : output.envelope);
+      const finalEnvelope = guardrailResult && guardrailResult.envelope ? guardrailResult.envelope : output.envelope;
+      if (isPlainObject(finalEnvelope) && Array.isArray(finalEnvelope.cards)) {
+        const storyCard = finalEnvelope.cards.find(
+          (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2',
+        );
+        if (storyCard && isPlainObject(storyCard.payload)) {
+          const requestRoutineProfilePatch = extractProfilePatchFromRoutinePayload(
+            parsed.data.currentRoutine !== undefined ? parsed.data.currentRoutine : parsed.data.current_routine,
+          );
+          const profileForStory = {
+            ...(isPlainObject(output && output.profile_summary_for_assistant)
+              ? output.profile_summary_for_assistant
+              : summarizeProfileForContext(
+                  isPlainObject(output && output.profile_for_guardrails) ? output.profile_for_guardrails : {},
+                ) || {}),
+            ...(isPlainObject(requestRoutineProfilePatch) ? requestRoutineProfilePatch : {}),
+          };
+          const storySkinProfile = isPlainObject(storyCard.payload.skin_profile) ? { ...storyCard.payload.skin_profile } : {};
+          const isMeaningfulStoryProfileToken = (value) => {
+            const token = String(value || '').trim().toLowerCase();
+            if (!token) return false;
+            return token !== 'pending' && token !== 'unknown' && token !== 'unconfirmed' && token !== '待确认';
+          };
+          const mergedStorySkinProfile = {
+            ...storySkinProfile,
+            ...(!isMeaningfulStoryProfileToken(storySkinProfile.skin_type_tendency) && pickFirstTrimmed(profileForStory.skinType)
+              ? { skin_type_tendency: pickFirstTrimmed(profileForStory.skinType) }
+              : {}),
+            ...(!isMeaningfulStoryProfileToken(storySkinProfile.sensitivity_tendency) && pickFirstTrimmed(profileForStory.sensitivity)
+              ? { sensitivity_tendency: pickFirstTrimmed(profileForStory.sensitivity) }
+              : {}),
+          };
+          storyCard.payload = {
+            ...storyCard.payload,
+            skin_profile: mergedStorySkinProfile,
+          };
+          const realignedText = buildAssistantMessageFromStoryV2(storyCard.payload, { language: ctx.lang });
+          if (realignedText) {
+            storyCard.payload = {
+              ...storyCard.payload,
+              summary: realignedText,
+            };
+            finalEnvelope.assistant_message = makeAssistantMessage(realignedText);
+          }
+          const sessionPatch = isPlainObject(finalEnvelope.session_patch) ? finalEnvelope.session_patch : {};
+          const meta = isPlainObject(sessionPatch.meta) ? { ...sessionPatch.meta } : {};
+          const photoRefs = Array.isArray(output && output.photo_refs) ? output.photo_refs : [];
+          meta.analysis_context = {
+            analysis_origin: photoRefs.length > 0 ? 'photo' : 'profile',
+            photo_refs: photoRefs,
+            source_card_type: 'analysis_story_v2',
+            analysis_story_snapshot: storyCard.payload,
+          };
+          sessionPatch.meta = meta;
+          finalEnvelope.session_patch = sessionPatch;
+
+          setImmediate(() => {
+            saveLastAnalysisForIdentity(
+              { auroraUid: identity.auroraUid, userId: identity.userId },
+              { analysis: { ...(output && output.analysis_for_persist ? output.analysis_for_persist : {}), analysis_story_snapshot: storyCard.payload }, lang: ctx.lang },
+            ).catch(() => {});
+          });
+        }
+      }
+      return res.json(finalEnvelope);
     } catch (err) {
       const status = err.status || 500;
       logger?.error(
@@ -54702,7 +55166,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist pregnancy policy patch');
         }
       }
-      const actionId =
+      const parsedSessionForAnalysisFollowup =
+        parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+          ? parsed.data.session
+          : {};
+      const parsedSessionMetaForAnalysisFollowup =
+        parsedSessionForAnalysisFollowup.meta &&
+        typeof parsedSessionForAnalysisFollowup.meta === 'object' &&
+        !Array.isArray(parsedSessionForAnalysisFollowup.meta)
+          ? parsedSessionForAnalysisFollowup.meta
+          : {};
+      const explicitActionId =
         (normalizedActionPayload && typeof normalizedActionPayload === 'object'
           ? normalizedActionPayload.action_id
           : typeof normalizedActionPayload === 'string'
@@ -54710,6 +55184,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null) ||
         parsed.data.action_id ||
         null;
+      const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
+        actionId: explicitActionId,
+        message,
+        sessionAnalysisContext:
+          parsedSessionMetaForAnalysisFollowup.analysis_context &&
+          typeof parsedSessionMetaForAnalysisFollowup.analysis_context === 'object' &&
+          !Array.isArray(parsedSessionMetaForAnalysisFollowup.analysis_context)
+            ? parsedSessionMetaForAnalysisFollowup.analysis_context
+            : null,
+        lastAnalysis: profile && profile.lastAnalysis ? profile.lastAnalysis : null,
+        latestArtifactId: extractLatestArtifactIdFromSession(parsedSessionForAnalysisFollowup),
+      });
+      const actionId = explicitActionId || implicitAnalysisFollowupActionId || null;
       actionIdForReplay = String(actionId || '').trim() || null;
       const actionLabel = actionLabelFromPayload;
       const clarificationId =
@@ -54912,6 +55399,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         return makeAssistantMessage(text, format);
       };
       const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim());
+      const analysisFollowupRoutingMode = isAnalysisFollowupAction && !ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(explicitActionId || '').trim())
+        ? 'implicit'
+        : 'explicit';
       if (isAnalysisFollowupAction) {
         const normalizedActionId = String(actionId || '').trim();
         const isDeepDiveAction = normalizedActionId === 'chip.aurora.next_action.deep_dive_skin';
@@ -54923,27 +55413,28 @@ function mountAuroraBffRoutes(app, { logger }) {
           !Array.isArray(normalizedActionPayload.data)
             ? normalizedActionPayload.data
             : {};
+        const parsedSession = parsed.data && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session) ? parsed.data.session : {};
+        const parsedSessionMeta = parsedSession.meta && typeof parsedSession.meta === 'object' && !Array.isArray(parsedSession.meta) ? parsedSession.meta : {};
         const sessionAnalysisContext =
-          parsed.data &&
-          parsed.data.session &&
-          typeof parsed.data.session === 'object' &&
-          !Array.isArray(parsed.data.session) &&
-          parsed.data.session.meta &&
-          typeof parsed.data.session.meta === 'object' &&
-          !Array.isArray(parsed.data.session.meta) &&
-          parsed.data.session.meta.analysis_context &&
-          typeof parsed.data.session.meta.analysis_context === 'object' &&
-          !Array.isArray(parsed.data.session.meta.analysis_context)
-            ? parsed.data.session.meta.analysis_context
+          parsedSessionMeta.analysis_context &&
+          typeof parsedSessionMeta.analysis_context === 'object' &&
+          !Array.isArray(parsedSessionMeta.analysis_context)
+            ? parsedSessionMeta.analysis_context
             : null;
-        const latestDiagnosisArtifact = isDeepDiveAction
-          ? await loadLatestDiagnosisArtifactForRoute({
+        let latestDiagnosisArtifact = null;
+        if (isDeepDiveAction) {
+          try {
+            latestDiagnosisArtifact = await loadLatestDiagnosisArtifactForRoute({
               identity,
-              session: parsed.data.session,
+              session: parsedSession,
               ctx,
               logger,
-            })
-          : null;
+            });
+          } catch (_artifactErr) {
+            logger?.warn?.({ err: _artifactErr?.message }, 'aurora bff: artifact load failed for deep-dive, continuing without');
+          }
+        }
+        const followupReplyText = actionReplyText || message;
         const followup = isDeepDiveAction
           ? await buildAnalysisDeepDiveContentWithLlm({
               lastAnalysis: profile && profile.lastAnalysis,
@@ -54951,7 +55442,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               profile,
               language: ctx.lang,
               requestId: ctx.request_id,
-              replyText: actionReplyText,
+              replyText: followupReplyText,
               actionData,
               sessionAnalysisContext,
               logger,
@@ -54961,11 +55452,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               lastAnalysis: profile && profile.lastAnalysis,
               language: ctx.lang,
               requestId: ctx.request_id,
-              replyText: actionReplyText,
+              replyText: followupReplyText,
             });
         recordAuroraSkinFlowMetric({ stage: 'analysis_followup_action', hit: true });
         recordAuroraSkinFlowMetric({
-          stage: `analysis_followup_${String(actionId || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(-48)}`,
+          stage: `analysis_followup_${normalizedActionId.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(-48)}`,
           hit: true,
         });
         if (isDeepDiveAction && followup && followup.llm_used === true) {
@@ -54975,45 +55466,27 @@ function mountAuroraBffRoutes(app, { logger }) {
           { kind: 'metric', name: 'aurora.skin.analysis_followup.routed_rate', value: 1 },
           'metric',
         );
-        if (debugUpstream === true && isDeepDiveAction) {
-          logger?.info?.(
-            {
-              request_id: ctx.request_id,
-              trace_id: ctx.trace_id,
-              action_id: normalizedActionId,
-              analysis_origin: followup && followup.analysis_origin ? followup.analysis_origin : null,
-              photo_ref_count: Number(followup && followup.photo_ref_count || 0),
-              used_diagnosis_artifact: Boolean(followup && followup.used_diagnosis_artifact),
-              artifact_id: followup && followup.latest_artifact_id ? followup.latest_artifact_id : null,
-              llm_used: Boolean(followup && followup.llm_used),
-              llm_model: followup && followup.llm_model ? followup.llm_model : null,
-              llm_failure_reason: followup && followup.llm_failure_reason ? followup.llm_failure_reason : null,
-            },
-            'aurora bff: deep-dive follow-up context',
-          );
-        }
         skipRoutineRulesFallback = true;
-        const sessionPatch = {};
-        if (followup && followup.latest_artifact_id) {
-          appendLatestArtifactToSessionPatch(sessionPatch, followup.latest_artifact_id);
-        }
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(followup.assistant_text),
           suggested_chips: Array.isArray(followup.suggested_chips) ? followup.suggested_chips : [],
           cards: Array.isArray(followup.cards) ? followup.cards : [],
-          session_patch: sessionPatch,
+          session_patch: {},
           events: [
             makeEvent(ctx, 'analysis_followup_action_routed', {
               action_id: normalizedActionId,
+              routing_mode: analysisFollowupRoutingMode,
               used_last_analysis: Boolean(followup.used_last_analysis),
               missing_context: Boolean(followup.missing_context),
-              analysis_origin: followup && followup.analysis_origin ? followup.analysis_origin : null,
-              photo_ref_count: Number(followup && followup.photo_ref_count || 0),
-              used_diagnosis_artifact: Boolean(followup && followup.used_diagnosis_artifact),
-              llm_used: Boolean(followup && followup.llm_used),
-              llm_model: followup && followup.llm_model ? followup.llm_model : null,
-              llm_failure_reason: followup && followup.llm_failure_reason ? followup.llm_failure_reason : null,
               fell_back_to_generic: false,
+              ...(isDeepDiveAction ? {
+                analysis_origin: followup.analysis_origin || null,
+                photo_ref_count: Number(followup.photo_ref_count || 0),
+                used_diagnosis_artifact: Boolean(followup.used_diagnosis_artifact),
+                used_analysis_story_snapshot: Boolean(followup.used_analysis_story_snapshot),
+                fell_back_to_snapshot: Boolean(followup.fell_back_to_snapshot),
+                llm_used: Boolean(followup.llm_used),
+              } : {}),
             }),
           ],
         });
@@ -61417,11 +61890,21 @@ const __internal = {
   applyRecoCardContractInvariant,
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
+  buildAssistantMessageFromStoryV2,
+  resolveImplicitAnalysisFollowupActionId,
+  extractAnalysisFollowupSignals,
   normalizeAnalysisPhotoRefs,
+  rankAnalysisConfidenceLevel,
   buildDeepDiveFallbackStoryPayload,
   buildDeepDiveAnalysisEvidence,
   buildDeepDiveAnalysisStoryGenerationPrompt,
+  tryRecoverDeepDiveResponseFromTruncatedText,
+  applyDeepDiveLlmResponseToStory,
+  applyNonWeakeningDeepDiveUiPatch,
+  isDeepDiveStoryWeakerThanFallback,
+  buildDeepDiveAssistantText,
   buildAnalysisDeepDiveContentWithLlm,
+  loadLatestDiagnosisArtifactForRoute,
   buildAnalysisFollowupContent,
   extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,
