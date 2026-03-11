@@ -24,6 +24,14 @@ function makeBaseServices(overrides = {}) {
     normalizeDupeKbKey: jest.fn((value) => String(value || '').trim()),
     searchPivotaBackendProducts: jest.fn().mockResolvedValue({ ok: true, products: [] }),
     buildRecoAlternativesCandidatePool: jest.fn().mockReturnValue([]),
+    buildExternalSeedCompareSearchQueries: jest.fn(({ productObj, productInput }) => {
+      const brand = String(productObj?.brand || '').trim();
+      const name = String(productObj?.display_name || productObj?.name || '').trim();
+      return [
+        [brand, name].filter(Boolean).join(' ').trim(),
+        String(productInput || '').trim(),
+      ].filter(Boolean);
+    }),
     fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
       alternatives: [],
       field_missing: [],
@@ -193,46 +201,128 @@ describe('executeDupeSuggest recall modes', () => {
         disable_synthetic_local_fallback: true,
       }),
     }));
-    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v6');
+    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v7');
     expect(fetchRecoAlternativesForProduct.mock.calls.some(([args]) => args.options.recommendation_mode === 'hybrid_fallback')).toBe(false);
   });
 
-  test('uses anchor-only open-world fallback when profile is absent and pool is empty', async () => {
+  test('uses the richer external-seed query planner for pool-only recall and exposes pool query diagnostics', async () => {
+    const searchPivotaBackendProducts = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        products: [
+          { product_id: 'cand_a', sku_id: 'cand_a', brand: 'Good Molecules', display_name: 'Niacinamide Serum', category: 'serum' },
+        ],
+      })
+      .mockResolvedValue({ ok: true, products: [] });
+    const buildExternalSeedCompareSearchQueries = jest.fn(() => [
+      'The Ordinary Niacinamide 10% + Zinc 1%',
+      'The Ordinary Niacinamide 10% + Zinc 1% serum',
+      'niacinamide serum',
+      'brightening serum',
+    ]);
     const services = makeBaseServices({
+      searchPivotaBackendProducts,
+      buildExternalSeedCompareSearchQueries,
       fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
         alternatives: [
           {
             kind: 'dupe',
-            candidate_origin: 'open_world',
-            grounding_status: 'name_only',
+            candidate_origin: 'catalog',
+            grounding_status: 'catalog_verified',
             ranking_mode: 'anchor_only',
-            product: { brand: 'Alt Brand', name: 'Anchor Only Lotion' },
-            similarity: 74,
-            reasons: ['Similar daily lightweight moisturizer role'],
-            tradeoffs: ['Formula overlap is uncertain'],
-            confidence: 0.42,
-            missing_info: ['profile_not_provided'],
+            product: { brand: 'Good Molecules', name: 'Niacinamide Serum', product_id: 'cand_a', sku_id: 'cand_a' },
+            similarity: 72,
+            confidence: 0.41,
+            reasons: ['Niacinamide-led serum role overlaps with the anchor.'],
+            tradeoffs: ['Zinc support is less explicit than the anchor.'],
+            missing_info: ['formula_overlap_uncertain'],
           },
         ],
-        field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
-        source_mode: 'open_world_only',
-        template_id: 'reco_alternatives_open_world_v1',
+        field_missing: [],
+        source_mode: 'pool_only',
+        template_id: 'reco_alternatives_v1_0',
         raw_output_summary: {
           raw_output_item_count: 1,
           raw_items_with_product_object: 1,
           raw_items_with_nested_brand_name: 1,
           raw_items_with_flat_brand_name: 0,
           raw_items_with_tradeoffs_object: 0,
-          raw_preview: [
-            { brand: 'Alt Brand', name: 'Anchor Only Lotion', has_product_object: true },
-          ],
+          raw_preview: [{ brand: 'Good Molecules', name: 'Niacinamide Serum', has_product_object: true }],
         },
-        failure_class: 'provider_error',
+      }),
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original: {
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          category: 'serum',
+        },
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload.dupes).toHaveLength(1);
+    expect(buildExternalSeedCompareSearchQueries).toHaveBeenCalled();
+    expect(searchPivotaBackendProducts).toHaveBeenCalledTimes(4);
+    expect(searchPivotaBackendProducts).toHaveBeenCalledWith(expect.objectContaining({
+      searchAllMerchants: true,
+      allowExternalSeed: true,
+      externalSeedStrategy: 'supplement_internal_first',
+      fastMode: true,
+    }));
+    expect(result.payload.meta.attempted_queries).toEqual([
+      'The Ordinary Niacinamide 10% + Zinc 1%',
+      'The Ordinary Niacinamide 10% + Zinc 1% serum',
+      'niacinamide serum',
+      'brightening serum',
+    ]);
+    expect(result.payload.meta.pool_query_hits).toEqual([
+      { query: 'The Ordinary Niacinamide 10% + Zinc 1%', hits: 1, kept: 1 },
+      { query: 'The Ordinary Niacinamide 10% + Zinc 1% serum', hits: 0, kept: 0 },
+      { query: 'niacinamide serum', hits: 0, kept: 0 },
+      { query: 'brightening serum', hits: 0, kept: 0 },
+    ]);
+    expect(result.payload.meta.pool_query_zero_hit_count).toBe(3);
+    expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
+      attempted_queries: expect.arrayContaining(['The Ordinary Niacinamide 10% + Zinc 1%', 'niacinamide serum']),
+      pool_query_zero_hit_count: 3,
+    }));
+  });
+
+  test('returns deterministic anchor-signal empty when profile is absent and the anchor lacks active overlap signals', async () => {
+    const services = makeBaseServices({
+      fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'anchor_signal_insufficient_for_open_world' }],
+        source_mode: 'open_world_only',
+        template_id: 'reco_alternatives_open_world_v1',
+        raw_output_summary: {
+          raw_output_item_count: 0,
+          raw_items_with_product_object: 0,
+          raw_items_with_nested_brand_name: 0,
+          raw_items_with_flat_brand_name: 0,
+          raw_items_with_tradeoffs_object: 0,
+          raw_preview: [],
+        },
+        failure_class: 'precheck_fail',
+        no_result_reason: 'anchor_signal_insufficient_for_open_world',
         llm_trace: {
-          error_class: 'provider_error',
-          upstream_status: 503,
-          upstream_error_code: 'EUPSTREAM',
-          upstream_error_message: 'provider overloaded',
+          error_class: 'precheck_fail',
+          upstream_status: null,
+          upstream_error_code: null,
+          upstream_error_message: null,
         },
       }),
     });
@@ -256,14 +346,17 @@ describe('executeDupeSuggest recall modes', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.payload.dupes).toHaveLength(1);
+    expect(result.payload.dupes).toHaveLength(0);
+    expect(result.payload.comparables).toHaveLength(0);
     expect(result.payload.meta.open_world_supplement_used).toBe(true);
     expect(result.payload.meta.recommendation_mode).toBe('open_world_only');
     expect(result.payload.meta.profile_mode).toBe('anchor_only');
     expect(result.payload.meta.profile_context_present).toBe(false);
     expect(result.payload.meta.has_anchor_identity).toBe(true);
-    expect(result.payload.meta.final_source_mix).toContain('open_world');
-    expect(result.payload.meta.source_hit_counts.open_world_fallback).toBe(1);
+    expect(result.payload.meta.final_source_mix).toEqual(['open_world']);
+    expect(result.payload.meta.source_hit_counts.open_world_fallback).toBe(0);
+    expect(result.payload.meta.final_empty_reason).toBe('anchor_signal_insufficient_for_open_world');
+    expect(result.payload.meta.kb_backfill_blocked_reason).toBeUndefined();
     expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
       recommendation_mode: 'pool_only',
       raw_output_item_count: 0,
@@ -272,14 +365,14 @@ describe('executeDupeSuggest recall modes', () => {
     }));
     expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
       recommendation_mode: 'open_world_only',
-      raw_output_item_count: 1,
-      mapped_output_item_count: 1,
-      failure_class: 'provider_error',
-      llm_error_class: 'provider_error',
-      upstream_status: 503,
-      upstream_error_code: 'EUPSTREAM',
-      upstream_error_message: 'provider overloaded',
-      field_missing_reasons: ['upstream_missing_or_empty'],
+      raw_output_item_count: 0,
+      mapped_output_item_count: 0,
+      failure_class: 'precheck_fail',
+      llm_error_class: 'precheck_fail',
+      upstream_status: null,
+      upstream_error_code: null,
+      upstream_error_message: null,
+      field_missing_reasons: ['anchor_signal_insufficient_for_open_world'],
     }));
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(1);
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledWith(expect.objectContaining({
@@ -292,6 +385,12 @@ describe('executeDupeSuggest recall modes', () => {
         profile_mode: 'anchor_only',
         disable_synthetic_local_fallback: true,
         ignore_selector_candidates: true,
+      }),
+    }));
+    expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
+      source_meta: expect.objectContaining({
+        contract_version: 'dupe_suggest_v7',
+        final_empty_reason: 'anchor_signal_insufficient_for_open_world',
       }),
     }));
   });
@@ -516,7 +615,7 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalled();
     expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
       source_meta: expect.objectContaining({
-        contract_version: 'dupe_suggest_v6',
+        contract_version: 'dupe_suggest_v7',
       }),
     }));
   });

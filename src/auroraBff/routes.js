@@ -41525,6 +41525,72 @@ function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {},
   return compact;
 }
 
+const RECO_OPEN_WORLD_ACTIVE_THEME_RULES = [
+  { key: 'niacinamide', re: /\bniacinamide\b|烟酰胺/i },
+  { key: 'zinc', re: /\bzinc\b|锌/i },
+  { key: 'salicylic_acid', re: /\bsalicylic\b|\bbha\b|水杨酸/i },
+  { key: 'hyaluronic_acid', re: /\bhyaluronic\b|\bhyaluronate\b|透明质酸|玻尿酸/i },
+  { key: 'vitamin_c', re: /\bvitamin\s*c\b|\bascorbic\b|\bvc\b|维c|维生素c|抗坏血酸/i },
+  { key: 'retinol', re: /\bretinol\b|\bretinal\b|\bretinoid\b|视黄醇|维a|a醇/i },
+  { key: 'ceramide', re: /\bceramide\b|神经酰胺/i },
+  { key: 'azelaic_acid', re: /\bazelaic\b|壬二酸/i },
+  { key: 'tranexamic_acid', re: /\btranexamic\b|传明酸|氨甲环酸/i },
+  { key: 'peptide', re: /\bpeptide\b|肽/i },
+];
+
+function extractRecoOpenWorldActiveThemesFromText(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  const out = [];
+  for (const rule of RECO_OPEN_WORLD_ACTIVE_THEME_RULES) {
+    if (rule.re.test(text)) out.push(rule.key);
+  }
+  return uniqCaseInsensitiveStrings(out, 8);
+}
+
+function deriveRecoOpenWorldAnchorActiveThemes({ targetSignals = {}, anchorLabel = '', productInput = '' } = {}) {
+  return uniqCaseInsensitiveStrings(
+    [
+      ...extractRecoOpenWorldActiveThemesFromText(anchorLabel),
+      ...extractRecoOpenWorldActiveThemesFromText(productInput),
+      ...extractRecoOpenWorldActiveThemesFromText(
+        [
+          ...(Array.isArray(targetSignals.heroIngredients) ? targetSignals.heroIngredients : []),
+          ...(Array.isArray(targetSignals.knownActives) ? targetSignals.knownActives : []),
+          ...(Array.isArray(targetSignals.primaryClaims) ? targetSignals.primaryClaims : []),
+        ].join(' '),
+      ),
+    ],
+    6,
+  );
+}
+
+function hasRecoOpenWorldActiveOverlap({ anchorActiveThemes = [], candidateText = '' } = {}) {
+  const anchorThemes = uniqCaseInsensitiveStrings(Array.isArray(anchorActiveThemes) ? anchorActiveThemes : [], 8);
+  if (!anchorThemes.length) return false;
+  const candidateThemes = extractRecoOpenWorldActiveThemesFromText(candidateText);
+  if (!candidateThemes.length) return false;
+  const candidateSet = new Set(candidateThemes.map((token) => String(token || '').trim().toLowerCase()).filter(Boolean));
+  return anchorThemes.some((token) => candidateSet.has(String(token || '').trim().toLowerCase()));
+}
+
+function buildLocalRecoOpenWorldSystemPrompt() {
+  return [
+    'Return JSON only.',
+    'Output exactly {"alternatives":[...]} with at most 1 item.',
+    'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
+    'Return 1 distinct real skincare product only when there is clear active or ingredient theme overlap with the anchor.',
+    'Allowed overlap signals: known_actives, hero_ingredients, or canonical actives clearly present in the anchor name such as niacinamide, bha, hyaluronic acid, vitamin c, retinol, ceramide, or zinc.',
+    'Role, claim, texture, or moisturizer-step overlap alone is not enough.',
+    'If the anchor has no clear active or ingredient theme, return {"alternatives":[]}.',
+    'Never return the anchor itself or a trivial title variant.',
+    'Example yes: The Ordinary Niacinamide 10% + Zinc 1% -> Good Molecules Niacinamide Serum.',
+    'Example no: Generic Daily Moisturizer -> [].',
+    'Example no: The Ordinary Niacinamide 10% + Zinc 1% -> The Ordinary Niacinamide 10% + Zinc 1%.',
+    'Do not output extra keys, nested arrays, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
+  ].join('\n');
+}
+
 function buildFallbackOpenWorldTradeoffNote({ candidateRole = '', targetRole = '', productType = '', targetSignals = {} } = {}) {
   const normalizedCandidateRole = String(candidateRole || '').trim().toLowerCase();
   const normalizedTargetRole = String(targetRole || '').trim().toLowerCase();
@@ -41598,6 +41664,7 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   ingredientTokens = [],
   claimTokens = [],
   textureTokens = [],
+  anchorActiveThemes = [],
 } = {}) {
   const row = isPlainObject(candidate) ? candidate : {};
   const brand = pickFirstTrimmed(row.brand);
@@ -41634,6 +41701,7 @@ function normalizeOpenWorldAlternativeRow(candidate, {
     })];
 
   const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
+  if (!hasRecoOpenWorldActiveOverlap({ anchorActiveThemes, candidateText: sourceText })) return null;
   const baseScoreRaw = Number(row.similarity_score);
   const baseScore = Number.isFinite(baseScoreRaw) ? clamp01Score(baseScoreRaw > 1 ? baseScoreRaw / 100 : baseScoreRaw) : 0.62;
   const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
@@ -41697,6 +41765,11 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   const limit = 1;
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const targetSignals = identity.targetSignals;
+  const anchorActiveThemes = deriveRecoOpenWorldAnchorActiveThemes({
+    targetSignals,
+    anchorLabel: identity.anchorLabel,
+    productInput,
+  });
   const resolvedModel = resolveRecoAlternativesOpenWorldGeminiModel();
   const hasAnchorSignals = Boolean(
     String(identity.anchorLabel || '').trim() ||
@@ -41712,18 +41785,18 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   );
   const emptyRawOutputSummary = summarizeRecoAlternativesRaw([]);
 
-  if (!hasAnchorSignals) {
+  if (!hasAnchorSignals || !anchorActiveThemes.length) {
     return {
       ok: true,
       alternatives: [],
-      field_missing: [{ field: 'alternatives', reason: 'anchor_insufficient_for_open_world_fallback' }],
+      field_missing: [{ field: 'alternatives', reason: 'anchor_signal_insufficient_for_open_world' }],
       source_mode: 'open_world_only',
       fallback_source: 'none',
       refresh_pending: false,
       refresh_after_ms: 0,
       failure_class: 'precheck_fail',
       attempt_count: 0,
-      no_result_reason: 'anchor_insufficient_for_open_world_fallback',
+      no_result_reason: 'anchor_signal_insufficient_for_open_world',
       recommendation_mode: 'open_world_only',
       profile_mode: normalizeAlternativesProfileMode(profileMode),
       template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
@@ -41739,7 +41812,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         model: resolvedModel,
         source_mode: 'local_gemini_open_world',
         error_class: 'precheck_fail',
-        provider_reason: 'anchor_insufficient_for_open_world_fallback',
+        provider_reason: 'anchor_signal_insufficient_for_open_world',
         provider_detail: null,
         provider_route: 'aurora_reco_alternatives_open_world',
         provider_model: resolvedModel,
@@ -41747,20 +41820,16 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     };
   }
 
-  const systemPrompt = [
-    'Return JSON only.',
-    'Output exactly {"alternatives":[...]} with at most 1 item.',
-    'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
-    'Return 1 distinct real skincare product when possible, otherwise {"alternatives":[]}.',
-    'Do not output arrays, extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
-    'Use anchor signals only.',
-  ].join('\n');
+  const systemPrompt = buildLocalRecoOpenWorldSystemPrompt();
   const userPayload = {
     lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
-    anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput }),
+    anchor: {
+      ...buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput }),
+      active_themes: anchorActiveThemes.slice(0, 4),
+    },
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Use anchor signals only. Return exactly 1 distinct viable skincare alternative when possible; otherwise [].',
+      selection_rule: 'Open-world only. Return exactly 1 distinct viable skincare alternative only when active or ingredient theme overlap is explicit; otherwise [].',
     },
   };
   const userPrompt = JSON.stringify(userPayload);
@@ -41841,6 +41910,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         ingredientTokens: identity.ingredientTokens,
         claimTokens: identity.claimTokens,
         textureTokens: identity.textureTokens,
+        anchorActiveThemes,
       }))
       .filter(Boolean);
     const deduped = [];
@@ -47721,6 +47791,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       normalizeDupeKbKey,
       searchPivotaBackendProducts,
       buildRecoAlternativesCandidatePool,
+      buildExternalSeedCompareSearchQueries,
       fetchRecoAlternativesForProduct,
       auroraChat,
       buildContextPrefix,
@@ -61200,6 +61271,7 @@ const __internal = {
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
   buildAuroraRecoAlternativesQuery,
+  buildExternalSeedCompareSearchQueries,
   applyIngredientRecoConstraint,
   generateProductRecommendations,
   buildIngredientReportPayload,
