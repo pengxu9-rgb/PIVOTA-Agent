@@ -1,9 +1,4 @@
 const BaseSkill = require('./BaseSkill');
-const {
-  buildDatesLabel,
-  hasCompleteTravelPlan,
-  normalizeTravelPlan,
-} = require('../travelPlanUtils');
 
 class TravelApplyModeSkill extends BaseSkill {
   constructor() {
@@ -11,9 +6,8 @@ class TravelApplyModeSkill extends BaseSkill {
   }
 
   async checkPreconditions(request) {
-    const plan = normalizeTravelPlan(request.context?.travel_plan);
-    const displayDates = plan?.dates || buildDatesLabel(plan?.start_date, plan?.end_date);
-    if (!plan || !plan.destination || !displayDates || !hasCompleteTravelPlan(plan)) {
+    const plan = request.context?.travel_plan;
+    if (!plan || !plan.destination || !plan.dates) {
       return {
         met: false,
         failures: [
@@ -31,19 +25,14 @@ class TravelApplyModeSkill extends BaseSkill {
 
   async execute(request, llmGateway) {
     const { context, params } = request;
-    const travelPlan = normalizeTravelPlan(context.travel_plan);
+    const travelPlan = context.travel_plan;
     const climateArchetype = params?._climate_archetype || null;
-    const displayDates = travelPlan.dates || buildDatesLabel(travelPlan.start_date, travelPlan.end_date);
-    const persistedTravelPlan = {
-      ...travelPlan,
-      dates: displayDates,
-    };
 
     const llmResult = await llmGateway.call({
       templateId: 'travel_apply_mode',
       taskMode: 'travel',
       params: {
-        travel_plan: persistedTravelPlan,
+        travel_plan: travelPlan,
         climate_archetype: climateArchetype,
         profile: context.profile,
         current_routine: context.current_routine,
@@ -65,7 +54,7 @@ class TravelApplyModeSkill extends BaseSkill {
       {
         type: 'travel_structured',
         destination: travelPlan.destination,
-        dates: displayDates,
+        dates: travelPlan.dates,
         climate: climateArchetype || travelMode.inferred_climate,
         adjustments,
         packing_list: travelMode.packing_list,
@@ -76,7 +65,6 @@ class TravelApplyModeSkill extends BaseSkill {
       cards: [{ card_type: 'travel', sections }],
       ops: {
         thread_ops: [
-          { op: 'set', key: 'travel_plan', value: persistedTravelPlan },
           { op: 'set', key: 'travel_mode_active', value: true },
         ],
         profile_patch: {},

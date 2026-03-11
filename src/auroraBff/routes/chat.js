@@ -1,11 +1,6 @@
 const { SkillRouter } = require('../orchestrator/skill_router');
 const LlmGateway = require('../services/llm_gateway');
 const { mapSkillResponseToChatCardsV1, mapSkillResponseToStreamEnvelope } = require('../mappers/card_mapper');
-const {
-  extractTravelPlanFromMessage,
-  normalizeTravelPlan,
-  resolveTravelPlanFromSources,
-} = require('../travelPlanUtils');
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildChatCardsResponse } = require('../chatCardsAssembler');
 
@@ -47,10 +42,6 @@ function getRouter() {
 
 function __resetRouterForTests() {
   routerSingleton = null;
-}
-
-function __setRouterForTests(router) {
-  routerSingleton = router || null;
 }
 
 function normalizeLocaleToken(value) {
@@ -547,12 +538,6 @@ function buildSkillRequest(req) {
     req._userProfile,
     sessionProfile,
   ]);
-  const resolvedTravelPlan = resolveTravelPlanFromSources(
-    bodyContext.travel_plan,
-    session.travel_plan,
-    sessionProfile?.travel_plan,
-    extractTravelPlanFromMessage(userMessage),
-  );
   const anchorProductId = pickFirstTrimmed(
     body.anchor_product_id,
     body.anchorProductId,
@@ -571,10 +556,6 @@ function buildSkillRequest(req) {
       ? normalizedActionData.product_anchor
       : null;
 
-  const baseThreadState = body.thread_state || req._threadState || {};
-  const threadState = resolvedTravelPlan
-    ? { ...baseThreadState, travel_plan: resolvedTravelPlan }
-    : baseThreadState;
   const comparisonTargets =
     Array.isArray(bodyParams.comparison_targets) ? bodyParams.comparison_targets
     : Array.isArray(normalizedActionData.comparison_targets) ? normalizedActionData.comparison_targets
@@ -602,22 +583,19 @@ function buildSkillRequest(req) {
     context: {
       profile: resolvedProfile,
       recent_logs: bodyContext.recent_logs || req._recentLogs || [],
-      travel_plan: resolvedTravelPlan,
+      travel_plan: bodyContext.travel_plan || null,
       current_routine: currentRoutine,
       inventory: bodyContext.inventory || [],
       locale,
       safety_flags: bodyContext.safety_flags || [],
     },
-    thread_state: threadState,
+    thread_state: body.thread_state || req._threadState || {},
   };
 }
 
 module.exports = {
   buildSkillRequest,
-  extractTravelPlanFromMessage,
   handleChat,
   handleChatStream,
   __resetRouterForTests,
-  __setRouterForTests,
-  normalizeTravelPlan,
 };
