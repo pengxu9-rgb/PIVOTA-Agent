@@ -478,6 +478,7 @@ const {
   createArtifactId,
   saveDiagnosisArtifact,
   getLatestDiagnosisArtifact,
+  listRecentDiagnosisArtifacts,
   saveIngredientPlan,
   getIngredientPlanByArtifactId,
   saveRecoRun,
@@ -22263,6 +22264,21 @@ function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
 
 async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
   const preferredArtifactId = extractLatestArtifactIdFromSession(session);
+  const normalizeArtifactPayload = (row) => {
+    if (
+      row &&
+      row.artifact_json &&
+      typeof row.artifact_json === 'object' &&
+      !Array.isArray(row.artifact_json)
+    ) {
+      return {
+        ...row.artifact_json,
+        artifact_id: row.artifact_id,
+        created_at: row.created_at || row.artifact_json.created_at,
+      };
+    }
+    return row || null;
+  };
   try {
     const latestArtifact = await getLatestDiagnosisArtifact({
       auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
@@ -22271,19 +22287,28 @@ async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, log
       maxAgeDays: 30,
       preferArtifactId: preferredArtifactId,
     });
-    if (
-      latestArtifact &&
-      latestArtifact.artifact_json &&
-      typeof latestArtifact.artifact_json === 'object' &&
-      !Array.isArray(latestArtifact.artifact_json)
-    ) {
-      return {
-        ...latestArtifact.artifact_json,
-        artifact_id: latestArtifact.artifact_id,
-        created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
-      };
+    const normalizedLatestArtifact = normalizeArtifactPayload(latestArtifact);
+    if (hasReusableDiagnosisArtifactForDeepDive(normalizedLatestArtifact)) {
+      return normalizedLatestArtifact;
     }
-    return latestArtifact || null;
+    const recentArtifacts = await listRecentDiagnosisArtifacts({
+      auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
+      userId: identity && identity.userId ? identity.userId : null,
+      limit: 8,
+      maxAgeDays: 30,
+    });
+    const normalizedSessionId = ctx && ctx.brief_id ? String(ctx.brief_id).trim() : '';
+    const reusableArtifact = (Array.isArray(recentArtifacts) ? recentArtifacts : [])
+      .map((item) => normalizeArtifactPayload(item))
+      .find((item) => {
+        if (!item) return false;
+        if (normalizedSessionId) {
+          const artifactSessionId = String(item.session_id || '').trim();
+          if (artifactSessionId && artifactSessionId !== normalizedSessionId) return false;
+        }
+        return hasReusableDiagnosisArtifactForDeepDive(item);
+      });
+    return reusableArtifact || normalizedLatestArtifact || null;
   } catch (err) {
     logger?.warn?.(
       { err: err && err.message ? err.message : String(err), request_id: ctx && ctx.request_id ? ctx.request_id : null },
@@ -25485,10 +25510,6 @@ function hasReusableDiagnosisArtifactForDeepDive(diagnosisArtifact) {
     null,
   );
   const concerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
-  const confidence =
-    artifact.overall_confidence && typeof artifact.overall_confidence === 'object'
-      ? artifact.overall_confidence
-      : null;
   return Boolean(
     photoRefs.length ||
       storySnapshot ||
@@ -25497,8 +25518,7 @@ function hasReusableDiagnosisArtifactForDeepDive(diagnosisArtifact) {
       (artifact.analysis_context &&
         typeof artifact.analysis_context === 'object' &&
         !Array.isArray(artifact.analysis_context) &&
-        artifact.analysis_context.used_photos === true) ||
-      pickFirstTrimmed(confidence && confidence.level),
+        artifact.analysis_context.used_photos === true),
   );
 }
 
