@@ -5212,6 +5212,126 @@ test('/v1/reco/alternatives: structured candidate pool returns selector_grounded
   );
 });
 
+test('/v1/reco/alternatives: external llm_seed compare auto-switches to hybrid_fallback', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS: '6500',
+      AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS: '2000',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes } = routeModule;
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_seed_hybrid',
+            'X-Trace-ID': 'test_trace_alt_external_seed_hybrid',
+            'X-Brief-ID': 'test_brief_alt_external_seed_hybrid',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'DUPE_SUGGEST_TEST',
+            max_total: 3,
+            product: {
+              brand: 'Laneige',
+              name: 'Water Sleeping Mask',
+              step: 'mask',
+              pdp_open: {
+                path: 'external',
+                external: {
+                  query: 'Laneige Water Sleeping Mask',
+                },
+              },
+              metadata: {
+                match_state: 'llm_seed',
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.fallback_source, null);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.ok(resp.body.alternatives.length > 0);
+        assert.equal(String(resp.body?.alternatives?.[0]?.product?.name || ''), 'Mock Dupe Cleanser');
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external llm_seed compare returns explainable empty instead of synthetic fallback', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS: '6500',
+      AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS: '2000',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes } = routeModule;
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_seed_empty',
+            'X-Trace-ID': 'test_trace_alt_external_seed_empty',
+            'X-Brief-ID': 'test_brief_alt_external_seed_empty',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'unknown external seed with no strong alternatives',
+            max_total: 3,
+            product: {
+              brand: 'Laneige',
+              name: 'Water Sleeping Mask',
+              step: 'mask',
+              pdp_open: {
+                path: 'external',
+                external: {
+                  query: 'Laneige Water Sleeping Mask',
+                },
+              },
+              metadata: {
+                match_state: 'llm_seed',
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.fallback_source, 'none');
+        assert.equal(resp.body?.failure_class, 'empty_structured');
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 0);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/generate: uses grounded generic reco mainline instead of legacy routine path', async () => {
   return withEnv(
     {
