@@ -40802,6 +40802,10 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         model: ANALYSIS_STORY_MODEL_GEMINI,
         source_mode: 'local_gemini_open_world',
         error_class: 'precheck_fail',
+        provider_reason: 'anchor_insufficient_for_open_world_fallback',
+        provider_detail: null,
+        provider_route: 'aurora_reco_alternatives_open_world',
+        provider_model: ANALYSIS_STORY_MODEL_GEMINI,
       },
     };
   }
@@ -40871,6 +40875,14 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       latency_ms: Math.max(0, Date.now() - startedAt),
       cache_hit: false,
       source_mode: 'local_gemini_open_world',
+      provider_reason: resp?.ok === true ? null : String(resp?.reason || '').trim() || null,
+      provider_detail: resp?.ok === true ? null : String(resp?.detail || '').trim() || null,
+      provider_route: 'aurora_reco_alternatives_open_world',
+      provider_model: ANALYSIS_STORY_MODEL_GEMINI,
+      provider_timeout_stage: resp?.ok === true ? null : String(resp?.timeout_stage || '').trim() || null,
+      provider_total_ms: Number.isFinite(Number(resp?.total_ms)) ? Math.max(0, Math.trunc(Number(resp.total_ms))) : null,
+      provider_upstream_ms: Number.isFinite(Number(resp?.upstream_ms)) ? Math.max(0, Math.trunc(Number(resp.upstream_ms))) : null,
+      provider_result_reason: resp?.meta && typeof resp.meta === 'object' ? String(resp.meta.result_reason || '').trim() || null : null,
       ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
     };
 
@@ -40991,11 +41003,18 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         cache_hit: false,
         source_mode: 'local_gemini_open_world',
         error_class: errorClass,
+        provider_reason: String(err?.code || err?.message || '').trim() || null,
+        provider_detail: String(err?.message || '').trim() || null,
+        provider_route: 'aurora_reco_alternatives_open_world',
+        provider_model: ANALYSIS_STORY_MODEL_GEMINI,
+        provider_timeout_stage: null,
+        provider_total_ms: null,
+        provider_upstream_ms: null,
+        provider_result_reason: null,
       },
     };
   }
 }
-
 async function fetchRecoAlternativesForExternalSeedProduct({
   ctx,
   productInput,
