@@ -14939,11 +14939,16 @@ const ANALYSIS_DEEP_DIVE_RESPONSE_JSON_SCHEMA = Object.freeze({
   properties: {
     conclusion: { type: 'string' },
     key_signals: { type: 'array', items: { type: 'string' } },
+    deeper_findings: { type: 'array', items: { type: 'string' } },
+    target_state: { type: 'array', items: { type: 'string' } },
+    core_principles: { type: 'array', items: { type: 'string' } },
+    am_focus: { type: 'array', items: { type: 'string' } },
+    pm_focus: { type: 'array', items: { type: 'string' } },
     actions_now: { type: 'array', items: { type: 'string' } },
     avoid_now: { type: 'array', items: { type: 'string' } },
     confidence_note: { type: 'string' },
   },
-  required: ['conclusion', 'key_signals', 'actions_now', 'avoid_now', 'confidence_note'],
+  required: ['conclusion', 'key_signals', 'deeper_findings', 'target_state', 'core_principles', 'am_focus', 'pm_focus', 'actions_now', 'avoid_now', 'confidence_note'],
 });
 const ANALYSIS_STORY_REVIEW_ISSUE_CODES = Object.freeze([
   'headline_generic',
@@ -21234,6 +21239,7 @@ const ANALYSIS_DEEP_DIVE_PROMPT_VERSION = 'aurora.analysis_story.v2.deep_dive_v2
 
 function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
   const safeEvidence = isPlainObject(evidence) ? evidence : {};
+  const baselineStory = isPlainObject(fallbackStory) ? fallbackStory : {};
   const routineContext = isPlainObject(safeEvidence.routine_context) ? safeEvidence.routine_context : {};
   const routineFit = isPlainObject(safeEvidence.routine_fit) ? safeEvidence.routine_fit : {};
   const lowestDimensions = Array.isArray(routineFit.lowest_dimensions) ? routineFit.lowest_dimensions : [];
@@ -21250,6 +21256,17 @@ function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
     activeRoutineProducts.length ? activeRoutineProducts : routineProducts,
     { max: 2, maxLen: 70 },
   );
+  const baselineFindings = normalizeArrayOfStrings(
+    Array.isArray(baselineStory.priority_findings)
+      ? baselineStory.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
+      : [],
+    { max: 4, maxLen: 90 },
+  );
+  const baselineActions = normalizeArrayOfStrings(
+    isPlainObject(baselineStory.ui_card_v1) ? baselineStory.ui_card_v1.actions_now : [],
+    { max: 2, maxLen: 90 },
+  );
+  const baselineTargetState = normalizeArrayOfStrings(baselineStory.target_state, { max: 2, maxLen: 90 });
   return compactQaPromptValue({
     q: pickFirstTrimmed(safeEvidence.followup_focus) || null,
     photo_backed: safeEvidence.use_photo === true || normalizeAnalysisPhotoRefs(safeEvidence.photo_refs).length > 0,
@@ -21273,6 +21290,9 @@ function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
       { max: 2, maxLen: 40 },
     ),
     goals: normalizeArrayOfStrings(safeEvidence.profile && safeEvidence.profile.goals, { max: 2, maxLen: 30 }),
+    baseline_findings: baselineFindings,
+    baseline_actions: baselineActions,
+    baseline_target_state: baselineTargetState,
   }, { maxItems: 5, maxString: 100 });
 }
 
@@ -21284,6 +21304,9 @@ function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } 
   const findings = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.findings, { max: 3, maxLen: 90 });
   const routine = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.routine, { max: 3, maxLen: 70 });
   const risk = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.risk, { max: 2, maxLen: 90 });
+  const baselineFindings = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_findings, { max: 4, maxLen: 90 });
+  const baselineActions = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_actions, { max: 2, maxLen: 90 });
+  const baselineTargetState = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_target_state, { max: 2, maxLen: 90 });
   const evidenceParts = [
     findings.length ? `${findings.join(' + ')} on photos` : '',
     confidence ? `${confidence} confidence` : '',
@@ -21296,7 +21319,12 @@ function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } 
     photoBacked ? 'Photo-backed context already exists.' : 'Profile-based context only.',
     question ? `Question: ${question}` : '',
     evidenceParts.length ? `Evidence: ${evidenceParts.join('; ')}.` : '',
-    'Rules: do not say you cannot analyze photos; use cautious wording like more consistent with; keep each string under 120 chars; key_signals/actions_now max 2; avoid_now max 1.',
+    baselineFindings.length ? `Baseline findings already shown: ${baselineFindings.join('; ')}.` : '',
+    baselineTargetState.length ? `Baseline target state: ${baselineTargetState.join('; ')}.` : '',
+    baselineActions.length ? `Baseline actions: ${baselineActions.join('; ')}.` : '',
+    'Rules: do not say you cannot analyze photos; build on the baseline instead of repeating it; add 1-2 deeper observations or interpretations that stay grounded in the same evidence; keep each string under 120 chars; preserve conservative wording like more consistent with; deeper_findings max 2; target_state/core_principles/am_focus/pm_focus/actions_now max 2; avoid_now max 1.',
+    'Output JSON schema:',
+    '{"conclusion":"","key_signals":[],"deeper_findings":[],"target_state":[],"core_principles":[],"am_focus":[],"pm_focus":[],"actions_now":[],"avoid_now":[],"confidence_note":""}',
   ].filter(Boolean).join('\n');
 }
 
@@ -21381,6 +21409,11 @@ function tryRecoverDeepDiveResponseFromTruncatedText(text) {
   const recovered = {
     conclusion: readJsonStringField('conclusion'),
     key_signals: readJsonStringArrayField('key_signals', 2),
+    deeper_findings: readJsonStringArrayField('deeper_findings', 2),
+    target_state: readJsonStringArrayField('target_state', 2),
+    core_principles: readJsonStringArrayField('core_principles', 2),
+    am_focus: readJsonStringArrayField('am_focus', 2),
+    pm_focus: readJsonStringArrayField('pm_focus', 2),
     actions_now: readJsonStringArrayField('actions_now', 2),
     avoid_now: readJsonStringArrayField('avoid_now', 1),
     confidence_note: readJsonStringField('confidence_note'),
@@ -21389,6 +21422,11 @@ function tryRecoverDeepDiveResponseFromTruncatedText(text) {
     recovered.conclusion ||
     recovered.confidence_note ||
     recovered.key_signals.length ||
+    recovered.deeper_findings.length ||
+    recovered.target_state.length ||
+    recovered.core_principles.length ||
+    recovered.am_focus.length ||
+    recovered.pm_focus.length ||
     recovered.actions_now.length ||
     recovered.avoid_now.length,
   );
@@ -21403,22 +21441,68 @@ function applyDeepDiveLlmResponseToStory({ responsePayload, fallbackStory } = {}
     ...baseline,
     ui_card_v1: isPlainObject(baseline.ui_card_v1) ? { ...baseline.ui_card_v1 } : {},
   };
+  const appendUniquePlanSteps = (rows, additions) => {
+    const existing = normalizeDeepDivePlanSteps(rows);
+    const seen = new Set(existing.map((item) => pickFirstTrimmed(item && item.step).toLowerCase()).filter(Boolean));
+    for (const entry of normalizeArrayOfStrings(additions, { max: 2, maxLen: 120 })) {
+      const key = entry.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      existing.push({ step: entry, purpose: '' });
+      if (existing.length >= 5) break;
+    }
+    return existing;
+  };
   const headline = pickFirstTrimmed(safePayload.conclusion, safePayload.headline);
   const keySignals = normalizeArrayOfStrings(safePayload.key_signals, { max: 2, maxLen: 120 });
+  const deeperFindings = normalizeArrayOfStrings(safePayload.deeper_findings, { max: 2, maxLen: 120 });
+  const targetState = normalizeArrayOfStrings(safePayload.target_state, { max: 2, maxLen: 120 });
+  const corePrinciples = normalizeArrayOfStrings(safePayload.core_principles, { max: 2, maxLen: 120 });
+  const amFocus = normalizeArrayOfStrings(safePayload.am_focus, { max: 2, maxLen: 120 });
+  const pmFocus = normalizeArrayOfStrings(safePayload.pm_focus, { max: 2, maxLen: 120 });
   const actionsNow = normalizeArrayOfStrings(safePayload.actions_now, { max: 2, maxLen: 120 });
   const avoidNow = normalizeArrayOfStrings(safePayload.avoid_now, { max: 1, maxLen: 120 });
   const uiPatch = {};
   if (headline) story.ui_card_v1.headline = headline;
   if (headline) uiPatch.headline = headline;
-  if (keySignals.length) {
-    story.ui_card_v1.key_points = keySignals;
-    uiPatch.key_points = keySignals;
-    story.priority_findings = keySignals.map((item, idx) => ({
+  const baselineFindings = Array.isArray(story.priority_findings) ? story.priority_findings : [];
+  const baselineFindingLines = baselineFindings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail)).filter(Boolean);
+  const mergedFindings = normalizeArrayOfStrings(
+    [
+      ...baselineFindingLines.slice(0, 2),
+      ...deeperFindings,
+      ...keySignals,
+      ...baselineFindingLines.slice(2),
+    ],
+    { max: 6, maxLen: 120 },
+  );
+  if (mergedFindings.length) {
+    story.priority_findings = mergedFindings.map((item, idx) => ({
       priority: idx + 1,
       title: item,
       detail: item,
       evidence_region_or_module: [],
     }));
+    story.ui_card_v1.key_points = mergedFindings.slice(0, 3);
+    uiPatch.key_points = mergedFindings.slice(0, 3);
+  }
+  if (targetState.length) {
+    story.target_state = normalizeArrayOfStrings([...(Array.isArray(story.target_state) ? story.target_state : []), ...targetState], {
+      max: 4,
+      maxLen: 120,
+    });
+  }
+  if (corePrinciples.length) {
+    story.core_principles = normalizeArrayOfStrings(
+      [...(Array.isArray(story.core_principles) ? story.core_principles : []), ...corePrinciples],
+      { max: 4, maxLen: 120 },
+    );
+  }
+  if (amFocus.length) {
+    story.am_plan = appendUniquePlanSteps(story.am_plan, amFocus);
+  }
+  if (pmFocus.length) {
+    story.pm_plan = appendUniquePlanSteps(story.pm_plan, pmFocus);
   }
   if (actionsNow.length) {
     story.ui_card_v1.actions_now = actionsNow;
@@ -21654,19 +21738,16 @@ async function buildAnalysisDeepDiveContentWithLlm({
     repairedStory = fallbackStory;
   }
   reviewedStory = reviewAnalysisStoryV2Json({ story: repairedStory, evidence });
-  const finalStory = safeCoerce(
+  let finalStory = safeCoerce(
     reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : repairedStory,
     fallbackStory,
   );
+  finalStory = applyAnalysisStoryProfilePatch(finalStory, {
+    profileSummary: profile,
+    diagnosisArtifact: normalizedArtifact,
+    lastAnalysis: resolvedLastAnalysis,
+  });
   if (llmUiPatch && isPlainObject(finalStory.ui_card_v1)) {
-    if (Array.isArray(llmUiPatch.key_points) && llmUiPatch.key_points.length) {
-      finalStory.priority_findings = llmUiPatch.key_points.map((item, idx) => ({
-        priority: idx + 1,
-        title: item,
-        detail: item,
-        evidence_region_or_module: [],
-      }));
-    }
     if (Array.isArray(llmUiPatch.avoid_now) && llmUiPatch.avoid_now.length) {
       finalStory.safety_notes = llmUiPatch.avoid_now.slice(0, 2);
     }
@@ -21948,7 +22029,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
         ].filter(Boolean).join(' ');
     return {
       assistant_text: assistantText,
-      cards: [buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH })],
+      cards: [buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH, language })],
       suggested_chips: suggestedChips,
       missing_context: false,
       used_last_analysis: true,
@@ -22038,7 +22119,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
       },
     }]
     : [];
-  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH }));
+  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH, language }));
   return {
     assistant_text: safetyMessage,
     cards,
@@ -22644,6 +22725,99 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   sessionPatch.state = state;
 }
 
+function isMeaningfulAnalysisStoryProfileToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return false;
+  return token !== 'pending' && token !== 'unknown' && token !== 'unconfirmed' && token !== '待确认';
+}
+
+function deriveAnalysisStoryProfilePatch({
+  story = null,
+  profileSummary = null,
+  requestRoutineProfilePatch = null,
+  analysisPayload = null,
+  diagnosisArtifact = null,
+  lastAnalysis = null,
+} = {}) {
+  const storyProfile = isPlainObject(story && story.skin_profile) ? story.skin_profile : {};
+  const analysisRoot = isPlainObject(analysisPayload) && isPlainObject(analysisPayload.analysis)
+    ? analysisPayload.analysis
+    : isPlainObject(analysisPayload)
+      ? analysisPayload
+      : {};
+  const analysisProfile = isPlainObject(analysisRoot.skin_profile)
+    ? analysisRoot.skin_profile
+    : isPlainObject(analysisRoot.skinProfile)
+      ? analysisRoot.skinProfile
+      : {};
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
+  const artifactProfile = {
+    skin_type_tendency: pickFirstTrimmed(artifact && artifact.skinType && artifact.skinType.value),
+    sensitivity_tendency: pickFirstTrimmed(artifact && artifact.sensitivity && artifact.sensitivity.value),
+  };
+  const lastProfile = isPlainObject(lastAnalysis && lastAnalysis.skin_profile)
+    ? lastAnalysis.skin_profile
+    : isPlainObject(lastAnalysis && lastAnalysis.skinProfile)
+      ? lastAnalysis.skinProfile
+      : {};
+  const profileForStory = {
+    ...(isPlainObject(profileSummary) ? profileSummary : {}),
+    ...(isPlainObject(requestRoutineProfilePatch) ? requestRoutineProfilePatch : {}),
+  };
+
+  const skinType = pickFirstTrimmed(
+    profileForStory.skinType,
+    analysisProfile.skin_type_tendency,
+    analysisProfile.skin_type,
+    analysisProfile.skinType,
+    artifactProfile.skin_type_tendency,
+    lastProfile.skin_type_tendency,
+    lastProfile.skin_type,
+    lastProfile.skinType,
+  );
+  const sensitivity = pickFirstTrimmed(
+    profileForStory.sensitivity,
+    analysisProfile.sensitivity_tendency,
+    analysisProfile.sensitivity,
+    artifactProfile.sensitivity_tendency,
+    lastProfile.sensitivity_tendency,
+    lastProfile.sensitivity,
+  );
+  const currentStrengths = normalizeArrayOfStrings(
+    [
+      ...(Array.isArray(storyProfile.current_strengths) ? storyProfile.current_strengths : []),
+      ...(Array.isArray(analysisProfile.current_strengths) ? analysisProfile.current_strengths : []),
+      ...(Array.isArray(lastProfile.current_strengths) ? lastProfile.current_strengths : []),
+    ],
+    { max: 4, maxLen: 120 },
+  );
+
+  const patch = {};
+  if (!isMeaningfulAnalysisStoryProfileToken(storyProfile.skin_type_tendency) && skinType) {
+    patch.skin_type_tendency = skinType;
+  }
+  if (!isMeaningfulAnalysisStoryProfileToken(storyProfile.sensitivity_tendency) && sensitivity) {
+    patch.sensitivity_tendency = sensitivity;
+  }
+  if ((!Array.isArray(storyProfile.current_strengths) || storyProfile.current_strengths.length === 0) && currentStrengths.length) {
+    patch.current_strengths = currentStrengths;
+  }
+  return Object.keys(patch).length ? patch : null;
+}
+
+function applyAnalysisStoryProfilePatch(story, options = {}) {
+  if (!isPlainObject(story)) return story;
+  const patch = deriveAnalysisStoryProfilePatch({ story, ...options });
+  if (!patch) return story;
+  return {
+    ...story,
+    skin_profile: {
+      ...(isPlainObject(story.skin_profile) ? story.skin_profile : {}),
+      ...patch,
+    },
+  };
+}
+
 function isIngredientPlanV2Payload(plan) {
   return isPlainObject(plan) && String(plan.schema_version || '').trim().toLowerCase() === 'aurora.ingredient_plan.v2';
 }
@@ -22657,13 +22831,216 @@ function coerceIngredientPlanForDiagnosisCard(plan, { profile = null, catalogPat
   });
 }
 
-function buildIngredientPlanCard(plan, requestId, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH } = {}) {
+function formatIngredientPlanRoutineStepLabel(stepToken, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const token = String(stepToken || '').trim().toLowerCase();
+  if (!token) return '';
+  const map = lang === 'CN'
+    ? {
+        cream: '修护面霜/保湿霜',
+        moisturizer: '保湿霜/屏障霜',
+        serum: '精华',
+        sunscreen: '防晒',
+        treatment: '功能型精华/局部护理',
+        cleanser: '洁面',
+        toner: '化妆水/精华水',
+      }
+    : {
+        cream: 'barrier creams or moisturizers',
+        moisturizer: 'moisturizers or barrier creams',
+        serum: 'serums',
+        sunscreen: 'sunscreens',
+        treatment: 'treatment serums or spot products',
+        cleanser: 'cleansers',
+        toner: 'toners or essence lotions',
+      };
+  return map[token] || token.replace(/_/g, ' ');
+}
+
+function isUsefulIngredientEducationText(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  if (lower.startsWith('rule signal:')) return false;
+  if (lower === 'limited evidence' || lower === '信息不足') return false;
+  if (lower.includes('quick brief') || lower.includes('enhanced evidence can be refreshed')) return false;
+  if (lower.includes('minimal readable card') || lower.includes('pending/unavailable')) return false;
+  if (lower.includes('matched by profile + concern signals')) return false;
+  return true;
+}
+
+function buildIngredientPlanEducationLinesFromRuleSignals(ruleSignals, { language = 'EN' } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const rows = normalizeArrayOfStrings(ruleSignals, { max: 3, maxLen: 160 });
+  const out = [];
+  for (const row of rows) {
+    const token = String(row || '').trim().toLowerCase();
+    if (!token) continue;
+    if (token.includes('low_confidence_gentle_only')) {
+      out.push(
+        lang === 'CN'
+          ? '当前分析仍偏保守，因此优先保留耐受度更高、屏障友好的成分。'
+          : 'This read is still conservative, so the plan favors lower-irritation, barrier-friendly ingredients first.',
+      );
+      continue;
+    }
+    if (token.includes('barrier') || token.includes('repair')) {
+      out.push(lang === 'CN' ? '这类成分更偏向修护和稳定屏障。' : 'This ingredient is being used here for barrier support and stability.');
+      continue;
+    }
+    if (token.includes('oil') || token.includes('sebum')) {
+      out.push(lang === 'CN' ? '它更适合油脂管理和毛孔相关诉求。' : 'It is being prioritized for oil-control and pore-related concerns.');
+      continue;
+    }
+    if (token.includes('acne')) {
+      out.push(lang === 'CN' ? '这类成分更偏向痘痘/堵塞管理。' : 'It is being prioritized for acne or congestion management.');
+      continue;
+    }
+  }
+  return normalizeArrayOfStrings(out, { max: 2, maxLen: 180 });
+}
+
+function buildIngredientPlanResearchSummary(reportPayload, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const report = isPlainObject(reportPayload) ? reportPayload : {};
+  const ingredient = isPlainObject(report.ingredient) ? report.ingredient : {};
+  const verdict = isPlainObject(report.verdict) ? report.verdict : {};
+  const usage = isPlainObject(report.how_to_use) ? report.how_to_use : isPlainObject(report.usage) ? report.usage : {};
+  const benefits = (Array.isArray(report.benefits) ? report.benefits : [])
+    .map((row) => (isPlainObject(row) ? pickFirstTrimmed(row.what_it_means, row.concern) : ''))
+    .filter(isUsefulIngredientEducationText)
+    .slice(0, 2);
+  const summary = pickFirstTrimmed(
+    ingredient.what_it_is,
+    report.what_it_is,
+    verdict.one_liner,
+    report.overview,
+  );
+  const stepLabel = formatIngredientPlanRoutineStepLabel(
+    pickFirstTrimmed(usage.routine_step, report.usage && report.usage.routine_step),
+    language,
+  );
+  const timeLabel = pickFirstTrimmed(usage.time, report.usage && report.usage.time);
+  const frequencyLabel = pickFirstTrimmed(usage.frequency, report.usage && report.usage.frequency);
+  const pairWell = normalizeArrayOfStrings(usage.pair_well, { max: 2, maxLen: 40 });
+  const topProducts = (Array.isArray(report.top_products) ? report.top_products : [])
+    .map((row) => (isPlainObject(row) ? pickFirstTrimmed(row.name) : pickFirstTrimmed(row)))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const why = normalizeArrayOfStrings(
+    [
+      isUsefulIngredientEducationText(summary) ? summary : '',
+      ...benefits,
+      isUsefulIngredientEducationText(report.evidence && report.evidence.summary) ? report.evidence.summary : '',
+    ],
+    { max: 3, maxLen: 180 },
+  );
+
+  const usageLines = [];
+  if (timeLabel || frequencyLabel || stepLabel) {
+    usageLines.push(
+      lang === 'CN'
+        ? [timeLabel && `时段：${timeLabel}`, frequencyLabel && `频率：${frequencyLabel}`, stepLabel && `常见形态：${stepLabel}`].filter(Boolean).join('；')
+        : [timeLabel && `Time: ${timeLabel}`, frequencyLabel && `Frequency: ${frequencyLabel}`, stepLabel && `Typical formats: ${stepLabel}`].filter(Boolean).join('; '),
+    );
+  }
+  if (pairWell.length) {
+    usageLines.push(lang === 'CN' ? `常见搭配：${pairWell.join('、')}` : `Pairs well with ${pairWell.join(', ')}`);
+  }
+  if (topProducts.length) {
+    usageLines.push(lang === 'CN' ? `典型产品：${topProducts.join('、')}` : `Typical products: ${topProducts.join(', ')}`);
+  }
+
+  return {
+    why,
+    usage_guidance: normalizeArrayOfStrings(usageLines, { max: 3, maxLen: 180 }),
+    ingredient_summary: isUsefulIngredientEducationText(summary) ? summary : '',
+    benefit_highlights: benefits,
+    evidence_summary: isUsefulIngredientEducationText(report.evidence && report.evidence.summary) ? report.evidence.summary : '',
+    typical_products: topProducts,
+    report_state: isPlainObject(report.report_state) ? report.report_state : null,
+  };
+}
+
+function enrichIngredientPlanPayloadForCard(plan, { language = 'EN' } = {}) {
+  if (!isIngredientPlanV2Payload(plan)) return plan;
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const targets = Array.isArray(plan.targets) ? plan.targets : [];
+  if (!targets.length) return plan;
+  const nextTargets = targets.map((target) => {
+    if (!isPlainObject(target)) return target;
+    const ingredientName = pickFirstTrimmed(target.ingredient_name, target.ingredient, target.display_name);
+    const existingWhy = normalizeArrayOfStrings(
+      (Array.isArray(target.why) ? target.why : []).filter(isUsefulIngredientEducationText),
+      { max: 3, maxLen: 180 },
+    );
+    const existingUsage = normalizeArrayOfStrings(target.usage_guidance, { max: 3, maxLen: 180 });
+    if (!ingredientName) {
+      return {
+        ...target,
+        why: existingWhy,
+        usage_guidance: existingUsage,
+      };
+    }
+    const reportPayload = buildIngredientReportPayload({
+      language: lang,
+      query: ingredientName,
+      research: getIngredientResearchCache(ingredientName) || null,
+      meta: {
+        normalized_query: normalizeIngredientResearchKey(ingredientName),
+        route_decision_reasons: ['ingredient_plan_card_enrichment'],
+        route_rule_version: INGREDIENT_ROUTE_RULE_VERSION,
+      },
+    });
+    const researchSummary = buildIngredientPlanResearchSummary(reportPayload, lang);
+    const fallbackRuleLines = buildIngredientPlanEducationLinesFromRuleSignals(target.rationale, { language: lang });
+    return {
+      ...target,
+      why: normalizeArrayOfStrings(
+        [
+          ...researchSummary.why,
+          ...existingWhy,
+          ...fallbackRuleLines,
+        ],
+        { max: 4, maxLen: 180 },
+      ),
+      usage_guidance: normalizeArrayOfStrings(
+        [
+          ...existingUsage,
+          ...researchSummary.usage_guidance,
+        ],
+        { max: 4, maxLen: 180 },
+      ),
+      ingredient_summary: researchSummary.ingredient_summary || undefined,
+      benefit_highlights: researchSummary.benefit_highlights,
+      evidence_summary: researchSummary.evidence_summary || undefined,
+      typical_products: researchSummary.typical_products,
+      report_state: researchSummary.report_state || undefined,
+      ingredient_report: reportPayload && typeof reportPayload === 'object'
+        ? {
+            ingredient: reportPayload.ingredient,
+            verdict: reportPayload.verdict,
+            benefits: reportPayload.benefits,
+            how_to_use: reportPayload.how_to_use,
+            top_products: reportPayload.top_products,
+            evidence: reportPayload.evidence,
+            report_state: reportPayload.report_state,
+          }
+        : undefined,
+    };
+  });
+  return { ...plan, targets: nextTargets };
+}
+
+function buildIngredientPlanCard(plan, requestId, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH, language = 'EN' } = {}) {
   const normalizedPlan = coerceIngredientPlanForDiagnosisCard(plan, { profile, catalogPath }) || plan;
+  const enrichedPlan = enrichIngredientPlanPayloadForCard(normalizedPlan, { language });
   if (isIngredientPlanV2Payload(normalizedPlan)) {
     return {
       card_id: `ing_plan_${requestId}`,
       type: 'ingredient_plan_v2',
-      payload: normalizedPlan,
+      payload: enrichedPlan,
     };
   }
   return {
@@ -52270,6 +52647,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id, {
             profile: profileSummary || profile || {},
             catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            language: ctx.lang,
           }));
         }
         const routineProductEvents = [];
@@ -53043,25 +53421,17 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ) || {}),
             ...(isPlainObject(requestRoutineProfilePatch) ? requestRoutineProfilePatch : {}),
           };
-          const storySkinProfile = isPlainObject(storyCard.payload.skin_profile) ? { ...storyCard.payload.skin_profile } : {};
-          const isMeaningfulStoryProfileToken = (value) => {
-            const token = String(value || '').trim().toLowerCase();
-            if (!token) return false;
-            return token !== 'pending' && token !== 'unknown' && token !== 'unconfirmed' && token !== '待确认';
-          };
-          const mergedStorySkinProfile = {
-            ...storySkinProfile,
-            ...(!isMeaningfulStoryProfileToken(storySkinProfile.skin_type_tendency) && pickFirstTrimmed(profileForStory.skinType)
-              ? { skin_type_tendency: pickFirstTrimmed(profileForStory.skinType) }
-              : {}),
-            ...(!isMeaningfulStoryProfileToken(storySkinProfile.sensitivity_tendency) && pickFirstTrimmed(profileForStory.sensitivity)
-              ? { sensitivity_tendency: pickFirstTrimmed(profileForStory.sensitivity) }
-              : {}),
-          };
-          storyCard.payload = {
-            ...storyCard.payload,
-            skin_profile: mergedStorySkinProfile,
-          };
+          storyCard.payload = applyAnalysisStoryProfilePatch(storyCard.payload, {
+            profileSummary: profileForStory,
+            requestRoutineProfilePatch,
+            analysisPayload: output && output.analysis_for_persist ? output.analysis_for_persist : null,
+            diagnosisArtifact:
+              output &&
+              output.analysis_for_persist &&
+              isPlainObject(output.analysis_for_persist.diagnosis_artifact)
+                ? output.analysis_for_persist.diagnosis_artifact
+                : null,
+          });
           const realignedText = buildAssistantMessageFromStoryV2(storyCard.payload, { language: ctx.lang });
           if (realignedText) {
             storyCard.payload = {
@@ -59805,6 +60175,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
               profile,
               catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+              language: ctx.lang,
             }));
           }
           const sessionPatch = {};
@@ -60107,12 +60478,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               }),
             },
           ];
-        if (mappedIngredientPlanCard || mappedIngredientPlan) {
-          cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
-            profile,
-            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-          }));
-        }
+          if (mappedIngredientPlanCard || mappedIngredientPlan) {
+            cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
+              profile,
+              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+              language: ctx.lang,
+            }));
+          }
 
         if (debugUpstream && upstreamDebug) {
           cards.push({
@@ -61891,6 +62263,7 @@ const __internal = {
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
   buildAssistantMessageFromStoryV2,
+  applyAnalysisStoryProfilePatch,
   resolveImplicitAnalysisFollowupActionId,
   extractAnalysisFollowupSignals,
   normalizeAnalysisPhotoRefs,
@@ -61906,6 +62279,7 @@ const __internal = {
   buildAnalysisDeepDiveContentWithLlm,
   loadLatestDiagnosisArtifactForRoute,
   buildAnalysisFollowupContent,
+  enrichIngredientPlanPayloadForCard,
   extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,
   buildRoutineFitSummaryPrompt,

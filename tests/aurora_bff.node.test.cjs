@@ -12367,6 +12367,119 @@ test('applyNonWeakeningDeepDiveUiPatch preserves fallback findings when llm patc
   assert.deepEqual(restored.ui_card_v1.actions_now, ['Patched action']);
 });
 
+test('applyAnalysisStoryProfilePatch backfills pending story profile from diagnosis signals', () => {
+  const { __internal } = loadRouteInternals();
+  const applyAnalysisStoryProfilePatch = __internal.applyAnalysisStoryProfilePatch;
+  if (!applyAnalysisStoryProfilePatch) { console.log('SKIP: applyAnalysisStoryProfilePatch not exported'); return; }
+
+  const patched = applyAnalysisStoryProfilePatch(
+    {
+      confidence_overall: { level: 'medium' },
+      skin_profile: { skin_type_tendency: 'pending', sensitivity_tendency: 'pending', current_strengths: [] },
+      priority_findings: [{ title: 'Barrier stress' }],
+    },
+    {
+      diagnosisArtifact: {
+        skinType: { value: 'combination' },
+        sensitivity: { value: 'high' },
+      },
+    },
+  );
+
+  assert.equal(patched.skin_profile.skin_type_tendency, 'combination');
+  assert.equal(patched.skin_profile.sensitivity_tendency, 'high');
+});
+
+test('applyDeepDiveLlmResponseToStory appends deeper findings and routine focus instead of replacing the baseline', () => {
+  const { __internal } = loadRouteInternals();
+  const applyDeepDiveLlmResponseToStory = __internal.applyDeepDiveLlmResponseToStory;
+  if (!applyDeepDiveLlmResponseToStory) { console.log('SKIP: applyDeepDiveLlmResponseToStory not exported'); return; }
+
+  const fallbackStory = {
+    schema_version: 'aurora.analysis_story.v2',
+    confidence_overall: { level: 'medium', score: 0.72 },
+    skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'medium', current_strengths: [] },
+    priority_findings: [
+      { priority: 1, title: 'Cheek dryness', detail: 'Dry cheek patches', evidence_region_or_module: [] },
+      { priority: 2, title: 'Texture on forehead', detail: 'Rough texture', evidence_region_or_module: [] },
+      { priority: 3, title: 'Mild chin congestion', detail: 'Small clogged pores', evidence_region_or_module: [] },
+    ],
+    target_state: ['Stabilize barrier first'],
+    core_principles: ['Keep actives gentle'],
+    am_plan: [{ step: 'Use SPF', purpose: 'UV protection' }],
+    pm_plan: [{ step: 'Barrier serum', purpose: 'Support recovery' }],
+    timeline: { first_4_weeks: ['Stabilize barrier'], week_8_12_expectation: ['Smoother texture'] },
+    safety_notes: [],
+    disclaimer_non_medical: true,
+    ui_card_v1: {
+      headline: 'Stabilize first, then reduce congestion.',
+      key_points: ['Cheek dryness', 'Texture on forehead'],
+      actions_now: ['Reduce active overlap'],
+      avoid_now: ['Do not over-exfoliate'],
+      confidence_label: 'medium',
+      next_checkin: 'Re-check in 2 weeks.',
+    },
+  };
+
+  const out = applyDeepDiveLlmResponseToStory({
+    responsePayload: {
+      conclusion: 'The deeper read points more to barrier strain with mild congestion than active inflammation.',
+      key_signals: ['Barrier strain is still the main pattern'],
+      deeper_findings: ['Shine looks more like dehydration bounce than heavy oil overload'],
+      target_state: ['Keep texture stable while calming redness triggers'],
+      core_principles: ['Add hydration before escalating acne actives'],
+      am_focus: ['Hydrating serum before sunscreen'],
+      pm_focus: ['Keep only one active night at a time'],
+      actions_now: ['Hold exfoliation to 1x weekly'],
+      avoid_now: ['Do not stack BHA and retinoid together'],
+      confidence_note: 'Photo quality is usable but still slightly conservative.',
+    },
+    fallbackStory,
+  });
+
+  assert.ok(Array.isArray(out.story.priority_findings));
+  assert.ok(out.story.priority_findings.length >= 4, `expected appended findings, got ${out.story.priority_findings.length}`);
+  assert.ok(out.story.priority_findings.some((item) => String(item.title || '').includes('dehydration bounce')));
+  assert.ok(Array.isArray(out.story.am_plan) && out.story.am_plan.some((item) => String(item.step || '').includes('Hydrating serum')));
+  assert.ok(Array.isArray(out.story.pm_plan) && out.story.pm_plan.some((item) => String(item.step || '').includes('one active night')));
+  assert.ok(Array.isArray(out.story.target_state) && out.story.target_state.length >= 2);
+});
+
+test('enrichIngredientPlanPayloadForCard replaces raw rule signals with ingredient education', () => {
+  const { __internal } = loadRouteInternals();
+  const enrichIngredientPlanPayloadForCard = __internal.enrichIngredientPlanPayloadForCard;
+  if (!enrichIngredientPlanPayloadForCard) { console.log('SKIP: enrichIngredientPlanPayloadForCard not exported'); return; }
+
+  const out = enrichIngredientPlanPayloadForCard(
+    {
+      schema_version: 'aurora.ingredient_plan.v2',
+      intensity: { level: 'gentle' },
+      targets: [
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          priority_level: 'high',
+          why: ['Rule signal: low_confidence_gentle_only'],
+          usage_guidance: [],
+          rationale: ['low_confidence_gentle_only'],
+          products: { competitors: [], dupes: [] },
+        },
+      ],
+      avoid: [],
+      conflicts: [],
+      budget_context: { effective_tier: 'unknown' },
+    },
+    { language: 'EN' },
+  );
+
+  const target = out.targets[0];
+  assert.ok(Array.isArray(target.why) && target.why.length > 0);
+  assert.equal(target.why.some((line) => /rule signal:/i.test(String(line))), false);
+  assert.ok(target.why.some((line) => /barrier|water loss|ceramide/i.test(String(line))), JSON.stringify(target.why));
+  assert.ok(Array.isArray(target.usage_guidance) && target.usage_guidance.some((line) => /typical products|typical formats|moisturizers|barrier creams/i.test(String(line))), JSON.stringify(target.usage_guidance));
+  assert.ok(target.ingredient_report && target.ingredient_report.ingredient);
+});
+
 test('stream deep-dive: buildChatCardsResponse wraps followup into v1-parseable envelope', () => {
   const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
 
