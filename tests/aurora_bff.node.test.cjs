@@ -12453,6 +12453,133 @@ test('applyDeepDiveLlmResponseToStory appends deeper findings and routine focus 
   assert.equal(out.story.priority_findings.some((item) => String(item.title || '').includes('Cheek dryness')), true);
 });
 
+test('buildDeterministicDeepDiveDelta derives second-pass insights from active overlap plus barrier stress pattern', () => {
+  const { __internal } = loadRouteInternals();
+  const buildDeterministicDeepDiveDelta = __internal.buildDeterministicDeepDiveDelta;
+  if (!buildDeterministicDeepDiveDelta) { console.log('SKIP: buildDeterministicDeepDiveDelta not exported'); return; }
+
+  const out = buildDeterministicDeepDiveDelta({
+    language: 'EN',
+    evidence: {
+      language: 'EN',
+      quality_grade: 'degraded',
+      routine_context: {
+        actives_detected: ['retinoid', 'salicylic_acid', 'vitamin_c'],
+      },
+      finding_evidence: [
+        { observation: 'Cheek dryness with tightness' },
+        { observation: 'Texture and pore congestion on the forehead and chin' },
+        { observation: 'Mild redness after active nights' },
+      ],
+    },
+    fallbackStory: {
+      priority_findings: [
+        { title: 'Cheek dryness' },
+        { title: 'Texture on forehead' },
+        { title: 'Mild chin congestion' },
+      ],
+      target_state: ['Stabilize barrier first'],
+      core_principles: ['Keep actives gentle'],
+    },
+  });
+
+  assert.ok(Array.isArray(out.deeper_findings) && out.deeper_findings.length > 0);
+  assert.match(out.deeper_findings[0], /barrier|active overlap|dehydration|oil overload/i);
+  assert.equal(out.actions_now.some((item) => /Separate retinoid|acids|vitamin C/i.test(String(item))), true);
+  assert.equal(out.pm_focus.some((item) => /one core active at night|one core active/i.test(String(item))), true);
+});
+
+test('mergeDeepDiveSignalPayload backfills second-pass fields when llm output is too thin', () => {
+  const { __internal } = loadRouteInternals();
+  const mergeDeepDiveSignalPayload = __internal.mergeDeepDiveSignalPayload;
+  if (!mergeDeepDiveSignalPayload) { console.log('SKIP: mergeDeepDiveSignalPayload not exported'); return; }
+
+  const out = mergeDeepDiveSignalPayload(
+    {
+      conclusion: 'Barrier strain seems more important than expected.',
+      key_signals: ['Barrier strain looks higher than pure oil overload.'],
+      deeper_findings: [],
+      target_state: [],
+      core_principles: [],
+      am_focus: [],
+      pm_focus: [],
+      actions_now: [],
+      avoid_now: [],
+      confidence_note: '',
+    },
+    {
+      deeper_findings: ['Current active overlap may be increasing barrier stress while congestion is only partly improving.'],
+      target_state: ['Bring barrier stress down first, then step up acne/texture treatment gradually.'],
+      core_principles: ['Do not stack multiple strong actives on the same night; spend irritation budget on one core step.'],
+      am_focus: ['Lock in hydration/repair before sunscreen in the morning.'],
+      pm_focus: ['Keep only one core active at night until tolerance is stable, then adjust frequency.'],
+      actions_now: ['Separate retinoid, exfoliating acids, and high-strength vitamin C instead of combining them on one night.'],
+      avoid_now: ['Avoid stacking multiple higher-irritation actives on the same night.'],
+      confidence_note: 'Because photo quality is degraded, this deep dive leans more on treatment pacing and tolerance interpretation.',
+    },
+  );
+
+  assert.equal(out.deeper_findings.length, 1);
+  assert.match(out.deeper_findings[0], /active overlap|barrier stress/i);
+  assert.equal(out.target_state[0], 'Bring barrier stress down first, then step up acne/texture treatment gradually.');
+  assert.equal(out.actions_now[0], 'Separate retinoid, exfoliating acids, and high-strength vitamin C instead of combining them on one night.');
+  assert.match(out.confidence_note, /treatment pacing and tolerance/i);
+});
+
+test('applyDeterministicDeepDiveSurfacePatch front-loads novel second-pass content when the repaired story drifts back to baseline', () => {
+  const { __internal } = loadRouteInternals();
+  const applyDeterministicDeepDiveSurfacePatch = __internal.applyDeterministicDeepDiveSurfacePatch;
+  if (!applyDeterministicDeepDiveSurfacePatch) { console.log('SKIP: applyDeterministicDeepDiveSurfacePatch not exported'); return; }
+
+  const fallbackStory = {
+    priority_findings: [
+      { title: 'Cheek dryness' },
+      { title: 'Texture on forehead' },
+      { title: 'Mild chin congestion' },
+    ],
+    target_state: ['Stabilize barrier first'],
+    core_principles: ['Keep actives gentle'],
+    ui_card_v1: {
+      headline: 'Barrier-first reset',
+      key_points: ['Cheek dryness', 'Texture on forehead'],
+      actions_now: ['Pause extra exfoliation'],
+      avoid_now: ['Do not stack multiple strong actives'],
+      confidence_label: 'medium',
+    },
+  };
+  const repairedStory = {
+    ...fallbackStory,
+    priority_findings: [
+      { title: 'Cheek dryness' },
+      { title: 'Texture on forehead' },
+      { title: 'Mild chin congestion' },
+    ],
+    target_state: ['Stabilize barrier first'],
+    core_principles: ['Keep actives gentle'],
+    ui_card_v1: {
+      ...fallbackStory.ui_card_v1,
+      key_points: ['Cheek dryness', 'Texture on forehead'],
+      actions_now: ['Pause extra exfoliation'],
+    },
+  };
+
+  const out = applyDeterministicDeepDiveSurfacePatch({
+    story: repairedStory,
+    fallbackStory,
+    deterministicDelta: {
+      deeper_findings: ['Current active overlap may be increasing barrier stress while congestion is only partly improving.'],
+      target_state: ['Bring barrier stress down first, then step up acne/texture treatment gradually.'],
+      core_principles: ['Do not stack multiple strong actives on the same night; spend irritation budget on one core step.'],
+      actions_now: ['Separate retinoid, exfoliating acids, and high-strength vitamin C instead of combining them on one night.'],
+    },
+  });
+
+  assert.match(String(out.priority_findings[0] && out.priority_findings[0].title || ''), /active overlap|barrier stress/i);
+  assert.equal(out.target_state[0], 'Bring barrier stress down first, then step up acne/texture treatment gradually.');
+  assert.equal(out.core_principles[0], 'Do not stack multiple strong actives on the same night; spend irritation budget on one core step.');
+  assert.equal(out.ui_card_v1.actions_now[0], 'Separate retinoid, exfoliating acids, and high-strength vitamin C instead of combining them on one night.');
+});
+
 test('enrichIngredientPlanPayloadForCard replaces raw rule signals with ingredient education', () => {
   const { __internal } = loadRouteInternals();
   const enrichIngredientPlanPayloadForCard = __internal.enrichIngredientPlanPayloadForCard;

@@ -21237,9 +21237,196 @@ function buildDeepDiveAnalysisEvidence({
 
 const ANALYSIS_DEEP_DIVE_PROMPT_VERSION = 'aurora.analysis_story.v2.deep_dive_v2';
 
+function buildDeterministicDeepDiveDelta({ evidence, fallbackStory, language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const safeEvidence = isPlainObject(evidence) ? evidence : {};
+  const baselineStory = isPlainObject(fallbackStory) ? fallbackStory : {};
+  const routineContext = isPlainObject(safeEvidence.routine_context) ? safeEvidence.routine_context : {};
+  const routineActives = normalizeArrayOfStrings(routineContext.actives_detected, { max: 6, maxLen: 40 })
+    .map((token) => String(token || '').trim().toLowerCase())
+    .filter(Boolean);
+  const baselineFindingLines = normalizeArrayOfStrings(
+    [
+      ...(Array.isArray(baselineStory.priority_findings)
+        ? baselineStory.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
+        : []),
+      ...(Array.isArray(safeEvidence.finding_evidence)
+        ? safeEvidence.finding_evidence.map((item) => pickFirstTrimmed(item && item.observation))
+        : []),
+    ],
+    { max: 8, maxLen: 120 },
+  );
+  const baselineText = baselineFindingLines.join(' | ').toLowerCase();
+  const qualityGrade = pickFirstTrimmed(safeEvidence.quality_grade).toLowerCase();
+  const hasDryness =
+    /(dry|dryness|tight|flak|peel|dehydrat|barrier|repair|stinging|redness|irritation)/.test(baselineText);
+  const hasCongestion = /(congestion|clog|acne|bump|comed|blackhead)/.test(baselineText);
+  const hasTexture = /(texture|rough|pore)/.test(baselineText);
+  const hasShine = /(oil|oily|shine|sebum)/.test(baselineText);
+  const hasRedness = /(redness|red|stinging|reactiv|irritat)/.test(baselineText);
+  const hasRetinoid = routineActives.some((token) => /retinoid|retinol|adapalene|tretinoin/.test(token));
+  const hasExfoliant = routineActives.some((token) => /bha|aha|pha|salicylic|glycolic|lactic|acid|exfol/.test(token));
+  const hasStrongVitaminC = routineActives.some((token) => /vitamin_c|ascorb/.test(token));
+  const hasActiveOverlap =
+    (hasRetinoid && hasExfoliant) ||
+    (hasRetinoid && hasStrongVitaminC) ||
+    routineActives.filter((token) => /retinoid|retinol|adapalene|tretinoin|bha|aha|pha|salicylic|glycolic|lactic|acid|exfol|benzoyl|vitamin_c|ascorb/.test(token)).length >= 2;
+
+  const deeperFindings = [];
+  const targetState = [];
+  const corePrinciples = [];
+  const amFocus = [];
+  const pmFocus = [];
+  const actionsNow = [];
+  const avoidNow = [];
+
+  if (qualityGrade === 'degraded') {
+    deeperFindings.push(
+      lang === 'CN'
+        ? '这次照片质量一般，出油/反光判断要更保守，因此更应优先看屏障与耐受线索。'
+        : 'Photo quality is degraded, so shine/oil cues are less reliable; barrier and tolerance clues deserve more weight.',
+    );
+  }
+  if (hasActiveOverlap && (hasDryness || hasRedness) && (hasCongestion || hasTexture)) {
+    deeperFindings.push(
+      lang === 'CN'
+        ? '当前更像是活性叠加在拉高屏障压力，同时闭口/质地只得到部分改善。'
+        : 'Current active overlap may be increasing barrier stress while congestion/texture is only partly improving.',
+    );
+  } else if ((hasDryness || hasRedness) && (hasCongestion || hasTexture || hasShine)) {
+    deeperFindings.push(
+      lang === 'CN'
+        ? '这更像“缺水/屏障压力 + 轻度堵塞”的混合模式，不是单纯出油过多。'
+        : 'This looks more like dehydration/barrier stress plus mild congestion, not pure oil overload.',
+    );
+  } else if (hasTexture && hasCongestion) {
+    deeperFindings.push(
+      lang === 'CN'
+        ? '这次更像毛孔堵塞驱动的粗糙感，而不是大范围炎症。'
+        : 'The roughness here looks more pore-congestion driven than broadly inflammatory.',
+    );
+  } else if (hasRedness || hasDryness) {
+    deeperFindings.push(
+      lang === 'CN'
+        ? '当前真正限制治疗节奏的更像是耐受和屏障状态。'
+        : 'Tolerance and barrier status appear to be the main factors limiting how fast treatment can escalate.',
+    );
+  }
+
+  if (hasActiveOverlap || hasDryness || hasRedness) {
+    targetState.push(
+      lang === 'CN'
+        ? '先把屏障压力压下来，再逐步推进痘痘/质地处理。'
+        : 'Bring barrier stress down first, then step up acne/texture treatment gradually.',
+    );
+  }
+  if (hasCongestion || hasTexture) {
+    targetState.push(
+      lang === 'CN'
+        ? '在不加重干燥的前提下慢慢降低堵塞与粗糙。'
+        : 'Reduce congestion and roughness without increasing dryness.',
+    );
+  }
+
+  if (hasActiveOverlap) {
+    corePrinciples.push(
+      lang === 'CN'
+        ? '不要同晚叠加多种强活性，把刺激预算留给一个核心步骤。'
+        : 'Do not stack multiple strong actives on the same night; spend irritation budget on one core step.',
+    );
+  }
+  if (hasDryness || hasRedness || qualityGrade === 'degraded') {
+    corePrinciples.push(
+      lang === 'CN'
+        ? '当照片线索偏保守时，用“先稳后进”的节奏比加量更重要。'
+        : 'When the read is conservative, stability-first pacing matters more than adding intensity.',
+    );
+  }
+
+  if (hasDryness || hasRedness) {
+    amFocus.push(
+      lang === 'CN'
+        ? '早上先把保湿/修护层做扎实，再接防晒。'
+        : 'Lock in hydration/repair before sunscreen in the morning.',
+    );
+  }
+  if (hasActiveOverlap || hasCongestion || hasTexture) {
+    pmFocus.push(
+      lang === 'CN'
+        ? '晚间一次只保留一个核心活性，观察耐受再调整频率。'
+        : 'Keep only one core active at night until tolerance is stable, then adjust frequency.',
+    );
+  }
+
+  if (hasActiveOverlap) {
+    actionsNow.push(
+      lang === 'CN'
+        ? '把维A、酸类、高浓 VC 错开，不要同晚并用。'
+        : 'Separate retinoid, exfoliating acids, and high-strength vitamin C instead of combining them on one night.',
+    );
+  }
+  if (hasCongestion || hasTexture) {
+    actionsNow.push(
+      lang === 'CN'
+        ? '控痘/控纹理先走低频稳定路线，不要急着加频率。'
+        : 'Keep acne/texture control slow and steady instead of escalating frequency too quickly.',
+    );
+  }
+  if (hasActiveOverlap || hasDryness || hasRedness) {
+    avoidNow.push(
+      lang === 'CN'
+        ? '避免同晚叠加多个高刺激活性。'
+        : 'Avoid stacking multiple higher-irritation actives on the same night.',
+    );
+  }
+
+  const conclusion = pickFirstTrimmed(deeperFindings[0], targetState[0]);
+  const confidenceNote =
+    qualityGrade === 'degraded'
+      ? (lang === 'CN'
+          ? '由于照片质量一般，这次深挖更侧重治疗节奏与耐受判断。'
+          : 'Because photo quality is degraded, this deep dive leans more on treatment pacing and tolerance interpretation.')
+      : '';
+
+  return {
+    conclusion,
+    key_signals: deeperFindings.slice(0, 2),
+    deeper_findings: deeperFindings.slice(0, 2),
+    target_state: targetState.slice(0, 2),
+    core_principles: corePrinciples.slice(0, 2),
+    am_focus: amFocus.slice(0, 2),
+    pm_focus: pmFocus.slice(0, 2),
+    actions_now: actionsNow.slice(0, 2),
+    avoid_now: avoidNow.slice(0, 1),
+    confidence_note: confidenceNote,
+  };
+}
+
+function mergeDeepDiveSignalPayload(primary, secondary) {
+  const base = isPlainObject(primary) ? primary : {};
+  const fallback = isPlainObject(secondary) ? secondary : {};
+  return {
+    conclusion: pickFirstTrimmed(base.conclusion, fallback.conclusion) || '',
+    key_signals: normalizeArrayOfStrings([...(Array.isArray(base.key_signals) ? base.key_signals : []), ...(Array.isArray(fallback.key_signals) ? fallback.key_signals : [])], { max: 2, maxLen: 120 }),
+    deeper_findings: normalizeArrayOfStrings([...(Array.isArray(base.deeper_findings) ? base.deeper_findings : []), ...(Array.isArray(fallback.deeper_findings) ? fallback.deeper_findings : [])], { max: 2, maxLen: 120 }),
+    target_state: normalizeArrayOfStrings([...(Array.isArray(base.target_state) ? base.target_state : []), ...(Array.isArray(fallback.target_state) ? fallback.target_state : [])], { max: 2, maxLen: 120 }),
+    core_principles: normalizeArrayOfStrings([...(Array.isArray(base.core_principles) ? base.core_principles : []), ...(Array.isArray(fallback.core_principles) ? fallback.core_principles : [])], { max: 2, maxLen: 120 }),
+    am_focus: normalizeArrayOfStrings([...(Array.isArray(base.am_focus) ? base.am_focus : []), ...(Array.isArray(fallback.am_focus) ? fallback.am_focus : [])], { max: 2, maxLen: 120 }),
+    pm_focus: normalizeArrayOfStrings([...(Array.isArray(base.pm_focus) ? base.pm_focus : []), ...(Array.isArray(fallback.pm_focus) ? fallback.pm_focus : [])], { max: 2, maxLen: 120 }),
+    actions_now: normalizeArrayOfStrings([...(Array.isArray(base.actions_now) ? base.actions_now : []), ...(Array.isArray(fallback.actions_now) ? fallback.actions_now : [])], { max: 2, maxLen: 120 }),
+    avoid_now: normalizeArrayOfStrings([...(Array.isArray(base.avoid_now) ? base.avoid_now : []), ...(Array.isArray(fallback.avoid_now) ? fallback.avoid_now : [])], { max: 1, maxLen: 120 }),
+    confidence_note: pickFirstTrimmed(base.confidence_note, fallback.confidence_note) || '',
+  };
+}
+
 function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
   const safeEvidence = isPlainObject(evidence) ? evidence : {};
   const baselineStory = isPlainObject(fallbackStory) ? fallbackStory : {};
+  const deterministicDelta = buildDeterministicDeepDiveDelta({
+    evidence: safeEvidence,
+    fallbackStory: baselineStory,
+    language: safeEvidence.language,
+  });
   const routineContext = isPlainObject(safeEvidence.routine_context) ? safeEvidence.routine_context : {};
   const routineFit = isPlainObject(safeEvidence.routine_fit) ? safeEvidence.routine_fit : {};
   const lowestDimensions = Array.isArray(routineFit.lowest_dimensions) ? routineFit.lowest_dimensions : [];
@@ -21295,6 +21482,8 @@ function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
     baseline_actions: baselineActions,
     baseline_target_state: baselineTargetState,
     baseline_core_principles: baselinePrinciples,
+    derived_second_pass: normalizeArrayOfStrings(deterministicDelta.deeper_findings, { max: 2, maxLen: 90 }),
+    derived_actions: normalizeArrayOfStrings(deterministicDelta.actions_now, { max: 2, maxLen: 90 }),
   }, { maxItems: 5, maxString: 100 });
 }
 
@@ -21310,6 +21499,8 @@ function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } 
   const baselineActions = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_actions, { max: 2, maxLen: 90 });
   const baselineTargetState = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_target_state, { max: 2, maxLen: 90 });
   const baselinePrinciples = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_core_principles, { max: 2, maxLen: 90 });
+  const derivedSecondPass = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.derived_second_pass, { max: 2, maxLen: 90 });
+  const derivedActions = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.derived_actions, { max: 2, maxLen: 90 });
   const evidenceParts = [
     findings.length ? `${findings.join(' + ')} on photos` : '',
     confidence ? `${confidence} confidence` : '',
@@ -21326,6 +21517,8 @@ function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } 
     baselineTargetState.length ? `Baseline target state: ${baselineTargetState.join('; ')}.` : '',
     baselinePrinciples.length ? `Baseline principles: ${baselinePrinciples.join('; ')}.` : '',
     baselineActions.length ? `Baseline actions: ${baselineActions.join('; ')}.` : '',
+    derivedSecondPass.length ? `Deterministic second-pass hints: ${derivedSecondPass.join('; ')}.` : '',
+    derivedActions.length ? `Deterministic next-step hints: ${derivedActions.join('; ')}.` : '',
     'Rules: do not say you cannot analyze photos; answer as a true second-pass read; do not restate baseline findings verbatim; use deeper_findings only for net-new interpretation, hidden pattern, interaction, priority shift, or likely driver; if nothing new can be supported, explain what constraint keeps the read conservative and how management priority changes; keep each string under 120 chars; preserve conservative wording like more consistent with.',
     'Prioritize what changes when looking more closely: barrier-vs-oil tradeoff, irritation-vs-congestion sequencing, routine interaction risk, and what should move up or down in treatment priority.',
     'Keep baseline continuity but make visible sections feel different from the first card: deeper_findings should surface first, while target_state/core_principles/actions should describe the next-step strategy rather than repeat baseline.',
@@ -21567,6 +21760,83 @@ function applyNonWeakeningDeepDiveUiPatch({ story, fallbackStory, uiPatch } = {}
   return restored;
 }
 
+function canonicalizeDeepDiveLine(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/^\s*\d+\s*[.)\-:：·]\s*/, '')
+    .replace(/[，,。.!！？;；:：()[\]{}]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function applyDeterministicDeepDiveSurfacePatch({ story, fallbackStory, deterministicDelta } = {}) {
+  const candidate = isPlainObject(story) ? story : {};
+  const fallback = isPlainObject(fallbackStory) ? fallbackStory : {};
+  const delta = isPlainObject(deterministicDelta) ? deterministicDelta : {};
+  if (!isPlainObject(candidate.ui_card_v1)) return candidate;
+
+  const patched = {
+    ...candidate,
+    ui_card_v1: { ...candidate.ui_card_v1 },
+  };
+  const baselineFindingLines = normalizeArrayOfStrings(
+    Array.isArray(fallback.priority_findings)
+      ? fallback.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
+      : [],
+    { max: 6, maxLen: 120 },
+  );
+  const baselineFindingKeys = new Set(baselineFindingLines.map(canonicalizeDeepDiveLine).filter(Boolean));
+  const candidateFindingLines = normalizeArrayOfStrings(
+    Array.isArray(candidate.priority_findings)
+      ? candidate.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
+      : [],
+    { max: 6, maxLen: 120 },
+  );
+  const novelDeltaFindings = normalizeArrayOfStrings(delta.deeper_findings, { max: 2, maxLen: 120 }).filter((line) => {
+    const key = canonicalizeDeepDiveLine(line);
+    return key && !baselineFindingKeys.has(key);
+  });
+  const topCandidateFindingKeys = new Set(candidateFindingLines.slice(0, 2).map(canonicalizeDeepDiveLine).filter(Boolean));
+  const hasVisibleNovelFinding = Array.from(topCandidateFindingKeys).some((key) => key && !baselineFindingKeys.has(key));
+  if (!hasVisibleNovelFinding && novelDeltaFindings.length) {
+    const mergedFindings = normalizeArrayOfStrings([...novelDeltaFindings, ...candidateFindingLines], { max: 6, maxLen: 120 });
+    patched.priority_findings = mergedFindings.map((item, idx) => ({
+      priority: idx + 1,
+      title: item,
+      detail: item,
+      evidence_region_or_module: [],
+    }));
+    patched.ui_card_v1.key_points = mergedFindings.slice(0, 3);
+  }
+
+  const frontLoadNovelStrings = (currentRows, baselineRows, novelRows, { max = 4 } = {}) => {
+    const baselineKeys = new Set(normalizeArrayOfStrings(baselineRows, { max, maxLen: 120 }).map(canonicalizeDeepDiveLine).filter(Boolean));
+    const current = normalizeArrayOfStrings(currentRows, { max, maxLen: 120 });
+    const front = normalizeArrayOfStrings(novelRows, { max, maxLen: 120 }).filter((line) => {
+      const key = canonicalizeDeepDiveLine(line);
+      return key && !baselineKeys.has(key);
+    });
+    if (!front.length) return current;
+    const currentHasNovel = current.slice(0, 2).some((line) => {
+      const key = canonicalizeDeepDiveLine(line);
+      return key && !baselineKeys.has(key);
+    });
+    if (currentHasNovel) return current;
+    return normalizeArrayOfStrings([...front, ...current], { max, maxLen: 120 });
+  };
+
+  patched.target_state = frontLoadNovelStrings(candidate.target_state, fallback.target_state, delta.target_state, { max: 4 });
+  patched.core_principles = frontLoadNovelStrings(candidate.core_principles, fallback.core_principles, delta.core_principles, { max: 4 });
+  patched.ui_card_v1.actions_now = frontLoadNovelStrings(
+    candidate.ui_card_v1.actions_now,
+    isPlainObject(fallback.ui_card_v1) ? fallback.ui_card_v1.actions_now : [],
+    delta.actions_now,
+    { max: 3 },
+  );
+
+  return patched;
+}
+
 function isDeepDiveStoryWeakerThanFallback({ story, fallbackStory } = {}) {
   const candidate = isPlainObject(story) ? story : {};
   const baseline = isPlainObject(fallbackStory) ? fallbackStory : {};
@@ -21691,6 +21961,11 @@ async function buildAnalysisDeepDiveContentWithLlm({
     sourceCardType: pickFirstTrimmed(normalizedActionData.source_card_type, normalizedSessionContext.source_card_type),
     fallbackStory,
   });
+  const deterministicDelta = buildDeterministicDeepDiveDelta({
+    evidence,
+    fallbackStory,
+    language,
+  });
 
   let storyPayload = fallbackStory;
   let llmUsed = false;
@@ -21713,7 +21988,7 @@ async function buildAnalysisDeepDiveContentWithLlm({
     if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
       llmUsed = true;
       const merged = applyDeepDiveLlmResponseToStory({
-        responsePayload: llmResult.json,
+        responsePayload: mergeDeepDiveSignalPayload(llmResult.json, deterministicDelta),
         fallbackStory,
       });
       storyPayload = isPlainObject(merged && merged.story) ? merged.story : fallbackStory;
@@ -21730,7 +22005,7 @@ async function buildAnalysisDeepDiveContentWithLlm({
         llmUsed = true;
         llmFailureReason = 'PARSE_TRUNCATED_JSON_RECOVERED';
         const merged = applyDeepDiveLlmResponseToStory({
-          responsePayload: recoveredPayload,
+          responsePayload: mergeDeepDiveSignalPayload(recoveredPayload, deterministicDelta),
           fallbackStory,
         });
         storyPayload = isPlainObject(merged && merged.story) ? merged.story : fallbackStory;
@@ -21746,6 +22021,17 @@ async function buildAnalysisDeepDiveContentWithLlm({
         { err: llmFailureReason, request_id: requestId },
         'aurora bff: skin deep-dive llm failed, using deterministic fallback',
     );
+  }
+  if (storyPayload === fallbackStory) {
+    const deterministicMerged = applyDeepDiveLlmResponseToStory({
+      responsePayload: deterministicDelta,
+      fallbackStory,
+    });
+    storyPayload = isPlainObject(deterministicMerged && deterministicMerged.story) ? deterministicMerged.story : fallbackStory;
+    llmConfidenceNote = pickFirstTrimmed(llmConfidenceNote, deterministicMerged && deterministicMerged.confidence_note) || null;
+    if (!llmUiPatch && isPlainObject(deterministicMerged && deterministicMerged.ui_patch)) {
+      llmUiPatch = deterministicMerged.ui_patch;
+    }
   }
 
   const safeCoerce = (candidate, fb) => {
@@ -21788,8 +22074,13 @@ async function buildAnalysisDeepDiveContentWithLlm({
     fallbackStory,
     uiPatch: llmUiPatch,
   });
-  const assistantText = buildDeepDiveAssistantText({
+  const surfacedFinalStory = applyDeterministicDeepDiveSurfacePatch({
     story: stabilizedFinalStory,
+    fallbackStory,
+    deterministicDelta,
+  });
+  const assistantText = buildDeepDiveAssistantText({
+    story: surfacedFinalStory,
     language,
     replyText,
     analysisOrigin,
@@ -21798,8 +22089,8 @@ async function buildAnalysisDeepDiveContentWithLlm({
   const fellBackToSnapshot = Boolean(
     resolvedSnapshot && (
       isDeepDiveStoryWeakerThanFallback({ story: storyPayload, fallbackStory }) ||
-      stabilizedFinalStory === fallbackStory ||
-      isDeepDiveStoryWeakerThanFallback({ story: stabilizedFinalStory, fallbackStory })
+      surfacedFinalStory === fallbackStory ||
+      isDeepDiveStoryWeakerThanFallback({ story: surfacedFinalStory, fallbackStory })
     ),
   );
 
@@ -21810,7 +22101,7 @@ async function buildAnalysisDeepDiveContentWithLlm({
         card_id: `analysis_followup_story_${requestId}`,
         type: 'analysis_story_v2',
         payload: {
-          ...stabilizedFinalStory,
+          ...surfacedFinalStory,
           summary: assistantText,
         },
       },
@@ -62294,10 +62585,13 @@ const __internal = {
   rankAnalysisConfidenceLevel,
   buildDeepDiveFallbackStoryPayload,
   buildDeepDiveAnalysisEvidence,
+  buildDeterministicDeepDiveDelta,
+  mergeDeepDiveSignalPayload,
   buildDeepDiveAnalysisStoryGenerationPrompt,
   tryRecoverDeepDiveResponseFromTruncatedText,
   applyDeepDiveLlmResponseToStory,
   applyNonWeakeningDeepDiveUiPatch,
+  applyDeterministicDeepDiveSurfacePatch,
   isDeepDiveStoryWeakerThanFallback,
   buildDeepDiveAssistantText,
   buildAnalysisDeepDiveContentWithLlm,
