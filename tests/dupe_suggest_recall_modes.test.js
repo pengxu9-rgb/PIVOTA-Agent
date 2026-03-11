@@ -56,8 +56,8 @@ describe('executeDupeSuggest recall modes', () => {
         field_missing: [],
         source_mode: 'pool_only',
         template_id: 'reco_alternatives_v1_0',
-        raw_output_summary: {
-          raw_output_item_count: 1,
+      raw_output_summary: {
+        raw_output_item_count: 1,
           raw_items_with_product_object: 1,
           raw_items_with_nested_brand_name: 1,
           raw_items_with_flat_brand_name: 0,
@@ -66,6 +66,8 @@ describe('executeDupeSuggest recall modes', () => {
             { brand: 'Weak Catalog', name: 'Weak Catalog Lotion', has_product_object: true },
           ],
         },
+        failure_class: null,
+        llm_trace: { error_class: null },
       })
       .mockResolvedValueOnce({
         alternatives: [
@@ -95,6 +97,8 @@ describe('executeDupeSuggest recall modes', () => {
             { brand: 'Open Brand', name: 'Real Lightweight Moisturizer', has_product_object: true },
           ],
         },
+        failure_class: null,
+        llm_trace: { error_class: null },
       });
 
     const services = makeBaseServices({
@@ -144,6 +148,8 @@ describe('executeDupeSuggest recall modes', () => {
       mapped_output_item_count: 1,
       raw_items_with_product_object: 1,
       field_missing_reasons: [],
+      failure_class: null,
+      llm_error_class: null,
       failure_reasons: expect.arrayContaining(['placeholder_candidates_removed']),
     }));
     expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
@@ -152,6 +158,8 @@ describe('executeDupeSuggest recall modes', () => {
       mapped_output_item_count: 1,
       raw_items_with_nested_brand_name: 1,
       field_missing_reasons: [],
+      failure_class: null,
+      llm_error_class: null,
       failure_reasons: [],
     }));
     expect(fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
@@ -204,6 +212,8 @@ describe('executeDupeSuggest recall modes', () => {
             { brand: 'Alt Brand', name: 'Anchor Only Lotion', has_product_object: true },
           ],
         },
+        failure_class: 'provider_error',
+        llm_trace: { error_class: 'provider_error' },
       }),
     });
 
@@ -244,6 +254,8 @@ describe('executeDupeSuggest recall modes', () => {
       recommendation_mode: 'open_world_only',
       raw_output_item_count: 1,
       mapped_output_item_count: 1,
+      failure_class: 'provider_error',
+      llm_error_class: 'provider_error',
       field_missing_reasons: ['upstream_missing_or_empty'],
     }));
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(1);
