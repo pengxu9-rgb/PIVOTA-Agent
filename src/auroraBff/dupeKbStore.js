@@ -18,6 +18,17 @@ const state = {
   dbUnavailable: false,
 };
 
+function extractContractVersion(entry) {
+  const sourceMeta =
+    entry && entry.source_meta && typeof entry.source_meta === 'object' && !Array.isArray(entry.source_meta)
+      ? entry.source_meta
+      : null;
+  const version = sourceMeta && typeof sourceMeta.contract_version === 'string'
+    ? sourceMeta.contract_version.trim()
+    : '';
+  return version || null;
+}
+
 function normalizeKey(value) {
   const s = String(value || '').trim();
   if (!s) return null;
@@ -202,6 +213,74 @@ async function upsertToDb(entry) {
   }
 }
 
+async function purgeDbByContractVersion(currentContractVersion) {
+  if (state.dbUnavailable) return 0;
+  const contractVersion = normalizeKey(currentContractVersion);
+  if (!contractVersion) return 0;
+  try {
+    const res = await query(
+      `
+        DELETE FROM aurora_dupe_kb
+        WHERE source_meta IS NULL
+          OR jsonb_typeof(source_meta) <> 'object'
+          OR COALESCE(source_meta->>'contract_version', '') <> $1
+      `,
+      [contractVersion],
+    );
+    return Number.isFinite(Number(res && res.rowCount)) ? Math.max(0, Math.trunc(Number(res.rowCount))) : 0;
+  } catch (err) {
+    const code = err && err.code ? String(err.code) : '';
+    if (code === 'NO_DATABASE' || code === '42P01') {
+      state.dbUnavailable = true;
+      return 0;
+    }
+    return 0;
+  }
+}
+
+function purgeMemByContractVersion(currentContractVersion) {
+  const contractVersion = normalizeKey(currentContractVersion);
+  if (!contractVersion) return 0;
+  let removed = 0;
+  for (const [key, entry] of state.memIndex.entries()) {
+    if (extractContractVersion(entry) === contractVersion) continue;
+    state.memIndex.delete(key);
+    removed += 1;
+  }
+  return removed;
+}
+
+function purgeFileByContractVersion(currentContractVersion) {
+  const contractVersion = normalizeKey(currentContractVersion);
+  if (!contractVersion) return 0;
+  loadFileIndexOnce();
+  const filePath = getKbPath();
+  if (!fs.existsSync(filePath)) return 0;
+
+  const kept = [];
+  let removed = 0;
+  for (const [key, entry] of state.fileIndex.entries()) {
+    if (extractContractVersion(entry) === contractVersion) {
+      kept.push([key, entry]);
+      continue;
+    }
+    removed += 1;
+  }
+  if (!removed) return 0;
+
+  const nextIndex = new Map(kept);
+  const lines = Array.from(nextIndex.values()).map((entry) => JSON.stringify(entry));
+  const nextPayload = lines.length ? `${lines.join('\n')}\n` : '';
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, nextPayload, 'utf8');
+    state.fileIndex = nextIndex;
+  } catch {
+    return 0;
+  }
+  return removed;
+}
+
 async function getDupeKbEntry(kbKey) {
   const key = normalizeKey(kbKey);
   if (!key) return null;
@@ -248,8 +327,34 @@ async function upsertDupeKbEntry(entry) {
   await upsertToDb(normalized);
 }
 
+async function purgeDupeKbEntriesByContractVersion(currentContractVersion) {
+  const contractVersion = normalizeKey(currentContractVersion);
+  if (!contractVersion) {
+    return { db_deleted: 0, mem_deleted: 0, file_deleted: 0 };
+  }
+  const [dbDeleted, memDeleted, fileDeleted] = await Promise.all([
+    purgeDbByContractVersion(contractVersion),
+    Promise.resolve(purgeMemByContractVersion(contractVersion)),
+    Promise.resolve(purgeFileByContractVersion(contractVersion)),
+  ]);
+  return {
+    db_deleted: dbDeleted,
+    mem_deleted: memDeleted,
+    file_deleted: fileDeleted,
+  };
+}
+
+function __resetDupeKbStateForTest() {
+  state.fileLoaded = false;
+  state.fileIndex = new Map();
+  state.memIndex = new Map();
+  state.dbUnavailable = false;
+}
+
 module.exports = {
   normalizeKey,
   getDupeKbEntry,
   upsertDupeKbEntry,
+  purgeDupeKbEntriesByContractVersion,
+  __resetDupeKbStateForTest,
 };

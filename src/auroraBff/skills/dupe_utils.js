@@ -26,6 +26,7 @@ const DROP_REASON = {
   SAME_CANONICAL_REF: 'same_canonical_product_ref',
   SAME_NORMALIZED_URL: 'same_normalized_url',
   SAME_BRAND_SAME_NAME: 'same_brand_and_same_name',
+  SAME_BRAND_EXACT_LABEL: 'same_brand_exact_full_label',
   SAME_BRAND_HIGH_SIMILARITY: 'same_brand_high_name_similarity',
   NO_BRAND_FULL_NAME_MATCH: 'brand_missing_full_name_match',
   NO_BRAND_SAME_URL: 'brand_missing_same_url',
@@ -117,6 +118,22 @@ function normalizeProductName(name) {
   norm = norm.replace(MARKETING_WORDS, ' ');
   norm = norm.replace(/\s+/g, ' ').trim();
   return norm;
+}
+
+function stripLeadingBrandTokensFromName(name, brand) {
+  const normalizedName = normalizeProductName(name);
+  const normalizedBrand = normalizeBrand(brand);
+  if (!normalizedName || !normalizedBrand) return normalizedName;
+  const brandTokens = normalizedBrand.split(/\s+/).filter(Boolean);
+  const nameTokens = normalizedName.split(/\s+/).filter(Boolean);
+  if (!brandTokens.length || !nameTokens.length) return normalizedName;
+  let index = 0;
+  while (index < brandTokens.length && index < nameTokens.length && brandTokens[index] === nameTokens[index]) {
+    index += 1;
+  }
+  if (index === 0) return normalizedName;
+  const stripped = nameTokens.slice(index).join(' ').trim();
+  return stripped || normalizedName;
 }
 
 function stripRecommendationSuffix(name) {
@@ -279,6 +296,7 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   const identity = getCandidateIdentity(candidate);
   const candidateBrand = normalizeBrand(identity.brand);
   const candidateName = normalizeProductName(identity.name || '');
+  const candidateNameSansBrand = stripLeadingBrandTokensFromName(identity.name || '', identity.brand || '');
   const candidateUrl = normalizeUrl(identity.url || '');
   const candidateProductId = identity.product_id || null;
 
@@ -290,7 +308,10 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   const anchorDisplayName = normalizeProductName(
     anchorIdentity?.display_name || [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
   );
-  const anchorFullName = normalizeProductName([anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '));
+  const anchorDisplaySansBrand = stripLeadingBrandTokensFromName(
+    anchorIdentity?.display_name || [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
+    anchorIdentity?.brand || '',
+  );
 
   if (anchorProductId && candidateProductId && String(anchorProductId) === String(candidateProductId)) {
     return { isSelfRef: true, reason: DROP_REASON.SAME_CANONICAL_REF };
@@ -301,8 +322,18 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
     return { isSelfRef: true, reason: DROP_REASON.SAME_NORMALIZED_URL };
   }
 
-  if (!candidateBrand && candidateName && (anchorDisplayName || anchorFullName)
-    && (candidateName === anchorDisplayName || candidateName === anchorFullName)) {
+  const anchorFullName = normalizeProductName([anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '));
+  const anchorFullSansBrand = stripLeadingBrandTokensFromName(
+    [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
+    anchorIdentity?.brand || '',
+  );
+
+  if (
+    !candidateBrand &&
+    candidateName &&
+    (anchorDisplayName || anchorFullName) &&
+    (candidateName === anchorDisplayName || candidateName === anchorFullName)
+  ) {
     return { isSelfRef: true, reason: DROP_REASON.NO_BRAND_FULL_NAME_MATCH };
   }
 
@@ -318,6 +349,24 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   }
 
   if (anchorBrand && candidateBrand && anchorBrand === candidateBrand) {
+    const exactAnchorLabels = new Set(
+      [
+        anchorName,
+        anchorDisplayName,
+        anchorFullName,
+        anchorDisplaySansBrand,
+        anchorFullSansBrand,
+      ].filter(Boolean),
+    );
+    if (
+      candidateName &&
+      (
+        exactAnchorLabels.has(candidateName) ||
+        (candidateNameSansBrand && exactAnchorLabels.has(candidateNameSansBrand))
+      )
+    ) {
+      return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_EXACT_LABEL };
+    }
     if (anchorName && candidateName && anchorName === candidateName) {
       return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_SAME_NAME };
     }

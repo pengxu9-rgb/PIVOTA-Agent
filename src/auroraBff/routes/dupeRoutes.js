@@ -29,6 +29,7 @@ function mountDupeRoutes(app, deps) {
     applyDupeSuggestSanitizeToEnvelope,
     getDupeKbEntry,
     upsertDupeKbEntry,
+    purgeDupeKbEntriesByContractVersion,
     normalizeDupeKbKey,
     searchPivotaBackendProducts,
     buildRecoAlternativesCandidatePool,
@@ -65,6 +66,7 @@ function mountDupeRoutes(app, deps) {
   const _dupeSuggestServices = {
     getDupeKbEntry,
     upsertDupeKbEntry,
+    purgeDupeKbEntriesByContractVersion,
     normalizeDupeKbKey,
     searchPivotaBackendProducts,
     buildRecoAlternativesCandidatePool,
