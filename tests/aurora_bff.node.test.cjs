@@ -5212,6 +5212,105 @@ test('/v1/reco/alternatives: structured candidate pool returns selector_grounded
   );
 });
 
+test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and uses local Gemini', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let auroraChatCalls = 0;
+      decisionModule.auroraChat = async () => {
+        auroraChatCalls += 1;
+        throw new Error('auroraChat should not be called for open_world_only');
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        let geminiCalls = 0;
+        __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+          geminiCalls += 1;
+          assert.equal(args.route, 'aurora_reco_alternatives_open_world');
+          return {
+            ok: true,
+            json: {
+              alternatives: [
+                {
+                  brand: 'Good Molecules',
+                  name: 'Niacinamide Serum',
+                  product_type: 'serum',
+                  similarity_score: 72,
+                  reasons: ['Niacinamide-led serum role overlaps with the anchor.'],
+                  tradeoff_notes: ['Zinc support is less explicit than the anchor.'],
+                  best_use: 'Tone-evening serum routines',
+                },
+              ],
+            },
+          };
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_local',
+            trace_id: 'trace_open_world_local',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA'],
+            claims: ['brightening', 'oil control'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(auroraChatCalls, 0);
+        assert.equal(geminiCalls, 1);
+        assert.equal(out?.ok, true);
+        assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
+        assert.equal(out?.source_mode, 'open_world_only');
+        assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
+        assert.equal(Array.isArray(out?.alternatives), true);
+        assert.equal(out.alternatives.length, 1);
+        assert.equal(out.alternatives[0]?.candidate_origin, 'open_world');
+        assert.equal(out.alternatives[0]?.grounding_status, 'name_only');
+        assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
+        assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
   return withEnv(
     {

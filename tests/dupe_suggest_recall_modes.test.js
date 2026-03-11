@@ -24,7 +24,7 @@ function makeBaseServices(overrides = {}) {
       alternatives: [],
       field_missing: [],
       source_mode: 'open_world_only',
-      template_id: 'reco_alternatives_hybrid_v1',
+      template_id: 'reco_alternatives_open_world_v1',
     }),
     auroraChat: jest.fn().mockResolvedValue(null),
     buildContextPrefix: jest.fn(() => ''),
@@ -86,7 +86,7 @@ describe('executeDupeSuggest recall modes', () => {
         ],
         field_missing: [],
         source_mode: 'open_world_only',
-        template_id: 'reco_alternatives_hybrid_v1',
+        template_id: 'reco_alternatives_open_world_v1',
         raw_output_summary: {
           raw_output_item_count: 1,
           raw_items_with_product_object: 1,
@@ -207,7 +207,7 @@ describe('executeDupeSuggest recall modes', () => {
         ],
         field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
         source_mode: 'open_world_only',
-        template_id: 'reco_alternatives_hybrid_v1',
+        template_id: 'reco_alternatives_open_world_v1',
         raw_output_summary: {
           raw_output_item_count: 1,
           raw_items_with_product_object: 1,
@@ -351,7 +351,7 @@ describe('executeDupeSuggest recall modes', () => {
           ],
           field_missing: [],
           source_mode: 'open_world_only',
-          template_id: 'reco_alternatives_hybrid_v1',
+          template_id: 'reco_alternatives_open_world_v1',
           raw_output_summary: {
             raw_output_item_count: 1,
             raw_items_with_product_object: 1,
@@ -477,7 +477,7 @@ describe('executeDupeSuggest recall modes', () => {
         ],
         field_missing: [],
         source_mode: 'open_world_only',
-        template_id: 'reco_alternatives_hybrid_v1',
+        template_id: 'reco_alternatives_open_world_v1',
       }),
     });
 
@@ -591,7 +591,7 @@ describe('executeDupeSuggest recall modes', () => {
         ],
         field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
         source_mode: 'open_world_only',
-        template_id: 'reco_alternatives_hybrid_v1',
+        template_id: 'reco_alternatives_open_world_v1',
       }),
     });
 
