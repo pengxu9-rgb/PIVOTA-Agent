@@ -5314,7 +5314,6 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
         assert.deepEqual(out.alternatives[0]?.tradeoff_notes, ['Formula overlap remains uncertain.']);
         assert.equal(geminiRequest?.maxOutputTokens, 2048);
-        assert.equal(geminiRequest?.thinkingBudget, 0);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 1);
         assert.deepEqual(payload?.anchor?.active_themes ?? [], ['niacinamide', 'zinc']);

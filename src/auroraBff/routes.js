@@ -42162,7 +42162,6 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       maxOutputTokens: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
       route: 'aurora_reco_alternatives_open_world',
       ignoreForceModel: true,
-      thinkingBudget: 0,
     });
     let rawRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
       ? resp.json.alternatives
@@ -42187,7 +42186,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       finish_reason: String(resp?.finish_reason || '').trim() || null,
       parse_status: String(resp?.parse_status || '').trim() || null,
       ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
-      thinking_budget_config: 0,
+      thinking_budget_config: null,
       max_output_tokens_config: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
       raw_text_length: typeof resp?.raw_text === 'string' ? resp.raw_text.length : null,
     };
@@ -42396,7 +42395,6 @@ async function fetchRecoAlternativesForExternalSeedProduct({
       maxOutputTokens: 1200,
       responseJsonSchema: buildExternalSeedOpenWorldSchema(),
       route: 'aurora_reco_alternatives_open_world',
-      thinkingBudget: 0,
     });
     llmTrace = {
       template_id: 'reco_alternatives_open_world_v1',
