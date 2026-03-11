@@ -67,7 +67,7 @@ describe('executeDupeSuggest recall modes', () => {
           ],
         },
         failure_class: null,
-        llm_trace: { error_class: null },
+        llm_trace: { error_class: null, upstream_status: null, upstream_error_code: null, upstream_error_message: null },
       })
       .mockResolvedValueOnce({
         alternatives: [
@@ -98,7 +98,7 @@ describe('executeDupeSuggest recall modes', () => {
           ],
         },
         failure_class: null,
-        llm_trace: { error_class: null },
+        llm_trace: { error_class: null, upstream_status: null, upstream_error_code: null, upstream_error_message: null },
       });
 
     const services = makeBaseServices({
@@ -150,6 +150,9 @@ describe('executeDupeSuggest recall modes', () => {
       field_missing_reasons: [],
       failure_class: null,
       llm_error_class: null,
+      upstream_status: null,
+      upstream_error_code: null,
+      upstream_error_message: null,
       failure_reasons: expect.arrayContaining(['placeholder_candidates_removed']),
     }));
     expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
@@ -160,6 +163,9 @@ describe('executeDupeSuggest recall modes', () => {
       field_missing_reasons: [],
       failure_class: null,
       llm_error_class: null,
+      upstream_status: null,
+      upstream_error_code: null,
+      upstream_error_message: null,
       failure_reasons: [],
     }));
     expect(fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
@@ -213,7 +219,12 @@ describe('executeDupeSuggest recall modes', () => {
           ],
         },
         failure_class: 'provider_error',
-        llm_trace: { error_class: 'provider_error' },
+        llm_trace: {
+          error_class: 'provider_error',
+          upstream_status: 503,
+          upstream_error_code: 'EUPSTREAM',
+          upstream_error_message: 'provider overloaded',
+        },
       }),
     });
 
@@ -256,6 +267,9 @@ describe('executeDupeSuggest recall modes', () => {
       mapped_output_item_count: 1,
       failure_class: 'provider_error',
       llm_error_class: 'provider_error',
+      upstream_status: 503,
+      upstream_error_code: 'EUPSTREAM',
+      upstream_error_message: 'provider overloaded',
       field_missing_reasons: ['upstream_missing_or_empty'],
     }));
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(1);
