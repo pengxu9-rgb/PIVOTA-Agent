@@ -21267,6 +21267,7 @@ function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
     { max: 2, maxLen: 90 },
   );
   const baselineTargetState = normalizeArrayOfStrings(baselineStory.target_state, { max: 2, maxLen: 90 });
+  const baselinePrinciples = normalizeArrayOfStrings(baselineStory.core_principles, { max: 2, maxLen: 90 });
   return compactQaPromptValue({
     q: pickFirstTrimmed(safeEvidence.followup_focus) || null,
     photo_backed: safeEvidence.use_photo === true || normalizeAnalysisPhotoRefs(safeEvidence.photo_refs).length > 0,
@@ -21293,6 +21294,7 @@ function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
     baseline_findings: baselineFindings,
     baseline_actions: baselineActions,
     baseline_target_state: baselineTargetState,
+    baseline_core_principles: baselinePrinciples,
   }, { maxItems: 5, maxString: 100 });
 }
 
@@ -21307,6 +21309,7 @@ function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } 
   const baselineFindings = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_findings, { max: 4, maxLen: 90 });
   const baselineActions = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_actions, { max: 2, maxLen: 90 });
   const baselineTargetState = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_target_state, { max: 2, maxLen: 90 });
+  const baselinePrinciples = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_core_principles, { max: 2, maxLen: 90 });
   const evidenceParts = [
     findings.length ? `${findings.join(' + ')} on photos` : '',
     confidence ? `${confidence} confidence` : '',
@@ -21321,8 +21324,12 @@ function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } 
     evidenceParts.length ? `Evidence: ${evidenceParts.join('; ')}.` : '',
     baselineFindings.length ? `Baseline findings already shown: ${baselineFindings.join('; ')}.` : '',
     baselineTargetState.length ? `Baseline target state: ${baselineTargetState.join('; ')}.` : '',
+    baselinePrinciples.length ? `Baseline principles: ${baselinePrinciples.join('; ')}.` : '',
     baselineActions.length ? `Baseline actions: ${baselineActions.join('; ')}.` : '',
-    'Rules: do not say you cannot analyze photos; build on the baseline instead of repeating it; add 1-2 deeper observations or interpretations that stay grounded in the same evidence; keep each string under 120 chars; preserve conservative wording like more consistent with; deeper_findings max 2; target_state/core_principles/am_focus/pm_focus/actions_now max 2; avoid_now max 1.',
+    'Rules: do not say you cannot analyze photos; answer as a true second-pass read; do not restate baseline findings verbatim; use deeper_findings only for net-new interpretation, hidden pattern, interaction, priority shift, or likely driver; if nothing new can be supported, explain what constraint keeps the read conservative and how management priority changes; keep each string under 120 chars; preserve conservative wording like more consistent with.',
+    'Prioritize what changes when looking more closely: barrier-vs-oil tradeoff, irritation-vs-congestion sequencing, routine interaction risk, and what should move up or down in treatment priority.',
+    'Keep baseline continuity but make visible sections feel different from the first card: deeper_findings should surface first, while target_state/core_principles/actions should describe the next-step strategy rather than repeat baseline.',
+    'Limits: deeper_findings max 2; key_signals max 2; target_state/core_principles/am_focus/pm_focus/actions_now max 2; avoid_now max 1.',
     'Output JSON schema:',
     '{"conclusion":"","key_signals":[],"deeper_findings":[],"target_state":[],"core_principles":[],"am_focus":[],"pm_focus":[],"actions_now":[],"avoid_now":[],"confidence_note":""}',
   ].filter(Boolean).join('\n');
@@ -21441,18 +21448,29 @@ function applyDeepDiveLlmResponseToStory({ responsePayload, fallbackStory } = {}
     ...baseline,
     ui_card_v1: isPlainObject(baseline.ui_card_v1) ? { ...baseline.ui_card_v1 } : {},
   };
-  const appendUniquePlanSteps = (rows, additions) => {
-    const existing = normalizeDeepDivePlanSteps(rows);
-    const seen = new Set(existing.map((item) => pickFirstTrimmed(item && item.step).toLowerCase()).filter(Boolean));
+  const prependUniquePlanSteps = (rows, additions) => {
+    const next = [];
+    const seen = new Set();
     for (const entry of normalizeArrayOfStrings(additions, { max: 2, maxLen: 120 })) {
       const key = entry.toLowerCase();
+      if (!key) continue;
+      seen.add(key);
+      next.push({ step: entry, purpose: '' });
+    }
+    for (const item of normalizeDeepDivePlanSteps(rows)) {
+      const key = pickFirstTrimmed(item && item.step).toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.add(key);
-      existing.push({ step: entry, purpose: '' });
-      if (existing.length >= 5) break;
+      next.push(item);
+      if (next.length >= 5) break;
     }
-    return existing;
+    return next.slice(0, 5);
   };
+  const mergeFrontLoadedStrings = (primary, secondary, { max = 4, maxLen = 120 } = {}) =>
+    normalizeArrayOfStrings([...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])], {
+      max,
+      maxLen,
+    });
   const headline = pickFirstTrimmed(safePayload.conclusion, safePayload.headline);
   const keySignals = normalizeArrayOfStrings(safePayload.key_signals, { max: 2, maxLen: 120 });
   const deeperFindings = normalizeArrayOfStrings(safePayload.deeper_findings, { max: 2, maxLen: 120 });
@@ -21467,12 +21485,11 @@ function applyDeepDiveLlmResponseToStory({ responsePayload, fallbackStory } = {}
   if (headline) uiPatch.headline = headline;
   const baselineFindings = Array.isArray(story.priority_findings) ? story.priority_findings : [];
   const baselineFindingLines = baselineFindings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail)).filter(Boolean);
+  const visibleDeepDiveLines = normalizeArrayOfStrings([...deeperFindings, ...keySignals], { max: 3, maxLen: 120 });
   const mergedFindings = normalizeArrayOfStrings(
     [
-      ...baselineFindingLines.slice(0, 2),
-      ...deeperFindings,
-      ...keySignals,
-      ...baselineFindingLines.slice(2),
+      ...visibleDeepDiveLines,
+      ...baselineFindingLines,
     ],
     { max: 6, maxLen: 120 },
   );
@@ -21483,30 +21500,37 @@ function applyDeepDiveLlmResponseToStory({ responsePayload, fallbackStory } = {}
       detail: item,
       evidence_region_or_module: [],
     }));
-    story.ui_card_v1.key_points = mergedFindings.slice(0, 3);
-    uiPatch.key_points = mergedFindings.slice(0, 3);
+    const preferredKeyPoints = visibleDeepDiveLines.length ? visibleDeepDiveLines : mergedFindings;
+    story.ui_card_v1.key_points = preferredKeyPoints.slice(0, 3);
+    uiPatch.key_points = preferredKeyPoints.slice(0, 3);
   }
   if (targetState.length) {
-    story.target_state = normalizeArrayOfStrings([...(Array.isArray(story.target_state) ? story.target_state : []), ...targetState], {
+    story.target_state = mergeFrontLoadedStrings(targetState, Array.isArray(story.target_state) ? story.target_state : [], {
       max: 4,
       maxLen: 120,
     });
   }
   if (corePrinciples.length) {
-    story.core_principles = normalizeArrayOfStrings(
-      [...(Array.isArray(story.core_principles) ? story.core_principles : []), ...corePrinciples],
+    story.core_principles = mergeFrontLoadedStrings(
+      corePrinciples,
+      Array.isArray(story.core_principles) ? story.core_principles : [],
       { max: 4, maxLen: 120 },
     );
   }
   if (amFocus.length) {
-    story.am_plan = appendUniquePlanSteps(story.am_plan, amFocus);
+    story.am_plan = prependUniquePlanSteps(story.am_plan, amFocus);
   }
   if (pmFocus.length) {
-    story.pm_plan = appendUniquePlanSteps(story.pm_plan, pmFocus);
+    story.pm_plan = prependUniquePlanSteps(story.pm_plan, pmFocus);
   }
   if (actionsNow.length) {
-    story.ui_card_v1.actions_now = actionsNow;
-    uiPatch.actions_now = actionsNow;
+    const mergedActions = mergeFrontLoadedStrings(
+      actionsNow,
+      Array.isArray(story.ui_card_v1.actions_now) ? story.ui_card_v1.actions_now : [],
+      { max: 3, maxLen: 120 },
+    );
+    story.ui_card_v1.actions_now = mergedActions;
+    uiPatch.actions_now = mergedActions;
   }
   if (avoidNow.length) {
     story.ui_card_v1.avoid_now = avoidNow;

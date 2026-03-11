@@ -12440,9 +12440,17 @@ test('applyDeepDiveLlmResponseToStory appends deeper findings and routine focus 
   assert.ok(Array.isArray(out.story.priority_findings));
   assert.ok(out.story.priority_findings.length >= 4, `expected appended findings, got ${out.story.priority_findings.length}`);
   assert.ok(out.story.priority_findings.some((item) => String(item.title || '').includes('dehydration bounce')));
+  assert.match(String(out.story.priority_findings[0] && out.story.priority_findings[0].title || ''), /dehydration bounce|Barrier strain/i);
   assert.ok(Array.isArray(out.story.am_plan) && out.story.am_plan.some((item) => String(item.step || '').includes('Hydrating serum')));
+  assert.match(String(out.story.am_plan[0] && out.story.am_plan[0].step || ''), /Hydrating serum/i);
   assert.ok(Array.isArray(out.story.pm_plan) && out.story.pm_plan.some((item) => String(item.step || '').includes('one active night')));
+  assert.match(String(out.story.pm_plan[0] && out.story.pm_plan[0].step || ''), /one active night/i);
   assert.ok(Array.isArray(out.story.target_state) && out.story.target_state.length >= 2);
+  assert.equal(out.story.target_state[0], 'Keep texture stable while calming redness triggers');
+  assert.equal(out.story.core_principles[0], 'Add hydration before escalating acne actives');
+  assert.equal(out.story.ui_card_v1.actions_now[0], 'Hold exfoliation to 1x weekly');
+  assert.equal(out.story.ui_card_v1.key_points.some((item) => /dehydration bounce|Barrier strain/i.test(String(item))), true);
+  assert.equal(out.story.priority_findings.some((item) => String(item.title || '').includes('Cheek dryness')), true);
 });
 
 test('enrichIngredientPlanPayloadForCard replaces raw rule signals with ingredient education', () => {
