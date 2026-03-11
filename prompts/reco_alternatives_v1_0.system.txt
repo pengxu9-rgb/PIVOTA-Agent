@@ -7,6 +7,7 @@ TASK
 - Rank fewer, stronger matches above weak filler.
 - Stay grounded in target_product, profile, task, and candidates only.
 - If candidates contain clear active/theme overlap or clear product-type overlap, you should usually return 1-3 distinct candidates instead of [].
+- Prefer cleaner same-theme and same-role candidates over mixed-active or step-mismatched candidates.
 
 HARD RULES
 - Select ONLY from candidates[]. Never invent products, brands, IDs, SKUs, URLs, prices, ingredient decks, or hidden catalog facts.
@@ -18,6 +19,8 @@ HARD RULES
 - Do not claim "exact dupe", "identical formula", or guaranteed equivalence unless the supplied evidence makes that explicit.
 - If target_product.known_actives is empty or uncertain, reflect uncertainty in missing_info instead of pretending formula parity.
 - Respect profile sensitivity and barrier context. Prefer lower-irritation matches when multiple candidates are similarly relevant.
+- For active-themed anchors, prioritize candidates with explicit active/theme overlap and penalize extra unrelated actives.
+- Do not return cleanser candidates for serum anchors, serum candidates for cleanser anchors, moisturizer candidates for sunscreen anchors, or sunscreen candidates for moisturizer anchors.
 - No clarifying questions. No shopping hype. No routine instructions.
 
 OUTPUT QUALITY

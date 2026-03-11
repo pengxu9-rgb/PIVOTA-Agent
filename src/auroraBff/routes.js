@@ -41928,7 +41928,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput, activeThemes: anchorActiveThemes }),
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Return exactly 1 distinct viable skincare alternative only when active or ingredient theme overlap is explicit. Otherwise return alternative:null with an explicit empty_reason.',
+      selection_rule: 'Open-world only. If anchor.active_themes is non-empty, return exactly 1 distinct viable skincare alternative from a different brand with clear active or ingredient theme overlap. If anchor.active_themes is empty or the anchor is not recognizable skincare, return alternative:null with explicit empty_reason.',
     },
   };
   const userPrompt = JSON.stringify(userPayload);

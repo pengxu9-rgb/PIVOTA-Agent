@@ -21,8 +21,9 @@ const {
   detectSelfReference,
 } = require('../skills/dupe_utils');
 
-const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v9';
+const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v10';
 let dupeKbContractPurgePromise = null;
+const DUPE_POOL_SELECTOR_TIMEOUT_MS = 12000;
 const PLACEHOLDER_REASON_PATTERNS = [
   /^grounded alternatives derived from resolved candidate pool\.?$/i,
   /^based on resolved product candidates\.?$/i,
@@ -44,6 +45,7 @@ const DUPE_POOL_ACTIVE_THEME_RULES = [
   { key: 'panthenol', patterns: [/\bpanthenol\b/i, /\bprovitamin b5\b/i, /泛醇/, /维生素b5/, /维B5/] },
   { key: 'snail_mucin', patterns: [/\bsnail\b/i, /\bmucin\b/i, /蜗牛/] },
 ];
+const STRICT_DUPE_ROLE_ISOLATION = new Set(['serum', 'cleanser', 'moisturizer', 'sunscreen']);
 
 function uniqStrings(values) {
   const out = [];
@@ -182,6 +184,35 @@ function computeArrayOverlap(left, right) {
   return hits / Math.max(1, leftTokens.length);
 }
 
+function isStrictDupeRoleMismatch(anchorRole, candidateRole) {
+  const left = normalizeTextToken(anchorRole);
+  const right = normalizeTextToken(candidateRole);
+  if (!left || !right || left === 'unknown' || right === 'unknown') return false;
+  if (left === right) return false;
+  return STRICT_DUPE_ROLE_ISOLATION.has(left) || STRICT_DUPE_ROLE_ISOLATION.has(right);
+}
+
+function buildDupeActiveThemeMetrics(anchorThemes, candidateThemes, candidateName = '') {
+  const normalizedAnchorThemes = uniqStrings(anchorThemes).map((theme) => normalizeTextToken(theme)).filter(Boolean);
+  const normalizedCandidateThemes = uniqStrings(candidateThemes).map((theme) => normalizeTextToken(theme)).filter(Boolean);
+  const overlapCount = normalizedAnchorThemes.filter((theme) => normalizedCandidateThemes.includes(theme)).length;
+  const activeRecall = normalizedAnchorThemes.length ? overlapCount / normalizedAnchorThemes.length : 0;
+  const activePrecision = normalizedCandidateThemes.length ? overlapCount / normalizedCandidateThemes.length : 0;
+  const extraThemeCount = normalizedAnchorThemes.length
+    ? normalizedCandidateThemes.filter((theme) => !normalizedAnchorThemes.includes(theme)).length
+    : 0;
+  const themeNameBoost = normalizedAnchorThemes.some((theme) => normalizeTextToken(candidateName).includes(theme.replace(/_/g, ' '))) ? 0.06 : 0;
+  const extraThemePenalty = extraThemeCount > 0 ? Math.min(0.36, extraThemeCount * 0.18) : 0;
+  return {
+    overlapCount,
+    activeRecall,
+    activePrecision,
+    extraThemeCount,
+    themeNameBoost,
+    extraThemePenalty,
+  };
+}
+
 function tokenizePoolCandidateText(...values) {
   return String(
     values
@@ -246,6 +277,9 @@ function classifyPoolFallbackDropReason(row, anchorIdentity, anchorFingerprint, 
   if (!productLabel) return 'missing_identity';
   const activeThemes = extractDupePoolActiveThemesFromText(candidateName, candidate.category, candidate.signals);
   const usageRole = inferDupePoolUsageRole(candidate.category, candidateName, candidate.signals);
+  if (isStrictDupeRoleMismatch(anchorContext.usageRole, usageRole)) {
+    return 'backend_hits_role_mismatch_filtered';
+  }
   if (anchorContext.activeThemes.length && !computeArrayOverlap(anchorContext.activeThemes, activeThemes) && usageRole !== anchorContext.usageRole && normalizeTextToken(candidate.category) !== normalizeTextToken(anchorContext.category)) {
     return 'backend_hits_role_mismatch_filtered';
   }
@@ -276,42 +310,44 @@ function buildPoolRankFallbackAlternatives(poolCandidates, anchorOriginal, { inp
     const candidateRole = inferDupePoolUsageRole(candidate.category, candidateName, candidate.signals);
     const candidateThemes = extractDupePoolActiveThemesFromText(candidateName, candidate.category, candidate.signals);
     const candidateTokens = tokenizePoolCandidateText(candidate.brand, candidateName, candidate.category, candidate.signals);
-    const activeOverlap = computeArrayOverlap(anchorContext.activeThemes, candidateThemes);
-    const extraThemeCount = anchorContext.activeThemes.length
-      ? candidateThemes.filter((theme) => !anchorContext.activeThemes.includes(theme)).length
-      : 0;
-    const themeNameBoost = anchorContext.activeThemes.some((theme) => normalizeTextToken(candidateName).includes(theme.replace(/_/g, ' '))) ? 0.08 : 0;
-    const extraThemePenalty = extraThemeCount > 0 ? Math.min(0.16, extraThemeCount * 0.08) : 0;
+    const themeMetrics = buildDupeActiveThemeMetrics(anchorContext.activeThemes, candidateThemes, candidateName);
     const roleExact = anchorContext.usageRole && anchorContext.usageRole !== 'unknown' && candidateRole === anchorContext.usageRole ? 1 : 0;
     const categoryExact = normalizeTextToken(candidate.category) && normalizeTextToken(candidate.category) === normalizeTextToken(anchorContext.category) ? 1 : 0;
     const nameTokenOverlap = computeArrayOverlap(anchorContext.textTokens, candidateTokens);
-    const canonicalRefBonus = candidate.product_id || candidate.sku_id || candidate.pdp_url ? 0.14 : 0;
+    const canonicalRefBonus = candidate.product_id || candidate.sku_id || candidate.pdp_url ? 0.08 : 0;
     const upstreamSimilarityRaw = Number(candidate.similarity_score);
     const upstreamSimilarity = Number.isFinite(upstreamSimilarityRaw)
       ? Math.max(0, Math.min(1, upstreamSimilarityRaw > 1 ? upstreamSimilarityRaw / 100 : upstreamSimilarityRaw))
       : 0;
+    if (anchorContext.activeThemes.length && themeMetrics.overlapCount === 0 && !(roleExact && categoryExact)) {
+      dropReasons.backend_hits_role_mismatch_filtered += 1;
+      continue;
+    }
     const score = (
-      activeOverlap * 0.42 +
-      roleExact * 0.24 +
-      categoryExact * 0.16 +
-      nameTokenOverlap * 0.08 +
-      upstreamSimilarity * 0.1 +
+      themeMetrics.activeRecall * 0.36 +
+      themeMetrics.activePrecision * 0.34 +
+      roleExact * 0.14 +
+      categoryExact * 0.06 +
+      nameTokenOverlap * 0.04 +
+      upstreamSimilarity * 0.04 +
       canonicalRefBonus +
-      themeNameBoost -
-      extraThemePenalty
+      themeMetrics.themeNameBoost -
+      (themeMetrics.extraThemePenalty * 1.25)
     );
-    if (score < 0.34) {
+    if (score < 0.42) {
       dropReasons.backend_hits_role_mismatch_filtered += 1;
       continue;
     }
     scored.push({
       row: candidate,
       score,
-      activeOverlap,
+      activeRecall: themeMetrics.activeRecall,
+      activePrecision: themeMetrics.activePrecision,
       roleExact,
       categoryExact,
       candidateRole,
       candidateThemes,
+      extraThemeCount: themeMetrics.extraThemeCount,
     });
   }
 
@@ -341,21 +377,22 @@ function buildPoolRankFallbackAlternatives(poolCandidates, anchorOriginal, { inp
     const productLabel = [row.brand, rowName].filter(Boolean).join(' ').trim();
     const overlapTheme = entry.candidateThemes.find((theme) => anchorContext.activeThemes.includes(theme)) || anchorContext.activeThemes[0] || '';
     const reasons = [];
-    if (entry.activeOverlap > 0 && overlapTheme) reasons.push(`Matches the anchor's ${overlapTheme.replace(/_/g, ' ')} theme in the Pivota product pool.`);
+    if (entry.activeRecall > 0 && overlapTheme) reasons.push(`Matches the anchor's ${overlapTheme.replace(/_/g, ' ')} theme in the Pivota product pool.`);
     else if (entry.roleExact && anchorContext.usageRole && anchorContext.usageRole !== 'unknown') reasons.push(`Same ${anchorContext.usageRole} step in the Pivota product pool.`);
     else if (entry.categoryExact && anchorContext.category) reasons.push(`Same ${anchorContext.category} category in the Pivota product pool.`);
     if (!reasons.length) reasons.push('Close catalog match from the Pivota product pool.');
 
     const tradeoffs = [];
-    if (entry.activeOverlap > 0 && entry.activeOverlap < 1) tradeoffs.push('Active-theme overlap is partial rather than exact.');
-    else if (entry.activeOverlap === 0) tradeoffs.push('Formula overlap remains uncertain.');
+    if (entry.extraThemeCount > 0) tradeoffs.push('Adds extra active themes beyond the anchor.');
+    else if (entry.activeRecall > 0 && entry.activeRecall < 1) tradeoffs.push('Active-theme overlap is partial rather than exact.');
+    else if (entry.activeRecall === 0) tradeoffs.push('Formula overlap remains uncertain.');
     if (tradeoffs.length === 0 && row.signals && row.signals.length) {
       tradeoffs.push('Catalog text supports a compare, but exact formula detail remains uncertain.');
     }
     const similarity = Math.max(56, Math.min(92, Math.round(entry.score * 100)));
     const confidence = Math.max(0.28, Math.min(0.82, Number((entry.score * 0.9).toFixed(2))));
     out.push({
-      kind: entry.activeOverlap > 0 && entry.roleExact ? 'dupe' : 'similar',
+      kind: entry.activeRecall >= 0.5 && entry.activePrecision >= 0.5 && entry.roleExact ? 'dupe' : 'similar',
       candidate_origin: 'catalog',
       grounding_status: 'catalog_verified',
       ranking_mode: 'pool_rank_fallback',
@@ -439,15 +476,9 @@ function scoreResolvedDupeCandidate(item, anchorOriginal, { inputText = '' } = {
   const tradeoffs = Array.isArray(row.tradeoffs) ? row.tradeoffs : [];
   const sourceText = [brand, name, category, reasons.join(' '), tradeoffs.join(' ')].join(' ');
   const candidateThemes = extractDupePoolActiveThemesFromText(sourceText);
-  const overlapCount = anchorContext.activeThemes.filter((theme) => candidateThemes.includes(theme)).length;
-  const activeRecall = anchorContext.activeThemes.length ? overlapCount / anchorContext.activeThemes.length : 0;
-  const activePrecision = candidateThemes.length ? overlapCount / candidateThemes.length : 0;
-  const extraThemeCount = anchorContext.activeThemes.length
-    ? candidateThemes.filter((theme) => !anchorContext.activeThemes.includes(theme)).length
-    : 0;
-  const themeNameBoost = anchorContext.activeThemes.some((theme) => normalizeTextToken(name).includes(theme.replace(/_/g, ' '))) ? 0.08 : 0;
-  const extraThemePenalty = extraThemeCount > 0 ? Math.min(0.18, extraThemeCount * 0.09) : 0;
   const candidateRole = inferDupePoolUsageRole(category, name, reasons, tradeoffs);
+  if (isStrictDupeRoleMismatch(anchorContext.usageRole, candidateRole)) return 0;
+  const themeMetrics = buildDupeActiveThemeMetrics(anchorContext.activeThemes, candidateThemes, name);
   const roleExact = anchorContext.usageRole && anchorContext.usageRole !== 'unknown' && candidateRole === anchorContext.usageRole ? 1 : 0;
   const categoryExact = normalizeTextToken(category) && normalizeTextToken(category) === normalizeTextToken(anchorContext.category) ? 1 : 0;
   const similarity = Number(row.similarity);
@@ -455,14 +486,14 @@ function scoreResolvedDupeCandidate(item, anchorOriginal, { inputText = '' } = {
   const normalizedSimilarity = Number.isFinite(similarity) ? clamp01(similarity > 1 ? similarity / 100 : similarity) : 0;
   const normalizedConfidence = Number.isFinite(confidence) ? clamp01(confidence) : 0;
   return (
-    activeRecall * 0.34 +
-    activePrecision * 0.22 +
+    themeMetrics.activeRecall * 0.24 +
+    themeMetrics.activePrecision * 0.4 +
     roleExact * 0.18 +
-    categoryExact * 0.1 +
-    normalizedSimilarity * 0.1 +
-    normalizedConfidence * 0.06 +
-    themeNameBoost -
-    extraThemePenalty
+    categoryExact * 0.08 +
+    normalizedSimilarity * 0.06 +
+    normalizedConfidence * 0.04 +
+    themeMetrics.themeNameBoost -
+    (themeMetrics.extraThemePenalty * 1.35)
   );
 }
 
@@ -532,14 +563,9 @@ function scorePoolCandidateForSelector(row, anchorContext = {}) {
   const anchorCategory = normalizeTextToken(anchorContext.category);
   const candidateCategory = normalizeTextToken(candidate.category || candidate.product_type || candidate.type);
   const candidateThemes = extractDupePoolActiveThemesFromText(candidateName, candidate.category, candidate.signals);
+  const themeMetrics = buildDupeActiveThemeMetrics(anchorContext.activeThemes, candidateThemes, candidateName);
   const activeOverlap = computeArrayOverlap(anchorContext.activeThemes, candidateThemes);
-  const extraThemeCount = Array.isArray(anchorContext.activeThemes) && anchorContext.activeThemes.length
-    ? candidateThemes.filter((theme) => !anchorContext.activeThemes.includes(theme)).length
-    : 0;
-  const extraThemePenalty = extraThemeCount > 0 ? Math.min(0.9, extraThemeCount * 0.45) : 0;
-  const themeNameBoost = Array.isArray(anchorContext.activeThemes) && anchorContext.activeThemes.some((theme) => (
-    normalizeTextToken(candidateName).includes(theme.replace(/_/g, ' '))
-  )) ? 0.75 : 0;
+  if (isStrictDupeRoleMismatch(anchorRole, candidateRole)) return -999;
   const nameTokenOverlap = computeArrayOverlap(
     Array.isArray(anchorContext.textTokens) ? anchorContext.textTokens : [],
     tokenizePoolCandidateText(candidate.brand, candidateName, candidate.category, candidate.signals),
@@ -551,15 +577,19 @@ function scorePoolCandidateForSelector(row, anchorContext = {}) {
   const hasStableRef = Boolean(String(candidate.product_id || candidate.sku_id || candidate.url || candidate.pdp_url || '').trim());
   const source = normalizeTextToken(candidate._pool_source || candidate.retrieval_source);
   let score = 0;
-  score += activeOverlap * 5;
+  score += themeMetrics.activeRecall * 8;
+  score += themeMetrics.activePrecision * 3.5;
   if (anchorRole && anchorRole !== 'unknown' && candidateRole === anchorRole) score += 4;
   else if (candidateRole !== 'unknown') score += 1;
-  if (anchorCategory && candidateCategory && anchorCategory === candidateCategory) score += 3;
-  score += nameTokenOverlap * 1.25;
-  score += normalizedSimilarity * 3;
-  score += themeNameBoost;
-  score -= extraThemePenalty;
-  if (hasStableRef) score += 1.5;
+  if (anchorCategory && candidateCategory && anchorCategory === candidateCategory) score += 2;
+  score += nameTokenOverlap * 0.8;
+  score += normalizedSimilarity * 1.75;
+  score += themeMetrics.themeNameBoost;
+  score -= themeMetrics.extraThemePenalty * 2.2;
+  if (Array.isArray(anchorContext.activeThemes) && anchorContext.activeThemes.length && themeMetrics.overlapCount === 0) {
+    score -= (anchorRole && candidateRole === anchorRole && anchorCategory === candidateCategory) ? 2 : 5;
+  }
+  if (hasStableRef) score += 1.2;
   if (source === 'product_embedded') score += 1.25;
   else if (source === 'catalog_search') score += 0.75;
   return score;
@@ -1422,7 +1452,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
           raw_output_summary: buildEmptyRawOutputSummary(),
           selector_meta: {
             input_count: 0,
-            timeout_ms: 10000,
+            timeout_ms: DUPE_POOL_SELECTOR_TIMEOUT_MS,
           },
         },
         mapped: [],
@@ -1454,7 +1484,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         disable_synthetic_local_fallback: true,
         ignore_selector_candidates: mode === 'open_world_only',
         selector_seed_only: mode === 'pool_only',
-        selector_timeout_ms: mode === 'pool_only' ? 10000 : undefined,
+        selector_timeout_ms: mode === 'pool_only' ? DUPE_POOL_SELECTOR_TIMEOUT_MS : undefined,
       },
     });
     const upstreamOut = upstreamOutRaw && typeof upstreamOutRaw === 'object' && !Array.isArray(upstreamOutRaw)
@@ -1489,7 +1519,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         upstreamOut.selector_meta = {
           ...(upstreamOut.selector_meta && typeof upstreamOut.selector_meta === 'object' ? upstreamOut.selector_meta : {}),
           input_count: modeCandidatePool.length,
-          timeout_ms: 10000,
+          timeout_ms: DUPE_POOL_SELECTOR_TIMEOUT_MS,
           local_rank_fallback_used: true,
         };
         upstreamOut.raw_output_summary = buildEmptyRawOutputSummary();
@@ -1498,7 +1528,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         upstreamOut.selector_meta = {
           ...(upstreamOut.selector_meta && typeof upstreamOut.selector_meta === 'object' ? upstreamOut.selector_meta : {}),
           input_count: modeCandidatePool.length,
-          timeout_ms: 10000,
+          timeout_ms: DUPE_POOL_SELECTOR_TIMEOUT_MS,
           local_rank_fallback_used: false,
           local_rank_fallback_drop_reasons: poolRankFallback ? poolRankFallback.dropReasons : {},
         };
@@ -1524,7 +1554,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         upstreamOut.selector_meta = {
           ...(upstreamOut.selector_meta && typeof upstreamOut.selector_meta === 'object' ? upstreamOut.selector_meta : {}),
           input_count: modeCandidatePool.length,
-          timeout_ms: 10000,
+          timeout_ms: DUPE_POOL_SELECTOR_TIMEOUT_MS,
           local_rank_fallback_used: poolRankFallbackUsed,
         };
       }
