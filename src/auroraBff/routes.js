@@ -41154,8 +41154,23 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   const target = identity.targetSignals;
   const out = [];
   const seen = new Set();
+  const normalizeQuery = (raw) => {
+    const tokens = String(raw || '')
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+    if (!tokens.length) return '';
+    const deduped = [];
+    for (const token of tokens) {
+      const normalized = token.toLowerCase();
+      if (deduped.length && deduped[deduped.length - 1].toLowerCase() === normalized) continue;
+      deduped.push(token);
+    }
+    return deduped.join(' ').trim().replace(/\s+/g, ' ');
+  };
   const pushQuery = (raw) => {
-    const query = String(raw || '').trim().replace(/\s+/g, ' ');
+    const query = normalizeQuery(raw);
     if (!query) return;
     const key = query.toLowerCase();
     if (seen.has(key)) return;
@@ -41166,14 +41181,18 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   pushQuery(identity.anchorLabel);
   for (const alias of identity.aliases) pushQuery(alias);
 
-  if (target.brand && target.name && target.usageRole !== 'unknown') {
-    pushQuery(`${target.brand} ${target.name} ${target.usageRole}`);
-  }
-  if (target.productType && target.usageRole !== 'unknown') {
-    pushQuery(`${target.productType} ${target.usageRole}`);
-  }
   if (target.knownActives.length && target.usageRole !== 'unknown') {
     pushQuery(`${target.knownActives[0]} ${target.usageRole}`);
+  }
+  if (target.brand && target.name && target.usageRole !== 'unknown' && !identity.anchorLabel.toLowerCase().includes(target.usageRole.toLowerCase())) {
+    pushQuery(`${target.brand} ${target.name} ${target.usageRole}`);
+  }
+  if (
+    target.productType &&
+    target.usageRole !== 'unknown' &&
+    normalizeQuery(target.productType).toLowerCase() !== normalizeQuery(target.usageRole).toLowerCase()
+  ) {
+    pushQuery(`${target.productType} ${target.usageRole}`);
   }
   if (target.primaryClaims.length && target.usageRole !== 'unknown') {
     pushQuery(`${target.primaryClaims[0]} ${target.usageRole}`);
@@ -41181,7 +41200,11 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   if (target.productType && target.primaryClaims.length) {
     pushQuery(`${target.productType} ${target.primaryClaims[0]}`);
   }
-  if (target.productType && String(productInput || '').trim()) {
+  if (
+    target.productType &&
+    String(productInput || '').trim() &&
+    !normalizeQuery(String(productInput || '')).toLowerCase().includes(normalizeQuery(target.productType).toLowerCase())
+  ) {
     pushQuery(`${target.productType} ${String(productInput || '').trim()}`);
   }
 
@@ -61551,6 +61574,7 @@ const __internal = {
   },
   fetchRecoAlternativesForProduct,
   fetchRecoAlternativesForExternalSeedProduct,
+  buildExternalSeedCompareSearchQueries,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };

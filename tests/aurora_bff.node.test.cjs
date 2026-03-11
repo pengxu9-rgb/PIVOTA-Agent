@@ -5552,6 +5552,32 @@ test('fetchRecoAlternativesForProduct: open_world_only recovers complete alterna
   );
 });
 
+test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and prefers active-theme queries', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  try {
+    const routeModule = require('../src/auroraBff/routes');
+    const { __internal } = routeModule;
+    const queries = __internal.buildExternalSeedCompareSearchQueries({
+      productObj: {
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        category: 'serum',
+        product_type: 'serum',
+        key_actives: ['niacinamide', 'zinc'],
+        claims: ['brightening', 'oil control'],
+      },
+      productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      lang: 'EN',
+    });
+    assert.ok(Array.isArray(queries));
+    assert.ok(queries.some((item) => /niacinamide serum/i.test(String(item || ''))));
+    assert.equal(queries.some((item) => /\bserum serum\b/i.test(String(item || ''))), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
   return withEnv(
     {

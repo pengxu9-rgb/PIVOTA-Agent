@@ -277,6 +277,11 @@ function buildPoolRankFallbackAlternatives(poolCandidates, anchorOriginal, { inp
     const candidateThemes = extractDupePoolActiveThemesFromText(candidateName, candidate.category, candidate.signals);
     const candidateTokens = tokenizePoolCandidateText(candidate.brand, candidateName, candidate.category, candidate.signals);
     const activeOverlap = computeArrayOverlap(anchorContext.activeThemes, candidateThemes);
+    const extraThemeCount = anchorContext.activeThemes.length
+      ? candidateThemes.filter((theme) => !anchorContext.activeThemes.includes(theme)).length
+      : 0;
+    const themeNameBoost = anchorContext.activeThemes.some((theme) => normalizeTextToken(candidateName).includes(theme.replace(/_/g, ' '))) ? 0.08 : 0;
+    const extraThemePenalty = extraThemeCount > 0 ? Math.min(0.16, extraThemeCount * 0.08) : 0;
     const roleExact = anchorContext.usageRole && anchorContext.usageRole !== 'unknown' && candidateRole === anchorContext.usageRole ? 1 : 0;
     const categoryExact = normalizeTextToken(candidate.category) && normalizeTextToken(candidate.category) === normalizeTextToken(anchorContext.category) ? 1 : 0;
     const nameTokenOverlap = computeArrayOverlap(anchorContext.textTokens, candidateTokens);
@@ -291,7 +296,9 @@ function buildPoolRankFallbackAlternatives(poolCandidates, anchorOriginal, { inp
       categoryExact * 0.16 +
       nameTokenOverlap * 0.08 +
       upstreamSimilarity * 0.1 +
-      canonicalRefBonus
+      canonicalRefBonus +
+      themeNameBoost -
+      extraThemePenalty
     );
     if (score < 0.34) {
       dropReasons.backend_hits_role_mismatch_filtered += 1;
@@ -435,6 +442,11 @@ function scoreResolvedDupeCandidate(item, anchorOriginal, { inputText = '' } = {
   const overlapCount = anchorContext.activeThemes.filter((theme) => candidateThemes.includes(theme)).length;
   const activeRecall = anchorContext.activeThemes.length ? overlapCount / anchorContext.activeThemes.length : 0;
   const activePrecision = candidateThemes.length ? overlapCount / candidateThemes.length : 0;
+  const extraThemeCount = anchorContext.activeThemes.length
+    ? candidateThemes.filter((theme) => !anchorContext.activeThemes.includes(theme)).length
+    : 0;
+  const themeNameBoost = anchorContext.activeThemes.some((theme) => normalizeTextToken(name).includes(theme.replace(/_/g, ' '))) ? 0.08 : 0;
+  const extraThemePenalty = extraThemeCount > 0 ? Math.min(0.18, extraThemeCount * 0.09) : 0;
   const candidateRole = inferDupePoolUsageRole(category, name, reasons, tradeoffs);
   const roleExact = anchorContext.usageRole && anchorContext.usageRole !== 'unknown' && candidateRole === anchorContext.usageRole ? 1 : 0;
   const categoryExact = normalizeTextToken(category) && normalizeTextToken(category) === normalizeTextToken(anchorContext.category) ? 1 : 0;
@@ -448,7 +460,9 @@ function scoreResolvedDupeCandidate(item, anchorOriginal, { inputText = '' } = {
     roleExact * 0.18 +
     categoryExact * 0.1 +
     normalizedSimilarity * 0.1 +
-    normalizedConfidence * 0.06
+    normalizedConfidence * 0.06 +
+    themeNameBoost -
+    extraThemePenalty
   );
 }
 

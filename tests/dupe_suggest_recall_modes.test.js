@@ -385,6 +385,111 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct.mock.calls[1]?.[0]?.options?.recommendation_mode).toBe('open_world_only');
   });
 
+  test('reranks pool selector outputs behind cleaner active-theme catalog matches', async () => {
+    const services = makeBaseServices({
+      searchPivotaBackendProducts: jest.fn().mockResolvedValue({
+        ok: true,
+        products: [
+          {
+            product_id: 'cand_gm',
+            sku_id: 'cand_gm',
+            brand: 'Good Molecules',
+            display_name: 'Niacinamide Serum',
+            category: 'serum',
+            url: 'https://example.com/gm-niacinamide',
+          },
+          {
+            product_id: 'cand_inkey',
+            sku_id: 'cand_inkey',
+            brand: 'The Inkey List',
+            display_name: 'Niacinamide Serum',
+            category: 'serum',
+            url: 'https://example.com/inkey-niacinamide',
+          },
+          {
+            product_id: 'cand_ole',
+            sku_id: 'cand_ole',
+            brand: 'Olehenriksen',
+            display_name: 'Peach Glaze Glow Niacinamide Serum with Vitamin C',
+            category: 'serum',
+            url: 'https://example.com/ole-niacinamide-vitc',
+          },
+        ],
+      }),
+      fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
+        alternatives: [
+          {
+            kind: 'dupe',
+            candidate_origin: 'catalog',
+            grounding_status: 'catalog_verified',
+            ranking_mode: 'pool_selector',
+            product: {
+              brand: 'Olehenriksen',
+              name: 'Peach Glaze Glow Niacinamide Serum with Vitamin C',
+              product_id: 'cand_ole',
+              sku_id: 'cand_ole',
+              category: 'serum',
+            },
+            similarity: 0.85,
+            confidence: 0.75,
+            reasons: ['Contains Niacinamide', 'matching the target product key active'],
+            tradeoffs: [],
+            missing_info: ['price_delta_unknown'],
+          },
+        ],
+        field_missing: [],
+        source_mode: 'pool_only',
+        template_id: 'reco_alternatives_v1_0',
+        raw_output_summary: {
+          raw_output_item_count: 1,
+          raw_items_with_product_object: 1,
+          raw_items_with_nested_brand_name: 1,
+          raw_items_with_flat_brand_name: 0,
+          raw_items_with_tradeoffs_object: 0,
+          raw_preview: [
+            { brand: 'Olehenriksen', name: 'Peach Glaze Glow Niacinamide Serum with Vitamin C', has_product_object: true },
+          ],
+        },
+      }),
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original: {
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          category: 'serum',
+        },
+        max_dupes: 1,
+        max_comparables: 0,
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload.dupes).toHaveLength(1);
+    expect(result.payload.comparables).toHaveLength(0);
+    expect(['Good Molecules', 'The Inkey List']).toContain(result.payload.dupes[0].product.brand);
+    expect(result.payload.dupes[0].product.name).toBe('Niacinamide Serum');
+    expect(result.payload.meta.final_source_mix).toEqual(['catalog']);
+    expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
+      recommendation_mode: 'pool_only',
+      pool_rank_fallback_used: true,
+      mapped_output_item_count: 2,
+    }));
+    expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
+    expect(services.fetchRecoAlternativesForProduct.mock.calls[0]?.[0]?.options?.recommendation_mode).toBe('pool_only');
+    expect(services.fetchRecoAlternativesForProduct.mock.calls[1]?.[0]?.options?.recommendation_mode).toBe('open_world_only');
+  });
+
   test('supplements personalized pool-only results with open-world results when capacity is not filled', async () => {
     const services = makeBaseServices({
       searchPivotaBackendProducts: jest.fn().mockResolvedValue({
