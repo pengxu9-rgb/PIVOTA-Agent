@@ -40059,6 +40059,58 @@ function buildAuroraRecoAlternativesQuery({
   };
 }
 
+function summarizeRecoAlternativesRaw(alternatives, { previewLimit = 3, keyLimit = 8 } = {}) {
+  const rows = Array.isArray(alternatives) ? alternatives : [];
+  const preview = [];
+  let withProductObject = 0;
+  let withNestedBrandName = 0;
+  let withFlatBrandName = 0;
+  let withTradeoffsObject = 0;
+
+  for (const item of rows) {
+    const row = isPlainObject(item) ? item : null;
+    if (!row) continue;
+    const product = asPlainObject(row.product);
+    const tradeoffs = asPlainObject(row.tradeoffs);
+    const flatBrand = pickFirstTrimmed(row.brand);
+    const flatName = pickFirstTrimmed(row.name, row.display_name, row.displayName, row.product_name);
+    const nestedBrand = product ? pickFirstTrimmed(product.brand) : null;
+    const nestedName = product
+      ? pickFirstTrimmed(product.name, product.display_name, product.displayName, product.product_name)
+      : null;
+
+    if (product) withProductObject += 1;
+    if (nestedBrand && nestedName) withNestedBrandName += 1;
+    if (!product && flatBrand && flatName) withFlatBrandName += 1;
+    if (tradeoffs) withTradeoffsObject += 1;
+
+    if (preview.length >= previewLimit) continue;
+    preview.push({
+      top_level_keys: Object.keys(row).slice(0, keyLimit),
+      has_product_object: Boolean(product),
+      product_keys: product ? Object.keys(product).slice(0, keyLimit) : [],
+      brand: nestedBrand || flatBrand || null,
+      name: nestedName || flatName || null,
+      similarity_score: Number.isFinite(Number(row.similarity_score))
+        ? Number(row.similarity_score)
+        : Number.isFinite(Number(row.similarity))
+          ? Number(row.similarity)
+          : null,
+      candidate_origin: pickFirstTrimmed(row.candidate_origin) || null,
+      grounding_status: pickFirstTrimmed(row.grounding_status) || null,
+    });
+  }
+
+  return {
+    raw_output_item_count: rows.length,
+    raw_items_with_product_object: withProductObject,
+    raw_items_with_nested_brand_name: withNestedBrandName,
+    raw_items_with_flat_brand_name: withFlatBrandName,
+    raw_items_with_tradeoffs_object: withTradeoffsObject,
+    raw_preview: preview,
+  };
+}
+
 function classifyAlternativesFailureCode(reason) {
   const token = String(reason || '').trim().toLowerCase();
   if (!token) return 'provider_error';
@@ -40841,6 +40893,7 @@ async function fetchRecoAlternativesForProduct({
         ? '基于已解析商品候选给出 grounded alternatives。'
         : 'Grounded alternatives derived from resolved candidate pool.',
     });
+  const emptyRawOutputSummary = summarizeRecoAlternativesRaw([]);
   let refreshKey = makeRecoAlternativesRefreshKey({
     anchorId: anchor || null,
     productInput: bestInput,
@@ -40866,6 +40919,7 @@ async function fetchRecoAlternativesForProduct({
         recommendation_mode: recommendationMode,
         profile_mode: profileMode,
         template_id: cached.llm_trace && cached.llm_trace.template_id ? cached.llm_trace.template_id : null,
+        raw_output_summary: null,
         ...(cached.llm_trace ? { llm_trace: cached.llm_trace } : {}),
       };
     }
@@ -40885,6 +40939,7 @@ async function fetchRecoAlternativesForProduct({
       attempt_count: 0,
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
+      raw_output_summary: emptyRawOutputSummary,
     };
   }
 
@@ -40911,6 +40966,7 @@ async function fetchRecoAlternativesForProduct({
       timeout_root_cause: 'budget_exceeded',
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
+      raw_output_summary: emptyRawOutputSummary,
     };
   }
 
@@ -41077,6 +41133,7 @@ async function fetchRecoAlternativesForProduct({
             attempt_count: 0,
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
+            raw_output_summary: emptyRawOutputSummary,
             ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
           };
         }
@@ -41093,6 +41150,7 @@ async function fetchRecoAlternativesForProduct({
             attempt_count: 0,
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
+            raw_output_summary: emptyRawOutputSummary,
           };
         }
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
@@ -41109,6 +41167,7 @@ async function fetchRecoAlternativesForProduct({
           no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world_fallback' : null),
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
+          raw_output_summary: emptyRawOutputSummary,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -41146,6 +41205,7 @@ async function fetchRecoAlternativesForProduct({
           attempt_count: 0,
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
+          raw_output_summary: emptyRawOutputSummary,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
         };
       } else if (!disableFallback) {
@@ -41163,6 +41223,7 @@ async function fetchRecoAlternativesForProduct({
           no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world_fallback' : null),
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
+          raw_output_summary: emptyRawOutputSummary,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       } else {
@@ -41178,6 +41239,7 @@ async function fetchRecoAlternativesForProduct({
           attempt_count: 0,
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
+          raw_output_summary: emptyRawOutputSummary,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -41268,6 +41330,7 @@ async function fetchRecoAlternativesForProduct({
         recommendation_mode: recommendationMode,
         profile_mode: profileMode,
         template_id: queryPack.templateId,
+        raw_output_summary: emptyRawOutputSummary,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
@@ -41294,6 +41357,7 @@ async function fetchRecoAlternativesForProduct({
         recommendation_mode: recommendationMode,
         profile_mode: profileMode,
         template_id: queryPack.templateId,
+        raw_output_summary: emptyRawOutputSummary,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
@@ -41316,6 +41380,7 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
+      raw_output_summary: emptyRawOutputSummary,
       llm_trace: {
         ...traceSeed,
         latency_ms: Date.now() - startedAtMs,
@@ -41333,6 +41398,7 @@ async function fetchRecoAlternativesForProduct({
       ? answerJson
       : structuredFallback || answerJson;
   const alternativesRaw = Array.isArray(structured?.alternatives) ? structured.alternatives : [];
+  const rawOutputSummary = summarizeRecoAlternativesRaw(alternativesRaw);
   let mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
     lang: ctx.lang,
     maxTotal: maxTotal ?? 3,
@@ -41382,6 +41448,7 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
+      raw_output_summary: rawOutputSummary,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -41404,6 +41471,7 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
+      raw_output_summary: rawOutputSummary,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null, selector_grounded: true } } : {}),
     };
@@ -41424,6 +41492,7 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
+      raw_output_summary: rawOutputSummary,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -41486,6 +41555,7 @@ async function fetchRecoAlternativesForProduct({
     recommendation_mode: recommendationMode,
     profile_mode: profileMode,
     template_id: queryPack.templateId,
+    raw_output_summary: rawOutputSummary,
     llm_trace: llmTrace,
     ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
   };
