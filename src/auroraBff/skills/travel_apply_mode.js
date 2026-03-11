@@ -60,6 +60,14 @@ class TravelApplyModeSkill extends BaseSkill {
       context.safety_flags || []
     );
     const adjustments = this._buildAdjustments(travelMode, climateArchetype);
+    const envPayload = this._buildEnvStressPayload({
+      travelPlan: persistedTravelPlan,
+      travelMode,
+      adjustments,
+      climateArchetype,
+      currentRoutine: context.current_routine,
+      recentLogs: context.recent_logs,
+    });
 
     const sections = [
       {
@@ -69,6 +77,7 @@ class TravelApplyModeSkill extends BaseSkill {
         climate: climateArchetype || travelMode.inferred_climate,
         adjustments,
         packing_list: travelMode.packing_list,
+        env_payload: envPayload,
       },
     ];
 
@@ -164,6 +173,210 @@ class TravelApplyModeSkill extends BaseSkill {
     });
 
     return adjustments;
+  }
+
+  _buildEnvStressPayload({ travelPlan, travelMode, adjustments, climateArchetype, currentRoutine, recentLogs }) {
+    const inferredClimate = String(climateArchetype || travelMode?.inferred_climate || '').trim();
+    const humidity = String(travelMode?.humidity || '').trim().toLowerCase();
+    const uvLevel = String(travelMode?.uv_level || '').trim().toLowerCase();
+    const hasRoutine = Array.isArray(currentRoutine?.am_steps) || Array.isArray(currentRoutine?.pm_steps);
+    const hasRecentLogs = Array.isArray(recentLogs) && recentLogs.length > 0;
+    const summaryTags = ['baseline_unavailable'];
+
+    if (humidity === 'high') summaryTags.push('humid');
+    if (humidity === 'low') summaryTags.push('dry');
+    if (uvLevel === 'high' || uvLevel === 'extreme') summaryTags.push('high_uv');
+    if (/tropical|equatorial/i.test(inferredClimate)) summaryTags.push('tropical');
+    if (/humid/i.test(inferredClimate)) summaryTags.push('more_humid');
+    if (/dry/i.test(inferredClimate)) summaryTags.push('drier_air');
+
+    const riskScore =
+      (uvLevel === 'extreme' ? 82 : uvLevel === 'high' ? 72 : 56)
+      + (humidity === 'high' ? 6 : 0)
+      + (travelMode?.reduce_irritation ? 8 : 0);
+    const ess = Math.max(28, Math.min(88, riskScore));
+    const tier = ess >= 65 ? 'High' : ess >= 40 ? 'Moderate' : 'Low';
+
+    const adaptiveActions = adjustments.map((item) => ({
+      why: this._adjustmentWhy(item),
+      what_to_do: item?.instruction_en || '',
+    }));
+
+    const categorizedKit = this._buildCategorizedKit({ adjustments, packingList: travelMode?.packing_list, humidity, uvLevel });
+    const packingListLines = this._buildPackingListLines(travelMode?.packing_list);
+    const activeHandling = adjustments
+      .filter((item) => item?.type === 'reduce_actives')
+      .map((item) => item.instruction_en)
+      .filter(Boolean);
+
+    return {
+      schema_version: 'aurora.ui.env_stress.v1',
+      ess,
+      tier,
+      tier_description: 'Climate-based travel adjustment using destination conditions and your current skincare context.',
+      radar: [
+        { axis: 'UV', value: uvLevel === 'extreme' ? 90 : uvLevel === 'high' ? 78 : 54 },
+        { axis: 'Hydration', value: humidity === 'high' ? 66 : humidity === 'low' ? 74 : 58 },
+        { axis: 'Barrier', value: travelMode?.reduce_irritation ? 72 : 52 },
+      ],
+      notes: [
+        !hasRoutine ? 'missing_current_routine' : '',
+        !hasRecentLogs ? 'recent_logs' : '',
+      ].filter(Boolean),
+      travel_readiness: {
+        destination_context: {
+          destination: travelPlan.destination,
+          start_date: travelPlan.start_date || null,
+          end_date: travelPlan.end_date || null,
+          env_source: 'climate_fallback',
+          weather_reason: 'travel_apply_mode_generalized',
+        },
+        delta_vs_home: {
+          summary_tags: summaryTags,
+        },
+        adaptive_actions: adaptiveActions,
+        categorized_kit: categorizedKit,
+        structured_sections: {
+          travel_kit: packingListLines,
+          routine_adjustments: adjustments.map((item) => item.instruction_en).filter(Boolean),
+          active_handling: activeHandling,
+        },
+        confidence: {
+          level: hasRoutine ? 'medium' : 'low',
+          missing_inputs: [
+            !hasRoutine ? 'current_routine' : '',
+            !hasRecentLogs ? 'recent_logs' : '',
+          ].filter(Boolean),
+          improve_by: [
+            !hasRoutine ? 'Add your AM/PM routine for product-specific swaps.' : '',
+            !hasRecentLogs ? 'Add a quick check-in if you want more personalized travel guidance.' : '',
+          ].filter(Boolean),
+        },
+        ...(inferredClimate
+          ? {
+              personal_focus: [
+                {
+                  focus: 'Destination climate',
+                  why: inferredClimate,
+                  what_to_do: adjustments[0]?.instruction_en || 'Keep the routine simple and climate-adapted.',
+                },
+              ],
+            }
+          : {}),
+      },
+    };
+  }
+
+  _buildCategorizedKit({ adjustments, packingList, humidity, uvLevel }) {
+    const entries = [];
+
+    if (uvLevel === 'high' || uvLevel === 'extreme') {
+      entries.push({
+        id: 'sun_protection',
+        title: 'Sun protection',
+        climate_link: uvLevel === 'extreme' ? 'Extreme UV exposure' : 'High UV exposure',
+        why: 'UV intensity is elevated at your destination.',
+        ingredient_logic: 'Use broad-spectrum, photostable sunscreen and easy reapplication formats.',
+        preparations: [
+          {
+            name: 'SPF 50+ sunscreen',
+            detail: 'Reapply every 2 hours outdoors',
+          },
+        ],
+      });
+    }
+
+    if (humidity === 'high') {
+      entries.push({
+        id: 'humidity_control',
+        title: 'Warmer / more humid',
+        climate_link: 'Humid climate',
+        why: 'Lighter textures can reduce congestion while keeping hydration steady.',
+        ingredient_logic: 'Humectants, gel creams, and non-heavy layers work better in humidity.',
+        preparations: [
+          {
+            name: 'Gel moisturizer',
+            detail: 'Use as a lightweight daytime layer',
+          },
+        ],
+      });
+    } else if (humidity === 'low') {
+      entries.push({
+        id: 'hydration_support',
+        title: 'Dry air support',
+        climate_link: 'Dry climate',
+        why: 'Lower humidity can increase dehydration and tightness.',
+        ingredient_logic: 'Layer humectants with a richer moisturizer to hold water in the skin.',
+        preparations: [
+          {
+            name: 'Barrier moisturizer',
+            detail: 'Use a richer layer when skin feels tight',
+          },
+        ],
+      });
+    }
+
+    if (adjustments.some((item) => item?.type === 'reduce_actives')) {
+      entries.push({
+        id: 'active_management',
+        title: 'Active management',
+        climate_link: 'Barrier protection',
+        why: 'Travel stress plus actives can increase irritation risk.',
+        ingredient_logic: 'Lower active frequency and keep the barrier routine stable.',
+        preparations: [
+          {
+            name: 'Barrier repair cream',
+            detail: 'Use on recovery nights if skin feels reactive',
+          },
+        ],
+      });
+    }
+
+    if (entries.length === 0) {
+      entries.push({
+        id: 'travel_essentials',
+        title: 'Travel essentials',
+        climate_link: 'General travel adjustment',
+        why: 'Keep the routine stable and easy to tolerate while traveling.',
+        ingredient_logic: 'Focus on cleanser, moisturizer, sunscreen, and one proven treatment.',
+        preparations: this._buildPackingPreparations(packingList),
+      });
+    }
+
+    return entries;
+  }
+
+  _buildPackingPreparations(packingList) {
+    const normalized = Array.isArray(packingList) ? packingList : [];
+    const items = normalized
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          const text = entry.trim();
+          return text ? { name: text, detail: '' } : null;
+        }
+        if (!entry || typeof entry !== 'object') return null;
+        const name = String(entry.product_type || entry.name || '').trim();
+        const detail = String(entry.reason_en || entry.detail || '').trim();
+        return name ? { name, detail } : null;
+      })
+      .filter(Boolean);
+
+    return items.length ? items.slice(0, 4) : [{ name: 'Core travel skincare', detail: 'Pack only well-tolerated essentials.' }];
+  }
+
+  _buildPackingListLines(packingList) {
+    return this._buildPackingPreparations(packingList).map((item) =>
+      item.detail ? `【${item.name}】 ${item.detail}` : item.name
+    );
+  }
+
+  _adjustmentWhy(item) {
+    const type = String(item?.type || '').trim().toLowerCase();
+    if (type === 'spf_reapply') return 'UV pressure is higher than usual.';
+    if (type === 'lighter_texture') return 'Humidity can increase congestion risk.';
+    if (type === 'hydration_boost') return 'Dry air can increase dehydration and tightness.';
+    if (type === 'reduce_actives') return 'Barrier stress is more likely during travel.';
+    return 'Keep the routine simple and travel-tolerant.';
   }
 
   _normalizeTravelMode(travelMode, climateArchetype, currentRoutine, safetyFlags) {

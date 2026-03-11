@@ -191,6 +191,10 @@ test('travel_apply_mode accepts start_date and end_date without legacy dates fie
 
   const section = response.cards[0].sections.find((item) => item.type === 'travel_structured');
   assert.equal(section?.dates, '2026-03-13 to 2026-03-26');
+  assert.equal(section?.env_payload?.schema_version, 'aurora.ui.env_stress.v1');
+  assert.equal(section?.env_payload?.travel_readiness?.destination_context?.destination, 'Singapore');
+  assert.ok(Array.isArray(section?.env_payload?.travel_readiness?.categorized_kit));
+  assert.ok(section?.env_payload?.travel_readiness?.categorized_kit?.length > 0);
   assert.ok(
     response.ops.thread_ops.some(
       (op) => op.key === 'travel_plan' && op.value?.dates === '2026-03-13 to 2026-03-26',
