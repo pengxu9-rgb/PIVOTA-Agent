@@ -14831,8 +14831,19 @@ function sanitizeGeminiJsonSchema(value) {
   if (Array.isArray(value)) return value.map((item) => sanitizeGeminiJsonSchema(item));
   if (!value || typeof value !== 'object') return value;
   const out = {};
-  for (const [key, val] of Object.entries(value)) {
+  for (const [key, rawVal] of Object.entries(value)) {
     if (key === 'additionalProperties' || key === 'maxItems') continue;
+    if (key === 'type' && Array.isArray(rawVal)) {
+      const normalizedTypes = rawVal.map((item) => String(item || '').trim()).filter(Boolean);
+      const nonNullTypes = normalizedTypes.filter((item) => item !== 'null');
+      const nullable = normalizedTypes.includes('null');
+      if (nonNullTypes.length === 1) {
+        out.type = nonNullTypes[0];
+        if (nullable) out.nullable = true;
+        continue;
+      }
+    }
+    const val = rawVal;
     out[key] = sanitizeGeminiJsonSchema(val);
   }
   return out;
@@ -40644,8 +40655,8 @@ function buildExternalSeedOpenWorldSchema() {
           properties: {
             brand: { type: 'string' },
             name: { type: 'string' },
-            product_type: { type: ['string', 'null'] },
-            similarity_score: { type: ['number', 'null'] },
+            product_type: { type: 'string', nullable: true },
+            similarity_score: { type: 'number', nullable: true },
             reasons: {
               type: 'array',
               minItems: 1,
@@ -40658,7 +40669,7 @@ function buildExternalSeedOpenWorldSchema() {
               maxItems: 3,
               items: { type: 'string' },
             },
-            best_use: { type: ['string', 'null'] },
+            best_use: { type: 'string', nullable: true },
           },
           required: ['brand', 'name', 'reasons', 'tradeoff_notes'],
         },
@@ -60248,6 +60259,8 @@ const __internal = {
   applyRecommendationOutputGuardrailsForRoute,
   sanitizeDupeSuggestPayload,
   applyDupeSuggestSanitizeToEnvelope,
+  sanitizeGeminiJsonSchema,
+  buildExternalSeedOpenWorldSchema,
   isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
