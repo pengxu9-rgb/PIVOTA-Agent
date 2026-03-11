@@ -346,6 +346,13 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   );
   const exactFullLabels = new Set([anchorFullName, anchorDisplayName].filter(Boolean));
 
+  if (candidateBrand && candidateFullLabel && exactFullLabels.has(candidateFullLabel)) {
+    return {
+      isSelfRef: true,
+      reason: DROP_REASON.SAME_BRAND_EXACT_LABEL,
+    };
+  }
+
   if (
     candidateBrand &&
     candidateFullLabel &&
