@@ -39894,7 +39894,13 @@ function buildRecoAlternativesPromptPayload({
       name: null,
       query: null,
       region_variant: 'US|EU|unknown',
+      category: null,
+      product_type: null,
+      usage_role: 'unknown',
+      hero_ingredients: [],
       known_actives: [],
+      primary_claims: [],
+      texture_hints: [],
       notes: null,
     },
     task: {
@@ -39903,14 +39909,12 @@ function buildRecoAlternativesPromptPayload({
       recommendation_mode: promptSpec.mode,
       profile_mode: normalizedProfileMode,
     },
-    hard_rules: [
-      promptSpec.mode === 'pool_only'
-        ? 'Select ONLY from candidates[].'
-        : 'Prefer context.candidates first; supplement with open-world products only when the pool is insufficient.',
-      'If no suitable candidate exists, return {"alternatives": []}.',
-      'Never claim exact formula equivalence when target_product.known_actives is empty or uncertain.',
-      'Every returned item must include concrete reasons and tradeoffs.',
-    ],
+    hard_rules: promptSpec.mode === 'pool_only'
+      ? [
+        'Select ONLY from candidates[].',
+        'Never claim exact formula equivalence when target_product.known_actives is empty or uncertain.',
+      ]
+      : [],
     output_item_schema: {
       kind: 'dupe|similar|premium',
       candidate_origin: promptSpec.mode === 'pool_only' ? 'catalog' : 'catalog|open_world',
@@ -39993,22 +39997,16 @@ function buildRecoAlternativesPromptPayload({
     recommendation_mode: promptSpec.mode,
     profile_mode: normalizedProfileMode,
   };
-  const rules = Array.isArray(payload.hard_rules) ? payload.hard_rules.slice(0, 16) : [];
   if (promptSpec.mode === 'pool_only') {
+    const rules = Array.isArray(payload.hard_rules) ? payload.hard_rules.slice(0, 16) : [];
     rules.push('Select ONLY from candidates[] and copy identifiers from the chosen candidate exactly.');
+    rules.push('Do not claim exact dupe or identical formula when target_product.known_actives is empty or uncertain.');
+    payload.hard_rules = uniqCaseInsensitiveStrings(rules, 16);
+  } else if (Array.isArray(payload.hard_rules)) {
+    payload.hard_rules = uniqCaseInsensitiveStrings(payload.hard_rules.slice(0, 16), 16);
   } else {
-    rules.push('Use context.candidates first when they are viable.');
-    rules.push('Open-world products are allowed only when the local pool is insufficient.');
-    rules.push('For open-world products, do not invent product_id, sku_id, url, price, or exact INCI details.');
-    rules.push('If profile_mode is anchor_only, do not make skin-fit claims for a specific user.');
-    rules.push('If target_product has a clear brand/name, query, or recognizable role pattern, aim to return 2-4 viable distinct alternatives when possible.');
-    rules.push('A viable alternative must be distinct from the anchor, have non-null brand and name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.');
-    rules.push('Do not return [] just because context.candidates is empty, full INCI is unknown, or price is unknown.');
+    payload.hard_rules = [];
   }
-  rules.push('If no candidate is strong enough, return alternatives: [].');
-  rules.push('Do not claim exact dupe or identical formula when target_product.known_actives is empty or uncertain.');
-  rules.push('Every returned alternative must include reasons, tradeoffs, and missing_info when uncertainty remains.');
-  payload.hard_rules = uniqCaseInsensitiveStrings(rules, 16);
   payload.candidates = normalizedCandidates.map((row) => ({
     id: row.id,
     name: row.name,
@@ -40042,10 +40040,9 @@ function buildAuroraRecoAlternativesQuery({
       'Select ONLY from context.candidates and keep each reason short.',
     ].join('\n')
     : [
-      'You are a strict but productive skincare alternatives selector for a dupe-finding workflow.',
+      'You are a strict skincare alternatives selector for a dupe-finding workflow.',
       'Output MUST be valid JSON only. No markdown and no extra keys.',
       'Use context.candidates first, but you may supplement with conservative open-world products under the hard rules.',
-      'For common skincare anchors, prefer a short list of distinct viable alternatives over [] when you can name real products conservatively.',
       'Never invent product IDs, SKUs, URLs, prices, exact INCI lists, or formula identity.',
     ].join('\n');
   const systemPrompt = loadRecoPromptTemplateFile(promptSpec.systemFile, {
@@ -40189,6 +40186,7 @@ async function fetchRecoAlternativesForProduct({
   const skipAnchorPrecheck = opts.skip_anchor_precheck === true;
   const preferRefreshCache = opts.prefer_refresh_cache !== false;
   const disableSyntheticLocalFallback = opts.disable_synthetic_local_fallback === true;
+  const ignoreSelectorCandidates = opts.ignore_selector_candidates === true;
   const allowAnchorlessOpenWorld = recommendationMode !== 'pool_only';
   const usesOpenWorldPrompt = recommendationMode === 'hybrid_fallback' || recommendationMode === 'open_world_only';
 
@@ -40196,19 +40194,23 @@ async function fetchRecoAlternativesForProduct({
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
   let anchor = anchorId ? String(anchorId).trim() : '';
   const bestInput = inputText || anchor;
-  const selectorCandidatePool = buildRecoAlternativesCandidatePool({
-    sharedCandidates: candidatePool,
-    productObj,
-    anchorId: anchor,
-    maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
-  });
-  const selectorGroundedAlternatives = mapSelectorCandidatesToAlternatives(selectorCandidatePool, {
-    maxTotal,
-    lang: ctx.lang,
-    reasonLine: ctx.lang === 'CN'
-      ? '基于已解析商品候选给出 grounded alternatives。'
-      : 'Grounded alternatives derived from resolved candidate pool.',
-  });
+  const selectorCandidatePool = ignoreSelectorCandidates
+    ? []
+    : buildRecoAlternativesCandidatePool({
+      sharedCandidates: candidatePool,
+      productObj,
+      anchorId: anchor,
+      maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
+    });
+  const selectorGroundedAlternatives = ignoreSelectorCandidates
+    ? []
+    : mapSelectorCandidatesToAlternatives(selectorCandidatePool, {
+      maxTotal,
+      lang: ctx.lang,
+      reasonLine: ctx.lang === 'CN'
+        ? '基于已解析商品候选给出 grounded alternatives。'
+        : 'Grounded alternatives derived from resolved candidate pool.',
+    });
   let refreshKey = makeRecoAlternativesRefreshKey({
     anchorId: anchor || null,
     productInput: bestInput,
@@ -45751,7 +45753,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       buildContextPrefix,
       getUpstreamStructuredOrJson,
       extractJsonObjectByKeys,
-      sanitizeDupeSuggestPayload,
       resolveIdentity,
       getProfileForIdentity,
       getRecentSkinLogsForIdentity,

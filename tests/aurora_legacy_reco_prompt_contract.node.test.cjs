@@ -206,8 +206,7 @@ test('hybrid reco alternatives query includes recommendation_mode, anchor_only p
     assert.match(promptPack.query, /"texture_hints"\s*:\s*\[/i);
     assert.match(promptPack.systemPrompt, /do NOT personalize to an assumed user/i);
     assert.match(promptPack.systemPrompt, /Never invent product IDs, SKUs, URLs, prices/i);
-    assert.match(promptPack.query, /aim to return 2-4 viable distinct alternatives when possible/i);
-    assert.match(promptPack.query, /A viable alternative must be distinct from the anchor, have non-null brand and name/i);
+    assert.match(promptPack.query, /aim to return 2-4 viable real-product alternatives/i);
   } finally {
     delete require.cache[moduleId];
   }

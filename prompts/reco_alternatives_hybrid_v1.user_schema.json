@@ -34,12 +34,7 @@
     "recommendation_mode": "hybrid_fallback",
     "profile_mode": "anchor_only"
   },
-  "hard_rules": [
-    "Prefer context.candidates first and supplement with open-world products only when the pool is insufficient.",
-    "For open-world products, never invent product_id, sku_id, url, price, exact INCI, or exact formula identity.",
-    "If profile_mode is anchor_only, do not make personalized skin-fit claims.",
-    "If no suitable alternative exists, return {\"alternatives\": []}."
-  ],
+  "hard_rules": [],
   "output_item_schema": {
     "kind": "dupe|similar|premium",
     "candidate_origin": "catalog|open_world",
