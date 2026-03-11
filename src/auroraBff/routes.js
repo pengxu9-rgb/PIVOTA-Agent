@@ -14920,6 +14920,65 @@ function extractGeminiFinishReason(response) {
   return finishReason || null;
 }
 
+function tryRecoverAlternativesFromTruncatedJson(text) {
+  const raw = String(text || '');
+  const keyIndex = raw.indexOf('"alternatives"');
+  if (keyIndex < 0) return null;
+  const arrayStart = raw.indexOf('[', keyIndex);
+  if (arrayStart < 0) return null;
+  const recovered = [];
+  let inString = false;
+  let escapeNext = false;
+  let objectDepth = 0;
+  let objectStart = -1;
+  for (let i = arrayStart + 1; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === '\\') {
+        escapeNext = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (objectStart === -1) {
+      if (ch === '{') {
+        objectStart = i;
+        objectDepth = 1;
+      } else if (ch === ']') {
+        break;
+      }
+      continue;
+    }
+    if (ch === '{') {
+      objectDepth += 1;
+      continue;
+    }
+    if (ch === '}') {
+      objectDepth -= 1;
+      if (objectDepth === 0) {
+        const snippet = raw.slice(objectStart, i + 1);
+        try {
+          const parsed = JSON.parse(snippet);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) recovered.push(parsed);
+        } catch {
+          // Ignore partial or malformed trailing objects; recovery only uses complete JSON objects.
+        }
+        objectStart = -1;
+      }
+    }
+  }
+  return recovered.length ? { alternatives: recovered } : null;
+}
+
 function parseGeminiJsonPayload(text, schema = null) {
   const jsonOnly = unwrapCodeFence(text);
   const requiredKeys =
@@ -14939,6 +14998,16 @@ function parseGeminiJsonPayload(text, schema = null) {
       raw_text: jsonOnly,
       parse_status: 'extracted',
     };
+  }
+  if (requiredKeys.includes('alternatives')) {
+    const recovered = tryRecoverAlternativesFromTruncatedJson(jsonOnly);
+    if (recovered) {
+      return {
+        parsed: recovered,
+        raw_text: jsonOnly,
+        parse_status: 'recovered_truncated',
+      };
+    }
   }
   const trimmed = String(text || '').trim();
   const truncated =
@@ -60260,6 +60329,7 @@ const __internal = {
   applyDupeSuggestSanitizeToEnvelope,
   sanitizeGeminiJsonSchema,
   buildExternalSeedOpenWorldSchema,
+  parseGeminiJsonPayload,
   isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
