@@ -1257,6 +1257,14 @@ function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = isPlainObject(payload.action) ? payload.action : {};
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
+  const sessionAnalysisContext =
+    isPlainObject(payload.session) && isPlainObject(payload.session.meta) && isPlainObject(payload.session.meta.analysis_context)
+      ? payload.session.meta.analysis_context
+      : null;
+  const rawMessage = pickFirstTrimmed(payload.message, payload.text, payload.query);
+  const isImplicitAnalysisFollowup =
+    hasReusableSessionAnalysisContext(sessionAnalysisContext) &&
+    IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.has(normalizeImplicitAnalysisFollowupMessage(rawMessage));
   const canDelegateActionToV2 = [
     'chip.action.add_to_routine',
     'chip.start.dupes',
@@ -1276,6 +1284,7 @@ function shouldDelegateV1ChatToV2(body) {
   }
 
   if (canDelegateActionToV2) return true;
+  if (isImplicitAnalysisFollowup) return false;
 
   const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
   if (hasMessage) return true;
@@ -25240,6 +25249,61 @@ const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
   'chip.aurora.next_action.routine_deep_dive',
   'chip.aurora.next_action.safety_concerns',
 ]);
+
+const IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES = new Map([
+  ['tell me more about my skin', 'chip.aurora.next_action.deep_dive_skin'],
+  ['dive deeper into skin', 'chip.aurora.next_action.deep_dive_skin'],
+  ['deep dive into skin', 'chip.aurora.next_action.deep_dive_skin'],
+  ['深入了解我的皮肤状态', 'chip.aurora.next_action.deep_dive_skin'],
+  ['深入了解皮肤状态', 'chip.aurora.next_action.deep_dive_skin'],
+]);
+
+function normalizeImplicitAnalysisFollowupMessage(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function hasReusableAnalysisFollowupContext(lastAnalysis) {
+  const {
+    skinProfile,
+    ingredientPlan,
+    routineFit,
+    findingLines,
+  } = extractAnalysisFollowupSignals(lastAnalysis);
+  return Boolean(
+    Object.keys(skinProfile).length ||
+      findingLines.length ||
+      (ingredientPlan && typeof ingredientPlan === 'object') ||
+      routineFit,
+  );
+}
+
+function hasReusableSessionAnalysisContext(sessionAnalysisContext) {
+  const ctx = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : null;
+  if (!ctx) return false;
+  const photoRefs = normalizeAnalysisPhotoRefs(ctx.photo_refs);
+  return Boolean(
+    photoRefs.length ||
+      ctx.use_photo === true ||
+      pickFirstTrimmed(ctx.analysis_origin, ctx.source_card_type),
+  );
+}
+
+function inferImplicitAnalysisFollowupActionId({
+  explicitActionId,
+  message,
+  lastAnalysis,
+  sessionAnalysisContext,
+} = {}) {
+  if (String(explicitActionId || '').trim()) return null;
+  if (!hasReusableAnalysisFollowupContext(lastAnalysis) && !hasReusableSessionAnalysisContext(sessionAnalysisContext)) {
+    return null;
+  }
+  const normalizedMessage = normalizeImplicitAnalysisFollowupMessage(message);
+  return IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.get(normalizedMessage) || null;
+}
 
 function buildRoutineFitSummaryCard(fitResult, requestId) {
   const fit = fitResult && typeof fitResult === 'object' ? fitResult : {};
@@ -54603,6 +54667,30 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? AURORA_DIAG_FORCE_GEMINI_MODEL
         : normalizeChatLlmModel(parsed.data.llm_model) ||
           normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
+      const sessionAnalysisContext =
+        parsed.data &&
+        parsed.data.session &&
+        typeof parsed.data.session === 'object' &&
+        !Array.isArray(parsed.data.session) &&
+        parsed.data.session.meta &&
+        typeof parsed.data.session.meta === 'object' &&
+        !Array.isArray(parsed.data.session.meta) &&
+        parsed.data.session.meta.analysis_context &&
+        typeof parsed.data.session.meta.analysis_context === 'object' &&
+        !Array.isArray(parsed.data.session.meta.analysis_context)
+          ? parsed.data.session.meta.analysis_context
+          : null;
+      const inferredAnalysisFollowupActionId = inferImplicitAnalysisFollowupActionId({
+        explicitActionId: actionId,
+        message,
+        lastAnalysis: profile && profile.lastAnalysis,
+        sessionAnalysisContext,
+      });
+      const normalizedEffectiveActionId =
+        String(inferredAnalysisFollowupActionId || actionId || '').trim() || null;
+      if (normalizedEffectiveActionId && !actionIdForReplay) {
+        actionIdForReplay = normalizedEffectiveActionId;
+      }
       llmRouteMetaForResponse =
         llmProvider || llmModel
           ? {
@@ -54781,9 +54869,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
         return makeAssistantMessage(text, format);
       };
-      const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim());
+      const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(normalizedEffectiveActionId || '').trim());
       if (isAnalysisFollowupAction) {
-        const normalizedActionId = String(actionId || '').trim();
+        const normalizedActionId = String(normalizedEffectiveActionId || '').trim();
         const isDeepDiveAction = normalizedActionId === 'chip.aurora.next_action.deep_dive_skin';
         const actionData =
           normalizedActionPayload &&
@@ -54793,19 +54881,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           !Array.isArray(normalizedActionPayload.data)
             ? normalizedActionPayload.data
             : {};
-        const sessionAnalysisContext =
-          parsed.data &&
-          parsed.data.session &&
-          typeof parsed.data.session === 'object' &&
-          !Array.isArray(parsed.data.session) &&
-          parsed.data.session.meta &&
-          typeof parsed.data.session.meta === 'object' &&
-          !Array.isArray(parsed.data.session.meta) &&
-          parsed.data.session.meta.analysis_context &&
-          typeof parsed.data.session.meta.analysis_context === 'object' &&
-          !Array.isArray(parsed.data.session.meta.analysis_context)
-            ? parsed.data.session.meta.analysis_context
-            : null;
         const latestDiagnosisArtifact = isDeepDiveAction
           ? await loadLatestDiagnosisArtifactForRoute({
               identity,
@@ -54883,6 +54958,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               llm_used: Boolean(followup && followup.llm_used),
               llm_model: followup && followup.llm_model ? followup.llm_model : null,
               llm_failure_reason: followup && followup.llm_failure_reason ? followup.llm_failure_reason : null,
+              inferred_from_message: Boolean(inferredAnalysisFollowupActionId && !String(actionId || '').trim()),
               fell_back_to_generic: false,
             }),
           ],
