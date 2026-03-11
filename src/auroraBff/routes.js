@@ -18132,12 +18132,18 @@ function scheduleSkinAnalysisKbBackfill({
     snapshot = null;
   }
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return;
+  const analysisStorySnapshot = buildAnalysisStoryFallbackPayload({
+    analysisSummaryPayload: snapshot,
+    profile: null,
+    language: ctx?.lang || 'EN',
+  });
 
   const artifact = {
     artifact_id: createArtifactId(),
     created_at: new Date().toISOString(),
     artifact_type: 'skin_analysis_kb_snapshot_v1',
     analysis_summary: snapshot,
+    analysis_story_snapshot: analysisStorySnapshot,
     overall_confidence: {
       score: confidenceScore,
       level: confidenceLevel,
