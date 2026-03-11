@@ -30,7 +30,7 @@ test('aurora prompt inventory covers every v2 manifest template and free-form ch
   assert.ok(freeformRow);
   assert.equal(freeformRow.call_mode, 'freeform_chat');
   assert.equal(freeformRow.entrypoint, 'skill_router._handleFreeFormChat');
-  assert.equal(freeformRow.version, 'inline_system_prompt_v2');
+  assert.equal(freeformRow.version, 'inline_system_prompt_v3');
 });
 
 test('aurora prompt inventory markdown includes prompt table and audit queue', () => {

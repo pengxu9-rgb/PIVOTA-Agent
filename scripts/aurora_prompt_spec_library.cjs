@@ -238,7 +238,7 @@ const NODE_SPECS = [
     entrypoint: 'reco.step_based',
     consumer: 'RecoStepBasedSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::reco_step_based',
-    current_version_or_variant: '2.0.0',
+    current_version_or_variant: '2.2.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -266,7 +266,7 @@ const NODE_SPECS = [
     entrypoint: 'tracker.checkin_insights',
     consumer: 'TrackerCheckinInsightsSkill',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::tracker_checkin_insights',
-    current_version_or_variant: '1.2.0',
+    current_version_or_variant: '1.3.0',
     dormant_variants: [],
     provider_path: 'LlmGateway.call -> Gemini structured JSON',
     output_contract: {
@@ -490,7 +490,7 @@ const NODE_SPECS = [
     entrypoint: 'skill_router._handleFreeFormChat',
     consumer: 'SkillRouter',
     prompt_source: 'src/auroraBff/services/llm_gateway.js::buildFreeformChatSystemPrompt + chat()',
-    current_version_or_variant: 'inline_system_prompt_v2',
+    current_version_or_variant: 'inline_system_prompt_v3',
     dormant_variants: [],
     provider_path: 'LlmGateway.chat -> Gemini chat -> SSE chunk/result adapter',
     output_contract: {

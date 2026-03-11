@@ -4,6 +4,11 @@ function uuidv4() {
   return crypto.randomUUID();
 }
 
+function compactText(value) {
+  if (value == null) return '';
+  return String(value).trim();
+}
+
 class BaseSkill {
   constructor(skillId, version = '1.0.0') {
     this._skillId = skillId;
@@ -63,6 +68,9 @@ class BaseSkill {
 
     const precondResult = await this.checkPreconditions(request);
     if (!precondResult.met) {
+      if (this._isFreeTextUserTurn(request)) {
+        return this._buildPreconditionTextResponse(callId, startMs, precondResult.failures);
+      }
       return this._buildEmptyState(callId, startMs, precondResult.failures);
     }
 
@@ -132,6 +140,78 @@ class BaseSkill {
               type: 'empty_state_message',
               message_en: firstFailure.reason || 'Precondition not met',
               message_zh: firstFailure.on_fail_message_zh || '前置条件未满足',
+            },
+          ],
+        },
+      ],
+      ops: {
+        thread_ops: [],
+        profile_patch: {},
+        routine_patch: {},
+        experiment_events: [],
+      },
+      quality: {
+        schema_valid: true,
+        quality_ok: false,
+        issues: [],
+        preconditions_met: false,
+        precondition_failures: failures,
+      },
+      telemetry: {
+        call_id: callId,
+        skill_id: this._skillId,
+        skill_version: this._version,
+        prompt_hash: null,
+        task_mode: this._skillId.split('.')[0],
+        elapsed_ms: Date.now() - startMs,
+        llm_calls: 0,
+      },
+      next_actions: nextActions,
+    };
+  }
+
+  _isFreeTextUserTurn(request) {
+    const userMessage = compactText(
+      request?.params?.user_message ||
+      request?.params?.message ||
+      request?.params?.text
+    );
+    const entrySource = compactText(request?.params?.entry_source).toLowerCase();
+    return Boolean(userMessage) && !entrySource.startsWith('chip.');
+  }
+
+  _buildPreconditionTextResponse(callId, startMs, failures) {
+    const firstFailure = failures[0] || {};
+    const nextActions = [];
+
+    if (firstFailure.on_fail_target) {
+      nextActions.push({
+        action_type: 'navigate_skill',
+        target_skill_id: firstFailure.on_fail_target,
+        label: {
+          en: firstFailure.on_fail_message_en || 'Continue',
+          zh: firstFailure.on_fail_message_zh || '继续',
+        },
+      });
+    } else {
+      nextActions.push({
+        action_type: 'request_input',
+        label: {
+          en: firstFailure.on_fail_message_en || 'Please provide more information.',
+          zh: firstFailure.on_fail_message_zh || '请提供更多信息。',
+        },
+      });
+    }
+
+    return {
+      cards: [
+        {
+          card_type: 'text_response',
+          sections: [
+            {
+              type: 'text_answer',
+              text_en: firstFailure.on_fail_message_en || 'Please provide more information so I can help.',
+              text_zh: firstFailure.on_fail_message_zh || '请提供更多信息，我才能继续帮你。',
             },
           ],
         },

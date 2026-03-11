@@ -296,6 +296,38 @@ test('/v1/chat delegates v2-compatible message+context bodies when skill_router_
   );
 });
 
+test('/v1/chat answers dryness questions even when profile says oily', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          message: 'My skin feels dry and tight lately. What should I do?',
+          context: {
+            locale: 'en',
+            profile: { skin_type: 'oily' },
+          },
+        })
+        .expect(200);
+
+      const textAnswer = response.body.cards?.[0]?.sections?.find((section) => section.type === 'text_answer')?.text_en || '';
+      assert.equal(response.body.cards?.[0]?.card_type, 'text_response');
+      assert.match(textAnswer, /dry|tight|gentle|barrier|hydr/i);
+      assert.match(textAnswer, /oily|greasy|occlusive|congest/i);
+      assert.doesNotMatch(textAnswer, /cannot assist with dryness because your profile indicates oily skin/i);
+    },
+  );
+});
+
 test('/v1/chat turns current frontend reco freeform payload with camelCase profile into non-empty reco output', async () => {
   await withEnv(
     {

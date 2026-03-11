@@ -330,3 +330,32 @@ test('reco_step_based returns text_response when grounded recommendation search 
     recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
   }
 });
+
+test('product_analyze free-text precondition failures downgrade to text_response instead of empty_state', async () => {
+  const skill = new ProductAnalyzeSkill();
+  const response = await skill.run(
+    {
+      skill_id: 'product.analyze',
+      context: {
+        profile: {},
+        recent_logs: [],
+        travel_plan: null,
+        current_routine: null,
+        inventory: [],
+        locale: 'en',
+        safety_flags: [],
+      },
+      params: {
+        message: 'Can you analyze this sunscreen for me?',
+      },
+      thread_state: {},
+    },
+    {},
+  );
+
+  assert.equal(response.cards?.[0]?.card_type, 'text_response');
+  assert.match(String(response.cards?.[0]?.sections?.[0]?.text_en || ''), /share a product link or name/i);
+  assert.ok(Array.isArray(response.next_actions));
+  assert.equal(response.next_actions?.[0]?.action_type, 'request_input');
+  assert.equal(response.quality?.preconditions_met, false);
+});
