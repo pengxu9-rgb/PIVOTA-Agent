@@ -18,7 +18,7 @@ const {
   hasSyntheticRecommendationSuffix,
 } = require('../skills/dupe_utils');
 
-const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v5';
+const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v6';
 let dupeKbContractPurgePromise = null;
 const PLACEHOLDER_REASON_PATTERNS = [
   /^grounded alternatives derived from resolved candidate pool\.?$/i,
@@ -165,6 +165,8 @@ function buildRecommendationPassTrace(pass, { fallbackTemplateId = null } = {}) 
     provider_model: String(llmTrace.provider_model || '').trim() || null,
     provider_timeout_stage: String(llmTrace.provider_timeout_stage || '').trim() || null,
     provider_result_reason: String(llmTrace.provider_result_reason || '').trim() || null,
+    finish_reason: String(llmTrace.finish_reason || '').trim() || null,
+    parse_status: String(llmTrace.parse_status || '').trim() || null,
     provider_total_ms: Number.isFinite(Number(llmTrace.provider_total_ms))
       ? Math.max(0, Math.trunc(Number(llmTrace.provider_total_ms)))
       : null,
@@ -591,7 +593,16 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     const deduped = [];
     for (const row of allCandidates) {
       if (!row || typeof row !== 'object') continue;
-      const key = String(row.sku_id || row.product_id || row.id || row.name || '').trim().toLowerCase();
+      const key = String(
+        row.sku_id
+        || row.product_id
+        || row.id
+        || row.url
+        || row.pdp_url
+        || ([row.brand, row.display_name || row.name].filter(Boolean).join('::'))
+        || row.name
+        || '',
+      ).trim().toLowerCase();
       if (!key || seen.has(key) || key === anchor) continue;
       seen.add(key);
       deduped.push(row);
@@ -691,7 +702,6 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         recommendation_mode_final: sourceMeta.recommendation_mode_final || sourceMeta.recommendation_mode || null,
         profile_mode: sourceMeta.profile_mode || null,
         profile_context_present: sourceMeta.profile_context_present === true,
-        open_world_supplement_used: sourceMeta.open_world_supplement_used === true,
         attempted_queries: Array.isArray(sourceMeta.attempted_queries) ? sourceMeta.attempted_queries.slice(0, 6) : [],
         source_hit_counts: sourceMeta.source_hit_counts || { catalog_search: 0, product_embedded: 0, open_world_fallback: 0 },
         final_source_mix: Array.isArray(sourceMeta.final_source_mix) ? sourceMeta.final_source_mix : [],
@@ -812,10 +822,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     logger,
     maxCandidates: Math.max(12, total * 3),
   });
-  const { recommendationMode, profileMode } = resolveDupeSuggestionModes({
-    candidateCount: Array.isArray(poolResult.candidates) ? poolResult.candidates.length : 0,
-    profileSummary,
-  });
+  const { recommendationMode, profileMode } = resolveDupeSuggestionModes({ profileSummary });
   const hasAnchorIdentity = hasUsableAnchorIdentity({
     anchorId,
     originalObj,
@@ -850,7 +857,6 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         maxConfidence: 0,
       };
     }
-
     const startedAt = Date.now();
     const upstreamOut = await fetchRecoAlternativesForProduct({
       ctx,
@@ -914,7 +920,6 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     openWorldPass ? openWorldPass.liveEvaluation.comparables : [],
     { limit: maxComparables },
   );
-  const hasResults = dupes.length > 0 || comparables.length > 0;
   const finalItems = [...dupes, ...comparables];
   const combinedMapped = [
     ...(Array.isArray(poolPass.mapped) ? poolPass.mapped : []),
@@ -931,6 +936,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     { maxDupes, maxComparables },
   );
   const viabilityFailureReasons = [];
+  const hasResults = dupes.length > 0 || comparables.length > 0;
   viabilityFailureReasons.push(...poolPass.liveEvaluation.failureReasons);
   if (openWorldPass) viabilityFailureReasons.push(...openWorldPass.liveEvaluation.failureReasons);
   const hasMeaningfulQuality = finalLiveEvaluation.hasMeaningfulQuality;
@@ -946,17 +952,6 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     });
   const finalSourceMix = buildFinalSourceMix(finalItems, recommendationModeFinal);
   const sourceHitCounts = buildSourceHitCounts(poolResult && poolResult.meta, finalItems);
-  const kbGatePayload = {
-    dupes,
-    comparables,
-    candidate_pool_meta: normalizeCandidatePoolMeta(poolResult && poolResult.meta),
-    empty_state_reason: terminalEmptyReason,
-    meta: {
-      final_empty_reason: terminalEmptyReason,
-    },
-  };
-  const kbGateResult = applyDupeSuggestQualityGate(kbGatePayload, { lang: ctx.lang });
-  const kbPersistAllowed = hasResults && !kbGateResult.gated;
   const rawOutputItemCount = poolPassTrace.raw_output_item_count + (openWorldPassTrace ? openWorldPassTrace.raw_output_item_count : 0);
 
   // LLM trace
@@ -1015,6 +1010,17 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
   }, 'aurora bff: dupe_suggest alternatives llm trace');
 
   // 5) KB backfill
+  const kbGatePayload = {
+    dupes,
+    comparables,
+    candidate_pool_meta: normalizeCandidatePoolMeta(poolResult && poolResult.meta),
+    empty_state_reason: terminalEmptyReason,
+    meta: {
+      final_empty_reason: terminalEmptyReason,
+    },
+  };
+  const kbGateResult = applyDupeSuggestQualityGate(kbGatePayload, { lang: ctx.lang });
+  const kbPersistAllowed = hasResults && !kbGateResult.gated;
   if (kbKey && kbPersistAllowed) {
     const kbWritePayload = {
       kb_key: kbKey,

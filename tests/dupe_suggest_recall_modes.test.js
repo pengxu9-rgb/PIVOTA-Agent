@@ -193,7 +193,7 @@ describe('executeDupeSuggest recall modes', () => {
         disable_synthetic_local_fallback: true,
       }),
     }));
-    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v5');
+    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v6');
     expect(fetchRecoAlternativesForProduct.mock.calls.some(([args]) => args.options.recommendation_mode === 'hybrid_fallback')).toBe(false);
   });
 
@@ -516,7 +516,7 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalled();
     expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
       source_meta: expect.objectContaining({
-        contract_version: 'dupe_suggest_v5',
+        contract_version: 'dupe_suggest_v6',
       }),
     }));
   });

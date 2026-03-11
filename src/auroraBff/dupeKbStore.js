@@ -18,15 +18,11 @@ const state = {
   dbUnavailable: false,
 };
 
-function extractContractVersion(entry) {
-  const sourceMeta =
-    entry && entry.source_meta && typeof entry.source_meta === 'object' && !Array.isArray(entry.source_meta)
-      ? entry.source_meta
-      : null;
-  const version = sourceMeta && typeof sourceMeta.contract_version === 'string'
-    ? sourceMeta.contract_version.trim()
-    : '';
-  return version || null;
+function resetState() {
+  state.fileLoaded = false;
+  state.fileIndex = new Map();
+  state.memIndex = new Map();
+  state.dbUnavailable = false;
 }
 
 function normalizeKey(value) {
@@ -83,6 +79,27 @@ function getKbPath() {
   const explicit = process.env.AURORA_DUPE_KB_PATH;
   if (explicit && String(explicit).trim()) return String(explicit).trim();
   return DEFAULT_KB_PATH;
+}
+
+function getEntryContractVersion(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return '';
+  const sourceMeta = entry.source_meta && typeof entry.source_meta === 'object' && !Array.isArray(entry.source_meta)
+    ? entry.source_meta
+    : null;
+  return String(
+    (entry.contract_version != null && entry.contract_version !== '')
+      ? entry.contract_version
+      : (sourceMeta && sourceMeta.contract_version) || '',
+  ).trim();
+}
+
+function shouldPurgeEntry(entry, currentContractVersion) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return true;
+  const sourceMeta = entry.source_meta && typeof entry.source_meta === 'object' && !Array.isArray(entry.source_meta)
+    ? entry.source_meta
+    : null;
+  if (!sourceMeta) return true;
+  return getEntryContractVersion(entry) !== String(currentContractVersion || '').trim();
 }
 
 function loadFileIndexOnce() {
@@ -213,74 +230,6 @@ async function upsertToDb(entry) {
   }
 }
 
-async function purgeDbByContractVersion(currentContractVersion) {
-  if (state.dbUnavailable) return 0;
-  const contractVersion = normalizeKey(currentContractVersion);
-  if (!contractVersion) return 0;
-  try {
-    const res = await query(
-      `
-        DELETE FROM aurora_dupe_kb
-        WHERE source_meta IS NULL
-          OR jsonb_typeof(source_meta) <> 'object'
-          OR COALESCE(source_meta->>'contract_version', '') <> $1
-      `,
-      [contractVersion],
-    );
-    return Number.isFinite(Number(res && res.rowCount)) ? Math.max(0, Math.trunc(Number(res.rowCount))) : 0;
-  } catch (err) {
-    const code = err && err.code ? String(err.code) : '';
-    if (code === 'NO_DATABASE' || code === '42P01') {
-      state.dbUnavailable = true;
-      return 0;
-    }
-    return 0;
-  }
-}
-
-function purgeMemByContractVersion(currentContractVersion) {
-  const contractVersion = normalizeKey(currentContractVersion);
-  if (!contractVersion) return 0;
-  let removed = 0;
-  for (const [key, entry] of state.memIndex.entries()) {
-    if (extractContractVersion(entry) === contractVersion) continue;
-    state.memIndex.delete(key);
-    removed += 1;
-  }
-  return removed;
-}
-
-function purgeFileByContractVersion(currentContractVersion) {
-  const contractVersion = normalizeKey(currentContractVersion);
-  if (!contractVersion) return 0;
-  loadFileIndexOnce();
-  const filePath = getKbPath();
-  if (!fs.existsSync(filePath)) return 0;
-
-  const kept = [];
-  let removed = 0;
-  for (const [key, entry] of state.fileIndex.entries()) {
-    if (extractContractVersion(entry) === contractVersion) {
-      kept.push([key, entry]);
-      continue;
-    }
-    removed += 1;
-  }
-  if (!removed) return 0;
-
-  const nextIndex = new Map(kept);
-  const lines = Array.from(nextIndex.values()).map((entry) => JSON.stringify(entry));
-  const nextPayload = lines.length ? `${lines.join('\n')}\n` : '';
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, nextPayload, 'utf8');
-    state.fileIndex = nextIndex;
-  } catch {
-    return 0;
-  }
-  return removed;
-}
-
 async function getDupeKbEntry(kbKey) {
   const key = normalizeKey(kbKey);
   if (!key) return null;
@@ -328,15 +277,58 @@ async function upsertDupeKbEntry(entry) {
 }
 
 async function purgeDupeKbEntriesByContractVersion(currentContractVersion) {
-  const contractVersion = normalizeKey(currentContractVersion);
-  if (!contractVersion) {
-    return { db_deleted: 0, mem_deleted: 0, file_deleted: 0 };
+  const contractVersion = String(currentContractVersion || '').trim();
+  if (!contractVersion) return { db_deleted: 0, mem_deleted: 0, file_deleted: 0 };
+
+  let dbDeleted = 0;
+  if (!state.dbUnavailable) {
+    try {
+      const res = await query(
+        `
+          DELETE FROM aurora_dupe_kb
+          WHERE COALESCE(source_meta->>'contract_version', '') <> $1
+             OR source_meta IS NULL
+        `,
+        [contractVersion],
+      );
+      dbDeleted = Number.isFinite(Number(res && res.rowCount)) ? Math.max(0, Math.trunc(Number(res.rowCount))) : 0;
+    } catch (err) {
+      const code = err && err.code ? String(err.code) : '';
+      if (code === 'NO_DATABASE' || code === '42P01') {
+        state.dbUnavailable = true;
+      }
+    }
   }
-  const [dbDeleted, memDeleted, fileDeleted] = await Promise.all([
-    purgeDbByContractVersion(contractVersion),
-    Promise.resolve(purgeMemByContractVersion(contractVersion)),
-    Promise.resolve(purgeFileByContractVersion(contractVersion)),
-  ]);
+
+  let memDeleted = 0;
+  for (const [key, entry] of Array.from(state.memIndex.entries())) {
+    if (!shouldPurgeEntry(entry, contractVersion)) continue;
+    state.memIndex.delete(key);
+    memDeleted += 1;
+  }
+
+  loadFileIndexOnce();
+  let fileDeleted = 0;
+  for (const [key, entry] of Array.from(state.fileIndex.entries())) {
+    if (!shouldPurgeEntry(entry, contractVersion)) continue;
+    state.fileIndex.delete(key);
+    fileDeleted += 1;
+  }
+
+  const filePath = getKbPath();
+  if (state.fileLoaded) {
+    const lines = Array.from(state.fileIndex.values()).map((entry) => JSON.stringify(entry));
+    try {
+      if (lines.length) {
+        fs.writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
+      } else if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch {
+      // ignore file rewrite failures; purge still applies to db + memory
+    }
+  }
+
   return {
     db_deleted: dbDeleted,
     mem_deleted: memDeleted,
@@ -344,17 +336,10 @@ async function purgeDupeKbEntriesByContractVersion(currentContractVersion) {
   };
 }
 
-function __resetDupeKbStateForTest() {
-  state.fileLoaded = false;
-  state.fileIndex = new Map();
-  state.memIndex = new Map();
-  state.dbUnavailable = false;
-}
-
 module.exports = {
   normalizeKey,
   getDupeKbEntry,
   upsertDupeKbEntry,
   purgeDupeKbEntriesByContractVersion,
-  __resetDupeKbStateForTest,
+  __resetDupeKbStateForTest: resetState,
 };
