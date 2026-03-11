@@ -346,11 +346,28 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   );
   const exactFullLabels = new Set([anchorFullName, anchorDisplayName].filter(Boolean));
 
-  if (candidateFullLabel && exactFullLabels.has(candidateFullLabel)) {
+  if (
+    candidateBrand &&
+    candidateFullLabel &&
+    candidateNameSansBrand &&
+    candidateNameSansBrand !== candidateName &&
+    exactFullLabels.has(candidateFullLabel)
+  ) {
     return {
       isSelfRef: true,
-      reason: candidateBrand ? DROP_REASON.SAME_BRAND_EXACT_LABEL : DROP_REASON.NO_BRAND_FULL_NAME_MATCH,
+      reason: DROP_REASON.SAME_BRAND_EXACT_LABEL,
     };
+  }
+
+  if (
+    !candidateBrand &&
+    candidateName &&
+    anchorName &&
+    !candidateUrl &&
+    !candidateProductId &&
+    candidateName === anchorName
+  ) {
+    return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_SAME_NAME };
   }
 
   if (
@@ -370,6 +387,9 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   }
 
   if (anchorBrand && candidateBrand && anchorBrand === candidateBrand) {
+    if (anchorName && candidateName && anchorName === candidateName) {
+      return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_SAME_NAME };
+    }
     const exactAnchorLabels = new Set(
       [
         anchorName,
@@ -387,9 +407,6 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
       )
     ) {
       return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_EXACT_LABEL };
-    }
-    if (anchorName && candidateName && anchorName === candidateName) {
-      return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_SAME_NAME };
     }
     if (anchorName && candidateName) {
       const similarity = nameSimilarity(identity.name || candidateName, anchorRawName);
