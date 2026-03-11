@@ -1706,8 +1706,8 @@ const AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS = Math.max(
   Math.min(25000, Number(process.env.AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS || 12000)),
 );
 const AURORA_SKIN_DEEP_DIVE_MAX_OUTPUT_TOKENS = Math.max(
-  800,
-  Math.min(1800, Number(process.env.AURORA_SKIN_DEEP_DIVE_MAX_OUTPUT_TOKENS || 1200)),
+  512,
+  Math.min(1200, Number(process.env.AURORA_SKIN_DEEP_DIVE_MAX_OUTPUT_TOKENS || 1200)),
 );
 const AURORA_PRODUCT_RELEVANCE_GEMINI_TIMEOUT_MS = Math.max(
   1000,
@@ -21996,6 +21996,38 @@ function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
   sessionPatch.state = state;
 }
 
+async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
+  const preferredArtifactId = extractLatestArtifactIdFromSession(session);
+  try {
+    const latestArtifact = await getLatestDiagnosisArtifact({
+      auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
+      userId: identity && identity.userId ? identity.userId : null,
+      sessionId: ctx && ctx.brief_id ? ctx.brief_id : null,
+      maxAgeDays: 30,
+      preferArtifactId: preferredArtifactId,
+    });
+    if (
+      latestArtifact &&
+      latestArtifact.artifact_json &&
+      typeof latestArtifact.artifact_json === 'object' &&
+      !Array.isArray(latestArtifact.artifact_json)
+    ) {
+      return {
+        ...latestArtifact.artifact_json,
+        artifact_id: latestArtifact.artifact_id,
+        created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+      };
+    }
+    return latestArtifact || null;
+  } catch (err) {
+    logger?.warn?.(
+      { err: err && err.message ? err.message : String(err), request_id: ctx && ctx.request_id ? ctx.request_id : null },
+      'aurora bff: failed to load latest diagnosis artifact for route',
+    );
+    return null;
+  }
+}
+
 function normalizeRecoSourceDetail(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (
@@ -26600,6 +26632,14 @@ function asStringArray(value, max = 8) {
     if (out.length >= max) break;
   }
   return out;
+}
+
+function normalizeArrayOfStrings(value, { max = 8, maxLen = 160 } = {}) {
+  return asStringArray(value, max)
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((item) => (item.length > maxLen ? item.slice(0, Math.max(1, maxLen - 1)).trimEnd() : item))
+    .filter(Boolean);
 }
 
 function asLooseStringArray(value, max = 8) {

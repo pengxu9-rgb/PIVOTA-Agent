@@ -12185,6 +12185,7 @@ test('/v1/chat: deep_dive_skin consumes photo refs and diagnosis artifact throug
 
         assert.equal(llmCalls.length, 1);
         assert.equal(llmCalls[0].model, 'gemini-3-pro-preview');
+        assert.equal(llmCalls[0].maxOutputTokens, 1200);
         assert.match(String(llmCalls[0].userPrompt || ''), /Photo-backed context already exists/i);
         assert.doesNotMatch(String(llmCalls[0].userPrompt || ''), /photo_daylight_1/);
         assert.doesNotMatch(String(llmCalls[0].userPrompt || ''), /can't analyze photos/i);
