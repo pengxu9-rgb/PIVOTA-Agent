@@ -60,6 +60,25 @@ describe('executeDupeSuggest recall modes', () => {
       .mockResolvedValueOnce({
         alternatives: [
           {
+            kind: 'similar',
+            candidate_origin: 'open_world',
+            grounding_status: 'name_only',
+            ranking_mode: 'anchor_only',
+            product: { brand: 'Weak Hybrid', name: 'Weak Hybrid Lotion' },
+            similarity: 0,
+            confidence: 0,
+            reasons: ['Based on resolved product candidates.'],
+            tradeoffs: ['Category: moisturizer'],
+            missing_info: ['tradeoffs_detail_missing'],
+          },
+        ],
+        field_missing: [],
+        source_mode: 'hybrid_fallback',
+        template_id: 'reco_alternatives_hybrid_v1',
+      })
+      .mockResolvedValueOnce({
+        alternatives: [
+          {
             kind: 'dupe',
             candidate_origin: 'open_world',
             grounding_status: 'name_only',
@@ -113,16 +132,28 @@ describe('executeDupeSuggest recall modes', () => {
     expect(result.payload.meta.recommendation_mode_initial).toBe('pool_only');
     expect(result.payload.meta.recommendation_mode_final).toBe('open_world_only');
     expect(result.payload.meta.escalated_to_open_world).toBe(true);
+    expect(result.payload.meta.final_source_mix).toEqual(['open_world']);
     expect(result.payload.meta.viability_failure_reasons).toEqual(expect.arrayContaining(['all_items_hollow', 'placeholder_only']));
     expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(1, expect.objectContaining({
       options: expect.objectContaining({
         recommendation_mode: 'pool_only',
+        disable_fallback: true,
         disable_synthetic_local_fallback: true,
       }),
     }));
     expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(2, expect.objectContaining({
       options: expect.objectContaining({
+        recommendation_mode: 'hybrid_fallback',
+        disable_fallback: true,
+        disable_synthetic_local_fallback: true,
+      }),
+    }));
+    expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      candidatePool: [],
+      options: expect.objectContaining({
         recommendation_mode: 'open_world_only',
+        disable_fallback: true,
+        ignore_selector_candidates: true,
         disable_synthetic_local_fallback: true,
       }),
     }));
@@ -180,10 +211,13 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledWith(expect.objectContaining({
       profileSummary: null,
       recentLogs: [],
+      candidatePool: [],
       options: expect.objectContaining({
         recommendation_mode: 'open_world_only',
+        disable_fallback: true,
         profile_mode: 'anchor_only',
         disable_synthetic_local_fallback: true,
+        ignore_selector_candidates: true,
       }),
     }));
   });
@@ -277,6 +311,7 @@ describe('executeDupeSuggest recall modes', () => {
       recentLogs: expect.any(Array),
       options: expect.objectContaining({
         recommendation_mode: 'hybrid_fallback',
+        disable_fallback: true,
         profile_mode: 'personalized',
         disable_synthetic_local_fallback: true,
       }),

@@ -134,6 +134,25 @@ describe('mapAuroraAlternativesToRecoAlternatives: quality gates', () => {
     const hasExplanation = (item.reasons && item.reasons.length > 0) || (item.tradeoffs && item.tradeoffs.length > 0);
     expect(hasExplanation).toBe(true);
   });
+
+  test('open-world items dedupe by brand and name when IDs are missing', () => {
+    const result = mapAuroraAlternativesToRecoAlternatives([
+      makeAlternative({
+        product: { brand: 'Good Molecules', name: 'Niacinamide Serum', category: 'serum' },
+        candidate_origin: 'open_world',
+        grounding_status: 'name_only',
+      }),
+      makeAlternative({
+        product: { brand: 'Good Molecules', name: 'Niacinamide Serum', category: 'serum' },
+        candidate_origin: 'open_world',
+        grounding_status: 'name_only',
+        similarity_score: 0.79,
+      }),
+    ], { lang: 'EN', maxTotal: 3 });
+    expect(result).toHaveLength(1);
+    expect(result[0].product.brand).toBe('Good Molecules');
+    expect(result[0].product.name).toBe('Niacinamide Serum');
+  });
 });
 
 describe('dupe suggest payload quality assertions', () => {
