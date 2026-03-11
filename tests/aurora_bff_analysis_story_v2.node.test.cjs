@@ -508,7 +508,7 @@ test('analysis follow-up helpers: use lastAnalysis context and emit deterministi
     language: 'EN',
     requestId: 'req_2',
   });
-  assert.equal(ingredientFollowup.cards.some((card) => card.type === 'ingredient_plan'), true);
+  assert.equal(ingredientFollowup.cards.some((card) => card.type === 'ingredient_plan_v2'), true);
 
   const safetyFollowup = internal.buildAnalysisFollowupContent({
     actionId: 'chip.aurora.next_action.safety_concerns',

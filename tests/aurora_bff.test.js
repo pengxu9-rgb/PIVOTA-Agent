@@ -433,7 +433,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(card).toBeTruthy();
     expect(card.payload).toHaveProperty('priority_findings');
     expect(Array.isArray(card.payload.priority_findings)).toBe(true);
-    expect(res.body.cards.some((c) => c.type === 'ingredient_plan')).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'ingredient_plan_v2')).toBe(true);
     expect(Array.isArray(card.field_missing) ? card.field_missing : []).toEqual(
       expect.not.arrayContaining([expect.objectContaining({ field: 'profile.currentRoutine' })]),
     );
