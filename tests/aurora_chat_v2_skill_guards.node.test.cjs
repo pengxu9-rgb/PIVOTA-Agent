@@ -5,7 +5,7 @@ const TravelApplyModeSkill = require('../src/auroraBff/skills/travel_apply_mode'
 const IngredientReportSkill = require('../src/auroraBff/skills/ingredient_report');
 const ProductAnalyzeSkill = require('../src/auroraBff/skills/product_analyze');
 const RecoStepBasedSkill = require('../src/auroraBff/skills/reco_step_based');
-const { __internal: skillRouterInternal } = require('../src/auroraBff/orchestrator/skill_router');
+const { SkillRouter, __internal: skillRouterInternal } = require('../src/auroraBff/orchestrator/skill_router');
 const recoHybridResolver = require('../src/auroraBff/usecases/recoHybridResolveCandidates');
 
 test('travel_apply_mode adds reduce_actives when high-UV travel overlaps with retinoid routine', async () => {
@@ -186,6 +186,44 @@ test('skill_router derives target_step from a freeform mask request', () => {
   );
 
   assert.equal(targetStep, 'mask');
+});
+
+test('skill_router deterministically appends oily-skin watchout when mismatch answer omits it', () => {
+  const router = new SkillRouter({});
+  const enforced = router._enforceProfileMismatchWatchoutOnTexts(
+    {
+      context: {
+        locale: 'en',
+        profile: { skin_type: 'oily' },
+      },
+    },
+    'My skin feels dry and tight lately. What should I do?',
+    'When skin feels dry and tight, focus on gentle hydration and barrier support.',
+    null,
+  );
+
+  assert.equal(enforced.profileMismatchGuardApplied, true);
+  assert.equal(enforced.enforced, true);
+  assert.match(String(enforced.answerEn || ''), /oily|greasy|occlusive|congest/i);
+});
+
+test('skill_router does not duplicate watchout when answer already includes oily-skin caution', () => {
+  const router = new SkillRouter({});
+  const enforced = router._enforceProfileMismatchWatchoutOnTexts(
+    {
+      context: {
+        locale: 'en',
+        profile: { skin_type: 'oily' },
+      },
+    },
+    'My skin feels dry and tight lately. What should I do?',
+    'Focus on gentle hydration. Because your skin usually runs oily, keep hydration lightweight and avoid heavy occlusives if they feel greasy.',
+    null,
+  );
+
+  assert.equal(enforced.profileMismatchGuardApplied, true);
+  assert.equal(enforced.enforced, false);
+  assert.equal((String(enforced.answerEn || '').match(/Because your skin usually runs oily/gi) || []).length, 1);
 });
 
 test('reco_step_based returns a recommendations card when grounded catalog recommendations exist', async () => {

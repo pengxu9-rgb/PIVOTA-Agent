@@ -119,6 +119,35 @@ function detectProfileMismatchGuard(request, userMessage = extractUserMessage(re
   );
 }
 
+function getProfileMismatchWatchoutSpec(request, userMessage = extractUserMessage(request)) {
+  const lower = compactText(userMessage).toLowerCase();
+  const profileSkinType = compactText(request?.context?.profile?.skin_type || request?.context?.profile?.skinType).toLowerCase();
+  const asksAboutDryness = /(dry|dryness|tight|tightness|dehydrat)/i.test(lower);
+  const asksAboutOiliness = /(oil|oily|greasy|shine|shiny)/i.test(lower);
+
+  if (profileSkinType === 'oily' && asksAboutDryness) {
+    return {
+      key: 'oily_dryness',
+      en: 'Because your skin usually runs oily, keep hydration lightweight and avoid piling on heavy occlusives if they make you feel greasy or congested.',
+      zh: '如果你平时偏油，补水尽量轻薄；如果厚重封闭型产品会让你觉得油闷或容易堵塞，就不要叠得太重。',
+      enPattern: /(oily|greasy|occlusive|congest)/i,
+      zhPattern: /(偏油|轻薄|封闭|油闷|堵塞)/,
+    };
+  }
+
+  if (profileSkinType === 'dry' && asksAboutOiliness) {
+    return {
+      key: 'dry_oiliness',
+      en: 'Because your skin usually runs dry, avoid over-stripping cleansers or repeated strong oil-control actives that can leave you tighter and more irritated.',
+      zh: '如果你平时偏干，别用过度清洁或反复叠加强控油活性，否则更容易越控越干、越刺激。',
+      enPattern: /(dry|stripping|irritated|tight)/i,
+      zhPattern: /(偏干|过度清洁|控油活性|刺激)/,
+    };
+  }
+
+  return null;
+}
+
 function deriveTargetStep(request, classification) {
   const explicit = normalizeRecoTargetStep(
     request?.params?.target_step
@@ -163,7 +192,7 @@ class SkillRouter {
     this._preserveRawQuestion(request, resolved.userMessage);
     const answerPrelude = await this._maybeBuildAnswerFirstPrelude(request, resolved.userMessage);
     const response = await skill.run(request, this._llmGateway);
-    const composed = this._composeSkillResponseWithAnswerPrelude(response, answerPrelude);
+    const composed = this._composeSkillResponseWithAnswerPrelude(response, answerPrelude, request, resolved.userMessage);
     return this._applyQualityGates(resolved.skillId, composed, request);
   }
 
@@ -210,7 +239,7 @@ class SkillRouter {
     this._preserveRawQuestion(request, resolved.userMessage);
     const answerPrelude = await this._maybeBuildAnswerFirstPrelude(request, resolved.userMessage);
     const response = await skill.run(request, this._llmGateway);
-    const composed = this._composeSkillResponseWithAnswerPrelude(response, answerPrelude);
+    const composed = this._composeSkillResponseWithAnswerPrelude(response, answerPrelude, request, resolved.userMessage);
     const gatedResponse = this._applyQualityGates(resolved.skillId, composed, request);
     emit({ type: 'result', data: gatedResponse });
     return gatedResponse;
@@ -346,11 +375,78 @@ class SkillRouter {
     return card;
   }
 
+  _appendWatchoutParagraph(baseText, watchout) {
+    const answer = compactText(baseText);
+    const addition = compactText(watchout);
+    if (!answer) return addition;
+    if (!addition) return answer;
+    return `${answer}\n\n${addition}`;
+  }
+
+  _enforceProfileMismatchWatchoutOnTexts(request, userMessage, answerEn, answerZh) {
+    const watchout = getProfileMismatchWatchoutSpec(request, userMessage);
+    if (!watchout) {
+      return {
+        answerEn,
+        answerZh,
+        enforced: false,
+        profileMismatchGuardApplied: false,
+      };
+    }
+
+    const hasWatchoutAlready = watchout.enPattern.test(String(answerEn || ''))
+      || watchout.zhPattern.test(String(answerZh || ''));
+
+    if (hasWatchoutAlready) {
+      return {
+        answerEn,
+        answerZh,
+        enforced: false,
+        profileMismatchGuardApplied: true,
+      };
+    }
+
+    return {
+      answerEn: this._appendWatchoutParagraph(answerEn, watchout.en),
+      answerZh: answerZh ? this._appendWatchoutParagraph(answerZh, watchout.zh) : answerZh,
+      enforced: true,
+      profileMismatchGuardApplied: true,
+    };
+  }
+
+  _enforceLeadingTextResponseWatchout(response, request, userMessage) {
+    if (!this._responseStartsWithTextResponse(response)) {
+      return { response, enforced: false, profileMismatchGuardApplied: false };
+    }
+
+    const textSection = response?.cards?.[0]?.sections?.find((section) => section.type === 'text_answer');
+    if (!textSection) {
+      return { response, enforced: false, profileMismatchGuardApplied: false };
+    }
+
+    const enforced = this._enforceProfileMismatchWatchoutOnTexts(
+      request,
+      userMessage,
+      textSection.text_en,
+      textSection.text_zh,
+    );
+
+    textSection.text_en = enforced.answerEn;
+    textSection.text_zh = enforced.answerZh || null;
+
+    return {
+      response,
+      enforced: enforced.enforced,
+      profileMismatchGuardApplied: enforced.profileMismatchGuardApplied,
+    };
+  }
+
   async _maybeBuildAnswerFirstPrelude(request, userMessage) {
     if (!isFreeTextUserTurn(request, userMessage)) {
       return {
         applied: false,
         profileMismatchGuardApplied: false,
+        profileMismatchWatchoutEnforced: false,
         spacingArtifactDetected: false,
       };
     }
@@ -365,15 +461,20 @@ class SkillRouter {
         priorMessages,
       });
       const parsed = chatResult.parsed || {};
-      const answerEn = parsed.answer_en || chatResult.text;
-      const answerZh = parsed.answer_zh || null;
+      const enforced = this._enforceProfileMismatchWatchoutOnTexts(
+        request,
+        userMessage,
+        parsed.answer_en || chatResult.text,
+        parsed.answer_zh || null,
+      );
 
       return {
         applied: true,
         callId,
         parsed,
-        card: this._buildTextResponseCard(answerEn, answerZh, parsed.safety_notes),
-        profileMismatchGuardApplied: detectProfileMismatchGuard(request, userMessage),
+        card: this._buildTextResponseCard(enforced.answerEn, enforced.answerZh, parsed.safety_notes),
+        profileMismatchGuardApplied: enforced.profileMismatchGuardApplied,
+        profileMismatchWatchoutEnforced: enforced.enforced,
         spacingArtifactDetected: chatResult?.telemetry?.collapsed_spacing_pattern_detected === true,
       };
     } catch (error) {
@@ -381,24 +482,32 @@ class SkillRouter {
       return {
         applied: false,
         profileMismatchGuardApplied: detectProfileMismatchGuard(request, userMessage),
+        profileMismatchWatchoutEnforced: false,
         spacingArtifactDetected: false,
       };
     }
   }
 
-  _composeSkillResponseWithAnswerPrelude(response, prelude) {
+  _composeSkillResponseWithAnswerPrelude(response, prelude, request, userMessage) {
     const composed = response || {};
     const telemetry = composed.telemetry || {};
     telemetry.answer_first_applied = Boolean(prelude?.applied);
     telemetry.profile_mismatch_guard_applied = Boolean(prelude?.profileMismatchGuardApplied);
+    telemetry.profile_mismatch_watchout_enforced = Boolean(prelude?.profileMismatchWatchoutEnforced);
     telemetry.collapsed_spacing_pattern_detected = Boolean(prelude?.spacingArtifactDetected);
     composed.telemetry = telemetry;
 
     if (!prelude?.applied || !prelude.card) {
-      return composed;
+      const patched = this._enforceLeadingTextResponseWatchout(composed, request, userMessage);
+      telemetry.profile_mismatch_guard_applied = telemetry.profile_mismatch_guard_applied || patched.profileMismatchGuardApplied;
+      telemetry.profile_mismatch_watchout_enforced = telemetry.profile_mismatch_watchout_enforced || patched.enforced;
+      return patched.response;
     }
     if (this._responseStartsWithTextResponse(composed)) {
-      return composed;
+      const patched = this._enforceLeadingTextResponseWatchout(composed, request, userMessage);
+      telemetry.profile_mismatch_guard_applied = telemetry.profile_mismatch_guard_applied || patched.profileMismatchGuardApplied;
+      telemetry.profile_mismatch_watchout_enforced = telemetry.profile_mismatch_watchout_enforced || patched.enforced;
+      return patched.response;
     }
 
     composed.cards = [prelude.card, ...(Array.isArray(composed.cards) ? composed.cards : [])];
@@ -420,10 +529,14 @@ class SkillRouter {
       });
 
       const parsed = chatResult.parsed || {};
-      const answerEn = parsed.answer_en || chatResult.text;
-      const answerZh = parsed.answer_zh || null;
+      const enforced = this._enforceProfileMismatchWatchoutOnTexts(
+        request,
+        userMessage,
+        parsed.answer_en || chatResult.text,
+        parsed.answer_zh || null,
+      );
       const cards = [
-        this._buildTextResponseCard(answerEn, answerZh, parsed.safety_notes),
+        this._buildTextResponseCard(enforced.answerEn, enforced.answerZh, parsed.safety_notes),
       ];
 
       if (Array.isArray(parsed.ingredients_mentioned) && parsed.ingredients_mentioned.length > 0) {
@@ -501,7 +614,8 @@ class SkillRouter {
           elapsed_ms: Date.now() - startMs,
           llm_calls: 1,
           answer_first_applied: true,
-          profile_mismatch_guard_applied: detectProfileMismatchGuard(request, userMessage),
+          profile_mismatch_guard_applied: enforced.profileMismatchGuardApplied,
+          profile_mismatch_watchout_enforced: enforced.enforced,
           collapsed_spacing_pattern_detected: chatResult?.telemetry?.collapsed_spacing_pattern_detected === true,
         },
         next_actions: nextActions,
@@ -578,5 +692,7 @@ module.exports = {
   resolveSkillId,
   __internal: {
     deriveTargetStep,
+    detectProfileMismatchGuard,
+    getProfileMismatchWatchoutSpec,
   },
 };
