@@ -14,6 +14,7 @@ const DupeCompareSkill = require('../skills/dupe_compare');
 const TravelApplyModeSkill = require('../skills/travel_apply_mode');
 const ExploreAddToRoutineSkill = require('../skills/explore_add_to_routine');
 const QualityGateEngine = require('./quality_gate_engine');
+const { hasCompleteTravelPlan, hasTravelCue } = require('../travelPlanUtils');
 const { extractRecoTargetStepFromText, normalizeRecoTargetStep } = require('../recoTargetStep');
 
 const SKILL_MAP = Object.freeze({
@@ -97,6 +98,12 @@ function extractUserMessage(request) {
     request?.params?.text ||
     null
   );
+}
+
+function resolveDeterministicTravelSkill(request, userMessage) {
+  if (!hasTravelCue(userMessage)) return null;
+  if (!hasCompleteTravelPlan(request?.context?.travel_plan)) return null;
+  return 'travel.apply_mode';
 }
 
 function compactText(value) {
@@ -253,6 +260,10 @@ class SkillRouter {
       entrySource: request.params?.entry_source,
     });
     const userMessage = extractUserMessage(request);
+
+    if (!skillId && userMessage) {
+      skillId = resolveDeterministicTravelSkill(request, userMessage);
+    }
 
     if (!skillId && userMessage) {
       const classification = await this._classifyIntent(userMessage);
