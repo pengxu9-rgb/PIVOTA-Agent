@@ -50,4 +50,53 @@ describe('Aurora BFF product_analysis public payload guard', () => {
     expect(card.payload.internal_debug_codes).toBeUndefined();
     expect(card.payload.missing_info).toEqual(['analysis_limited']);
   });
+
+  test('projects how_to_use into the public timing-based shape', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.applyUnknownVerdictQualityGateToEnvelope(
+      {
+        cards: [
+          {
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Suitable',
+                how_to_use: {
+                  when: 'AM only',
+                  frequency: 'daily',
+                  order_in_routine: 'Use after cleansing.',
+                  pairing_rules: ['Finish with sunscreen.'],
+                  stop_signs: ['Persistent redness'],
+                },
+                reasons: ['Looks compatible.'],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['Niacinamide'],
+                  risk_notes: [],
+                },
+                expert_notes: [],
+                missing_info: [],
+              },
+            },
+          },
+        ],
+      },
+      { lang: 'EN' },
+    );
+
+    const card = Array.isArray(out.cards) ? out.cards.find((c) => c?.type === 'product_analysis') : null;
+    expect(card?.payload?.assessment?.how_to_use).toEqual(
+      expect.objectContaining({
+        timing: 'am',
+        frequency: 'daily',
+        observation_window: expect.any(String),
+        stop_signs: ['Persistent redness'],
+      }),
+    );
+    expect(card?.payload?.assessment?.how_to_use?.steps).toEqual(
+      expect.arrayContaining(['Use after cleansing.', 'Finish with sunscreen.']),
+    );
+    expect(card?.payload?.assessment?.how_to_use?.when).toBeUndefined();
+  });
 });

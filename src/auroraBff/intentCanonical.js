@@ -27,6 +27,7 @@ const ACTION_MAP = Object.freeze({
   'chip_action_analyze_product': INTENT_ENUM.EVALUATE_PRODUCT,
   'chip.fitcheck.send_link': INTENT_ENUM.EVALUATE_PRODUCT,
   'chip.fitcheck.send_product_name': INTENT_ENUM.EVALUATE_PRODUCT,
+  'chip.action.check_compatibility': INTENT_ENUM.CONFLICT_CHECK,
   'chip.action.dupe_compare': INTENT_ENUM.DUPE_COMPARE,
   'chip.start.dupes': INTENT_ENUM.DUPE_COMPARE,
   'chip.start.ingredients': INTENT_ENUM.INGREDIENT_SCIENCE,

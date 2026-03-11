@@ -61,6 +61,7 @@ const ENTRY_SOURCE_TO_SKILL = Object.freeze({
   'chip.action.intake_products': 'routine.intake_products',
   'chip.action.audit_optimize': 'routine.audit_optimize',
   'chip.start.reco_products': 'reco.step_based',
+  'chip.start.dupes': 'dupe.suggest',
   'chip.action.checkin': 'tracker.checkin_log',
   'chip.action.analyze_product': 'product.analyze',
   'chip.action.dupe_suggest': 'dupe.suggest',
@@ -238,6 +239,7 @@ class SkillRouter {
     const intent = classification?.intent || null;
     if (confidence < 0.5) return null;
     if (intent === 'general_chat' || intent === 'routine_advice') return null;
+    if (intent === 'safety_escalation') return null;
 
     const baseSkillId = INTENT_TO_SKILL[intent] || null;
     if (!baseSkillId) return null;
