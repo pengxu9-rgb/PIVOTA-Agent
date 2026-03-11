@@ -11954,7 +11954,9 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
             language: 'EN',
           })
           .expect(200);
-        assert.ok(findCardByType(ingredientPlan.body?.cards, 'ingredient_plan'));
+        const ingredientPlanCard = findCardByType(ingredientPlan.body?.cards, 'ingredient_plan_v2');
+        assert.ok(ingredientPlanCard);
+        assert.equal(ingredientPlanCard.payload?.schema_version, 'aurora.ingredient_plan.v2');
         assert.equal(Boolean(findCardByType(ingredientPlan.body?.cards, 'ingredient_hub')), false);
         assert.equal(Boolean(findCardByType(ingredientPlan.body?.cards, 'nudge')), false);
 

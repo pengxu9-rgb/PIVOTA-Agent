@@ -485,6 +485,7 @@ const {
 const {
   LOW_CONFIDENCE_THRESHOLD,
   buildIngredientPlan,
+  upgradeIngredientPlanToV2,
 } = require('./ingredientMapperV1');
 const {
   buildProductRecommendationsBundle,
@@ -20846,7 +20847,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
         ].filter(Boolean).join(' ');
     return {
       assistant_text: assistantText,
-      cards: [buildIngredientPlanCard(ingredientPlan, requestId)],
+      cards: [buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH })],
       suggested_chips: suggestedChips,
       missing_context: false,
       used_last_analysis: true,
@@ -20936,7 +20937,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
       },
     }]
     : [];
-  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId));
+  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH }));
   return {
     assistant_text: safetyMessage,
     cards,
@@ -21510,17 +21511,38 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   sessionPatch.state = state;
 }
 
-function buildIngredientPlanCard(plan, requestId) {
+function isIngredientPlanV2Payload(plan) {
+  return isPlainObject(plan) && String(plan.schema_version || '').trim().toLowerCase() === 'aurora.ingredient_plan.v2';
+}
+
+function coerceIngredientPlanForDiagnosisCard(plan, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH } = {}) {
+  if (!isPlainObject(plan)) return null;
+  return upgradeIngredientPlanToV2({
+    plan,
+    profile: isPlainObject(profile) ? profile : null,
+    catalogPath,
+  });
+}
+
+function buildIngredientPlanCard(plan, requestId, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH } = {}) {
+  const normalizedPlan = coerceIngredientPlanForDiagnosisCard(plan, { profile, catalogPath }) || plan;
+  if (isIngredientPlanV2Payload(normalizedPlan)) {
+    return {
+      card_id: `ing_plan_${requestId}`,
+      type: 'ingredient_plan_v2',
+      payload: normalizedPlan,
+    };
+  }
   return {
     card_id: `ing_plan_${requestId}`,
     type: 'ingredient_plan',
     payload: {
-      plan,
-      intensity: plan && plan.intensity ? plan.intensity : 'balanced',
-      targets: Array.isArray(plan && plan.targets) ? plan.targets : [],
-      avoid: Array.isArray(plan && plan.avoid) ? plan.avoid : [],
-      conflicts: Array.isArray(plan && plan.conflicts) ? plan.conflicts : [],
-      confidence: plan && plan.confidence && typeof plan.confidence === 'object' ? plan.confidence : null,
+      plan: normalizedPlan,
+      intensity: normalizedPlan && normalizedPlan.intensity ? normalizedPlan.intensity : 'balanced',
+      targets: Array.isArray(normalizedPlan && normalizedPlan.targets) ? normalizedPlan.targets : [],
+      avoid: Array.isArray(normalizedPlan && normalizedPlan.avoid) ? normalizedPlan.avoid : [],
+      conflicts: Array.isArray(normalizedPlan && normalizedPlan.conflicts) ? normalizedPlan.conflicts : [],
+      confidence: normalizedPlan && normalizedPlan.confidence && typeof normalizedPlan.confidence === 'object' ? normalizedPlan.confidence : null,
     },
   };
 }
@@ -50660,10 +50682,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               : null;
 
             if (diagnosisArtifact && AURORA_INGREDIENT_PLAN_ENABLED && latestArtifactId) {
-              const planBuilt = buildIngredientPlan({
+              const planBuiltLegacy = buildIngredientPlan({
                 artifact: diagnosisArtifact,
                 profile: profileSummary || profile || {},
               });
+              const planBuilt =
+                coerceIngredientPlanForDiagnosisCard(planBuiltLegacy, {
+                  profile: profileSummary || profile || {},
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || planBuiltLegacy;
               const savedPlan = await saveIngredientPlan({
                 artifactId: latestArtifactId,
                 auroraUid: identity.auroraUid,
@@ -50690,7 +50717,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ...analysis,
                   ingredient_plan: {
                     targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
-                      ingredient_id: t.ingredient_id, ingredient_name: t.ingredient_name, role: t.role, priority: t.priority,
+                      ingredient_id: t.ingredient_id,
+                      ingredient_name: t.ingredient_name,
+                      role: t.role,
+                      priority: Number.isFinite(Number(t.priority_score_0_100)) ? Number(t.priority_score_0_100) : t.priority,
                     })) : [],
                     avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
                       ingredient_id: a.ingredient_id, ingredient_name: a.ingredient_name, severity: a.severity, reason: a.reason,
@@ -50832,7 +50862,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const extraCards = [];
         if (ingredientPlan) {
-          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
+          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id, {
+            profile: profileSummary || profile || {},
+            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+          }));
         }
         const routineProductEvents = [];
 
@@ -57810,6 +57843,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         let mappedIngredientPlan = null;
+        let mappedIngredientPlanCard = null;
         if (latestArtifact && AURORA_INGREDIENT_PLAN_ENABLED) {
           const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
           try {
@@ -57817,30 +57851,44 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? await getIngredientPlanByArtifactId({ artifactId: latestArtifactId })
               : null;
             if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
-              mappedIngredientPlan = {
+              const storedPlan = {
                 ...existingPlan.plan_json,
                 plan_id: existingPlan.plan_id,
                 created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
               };
+              mappedIngredientPlanCard =
+                coerceIngredientPlanForDiagnosisCard(storedPlan, {
+                  profile,
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || storedPlan;
+              mappedIngredientPlan = isIngredientPlanV2Payload(storedPlan)
+                ? buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile })
+                : storedPlan;
             } else {
               const builtPlan = buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile });
+              const builtPlanCard =
+                coerceIngredientPlanForDiagnosisCard(builtPlan, {
+                  profile,
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || builtPlan;
               if (latestArtifactId) {
                 const savedPlan = await saveIngredientPlan({
                   artifactId: latestArtifactId,
                   auroraUid: identity.auroraUid,
                   userId: identity.userId,
-                  plan: builtPlan,
+                  plan: builtPlanCard,
                 });
-                mappedIngredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                mappedIngredientPlanCard = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
                   ? {
                       ...savedPlan.plan_json,
                       plan_id: savedPlan.plan_id,
                       created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
                     }
-                  : builtPlan;
+                  : builtPlanCard;
               } else {
-                mappedIngredientPlan = builtPlan;
+                mappedIngredientPlanCard = builtPlanCard;
               }
+              mappedIngredientPlan = builtPlan;
             }
           } catch (err) {
             logger?.warn(
@@ -58190,8 +58238,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             },
           ];
-          if (mappedIngredientPlan) {
-            cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+          if (mappedIngredientPlanCard || mappedIngredientPlan) {
+            cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
+              profile,
+              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            }));
           }
           const sessionPatch = {};
           appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
@@ -58493,8 +58544,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               }),
             },
           ];
-        if (mappedIngredientPlan) {
-          cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+        if (mappedIngredientPlanCard || mappedIngredientPlan) {
+          cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
+            profile,
+            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+          }));
         }
 
         if (debugUpstream && upstreamDebug) {
@@ -58537,6 +58591,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           trigger_source: ctx.trigger_source,
           low_confidence: lowConfidenceArtifact,
         };
+        const ingredientPlanIdForRecoRun =
+          (mappedIngredientPlanCard && mappedIngredientPlanCard.plan_id) ||
+          (mappedIngredientPlan && mappedIngredientPlan.plan_id) ||
+          null;
         if (llmPrimaryUsed && isPlainObject(payload)) {
           const recoItems = Array.isArray(payload.recommendations) ? payload.recommendations : [];
           const hasUsableReco = recoItems.some((row) => {
@@ -58559,7 +58617,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraRecoKbWrite({ source: 'llm_primary', outcome: 'attempted' });
           saveRecoRun({
             artifactId: latestArtifact ? latestArtifact.artifact_id : null,
-            planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
+            planId: ingredientPlanIdForRecoRun,
             auroraUid: identity.auroraUid,
             userId: identity.userId,
             requestContext: {
@@ -58606,7 +58664,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraRecoKbWrite({ source: 'artifact_matcher', outcome: 'attempted' });
           saveRecoRun({
             artifactId: latestArtifact ? latestArtifact.artifact_id : null,
-            planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
+            planId: ingredientPlanIdForRecoRun,
             auroraUid: identity.auroraUid,
             userId: identity.userId,
             requestContext: {
