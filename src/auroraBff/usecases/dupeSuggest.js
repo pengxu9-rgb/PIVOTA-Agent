@@ -143,6 +143,7 @@ function buildRecommendationPassTrace(pass, { fallbackTemplateId = null } = {}) 
   const llmTrace = upstreamOut && typeof upstreamOut.llm_trace === 'object' && !Array.isArray(upstreamOut.llm_trace)
     ? upstreamOut.llm_trace
     : {};
+  const upstreamStatusRaw = llmTrace.upstream_status;
   const rawSummary = upstreamOut && typeof upstreamOut.raw_output_summary === 'object' && !Array.isArray(upstreamOut.raw_output_summary)
     ? upstreamOut.raw_output_summary
     : buildEmptyRawOutputSummary();
@@ -157,6 +158,13 @@ function buildRecommendationPassTrace(pass, { fallbackTemplateId = null } = {}) 
     fallback_source: String(upstreamOut.fallback_source || '').trim() || null,
     failure_class: String(upstreamOut.failure_class || '').trim() || null,
     llm_error_class: String(llmTrace.error_class || '').trim() || null,
+    upstream_status: (upstreamStatusRaw === null || upstreamStatusRaw === undefined || upstreamStatusRaw === '')
+      ? null
+      : Number.isFinite(Number(upstreamStatusRaw))
+      ? Math.trunc(Number(upstreamStatusRaw))
+      : null,
+    upstream_error_code: String(llmTrace.upstream_error_code || '').trim() || null,
+    upstream_error_message: String(llmTrace.upstream_error_message || '').trim() || null,
     no_result_reason: String(upstreamOut.no_result_reason || '').trim() || null,
     candidate_pool_size: Number.isFinite(Number(pass && pass.candidatePoolSize))
       ? Math.max(0, Math.trunc(Number(pass.candidatePoolSize)))

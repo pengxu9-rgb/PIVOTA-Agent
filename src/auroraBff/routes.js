@@ -20949,6 +20949,80 @@ function isTransientRecoUpstreamFailureCode(code) {
     token === 'DNS'
   );
 }
+
+function classifyAlternativesUpstreamFailure(err) {
+  const status = Number(err && err.status);
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  const messageRaw = String((err && err.message) || '').trim();
+  const message = messageRaw.toLowerCase();
+  if (code === 'AURORA_NOT_CONFIGURED') {
+    return {
+      failure_class: 'precheck_fail',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (status === 429 || code === 'ERR_RATE_LIMIT' || message.includes('rate limit')) {
+    return {
+      failure_class: 'rate_limited',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (
+    code === 'ECONNABORTED' ||
+    code === 'ETIMEDOUT' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    message.includes('timeout')
+  ) {
+    return {
+      failure_class: 'upstream_timeout',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (Number.isFinite(status) && status >= 500) {
+    return {
+      failure_class: 'upstream_5xx',
+      upstream_status: status,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (Number.isFinite(status) && status >= 400) {
+    return {
+      failure_class: 'upstream_4xx',
+      upstream_status: status,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'UND_ERR_SOCKET') {
+    return {
+      failure_class: 'upstream_connection_error',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return {
+      failure_class: 'upstream_dns_error',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  return {
+    failure_class: 'upstream_error',
+    upstream_status: Number.isFinite(status) ? status : null,
+    upstream_error_code: code || null,
+    upstream_error_message: messageRaw || null,
+  };
+}
 function inferCardGuardReasonFromEvents(events) {
   const rows = Array.isArray(events) ? events : [];
   let hasRecoRequested = false;
@@ -41305,9 +41379,10 @@ async function fetchRecoAlternativesForProduct({
       allow_recommendations: true,
     });
   } catch (err) {
+    const failureMeta = classifyAlternativesUpstreamFailure(err);
     const transientCode = classifyRecoUpstreamFailureCode(err);
     llmFailureClass =
-      err && err.code === 'AURORA_NOT_CONFIGURED'
+      failureMeta.failure_class === 'precheck_fail'
         ? 'precheck_fail'
         : isTransientRecoUpstreamFailureCode(transientCode)
           ? 'timeout'
@@ -41336,6 +41411,9 @@ async function fetchRecoAlternativesForProduct({
           latency_ms: Date.now() - startedAtMs,
           cache_hit: false,
           error_class: llmFailureClass,
+          upstream_status: failureMeta.upstream_status,
+          upstream_error_code: failureMeta.upstream_error_code,
+          upstream_error_message: failureMeta.upstream_error_message,
         },
         ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
       };
@@ -41363,6 +41441,9 @@ async function fetchRecoAlternativesForProduct({
           latency_ms: Date.now() - startedAtMs,
           cache_hit: false,
           error_class: llmFailureClass,
+          upstream_status: failureMeta.upstream_status,
+          upstream_error_code: failureMeta.upstream_error_code,
+          upstream_error_message: failureMeta.upstream_error_message,
         },
       };
     }
@@ -41386,6 +41467,9 @@ async function fetchRecoAlternativesForProduct({
         latency_ms: Date.now() - startedAtMs,
         cache_hit: false,
         error_class: llmFailureClass,
+        upstream_status: failureMeta.upstream_status,
+        upstream_error_code: failureMeta.upstream_error_code,
+        upstream_error_message: failureMeta.upstream_error_message,
       },
     };
   }
