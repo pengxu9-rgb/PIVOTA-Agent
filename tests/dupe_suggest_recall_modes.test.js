@@ -148,18 +148,20 @@ describe('executeDupeSuggest recall modes', () => {
 
     expect(result.ok).toBe(true);
     expect(result.payload.dupes).toHaveLength(1);
-    expect(result.payload.comparables).toHaveLength(0);
+    expect(result.payload.comparables).toHaveLength(2);
     expect(result.payload.meta.recommendation_mode_initial).toBe('pool_only');
     expect(result.payload.meta.recommendation_mode_final).toBe('open_world_only');
     expect(result.payload.meta.open_world_supplement_used).toBe(true);
     expect(result.payload.meta.escalated_to_open_world).toBe(true);
-    expect(result.payload.meta.final_source_mix).toEqual(['open_world']);
-    expect(result.payload.meta.viability_failure_reasons).toEqual(expect.arrayContaining(['placeholder_candidates_removed']));
+    expect(result.payload.meta.final_source_mix).toEqual(expect.arrayContaining(['catalog', 'open_world']));
+    expect(result.payload.meta.viability_failure_reasons).toEqual([]);
     expect(result.payload.meta.llm_trace.raw_output_item_count).toBe(2);
     expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
       recommendation_mode: 'pool_only',
       raw_output_item_count: 1,
-      mapped_output_item_count: 1,
+      mapped_output_item_count: 4,
+      candidate_pool_size: 3,
+      selector_input_count: 3,
       raw_items_with_product_object: 1,
       field_missing_reasons: [],
       failure_class: null,
@@ -167,7 +169,8 @@ describe('executeDupeSuggest recall modes', () => {
       upstream_status: null,
       upstream_error_code: null,
       upstream_error_message: null,
-      failure_reasons: expect.arrayContaining(['placeholder_candidates_removed']),
+      failure_reasons: [],
+      pool_rank_fallback_used: true,
     }));
     expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
       recommendation_mode: 'open_world_only',

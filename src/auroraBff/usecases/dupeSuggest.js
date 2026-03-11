@@ -149,6 +149,14 @@ function normalizeTextToken(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function clamp01(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  if (num <= 0) return 0;
+  if (num >= 1) return 1;
+  return num;
+}
+
 function extractDupePoolActiveThemesFromText(...values) {
   const joined = values
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
@@ -380,6 +388,100 @@ function buildPoolRankFallbackAlternatives(poolCandidates, anchorOriginal, { inp
     alternatives: out,
     dropReasons,
   };
+}
+
+function normalizePoolSelectorAlternative(item) {
+  const row = item && typeof item === 'object' && !Array.isArray(item) ? { ...item } : null;
+  if (!row) return null;
+  const product = row.product && typeof row.product === 'object' && !Array.isArray(row.product)
+    ? { ...row.product }
+    : {};
+  const productBrand = String(product.brand || row.brand || '').trim();
+  const productName = String(product.name || row.name || row.display_name || row.product_name || '').trim();
+  const productCategory = String(product.category || row.category || row.product_type || '').trim();
+  const productUrl = String(product.url || product.pdp_url || row.url || row.pdp_url || '').trim();
+  row.product = {
+    ...product,
+    ...(productBrand ? { brand: productBrand } : {}),
+    ...(productName ? { name: productName } : {}),
+    ...(productCategory ? { category: productCategory } : {}),
+    ...(productUrl ? { url: productUrl, pdp_url: productUrl } : {}),
+  };
+  if (productBrand && !row.brand) row.brand = productBrand;
+  if (productName && !row.name) row.name = productName;
+  if (!String(row.candidate_origin || '').trim()) row.candidate_origin = 'catalog';
+  if (!String(row.grounding_status || '').trim()) row.grounding_status = 'catalog_verified';
+  if (!String(row.ranking_mode || '').trim()) row.ranking_mode = 'pool_selector';
+  return row;
+}
+
+function scoreResolvedDupeCandidate(item, anchorOriginal, { inputText = '' } = {}) {
+  const row = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+  if (!row) return 0;
+  const anchorContext = buildPoolFallbackAnchorContext({ original: anchorOriginal, inputText });
+  const brand = String(
+    (row.product && row.product.brand) || row.brand || '',
+  ).trim();
+  const name = String(
+    (row.product && row.product.name) || row.name || '',
+  ).trim();
+  const category = String(
+    (row.product && row.product.category) || row.category || row.product_type || '',
+  ).trim();
+  const reasons = Array.isArray(row.reasons) ? row.reasons : [];
+  const tradeoffs = Array.isArray(row.tradeoffs) ? row.tradeoffs : [];
+  const sourceText = [brand, name, category, reasons.join(' '), tradeoffs.join(' ')].join(' ');
+  const candidateThemes = extractDupePoolActiveThemesFromText(sourceText);
+  const overlapCount = anchorContext.activeThemes.filter((theme) => candidateThemes.includes(theme)).length;
+  const activeRecall = anchorContext.activeThemes.length ? overlapCount / anchorContext.activeThemes.length : 0;
+  const activePrecision = candidateThemes.length ? overlapCount / candidateThemes.length : 0;
+  const candidateRole = inferDupePoolUsageRole(category, name, reasons, tradeoffs);
+  const roleExact = anchorContext.usageRole && anchorContext.usageRole !== 'unknown' && candidateRole === anchorContext.usageRole ? 1 : 0;
+  const categoryExact = normalizeTextToken(category) && normalizeTextToken(category) === normalizeTextToken(anchorContext.category) ? 1 : 0;
+  const similarity = Number(row.similarity);
+  const confidence = Number(row.confidence);
+  const normalizedSimilarity = Number.isFinite(similarity) ? clamp01(similarity > 1 ? similarity / 100 : similarity) : 0;
+  const normalizedConfidence = Number.isFinite(confidence) ? clamp01(confidence) : 0;
+  return (
+    activeRecall * 0.34 +
+    activePrecision * 0.22 +
+    roleExact * 0.18 +
+    categoryExact * 0.1 +
+    normalizedSimilarity * 0.1 +
+    normalizedConfidence * 0.06
+  );
+}
+
+function mergePoolSelectorWithFallback(selectorItems, fallbackItems, anchorOriginal, { inputText = '', limit = 3 } = {}) {
+  const maxItems = Math.max(1, Math.min(6, Number(limit) || 3));
+  const combined = [];
+  for (const item of Array.isArray(selectorItems) ? selectorItems : []) {
+    const normalized = normalizePoolSelectorAlternative(item);
+    if (normalized) combined.push(normalized);
+  }
+  for (const item of Array.isArray(fallbackItems) ? fallbackItems : []) {
+    if (item && typeof item === 'object') combined.push(item);
+  }
+  const deduped = [];
+  const seen = new Set();
+  for (const item of combined) {
+    const key = buildStableCandidateKey(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+  deduped.sort((left, right) => {
+    const scoreDiff = scoreResolvedDupeCandidate(right, anchorOriginal, { inputText }) - scoreResolvedDupeCandidate(left, anchorOriginal, { inputText });
+    if (scoreDiff !== 0) return scoreDiff;
+    const rightOrigin = String(right.candidate_origin || '').trim().toLowerCase();
+    const leftOrigin = String(left.candidate_origin || '').trim().toLowerCase();
+    if (leftOrigin !== rightOrigin) {
+      if (leftOrigin === 'catalog') return -1;
+      if (rightOrigin === 'catalog') return 1;
+    }
+    return String((left.product && left.product.name) || left.name || '').localeCompare(String((right.product && right.product.name) || right.name || ''));
+  });
+  return deduped.slice(0, maxItems);
 }
 
 function inferDupePoolUsageRole(...values) {
@@ -896,7 +998,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     const allCandidates = [];
     const anchor = String(anchorId || '').trim().toLowerCase();
     const limit = Math.max(8, Math.min(30, maxCandidates));
-    const selectorLimit = Math.max(1, Math.min(12, limit));
+    const selectorLimit = Math.max(1, Math.min(8, limit));
     const sourceHitCounts = {
       catalog_search: 0,
       product_embedded: 0,
@@ -1326,22 +1428,25 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     const upstreamOut = upstreamOutRaw && typeof upstreamOutRaw === 'object' && !Array.isArray(upstreamOutRaw)
       ? { ...upstreamOutRaw }
       : {};
-    let mapped = Array.isArray(upstreamOut.alternatives) ? upstreamOut.alternatives : [];
+    let mapped = Array.isArray(upstreamOut.alternatives) ? upstreamOut.alternatives.map(normalizePoolSelectorAlternative).filter(Boolean) : [];
     let liveEvaluation = evaluateLiveDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
     let persistEvaluation = evaluateDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
     let poolRankFallbackUsed = false;
+    let poolRankFallback = null;
+    if (mode === 'pool_only' && modeCandidatePool.length > 0) {
+      poolRankFallback = buildPoolRankFallbackAlternatives(
+        modeCandidatePool,
+        anchorForEvaluation,
+        { inputText, maxTotal: total },
+      );
+    }
     if (
       mode === 'pool_only' &&
       !liveEvaluation.viable &&
       modeCandidatePool.length > 0 &&
       ['timeout', 'empty_structured'].includes(String(upstreamOut.failure_class || '').trim())
     ) {
-      const poolRankFallback = buildPoolRankFallbackAlternatives(
-        modeCandidatePool,
-        anchorForEvaluation,
-        { inputText, maxTotal: total },
-      );
-      if (poolRankFallback.alternatives.length > 0) {
+      if (poolRankFallback && poolRankFallback.alternatives.length > 0) {
         poolRankFallbackUsed = true;
         mapped = poolRankFallback.alternatives;
         liveEvaluation = evaluateLiveDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
@@ -1363,7 +1468,32 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
           input_count: modeCandidatePool.length,
           timeout_ms: 10000,
           local_rank_fallback_used: false,
-          local_rank_fallback_drop_reasons: poolRankFallback.dropReasons,
+          local_rank_fallback_drop_reasons: poolRankFallback ? poolRankFallback.dropReasons : {},
+        };
+      }
+    } else if (
+      mode === 'pool_only' &&
+      poolRankFallback &&
+      poolRankFallback.alternatives.length > 0 &&
+      mapped.length > 0
+    ) {
+      const mergedPoolCandidates = mergePoolSelectorWithFallback(
+        mapped,
+        poolRankFallback.alternatives,
+        anchorForEvaluation,
+        { inputText, limit: total },
+      );
+      if (mergedPoolCandidates.length > 0) {
+        mapped = mergedPoolCandidates;
+        liveEvaluation = evaluateLiveDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
+        persistEvaluation = evaluateDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
+        poolRankFallbackUsed = mapped.some((item) => String(item && item.ranking_mode || '').trim() === 'pool_rank_fallback');
+        upstreamOut.alternatives = mapped;
+        upstreamOut.selector_meta = {
+          ...(upstreamOut.selector_meta && typeof upstreamOut.selector_meta === 'object' ? upstreamOut.selector_meta : {}),
+          input_count: modeCandidatePool.length,
+          timeout_ms: 10000,
+          local_rank_fallback_used: poolRankFallbackUsed,
         };
       }
     }
