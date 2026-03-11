@@ -1,6 +1,9 @@
 'use strict';
 
-const { executeDupeSuggest } = require('../src/auroraBff/usecases/dupeSuggest');
+const {
+  executeDupeSuggest,
+  __resetDupeSuggestContractPurgeForTest,
+} = require('../src/auroraBff/usecases/dupeSuggest');
 const { applyDupeSuggestQualityGate } = require('../src/auroraBff/qualityGates/dupeSuggestGate');
 
 function makeCtx() {
@@ -17,6 +20,7 @@ function makeBaseServices(overrides = {}) {
   return {
     getDupeKbEntry: jest.fn().mockResolvedValue(null),
     upsertDupeKbEntry: jest.fn().mockResolvedValue(undefined),
+    purgeDupeKbEntriesByContractVersion: jest.fn().mockResolvedValue({ db_deleted: 0, mem_deleted: 0, file_deleted: 0 }),
     normalizeDupeKbKey: jest.fn((value) => String(value || '').trim()),
     searchPivotaBackendProducts: jest.fn().mockResolvedValue({ ok: true, products: [] }),
     buildRecoAlternativesCandidatePool: jest.fn().mockReturnValue([]),
@@ -35,6 +39,10 @@ function makeBaseServices(overrides = {}) {
 }
 
 describe('executeDupeSuggest recall modes', () => {
+  beforeEach(() => {
+    __resetDupeSuggestContractPurgeForTest();
+  });
+
   test('supplements placeholder-only pool results with open-world results instead of returning empty', async () => {
     const fetchRecoAlternativesForProduct = jest
       .fn()
@@ -185,6 +193,7 @@ describe('executeDupeSuggest recall modes', () => {
         disable_synthetic_local_fallback: true,
       }),
     }));
+    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v6');
     expect(fetchRecoAlternativesForProduct.mock.calls.some(([args]) => args.options.recommendation_mode === 'hybrid_fallback')).toBe(false);
   });
 
@@ -507,7 +516,7 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalled();
     expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
       source_meta: expect.objectContaining({
-        contract_version: 'dupe_suggest_v4',
+        contract_version: 'dupe_suggest_v6',
       }),
     }));
   });

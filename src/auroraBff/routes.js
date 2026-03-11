@@ -457,7 +457,12 @@ const {
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
-const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
+const {
+  normalizeKey: normalizeDupeKbKey,
+  getDupeKbEntry,
+  upsertDupeKbEntry,
+  purgeDupeKbEntriesByContractVersion,
+} = require('./dupeKbStore');
 const {
   normalizeKey: normalizeProductIntelKbKey,
   getProductIntelKbEntry,
@@ -480,6 +485,7 @@ const {
 const {
   LOW_CONFIDENCE_THRESHOLD,
   buildIngredientPlan,
+  upgradeIngredientPlanToV2,
 } = require('./ingredientMapperV1');
 const {
   buildProductRecommendationsBundle,
@@ -1628,6 +1634,12 @@ function resolveAuroraGeminiModel(keys, fallbackModel, callPath) {
     callPath,
   }).effectiveModel;
 }
+
+function resolveAuroraGeminiModelRaw(keys, fallbackModel) {
+  const picked = pickConfiguredEnv(keys);
+  const raw = String(picked.value || fallbackModel || '').trim();
+  return raw || String(fallbackModel || '').trim();
+}
 const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
   'gpt-4o-mini';
@@ -1653,6 +1665,20 @@ const AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_qa_story_review');
 const AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL =
   resolveAuroraGeminiModel(['AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL'], 'gemini-3-flash-preview', 'aurora_runtime_qa_stable');
+const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL =
+  resolveAuroraGeminiModelRaw(
+    ['AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL', 'AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL', 'AURORA_RUNTIME_QA_GEMINI_MODEL'],
+    process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      process.env.AURORA_RUNTIME_QA_GEMINI_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_MODEL ||
+      ANALYSIS_STORY_MODEL_GEMINI ||
+      'gemini-3-flash-preview',
+  );
+const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS = Math.max(
+  256,
+  Math.min(2048, Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS || 900)),
+);
 const AURORA_RUNTIME_QA_ALLOW_PREVIEW =
   String(process.env.AURORA_RUNTIME_QA_ALLOW_PREVIEW || 'false').trim().toLowerCase() === 'true';
 const AURORA_EVAL_JUDGE_GEMINI_MODEL =
@@ -14831,19 +14857,8 @@ function sanitizeGeminiJsonSchema(value) {
   if (Array.isArray(value)) return value.map((item) => sanitizeGeminiJsonSchema(item));
   if (!value || typeof value !== 'object') return value;
   const out = {};
-  for (const [key, rawVal] of Object.entries(value)) {
+  for (const [key, val] of Object.entries(value)) {
     if (key === 'additionalProperties' || key === 'maxItems') continue;
-    if (key === 'type' && Array.isArray(rawVal)) {
-      const normalizedTypes = rawVal.map((item) => String(item || '').trim()).filter(Boolean);
-      const nonNullTypes = normalizedTypes.filter((item) => item !== 'null');
-      const nullable = normalizedTypes.includes('null');
-      if (nonNullTypes.length === 1) {
-        out.type = nonNullTypes[0];
-        if (nullable) out.nullable = true;
-        continue;
-      }
-    }
-    const val = rawVal;
     out[key] = sanitizeGeminiJsonSchema(val);
   }
   return out;
@@ -14920,65 +14935,6 @@ function extractGeminiFinishReason(response) {
   return finishReason || null;
 }
 
-function tryRecoverAlternativesFromTruncatedJson(text) {
-  const raw = String(text || '');
-  const keyIndex = raw.indexOf('"alternatives"');
-  if (keyIndex < 0) return null;
-  const arrayStart = raw.indexOf('[', keyIndex);
-  if (arrayStart < 0) return null;
-  const recovered = [];
-  let inString = false;
-  let escapeNext = false;
-  let objectDepth = 0;
-  let objectStart = -1;
-  for (let i = arrayStart + 1; i < raw.length; i += 1) {
-    const ch = raw[i];
-    if (escapeNext) {
-      escapeNext = false;
-      continue;
-    }
-    if (inString) {
-      if (ch === '\\') {
-        escapeNext = true;
-      } else if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (ch === '"') {
-      inString = true;
-      continue;
-    }
-    if (objectStart === -1) {
-      if (ch === '{') {
-        objectStart = i;
-        objectDepth = 1;
-      } else if (ch === ']') {
-        break;
-      }
-      continue;
-    }
-    if (ch === '{') {
-      objectDepth += 1;
-      continue;
-    }
-    if (ch === '}') {
-      objectDepth -= 1;
-      if (objectDepth === 0) {
-        const snippet = raw.slice(objectStart, i + 1);
-        try {
-          const parsed = JSON.parse(snippet);
-          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) recovered.push(parsed);
-        } catch {
-          // Ignore partial or malformed trailing objects; recovery only uses complete JSON objects.
-        }
-        objectStart = -1;
-      }
-    }
-  }
-  return recovered.length ? { alternatives: recovered } : null;
-}
-
 function parseGeminiJsonPayload(text, schema = null) {
   const jsonOnly = unwrapCodeFence(text);
   const requiredKeys =
@@ -14998,16 +14954,6 @@ function parseGeminiJsonPayload(text, schema = null) {
       raw_text: jsonOnly,
       parse_status: 'extracted',
     };
-  }
-  if (requiredKeys.includes('alternatives')) {
-    const recovered = tryRecoverAlternativesFromTruncatedJson(jsonOnly);
-    if (recovered) {
-      return {
-        parsed: recovered,
-        raw_text: jsonOnly,
-        parse_status: 'recovered_truncated',
-      };
-    }
   }
   const trimmed = String(text || '').trim();
   const truncated =
@@ -15226,6 +15172,24 @@ function resolveStoryReviewGeminiModel(model) {
   if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
   const lower = configured.toLowerCase();
   if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
+  return configured;
+}
+
+function resolveRecoAlternativesOpenWorldGeminiModel(model) {
+  const configured = String(model || AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL || '').trim()
+    || AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL
+    || 'gemini-3-flash-preview';
+  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
+  const lower = configured.toLowerCase();
+  if (lower === 'gemini-3-flash-preview') {
+    const preferredStable = String(
+      process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL ||
+      process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      '',
+    ).trim();
+    return preferredStable || AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL || configured;
+  }
   return configured;
 }
 
@@ -20883,7 +20847,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
         ].filter(Boolean).join(' ');
     return {
       assistant_text: assistantText,
-      cards: [buildIngredientPlanCard(ingredientPlan, requestId)],
+      cards: [buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH })],
       suggested_chips: suggestedChips,
       missing_context: false,
       used_last_analysis: true,
@@ -20973,7 +20937,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
       },
     }]
     : [];
-  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId));
+  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH }));
   return {
     assistant_text: safetyMessage,
     cards,
@@ -21547,17 +21511,38 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   sessionPatch.state = state;
 }
 
-function buildIngredientPlanCard(plan, requestId) {
+function isIngredientPlanV2Payload(plan) {
+  return isPlainObject(plan) && String(plan.schema_version || '').trim().toLowerCase() === 'aurora.ingredient_plan.v2';
+}
+
+function coerceIngredientPlanForDiagnosisCard(plan, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH } = {}) {
+  if (!isPlainObject(plan)) return null;
+  return upgradeIngredientPlanToV2({
+    plan,
+    profile: isPlainObject(profile) ? profile : null,
+    catalogPath,
+  });
+}
+
+function buildIngredientPlanCard(plan, requestId, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH } = {}) {
+  const normalizedPlan = coerceIngredientPlanForDiagnosisCard(plan, { profile, catalogPath }) || plan;
+  if (isIngredientPlanV2Payload(normalizedPlan)) {
+    return {
+      card_id: `ing_plan_${requestId}`,
+      type: 'ingredient_plan_v2',
+      payload: normalizedPlan,
+    };
+  }
   return {
     card_id: `ing_plan_${requestId}`,
     type: 'ingredient_plan',
     payload: {
-      plan,
-      intensity: plan && plan.intensity ? plan.intensity : 'balanced',
-      targets: Array.isArray(plan && plan.targets) ? plan.targets : [],
-      avoid: Array.isArray(plan && plan.avoid) ? plan.avoid : [],
-      conflicts: Array.isArray(plan && plan.conflicts) ? plan.conflicts : [],
-      confidence: plan && plan.confidence && typeof plan.confidence === 'object' ? plan.confidence : null,
+      plan: normalizedPlan,
+      intensity: normalizedPlan && normalizedPlan.intensity ? normalizedPlan.intensity : 'balanced',
+      targets: Array.isArray(normalizedPlan && normalizedPlan.targets) ? normalizedPlan.targets : [],
+      avoid: Array.isArray(normalizedPlan && normalizedPlan.avoid) ? normalizedPlan.avoid : [],
+      conflicts: Array.isArray(normalizedPlan && normalizedPlan.conflicts) ? normalizedPlan.conflicts : [],
+      confidence: normalizedPlan && normalizedPlan.confidence && typeof normalizedPlan.confidence === 'object' ? normalizedPlan.confidence : null,
     },
   };
 }
@@ -39685,23 +39670,6 @@ function normalizeRecoAlternativesMode(raw) {
   return 'pool_only';
 }
 
-function isExternalRecoAlternativesSeedProduct(productLike) {
-  const product = productLike && typeof productLike === 'object' && !Array.isArray(productLike) ? productLike : null;
-  if (!product) return false;
-  const metadata = product.metadata && typeof product.metadata === 'object' && !Array.isArray(product.metadata)
-    ? product.metadata
-    : null;
-  const topLevelMatchState = pickFirstTrimmed(product.match_state, product.matchState);
-  const metadataMatchState = metadata ? pickFirstTrimmed(metadata.match_state, metadata.matchState) : '';
-  const topLevelPdpOpen = product.pdp_open && typeof product.pdp_open === 'object' && !Array.isArray(product.pdp_open)
-    ? product.pdp_open
-    : (product.pdpOpen && typeof product.pdpOpen === 'object' && !Array.isArray(product.pdpOpen) ? product.pdpOpen : null);
-  const topLevelPdpPath = topLevelPdpOpen ? pickFirstTrimmed(topLevelPdpOpen.path) : '';
-  const metadataPdpPath = metadata ? pickFirstTrimmed(metadata.pdp_open_path, metadata.pdpOpenPath) : '';
-  return String(topLevelMatchState || metadataMatchState).trim().toLowerCase() === 'llm_seed'
-    || String(topLevelPdpPath || metadataPdpPath).trim().toLowerCase() === 'external';
-}
-
 function resolveRecoAlternativesPromptSpec(modeRaw) {
   const mode = normalizeRecoAlternativesMode(modeRaw);
   if (mode === 'pool_only') {
@@ -40373,6 +40341,15 @@ function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3 } = {}
   return out.slice(0, limit);
 }
 
+function isExternalRecoAlternativesSeedProduct(product) {
+  const row = isPlainObject(product) ? product : {};
+  const metadata = isPlainObject(row.metadata) ? row.metadata : {};
+  const pdpOpen = isPlainObject(row.pdp_open) ? row.pdp_open : isPlainObject(row.pdpOpen) ? row.pdpOpen : {};
+  const matchState = String(metadata.match_state || metadata.matchState || '').trim().toLowerCase();
+  const pdpPath = String(pdpOpen.path || '').trim().toLowerCase();
+  return matchState === 'llm_seed' || pdpPath === 'external';
+}
+
 function buildExternalSeedCompareIdentity(productObj, productInput) {
   const row = isPlainObject(productObj) ? productObj : {};
   const metadata = isPlainObject(row.metadata) ? row.metadata : {};
@@ -40717,27 +40694,28 @@ function buildExternalSeedOpenWorldSchema() {
       alternatives: {
         type: 'array',
         minItems: 0,
-        maxItems: 2,
+        maxItems: 6,
         items: {
           type: 'object',
           additionalProperties: false,
           properties: {
             brand: { type: 'string' },
             name: { type: 'string' },
-            product_type: { type: 'string', nullable: true },
-            similarity_score: { type: 'number', nullable: true },
+            product_type: { type: ['string', 'null'] },
+            similarity_score: { type: ['number', 'null'] },
             reasons: {
               type: 'array',
               minItems: 1,
-              maxItems: 1,
+              maxItems: 3,
               items: { type: 'string' },
             },
             tradeoff_notes: {
               type: 'array',
               minItems: 1,
-              maxItems: 1,
+              maxItems: 3,
               items: { type: 'string' },
             },
+            best_use: { type: ['string', 'null'] },
           },
           required: ['brand', 'name', 'reasons', 'tradeoff_notes'],
         },
@@ -40745,6 +40723,123 @@ function buildExternalSeedOpenWorldSchema() {
     },
     required: ['alternatives'],
   };
+}
+
+function limitCompactStrings(values, limit, maxChars = 64) {
+  return uniqCaseInsensitiveStrings(asStringArray(values, limit), limit)
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .map((value) => value.slice(0, maxChars))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {}, productInput = '' } = {}) {
+  const compact = {};
+  const queryText = String(productInput || '').trim();
+  const brand = pickFirstTrimmed(targetSignals.brand);
+  const name = pickFirstTrimmed(targetSignals.name);
+  const category = pickFirstTrimmed(targetSignals.category);
+  const productType = pickFirstTrimmed(targetSignals.productType);
+  const usageRole = pickFirstTrimmed(targetSignals.usageRole);
+  const heroIngredients = limitCompactStrings(targetSignals.heroIngredients, 2, 40);
+  const knownActives = limitCompactStrings(targetSignals.knownActives, 2, 40);
+  const primaryClaims = limitCompactStrings(targetSignals.primaryClaims, 2, 56);
+  const textureHints = limitCompactStrings(targetSignals.textureHints, 1, 40);
+  const notes = String(targetSignals.notes || '').trim();
+
+  if (String(anchorId || '').trim()) compact.anchor_id = String(anchorId || '').trim();
+  if (brand) compact.brand = brand;
+  if (name) compact.name = name;
+  if (queryText) compact.query = queryText.slice(0, 140);
+  if (category) compact.category = category;
+  if (productType) compact.product_type = productType;
+  if (usageRole && usageRole.toLowerCase() !== 'unknown') compact.usage_role = usageRole;
+  if (heroIngredients.length) compact.hero_ingredients = heroIngredients;
+  if (knownActives.length) compact.known_actives = knownActives;
+  if (primaryClaims.length) compact.primary_claims = primaryClaims;
+  if (textureHints.length) compact.texture_hints = textureHints;
+
+  const anchorSignalCount =
+    Number(Boolean(brand)) +
+    Number(Boolean(name)) +
+    Number(Boolean(category)) +
+    Number(Boolean(productType)) +
+    Number(Boolean(usageRole && usageRole.toLowerCase() !== 'unknown')) +
+    heroIngredients.length +
+    knownActives.length +
+    primaryClaims.length +
+    textureHints.length;
+  if (notes && anchorSignalCount <= 2) {
+    compact.notes = notes.slice(0, 80);
+  }
+  return compact;
+}
+
+function buildFallbackOpenWorldTradeoffNote({ candidateRole = '', targetRole = '', productType = '', targetSignals = {} } = {}) {
+  const normalizedCandidateRole = String(candidateRole || '').trim().toLowerCase();
+  const normalizedTargetRole = String(targetRole || '').trim().toLowerCase();
+  if (
+    normalizedCandidateRole &&
+    normalizedTargetRole &&
+    normalizedCandidateRole !== 'unknown' &&
+    normalizedTargetRole !== 'unknown' &&
+    normalizedCandidateRole !== normalizedTargetRole
+  ) {
+    return `Role overlap is approximate rather than exact ${normalizedTargetRole} parity.`;
+  }
+  const targetProductType = pickFirstTrimmed(targetSignals.productType, targetSignals.category).toLowerCase();
+  const candidateProductType = String(productType || '').trim().toLowerCase();
+  if (targetProductType && candidateProductType && targetProductType !== candidateProductType) {
+    return 'Format overlap remains approximate rather than exact.';
+  }
+  return 'Formula overlap remains uncertain.';
+}
+
+function recoverCompleteOpenWorldAlternativesFromRawText(rawText) {
+  const text = unwrapCodeFence(rawText);
+  const keyMatch = /"alternatives"\s*:\s*\[/i.exec(text);
+  if (!keyMatch) return [];
+  const arrayStart = text.indexOf('[', keyMatch.index);
+  if (arrayStart < 0) return [];
+  const recovered = [];
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let objectStart = -1;
+  for (let index = arrayStart + 1; index < text.length; index += 1) {
+    const char = text[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{') {
+      if (depth === 0) objectStart = index;
+      depth += 1;
+      continue;
+    }
+    if (char === '}') {
+      if (depth > 0) depth -= 1;
+      if (depth === 0 && objectStart >= 0) {
+        const rawObject = text.slice(objectStart, index + 1);
+        const parsed = parseJsonOnlyObject(rawObject);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) recovered.push(parsed);
+        objectStart = -1;
+      }
+      continue;
+    }
+    if (char === ']' && depth === 0) break;
+  }
+  return recovered;
 }
 
 function normalizeOpenWorldAlternativeRow(candidate, {
@@ -40771,9 +40866,23 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   if (!isSkincareCategory(categoryProbe) && candidateRole !== targetRole) return null;
   if (isBlacklistedCategoryOrTitle(categoryProbe) || isExternalSeedPlaceholderCandidate(categoryProbe)) return null;
 
-  const reasons = uniqCaseInsensitiveStrings(asStringArray(row.reasons, 1), 1);
-  const tradeoffNotes = uniqCaseInsensitiveStrings(asStringArray(row.tradeoff_notes, 1), 1);
-  if (!reasons.length || !tradeoffNotes.length) return null;
+  const reasons = uniqCaseInsensitiveStrings(
+    asStringArray(row.reasons, 3).concat(asLooseStringArray(row.reason, 1)),
+    3,
+  );
+  const tradeoffNotesRaw = uniqCaseInsensitiveStrings(
+    asStringArray(row.tradeoff_notes, 3).concat(asLooseStringArray(row.tradeoff_note, 1)),
+    3,
+  );
+  if (!reasons.length) return null;
+  const tradeoffNotes = tradeoffNotesRaw.length
+    ? tradeoffNotesRaw
+    : [buildFallbackOpenWorldTradeoffNote({
+      candidateRole,
+      targetRole,
+      productType,
+      targetSignals,
+    })];
 
   const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
   const baseScoreRaw = Number(row.similarity_score);
@@ -40836,9 +40945,10 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   logger,
   profileMode = 'anchor_only',
 } = {}) {
-  const limit = Math.max(1, Math.min(2, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 2));
+  const limit = 1;
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const targetSignals = identity.targetSignals;
+  const resolvedModel = resolveRecoAlternativesOpenWorldGeminiModel();
   const hasAnchorSignals = Boolean(
     String(identity.anchorLabel || '').trim() ||
     String(targetSignals.category || '').trim() ||
@@ -40877,55 +40987,39 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         latency_ms: 0,
         cache_hit: false,
         provider: 'gemini',
-        model: ANALYSIS_STORY_MODEL_GEMINI,
+        model: resolvedModel,
         source_mode: 'local_gemini_open_world',
         error_class: 'precheck_fail',
         provider_reason: 'anchor_insufficient_for_open_world_fallback',
         provider_detail: null,
         provider_route: 'aurora_reco_alternatives_open_world',
-        provider_model: ANALYSIS_STORY_MODEL_GEMINI,
+        provider_model: resolvedModel,
       },
     };
   }
 
   const systemPrompt = [
-    'You are a strict skincare alternatives selector.',
-    'Output STRICT JSON only that matches the schema.',
-    'Suggest conservative real-product alternatives for the anchor product using anchor signals only.',
-    'Do not depend on local candidate pools, selector-grounded placeholders, or synthetic fallback items.',
-    'Return at most 2 distinct viable alternatives.',
-    'Every alternative must include a real brand, a real product name, exactly 1 short anchor-linked reason, and exactly 1 short tradeoff note.',
-    'Keep every string compact. Do not write prose outside the JSON schema.',
-    'Never invent URLs, product IDs, SKUs, prices, exact INCI lists, or formula identity.',
-    'Never return the anchor itself or a trivial title variant.',
+    'Return JSON only.',
+    'Output exactly {"alternatives":[...]} with at most 1 item.',
+    'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
+    'Return 1 distinct real skincare product when possible, otherwise {"alternatives":[]}.',
+    'Do not output arrays, extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
+    'Use anchor signals only.',
   ].join('\n');
   const userPayload = {
     lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
-    anchor: {
-      anchor_id: String(anchorId || '').trim() || null,
-      brand: targetSignals.brand,
-      name: targetSignals.name,
-      query: String(productInput || '').trim() || null,
-      category: targetSignals.category,
-      product_type: targetSignals.productType,
-      usage_role: targetSignals.usageRole,
-      hero_ingredients: Array.isArray(targetSignals.heroIngredients) ? targetSignals.heroIngredients : [],
-      known_actives: Array.isArray(targetSignals.knownActives) ? targetSignals.knownActives : [],
-      primary_claims: Array.isArray(targetSignals.primaryClaims) ? targetSignals.primaryClaims : [],
-      texture_hints: Array.isArray(targetSignals.textureHints) ? targetSignals.textureHints : [],
-      notes: targetSignals.notes || null,
-    },
+    anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput }),
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Use anchor signals only. Return at most 2 compact, distinct, viable skincare alternatives.',
+      selection_rule: 'Open-world only. Use anchor signals only. Return exactly 1 distinct viable skincare alternative when possible; otherwise [].',
     },
   };
-  const userPrompt = JSON.stringify(userPayload, null, 2);
+  const userPrompt = JSON.stringify(userPayload);
   const traceSeed = buildRecoPromptTrace({
     templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
     query: `${systemPrompt}\n${userPrompt}`,
     provider: 'gemini',
-    model: ANALYSIS_STORY_MODEL_GEMINI,
+    model: resolvedModel,
     coverage: {
       has_anchor_id: Boolean(String(anchorId || '').trim()),
       has_product_json: Boolean(productObj && typeof productObj === 'object' && !Array.isArray(productObj)),
@@ -40936,18 +41030,21 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   try {
     const startedAt = Date.now();
     const resp = await callGeminiJsonObjectImpl({
-      model: ANALYSIS_STORY_MODEL_GEMINI,
+      model: resolvedModel,
       systemPrompt,
       userPrompt,
       timeoutMs: 6000,
-      temperature: 0.1,
-      maxOutputTokens: 900,
-      responseJsonSchema: buildExternalSeedOpenWorldSchema(),
+      temperature: 0.2,
+      maxOutputTokens: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
       route: 'aurora_reco_alternatives_open_world',
+      ignoreForceModel: true,
     });
-    const rawRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
+    let rawRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
       ? resp.json.alternatives
       : [];
+    if (!rawRows.length && typeof resp?.raw_text === 'string') {
+      rawRows = recoverCompleteOpenWorldAlternativesFromRawText(resp.raw_text);
+    }
     const rawOutputSummary = summarizeRecoAlternativesRaw(rawRows);
     const llmTrace = {
       ...traceSeed,
@@ -40957,15 +41054,17 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       provider_reason: resp?.ok === true ? null : String(resp?.reason || '').trim() || null,
       provider_detail: resp?.ok === true ? null : String(resp?.detail || '').trim() || null,
       provider_route: 'aurora_reco_alternatives_open_world',
-      provider_model: ANALYSIS_STORY_MODEL_GEMINI,
+      provider_model: resolvedModel,
       provider_timeout_stage: resp?.ok === true ? null : String(resp?.timeout_stage || '').trim() || null,
       provider_total_ms: Number.isFinite(Number(resp?.total_ms)) ? Math.max(0, Math.trunc(Number(resp.total_ms))) : null,
       provider_upstream_ms: Number.isFinite(Number(resp?.upstream_ms)) ? Math.max(0, Math.trunc(Number(resp.upstream_ms))) : null,
       provider_result_reason: resp?.meta && typeof resp.meta === 'object' ? String(resp.meta.result_reason || '').trim() || null : null,
+      finish_reason: String(resp?.finish_reason || '').trim() || null,
+      parse_status: String(resp?.parse_status || '').trim() || null,
       ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
     };
 
-    if (resp?.ok !== true) {
+    if (resp?.ok !== true && !rawRows.length) {
       return {
         ok: true,
         alternatives: [],
@@ -41076,7 +41175,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
           templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
           query: '',
           provider: 'gemini',
-          model: ANALYSIS_STORY_MODEL_GEMINI,
+          model: resolvedModel,
         }),
         latency_ms: 0,
         cache_hit: false,
@@ -41085,7 +41184,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         provider_reason: String(err?.code || err?.message || '').trim() || null,
         provider_detail: String(err?.message || '').trim() || null,
         provider_route: 'aurora_reco_alternatives_open_world',
-        provider_model: ANALYSIS_STORY_MODEL_GEMINI,
+        provider_model: resolvedModel,
         provider_timeout_stage: null,
         provider_total_ms: null,
         provider_upstream_ms: null,
@@ -41094,6 +41193,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     };
   }
 }
+
 async function fetchRecoAlternativesForExternalSeedProduct({
   ctx,
   productInput,
@@ -45758,39 +45858,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
       const parsePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
       const prefix = buildContextPrefix({ ...commonMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
-      const rawClientProduct = isPlainObject(parsed.data.product) ? parsed.data.product : null;
-      const analyzeName = pickFirstTrimmed(
-        parsed.data.name,
-        parsed.data.product_name,
-        parsed.data.productName,
-        rawClientProduct?.display_name,
-        rawClientProduct?.displayName,
-        rawClientProduct?.name,
-        rawClientProduct?.product_name,
-        rawClientProduct?.productName,
-        rawClientProduct?.title,
-      );
-      const analyzeUrl = pickFirstTrimmed(
-        parsed.data.url,
-        parsed.data.product_url,
-        parsed.data.productUrl,
-        rawClientProduct?.url,
-        rawClientProduct?.product_url,
-        rawClientProduct?.productUrl,
-        rawClientProduct?.pdp_url,
-        rawClientProduct?.pdpUrl,
-        rawClientProduct?.link,
-      );
-      const clientProduct =
-        rawClientProduct || analyzeName || analyzeUrl
-          ? {
-            ...(rawClientProduct || {}),
-            ...(analyzeName ? { name: analyzeName } : {}),
-            ...(analyzeUrl ? { url: analyzeUrl } : {}),
-          }
-          : null;
 
-      const input = analyzeUrl || analyzeName || JSON.stringify(clientProduct || {});
+      const input = parsed.data.url || parsed.data.name || JSON.stringify(parsed.data.product || {});
       const anchorTrustDiagnostics = [];
       const collectAnchorTrust = (trustResult) => {
         if (!trustResult || typeof trustResult !== 'object') return;
@@ -45818,8 +45887,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const applyAnchorCandidateGuard = (candidate, source, { preferDisplay = false } = {}) => {
         const trust = evaluateAnchorTrustForProductIntel({
           candidate,
-          inputText: String(analyzeName || input || '').trim(),
-          inputUrl: String(analyzeUrl || '').trim(),
+          inputText: String(parsed.data.name || input || '').trim(),
+          inputUrl: String(parsed.data.url || '').trim(),
           source,
           strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
         });
@@ -45845,7 +45914,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         return trust;
       };
-      applyAnchorCandidateGuard(clientProduct || null, 'client_payload', { preferDisplay: true });
+      applyAnchorCandidateGuard(parsed.data.product || null, 'client_payload', { preferDisplay: true });
       const anchorReasonCodes = uniqCaseInsensitiveStrings(
         anchorTrustDiagnostics.flatMap((item) => {
           const reasonCodes = Array.isArray(item?.reason_codes) ? item.reason_codes : [];
@@ -45950,7 +46019,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       let catalogFallback = null;
       let realtimeUrlNormMeta = null;
       let kbQuarantineMeta = { hit: false, reason: '', reasons: [], refreshed: false };
-      const realtimeUrlInput = String(analyzeUrl || '').trim();
+      const realtimeUrlInput = String(parsed.data.url || '').trim();
       const forceRefresh = parsed.data.force_refresh === true;
       const shouldRunRealtimeUrlFirst = PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && /^https?:\/\//i.test(realtimeUrlInput);
 
@@ -46303,7 +46372,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             baseUrl: AURORA_DECISION_BASE_URL,
             query: parseQuery,
             timeoutMs: AURORA_CHAT_UPSTREAM_TIMEOUT_MS,
-            ...(analyzeUrl ? { anchor_product_url: analyzeUrl } : {}),
+            ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
             ...(productIntelLlmRoute.llm_provider ? { llm_provider: productIntelLlmRoute.llm_provider } : {}),
             ...(productIntelLlmRoute.llm_model ? { llm_model: productIntelLlmRoute.llm_model } : {}),
           });
@@ -46334,7 +46403,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (!anchorId && input) {
         primaryAnchorResolution = await resolvePrimaryAnalyzeAnchorForProductInput({
           inputText: input,
-          inputUrl: analyzeUrl || null,
+          inputUrl: parsed.data.url || null,
           parsedProduct: anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
           lang: ctx.lang,
           logger,
@@ -46351,7 +46420,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !anchorId && input) {
         catalogFallback = await resolveCatalogProductForProductInput({
           inputText: input,
-          inputUrl: analyzeUrl || null,
+          inputUrl: parsed.data.url || null,
           parsedProduct: anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
           lang: ctx.lang,
           logger,
@@ -46363,7 +46432,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const descriptorAnchor = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
-      const productDescriptor = buildProductInputText(descriptorAnchor, null) || analyzeName || input;
+      const productDescriptor = buildProductInputText(descriptorAnchor, null) || parsed.data.name || input;
       const collectInciCandidates = (sourceObj) => {
         const src = isPlainObject(sourceObj) ? sourceObj : null;
         if (!src) return [];
@@ -46444,6 +46513,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (isPlainObject(src.evidence)) pushSources(src.evidence.sources);
         return out;
       };
+      const clientProduct = isPlainObject(parsed.data.product) ? parsed.data.product : null;
       const queryInciList = canonicalizeIngredientCandidates(
         [...collectInciCandidates(clientProduct), ...collectInciCandidates(descriptorAnchor)],
         { max: 220 },
@@ -46475,8 +46545,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           })
           : null);
       const v4ProductClassification = classifyProductType({
-        name: String(descriptorAnchor?.name || descriptorAnchor?.display_name || analyzeName || ''),
-        url: String(analyzeUrl || descriptorAnchor?.url || ''),
+        name: String(descriptorAnchor?.name || descriptorAnchor?.display_name || parsed.data.name || ''),
+        url: String(parsed.data.url || descriptorAnchor?.url || ''),
         inciList: queryInciList,
       });
       const deepScanPromptOptions = {
@@ -46501,7 +46571,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             query: queryText,
             timeoutMs,
             ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
-            ...(analyzeUrl ? { anchor_product_url: analyzeUrl } : {}),
+            ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
             ...(effectiveRoute.llm_provider ? { llm_provider: effectiveRoute.llm_provider } : {}),
             ...(effectiveRoute.llm_model ? { llm_model: effectiveRoute.llm_model } : {}),
           });
@@ -46511,7 +46581,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
 
       const shouldTryNoAnchorDegradedDeepScan =
-        !anchorId && !PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !(PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && analyzeUrl);
+        !anchorId && !PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !(PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && parsed.data.url);
       let upstream = null;
       if (shouldTryNoAnchorDegradedDeepScan) {
         upstream = await runDeepScan({
@@ -46531,7 +46601,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 'anchor_product_missing',
                 'catalog_product_missing',
                 'anchor_missing_deepscan_degraded',
-                analyzeUrl ? 'url_not_indexed_in_catalog' : null,
+                parsed.data.url ? 'url_not_indexed_in_catalog' : null,
                 anchorResolveReason,
               ].filter(Boolean),
             ),
@@ -46580,12 +46650,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             { lang: ctx.lang },
           );
           scheduleProductIntelKbBackfill({
-            productUrl: analyzeUrl || '',
+            productUrl: parsed.data.url || '',
             parsedProduct: descriptorAnchor,
             productHint: String(input || ''),
             payload: payloadNoAnchorWithDiagnostics,
             lang: ctx.lang,
-            source: analyzeUrl ? 'url_realtime_product_intel_anchor_missing' : 'product_analyze_anchor_missing',
+            source: parsed.data.url ? 'url_realtime_product_intel_anchor_missing' : 'product_analyze_anchor_missing',
             sourceMeta: {
               anchor_missing: true,
               reason: 'anchor_missing_deepscan_degraded',
@@ -46717,9 +46787,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         const verdict = String(assessment.verdict || '').trim().toLowerCase();
         return !verdict || verdict === 'unknown' || verdict === '未知';
       })();
-      if (PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && needsUrlIngredientAnalysis && analyzeUrl) {
+      if (PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && needsUrlIngredientAnalysis && parsed.data.url) {
         const urlNorm = await buildProductAnalysisFromUrlIngredients({
-          productUrl: analyzeUrl,
+          productUrl: parsed.data.url,
           lang: ctx.lang,
           profileSummary,
           parsedProduct: anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
@@ -46770,7 +46840,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestId: ctx.request_id,
         mode: 'main_path',
       });
-      if (realtimeUrlNormMeta && analyzeUrl) {
+      if (realtimeUrlNormMeta && parsed.data.url) {
         payload = applyProductAnalysisSocialProvenance(payload, {
           social_fetch_mode: 'async_refresh',
         });
@@ -46788,18 +46858,18 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? assessment.anchor_product
             : (anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null);
         scheduleProductIntelKbBackfill({
-          productUrl: analyzeUrl || '',
+          productUrl: parsed.data.url || '',
           parsedProduct: kbBackfillAnchor,
           productHint: String(input || ''),
           payload,
           lang: ctx.lang,
-          source: analyzeUrl ? 'url_realtime_product_intel' : 'product_analyze_structured',
+          source: parsed.data.url ? 'url_realtime_product_intel' : 'product_analyze_structured',
           sourceMeta: realtimeUrlNormMeta,
           logger,
         });
-        if (analyzeUrl) {
+        if (parsed.data.url) {
           scheduleProductIntelCompetitorEnrichBackfill({
-            productUrl: analyzeUrl,
+            productUrl: parsed.data.url,
             parsedProduct: kbBackfillAnchor,
             payload,
             lang: ctx.lang,
@@ -46829,7 +46899,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: {},
         events: [makeEvent(ctx, 'value_moment', { kind: 'product_analyze' })],
       });
-      if (realtimeUrlNormMeta && analyzeUrl) {
+      if (realtimeUrlNormMeta && parsed.data.url) {
         const socialAnchorAssessment =
           payload && typeof payload === 'object' && payload.assessment && typeof payload.assessment === 'object'
             ? payload.assessment
@@ -46844,13 +46914,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         social_enrich_async({
           logger,
           mode: 'main_path',
-          product_url: String(analyzeUrl || '').trim(),
+          product_url: String(parsed.data.url || '').trim(),
           payload,
           lang: ctx.lang,
           profile_summary: profileSummary,
           anchor_product: socialAnchorProduct,
           kb_key: buildProductIntelKbKey({
-            productUrl: String(analyzeUrl || '').trim(),
+            productUrl: String(parsed.data.url || '').trim(),
             parsedProduct: socialAnchorProduct,
             lang: ctx.lang,
           }),
@@ -46860,7 +46930,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         skin_fit_heavy_async({
           logger,
           mode: 'main_path',
-          product_url: String(analyzeUrl || '').trim(),
+          product_url: String(parsed.data.url || '').trim(),
         });
       }
       return sendProductAnalyzeEnvelope(envelope, 200, 'main_path');
@@ -46898,6 +46968,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       applyDupeSuggestSanitizeToEnvelope,
       getDupeKbEntry,
       upsertDupeKbEntry,
+      purgeDupeKbEntriesByContractVersion,
       normalizeDupeKbKey,
       searchPivotaBackendProducts,
       buildRecoAlternativesCandidatePool,
@@ -50677,10 +50748,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               : null;
 
             if (diagnosisArtifact && AURORA_INGREDIENT_PLAN_ENABLED && latestArtifactId) {
-              const planBuilt = buildIngredientPlan({
+              const planBuiltLegacy = buildIngredientPlan({
                 artifact: diagnosisArtifact,
                 profile: profileSummary || profile || {},
               });
+              const planBuilt =
+                coerceIngredientPlanForDiagnosisCard(planBuiltLegacy, {
+                  profile: profileSummary || profile || {},
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || planBuiltLegacy;
               const savedPlan = await saveIngredientPlan({
                 artifactId: latestArtifactId,
                 auroraUid: identity.auroraUid,
@@ -50707,7 +50783,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ...analysis,
                   ingredient_plan: {
                     targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
-                      ingredient_id: t.ingredient_id, ingredient_name: t.ingredient_name, role: t.role, priority: t.priority,
+                      ingredient_id: t.ingredient_id,
+                      ingredient_name: t.ingredient_name,
+                      role: t.role,
+                      priority: Number.isFinite(Number(t.priority_score_0_100)) ? Number(t.priority_score_0_100) : t.priority,
                     })) : [],
                     avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
                       ingredient_id: a.ingredient_id, ingredient_name: a.ingredient_name, severity: a.severity, reason: a.reason,
@@ -50849,7 +50928,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const extraCards = [];
         if (ingredientPlan) {
-          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
+          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id, {
+            profile: profileSummary || profile || {},
+            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+          }));
         }
         const routineProductEvents = [];
 
@@ -57827,6 +57909,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         let mappedIngredientPlan = null;
+        let mappedIngredientPlanCard = null;
         if (latestArtifact && AURORA_INGREDIENT_PLAN_ENABLED) {
           const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
           try {
@@ -57834,30 +57917,44 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? await getIngredientPlanByArtifactId({ artifactId: latestArtifactId })
               : null;
             if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
-              mappedIngredientPlan = {
+              const storedPlan = {
                 ...existingPlan.plan_json,
                 plan_id: existingPlan.plan_id,
                 created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
               };
+              mappedIngredientPlanCard =
+                coerceIngredientPlanForDiagnosisCard(storedPlan, {
+                  profile,
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || storedPlan;
+              mappedIngredientPlan = isIngredientPlanV2Payload(storedPlan)
+                ? buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile })
+                : storedPlan;
             } else {
               const builtPlan = buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile });
+              const builtPlanCard =
+                coerceIngredientPlanForDiagnosisCard(builtPlan, {
+                  profile,
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || builtPlan;
               if (latestArtifactId) {
                 const savedPlan = await saveIngredientPlan({
                   artifactId: latestArtifactId,
                   auroraUid: identity.auroraUid,
                   userId: identity.userId,
-                  plan: builtPlan,
+                  plan: builtPlanCard,
                 });
-                mappedIngredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                mappedIngredientPlanCard = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
                   ? {
                       ...savedPlan.plan_json,
                       plan_id: savedPlan.plan_id,
                       created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
                     }
-                  : builtPlan;
+                  : builtPlanCard;
               } else {
-                mappedIngredientPlan = builtPlan;
+                mappedIngredientPlanCard = builtPlanCard;
               }
+              mappedIngredientPlan = builtPlan;
             }
           } catch (err) {
             logger?.warn(
@@ -58207,8 +58304,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             },
           ];
-          if (mappedIngredientPlan) {
-            cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+          if (mappedIngredientPlanCard || mappedIngredientPlan) {
+            cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
+              profile,
+              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            }));
           }
           const sessionPatch = {};
           appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
@@ -58510,8 +58610,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               }),
             },
           ];
-        if (mappedIngredientPlan) {
-          cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+        if (mappedIngredientPlanCard || mappedIngredientPlan) {
+          cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
+            profile,
+            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+          }));
         }
 
         if (debugUpstream && upstreamDebug) {
@@ -58554,6 +58657,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           trigger_source: ctx.trigger_source,
           low_confidence: lowConfidenceArtifact,
         };
+        const ingredientPlanIdForRecoRun =
+          (mappedIngredientPlanCard && mappedIngredientPlanCard.plan_id) ||
+          (mappedIngredientPlan && mappedIngredientPlan.plan_id) ||
+          null;
         if (llmPrimaryUsed && isPlainObject(payload)) {
           const recoItems = Array.isArray(payload.recommendations) ? payload.recommendations : [];
           const hasUsableReco = recoItems.some((row) => {
@@ -58576,7 +58683,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraRecoKbWrite({ source: 'llm_primary', outcome: 'attempted' });
           saveRecoRun({
             artifactId: latestArtifact ? latestArtifact.artifact_id : null,
-            planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
+            planId: ingredientPlanIdForRecoRun,
             auroraUid: identity.auroraUid,
             userId: identity.userId,
             requestContext: {
@@ -58623,7 +58730,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraRecoKbWrite({ source: 'artifact_matcher', outcome: 'attempted' });
           saveRecoRun({
             artifactId: latestArtifact ? latestArtifact.artifact_id : null,
-            planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
+            planId: ingredientPlanIdForRecoRun,
             auroraUid: identity.auroraUid,
             userId: identity.userId,
             requestContext: {
@@ -60327,9 +60434,6 @@ const __internal = {
   applyRecommendationOutputGuardrailsForRoute,
   sanitizeDupeSuggestPayload,
   applyDupeSuggestSanitizeToEnvelope,
-  sanitizeGeminiJsonSchema,
-  buildExternalSeedOpenWorldSchema,
-  parseGeminiJsonPayload,
   isSkincareCatalogCard,
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
