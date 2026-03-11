@@ -35,7 +35,7 @@ function makeBaseServices(overrides = {}) {
 }
 
 describe('executeDupeSuggest recall modes', () => {
-  test('escalates hollow pool-only results to open-world instead of returning empty', async () => {
+  test('supplements placeholder-only pool results with open-world results instead of returning empty', async () => {
     const fetchRecoAlternativesForProduct = jest
       .fn()
       .mockResolvedValueOnce({
@@ -56,25 +56,6 @@ describe('executeDupeSuggest recall modes', () => {
         field_missing: [],
         source_mode: 'pool_only',
         template_id: 'reco_alternatives_v1_0',
-      })
-      .mockResolvedValueOnce({
-        alternatives: [
-          {
-            kind: 'similar',
-            candidate_origin: 'open_world',
-            grounding_status: 'name_only',
-            ranking_mode: 'anchor_only',
-            product: { brand: 'Weak Hybrid', name: 'Weak Hybrid Lotion' },
-            similarity: 0,
-            confidence: 0,
-            reasons: ['Based on resolved product candidates.'],
-            tradeoffs: ['Category: moisturizer'],
-            missing_info: ['tradeoffs_detail_missing'],
-          },
-        ],
-        field_missing: [],
-        source_mode: 'hybrid_fallback',
-        template_id: 'reco_alternatives_hybrid_v1',
       })
       .mockResolvedValueOnce({
         alternatives: [
@@ -129,11 +110,14 @@ describe('executeDupeSuggest recall modes', () => {
 
     expect(result.ok).toBe(true);
     expect(result.payload.dupes).toHaveLength(1);
+    expect(result.payload.comparables).toHaveLength(0);
     expect(result.payload.meta.recommendation_mode_initial).toBe('pool_only');
     expect(result.payload.meta.recommendation_mode_final).toBe('open_world_only');
+    expect(result.payload.meta.open_world_supplement_used).toBe(true);
     expect(result.payload.meta.escalated_to_open_world).toBe(true);
     expect(result.payload.meta.final_source_mix).toEqual(['open_world']);
-    expect(result.payload.meta.viability_failure_reasons).toEqual(expect.arrayContaining(['all_items_hollow', 'placeholder_only']));
+    expect(result.payload.meta.viability_failure_reasons).toEqual(expect.arrayContaining(['placeholder_candidates_removed']));
+    expect(fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
     expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(1, expect.objectContaining({
       options: expect.objectContaining({
         recommendation_mode: 'pool_only',
@@ -142,13 +126,6 @@ describe('executeDupeSuggest recall modes', () => {
       }),
     }));
     expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      options: expect.objectContaining({
-        recommendation_mode: 'hybrid_fallback',
-        disable_fallback: true,
-        disable_synthetic_local_fallback: true,
-      }),
-    }));
-    expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(3, expect.objectContaining({
       candidatePool: [],
       options: expect.objectContaining({
         recommendation_mode: 'open_world_only',
@@ -157,6 +134,7 @@ describe('executeDupeSuggest recall modes', () => {
         disable_synthetic_local_fallback: true,
       }),
     }));
+    expect(fetchRecoAlternativesForProduct.mock.calls.some(([args]) => args.options.recommendation_mode === 'hybrid_fallback')).toBe(false);
   });
 
   test('uses anchor-only open-world fallback when profile is absent and pool is empty', async () => {
@@ -202,12 +180,14 @@ describe('executeDupeSuggest recall modes', () => {
 
     expect(result.ok).toBe(true);
     expect(result.payload.dupes).toHaveLength(1);
+    expect(result.payload.meta.open_world_supplement_used).toBe(true);
     expect(result.payload.meta.recommendation_mode).toBe('open_world_only');
     expect(result.payload.meta.profile_mode).toBe('anchor_only');
     expect(result.payload.meta.profile_context_present).toBe(false);
     expect(result.payload.meta.has_anchor_identity).toBe(true);
     expect(result.payload.meta.final_source_mix).toContain('open_world');
     expect(result.payload.meta.source_hit_counts.open_world_fallback).toBe(1);
+    expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(1);
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledWith(expect.objectContaining({
       profileSummary: null,
       recentLogs: [],
@@ -222,7 +202,7 @@ describe('executeDupeSuggest recall modes', () => {
     }));
   });
 
-  test('uses personalized hybrid fallback when profile exists and pool is small', async () => {
+  test('supplements personalized pool-only results with open-world results when capacity is not filled', async () => {
     const services = makeBaseServices({
       searchPivotaBackendProducts: jest.fn().mockResolvedValue({
         ok: true,
@@ -237,39 +217,47 @@ describe('executeDupeSuggest recall modes', () => {
           },
         ],
       }),
-      fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
-        alternatives: [
-          {
-            kind: 'dupe',
-            candidate_origin: 'catalog',
-            grounding_status: 'catalog_verified',
-            ranking_mode: 'personalized',
-            product: { brand: 'Catalog Brand', name: 'Catalog Barrier Serum', product_id: 'cand_1', sku_id: 'cand_1' },
-            similarity: 79,
-            reasons: ['Close hydrating serum role with milder positioning'],
-            tradeoffs: ['Lower active certainty than the anchor'],
-            confidence: 0.58,
-            profile_fit_reason: ['Better match for high sensitivity'],
-            missing_info: [],
-          },
-          {
-            kind: 'similar',
-            candidate_origin: 'open_world',
-            grounding_status: 'name_only',
-            ranking_mode: 'personalized',
-            product: { brand: 'Open Brand', name: 'Open World Sensitive Serum' },
-            similarity: 66,
-            reasons: ['Looks gentler for compromised barrier routines'],
-            tradeoffs: ['Exact ingredient overlap is unclear'],
-            confidence: 0.39,
-            profile_fit_reason: ['Safer fallback for barrier-impaired skin'],
-            missing_info: ['formula_overlap_uncertain'],
-          },
-        ],
-        field_missing: [],
-        source_mode: 'hybrid_fallback',
-        template_id: 'reco_alternatives_hybrid_v1',
-      }),
+      fetchRecoAlternativesForProduct: jest.fn()
+        .mockResolvedValueOnce({
+          alternatives: [
+            {
+              kind: 'dupe',
+              candidate_origin: 'catalog',
+              grounding_status: 'catalog_verified',
+              ranking_mode: 'personalized',
+              product: { brand: 'Catalog Brand', name: 'Catalog Barrier Serum', product_id: 'cand_1', sku_id: 'cand_1' },
+              similarity: 79,
+              reasons: ['Close hydrating serum role with milder positioning'],
+              tradeoffs: ['Lower active certainty than the anchor'],
+              confidence: 0.58,
+              profile_fit_reason: ['Better match for high sensitivity'],
+              missing_info: [],
+            },
+          ],
+          field_missing: [],
+          source_mode: 'pool_only',
+          template_id: 'reco_alternatives_v1_0',
+        })
+        .mockResolvedValueOnce({
+          alternatives: [
+            {
+              kind: 'similar',
+              candidate_origin: 'open_world',
+              grounding_status: 'name_only',
+              ranking_mode: 'personalized',
+              product: { brand: 'Open Brand', name: 'Open World Sensitive Serum' },
+              similarity: 66,
+              reasons: ['Looks gentler for compromised barrier routines'],
+              tradeoffs: ['Exact ingredient overlap is unclear'],
+              confidence: 0.39,
+              profile_fit_reason: ['Safer fallback for barrier-impaired skin'],
+              missing_info: ['formula_overlap_uncertain'],
+            },
+          ],
+          field_missing: [],
+          source_mode: 'open_world_only',
+          template_id: 'reco_alternatives_hybrid_v1',
+        }),
     });
 
     const result = await executeDupeSuggest({
@@ -299,21 +287,34 @@ describe('executeDupeSuggest recall modes', () => {
     expect(result.ok).toBe(true);
     expect(result.payload.dupes).toHaveLength(1);
     expect(result.payload.comparables).toHaveLength(1);
-    expect(result.payload.meta.recommendation_mode).toBe('hybrid_fallback');
+    expect(result.payload.dupes[0].product.product_id).toBe('cand_1');
+    expect(result.payload.meta.recommendation_mode).toBe('open_world_only');
     expect(result.payload.meta.profile_mode).toBe('personalized');
     expect(result.payload.meta.profile_context_present).toBe(true);
     expect(result.payload.meta.has_anchor_identity).toBe(true);
+    expect(result.payload.meta.open_world_supplement_used).toBe(true);
     expect(result.payload.meta.source_hit_counts.catalog_search).toBeGreaterThanOrEqual(1);
     expect(result.payload.meta.source_hit_counts.open_world_fallback).toBe(1);
     expect(result.payload.meta.final_source_mix).toEqual(expect.arrayContaining(['catalog', 'open_world']));
-    expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
+    expect(services.fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(1, expect.objectContaining({
       profileSummary: expect.objectContaining({ sensitivity: 'High' }),
       recentLogs: expect.any(Array),
       options: expect.objectContaining({
-        recommendation_mode: 'hybrid_fallback',
+        recommendation_mode: 'pool_only',
         disable_fallback: true,
         profile_mode: 'personalized',
         disable_synthetic_local_fallback: true,
+      }),
+    }));
+    expect(services.fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      candidatePool: [],
+      options: expect.objectContaining({
+        recommendation_mode: 'open_world_only',
+        disable_fallback: true,
+        profile_mode: 'personalized',
+        disable_synthetic_local_fallback: true,
+        ignore_selector_candidates: true,
       }),
     }));
   });
@@ -388,9 +389,69 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalled();
     expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
       source_meta: expect.objectContaining({
-        contract_version: 'dupe_suggest_v3',
+        contract_version: 'dupe_suggest_v4',
       }),
     }));
+  });
+
+  test('keeps live results but blocks KB persistence when items are not KB-worthy', async () => {
+    const services = makeBaseServices({
+      searchPivotaBackendProducts: jest.fn().mockResolvedValue({
+        ok: true,
+        products: [
+          {
+            product_id: 'cand_1',
+            sku_id: 'cand_1',
+            brand: 'Catalog Brand',
+            display_name: 'Catalog Brightening Serum',
+            category: 'serum',
+          },
+        ],
+      }),
+      fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
+        alternatives: [
+          {
+            kind: 'dupe',
+            candidate_origin: 'catalog',
+            grounding_status: 'catalog_verified',
+            ranking_mode: 'anchor_only',
+            product: { brand: 'Catalog Brand', name: 'Catalog Brightening Serum', product_id: 'cand_1', sku_id: 'cand_1' },
+            similarity: 0,
+            confidence: 0,
+            reasons: ['Niacinamide-led brightening overlap with a similar serum use case.'],
+            tradeoffs: [],
+            missing_info: ['formula_overlap_uncertain'],
+          },
+        ],
+        field_missing: [],
+        source_mode: 'pool_only',
+        template_id: 'reco_alternatives_v1_0',
+      }),
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original: {
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          category: 'serum',
+        },
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload.dupes).toHaveLength(1);
+    expect(result.payload.meta.kb_backfill_blocked_reason).toBe('all_items_hollow');
+    expect(services.upsertDupeKbEntry).not.toHaveBeenCalled();
   });
 });
 
