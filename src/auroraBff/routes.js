@@ -40648,7 +40648,7 @@ function buildExternalSeedOpenWorldSchema() {
       alternatives: {
         type: 'array',
         minItems: 0,
-        maxItems: 6,
+        maxItems: 2,
         items: {
           type: 'object',
           additionalProperties: false,
@@ -40660,16 +40660,15 @@ function buildExternalSeedOpenWorldSchema() {
             reasons: {
               type: 'array',
               minItems: 1,
-              maxItems: 3,
+              maxItems: 1,
               items: { type: 'string' },
             },
             tradeoff_notes: {
               type: 'array',
               minItems: 1,
-              maxItems: 3,
+              maxItems: 1,
               items: { type: 'string' },
             },
-            best_use: { type: 'string', nullable: true },
           },
           required: ['brand', 'name', 'reasons', 'tradeoff_notes'],
         },
@@ -40703,8 +40702,8 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   if (!isSkincareCategory(categoryProbe) && candidateRole !== targetRole) return null;
   if (isBlacklistedCategoryOrTitle(categoryProbe) || isExternalSeedPlaceholderCandidate(categoryProbe)) return null;
 
-  const reasons = uniqCaseInsensitiveStrings(asStringArray(row.reasons, 3), 3);
-  const tradeoffNotes = uniqCaseInsensitiveStrings(asStringArray(row.tradeoff_notes, 3), 3);
+  const reasons = uniqCaseInsensitiveStrings(asStringArray(row.reasons, 1), 1);
+  const tradeoffNotes = uniqCaseInsensitiveStrings(asStringArray(row.tradeoff_notes, 1), 1);
   if (!reasons.length || !tradeoffNotes.length) return null;
 
   const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
@@ -40745,7 +40744,6 @@ function normalizeOpenWorldAlternativeRow(candidate, {
     similarity_score: Math.max(1, Math.min(100, Math.round(mixedScore * 100))),
     reasons,
     tradeoff_notes: tradeoffNotes,
-    best_use: pickFirstTrimmed(row.best_use, row.bestUse) || null,
     pdp_open: {
       path: 'external',
       external: {
@@ -40769,7 +40767,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   logger,
   profileMode = 'anchor_only',
 } = {}) {
-  const limit = Math.max(1, Math.min(4, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const limit = Math.max(1, Math.min(2, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 2));
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const targetSignals = identity.targetSignals;
   const hasAnchorSignals = Boolean(
@@ -40826,9 +40824,9 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     'Output STRICT JSON only that matches the schema.',
     'Suggest conservative real-product alternatives for the anchor product using anchor signals only.',
     'Do not depend on local candidate pools, selector-grounded placeholders, or synthetic fallback items.',
-    'Prefer 1 to 3 distinct viable alternatives for common anchors. Return 4 only if clearly justified.',
-    'Every alternative must include a real brand, a real product name, 1 to 2 short anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
-    'Keep reasons and tradeoff notes compact. Do not write prose outside the JSON schema.',
+    'Return at most 2 distinct viable alternatives.',
+    'Every alternative must include a real brand, a real product name, exactly 1 short anchor-linked reason, and exactly 1 short tradeoff note.',
+    'Keep every string compact. Do not write prose outside the JSON schema.',
     'Never invent URLs, product IDs, SKUs, prices, exact INCI lists, or formula identity.',
     'Never return the anchor itself or a trivial title variant.',
   ].join('\n');
@@ -40850,7 +40848,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     },
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Use anchor signals only. Return compact, distinct, viable skincare alternatives.',
+      selection_rule: 'Open-world only. Use anchor signals only. Return at most 2 compact, distinct, viable skincare alternatives.',
     },
   };
   const userPrompt = JSON.stringify(userPayload, null, 2);
@@ -40873,8 +40871,8 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       systemPrompt,
       userPrompt,
       timeoutMs: 6000,
-      temperature: 0.2,
-      maxOutputTokens: 1800,
+      temperature: 0.1,
+      maxOutputTokens: 900,
       responseJsonSchema: buildExternalSeedOpenWorldSchema(),
       route: 'aurora_reco_alternatives_open_world',
     });
