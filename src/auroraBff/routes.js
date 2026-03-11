@@ -39545,7 +39545,7 @@ function resolveRecoAlternativesPromptSpec(modeRaw) {
     systemFile: 'reco_alternatives_hybrid_v1.system.txt',
     schemaFile: 'reco_alternatives_hybrid_v1.user_schema.json',
     queryLine: mode === 'open_world_only'
-      ? 'Generate up to task.max_alternatives distinct, conservative, anchor-based alternatives for target_product. In open_world_only mode, aim to return 2-4 viable real-product alternatives for common anchors whenever possible. A viable open-world item must have a non-null product.brand, a non-null product.name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty; do not return hollow or placeholder items.'
+      ? 'Generate up to task.max_alternatives distinct, conservative, anchor-based alternatives for target_product. In open_world_only mode, ignore candidate-pool dependence and use target_product itself as the anchor basis. For common anchors, aim to return 2-4 viable real-product alternatives whenever possible. A viable open-world item must have a non-null product.brand, a non-null product.name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty; do not return hollow or placeholder items.'
       : 'Use context.candidates first and supplement with distinct, conservative open-world alternatives only when the local pool is insufficient. Every returned item must be viable: distinct from the anchor, non-placeholder, and supported by anchor-linked reasons plus at least one concrete tradeoff or uncertainty.',
   };
 }
