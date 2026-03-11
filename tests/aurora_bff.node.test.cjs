@@ -12058,3 +12058,148 @@ test('/v1/chat: deep_dive_skin without reusable analysis context returns confide
     },
   );
 });
+
+test('/v1/chat: deep_dive_skin consumes photo refs and diagnosis artifact through llm path', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const memoryStore = require('../src/auroraBff/memoryStore');
+      const artifactStore = require('../src/auroraBff/diagnosisArtifactStore');
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      const uid = 'uid_analysis_followup_photo_deep_dive';
+      const sessionId = 'brief_analysis_followup_photo_deep_dive';
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'trace_analysis_followup_photo_deep_dive',
+        'X-Brief-ID': sessionId,
+        'X-Lang': 'EN',
+      };
+      const llmCalls = [];
+      __internal.__setCallGeminiJsonObjectForTest(async (request) => {
+        llmCalls.push(request);
+        return {
+          ok: true,
+          json: {
+            conclusion: 'The redness looks more consistent with barrier stress right now.',
+            key_signals: [
+              'Cheek redness appears alongside dehydration.',
+              'The routine active stack can also be compatible with irritation.',
+            ],
+            actions_now: ['AM: Gentle cleanse, moisturizer, SPF.'],
+            avoid_now: ['Avoid stacking strong acids while redness settles.'],
+            confidence_note: 'Medium confidence from photo-backed evidence.',
+          },
+        };
+      });
+
+      try {
+        await memoryStore.saveLastAnalysisForIdentity(
+          { auroraUid: uid, userId: null },
+          {
+            analysis: {
+              skin_profile: {
+                skin_type_tendency: 'combination',
+                sensitivity_tendency: 'high',
+                current_strengths: ['steady barrier'],
+              },
+              priority_findings: [{ title: 'Cheek redness' }, { detail: 'Mild dehydration' }],
+              confidence_overall: { level: 'medium', score: 0.73 },
+              guidance_brief: ['Simplify the morning active stack', 'Keep barrier support stable'],
+            },
+            lang: 'EN',
+          },
+        );
+        await artifactStore.saveDiagnosisArtifact({
+          auroraUid: uid,
+          userId: null,
+          sessionId,
+          artifact: {
+            artifact_id: 'da_test_photo_deep_dive',
+            created_at: new Date().toISOString(),
+            use_photo: true,
+            overall_confidence: { level: 'medium', score: 0.73 },
+            skinType: { value: 'combination' },
+            sensitivity: { value: 'high' },
+            goals: { values: ['acne', 'pores'] },
+            concerns: [{ id: 'redness', title: 'Cheek redness' }],
+            photos: [{ slot: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+            analysis_context: {
+              analysis_source: 'vision_gemini',
+              used_photos: true,
+              quality_grade: 'pass',
+            },
+            source_mix: ['photo', 'profile'],
+          },
+          artifactId: 'da_test_photo_deep_dive',
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const deepDive = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action: {
+              action_id: 'chip.aurora.next_action.deep_dive_skin',
+              kind: 'action',
+              data: {
+                reply_text: 'Explain the redness pattern',
+                trigger_source: 'analysis_story_v2',
+                analysis_origin: 'photo',
+                use_photo: true,
+                source_card_type: 'analysis_story_v2',
+                photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+              },
+            },
+            session: {
+              state: { latest_artifact_id: 'da_test_photo_deep_dive' },
+              meta: {
+                analysis_context: {
+                  analysis_origin: 'photo',
+                  use_photo: true,
+                  source_card_type: 'analysis_story_v2',
+                  photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+                },
+              },
+            },
+            language: 'EN',
+          })
+          .expect(200);
+
+        assert.equal(llmCalls.length, 1);
+        assert.equal(llmCalls[0].model, 'gemini-3-pro-preview');
+        assert.equal(llmCalls[0].maxOutputTokens, 1200);
+        assert.match(String(llmCalls[0].userPrompt || ''), /Photo-backed context already exists/i);
+        assert.doesNotMatch(String(llmCalls[0].userPrompt || ''), /photo_daylight_1/);
+        assert.doesNotMatch(String(llmCalls[0].userPrompt || ''), /can't analyze photos/i);
+        const storyCard = findCardByType(deepDive.body?.cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        assert.equal(storyCard.payload.confidence_overall.level, 'medium');
+        assert.match(String(storyCard.payload.ui_card_v1?.headline || ''), /more consistent with barrier stress/i);
+        assert.match(String(deepDive.body?.assistant_message?.content || ''), /photo-based analysis|photo-backed/i);
+        assert.match(String(deepDive.body?.assistant_message?.content || ''), /Confidence note: Medium confidence from photo-backed evidence/i);
+        const actionEvent = Array.isArray(deepDive.body?.events)
+          ? deepDive.body.events.find((event) => event && event.event_name === 'analysis_followup_action_routed')
+          : null;
+        assert.equal(actionEvent?.data?.analysis_origin, 'photo');
+        assert.equal(actionEvent?.data?.llm_used, true);
+        assert.equal(actionEvent?.data?.used_diagnosis_artifact, true);
+        assert.equal(actionEvent?.data?.photo_ref_count, 1);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+        delete require.cache[routeModuleId];
+      }
+    },
+  );
+});

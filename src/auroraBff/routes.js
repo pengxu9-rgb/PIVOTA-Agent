@@ -1650,6 +1650,12 @@ const ANALYSIS_STORY_MODEL_OPENAI =
   'gpt-4o-mini';
 const ANALYSIS_STORY_MODEL_GEMINI =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_analysis_story');
+const AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI =
+  resolveAuroraGeminiModel(
+    ['AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI'],
+    'gemini-3-pro-preview',
+    'aurora_skin_deep_dive',
+  );
 const ROUTINE_FIT_MODEL_GEMINI =
   resolveAuroraGeminiModel(
     ['AURORA_ROUTINE_FIT_MODEL_GEMINI', 'AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'],
@@ -1694,6 +1700,14 @@ const PRODUCT_INTEL_DUAL_QA_TIMEOUT_MS = Math.max(
 const AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS = Math.max(
   1200,
   Math.min(20000, Number(process.env.AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS || 12000)),
+);
+const AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS = Math.max(
+  2000,
+  Math.min(25000, Number(process.env.AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS || 12000)),
+);
+const AURORA_SKIN_DEEP_DIVE_MAX_OUTPUT_TOKENS = Math.max(
+  512,
+  Math.min(1200, Number(process.env.AURORA_SKIN_DEEP_DIVE_MAX_OUTPUT_TOKENS || 1200)),
 );
 const AURORA_PRODUCT_RELEVANCE_GEMINI_TIMEOUT_MS = Math.max(
   1000,
@@ -14810,6 +14824,17 @@ const ANALYSIS_STORY_REVIEW_PATCH_JSON_SCHEMA = Object.freeze({
   },
   required: ['approved', 'issues', 'patch_ops'],
 });
+const ANALYSIS_DEEP_DIVE_RESPONSE_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    conclusion: { type: 'string' },
+    key_signals: { type: 'array', items: { type: 'string' } },
+    actions_now: { type: 'array', items: { type: 'string' } },
+    avoid_now: { type: 'array', items: { type: 'string' } },
+    confidence_note: { type: 'string' },
+  },
+  required: ['conclusion', 'key_signals', 'actions_now', 'avoid_now', 'confidence_note'],
+});
 const ANALYSIS_STORY_REVIEW_ISSUE_CODES = Object.freeze([
   'headline_generic',
   'key_points_generic',
@@ -22042,6 +22067,38 @@ function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
   sessionPatch.state = state;
 }
 
+async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
+  const preferredArtifactId = extractLatestArtifactIdFromSession(session);
+  try {
+    const latestArtifact = await getLatestDiagnosisArtifact({
+      auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
+      userId: identity && identity.userId ? identity.userId : null,
+      sessionId: ctx && ctx.brief_id ? ctx.brief_id : null,
+      maxAgeDays: 30,
+      preferArtifactId: preferredArtifactId,
+    });
+    if (
+      latestArtifact &&
+      latestArtifact.artifact_json &&
+      typeof latestArtifact.artifact_json === 'object' &&
+      !Array.isArray(latestArtifact.artifact_json)
+    ) {
+      return {
+        ...latestArtifact.artifact_json,
+        artifact_id: latestArtifact.artifact_id,
+        created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+      };
+    }
+    return latestArtifact || null;
+  } catch (err) {
+    logger?.warn?.(
+      { err: err && err.message ? err.message : String(err), request_id: ctx && ctx.request_id ? ctx.request_id : null },
+      'aurora bff: failed to load latest diagnosis artifact for route',
+    );
+    return null;
+  }
+}
+
 function normalizeRecoSourceDetail(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (
@@ -26646,6 +26703,14 @@ function asStringArray(value, max = 8) {
     if (out.length >= max) break;
   }
   return out;
+}
+
+function normalizeArrayOfStrings(value, { max = 8, maxLen = 160 } = {}) {
+  return asStringArray(value, max)
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((item) => (item.length > maxLen ? item.slice(0, Math.max(1, maxLen - 1)).trimEnd() : item))
+    .filter(Boolean);
 }
 
 function asLooseStringArray(value, max = 8) {
@@ -54647,32 +54712,106 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
       const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim());
       if (isAnalysisFollowupAction) {
-        const followup = buildAnalysisFollowupContent({
-          actionId: String(actionId || '').trim(),
-          lastAnalysis: profile && profile.lastAnalysis,
-          language: ctx.lang,
-          requestId: ctx.request_id,
-          replyText: actionReplyText,
-        });
+        const normalizedActionId = String(actionId || '').trim();
+        const isDeepDiveAction = normalizedActionId === 'chip.aurora.next_action.deep_dive_skin';
+        const actionData =
+          normalizedActionPayload &&
+          typeof normalizedActionPayload === 'object' &&
+          normalizedActionPayload.data &&
+          typeof normalizedActionPayload.data === 'object' &&
+          !Array.isArray(normalizedActionPayload.data)
+            ? normalizedActionPayload.data
+            : {};
+        const sessionAnalysisContext =
+          parsed.data &&
+          parsed.data.session &&
+          typeof parsed.data.session === 'object' &&
+          !Array.isArray(parsed.data.session) &&
+          parsed.data.session.meta &&
+          typeof parsed.data.session.meta === 'object' &&
+          !Array.isArray(parsed.data.session.meta) &&
+          parsed.data.session.meta.analysis_context &&
+          typeof parsed.data.session.meta.analysis_context === 'object' &&
+          !Array.isArray(parsed.data.session.meta.analysis_context)
+            ? parsed.data.session.meta.analysis_context
+            : null;
+        const latestDiagnosisArtifact = isDeepDiveAction
+          ? await loadLatestDiagnosisArtifactForRoute({
+              identity,
+              session: parsed.data.session,
+              ctx,
+              logger,
+            })
+          : null;
+        const followup = isDeepDiveAction
+          ? await buildAnalysisDeepDiveContentWithLlm({
+              lastAnalysis: profile && profile.lastAnalysis,
+              diagnosisArtifact: latestDiagnosisArtifact,
+              profile,
+              language: ctx.lang,
+              requestId: ctx.request_id,
+              replyText: actionReplyText,
+              actionData,
+              sessionAnalysisContext,
+              logger,
+            })
+          : buildAnalysisFollowupContent({
+              actionId: normalizedActionId,
+              lastAnalysis: profile && profile.lastAnalysis,
+              language: ctx.lang,
+              requestId: ctx.request_id,
+              replyText: actionReplyText,
+            });
         recordAuroraSkinFlowMetric({ stage: 'analysis_followup_action', hit: true });
         recordAuroraSkinFlowMetric({
           stage: `analysis_followup_${String(actionId || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(-48)}`,
           hit: true,
         });
+        if (isDeepDiveAction && followup && followup.llm_used === true) {
+          recordAuroraSkinFlowMetric({ stage: 'analysis_followup_deep_dive_llm', hit: true });
+        }
         logger?.info(
           { kind: 'metric', name: 'aurora.skin.analysis_followup.routed_rate', value: 1 },
           'metric',
         );
+        if (debugUpstream === true && isDeepDiveAction) {
+          logger?.info?.(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              action_id: normalizedActionId,
+              analysis_origin: followup && followup.analysis_origin ? followup.analysis_origin : null,
+              photo_ref_count: Number(followup && followup.photo_ref_count || 0),
+              used_diagnosis_artifact: Boolean(followup && followup.used_diagnosis_artifact),
+              artifact_id: followup && followup.latest_artifact_id ? followup.latest_artifact_id : null,
+              llm_used: Boolean(followup && followup.llm_used),
+              llm_model: followup && followup.llm_model ? followup.llm_model : null,
+              llm_failure_reason: followup && followup.llm_failure_reason ? followup.llm_failure_reason : null,
+            },
+            'aurora bff: deep-dive follow-up context',
+          );
+        }
+        skipRoutineRulesFallback = true;
+        const sessionPatch = {};
+        if (followup && followup.latest_artifact_id) {
+          appendLatestArtifactToSessionPatch(sessionPatch, followup.latest_artifact_id);
+        }
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(followup.assistant_text),
           suggested_chips: Array.isArray(followup.suggested_chips) ? followup.suggested_chips : [],
           cards: Array.isArray(followup.cards) ? followup.cards : [],
-          session_patch: {},
+          session_patch: sessionPatch,
           events: [
             makeEvent(ctx, 'analysis_followup_action_routed', {
-              action_id: String(actionId || '').trim(),
+              action_id: normalizedActionId,
               used_last_analysis: Boolean(followup.used_last_analysis),
               missing_context: Boolean(followup.missing_context),
+              analysis_origin: followup && followup.analysis_origin ? followup.analysis_origin : null,
+              photo_ref_count: Number(followup && followup.photo_ref_count || 0),
+              used_diagnosis_artifact: Boolean(followup && followup.used_diagnosis_artifact),
+              llm_used: Boolean(followup && followup.llm_used),
+              llm_model: followup && followup.llm_model ? followup.llm_model : null,
+              llm_failure_reason: followup && followup.llm_failure_reason ? followup.llm_failure_reason : null,
               fell_back_to_generic: false,
             }),
           ],
@@ -61077,6 +61216,11 @@ const __internal = {
   applyRecoCardContractInvariant,
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
+  normalizeAnalysisPhotoRefs,
+  buildDeepDiveFallbackStoryPayload,
+  buildDeepDiveAnalysisEvidence,
+  buildDeepDiveAnalysisStoryGenerationPrompt,
+  buildAnalysisDeepDiveContentWithLlm,
   buildAnalysisFollowupContent,
   extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,
@@ -61094,6 +61238,8 @@ const __internal = {
   buildAnalysisEvidence,
   ANALYSIS_STORY_GENERATION_PROMPT_VERSION,
   ANALYSIS_STORY_REVIEW_PROMPT_VERSION,
+  ANALYSIS_DEEP_DIVE_PROMPT_VERSION,
+  AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI,
   buildAnalysisStoryGenerationPrompt,
   buildAnalysisStoryReviewPrompt,
   generateAnalysisStoryV2Json,
