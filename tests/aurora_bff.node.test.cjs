@@ -12213,17 +12213,6 @@ test('/v1/chat: implicit deep_dive_skin message is inferred when action_id is mi
           .send({
             message: 'Tell me more about my skin',
             language: 'EN',
-            session: {
-              state: { latest_artifact_id: 'da_test_inferred_photo_deep_dive' },
-              meta: {
-                analysis_context: {
-                  analysis_origin: 'photo',
-                  use_photo: true,
-                  source_card_type: 'analysis_story_v2',
-                  photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_implicit', qc_status: 'passed' }],
-                },
-              },
-            },
           })
           .expect(200);
 

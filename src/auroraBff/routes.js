@@ -1262,9 +1262,14 @@ function shouldDelegateV1ChatToV2(body) {
       ? payload.session.meta.analysis_context
       : null;
   const rawMessage = pickFirstTrimmed(payload.message, payload.text, payload.query);
+  const isImplicitDeepDiveMessage = IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.has(
+    normalizeImplicitAnalysisFollowupMessage(rawMessage),
+  );
   const isImplicitAnalysisFollowup =
-    hasReusableSessionAnalysisContext(sessionAnalysisContext) &&
-    IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.has(normalizeImplicitAnalysisFollowupMessage(rawMessage));
+    isImplicitDeepDiveMessage || (
+      hasReusableSessionAnalysisContext(sessionAnalysisContext) &&
+      IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.has(normalizeImplicitAnalysisFollowupMessage(rawMessage))
+    );
   const canDelegateActionToV2 = [
     'chip.action.add_to_routine',
     'chip.start.dupes',
