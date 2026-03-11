@@ -45,6 +45,9 @@ test('hybrid reco alternatives system prompt encodes open-world fallback and anc
   assert.match(text, /Do NOT return \[\] merely because:/i);
   assert.match(text, /context\.candidates is empty/i);
   assert.match(text, /aim to return at least 2 viable alternatives when possible/i);
+  assert.match(text, /\[\] should be rare/i);
+  assert.match(text, /return 1 strong item rather than \[\]/i);
+  assert.match(text, /do not wait for catalog grounding/i);
 });
 
 test('legacy reco main system prompt encodes task_mode and candidate grounding rules', () => {
@@ -207,6 +210,7 @@ test('hybrid reco alternatives query includes recommendation_mode, anchor_only p
     assert.match(promptPack.systemPrompt, /do NOT personalize to an assumed user/i);
     assert.match(promptPack.systemPrompt, /Never invent product IDs, SKUs, URLs, prices/i);
     assert.match(promptPack.query, /aim to return 2-4 viable real-product alternatives/i);
+    assert.match(promptPack.query, /ignore candidate-pool dependence/i);
   } finally {
     delete require.cache[moduleId];
   }
