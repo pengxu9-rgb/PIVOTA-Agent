@@ -4325,7 +4325,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
                   'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
                 ],
                 how_to_use: {
-                  when: 'AM only',
+                  when: 'am',
                   frequency: 'daily',
                   order_in_routine: 'Layer from thinnest to thickest; keep hydration before occlusive steps.',
                   pairing_rules: 'Use daytime SPF as the final AM step.',
@@ -4412,8 +4412,10 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(payload?.assessment?.verdict).toBe('Likely Suitable');
     expect(payload?.assessment?.verdict_level).toBe('needs_verification');
     expect(String(payload?.assessment?.data_quality_banner || '')).toMatch(/incidecoder/i);
-    expect(Array.isArray(payload?.assessment?.how_to_use?.pairing_rules)).toBe(true);
-    expect(payload?.assessment?.how_to_use?.pairing_rules).toContain('Use daytime SPF as the final AM step.');
+    expect(payload?.assessment?.how_to_use?.timing).toBe('am');
+    expect(payload?.assessment?.how_to_use?.when).toBeUndefined();
+    expect(Array.isArray(payload?.assessment?.how_to_use?.steps)).toBe(true);
+    expect(payload?.assessment?.how_to_use?.steps).toContain('Use daytime SPF as the final AM step.');
     expect(Array.isArray(payload?.assessment?.watchouts)).toBe(true);
     expect(payload?.assessment?.watchouts[0]).toEqual(
       expect.objectContaining({

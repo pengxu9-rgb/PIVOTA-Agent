@@ -71,7 +71,22 @@ capture_case() {
 
 extract_summary() {
   local file="$1"
-  "$PY_BIN" -c 'import json,sys; j=json.load(open(sys.argv[1])); cards=[c.get("type") for c in (j.get("cards") or [])]; first=((j.get("assistant_message") or {}).get("content") or "").splitlines()[:1]; print("cards=",cards); print("first=",first)' "$file"
+  "$PY_BIN" -c '
+import json,sys
+j=json.load(open(sys.argv[1]))
+cards=[(c.get("type") or c.get("card_type")) for c in (j.get("cards") or [])]
+assistant=((j.get("assistant_message") or {}).get("content") or "")
+if not assistant:
+    for card in (j.get("cards") or []):
+        if (card.get("type") or card.get("card_type"))=="text_response":
+            sections=card.get("sections") or []
+            if sections:
+                assistant=(sections[0].get("text_en") or sections[0].get("text_zh") or "")
+                break
+first=str(assistant).splitlines()[:1]
+print("cards=",cards)
+print("first=",first)
+' "$file"
 }
 
 assert_no_banned_first_line() {
@@ -119,7 +134,7 @@ assert_cards() {
 import json,sys
 path, mode, expected = sys.argv[1], sys.argv[2], [s for s in sys.argv[3].split(",") if s]
 j = json.load(open(path))
-cards = [c.get("type") for c in (j.get("cards") or [])]
+cards = [(c.get("type") or c.get("card_type")) for c in (j.get("cards") or [])]
 if mode == "exact":
     ok = cards == expected
 elif mode == "contains_all":
@@ -156,7 +171,7 @@ assert_cards_with_retry() {
 import json,sys
 path, mode, expected = sys.argv[1], sys.argv[2], [s for s in sys.argv[3].split(",") if s]
 j = json.load(open(path))
-cards = [c.get("type") for c in (j.get("cards") or [])]
+cards = [(c.get("type") or c.get("card_type")) for c in (j.get("cards") or [])]
 if mode == "exact":
     ok = cards == expected
 elif mode == "contains_all":
@@ -188,7 +203,7 @@ import json,sys
 path = sys.argv[1]
 j = json.load(open(path))
 cards = j.get("cards") or []
-types = [c.get("type") for c in cards]
+types = [(c.get("type") or c.get("card_type")) for c in cards]
 if "recommendations" in types:
     raise SystemExit(0)
 if "product_verdict" in types:
@@ -200,10 +215,20 @@ if "aurora_ingredient_report" in types or "ingredient_hub" in types:
 if "nudge" in types:
     # Passive advisory path can return nudge-only in current chatcards contract.
     raise SystemExit(0)
+if "text_response" in types:
+    sections = []
+    for card in cards:
+        if (card.get("type") or card.get("card_type")) == "text_response":
+            sections = card.get("sections") or []
+            break
+    if sections:
+        text = (sections[0].get("text_en") or sections[0].get("text_zh") or "").strip()
+        if text:
+            raise SystemExit(0)
 if "confidence_notice" not in types:
     raise SystemExit(
         f"reco stage expected recommendations/product_verdict/skin_status/routine/"
-        f"aurora_ingredient_report/ingredient_hub/nudge/confidence_notice, got={types}"
+        f"aurora_ingredient_report/ingredient_hub/nudge/text_response/confidence_notice, got={types}"
     )
 reason = None
 for c in cards:
@@ -222,7 +247,7 @@ assert_fit_stage() {
 import json,sys
 path = sys.argv[1]
 j = json.load(open(path))
-cards = [c.get("type") for c in (j.get("cards") or [])]
+cards = [(c.get("type") or c.get("card_type")) for c in (j.get("cards") or [])]
 if "aurora_structured" in cards and "product_analysis" in cards:
     raise SystemExit(0)
 if "product_verdict" in cards:
@@ -239,17 +264,25 @@ assert_env_stage() {
 import json,sys
 path = sys.argv[1]
 j = json.load(open(path))
-cards = [c.get("type") for c in (j.get("cards") or [])]
+cards = [(c.get("type") or c.get("card_type")) for c in (j.get("cards") or [])]
 if "env_stress" in cards:
     raise SystemExit(0)
 if "travel" in cards or "skin_status" in cards:
     raise SystemExit(0)
+if "text_response" in cards:
+    for card in (j.get("cards") or []):
+        if (card.get("type") or card.get("card_type")) == "text_response":
+            sections = card.get("sections") or []
+            if sections:
+                text = (sections[0].get("text_en") or sections[0].get("text_zh") or "").strip()
+                if text:
+                    raise SystemExit(0)
 # Runtime can temporarily degrade to generic error when env provider is unavailable.
 if "error" in cards:
     if "recommendations" in cards:
         raise SystemExit(f"env fallback error must not include recommendations, got={cards}")
     raise SystemExit(0)
-raise SystemExit(f"env stage expected env_stress/travel/skin_status (or error fallback), got={cards}")
+raise SystemExit(f"env stage expected env_stress/travel/skin_status/text_response (or error fallback), got={cards}")
 ' "$file"
 }
 
@@ -259,11 +292,19 @@ assert_conflict_stage() {
 import json,sys
 path = sys.argv[1]
 j = json.load(open(path))
-cards = [c.get("type") for c in (j.get("cards") or [])]
+cards = [(c.get("type") or c.get("card_type")) for c in (j.get("cards") or [])]
 if "routine_simulation" in cards and "conflict_heatmap" in cards:
     raise SystemExit(0)
 if "compatibility" in cards:
     raise SystemExit(0)
+if "text_response" in cards:
+    for card in (j.get("cards") or []):
+        if (card.get("type") or card.get("card_type")) == "text_response":
+            sections = card.get("sections") or []
+            if sections:
+                text = (sections[0].get("text_en") or sections[0].get("text_zh") or "").strip().lower()
+                if text and ("alternate" in text or "avoid" in text or "separate" in text or "错开" in text or "不要同晚" in text):
+                    raise SystemExit(0)
 if "confidence_notice" in cards:
     chip_ids = [(c.get("chip_id") or "") for c in (j.get("suggested_chips") or [])]
     if not any("pregnancy" in cid.lower() for cid in chip_ids):
@@ -272,7 +313,7 @@ if "confidence_notice" in cards:
     if "safety_gate_require_info" not in events:
         raise SystemExit(f"conflict safety gate missing safety event; events={events}")
     raise SystemExit(0)
-raise SystemExit(f"conflict stage expected routine_simulation+conflict_heatmap or safety gate, got={cards}")
+raise SystemExit(f"conflict stage expected routine_simulation+conflict_heatmap, compatibility, mitigated text_response, or safety gate, got={cards}")
 ' "$file"
 }
 

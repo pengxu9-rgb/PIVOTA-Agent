@@ -231,7 +231,7 @@ test('v2 spec input params match prompt INPUT_CONTEXT placeholders', () => {
 
 test('spec hard-rule matcher keeps short skincare acronyms instead of skipping them', () => {
   const result = matchHardRuleTerms(
-    'SPF/sunscreen: usage.time_of_day MUST be "AM only".',
+    'SPF/sunscreen: usage.time_of_day MUST be "am".',
     'spf rule: sunscreen is an am-only step with reapply guidance.',
   );
 

@@ -28,6 +28,104 @@ function stringifyRoutine(value, max = 5000) {
   }
 }
 
+function cloneRoutineRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => {
+    if (Array.isArray(row)) return row.slice();
+    if (isPlainObject(row)) return { ...row };
+    return row;
+  });
+}
+
+function hasFilledRoutineRows(rows) {
+  return (Array.isArray(rows) ? rows : []).some((row) => {
+    if (!row) return false;
+    if (typeof row === 'string') return Boolean(String(row).trim());
+    if (!isPlainObject(row)) return false;
+    return Boolean(
+      String(row.product || '').trim() ||
+      String(row.name || '').trim() ||
+      String(row.step || '').trim() ||
+      String(row.ingredient || '').trim()
+    );
+  });
+}
+
+function parseRoutineSameAsAmFlag(value) {
+  if (value == null) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return false;
+  return [
+    '1',
+    'true',
+    'yes',
+    'y',
+    'same_as_am',
+    'same as am',
+    'same-as-am',
+    'pm_same_as_am',
+    'pm same as am',
+    'pm-same-as-am',
+    'copy_am',
+    'copy am',
+    'same_am',
+    'same am',
+    'copy from am',
+    'copy_from_am',
+    'pm = am',
+    'same as morning',
+    'same as daytime',
+    'same as day',
+    'same morning',
+    'same daytime',
+    'same day',
+    'am same',
+    'sameam',
+    '同am',
+    '同 am',
+    '和am一样',
+    '跟am一样',
+    '同早上',
+  ].includes(token);
+}
+
+function applyPmSameAsAmShortcut(routine) {
+  if (!isPlainObject(routine)) return routine;
+
+  const amRows = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pmRows = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  const pmNode = routine.pm;
+  const pmNodeText = typeof pmNode === 'string' ? pmNode : '';
+
+  const sameAsAmRequested =
+    parseRoutineSameAsAmFlag(routine.pm_same_as_am) ||
+    parseRoutineSameAsAmFlag(routine.pmSameAsAm) ||
+    parseRoutineSameAsAmFlag(routine.same_as_am) ||
+    parseRoutineSameAsAmFlag(routine.sameAsAm) ||
+    parseRoutineSameAsAmFlag(routine.pm_copy_from_am) ||
+    parseRoutineSameAsAmFlag(routine.pmCopyFromAm) ||
+    parseRoutineSameAsAmFlag(pmNodeText) ||
+    (isPlainObject(pmNode) && (
+      parseRoutineSameAsAmFlag(pmNode.same_as_am) ||
+      parseRoutineSameAsAmFlag(pmNode.sameAsAm) ||
+      parseRoutineSameAsAmFlag(pmNode.pm_same_as_am) ||
+      parseRoutineSameAsAmFlag(pmNode.pmSameAsAm)
+    ));
+
+  if (!sameAsAmRequested) return routine;
+  if (!hasFilledRoutineRows(amRows)) return routine;
+  if (hasFilledRoutineRows(pmRows)) return routine;
+
+  const copied = cloneRoutineRows(amRows);
+  return {
+    ...routine,
+    pm: copied,
+    pm_steps: cloneRoutineRows(amRows),
+  };
+}
+
 function normalizeSlot(value) {
   const token = toTrimmedString(value).toLowerCase();
   if (!token) return 'am';
@@ -103,17 +201,67 @@ function normalizeArrayRoutineToV2(value) {
 
 function normalizeRoutineObject(value) {
   if (!isPlainObject(value)) return null;
-  if (Array.isArray(value.am) || Array.isArray(value.pm) || isPlainObject(value.am) || isPlainObject(value.pm)) {
-    return normalizeCurrentRoutineToV2(value);
+  const resolved = applyPmSameAsAmShortcut(value);
+  if (Array.isArray(resolved.am) || Array.isArray(resolved.pm) || isPlainObject(resolved.am) || isPlainObject(resolved.pm)) {
+    return normalizeCurrentRoutineToV2(resolved);
   }
-  if (Array.isArray(value.am_steps) || Array.isArray(value.pm_steps)) {
+  if (Array.isArray(resolved.am_steps) || Array.isArray(resolved.pm_steps)) {
     return normalizeCurrentRoutineToV2({
-      am: value.am_steps,
-      pm: value.pm_steps,
-      notes: value.notes,
+      am: resolved.am_steps,
+      pm: resolved.pm_steps,
+      notes: resolved.notes,
     });
   }
-  return normalizeCurrentRoutineToV2(value);
+  return normalizeCurrentRoutineToV2(resolved);
+}
+
+function tryParseRoutineObject(value) {
+  if (!value) return null;
+  if (isPlainObject(value)) {
+    const rawResolved = applyPmSameAsAmShortcut(value);
+    const normalized = normalizeRoutineStateValue(rawResolved);
+    if (normalized && isPlainObject(normalized.current_routine_struct)) {
+      const structured = normalized.current_routine_struct;
+      return Array.isArray(rawResolved.pm_steps) && !Array.isArray(structured.pm_steps)
+        ? { ...structured, pm_steps: cloneRoutineRows(rawResolved.pm_steps) }
+        : structured;
+    }
+    return rawResolved;
+  }
+  if (typeof value !== 'string') {
+    const normalized = normalizeRoutineStateValue(value);
+    return normalized && isPlainObject(normalized.current_routine_struct)
+      ? normalized.current_routine_struct
+      : null;
+  }
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (isPlainObject(parsed)) {
+      const rawResolved = applyPmSameAsAmShortcut(parsed);
+      const normalized = normalizeRoutineStateValue(rawResolved);
+      if (normalized && isPlainObject(normalized.current_routine_struct)) {
+        const structured = normalized.current_routine_struct;
+        return Array.isArray(rawResolved.pm_steps) && !Array.isArray(structured.pm_steps)
+          ? { ...structured, pm_steps: cloneRoutineRows(rawResolved.pm_steps) }
+          : structured;
+      }
+      return rawResolved;
+    }
+    return null;
+  } catch {
+    const normalized = normalizeRoutineStateValue(value);
+    return normalized && isPlainObject(normalized.current_routine_struct)
+      ? normalized.current_routine_struct
+      : null;
+  }
+}
+
+function normalizeRoutineInputWithPmShortcut(value) {
+  if (value == null) return value;
+  const parsed = tryParseRoutineObject(value);
+  return parsed || value;
 }
 
 function buildMissingRoutineFields(structuredRoutine) {
@@ -264,4 +412,5 @@ module.exports = {
   normalizeRoutineStateFromProfile,
   getRoutineStateSummaryValue,
   buildMissingRoutineFields,
+  normalizeRoutineInputWithPmShortcut,
 };

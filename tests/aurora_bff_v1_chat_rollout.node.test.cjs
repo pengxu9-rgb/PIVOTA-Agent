@@ -161,6 +161,113 @@ test('buildSkillRequest derives action params, reply_text, and normalized curren
   assert.equal(skillRequest.context.current_routine?.am_steps?.length, 1);
 });
 
+test('buildSkillRequest does not coerce dupe compare chip anchor/targets fallbacks into canonical params', () => {
+  resetAuroraModules();
+  const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
+
+  const skillRequest = buildSkillRequest({
+    body: {
+      skill_id: 'dupe.compare',
+      action: {
+        action_id: 'chip.action.dupe_compare',
+        kind: 'chip',
+        data: {
+          reply_text: 'Compare these two products',
+          anchor: {
+            brand: 'Anchor Brand',
+            name: 'Anchor Serum',
+          },
+          targets: [
+            { brand: 'Target Brand', name: 'Target Serum' },
+          ],
+        },
+      },
+    },
+    headers: {},
+  });
+
+  assert.equal(skillRequest.params.entry_source, 'chip.action.dupe_compare');
+  assert.equal(skillRequest.params.message, 'Compare these two products');
+  assert.equal(Object.prototype.hasOwnProperty.call(skillRequest.params, 'product_anchor'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(skillRequest.params, 'comparison_targets'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(skillRequest.params, 'anchor'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(skillRequest.params, 'targets'), false);
+});
+
+test('buildSkillRequest preserves same_as_am routine semantics in current routine context', () => {
+  resetAuroraModules();
+  const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
+
+  const skillRequest = buildSkillRequest({
+    body: {
+      message: 'Optimize my routine',
+      context: {
+        profile: {
+          currentRoutine: {
+            routine_id: 'routine_same_as_am',
+            am: [
+              { step: 'cleanser', product: 'Gentle Cleanser' },
+            ],
+            pm: 'same_as_am',
+          },
+        },
+      },
+    },
+    headers: {},
+  });
+
+  assert.equal(skillRequest.context.current_routine?.routine_id, 'routine_same_as_am');
+  assert.equal(skillRequest.context.current_routine?.am_steps?.length, 1);
+  assert.equal(skillRequest.context.current_routine?.pm_steps?.length, 1);
+  assert.equal(skillRequest.context.current_routine?.pm_steps?.[0]?.products?.[0]?.name, 'Gentle Cleanser');
+});
+
+test('legacy and v2 routine normalization keep the same slot/product semantics for same_as_am payloads', () => {
+  resetAuroraModules();
+  const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
+  const { normalizeRoutineInputWithPmShortcut, normalizeRoutineStateValue } = require('../src/auroraBff/routineState');
+
+  const rawRoutine = {
+    routine_id: 'routine_parity_same_as_am',
+    notes: 'keep it gentle',
+    am: [
+      { step: 'cleanser', product: 'Gentle Cleanser' },
+      { step: 'treatment', product: 'Azelaic Acid 10%' },
+    ],
+    pm: 'same_as_am',
+  };
+
+  const legacyStructured = normalizeRoutineStateValue(
+    normalizeRoutineInputWithPmShortcut(rawRoutine),
+  ).current_routine_struct;
+  const skillRequest = buildSkillRequest({
+    body: {
+      context: {
+        profile: {
+          currentRoutine: rawRoutine,
+        },
+      },
+    },
+    headers: {},
+  });
+
+  const flattenLegacy = (slot) =>
+    (Array.isArray(legacyStructured?.[slot]) ? legacyStructured[slot] : []).map((row) => ({
+      step: row.step,
+      product: row.product,
+    }));
+  const flattenV2 = (slot) =>
+    (Array.isArray(skillRequest.context.current_routine?.[`${slot}_steps`]) ? skillRequest.context.current_routine[`${slot}_steps`] : [])
+      .flatMap((step) =>
+        (Array.isArray(step?.products) ? step.products : []).map((product) => ({
+          step: step.step_id,
+          product: product.name,
+        })));
+
+  assert.deepEqual(flattenV2('am'), flattenLegacy('am'));
+  assert.deepEqual(flattenV2('pm'), flattenLegacy('pm'));
+});
+
 test('/v1/chat delegates v2-compatible message+context bodies when skill_router_v2 is enabled', async () => {
   await withEnv(
     {
@@ -350,6 +457,120 @@ test('/v1/chat delegates chip.action.add_to_routine to v2 when skill_router_v2 i
       assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'card_type')), true);
       assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'type')), false);
       assert.ok(Array.isArray(response.body.next_actions));
+    },
+  );
+});
+
+test('/v1/chat delegates chip.start.dupes to v2 and returns the dupe-suggest anchor precondition', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          action: {
+            action_id: 'chip.start.dupes',
+            kind: 'chip',
+            data: {
+              reply_text: 'Find dupes and compare tradeoffs',
+            },
+          },
+        })
+        .expect(200);
+
+      assert.equal(response.body.cards?.[0]?.card_type, 'empty_state');
+      assert.equal(response.body.cards?.[0]?.sections?.[0]?.message_en, 'No anchor product provided');
+      assert.equal(response.body.next_actions?.[0]?.action_type, 'request_input');
+      assert.equal(response.body.next_actions?.[0]?.label?.en, 'Please share a product link or name so I can find alternatives.');
+    },
+  );
+});
+
+test('/v1/chat delegates chip.action.dupe_compare to v2 and rejects non-canonical anchor/targets payloads', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          action: {
+            action_id: 'chip.action.dupe_compare',
+            kind: 'chip',
+            data: {
+              reply_text: 'Compare these two products',
+              anchor: {
+                brand: 'Anchor Brand',
+                name: 'Anchor Serum',
+              },
+              targets: [
+                { brand: 'Target Brand', name: 'Target Serum' },
+              ],
+            },
+          },
+        })
+        .expect(200);
+
+      assert.equal(response.body.cards?.[0]?.card_type, 'empty_state');
+      assert.equal(response.body.cards?.[0]?.sections?.[0]?.message_en, 'No anchor product provided');
+      assert.equal(response.body.next_actions?.[0]?.action_type, 'request_input');
+      assert.equal(response.body.next_actions?.[0]?.label?.en, 'Please share a product to compare.');
+    },
+  );
+});
+
+test('/v1/chat delegates chip.action.dupe_compare to v2 when canonical compare params are provided', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          action: {
+            action_id: 'chip.action.dupe_compare',
+            kind: 'chip',
+            data: {
+              reply_text: 'Compare these two products',
+              product_anchor: {
+                brand: 'Anchor Brand',
+                name: 'Anchor Serum',
+              },
+              comparison_targets: [
+                { brand: 'Target Brand', name: 'Target Serum' },
+              ],
+            },
+          },
+        })
+        .expect(200);
+
+      assert.equal(response.body.cards?.[0]?.card_type, 'compatibility');
+      assert.equal(response.body.cards?.[0]?.sections?.[0]?.type, 'compatibility_structured');
+      assert.equal(response.body.cards?.[0]?.sections?.[0]?.anchor?.name, 'Anchor Serum');
+      assert.equal(response.body.cards?.[0]?.sections?.[0]?.comparisons?.[0]?.target?.name, 'Target Serum');
+      assert.equal(response.body.next_actions?.[0]?.target_skill_id, 'explore.add_to_routine');
     },
   );
 });

@@ -39,6 +39,7 @@ const {
   normalizeRoutineStateFromProfile,
   getRoutineStateSummaryValue,
   buildMissingRoutineFields,
+  normalizeRoutineInputWithPmShortcut,
 } = require('./routineState');
 const {
   hasNonEmptyRecommendationsPayload,
@@ -1250,7 +1251,11 @@ function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = isPlainObject(payload.action) ? payload.action : {};
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
-  const canDelegateActionToV2 = actionId === 'chip.action.add_to_routine';
+  const canDelegateActionToV2 = [
+    'chip.action.add_to_routine',
+    'chip.start.dupes',
+    'chip.action.dupe_compare',
+  ].includes(actionId);
 
   if (
     payload.selected_option_index != null ||
@@ -24158,7 +24163,7 @@ function buildProductDeepScanPromptV4({
     'If data is insufficient, state it once in data_quality_banner and proceed with best available evidence.',
     'Hard rules:',
     '1. No repetition across top_takeaways, watchouts, how_to_use, or evidence fields.',
-    `2. Product type: ${pType}. If type is spf or spf_moisturizer: how_to_use.when MUST be "AM only", frequency MUST be "daily", include reapplication guidance. Do NOT suggest "start 2-3 nights/week" or "PM first".`,
+    `2. Product type: ${pType}. If type is spf or spf_moisturizer: how_to_use.when MUST be "am", frequency MUST be "daily", include reapplication guidance. Do NOT suggest "start 2-3 nights/week" or "pm first".`,
     '3. If consensus_tier is low or verification_required is true: verdict_level MUST be "needs_verification" or "cautiously_ok". Do NOT return "recommended".',
     '4. Do NOT use placeholder strings as ingredient names.',
     `5. Fragrance/parfum risk: ONLY mark as confirmed when INCI is verified AND contains fragrance/parfum/known allergens. INCI verified: ${!inciVerificationRequired}.`,
@@ -25904,27 +25909,6 @@ function pickFirstString(...values) {
   return '';
 }
 
-function parseRoutineSameAsAmFlag(value) {
-  if (value === true) return true;
-  if (value === false || value == null) return false;
-  const token = String(value || '').trim().toLowerCase();
-  if (!token) return false;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(token)) return true;
-  return [
-    'same_as_am',
-    'same as am',
-    'same-as-am',
-    'copy_am',
-    'copy am',
-    'sameam',
-    '同am',
-    '同 am',
-    '和am一样',
-    '跟am一样',
-    '同早上',
-  ].includes(token);
-}
-
 function hasFilledRoutineRows(rows) {
   return rows.some((row) => {
     if (!row) return false;
@@ -25939,97 +25923,9 @@ function hasFilledRoutineRows(rows) {
   });
 }
 
-function cloneRoutineRows(rows) {
-  if (!Array.isArray(rows)) return [];
-  return rows.map((row) => {
-    if (Array.isArray(row)) return row.slice();
-    if (isPlainObject(row)) return { ...row };
-    return row;
-  });
-}
-
-function applyPmSameAsAmShortcut(routine) {
-  if (!isPlainObject(routine)) return routine;
-
-  const amRows = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
-  const pmRows = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
-  const pmNode = routine.pm;
-  const pmNodeText = typeof pmNode === 'string' ? pmNode : '';
-
-  const sameAsAmRequested =
-    parseRoutineSameAsAmFlag(routine.pm_same_as_am) ||
-    parseRoutineSameAsAmFlag(routine.pmSameAsAm) ||
-    parseRoutineSameAsAmFlag(routine.same_as_am) ||
-    parseRoutineSameAsAmFlag(routine.sameAsAm) ||
-    parseRoutineSameAsAmFlag(routine.pm_copy_from_am) ||
-    parseRoutineSameAsAmFlag(routine.pmCopyFromAm) ||
-    parseRoutineSameAsAmFlag(pmNodeText) ||
-    (isPlainObject(pmNode) && (
-      parseRoutineSameAsAmFlag(pmNode.same_as_am) ||
-      parseRoutineSameAsAmFlag(pmNode.sameAsAm) ||
-      parseRoutineSameAsAmFlag(pmNode.pm_same_as_am) ||
-      parseRoutineSameAsAmFlag(pmNode.pmSameAsAm)
-    ));
-
-  if (!sameAsAmRequested) return routine;
-  if (!hasFilledRoutineRows(amRows)) return routine;
-  if (hasFilledRoutineRows(pmRows)) return routine;
-
-  const copied = cloneRoutineRows(amRows);
-  return {
-    ...routine,
-    pm: copied,
-    pm_steps: cloneRoutineRows(amRows),
-  };
-}
-
 function tryParseRoutineObject(value) {
-  if (!value) return null;
-  if (isPlainObject(value)) {
-    const rawResolved = applyPmSameAsAmShortcut(value);
-    const normalized = normalizeRoutineStateValue(rawResolved);
-    if (normalized && isPlainObject(normalized.current_routine_struct)) {
-      const structured = normalized.current_routine_struct;
-      return Array.isArray(rawResolved.pm_steps) && !Array.isArray(structured.pm_steps)
-        ? { ...structured, pm_steps: cloneRoutineRows(rawResolved.pm_steps) }
-        : structured;
-    }
-    return rawResolved;
-  }
-  if (typeof value !== 'string') {
-    const normalized = normalizeRoutineStateValue(value);
-    return normalized && isPlainObject(normalized.current_routine_struct)
-      ? normalized.current_routine_struct
-      : null;
-  }
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (isPlainObject(parsed)) {
-      const rawResolved = applyPmSameAsAmShortcut(parsed);
-      const normalized = normalizeRoutineStateValue(rawResolved);
-      if (normalized && isPlainObject(normalized.current_routine_struct)) {
-        const structured = normalized.current_routine_struct;
-        return Array.isArray(rawResolved.pm_steps) && !Array.isArray(structured.pm_steps)
-          ? { ...structured, pm_steps: cloneRoutineRows(rawResolved.pm_steps) }
-          : structured;
-      }
-      return rawResolved;
-    }
-    return null;
-  } catch {
-    const normalized = normalizeRoutineStateValue(value);
-    return normalized && isPlainObject(normalized.current_routine_struct)
-      ? normalized.current_routine_struct
-      : null;
-  }
-}
-
-function normalizeRoutineInputWithPmShortcut(value) {
-  if (value == null) return value;
-  const parsed = tryParseRoutineObject(value);
-  return parsed || value;
+  const normalized = normalizeRoutineInputWithPmShortcut(value);
+  return isPlainObject(normalized) ? normalized : null;
 }
 
 function hasRoutineData(profile) {
@@ -42353,6 +42249,21 @@ function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } 
   return out;
 }
 
+function normalizeLegacyHowToUseWhenToken(rawWhen, { productType = 'other', usageOverrides = {} } = {}) {
+  if (productType === 'spf' || productType === 'spf_moisturizer' || String(usageOverrides?.when || '').toUpperCase() === 'AM_ONLY') {
+    return 'am';
+  }
+  const token = String(rawWhen || '').trim();
+  if (!token) return '';
+  const lower = token.toLowerCase();
+  if (lower === 'am' || lower === 'am only') return 'am';
+  if (lower === 'pm' || lower === 'pm only') return 'pm';
+  if (['both', 'am/pm', 'am_pm', 'am pm', '早晚皆可', '早晚均可', '早晚都可', '早晚'].includes(lower)) return 'both';
+  if (lower.includes('am') && !lower.includes('pm')) return 'am';
+  if (lower.includes('pm') && !lower.includes('am')) return 'pm';
+  return token;
+}
+
 function buildV4HowToUseFromLegacy(assessment, { lang = 'EN', productType = 'other', usageOverrides = {} } = {}) {
   if (!isPlainObject(assessment)) return null;
   const isCn = String(lang || '').toUpperCase() === 'CN';
@@ -42360,22 +42271,13 @@ function buildV4HowToUseFromLegacy(assessment, { lang = 'EN', productType = 'oth
     ? (assessment.how_to_use ?? assessment.howToUse)
     : {};
   const steps = asStringArray(raw.steps, 6);
-  let when = pickFirstTrimmed(raw.when);
+  let when = normalizeLegacyHowToUseWhenToken(pickFirstTrimmed(raw.when), { productType, usageOverrides });
   if (!when) {
     const timing = pickFirstTrimmed(raw.timing, raw.time);
-    const timingLower = String(timing || '').toLowerCase();
-    if (productType === 'spf' || productType === 'spf_moisturizer' || String(usageOverrides?.when || '').toUpperCase() === 'AM_ONLY') {
-      when = 'AM only';
-    } else if (timingLower.includes('am') && !timingLower.includes('pm')) {
-      when = 'AM';
-    } else if (timingLower.includes('pm') && !timingLower.includes('am')) {
-      when = 'PM';
-    } else if (timing) {
-      when = timing;
-    }
+    when = normalizeLegacyHowToUseWhenToken(timing, { productType, usageOverrides });
   }
   if (!when) {
-    when = isCn ? '早晚皆可' : 'AM/PM';
+    when = 'both';
   }
 
   let frequency = pickFirstTrimmed(raw.frequency);
@@ -50928,13 +50830,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const routine = parsed.data.routine || {};
+      const routine = normalizeRoutineInputWithPmShortcut(parsed.data.routine || {});
       const testProduct = parsed.data.test_product || null;
       const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
       const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
       const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
         ? buildConflictHeatmapV1({ routineSimulation: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary }, routineSteps: heatmapSteps })
         : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
+      const simPayload = {
+        safe: sim.safe,
+        conflicts: sim.conflicts,
+        summary: sim.summary,
+        analysis_ready: sim.analysis_ready === true,
+        signal_summary: sim.signal_summary && typeof sim.signal_summary === 'object' ? sim.signal_summary : undefined,
+      };
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
@@ -50942,7 +50851,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           {
             card_id: `sim_${ctx.request_id}`,
             type: 'routine_simulation',
-            payload: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary },
+            payload: simPayload,
           },
           {
             card_id: `heatmap_${ctx.request_id}`,
@@ -55513,7 +55422,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (simInput) {
           const { routine, testProduct } = simInput;
           const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
-          const simPayload = { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary };
+          const simPayload = {
+            safe: sim.safe,
+            conflicts: sim.conflicts,
+            summary: sim.summary,
+            analysis_ready: sim.analysis_ready === true,
+            signal_summary: sim.signal_summary && typeof sim.signal_summary === 'object' ? sim.signal_summary : undefined,
+          };
           const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
           const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
             ? buildConflictHeatmapV1({ routineSimulation: simPayload, routineSteps: heatmapSteps })
@@ -56206,7 +56121,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               data: { reply_text: lang === 'CN' ? '给我一些产品推荐' : 'Get product recommendations' },
             },
             {
-              chip_id: 'chip.action.dupe_compare',
+              chip_id: 'chip.action.check_compatibility',
               label: lang === 'CN' ? '检查搭配冲突' : 'Check compatibility',
               kind: 'quick_reply',
               data: {
@@ -57645,7 +57560,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             data: { reply_text: lang === 'CN' ? '评估这款产品是否适合我' : 'Evaluate a specific product for me' },
           },
           {
-            chip_id: 'chip.action.dupe_compare',
+            chip_id: 'chip.start.dupes',
             label: lang === 'CN' ? '找平替/对比替代品' : 'Find dupes / alternatives',
             kind: 'quick_reply',
             data: { reply_text: lang === 'CN' ? '帮我找平替并比较 tradeoffs' : 'Find dupes and compare tradeoffs' },

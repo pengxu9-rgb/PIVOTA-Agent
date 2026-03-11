@@ -1,6 +1,7 @@
 const { SkillRouter } = require('../orchestrator/skill_router');
 const LlmGateway = require('../services/llm_gateway');
 const { mapSkillResponseToChatCardsV1, mapSkillResponseToStreamEnvelope } = require('../mappers/card_mapper');
+const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 
 let routerSingleton = null;
 
@@ -77,6 +78,14 @@ function compactStringArray(value) {
     .filter(Boolean);
 }
 
+function omitLegacyActionAliases(value) {
+  if (!isPlainObject(value)) return {};
+  const next = { ...value };
+  delete next.anchor;
+  delete next.targets;
+  return next;
+}
+
 function normalizeProfileShape(value) {
   if (!isPlainObject(value)) return {};
 
@@ -131,7 +140,7 @@ function normalizeRoutineProducts(value) {
     return normalizeRoutineProducts(value.products);
   }
 
-  const name = pickFirstTrimmed(value.name, value.display_name, value.product_name, value.label, value.title);
+  const name = pickFirstTrimmed(value.name, value.display_name, value.product_name, value.label, value.title, value.product);
   return name ? [{ ...value, name }] : [];
 }
 
@@ -150,11 +159,55 @@ function coerceRoutineStepsFromSlots(value) {
     .filter(Boolean);
 }
 
+function coerceRoutineStepsFromList(value, slot = 'am') {
+  if (!Array.isArray(value)) return [];
+
+  const steps = [];
+  const byStepId = new Map();
+
+  for (let index = 0; index < value.length; index += 1) {
+    const entry = value[index];
+    const row = isPlainObject(entry) ? entry : null;
+    const stepId = pickFirstTrimmed(
+      row?.step_id,
+      row?.step,
+      row?.category,
+      row?.routine_step,
+      row?.routineStep,
+      row?.type,
+      `${slot}_step_${index + 1}`,
+    );
+    const products = normalizeRoutineProducts(row && Array.isArray(row.products) ? row.products : entry);
+    if (!stepId || products.length === 0) continue;
+
+    if (!byStepId.has(stepId)) {
+      const step = { step_id: stepId, products: [] };
+      byStepId.set(stepId, step);
+      steps.push(step);
+    }
+    byStepId.get(stepId).products.push(...products);
+  }
+
+  return steps;
+}
+
 function coerceRoutineShape(value) {
   if (!value) return null;
+  const resolved = normalizeRoutineInputWithPmShortcut(value);
+  const candidate = resolved == null ? value : resolved;
+  const routineId = pickFirstTrimmed(
+    isPlainObject(candidate) ? candidate.routine_id : null,
+    isPlainObject(value) ? value.routine_id : null,
+  );
+  const notesValue =
+    isPlainObject(candidate) && candidate.notes != null
+      ? candidate.notes
+      : isPlainObject(value) && value.notes != null
+        ? value.notes
+        : null;
 
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
     if (!trimmed) return null;
     try {
       return coerceRoutineShape(JSON.parse(trimmed));
@@ -163,31 +216,39 @@ function coerceRoutineShape(value) {
     }
   }
 
-  if (!isPlainObject(value)) return null;
+  if (!isPlainObject(candidate)) return null;
 
-  if (Array.isArray(value.am_steps) || Array.isArray(value.pm_steps)) {
+  if (Array.isArray(candidate.am_steps) || Array.isArray(candidate.pm_steps)) {
+    const amSource = Array.isArray(candidate.am_steps) && candidate.am_steps.length > 0
+      ? candidate.am_steps
+      : candidate.am;
+    const pmSource = Array.isArray(candidate.pm_steps) && candidate.pm_steps.length > 0
+      ? candidate.pm_steps
+      : candidate.pm;
     return {
-      ...value,
-      am_steps: Array.isArray(value.am_steps) ? value.am_steps : [],
-      pm_steps: Array.isArray(value.pm_steps) ? value.pm_steps : [],
+      ...candidate,
+      ...(routineId ? { routine_id: routineId } : {}),
+      am_steps: coerceRoutineStepsFromList(amSource, 'am'),
+      pm_steps: coerceRoutineStepsFromList(pmSource, 'pm'),
+      ...(notesValue != null ? { notes: notesValue } : {}),
     };
   }
 
-  if (Array.isArray(value.am) || Array.isArray(value.pm)) {
+  if (Array.isArray(candidate.am) || Array.isArray(candidate.pm)) {
     return {
-      ...(value.routine_id ? { routine_id: value.routine_id } : {}),
-      am_steps: Array.isArray(value.am) ? value.am : [],
-      pm_steps: Array.isArray(value.pm) ? value.pm : [],
-      ...(value.notes != null ? { notes: value.notes } : {}),
+      ...(routineId ? { routine_id: routineId } : {}),
+      am_steps: coerceRoutineStepsFromList(candidate.am, 'am'),
+      pm_steps: coerceRoutineStepsFromList(candidate.pm, 'pm'),
+      ...(notesValue != null ? { notes: notesValue } : {}),
     };
   }
 
-  if (isPlainObject(value.am) || isPlainObject(value.pm)) {
+  if (isPlainObject(candidate.am) || isPlainObject(candidate.pm)) {
     return {
-      ...(value.routine_id ? { routine_id: value.routine_id } : {}),
-      am_steps: coerceRoutineStepsFromSlots(value.am),
-      pm_steps: coerceRoutineStepsFromSlots(value.pm),
-      ...(value.notes != null ? { notes: value.notes } : {}),
+      ...(routineId ? { routine_id: routineId } : {}),
+      am_steps: coerceRoutineStepsFromSlots(candidate.am),
+      pm_steps: coerceRoutineStepsFromSlots(candidate.pm),
+      ...(notesValue != null ? { notes: notesValue } : {}),
     };
   }
 
@@ -276,6 +337,7 @@ function buildSkillRequest(req) {
   const sessionProfile = isPlainObject(session.profile) ? session.profile : null;
   const action = isPlainObject(body.action) ? body.action : {};
   const actionData = isPlainObject(action.data) ? action.data : {};
+  const normalizedActionData = omitLegacyActionAliases(actionData);
   const actionId = pickFirstTrimmed(body.action_id, action.action_id);
   const userMessage = pickFirstTrimmed(
     body.message,
@@ -298,32 +360,40 @@ function buildSkillRequest(req) {
     body.anchor_product_id,
     body.anchorProductId,
     bodyParams.anchor_product_id,
-    actionData.anchor_product_id,
+    normalizedActionData.anchor_product_id,
   );
   const anchorProductUrl = pickFirstTrimmed(
     body.anchor_product_url,
     body.anchorProductUrl,
     bodyParams.anchor_product_url,
-    actionData.anchor_product_url,
+    normalizedActionData.anchor_product_url,
   );
   const productAnchor = isPlainObject(bodyParams.product_anchor)
     ? bodyParams.product_anchor
-    : isPlainObject(actionData.product_anchor)
-      ? actionData.product_anchor
+    : isPlainObject(normalizedActionData.product_anchor)
+      ? normalizedActionData.product_anchor
       : null;
+
+  const comparisonTargets =
+    Array.isArray(bodyParams.comparison_targets) ? bodyParams.comparison_targets
+    : Array.isArray(normalizedActionData.comparison_targets) ? normalizedActionData.comparison_targets
+    : null;
+
+  const normalizedBodyParams = omitLegacyActionAliases(bodyParams);
 
   return {
     skill_id: body.skill_id || null,
     skill_version: body.skill_version || '1.0.0',
     intent: body.intent || body.canonical_intent || null,
     params: {
-      ...actionData,
-      ...bodyParams,
+      ...normalizedActionData,
+      ...normalizedBodyParams,
       entry_source: body.entry_source || body.trigger_source || bodyParams.entry_source || actionId || null,
       user_message: userMessage,
       message: userMessage,
       text: userMessage,
       ...(productAnchor ? { product_anchor: productAnchor } : {}),
+      ...(comparisonTargets ? { comparison_targets: comparisonTargets } : {}),
       ...(anchorProductId ? { anchor_product_id: anchorProductId } : {}),
       ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
       ...(priorMessages.length > 0 ? { messages: priorMessages } : {}),

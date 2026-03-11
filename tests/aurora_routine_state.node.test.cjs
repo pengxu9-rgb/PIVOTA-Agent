@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const {
   normalizeRoutineStateValue,
   normalizeRoutineStateFromProfile,
+  normalizeRoutineInputWithPmShortcut,
 } = require('../src/auroraBff/routineState');
 
 test('normalizeRoutineStateValue: keeps plain-text routine as text candidate', () => {
@@ -52,4 +53,24 @@ test('normalizeRoutineStateFromProfile: accepts current_routine legacy alias', (
   assert.equal(state.has_current_routine, true);
   assert.equal(state.source_shape, 'json_object_string');
   assert.equal(state.current_routine_struct?.schema_version, 'aurora.routine_intake.v2');
+});
+
+test('normalizeRoutineStateValue: copies AM into PM when same_as_am marker is present', () => {
+  const state = normalizeRoutineStateValue({
+    am: [{ step: 'cleanser', product: 'Gentle cleanser' }],
+    pm: 'same_as_am',
+  });
+
+  assert.equal(state.current_routine_struct?.pm?.length, 1);
+  assert.equal(state.current_routine_struct?.pm?.[0]?.product, 'Gentle cleanser');
+});
+
+test('normalizeRoutineInputWithPmShortcut: preserves same_as_am on object inputs before downstream normalization', () => {
+  const routine = normalizeRoutineInputWithPmShortcut({
+    am: [{ step: 'cleanser', product: 'Gentle cleanser' }],
+    pm: 'same_as_am',
+  });
+
+  assert.equal(Array.isArray(routine?.pm), true);
+  assert.equal(routine?.pm?.[0]?.product, 'Gentle cleanser');
 });

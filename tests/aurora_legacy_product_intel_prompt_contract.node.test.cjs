@@ -42,8 +42,8 @@ test('legacy product-intel v4 prompt encodes JSON-only and conservative groundin
 
     assert.match(prompt, /single valid JSON object/i);
     assert.match(prompt, /Do NOT repeat information across fields/i);
-    assert.match(prompt, /how_to_use\.when MUST be "AM only"/i);
-    assert.match(prompt, /Do NOT suggest "start 2-3 nights\/week" or "PM first"/i);
+    assert.match(prompt, /how_to_use\.when MUST be "am"/i);
+    assert.match(prompt, /Do NOT suggest "start 2-3 nights\/week" or "pm first"/i);
     assert.match(prompt, /verdict_level MUST be "needs_verification" or "cautiously_ok"/i);
     assert.match(prompt, /Do NOT guess or assume a specific brand or SKU/i);
     assert.match(prompt, /Do NOT populate anchor_product/i);

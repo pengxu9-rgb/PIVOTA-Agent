@@ -781,18 +781,30 @@ function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissin
       ...(fallbackAnchor ? { anchor_product: fallbackAnchor } : {}),
     };
   } else {
-    const verdictToken = String(currentAssessment.verdict || '').trim().toLowerCase();
+    const normalizedHowToUse = normalizeHowToUseShape(
+      currentAssessment.how_to_use ?? currentAssessment.howToUse,
+      { lang },
+    );
+    const normalizedAssessment = {
+      ...currentAssessment,
+      ...(normalizedHowToUse ? { how_to_use: normalizedHowToUse } : {}),
+    };
+    const verdictToken = String(normalizedAssessment.verdict || '').trim().toLowerCase();
     const isUnknownVerdict = verdictToken === 'unknown' || verdictToken === '未知';
     if (isUnknownVerdict) {
-      const reasons = asStringArray(currentAssessment.reasons);
+      const reasons = asStringArray(normalizedAssessment.reasons);
       const nonGenericReasons = reasons.filter((line) => !isGenericReason(line, lang));
       const hasHighQualitySources = hasEvidenceSourcesOfType(next, ['official_page', 'regulatory']);
       if (!nonGenericReasons.length || hasHighQualitySources) {
         next.assessment = {
-          ...currentAssessment,
+          ...normalizedAssessment,
           reasons: buildDiagnosticUnknownReasons(next, { lang, fieldMissing }),
         };
+      } else {
+        next.assessment = normalizedAssessment;
       }
+    } else {
+      next.assessment = normalizedAssessment;
     }
   }
 
@@ -1716,6 +1728,18 @@ function pickAssessmentSummary({
   return candidates[0];
 }
 
+function normalizeHowToUseTimingToken(value) {
+  const token = String(value || '').trim();
+  if (!token) return '';
+  const lower = token.toLowerCase();
+  if (lower === 'am' || lower === 'am only') return 'am';
+  if (lower === 'pm' || lower === 'pm only') return 'pm';
+  if (['both', 'am/pm', 'am_pm', 'am pm', '早晚皆可', '早晚均可', '早晚都可', '早晚'].includes(lower)) return 'both';
+  if (lower.includes('am') && !lower.includes('pm')) return 'am';
+  if (lower.includes('pm') && !lower.includes('am')) return 'pm';
+  return token;
+}
+
 function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
   if (!value) return null;
   if (Array.isArray(value)) {
@@ -1746,11 +1770,15 @@ function normalizeHowToUseShape(value, { lang = 'EN' } = {}) {
   }
   const obj = asPlainObject(value);
   if (!obj) return null;
-  const timing = String(obj.timing || obj.time || '').trim();
+  const timing = normalizeHowToUseTimingToken(obj.timing || obj.time || obj.when);
   const frequency = String(obj.frequency || '').trim();
   const steps = uniqueStrings(asStringArray(obj.steps).map((line) => truncateText(line, 220))).slice(0, 5);
   const notes = uniqueStrings(asStringArray(obj.notes).map((line) => truncateText(line, 220))).slice(0, 5);
-  const mergedSteps = uniqueStrings([...steps, ...notes]).slice(0, 6);
+  const orderInRoutine = asStringArray(obj.order_in_routine || obj.orderInRoutine).map((line) => truncateText(line, 220));
+  const pairingRules = asStringArray(obj.pairing_rules || obj.pairingRules).map((line) => truncateText(line, 220));
+  const mergedSteps = uniqueStrings([...steps, ...notes, ...orderInRoutine, ...pairingRules])
+    .filter((line) => !(timing === 'am' && /\b(pm first|night first|2-3\s*nights?)\b/i.test(String(line || '').toLowerCase())))
+    .slice(0, 6);
   const observationWindow = String(obj.observation_window || obj.observationWindow || '').trim();
   const stopSigns = uniqueStrings(asStringArray(obj.stop_signs || obj.stopSigns).map((line) => truncateText(line, 220))).slice(0, 4);
   const out = {
