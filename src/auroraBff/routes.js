@@ -533,6 +533,7 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 ).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
+const RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID = 'reco_alternatives_open_world_v1';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
@@ -40161,8 +40162,8 @@ function summarizeRecoAlternativesRaw(alternatives, { previewLimit = 3, keyLimit
   for (const item of rows) {
     const row = isPlainObject(item) ? item : null;
     if (!row) continue;
-    const product = asPlainObject(row.product);
-    const tradeoffs = asPlainObject(row.tradeoffs);
+    const product = isPlainObject(row.product) ? row.product : null;
+    const tradeoffs = isPlainObject(row.tradeoffs) ? row.tradeoffs : null;
     const flatBrand = pickFirstTrimmed(row.brand);
     const flatName = pickFirstTrimmed(row.name, row.display_name, row.displayName, row.product_name);
     const nestedBrand = product ? pickFirstTrimmed(product.brand) : null;
@@ -40748,6 +40749,253 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   };
 }
 
+async function fetchRecoAlternativesForLocalOpenWorld({
+  ctx,
+  productInput,
+  productObj,
+  anchorId = '',
+  maxTotal = 3,
+  logger,
+  profileMode = 'anchor_only',
+} = {}) {
+  const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const identity = buildExternalSeedCompareIdentity(productObj, productInput);
+  const targetSignals = identity.targetSignals;
+  const hasAnchorSignals = Boolean(
+    String(identity.anchorLabel || '').trim() ||
+    String(targetSignals.category || '').trim() ||
+    String(targetSignals.productType || '').trim() ||
+    (String(targetSignals.usageRole || '').trim() && String(targetSignals.usageRole || '').trim().toLowerCase() !== 'unknown') ||
+    (Array.isArray(targetSignals.heroIngredients) && targetSignals.heroIngredients.length > 0) ||
+    (Array.isArray(targetSignals.knownActives) && targetSignals.knownActives.length > 0) ||
+    (Array.isArray(targetSignals.primaryClaims) && targetSignals.primaryClaims.length > 0) ||
+    (Array.isArray(targetSignals.textureHints) && targetSignals.textureHints.length > 0) ||
+    String(targetSignals.notes || '').trim() ||
+    String(productInput || '').trim()
+  );
+  const emptyRawOutputSummary = summarizeRecoAlternativesRaw([]);
+
+  if (!hasAnchorSignals) {
+    return {
+      ok: true,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'anchor_insufficient_for_open_world_fallback' }],
+      source_mode: 'open_world_only',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: 'precheck_fail',
+      attempt_count: 0,
+      no_result_reason: 'anchor_insufficient_for_open_world_fallback',
+      recommendation_mode: 'open_world_only',
+      profile_mode: normalizeAlternativesProfileMode(profileMode),
+      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+      raw_output_summary: emptyRawOutputSummary,
+      llm_trace: {
+        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+        prompt_hash: null,
+        prompt_chars: 0,
+        token_est: 0,
+        latency_ms: 0,
+        cache_hit: false,
+        provider: 'gemini',
+        model: ANALYSIS_STORY_MODEL_GEMINI,
+        source_mode: 'local_gemini_open_world',
+        error_class: 'precheck_fail',
+      },
+    };
+  }
+
+  const systemPrompt = [
+    'You are a strict skincare alternatives selector.',
+    'Output STRICT JSON only that matches the schema.',
+    'Suggest conservative real-product alternatives for the anchor product using anchor signals only.',
+    'Do not depend on local candidate pools, selector-grounded placeholders, or synthetic fallback items.',
+    'Prefer 1 to 4 distinct viable alternatives for common anchors when possible.',
+    'Every alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
+    'Never invent URLs, product IDs, SKUs, prices, exact INCI lists, or formula identity.',
+    'Never return the anchor itself or a trivial title variant.',
+  ].join('\n');
+  const userPayload = {
+    lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
+    anchor: {
+      anchor_id: String(anchorId || '').trim() || null,
+      brand: targetSignals.brand,
+      name: targetSignals.name,
+      query: String(productInput || '').trim() || null,
+      category: targetSignals.category,
+      product_type: targetSignals.productType,
+      usage_role: targetSignals.usageRole,
+      hero_ingredients: Array.isArray(targetSignals.heroIngredients) ? targetSignals.heroIngredients : [],
+      known_actives: Array.isArray(targetSignals.knownActives) ? targetSignals.knownActives : [],
+      primary_claims: Array.isArray(targetSignals.primaryClaims) ? targetSignals.primaryClaims : [],
+      texture_hints: Array.isArray(targetSignals.textureHints) ? targetSignals.textureHints : [],
+      notes: targetSignals.notes || null,
+    },
+    task: {
+      max_alternatives: limit,
+      selection_rule: 'Open-world only. Use anchor signals only. Return distinct, viable skincare alternatives.',
+    },
+  };
+  const userPrompt = JSON.stringify(userPayload, null, 2);
+  const traceSeed = buildRecoPromptTrace({
+    templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+    query: `${systemPrompt}\n${userPrompt}`,
+    provider: 'gemini',
+    model: ANALYSIS_STORY_MODEL_GEMINI,
+    coverage: {
+      has_anchor_id: Boolean(String(anchorId || '').trim()),
+      has_product_json: Boolean(productObj && typeof productObj === 'object' && !Array.isArray(productObj)),
+      has_recent_logs: false,
+    },
+  });
+
+  try {
+    const startedAt = Date.now();
+    const resp = await callGeminiJsonObjectImpl({
+      model: ANALYSIS_STORY_MODEL_GEMINI,
+      systemPrompt,
+      userPrompt,
+      timeoutMs: 6000,
+      temperature: 0.2,
+      maxOutputTokens: 1200,
+      responseJsonSchema: buildExternalSeedOpenWorldSchema(),
+      route: 'aurora_reco_alternatives_open_world',
+    });
+    const rawRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
+      ? resp.json.alternatives
+      : [];
+    const rawOutputSummary = summarizeRecoAlternativesRaw(rawRows);
+    const llmTrace = {
+      ...traceSeed,
+      latency_ms: Math.max(0, Date.now() - startedAt),
+      cache_hit: false,
+      source_mode: 'local_gemini_open_world',
+      ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
+    };
+
+    if (resp?.ok !== true) {
+      return {
+        ok: true,
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'provider_error' }],
+        source_mode: 'open_world_only',
+        fallback_source: 'none',
+        refresh_pending: false,
+        refresh_after_ms: 0,
+        failure_class: classifyAlternativesFailureCode(resp?.reason),
+        attempt_count: 1,
+        no_result_reason: 'local_open_world_provider_error',
+        recommendation_mode: 'open_world_only',
+        profile_mode: normalizeAlternativesProfileMode(profileMode),
+        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+        raw_output_summary: rawOutputSummary,
+        llm_trace: llmTrace,
+      };
+    }
+
+    const normalized = rawRows
+      .map((row) => normalizeOpenWorldAlternativeRow(row, {
+        targetSignals,
+        anchorLabel: identity.anchorLabel,
+        anchorNameTokens: identity.anchorNameTokens,
+        ingredientTokens: identity.ingredientTokens,
+        claimTokens: identity.claimTokens,
+        textureTokens: identity.textureTokens,
+      }))
+      .filter(Boolean);
+    const deduped = [];
+    const seen = new Set();
+    for (const row of normalized) {
+      const product = isPlainObject(row.product) ? row.product : {};
+      const dedupeKey = pickFirstTrimmed(
+        product.product_id,
+        product.sku_id,
+        product.url,
+        product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
+      ).toLowerCase();
+      if (!dedupeKey || seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      deduped.push(row);
+      if (deduped.length >= limit) break;
+    }
+
+    if (!deduped.length) {
+      return {
+        ok: true,
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+        source_mode: 'open_world_only',
+        fallback_source: 'none',
+        refresh_pending: false,
+        refresh_after_ms: 0,
+        failure_class: 'empty_structured',
+        attempt_count: 1,
+        no_result_reason: 'no_viable_results_after_fallback',
+        recommendation_mode: 'open_world_only',
+        profile_mode: normalizeAlternativesProfileMode(profileMode),
+        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+        raw_output_summary: rawOutputSummary,
+        llm_trace: {
+          ...llmTrace,
+          error_class: 'empty_structured',
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      alternatives: deduped,
+      field_missing: [],
+      source_mode: 'open_world_only',
+      fallback_source: null,
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: null,
+      attempt_count: 1,
+      recommendation_mode: 'open_world_only',
+      profile_mode: normalizeAlternativesProfileMode(profileMode),
+      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+      raw_output_summary: rawOutputSummary,
+      llm_trace: llmTrace,
+    };
+  } catch (err) {
+    logger?.warn?.(
+      { err: err?.message || String(err), request_id: ctx?.request_id, trace_id: ctx?.trace_id },
+      'aurora bff: local open-world alternatives stage failed',
+    );
+    const errorClass = classifyAlternativesFailureCode(err?.code || err?.message);
+    return {
+      ok: true,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'provider_error' }],
+      source_mode: 'open_world_only',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: errorClass,
+      attempt_count: 1,
+      no_result_reason: 'local_open_world_provider_error',
+      recommendation_mode: 'open_world_only',
+      profile_mode: normalizeAlternativesProfileMode(profileMode),
+      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+      raw_output_summary: emptyRawOutputSummary,
+      llm_trace: {
+        ...buildRecoPromptTrace({
+          templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+          query: '',
+          provider: 'gemini',
+          model: ANALYSIS_STORY_MODEL_GEMINI,
+        }),
+        latency_ms: 0,
+        cache_hit: false,
+        source_mode: 'local_gemini_open_world',
+        error_class: errorClass,
+      },
+    };
+  }
+}
+
 async function fetchRecoAlternativesForExternalSeedProduct({
   ctx,
   productInput,
@@ -41331,6 +41579,21 @@ async function fetchRecoAlternativesForProduct({
   const profileSnapshot = buildAlternativesProfileSnapshot(
     profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : {},
   );
+  if (recommendationMode === 'open_world_only') {
+    const out = await fetchRecoAlternativesForLocalOpenWorld({
+      ctx,
+      productInput: bestInput,
+      productObj,
+      anchorId: anchor,
+      maxTotal,
+      logger,
+      profileMode,
+    });
+    if (refreshKey && Array.isArray(out.alternatives) && out.alternatives.length) {
+      writeRecoAlternativesCache(refreshKey, out.alternatives, out.llm_trace || null);
+    }
+    return out;
+  }
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
     recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
@@ -60073,6 +60336,8 @@ const __internal = {
   __resetCallOpenAiJsonObjectForTest() {
     callOpenAiJsonObjectImpl = callOpenAiJsonObject;
   },
+  fetchRecoAlternativesForProduct,
+  fetchRecoAlternativesForExternalSeedProduct,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };

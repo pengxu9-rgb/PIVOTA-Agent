@@ -154,7 +154,7 @@ function buildRecommendationPassTrace(pass, { fallbackTemplateId = null } = {}) 
   return {
     recommendation_mode: String(pass && pass.recommendationMode || '').trim() || null,
     template_id: String(upstreamOut.template_id || fallbackTemplateId || '').trim() || null,
-    source_mode: String(upstreamOut.source_mode || '').trim() || null,
+    source_mode: String(llmTrace.source_mode || upstreamOut.source_mode || '').trim() || null,
     fallback_source: String(upstreamOut.fallback_source || '').trim() || null,
     failure_class: String(upstreamOut.failure_class || '').trim() || null,
     llm_error_class: String(llmTrace.error_class || '').trim() || null,
@@ -872,7 +872,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
   const escalatedToOpenWorld = openWorldSupplementUsed;
   const poolPassTrace = buildRecommendationPassTrace(poolPass, { fallbackTemplateId: 'reco_alternatives_v1_0' });
   const openWorldPassTrace = openWorldPass
-    ? buildRecommendationPassTrace(openWorldPass, { fallbackTemplateId: 'reco_alternatives_hybrid_v1' })
+    ? buildRecommendationPassTrace(openWorldPass, { fallbackTemplateId: 'reco_alternatives_open_world_v1' })
     : null;
   const dupes = mergeRankedItems(
     poolPass.liveEvaluation.dupes,
@@ -936,7 +936,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     step: 'alternatives',
     template_id: (openWorldPass && openWorldPass.upstreamOut && openWorldPass.upstreamOut.template_id)
       || (poolPass.upstreamOut && poolPass.upstreamOut.template_id)
-      || (recommendationModeFinal === 'pool_only' ? 'reco_alternatives_v1_0' : 'reco_alternatives_hybrid_v1'),
+      || (recommendationModeFinal === 'pool_only' ? 'reco_alternatives_v1_0' : 'reco_alternatives_open_world_v1'),
     has_candidates: poolResult.candidates.length > 0,
     candidate_count: poolResult.candidates.length,
     has_anchor: hasAnchorIdentity,
@@ -1091,7 +1091,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         task_mode: 'dupe_suggest',
         template_id: (openWorldPass && openWorldPass.upstreamOut && openWorldPass.upstreamOut.template_id)
           || (poolPass.upstreamOut && poolPass.upstreamOut.template_id)
-          || (recommendationModeFinal === 'pool_only' ? 'reco_alternatives_v1_0' : 'reco_alternatives_hybrid_v1'),
+          || (recommendationModeFinal === 'pool_only' ? 'reco_alternatives_v1_0' : 'reco_alternatives_open_world_v1'),
         candidate_count: poolResult.candidates.length,
         has_anchor: hasAnchorIdentity,
         output_item_count: combinedMapped.length,
