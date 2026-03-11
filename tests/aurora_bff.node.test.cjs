@@ -5222,7 +5222,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
       AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
-      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '900',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -5313,7 +5313,8 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
         assert.deepEqual(out.alternatives[0]?.tradeoff_notes, ['Formula overlap remains uncertain.']);
-        assert.equal(geminiRequest?.maxOutputTokens, 900);
+        assert.equal(geminiRequest?.maxOutputTokens, 2048);
+        assert.equal(geminiRequest?.thinkingBudget, 0);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 1);
         assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
@@ -5343,7 +5344,7 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
       AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
-      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '900',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -5436,7 +5437,7 @@ test('fetchRecoAlternativesForProduct: open_world_only recovers complete alterna
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
       AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
-      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '900',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
     },
     async () => {
       const moduleId = require.resolve('../src/auroraBff/routes');
