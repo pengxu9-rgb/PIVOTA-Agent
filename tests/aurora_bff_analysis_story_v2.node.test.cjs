@@ -508,7 +508,7 @@ test('analysis follow-up helpers: use lastAnalysis context and emit deterministi
     language: 'EN',
     requestId: 'req_2',
   });
-  assert.equal(ingredientFollowup.cards.some((card) => card.type === 'ingredient_plan'), true);
+  assert.equal(ingredientFollowup.cards.some((card) => card.type === 'ingredient_plan_v2'), true);
 
   const safetyFollowup = internal.buildAnalysisFollowupContent({
     actionId: 'chip.aurora.next_action.safety_concerns',
@@ -527,4 +527,328 @@ test('analysis follow-up helpers: use lastAnalysis context and emit deterministi
   });
   assert.equal(missingContextFollowup.cards.some((card) => card.type === 'confidence_notice'), true);
   assert.equal(missingContextFollowup.missing_context, true);
+});
+
+test('analysis deep-dive helpers: default model is configurable and prompt is explicitly photo-aware', () => {
+  const internal = loadInternalWithFlags({
+    AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: '',
+    AURORA_ANALYSIS_STORY_MODEL_GEMINI: 'gemini-3-flash-preview',
+    GEMINI_MODEL: '',
+  });
+  assert.equal(internal.AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI, 'gemini-3-pro-preview');
+
+  const fallbackStory = {
+    schema_version: 'aurora.analysis_story.v2',
+    confidence_overall: { level: 'medium' },
+    skin_profile: { current_strengths: ['steady barrier'] },
+    priority_findings: [{ priority: 1, title: 'Cheek redness', detail: 'Cheek redness', evidence_region_or_module: [] }],
+    target_state: ['Calmer, more even tone'],
+    core_principles: ['Barrier support first'],
+    am_plan: [],
+    pm_plan: [],
+    timeline: { first_4_weeks: [], week_8_12_expectation: [] },
+    ui_card_v1: {
+      headline: 'Redness is still the top issue.',
+      key_points: ['Cheek redness'],
+      actions_now: [],
+      avoid_now: [],
+      confidence_label: 'medium',
+      next_checkin: 'Re-check in 2 weeks.',
+    },
+    safety_notes: [],
+    disclaimer_non_medical: true,
+  };
+  const evidence = internal.buildDeepDiveAnalysisEvidence({
+    lastAnalysis: {
+      skin_profile: {
+        skin_type_tendency: 'combination',
+        sensitivity_tendency: 'high',
+        current_strengths: ['steady barrier'],
+      },
+      priority_findings: [{ title: 'Cheek redness' }],
+      confidence_overall: { level: 'medium', score: 0.72 },
+      guidance_brief: ['Barrier support first'],
+    },
+    diagnosisArtifact: {
+      artifact_id: 'da_test_prompt',
+      use_photo: true,
+      photos: [{ slot: 'daylight', photo_id: 'photo_1', qc_status: 'passed' }],
+      analysis_context: { analysis_source: 'vision_gemini', quality_grade: 'pass' },
+    },
+    profile: {
+      skinType: 'combination',
+      sensitivity: 'high',
+      goals: ['acne'],
+      currentRoutine: {
+        am: ['Gentle cleanser', 'Vitamin C serum', 'SPF 50'],
+        pm: ['Gentle cleanser', 'Retinoid serum', 'Barrier cream'],
+      },
+    },
+    language: 'EN',
+    replyText: 'Explain whether the redness is more barrier-related or acne-related',
+    analysisOrigin: 'photo',
+    photoRefs: [{ slot_id: 'daylight', photo_id: 'photo_1', qc_status: 'passed' }],
+    sourceCardType: 'analysis_story_v2',
+    fallbackStory,
+  });
+  assert.equal(Array.isArray(evidence.photo_refs), true);
+  assert.equal(evidence.photo_refs.length, 1);
+  assert.equal(evidence.routine_context.actives_detected.includes('retinoid'), true);
+  assert.equal(evidence.routine_context.actives_detected.includes('vitamin_c'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(evidence, 'preferred_story'), false);
+
+  const prompt = internal.buildDeepDiveAnalysisStoryGenerationPrompt({
+    evidence,
+    fallbackStory,
+  });
+  assert.match(prompt, /Do NOT say you cannot analyze photos/i);
+  assert.match(prompt, /Photo-backed context already exists/i);
+  assert.match(prompt, /more consistent with/i);
+  assert.doesNotMatch(prompt, /daylight:passed/i);
+  assert.doesNotMatch(prompt, /photo_1/);
+  assert.match(prompt, /Retinoid serum/);
+});
+
+test('analysis deep-dive helpers: llm patch merges into baseline story without downgrading confidence', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+  });
+  internal.__setCallGeminiJsonObjectForTest(async () => ({
+    ok: true,
+    json: {
+      conclusion: 'Redness is more consistent with irritation than active acne right now.',
+      key_signals: ['Cheek redness appears alongside dehydration.'],
+      actions_now: ['Keep the AM routine minimal while the skin settles.'],
+      avoid_now: ['Avoid stacking strong acids with retinoid use this week.'],
+      confidence_note: 'Medium confidence from photo-backed evidence.',
+    },
+  }));
+
+  try {
+    const result = await internal.buildAnalysisDeepDiveContentWithLlm({
+      lastAnalysis: {
+        skin_profile: {
+          skin_type_tendency: 'combination',
+          sensitivity_tendency: 'high',
+          current_strengths: ['steady barrier'],
+        },
+        priority_findings: [{ title: 'Cheek redness' }, { detail: 'Mild dehydration' }],
+        confidence_overall: { level: 'medium', score: 0.72 },
+        guidance_brief: ['Keep barrier support stable', 'Reduce the AM active stack'],
+      },
+      diagnosisArtifact: {
+        artifact_id: 'da_test_1',
+        use_photo: true,
+        photos: [{ slot: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+        analysis_context: {
+          analysis_source: 'vision_gemini',
+          quality_grade: 'pass',
+        },
+      },
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'high',
+        goals: ['acne', 'pores'],
+      },
+      language: 'EN',
+      requestId: 'req_deep_dive_1',
+      replyText: 'Explain the redness pattern',
+      actionData: {
+        analysis_origin: 'photo',
+        source_card_type: 'analysis_story_v2',
+        photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+      },
+      sessionAnalysisContext: null,
+      logger: null,
+    });
+
+    const storyCard = result.cards.find((card) => card && card.type === 'analysis_story_v2');
+    assert.equal(result.llm_used, true);
+    assert.equal(result.analysis_origin, 'photo');
+    assert.equal(result.photo_ref_count, 1);
+    assert.ok(storyCard);
+    assert.equal(storyCard.payload.confidence_overall.level, 'medium');
+    assert.equal(Array.isArray(storyCard.payload.priority_findings), true);
+    assert.equal(storyCard.payload.priority_findings.length > 0, true);
+    assert.match(String(storyCard.payload.ui_card_v1?.headline || ''), /more consistent with irritation/i);
+    assert.match(String(result.assistant_text || ''), /Confidence note: Medium confidence from photo-backed evidence/i);
+    assert.match(result.assistant_text, /photo-based analysis/i);
+  } finally {
+    internal.__resetCallGeminiJsonObjectForTest();
+  }
+});
+
+test('analysis deep-dive helpers: story snapshot overrides weak persisted lastAnalysis baseline', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+  });
+  internal.__setCallGeminiJsonObjectForTest(async () => ({
+    ok: false,
+    reason: 'forced_fallback',
+    detail: 'snapshot baseline only',
+  }));
+
+  try {
+    const result = await internal.buildAnalysisDeepDiveContentWithLlm({
+      lastAnalysis: {
+        skin_profile: {
+          current_strengths: [],
+        },
+        priority_findings: [{ title: 'Slight dryness or surface flaking.' }],
+        confidence_overall: { level: 'unconfirmed' },
+        guidance_brief: [],
+      },
+      diagnosisArtifact: {
+        artifact_id: 'da_snapshot_override',
+        use_photo: true,
+        overall_confidence: { level: 'medium', score: 0.72 },
+        photos: [{ slot: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+        analysis_context: {
+          analysis_source: 'vision_gemini',
+          quality_grade: 'pass',
+        },
+      },
+      profile: {
+        skinType: 'oily',
+        sensitivity: 'medium',
+        goals: ['acne', 'pores'],
+      },
+      language: 'EN',
+      requestId: 'req_snapshot_override',
+      replyText: 'Tell me more about my skin',
+      actionData: {
+        analysis_origin: 'photo',
+        source_card_type: 'analysis_story_v2',
+        photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+        analysis_story_snapshot: {
+          schema_version: 'aurora.analysis_story.v2',
+          confidence_overall: { level: 'medium' },
+          skin_profile: {
+            current_strengths: [
+              'Pores/texture look more noticeable (severe): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.',
+            ],
+          },
+          priority_findings: [
+            {
+              priority: 1,
+              title: 'Pores/texture look more noticeable (severe): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.',
+              detail: 'Pores/texture look more noticeable (severe): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.',
+              evidence_region_or_module: [],
+            },
+            {
+              priority: 2,
+              title: 'Some uneven tone/dark spot tendency (severe): prioritize consistent SPF and gentle brightening pace.',
+              detail: 'Some uneven tone/dark spot tendency (severe): prioritize consistent SPF and gentle brightening pace.',
+              evidence_region_or_module: [],
+            },
+          ],
+          target_state: ['Stabilize barrier first, then improve tone and texture consistency.'],
+          core_principles: ['Stability first, then progression; avoid stacking multiple strong actives at once.'],
+          am_plan: [],
+          pm_plan: [],
+          timeline: {
+            first_4_weeks: ['Week 1: keep cleanse-moisturize-sunscreen baseline only.'],
+            week_8_12_expectation: ['Expect visible stability and tone improvements in 8-12 weeks.'],
+          },
+          ui_card_v1: {
+            headline: 'Stabilize barrier first, then improve tone and texture consistency.',
+            key_points: [
+              'Pores/texture look more noticeable (severe): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.',
+              'Some uneven tone/dark spot tendency (severe): prioritize consistent SPF and gentle brightening pace.',
+            ],
+            actions_now: ['AM: Gentle cleanse', 'AM: Hydration/repair serum'],
+            avoid_now: ['If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.'],
+            confidence_label: 'medium',
+            next_checkin: 'Week 1: keep cleanse-moisturize-sunscreen baseline only.',
+          },
+          safety_notes: ['If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.'],
+          disclaimer_non_medical: true,
+        },
+      },
+      sessionAnalysisContext: null,
+      logger: null,
+    });
+
+    const storyCard = result.cards.find((card) => card && card.type === 'analysis_story_v2');
+    assert.ok(storyCard);
+    assert.equal(result.analysis_origin, 'photo');
+    assert.equal(result.photo_ref_count, 1);
+    assert.equal(result.llm_used, false);
+    assert.equal(storyCard.payload.confidence_overall.level, 'medium');
+    assert.equal(Array.isArray(storyCard.payload.priority_findings), true);
+    assert.equal(storyCard.payload.priority_findings.length, 2);
+    assert.match(
+      String(storyCard.payload.ui_card_v1?.headline || ''),
+      /stabilize barrier first, then improve tone and texture consistency/i,
+    );
+    assert.doesNotMatch(String(result.assistant_text || ''), /Current confidence: unconfirmed/i);
+  } finally {
+    internal.__resetCallGeminiJsonObjectForTest();
+  }
+});
+
+test('analysis deep-dive helpers: truncated json recovers partial llm answer instead of falling back to baseline headline', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+  });
+  internal.__setCallGeminiJsonObjectForTest(async () => ({
+    ok: false,
+    reason: 'PARSE_TRUNCATED_JSON',
+    detail: 'finish_reason=MAX_TOKENS',
+    raw_text:
+      '{"conclusion":"The observed cheek redness is more consistent with mild dehydration and a compromised skin barrier.","key_signals":["Visible cheek redness more consistent with localized irritation.","Signs of mild',
+  }));
+
+  try {
+    const result = await internal.buildAnalysisDeepDiveContentWithLlm({
+      lastAnalysis: {
+        skin_profile: {
+          skin_type_tendency: 'combination',
+          sensitivity_tendency: 'high',
+          current_strengths: ['steady barrier'],
+        },
+        priority_findings: [{ title: 'Cheek redness' }, { detail: 'Mild dehydration' }],
+        confidence_overall: { level: 'medium', score: 0.72 },
+        guidance_brief: ['Keep barrier support stable', 'Reduce the AM active stack'],
+      },
+      diagnosisArtifact: {
+        artifact_id: 'da_test_truncated',
+        use_photo: true,
+        photos: [{ slot: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+        analysis_context: {
+          analysis_source: 'vision_gemini',
+          quality_grade: 'pass',
+        },
+      },
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'high',
+        goals: ['acne', 'pores'],
+      },
+      language: 'EN',
+      requestId: 'req_deep_dive_truncated',
+      replyText: 'Explain the redness pattern',
+      actionData: {
+        analysis_origin: 'photo',
+        source_card_type: 'analysis_story_v2',
+        photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+      },
+      sessionAnalysisContext: null,
+      logger: null,
+    });
+
+    const storyCard = result.cards.find((card) => card && card.type === 'analysis_story_v2');
+    assert.equal(result.llm_used, true);
+    assert.equal(result.llm_failure_reason, 'PARSE_TRUNCATED_JSON_RECOVERED');
+    assert.ok(storyCard);
+    assert.match(
+      String(storyCard.payload.ui_card_v1?.headline || ''),
+      /more consistent with mild dehydration and a compromised skin barrier/i,
+    );
+    assert.equal(Array.isArray(storyCard.payload.priority_findings), true);
+    assert.equal(storyCard.payload.priority_findings.length >= 1, true);
+    assert.doesNotMatch(String(storyCard.payload.ui_card_v1?.headline || ''), /Keep barrier support stable/i);
+  } finally {
+    internal.__resetCallGeminiJsonObjectForTest();
+  }
 });

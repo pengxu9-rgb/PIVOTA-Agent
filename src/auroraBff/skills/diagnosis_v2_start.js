@@ -4,6 +4,61 @@ function isLlmQualityError(error) {
   return Boolean(error) && String(error.name || '') === 'LlmQualityError';
 }
 
+function normalizeFollowUpQuestions(questions, locale) {
+  if (!Array.isArray(questions) || questions.length === 0) return null;
+  const isCN = String(locale || '').toLowerCase().startsWith('zh');
+  return questions
+    .map((question, qi) => {
+      if (!question || typeof question !== 'object') return null;
+      const questionText =
+        question.question
+        || (isCN ? (question.question_zh || question.question_en) : (question.question_en || question.question_zh))
+        || '';
+      const rawOptions = Array.isArray(question.options) ? question.options : [];
+      const options = rawOptions
+        .map((opt, oi) => {
+          if (typeof opt === 'string') {
+            const label = opt.trim();
+            if (!label) return null;
+            return {
+              id: `opt_${qi}_${oi}`,
+              label,
+              label_en: label,
+              label_zh: null,
+            };
+          }
+          if (opt && typeof opt === 'object') {
+            const label =
+              (typeof opt.label === 'string' && opt.label.trim())
+              || (isCN
+                ? (typeof opt.label_zh === 'string' && opt.label_zh.trim()) || (typeof opt.label_en === 'string' && opt.label_en.trim())
+                : (typeof opt.label_en === 'string' && opt.label_en.trim()) || (typeof opt.label_zh === 'string' && opt.label_zh.trim()))
+              || (typeof opt.value === 'string' && opt.value.trim())
+              || (typeof opt.id === 'string' && opt.id.trim())
+              || `Option ${oi + 1}`;
+            return {
+              id: (typeof opt.id === 'string' && opt.id.trim()) || `opt_${qi}_${oi}`,
+              label,
+              label_en: (typeof opt.label_en === 'string' && opt.label_en.trim()) || (typeof opt.label === 'string' && opt.label.trim()) || label,
+              label_zh: (typeof opt.label_zh === 'string' && opt.label_zh.trim()) || null,
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      if (!questionText || options.length === 0) return null;
+      return {
+        id: (typeof question.id === 'string' && question.id.trim()) || `fq_${qi}`,
+        question: questionText,
+        question_en: (typeof question.question_en === 'string' && question.question_en.trim()) || questionText,
+        question_zh: (typeof question.question_zh === 'string' && question.question_zh.trim()) || null,
+        options,
+      };
+    })
+    .filter(Boolean);
+}
+
 class DiagnosisStartSkill extends BaseSkill {
   constructor() {
     super('diagnosis_v2.start', '1.0.0');
@@ -40,7 +95,7 @@ class DiagnosisStartSkill extends BaseSkill {
             locale,
           },
         });
-        followUpQuestions = llmResult.parsed?.follow_up_questions;
+        followUpQuestions = normalizeFollowUpQuestions(llmResult.parsed?.follow_up_questions, locale);
         promptHash = llmResult.promptHash;
       } catch (error) {
         if (!isLlmQualityError(error)) {

@@ -133,14 +133,14 @@ describe('Product Analysis V4 unit tests', () => {
       expect(result.verification_required).toBe(true);
     });
 
-    test('keeps verification_required=true when llm_verification_used is the only source', () => {
+    test('keeps verification_required=false when llm verification is the only medium-confidence source', () => {
       const result = buildInciStatus({
         gapCodes: ['llm_verification_used'],
         consensusResult: { merged: ['Water', 'Glycerin', 'Niacinamide'], confidence_tier: 'med' },
         sources: [{ type: 'llm_verification', confidence: 0.6, ingredient_count: 3 }],
       });
       expect(result.extraction).toBe('success');
-      expect(result.verification_required).toBe(true);
+      expect(result.verification_required).toBe(false);
     });
 
     test('includes normalized sources', () => {
@@ -239,7 +239,7 @@ describe('Product Analysis V4 unit tests', () => {
           reapply_guidance: true,
         },
       });
-      expect(prompt).toContain('PM first');
+      expect(prompt).toContain('pm first');
       expect(prompt).toContain('reapplication guidance');
     });
 
@@ -258,10 +258,10 @@ describe('Product Analysis V4 unit tests', () => {
         anchorResolved: false,
       });
 
-      expect(prompt).toContain('No anchor product was resolved from catalog');
       expect(prompt).toContain('Do NOT guess or assume a specific brand or SKU');
-      expect(prompt).toContain('SkinCeuticals C E Ferulic');
       expect(prompt).toContain('Do NOT populate anchor_product');
+      expect(prompt).toContain('Keep the analysis generic to the product category/function');
+      expect(prompt).not.toContain('SkinCeuticals C E Ferulic');
     });
   });
 
@@ -527,17 +527,110 @@ describe('Product Analysis V4 unit tests', () => {
       expect(card.payload.assessment.verdict_level).toBe('recommended');
       expect(card.payload.assessment.top_takeaways.length).toBeGreaterThan(0);
       expect(card.payload.assessment.how_to_use).toMatchObject({
-        when: 'AM/PM',
+        timing: 'both',
         frequency: 'daily',
       });
-      expect(typeof card.payload.assessment.how_to_use.order_in_routine).toBe('string');
-      expect(Array.isArray(card.payload.assessment.how_to_use.pairing_rules)).toBe(true);
+      expect(Array.isArray(card.payload.assessment.how_to_use.steps)).toBe(true);
+      expect(card.payload.assessment.how_to_use.when).toBeUndefined();
       expect(Array.isArray(card.payload.assessment.watchouts)).toBe(true);
       expect(Array.isArray(card.payload.evidence.key_ingredients_by_function)).toBe(true);
       expect(typeof card.payload.evidence.product_type_reasoning).toBe('string');
     });
 
-    test('SPF legacy payload enforces AM only and removes PM-first guidance', () => {
+    test('legacy how_to_use.when canonicalizes old timing tokens into public timing', () => {
+      const cases = [
+        ['AM only', 'am'],
+        ['PM only', 'pm'],
+        ['AM/PM', 'both'],
+      ];
+
+      for (const [inputWhen, expectedWhen] of cases) {
+        const envelope = {
+          request_id: `req_${expectedWhen}`,
+          trace_id: `trace_${expectedWhen}`,
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `analyze_${expectedWhen}`,
+              type: 'product_analysis',
+              payload: {
+                assessment: {
+                  verdict: 'Suitable',
+                  how_to_use: {
+                    when: inputWhen,
+                    frequency: 'daily',
+                  },
+                  reasons: ['Looks compatible.'],
+                },
+                evidence: {
+                  science: {
+                    key_ingredients: ['Glycerin'],
+                    risk_notes: [],
+                  },
+                  expert_notes: [],
+                  missing_info: [],
+                },
+                confidence: 0.8,
+                missing_info: [],
+              },
+            },
+          ],
+          session_patch: {},
+          events: [],
+        };
+
+        const result = applyUnknownVerdictQualityGateToEnvelope(envelope, { lang: 'EN' });
+        const card = result.cards.find((c) => c.type === 'product_analysis');
+        expect(card.payload.assessment.how_to_use.timing).toBe(expectedWhen);
+        expect(card.payload.assessment.how_to_use.when).toBeUndefined();
+      }
+    });
+
+    test('public how_to_use prefers explicit timing over legacy when when both are present', () => {
+      const envelope = {
+        request_id: 'req_timing_precedence',
+        trace_id: 'trace_timing_precedence',
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: 'analyze_timing_precedence',
+            type: 'product_analysis',
+            payload: {
+              assessment: {
+                verdict: 'Suitable',
+                how_to_use: {
+                  when: 'AM only',
+                  timing: 'PM only',
+                  frequency: 'daily',
+                },
+                reasons: ['Looks compatible.'],
+              },
+              evidence: {
+                science: {
+                  key_ingredients: ['Niacinamide'],
+                  risk_notes: [],
+                },
+                expert_notes: [],
+                missing_info: [],
+              },
+              confidence: 0.8,
+              missing_info: [],
+            },
+          },
+        ],
+        session_patch: {},
+        events: [],
+      };
+
+      const result = applyUnknownVerdictQualityGateToEnvelope(envelope, { lang: 'EN' });
+      const card = result.cards.find((c) => c.type === 'product_analysis');
+      expect(card.payload.assessment.how_to_use.timing).toBe('pm');
+      expect(card.payload.assessment.how_to_use.when).toBeUndefined();
+    });
+
+    test('SPF legacy payload enforces am and removes pm-first guidance', () => {
       const envelope = {
         request_id: 'req_spf_upgrade',
         trace_id: 'trace_spf_upgrade',
@@ -583,10 +676,11 @@ describe('Product Analysis V4 unit tests', () => {
       const result = applyUnknownVerdictQualityGateToEnvelope(envelope, { lang: 'EN' });
       const card = result.cards.find((c) => c.type === 'product_analysis');
       const howToUse = card.payload.assessment.how_to_use;
-      expect(howToUse.when).toBe('AM only');
+      expect(howToUse.timing).toBe('am');
       expect(howToUse.frequency).toBe('daily');
-      expect(howToUse.pairing_rules.join(' | ').toLowerCase()).not.toContain('pm first');
-      expect(howToUse.pairing_rules.join(' | ').toLowerCase()).toContain('reapply');
+      expect(howToUse.when).toBeUndefined();
+      expect(howToUse.steps.join(' | ').toLowerCase()).not.toContain('pm first');
+      expect(howToUse.steps.join(' | ').toLowerCase()).toContain('reapply');
     });
 
     test('filters fit/data-quality lines out of watchouts and top_takeaways in legacy-to-v4 upgrade', () => {

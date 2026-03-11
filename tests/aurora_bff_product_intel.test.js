@@ -203,6 +203,112 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(ev.expert_notes)).toBe(true);
   });
 
+  test('/v1/product/analyze canonicalizes legacy product_name/product_url aliases before parse and deep-scan', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+    process.env.AURORA_PRODUCT_INTEL_PROMPT_VERSION = 'v4';
+
+    const legacyName = 'La Roche-Posay Anthelios Melt-In Milk Sunscreen SPF 60';
+    const legacyUrl = 'https://brand.example/anthelios-melt-in-milk';
+    const seen = {
+      parse: null,
+      deepScan: null,
+    };
+
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/upstream/chat')
+      .reply(200, (_uri, body) => {
+        const query = typeof body?.query === 'string' ? body.query : '';
+        if (/Task:\s*Parse\b/i.test(query)) {
+          seen.parse = {
+            query,
+            anchor_product_url: body?.anchor_product_url || null,
+          };
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              parse: {
+                normalized_query: query,
+                parse_confidence: 0.7,
+                normalized_query_language: 'en-US',
+                anchor_product: {
+                  brand: 'La Roche-Posay',
+                  name: 'Anthelios Melt-In Milk Sunscreen SPF 60',
+                },
+              },
+            },
+          };
+        }
+        if (/Task:\s*Deep-scan\b/i.test(query)) {
+          seen.deepScan = {
+            query,
+            anchor_product_url: body?.anchor_product_url || null,
+          };
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              analyze: {
+                verdict: 'Suitable',
+                reasons: ['Daily sunscreen protection.'],
+                science_evidence: {
+                  key_ingredients: ['uv filters'],
+                  mechanisms: ['photoprotection'],
+                },
+                social_signals: {
+                  typical_positive: ['comfortable wear'],
+                  typical_negative: [],
+                },
+                expert_notes: ['Use daytime SPF as the final AM step.'],
+                how_to_use: {
+                  when: 'AM only',
+                  frequency: 'daily',
+                },
+              },
+            },
+          };
+        }
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'chat',
+          answer: 'stub',
+        };
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_analyze_legacy_alias_1')
+      .send({
+        product_name: legacyName,
+        product_url: legacyUrl,
+      })
+      .expect(200);
+
+    expect(seen.parse).toEqual(
+      expect.objectContaining({
+        anchor_product_url: legacyUrl,
+      }),
+    );
+    expect(seen.deepScan).toEqual(
+      expect.objectContaining({
+        anchor_product_url: legacyUrl,
+      }),
+    );
+    expect(String(seen.deepScan?.query || '')).toMatch(/Product type:\s*spf/i);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(card.payload?.assessment?.how_to_use?.timing).toBe('am');
+    expect(card.payload?.assessment?.how_to_use?.when).toBeUndefined();
+  });
+
   test('catalog source health deprioritizes base after repeated transient failures', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://unstable-catalog.test';
@@ -4325,7 +4431,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
                   'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
                 ],
                 how_to_use: {
-                  when: 'AM only',
+                  when: 'am',
                   frequency: 'daily',
                   order_in_routine: 'Layer from thinnest to thickest; keep hydration before occlusive steps.',
                   pairing_rules: 'Use daytime SPF as the final AM step.',
@@ -4412,8 +4518,10 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(payload?.assessment?.verdict).toBe('Likely Suitable');
     expect(payload?.assessment?.verdict_level).toBe('needs_verification');
     expect(String(payload?.assessment?.data_quality_banner || '')).toMatch(/incidecoder/i);
-    expect(Array.isArray(payload?.assessment?.how_to_use?.pairing_rules)).toBe(true);
-    expect(payload?.assessment?.how_to_use?.pairing_rules).toContain('Use daytime SPF as the final AM step.');
+    expect(payload?.assessment?.how_to_use?.timing).toBe('am');
+    expect(payload?.assessment?.how_to_use?.when).toBeUndefined();
+    expect(Array.isArray(payload?.assessment?.how_to_use?.steps)).toBe(true);
+    expect(payload?.assessment?.how_to_use?.steps).toContain('Use daytime SPF as the final AM step.');
     expect(Array.isArray(payload?.assessment?.watchouts)).toBe(true);
     expect(payload?.assessment?.watchouts[0]).toEqual(
       expect.objectContaining({

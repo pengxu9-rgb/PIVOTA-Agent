@@ -882,6 +882,23 @@ function describeActiveBenefit(token, language) {
   return null;
 }
 
+function getRecoAlternativeStableKey(item) {
+  const row = asPlainObject(item);
+  const product = asPlainObject(row && row.product);
+  if (!product) return '';
+  const productId = asString(product.product_id || product.productId || row.product_id || row.productId);
+  if (productId) return `pid:${productId.toLowerCase()}`;
+  const skuId = asString(product.sku_id || product.skuId || row.sku_id || row.skuId);
+  if (skuId) return `sku:${skuId.toLowerCase()}`;
+  const url = asString(product.url || product.pdp_url || product.pdpUrl);
+  if (url) return `url:${url.toLowerCase()}`;
+  const brand = asString(product.brand).toLowerCase();
+  const name = asString(product.name).toLowerCase();
+  if (brand && name) return `brand_name:${brand}::${name}`;
+  if (name) return `name:${name}`;
+  return '';
+}
+
 function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', maxTotal = 3 } = {}) {
   const items = Array.isArray(alternatives) ? alternatives : [];
   const language = String(lang).toUpperCase() === 'CN' ? 'CN' : 'EN';
@@ -1086,24 +1103,24 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     return (Number(b.similarity ?? -1) || -1) - (Number(a.similarity ?? -1) || -1);
   });
   const chosen = [];
-  const usedSkus = new Set();
+  const usedKeys = new Set();
 
   const kindOrder = ['dupe', 'similar', 'premium'];
   for (const k of kindOrder) {
     const next = sorted.find((it) => String(it.kind || '').toLowerCase() === k && it.product);
     if (!next) continue;
-    const sku = asString(next.product && (next.product.sku_id || next.product.skuId || next.product.product_id || next.product.productId));
-    if (sku && usedSkus.has(sku)) continue;
-    if (sku) usedSkus.add(sku);
+    const stableKey = getRecoAlternativeStableKey(next);
+    if (stableKey && usedKeys.has(stableKey)) continue;
+    if (stableKey) usedKeys.add(stableKey);
     chosen.push(next);
     if (chosen.length >= limit) return chosen.slice(0, limit);
   }
 
   for (const it of sorted) {
     if (chosen.length >= limit) break;
-    const sku = asString(it.product && (it.product.sku_id || it.product.skuId || it.product.product_id || it.product.productId));
-    if (sku && usedSkus.has(sku)) continue;
-    if (sku) usedSkus.add(sku);
+    const stableKey = getRecoAlternativeStableKey(it);
+    if (stableKey && usedKeys.has(stableKey)) continue;
+    if (stableKey) usedKeys.add(stableKey);
     chosen.push(it);
   }
 

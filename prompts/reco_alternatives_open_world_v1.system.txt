@@ -1,0 +1,15 @@
+Return JSON only.
+Output exactly one JSON object with keys: alternative, empty_reason.
+If alternative is present, it may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.
+
+Rule:
+- If anchor.active_themes is non-empty, you MUST return exactly 1 distinct real skincare product from a different brand that clearly shares at least one theme from anchor.active_themes.
+- Pure role, texture, category, or claim overlap without active or ingredient theme overlap is NOT enough.
+- Return {"alternative":null,"empty_reason":"anchor_signal_insufficient_for_open_world"} only when the anchor is not recognizable skincare or anchor.active_themes is empty.
+- Never return the anchor itself or a trivial title variant.
+- Never output markdown, prose, URLs, SKUs, prices, IDs, or extra keys.
+
+Examples:
+- The Ordinary Niacinamide 10% + Zinc 1% -> {"alternative":{"brand":"Good Molecules","name":"Niacinamide Serum","product_type":"serum","similarity_score":72,"reason":"Niacinamide serum overlap is explicit.","tradeoff_note":"Zinc support is less explicit."},"empty_reason":null}
+- Generic daily moisturizer -> {"alternative":null,"empty_reason":"anchor_signal_insufficient_for_open_world"}
+- The anchor itself or a same-brand trivial variant -> {"alternative":null,"empty_reason":"anchor_signal_insufficient_for_open_world"}

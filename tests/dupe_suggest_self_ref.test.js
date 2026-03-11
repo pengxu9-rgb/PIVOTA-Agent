@@ -12,6 +12,8 @@ const {
   normalizeUrl,
   sanitizeCandidateFields,
   sanitizeCandidates,
+  stripRecommendationSuffix,
+  hasSyntheticRecommendationSuffix,
 } = require('../src/auroraBff/skills/dupe_utils');
 
 test('normalizeBrand lowercases and strips punctuation', () => {
@@ -28,6 +30,15 @@ test('normalizeProductName removes spec and marketing words', () => {
   expect(result).not.toContain('new');
   expect(result).toContain('daily');
   expect(result).toContain('rescue');
+});
+
+test('normalizeProductName strips legacy dupe suffix tokens', () => {
+  const result = normalizeProductName('The Ordinary Niacinamide 10% + Zinc 1% (budget dupe)');
+  expect(result).not.toContain('budget');
+  expect(result).not.toContain('dupe');
+  expect(result).toContain('niacinamide');
+  expect(stripRecommendationSuffix('Niacinamide 10% + Zinc 1% (similar option)')).toBe('Niacinamide 10% + Zinc 1%');
+  expect(hasSyntheticRecommendationSuffix('Niacinamide 10% + Zinc 1% (premium option)')).toBe(true);
 });
 
 test('normalizeUrl strips tracking params and trailing slash', () => {
@@ -102,7 +113,72 @@ test('scenario 2: same brand same name different URL is filtered', () => {
   const { kept, dropped } = filterSelfReferences(candidates, anchor);
   expect(kept).toHaveLength(0);
   expect(dropped).toHaveLength(1);
-  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_SAME_NAME);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_EXACT_LABEL);
+});
+
+test('scenario 2a: same brand candidate with leading brand prefix is filtered as exact label match', () => {
+  const anchor = {
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'Serum',
+  };
+  const candidates = [
+    {
+      brand: 'The Ordinary',
+      name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      category: 'Serum',
+      confidence: 0.84,
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_EXACT_LABEL);
+});
+
+test('scenario 2b: brand-missing catalog candidate with exact full-name match is filtered', () => {
+  const anchor = {
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'Serum',
+  };
+  const candidates = [
+    {
+      product_id: '9886499864904',
+      name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      category: 'Serum',
+      url: 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=aurora_chatbox',
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.NO_BRAND_FULL_NAME_MATCH);
+});
+
+test('scenario 2c: brand-missing legacy synthetic suffix candidate is filtered', () => {
+  const anchor = {
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'Serum',
+  };
+  const candidates = [
+    {
+      name: 'The Ordinary Niacinamide 10% + Zinc 1% (budget dupe)',
+      category: 'Serum',
+      confidence: 0.78,
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.NO_BRAND_FULL_NAME_MATCH);
 });
 
 test('scenario 3: same brand different product line is allowed', () => {
@@ -319,6 +395,26 @@ test('brand missing but URL identical is filtered', () => {
   const { kept, dropped } = filterSelfReferences(candidates, anchor);
   expect(kept).toHaveLength(0);
   expect(dropped[0]._drop_reason).toBe(DROP_REASON.NO_BRAND_SAME_URL);
+});
+
+test('brand missing but anchor+suffix name is filtered as self reference', () => {
+  const anchor = {
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+  };
+  const candidates = [
+    {
+      brand: null,
+      name: 'Niacinamide 10% + Zinc 1% (premium option)',
+      bucket: 'dupe',
+      confidence: 0.7,
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_SAME_NAME);
 });
 
 test('buildAnchorIdentity passes null for missing fields', () => {

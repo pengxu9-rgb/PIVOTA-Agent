@@ -144,6 +144,20 @@ describe('normalizeDupeCompare: original and dupe non-null guarantee', () => {
       }),
     ]);
   });
+
+  test('always normalizes compare_quality and limited_reason to strings', () => {
+    const result = normalizeDupeCompare({
+      original: { brand: 'La Mer', name: 'Creme de la Mer' },
+      dupe: { brand: null, name: 'Moisturizing Cream' },
+      tradeoffs: ['More affordable'],
+      confidence: 0.6,
+      compare_quality: null,
+      limited_reason: null,
+    });
+
+    expect(result.payload.compare_quality).toBe('full');
+    expect(result.payload.limited_reason).toBe('');
+  });
 });
 
 describe('dupeCompareContract prompt builders', () => {

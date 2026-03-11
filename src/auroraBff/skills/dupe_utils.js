@@ -19,13 +19,33 @@ const SPEC_WORDS = /\b(\d+\s*)(ml|oz|fl\.?\s*oz|g|gram|mg|l|pack|ct|count|refill
 const MARKETING_WORDS = /\b(new|updated|limited|edition|exclusive|special|reformulated|improved|original|classic|travel\s*size|mini|full\s*size|jumbo|value|bonus)\b/gi;
 const TRACKING_PARAMS = /[?&](utm_\w+|ref|entry|source|medium|campaign|gclid|fbclid|affiliate|clickid|irclickid|srsltid|mc_[a-z]+)=[^&]*/gi;
 const URL_PATTERN = /^https?:\/\//i;
-const BUCKET_SUFFIX_PATTERN = /\s*\((budget\s+dupe|similar\s+option|premium\s+option|dupe|alternative)\)\s*$/i;
+const RECOMMENDATION_SUFFIX_TOKENS = [
+  'budget dupe',
+  'similar option',
+  'premium option',
+  'dupe',
+  'alternative',
+  'budget alternative',
+  'similar alternative',
+  '平替',
+  '相似选项',
+  '升级选项',
+  '替代',
+  '相似款',
+  '升级款',
+];
+const RECOMMENDATION_SUFFIX_PATTERN = new RegExp(
+  `\\s*\\((?:${RECOMMENDATION_SUFFIX_TOKENS.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\)\\s*$`,
+  'i',
+);
 
 const DROP_REASON = {
   SAME_CANONICAL_REF: 'same_canonical_product_ref',
   SAME_NORMALIZED_URL: 'same_normalized_url',
   SAME_BRAND_SAME_NAME: 'same_brand_and_same_name',
+  SAME_BRAND_EXACT_LABEL: 'same_brand_exact_full_label',
   SAME_BRAND_HIGH_SIMILARITY: 'same_brand_high_name_similarity',
+  NO_BRAND_FULL_NAME_MATCH: 'brand_missing_full_name_match',
   NO_BRAND_SAME_URL: 'brand_missing_same_url',
   CROSS_BRAND_EXTREME_SIMILARITY: 'cross_brand_extreme_name_similarity',
 };
@@ -107,11 +127,38 @@ function normalizeBrand(brand) {
 function normalizeProductName(name) {
   if (!name) return '';
   let norm = String(name).toLowerCase();
+  norm = norm.replace(RECOMMENDATION_SUFFIX_PATTERN, ' ');
   norm = norm.replace(/[^\w\s-]/g, ' ');
   norm = norm.replace(SPEC_WORDS, ' ');
   norm = norm.replace(MARKETING_WORDS, ' ');
   norm = norm.replace(/\s+/g, ' ').trim();
   return norm;
+}
+
+function stripLeadingBrandTokensFromName(name, brand) {
+  const normalizedName = normalizeProductName(name);
+  const normalizedBrand = normalizeBrand(brand);
+  if (!normalizedName || !normalizedBrand) return normalizedName;
+  const brandTokens = normalizedBrand.split(/\s+/).filter(Boolean);
+  const nameTokens = normalizedName.split(/\s+/).filter(Boolean);
+  if (!brandTokens.length || !nameTokens.length) return normalizedName;
+  let index = 0;
+  while (index < brandTokens.length && index < nameTokens.length && brandTokens[index] === nameTokens[index]) {
+    index += 1;
+  }
+  if (index === 0) return normalizedName;
+  const stripped = nameTokens.slice(index).join(' ').trim();
+  return stripped || normalizedName;
+}
+
+function stripRecommendationSuffix(name) {
+  if (!name) return '';
+  return String(name).replace(RECOMMENDATION_SUFFIX_PATTERN, '').trim();
+}
+
+function hasSyntheticRecommendationSuffix(name) {
+  if (!name) return false;
+  return RECOMMENDATION_SUFFIX_PATTERN.test(String(name).trim());
 }
 
 function normalizeUrl(url) {
@@ -182,7 +229,7 @@ function buildAnchorFingerprint(anchor) {
 function detectUrlAsName(name) {
   if (!name) return { isUrlName: false, extractedName: null };
   const trimmed = String(name).trim();
-  const withoutSuffix = trimmed.replace(BUCKET_SUFFIX_PATTERN, '').trim();
+  const withoutSuffix = stripRecommendationSuffix(trimmed);
   if (!URL_PATTERN.test(withoutSuffix)) {
     return { isUrlName: false, extractedName: null };
   }
@@ -231,7 +278,7 @@ function sanitizeCandidateFields(candidate) {
     },
   ];
 
-  const nextUrl = identity.url || sourceName.replace(BUCKET_SUFFIX_PATTERN, '').trim();
+  const nextUrl = identity.url || stripRecommendationSuffix(sourceName);
   const nextName = detected.extractedName || identity.brand || 'Unknown Product';
   const sanitized = patchCandidateIdentity(candidate, { name: nextName, url: nextUrl });
 
@@ -264,6 +311,8 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   const identity = getCandidateIdentity(candidate);
   const candidateBrand = normalizeBrand(identity.brand);
   const candidateName = normalizeProductName(identity.name || '');
+  const candidateNameSansBrand = stripLeadingBrandTokensFromName(identity.name || '', identity.brand || '');
+  const candidateFullLabel = normalizeProductName([identity.brand, identity.name].filter(Boolean).join(' '));
   const candidateUrl = normalizeUrl(identity.url || '');
   const candidateProductId = identity.product_id || null;
 
@@ -272,6 +321,14 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
   const anchorUrl = anchorFingerprint?.url_norm || '';
   const anchorProductId = anchorIdentity?.product_id || null;
   const anchorRawName = anchorIdentity?.name || anchorIdentity?.display_name || '';
+  const anchorDisplayRaw = anchorIdentity?.display_name || [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' ');
+  const anchorDisplayName = normalizeProductName(
+    anchorDisplayRaw,
+  );
+  const anchorDisplaySansBrand = stripLeadingBrandTokensFromName(
+    anchorDisplayRaw,
+    anchorIdentity?.brand || '',
+  );
 
   if (anchorProductId && candidateProductId && String(anchorProductId) === String(candidateProductId)) {
     return { isSelfRef: true, reason: DROP_REASON.SAME_CANONICAL_REF };
@@ -282,9 +339,78 @@ function detectSelfReference(candidate, anchorIdentity, anchorFingerprint, opts 
     return { isSelfRef: true, reason: DROP_REASON.SAME_NORMALIZED_URL };
   }
 
+  const anchorFullName = normalizeProductName([anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '));
+  const anchorFullSansBrand = stripLeadingBrandTokensFromName(
+    [anchorIdentity?.brand, anchorRawName].filter(Boolean).join(' '),
+    anchorIdentity?.brand || '',
+  );
+  const exactFullLabels = new Set([anchorFullName, anchorDisplayName].filter(Boolean));
+
+  if (candidateBrand && candidateFullLabel && exactFullLabels.has(candidateFullLabel)) {
+    return {
+      isSelfRef: true,
+      reason: DROP_REASON.SAME_BRAND_EXACT_LABEL,
+    };
+  }
+
+  if (
+    candidateBrand &&
+    candidateFullLabel &&
+    candidateNameSansBrand &&
+    candidateNameSansBrand !== candidateName &&
+    exactFullLabels.has(candidateFullLabel)
+  ) {
+    return {
+      isSelfRef: true,
+      reason: DROP_REASON.SAME_BRAND_EXACT_LABEL,
+    };
+  }
+
+  if (
+    !candidateBrand &&
+    candidateName &&
+    anchorName &&
+    !candidateUrl &&
+    !candidateProductId &&
+    candidateName === anchorName
+  ) {
+    return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_SAME_NAME };
+  }
+
+  if (
+    !candidateBrand &&
+    candidateName &&
+    (anchorDisplayName || anchorFullName) &&
+    (candidateName === anchorDisplayName || candidateName === anchorFullName)
+  ) {
+    return { isSelfRef: true, reason: DROP_REASON.NO_BRAND_FULL_NAME_MATCH };
+  }
+
+  if (!candidateBrand && !candidateProductId && !candidateUrl && candidateName && (anchorDisplayName || anchorFullName)) {
+    const similarity = nameSimilarity(candidateName, anchorDisplayName || anchorFullName);
+    if (similarity >= sameBrandThreshold) {
+      return { isSelfRef: true, reason: DROP_REASON.NO_BRAND_FULL_NAME_MATCH };
+    }
+  }
+
   if (anchorBrand && candidateBrand && anchorBrand === candidateBrand) {
-    if (anchorName && candidateName && anchorName === candidateName) {
-      return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_SAME_NAME };
+    const exactAnchorLabels = new Set(
+      [
+        anchorName,
+        anchorDisplayName,
+        anchorFullName,
+        anchorDisplaySansBrand,
+        anchorFullSansBrand,
+      ].filter(Boolean),
+    );
+    if (
+      candidateName &&
+      (
+        exactAnchorLabels.has(candidateName) ||
+        (candidateNameSansBrand && exactAnchorLabels.has(candidateNameSansBrand))
+      )
+    ) {
+      return { isSelfRef: true, reason: DROP_REASON.SAME_BRAND_EXACT_LABEL };
     }
     if (anchorName && candidateName) {
       const similarity = nameSimilarity(identity.name || candidateName, anchorRawName);
@@ -374,6 +500,8 @@ module.exports = {
   sanitizeCandidateFields,
   sanitizeCandidates,
   detectUrlAsName,
+  stripRecommendationSuffix,
+  hasSyntheticRecommendationSuffix,
   detectSelfReference,
   filterSelfReferences,
   deduplicateCandidates,

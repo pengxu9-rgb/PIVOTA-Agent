@@ -107,7 +107,33 @@ describe('legacy /v1/dupe suggest sanitization', () => {
         expect.objectContaining({ reason: 'dupe_suggest_self_reference_filtered' }),
       ]),
     );
-    expect(result.payload.empty_state_reason).toBeTruthy();
+    expect(result.payload.empty_state_reason).toBeUndefined();
+    expect(result.payload.meta.quality_gate_enforced).toBeUndefined();
+    expect(result.payload.meta.quality_gate_reason).toBeUndefined();
+  });
+
+  test('sanitizeDupeSuggestPayload strips legacy live-response quality gate markers', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const result = __internal.sanitizeDupeSuggestPayload(
+      {
+        original: {
+          brand: 'TestBrand',
+          name: 'Test Serum',
+        },
+        dupes: [],
+        comparables: [],
+        action_hint: 'old gate hint',
+        meta: {
+          quality_gate_enforced: true,
+          quality_gate_reason: 'no_meaningful_results',
+        },
+      },
+      { lang: 'EN' },
+    );
+
+    expect(result.payload.action_hint).toBeUndefined();
+    expect(result.payload.meta.quality_gate_enforced).toBeUndefined();
+    expect(result.payload.meta.quality_gate_reason).toBeUndefined();
   });
 
   test('sanitizeDupeSuggestPayload removes self-references when original only has legacy product_name', () => {

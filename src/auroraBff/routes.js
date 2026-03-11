@@ -5,7 +5,6 @@ const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { z } = require('zod');
-const { applyDupeSuggestQualityGate } = require('./qualityGates/dupeSuggestGate');
 const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
   filterSelfReferences: filterDupeSelfReferencesV2,
@@ -39,6 +38,7 @@ const {
   normalizeRoutineStateFromProfile,
   getRoutineStateSummaryValue,
   buildMissingRoutineFields,
+  normalizeRoutineInputWithPmShortcut,
 } = require('./routineState');
 const {
   hasNonEmptyRecommendationsPayload,
@@ -457,7 +457,12 @@ const {
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
-const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
+const {
+  normalizeKey: normalizeDupeKbKey,
+  getDupeKbEntry,
+  upsertDupeKbEntry,
+  purgeDupeKbEntriesByContractVersion,
+} = require('./dupeKbStore');
 const {
   normalizeKey: normalizeProductIntelKbKey,
   getProductIntelKbEntry,
@@ -480,6 +485,7 @@ const {
 const {
   LOW_CONFIDENCE_THRESHOLD,
   buildIngredientPlan,
+  upgradeIngredientPlanToV2,
 } = require('./ingredientMapperV1');
 const {
   buildProductRecommendationsBundle,
@@ -533,6 +539,8 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 ).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
+const RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID = 'reco_alternatives_open_world_v1';
+const RECO_ALTERNATIVES_OPEN_WORLD_SYSTEM_FILE = 'reco_alternatives_open_world_v1.system.txt';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
@@ -1250,13 +1258,31 @@ function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = isPlainObject(payload.action) ? payload.action : {};
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
-  const canDelegateActionToV2 = actionId === 'chip.action.add_to_routine';
+  const canDelegateActionToV2 = [
+    'chip.action.add_to_routine',
+    'chip.start.dupes',
+    'chip.action.dupe_compare',
+  ].includes(actionId);
+  const session = isPlainObject(payload.session) ? payload.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+  const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
+  const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
+    actionId,
+    message: pickFirstTrimmed(payload.message, extractLastUserMessageFromChatRequestMessages(payload.messages)),
+    sessionAnalysisContext: isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null,
+    lastAnalysis: sessionProfile.lastAnalysis || null,
+    latestArtifactId: extractLatestArtifactIdFromSession(session),
+  });
 
   if (
     payload.selected_option_index != null ||
     payload.clarification_id != null ||
     payload.requested_transition != null
   ) {
+    return false;
+  }
+
+  if (implicitAnalysisFollowupActionId) {
     return false;
   }
 
@@ -1279,6 +1305,101 @@ function shouldDelegateV1ChatToV2(body) {
       payload.canonical_intent,
     ),
   ) || isPlainObject(payload.params);
+}
+
+function extractLastUserMessageFromChatRequestMessages(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const row = list[index];
+    if (!isPlainObject(row)) continue;
+    const role = String(row.role || '').trim().toLowerCase();
+    if (role && role !== 'user') continue;
+    const content = pickFirstTrimmed(row.content, row.text, row.message);
+    if (content) return content;
+  }
+  return null;
+}
+
+function normalizeImplicitAnalysisFollowupPrompt(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[`"'“”‘’]/g, '')
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const IMPLICIT_DEEP_DIVE_PROMPT_TOKENS = new Set(
+  [
+    'Tell me more about my skin',
+    'Dive deeper into skin',
+    'Dive deeper into my skin',
+    'Deep dive into skin',
+    '深入了解我的皮肤状态',
+    '告诉我更多关于我的皮肤',
+    '进一步分析我的皮肤',
+  ].map((item) => normalizeImplicitAnalysisFollowupPrompt(item)),
+);
+
+function looksLikeImplicitDeepDivePrompt(value) {
+  const token = normalizeImplicitAnalysisFollowupPrompt(value);
+  return Boolean(token) && IMPLICIT_DEEP_DIVE_PROMPT_TOKENS.has(token);
+}
+
+function hasMeaningfulAnalysisStorySnapshot(value) {
+  if (!isPlainObject(value)) return false;
+  if (Array.isArray(value.priority_findings) && value.priority_findings.filter(Boolean).length > 0) return true;
+  if (rankAnalysisConfidenceLevel(value && value.confidence_overall && value.confidence_overall.level) > 0) return true;
+  if (pickFirstTrimmed(value && value.ui_card_v1 && value.ui_card_v1.headline)) return true;
+  if (Array.isArray(value.am_plan) && value.am_plan.filter(Boolean).length > 0) return true;
+  if (Array.isArray(value.pm_plan) && value.pm_plan.filter(Boolean).length > 0) return true;
+  return false;
+}
+
+function normalizeAnalysisStorySnapshotCandidate(value) {
+  if (!hasMeaningfulAnalysisStorySnapshot(value)) return null;
+  return coerceAnalysisStoryV2(value, value);
+}
+
+function hasReusableAnalysisContext({
+  sessionAnalysisContext,
+  lastAnalysis,
+  latestArtifactId,
+} = {}) {
+  const context = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
+  const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : {};
+  if (hasMeaningfulAnalysisStorySnapshot(context.analysis_story_snapshot)) return true;
+  if (normalizeAnalysisPhotoRefs(context.photo_refs).length > 0) return true;
+  if (hasMeaningfulAnalysisStorySnapshot(analysis.analysis_story_snapshot)) return true;
+  if (Array.isArray(analysis.priority_findings) && analysis.priority_findings.filter(Boolean).length > 0) return true;
+  if (pickFirstTrimmed(analysis && analysis.skin_profile && analysis.skin_profile.skin_type_tendency, analysis && analysis.skin_profile && analysis.skin_profile.skin_type)) return true;
+  if (String(latestArtifactId || '').trim()) return true;
+  return false;
+}
+
+function resolveImplicitAnalysisFollowupActionId({
+  actionId,
+  message,
+  sessionAnalysisContext,
+  lastAnalysis,
+  latestArtifactId,
+} = {}) {
+  const normalizedActionId = String(actionId || '').trim();
+  if (normalizedActionId && ANALYSIS_FOLLOWUP_ACTION_IDS.has(normalizedActionId)) {
+    return normalizedActionId;
+  }
+  if (!looksLikeImplicitDeepDivePrompt(message)) return null;
+  if (
+    hasReusableAnalysisContext({
+      sessionAnalysisContext,
+      lastAnalysis,
+      latestArtifactId,
+    })
+  ) {
+    return 'chip.aurora.next_action.deep_dive_skin';
+  }
+  return 'chip.aurora.next_action.deep_dive_skin';
 }
 const PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS || 3200);
@@ -1623,6 +1744,12 @@ function resolveAuroraGeminiModel(keys, fallbackModel, callPath) {
     callPath,
   }).effectiveModel;
 }
+
+function resolveAuroraGeminiModelRaw(keys, fallbackModel) {
+  const picked = pickConfiguredEnv(keys);
+  const raw = String(picked.value || fallbackModel || '').trim();
+  return raw || String(fallbackModel || '').trim();
+}
 const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
   'gpt-4o-mini';
@@ -1633,6 +1760,12 @@ const ANALYSIS_STORY_MODEL_OPENAI =
   'gpt-4o-mini';
 const ANALYSIS_STORY_MODEL_GEMINI =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_analysis_story');
+const AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI =
+  resolveAuroraGeminiModel(
+    ['AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI'],
+    'gemini-3-pro-preview',
+    'aurora_skin_deep_dive',
+  );
 const ROUTINE_FIT_MODEL_GEMINI =
   resolveAuroraGeminiModel(
     ['AURORA_ROUTINE_FIT_MODEL_GEMINI', 'AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'],
@@ -1648,6 +1781,20 @@ const AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_qa_story_review');
 const AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL =
   resolveAuroraGeminiModel(['AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL'], 'gemini-3-flash-preview', 'aurora_runtime_qa_stable');
+const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL =
+  resolveAuroraGeminiModelRaw(
+    ['AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL', 'AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL', 'AURORA_RUNTIME_QA_GEMINI_MODEL'],
+    process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      process.env.AURORA_RUNTIME_QA_GEMINI_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_MODEL ||
+      ANALYSIS_STORY_MODEL_GEMINI ||
+      'gemini-3-flash-preview',
+  );
+const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS = Math.max(
+  256,
+  Math.min(2048, Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS || 2048)),
+);
 const AURORA_RUNTIME_QA_ALLOW_PREVIEW =
   String(process.env.AURORA_RUNTIME_QA_ALLOW_PREVIEW || 'false').trim().toLowerCase() === 'true';
 const AURORA_EVAL_JUDGE_GEMINI_MODEL =
@@ -1663,6 +1810,14 @@ const PRODUCT_INTEL_DUAL_QA_TIMEOUT_MS = Math.max(
 const AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS = Math.max(
   1200,
   Math.min(20000, Number(process.env.AURORA_ANALYSIS_STORY_GEMINI_TIMEOUT_MS || 12000)),
+);
+const AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS = Math.max(
+  2000,
+  Math.min(25000, Number(process.env.AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS || 12000)),
+);
+const AURORA_SKIN_DEEP_DIVE_MAX_OUTPUT_TOKENS = Math.max(
+  512,
+  Math.min(1200, Number(process.env.AURORA_SKIN_DEEP_DIVE_MAX_OUTPUT_TOKENS || 1200)),
 );
 const AURORA_PRODUCT_RELEVANCE_GEMINI_TIMEOUT_MS = Math.max(
   1000,
@@ -1914,6 +2069,13 @@ const RECO_ALTERNATIVES_CACHE_TTL_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_CACHE_TTL_MS || 1800000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1800000;
   return Math.max(60000, Math.min(24 * 60 * 60 * 1000, v));
+})();
+
+const RECO_INLINE_ALTERNATIVES_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_INLINE_ALTERNATIVES_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
 const RECO_ALTERNATIVES_CACHE_MAX_KEYS = (() => {
@@ -14772,6 +14934,22 @@ const ANALYSIS_STORY_REVIEW_PATCH_JSON_SCHEMA = Object.freeze({
   },
   required: ['approved', 'issues', 'patch_ops'],
 });
+const ANALYSIS_DEEP_DIVE_RESPONSE_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    conclusion: { type: 'string' },
+    key_signals: { type: 'array', items: { type: 'string' } },
+    deeper_findings: { type: 'array', items: { type: 'string' } },
+    target_state: { type: 'array', items: { type: 'string' } },
+    core_principles: { type: 'array', items: { type: 'string' } },
+    am_focus: { type: 'array', items: { type: 'string' } },
+    pm_focus: { type: 'array', items: { type: 'string' } },
+    actions_now: { type: 'array', items: { type: 'string' } },
+    avoid_now: { type: 'array', items: { type: 'string' } },
+    confidence_note: { type: 'string' },
+  },
+  required: ['conclusion', 'key_signals', 'deeper_findings', 'target_state', 'core_principles', 'am_focus', 'pm_focus', 'actions_now', 'avoid_now', 'confidence_note'],
+});
 const ANALYSIS_STORY_REVIEW_ISSUE_CODES = Object.freeze([
   'headline_generic',
   'key_points_generic',
@@ -15134,6 +15312,24 @@ function resolveStoryReviewGeminiModel(model) {
   if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
   const lower = configured.toLowerCase();
   if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
+  return configured;
+}
+
+function resolveRecoAlternativesOpenWorldGeminiModel(model) {
+  const configured = String(model || AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL || '').trim()
+    || AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL
+    || 'gemini-3-flash-preview';
+  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
+  const lower = configured.toLowerCase();
+  if (lower === 'gemini-3-flash-preview') {
+    const preferredStable = String(
+      process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL ||
+      process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      '',
+    ).trim();
+    return preferredStable || AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL || configured;
+  }
   return configured;
 }
 
@@ -20599,8 +20795,7 @@ function filterAnalysisFollowupChips(chips, currentActionId) {
   });
 }
 
-function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, requestId, replyText } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
+function extractAnalysisFollowupSignals(lastAnalysis) {
   const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : {};
   const skinProfile = isPlainObject(analysis.skin_profile) ? analysis.skin_profile : isPlainObject(analysis.skinProfile) ? analysis.skinProfile : {};
   const findings = Array.isArray(analysis.priority_findings)
@@ -20612,6 +20807,1054 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
   const confidence = isPlainObject(analysis.confidence_overall) ? analysis.confidence_overall : isPlainObject(analysis.confidence) ? analysis.confidence : {};
   const ingredientPlan = isPlainObject(analysis.ingredient_plan) ? analysis.ingredient_plan : null;
   const routineFit = getRoutineFitPayloadFromLastAnalysis(analysis);
+  const findingLines = findings
+    .map((item) => pickFirstTrimmed(item && item.title, item && item.detail, item && item.observation))
+    .filter(Boolean)
+    .slice(0, 4);
+  const strengths = Array.isArray(skinProfile.current_strengths) ? skinProfile.current_strengths.filter(Boolean).slice(0, 4) : [];
+  return {
+    analysis,
+    skinProfile,
+    findings,
+    guidanceBrief,
+    confidence,
+    ingredientPlan,
+    routineFit,
+    findingLines,
+    strengths,
+  };
+}
+
+function normalizeAnalysisPhotoRefs(source, { max = 4 } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(source) ? source : []) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const slotId = pickFirstTrimmed(item.slot_id, item.slot, item.slotId);
+    const photoId = pickFirstTrimmed(item.photo_id, item.photoId, item.id);
+    if (!slotId || !photoId) continue;
+    const key = `${slotId.toLowerCase()}::${photoId.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      slot_id: slotId.slice(0, 40),
+      photo_id: photoId.slice(0, 160),
+      qc_status: pickFirstTrimmed(item.qc_status, item.qcStatus, item.status) || 'unknown',
+    });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function rankAnalysisConfidenceLevel(level) {
+  const token = String(level || '').trim().toLowerCase();
+  if (token === 'high') return 3;
+  if (token === 'medium') return 2;
+  if (token === 'low' || token === 'unconfirmed') return 1;
+  return 0;
+}
+
+function deriveGuidanceBriefFromStorySnapshot(snapshot) {
+  const story = isPlainObject(snapshot) ? snapshot : {};
+  const ui = isPlainObject(story.ui_card_v1) ? story.ui_card_v1 : {};
+  return normalizeArrayOfStrings(
+    [
+      ...(Array.isArray(story.target_state) ? story.target_state : []),
+      ...(Array.isArray(story.core_principles) ? story.core_principles : []),
+      ...(Array.isArray(ui.actions_now) ? ui.actions_now : []),
+    ],
+    { max: 4, maxLen: 120 },
+  );
+}
+
+function normalizeDeepDivePlanSteps(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list
+    .map((item) => {
+      if (isPlainObject(item) && pickFirstTrimmed(item.step)) {
+        return {
+          step: pickFirstTrimmed(item.step),
+          purpose: pickFirstTrimmed(item.purpose) || '',
+        };
+      }
+      const text = pickFirstTrimmed(item);
+      return text ? { step: text, purpose: '' } : null;
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function buildLastAnalysisFromDiagnosisArtifact(diagnosisArtifact, analysisStorySnapshot) {
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
+  const snapshot = normalizeAnalysisStorySnapshotCandidate(analysisStorySnapshot);
+  const concerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
+  const concernFindings = concerns
+    .map((item, index) => {
+      const rawTitle = pickFirstTrimmed(item && item.title, item && item.concern_id, item && item.id);
+      if (!rawTitle) return null;
+      const title = rawTitle.replace(/_/g, ' ');
+      return {
+        priority: index + 1,
+        title,
+        detail: title,
+        evidence_region_or_module: [],
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+  const overallConfidence = isPlainObject(artifact.overall_confidence)
+    ? {
+        ...(Number.isFinite(Number(artifact.overall_confidence.score))
+          ? { score: Number(artifact.overall_confidence.score) }
+          : {}),
+        level: pickFirstTrimmed(artifact.overall_confidence.level)
+          || confidenceLevelFromScoreV1(Number(artifact.overall_confidence.score)),
+      }
+    : {};
+  const skinProfile = {
+    ...(pickFirstTrimmed(artifact && artifact.skinType && artifact.skinType.value)
+      ? { skin_type_tendency: pickFirstTrimmed(artifact.skinType.value) }
+      : {}),
+    ...(pickFirstTrimmed(artifact && artifact.sensitivity && artifact.sensitivity.value)
+      ? { sensitivity_tendency: pickFirstTrimmed(artifact.sensitivity.value) }
+      : {}),
+  };
+  const guidanceBrief = snapshot ? deriveGuidanceBriefFromStorySnapshot(snapshot) : [];
+  const base = {
+    ...(Object.keys(skinProfile).length ? { skin_profile: skinProfile } : {}),
+    ...(concernFindings.length ? { priority_findings: concernFindings } : {}),
+    ...(Object.keys(overallConfidence).length ? { confidence_overall: overallConfidence } : {}),
+    ...(guidanceBrief.length ? { guidance_brief: guidanceBrief } : {}),
+  };
+  if (!Object.keys(base).length && !snapshot) return {};
+  return mergeAnalysisSnapshotIntoLastAnalysis(base, snapshot);
+}
+
+function mergeAnalysisSnapshotIntoLastAnalysis(lastAnalysis, analysisStorySnapshot) {
+  const analysis = isPlainObject(lastAnalysis) ? { ...lastAnalysis } : {};
+  const snapshot = normalizeAnalysisStorySnapshotCandidate(analysisStorySnapshot);
+  if (!snapshot) return analysis;
+
+  const merged = { ...analysis, analysis_story_snapshot: snapshot };
+  const currentFindings = Array.isArray(analysis.priority_findings) ? analysis.priority_findings.filter(Boolean).length : 0;
+  const snapshotFindings = Array.isArray(snapshot.priority_findings) ? snapshot.priority_findings.filter(Boolean).length : 0;
+  if (snapshotFindings >= currentFindings && snapshotFindings > 0) {
+    merged.priority_findings = snapshot.priority_findings
+      .filter(Boolean)
+      .map((item, index) => ({
+        priority: Number.isFinite(Number(item && item.priority)) ? Number(item.priority) : index + 1,
+        title: pickFirstTrimmed(item && item.title, item && item.detail) || `Finding ${index + 1}`,
+        detail: pickFirstTrimmed(item && item.detail, item && item.title) || '',
+        evidence_region_or_module: Array.isArray(item && item.evidence_region_or_module) ? item.evidence_region_or_module : [],
+      }));
+  }
+  const currentConfidence = rankAnalysisConfidenceLevel(analysis && analysis.confidence_overall && analysis.confidence_overall.level);
+  const snapshotConfidence = rankAnalysisConfidenceLevel(snapshot && snapshot.confidence_overall && snapshot.confidence_overall.level);
+  if (snapshotConfidence >= currentConfidence && isPlainObject(snapshot.confidence_overall)) {
+    merged.confidence_overall = snapshot.confidence_overall;
+  }
+  const skinProfile = isPlainObject(analysis.skin_profile) ? { ...analysis.skin_profile } : {};
+  const snapshotSkinProfile = isPlainObject(snapshot.skin_profile) ? snapshot.skin_profile : {};
+  merged.skin_profile = {
+    ...skinProfile,
+    ...(!pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType)
+      && pickFirstTrimmed(snapshotSkinProfile.skin_type_tendency, snapshotSkinProfile.skin_type, snapshotSkinProfile.skinType)
+        ? { skin_type_tendency: pickFirstTrimmed(snapshotSkinProfile.skin_type_tendency, snapshotSkinProfile.skin_type, snapshotSkinProfile.skinType) }
+        : {}),
+    ...(!pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity)
+      && pickFirstTrimmed(snapshotSkinProfile.sensitivity_tendency, snapshotSkinProfile.sensitivity)
+        ? { sensitivity_tendency: pickFirstTrimmed(snapshotSkinProfile.sensitivity_tendency, snapshotSkinProfile.sensitivity) }
+        : {}),
+    current_strengths: Array.isArray(skinProfile.current_strengths) && skinProfile.current_strengths.length
+      ? skinProfile.current_strengths
+      : Array.isArray(snapshotSkinProfile.current_strengths)
+        ? snapshotSkinProfile.current_strengths.slice(0, 4)
+        : [],
+  };
+  const currentGuidance = Array.isArray(analysis.guidance_brief) ? analysis.guidance_brief.filter(Boolean) : [];
+  const snapshotGuidance = deriveGuidanceBriefFromStorySnapshot(snapshot);
+  if (snapshotGuidance.length >= currentGuidance.length && snapshotGuidance.length > 0) {
+    merged.guidance_brief = snapshotGuidance;
+  }
+  if ((!Array.isArray(analysis.am_plan) || !analysis.am_plan.length) && Array.isArray(snapshot.am_plan) && snapshot.am_plan.length) {
+    merged.am_plan = normalizeDeepDivePlanSteps(snapshot.am_plan);
+  }
+  if ((!Array.isArray(analysis.pm_plan) || !analysis.pm_plan.length) && Array.isArray(snapshot.pm_plan) && snapshot.pm_plan.length) {
+    merged.pm_plan = normalizeDeepDivePlanSteps(snapshot.pm_plan);
+  }
+  return merged;
+}
+
+function buildDeepDiveFallbackStoryPayload({ lastAnalysis, language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : {};
+  const snapshot = isPlainObject(analysis.analysis_story_snapshot) ? analysis.analysis_story_snapshot : null;
+  if (snapshot && Array.isArray(snapshot.priority_findings) && snapshot.priority_findings.filter(Boolean).length > 0) {
+    const snapshotFindings = snapshot.priority_findings.filter(Boolean).length;
+    const rawSignals = extractAnalysisFollowupSignals(lastAnalysis);
+    const rawFindings = rawSignals.findingLines.length;
+    if (snapshotFindings >= rawFindings) {
+      const normalizedFindings = snapshot.priority_findings.filter(Boolean).map((f, idx) => ({
+        priority: (isPlainObject(f) && Number.isFinite(f.priority)) ? f.priority : idx + 1,
+        title: pickFirstTrimmed(isPlainObject(f) ? f.title : f) || `Finding ${idx + 1}`,
+        detail: pickFirstTrimmed(isPlainObject(f) ? (f.detail || f.title) : f) || '',
+        evidence_region_or_module: Array.isArray(isPlainObject(f) ? f.evidence_region_or_module : null) ? f.evidence_region_or_module : [],
+      }));
+      const normalizePlanStep = (item) => {
+        if (isPlainObject(item) && typeof item.step === 'string') return item;
+        if (typeof item === 'string' && item.trim()) return { step: item.trim(), purpose: '' };
+        return null;
+      };
+      const normalizedAmPlan = Array.isArray(snapshot.am_plan) ? snapshot.am_plan.map(normalizePlanStep).filter(Boolean) : [];
+      const normalizedPmPlan = Array.isArray(snapshot.pm_plan) ? snapshot.pm_plan.map(normalizePlanStep).filter(Boolean) : [];
+      const uiCard = isPlainObject(snapshot.ui_card_v1) ? {
+        headline: pickFirstTrimmed(snapshot.ui_card_v1.headline) || 'Stabilize first, then improve step by step.',
+        key_points: Array.isArray(snapshot.ui_card_v1.key_points) ? snapshot.ui_card_v1.key_points.filter(Boolean) : [],
+        actions_now: Array.isArray(snapshot.ui_card_v1.actions_now) ? snapshot.ui_card_v1.actions_now.filter(Boolean) : [],
+        avoid_now: Array.isArray(snapshot.ui_card_v1.avoid_now) ? snapshot.ui_card_v1.avoid_now.filter(Boolean) : [],
+        confidence_label: pickFirstTrimmed(snapshot.ui_card_v1.confidence_label) || 'medium',
+        next_checkin: pickFirstTrimmed(snapshot.ui_card_v1.next_checkin) || 'Re-check in 2 weeks.',
+      } : null;
+      const merged = {
+        schema_version: snapshot.schema_version || 'aurora.analysis_story.v2',
+        confidence_overall: isPlainObject(snapshot.confidence_overall) ? snapshot.confidence_overall : { level: 'low' },
+        skin_profile: isPlainObject(snapshot.skin_profile) ? snapshot.skin_profile : { current_strengths: [] },
+        priority_findings: normalizedFindings,
+        target_state: Array.isArray(snapshot.target_state) ? snapshot.target_state : [],
+        core_principles: Array.isArray(snapshot.core_principles) ? snapshot.core_principles : [],
+        am_plan: normalizedAmPlan,
+        pm_plan: normalizedPmPlan,
+        timeline: isPlainObject(snapshot.timeline) ? snapshot.timeline : { first_4_weeks: [], week_8_12_expectation: [] },
+        safety_notes: Array.isArray(snapshot.safety_notes) ? snapshot.safety_notes : [],
+        disclaimer_non_medical: snapshot.disclaimer_non_medical !== false,
+        ui_card_v1: uiCard || buildAnalysisStoryUiCardV1({ story: { priority_findings: normalizedFindings, confidence_overall: snapshot.confidence_overall }, evidence: null, language: lang }),
+      };
+      return merged;
+    }
+  }
+  const {
+    skinProfile,
+    guidanceBrief,
+    confidence,
+    findingLines,
+    strengths,
+  } = extractAnalysisFollowupSignals(lastAnalysis);
+  const story = {
+    schema_version: 'aurora.analysis_story.v2',
+    confidence_overall: {
+      ...(confidence.level ? { level: confidence.level } : { level: lang === 'CN' ? '待确认' : 'unconfirmed' }),
+      ...(Number.isFinite(Number(confidence.score)) ? { score: Number(confidence.score) } : {}),
+    },
+    skin_profile: {
+      ...(pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType)
+        ? { skin_type_tendency: pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType) }
+        : {}),
+      ...(pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity)
+        ? { sensitivity_tendency: pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity) }
+        : {}),
+      current_strengths: strengths,
+    },
+    priority_findings: findingLines.map((line, idx) => ({
+      priority: idx + 1,
+      title: line,
+      detail: line,
+      evidence_region_or_module: [],
+    })),
+    target_state: guidanceBrief.slice(0, 2),
+    core_principles: guidanceBrief.slice(0, 2),
+    am_plan: [],
+    pm_plan: [],
+    timeline: {
+      first_4_weeks: guidanceBrief.slice(0, 2),
+      week_8_12_expectation: [],
+    },
+    safety_notes: [],
+    disclaimer_non_medical: true,
+  };
+  story.ui_card_v1 = buildAnalysisStoryUiCardV1({ story, evidence: null, language: lang });
+  return coerceAnalysisStoryV2(story, story);
+}
+
+function buildDeepDiveRoutineContext(profile) {
+  const routineRaw = isPlainObject(profile) ? profile.currentRoutine ?? profile.current_routine ?? null : null;
+  if (routineRaw == null) return null;
+  const parsed = parseRoutineIntake(routineRaw);
+  const coerceLooseSteps = (value) =>
+    Array.isArray(value)
+      ? value
+          .map((item, idx) => {
+            if (item && typeof item === 'object' && !Array.isArray(item)) return normalizeRoutineStepRow(item);
+            const text = String(item || '').trim();
+            if (!text) return null;
+            const role = normalizeRoutineRole('', text);
+            return { role, step: `step_${idx + 1}`, product: text };
+          })
+          .filter(Boolean)
+          .slice(0, 8)
+      : [];
+  const amFallback = !parsed.am_steps.length && routineRaw && typeof routineRaw === 'object' ? coerceLooseSteps(routineRaw.am) : [];
+  const pmFallback = !parsed.pm_steps.length && routineRaw && typeof routineRaw === 'object' ? coerceLooseSteps(routineRaw.pm) : [];
+  const amSteps = parsed.am_steps.length ? parsed.am_steps : amFallback;
+  const pmSteps = parsed.pm_steps.length ? parsed.pm_steps : pmFallback;
+  const allSteps = [...amSteps, ...pmSteps];
+  if (!allSteps.length && !String(parsed.notes || '').trim()) return null;
+  const actives = [];
+  for (const step of allSteps) {
+    for (const family of detectRoutineActiveFamilies(step && step.product)) {
+      if (!actives.includes(family)) actives.push(family);
+    }
+  }
+  return {
+    am_steps: amSteps.slice(0, 5).map((step) => ({
+      role: pickFirstTrimmed(step && step.role) || 'other',
+      product: pickFirstTrimmed(step && step.product) || null,
+    })),
+    pm_steps: pmSteps.slice(0, 5).map((step) => ({
+      role: pickFirstTrimmed(step && step.role) || 'other',
+      product: pickFirstTrimmed(step && step.product) || null,
+    })),
+    actives_detected: actives.slice(0, 6),
+    notes: pickFirstTrimmed(parsed.notes) || null,
+  };
+}
+
+function buildDeepDiveAnalysisEvidence({
+  lastAnalysis,
+  diagnosisArtifact,
+  profile,
+  language,
+  replyText,
+  analysisOrigin,
+  photoRefs,
+  sourceCardType,
+  fallbackStory,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
+  const {
+    skinProfile,
+    guidanceBrief,
+    confidence,
+    ingredientPlan,
+    routineFit,
+    findingLines,
+    strengths,
+  } = extractAnalysisFollowupSignals(lastAnalysis);
+  const artifactConcerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
+  const concernEvidence = artifactConcerns
+    .map((item, idx) => {
+      const title = pickFirstTrimmed(item && item.title, item && item.concern_id, item && item.id);
+      if (!title) return null;
+      return {
+        rank: idx + 1,
+        observation: title,
+        source: 'artifact',
+      };
+    })
+    .filter(Boolean);
+  const followupEvidence = findingLines
+    .map((line, idx) => ({
+      rank: idx + 1,
+      observation: line,
+      source: analysisOrigin === 'photo' ? 'photo_analysis' : 'analysis',
+    }))
+    .filter(Boolean);
+  const findingEvidence = [];
+  const seen = new Set();
+  for (const item of [...followupEvidence, ...concernEvidence]) {
+    const key = String(item && item.observation || '').trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    findingEvidence.push(item);
+    if (findingEvidence.length >= 8) break;
+  }
+  const routineDimensions = isPlainObject(routineFit && routineFit.dimension_scores) ? routineFit.dimension_scores : {};
+  const routineContext = buildDeepDiveRoutineContext(profile);
+  return {
+    schema_version: 'aurora.analysis_story.deep_dive.evidence.v1',
+    language: lang,
+    analysis_origin: analysisOrigin === 'photo' ? 'photo' : 'profile',
+    followup_focus: pickFirstTrimmed(replyText) || null,
+    source_card_type: pickFirstTrimmed(sourceCardType) || null,
+    use_photo: analysisOrigin === 'photo',
+    photo_refs: normalizeAnalysisPhotoRefs(photoRefs),
+    analysis_source: pickFirstTrimmed(
+      artifact && artifact.analysis_context && artifact.analysis_context.analysis_source,
+      lastAnalysis && lastAnalysis.analysis_source,
+      lastAnalysis && lastAnalysis.analysis_meta && lastAnalysis.analysis_meta.detector_source,
+    ) || null,
+    quality_grade: pickFirstTrimmed(artifact && artifact.analysis_context && artifact.analysis_context.quality_grade) || null,
+    profile: {
+      skinType: pickFirstTrimmed(
+        profile && profile.skinType,
+        skinProfile.skin_type_tendency,
+        skinProfile.skin_type,
+        skinProfile.skinType,
+      ),
+      sensitivity: pickFirstTrimmed(profile && profile.sensitivity, skinProfile.sensitivity_tendency, skinProfile.sensitivity),
+      barrierStatus: pickFirstTrimmed(profile && profile.barrierStatus),
+      goals: normalizeArrayOfStrings(profile && profile.goals, { max: 6, maxLen: 80 }),
+    },
+    routine_context: routineContext,
+    missing_routine_fields: deriveRoutineMissingFields(profile),
+    low_confidence: String(confidence.level || '').trim().toLowerCase() === 'low',
+    confidence_overall: {
+      level: pickFirstTrimmed(confidence.level) || null,
+      ...(Number.isFinite(Number(confidence.score)) ? { score: Number(confidence.score) } : {}),
+    },
+    current_strengths: strengths,
+    guidance_brief: guidanceBrief.slice(0, 4),
+    finding_evidence: findingEvidence,
+    ingredient_targets: Array.isArray(ingredientPlan && ingredientPlan.targets)
+      ? ingredientPlan.targets.slice(0, 4).map((item) => ({
+          ingredient_name: pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id),
+          role: pickFirstTrimmed(item && item.role) || null,
+        }))
+      : [],
+    ingredient_avoid: Array.isArray(ingredientPlan && ingredientPlan.avoid)
+      ? ingredientPlan.avoid.slice(0, 4).map((item) => ({
+          ingredient_name: pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id),
+          reason: Array.isArray(item && item.reason) ? item.reason.slice(0, 3) : pickFirstTrimmed(item && item.reason) || null,
+        }))
+      : [],
+    routine_fit: routineFit
+      ? {
+          overall_fit: pickFirstTrimmed(routineFit.overall_fit) || null,
+          summary: pickFirstTrimmed(routineFit.summary) || null,
+          lowest_dimensions: Object.entries(routineDimensions)
+            .map(([key, value]) => ({
+              key,
+              score: Number.isFinite(Number(value && value.score)) ? Number(value.score) : null,
+              note: pickFirstTrimmed(value && value.note) || null,
+            }))
+            .filter((item) => Number.isFinite(Number(item.score)))
+            .sort((a, b) => Number(a.score) - Number(b.score))
+            .slice(0, 2),
+        }
+      : null,
+  };
+}
+
+const ANALYSIS_DEEP_DIVE_PROMPT_VERSION = 'aurora.analysis_story.v2.deep_dive_v2';
+
+function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
+  const safeEvidence = isPlainObject(evidence) ? evidence : {};
+  const baselineStory = isPlainObject(fallbackStory) ? fallbackStory : {};
+  const routineContext = isPlainObject(safeEvidence.routine_context) ? safeEvidence.routine_context : {};
+  const routineFit = isPlainObject(safeEvidence.routine_fit) ? safeEvidence.routine_fit : {};
+  const lowestDimensions = Array.isArray(routineFit.lowest_dimensions) ? routineFit.lowest_dimensions : [];
+  const routineSignals = normalizeArrayOfStrings(
+    lowestDimensions.map((item) => pickFirstTrimmed(item && item.note, item && item.key)),
+    { max: 2, maxLen: 90 },
+  );
+  const routineProducts = [
+    ...(Array.isArray(routineContext.am_steps) ? routineContext.am_steps.map((step) => pickFirstTrimmed(step && step.product)) : []),
+    ...(Array.isArray(routineContext.pm_steps) ? routineContext.pm_steps.map((step) => pickFirstTrimmed(step && step.product)) : []),
+  ].filter(Boolean);
+  const activeRoutineProducts = routineProducts.filter((product) => detectRoutineActiveFamilies(product).length > 0);
+  const routineHighlights = normalizeArrayOfStrings(
+    activeRoutineProducts.length ? activeRoutineProducts : routineProducts,
+    { max: 2, maxLen: 70 },
+  );
+  const baselineFindings = normalizeArrayOfStrings(
+    Array.isArray(baselineStory.priority_findings)
+      ? baselineStory.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
+      : [],
+    { max: 4, maxLen: 90 },
+  );
+  const baselineActions = normalizeArrayOfStrings(
+    isPlainObject(baselineStory.ui_card_v1) ? baselineStory.ui_card_v1.actions_now : [],
+    { max: 2, maxLen: 90 },
+  );
+  const baselineTargetState = normalizeArrayOfStrings(baselineStory.target_state, { max: 2, maxLen: 90 });
+  return compactQaPromptValue({
+    q: pickFirstTrimmed(safeEvidence.followup_focus) || null,
+    photo_backed: safeEvidence.use_photo === true || normalizeAnalysisPhotoRefs(safeEvidence.photo_refs).length > 0,
+    photo_slots: normalizeAnalysisPhotoRefs(safeEvidence.photo_refs)
+      .map((row) => `${pickFirstTrimmed(row && row.slot_id) || 'photo'}:${pickFirstTrimmed(row && row.qc_status) || 'unknown'}`)
+      .slice(0, 1),
+    confidence: pickFirstTrimmed(safeEvidence.confidence_overall && safeEvidence.confidence_overall.level) || null,
+    findings: normalizeArrayOfStrings(
+      Array.isArray(safeEvidence.finding_evidence)
+        ? safeEvidence.finding_evidence.map((item) => pickFirstTrimmed(item && item.observation))
+        : [],
+      { max: 3, maxLen: 90 },
+    ),
+    routine: routineHighlights,
+    routine_actives: normalizeArrayOfStrings(routineContext.actives_detected, { max: 3, maxLen: 24 }),
+    risk: routineSignals,
+    avoid: normalizeArrayOfStrings(
+      Array.isArray(safeEvidence.ingredient_avoid)
+        ? safeEvidence.ingredient_avoid.map((item) => pickFirstTrimmed(item && item.ingredient_name))
+        : [],
+      { max: 2, maxLen: 40 },
+    ),
+    goals: normalizeArrayOfStrings(safeEvidence.profile && safeEvidence.profile.goals, { max: 2, maxLen: 30 }),
+    baseline_findings: baselineFindings,
+    baseline_actions: baselineActions,
+    baseline_target_state: baselineTargetState,
+  }, { maxItems: 5, maxString: 100 });
+}
+
+function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
+  const evidenceDigest = buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory });
+  const question = pickFirstTrimmed(evidenceDigest && evidenceDigest.q) || '';
+  const photoBacked = evidenceDigest && evidenceDigest.photo_backed === true;
+  const confidence = pickFirstTrimmed(evidenceDigest && evidenceDigest.confidence) || 'medium';
+  const findings = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.findings, { max: 3, maxLen: 90 });
+  const routine = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.routine, { max: 3, maxLen: 70 });
+  const risk = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.risk, { max: 2, maxLen: 90 });
+  const baselineFindings = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_findings, { max: 4, maxLen: 90 });
+  const baselineActions = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_actions, { max: 2, maxLen: 90 });
+  const baselineTargetState = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_target_state, { max: 2, maxLen: 90 });
+  const evidenceParts = [
+    findings.length ? `${findings.join(' + ')} on photos` : '',
+    confidence ? `${confidence} confidence` : '',
+    routine.length ? `routine includes ${routine.join(' and ')}` : '',
+    risk.length ? risk[0] : '',
+  ].filter(Boolean);
+  return [
+    `[SYSTEM][version=${ANALYSIS_DEEP_DIVE_PROMPT_VERSION}]`,
+    'Return one strict JSON object only.',
+    photoBacked ? 'Photo-backed context already exists.' : 'Profile-based context only.',
+    question ? `Question: ${question}` : '',
+    evidenceParts.length ? `Evidence: ${evidenceParts.join('; ')}.` : '',
+    baselineFindings.length ? `Baseline findings already shown: ${baselineFindings.join('; ')}.` : '',
+    baselineTargetState.length ? `Baseline target state: ${baselineTargetState.join('; ')}.` : '',
+    baselineActions.length ? `Baseline actions: ${baselineActions.join('; ')}.` : '',
+    'Rules: do not say you cannot analyze photos; build on the baseline instead of repeating it; add 1-2 deeper observations or interpretations that stay grounded in the same evidence; keep each string under 120 chars; preserve conservative wording like more consistent with; deeper_findings max 2; target_state/core_principles/am_focus/pm_focus/actions_now max 2; avoid_now max 1.',
+    'Output JSON schema:',
+    '{"conclusion":"","key_signals":[],"deeper_findings":[],"target_state":[],"core_principles":[],"am_focus":[],"pm_focus":[],"actions_now":[],"avoid_now":[],"confidence_note":""}',
+  ].filter(Boolean).join('\n');
+}
+
+function tryRecoverDeepDiveResponseFromTruncatedText(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+
+  const findFieldValueStart = (key, expectedStartChar) => {
+    const keyToken = `"${String(key || '').trim()}"`;
+    const keyIndex = raw.indexOf(keyToken);
+    if (keyIndex < 0) return -1;
+    const colonIndex = raw.indexOf(':', keyIndex + keyToken.length);
+    if (colonIndex < 0) return -1;
+    let cursor = colonIndex + 1;
+    while (cursor < raw.length && /\s/.test(raw[cursor])) cursor += 1;
+    if (!expectedStartChar) return cursor;
+    return raw[cursor] === expectedStartChar ? cursor : -1;
+  };
+
+  const readJsonStringField = (key) => {
+    const start = findFieldValueStart(key, '"');
+    if (start < 0) return null;
+    let value = '';
+    let escapeNext = false;
+    for (let i = start + 1; i < raw.length; i += 1) {
+      const ch = raw[i];
+      if (escapeNext) {
+        value += ch;
+        escapeNext = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      if (ch === '"') return value.trim() || null;
+      value += ch;
+    }
+    return null;
+  };
+
+  const readJsonStringArrayField = (key, max = 2) => {
+    const start = findFieldValueStart(key, '[');
+    if (start < 0) return [];
+    const out = [];
+    let inString = false;
+    let value = '';
+    let escapeNext = false;
+    for (let i = start + 1; i < raw.length; i += 1) {
+      const ch = raw[i];
+      if (escapeNext) {
+        if (inString) value += ch;
+        escapeNext = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      if (inString) {
+        if (ch === '"') {
+          const normalized = value.trim();
+          if (normalized) out.push(normalized);
+          value = '';
+          inString = false;
+          if (out.length >= max) break;
+        } else {
+          value += ch;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        value = '';
+        continue;
+      }
+      if (ch === ']') break;
+    }
+    return out;
+  };
+
+  const recovered = {
+    conclusion: readJsonStringField('conclusion'),
+    key_signals: readJsonStringArrayField('key_signals', 2),
+    deeper_findings: readJsonStringArrayField('deeper_findings', 2),
+    target_state: readJsonStringArrayField('target_state', 2),
+    core_principles: readJsonStringArrayField('core_principles', 2),
+    am_focus: readJsonStringArrayField('am_focus', 2),
+    pm_focus: readJsonStringArrayField('pm_focus', 2),
+    actions_now: readJsonStringArrayField('actions_now', 2),
+    avoid_now: readJsonStringArrayField('avoid_now', 1),
+    confidence_note: readJsonStringField('confidence_note'),
+  };
+  const hasMeaningfulField = Boolean(
+    recovered.conclusion ||
+    recovered.confidence_note ||
+    recovered.key_signals.length ||
+    recovered.deeper_findings.length ||
+    recovered.target_state.length ||
+    recovered.core_principles.length ||
+    recovered.am_focus.length ||
+    recovered.pm_focus.length ||
+    recovered.actions_now.length ||
+    recovered.avoid_now.length,
+  );
+  if (!hasMeaningfulField) return null;
+  return recovered;
+}
+
+function applyDeepDiveLlmResponseToStory({ responsePayload, fallbackStory } = {}) {
+  const safePayload = isPlainObject(responsePayload) ? responsePayload : {};
+  const baseline = coerceAnalysisStoryV2(fallbackStory, fallbackStory);
+  const story = {
+    ...baseline,
+    ui_card_v1: isPlainObject(baseline.ui_card_v1) ? { ...baseline.ui_card_v1 } : {},
+  };
+  const appendUniquePlanSteps = (rows, additions) => {
+    const existing = normalizeDeepDivePlanSteps(rows);
+    const seen = new Set(existing.map((item) => pickFirstTrimmed(item && item.step).toLowerCase()).filter(Boolean));
+    for (const entry of normalizeArrayOfStrings(additions, { max: 2, maxLen: 120 })) {
+      const key = entry.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      existing.push({ step: entry, purpose: '' });
+      if (existing.length >= 5) break;
+    }
+    return existing;
+  };
+  const headline = pickFirstTrimmed(safePayload.conclusion, safePayload.headline);
+  const keySignals = normalizeArrayOfStrings(safePayload.key_signals, { max: 2, maxLen: 120 });
+  const deeperFindings = normalizeArrayOfStrings(safePayload.deeper_findings, { max: 2, maxLen: 120 });
+  const targetState = normalizeArrayOfStrings(safePayload.target_state, { max: 2, maxLen: 120 });
+  const corePrinciples = normalizeArrayOfStrings(safePayload.core_principles, { max: 2, maxLen: 120 });
+  const amFocus = normalizeArrayOfStrings(safePayload.am_focus, { max: 2, maxLen: 120 });
+  const pmFocus = normalizeArrayOfStrings(safePayload.pm_focus, { max: 2, maxLen: 120 });
+  const actionsNow = normalizeArrayOfStrings(safePayload.actions_now, { max: 2, maxLen: 120 });
+  const avoidNow = normalizeArrayOfStrings(safePayload.avoid_now, { max: 1, maxLen: 120 });
+  const uiPatch = {};
+  if (headline) story.ui_card_v1.headline = headline;
+  if (headline) uiPatch.headline = headline;
+  const baselineFindings = Array.isArray(story.priority_findings) ? story.priority_findings : [];
+  const baselineFindingLines = baselineFindings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail)).filter(Boolean);
+  const mergedFindings = normalizeArrayOfStrings(
+    [
+      ...baselineFindingLines.slice(0, 2),
+      ...deeperFindings,
+      ...keySignals,
+      ...baselineFindingLines.slice(2),
+    ],
+    { max: 6, maxLen: 120 },
+  );
+  if (mergedFindings.length) {
+    story.priority_findings = mergedFindings.map((item, idx) => ({
+      priority: idx + 1,
+      title: item,
+      detail: item,
+      evidence_region_or_module: [],
+    }));
+    story.ui_card_v1.key_points = mergedFindings.slice(0, 3);
+    uiPatch.key_points = mergedFindings.slice(0, 3);
+  }
+  if (targetState.length) {
+    story.target_state = normalizeArrayOfStrings([...(Array.isArray(story.target_state) ? story.target_state : []), ...targetState], {
+      max: 4,
+      maxLen: 120,
+    });
+  }
+  if (corePrinciples.length) {
+    story.core_principles = normalizeArrayOfStrings(
+      [...(Array.isArray(story.core_principles) ? story.core_principles : []), ...corePrinciples],
+      { max: 4, maxLen: 120 },
+    );
+  }
+  if (amFocus.length) {
+    story.am_plan = appendUniquePlanSteps(story.am_plan, amFocus);
+  }
+  if (pmFocus.length) {
+    story.pm_plan = appendUniquePlanSteps(story.pm_plan, pmFocus);
+  }
+  if (actionsNow.length) {
+    story.ui_card_v1.actions_now = actionsNow;
+    uiPatch.actions_now = actionsNow;
+  }
+  if (avoidNow.length) {
+    story.ui_card_v1.avoid_now = avoidNow;
+    uiPatch.avoid_now = avoidNow;
+    story.safety_notes = avoidNow;
+  }
+  return {
+    story,
+    ui_patch: uiPatch,
+    confidence_note: pickFirstTrimmed(safePayload.confidence_note) || null,
+  };
+}
+
+function applyNonWeakeningDeepDiveUiPatch({ story, fallbackStory, uiPatch } = {}) {
+  const candidate = isPlainObject(story) ? story : {};
+  const fallback = isPlainObject(fallbackStory) ? fallbackStory : {};
+  const patch = isPlainObject(uiPatch) ? uiPatch : null;
+  if (!patch || !isPlainObject(candidate.ui_card_v1)) return candidate;
+  if (!isDeepDiveStoryWeakerThanFallback({ story: candidate, fallbackStory: fallback })) return candidate;
+  const restored = {
+    ...fallback,
+    ui_card_v1: isPlainObject(fallback.ui_card_v1) ? { ...fallback.ui_card_v1 } : {},
+  };
+  if (pickFirstTrimmed(patch.headline)) {
+    restored.ui_card_v1.headline = pickFirstTrimmed(patch.headline);
+  }
+  if (Array.isArray(patch.actions_now) && patch.actions_now.length) {
+    restored.ui_card_v1.actions_now = patch.actions_now.slice(0, 3);
+  }
+  if (Array.isArray(patch.avoid_now) && patch.avoid_now.length) {
+    restored.ui_card_v1.avoid_now = patch.avoid_now.slice(0, 2);
+    restored.safety_notes = patch.avoid_now.slice(0, 2);
+  }
+  return restored;
+}
+
+function isDeepDiveStoryWeakerThanFallback({ story, fallbackStory } = {}) {
+  const candidate = isPlainObject(story) ? story : {};
+  const baseline = isPlainObject(fallbackStory) ? fallbackStory : {};
+  const candidateFindings = Array.isArray(candidate.priority_findings) ? candidate.priority_findings.filter(Boolean).length : 0;
+  const baselineFindings = Array.isArray(baseline.priority_findings) ? baseline.priority_findings.filter(Boolean).length : 0;
+  const candidateConfidence = rankAnalysisConfidenceLevel(candidate && candidate.confidence_overall && candidate.confidence_overall.level);
+  const baselineConfidence = rankAnalysisConfidenceLevel(baseline && baseline.confidence_overall && baseline.confidence_overall.level);
+  const candidateHeadline = pickFirstTrimmed(candidate && candidate.ui_card_v1 && candidate.ui_card_v1.headline);
+  const baselineHeadline = pickFirstTrimmed(baseline && baseline.ui_card_v1 && baseline.ui_card_v1.headline);
+  if (baselineFindings > 0 && candidateFindings < baselineFindings) return true;
+  if (baselineConfidence > 0 && candidateConfidence < baselineConfidence) return true;
+  if (baselineHeadline && !candidateHeadline) return true;
+  return false;
+}
+
+function buildDeepDiveAssistantText({ story, language, replyText, analysisOrigin, confidenceNote } = {}) {
+  const isCn = language === 'CN';
+  const focus = pickFirstTrimmed(replyText);
+  const ui = isPlainObject(story && story.ui_card_v1) ? story.ui_card_v1 : {};
+  const findings = asStringArray(
+    Array.isArray(story && story.priority_findings)
+      ? story.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
+      : [],
+    3,
+  );
+  const actions = asStringArray(Array.isArray(ui.actions_now) ? ui.actions_now : [], 3);
+  const confidenceLabel = pickFirstTrimmed(ui.confidence_label, story && story.confidence_overall && story.confidence_overall.level);
+  const note = pickFirstTrimmed(confidenceNote);
+  return [
+    focus && focus.length > 6 ? (isCn ? `这次聚焦：${focus}。` : `Focus for this deep dive: ${focus}.`) : '',
+    analysisOrigin === 'photo'
+      ? (isCn ? '这次解释继续基于你最近一次照片分析。' : 'This explanation stays grounded in your latest photo-based analysis.')
+      : (isCn ? '这次解释继续基于你最近一次分析。' : 'This explanation stays grounded in your latest analysis.'),
+    pickFirstTrimmed(ui.headline, Array.isArray(story && story.target_state) ? story.target_state[0] : ''),
+    findings.length
+      ? (isCn ? `关键信号：${findings.join('；')}。` : `Key signals: ${findings.join('; ')}.`)
+      : '',
+    actions.length
+      ? (isCn ? `下一步：${actions.join('；')}。` : `Next steps: ${actions.join('; ')}.`)
+      : '',
+    note ? (isCn ? `判断边界：${note}。` : `Confidence note: ${note}.`) : '',
+    confidenceLabel ? (isCn ? `当前置信度：${confidenceLabel}。` : `Current confidence: ${confidenceLabel}.`) : '',
+  ].filter(Boolean).join(' ');
+}
+
+function resolveAnalysisStorySnapshotForDeepDive({ actionData, sessionAnalysisContext, lastAnalysis } = {}) {
+  const candidates = [
+    isPlainObject(actionData) ? actionData.analysis_story_snapshot : null,
+    isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext.analysis_story_snapshot : null,
+    isPlainObject(lastAnalysis) ? lastAnalysis.analysis_story_snapshot : null,
+  ];
+  for (const candidate of candidates) {
+    const snapshot = normalizeAnalysisStorySnapshotCandidate(candidate);
+    if (snapshot) return snapshot;
+  }
+  return null;
+}
+
+async function buildAnalysisDeepDiveContentWithLlm({
+  lastAnalysis,
+  diagnosisArtifact,
+  profile,
+  language,
+  requestId,
+  replyText,
+  actionData,
+  sessionAnalysisContext,
+  logger,
+} = {}) {
+  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
+  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
+  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
+  const resolvedSnapshot = resolveAnalysisStorySnapshotForDeepDive({
+    actionData: normalizedActionData,
+    sessionAnalysisContext: normalizedSessionContext,
+    lastAnalysis,
+  });
+  const baseAnalysis = isPlainObject(lastAnalysis) && Object.keys(lastAnalysis).length
+    ? lastAnalysis
+    : buildLastAnalysisFromDiagnosisArtifact(normalizedArtifact, resolvedSnapshot);
+  const resolvedLastAnalysis = mergeAnalysisSnapshotIntoLastAnalysis(baseAnalysis, resolvedSnapshot);
+  const fallback = buildAnalysisFollowupContent({
+    actionId: 'chip.aurora.next_action.deep_dive_skin',
+    lastAnalysis: resolvedLastAnalysis,
+    language,
+    requestId,
+    replyText,
+  });
+  if (!fallback || fallback.missing_context) {
+    return {
+      ...(fallback || {}),
+      analysis_origin: 'profile',
+      photo_ref_count: 0,
+      used_diagnosis_artifact: Boolean(normalizedArtifact && normalizedArtifact.artifact_id),
+      used_analysis_story_snapshot: Boolean(resolvedSnapshot),
+      fell_back_to_snapshot: Boolean(resolvedSnapshot),
+      llm_used: false,
+      llm_model: null,
+      llm_failure_reason: fallback ? 'analysis_context_missing' : 'unknown',
+      latest_artifact_id: normalizedArtifact && normalizedArtifact.artifact_id ? String(normalizedArtifact.artifact_id).trim() : null,
+    };
+  }
+  const photoRefs = normalizeAnalysisPhotoRefs([
+    ...normalizeAnalysisPhotoRefs(normalizedActionData.photo_refs),
+    ...normalizeAnalysisPhotoRefs(normalizedSessionContext.photo_refs),
+    ...normalizeAnalysisPhotoRefs(normalizedArtifact && normalizedArtifact.photos),
+  ]);
+  const requestedOrigin = pickFirstTrimmed(normalizedActionData.analysis_origin, normalizedSessionContext.analysis_origin);
+  const analysisOrigin =
+    photoRefs.length > 0 || (normalizedArtifact && normalizedArtifact.use_photo === true) || requestedOrigin === 'photo'
+      ? 'photo'
+      : 'profile';
+  const fallbackStory = buildDeepDiveFallbackStoryPayload({ lastAnalysis: resolvedLastAnalysis, language });
+  const evidence = buildDeepDiveAnalysisEvidence({
+    lastAnalysis: resolvedLastAnalysis,
+    diagnosisArtifact: normalizedArtifact,
+    profile,
+    language,
+    replyText,
+    analysisOrigin,
+    photoRefs,
+    sourceCardType: pickFirstTrimmed(normalizedActionData.source_card_type, normalizedSessionContext.source_card_type),
+    fallbackStory,
+  });
+
+  let storyPayload = fallbackStory;
+  let llmUsed = false;
+  let llmFailureReason = null;
+  let llmConfidenceNote = null;
+  let llmUiPatch = null;
+  try {
+    const llmResult = await callRuntimeQaJson({
+      kind: 'story_review',
+      model: AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI,
+      systemPrompt: 'You are a skincare deep-dive assistant. Output strict JSON only.',
+      userPrompt: buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory }),
+      timeoutMs: AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS,
+      queueTimeoutMs: Math.min(2000, Math.max(600, Math.trunc(AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS * 0.25))),
+      upstreamTimeoutMs: Math.max(3000, AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS - 1000),
+      maxOutputTokens: AURORA_SKIN_DEEP_DIVE_MAX_OUTPUT_TOKENS,
+      responseSchema: ANALYSIS_DEEP_DIVE_RESPONSE_JSON_SCHEMA,
+      route: 'aurora_skin_deep_dive',
+    });
+    if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
+      llmUsed = true;
+      const merged = applyDeepDiveLlmResponseToStory({
+        responsePayload: llmResult.json,
+        fallbackStory,
+      });
+      storyPayload = isPlainObject(merged && merged.story) ? merged.story : fallbackStory;
+      llmConfidenceNote = pickFirstTrimmed(merged && merged.confidence_note) || null;
+      llmUiPatch = isPlainObject(merged && merged.ui_patch) ? merged.ui_patch : null;
+    } else {
+      const recoveredPayload =
+        llmResult &&
+        llmResult.reason === 'PARSE_TRUNCATED_JSON' &&
+        typeof llmResult.raw_text === 'string'
+          ? tryRecoverDeepDiveResponseFromTruncatedText(llmResult.raw_text)
+          : null;
+      if (recoveredPayload) {
+        llmUsed = true;
+        llmFailureReason = 'PARSE_TRUNCATED_JSON_RECOVERED';
+        const merged = applyDeepDiveLlmResponseToStory({
+          responsePayload: recoveredPayload,
+          fallbackStory,
+        });
+        storyPayload = isPlainObject(merged && merged.story) ? merged.story : fallbackStory;
+        llmConfidenceNote = pickFirstTrimmed(merged && merged.confidence_note) || null;
+        llmUiPatch = isPlainObject(merged && merged.ui_patch) ? merged.ui_patch : null;
+      } else {
+        llmFailureReason = pickFirstTrimmed(llmResult && llmResult.reason, llmResult && llmResult.detail) || 'deep_dive_llm_failed';
+      }
+    }
+  } catch (err) {
+    llmFailureReason = err && err.message ? String(err.message) : 'deep_dive_llm_exception';
+      logger?.warn?.(
+        { err: llmFailureReason, request_id: requestId },
+        'aurora bff: skin deep-dive llm failed, using deterministic fallback',
+    );
+  }
+
+  const safeCoerce = (candidate, fb) => {
+    const coerced = coerceAnalysisStoryV2(candidate, fb);
+    if (isDeepDiveStoryWeakerThanFallback({ story: coerced, fallbackStory: fb })) return fb;
+    return coerced;
+  };
+  let reviewedStory = reviewAnalysisStoryV2Json({ story: storyPayload, evidence });
+  let repairedStory = safeCoerce(
+    reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : storyPayload,
+    fallbackStory,
+  );
+  if (isDeepDiveStoryWeakerThanFallback({ story: repairedStory, fallbackStory })) {
+    repairedStory = fallbackStory;
+  }
+  reviewedStory = reviewAnalysisStoryV2Json({ story: repairedStory, evidence });
+  let finalStory = safeCoerce(
+    reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : repairedStory,
+    fallbackStory,
+  );
+  finalStory = applyAnalysisStoryProfilePatch(finalStory, {
+    profileSummary: profile,
+    diagnosisArtifact: normalizedArtifact,
+    lastAnalysis: resolvedLastAnalysis,
+  });
+  if (llmUiPatch && isPlainObject(finalStory.ui_card_v1)) {
+    if (Array.isArray(llmUiPatch.avoid_now) && llmUiPatch.avoid_now.length) {
+      finalStory.safety_notes = llmUiPatch.avoid_now.slice(0, 2);
+    }
+    finalStory.ui_card_v1 = {
+      ...finalStory.ui_card_v1,
+      ...(pickFirstTrimmed(llmUiPatch.headline) ? { headline: pickFirstTrimmed(llmUiPatch.headline) } : {}),
+      ...(Array.isArray(llmUiPatch.key_points) && llmUiPatch.key_points.length ? { key_points: llmUiPatch.key_points.slice(0, 3) } : {}),
+      ...(Array.isArray(llmUiPatch.actions_now) && llmUiPatch.actions_now.length ? { actions_now: llmUiPatch.actions_now.slice(0, 3) } : {}),
+      ...(Array.isArray(llmUiPatch.avoid_now) && llmUiPatch.avoid_now.length ? { avoid_now: llmUiPatch.avoid_now.slice(0, 2) } : {}),
+    };
+  }
+  const stabilizedFinalStory = applyNonWeakeningDeepDiveUiPatch({
+    story: finalStory,
+    fallbackStory,
+    uiPatch: llmUiPatch,
+  });
+  const assistantText = buildDeepDiveAssistantText({
+    story: stabilizedFinalStory,
+    language,
+    replyText,
+    analysisOrigin,
+    confidenceNote: llmConfidenceNote,
+  });
+  const fellBackToSnapshot = Boolean(
+    resolvedSnapshot && (
+      isDeepDiveStoryWeakerThanFallback({ story: storyPayload, fallbackStory }) ||
+      stabilizedFinalStory === fallbackStory ||
+      isDeepDiveStoryWeakerThanFallback({ story: stabilizedFinalStory, fallbackStory })
+    ),
+  );
+
+  return {
+    assistant_text: assistantText,
+    cards: [
+      {
+        card_id: `analysis_followup_story_${requestId}`,
+        type: 'analysis_story_v2',
+        payload: {
+          ...stabilizedFinalStory,
+          summary: assistantText,
+        },
+      },
+    ],
+    suggested_chips: Array.isArray(fallback.suggested_chips) ? fallback.suggested_chips : [],
+    missing_context: false,
+    used_last_analysis: true,
+    used_diagnosis_artifact: Boolean(normalizedArtifact && normalizedArtifact.artifact_id),
+    used_analysis_story_snapshot: Boolean(resolvedSnapshot),
+    fell_back_to_snapshot: fellBackToSnapshot,
+    latest_artifact_id: normalizedArtifact && normalizedArtifact.artifact_id ? String(normalizedArtifact.artifact_id).trim() : null,
+    analysis_origin: analysisOrigin,
+    photo_ref_count: photoRefs.length,
+    llm_used: llmUsed,
+    llm_model: llmUsed ? AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI : null,
+    llm_failure_reason: llmFailureReason,
+  };
+}
+
+function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
+  const isCn = language === 'CN';
+  const story = isPlainObject(storyPayload) ? storyPayload : {};
+  const conf = isPlainObject(story.confidence_overall) ? story.confidence_overall : {};
+  const sp = isPlainObject(story.skin_profile) ? story.skin_profile : {};
+  const skinType = pickFirstTrimmed(sp.skin_type_tendency, sp.skin_type);
+  const sensitivity = pickFirstTrimmed(sp.sensitivity_tendency, sp.sensitivity);
+  const confLevel = pickFirstTrimmed(conf.level);
+  const findings = Array.isArray(story.priority_findings)
+    ? story.priority_findings.map((f) => pickFirstTrimmed(f && f.title, f && f.detail)).filter(Boolean).slice(0, 3)
+    : [];
+  const lines = [];
+  if (isCn) {
+    const descriptors = [];
+    const skinLabel = skinType ? ({ oily: '偏油', dry: '偏干', combination: '混合', normal: '中性' }[skinType] || skinType) : null;
+    const sensLabel = sensitivity ? ({ low: '低', medium: '中等', high: '高' }[sensitivity] || sensitivity) : null;
+    lines.push('分析完成。');
+    if (skinLabel) descriptors.push(`肤质倾向为 **${skinLabel}**`);
+    if (sensLabel) descriptors.push(`敏感度 **${sensLabel}**`);
+    if (descriptors.length) lines.push(`你的${descriptors.join('，')}。`);
+    if (confLevel) lines.push(`本次判断置信度为 **${confLevel === 'high' ? '高' : confLevel === 'medium' ? '中' : confLevel === 'low' ? '低' : confLevel}**。`);
+    if (findings.length) lines.push(`主要发现：${findings.join('；')}。`);
+  } else {
+    lines.push('Analysis complete.');
+    if (skinType && sensitivity) {
+      lines.push(`Your skin trends **${skinType}** with **${sensitivity}** sensitivity.`);
+    } else if (skinType) {
+      lines.push(`Your skin trends **${skinType}** in this read.`);
+    } else if (sensitivity) {
+      lines.push(`This read suggests **${sensitivity}** sensitivity.`);
+    }
+    if (confLevel) lines.push(`Confidence for this read is **${confLevel}**.`);
+    if (findings.length) lines.push(`Key findings: ${findings.join('; ')}.`);
+  }
+  lines.push(isCn ? '有什么想深入了解的？' : 'What would you like to explore?');
+  return lines.join(' ');
+}
+
+function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, requestId, replyText } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const {
+    skinProfile,
+    guidanceBrief,
+    confidence,
+    ingredientPlan,
+    routineFit,
+    findingLines,
+    strengths,
+  } = extractAnalysisFollowupSignals(lastAnalysis);
   const lowConfidence = String(confidence.level || '').trim().toLowerCase() === 'low';
   const followupFocus = String(replyText || '').trim();
   const focusLine =
@@ -20627,11 +21870,6 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     }),
     actionId,
   );
-  const findingLines = findings
-    .map((item) => pickFirstTrimmed(item && item.title, item && item.detail, item && item.observation))
-    .filter(Boolean)
-    .slice(0, 3);
-  const strengths = Array.isArray(skinProfile.current_strengths) ? skinProfile.current_strengths.filter(Boolean).slice(0, 3) : [];
   const missingContext = !Boolean(
     Object.keys(skinProfile).length ||
       findingLines.length ||
@@ -20791,7 +22029,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
         ].filter(Boolean).join(' ');
     return {
       assistant_text: assistantText,
-      cards: [buildIngredientPlanCard(ingredientPlan, requestId)],
+      cards: [buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH, language })],
       suggested_chips: suggestedChips,
       missing_context: false,
       used_last_analysis: true,
@@ -20881,7 +22119,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
       },
     }]
     : [];
-  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId));
+  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH, language }));
   return {
     assistant_text: safetyMessage,
     cards,
@@ -20937,6 +22175,80 @@ function isTransientRecoUpstreamFailureCode(code) {
     token === 'UND_ERR_SOCKET' ||
     token === 'DNS'
   );
+}
+
+function classifyAlternativesUpstreamFailure(err) {
+  const status = Number(err && err.status);
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  const messageRaw = String((err && err.message) || '').trim();
+  const message = messageRaw.toLowerCase();
+  if (code === 'AURORA_NOT_CONFIGURED') {
+    return {
+      failure_class: 'precheck_fail',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (status === 429 || code === 'ERR_RATE_LIMIT' || message.includes('rate limit')) {
+    return {
+      failure_class: 'rate_limited',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (
+    code === 'ECONNABORTED' ||
+    code === 'ETIMEDOUT' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    message.includes('timeout')
+  ) {
+    return {
+      failure_class: 'upstream_timeout',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (Number.isFinite(status) && status >= 500) {
+    return {
+      failure_class: 'upstream_5xx',
+      upstream_status: status,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (Number.isFinite(status) && status >= 400) {
+    return {
+      failure_class: 'upstream_4xx',
+      upstream_status: status,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'UND_ERR_SOCKET') {
+    return {
+      failure_class: 'upstream_connection_error',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return {
+      failure_class: 'upstream_dns_error',
+      upstream_status: Number.isFinite(status) ? status : null,
+      upstream_error_code: code || null,
+      upstream_error_message: messageRaw || null,
+    };
+  }
+  return {
+    failure_class: 'upstream_error',
+    upstream_status: Number.isFinite(status) ? status : null,
+    upstream_error_code: code || null,
+    upstream_error_message: messageRaw || null,
+  };
 }
 function inferCardGuardReasonFromEvents(events) {
   const rows = Array.isArray(events) ? events : [];
@@ -21228,6 +22540,38 @@ function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
   sessionPatch.state = state;
 }
 
+async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
+  const preferredArtifactId = extractLatestArtifactIdFromSession(session);
+  try {
+    const latestArtifact = await getLatestDiagnosisArtifact({
+      auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
+      userId: identity && identity.userId ? identity.userId : null,
+      sessionId: ctx && ctx.brief_id ? ctx.brief_id : null,
+      maxAgeDays: 30,
+      preferArtifactId: preferredArtifactId,
+    });
+    if (
+      latestArtifact &&
+      latestArtifact.artifact_json &&
+      typeof latestArtifact.artifact_json === 'object' &&
+      !Array.isArray(latestArtifact.artifact_json)
+    ) {
+      return {
+        ...latestArtifact.artifact_json,
+        artifact_id: latestArtifact.artifact_id,
+        created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+      };
+    }
+    return latestArtifact || null;
+  } catch (err) {
+    logger?.warn?.(
+      { err: err && err.message ? err.message : String(err), request_id: ctx && ctx.request_id ? ctx.request_id : null },
+      'aurora bff: failed to load latest diagnosis artifact for route',
+    );
+    return null;
+  }
+}
+
 function normalizeRecoSourceDetail(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (
@@ -21381,17 +22725,334 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   sessionPatch.state = state;
 }
 
-function buildIngredientPlanCard(plan, requestId) {
+function isMeaningfulAnalysisStoryProfileToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return false;
+  return token !== 'pending' && token !== 'unknown' && token !== 'unconfirmed' && token !== '待确认';
+}
+
+function deriveAnalysisStoryProfilePatch({
+  story = null,
+  profileSummary = null,
+  requestRoutineProfilePatch = null,
+  analysisPayload = null,
+  diagnosisArtifact = null,
+  lastAnalysis = null,
+} = {}) {
+  const storyProfile = isPlainObject(story && story.skin_profile) ? story.skin_profile : {};
+  const analysisRoot = isPlainObject(analysisPayload) && isPlainObject(analysisPayload.analysis)
+    ? analysisPayload.analysis
+    : isPlainObject(analysisPayload)
+      ? analysisPayload
+      : {};
+  const analysisProfile = isPlainObject(analysisRoot.skin_profile)
+    ? analysisRoot.skin_profile
+    : isPlainObject(analysisRoot.skinProfile)
+      ? analysisRoot.skinProfile
+      : {};
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
+  const artifactProfile = {
+    skin_type_tendency: pickFirstTrimmed(artifact && artifact.skinType && artifact.skinType.value),
+    sensitivity_tendency: pickFirstTrimmed(artifact && artifact.sensitivity && artifact.sensitivity.value),
+  };
+  const lastProfile = isPlainObject(lastAnalysis && lastAnalysis.skin_profile)
+    ? lastAnalysis.skin_profile
+    : isPlainObject(lastAnalysis && lastAnalysis.skinProfile)
+      ? lastAnalysis.skinProfile
+      : {};
+  const profileForStory = {
+    ...(isPlainObject(profileSummary) ? profileSummary : {}),
+    ...(isPlainObject(requestRoutineProfilePatch) ? requestRoutineProfilePatch : {}),
+  };
+
+  const skinType = pickFirstTrimmed(
+    profileForStory.skinType,
+    analysisProfile.skin_type_tendency,
+    analysisProfile.skin_type,
+    analysisProfile.skinType,
+    artifactProfile.skin_type_tendency,
+    lastProfile.skin_type_tendency,
+    lastProfile.skin_type,
+    lastProfile.skinType,
+  );
+  const sensitivity = pickFirstTrimmed(
+    profileForStory.sensitivity,
+    analysisProfile.sensitivity_tendency,
+    analysisProfile.sensitivity,
+    artifactProfile.sensitivity_tendency,
+    lastProfile.sensitivity_tendency,
+    lastProfile.sensitivity,
+  );
+  const currentStrengths = normalizeArrayOfStrings(
+    [
+      ...(Array.isArray(storyProfile.current_strengths) ? storyProfile.current_strengths : []),
+      ...(Array.isArray(analysisProfile.current_strengths) ? analysisProfile.current_strengths : []),
+      ...(Array.isArray(lastProfile.current_strengths) ? lastProfile.current_strengths : []),
+    ],
+    { max: 4, maxLen: 120 },
+  );
+
+  const patch = {};
+  if (!isMeaningfulAnalysisStoryProfileToken(storyProfile.skin_type_tendency) && skinType) {
+    patch.skin_type_tendency = skinType;
+  }
+  if (!isMeaningfulAnalysisStoryProfileToken(storyProfile.sensitivity_tendency) && sensitivity) {
+    patch.sensitivity_tendency = sensitivity;
+  }
+  if ((!Array.isArray(storyProfile.current_strengths) || storyProfile.current_strengths.length === 0) && currentStrengths.length) {
+    patch.current_strengths = currentStrengths;
+  }
+  return Object.keys(patch).length ? patch : null;
+}
+
+function applyAnalysisStoryProfilePatch(story, options = {}) {
+  if (!isPlainObject(story)) return story;
+  const patch = deriveAnalysisStoryProfilePatch({ story, ...options });
+  if (!patch) return story;
+  return {
+    ...story,
+    skin_profile: {
+      ...(isPlainObject(story.skin_profile) ? story.skin_profile : {}),
+      ...patch,
+    },
+  };
+}
+
+function isIngredientPlanV2Payload(plan) {
+  return isPlainObject(plan) && String(plan.schema_version || '').trim().toLowerCase() === 'aurora.ingredient_plan.v2';
+}
+
+function coerceIngredientPlanForDiagnosisCard(plan, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH } = {}) {
+  if (!isPlainObject(plan)) return null;
+  return upgradeIngredientPlanToV2({
+    plan,
+    profile: isPlainObject(profile) ? profile : null,
+    catalogPath,
+  });
+}
+
+function formatIngredientPlanRoutineStepLabel(stepToken, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const token = String(stepToken || '').trim().toLowerCase();
+  if (!token) return '';
+  const map = lang === 'CN'
+    ? {
+        cream: '修护面霜/保湿霜',
+        moisturizer: '保湿霜/屏障霜',
+        serum: '精华',
+        sunscreen: '防晒',
+        treatment: '功能型精华/局部护理',
+        cleanser: '洁面',
+        toner: '化妆水/精华水',
+      }
+    : {
+        cream: 'barrier creams or moisturizers',
+        moisturizer: 'moisturizers or barrier creams',
+        serum: 'serums',
+        sunscreen: 'sunscreens',
+        treatment: 'treatment serums or spot products',
+        cleanser: 'cleansers',
+        toner: 'toners or essence lotions',
+      };
+  return map[token] || token.replace(/_/g, ' ');
+}
+
+function isUsefulIngredientEducationText(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  if (lower.startsWith('rule signal:')) return false;
+  if (lower === 'limited evidence' || lower === '信息不足') return false;
+  if (lower.includes('quick brief') || lower.includes('enhanced evidence can be refreshed')) return false;
+  if (lower.includes('minimal readable card') || lower.includes('pending/unavailable')) return false;
+  if (lower.includes('matched by profile + concern signals')) return false;
+  return true;
+}
+
+function buildIngredientPlanEducationLinesFromRuleSignals(ruleSignals, { language = 'EN' } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const rows = normalizeArrayOfStrings(ruleSignals, { max: 3, maxLen: 160 });
+  const out = [];
+  for (const row of rows) {
+    const token = String(row || '').trim().toLowerCase();
+    if (!token) continue;
+    if (token.includes('low_confidence_gentle_only')) {
+      out.push(
+        lang === 'CN'
+          ? '当前分析仍偏保守，因此优先保留耐受度更高、屏障友好的成分。'
+          : 'This read is still conservative, so the plan favors lower-irritation, barrier-friendly ingredients first.',
+      );
+      continue;
+    }
+    if (token.includes('barrier') || token.includes('repair')) {
+      out.push(lang === 'CN' ? '这类成分更偏向修护和稳定屏障。' : 'This ingredient is being used here for barrier support and stability.');
+      continue;
+    }
+    if (token.includes('oil') || token.includes('sebum')) {
+      out.push(lang === 'CN' ? '它更适合油脂管理和毛孔相关诉求。' : 'It is being prioritized for oil-control and pore-related concerns.');
+      continue;
+    }
+    if (token.includes('acne')) {
+      out.push(lang === 'CN' ? '这类成分更偏向痘痘/堵塞管理。' : 'It is being prioritized for acne or congestion management.');
+      continue;
+    }
+  }
+  return normalizeArrayOfStrings(out, { max: 2, maxLen: 180 });
+}
+
+function buildIngredientPlanResearchSummary(reportPayload, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const report = isPlainObject(reportPayload) ? reportPayload : {};
+  const ingredient = isPlainObject(report.ingredient) ? report.ingredient : {};
+  const verdict = isPlainObject(report.verdict) ? report.verdict : {};
+  const usage = isPlainObject(report.how_to_use) ? report.how_to_use : isPlainObject(report.usage) ? report.usage : {};
+  const benefits = (Array.isArray(report.benefits) ? report.benefits : [])
+    .map((row) => (isPlainObject(row) ? pickFirstTrimmed(row.what_it_means, row.concern) : ''))
+    .filter(isUsefulIngredientEducationText)
+    .slice(0, 2);
+  const summary = pickFirstTrimmed(
+    ingredient.what_it_is,
+    report.what_it_is,
+    verdict.one_liner,
+    report.overview,
+  );
+  const stepLabel = formatIngredientPlanRoutineStepLabel(
+    pickFirstTrimmed(usage.routine_step, report.usage && report.usage.routine_step),
+    language,
+  );
+  const timeLabel = pickFirstTrimmed(usage.time, report.usage && report.usage.time);
+  const frequencyLabel = pickFirstTrimmed(usage.frequency, report.usage && report.usage.frequency);
+  const pairWell = normalizeArrayOfStrings(usage.pair_well, { max: 2, maxLen: 40 });
+  const topProducts = (Array.isArray(report.top_products) ? report.top_products : [])
+    .map((row) => (isPlainObject(row) ? pickFirstTrimmed(row.name) : pickFirstTrimmed(row)))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const why = normalizeArrayOfStrings(
+    [
+      isUsefulIngredientEducationText(summary) ? summary : '',
+      ...benefits,
+      isUsefulIngredientEducationText(report.evidence && report.evidence.summary) ? report.evidence.summary : '',
+    ],
+    { max: 3, maxLen: 180 },
+  );
+
+  const usageLines = [];
+  if (timeLabel || frequencyLabel || stepLabel) {
+    usageLines.push(
+      lang === 'CN'
+        ? [timeLabel && `时段：${timeLabel}`, frequencyLabel && `频率：${frequencyLabel}`, stepLabel && `常见形态：${stepLabel}`].filter(Boolean).join('；')
+        : [timeLabel && `Time: ${timeLabel}`, frequencyLabel && `Frequency: ${frequencyLabel}`, stepLabel && `Typical formats: ${stepLabel}`].filter(Boolean).join('; '),
+    );
+  }
+  if (pairWell.length) {
+    usageLines.push(lang === 'CN' ? `常见搭配：${pairWell.join('、')}` : `Pairs well with ${pairWell.join(', ')}`);
+  }
+  if (topProducts.length) {
+    usageLines.push(lang === 'CN' ? `典型产品：${topProducts.join('、')}` : `Typical products: ${topProducts.join(', ')}`);
+  }
+
+  return {
+    why,
+    usage_guidance: normalizeArrayOfStrings(usageLines, { max: 3, maxLen: 180 }),
+    ingredient_summary: isUsefulIngredientEducationText(summary) ? summary : '',
+    benefit_highlights: benefits,
+    evidence_summary: isUsefulIngredientEducationText(report.evidence && report.evidence.summary) ? report.evidence.summary : '',
+    typical_products: topProducts,
+    report_state: isPlainObject(report.report_state) ? report.report_state : null,
+  };
+}
+
+function enrichIngredientPlanPayloadForCard(plan, { language = 'EN' } = {}) {
+  if (!isIngredientPlanV2Payload(plan)) return plan;
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const targets = Array.isArray(plan.targets) ? plan.targets : [];
+  if (!targets.length) return plan;
+  const nextTargets = targets.map((target) => {
+    if (!isPlainObject(target)) return target;
+    const ingredientName = pickFirstTrimmed(target.ingredient_name, target.ingredient, target.display_name);
+    const existingWhy = normalizeArrayOfStrings(
+      (Array.isArray(target.why) ? target.why : []).filter(isUsefulIngredientEducationText),
+      { max: 3, maxLen: 180 },
+    );
+    const existingUsage = normalizeArrayOfStrings(target.usage_guidance, { max: 3, maxLen: 180 });
+    if (!ingredientName) {
+      return {
+        ...target,
+        why: existingWhy,
+        usage_guidance: existingUsage,
+      };
+    }
+    const reportPayload = buildIngredientReportPayload({
+      language: lang,
+      query: ingredientName,
+      research: getIngredientResearchCache(ingredientName) || null,
+      meta: {
+        normalized_query: normalizeIngredientResearchKey(ingredientName),
+        route_decision_reasons: ['ingredient_plan_card_enrichment'],
+        route_rule_version: INGREDIENT_ROUTE_RULE_VERSION,
+      },
+    });
+    const researchSummary = buildIngredientPlanResearchSummary(reportPayload, lang);
+    const fallbackRuleLines = buildIngredientPlanEducationLinesFromRuleSignals(target.rationale, { language: lang });
+    return {
+      ...target,
+      why: normalizeArrayOfStrings(
+        [
+          ...researchSummary.why,
+          ...existingWhy,
+          ...fallbackRuleLines,
+        ],
+        { max: 4, maxLen: 180 },
+      ),
+      usage_guidance: normalizeArrayOfStrings(
+        [
+          ...existingUsage,
+          ...researchSummary.usage_guidance,
+        ],
+        { max: 4, maxLen: 180 },
+      ),
+      ingredient_summary: researchSummary.ingredient_summary || undefined,
+      benefit_highlights: researchSummary.benefit_highlights,
+      evidence_summary: researchSummary.evidence_summary || undefined,
+      typical_products: researchSummary.typical_products,
+      report_state: researchSummary.report_state || undefined,
+      ingredient_report: reportPayload && typeof reportPayload === 'object'
+        ? {
+            ingredient: reportPayload.ingredient,
+            verdict: reportPayload.verdict,
+            benefits: reportPayload.benefits,
+            how_to_use: reportPayload.how_to_use,
+            top_products: reportPayload.top_products,
+            evidence: reportPayload.evidence,
+            report_state: reportPayload.report_state,
+          }
+        : undefined,
+    };
+  });
+  return { ...plan, targets: nextTargets };
+}
+
+function buildIngredientPlanCard(plan, requestId, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH, language = 'EN' } = {}) {
+  const normalizedPlan = coerceIngredientPlanForDiagnosisCard(plan, { profile, catalogPath }) || plan;
+  const enrichedPlan = enrichIngredientPlanPayloadForCard(normalizedPlan, { language });
+  if (isIngredientPlanV2Payload(normalizedPlan)) {
+    return {
+      card_id: `ing_plan_${requestId}`,
+      type: 'ingredient_plan_v2',
+      payload: enrichedPlan,
+    };
+  }
   return {
     card_id: `ing_plan_${requestId}`,
     type: 'ingredient_plan',
     payload: {
-      plan,
-      intensity: plan && plan.intensity ? plan.intensity : 'balanced',
-      targets: Array.isArray(plan && plan.targets) ? plan.targets : [],
-      avoid: Array.isArray(plan && plan.avoid) ? plan.avoid : [],
-      conflicts: Array.isArray(plan && plan.conflicts) ? plan.conflicts : [],
-      confidence: plan && plan.confidence && typeof plan.confidence === 'object' ? plan.confidence : null,
+      plan: normalizedPlan,
+      intensity: normalizedPlan && normalizedPlan.intensity ? normalizedPlan.intensity : 'balanced',
+      targets: Array.isArray(normalizedPlan && normalizedPlan.targets) ? normalizedPlan.targets : [],
+      avoid: Array.isArray(normalizedPlan && normalizedPlan.avoid) ? normalizedPlan.avoid : [],
+      conflicts: Array.isArray(normalizedPlan && normalizedPlan.conflicts) ? normalizedPlan.conflicts : [],
+      confidence: normalizedPlan && normalizedPlan.confidence && typeof normalizedPlan.confidence === 'object' ? normalizedPlan.confidence : null,
     },
   };
 }
@@ -22846,8 +24507,8 @@ function extractProfilePatchFromSession(session) {
   }
 
   // Mixed types
-  if (rawProfile.currentRoutine != null) patch.currentRoutine = rawProfile.currentRoutine;
-  if (rawProfile.current_routine != null) patch.currentRoutine = rawProfile.current_routine;
+  if (rawProfile.currentRoutine != null) patch.currentRoutine = normalizeRoutineInputWithPmShortcut(rawProfile.currentRoutine);
+  if (rawProfile.current_routine != null) patch.currentRoutine = normalizeRoutineInputWithPmShortcut(rawProfile.current_routine);
   if (rawProfile.itinerary != null) patch.itinerary = rawProfile.itinerary;
   if (rawProfile.travel_plan && typeof rawProfile.travel_plan === 'object' && !Array.isArray(rawProfile.travel_plan)) {
     patch.travel_plan = rawProfile.travel_plan;
@@ -24151,7 +25812,7 @@ function buildProductDeepScanPromptV4({
     'If data is insufficient, state it once in data_quality_banner and proceed with best available evidence.',
     'Hard rules:',
     '1. No repetition across top_takeaways, watchouts, how_to_use, or evidence fields.',
-    `2. Product type: ${pType}. If type is spf or spf_moisturizer: how_to_use.when MUST be "AM only", frequency MUST be "daily", include reapplication guidance. Do NOT suggest "start 2-3 nights/week" or "PM first".`,
+    `2. Product type: ${pType}. If type is spf or spf_moisturizer: how_to_use.when MUST be "am", frequency MUST be "daily", include reapplication guidance. Do NOT suggest "start 2-3 nights/week" or "pm first".`,
     '3. If consensus_tier is low or verification_required is true: verdict_level MUST be "needs_verification" or "cautiously_ok". Do NOT return "recommended".',
     '4. Do NOT use placeholder strings as ingredient names.',
     `5. Fragrance/parfum risk: ONLY mark as confirmed when INCI is verified AND contains fragrance/parfum/known allergens. INCI verified: ${!inciVerificationRequired}.`,
@@ -25813,6 +27474,14 @@ function asStringArray(value, max = 8) {
   return out;
 }
 
+function normalizeArrayOfStrings(value, { max = 8, maxLen = 160 } = {}) {
+  return asStringArray(value, max)
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((item) => (item.length > maxLen ? item.slice(0, Math.max(1, maxLen - 1)).trimEnd() : item))
+    .filter(Boolean);
+}
+
 function asLooseStringArray(value, max = 8) {
   if (Array.isArray(value)) return asStringArray(value, max);
   const single = typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
@@ -25897,12 +27566,34 @@ function pickFirstString(...values) {
   return '';
 }
 
+function hasFilledRoutineRows(rows) {
+  return rows.some((row) => {
+    if (!row) return false;
+    if (typeof row === 'string') return Boolean(String(row).trim());
+    if (!isPlainObject(row)) return false;
+    return Boolean(
+      String(row.product || '').trim() ||
+      String(row.name || '').trim() ||
+      String(row.step || '').trim() ||
+      String(row.ingredient || '').trim()
+    );
+  });
+}
+
 function tryParseRoutineObject(value) {
-  return normalizeRoutineStateValue(value).current_routine_struct;
+  const normalized = normalizeRoutineInputWithPmShortcut(value);
+  return isPlainObject(normalized) ? normalized : null;
 }
 
 function hasRoutineData(profile) {
-  return normalizeRoutineStateFromProfile(profile).has_current_routine;
+  const profileState = normalizeRoutineStateFromProfile(profile);
+  if (profileState.has_current_routine) return true;
+  const p = isPlainObject(profile) ? profile : {};
+  const routine = tryParseRoutineObject(p.currentRoutine) || tryParseRoutineObject(p.current_routine);
+  if (!routine) return false;
+  const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  return hasFilledRoutineRows(am) || hasFilledRoutineRows(pm);
 }
 
 function deriveRoutineMissingFields(profile) {
@@ -25910,7 +27601,18 @@ function deriveRoutineMissingFields(profile) {
   if (Array.isArray(profileState.missing_routine_fields) && profileState.missing_routine_fields.length) {
     return profileState.missing_routine_fields;
   }
-  return buildMissingRoutineFields(profileState.current_routine_struct);
+  if (profileState.current_routine_struct) {
+    return buildMissingRoutineFields(profileState.current_routine_struct);
+  }
+  const p = isPlainObject(profile) ? profile : {};
+  const routine = tryParseRoutineObject(p.currentRoutine) || tryParseRoutineObject(p.current_routine);
+  if (!routine) return ['currentRoutine.am', 'currentRoutine.pm'];
+  const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  const missing = [];
+  if (!hasFilledRoutineRows(am)) missing.push('currentRoutine.am');
+  if (!hasFilledRoutineRows(pm)) missing.push('currentRoutine.pm');
+  return missing;
 }
 
 function normalizeRoutineIntakeSlot(rawSlot) {
@@ -30021,6 +31723,7 @@ async function applyRecommendationOutputGuardrailsForRoute({
       recommendations: Array.isArray(payload.recommendations) ? payload.recommendations : [],
       logger,
       lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
+      flow: 'product_intel_guardrail',
     });
     cardsWithPdpOpen.push({
       ...card,
@@ -30085,6 +31788,9 @@ function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
   const base = isPlainObject(payload) ? { ...payload } : {};
   const anchor = isPlainObject(base.original) ? base.original : null;
   const anchorBrand = normalizeDupeBrandV2(anchor && anchor.brand);
+  const baseMeta = isPlainObject(base.meta) ? { ...base.meta } : {};
+  delete baseMeta.quality_gate_enforced;
+  delete baseMeta.quality_gate_reason;
 
   const sanitizeBucket = (rows, field) => {
     const source = Array.isArray(rows) ? rows : [];
@@ -30186,7 +31892,7 @@ function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
       quality_issues: qualityIssues,
     },
     meta: {
-      ...(isPlainObject(base.meta) ? base.meta : {}),
+      ...baseMeta,
       sanitize_v1: {
         dropped_non_skincare: dupesNonSkincareDropCount + comparablesNonSkincareDropCount,
         self_ref_dropped_count: selfRefDroppedCount,
@@ -30199,6 +31905,7 @@ function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
       quality_issues: qualityIssues,
     },
   };
+  delete nextPayload.action_hint;
   const nextFieldMissing = mergeFieldMissing(base.field_missing, [
     ...(dupesNonSkincareDropCount > 0 ? [{ field: 'payload.dupes', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
     ...(comparablesNonSkincareDropCount > 0 ? [{ field: 'payload.comparables', reason: 'dupe_suggest_non_skincare_filtered' }] : []),
@@ -30206,10 +31913,9 @@ function sanitizeDupeSuggestPayload(payload, { lang = 'EN' } = {}) {
     ...(duplicateIssueCount > 0 ? [{ field: 'payload', reason: 'dupe_suggest_duplicate_identity_filtered' }] : []),
     ...(nameUrlIssueCount > 0 ? [{ field: 'payload', reason: 'dupe_suggest_name_is_url_sanitized' }] : []),
   ]);
-  const gateResult = applyDupeSuggestQualityGate(nextPayload, { lang });
 
   return {
-    payload: gateResult.payload,
+    payload: nextPayload,
     field_missing: nextFieldMissing,
     dropped,
     issues: sanitizeIssues,
@@ -39499,8 +41205,8 @@ function resolveRecoAlternativesPromptSpec(modeRaw) {
     systemFile: 'reco_alternatives_hybrid_v1.system.txt',
     schemaFile: 'reco_alternatives_hybrid_v1.user_schema.json',
     queryLine: mode === 'open_world_only'
-      ? 'Generate up to task.max_alternatives conservative anchor-based alternatives using target_product; open-world products are allowed under the hard rules.'
-      : 'Use context.candidates first and supplement with conservative open-world alternatives only when the pool is insufficient.',
+      ? 'Generate up to task.max_alternatives distinct, conservative, anchor-based alternatives for target_product. In open_world_only mode, ignore candidate-pool dependence and use target_product itself as the anchor basis. For common anchors, aim to return 2-4 viable real-product alternatives whenever possible. A viable open-world item must have a non-null product.brand, a non-null product.name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty; do not return hollow or placeholder items.'
+      : 'Use context.candidates first and supplement with distinct, conservative open-world alternatives only when the local pool is insufficient. Every returned item must be viable: distinct from the anchor, non-placeholder, and supported by anchor-linked reasons plus at least one concrete tradeoff or uncertainty.',
   };
 }
 
@@ -39588,6 +41294,214 @@ function buildRecoAlternativesCandidatePool({ sharedCandidates = [], productObj 
   return out.slice(0, limit);
 }
 
+const RECO_ALTERNATIVES_GENERIC_INGREDIENT_RE =
+  /\b(water|aqua|glycerin|butylene glycol|propylene glycol|caprylic|capric|dimethicone|silica|parfum|fragrance|phenoxyethanol|carbomer|citric acid|sodium hydroxide)\b/i;
+
+function pushRecoPromptText(out, seen, raw, { max = 6, maxLen = 80 } = {}) {
+  const text = String(raw || '').trim().replace(/\s+/g, ' ');
+  if (!text) return;
+  const trimmed = text.slice(0, maxLen);
+  const key = trimmed.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push(trimmed);
+  if (out.length > max) out.length = max;
+}
+
+function collectRecoPromptTextList(values, { max = 6, maxLen = 80 } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(values) ? values : []) {
+    if (out.length >= max) break;
+    if (typeof entry === 'string' || typeof entry === 'number') {
+      pushRecoPromptText(out, seen, entry, { max, maxLen });
+      continue;
+    }
+    if (!isPlainObject(entry)) continue;
+    pushRecoPromptText(
+      out,
+      seen,
+      pickFirstTrimmed(
+        entry.name,
+        entry.display_name,
+        entry.displayName,
+        entry.ingredient_name,
+        entry.inci,
+        entry.claim,
+        entry.claim_en,
+        entry.text,
+        entry.text_en,
+        entry.label,
+        entry.title,
+        entry.value,
+        entry.benefit,
+        entry.benefit_en,
+      ),
+      { max, maxLen },
+    );
+  }
+  return out.slice(0, max);
+}
+
+function inferRecoAlternativesUsageRole(...values) {
+  const text = values.filter(Boolean).join(' ').toLowerCase();
+  if (!text) return 'unknown';
+  if (/\b(spf|sunscreen|sun fluid|sun cream|sun lotion|uv)\b/.test(text)) return 'sunscreen';
+  if (/\b(cleanser|cleansing|face wash|foam wash|gel cleanser|wash)\b/.test(text)) return 'cleanser';
+  if (/\b(toner|mist)\b/.test(text)) return 'toner';
+  if (/\b(essence)\b/.test(text)) return 'essence';
+  if (/\b(serum|ampoule)\b/.test(text)) return 'serum';
+  if (/\b(moisturizer|moisturiser|cream|lotion|gel cream|water gel|emulsion)\b/.test(text)) return 'moisturizer';
+  if (/\b(mask)\b/.test(text)) return 'mask';
+  if (/\b(facial oil|face oil|oil)\b/.test(text)) return 'oil';
+  if (/\b(treatment|exfoliant|peel|spot|retinol|retinoid|acid)\b/.test(text)) return 'treatment';
+  return 'unknown';
+}
+
+function inferRecoAlternativesClaimHints(...values) {
+  const text = values.filter(Boolean).join(' ').toLowerCase();
+  const out = [];
+  const seen = new Set();
+  const push = (value) => pushRecoPromptText(out, seen, value, { max: 6, maxLen: 48 });
+  if (!text) return out;
+  if (/\b(hydrat|moist|hyaluronic|plump)\b/.test(text)) push('hydration');
+  if (/\b(barrier|repair|soothing|calm|redness)\b/.test(text)) push('barrier support');
+  if (/\b(bright|dark spot|tone|vitamin c|glow|niacinamide)\b/.test(text)) push('brightening');
+  if (/\b(acne|blemish|clarifying|salicylic|bha|breakout|pore)\b/.test(text)) push('blemish care');
+  if (/\b(retinol|retinoid|firm|wrinkle|aging|ageing|line)\b/.test(text)) push('anti-aging');
+  if (/\b(oil control|oil-free|matt|shine)\b/.test(text)) push('oil control');
+  if (/\b(spf|sunscreen|uv)\b/.test(text)) push('sun protection');
+  if (/\b(exfoliat|aha|bha|pha|acid|peel)\b/.test(text)) push('exfoliation');
+  return out;
+}
+
+function inferRecoAlternativesTextureHints(...values) {
+  const text = values.filter(Boolean).join(' ').toLowerCase();
+  const out = [];
+  const seen = new Set();
+  const push = (value) => pushRecoPromptText(out, seen, value, { max: 5, maxLen: 40 });
+  if (!text) return out;
+  if (/\bwater gel\b/.test(text)) push('water-gel texture');
+  if (/\bgel(-cream)?\b/.test(text)) push('gel texture');
+  if (/\blotion\b/.test(text)) push('lotion texture');
+  if (/\bcream\b/.test(text)) push('cream texture');
+  if (/\bserum\b/.test(text)) push('serum texture');
+  if (/\bbalm\b/.test(text)) push('balm texture');
+  if (/\boil\b/.test(text)) push('oil texture');
+  if (/\blightweight\b/.test(text)) push('lightweight finish');
+  if (/\brich\b/.test(text)) push('richer finish');
+  if (/\bmatte\b/.test(text)) push('matte finish');
+  if (/\bdewy\b/.test(text)) push('dewy finish');
+  return out;
+}
+
+function buildRecoAlternativesTargetSignals(product, { productInput = '', lang = 'EN' } = {}) {
+  const row = isPlainObject(product) ? product : {};
+  const category = pickFirstTrimmed(row.category, row.category_name, row.product_type, row.productType, row.type) || null;
+  const productType = pickFirstTrimmed(row.product_type, row.productType, row.type, row.category, row.category_name) || null;
+  const name = pickFirstTrimmed(row.display_name, row.displayName, row.name, row.product_name, productInput);
+  const brand = pickFirstTrimmed(row.brand, row.manufacturer);
+
+  const explicitHeroIngredients = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(row.hero_ingredients) ? row.hero_ingredients : []),
+      ...(Array.isArray(row.heroIngredients) ? row.heroIngredients : []),
+      ...(Array.isArray(row.known_actives) ? row.known_actives : []),
+      ...(Array.isArray(row.keyActives) ? row.keyActives : []),
+      ...(Array.isArray(row.key_actives) ? row.key_actives : []),
+    ],
+    { max: 6, maxLen: 48 },
+  );
+
+  const ingredientLabels = collectRecoPromptTextList(Array.isArray(row.ingredients) ? row.ingredients : [], {
+    max: 8,
+    maxLen: 48,
+  });
+  const heroIngredients = uniqCaseInsensitiveStrings(
+    [
+      ...explicitHeroIngredients,
+      ...ingredientLabels.filter((entry) => !RECO_ALTERNATIVES_GENERIC_INGREDIENT_RE.test(entry)).slice(0, 5),
+    ],
+    5,
+  );
+
+  const explicitClaims = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(row.claims) ? row.claims : []),
+      ...(Array.isArray(row.notable_claims) ? row.notable_claims : []),
+      ...(Array.isArray(row.notableClaims) ? row.notableClaims : []),
+      ...(Array.isArray(row.benefits) ? row.benefits : []),
+      ...(Array.isArray(row.highlights) ? row.highlights : []),
+      ...(Array.isArray(row.compare_highlights) ? row.compare_highlights : []),
+    ],
+    { max: 6, maxLen: 56 },
+  );
+  const claimHints = inferRecoAlternativesClaimHints(
+    name,
+    category,
+    productType,
+    productInput,
+    explicitClaims.join(' '),
+    heroIngredients.join(' '),
+  );
+  const primaryClaims = uniqCaseInsensitiveStrings([...explicitClaims, ...claimHints], 6);
+
+  const explicitKnownActives = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(row.known_actives) ? row.known_actives : []),
+      ...(Array.isArray(row.keyActives) ? row.keyActives : []),
+      ...(Array.isArray(row.key_actives) ? row.key_actives : []),
+    ],
+    { max: 8, maxLen: 48 },
+  );
+  const activeTokens = extractKnownActivesFromText(
+    [name, productInput, heroIngredients.join(', '), primaryClaims.join(', ')].filter(Boolean).join(' '),
+    lang,
+  );
+  const knownActives = uniqCaseInsensitiveStrings(
+    [
+      ...explicitKnownActives,
+      ...heroIngredients,
+      ...activeTokens.map((token) => mapRoutineActiveTokenToIngredientQuery(token, lang) || token.replace(/_/g, ' ')),
+    ],
+    8,
+  );
+
+  const textureHints = uniqCaseInsensitiveStrings(
+    [
+      ...collectRecoPromptTextList([row.texture, row.finish, ...(Array.isArray(row.texture_hints) ? row.texture_hints : [])], {
+        max: 5,
+        maxLen: 40,
+      }),
+      ...inferRecoAlternativesTextureHints(name, category, productType, explicitClaims.join(' '), productInput),
+    ],
+    5,
+  );
+
+  const usageRole = inferRecoAlternativesUsageRole(name, category, productType, primaryClaims.join(' '));
+  const notes = pickFirstTrimmed(
+    row.notes,
+    row.anchor_notes,
+    row.summary,
+    row.description,
+    row.subtitle,
+    primaryClaims.length ? primaryClaims.join('; ') : '',
+  ) || null;
+
+  return {
+    brand: brand || null,
+    name: name || null,
+    category,
+    productType,
+    usageRole,
+    heroIngredients,
+    knownActives,
+    primaryClaims,
+    textureHints,
+    notes,
+  };
+}
+
 function buildRecoAlternativesPromptPayload({
   lang,
   profileSnapshot,
@@ -39623,7 +41537,13 @@ function buildRecoAlternativesPromptPayload({
       name: null,
       query: null,
       region_variant: 'US|EU|unknown',
+      category: null,
+      product_type: null,
+      usage_role: 'unknown',
+      hero_ingredients: [],
       known_actives: [],
+      primary_claims: [],
+      texture_hints: [],
       notes: null,
     },
     task: {
@@ -39632,14 +41552,12 @@ function buildRecoAlternativesPromptPayload({
       recommendation_mode: promptSpec.mode,
       profile_mode: normalizedProfileMode,
     },
-    hard_rules: [
-      promptSpec.mode === 'pool_only'
-        ? 'Select ONLY from candidates[].'
-        : 'Prefer context.candidates first; supplement with open-world products only when the pool is insufficient.',
-      'If no suitable candidate exists, return {"alternatives": []}.',
-      'Never claim exact formula equivalence when target_product.known_actives is empty or uncertain.',
-      'Every returned item must include concrete reasons and tradeoffs.',
-    ],
+    hard_rules: promptSpec.mode === 'pool_only'
+      ? [
+        'Select ONLY from candidates[].',
+        'Never claim exact formula equivalence when target_product.known_actives is empty or uncertain.',
+      ]
+      : [],
     output_item_schema: {
       kind: 'dupe|similar|premium',
       candidate_origin: promptSpec.mode === 'pool_only' ? 'catalog' : 'catalog|open_world',
@@ -39678,16 +41596,7 @@ function buildRecoAlternativesPromptPayload({
   const product = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
   const limit = Number.isFinite(Number(maxTotal)) ? Math.max(1, Math.min(6, Math.trunc(Number(maxTotal)))) : 3;
   const langCode = normalizeRecoPromptLanguage(lang);
-  const name = pickFirstTrimmed(product.display_name, product.name, product.product_name, productInput) || null;
-  const brand = pickFirstTrimmed(product.brand, product.manufacturer) || null;
-  const knownActives = uniqCaseInsensitiveStrings(
-    [
-      ...(Array.isArray(product.known_actives) ? product.known_actives : []),
-      ...(Array.isArray(product.keyActives) ? product.keyActives : []),
-      ...(Array.isArray(product.key_actives) ? product.key_actives : []),
-    ],
-    8,
-  );
+  const targetSignals = buildRecoAlternativesTargetSignals(product, { productInput, lang: langCode });
   const normalizedCandidates = (Array.isArray(candidates) ? candidates : [])
     .map((row) => (row && typeof row === 'object' && !Array.isArray(row) ? row : null))
     .filter(Boolean)
@@ -39711,12 +41620,18 @@ function buildRecoAlternativesPromptPayload({
   payload.target_product = {
     ...(payload.target_product && typeof payload.target_product === 'object' ? payload.target_product : {}),
     anchor_id: String(anchorId || '').trim() || null,
-    brand,
-    name,
+    brand: targetSignals.brand,
+    name: targetSignals.name,
     query: String(productInput || '').trim().slice(0, 180) || null,
     region_variant: pickFirstTrimmed(product.region_variant, product.regionVariant, product.region) || 'unknown',
-    known_actives: knownActives,
-    notes: pickFirstTrimmed(product.notes, product.anchor_notes) || null,
+    category: targetSignals.category,
+    product_type: targetSignals.productType,
+    usage_role: targetSignals.usageRole,
+    hero_ingredients: targetSignals.heroIngredients,
+    known_actives: targetSignals.knownActives,
+    primary_claims: targetSignals.primaryClaims,
+    texture_hints: targetSignals.textureHints,
+    notes: targetSignals.notes,
   };
   payload.task = {
     ...(payload.task && typeof payload.task === 'object' ? payload.task : {}),
@@ -39725,19 +41640,16 @@ function buildRecoAlternativesPromptPayload({
     recommendation_mode: promptSpec.mode,
     profile_mode: normalizedProfileMode,
   };
-  const rules = Array.isArray(payload.hard_rules) ? payload.hard_rules.slice(0, 16) : [];
   if (promptSpec.mode === 'pool_only') {
+    const rules = Array.isArray(payload.hard_rules) ? payload.hard_rules.slice(0, 16) : [];
     rules.push('Select ONLY from candidates[] and copy identifiers from the chosen candidate exactly.');
+    rules.push('Do not claim exact dupe or identical formula when target_product.known_actives is empty or uncertain.');
+    payload.hard_rules = uniqCaseInsensitiveStrings(rules, 16);
+  } else if (Array.isArray(payload.hard_rules)) {
+    payload.hard_rules = uniqCaseInsensitiveStrings(payload.hard_rules.slice(0, 16), 16);
   } else {
-    rules.push('Use context.candidates first when they are viable.');
-    rules.push('Open-world products are allowed only when the local pool is insufficient.');
-    rules.push('For open-world products, do not invent product_id, sku_id, url, price, or exact INCI details.');
-    rules.push('If profile_mode is anchor_only, do not make skin-fit claims for a specific user.');
+    payload.hard_rules = [];
   }
-  rules.push('If no candidate is strong enough, return alternatives: [].');
-  rules.push('Do not claim exact dupe or identical formula when target_product.known_actives is empty or uncertain.');
-  rules.push('Every returned alternative must include reasons, tradeoffs, and missing_info when uncertainty remains.');
-  payload.hard_rules = uniqCaseInsensitiveStrings(rules, 16);
   payload.candidates = normalizedCandidates.map((row) => ({
     id: row.id,
     name: row.name,
@@ -39802,6 +41714,58 @@ function buildAuroraRecoAlternativesQuery({
     systemPrompt,
     payload,
     query: `Task: ${promptSpec.queryLine}\n${promptBody}`,
+  };
+}
+
+function summarizeRecoAlternativesRaw(alternatives, { previewLimit = 3, keyLimit = 8 } = {}) {
+  const rows = Array.isArray(alternatives) ? alternatives : [];
+  const preview = [];
+  let withProductObject = 0;
+  let withNestedBrandName = 0;
+  let withFlatBrandName = 0;
+  let withTradeoffsObject = 0;
+
+  for (const item of rows) {
+    const row = isPlainObject(item) ? item : null;
+    if (!row) continue;
+    const product = isPlainObject(row.product) ? row.product : null;
+    const tradeoffs = isPlainObject(row.tradeoffs) ? row.tradeoffs : null;
+    const flatBrand = pickFirstTrimmed(row.brand);
+    const flatName = pickFirstTrimmed(row.name, row.display_name, row.displayName, row.product_name);
+    const nestedBrand = product ? pickFirstTrimmed(product.brand) : null;
+    const nestedName = product
+      ? pickFirstTrimmed(product.name, product.display_name, product.displayName, product.product_name)
+      : null;
+
+    if (product) withProductObject += 1;
+    if (nestedBrand && nestedName) withNestedBrandName += 1;
+    if (!product && flatBrand && flatName) withFlatBrandName += 1;
+    if (tradeoffs) withTradeoffsObject += 1;
+
+    if (preview.length >= previewLimit) continue;
+    preview.push({
+      top_level_keys: Object.keys(row).slice(0, keyLimit),
+      has_product_object: Boolean(product),
+      product_keys: product ? Object.keys(product).slice(0, keyLimit) : [],
+      brand: nestedBrand || flatBrand || null,
+      name: nestedName || flatName || null,
+      similarity_score: Number.isFinite(Number(row.similarity_score))
+        ? Number(row.similarity_score)
+        : Number.isFinite(Number(row.similarity))
+          ? Number(row.similarity)
+          : null,
+      candidate_origin: pickFirstTrimmed(row.candidate_origin) || null,
+      grounding_status: pickFirstTrimmed(row.grounding_status) || null,
+    });
+  }
+
+  return {
+    raw_output_item_count: rows.length,
+    raw_items_with_product_object: withProductObject,
+    raw_items_with_nested_brand_name: withNestedBrandName,
+    raw_items_with_flat_brand_name: withFlatBrandName,
+    raw_items_with_tradeoffs_object: withTradeoffsObject,
+    raw_preview: preview,
   };
 }
 
@@ -39895,6 +41859,1208 @@ function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3 } = {}
   return out.slice(0, limit);
 }
 
+function isExternalRecoAlternativesSeedProduct(product) {
+  const row = isPlainObject(product) ? product : {};
+  const metadata = isPlainObject(row.metadata) ? row.metadata : {};
+  const pdpOpen = isPlainObject(row.pdp_open) ? row.pdp_open : isPlainObject(row.pdpOpen) ? row.pdpOpen : {};
+  const matchState = String(metadata.match_state || metadata.matchState || '').trim().toLowerCase();
+  const pdpPath = String(pdpOpen.path || '').trim().toLowerCase();
+  return matchState === 'llm_seed' || pdpPath === 'external';
+}
+
+function buildExternalSeedCompareIdentity(productObj, productInput) {
+  const row = isPlainObject(productObj) ? productObj : {};
+  const metadata = isPlainObject(row.metadata) ? row.metadata : {};
+  const llmSuggestion = isPlainObject(row.llm_suggestion)
+    ? row.llm_suggestion
+    : isPlainObject(metadata.llm_suggestion)
+      ? metadata.llm_suggestion
+      : {};
+  const aliases = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(row.search_aliases, 8),
+      ...asStringArray(row.searchAliases, 8),
+      ...asStringArray(llmSuggestion.search_aliases, 8),
+      ...asStringArray(llmSuggestion.searchAliases, 8),
+      pickFirstTrimmed(row.resolve_query, row.resolveQuery),
+      String(productInput || '').trim(),
+      buildProductInputText(row, null),
+    ],
+    8,
+  );
+  const langCode = normalizeRecoPromptLanguage(metadata.lang || row.lang || 'EN');
+  const targetSignals = buildRecoAlternativesTargetSignals(row, {
+    productInput: String(productInput || '').trim(),
+    lang: langCode,
+  });
+  const anchorLabel = joinBrandAndName(targetSignals.brand, targetSignals.name || String(productInput || '').trim());
+  const anchorNameTokens = tokenizeProductTextForSimilarity(anchorLabel);
+  const ingredientTokens = uniqCaseInsensitiveStrings(
+    [
+      ...targetSignals.heroIngredients,
+      ...targetSignals.knownActives,
+    ],
+    8,
+  );
+  const claimTokens = uniqCaseInsensitiveStrings(targetSignals.primaryClaims, 6);
+  const textureTokens = uniqCaseInsensitiveStrings(targetSignals.textureHints, 5);
+  return {
+    aliases,
+    targetSignals,
+    anchorLabel,
+    anchorNameTokens,
+    ingredientTokens,
+    claimTokens,
+    textureTokens,
+  };
+}
+
+function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', lang = 'EN' } = {}) {
+  const identity = buildExternalSeedCompareIdentity(productObj, productInput);
+  const target = identity.targetSignals;
+  const out = [];
+  const seen = new Set();
+  const normalizeQuery = (raw) => {
+    const tokens = String(raw || '')
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+    if (!tokens.length) return '';
+    const deduped = [];
+    for (const token of tokens) {
+      const normalized = token.toLowerCase();
+      if (deduped.length && deduped[deduped.length - 1].toLowerCase() === normalized) continue;
+      deduped.push(token);
+    }
+    return deduped.join(' ').trim().replace(/\s+/g, ' ');
+  };
+  const pushQuery = (raw) => {
+    const query = normalizeQuery(raw);
+    if (!query) return;
+    const key = query.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(query.slice(0, 180));
+  };
+
+  pushQuery(identity.anchorLabel);
+  for (const alias of identity.aliases) pushQuery(alias);
+
+  if (target.knownActives.length && target.usageRole !== 'unknown') {
+    pushQuery(`${target.knownActives[0]} ${target.usageRole}`);
+  }
+  if (target.brand && target.name && target.usageRole !== 'unknown' && !identity.anchorLabel.toLowerCase().includes(target.usageRole.toLowerCase())) {
+    pushQuery(`${target.brand} ${target.name} ${target.usageRole}`);
+  }
+  if (
+    target.productType &&
+    target.usageRole !== 'unknown' &&
+    normalizeQuery(target.productType).toLowerCase() !== normalizeQuery(target.usageRole).toLowerCase()
+  ) {
+    pushQuery(`${target.productType} ${target.usageRole}`);
+  }
+  if (target.primaryClaims.length && target.usageRole !== 'unknown') {
+    pushQuery(`${target.primaryClaims[0]} ${target.usageRole}`);
+  }
+  if (target.productType && target.primaryClaims.length) {
+    pushQuery(`${target.productType} ${target.primaryClaims[0]}`);
+  }
+  if (
+    target.productType &&
+    String(productInput || '').trim() &&
+    !normalizeQuery(String(productInput || '')).toLowerCase().includes(normalizeQuery(target.productType).toLowerCase())
+  ) {
+    pushQuery(`${target.productType} ${String(productInput || '').trim()}`);
+  }
+
+  if (!out.length) {
+    pushQuery(String(productInput || '').trim());
+  }
+  return out.slice(0, 6);
+}
+
+function isExternalSeedPlaceholderCandidate(candidate) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  const product = isPlainObject(row.product) ? row.product : {};
+  const joined = [
+    row.brand,
+    row.name,
+    row.display_name,
+    product.brand,
+    product.name,
+    product.display_name,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!joined) return true;
+  return /\b(budget dupe|similar option|premium option|placeholder|candidate)\b/i.test(joined);
+}
+
+function computeExternalSeedSignalOverlap(tokens, sourceText) {
+  const expected = (Array.isArray(tokens) ? tokens : [])
+    .map((token) => String(token || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (!expected.length) return 0;
+  const haystack = String(sourceText || '').trim().toLowerCase();
+  if (!haystack) return 0;
+  let hits = 0;
+  for (const token of expected) {
+    if (haystack.includes(token)) hits += 1;
+  }
+  return clamp01Score(hits / Math.max(1, expected.length));
+}
+
+function normalizePoolAlternativeRow(row, {
+  targetSignals,
+  anchorLabel = '',
+  anchorNameTokens = [],
+  ingredientTokens = [],
+  claimTokens = [],
+  textureTokens = [],
+  anchorId = '',
+} = {}) {
+  const normalized = normalizeRecoCatalogProduct(row);
+  if (!normalized) return null;
+  const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
+  const candidateLabel = joinBrandAndName(normalized.brand, pickFirstTrimmed(normalized.display_name, normalized.name));
+  if (!candidateLabel) return null;
+  if (!isSkincareCategory(normalized) || isBlacklistedCategoryOrTitle(normalized) || isExternalSeedPlaceholderCandidate(normalized)) {
+    return null;
+  }
+  const anchorToken = String(anchorId || '').trim().toLowerCase();
+  if (anchorToken && productId && productId.toLowerCase() === anchorToken) return null;
+  if (anchorLabel && candidateLabel.trim().toLowerCase() === String(anchorLabel || '').trim().toLowerCase()) return null;
+
+  const explicitCategoryRole = inferRecoAlternativesUsageRole(normalized.category);
+  const candidateRole = explicitCategoryRole !== 'unknown'
+    ? explicitCategoryRole
+    : inferRecoAlternativesUsageRole(
+        normalized.display_name,
+        normalized.name,
+        normalized.category,
+        candidateLabel,
+      );
+  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
+  if (targetRole && targetRole !== 'unknown' && candidateRole && candidateRole !== 'unknown' && candidateRole !== targetRole) {
+    return null;
+  }
+
+  const candidateText = [
+    candidateLabel,
+    normalized.category,
+    ...(Array.isArray(normalized.ingredient_tokens) ? normalized.ingredient_tokens : []),
+    ...(Array.isArray(normalized.skin_type_tags) ? normalized.skin_type_tags : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
+  const ingredientOverlap = computeExternalSeedSignalOverlap(ingredientTokens, candidateText);
+  const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, candidateText);
+  const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, candidateText);
+  const roleScore = !targetRole || targetRole === 'unknown'
+    ? 0.72
+    : candidateRole === targetRole
+      ? 1
+      : candidateRole === 'unknown'
+        ? 0.58
+        : 0.18;
+  const stableIdBonus = normalized.canonical_product_ref || normalized.product_group_id ? 0.1 : productId ? 0.06 : 0;
+  const retrievalBonus = normalized.retrieval_source === 'catalog' ? 0.06 : 0.03;
+  const mixedScore = clamp01Score(
+    roleScore * 0.44 +
+    nameOverlap * 0.14 +
+    ingredientOverlap * 0.18 +
+    claimOverlap * 0.12 +
+    textureOverlap * 0.06 +
+    stableIdBonus +
+    retrievalBonus,
+  );
+  if (mixedScore < 0.55) return null;
+
+  const pdpUrl = extractCandidateOpenUrl(normalized);
+  const pdpOpen = normalized.canonical_product_ref
+    ? { path: 'ref', product_ref: normalized.canonical_product_ref }
+    : normalized.product_group_id
+      ? { path: 'group', product_group_id: normalized.product_group_id }
+      : pdpUrl
+        ? { path: 'external', external: { url: pdpUrl, query: candidateLabel } }
+        : productId
+          ? {
+              path: 'resolve',
+              product_ref: {
+                product_id: normalized.product_id,
+                ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
+              },
+              external: { query: candidateLabel },
+            }
+          : { path: 'external', external: { query: candidateLabel } };
+
+  return {
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    ranking_mode: 'best_score_mixed',
+    product: {
+      ...(normalized.product_id ? { product_id: normalized.product_id } : {}),
+      ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
+      ...(normalized.product_group_id ? { product_group_id: normalized.product_group_id } : {}),
+      ...(normalized.sku_id ? { sku_id: normalized.sku_id } : {}),
+      ...(normalized.brand ? { brand: normalized.brand } : {}),
+      name: pickFirstTrimmed(normalized.display_name, normalized.name),
+      ...(normalized.category ? { category: normalized.category } : {}),
+      ...(pdpUrl ? { pdp_url: pdpUrl, url: pdpUrl } : {}),
+      ...(normalized.price && typeof normalized.price === 'object' ? { price: normalized.price } : {}),
+    },
+    ...(normalized.brand ? { brand: normalized.brand } : {}),
+    name: pickFirstTrimmed(normalized.display_name, normalized.name),
+    similarity_score: Math.max(1, Math.min(100, Math.round(mixedScore * 100))),
+    reasons: uniqCaseInsensitiveStrings(
+      [
+        roleScore >= 0.9 && targetRole && targetRole !== 'unknown'
+          ? `Same ${targetRole} step in the Pivota product pool.`
+          : '',
+        ingredientOverlap >= 0.34 ? 'Matches key active or ingredient signals from the anchor.' : '',
+        claimOverlap >= 0.34 ? 'Overlaps the anchor use case and claims.' : '',
+        textureOverlap >= 0.34 ? 'Texture profile is close to the anchor.' : '',
+        stableIdBonus >= 0.1 ? 'Has stable product identifiers in the current pool.' : '',
+      ],
+      3,
+    ),
+    tradeoff_notes: uniqCaseInsensitiveStrings(
+      [
+        normalized.retrieval_source === 'external_seed'
+          ? 'Pool hit is external-backed, so internal PDP coverage may vary.'
+          : '',
+        candidateRole === 'unknown' ? 'Exact usage role is inferred from sparse catalog text.' : '',
+      ],
+      2,
+    ),
+    best_use: targetRole && targetRole !== 'unknown' ? `Best for ${targetRole} compare.` : null,
+    pdp_open: pdpOpen,
+    metadata: {
+      compare_stage: 'pool_only',
+      retrieval_source: normalized.retrieval_source || null,
+      raw_similarity_score: Number(mixedScore.toFixed(3)),
+    },
+    _mixed_score: mixedScore,
+  };
+}
+
+async function collectExternalSeedPoolAlternatives({
+  ctx,
+  productInput,
+  productObj,
+  maxTotal = 3,
+  anchorId = '',
+  logger,
+} = {}) {
+  const identity = buildExternalSeedCompareIdentity(productObj, productInput);
+  const queryPlan = buildExternalSeedCompareSearchQueries({
+    productObj,
+    productInput,
+    lang: ctx?.lang || 'EN',
+  });
+  const normalizedLimit = Math.max(3, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const candidateRows = [];
+  const embeddedPool = buildRecoAlternativesCandidatePool({
+    sharedCandidates: [],
+    productObj,
+    anchorId,
+    maxCandidates: 12,
+  });
+  for (const row of embeddedPool) candidateRows.push(row);
+
+  for (const query of queryPlan) {
+    // eslint-disable-next-line no-await-in-loop
+    const searched = await searchPivotaBackendProducts({
+      query,
+      limit: 8,
+      logger,
+      timeoutMs: 1400,
+      minTimeoutMs: 240,
+      mode: 'main_path',
+      allowExternalSeed: true,
+      externalSeedStrategy: 'supplement_internal_first',
+      fastMode: true,
+    });
+    const list = Array.isArray(searched?.products) ? searched.products : [];
+    for (const row of list) candidateRows.push(row);
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const row of candidateRows) {
+    const normalized = normalizePoolAlternativeRow(row, {
+      targetSignals: identity.targetSignals,
+      anchorLabel: identity.anchorLabel,
+      anchorNameTokens: identity.anchorNameTokens,
+      ingredientTokens: identity.ingredientTokens,
+      claimTokens: identity.claimTokens,
+      textureTokens: identity.textureTokens,
+      anchorId,
+    });
+    if (!normalized) continue;
+    const product = isPlainObject(normalized.product) ? normalized.product : {};
+    const dedupeKey = pickFirstTrimmed(
+      product.product_id,
+      product.sku_id,
+      product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
+    ).toLowerCase();
+    if (!dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    deduped.push(normalized);
+  }
+
+  deduped.sort((left, right) => {
+    const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(left?.product?.name || '').localeCompare(String(right?.product?.name || ''));
+  });
+
+  return {
+    identity,
+    queries: queryPlan,
+    candidates: deduped.slice(0, Math.max(normalizedLimit, 6)),
+  };
+}
+
+function buildExternalSeedOpenWorldSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      alternatives: {
+        type: 'array',
+        minItems: 0,
+        maxItems: 6,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            brand: { type: 'string' },
+            name: { type: 'string' },
+            product_type: { type: ['string', 'null'] },
+            similarity_score: { type: ['number', 'null'] },
+            reasons: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 3,
+              items: { type: 'string' },
+            },
+            tradeoff_notes: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 3,
+              items: { type: 'string' },
+            },
+            best_use: { type: ['string', 'null'] },
+          },
+          required: ['brand', 'name', 'reasons', 'tradeoff_notes'],
+        },
+      },
+    },
+    required: ['alternatives'],
+  };
+}
+
+function limitCompactStrings(values, limit, maxChars = 64) {
+  return uniqCaseInsensitiveStrings(asStringArray(values, limit), limit)
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .map((value) => value.slice(0, maxChars))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {}, productInput = '', activeThemes = [] } = {}) {
+  const compact = {};
+  const queryText = String(productInput || '').trim();
+  const brand = pickFirstTrimmed(targetSignals.brand);
+  const name = pickFirstTrimmed(targetSignals.name);
+  const category = pickFirstTrimmed(targetSignals.category);
+  const productType = pickFirstTrimmed(targetSignals.productType);
+  const usageRole = pickFirstTrimmed(targetSignals.usageRole);
+  const heroIngredients = limitCompactStrings(targetSignals.heroIngredients, 2, 40);
+  const knownActives = limitCompactStrings(targetSignals.knownActives, 2, 40);
+  const primaryClaims = limitCompactStrings(targetSignals.primaryClaims, 2, 56);
+  const textureHints = limitCompactStrings(targetSignals.textureHints, 1, 40);
+  const notes = String(targetSignals.notes || '').trim();
+
+  if (String(anchorId || '').trim()) compact.anchor_id = String(anchorId || '').trim();
+  if (brand) compact.brand = brand;
+  if (name) compact.name = name;
+  if (queryText) compact.query = queryText.slice(0, 140);
+  if (category) compact.category = category;
+  if (productType) compact.product_type = productType;
+  if (usageRole && usageRole.toLowerCase() !== 'unknown') compact.usage_role = usageRole;
+  if (heroIngredients.length) compact.hero_ingredients = heroIngredients;
+  if (knownActives.length) compact.known_actives = knownActives;
+  if (primaryClaims.length) compact.primary_claims = primaryClaims;
+  if (textureHints.length) compact.texture_hints = textureHints;
+  if (Array.isArray(activeThemes) && activeThemes.length) compact.active_themes = uniqCaseInsensitiveStrings(activeThemes, 6);
+
+  const anchorSignalCount =
+    Number(Boolean(brand)) +
+    Number(Boolean(name)) +
+    Number(Boolean(category)) +
+    Number(Boolean(productType)) +
+    Number(Boolean(usageRole && usageRole.toLowerCase() !== 'unknown')) +
+    heroIngredients.length +
+    knownActives.length +
+    primaryClaims.length +
+    textureHints.length;
+  if (notes && anchorSignalCount <= 2) {
+    compact.notes = notes.slice(0, 80);
+  }
+  return compact;
+}
+
+const RECO_OPEN_WORLD_ACTIVE_THEME_RULES = [
+  { key: 'niacinamide', patterns: [/\bniacinamide\b/i, /烟酰胺/], aliases: ['niacinamide'] },
+  { key: 'zinc', patterns: [/\bzinc\b/i, /锌/], aliases: ['zinc'] },
+  { key: 'salicylic_acid', patterns: [/\bsalicylic\b/i, /\bbha\b/i, /水杨酸/], aliases: ['salicylic acid', 'bha'] },
+  { key: 'hyaluronic_acid', patterns: [/\bhyaluronic\b/i, /\bha\b/i, /\bsodium hyaluronate\b/i, /玻尿酸/, /透明质酸/], aliases: ['hyaluronic acid'] },
+  { key: 'vitamin_c', patterns: [/\bvitamin c\b/i, /\bascorb/i, /维c/, /维C/, /抗坏血酸/], aliases: ['vitamin c'] },
+  { key: 'retinol', patterns: [/\bretinol\b/i, /\bretinal\b/i, /\bretinoid\b/i, /视黄醇/, /a醇/, /维a/], aliases: ['retinol', 'retinoid'] },
+  { key: 'ceramide', patterns: [/\bceramide\b/i, /神经酰胺/], aliases: ['ceramide'] },
+  { key: 'peptide', patterns: [/\bpeptide\b/i, /肽/], aliases: ['peptide'] },
+  { key: 'azelaic_acid', patterns: [/\bazelaic\b/i, /壬二酸/], aliases: ['azelaic acid'] },
+  { key: 'tranexamic_acid', patterns: [/\btranexamic\b/i, /传明酸/, /氨甲环酸/], aliases: ['tranexamic acid'] },
+  { key: 'panthenol', patterns: [/\bpanthenol\b/i, /\bprovitamin b5\b/i, /泛醇/, /维生素b5/, /维B5/], aliases: ['panthenol'] },
+  { key: 'snail_mucin', patterns: [/\bsnail\b/i, /\bmucin\b/i, /蜗牛/], aliases: ['snail mucin'] },
+];
+
+function extractRecoOpenWorldActiveThemesFromText(...values) {
+  const joined = values
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!joined) return [];
+  const out = [];
+  for (const rule of RECO_OPEN_WORLD_ACTIVE_THEME_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(joined))) out.push(rule.key);
+  }
+  return uniqCaseInsensitiveStrings(out, 8);
+}
+
+function deriveRecoOpenWorldAnchorActiveThemes({ targetSignals = {}, productInput = '' } = {}) {
+  const signals = targetSignals && typeof targetSignals === 'object' && !Array.isArray(targetSignals) ? targetSignals : {};
+  return extractRecoOpenWorldActiveThemesFromText(
+    signals.knownActives,
+    signals.heroIngredients,
+    signals.primaryClaims,
+    signals.notes,
+    signals.name,
+    signals.productType,
+    signals.category,
+    productInput,
+  );
+}
+
+function hasRecoOpenWorldActiveOverlap({ anchorActiveThemes = [], candidateText = '' } = {}) {
+  const anchorThemes = uniqCaseInsensitiveStrings(anchorActiveThemes, 8);
+  if (!anchorThemes.length) return false;
+  const candidateThemes = extractRecoOpenWorldActiveThemesFromText(candidateText);
+  return anchorThemes.some((theme) => candidateThemes.includes(theme));
+}
+
+function buildFallbackOpenWorldTradeoffNote({ candidateRole = '', targetRole = '', productType = '', targetSignals = {} } = {}) {
+  const normalizedCandidateRole = String(candidateRole || '').trim().toLowerCase();
+  const normalizedTargetRole = String(targetRole || '').trim().toLowerCase();
+  if (
+    normalizedCandidateRole &&
+    normalizedTargetRole &&
+    normalizedCandidateRole !== 'unknown' &&
+    normalizedTargetRole !== 'unknown' &&
+    normalizedCandidateRole !== normalizedTargetRole
+  ) {
+    return `Role overlap is approximate rather than exact ${normalizedTargetRole} parity.`;
+  }
+  const targetProductType = pickFirstTrimmed(targetSignals.productType, targetSignals.category).toLowerCase();
+  const candidateProductType = String(productType || '').trim().toLowerCase();
+  if (targetProductType && candidateProductType && targetProductType !== candidateProductType) {
+    return 'Format overlap remains approximate rather than exact.';
+  }
+  return 'Formula overlap remains uncertain.';
+}
+
+function recoverCompleteOpenWorldAlternativesFromRawText(rawText) {
+  const text = unwrapCodeFence(rawText);
+  const keyMatch = /"alternatives"\s*:\s*\[/i.exec(text);
+  if (!keyMatch) return [];
+  const arrayStart = text.indexOf('[', keyMatch.index);
+  if (arrayStart < 0) return [];
+  const recovered = [];
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let objectStart = -1;
+  for (let index = arrayStart + 1; index < text.length; index += 1) {
+    const char = text[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{') {
+      if (depth === 0) objectStart = index;
+      depth += 1;
+      continue;
+    }
+    if (char === '}') {
+      if (depth > 0) depth -= 1;
+      if (depth === 0 && objectStart >= 0) {
+        const rawObject = text.slice(objectStart, index + 1);
+        const parsed = parseJsonOnlyObject(rawObject);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) recovered.push(parsed);
+        objectStart = -1;
+      }
+      continue;
+    }
+    if (char === ']' && depth === 0) break;
+  }
+  return recovered;
+}
+
+function normalizeOpenWorldEmptyReason(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return null;
+  if (token === 'anchor_not_recognizable_skincare') return 'anchor_signal_insufficient_for_open_world';
+  if (token === 'anchor_signal_insufficient_for_open_world') return 'anchor_signal_insufficient_for_open_world';
+  return null;
+}
+
+function extractSingleOpenWorldAlternativePayload(raw) {
+  const parsed = isPlainObject(raw) ? raw : null;
+  if (!parsed) return { alternative: null, emptyReason: null };
+  const emptyReason = normalizeOpenWorldEmptyReason(
+    pickFirstTrimmed(parsed.empty_reason, parsed.emptyReason, parsed.no_result_reason, parsed.noResultReason),
+  );
+  if (isPlainObject(parsed.alternative)) {
+    return { alternative: parsed.alternative, emptyReason };
+  }
+  if (Array.isArray(parsed.alternatives) && parsed.alternatives.length > 0 && isPlainObject(parsed.alternatives[0])) {
+    return { alternative: parsed.alternatives[0], emptyReason };
+  }
+  if (pickFirstTrimmed(parsed.brand) && pickFirstTrimmed(parsed.name)) {
+    return {
+      alternative: {
+        brand: parsed.brand,
+        name: parsed.name,
+        product_type: parsed.product_type ?? parsed.productType ?? null,
+        similarity_score: parsed.similarity_score ?? parsed.similarityScore ?? null,
+        reason: parsed.reason ?? null,
+        tradeoff_note: parsed.tradeoff_note ?? parsed.tradeoffNote ?? null,
+      },
+      emptyReason,
+    };
+  }
+  return { alternative: null, emptyReason };
+}
+
+function recoverSingleOpenWorldAlternativeFromRawText(rawText) {
+  const text = unwrapCodeFence(rawText);
+  const parsed = parseJsonOnlyObject(text);
+  const fromParsed = extractSingleOpenWorldAlternativePayload(parsed);
+  if (fromParsed.alternative || fromParsed.emptyReason) return fromParsed;
+
+  const altMatch = /"alternative"\s*:\s*\{/i.exec(text);
+  if (altMatch) {
+    const objectStart = text.indexOf('{', altMatch.index);
+    if (objectStart >= 0) {
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      for (let index = objectStart; index < text.length; index += 1) {
+        const char = text[index];
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (inString) continue;
+        if (char === '{') depth += 1;
+        else if (char === '}') {
+          depth -= 1;
+          if (depth === 0) {
+            const recovered = parseJsonOnlyObject(text.slice(objectStart, index + 1));
+            if (isPlainObject(recovered)) return { alternative: recovered, emptyReason: null };
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  const recoveredAlternatives = recoverCompleteOpenWorldAlternativesFromRawText(text);
+  if (recoveredAlternatives.length > 0) {
+    return { alternative: recoveredAlternatives[0], emptyReason: null };
+  }
+
+  return { alternative: null, emptyReason: null };
+}
+
+function normalizeOpenWorldAlternativeRow(candidate, {
+  targetSignals,
+  anchorLabel = '',
+  anchorNameTokens = [],
+  anchorActiveThemes = [],
+  ingredientTokens = [],
+  claimTokens = [],
+  textureTokens = [],
+} = {}) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  const brand = pickFirstTrimmed(row.brand);
+  const name = pickFirstTrimmed(row.name, row.display_name, row.displayName);
+  const productType = pickFirstTrimmed(row.product_type, row.productType, targetSignals?.productType, targetSignals?.category);
+  if (!brand || !name) return null;
+  const candidateLabel = joinBrandAndName(brand, name);
+  if (!candidateLabel || candidateLabel.trim().toLowerCase() === String(anchorLabel || '').trim().toLowerCase()) return null;
+  const categoryProbe = { brand, name, category: productType, product_type: productType };
+  const explicitCategoryRole = inferRecoAlternativesUsageRole(productType);
+  const candidateRole = explicitCategoryRole !== 'unknown'
+    ? explicitCategoryRole
+    : inferRecoAlternativesUsageRole(candidateLabel, productType);
+  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
+  if (!isSkincareCategory(categoryProbe) && candidateRole !== targetRole) return null;
+  if (isBlacklistedCategoryOrTitle(categoryProbe) || isExternalSeedPlaceholderCandidate(categoryProbe)) return null;
+
+  const reasons = uniqCaseInsensitiveStrings(
+    asStringArray(row.reasons, 3).concat(asLooseStringArray(row.reason, 1)),
+    3,
+  );
+  const tradeoffNotesRaw = uniqCaseInsensitiveStrings(
+    asStringArray(row.tradeoff_notes, 3).concat(asLooseStringArray(row.tradeoff_note, 1)),
+    3,
+  );
+  if (!reasons.length) return null;
+  const tradeoffNotes = tradeoffNotesRaw.length
+    ? tradeoffNotesRaw
+    : [buildFallbackOpenWorldTradeoffNote({
+      candidateRole,
+      targetRole,
+      productType,
+      targetSignals,
+    })];
+
+  const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
+  if (!hasRecoOpenWorldActiveOverlap({ anchorActiveThemes, candidateText: sourceText })) return null;
+  const baseScoreRaw = Number(row.similarity_score);
+  const baseScore = Number.isFinite(baseScoreRaw) ? clamp01Score(baseScoreRaw > 1 ? baseScoreRaw / 100 : baseScoreRaw) : 0.62;
+  const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
+  const ingredientOverlap = computeExternalSeedSignalOverlap(ingredientTokens, sourceText);
+  const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, sourceText);
+  const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, sourceText);
+  const roleScore = !targetRole || targetRole === 'unknown'
+    ? 0.72
+    : candidateRole === targetRole
+      ? 1
+      : candidateRole === 'unknown'
+        ? 0.52
+        : 0.14;
+  const mixedScore = clamp01Score(
+    baseScore * 0.34 +
+    roleScore * 0.28 +
+    ingredientOverlap * 0.14 +
+    claimOverlap * 0.12 +
+    textureOverlap * 0.06 +
+    nameOverlap * 0.06,
+  );
+
+  return {
+    kind: 'similar',
+    candidate_origin: 'open_world',
+    grounding_status: 'name_only',
+    ranking_mode: 'best_score_mixed',
+    product: {
+      brand,
+      name,
+      ...(productType ? { category: productType } : {}),
+    },
+    brand,
+    name,
+    similarity_score: Math.max(1, Math.min(100, Math.round(mixedScore * 100))),
+    reasons,
+    tradeoff_notes: tradeoffNotes,
+    pdp_open: {
+      path: 'external',
+      external: {
+        query: candidateLabel,
+      },
+    },
+    metadata: {
+      compare_stage: 'open_world',
+      raw_similarity_score: Number(mixedScore.toFixed(3)),
+    },
+    _mixed_score: mixedScore,
+  };
+}
+
+async function fetchRecoAlternativesForLocalOpenWorld({
+  ctx,
+  productInput,
+  productObj,
+  anchorId = '',
+  maxTotal = 3,
+  logger,
+  profileMode = 'anchor_only',
+} = {}) {
+  const limit = 1;
+  const identity = buildExternalSeedCompareIdentity(productObj, productInput);
+  const targetSignals = identity.targetSignals;
+  const anchorActiveThemes = deriveRecoOpenWorldAnchorActiveThemes({ targetSignals, productInput });
+  const resolvedModel = resolveRecoAlternativesOpenWorldGeminiModel();
+  const hasAnchorSignals = Boolean(
+    String(identity.anchorLabel || '').trim() ||
+    String(targetSignals.category || '').trim() ||
+    String(targetSignals.productType || '').trim() ||
+    (String(targetSignals.usageRole || '').trim() && String(targetSignals.usageRole || '').trim().toLowerCase() !== 'unknown') ||
+    (Array.isArray(targetSignals.heroIngredients) && targetSignals.heroIngredients.length > 0) ||
+    (Array.isArray(targetSignals.knownActives) && targetSignals.knownActives.length > 0) ||
+    (Array.isArray(targetSignals.primaryClaims) && targetSignals.primaryClaims.length > 0) ||
+    (Array.isArray(targetSignals.textureHints) && targetSignals.textureHints.length > 0) ||
+    String(targetSignals.notes || '').trim() ||
+    String(productInput || '').trim()
+  );
+  const emptyRawOutputSummary = summarizeRecoAlternativesRaw([]);
+
+  if (!hasAnchorSignals || !anchorActiveThemes.length) {
+    return {
+      ok: true,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'anchor_signal_insufficient_for_open_world' }],
+      source_mode: 'open_world_only',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: 'precheck_fail',
+      attempt_count: 0,
+      no_result_reason: 'anchor_signal_insufficient_for_open_world',
+      recommendation_mode: 'open_world_only',
+      profile_mode: normalizeAlternativesProfileMode(profileMode),
+      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+      raw_output_summary: emptyRawOutputSummary,
+      llm_trace: {
+        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+        prompt_hash: null,
+        prompt_chars: 0,
+        token_est: 0,
+        latency_ms: 0,
+        cache_hit: false,
+        provider: 'gemini',
+        model: resolvedModel,
+        source_mode: 'local_gemini_open_world',
+        error_class: 'precheck_fail',
+        provider_reason: 'anchor_signal_insufficient_for_open_world',
+        provider_detail: null,
+        provider_route: 'aurora_reco_alternatives_open_world',
+        provider_model: resolvedModel,
+      },
+    };
+  }
+
+  const systemPrompt = loadRecoPromptTemplateFile(RECO_ALTERNATIVES_OPEN_WORLD_SYSTEM_FILE, {
+    parseJson: false,
+    fallback: [
+      'Return JSON only.',
+      'Output exactly one JSON object with keys: alternative, empty_reason.',
+      'If alternative is present, it may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
+      'Return exactly 1 distinct real skincare product from a different brand when active or ingredient theme overlap is explicit.',
+      'Return alternative:null only when the anchor is not recognizable skincare or lacks explicit active or ingredient theme.',
+      'Do not output extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
+    ].join('\n'),
+  });
+  const userPayload = {
+    lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
+    anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput, activeThemes: anchorActiveThemes }),
+    task: {
+      max_alternatives: limit,
+      selection_rule: 'Open-world only. If anchor.active_themes is non-empty, return exactly 1 distinct viable skincare alternative from a different brand with clear active or ingredient theme overlap. If anchor.active_themes is empty or the anchor is not recognizable skincare, return alternative:null with explicit empty_reason.',
+    },
+  };
+  const userPrompt = JSON.stringify(userPayload);
+  const traceSeed = buildRecoPromptTrace({
+    templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+    query: `${systemPrompt}\n${userPrompt}`,
+    provider: 'gemini',
+    model: resolvedModel,
+    coverage: {
+      has_anchor_id: Boolean(String(anchorId || '').trim()),
+      has_product_json: Boolean(productObj && typeof productObj === 'object' && !Array.isArray(productObj)),
+      has_recent_logs: false,
+    },
+  });
+
+  try {
+    const startedAt = Date.now();
+    const resp = await callGeminiJsonObjectImpl({
+      model: resolvedModel,
+      systemPrompt,
+      userPrompt,
+      timeoutMs: 6000,
+      temperature: 0.2,
+      maxOutputTokens: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
+      route: 'aurora_reco_alternatives_open_world',
+      ignoreForceModel: true,
+    });
+    let extracted = extractSingleOpenWorldAlternativePayload(resp?.ok === true && isPlainObject(resp.json) ? resp.json : null);
+    let rawRows = extracted.alternative ? [extracted.alternative] : [];
+    if (!rawRows.length && typeof resp?.raw_text === 'string') {
+      extracted = recoverSingleOpenWorldAlternativeFromRawText(resp.raw_text);
+      rawRows = extracted.alternative ? [extracted.alternative] : [];
+    }
+    const explicitEmptyReason = normalizeOpenWorldEmptyReason(extracted.emptyReason);
+    const rawOutputSummary = summarizeRecoAlternativesRaw(rawRows);
+    const llmTrace = {
+      ...traceSeed,
+      latency_ms: Math.max(0, Date.now() - startedAt),
+      cache_hit: false,
+      source_mode: 'local_gemini_open_world',
+      provider_reason: resp?.ok === true ? null : String(resp?.reason || '').trim() || null,
+      provider_detail: resp?.ok === true ? null : String(resp?.detail || '').trim() || null,
+      provider_route: 'aurora_reco_alternatives_open_world',
+      provider_model: resolvedModel,
+      provider_timeout_stage: resp?.ok === true ? null : String(resp?.timeout_stage || '').trim() || null,
+      provider_total_ms: Number.isFinite(Number(resp?.total_ms)) ? Math.max(0, Math.trunc(Number(resp.total_ms))) : null,
+      provider_upstream_ms: Number.isFinite(Number(resp?.upstream_ms)) ? Math.max(0, Math.trunc(Number(resp.upstream_ms))) : null,
+      provider_result_reason: resp?.meta && typeof resp.meta === 'object' ? String(resp.meta.result_reason || '').trim() || null : null,
+      finish_reason: String(resp?.finish_reason || '').trim() || null,
+      parse_status: String(resp?.parse_status || '').trim() || null,
+      ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
+    };
+
+    if (resp?.ok !== true && !rawRows.length) {
+      return {
+        ok: true,
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'provider_error' }],
+        source_mode: 'open_world_only',
+        fallback_source: 'none',
+        refresh_pending: false,
+        refresh_after_ms: 0,
+        failure_class: classifyAlternativesFailureCode(resp?.reason),
+        attempt_count: 1,
+        no_result_reason: 'local_open_world_provider_error',
+        recommendation_mode: 'open_world_only',
+        profile_mode: normalizeAlternativesProfileMode(profileMode),
+        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+        raw_output_summary: rawOutputSummary,
+        llm_trace: llmTrace,
+      };
+    }
+
+    const normalized = rawRows
+      .map((row) => normalizeOpenWorldAlternativeRow(row, {
+        targetSignals,
+        anchorLabel: identity.anchorLabel,
+        anchorNameTokens: identity.anchorNameTokens,
+        anchorActiveThemes,
+        ingredientTokens: identity.ingredientTokens,
+        claimTokens: identity.claimTokens,
+        textureTokens: identity.textureTokens,
+      }))
+      .filter(Boolean);
+    const deduped = [];
+    const seen = new Set();
+    for (const row of normalized) {
+      const product = isPlainObject(row.product) ? row.product : {};
+      const dedupeKey = pickFirstTrimmed(
+        product.product_id,
+        product.sku_id,
+        product.url,
+        product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
+      ).toLowerCase();
+      if (!dedupeKey || seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      deduped.push(row);
+      if (deduped.length >= limit) break;
+    }
+
+    if (!deduped.length) {
+      const noResultReason = explicitEmptyReason || 'open_world_empty_structured';
+      const errorClass = explicitEmptyReason ? null : 'empty_structured';
+      return {
+        ok: true,
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: explicitEmptyReason || 'upstream_missing_or_empty' }],
+        source_mode: 'open_world_only',
+        fallback_source: 'none',
+        refresh_pending: false,
+        refresh_after_ms: 0,
+        failure_class: explicitEmptyReason ? 'precheck_fail' : 'empty_structured',
+        attempt_count: 1,
+        no_result_reason: noResultReason,
+        recommendation_mode: 'open_world_only',
+        profile_mode: normalizeAlternativesProfileMode(profileMode),
+        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+        raw_output_summary: rawOutputSummary,
+        llm_trace: {
+          ...llmTrace,
+          ...(errorClass ? { error_class: errorClass } : {}),
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      alternatives: deduped,
+      field_missing: [],
+      source_mode: 'open_world_only',
+      fallback_source: null,
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: null,
+      attempt_count: 1,
+      recommendation_mode: 'open_world_only',
+      profile_mode: normalizeAlternativesProfileMode(profileMode),
+      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+      raw_output_summary: rawOutputSummary,
+      llm_trace: llmTrace,
+    };
+  } catch (err) {
+    logger?.warn?.(
+      { err: err?.message || String(err), request_id: ctx?.request_id, trace_id: ctx?.trace_id },
+      'aurora bff: local open-world alternatives stage failed',
+    );
+    const errorClass = classifyAlternativesFailureCode(err?.code || err?.message);
+    return {
+      ok: true,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'provider_error' }],
+      source_mode: 'open_world_only',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: errorClass,
+      attempt_count: 1,
+      no_result_reason: 'local_open_world_provider_error',
+      recommendation_mode: 'open_world_only',
+      profile_mode: normalizeAlternativesProfileMode(profileMode),
+      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+      raw_output_summary: emptyRawOutputSummary,
+      llm_trace: {
+        ...buildRecoPromptTrace({
+          templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
+          query: '',
+          provider: 'gemini',
+          model: resolvedModel,
+        }),
+        latency_ms: 0,
+        cache_hit: false,
+        source_mode: 'local_gemini_open_world',
+        error_class: errorClass,
+        provider_reason: String(err?.code || err?.message || '').trim() || null,
+        provider_detail: String(err?.message || '').trim() || null,
+        provider_route: 'aurora_reco_alternatives_open_world',
+        provider_model: resolvedModel,
+        provider_timeout_stage: null,
+        provider_total_ms: null,
+        provider_upstream_ms: null,
+        provider_result_reason: null,
+      },
+    };
+  }
+}
+
+async function fetchRecoAlternativesForExternalSeedProduct({
+  ctx,
+  productInput,
+  productObj,
+  anchorId = '',
+  maxTotal = 3,
+  logger,
+} = {}) {
+  const limit = Math.max(1, Math.min(3, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const pool = await collectExternalSeedPoolAlternatives({
+    ctx,
+    productInput,
+    productObj,
+    maxTotal: limit,
+    anchorId,
+    logger,
+  });
+  const targetSignals = pool.identity.targetSignals;
+  const poolCandidates = Array.isArray(pool.candidates) ? pool.candidates : [];
+  let openWorldRows = [];
+  let openWorldStatus = 'empty';
+  let llmTrace = null;
+
+  const poolSummary = poolCandidates.slice(0, 4).map((row) => {
+    const product = isPlainObject(row.product) ? row.product : {};
+    return {
+      brand: pickFirstTrimmed(product.brand),
+      name: pickFirstTrimmed(product.name),
+      similarity_score: Number.isFinite(Number(row.similarity_score)) ? Number(row.similarity_score) : null,
+      reasons: asStringArray(row.reasons, 2),
+    };
+  });
+
+  const systemPrompt = [
+    'You are a strict skincare compare assistant.',
+    'Output STRICT JSON only that matches the schema.',
+    'Suggest 3 to 6 real skincare alternatives for the anchor product.',
+    'Never invent URLs, product IDs, SKUs, exact INCI lists, or internal catalog references.',
+    'Each alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
+    'Reject makeup, tools, fragrance, body-only items, haircare, and placeholder products.',
+  ].join('\n');
+  const userPayload = {
+    lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
+    anchor: {
+      brand: targetSignals.brand,
+      name: targetSignals.name,
+      query: String(productInput || '').trim() || null,
+      product_type: targetSignals.productType,
+      usage_role: targetSignals.usageRole,
+      hero_ingredients: targetSignals.heroIngredients,
+      known_actives: targetSignals.knownActives,
+      primary_claims: targetSignals.primaryClaims,
+      texture_hints: targetSignals.textureHints,
+      notes: targetSignals.notes,
+    },
+    pool_summary: poolSummary,
+    task: {
+      max_alternatives: Math.max(3, limit),
+      selection_rule: 'Prefer Pivota product-pool candidates when they are already strong, then use open-world suggestions to fill the remaining best-score slots.',
+    },
+  };
+
+  try {
+    const startedAt = Date.now();
+    const resp = await callGeminiJsonObjectImpl({
+      model: ANALYSIS_STORY_MODEL_GEMINI,
+      systemPrompt,
+      userPrompt: JSON.stringify(userPayload, null, 2),
+      timeoutMs: 6000,
+      temperature: 0.2,
+      maxOutputTokens: 1200,
+      responseJsonSchema: buildExternalSeedOpenWorldSchema(),
+      route: 'aurora_reco_alternatives_open_world',
+    });
+    llmTrace = {
+      template_id: 'reco_alternatives_open_world_v1',
+      latency_ms: Math.max(0, Date.now() - startedAt),
+      error_class: resp?.ok === true ? null : classifyAlternativesFailureCode(resp?.reason),
+    };
+    if (resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)) {
+      openWorldRows = resp.json.alternatives
+        .map((row) => normalizeOpenWorldAlternativeRow(row, {
+          targetSignals,
+          anchorLabel: pool.identity.anchorLabel,
+          anchorNameTokens: pool.identity.anchorNameTokens,
+          ingredientTokens: pool.identity.ingredientTokens,
+          claimTokens: pool.identity.claimTokens,
+          textureTokens: pool.identity.textureTokens,
+        }))
+        .filter(Boolean);
+      openWorldStatus = openWorldRows.length ? 'success' : 'empty';
+    } else {
+      openWorldStatus = resp?.ok === false ? 'provider_error' : 'empty';
+    }
+  } catch (err) {
+    logger?.warn?.(
+      { err: err?.message || String(err), request_id: ctx?.request_id, trace_id: ctx?.trace_id },
+      'aurora bff: external seed compare open-world stage failed',
+    );
+    llmTrace = {
+      template_id: 'reco_alternatives_open_world_v1',
+      latency_ms: 0,
+      error_class: classifyAlternativesFailureCode(err?.code || err?.message),
+    };
+    openWorldStatus = 'provider_error';
+  }
+
+  const merged = [];
+  const seen = new Set();
+  for (const row of [...poolCandidates, ...openWorldRows].sort((left, right) => {
+    const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    if (String(left?.candidate_origin || '') !== String(right?.candidate_origin || '')) {
+      return String(left?.candidate_origin || '') === 'pool' ? -1 : 1;
+    }
+    return String(left?.product?.name || '').localeCompare(String(right?.product?.name || ''));
+  })) {
+    const product = isPlainObject(row.product) ? row.product : {};
+    const key = pickFirstTrimmed(
+      product.product_id,
+      product.sku_id,
+      product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
+    ).toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+    if (merged.length >= limit) break;
+  }
+
+  const cleanedAlternatives = merged.map((row) => {
+    const next = { ...(row || {}) };
+    delete next._mixed_score;
+    return next;
+  });
+  const poolSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length;
+  const openWorldSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length;
+  const compareMeta = {
+    pool_candidate_count: poolCandidates.length,
+    pool_selected_count: poolSelectedCount,
+    open_world_candidate_count: openWorldRows.length,
+    open_world_selected_count: openWorldSelectedCount,
+    ranking_mode: 'best_score_mixed',
+    pool_recall_status: poolCandidates.length >= 3 ? 'full' : poolCandidates.length > 0 ? 'partial' : 'empty',
+    open_world_status: openWorldStatus,
+  };
+
+  if (!cleanedAlternatives.length) {
+    return {
+      ok: true,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'no_viable_compare_candidates' }],
+      source_mode: 'pool_open_world_mixed',
+      fallback_source: 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: openWorldStatus === 'provider_error' ? 'provider_error' : null,
+      attempt_count: 1,
+      no_result_reason: openWorldStatus === 'provider_error'
+        ? 'open_world_provider_error_after_pool_empty'
+        : 'pool_and_open_world_empty',
+      llm_trace: llmTrace,
+      compare_meta: compareMeta,
+    };
+  }
+
+  return {
+    ok: true,
+    alternatives: cleanedAlternatives,
+    field_missing: [],
+    source_mode: 'pool_open_world_mixed',
+    fallback_source: null,
+    refresh_pending: false,
+    refresh_after_ms: 0,
+    failure_class: openWorldStatus === 'provider_error' && poolSelectedCount === 0 ? 'provider_error' : null,
+    attempt_count: 1,
+    llm_trace: llmTrace,
+    compare_meta: compareMeta,
+  };
+}
+
 async function fetchRecoAlternativesForProduct({
   ctx,
   profileSummary,
@@ -39917,6 +43083,11 @@ async function fetchRecoAlternativesForProduct({
   const skipAnchorPrecheck = opts.skip_anchor_precheck === true;
   const preferRefreshCache = opts.prefer_refresh_cache !== false;
   const disableSyntheticLocalFallback = opts.disable_synthetic_local_fallback === true;
+  const ignoreSelectorCandidates = opts.ignore_selector_candidates === true;
+  const selectorSeedOnly = opts.selector_seed_only === true;
+  const selectorTimeoutMs = Number.isFinite(Number(opts.selector_timeout_ms))
+    ? Math.max(1000, Math.min(20000, Math.trunc(Number(opts.selector_timeout_ms))))
+    : RECO_ALTERNATIVES_TIMEOUT_MS;
   const allowAnchorlessOpenWorld = recommendationMode !== 'pool_only';
   const usesOpenWorldPrompt = recommendationMode === 'hybrid_fallback' || recommendationMode === 'open_world_only';
 
@@ -39924,19 +43095,32 @@ async function fetchRecoAlternativesForProduct({
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
   let anchor = anchorId ? String(anchorId).trim() : '';
   const bestInput = inputText || anchor;
-  const selectorCandidatePool = buildRecoAlternativesCandidatePool({
-    sharedCandidates: candidatePool,
-    productObj,
-    anchorId: anchor,
-    maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
-  });
-  const selectorGroundedAlternatives = mapSelectorCandidatesToAlternatives(selectorCandidatePool, {
-    maxTotal,
-    lang: ctx.lang,
-    reasonLine: ctx.lang === 'CN'
-      ? '基于已解析商品候选给出 grounded alternatives。'
-      : 'Grounded alternatives derived from resolved candidate pool.',
-  });
+  const selectorCandidatePool = ignoreSelectorCandidates
+    ? []
+    : selectorSeedOnly
+      ? (Array.isArray(candidatePool) ? candidatePool : [])
+        .map((row, index) => normalizeAlternativesSelectorCandidate(row, { index }))
+        .filter(Boolean)
+      : buildRecoAlternativesCandidatePool({
+        sharedCandidates: candidatePool,
+        productObj,
+        anchorId: anchor,
+        maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
+      });
+  const selectorMeta = {
+    input_count: Array.isArray(selectorCandidatePool) ? selectorCandidatePool.length : 0,
+    timeout_ms: selectorTimeoutMs,
+  };
+  const selectorGroundedAlternatives = ignoreSelectorCandidates
+    ? []
+    : mapSelectorCandidatesToAlternatives(selectorCandidatePool, {
+      maxTotal,
+      lang: ctx.lang,
+      reasonLine: ctx.lang === 'CN'
+        ? '基于已解析商品候选给出 grounded alternatives。'
+        : 'Grounded alternatives derived from resolved candidate pool.',
+    });
+  const emptyRawOutputSummary = summarizeRecoAlternativesRaw([]);
   let refreshKey = makeRecoAlternativesRefreshKey({
     anchorId: anchor || null,
     productInput: bestInput,
@@ -39962,6 +43146,8 @@ async function fetchRecoAlternativesForProduct({
         recommendation_mode: recommendationMode,
         profile_mode: profileMode,
         template_id: cached.llm_trace && cached.llm_trace.template_id ? cached.llm_trace.template_id : null,
+        raw_output_summary: null,
+        selector_meta: selectorMeta,
         ...(cached.llm_trace ? { llm_trace: cached.llm_trace } : {}),
       };
     }
@@ -39981,6 +43167,8 @@ async function fetchRecoAlternativesForProduct({
       attempt_count: 0,
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
+      raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
     };
   }
 
@@ -40007,6 +43195,8 @@ async function fetchRecoAlternativesForProduct({
       timeout_root_cause: 'budget_exceeded',
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
+      raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
     };
   }
 
@@ -40173,6 +43363,8 @@ async function fetchRecoAlternativesForProduct({
             attempt_count: 0,
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
+            raw_output_summary: emptyRawOutputSummary,
+            selector_meta: selectorMeta,
             ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
           };
         }
@@ -40189,6 +43381,8 @@ async function fetchRecoAlternativesForProduct({
             attempt_count: 0,
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
+            raw_output_summary: emptyRawOutputSummary,
+            selector_meta: selectorMeta,
           };
         }
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
@@ -40205,6 +43399,8 @@ async function fetchRecoAlternativesForProduct({
           no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world_fallback' : null),
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
+          raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -40242,6 +43438,8 @@ async function fetchRecoAlternativesForProduct({
           attempt_count: 0,
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
+          raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
         };
       } else if (!disableFallback) {
@@ -40259,6 +43457,8 @@ async function fetchRecoAlternativesForProduct({
           no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world_fallback' : null),
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
+          raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       } else {
@@ -40274,6 +43474,8 @@ async function fetchRecoAlternativesForProduct({
           attempt_count: 0,
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
+          raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -40283,6 +43485,21 @@ async function fetchRecoAlternativesForProduct({
   const profileSnapshot = buildAlternativesProfileSnapshot(
     profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : {},
   );
+  if (recommendationMode === 'open_world_only') {
+    const out = await fetchRecoAlternativesForLocalOpenWorld({
+      ctx,
+      productInput: bestInput,
+      productObj,
+      anchorId: anchor,
+      maxTotal,
+      logger,
+      profileMode,
+    });
+    if (refreshKey && Array.isArray(out.alternatives) && out.alternatives.length) {
+      writeRecoAlternativesCache(refreshKey, out.alternatives, out.llm_trace || null);
+    }
+    return out;
+  }
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
     recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
@@ -40326,7 +43543,7 @@ async function fetchRecoAlternativesForProduct({
     upstream = await auroraChat({
       baseUrl: AURORA_DECISION_BASE_URL,
       query,
-      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+      timeoutMs: selectorTimeoutMs,
       retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
       trace_id: ctx.trace_id,
       request_id: ctx.request_id,
@@ -40339,9 +43556,10 @@ async function fetchRecoAlternativesForProduct({
       allow_recommendations: true,
     });
   } catch (err) {
+    const failureMeta = classifyAlternativesUpstreamFailure(err);
     const transientCode = classifyRecoUpstreamFailureCode(err);
     llmFailureClass =
-      err && err.code === 'AURORA_NOT_CONFIGURED'
+      failureMeta.failure_class === 'precheck_fail'
         ? 'precheck_fail'
         : isTransientRecoUpstreamFailureCode(transientCode)
           ? 'timeout'
@@ -40364,11 +43582,16 @@ async function fetchRecoAlternativesForProduct({
         recommendation_mode: recommendationMode,
         profile_mode: profileMode,
         template_id: queryPack.templateId,
+        raw_output_summary: emptyRawOutputSummary,
+        selector_meta: selectorMeta,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
           cache_hit: false,
           error_class: llmFailureClass,
+          upstream_status: failureMeta.upstream_status,
+          upstream_error_code: failureMeta.upstream_error_code,
+          upstream_error_message: failureMeta.upstream_error_message,
         },
         ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
       };
@@ -40390,11 +43613,16 @@ async function fetchRecoAlternativesForProduct({
         recommendation_mode: recommendationMode,
         profile_mode: profileMode,
         template_id: queryPack.templateId,
+        raw_output_summary: emptyRawOutputSummary,
+        selector_meta: selectorMeta,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
           cache_hit: false,
           error_class: llmFailureClass,
+          upstream_status: failureMeta.upstream_status,
+          upstream_error_code: failureMeta.upstream_error_code,
+          upstream_error_message: failureMeta.upstream_error_message,
         },
       };
     }
@@ -40412,11 +43640,16 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
+      raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: {
         ...traceSeed,
         latency_ms: Date.now() - startedAtMs,
         cache_hit: false,
         error_class: llmFailureClass,
+        upstream_status: failureMeta.upstream_status,
+        upstream_error_code: failureMeta.upstream_error_code,
+        upstream_error_message: failureMeta.upstream_error_message,
       },
     };
   }
@@ -40429,6 +43662,7 @@ async function fetchRecoAlternativesForProduct({
       ? answerJson
       : structuredFallback || answerJson;
   const alternativesRaw = Array.isArray(structured?.alternatives) ? structured.alternatives : [];
+  const rawOutputSummary = summarizeRecoAlternativesRaw(alternativesRaw);
   let mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
     lang: ctx.lang,
     maxTotal: maxTotal ?? 3,
@@ -40478,6 +43712,8 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
+      raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -40500,6 +43736,8 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
+      raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null, selector_grounded: true } } : {}),
     };
@@ -40520,6 +43758,8 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
+      raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -40582,6 +43822,8 @@ async function fetchRecoAlternativesForProduct({
     recommendation_mode: recommendationMode,
     profile_mode: profileMode,
     template_id: queryPack.templateId,
+    raw_output_summary: rawOutputSummary,
+    selector_meta: selectorMeta,
     llm_trace: llmTrace,
     ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
   };
@@ -41994,6 +45236,21 @@ function buildV4WatchoutsFromLegacy(payload, { lang = 'EN', inciStatus = null } 
   return out;
 }
 
+function normalizeLegacyHowToUseWhenToken(rawWhen, { productType = 'other', usageOverrides = {} } = {}) {
+  if (productType === 'spf' || productType === 'spf_moisturizer' || String(usageOverrides?.when || '').toUpperCase() === 'AM_ONLY') {
+    return 'am';
+  }
+  const token = String(rawWhen || '').trim();
+  if (!token) return '';
+  const lower = token.toLowerCase();
+  if (lower === 'am' || lower === 'am only') return 'am';
+  if (lower === 'pm' || lower === 'pm only') return 'pm';
+  if (['both', 'am/pm', 'am_pm', 'am pm', '早晚皆可', '早晚均可', '早晚都可', '早晚'].includes(lower)) return 'both';
+  if (lower.includes('am') && !lower.includes('pm')) return 'am';
+  if (lower.includes('pm') && !lower.includes('am')) return 'pm';
+  return token;
+}
+
 function buildV4HowToUseFromLegacy(assessment, { lang = 'EN', productType = 'other', usageOverrides = {} } = {}) {
   if (!isPlainObject(assessment)) return null;
   const isCn = String(lang || '').toUpperCase() === 'CN';
@@ -42001,22 +45258,13 @@ function buildV4HowToUseFromLegacy(assessment, { lang = 'EN', productType = 'oth
     ? (assessment.how_to_use ?? assessment.howToUse)
     : {};
   const steps = asStringArray(raw.steps, 6);
-  let when = pickFirstTrimmed(raw.when);
+  let when = normalizeLegacyHowToUseWhenToken(pickFirstTrimmed(raw.when), { productType, usageOverrides });
   if (!when) {
     const timing = pickFirstTrimmed(raw.timing, raw.time);
-    const timingLower = String(timing || '').toLowerCase();
-    if (productType === 'spf' || productType === 'spf_moisturizer' || String(usageOverrides?.when || '').toUpperCase() === 'AM_ONLY') {
-      when = 'AM only';
-    } else if (timingLower.includes('am') && !timingLower.includes('pm')) {
-      when = 'AM';
-    } else if (timingLower.includes('pm') && !timingLower.includes('am')) {
-      when = 'PM';
-    } else if (timing) {
-      when = timing;
-    }
+    when = normalizeLegacyHowToUseWhenToken(timing, { productType, usageOverrides });
   }
   if (!when) {
-    when = isCn ? '早晚皆可' : 'AM/PM';
+    when = 'both';
   }
 
   let frequency = pickFirstTrimmed(raw.frequency);
@@ -45435,8 +48683,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       applyDupeSuggestSanitizeToEnvelope,
       getDupeKbEntry,
       upsertDupeKbEntry,
+      purgeDupeKbEntriesByContractVersion,
       normalizeDupeKbKey,
       searchPivotaBackendProducts,
+      buildExternalSeedCompareSearchQueries,
       buildRecoAlternativesCandidatePool,
       fetchRecoAlternativesForProduct,
       auroraChat,
@@ -47018,6 +50268,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const maxTotal = Number.isFinite(Number(parsed.data.max_total))
         ? Math.max(1, Math.min(8, Math.trunc(Number(parsed.data.max_total))))
         : 6;
+      const isExternalSeedCompare = isExternalRecoAlternativesSeedProduct(productObj);
 
       if (!productInput && !anchorId) {
         return res.status(400).json({
@@ -47029,17 +50280,26 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
       }
 
-      const out = await fetchRecoAlternativesForProduct({
-        ctx,
-        profileSummary: summarizeProfileForContext(profile),
-        recentLogs,
-        productInput,
-        productObj,
-        anchorId,
-        maxTotal,
-        debug: includeDebug,
-        logger,
-      });
+      const out = isExternalSeedCompare
+        ? await fetchRecoAlternativesForExternalSeedProduct({
+            ctx,
+            productInput,
+            productObj,
+            anchorId,
+            maxTotal,
+            logger,
+          })
+        : await fetchRecoAlternativesForProduct({
+            ctx,
+            profileSummary: summarizeProfileForContext(profile),
+            recentLogs,
+            productInput,
+            productObj,
+            anchorId,
+            maxTotal,
+            debug: includeDebug,
+            logger,
+          });
 
       return res.json({
         request_id: ctx.request_id,
@@ -47058,6 +50318,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,
         timeout_root_cause: out && out.timeout_root_cause ? String(out.timeout_root_cause) : null,
         llm_trace: out && out.llm_trace && typeof out.llm_trace === 'object' ? out.llm_trace : null,
+        ...(out && out.compare_meta && typeof out.compare_meta === 'object' ? { compare_meta: out.compare_meta } : {}),
         ...(includeDebug && out && out.debug && typeof out.debug === 'object' ? { debug: out.debug } : {}),
       });
     } catch (err) {
@@ -48018,7 +51279,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         const previousRoutine = previousRoutineState.current_routine_struct;
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
         const routineFromRequest =
-          parsed.data.currentRoutine !== undefined ? parsed.data.currentRoutine : parsed.data.current_routine;
+          parsed.data.currentRoutine !== undefined
+            ? normalizeRoutineInputWithPmShortcut(parsed.data.currentRoutine)
+            : parsed.data.current_routine !== undefined
+              ? normalizeRoutineInputWithPmShortcut(parsed.data.current_routine)
+              : undefined;
         const requestedRoutineState =
           routineFromRequest !== undefined ? normalizeRoutineStateValue(routineFromRequest) : null;
         const routineDerivedProfilePatch = extractProfilePatchFromRoutinePayload(routineFromRequest);
@@ -49199,10 +52464,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               : null;
 
             if (diagnosisArtifact && AURORA_INGREDIENT_PLAN_ENABLED && latestArtifactId) {
-              const planBuilt = buildIngredientPlan({
+              const planBuiltLegacy = buildIngredientPlan({
                 artifact: diagnosisArtifact,
                 profile: profileSummary || profile || {},
               });
+              const planBuilt =
+                coerceIngredientPlanForDiagnosisCard(planBuiltLegacy, {
+                  profile: profileSummary || profile || {},
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || planBuiltLegacy;
               const savedPlan = await saveIngredientPlan({
                 artifactId: latestArtifactId,
                 auroraUid: identity.auroraUid,
@@ -49229,7 +52499,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ...analysis,
                   ingredient_plan: {
                     targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
-                      ingredient_id: t.ingredient_id, ingredient_name: t.ingredient_name, role: t.role, priority: t.priority,
+                      ingredient_id: t.ingredient_id,
+                      ingredient_name: t.ingredient_name,
+                      role: t.role,
+                      priority: Number.isFinite(Number(t.priority_score_0_100)) ? Number(t.priority_score_0_100) : t.priority,
                     })) : [],
                     avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
                       ingredient_id: a.ingredient_id, ingredient_name: a.ingredient_name, severity: a.severity, reason: a.reason,
@@ -49371,7 +52644,11 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const extraCards = [];
         if (ingredientPlan) {
-          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
+          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id, {
+            profile: profileSummary || profile || {},
+            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            language: ctx.lang,
+          }));
         }
         const routineProductEvents = [];
 
@@ -49941,7 +53218,18 @@ function mountAuroraBffRoutes(app, { logger }) {
 	          });
 	        }
 
-	        return { envelope, report, profile_for_guardrails: profile };
+        return {
+          envelope,
+          report,
+          profile_for_guardrails: profile,
+          profile_summary_for_assistant: profileSummary,
+          analysis_for_persist: analysisSummaryPayload,
+          photo_refs: normalizeAnalysisPhotoRefs([
+            ...(Array.isArray(passedPhotos) ? passedPhotos : []),
+            ...(Array.isArray(degradedPhotos) ? degradedPhotos : []),
+            ...(Array.isArray(failedPhotos) ? failedPhotos : []),
+          ]),
+        };
 	      };
 
       const analysisBudgetStartedAtMs = Date.now();
@@ -50116,7 +53404,63 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (guardrailResult && Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
         persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
       }
-      return res.json(guardrailResult && guardrailResult.envelope ? guardrailResult.envelope : output.envelope);
+      const finalEnvelope = guardrailResult && guardrailResult.envelope ? guardrailResult.envelope : output.envelope;
+      if (isPlainObject(finalEnvelope) && Array.isArray(finalEnvelope.cards)) {
+        const storyCard = finalEnvelope.cards.find(
+          (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2',
+        );
+        if (storyCard && isPlainObject(storyCard.payload)) {
+          const requestRoutineProfilePatch = extractProfilePatchFromRoutinePayload(
+            parsed.data.currentRoutine !== undefined ? parsed.data.currentRoutine : parsed.data.current_routine,
+          );
+          const profileForStory = {
+            ...(isPlainObject(output && output.profile_summary_for_assistant)
+              ? output.profile_summary_for_assistant
+              : summarizeProfileForContext(
+                  isPlainObject(output && output.profile_for_guardrails) ? output.profile_for_guardrails : {},
+                ) || {}),
+            ...(isPlainObject(requestRoutineProfilePatch) ? requestRoutineProfilePatch : {}),
+          };
+          storyCard.payload = applyAnalysisStoryProfilePatch(storyCard.payload, {
+            profileSummary: profileForStory,
+            requestRoutineProfilePatch,
+            analysisPayload: output && output.analysis_for_persist ? output.analysis_for_persist : null,
+            diagnosisArtifact:
+              output &&
+              output.analysis_for_persist &&
+              isPlainObject(output.analysis_for_persist.diagnosis_artifact)
+                ? output.analysis_for_persist.diagnosis_artifact
+                : null,
+          });
+          const realignedText = buildAssistantMessageFromStoryV2(storyCard.payload, { language: ctx.lang });
+          if (realignedText) {
+            storyCard.payload = {
+              ...storyCard.payload,
+              summary: realignedText,
+            };
+            finalEnvelope.assistant_message = makeAssistantMessage(realignedText);
+          }
+          const sessionPatch = isPlainObject(finalEnvelope.session_patch) ? finalEnvelope.session_patch : {};
+          const meta = isPlainObject(sessionPatch.meta) ? { ...sessionPatch.meta } : {};
+          const photoRefs = Array.isArray(output && output.photo_refs) ? output.photo_refs : [];
+          meta.analysis_context = {
+            analysis_origin: photoRefs.length > 0 ? 'photo' : 'profile',
+            photo_refs: photoRefs,
+            source_card_type: 'analysis_story_v2',
+            analysis_story_snapshot: storyCard.payload,
+          };
+          sessionPatch.meta = meta;
+          finalEnvelope.session_patch = sessionPatch;
+
+          setImmediate(() => {
+            saveLastAnalysisForIdentity(
+              { auroraUid: identity.auroraUid, userId: identity.userId },
+              { analysis: { ...(output && output.analysis_for_persist ? output.analysis_for_persist : {}), analysis_story_snapshot: storyCard.payload }, lang: ctx.lang },
+            ).catch(() => {});
+          });
+        }
+      }
+      return res.json(finalEnvelope);
     } catch (err) {
       const status = err.status || 500;
       logger?.error(
@@ -50564,13 +53908,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const routine = parsed.data.routine || {};
+      const routine = normalizeRoutineInputWithPmShortcut(parsed.data.routine || {});
       const testProduct = parsed.data.test_product || null;
       const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
       const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
       const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
         ? buildConflictHeatmapV1({ routineSimulation: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary }, routineSteps: heatmapSteps })
         : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
+      const simPayload = {
+        safe: sim.safe,
+        conflicts: sim.conflicts,
+        summary: sim.summary,
+        analysis_ready: sim.analysis_ready === true,
+        signal_summary: sim.signal_summary && typeof sim.signal_summary === 'object' ? sim.signal_summary : undefined,
+      };
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
@@ -50578,7 +53929,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           {
             card_id: `sim_${ctx.request_id}`,
             type: 'routine_simulation',
-            payload: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary },
+            payload: simPayload,
           },
           {
             card_id: `heatmap_${ctx.request_id}`,
@@ -52185,7 +55536,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist pregnancy policy patch');
         }
       }
-      const actionId =
+      const parsedSessionForAnalysisFollowup =
+        parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+          ? parsed.data.session
+          : {};
+      const parsedSessionMetaForAnalysisFollowup =
+        parsedSessionForAnalysisFollowup.meta &&
+        typeof parsedSessionForAnalysisFollowup.meta === 'object' &&
+        !Array.isArray(parsedSessionForAnalysisFollowup.meta)
+          ? parsedSessionForAnalysisFollowup.meta
+          : {};
+      const explicitActionId =
         (normalizedActionPayload && typeof normalizedActionPayload === 'object'
           ? normalizedActionPayload.action_id
           : typeof normalizedActionPayload === 'string'
@@ -52193,6 +55554,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null) ||
         parsed.data.action_id ||
         null;
+      const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
+        actionId: explicitActionId,
+        message,
+        sessionAnalysisContext:
+          parsedSessionMetaForAnalysisFollowup.analysis_context &&
+          typeof parsedSessionMetaForAnalysisFollowup.analysis_context === 'object' &&
+          !Array.isArray(parsedSessionMetaForAnalysisFollowup.analysis_context)
+            ? parsedSessionMetaForAnalysisFollowup.analysis_context
+            : null,
+        lastAnalysis: profile && profile.lastAnalysis ? profile.lastAnalysis : null,
+        latestArtifactId: extractLatestArtifactIdFromSession(parsedSessionForAnalysisFollowup),
+      });
+      const actionId = explicitActionId || implicitAnalysisFollowupActionId || null;
       actionIdForReplay = String(actionId || '').trim() || null;
       const actionLabel = actionLabelFromPayload;
       const clarificationId =
@@ -52395,23 +55769,74 @@ function mountAuroraBffRoutes(app, { logger }) {
         return makeAssistantMessage(text, format);
       };
       const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim());
+      const analysisFollowupRoutingMode = isAnalysisFollowupAction && !ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(explicitActionId || '').trim())
+        ? 'implicit'
+        : 'explicit';
       if (isAnalysisFollowupAction) {
-        const followup = buildAnalysisFollowupContent({
-          actionId: String(actionId || '').trim(),
-          lastAnalysis: profile && profile.lastAnalysis,
-          language: ctx.lang,
-          requestId: ctx.request_id,
-          replyText: actionReplyText,
-        });
+        const normalizedActionId = String(actionId || '').trim();
+        const isDeepDiveAction = normalizedActionId === 'chip.aurora.next_action.deep_dive_skin';
+        const actionData =
+          normalizedActionPayload &&
+          typeof normalizedActionPayload === 'object' &&
+          normalizedActionPayload.data &&
+          typeof normalizedActionPayload.data === 'object' &&
+          !Array.isArray(normalizedActionPayload.data)
+            ? normalizedActionPayload.data
+            : {};
+        const parsedSession = parsed.data && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session) ? parsed.data.session : {};
+        const parsedSessionMeta = parsedSession.meta && typeof parsedSession.meta === 'object' && !Array.isArray(parsedSession.meta) ? parsedSession.meta : {};
+        const sessionAnalysisContext =
+          parsedSessionMeta.analysis_context &&
+          typeof parsedSessionMeta.analysis_context === 'object' &&
+          !Array.isArray(parsedSessionMeta.analysis_context)
+            ? parsedSessionMeta.analysis_context
+            : null;
+        let latestDiagnosisArtifact = null;
+        if (isDeepDiveAction) {
+          try {
+            latestDiagnosisArtifact = await loadLatestDiagnosisArtifactForRoute({
+              identity,
+              session: parsedSession,
+              ctx,
+              logger,
+            });
+          } catch (_artifactErr) {
+            logger?.warn?.({ err: _artifactErr?.message }, 'aurora bff: artifact load failed for deep-dive, continuing without');
+          }
+        }
+        const followupReplyText = actionReplyText || message;
+        const followup = isDeepDiveAction
+          ? await buildAnalysisDeepDiveContentWithLlm({
+              lastAnalysis: profile && profile.lastAnalysis,
+              diagnosisArtifact: latestDiagnosisArtifact,
+              profile,
+              language: ctx.lang,
+              requestId: ctx.request_id,
+              replyText: followupReplyText,
+              actionData,
+              sessionAnalysisContext,
+              logger,
+            })
+          : buildAnalysisFollowupContent({
+              actionId: normalizedActionId,
+              lastAnalysis: profile && profile.lastAnalysis,
+              language: ctx.lang,
+              requestId: ctx.request_id,
+              replyText: followupReplyText,
+            });
         recordAuroraSkinFlowMetric({ stage: 'analysis_followup_action', hit: true });
         recordAuroraSkinFlowMetric({
-          stage: `analysis_followup_${String(actionId || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(-48)}`,
+          stage: `analysis_followup_${normalizedActionId.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(-48)}`,
           hit: true,
         });
+        if (isDeepDiveAction && followup && followup.llm_used === true) {
+          recordAuroraSkinFlowMetric({ stage: 'analysis_followup_deep_dive_llm', hit: true });
+        }
         logger?.info(
           { kind: 'metric', name: 'aurora.skin.analysis_followup.routed_rate', value: 1 },
           'metric',
         );
+        skipRoutineRulesFallback = true;
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(followup.assistant_text),
           suggested_chips: Array.isArray(followup.suggested_chips) ? followup.suggested_chips : [],
@@ -52419,10 +55844,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: {},
           events: [
             makeEvent(ctx, 'analysis_followup_action_routed', {
-              action_id: String(actionId || '').trim(),
+              action_id: normalizedActionId,
+              routing_mode: analysisFollowupRoutingMode,
               used_last_analysis: Boolean(followup.used_last_analysis),
               missing_context: Boolean(followup.missing_context),
               fell_back_to_generic: false,
+              ...(isDeepDiveAction ? {
+                analysis_origin: followup.analysis_origin || null,
+                photo_ref_count: Number(followup.photo_ref_count || 0),
+                used_diagnosis_artifact: Boolean(followup.used_diagnosis_artifact),
+                used_analysis_story_snapshot: Boolean(followup.used_analysis_story_snapshot),
+                fell_back_to_snapshot: Boolean(followup.fell_back_to_snapshot),
+                llm_used: Boolean(followup.llm_used),
+              } : {}),
             }),
           ],
         });
@@ -55149,7 +58583,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (simInput) {
           const { routine, testProduct } = simInput;
           const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
-          const simPayload = { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary };
+          const simPayload = {
+            safe: sim.safe,
+            conflicts: sim.conflicts,
+            summary: sim.summary,
+            analysis_ready: sim.analysis_ready === true,
+            signal_summary: sim.signal_summary && typeof sim.signal_summary === 'object' ? sim.signal_summary : undefined,
+          };
           const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
           const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
             ? buildConflictHeatmapV1({ routineSimulation: simPayload, routineSteps: heatmapSteps })
@@ -55648,8 +59088,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(
               ctx.lang === 'CN'
-                ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
-                : 'Got it. I generated a simple AM/PM routine (see the card below).',
+                ? rawBudget
+                  ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
+                  : '预算是可选项；我先生成了一个简洁 AM/PM routine（见下方卡片）。'
+                : rawBudget
+                  ? 'Got it. I generated a simple AM/PM routine (see the card below).'
+                  : 'Budget is optional; I generated a simple AM/PM routine first (see the card below).',
             ),
             suggested_chips: suggestedChips,
             cards: [
@@ -55838,7 +59282,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               data: { reply_text: lang === 'CN' ? '给我一些产品推荐' : 'Get product recommendations' },
             },
             {
-              chip_id: 'chip.action.dupe_compare',
+              chip_id: 'chip.action.check_compatibility',
               label: lang === 'CN' ? '检查搭配冲突' : 'Check compatibility',
               kind: 'quick_reply',
               data: {
@@ -56332,6 +59776,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         let mappedIngredientPlan = null;
+        let mappedIngredientPlanCard = null;
         if (latestArtifact && AURORA_INGREDIENT_PLAN_ENABLED) {
           const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
           try {
@@ -56339,30 +59784,44 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? await getIngredientPlanByArtifactId({ artifactId: latestArtifactId })
               : null;
             if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
-              mappedIngredientPlan = {
+              const storedPlan = {
                 ...existingPlan.plan_json,
                 plan_id: existingPlan.plan_id,
                 created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
               };
+              mappedIngredientPlanCard =
+                coerceIngredientPlanForDiagnosisCard(storedPlan, {
+                  profile,
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || storedPlan;
+              mappedIngredientPlan = isIngredientPlanV2Payload(storedPlan)
+                ? buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile })
+                : storedPlan;
             } else {
               const builtPlan = buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile });
+              const builtPlanCard =
+                coerceIngredientPlanForDiagnosisCard(builtPlan, {
+                  profile,
+                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                }) || builtPlan;
               if (latestArtifactId) {
                 const savedPlan = await saveIngredientPlan({
                   artifactId: latestArtifactId,
                   auroraUid: identity.auroraUid,
                   userId: identity.userId,
-                  plan: builtPlan,
+                  plan: builtPlanCard,
                 });
-                mappedIngredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                mappedIngredientPlanCard = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
                   ? {
                       ...savedPlan.plan_json,
                       plan_id: savedPlan.plan_id,
                       created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
                     }
-                  : builtPlan;
+                  : builtPlanCard;
               } else {
-                mappedIngredientPlan = builtPlan;
+                mappedIngredientPlanCard = builtPlanCard;
               }
+              mappedIngredientPlan = builtPlan;
             }
           } catch (err) {
             logger?.warn(
@@ -56712,8 +60171,12 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             },
           ];
-          if (mappedIngredientPlan) {
-            cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+          if (mappedIngredientPlanCard || mappedIngredientPlan) {
+            cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
+              profile,
+              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+              language: ctx.lang,
+            }));
           }
           const sessionPatch = {};
           appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
@@ -57015,9 +60478,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               }),
             },
           ];
-        if (mappedIngredientPlan) {
-          cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
-        }
+          if (mappedIngredientPlanCard || mappedIngredientPlan) {
+            cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
+              profile,
+              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+              language: ctx.lang,
+            }));
+          }
 
         if (debugUpstream && upstreamDebug) {
           cards.push({
@@ -57059,6 +60526,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           trigger_source: ctx.trigger_source,
           low_confidence: lowConfidenceArtifact,
         };
+        const ingredientPlanIdForRecoRun =
+          (mappedIngredientPlanCard && mappedIngredientPlanCard.plan_id) ||
+          (mappedIngredientPlan && mappedIngredientPlan.plan_id) ||
+          null;
         if (llmPrimaryUsed && isPlainObject(payload)) {
           const recoItems = Array.isArray(payload.recommendations) ? payload.recommendations : [];
           const hasUsableReco = recoItems.some((row) => {
@@ -57081,7 +60552,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraRecoKbWrite({ source: 'llm_primary', outcome: 'attempted' });
           saveRecoRun({
             artifactId: latestArtifact ? latestArtifact.artifact_id : null,
-            planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
+            planId: ingredientPlanIdForRecoRun,
             auroraUid: identity.auroraUid,
             userId: identity.userId,
             requestContext: {
@@ -57128,7 +60599,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraRecoKbWrite({ source: 'artifact_matcher', outcome: 'attempted' });
           saveRecoRun({
             artifactId: latestArtifact ? latestArtifact.artifact_id : null,
-            planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
+            planId: ingredientPlanIdForRecoRun,
             auroraUid: identity.auroraUid,
             userId: identity.userId,
             requestContext: {
@@ -57277,7 +60748,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             data: { reply_text: lang === 'CN' ? '评估这款产品是否适合我' : 'Evaluate a specific product for me' },
           },
           {
-            chip_id: 'chip.action.dupe_compare',
+            chip_id: 'chip.start.dupes',
             label: lang === 'CN' ? '找平替/对比替代品' : 'Find dupes / alternatives',
             kind: 'quick_reply',
             data: { reply_text: lang === 'CN' ? '帮我找平替并比较 tradeoffs' : 'Find dupes and compare tradeoffs' },
@@ -57447,7 +60918,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         fieldMissing.push({ field: 'cards', reason: 'recommendations_not_requested' });
       }
 
-      if (allowRecs && includeAlternatives && Array.isArray(cards) && cards.length) {
+      const includeAlternativesInline = includeAlternatives && (RECO_INLINE_ALTERNATIVES_ENABLED || USE_AURORA_BFF_MOCK);
+      if (allowRecs && includeAlternativesInline && Array.isArray(cards) && cards.length) {
         const recoIdx = cards.findIndex((c) => {
           if (!c || typeof c !== 'object') return false;
           const t = typeof c.type === 'string' ? c.type.trim().toLowerCase() : '';
@@ -58726,6 +62198,7 @@ const __internal = {
   computeAnchorNameSimilarity,
   mapCatalogProductToAnchorProduct,
   evaluateAnchorTrustForProductIntel,
+  normalizeRoutineInputWithPmShortcut,
   resolveCatalogProductForProductInput,
   extractRoutineProductCandidatesForDeepScan,
   deepScanRoutineProductCandidate,
@@ -58789,7 +62262,24 @@ const __internal = {
   applyRecoCardContractInvariant,
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
+  buildAssistantMessageFromStoryV2,
+  applyAnalysisStoryProfilePatch,
+  resolveImplicitAnalysisFollowupActionId,
+  extractAnalysisFollowupSignals,
+  normalizeAnalysisPhotoRefs,
+  rankAnalysisConfidenceLevel,
+  buildDeepDiveFallbackStoryPayload,
+  buildDeepDiveAnalysisEvidence,
+  buildDeepDiveAnalysisStoryGenerationPrompt,
+  tryRecoverDeepDiveResponseFromTruncatedText,
+  applyDeepDiveLlmResponseToStory,
+  applyNonWeakeningDeepDiveUiPatch,
+  isDeepDiveStoryWeakerThanFallback,
+  buildDeepDiveAssistantText,
+  buildAnalysisDeepDiveContentWithLlm,
+  loadLatestDiagnosisArtifactForRoute,
   buildAnalysisFollowupContent,
+  enrichIngredientPlanPayloadForCard,
   extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,
   buildRoutineFitSummaryPrompt,
@@ -58806,6 +62296,8 @@ const __internal = {
   buildAnalysisEvidence,
   ANALYSIS_STORY_GENERATION_PROMPT_VERSION,
   ANALYSIS_STORY_REVIEW_PROMPT_VERSION,
+  ANALYSIS_DEEP_DIVE_PROMPT_VERSION,
+  AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI,
   buildAnalysisStoryGenerationPrompt,
   buildAnalysisStoryReviewPrompt,
   generateAnalysisStoryV2Json,
@@ -58937,6 +62429,9 @@ const __internal = {
   __resetCallOpenAiJsonObjectForTest() {
     callOpenAiJsonObjectImpl = callOpenAiJsonObject;
   },
+  fetchRecoAlternativesForProduct,
+  fetchRecoAlternativesForExternalSeedProduct,
+  buildExternalSeedCompareSearchQueries,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };

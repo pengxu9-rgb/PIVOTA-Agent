@@ -16,7 +16,11 @@ test('routes.js keeps current_routine alias normalization on analysis and profil
 
   assert.match(
     source,
-    /parsed\.data\.currentRoutine !== undefined \? parsed\.data\.currentRoutine : parsed\.data\.current_routine/,
+    /parsed\.data\.currentRoutine[\s\S]{0,140}normalizeRoutineInputWithPmShortcut\(parsed\.data\.currentRoutine\)/,
+  );
+  assert.match(
+    source,
+    /parsed\.data\.current_routine[\s\S]{0,140}normalizeRoutineInputWithPmShortcut\(parsed\.data\.current_routine\)/,
   );
   assert.match(
     source,
@@ -29,6 +33,15 @@ test('routes.js defines previousRoutine from normalized state before lifecycle u
 
   assert.match(source, /const previousRoutineState = normalizeRoutineStateFromProfile\(profile\);/);
   assert.match(source, /const previousRoutine = previousRoutineState\.current_routine_struct;/);
+});
+
+test('routes.js emits canonical dupe and compatibility chip ids on legacy quick replies', () => {
+  const source = readRepoFile('src/auroraBff/routes.js');
+
+  assert.match(source, /chip_id:\s*'chip\.action\.check_compatibility'/);
+  assert.match(source, /chip_id:\s*'chip\.start\.dupes'/);
+  assert.doesNotMatch(source, /chip_id:\s*'chip\.action\.dupe_compare'[\s\S]{0,220}Check compatibility/);
+  assert.doesNotMatch(source, /chip_id:\s*'chip\.action\.dupe_compare'[\s\S]{0,220}Find dupes \/ alternatives/);
 });
 
 test('active ops scripts accept analysis_story_v2 as canonical analysis card', () => {

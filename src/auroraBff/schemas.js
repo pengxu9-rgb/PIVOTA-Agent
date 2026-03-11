@@ -123,7 +123,16 @@ const AnalysisMetaSchema = z
 
 const RecommendationMetaSchema = z
   .object({
-    source_mode: z.enum(['llm_primary', 'artifact_matcher', 'upstream_fallback', 'rules_only']),
+    source_mode: z.enum([
+      'llm_primary',
+      'artifact_matcher',
+      'upstream_fallback',
+      'rules_only',
+      'catalog_grounded',
+      'catalog_transient_fallback',
+      'bridge_error',
+      'llm_catalog_hybrid',
+    ]),
     used_recent_logs: z.boolean(),
     used_itinerary: z.boolean(),
     used_safety_flags: z.boolean(),
@@ -414,14 +423,36 @@ const ActivityListQuerySchema = z
   })
   .strict();
 
+const SAME_AS_AM_TOKENS = new Set([
+  'same_as_am', 'same as am', 'same-as-am', 'copy_am', 'copy am',
+  'pm_same_as_am', 'pm same as am', 'pm-same-as-am',
+]);
+
+const RoutineSameAsAmMarkerSchema = z.string().refine(
+  (value) => SAME_AS_AM_TOKENS.has(String(value || '').trim().toLowerCase()),
+  { message: 'Expected a same_as_am routine marker' }
+);
+
 const RoutineSimulateRequestSchema = z
   .object({
     routine: z
       .object({
         am: z.array(z.record(z.string(), z.any())).optional(),
-        pm: z.array(z.record(z.string(), z.any())).optional(),
+        pm: z.union([
+          z.array(z.record(z.string(), z.any())),
+          RoutineSameAsAmMarkerSchema,
+          z.object({
+            pm_same_as_am: z.any().optional(),
+            pmSameAsAm: z.any().optional(),
+            same_as_am: z.any().optional(),
+            sameAsAm: z.any().optional(),
+          }).passthrough(),
+        ]).optional(),
+        pm_same_as_am: z.any().optional(),
+        pmSameAsAm: z.any().optional(),
+        same_as_am: z.any().optional(),
+        sameAsAm: z.any().optional(),
       })
-      .strict()
       .optional(),
     test_product: z.record(z.string(), z.any()).optional(),
   })

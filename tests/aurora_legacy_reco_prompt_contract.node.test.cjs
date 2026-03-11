@@ -22,7 +22,8 @@ test('legacy reco alternatives system prompt encodes candidate-only and uncertai
   assert.match(text, /exactly one top-level key: alternatives/i);
   assert.match(text, /Choose up to task\.max_alternatives alternatives/i);
   assert.match(text, /Select ONLY from candidates\[\]/i);
-  assert.match(text, /If no candidate is strong enough, return \{"alternatives": \[\]\}/i);
+  assert.match(text, /you should usually return 1-3 distinct candidates instead of \[\]/i);
+  assert.match(text, /Return \{"alternatives": \[\]\} only when every candidate is a self match, placeholder, clearly mismatched, or too weak/i);
   assert.match(text, /Every returned item must include short reasons plus concrete tradeoffs/i);
   assert.match(text, /Do not claim "exact dupe", "identical formula"/i);
   assert.match(text, /Respect profile sensitivity and barrier context/i);
@@ -32,12 +33,33 @@ test('hybrid reco alternatives system prompt encodes open-world fallback and anc
   const promptPath = path.join(__dirname, '..', 'prompts', 'reco_alternatives_hybrid_v1.system.txt');
   const text = fs.readFileSync(promptPath, 'utf8');
 
+  assert.match(text, /strict but productive skincare alternatives selector/i);
   assert.match(text, /dupe-finding workflow/i);
   assert.match(text, /open-world products/i);
+  assert.match(text, /broad public skincare product knowledge/i);
   assert.match(text, /candidate_origin/i);
+  assert.match(text, /COMMON-ANCHOR SALVAGE POLICY/i);
+  assert.match(text, /VIABILITY BAR/i);
+  assert.match(text, /SELF-CHECK BEFORE RETURNING/i);
   assert.match(text, /If meta\.profile_mode is "anchor_only"/i);
   assert.match(text, /Never invent product IDs, SKUs, URLs, prices/i);
-  assert.match(text, /If no alternative is strong enough, return \{"alternatives": \[\]\}/i);
+  assert.match(text, /Do NOT return \[\] merely because:/i);
+  assert.match(text, /context\.candidates is empty/i);
+  assert.match(text, /aim to return at least 2 viable alternatives when possible/i);
+  assert.match(text, /\[\] should be rare/i);
+  assert.match(text, /return 1 strong item rather than \[\]/i);
+  assert.match(text, /do not wait for catalog grounding/i);
+});
+
+test('open-world reco system prompt encodes active-theme-only generation rules', () => {
+  const promptPath = path.join(__dirname, '..', 'prompts', 'reco_alternatives_open_world_v1.system.txt');
+  const text = fs.readFileSync(promptPath, 'utf8');
+
+  assert.match(text, /Output exactly one JSON object with keys: alternative, empty_reason/i);
+  assert.match(text, /If anchor\.active_themes is non-empty, you MUST return exactly 1 distinct real skincare product/i);
+  assert.match(text, /Pure role, texture, category, or claim overlap without active or ingredient theme overlap is NOT enough/i);
+  assert.match(text, /anchor_signal_insufficient_for_open_world/i);
+  assert.match(text, /The Ordinary Niacinamide 10% \+ Zinc 1%/i);
 });
 
 test('legacy reco main system prompt encodes task_mode and candidate grounding rules', () => {
@@ -195,8 +217,56 @@ test('hybrid reco alternatives query includes recommendation_mode, anchor_only p
     assert.match(promptPack.query, /"profile_context_present"\s*:\s*false/i);
     assert.match(promptPack.query, /"skinType"\s*:\s*"unknown"/i);
     assert.match(promptPack.query, /"goals"\s*:\s*\[\s*\]/i);
+    assert.match(promptPack.query, /"usage_role"\s*:\s*"moisturizer"/i);
+    assert.match(promptPack.query, /"texture_hints"\s*:\s*\[/i);
     assert.match(promptPack.systemPrompt, /do NOT personalize to an assumed user/i);
     assert.match(promptPack.systemPrompt, /Never invent product IDs, SKUs, URLs, prices/i);
+    assert.match(promptPack.query, /aim to return 2-4 viable real-product alternatives/i);
+    assert.match(promptPack.query, /ignore candidate-pool dependence/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('hybrid reco alternatives query lifts ingredient and role signals from target_product', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const promptPack = __internal.buildAuroraRecoAlternativesQuery({
+      lang: 'EN',
+      profileSnapshot: {
+        skinType: 'unknown',
+        sensitivity: 'unknown',
+        barrierStatus: 'unknown',
+        goals: [],
+        context_present: false,
+      },
+      productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      productObj: {
+        brand: 'The Ordinary',
+        product_name: 'Niacinamide 10% + Zinc 1%',
+        product_type: 'serum',
+        category: 'serum',
+        ingredients: [
+          { name: 'Niacinamide', concentration: '10%' },
+          { name: 'Zinc PCA', concentration: '1%' },
+        ],
+        claims: ['Oil control', 'Blemish support'],
+      },
+      maxTotal: 3,
+      region: 'US',
+      anchorId: '',
+      candidates: [],
+      mode: 'open_world_only',
+      profileMode: 'anchor_only',
+    });
+
+    assert.match(promptPack.query, /"product_type"\s*:\s*"serum"/i);
+    assert.match(promptPack.query, /"category"\s*:\s*"serum"/i);
+    assert.match(promptPack.query, /"usage_role"\s*:\s*"serum"/i);
+    assert.match(promptPack.query, /"hero_ingredients"\s*:\s*\[\s*"Niacinamide"/i);
+    assert.match(promptPack.query, /Zinc PCA/i);
+    assert.match(promptPack.query, /"known_actives"\s*:\s*\[[^\]]*Niacinamide/i);
+    assert.match(promptPack.query, /"primary_claims"\s*:\s*\[[^\]]*Oil control/i);
   } finally {
     delete require.cache[moduleId];
   }

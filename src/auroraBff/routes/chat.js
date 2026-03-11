@@ -6,8 +6,25 @@ const {
   normalizeTravelPlan,
   resolveTravelPlanFromSources,
 } = require('../travelPlanUtils');
+const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
+const { buildChatCardsResponse } = require('../chatCardsAssembler');
 
 let routerSingleton = null;
+
+const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
+  'chip.aurora.next_action.deep_dive_skin',
+  'chip.aurora.next_action.ingredient_plan',
+  'chip.aurora.next_action.routine_deep_dive',
+  'chip.aurora.next_action.safety_concerns',
+]);
+
+const IMPLICIT_DEEP_DIVE_MESSAGES = new Set([
+  'tell me more about my skin',
+  'dive deeper into skin',
+  'deep dive into skin',
+  '深入了解我的皮肤状态',
+  '深入了解皮肤状态',
+]);
 
 function toBool(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -86,6 +103,32 @@ function compactStringArray(value) {
     .filter(Boolean);
 }
 
+function extractLastUserMessageFromMessages(messages) {
+  const rows = Array.isArray(messages) ? messages : [];
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    if (!isPlainObject(row)) continue;
+    const role = String(row.role || '').trim().toLowerCase();
+    if (role && role !== 'user') continue;
+    const content = pickFirstTrimmed(row.content, row.text, row.message);
+    if (content) return content;
+  }
+  return null;
+}
+
+function extractLatestArtifactIdFromSession(session) {
+  const state = isPlainObject(session && session.state) ? session.state : null;
+  return pickFirstTrimmed(state && state.latest_artifact_id);
+}
+
+function omitLegacyActionAliases(value) {
+  if (!isPlainObject(value)) return {};
+  const next = { ...value };
+  delete next.anchor;
+  delete next.targets;
+  return next;
+}
+
 function normalizeProfileShape(value) {
   if (!isPlainObject(value)) return {};
 
@@ -98,13 +141,25 @@ function normalizeProfileShape(value) {
   const budgetTier = pickFirstTrimmed(value.budget_tier, value.budgetTier);
   const pregnancyStatus = pickFirstTrimmed(value.pregnancy_status, value.pregnancyStatus);
 
-  if (skinType) normalized.skin_type = skinType;
+  if (skinType) {
+    normalized.skin_type = skinType;
+    normalized.skinType = normalized.skinType || skinType;
+  }
   if (concerns.length > 0) normalized.concerns = concerns;
   if (goals.length > 0) normalized.goals = goals;
   if (sensitivity) normalized.sensitivity = sensitivity;
-  if (barrierStatus) normalized.barrier_status = barrierStatus;
-  if (budgetTier) normalized.budget_tier = budgetTier;
-  if (pregnancyStatus) normalized.pregnancy_status = pregnancyStatus;
+  if (barrierStatus) {
+    normalized.barrier_status = barrierStatus;
+    normalized.barrierStatus = normalized.barrierStatus || barrierStatus;
+  }
+  if (budgetTier) {
+    normalized.budget_tier = budgetTier;
+    normalized.budgetTier = normalized.budgetTier || budgetTier;
+  }
+  if (pregnancyStatus) {
+    normalized.pregnancy_status = pregnancyStatus;
+    normalized.pregnancyStatus = normalized.pregnancyStatus || pregnancyStatus;
+  }
 
   return normalized;
 }
@@ -128,7 +183,7 @@ function normalizeRoutineProducts(value) {
     return normalizeRoutineProducts(value.products);
   }
 
-  const name = pickFirstTrimmed(value.name, value.display_name, value.product_name, value.label, value.title);
+  const name = pickFirstTrimmed(value.name, value.display_name, value.product_name, value.label, value.title, value.product);
   return name ? [{ ...value, name }] : [];
 }
 
@@ -147,11 +202,55 @@ function coerceRoutineStepsFromSlots(value) {
     .filter(Boolean);
 }
 
+function coerceRoutineStepsFromList(value, slot = 'am') {
+  if (!Array.isArray(value)) return [];
+
+  const steps = [];
+  const byStepId = new Map();
+
+  for (let index = 0; index < value.length; index += 1) {
+    const entry = value[index];
+    const row = isPlainObject(entry) ? entry : null;
+    const stepId = pickFirstTrimmed(
+      row?.step_id,
+      row?.step,
+      row?.category,
+      row?.routine_step,
+      row?.routineStep,
+      row?.type,
+      `${slot}_step_${index + 1}`,
+    );
+    const products = normalizeRoutineProducts(row && Array.isArray(row.products) ? row.products : entry);
+    if (!stepId || products.length === 0) continue;
+
+    if (!byStepId.has(stepId)) {
+      const step = { step_id: stepId, products: [] };
+      byStepId.set(stepId, step);
+      steps.push(step);
+    }
+    byStepId.get(stepId).products.push(...products);
+  }
+
+  return steps;
+}
+
 function coerceRoutineShape(value) {
   if (!value) return null;
+  const resolved = normalizeRoutineInputWithPmShortcut(value);
+  const candidate = resolved == null ? value : resolved;
+  const routineId = pickFirstTrimmed(
+    isPlainObject(candidate) ? candidate.routine_id : null,
+    isPlainObject(value) ? value.routine_id : null,
+  );
+  const notesValue =
+    isPlainObject(candidate) && candidate.notes != null
+      ? candidate.notes
+      : isPlainObject(value) && value.notes != null
+        ? value.notes
+        : null;
 
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
     if (!trimmed) return null;
     try {
       return coerceRoutineShape(JSON.parse(trimmed));
@@ -160,31 +259,39 @@ function coerceRoutineShape(value) {
     }
   }
 
-  if (!isPlainObject(value)) return null;
+  if (!isPlainObject(candidate)) return null;
 
-  if (Array.isArray(value.am_steps) || Array.isArray(value.pm_steps)) {
+  if (Array.isArray(candidate.am_steps) || Array.isArray(candidate.pm_steps)) {
+    const amSource = Array.isArray(candidate.am_steps) && candidate.am_steps.length > 0
+      ? candidate.am_steps
+      : candidate.am;
+    const pmSource = Array.isArray(candidate.pm_steps) && candidate.pm_steps.length > 0
+      ? candidate.pm_steps
+      : candidate.pm;
     return {
-      ...value,
-      am_steps: Array.isArray(value.am_steps) ? value.am_steps : [],
-      pm_steps: Array.isArray(value.pm_steps) ? value.pm_steps : [],
+      ...candidate,
+      ...(routineId ? { routine_id: routineId } : {}),
+      am_steps: coerceRoutineStepsFromList(amSource, 'am'),
+      pm_steps: coerceRoutineStepsFromList(pmSource, 'pm'),
+      ...(notesValue != null ? { notes: notesValue } : {}),
     };
   }
 
-  if (Array.isArray(value.am) || Array.isArray(value.pm)) {
+  if (Array.isArray(candidate.am) || Array.isArray(candidate.pm)) {
     return {
-      ...(value.routine_id ? { routine_id: value.routine_id } : {}),
-      am_steps: Array.isArray(value.am) ? value.am : [],
-      pm_steps: Array.isArray(value.pm) ? value.pm : [],
-      ...(value.notes != null ? { notes: value.notes } : {}),
+      ...(routineId ? { routine_id: routineId } : {}),
+      am_steps: coerceRoutineStepsFromList(candidate.am, 'am'),
+      pm_steps: coerceRoutineStepsFromList(candidate.pm, 'pm'),
+      ...(notesValue != null ? { notes: notesValue } : {}),
     };
   }
 
-  if (isPlainObject(value.am) || isPlainObject(value.pm)) {
+  if (isPlainObject(candidate.am) || isPlainObject(candidate.pm)) {
     return {
-      ...(value.routine_id ? { routine_id: value.routine_id } : {}),
-      am_steps: coerceRoutineStepsFromSlots(value.am),
-      pm_steps: coerceRoutineStepsFromSlots(value.pm),
-      ...(value.notes != null ? { notes: value.notes } : {}),
+      ...(routineId ? { routine_id: routineId } : {}),
+      am_steps: coerceRoutineStepsFromSlots(candidate.am),
+      pm_steps: coerceRoutineStepsFromSlots(candidate.pm),
+      ...(notesValue != null ? { notes: notesValue } : {}),
     };
   }
 
@@ -219,6 +326,40 @@ async function handleChat(req, res) {
   }
 }
 
+function resolveAnalysisFollowupActionId(req, internal = {}) {
+  const body = req.body || {};
+  const action = isPlainObject(body.action) ? body.action : {};
+  const actionData = isPlainObject(action.data) ? action.data : {};
+  const explicitActionId = pickFirstTrimmed(body.action_id, action.action_id, actionData.action_id);
+  if (explicitActionId && ANALYSIS_FOLLOWUP_ACTION_IDS_V2.has(explicitActionId.trim())) {
+    return { actionId: explicitActionId.trim(), routingMode: 'explicit' };
+  }
+  const session = isPlainObject(body.session) ? body.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+  const sessionAnalysisContext = isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null;
+  const message = pickFirstTrimmed(
+    body.message,
+    body.query,
+    body.text,
+    actionData.reply_text,
+    actionData.replyText,
+    extractLastUserMessageFromMessages(body.messages),
+  );
+  if (typeof internal.resolveImplicitAnalysisFollowupActionId === 'function') {
+    const implicitActionId = internal.resolveImplicitAnalysisFollowupActionId({
+      actionId: explicitActionId,
+      message,
+      sessionAnalysisContext,
+      lastAnalysis: isPlainObject(session.profile) ? session.profile.lastAnalysis || null : null,
+      latestArtifactId: extractLatestArtifactIdFromSession(session),
+    });
+    if (implicitActionId && ANALYSIS_FOLLOWUP_ACTION_IDS_V2.has(String(implicitActionId).trim())) {
+      return { actionId: String(implicitActionId).trim(), routingMode: 'implicit' };
+    }
+  }
+  return { actionId: null, routingMode: null };
+}
+
 async function handleChatStream(req, res) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -232,6 +373,120 @@ async function handleChatStream(req, res) {
   };
 
   try {
+    let routes;
+    try { routes = require('../routes'); } catch { routes = null; }
+    const internal = routes && routes.__internal ? routes.__internal : {};
+    const followupResolution = resolveAnalysisFollowupActionId(req, internal);
+    const analysisFollowupActionId = followupResolution.actionId;
+    if (analysisFollowupActionId) {
+      sendEvent('thinking', { step: 'routing', message: 'Preparing follow-up analysis...' });
+      const body = req.body || {};
+      const action = isPlainObject(body.action) ? body.action : {};
+      const actionData = isPlainObject(action.data) ? action.data : {};
+      const session = isPlainObject(body.session) ? body.session : {};
+      const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
+      const replyText = pickFirstTrimmed(
+        actionData.reply_text,
+        actionData.replyText,
+        body.message,
+        body.query,
+        extractLastUserMessageFromMessages(body.messages),
+      );
+
+      const isDeepDive = analysisFollowupActionId === 'chip.aurora.next_action.deep_dive_skin';
+      let followupResult;
+
+      if (isDeepDive && typeof internal.buildAnalysisDeepDiveContentWithLlm === 'function') {
+        const lastAnalysis = sessionProfile.lastAnalysis || null;
+        const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+        const sessionAnalysisContext = isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null;
+        let diagnosisArtifact = null;
+        if (typeof internal.loadLatestDiagnosisArtifactForRoute === 'function') {
+          diagnosisArtifact = await internal.loadLatestDiagnosisArtifactForRoute({
+            identity: req._identity || {},
+            session,
+            ctx: { brief_id: session.brief_id || null, request_id: req.get?.('x-request-id') || null },
+            logger: console,
+          });
+        }
+        followupResult = await internal.buildAnalysisDeepDiveContentWithLlm({
+          lastAnalysis,
+          diagnosisArtifact,
+          profile: sessionProfile,
+          language: body.language || 'EN',
+          requestId: req.get?.('x-request-id') || 'stream',
+          replyText,
+          actionData,
+          sessionAnalysisContext,
+          logger: console,
+        });
+      } else if (typeof internal.buildAnalysisFollowupContent === 'function') {
+        followupResult = internal.buildAnalysisFollowupContent({
+          actionId: analysisFollowupActionId,
+          lastAnalysis: sessionProfile.lastAnalysis || null,
+          language: body.language || 'EN',
+          requestId: req.get?.('x-request-id') || 'stream',
+          replyText,
+        });
+      }
+
+      if (followupResult) {
+        const requestId = pickFirstTrimmed(req.get?.('x-request-id'), req.get?.('x-requestid')) || `stream_${Date.now()}`;
+        const traceId = pickFirstTrimmed(req.get?.('x-trace-id')) || requestId;
+        const lang = pickFirstTrimmed(body.language) || 'EN';
+        const legacyEnvelope = {
+          request_id: requestId,
+          trace_id: traceId,
+          assistant_message: {
+            role: 'assistant',
+            content: followupResult.assistant_text || '',
+            format: 'text',
+          },
+          suggested_chips: Array.isArray(followupResult.suggested_chips) ? followupResult.suggested_chips : [],
+          cards: Array.isArray(followupResult.cards) ? followupResult.cards : [],
+          session_patch: {},
+          events: [
+            {
+              event_name: 'analysis_followup_action_routed',
+              data: {
+                action_id: analysisFollowupActionId,
+                routing_mode: followupResolution.routingMode || 'explicit',
+                used_last_analysis: Boolean(followupResult.used_last_analysis),
+                missing_context: Boolean(followupResult.missing_context),
+                fell_back_to_generic: false,
+                ...(isDeepDive ? {
+                  analysis_origin: followupResult.analysis_origin || null,
+                  photo_ref_count: Number(followupResult.photo_ref_count || 0),
+                  used_diagnosis_artifact: Boolean(followupResult.used_diagnosis_artifact),
+                  used_analysis_story_snapshot: Boolean(followupResult.used_analysis_story_snapshot),
+                  fell_back_to_snapshot: Boolean(followupResult.fell_back_to_snapshot),
+                  llm_used: Boolean(followupResult.llm_used),
+                } : {}),
+              },
+            },
+          ],
+        };
+        const ctx = {
+          request_id: requestId,
+          trace_id: traceId,
+          lang: lang === 'CN' ? 'CN' : 'EN',
+          ui_lang: lang === 'CN' ? 'CN' : 'EN',
+          match_lang: lang === 'CN' ? 'CN' : 'EN',
+        };
+        const v1Response = buildChatCardsResponse({
+          envelope: legacyEnvelope,
+          ctx,
+          intent: 'analysis_followup',
+          intentConfidence: 1,
+          entities: [],
+          safetyDecision: null,
+          threadOps: [],
+        });
+        sendEvent('result', v1Response);
+        sendEvent('done', {});
+        return;
+      }
+    }
     const skillRequest = buildSkillRequest(req);
     const thinkingSteps = [];
     let resultSent = false;
@@ -273,6 +528,7 @@ function buildSkillRequest(req) {
   const sessionProfile = isPlainObject(session.profile) ? session.profile : null;
   const action = isPlainObject(body.action) ? body.action : {};
   const actionData = isPlainObject(action.data) ? action.data : {};
+  const normalizedActionData = omitLegacyActionAliases(actionData);
   const actionId = pickFirstTrimmed(body.action_id, action.action_id);
   const userMessage = pickFirstTrimmed(
     body.message,
@@ -301,37 +557,44 @@ function buildSkillRequest(req) {
     body.anchor_product_id,
     body.anchorProductId,
     bodyParams.anchor_product_id,
-    actionData.anchor_product_id,
+    normalizedActionData.anchor_product_id,
   );
   const anchorProductUrl = pickFirstTrimmed(
     body.anchor_product_url,
     body.anchorProductUrl,
     bodyParams.anchor_product_url,
-    actionData.anchor_product_url,
+    normalizedActionData.anchor_product_url,
   );
   const productAnchor = isPlainObject(bodyParams.product_anchor)
     ? bodyParams.product_anchor
-    : isPlainObject(actionData.product_anchor)
-      ? actionData.product_anchor
+    : isPlainObject(normalizedActionData.product_anchor)
+      ? normalizedActionData.product_anchor
       : null;
 
   const baseThreadState = body.thread_state || req._threadState || {};
   const threadState = resolvedTravelPlan
     ? { ...baseThreadState, travel_plan: resolvedTravelPlan }
     : baseThreadState;
+  const comparisonTargets =
+    Array.isArray(bodyParams.comparison_targets) ? bodyParams.comparison_targets
+    : Array.isArray(normalizedActionData.comparison_targets) ? normalizedActionData.comparison_targets
+    : null;
+
+  const normalizedBodyParams = omitLegacyActionAliases(bodyParams);
 
   return {
     skill_id: body.skill_id || null,
     skill_version: body.skill_version || '1.0.0',
     intent: body.intent || body.canonical_intent || null,
     params: {
-      ...actionData,
-      ...bodyParams,
+      ...normalizedActionData,
+      ...normalizedBodyParams,
       entry_source: body.entry_source || body.trigger_source || bodyParams.entry_source || actionId || null,
       user_message: userMessage,
       message: userMessage,
       text: userMessage,
       ...(productAnchor ? { product_anchor: productAnchor } : {}),
+      ...(comparisonTargets ? { comparison_targets: comparisonTargets } : {}),
       ...(anchorProductId ? { anchor_product_id: anchorProductId } : {}),
       ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
       ...(priorMessages.length > 0 ? { messages: priorMessages } : {}),

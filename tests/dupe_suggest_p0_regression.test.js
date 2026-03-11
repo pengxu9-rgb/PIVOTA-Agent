@@ -1,6 +1,6 @@
 'use strict';
 
-const { isHollowItem, applyDupeSuggestQualityGate } = require('../src/auroraBff/qualityGates/dupeSuggestGate');
+const { isHollowItem, hasMeaningfulTradeoffs, applyDupeSuggestQualityGate } = require('../src/auroraBff/qualityGates/dupeSuggestGate');
 const { normalizeProductUrlInput, buildOriginalStubPortable, ensureOriginalNonNull } = require('../src/auroraBff/services/urlAliasNormalizer');
 
 // ---------------------------------------------------------------------------
@@ -143,12 +143,23 @@ describe('isHollowItem', () => {
     expect(isHollowItem({ similarity: 0, confidence: 0, tradeoffs: ['lighter texture'] })).toBe(false);
   });
 
+  test('item with category-only tradeoffs remains hollow', () => {
+    expect(isHollowItem({ similarity: 0, confidence: 0, tradeoffs: ['Category: Serum'] })).toBe(true);
+  });
+
   test('item with confidence>0 is NOT hollow', () => {
     expect(isHollowItem({ similarity: 0, confidence: 0.6, tradeoffs: [] })).toBe(false);
   });
 
   test('null item is hollow', () => {
     expect(isHollowItem(null)).toBe(true);
+  });
+});
+
+describe('hasMeaningfulTradeoffs', () => {
+  test('filters placeholder tradeoffs', () => {
+    expect(hasMeaningfulTradeoffs({ tradeoffs: ['Category: Serum', 'fallback_reason: empty_structured'] })).toBe(false);
+    expect(hasMeaningfulTradeoffs({ tradeoffs: ['lighter texture'] })).toBe(true);
   });
 });
 
@@ -192,6 +203,30 @@ describe('applyDupeSuggestQualityGate: hollow items', () => {
     const result = applyDupeSuggestQualityGate(payload, { lang: 'EN' });
     expect(result.gated).toBe(false);
     expect(result.payload.dupes).toHaveLength(2);
+  });
+
+  test('category-only placeholder candidate is gated as hollow', () => {
+    const payload = {
+      original: { brand: 'Test', name: 'Product' },
+      dupes: [],
+      comparables: [
+        {
+          product: { brand: 'Wrong', name: 'Wrong Serum' },
+          similarity: 0,
+          confidence: 0,
+          tradeoffs: ['Category: Serum'],
+          kind: 'similar',
+        },
+      ],
+      verified: true,
+      candidate_pool_meta: { count: 8 },
+      quality: { quality_ok: true, quality_issues: [] },
+      meta: {},
+    };
+    const result = applyDupeSuggestQualityGate(payload, { lang: 'EN' });
+    expect(result.gated).toBe(true);
+    expect(result.reason).toBe('all_items_hollow');
+    expect(result.payload.comparables).toEqual([]);
   });
 
   test('verified=true must not coexist with similarity=0 + tradeoffs=[] + confidence=0 for all items', () => {

@@ -1586,6 +1586,35 @@ function buildIngredientPlanV2({
   return out;
 }
 
+function upgradeIngredientPlanToV2({
+  plan,
+  profile,
+  catalogPath,
+  externalCandidatesByIngredient = null,
+  externalMetaByIngredient = null,
+} = {}) {
+  const base = normalizeObject(plan);
+  if (!base) return null;
+  if (String(base.schema_version || '').trim().toLowerCase() === 'aurora.ingredient_plan.v2') {
+    return base;
+  }
+
+  const upgraded = buildIngredientPlanV2({
+    plan: base,
+    profile,
+    catalogPath,
+    externalCandidatesByIngredient,
+    externalMetaByIngredient,
+  });
+  if (!upgraded) return base;
+
+  return {
+    ...upgraded,
+    ...(base.plan_id ? { plan_id: base.plan_id } : {}),
+    ...(base.created_at ? { created_at: base.created_at } : {}),
+  };
+}
+
 module.exports = {
   LOW_CONFIDENCE_THRESHOLD,
   MEDIUM_CONFIDENCE_THRESHOLD,
@@ -1593,4 +1622,5 @@ module.exports = {
   computeArtifactOverallConfidence,
   buildIngredientPlan,
   buildIngredientPlanV2,
+  upgradeIngredientPlanToV2,
 };

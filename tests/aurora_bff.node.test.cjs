@@ -1423,6 +1423,256 @@ test('/v1/routine/simulate: emits conflict_heatmap payload when enabled', async 
   });
 });
 
+test('/v1/routine/simulate: normalizes pm="same_as_am" before simulation and heatmap generation', async () => {
+  await withEnv({ AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true' }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const resp = await invokeRoute(app, 'POST', '/v1/routine/simulate', {
+      headers: { 'X-Aurora-UID': 'test_uid_same_am', 'X-Trace-ID': 'test_trace_same_am', 'X-Brief-ID': 'test_brief_same_am', 'X-Lang': 'EN' },
+      body: {
+        routine: {
+          am: [{ key_actives: ['retinol'], step: 'Treatment' }],
+          pm: 'same_as_am',
+        },
+        test_product: { key_actives: ['glycolic acid'], name: 'Test Acid' },
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+    const heatmap = cards.find((c) => c && c.type === 'conflict_heatmap');
+    assert.ok(heatmap);
+    assert.equal(heatmap?.payload?.axes?.rows?.items?.length, 3);
+    assert.equal(heatmap.payload.axes.rows.items[0]?.label_i18n?.en, 'AM Treatment');
+    assert.equal(heatmap.payload.axes.rows.items[1]?.label_i18n?.en, 'PM Treatment');
+  });
+});
+
+test('/v1/routine/simulate: marks analysis_ready when actives/concepts are detectable', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/routine/simulate', {
+    headers: { 'X-Aurora-UID': 'test_uid_analysis_ready', 'X-Trace-ID': 'test_trace_analysis_ready', 'X-Brief-ID': 'test_brief_analysis_ready', 'X-Lang': 'EN' },
+    body: {
+      routine: {
+        pm: [{ key_actives: ['niacinamide'], step: 'Serum', name: 'Niacinamide Serum' }],
+      },
+      test_product: { key_actives: ['retinol'], name: 'Retinol Night Serum' },
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const simCard = cards.find((c) => c && c.type === 'routine_simulation');
+  assert.ok(simCard);
+  assert.equal(simCard?.payload?.analysis_ready, true);
+  assert.equal(simCard?.payload?.signal_summary?.routine_active_count, 1);
+  assert.equal(simCard?.payload?.signal_summary?.test_active_count, 1);
+});
+
+test('/v1/routine/simulate: keeps analysis_ready false when no actives/concepts are detectable', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/routine/simulate', {
+    headers: { 'X-Aurora-UID': 'test_uid_analysis_hidden', 'X-Trace-ID': 'test_trace_analysis_hidden', 'X-Brief-ID': 'test_brief_analysis_hidden', 'X-Lang': 'EN' },
+    body: {
+      routine: {
+        pm: [{ step: 'mask', name: 'Water Sleeping Mask', brand: 'Laneige' }],
+      },
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const simCard = cards.find((c) => c && c.type === 'routine_simulation');
+  assert.ok(simCard);
+  assert.equal(simCard?.payload?.analysis_ready, false);
+  assert.equal(simCard?.payload?.signal_summary?.routine_active_count, 0);
+  assert.equal(simCard?.payload?.signal_summary?.routine_concept_count, 0);
+  assert.equal(simCard?.payload?.signal_summary?.test_active_count, 0);
+  assert.equal(simCard?.payload?.signal_summary?.test_concept_count, 0);
+});
+
 test('/v1/chat: compatibility question short-circuits to routine_simulation + conflict_heatmap', async () => {
   await withEnv({ AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true', AURORA_BFF_RETENTION_DAYS: '0' }, async () => {
     const express = require('express');
@@ -4956,6 +5206,718 @@ test('/v1/reco/alternatives: structured candidate pool returns selector_grounded
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and uses local Gemini', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let auroraChatCalls = 0;
+      decisionModule.auroraChat = async () => {
+        auroraChatCalls += 1;
+        throw new Error('auroraChat should not be called for open_world_only');
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        let geminiCalls = 0;
+        let geminiRequest = null;
+        __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+          geminiCalls += 1;
+          geminiRequest = args;
+          assert.equal(args.route, 'aurora_reco_alternatives_open_world');
+          assert.equal(args.ignoreForceModel, true);
+          assert.equal(args.model, 'gemini-2.5-flash');
+          assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseJsonSchema'), false);
+          assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseSchema'), false);
+          return {
+            ok: true,
+            json: {
+              alternative: {
+                brand: 'Good Molecules',
+                name: 'Niacinamide Serum',
+                product_type: 'serum',
+                similarity_score: 72,
+                reason: 'Niacinamide-led serum role overlaps with the anchor.',
+              },
+              empty_reason: null,
+            },
+          };
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_local',
+            trace_id: 'trace_open_world_local',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA', 'Pentylene Glycol'],
+            claims: ['brightening', 'oil control', 'pore care'],
+            texture_hints: ['lightweight', 'water-based'],
+            notes: 'A longer descriptive note that should not be forwarded when the anchor already has enough structured signals.',
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(auroraChatCalls, 0);
+        assert.equal(geminiCalls, 1);
+        assert.equal(out?.ok, true);
+        assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
+        assert.equal(out?.source_mode, 'open_world_only');
+        assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-2.5-flash');
+        assert.equal(Array.isArray(out?.alternatives), true);
+        assert.equal(out.alternatives.length, 1);
+        assert.equal(out.alternatives[0]?.candidate_origin, 'open_world');
+        assert.equal(out.alternatives[0]?.grounding_status, 'name_only');
+        assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
+        assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
+        assert.deepEqual(out.alternatives[0]?.tradeoff_notes, ['Formula overlap remains uncertain.']);
+        assert.equal(geminiRequest?.maxOutputTokens, 2048);
+        const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
+        assert.equal(payload?.task?.max_alternatives, 1);
+        assert.match(String(payload?.task?.selection_rule || ''), /empty_reason/i);
+        assert.match(String(payload?.task?.selection_rule || ''), /active or ingredient theme overlap/i);
+        assert.match(String(payload?.task?.selection_rule || ''), /different brand/i);
+        assert.deepEqual(payload?.anchor?.active_themes ?? [], ['niacinamide', 'zinc']);
+        assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
+        assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
+        assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);
+        assert.deepEqual(payload?.anchor?.primary_claims ?? [], ['brightening', 'oil control']);
+        assert.deepEqual(payload?.anchor?.texture_hints ?? [], ['lightweight']);
+        assert.equal(Object.prototype.hasOwnProperty.call(payload?.anchor || {}, 'notes'), false);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini failure details in trace', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      let auroraChatCalls = 0;
+      decisionModule.auroraChat = async () => {
+        auroraChatCalls += 1;
+        throw new Error('auroraChat should not be called for open_world_only failure path');
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'gemini_client_unavailable',
+          detail: 'missing api key',
+          timeout_stage: 'queue',
+          total_ms: 321,
+          upstream_ms: 0,
+          meta: { result_reason: 'gemini_client_unavailable' },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_local_fail',
+            trace_id: 'trace_open_world_local_fail',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(auroraChatCalls, 0);
+        assert.equal(out?.ok, true);
+        assert.equal(out?.failure_class, 'provider_error');
+        assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
+        assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
+        assert.equal(out?.llm_trace?.provider_reason, 'gemini_client_unavailable');
+        assert.equal(out?.llm_trace?.provider_detail, 'missing api key');
+        assert.equal(out?.llm_trace?.provider_route, 'aurora_reco_alternatives_open_world');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-2.5-flash');
+        assert.equal(out?.llm_trace?.provider_timeout_stage, 'queue');
+        assert.equal(out?.llm_trace?.provider_total_ms, 321);
+        assert.equal(out?.llm_trace?.provider_upstream_ms, 0);
+        assert.equal(out?.llm_trace?.provider_result_reason, 'gemini_client_unavailable');
+        assert.equal(out?.llm_trace?.finish_reason, null);
+        assert.equal(out?.llm_trace?.parse_status, null);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: weak anchors without active themes fail precheck with explicit reason', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: { lang: 'EN', request_id: 'req_open_world_weak_anchor', trace_id: 'trace_open_world_weak_anchor' },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'Generic Daily Moisturizer',
+          productObj: {
+            brand: 'Generic Brand',
+            name: 'Daily Moisturizer',
+            product_type: 'moisturizer',
+            category: 'Moisturizer',
+          },
+          anchorId: '',
+          maxTotal: 1,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(out?.failure_class, 'precheck_fail');
+        assert.equal(out?.no_result_reason, 'anchor_signal_insufficient_for_open_world');
+        assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only recovers complete alternatives from truncated raw JSON', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'PARSE_TRUNCATED_JSON',
+          detail: 'finish_reason=MAX_TOKENS',
+          raw_text: '{"alternative":{"brand":"Good Molecules","name":"Niacinamide Serum","product_type":"serum","similarity_score":72,"reason":"Niacinamide-led serum role overlaps with the anchor.","tradeoff_note":"Zinc support is less explicit than the anchor."},"empty_reason":null',
+          finish_reason: 'MAX_TOKENS',
+          parse_status: 'parse_truncated',
+          meta: { result_reason: 'gemini_json_max_tokens' },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: { lang: 'EN', request_id: 'req_open_world_trunc', trace_id: 'trace_open_world_trunc' },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA'],
+            claims: ['brightening', 'oil control'],
+          },
+          anchorId: '',
+          maxTotal: 2,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(Array.isArray(out?.alternatives), true);
+        assert.equal(out.alternatives.length, 1);
+        assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
+        assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
+        assert.equal(out?.llm_trace?.finish_reason, 'MAX_TOKENS');
+        assert.equal(out?.llm_trace?.parse_status, 'parse_truncated');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and prefers active-theme queries', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  try {
+    const routeModule = require('../src/auroraBff/routes');
+    const { __internal } = routeModule;
+    const queries = __internal.buildExternalSeedCompareSearchQueries({
+      productObj: {
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        category: 'serum',
+        product_type: 'serum',
+        key_actives: ['niacinamide', 'zinc'],
+        claims: ['brightening', 'oil control'],
+      },
+      productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      lang: 'EN',
+    });
+    assert.ok(Array.isArray(queries));
+    assert.ok(queries.some((item) => /niacinamide serum/i.test(String(item || ''))));
+    assert.equal(queries.some((item) => /\bserum serum\b/i.test(String(item || ''))), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_anchor_mask',
+                merchant_id: 'mid_mask',
+                brand: 'Laneige',
+                name: 'Water Sleeping Mask',
+                display_name: 'Water Sleeping Mask',
+                product_type: 'mask',
+                category: 'Sleeping Mask',
+              },
+              {
+                product_id: 'prod_bad_brush',
+                merchant_id: 'mid_bad',
+                brand: 'Random',
+                name: 'Small Eyeshadow Brush',
+                display_name: 'Small Eyeshadow Brush',
+                product_type: 'makeup brush',
+                category: 'Makeup Brush',
+              },
+              {
+                product_id: 'prod_mask_1',
+                merchant_id: 'mid_mask',
+                brand: 'Fresh',
+                name: 'Rose Face Mask',
+                display_name: 'Rose Face Mask',
+                product_type: 'mask',
+                category: 'Face Mask',
+              },
+              {
+                product_id: 'prod_mask_2',
+                merchant_id: 'mid_mask',
+                brand: "Kiehl's",
+                name: 'Rare Earth Deep Pore Cleansing Mask',
+                display_name: 'Rare Earth Deep Pore Cleansing Mask',
+                product_type: 'mask',
+                category: 'Face Mask',
+              },
+              {
+                product_id: 'prod_mask_3',
+                merchant_id: 'mid_mask',
+                brand: 'Innisfree',
+                name: 'Super Volcanic Clay Mask 2X',
+                display_name: 'Super Volcanic Clay Mask 2X',
+                product_type: 'mask',
+                category: 'Clay Mask',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          throw new Error('provider down');
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_pool',
+            'X-Trace-ID': 'test_trace_alt_external_pool',
+            'X-Brief-ID': 'test_brief_alt_external_pool',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'Laneige Water Sleeping Mask',
+            max_total: 6,
+            product: {
+              brand: 'Laneige',
+              name: 'Water Sleeping Mask',
+              metadata: { match_state: 'llm_seed' },
+              pdp_open: {
+                path: 'external',
+                external: { query: 'Laneige Water Sleeping Mask' },
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.fallback_source, null);
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
+        assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 3);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 3);
+        const labels = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.equal(labels.some((name) => /water sleeping mask/i.test(name)), false);
+        assert.equal(labels.some((name) => /eyeshadow brush/i.test(name)), false);
+        assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'pool'), true);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external llm_seed compare mixes pool and open-world candidates', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_anchor_serum',
+                merchant_id: 'mid_serum',
+                brand: 'La Roche-Posay',
+                name: 'Effaclar Ultra Concentrated Serum',
+                display_name: 'Effaclar Ultra Concentrated Serum',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+              {
+                product_id: 'prod_serum_1',
+                merchant_id: 'mid_serum',
+                brand: 'Paula’s Choice',
+                name: '10% Azelaic Acid Booster',
+                display_name: '10% Azelaic Acid Booster',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'SkinCeuticals',
+                name: 'Blemish + Age Defense',
+                product_type: 'serum',
+                reasons: ['Targets blemish care and post-acne marks.'],
+                tradeoff_notes: ['Usually pricier than the anchor.'],
+                best_use: 'Oily, acne-prone skin',
+              },
+              {
+                brand: 'The Ordinary',
+                name: 'Niacinamide 10% + Zinc 1%',
+                product_type: 'serum',
+                reasons: ['Covers oil control and tone-evening goals.'],
+                tradeoff_notes: ['Can feel tackier on some routines.'],
+                best_use: 'Acne marks and shine control',
+              },
+            ],
+          },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_mixed',
+            'X-Trace-ID': 'test_trace_alt_external_mixed',
+            'X-Brief-ID': 'test_brief_alt_external_mixed',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'La Roche-Posay Effaclar Ultra Concentrated Serum',
+            max_total: 6,
+            product: {
+              brand: 'La Roche-Posay',
+              name: 'Effaclar Ultra Concentrated Serum',
+              metadata: { match_state: 'llm_seed' },
+              pdp_open: {
+                path: 'external',
+                external: { query: 'La Roche-Posay Effaclar Ultra Concentrated Serum' },
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.compare_meta?.pool_selected_count, 1);
+        assert.ok(Number(resp.body?.compare_meta?.open_world_selected_count || 0) >= 2);
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 3);
+        assert.ok(resp.body.alternatives.some((alt) => String(alt?.candidate_origin || '') === 'open_world'));
+        assert.ok(resp.body.alternatives.some((alt) => String(alt?.candidate_origin || '') === 'pool'));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external llm_seed compare returns explainable empty without synthetic fallback', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_anchor_seed',
+                merchant_id: 'mid_seed',
+                brand: 'Laneige',
+                name: 'Water Sleeping Mask',
+                display_name: 'Water Sleeping Mask',
+                product_type: 'mask',
+                category: 'Sleeping Mask',
+              },
+              {
+                product_id: 'prod_tool_seed',
+                merchant_id: 'mid_seed',
+                brand: 'Random',
+                name: 'Small Eyeshadow Brush',
+                display_name: 'Small Eyeshadow Brush',
+                product_type: 'makeup brush',
+                category: 'Makeup Brush',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: { alternatives: [] },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_empty',
+            'X-Trace-ID': 'test_trace_alt_external_empty',
+            'X-Brief-ID': 'test_brief_alt_external_empty',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'Laneige Water Sleeping Mask',
+            max_total: 6,
+            product: {
+              brand: 'Laneige',
+              name: 'Water Sleeping Mask',
+              metadata: { match_state: 'llm_seed' },
+              pdp_open: {
+                path: 'external',
+                external: { query: 'Laneige Water Sleeping Mask' },
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.fallback_source, 'none');
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 0);
+        assert.equal(resp.body?.compare_meta?.pool_recall_status, 'empty');
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'empty');
+        assert.equal(resp.body?.no_result_reason, 'pool_and_open_world_empty');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
         delete require.cache[moduleId];
       }
     },
@@ -11076,7 +12038,8 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
           .expect(200);
         assert.equal(Boolean(findCardByType(deepDive.body?.cards, 'ingredient_hub')), false);
         assert.equal(Boolean(findCardByType(deepDive.body?.cards, 'nudge')), false);
-        assert.match(String(deepDive.body?.assistant_message?.content || ''), /latest analysis|skin trends/i);
+        const deepDiveText = String(deepDive.body?.assistant_text || deepDive.body?.assistant_message?.content || '');
+        assert.match(deepDiveText, /latest analysis|skin trends|latest photo/i);
 
         const ingredientPlan = await supertest(app)
           .post('/v1/chat')
@@ -11090,7 +12053,9 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
             language: 'EN',
           })
           .expect(200);
-        assert.ok(findCardByType(ingredientPlan.body?.cards, 'ingredient_plan'));
+        const ingredientPlanCard = findCardByType(ingredientPlan.body?.cards, 'ingredient_plan_v2');
+        assert.ok(ingredientPlanCard);
+        assert.equal(ingredientPlanCard.payload?.schema_version, 'aurora.ingredient_plan.v2');
         assert.equal(Boolean(findCardByType(ingredientPlan.body?.cards, 'ingredient_hub')), false);
         assert.equal(Boolean(findCardByType(ingredientPlan.body?.cards, 'nudge')), false);
 
@@ -11175,6 +12140,592 @@ test('/v1/chat: deep_dive_skin without reusable analysis context returns confide
       assert.ok(findCardByType(response.body?.cards, 'confidence_notice'));
       assert.equal(Boolean(findCardByType(response.body?.cards, 'nudge')), false);
       assert.match(String(response.body?.assistant_text || response.body?.assistant_message?.content || ''), /recent skin analysis|run skin analysis again/i);
+    },
+  );
+});
+
+test('/v1/chat: implicit deep-dive message with recent analysis context stays on analysis follow-up route', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const response = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'uid_analysis_followup_implicit',
+          'X-Trace-ID': 'trace_analysis_followup_implicit',
+          'X-Brief-ID': 'brief_analysis_followup_implicit',
+          'X-Lang': 'EN',
+        })
+        .send({
+          message: 'Tell me more about my skin',
+          language: 'EN',
+          session: {
+            meta: {
+              analysis_context: {
+                analysis_origin: 'photo',
+                photo_refs: [{ slot_id: 'daylight', photo_id: 'upl_photo_123', qc_status: 'passed' }],
+                source_card_type: 'analysis_story_v2',
+                analysis_story_snapshot: {
+                  schema_version: 'aurora.analysis_story.v2',
+                  confidence_overall: { level: 'medium', score: 0.72 },
+                  skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'medium' },
+                  priority_findings: [
+                    { priority: 1, title: 'Cheek dryness', detail: 'Dry cheek patches', evidence_region_or_module: [] },
+                    { priority: 2, title: 'Texture on forehead', detail: 'Uneven forehead texture', evidence_region_or_module: [] },
+                    { priority: 3, title: 'Mild chin congestion', detail: 'Small clogged pores', evidence_region_or_module: [] },
+                  ],
+                  target_state: ['Reduce congestion', 'Keep hydration stable'],
+                  core_principles: ['Lower active stacking'],
+                  am_plan: [{ step: 'Use SPF', purpose: 'UV protection' }],
+                  pm_plan: [{ step: 'Use barrier serum', purpose: 'Support recovery' }],
+                  timeline: { first_4_weeks: ['Stabilize barrier'], week_8_12_expectation: ['Smoother texture'] },
+                  safety_notes: [],
+                  disclaimer_non_medical: true,
+                  ui_card_v1: {
+                    headline: 'Stabilize first, then reduce congestion.',
+                    key_points: ['Cheek dryness', 'Texture on forehead'],
+                    actions_now: ['Reduce active overlap'],
+                    avoid_now: ['Do not over-exfoliate'],
+                    confidence_label: 'medium',
+                    next_checkin: 'Re-check in 2 weeks.',
+                  },
+                },
+              },
+            },
+            profile: {
+              lastAnalysis: {
+                skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'medium' },
+                priority_findings: [{ title: 'Weak raw finding' }],
+                confidence_overall: { level: 'low', score: 0.41 },
+              },
+            },
+          },
+        })
+        .expect(200);
+
+      assert.ok(findCardByType(response.body?.cards, 'analysis_story_v2'));
+      assert.equal(Boolean(findCardByType(response.body?.cards, 'ingredient_hub')), false);
+      const actionEvent = (Array.isArray(response.body?.events) ? response.body.events : []).find(
+        (event) => event && event.event_name === 'analysis_followup_action_routed',
+      );
+      assert.equal(actionEvent?.data?.action_id, 'chip.aurora.next_action.deep_dive_skin');
+      assert.equal(actionEvent?.data?.routing_mode, 'implicit');
+      assert.equal(actionEvent?.data?.fell_back_to_generic, false);
+      assert.match(
+        String(response.body?.assistant_text || response.body?.assistant_message?.content || ''),
+        /latest analysis|latest photo|deep dive/i,
+      );
+    },
+  );
+});
+
+test('resolveImplicitAnalysisFollowupActionId recognizes deep-dive prompt and keeps missing-context flows inside analysis follow-up', () => {
+  const { __internal } = loadRouteInternals();
+  const resolveImplicitAnalysisFollowupActionId = __internal.resolveImplicitAnalysisFollowupActionId;
+  if (!resolveImplicitAnalysisFollowupActionId) { console.log('SKIP: resolveImplicitAnalysisFollowupActionId not exported'); return; }
+
+  assert.equal(
+    resolveImplicitAnalysisFollowupActionId({
+      message: 'Tell me more about my skin',
+      sessionAnalysisContext: { analysis_story_snapshot: { priority_findings: [{ title: 'Barrier stress' }] } },
+      lastAnalysis: null,
+      latestArtifactId: null,
+    }),
+    'chip.aurora.next_action.deep_dive_skin',
+  );
+  assert.equal(
+    resolveImplicitAnalysisFollowupActionId({
+      message: 'Tell me more about my skin',
+      sessionAnalysisContext: null,
+      lastAnalysis: null,
+      latestArtifactId: null,
+    }),
+    'chip.aurora.next_action.deep_dive_skin',
+  );
+  assert.equal(
+    resolveImplicitAnalysisFollowupActionId({
+      message: 'Tell me about sunscreen',
+      sessionAnalysisContext: null,
+      lastAnalysis: null,
+      latestArtifactId: null,
+    }),
+    null,
+  );
+});
+
+test('buildAssistantMessageFromStoryV2 produces aligned summary from story card', () => {
+  const { __internal } = loadRouteInternals();
+  const buildAssistantMessageFromStoryV2 = __internal.buildAssistantMessageFromStoryV2;
+  if (!buildAssistantMessageFromStoryV2) { console.log('SKIP: buildAssistantMessageFromStoryV2 not exported'); return; }
+
+  const storyPayload = {
+    confidence_overall: { level: 'medium', score: 0.68 },
+    skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'medium' },
+    priority_findings: [
+      { title: 'Mild dryness around cheeks' },
+      { title: 'Uneven texture on forehead' },
+      { title: 'Light hyperpigmentation' },
+    ],
+  };
+  const message = buildAssistantMessageFromStoryV2(storyPayload, { language: 'EN' });
+  assert.ok(message.includes('combination'), `Expected "combination" in message: ${message}`);
+  assert.ok(message.includes('medium'), `Expected "medium" in message: ${message}`);
+  assert.ok(!message.includes('unconfirmed'), `Message should NOT contain "unconfirmed": ${message}`);
+  assert.ok(message.includes('Mild dryness') || message.includes('Key findings'), `Expected findings in message: ${message}`);
+});
+
+test('buildAssistantMessageFromStoryV2 does not emit unconfirmed placeholders when story is still useful', () => {
+  const { __internal } = loadRouteInternals();
+  const buildAssistantMessageFromStoryV2 = __internal.buildAssistantMessageFromStoryV2;
+  if (!buildAssistantMessageFromStoryV2) { console.log('SKIP: buildAssistantMessageFromStoryV2 not exported'); return; }
+
+  const storyPayload = {
+    confidence_overall: { level: 'medium', score: 0.67 },
+    priority_findings: [
+      { title: 'Barrier stress around cheeks' },
+      { title: 'Congestion on chin' },
+    ],
+  };
+  const message = buildAssistantMessageFromStoryV2(storyPayload, { language: 'EN' });
+  assert.ok(message.startsWith('Analysis complete.'), `Expected aligned intro, got: ${message}`);
+  assert.ok(!message.includes('unconfirmed'), `Should not include placeholder confidence labels: ${message}`);
+  assert.ok(message.includes('Confidence for this read is **medium**.'), `Expected confidence line: ${message}`);
+});
+
+test('isDeepDiveStoryWeakerThanFallback detects weaker story', () => {
+  const { __internal } = loadRouteInternals();
+  const isDeepDiveStoryWeakerThanFallback = __internal.isDeepDiveStoryWeakerThanFallback;
+  if (!isDeepDiveStoryWeakerThanFallback) { console.log('SKIP: isDeepDiveStoryWeakerThanFallback not exported'); return; }
+
+  const strongBaseline = {
+    priority_findings: [{ title: 'A' }, { title: 'B' }, { title: 'C' }],
+    confidence_overall: { level: 'medium' },
+  };
+  const weakCandidate = {
+    priority_findings: [],
+    confidence_overall: { level: 'low' },
+  };
+  const okCandidate = {
+    priority_findings: [{ title: 'A' }, { title: 'B' }, { title: 'C' }, { title: 'D' }],
+    confidence_overall: { level: 'medium' },
+  };
+
+  assert.equal(isDeepDiveStoryWeakerThanFallback({ story: weakCandidate, fallbackStory: strongBaseline }), true);
+  assert.equal(isDeepDiveStoryWeakerThanFallback({ story: okCandidate, fallbackStory: strongBaseline }), false);
+});
+
+test('applyNonWeakeningDeepDiveUiPatch preserves fallback findings when llm patch would weaken the story', () => {
+  const { __internal } = loadRouteInternals();
+  const applyNonWeakeningDeepDiveUiPatch = __internal.applyNonWeakeningDeepDiveUiPatch;
+  if (!applyNonWeakeningDeepDiveUiPatch) { console.log('SKIP: applyNonWeakeningDeepDiveUiPatch not exported'); return; }
+
+  const fallbackStory = {
+    confidence_overall: { level: 'medium' },
+    priority_findings: [{ title: 'A' }, { title: 'B' }, { title: 'C' }],
+    ui_card_v1: {
+      headline: 'Fallback headline',
+      key_points: ['A', 'B', 'C'],
+      actions_now: ['Fallback action'],
+      avoid_now: [],
+      confidence_label: 'medium',
+    },
+    safety_notes: [],
+  };
+  const weakenedStory = {
+    ...fallbackStory,
+    priority_findings: [{ title: 'Only one weak point' }],
+    ui_card_v1: {
+      ...fallbackStory.ui_card_v1,
+      headline: 'Specific but weaker headline',
+      key_points: ['Only one weak point'],
+      actions_now: ['Patched action'],
+    },
+  };
+  const restored = applyNonWeakeningDeepDiveUiPatch({
+    story: weakenedStory,
+    fallbackStory,
+    uiPatch: {
+      headline: 'Specific but weaker headline',
+      actions_now: ['Patched action'],
+      key_points: ['Only one weak point'],
+    },
+  });
+
+  assert.equal(restored.priority_findings.length, 3);
+  assert.equal(restored.ui_card_v1.headline, 'Specific but weaker headline');
+  assert.deepEqual(restored.ui_card_v1.actions_now, ['Patched action']);
+});
+
+test('applyAnalysisStoryProfilePatch backfills pending story profile from diagnosis signals', () => {
+  const { __internal } = loadRouteInternals();
+  const applyAnalysisStoryProfilePatch = __internal.applyAnalysisStoryProfilePatch;
+  if (!applyAnalysisStoryProfilePatch) { console.log('SKIP: applyAnalysisStoryProfilePatch not exported'); return; }
+
+  const patched = applyAnalysisStoryProfilePatch(
+    {
+      confidence_overall: { level: 'medium' },
+      skin_profile: { skin_type_tendency: 'pending', sensitivity_tendency: 'pending', current_strengths: [] },
+      priority_findings: [{ title: 'Barrier stress' }],
+    },
+    {
+      diagnosisArtifact: {
+        skinType: { value: 'combination' },
+        sensitivity: { value: 'high' },
+      },
+    },
+  );
+
+  assert.equal(patched.skin_profile.skin_type_tendency, 'combination');
+  assert.equal(patched.skin_profile.sensitivity_tendency, 'high');
+});
+
+test('applyDeepDiveLlmResponseToStory appends deeper findings and routine focus instead of replacing the baseline', () => {
+  const { __internal } = loadRouteInternals();
+  const applyDeepDiveLlmResponseToStory = __internal.applyDeepDiveLlmResponseToStory;
+  if (!applyDeepDiveLlmResponseToStory) { console.log('SKIP: applyDeepDiveLlmResponseToStory not exported'); return; }
+
+  const fallbackStory = {
+    schema_version: 'aurora.analysis_story.v2',
+    confidence_overall: { level: 'medium', score: 0.72 },
+    skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'medium', current_strengths: [] },
+    priority_findings: [
+      { priority: 1, title: 'Cheek dryness', detail: 'Dry cheek patches', evidence_region_or_module: [] },
+      { priority: 2, title: 'Texture on forehead', detail: 'Rough texture', evidence_region_or_module: [] },
+      { priority: 3, title: 'Mild chin congestion', detail: 'Small clogged pores', evidence_region_or_module: [] },
+    ],
+    target_state: ['Stabilize barrier first'],
+    core_principles: ['Keep actives gentle'],
+    am_plan: [{ step: 'Use SPF', purpose: 'UV protection' }],
+    pm_plan: [{ step: 'Barrier serum', purpose: 'Support recovery' }],
+    timeline: { first_4_weeks: ['Stabilize barrier'], week_8_12_expectation: ['Smoother texture'] },
+    safety_notes: [],
+    disclaimer_non_medical: true,
+    ui_card_v1: {
+      headline: 'Stabilize first, then reduce congestion.',
+      key_points: ['Cheek dryness', 'Texture on forehead'],
+      actions_now: ['Reduce active overlap'],
+      avoid_now: ['Do not over-exfoliate'],
+      confidence_label: 'medium',
+      next_checkin: 'Re-check in 2 weeks.',
+    },
+  };
+
+  const out = applyDeepDiveLlmResponseToStory({
+    responsePayload: {
+      conclusion: 'The deeper read points more to barrier strain with mild congestion than active inflammation.',
+      key_signals: ['Barrier strain is still the main pattern'],
+      deeper_findings: ['Shine looks more like dehydration bounce than heavy oil overload'],
+      target_state: ['Keep texture stable while calming redness triggers'],
+      core_principles: ['Add hydration before escalating acne actives'],
+      am_focus: ['Hydrating serum before sunscreen'],
+      pm_focus: ['Keep only one active night at a time'],
+      actions_now: ['Hold exfoliation to 1x weekly'],
+      avoid_now: ['Do not stack BHA and retinoid together'],
+      confidence_note: 'Photo quality is usable but still slightly conservative.',
+    },
+    fallbackStory,
+  });
+
+  assert.ok(Array.isArray(out.story.priority_findings));
+  assert.ok(out.story.priority_findings.length >= 4, `expected appended findings, got ${out.story.priority_findings.length}`);
+  assert.ok(out.story.priority_findings.some((item) => String(item.title || '').includes('dehydration bounce')));
+  assert.ok(Array.isArray(out.story.am_plan) && out.story.am_plan.some((item) => String(item.step || '').includes('Hydrating serum')));
+  assert.ok(Array.isArray(out.story.pm_plan) && out.story.pm_plan.some((item) => String(item.step || '').includes('one active night')));
+  assert.ok(Array.isArray(out.story.target_state) && out.story.target_state.length >= 2);
+});
+
+test('enrichIngredientPlanPayloadForCard replaces raw rule signals with ingredient education', () => {
+  const { __internal } = loadRouteInternals();
+  const enrichIngredientPlanPayloadForCard = __internal.enrichIngredientPlanPayloadForCard;
+  if (!enrichIngredientPlanPayloadForCard) { console.log('SKIP: enrichIngredientPlanPayloadForCard not exported'); return; }
+
+  const out = enrichIngredientPlanPayloadForCard(
+    {
+      schema_version: 'aurora.ingredient_plan.v2',
+      intensity: { level: 'gentle' },
+      targets: [
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          priority_level: 'high',
+          why: ['Rule signal: low_confidence_gentle_only'],
+          usage_guidance: [],
+          rationale: ['low_confidence_gentle_only'],
+          products: { competitors: [], dupes: [] },
+        },
+      ],
+      avoid: [],
+      conflicts: [],
+      budget_context: { effective_tier: 'unknown' },
+    },
+    { language: 'EN' },
+  );
+
+  const target = out.targets[0];
+  assert.ok(Array.isArray(target.why) && target.why.length > 0);
+  assert.equal(target.why.some((line) => /rule signal:/i.test(String(line))), false);
+  assert.ok(target.why.some((line) => /barrier|water loss|ceramide/i.test(String(line))), JSON.stringify(target.why));
+  assert.ok(Array.isArray(target.usage_guidance) && target.usage_guidance.some((line) => /typical products|typical formats|moisturizers|barrier creams/i.test(String(line))), JSON.stringify(target.usage_guidance));
+  assert.ok(target.ingredient_report && target.ingredient_report.ingredient);
+});
+
+test('stream deep-dive: buildChatCardsResponse wraps followup into v1-parseable envelope', () => {
+  const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
+
+  const followupResult = {
+    assistant_text: 'This explanation stays grounded in your latest photo-based analysis. Key signals: Mild dryness; Uneven texture.',
+    cards: [
+      {
+        card_id: 'analysis_followup_story_req123',
+        type: 'analysis_story_v2',
+        payload: {
+          schema_version: 'aurora.analysis_story.v2',
+          confidence_overall: { level: 'medium', score: 0.72 },
+          skin_profile: { skin_type_tendency: 'combination' },
+          priority_findings: [
+            { priority: 1, title: 'Mild dryness', detail: 'Dry patches near cheeks', evidence_region_or_module: [] },
+            { priority: 2, title: 'Uneven texture', detail: 'Rough patches on forehead', evidence_region_or_module: [] },
+          ],
+          summary: 'Key signals: Mild dryness; Uneven texture.',
+        },
+      },
+    ],
+    suggested_chips: [
+      { chip_id: 'chip.aurora.next_action.ingredient_plan', label: 'Explain ingredient plan', kind: 'follow_up', data: { action_id: 'chip.aurora.next_action.ingredient_plan' } },
+    ],
+    used_last_analysis: true,
+    missing_context: false,
+    analysis_origin: 'photo',
+    photo_ref_count: 1,
+    used_diagnosis_artifact: true,
+    llm_used: false,
+  };
+
+  const legacyEnvelope = {
+    request_id: 'req123',
+    trace_id: 'trace123',
+    assistant_message: { role: 'assistant', content: followupResult.assistant_text, format: 'text' },
+    suggested_chips: followupResult.suggested_chips,
+    cards: followupResult.cards,
+    session_patch: {},
+    events: [
+      { event_name: 'analysis_followup_action_routed', data: { action_id: 'chip.aurora.next_action.deep_dive_skin', used_last_analysis: true, missing_context: false, fell_back_to_generic: false } },
+    ],
+  };
+
+  const ctx = { request_id: 'req123', trace_id: 'trace123', lang: 'EN', ui_lang: 'EN', match_lang: 'EN' };
+  const v1Response = buildChatCardsResponse({
+    envelope: legacyEnvelope,
+    ctx,
+    intent: 'analysis_followup',
+    intentConfidence: 1,
+    entities: [],
+    safetyDecision: null,
+    threadOps: [],
+  });
+
+  assert.equal(v1Response.version, '1.0');
+  assert.equal(v1Response.request_id, 'req123');
+  assert.equal(v1Response.trace_id, 'trace123');
+  assert.ok(typeof v1Response.assistant_text === 'string' && v1Response.assistant_text.length > 0);
+  assert.ok(Array.isArray(v1Response.cards));
+  assert.ok(v1Response.cards.length > 0);
+  const legacyCard = v1Response.cards[0];
+  assert.equal(legacyCard.type, 'analysis_story_v2');
+});
+
+test('stream deep-dive: v1 response from buildChatCardsResponse is parseable by frontend chatCardsParser logic', () => {
+  const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
+
+  const legacyEnvelope = {
+    request_id: 'req_parse_test',
+    trace_id: 'trace_parse_test',
+    assistant_message: { role: 'assistant', content: 'Deep dive: Mild dryness observed.', format: 'text' },
+    suggested_chips: [],
+    cards: [
+      {
+        card_id: 'analysis_followup_story_parse',
+        type: 'analysis_story_v2',
+        payload: {
+          confidence_overall: { level: 'medium' },
+          priority_findings: [{ priority: 1, title: 'Mild dryness', detail: 'Cheeks area', evidence_region_or_module: [] }],
+        },
+      },
+    ],
+    session_patch: {},
+    events: [{ event_name: 'analysis_followup_action_routed', data: { action_id: 'chip.aurora.next_action.deep_dive_skin', fell_back_to_generic: false } }],
+  };
+
+  const v1 = buildChatCardsResponse({
+    envelope: legacyEnvelope,
+    ctx: { request_id: 'req_parse_test', trace_id: 'trace_parse_test', lang: 'EN', ui_lang: 'EN', match_lang: 'EN' },
+    intent: 'analysis_followup',
+    intentConfidence: 1,
+  });
+
+  assert.equal(String(v1.version), '1.0');
+  assert.ok(String(v1.request_id).length > 0);
+  assert.ok(String(v1.trace_id).length > 0);
+  assert.ok(typeof v1.assistant_text === 'string' && v1.assistant_text.length > 0);
+  assert.ok(Array.isArray(v1.cards) && v1.cards.length > 0);
+  assert.ok(Array.isArray(v1.follow_up_questions));
+  assert.ok(Array.isArray(v1.suggested_quick_replies));
+  assert.ok(v1.safety && typeof v1.safety.risk_level === 'string');
+  assert.ok(v1.telemetry && typeof v1.telemetry.intent === 'string');
+});
+
+test('/v1/chat: deep_dive_skin consumes photo refs and diagnosis artifact through llm path', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const memoryStore = require('../src/auroraBff/memoryStore');
+      const artifactStore = require('../src/auroraBff/diagnosisArtifactStore');
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      const uid = 'uid_analysis_followup_photo_deep_dive';
+      const sessionId = 'brief_analysis_followup_photo_deep_dive';
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'trace_analysis_followup_photo_deep_dive',
+        'X-Brief-ID': sessionId,
+        'X-Lang': 'EN',
+      };
+      const llmCalls = [];
+      __internal.__setCallGeminiJsonObjectForTest(async (request) => {
+        llmCalls.push(request);
+        return {
+          ok: true,
+          json: {
+            conclusion: 'The redness looks more consistent with barrier stress right now.',
+            key_signals: [
+              'Cheek redness appears alongside dehydration.',
+              'The routine active stack can also be compatible with irritation.',
+            ],
+            actions_now: ['AM: Gentle cleanse, moisturizer, SPF.'],
+            avoid_now: ['Avoid stacking strong acids while redness settles.'],
+            confidence_note: 'Medium confidence from photo-backed evidence.',
+          },
+        };
+      });
+
+      try {
+        await memoryStore.saveLastAnalysisForIdentity(
+          { auroraUid: uid, userId: null },
+          {
+            analysis: {
+              skin_profile: {
+                skin_type_tendency: 'combination',
+                sensitivity_tendency: 'high',
+                current_strengths: ['steady barrier'],
+              },
+              priority_findings: [{ title: 'Cheek redness' }, { detail: 'Mild dehydration' }],
+              confidence_overall: { level: 'medium', score: 0.73 },
+              guidance_brief: ['Simplify the morning active stack', 'Keep barrier support stable'],
+            },
+            lang: 'EN',
+          },
+        );
+        await artifactStore.saveDiagnosisArtifact({
+          auroraUid: uid,
+          userId: null,
+          sessionId,
+          artifact: {
+            artifact_id: 'da_test_photo_deep_dive',
+            created_at: new Date().toISOString(),
+            use_photo: true,
+            overall_confidence: { level: 'medium', score: 0.73 },
+            skinType: { value: 'combination' },
+            sensitivity: { value: 'high' },
+            goals: { values: ['acne', 'pores'] },
+            concerns: [{ id: 'redness', title: 'Cheek redness' }],
+            photos: [{ slot: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+            analysis_context: {
+              analysis_source: 'vision_gemini',
+              used_photos: true,
+              quality_grade: 'pass',
+            },
+            source_mix: ['photo', 'profile'],
+          },
+          artifactId: 'da_test_photo_deep_dive',
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const deepDive = await supertest(app)
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action: {
+              action_id: 'chip.aurora.next_action.deep_dive_skin',
+              kind: 'action',
+              data: {
+                reply_text: 'Explain the redness pattern',
+                trigger_source: 'analysis_story_v2',
+                analysis_origin: 'photo',
+                use_photo: true,
+                source_card_type: 'analysis_story_v2',
+                photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+              },
+            },
+            session: {
+              state: { latest_artifact_id: 'da_test_photo_deep_dive' },
+              meta: {
+                analysis_context: {
+                  analysis_origin: 'photo',
+                  use_photo: true,
+                  source_card_type: 'analysis_story_v2',
+                  photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+                },
+              },
+            },
+            language: 'EN',
+          })
+          .expect(200);
+
+        assert.equal(llmCalls.length, 1);
+        assert.equal(llmCalls[0].model, 'gemini-3-pro-preview');
+        assert.equal(llmCalls[0].maxOutputTokens, 1200);
+        assert.match(String(llmCalls[0].userPrompt || ''), /Photo-backed context already exists/i);
+        assert.doesNotMatch(String(llmCalls[0].userPrompt || ''), /photo_daylight_1/);
+        assert.doesNotMatch(String(llmCalls[0].userPrompt || ''), /can't analyze photos/i);
+        const storyCard = findCardByType(deepDive.body?.cards, 'analysis_story_v2');
+        assert.ok(storyCard);
+        assert.equal(storyCard.payload.confidence_overall.level, 'medium');
+        assert.match(String(storyCard.payload.ui_card_v1?.headline || ''), /more consistent with barrier stress/i);
+        assert.match(String(deepDive.body?.assistant_message?.content || ''), /photo-based analysis|photo-backed/i);
+        assert.match(String(deepDive.body?.assistant_message?.content || ''), /Confidence note: Medium confidence from photo-backed evidence/i);
+        const actionEvent = Array.isArray(deepDive.body?.events)
+          ? deepDive.body.events.find((event) => event && event.event_name === 'analysis_followup_action_routed')
+          : null;
+        assert.equal(actionEvent?.data?.analysis_origin, 'photo');
+        assert.equal(actionEvent?.data?.llm_used, true);
+        assert.equal(actionEvent?.data?.used_diagnosis_artifact, true);
+        assert.equal(actionEvent?.data?.photo_ref_count, 1);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+        delete require.cache[routeModuleId];
+      }
     },
   );
 });

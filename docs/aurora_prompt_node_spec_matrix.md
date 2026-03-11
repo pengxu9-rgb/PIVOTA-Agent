@@ -212,7 +212,7 @@ This file is the implementation-ready prompt spec library for Aurora v2 plus leg
 - Goal: Provide a grounded product suitability verdict and usage guidance that deterministic safety rules can safely refine.
 - Output contract: schema=ProductAnalysisOutput | schema_required=product_name; product_type; suitability; usage | consumer_required=brand|null; has_spf; key_ingredients[]; risk_flags[]
 - Deterministic boundary: Deterministic layer enforces SPF, retinoid, pregnancy, and high-acid hard overrides.; Prompt should still return a coherent baseline usage object and grounded risk flags.
-- Hard rules: SPF must be AM only with reapply guidance.; Retinoids should bias PM-only and gradual onboarding.; Do not fabricate ingredients when ingredient_list is weak or missing.
+- Hard rules: SPF must use time_of_day=am with reapply guidance.; Retinoids should bias pm-only and gradual onboarding.; Do not fabricate ingredients when ingredient_list is weak or missing.
 - Missing-data policy: Use null or [] for unknown ingredient facts.; Keep verdict cautious when formulation evidence is incomplete.
 - Forbidden behaviors: No brand hallucination.; No concentration guessing.; No PM-first sunscreen guidance.
 - Best prompt skeleton: Role: objective product analyst.; Task: analyze product suitability from anchor + ingredient context.; Output contract: product verdict JSON.; Hard rules: SPF / retinoid / pregnancy / uncertainty.

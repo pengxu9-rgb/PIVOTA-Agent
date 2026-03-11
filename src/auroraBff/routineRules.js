@@ -32,6 +32,10 @@ const ACTIVE_TO_CONCEPTS = Object.freeze({
   tranexamic_acid: ['TRANEXAMIC_ACID'],
 });
 
+const COMPATIBILITY_SIGNAL_ACTIVE_TOKENS = new Set(
+  Object.keys(ACTIVE_TO_CONCEPTS).map((value) => String(value || '').trim().toLowerCase()).filter(Boolean),
+);
+
 function uniq(arr) {
   const out = [];
   const seen = new Set();
@@ -148,6 +152,30 @@ function extractConcepts(product, { language = 'EN' } = {}) {
     for (const conceptId of mapped) concepts.add(String(conceptId || '').toUpperCase());
   }
   return Array.from(concepts);
+}
+
+function extractCompatibilitySignalActives(tokens) {
+  return uniq(
+    (Array.isArray(tokens) ? tokens : [])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter((value) => value && COMPATIBILITY_SIGNAL_ACTIVE_TOKENS.has(value)),
+  );
+}
+
+function extractCompatibilitySignalConcepts(conceptIds) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(conceptIds) ? conceptIds : []) {
+    const conceptId = String(raw || '').trim().toUpperCase();
+    if (!conceptId || seen.has(conceptId)) continue;
+    const mappedTokens = mapConceptsToRoutineActiveTokens([conceptId])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter((value) => value && COMPATIBILITY_SIGNAL_ACTIVE_TOKENS.has(value));
+    if (mappedTokens.length === 0) continue;
+    seen.add(conceptId);
+    out.push(conceptId);
+  }
+  return out;
 }
 
 function findDistinctPair(aIndices, bIndices) {
@@ -382,6 +410,21 @@ function allowLowRiskSafeCorrection(row) {
 
 function simulateConflicts({ routine, testProduct, language = 'EN' } = {}) {
   const stepData = collectStepData({ routine, testProduct, language });
+  const routineSignalActives = extractCompatibilitySignalActives(stepData.routineActives);
+  const testSignalActives = extractCompatibilitySignalActives(stepData.testActives);
+  const routineSignalConcepts = extractCompatibilitySignalConcepts(stepData.routineConcepts);
+  const testSignalConcepts = extractCompatibilitySignalConcepts(stepData.testConcepts);
+  const signalSummary = {
+    routine_active_count: routineSignalActives.length,
+    routine_concept_count: routineSignalConcepts.length,
+    test_active_count: testSignalActives.length,
+    test_concept_count: testSignalConcepts.length,
+  };
+  const analysisReady =
+    signalSummary.routine_active_count > 0 ||
+    signalSummary.routine_concept_count > 0 ||
+    signalSummary.test_active_count > 0 ||
+    signalSummary.test_concept_count > 0;
   const kb = getAuroraKbV0();
   const kbAvailable = Boolean(kb && kb.ok && !kb.disabled);
   const kbConflicts = kbAvailable ? buildKbInteractionConflicts({ kb, stepData }) : [];
@@ -418,6 +461,8 @@ function simulateConflicts({ routine, testProduct, language = 'EN' } = {}) {
     safe,
     conflicts,
     summary,
+    analysis_ready: analysisReady,
+    signal_summary: signalSummary,
     debug: {
       routineActives: stepData.routineActives,
       testActives: stepData.testActives,

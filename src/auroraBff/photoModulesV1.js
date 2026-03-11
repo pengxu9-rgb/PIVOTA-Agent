@@ -64,6 +64,14 @@ function parseEnvNumber(value, fallback, min = -Infinity, max = Infinity) {
   return Math.max(min, Math.min(max, n));
 }
 
+const AURORA_RULE_RELAX_MODE = (() => {
+  const raw = String(process.env.AURORA_RULE_RELAX_MODE || 'aggressive')
+    .trim()
+    .toLowerCase();
+  return raw === 'conservative' ? 'conservative' : 'aggressive';
+})();
+const AURORA_RULE_RELAX_AGGRESSIVE = AURORA_RULE_RELAX_MODE === 'aggressive';
+
 const FACE_OVAL_CLIP_ENABLED = parseEnvBoolean(process.env.DIAG_FACE_OVAL_CLIP, true);
 const MODULE_SHRINK_CHIN = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHIN, 0.55, 0.4, 1);
 const MODULE_SHRINK_FOREHEAD = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_FOREHEAD, 0.45, 0.3, 1);
@@ -4118,7 +4126,8 @@ function buildPhotoModulesCard({
 } = {}) {
   const qualityGrade = normalizeQualityGrade(photoQuality && photoQuality.grade);
   if (!usedPhotos) return null;
-  if (qualityGrade !== 'pass' && qualityGrade !== 'degraded') return null;
+  const lowQualityTolerated = AURORA_RULE_RELAX_AGGRESSIVE && qualityGrade === 'fail';
+  if (qualityGrade !== 'pass' && qualityGrade !== 'degraded' && !lowQualityTolerated) return null;
 
   const baseAnalysis = analysis && typeof analysis === 'object' ? analysis : {};
   const findings = Array.isArray(baseAnalysis.photo_findings)
@@ -4228,6 +4237,8 @@ function buildPhotoModulesCard({
   const payload = {
     used_photos: true,
     quality_grade: qualityGrade,
+    low_confidence: qualityGrade === 'fail' || qualityGrade === 'unknown',
+    quality_labels: qualityGrade === 'fail' || qualityGrade === 'unknown' ? ['quality_low_confidence'] : [],
     ...(typeof photoNotice === 'string' && photoNotice.trim() ? { photo_notice: photoNotice.trim() } : {}),
     ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),
     ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),

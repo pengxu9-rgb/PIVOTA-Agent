@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 const TravelApplyModeSkill = require('../src/auroraBff/skills/travel_apply_mode');
 const IngredientReportSkill = require('../src/auroraBff/skills/ingredient_report');
 const ProductAnalyzeSkill = require('../src/auroraBff/skills/product_analyze');
+const RecoStepBasedSkill = require('../src/auroraBff/skills/reco_step_based');
+const { SkillRouter, __internal: skillRouterInternal } = require('../src/auroraBff/orchestrator/skill_router');
+const recoHybridResolver = require('../src/auroraBff/usecases/recoHybridResolveCandidates');
 
 test('travel_apply_mode adds reduce_actives when high-UV travel overlaps with retinoid routine', async () => {
   const skill = new TravelApplyModeSkill();
@@ -170,4 +173,227 @@ test('product_analyze carries product_anchor into add_to_routine next action par
 
   assert.ok(addToRoutine);
   assert.deepEqual(addToRoutine.params?.product_anchor, productAnchor);
+});
+
+test('skill_router derives target_step from a freeform mask request', () => {
+  const targetStep = skillRouterInternal.deriveTargetStep(
+    {
+      params: {
+        user_message: 'Recommend a facial mask that suits me.',
+      },
+    },
+    null,
+  );
+
+  assert.equal(targetStep, 'mask');
+});
+
+test('skill_router deterministically appends oily-skin watchout when mismatch answer omits it', () => {
+  const router = new SkillRouter({});
+  const enforced = router._enforceProfileMismatchWatchoutOnTexts(
+    {
+      context: {
+        locale: 'en',
+        profile: { skin_type: 'oily' },
+      },
+    },
+    'My skin feels dry and tight lately. What should I do?',
+    'When skin feels dry and tight, focus on gentle hydration and barrier support.',
+    null,
+  );
+
+  assert.equal(enforced.profileMismatchGuardApplied, true);
+  assert.equal(enforced.enforced, true);
+  assert.match(String(enforced.answerEn || ''), /oily|greasy|occlusive|congest/i);
+});
+
+test('skill_router does not duplicate watchout when answer already includes oily-skin caution', () => {
+  const router = new SkillRouter({});
+  const enforced = router._enforceProfileMismatchWatchoutOnTexts(
+    {
+      context: {
+        locale: 'en',
+        profile: { skin_type: 'oily' },
+      },
+    },
+    'My skin feels dry and tight lately. What should I do?',
+    'Focus on gentle hydration. Because your skin usually runs oily, keep hydration lightweight and avoid heavy occlusives if they feel greasy.',
+    null,
+  );
+
+  assert.equal(enforced.profileMismatchGuardApplied, true);
+  assert.equal(enforced.enforced, false);
+  assert.equal((String(enforced.answerEn || '').match(/Because your skin usually runs oily/gi) || []).length, 1);
+});
+
+test('reco_step_based returns a recommendations card when grounded catalog recommendations exist', async () => {
+  const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
+  recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
+    rows: [
+      {
+        product_id: 'prod_mask_1',
+        merchant_id: 'merchant_mask_1',
+        brand: 'Winona',
+        name: 'Hydrating Repair Mask',
+        reasons: ['Supports barrier comfort and hydration.'],
+        match_state: 'exact',
+      },
+    ],
+    recommendation_meta: {
+      source_mode: 'llm_catalog_hybrid',
+      llm_seed_count: 6,
+      exact_match_count: 1,
+      fuzzy_match_count: 0,
+      unresolved_seed_count: 0,
+    },
+  });
+
+  try {
+    const skill = new RecoStepBasedSkill();
+    const gateway = {
+      async call() {
+        return {
+          parsed: {
+            answer_en: 'I would start with calming hydrating masks.',
+            answer_zh: null,
+            products: [
+              {
+                brand: 'Winona',
+                name: 'Hydrating Repair Mask',
+                product_type: 'mask',
+                why: { en: 'Supports barrier comfort and hydration.', zh: null },
+                suitability_score: 0.88,
+                price_tier: 'mid',
+                search_aliases: ['winona hydrating repair mask'],
+              },
+            ],
+          },
+          promptHash: 'stub_prompt_hash',
+        };
+      },
+    };
+    const response = await skill.run(
+      {
+        skill_id: 'reco.step_based',
+        context: {
+          profile: { skinType: 'dry', goals: ['hydration'] },
+          recent_logs: [],
+          travel_plan: null,
+          current_routine: null,
+          inventory: [],
+          locale: 'en-US',
+          safety_flags: [],
+        },
+        params: {
+          user_message: 'Recommend a facial mask that suits me.',
+          message: 'Recommend a facial mask that suits me.',
+          text: 'Recommend a facial mask that suits me.',
+          target_step: 'mask',
+          entry_source: 'text',
+        },
+        thread_state: {},
+      },
+      gateway,
+    );
+
+    const textCard = response.cards.find((card) => card.card_type === 'text_response');
+    const recoCard = response.cards.find((card) => card.card_type === 'recommendations');
+    assert.ok(textCard);
+    assert.ok(recoCard);
+    assert.equal(Array.isArray(recoCard.metadata?.recommendations), true);
+    assert.equal(recoCard.metadata?.recommendations?.[0]?.product_id, 'prod_mask_1');
+    assert.equal(recoCard.metadata?.source_mode, 'llm_catalog_hybrid');
+    assert.equal(response.cards.some((card) => card.card_type === 'effect_review'), false);
+  } finally {
+    recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
+  }
+});
+
+test('reco_step_based returns text_response when grounded recommendation search yields no candidates', async () => {
+  const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
+  recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
+    rows: [],
+    recommendation_meta: {
+      source_mode: 'llm_catalog_hybrid',
+      llm_seed_count: 6,
+      exact_match_count: 0,
+      fuzzy_match_count: 0,
+      unresolved_seed_count: 6,
+    },
+  });
+
+  try {
+    const skill = new RecoStepBasedSkill();
+    const gateway = {
+      async call() {
+        return {
+          parsed: {
+            answer_en: "I couldn't build a confident shortlist yet. Tell me if you want hydration, acne support, or barrier repair.",
+            answer_zh: null,
+            products: [],
+          },
+          promptHash: 'stub_prompt_hash',
+        };
+      },
+    };
+    const response = await skill.run(
+      {
+        skill_id: 'reco.step_based',
+        context: {
+          profile: { skinType: 'combination', goals: ['brightening'] },
+          recent_logs: [],
+          travel_plan: null,
+          current_routine: null,
+          inventory: [],
+          locale: 'en-US',
+          safety_flags: [],
+        },
+        params: {
+          user_message: 'Recommend a facial mask that suits me.',
+          message: 'Recommend a facial mask that suits me.',
+          text: 'Recommend a facial mask that suits me.',
+          target_step: 'mask',
+          entry_source: 'text',
+        },
+        thread_state: {},
+      },
+      gateway,
+    );
+
+    const textCard = response.cards.find((card) => card.card_type === 'text_response');
+    assert.ok(textCard);
+    assert.equal(response.cards.some((card) => card.card_type === 'recommendations'), false);
+    assert.match(String(textCard.sections?.[0]?.text_en || ''), /confident shortlist/i);
+  } finally {
+    recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
+  }
+});
+
+test('product_analyze free-text precondition failures downgrade to text_response instead of empty_state', async () => {
+  const skill = new ProductAnalyzeSkill();
+  const response = await skill.run(
+    {
+      skill_id: 'product.analyze',
+      context: {
+        profile: {},
+        recent_logs: [],
+        travel_plan: null,
+        current_routine: null,
+        inventory: [],
+        locale: 'en',
+        safety_flags: [],
+      },
+      params: {
+        message: 'Can you analyze this sunscreen for me?',
+      },
+      thread_state: {},
+    },
+    {},
+  );
+
+  assert.equal(response.cards?.[0]?.card_type, 'text_response');
+  assert.match(String(response.cards?.[0]?.sections?.[0]?.text_en || ''), /share a product link or name/i);
+  assert.ok(Array.isArray(response.next_actions));
+  assert.equal(response.next_actions?.[0]?.action_type, 'request_input');
+  assert.equal(response.quality?.preconditions_met, false);
 });
