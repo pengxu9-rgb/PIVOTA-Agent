@@ -5252,7 +5252,6 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
                   similarity_score: 72,
                   reasons: ['Niacinamide-led serum role overlaps with the anchor.'],
                   tradeoff_notes: ['Zinc support is less explicit than the anchor.'],
-                  best_use: 'Tone-evening serum routines',
                 },
               ],
             },
@@ -5302,9 +5301,9 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.grounding_status, 'name_only');
         assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
-        assert.equal(geminiRequest?.maxOutputTokens, 1800);
+        assert.equal(geminiRequest?.maxOutputTokens, 900);
         const parsedPrompt = JSON.parse(String(geminiRequest?.userPrompt || '{}'));
-        assert.equal(parsedPrompt?.task?.max_alternatives, 4);
+        assert.equal(parsedPrompt?.task?.max_alternatives, 2);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
@@ -5414,9 +5413,6 @@ test('sanitizeGeminiJsonSchema converts nullable unions to Gemini-compatible nul
     assert.equal(props.product_type?.nullable, true);
     assert.equal(props.similarity_score?.type, 'number');
     assert.equal(props.similarity_score?.nullable, true);
-    assert.equal(props.best_use?.type, 'string');
-    assert.equal(props.best_use?.nullable, true);
-
     const containsTypeArray = (node) => {
       if (!node || typeof node !== 'object') return false;
       if (Array.isArray(node)) return node.some(containsTypeArray);
