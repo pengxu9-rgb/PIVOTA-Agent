@@ -5396,6 +5396,33 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
     },
   );
 });
+
+test('sanitizeGeminiJsonSchema converts nullable unions to Gemini-compatible nullable fields', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  try {
+    const routeModule = require('../src/auroraBff/routes');
+    const { __internal } = routeModule;
+    const schema = __internal.sanitizeGeminiJsonSchema(__internal.buildExternalSeedOpenWorldSchema());
+    const props = schema?.properties?.alternatives?.items?.properties || {};
+    assert.equal(props.product_type?.type, 'string');
+    assert.equal(props.product_type?.nullable, true);
+    assert.equal(props.similarity_score?.type, 'number');
+    assert.equal(props.similarity_score?.nullable, true);
+    assert.equal(props.best_use?.type, 'string');
+    assert.equal(props.best_use?.nullable, true);
+
+    const containsTypeArray = (node) => {
+      if (!node || typeof node !== 'object') return false;
+      if (Array.isArray(node)) return node.some(containsTypeArray);
+      if (Array.isArray(node.type)) return true;
+      return Object.values(node).some(containsTypeArray);
+    };
+    assert.equal(containsTypeArray(schema), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
 test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
   return withEnv(
     {
