@@ -477,22 +477,25 @@ function buildRecoStepBasedStructuredPrompt() {
     '- why.en should explain the fit in one short practical sentence; why.zh may be null when locale is not Chinese.',
     '- suitability_score must be between 0 and 1.',
     '- price_tier should be one of budget, mid, premium, or unknown when available; otherwise null.',
-    '- search_aliases should contain short alternate strings the backend can use to match the product in catalog search.',
+    '- search_aliases should contain short alternate strings the backend can use to match the product in catalog search. search_aliases[0] MUST be the exact canonical brand + product name string.',
     '[/FIELD_SEMANTICS]',
     '',
     '[HARD_RULES]',
     '1. Specific-product rule: every entry in products must be a specific product recommendation, not a generic category like "hydrating serum" or "repair mask".',
     '2. Six-seed rule: default to 6 products. Fewer is allowed only when you cannot produce 6 specific products without making things up.',
     '3. Target fidelity rule: if target_ingredient or target_step is provided, recommendations must align to that target. Do not drift into unrelated categories.',
+    '3a. Face-mask rule: when target_step=mask (or the user asks for a facial/face/sleeping/clay/sheet/wash-off mask), recommend facial masks only. Do not output lip masks, eye masks, body masks, hair masks, tools, or accessories.',
     '4. Concern fidelity rule: when concerns are provided, the rationale must clearly reflect those concerns rather than generic skincare advice.',
     '5. Safety rule: respect safety_flags. Avoid recommending strong or blocked actives when pregnancy, sensitivity, barrier compromise, or post-procedure recovery is indicated.',
     '6. No-category-padding rule: do not fill missing slots with tools, makeup, accessories, or vague classes of products.',
     '7. Explanation rule: keep answer and reasons practical. No hype, no vague marketing language, no invented clinical certainty.',
+    '8. Matchability rule: prefer evergreen, globally recognizable product names that are easy to search. Avoid kits, bundles, minis, limited editions, nicknames, or collection-only names when a canonical product name exists.',
     '[/HARD_RULES]',
     '',
     '[MISSING_DATA_POLICY]',
     '- If the user question is too vague to recommend products confidently, set products=[] and use answer_en / answer_zh to ask for the missing detail.',
     '- Missing profile alone does not require an empty answer if the user explicitly asked for a product type or ingredient.',
+    '- If target_step is explicit but profile/concerns are missing, answer_en should clearly frame the shortlist as a general starting set and the 6 products should still remain faithful to the target step.',
     '- If a candidate lacks a confident brand, use null for brand instead of guessing.',
     '- If target fidelity cannot be maintained safely, return products=[].',
     '- Do not convert uncertainty into fake specificity.',
@@ -500,6 +503,7 @@ function buildRecoStepBasedStructuredPrompt() {
     '',
     '[FORBIDDEN_BEHAVIOR]',
     '- No tools, makeup brushes, color cosmetics, perfume, or hair products.',
+    '- No lip masks, eye masks, body masks, or hair masks when the request is for a facial mask.',
     '- No invented SKUs, prices, ingredient decks, or medical claims.',
     '- No generic routine dump.',
     '- No contradiction of safety_flags or blocked concepts.',
@@ -1655,6 +1659,12 @@ class LlmGateway {
     const targetStep = compactText(params?.target_step) || (targetIngredient ? 'serum' : 'mask');
     const concerns = Array.isArray(params?.concerns) ? params.concerns : [];
     const label = targetIngredient || concerns[0] || 'hydration';
+    const exactAlias = (brand, name, fallback) => {
+      const brandText = compactText(brand);
+      const nameText = compactText(name);
+      if (brandText && nameText) return `${brandText} ${nameText}`.trim();
+      return compactText(fallback);
+    };
     return {
       answer_en: targetIngredient
         ? `Here are six product seeds I would start from for ${targetIngredient}.`
@@ -1673,7 +1683,10 @@ class LlmGateway {
           },
           suitability_score: 0.87,
           price_tier: 'mid',
-          search_aliases: [targetIngredient ? `${targetIngredient} repair serum` : 'cicaplast b5 mask', 'la roche posay cicaplast'],
+          search_aliases: [
+            exactAlias('La Roche-Posay', targetIngredient ? `${targetIngredient} Repair Serum` : 'Cicaplast B5 Mask', targetIngredient ? `${targetIngredient} repair serum` : 'cicaplast b5 mask'),
+            'la roche posay cicaplast',
+          ],
         },
         {
           brand: 'Avène',
@@ -1685,7 +1698,9 @@ class LlmGateway {
           },
           suitability_score: 0.82,
           price_tier: 'mid',
-          search_aliases: [targetIngredient ? `${targetIngredient} soothing emulsion` : 'avene soothing radiance mask'],
+          search_aliases: [
+            exactAlias('Avène', targetIngredient ? `${targetIngredient} Soothing Emulsion` : 'Soothing Radiance Mask', targetIngredient ? `${targetIngredient} soothing emulsion` : 'avene soothing radiance mask'),
+          ],
         },
         {
           brand: 'CeraVe',
@@ -1697,7 +1712,9 @@ class LlmGateway {
           },
           suitability_score: 0.8,
           price_tier: 'budget',
-          search_aliases: [targetIngredient ? `${targetIngredient} barrier lotion` : 'cerave hydrating recovery mask'],
+          search_aliases: [
+            exactAlias('CeraVe', targetIngredient ? `${targetIngredient} Barrier Lotion` : 'Hydrating Recovery Mask', targetIngredient ? `${targetIngredient} barrier lotion` : 'cerave hydrating recovery mask'),
+          ],
         },
         {
           brand: 'Paula’s Choice',
@@ -1709,7 +1726,9 @@ class LlmGateway {
           },
           suitability_score: 0.78,
           price_tier: 'premium',
-          search_aliases: [targetIngredient ? `${targetIngredient} booster` : 'paulas choice calm repairing mask'],
+          search_aliases: [
+            exactAlias('Paula’s Choice', targetIngredient ? `${targetIngredient} Booster` : 'Calm Repairing Mask', targetIngredient ? `${targetIngredient} booster` : 'paulas choice calm repairing mask'),
+          ],
         },
         {
           brand: 'Bioderma',
@@ -1721,7 +1740,9 @@ class LlmGateway {
           },
           suitability_score: 0.76,
           price_tier: 'mid',
-          search_aliases: [targetIngredient ? `${targetIngredient} comfort gel` : 'bioderma sensibio comfort mask'],
+          search_aliases: [
+            exactAlias('Bioderma', targetIngredient ? `${targetIngredient} Comfort Gel` : 'Sensibio Comfort Mask', targetIngredient ? `${targetIngredient} comfort gel` : 'bioderma sensibio comfort mask'),
+          ],
         },
         {
           brand: 'First Aid Beauty',
@@ -1733,7 +1754,9 @@ class LlmGateway {
           },
           suitability_score: 0.75,
           price_tier: 'mid',
-          search_aliases: [targetIngredient ? `${targetIngredient} repair cream` : 'first aid beauty oatmeal mask'],
+          search_aliases: [
+            exactAlias('First Aid Beauty', targetIngredient ? `${targetIngredient} Repair Cream` : 'Ultra Repair Instant Oatmeal Mask', targetIngredient ? `${targetIngredient} repair cream` : 'first aid beauty oatmeal mask'),
+          ],
         },
       ],
     };
@@ -2080,7 +2103,7 @@ class LlmGateway {
       },
       {
         id: 'reco_step_based',
-        version: '2.0.0',
+        version: '2.1.0',
         taskMode: 'recommendation',
         text: buildRecoStepBasedStructuredPrompt(),
       },

@@ -88,8 +88,8 @@ test('reco_step_based prompt version is aligned between runtime registry and man
   const runtimeTemplate = gateway._promptRegistry.get('reco_step_based');
   const manifestTemplate = readPromptManifest().templates.find((entry) => entry.template_id === 'reco_step_based');
 
-  assert.equal(runtimeTemplate?.version, '2.0.0');
-  assert.equal(manifestTemplate?.version, '2.0.0');
+  assert.equal(runtimeTemplate?.version, '2.1.0');
+  assert.equal(manifestTemplate?.version, '2.1.0');
 });
 
 test('dupe prompts are aligned between runtime registry and manifest', () => {
@@ -274,12 +274,47 @@ test('reco_step_based prompt encodes hybrid seed recommendation rules', () => {
   assert.match(text, /Six-seed rule/i);
   assert.match(text, /No-category-padding rule/i);
   assert.match(text, /Target fidelity rule/i);
+  assert.match(text, /Face-mask rule/i);
+  assert.match(text, /search_aliases\[0\] MUST be the exact canonical brand \+ product name string/i);
+  assert.match(text, /Matchability rule/i);
   assert.match(text, /tools, makeup brushes, color cosmetics/i);
+  assert.match(text, /No lip masks, eye masks, body masks, or hair masks/i);
   assert.match(text, /user_question=\{\{user_question\}\}/i);
   assert.match(text, /Avoid recommending strong or blocked actives/i);
+  assert.match(text, /general starting set/i);
   assert.match(text, /inventory=\{\{inventory\}\}/i);
   assert.match(text, /target_ingredient=\{\{target_ingredient\}\}/i);
   assert.match(text, /safety_flags=\{\{safety_flags\}\}/i);
+});
+
+test('reco_step_based stub keeps mask requests on facial-mask products with exact-first aliases', async () => {
+  const gateway = new LlmGateway({ stubResponses: true });
+  const result = await gateway.call({
+    templateId: 'reco_step_based',
+    taskMode: 'recommendation',
+    params: {
+      user_question: 'Recommend a facial mask that suits me.',
+      profile: {},
+      routine: null,
+      inventory: [],
+      target_step: 'mask',
+      target_ingredient: null,
+      concerns: [],
+      safety_flags: [],
+      locale: 'en-US',
+    },
+    schema: 'RecoHybridCandidateOutput',
+  });
+
+  const products = Array.isArray(result.parsed?.products) ? result.parsed.products : [];
+  assert.equal(products.length, 6);
+  for (const product of products) {
+    const joined = `${product.brand || ''} ${product.name || ''}`.trim();
+    assert.match(String(product.product_type || ''), /mask/i);
+    assert.ok(product.search_aliases?.[0], 'search_aliases[0] must exist');
+    assert.equal(product.search_aliases[0], joined);
+    assert.doesNotMatch(joined, /\b(lip|eye|body|hair)\b/i);
+  }
 });
 
 test('dupe_suggest prompt encodes candidate-pool-only and tradeoff rules', () => {

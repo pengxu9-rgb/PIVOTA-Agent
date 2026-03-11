@@ -809,12 +809,14 @@ function buildRawSeedRow(seed, { lang, targetStep }) {
     },
     pdp_open: {
       path: 'external',
+      resolve_reason_code: 'NO_CANDIDATES',
       external: { query, url: null },
     },
     metadata: {
       match_state: 'llm_seed',
       llm_seed_id: seed.seed_id,
       pdp_open_path: 'external',
+      resolve_reason_code: 'NO_CANDIDATES',
       source_mode: 'llm_catalog_hybrid',
     },
   };

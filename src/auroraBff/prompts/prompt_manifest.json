@@ -33,7 +33,7 @@
     },
     {
       "template_id": "reco_step_based",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "task_mode": "recommendation",
       "input_params": ["user_question", "profile", "routine", "inventory", "target_step", "target_ingredient", "concerns", "safety_flags", "locale"],
       "output_schema": "RecoHybridCandidateOutput"
