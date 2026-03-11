@@ -4,8 +4,10 @@ const assert = require('node:assert/strict');
 const {
   __resetRouterForTests,
   __setRouterForTests,
+  __setTravelPipelineForTests,
   buildSkillRequest,
   extractTravelPlanFromMessage,
+  handleChat,
   handleChatStream,
 } = require('../src/auroraBff/routes/chat');
 const { SkillRouter } = require('../src/auroraBff/orchestrator/skill_router');
@@ -75,6 +77,7 @@ test('handleChatStream forwards create-new-plan payload as structured travel_pla
     next_actions: [],
   };
 
+  __setTravelPipelineForTests(async () => null);
   __setRouterForTests({
     async routeStream(skillRequest, onEvent) {
       assert.deepEqual(skillRequest.context.travel_plan, EXPECTED_PLAN);
@@ -106,6 +109,197 @@ test('handleChatStream forwards create-new-plan payload as structured travel_pla
   assert.match(output, /event: result/);
   assert.match(output, /travel\.apply_mode/);
   assert.match(output, /Singapore/);
+  assert.match(output, /event: done/);
+});
+
+test('handleChat uses travel pipeline and returns env_stress response for complete travel message', async () => {
+  let payload = null;
+  const fakeResponse = {
+    statusCode: 200,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      payload = body;
+    },
+  };
+
+  __setTravelPipelineForTests(async (input) => {
+    assert.equal(input.message, MESSAGE);
+    assert.equal(input.canonicalIntent?.entities?.destination, 'Singapore');
+    assert.equal(input.canonicalIntent?.entities?.date_range?.start, '2026-03-13');
+    return {
+      ok: true,
+      assistant_text: 'Live weather travel guidance.',
+      env_source: 'weather_api',
+      degraded: false,
+      env_stress_patch: {
+        epi: 68,
+        env_source: 'weather_api',
+      },
+      travel_readiness: {
+        destination_context: {
+          destination: 'Singapore',
+          start_date: '2026-03-13',
+          end_date: '2026-03-26',
+          env_source: 'weather_api',
+          weather_reason: 'weather_api_ok',
+        },
+        delta_vs_home: {
+          summary_tags: ['humid', 'high_uv'],
+        },
+        forecast_window: [
+          {
+            date: '2026-03-13',
+            temp_low_c: 27,
+            temp_high_c: 32,
+            condition_text: 'Humid',
+          },
+        ],
+        categorized_kit: [
+          {
+            id: 'sun_protection',
+            title: 'Sun protection',
+            preparations: [{ name: 'SPF 50+', detail: 'Reapply every 2 hours outdoors' }],
+          },
+        ],
+        confidence: {
+          level: 'high',
+          missing_inputs: [],
+          improve_by: [],
+        },
+      },
+      travel_skills_version: 'travel_skills_dag_v1',
+      travel_skills_trace: [],
+      travel_kb_hit: false,
+      travel_kb_write_queued: false,
+      travel_skill_invocation_matrix: {},
+      travel_followup_state: {},
+    };
+  });
+  __setRouterForTests({
+    async route() {
+      throw new Error('router should not run when travel pipeline handles the request');
+    },
+  });
+
+  try {
+    await handleChat(
+      {
+        body: {
+          session: { state: 'idle' },
+          client_state: 'IDLE_CHAT',
+          language: 'EN',
+          message: MESSAGE,
+          messages: [{ role: 'assistant', content: 'Hi there' }],
+        },
+        headers: {},
+      },
+      fakeResponse,
+    );
+  } finally {
+    __resetRouterForTests();
+  }
+
+  assert.equal(fakeResponse.statusCode, 200);
+  assert.ok(payload);
+  assert.equal(payload.assistant_text, 'Live weather travel guidance.');
+  assert.ok(Array.isArray(payload.cards));
+  assert.ok(payload.cards.some((card) => card.type === 'travel'));
+  const travelCard = payload.cards.find((card) => card.type === 'travel');
+  const structured = travelCard.sections.find((section) => section.kind === 'travel_structured');
+  assert.equal(structured?.env_payload?.schema_version, 'aurora.ui.env_stress.v1');
+  assert.equal(structured?.env_payload?.travel_readiness?.destination_context?.env_source, 'weather_api');
+  assert.equal(structured?.env_payload?.travel_readiness?.forecast_window?.[0]?.date, '2026-03-13');
+});
+
+test('handleChatStream uses travel pipeline and streams weather-backed travel card for complete travel message', async () => {
+  const writes = [];
+  const fakeResponse = {
+    writeHead() {},
+    write(chunk) {
+      writes.push(String(chunk));
+    },
+    end() {},
+  };
+
+  __setTravelPipelineForTests(async (input) => {
+    assert.equal(input.message, MESSAGE);
+    return {
+      ok: true,
+      assistant_text: 'Live weather travel guidance.',
+      env_source: 'weather_api',
+      degraded: false,
+      env_stress_patch: {
+        epi: 68,
+        env_source: 'weather_api',
+      },
+      travel_readiness: {
+        destination_context: {
+          destination: 'Singapore',
+          start_date: '2026-03-13',
+          end_date: '2026-03-26',
+          env_source: 'weather_api',
+        },
+        forecast_window: [
+          {
+            date: '2026-03-13',
+            temp_low_c: 27,
+            temp_high_c: 32,
+            condition_text: 'Humid',
+          },
+        ],
+        categorized_kit: [
+          {
+            id: 'sun_protection',
+            title: 'Sun protection',
+            preparations: [{ name: 'SPF 50+', detail: 'Reapply every 2 hours outdoors' }],
+          },
+        ],
+      },
+      travel_skills_version: 'travel_skills_dag_v1',
+      travel_skills_trace: [],
+      travel_kb_hit: false,
+      travel_kb_write_queued: false,
+      travel_skill_invocation_matrix: {},
+      travel_followup_state: {},
+    };
+  });
+  __setRouterForTests({
+    async routeStream() {
+      throw new Error('router should not run when travel pipeline handles the stream request');
+    },
+  });
+
+  try {
+    await handleChatStream(
+      {
+        body: {
+          session: { state: 'idle' },
+          client_state: 'IDLE_CHAT',
+          language: 'EN',
+          message: MESSAGE,
+          messages: [{ role: 'assistant', content: 'Hi there' }],
+        },
+        headers: {},
+        get() {
+          return null;
+        },
+      },
+      fakeResponse,
+    );
+  } finally {
+    __resetRouterForTests();
+  }
+
+  const output = writes.join('');
+  assert.match(output, /event: thinking/);
+  assert.match(output, /Checking destination conditions/);
+  assert.match(output, /event: result/);
+  assert.match(output, /weather_api/);
+  assert.match(output, /travel_structured/);
+  assert.match(output, /2026-03-13/);
   assert.match(output, /event: done/);
 });
 

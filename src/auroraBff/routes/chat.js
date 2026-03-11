@@ -3,13 +3,17 @@ const LlmGateway = require('../services/llm_gateway');
 const { mapSkillResponseToChatCardsV1, mapSkillResponseToStreamEnvelope } = require('../mappers/card_mapper');
 const {
   extractTravelPlanFromMessage,
+  hasCompleteTravelPlan,
+  hasTravelCue,
   normalizeTravelPlan,
   resolveTravelPlanFromSources,
 } = require('../travelPlanUtils');
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildChatCardsResponse } = require('../chatCardsAssembler');
+const { runTravelPipeline } = require('../travelSkills/contracts');
 
 let routerSingleton = null;
+let travelPipelineImpl = runTravelPipeline;
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
@@ -47,10 +51,15 @@ function getRouter() {
 
 function __resetRouterForTests() {
   routerSingleton = null;
+  travelPipelineImpl = runTravelPipeline;
 }
 
 function __setRouterForTests(router) {
   routerSingleton = router || null;
+}
+
+function __setTravelPipelineForTests(fn) {
+  travelPipelineImpl = typeof fn === 'function' ? fn : runTravelPipeline;
 }
 
 function normalizeLocaleToken(value) {
@@ -312,9 +321,213 @@ function resolveCurrentRoutine(bodyContext, profileSources) {
   return null;
 }
 
+function resolveHeader(req, name) {
+  if (req && typeof req.get === 'function') return req.get(name);
+  const headers = req && req.headers && typeof req.headers === 'object' ? req.headers : {};
+  return headers[name] || headers[name.toLowerCase()] || null;
+}
+
+function normalizeUiLanguage(value) {
+  return String(value || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+}
+
+function buildTravelPipelineCanonicalIntent(skillRequest) {
+  const travelPlan = normalizeTravelPlan(skillRequest?.context?.travel_plan);
+  return {
+    intent: 'travel_adjust',
+    confidence: 1,
+    entities: {
+      destination: travelPlan?.destination || null,
+      date_range: {
+        start: travelPlan?.start_date || null,
+        end: travelPlan?.end_date || null,
+      },
+    },
+  };
+}
+
+function buildTravelPipelineResponse({ req, skillRequest, pipelineOut }) {
+  const body = req.body || {};
+  const requestId =
+    pickFirstTrimmed(resolveHeader(req, 'x-request-id'), resolveHeader(req, 'x-requestid'))
+    || `travel_${Date.now()}`;
+  const traceId = pickFirstTrimmed(resolveHeader(req, 'x-trace-id')) || requestId;
+  const lang = normalizeUiLanguage(body.language);
+  const travelPlan = normalizeTravelPlan(skillRequest?.context?.travel_plan);
+  const pendingTravelClarification =
+    pipelineOut?.pending_clarification &&
+    typeof pipelineOut.pending_clarification === 'object' &&
+    !Array.isArray(pipelineOut.pending_clarification)
+      ? pipelineOut.pending_clarification
+      : null;
+  const pipelinePatch =
+    pipelineOut?.env_stress_patch &&
+    typeof pipelineOut.env_stress_patch === 'object' &&
+    !Array.isArray(pipelineOut.env_stress_patch)
+      ? pipelineOut.env_stress_patch
+      : {};
+  const pipelineEpi = Number(pipelinePatch.epi);
+  const envStressUi = {
+    ...pipelinePatch,
+    schema_version: 'aurora.ui.env_stress.v1',
+    ess: Number.isFinite(pipelineEpi) ? pipelineEpi : null,
+  };
+
+  if (
+    !pendingTravelClarification &&
+    !envStressUi.travel_readiness &&
+    pipelineOut?.travel_readiness &&
+    typeof pipelineOut.travel_readiness === 'object' &&
+    !Array.isArray(pipelineOut.travel_readiness)
+  ) {
+    envStressUi.travel_readiness = pipelineOut.travel_readiness;
+  }
+
+  const travelReadiness =
+    envStressUi.travel_readiness &&
+    typeof envStressUi.travel_readiness === 'object' &&
+    !Array.isArray(envStressUi.travel_readiness)
+      ? envStressUi.travel_readiness
+      : null;
+
+  const sessionPatch = {
+    meta: {
+      travel_skills_version: pipelineOut?.travel_skills_version || 'travel_skills_dag_v1',
+      travel_skills_trace: Array.isArray(pipelineOut?.travel_skills_trace)
+        ? pipelineOut.travel_skills_trace.slice(0, 24)
+        : [],
+      travel_kb_hit: Boolean(pipelineOut?.travel_kb_hit),
+      travel_kb_write_queued: Boolean(pipelineOut?.travel_kb_write_queued),
+      travel_skill_invocation_matrix:
+        pipelineOut?.travel_skill_invocation_matrix &&
+        typeof pipelineOut.travel_skill_invocation_matrix === 'object' &&
+        !Array.isArray(pipelineOut.travel_skill_invocation_matrix)
+          ? pipelineOut.travel_skill_invocation_matrix
+          : {},
+      env_source: pipelineOut?.env_source || null,
+      degraded: Boolean(pipelineOut?.degraded),
+      ...(pipelineOut?.travel_followup_state &&
+      typeof pipelineOut.travel_followup_state === 'object' &&
+      !Array.isArray(pipelineOut.travel_followup_state) &&
+      !pendingTravelClarification
+        ? { travel_followup: pipelineOut.travel_followup_state }
+        : {}),
+      ...(pendingTravelClarification ? { travel_pending_clarification: pendingTravelClarification } : {}),
+    },
+  };
+
+  if (travelReadiness && !pendingTravelClarification) {
+    sessionPatch.last_travel_readiness = {
+      destination: travelReadiness.destination_context?.destination || null,
+      start_date: travelReadiness.destination_context?.start_date || null,
+      end_date: travelReadiness.destination_context?.end_date || null,
+      reco_bundle: Array.isArray(travelReadiness.reco_bundle) ? travelReadiness.reco_bundle.slice(0, 5) : [],
+      shopping_preview: travelReadiness.shopping_preview || null,
+    };
+  }
+
+  const envelope = {
+    request_id: requestId,
+    trace_id: traceId,
+    assistant_message: {
+      role: 'assistant',
+      content:
+        typeof pipelineOut?.assistant_text === 'string' && pipelineOut.assistant_text.trim()
+          ? pipelineOut.assistant_text.trim()
+          : '',
+      format: 'markdown',
+    },
+    suggested_chips:
+      pendingTravelClarification && Array.isArray(pipelineOut?.suggested_chips)
+        ? pipelineOut.suggested_chips.slice(0, 10)
+        : [],
+    cards:
+      envStressUi && !pendingTravelClarification
+        ? [{ card_id: `env_${requestId}`, type: 'env_stress', payload: envStressUi }]
+        : [],
+    session_patch: sessionPatch,
+    events: [
+      {
+        event_name: 'travel_pipeline_routed',
+        data: {
+          env_source: pipelineOut?.env_source || null,
+          degraded: Boolean(pipelineOut?.degraded),
+          pending_clarification: Boolean(pendingTravelClarification),
+        },
+      },
+    ],
+    telemetry: {
+      env_source: pipelineOut?.env_source || null,
+      degraded: Boolean(pipelineOut?.degraded),
+      intent_source: 'travel_pipeline_short_circuit',
+      route_decision: 'travel_pipeline',
+    },
+  };
+
+  return buildChatCardsResponse({
+    envelope,
+    ctx: {
+      request_id: requestId,
+      trace_id: traceId,
+      lang,
+      ui_lang: lang,
+      match_lang: lang,
+    },
+    intent: 'travel_adjust',
+    intentConfidence: 1,
+    entities: [buildTravelPipelineCanonicalIntent(skillRequest).entities],
+    safetyDecision: null,
+    threadOps: [],
+  });
+}
+
+async function maybeRunTravelPipeline(req, skillRequest) {
+  const travelPlan = normalizeTravelPlan(skillRequest?.context?.travel_plan);
+  const userMessage = pickFirstTrimmed(
+    skillRequest?.params?.user_message,
+    skillRequest?.params?.message,
+    skillRequest?.params?.text,
+  );
+
+  if (!travelPlan || !hasCompleteTravelPlan(travelPlan) || !hasTravelCue(userMessage)) {
+    return null;
+  }
+
+  const body = req.body || {};
+  const session = isPlainObject(body.session) ? body.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+  const travelWeatherLiveEnabled = toBool(process.env.AURORA_TRAVEL_WEATHER_LIVE_ENABLED, false);
+  const pipelineOut = await travelPipelineImpl({
+    message: userMessage,
+    language: normalizeUiLanguage(body.language),
+    profile: skillRequest.context?.profile || {},
+    recentLogs: skillRequest.context?.recent_logs || [],
+    canonicalIntent: buildTravelPipelineCanonicalIntent(skillRequest),
+    plannerDecision: {},
+    chatContext: sessionMeta,
+    travelWeatherLiveEnabled,
+    openaiClient: null,
+    logger: console,
+    nowMs: Date.now(),
+    userLocale: skillRequest.context?.locale || null,
+    hasSafetyConflict: false,
+  });
+
+  if (!pipelineOut || pipelineOut.ok !== true) {
+    return null;
+  }
+
+  return buildTravelPipelineResponse({ req, skillRequest, pipelineOut });
+}
+
 async function handleChat(req, res) {
   try {
     const skillRequest = buildSkillRequest(req);
+    const travelResponse = await maybeRunTravelPipeline(req, skillRequest);
+    if (travelResponse) {
+      res.json(travelResponse);
+      return;
+    }
     const skillResponse = await getRouter().route(skillRequest);
     res.json(mapSkillResponseToChatCardsV1(skillResponse));
   } catch (error) {
@@ -488,6 +701,13 @@ async function handleChatStream(req, res) {
       }
     }
     const skillRequest = buildSkillRequest(req);
+    const travelResponse = await maybeRunTravelPipeline(req, skillRequest);
+    if (travelResponse) {
+      sendEvent('thinking', { step: 'travel_context', message: 'Checking destination conditions...' });
+      sendEvent('result', travelResponse);
+      sendEvent('done', {});
+      return;
+    }
     const thinkingSteps = [];
     let resultSent = false;
 
@@ -614,10 +834,12 @@ function buildSkillRequest(req) {
 
 module.exports = {
   buildSkillRequest,
+  buildTravelPipelineResponse,
   extractTravelPlanFromMessage,
   handleChat,
   handleChatStream,
   __resetRouterForTests,
   __setRouterForTests,
+  __setTravelPipelineForTests,
   normalizeTravelPlan,
 };
