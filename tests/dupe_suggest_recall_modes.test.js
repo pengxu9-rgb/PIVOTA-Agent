@@ -22,6 +22,12 @@ function makeBaseServices(overrides = {}) {
     upsertDupeKbEntry: jest.fn().mockResolvedValue(undefined),
     purgeDupeKbEntriesByContractVersion: jest.fn().mockResolvedValue({ db_deleted: 0, mem_deleted: 0, file_deleted: 0 }),
     normalizeDupeKbKey: jest.fn((value) => String(value || '').trim()),
+    buildExternalSeedCompareSearchQueries: jest.fn(({ productObj, productInput }) => {
+      const brand = String(productObj?.brand || '').trim();
+      const name = String(productObj?.name || productObj?.display_name || '').trim();
+      const text = String(productInput || '').trim();
+      return [text || `${brand} ${name}`, `${brand} ${name}`.trim(), String(productObj?.category || '').trim()].filter(Boolean);
+    }),
     searchPivotaBackendProducts: jest.fn().mockResolvedValue({ ok: true, products: [] }),
     buildRecoAlternativesCandidatePool: jest.fn().mockReturnValue([]),
     fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
@@ -193,7 +199,7 @@ describe('executeDupeSuggest recall modes', () => {
         disable_synthetic_local_fallback: true,
       }),
     }));
-    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v6');
+    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v8');
     expect(fetchRecoAlternativesForProduct.mock.calls.some(([args]) => args.options.recommendation_mode === 'hybrid_fallback')).toBe(false);
   });
 
@@ -268,7 +274,9 @@ describe('executeDupeSuggest recall modes', () => {
       recommendation_mode: 'pool_only',
       raw_output_item_count: 0,
       mapped_output_item_count: 0,
-      no_result_reason: 'candidate_pool_empty',
+      no_result_reason: 'backend_zero_hits',
+      selector_input_count: 0,
+      selector_timeout_ms: 8500,
     }));
     expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
       recommendation_mode: 'open_world_only',
@@ -516,7 +524,7 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalled();
     expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
       source_meta: expect.objectContaining({
-        contract_version: 'dupe_suggest_v6',
+        contract_version: 'dupe_suggest_v8',
       }),
     }));
   });

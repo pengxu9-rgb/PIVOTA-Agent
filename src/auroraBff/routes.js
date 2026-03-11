@@ -540,6 +540,7 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
 const RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID = 'reco_alternatives_open_world_v1';
+const RECO_ALTERNATIVES_OPEN_WORLD_SYSTEM_FILE = 'reco_alternatives_open_world_v1.system.txt';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
@@ -41483,7 +41484,7 @@ function limitCompactStrings(values, limit, maxChars = 64) {
     .slice(0, limit);
 }
 
-function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {}, productInput = '' } = {}) {
+function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {}, productInput = '', activeThemes = [] } = {}) {
   const compact = {};
   const queryText = String(productInput || '').trim();
   const brand = pickFirstTrimmed(targetSignals.brand);
@@ -41508,6 +41509,7 @@ function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {},
   if (knownActives.length) compact.known_actives = knownActives;
   if (primaryClaims.length) compact.primary_claims = primaryClaims;
   if (textureHints.length) compact.texture_hints = textureHints;
+  if (Array.isArray(activeThemes) && activeThemes.length) compact.active_themes = uniqCaseInsensitiveStrings(activeThemes, 6);
 
   const anchorSignalCount =
     Number(Boolean(brand)) +
@@ -41523,6 +41525,56 @@ function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {},
     compact.notes = notes.slice(0, 80);
   }
   return compact;
+}
+
+const RECO_OPEN_WORLD_ACTIVE_THEME_RULES = [
+  { key: 'niacinamide', patterns: [/\bniacinamide\b/i, /烟酰胺/], aliases: ['niacinamide'] },
+  { key: 'zinc', patterns: [/\bzinc\b/i, /锌/], aliases: ['zinc'] },
+  { key: 'salicylic_acid', patterns: [/\bsalicylic\b/i, /\bbha\b/i, /水杨酸/], aliases: ['salicylic acid', 'bha'] },
+  { key: 'hyaluronic_acid', patterns: [/\bhyaluronic\b/i, /\bha\b/i, /\bsodium hyaluronate\b/i, /玻尿酸/, /透明质酸/], aliases: ['hyaluronic acid'] },
+  { key: 'vitamin_c', patterns: [/\bvitamin c\b/i, /\bascorb/i, /维c/, /维C/, /抗坏血酸/], aliases: ['vitamin c'] },
+  { key: 'retinol', patterns: [/\bretinol\b/i, /\bretinal\b/i, /\bretinoid\b/i, /视黄醇/, /a醇/, /维a/], aliases: ['retinol', 'retinoid'] },
+  { key: 'ceramide', patterns: [/\bceramide\b/i, /神经酰胺/], aliases: ['ceramide'] },
+  { key: 'peptide', patterns: [/\bpeptide\b/i, /肽/], aliases: ['peptide'] },
+  { key: 'azelaic_acid', patterns: [/\bazelaic\b/i, /壬二酸/], aliases: ['azelaic acid'] },
+  { key: 'tranexamic_acid', patterns: [/\btranexamic\b/i, /传明酸/, /氨甲环酸/], aliases: ['tranexamic acid'] },
+  { key: 'panthenol', patterns: [/\bpanthenol\b/i, /\bprovitamin b5\b/i, /泛醇/, /维生素b5/, /维B5/], aliases: ['panthenol'] },
+  { key: 'snail_mucin', patterns: [/\bsnail\b/i, /\bmucin\b/i, /蜗牛/], aliases: ['snail mucin'] },
+];
+
+function extractRecoOpenWorldActiveThemesFromText(...values) {
+  const joined = values
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!joined) return [];
+  const out = [];
+  for (const rule of RECO_OPEN_WORLD_ACTIVE_THEME_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(joined))) out.push(rule.key);
+  }
+  return uniqCaseInsensitiveStrings(out, 8);
+}
+
+function deriveRecoOpenWorldAnchorActiveThemes({ targetSignals = {}, productInput = '' } = {}) {
+  const signals = targetSignals && typeof targetSignals === 'object' && !Array.isArray(targetSignals) ? targetSignals : {};
+  return extractRecoOpenWorldActiveThemesFromText(
+    signals.knownActives,
+    signals.heroIngredients,
+    signals.primaryClaims,
+    signals.notes,
+    signals.name,
+    signals.productType,
+    signals.category,
+    productInput,
+  );
+}
+
+function hasRecoOpenWorldActiveOverlap({ anchorActiveThemes = [], candidateText = '' } = {}) {
+  const anchorThemes = uniqCaseInsensitiveStrings(anchorActiveThemes, 8);
+  if (!anchorThemes.length) return false;
+  const candidateThemes = extractRecoOpenWorldActiveThemesFromText(candidateText);
+  return anchorThemes.some((theme) => candidateThemes.includes(theme));
 }
 
 function buildFallbackOpenWorldTradeoffNote({ candidateRole = '', targetRole = '', productType = '', targetSignals = {} } = {}) {
@@ -41595,6 +41647,7 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   targetSignals,
   anchorLabel = '',
   anchorNameTokens = [],
+  anchorActiveThemes = [],
   ingredientTokens = [],
   claimTokens = [],
   textureTokens = [],
@@ -41634,6 +41687,7 @@ function normalizeOpenWorldAlternativeRow(candidate, {
     })];
 
   const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
+  if (!hasRecoOpenWorldActiveOverlap({ anchorActiveThemes, candidateText: sourceText })) return null;
   const baseScoreRaw = Number(row.similarity_score);
   const baseScore = Number.isFinite(baseScoreRaw) ? clamp01Score(baseScoreRaw > 1 ? baseScoreRaw / 100 : baseScoreRaw) : 0.62;
   const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
@@ -41697,6 +41751,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   const limit = 1;
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const targetSignals = identity.targetSignals;
+  const anchorActiveThemes = deriveRecoOpenWorldAnchorActiveThemes({ targetSignals, productInput });
   const resolvedModel = resolveRecoAlternativesOpenWorldGeminiModel();
   const hasAnchorSignals = Boolean(
     String(identity.anchorLabel || '').trim() ||
@@ -41712,18 +41767,18 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   );
   const emptyRawOutputSummary = summarizeRecoAlternativesRaw([]);
 
-  if (!hasAnchorSignals) {
+  if (!hasAnchorSignals || !anchorActiveThemes.length) {
     return {
       ok: true,
       alternatives: [],
-      field_missing: [{ field: 'alternatives', reason: 'anchor_insufficient_for_open_world_fallback' }],
+      field_missing: [{ field: 'alternatives', reason: 'anchor_signal_insufficient_for_open_world' }],
       source_mode: 'open_world_only',
       fallback_source: 'none',
       refresh_pending: false,
       refresh_after_ms: 0,
       failure_class: 'precheck_fail',
       attempt_count: 0,
-      no_result_reason: 'anchor_insufficient_for_open_world_fallback',
+      no_result_reason: 'anchor_signal_insufficient_for_open_world',
       recommendation_mode: 'open_world_only',
       profile_mode: normalizeAlternativesProfileMode(profileMode),
       template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
@@ -41739,7 +41794,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         model: resolvedModel,
         source_mode: 'local_gemini_open_world',
         error_class: 'precheck_fail',
-        provider_reason: 'anchor_insufficient_for_open_world_fallback',
+        provider_reason: 'anchor_signal_insufficient_for_open_world',
         provider_detail: null,
         provider_route: 'aurora_reco_alternatives_open_world',
         provider_model: resolvedModel,
@@ -41747,20 +41802,22 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     };
   }
 
-  const systemPrompt = [
-    'Return JSON only.',
-    'Output exactly {"alternatives":[...]} with at most 1 item.',
-    'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
-    'Return 1 distinct real skincare product when possible, otherwise {"alternatives":[]}.',
-    'Do not output arrays, extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
-    'Use anchor signals only.',
-  ].join('\n');
+  const systemPrompt = loadRecoPromptTemplateFile(RECO_ALTERNATIVES_OPEN_WORLD_SYSTEM_FILE, {
+    parseJson: false,
+    fallback: [
+      'Return JSON only.',
+      'Output exactly {"alternatives":[...]} with at most 1 item.',
+      'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
+      'Return exactly 1 distinct real skincare product only when active or ingredient theme overlap is explicit; otherwise return {"alternatives":[]}.',
+      'Do not output extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
+    ].join('\n'),
+  });
   const userPayload = {
     lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
-    anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput }),
+    anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput, activeThemes: anchorActiveThemes }),
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Use anchor signals only. Return exactly 1 distinct viable skincare alternative when possible; otherwise [].',
+      selection_rule: 'Open-world only. Return exactly 1 distinct viable skincare alternative only when active or ingredient theme overlap is explicit; otherwise [].',
     },
   };
   const userPrompt = JSON.stringify(userPayload);
@@ -41838,6 +41895,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         targetSignals,
         anchorLabel: identity.anchorLabel,
         anchorNameTokens: identity.anchorNameTokens,
+        anchorActiveThemes,
         ingredientTokens: identity.ingredientTokens,
         claimTokens: identity.claimTokens,
         textureTokens: identity.textureTokens,
@@ -41870,7 +41928,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         refresh_after_ms: 0,
         failure_class: 'empty_structured',
         attempt_count: 1,
-        no_result_reason: 'no_viable_results_after_fallback',
+        no_result_reason: 'open_world_empty_structured',
         recommendation_mode: 'open_world_only',
         profile_mode: normalizeAlternativesProfileMode(profileMode),
         template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
@@ -42146,6 +42204,10 @@ async function fetchRecoAlternativesForProduct({
   const preferRefreshCache = opts.prefer_refresh_cache !== false;
   const disableSyntheticLocalFallback = opts.disable_synthetic_local_fallback === true;
   const ignoreSelectorCandidates = opts.ignore_selector_candidates === true;
+  const selectorSeedOnly = opts.selector_seed_only === true;
+  const selectorTimeoutMs = Number.isFinite(Number(opts.selector_timeout_ms))
+    ? Math.max(1000, Math.min(20000, Math.trunc(Number(opts.selector_timeout_ms))))
+    : RECO_ALTERNATIVES_TIMEOUT_MS;
   const allowAnchorlessOpenWorld = recommendationMode !== 'pool_only';
   const usesOpenWorldPrompt = recommendationMode === 'hybrid_fallback' || recommendationMode === 'open_world_only';
 
@@ -42155,12 +42217,20 @@ async function fetchRecoAlternativesForProduct({
   const bestInput = inputText || anchor;
   const selectorCandidatePool = ignoreSelectorCandidates
     ? []
-    : buildRecoAlternativesCandidatePool({
-      sharedCandidates: candidatePool,
-      productObj,
-      anchorId: anchor,
-      maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
-    });
+    : selectorSeedOnly
+      ? (Array.isArray(candidatePool) ? candidatePool : [])
+        .map((row, index) => normalizeAlternativesSelectorCandidate(row, { index }))
+        .filter(Boolean)
+      : buildRecoAlternativesCandidatePool({
+        sharedCandidates: candidatePool,
+        productObj,
+        anchorId: anchor,
+        maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
+      });
+  const selectorMeta = {
+    input_count: Array.isArray(selectorCandidatePool) ? selectorCandidatePool.length : 0,
+    timeout_ms: selectorTimeoutMs,
+  };
   const selectorGroundedAlternatives = ignoreSelectorCandidates
     ? []
     : mapSelectorCandidatesToAlternatives(selectorCandidatePool, {
@@ -42197,6 +42267,7 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: cached.llm_trace && cached.llm_trace.template_id ? cached.llm_trace.template_id : null,
         raw_output_summary: null,
+        selector_meta: selectorMeta,
         ...(cached.llm_trace ? { llm_trace: cached.llm_trace } : {}),
       };
     }
@@ -42217,6 +42288,7 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
     };
   }
 
@@ -42244,6 +42316,7 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
     };
   }
 
@@ -42411,6 +42484,7 @@ async function fetchRecoAlternativesForProduct({
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
             raw_output_summary: emptyRawOutputSummary,
+            selector_meta: selectorMeta,
             ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
           };
         }
@@ -42428,6 +42502,7 @@ async function fetchRecoAlternativesForProduct({
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
             raw_output_summary: emptyRawOutputSummary,
+            selector_meta: selectorMeta,
           };
         }
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
@@ -42445,6 +42520,7 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -42483,6 +42559,7 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
         };
       } else if (!disableFallback) {
@@ -42501,6 +42578,7 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       } else {
@@ -42517,6 +42595,7 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -42584,7 +42663,7 @@ async function fetchRecoAlternativesForProduct({
     upstream = await auroraChat({
       baseUrl: AURORA_DECISION_BASE_URL,
       query,
-      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+      timeoutMs: selectorTimeoutMs,
       retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
       trace_id: ctx.trace_id,
       request_id: ctx.request_id,
@@ -42624,6 +42703,7 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: queryPack.templateId,
         raw_output_summary: emptyRawOutputSummary,
+        selector_meta: selectorMeta,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
@@ -42654,6 +42734,7 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: queryPack.templateId,
         raw_output_summary: emptyRawOutputSummary,
+        selector_meta: selectorMeta,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
@@ -42680,6 +42761,7 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: {
         ...traceSeed,
         latency_ms: Date.now() - startedAtMs,
@@ -42751,6 +42833,7 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -42774,6 +42857,7 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null, selector_grounded: true } } : {}),
     };
@@ -42795,6 +42879,7 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -42858,6 +42943,7 @@ async function fetchRecoAlternativesForProduct({
     profile_mode: profileMode,
     template_id: queryPack.templateId,
     raw_output_summary: rawOutputSummary,
+    selector_meta: selectorMeta,
     llm_trace: llmTrace,
     ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
   };
@@ -47720,6 +47806,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       purgeDupeKbEntriesByContractVersion,
       normalizeDupeKbKey,
       searchPivotaBackendProducts,
+      buildExternalSeedCompareSearchQueries,
       buildRecoAlternativesCandidatePool,
       fetchRecoAlternativesForProduct,
       auroraChat,
