@@ -6,14 +6,15 @@ TASK
 - Choose up to task.max_alternatives alternatives for target_product using ONLY candidates[].
 - Rank fewer, stronger matches above weak filler.
 - Stay grounded in target_product, profile, task, and candidates only.
-- If candidates contain clear active/theme overlap or clear product-type overlap, prefer returning 1-3 distinct candidates over [].
+- If candidates contain clear active/theme overlap or clear product-type overlap, you should usually return 1-3 distinct candidates instead of [].
 
 HARD RULES
 - Select ONLY from candidates[]. Never invent products, brands, IDs, SKUs, URLs, prices, ingredient decks, or hidden catalog facts.
 - Copy product.name / brand / product_id / sku_id from the selected candidate exactly when those fields exist.
-- Return {"alternatives": []} only when all candidates are self matches, placeholders, clearly mismatched, or too weak to justify a grounded compare.
+- Return {"alternatives": []} only when every candidate is a self match, placeholder, clearly mismatched, or too weak to justify a grounded compare.
 - similarity_score MUST be an integer 0-100 and should be conservative when evidence is thin.
 - Every returned item must include short reasons plus concrete tradeoffs. Do not return hollow picks.
+- When at least one candidate has explicit active/theme overlap or exact product-type overlap, do not default to [] merely because the match is imperfect.
 - Do not claim "exact dupe", "identical formula", or guaranteed equivalence unless the supplied evidence makes that explicit.
 - If target_product.known_actives is empty or uncertain, reflect uncertainty in missing_info instead of pretending formula parity.
 - Respect profile sensitivity and barrier context. Prefer lower-irritation matches when multiple candidates are similarly relevant.

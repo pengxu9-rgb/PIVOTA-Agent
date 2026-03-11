@@ -41643,6 +41643,91 @@ function recoverCompleteOpenWorldAlternativesFromRawText(rawText) {
   return recovered;
 }
 
+function normalizeOpenWorldEmptyReason(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return null;
+  if (token === 'anchor_not_recognizable_skincare') return 'anchor_signal_insufficient_for_open_world';
+  if (token === 'anchor_signal_insufficient_for_open_world') return 'anchor_signal_insufficient_for_open_world';
+  return null;
+}
+
+function extractSingleOpenWorldAlternativePayload(raw) {
+  const parsed = isPlainObject(raw) ? raw : null;
+  if (!parsed) return { alternative: null, emptyReason: null };
+  const emptyReason = normalizeOpenWorldEmptyReason(
+    pickFirstTrimmed(parsed.empty_reason, parsed.emptyReason, parsed.no_result_reason, parsed.noResultReason),
+  );
+  if (isPlainObject(parsed.alternative)) {
+    return { alternative: parsed.alternative, emptyReason };
+  }
+  if (Array.isArray(parsed.alternatives) && parsed.alternatives.length > 0 && isPlainObject(parsed.alternatives[0])) {
+    return { alternative: parsed.alternatives[0], emptyReason };
+  }
+  if (pickFirstTrimmed(parsed.brand) && pickFirstTrimmed(parsed.name)) {
+    return {
+      alternative: {
+        brand: parsed.brand,
+        name: parsed.name,
+        product_type: parsed.product_type ?? parsed.productType ?? null,
+        similarity_score: parsed.similarity_score ?? parsed.similarityScore ?? null,
+        reason: parsed.reason ?? null,
+        tradeoff_note: parsed.tradeoff_note ?? parsed.tradeoffNote ?? null,
+      },
+      emptyReason,
+    };
+  }
+  return { alternative: null, emptyReason };
+}
+
+function recoverSingleOpenWorldAlternativeFromRawText(rawText) {
+  const text = unwrapCodeFence(rawText);
+  const parsed = parseJsonOnlyObject(text);
+  const fromParsed = extractSingleOpenWorldAlternativePayload(parsed);
+  if (fromParsed.alternative || fromParsed.emptyReason) return fromParsed;
+
+  const altMatch = /"alternative"\s*:\s*\{/i.exec(text);
+  if (altMatch) {
+    const objectStart = text.indexOf('{', altMatch.index);
+    if (objectStart >= 0) {
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      for (let index = objectStart; index < text.length; index += 1) {
+        const char = text[index];
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (inString) continue;
+        if (char === '{') depth += 1;
+        else if (char === '}') {
+          depth -= 1;
+          if (depth === 0) {
+            const recovered = parseJsonOnlyObject(text.slice(objectStart, index + 1));
+            if (isPlainObject(recovered)) return { alternative: recovered, emptyReason: null };
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  const recoveredAlternatives = recoverCompleteOpenWorldAlternativesFromRawText(text);
+  if (recoveredAlternatives.length > 0) {
+    return { alternative: recoveredAlternatives[0], emptyReason: null };
+  }
+
+  return { alternative: null, emptyReason: null };
+}
+
 function normalizeOpenWorldAlternativeRow(candidate, {
   targetSignals,
   anchorLabel = '',
@@ -41806,9 +41891,10 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     parseJson: false,
     fallback: [
       'Return JSON only.',
-      'Output exactly {"alternatives":[...]} with at most 1 item.',
-      'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
-      'Return exactly 1 distinct real skincare product only when active or ingredient theme overlap is explicit; otherwise return {"alternatives":[]}.',
+      'Output exactly one JSON object with keys: alternative, empty_reason.',
+      'If alternative is present, it may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
+      'Return exactly 1 distinct real skincare product from a different brand when active or ingredient theme overlap is explicit.',
+      'Return alternative:null only when the anchor is not recognizable skincare or lacks explicit active or ingredient theme.',
       'Do not output extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
     ].join('\n'),
   });
@@ -41817,7 +41903,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput, activeThemes: anchorActiveThemes }),
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Return exactly 1 distinct viable skincare alternative only when active or ingredient theme overlap is explicit; otherwise [].',
+      selection_rule: 'Open-world only. Return exactly 1 distinct viable skincare alternative only when active or ingredient theme overlap is explicit. Otherwise return alternative:null with an explicit empty_reason.',
     },
   };
   const userPrompt = JSON.stringify(userPayload);
@@ -41845,12 +41931,13 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       route: 'aurora_reco_alternatives_open_world',
       ignoreForceModel: true,
     });
-    let rawRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
-      ? resp.json.alternatives
-      : [];
+    let extracted = extractSingleOpenWorldAlternativePayload(resp?.ok === true && isPlainObject(resp.json) ? resp.json : null);
+    let rawRows = extracted.alternative ? [extracted.alternative] : [];
     if (!rawRows.length && typeof resp?.raw_text === 'string') {
-      rawRows = recoverCompleteOpenWorldAlternativesFromRawText(resp.raw_text);
+      extracted = recoverSingleOpenWorldAlternativeFromRawText(resp.raw_text);
+      rawRows = extracted.alternative ? [extracted.alternative] : [];
     }
+    const explicitEmptyReason = normalizeOpenWorldEmptyReason(extracted.emptyReason);
     const rawOutputSummary = summarizeRecoAlternativesRaw(rawRows);
     const llmTrace = {
       ...traceSeed,
@@ -41918,24 +42005,26 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     }
 
     if (!deduped.length) {
+      const noResultReason = explicitEmptyReason || 'open_world_empty_structured';
+      const errorClass = explicitEmptyReason ? null : 'empty_structured';
       return {
         ok: true,
         alternatives: [],
-        field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+        field_missing: [{ field: 'alternatives', reason: explicitEmptyReason || 'upstream_missing_or_empty' }],
         source_mode: 'open_world_only',
         fallback_source: 'none',
         refresh_pending: false,
         refresh_after_ms: 0,
-        failure_class: 'empty_structured',
+        failure_class: explicitEmptyReason ? 'precheck_fail' : 'empty_structured',
         attempt_count: 1,
-        no_result_reason: 'open_world_empty_structured',
+        no_result_reason: noResultReason,
         recommendation_mode: 'open_world_only',
         profile_mode: normalizeAlternativesProfileMode(profileMode),
         template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
         raw_output_summary: rawOutputSummary,
         llm_trace: {
           ...llmTrace,
-          error_class: 'empty_structured',
+          ...(errorClass ? { error_class: errorClass } : {}),
         },
       };
     }
