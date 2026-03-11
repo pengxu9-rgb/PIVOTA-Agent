@@ -27,7 +27,7 @@ const CHALLENGE_TTL_MS = Math.max(
 );
 const SESSION_TTL_MS = Math.max(
   5 * 60_000,
-  Math.min(180 * 24 * 60_000, Number(process.env.AURORA_BFF_AUTH_SESSION_TTL_MS || 30 * 24 * 60_000)),
+  Math.min(180 * 24 * 3_600_000, Number(process.env.AURORA_BFF_AUTH_SESSION_TTL_MS || 30 * 24 * 3_600_000)),
 );
 
 const PASSWORD_MAX_FAILED_ATTEMPTS = (() => {
@@ -454,14 +454,17 @@ async function resolveSessionFromToken(token) {
   const row = res.rows && res.rows[0] ? res.rows[0] : null;
   if (!row) return null;
 
+  const newExpiresAtMs = nowMs() + SESSION_TTL_MS;
   try {
-    await query(`UPDATE aurora_auth_sessions SET last_seen_at = now() WHERE token_hash = $1`, [tokenHash]);
+    await query(
+      `UPDATE aurora_auth_sessions SET last_seen_at = now(), expires_at = $2 WHERE token_hash = $1`,
+      [tokenHash, new Date(newExpiresAtMs).toISOString()],
+    );
   } catch {
     // ignore
   }
 
-  const expiresAt = row.expires_at ? new Date(row.expires_at).toISOString() : null;
-  return { userId: String(row.user_id), email: row.email ? String(row.email) : null, expiresAt };
+  return { userId: String(row.user_id), email: row.email ? String(row.email) : null, expiresAt: toIso(newExpiresAtMs) };
 }
 
 async function revokeSessionToken(token) {
