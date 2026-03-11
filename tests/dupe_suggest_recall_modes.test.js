@@ -199,7 +199,7 @@ describe('executeDupeSuggest recall modes', () => {
         disable_synthetic_local_fallback: true,
       }),
     }));
-    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v8');
+    expect(services.purgeDupeKbEntriesByContractVersion).toHaveBeenCalledWith('dupe_suggest_v9');
     expect(fetchRecoAlternativesForProduct.mock.calls.some(([args]) => args.options.recommendation_mode === 'hybrid_fallback')).toBe(false);
   });
 
@@ -276,7 +276,7 @@ describe('executeDupeSuggest recall modes', () => {
       mapped_output_item_count: 0,
       no_result_reason: 'backend_zero_hits',
       selector_input_count: 0,
-      selector_timeout_ms: 8500,
+      selector_timeout_ms: 10000,
     }));
     expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
       recommendation_mode: 'open_world_only',
@@ -302,6 +302,84 @@ describe('executeDupeSuggest recall modes', () => {
         ignore_selector_candidates: true,
       }),
     }));
+  });
+
+  test('uses deterministic pool rank fallback when pool selector returns empty despite backend hits', async () => {
+    const services = makeBaseServices({
+      searchPivotaBackendProducts: jest.fn().mockResolvedValue({
+        ok: true,
+        products: [
+          {
+            product_id: 'cand_niac_1',
+            sku_id: 'cand_niac_1',
+            brand: 'Good Molecules',
+            display_name: 'Niacinamide Serum',
+            category: 'serum',
+            url: 'https://example.com/gm-niacinamide',
+          },
+          {
+            product_id: 'cand_niac_2',
+            sku_id: 'cand_niac_2',
+            brand: 'The Inkey List',
+            display_name: 'Niacinamide Serum',
+            category: 'serum',
+            url: 'https://example.com/inkey-niacinamide',
+          },
+        ],
+      }),
+      fetchRecoAlternativesForProduct: jest.fn().mockResolvedValue({
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
+        source_mode: 'pool_only',
+        template_id: 'reco_alternatives_v1_0',
+        raw_output_summary: {
+          raw_output_item_count: 0,
+          raw_items_with_product_object: 0,
+          raw_items_with_nested_brand_name: 0,
+          raw_items_with_flat_brand_name: 0,
+          raw_items_with_tradeoffs_object: 0,
+          raw_preview: [],
+        },
+        failure_class: 'empty_structured',
+        llm_trace: { error_class: 'empty_structured' },
+      }),
+    });
+
+    const result = await executeDupeSuggest({
+      ctx: makeCtx(),
+      input: {
+        original: {
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          category: 'serum',
+        },
+        max_dupes: 1,
+        max_comparables: 1,
+      },
+      profileSummary: null,
+      recentLogs: [],
+      services,
+      logger: null,
+      flags: {
+        AURORA_DECISION_BASE_URL: '',
+        DUPE_KB_ASYNC_BACKFILL_ENABLED: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload.dupes.length + result.payload.comparables.length).toBeGreaterThanOrEqual(1);
+    expect(result.payload.meta.final_source_mix).toContain('catalog');
+    expect(typeof result.payload.meta.open_world_supplement_used).toBe('boolean');
+    expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
+      recommendation_mode: 'pool_only',
+      failure_class: 'empty_structured',
+      pool_rank_fallback_used: true,
+      selector_input_count: 2,
+      selector_timeout_ms: 10000,
+    }));
+    expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
+    expect(services.fetchRecoAlternativesForProduct.mock.calls[0]?.[0]?.options?.recommendation_mode).toBe('pool_only');
+    expect(services.fetchRecoAlternativesForProduct.mock.calls[1]?.[0]?.options?.recommendation_mode).toBe('open_world_only');
   });
 
   test('supplements personalized pool-only results with open-world results when capacity is not filled', async () => {
@@ -524,7 +602,7 @@ describe('executeDupeSuggest recall modes', () => {
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalled();
     expect(services.upsertDupeKbEntry).toHaveBeenCalledWith(expect.objectContaining({
       source_meta: expect.objectContaining({
-        contract_version: 'dupe_suggest_v8',
+        contract_version: 'dupe_suggest_v9',
       }),
     }));
   });

@@ -5253,15 +5253,14 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
           return {
             ok: true,
             json: {
-              alternatives: [
-                {
-                  brand: 'Good Molecules',
-                  name: 'Niacinamide Serum',
-                  product_type: 'serum',
-                  similarity_score: 72,
-                  reason: 'Niacinamide-led serum role overlaps with the anchor.',
-                },
-              ],
+              alternative: {
+                brand: 'Good Molecules',
+                name: 'Niacinamide Serum',
+                product_type: 'serum',
+                similarity_score: 72,
+                reason: 'Niacinamide-led serum role overlaps with the anchor.',
+              },
+              empty_reason: null,
             },
           };
         });
@@ -5316,6 +5315,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(geminiRequest?.maxOutputTokens, 2048);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 1);
+        assert.match(String(payload?.task?.selection_rule || ''), /empty_reason/i);
         assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
         assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
         assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);
@@ -5503,7 +5503,7 @@ test('fetchRecoAlternativesForProduct: open_world_only recovers complete alterna
           ok: false,
           reason: 'PARSE_TRUNCATED_JSON',
           detail: 'finish_reason=MAX_TOKENS',
-          raw_text: '{"alternatives":[{"brand":"Good Molecules","name":"Niacinamide Serum","product_type":"serum","similarity_score":72,"reason":"Niacinamide-led serum role overlaps with the anchor.","tradeoff_note":"Zinc support is less explicit than the anchor."},{"brand":"The Inkey List","name":"Niacinamide Serum"',
+          raw_text: '{"alternative":{"brand":"Good Molecules","name":"Niacinamide Serum","product_type":"serum","similarity_score":72,"reason":"Niacinamide-led serum role overlaps with the anchor.","tradeoff_note":"Zinc support is less explicit than the anchor."},"empty_reason":null',
           finish_reason: 'MAX_TOKENS',
           parse_status: 'parse_truncated',
           meta: { result_reason: 'gemini_json_max_tokens' },

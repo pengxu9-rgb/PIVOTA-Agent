@@ -16,9 +16,12 @@ const {
   deduplicateCandidates,
   getCandidateIdentity,
   hasSyntheticRecommendationSuffix,
+  buildAnchorIdentity,
+  buildAnchorFingerprint,
+  detectSelfReference,
 } = require('../skills/dupe_utils');
 
-const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v8';
+const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v9';
 let dupeKbContractPurgePromise = null;
 const PLACEHOLDER_REASON_PATTERNS = [
   /^grounded alternatives derived from resolved candidate pool\.?$/i,
@@ -26,6 +29,20 @@ const PLACEHOLDER_REASON_PATTERNS = [
   /^\d+\s*%\s*similar$/i,
   /^相似度\s*\d+\s*%$/i,
   /^基于已解析商品候选给出 grounded alternatives。?$/i,
+];
+const DUPE_POOL_ACTIVE_THEME_RULES = [
+  { key: 'niacinamide', patterns: [/\bniacinamide\b/i, /烟酰胺/] },
+  { key: 'zinc', patterns: [/\bzinc\b/i, /锌/] },
+  { key: 'salicylic_acid', patterns: [/\bsalicylic\b/i, /\bbha\b/i, /水杨酸/] },
+  { key: 'hyaluronic_acid', patterns: [/\bhyaluronic\b/i, /\bha\b/i, /\bsodium hyaluronate\b/i, /玻尿酸/, /透明质酸/] },
+  { key: 'vitamin_c', patterns: [/\bvitamin c\b/i, /\bascorb/i, /维c/, /维C/, /抗坏血酸/] },
+  { key: 'retinol', patterns: [/\bretinol\b/i, /\bretinal\b/i, /\bretinoid\b/i, /视黄醇/, /a醇/, /维a/] },
+  { key: 'ceramide', patterns: [/\bceramide\b/i, /神经酰胺/] },
+  { key: 'peptide', patterns: [/\bpeptide\b/i, /肽/] },
+  { key: 'azelaic_acid', patterns: [/\bazelaic\b/i, /壬二酸/] },
+  { key: 'tranexamic_acid', patterns: [/\btranexamic\b/i, /传明酸/, /氨甲环酸/] },
+  { key: 'panthenol', patterns: [/\bpanthenol\b/i, /\bprovitamin b5\b/i, /泛醇/, /维生素b5/, /维B5/] },
+  { key: 'snail_mucin', patterns: [/\bsnail\b/i, /\bmucin\b/i, /蜗牛/] },
 ];
 
 function uniqStrings(values) {
@@ -130,6 +147,239 @@ function buildStableCandidateKey(item) {
 
 function normalizeTextToken(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function extractDupePoolActiveThemesFromText(...values) {
+  const joined = values
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!joined) return [];
+  const out = [];
+  for (const rule of DUPE_POOL_ACTIVE_THEME_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(joined))) out.push(rule.key);
+  }
+  return uniqStrings(out);
+}
+
+function computeArrayOverlap(left, right) {
+  const leftTokens = uniqStrings(left).map((value) => normalizeTextToken(value)).filter(Boolean);
+  const rightSet = new Set(uniqStrings(right).map((value) => normalizeTextToken(value)).filter(Boolean));
+  if (!leftTokens.length || !rightSet.size) return 0;
+  let hits = 0;
+  for (const token of leftTokens) {
+    if (rightSet.has(token)) hits += 1;
+  }
+  return hits / Math.max(1, leftTokens.length);
+}
+
+function tokenizePoolCandidateText(...values) {
+  return String(
+    values
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  )
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function buildPoolFallbackAnchorContext({ original = null, inputText = '' } = {}) {
+  const anchor = original && typeof original === 'object' && !Array.isArray(original) ? original : {};
+  const brand = String(anchor.brand || '').trim();
+  const name = String(anchor.display_name || anchor.name || anchor.product_name || '').trim();
+  const category = String(anchor.category || anchor.product_type || anchor.type || '').trim();
+  const usageRole = inferDupePoolUsageRole(name, category, inputText);
+  const label = [brand, name].filter(Boolean).join(' ').trim();
+  const activeThemes = extractDupePoolActiveThemesFromText(
+    name,
+    category,
+    inputText,
+    anchor.ingredients,
+    anchor.hero_ingredients,
+    anchor.known_actives,
+    anchor.claims,
+  );
+  return {
+    label,
+    brand,
+    name,
+    category,
+    usageRole,
+    activeThemes,
+    textTokens: tokenizePoolCandidateText(label, inputText),
+  };
+}
+
+function classifyPoolFallbackDropReason(row, anchorIdentity, anchorFingerprint, anchorContext) {
+  const candidate = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+  if (!candidate) return 'invalid_candidate';
+  const candidateName = String(candidate.name || candidate.display_name || candidate.displayName || '').trim();
+  const candidateUrl = String(candidate.pdp_url || candidate.url || '').trim() || null;
+  const candidateIdentity = {
+    product_id: candidate.product_id || candidate.sku_id || null,
+    sku_id: candidate.sku_id || candidate.product_id || null,
+    brand: candidate.brand || null,
+    name: candidateName || null,
+    display_name: candidateName || null,
+    url: candidateUrl,
+    category: candidate.category || null,
+  };
+  const selfRef = detectSelfReference(candidateIdentity, anchorIdentity, anchorFingerprint);
+  if (selfRef.isSelfRef) return 'self_ref_filtered';
+  if (hasSyntheticRecommendationSuffix(candidateName)) return 'synthetic_candidates_removed';
+  const productLabel = [candidate.brand, candidateName].filter(Boolean).join(' ').trim();
+  if (!productLabel) return 'missing_identity';
+  const activeThemes = extractDupePoolActiveThemesFromText(candidateName, candidate.category, candidate.signals);
+  const usageRole = inferDupePoolUsageRole(candidate.category, candidateName, candidate.signals);
+  if (anchorContext.activeThemes.length && !computeArrayOverlap(anchorContext.activeThemes, activeThemes) && usageRole !== anchorContext.usageRole && normalizeTextToken(candidate.category) !== normalizeTextToken(anchorContext.category)) {
+    return 'backend_hits_role_mismatch_filtered';
+  }
+  return null;
+}
+
+function buildPoolRankFallbackAlternatives(poolCandidates, anchorOriginal, { inputText = '', maxTotal = 3 } = {}) {
+  const anchorContext = buildPoolFallbackAnchorContext({ original: anchorOriginal, inputText });
+  const anchorIdentity = buildAnchorIdentity(anchorOriginal);
+  const anchorFingerprint = buildAnchorFingerprint(anchorOriginal);
+  const dropReasons = {
+    self_ref_filtered: 0,
+    synthetic_candidates_removed: 0,
+    missing_identity: 0,
+    backend_hits_role_mismatch_filtered: 0,
+  };
+  const scored = [];
+
+  for (const row of Array.isArray(poolCandidates) ? poolCandidates : []) {
+    const candidate = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+    if (!candidate) continue;
+    const dropReason = classifyPoolFallbackDropReason(candidate, anchorIdentity, anchorFingerprint, anchorContext);
+    if (dropReason) {
+      dropReasons[dropReason] = (dropReasons[dropReason] || 0) + 1;
+      continue;
+    }
+    const candidateName = String(candidate.name || candidate.display_name || candidate.displayName || '').trim();
+    const candidateRole = inferDupePoolUsageRole(candidate.category, candidateName, candidate.signals);
+    const candidateThemes = extractDupePoolActiveThemesFromText(candidateName, candidate.category, candidate.signals);
+    const candidateTokens = tokenizePoolCandidateText(candidate.brand, candidateName, candidate.category, candidate.signals);
+    const activeOverlap = computeArrayOverlap(anchorContext.activeThemes, candidateThemes);
+    const roleExact = anchorContext.usageRole && anchorContext.usageRole !== 'unknown' && candidateRole === anchorContext.usageRole ? 1 : 0;
+    const categoryExact = normalizeTextToken(candidate.category) && normalizeTextToken(candidate.category) === normalizeTextToken(anchorContext.category) ? 1 : 0;
+    const nameTokenOverlap = computeArrayOverlap(anchorContext.textTokens, candidateTokens);
+    const canonicalRefBonus = candidate.product_id || candidate.sku_id || candidate.pdp_url ? 0.14 : 0;
+    const upstreamSimilarityRaw = Number(candidate.similarity_score);
+    const upstreamSimilarity = Number.isFinite(upstreamSimilarityRaw)
+      ? Math.max(0, Math.min(1, upstreamSimilarityRaw > 1 ? upstreamSimilarityRaw / 100 : upstreamSimilarityRaw))
+      : 0;
+    const score = (
+      activeOverlap * 0.42 +
+      roleExact * 0.24 +
+      categoryExact * 0.16 +
+      nameTokenOverlap * 0.08 +
+      upstreamSimilarity * 0.1 +
+      canonicalRefBonus
+    );
+    if (score < 0.34) {
+      dropReasons.backend_hits_role_mismatch_filtered += 1;
+      continue;
+    }
+    scored.push({
+      row: candidate,
+      score,
+      activeOverlap,
+      roleExact,
+      categoryExact,
+      candidateRole,
+      candidateThemes,
+    });
+  }
+
+  scored.sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    return String(left.row.name || '').localeCompare(String(right.row.name || ''));
+  });
+
+  const out = [];
+  const seen = new Set();
+  for (const entry of scored) {
+    const row = entry.row;
+    const rowName = String(row.name || row.display_name || row.displayName || '').trim();
+    const rowUrl = String(row.pdp_url || row.url || '').trim();
+    const key = buildStableCandidateKey({
+      product: {
+        product_id: row.product_id || null,
+        sku_id: row.sku_id || null,
+        brand: row.brand || null,
+        name: rowName || null,
+        url: rowUrl || null,
+      },
+    });
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const productType = String(row.category || '').trim() || null;
+    const productLabel = [row.brand, rowName].filter(Boolean).join(' ').trim();
+    const overlapTheme = entry.candidateThemes.find((theme) => anchorContext.activeThemes.includes(theme)) || anchorContext.activeThemes[0] || '';
+    const reasons = [];
+    if (entry.activeOverlap > 0 && overlapTheme) reasons.push(`Matches the anchor's ${overlapTheme.replace(/_/g, ' ')} theme in the Pivota product pool.`);
+    else if (entry.roleExact && anchorContext.usageRole && anchorContext.usageRole !== 'unknown') reasons.push(`Same ${anchorContext.usageRole} step in the Pivota product pool.`);
+    else if (entry.categoryExact && anchorContext.category) reasons.push(`Same ${anchorContext.category} category in the Pivota product pool.`);
+    if (!reasons.length) reasons.push('Close catalog match from the Pivota product pool.');
+
+    const tradeoffs = [];
+    if (entry.activeOverlap > 0 && entry.activeOverlap < 1) tradeoffs.push('Active-theme overlap is partial rather than exact.');
+    else if (entry.activeOverlap === 0) tradeoffs.push('Formula overlap remains uncertain.');
+    if (tradeoffs.length === 0 && row.signals && row.signals.length) {
+      tradeoffs.push('Catalog text supports a compare, but exact formula detail remains uncertain.');
+    }
+    const similarity = Math.max(56, Math.min(92, Math.round(entry.score * 100)));
+    const confidence = Math.max(0.28, Math.min(0.82, Number((entry.score * 0.9).toFixed(2))));
+    out.push({
+      kind: entry.activeOverlap > 0 && entry.roleExact ? 'dupe' : 'similar',
+      candidate_origin: 'catalog',
+      grounding_status: 'catalog_verified',
+      ranking_mode: 'pool_rank_fallback',
+      product: {
+        ...(row.product_id ? { product_id: row.product_id } : {}),
+        ...(row.sku_id ? { sku_id: row.sku_id } : {}),
+        ...(row.brand ? { brand: row.brand } : {}),
+        ...(rowName ? { name: rowName } : {}),
+        ...(productType ? { category: productType } : {}),
+        ...(rowUrl ? { url: rowUrl, pdp_url: rowUrl } : {}),
+        ...(row.price && typeof row.price === 'object' ? { price: row.price } : {}),
+      },
+      ...(row.brand ? { brand: row.brand } : {}),
+      ...(rowName ? { name: rowName } : {}),
+      similarity,
+      confidence,
+      reasons,
+      tradeoffs,
+      evidence: {
+        confidence,
+        missing_info: entry.activeOverlap > 0 ? [] : ['formula_overlap_uncertain'],
+      },
+      missing_info: entry.activeOverlap > 0 ? [] : ['formula_overlap_uncertain'],
+      pdp_open: {
+        path: rowUrl ? 'external' : 'resolve',
+        ...(rowUrl ? { external: { url: rowUrl, query: productLabel } } : { external: { query: productLabel } }),
+      },
+      metadata: {
+        compare_stage: 'pool_rank_fallback',
+        raw_similarity_score: Number(entry.score.toFixed(3)),
+      },
+    });
+    if (out.length >= Math.max(1, Math.min(3, Number(maxTotal) || 3))) break;
+  }
+
+  return {
+    alternatives: out,
+    dropReasons,
+  };
 }
 
 function inferDupePoolUsageRole(...values) {
@@ -257,6 +507,7 @@ function buildRecommendationPassTrace(pass, { fallbackTemplateId = null } = {}) 
     selector_timeout_ms: Number.isFinite(Number(upstreamOut && upstreamOut.selector_meta && upstreamOut.selector_meta.timeout_ms))
       ? Math.max(0, Math.trunc(Number(upstreamOut.selector_meta.timeout_ms)))
       : 0,
+    pool_rank_fallback_used: upstreamOut && upstreamOut.selector_meta && upstreamOut.selector_meta.local_rank_fallback_used === true,
     duration_ms: Number.isFinite(Number(pass && pass.durationMs))
       ? Math.max(0, Math.trunc(Number(pass.durationMs)))
       : 0,
@@ -318,6 +569,9 @@ function buildTerminalEmptyReason({ poolResult, poolPass, openWorldPass, finalLi
   if (openWorldNoResultReason === 'anchor_signal_insufficient_for_open_world') {
     return 'anchor_signal_insufficient_for_open_world';
   }
+
+  const poolNoResultReason = String(poolPass && poolPass.upstreamOut && poolPass.upstreamOut.no_result_reason || '').trim();
+  if (poolNoResultReason === 'pool_rank_fallback_exhausted') return 'pool_rank_fallback_exhausted';
 
   const poolFailureClass = String(poolPass && poolPass.upstreamOut && poolPass.upstreamOut.failure_class || '').trim();
   if (poolFailureClass === 'timeout') return 'pool_selector_timeout';
@@ -1034,7 +1288,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
           raw_output_summary: buildEmptyRawOutputSummary(),
           selector_meta: {
             input_count: 0,
-            timeout_ms: 8500,
+            timeout_ms: 10000,
           },
         },
         mapped: [],
@@ -1045,7 +1299,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
       };
     }
     const startedAt = Date.now();
-    const upstreamOut = await fetchRecoAlternativesForProduct({
+    const upstreamOutRaw = await fetchRecoAlternativesForProduct({
       ctx,
       profileSummary,
       recentLogs,
@@ -1066,12 +1320,53 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         disable_synthetic_local_fallback: true,
         ignore_selector_candidates: mode === 'open_world_only',
         selector_seed_only: mode === 'pool_only',
-        selector_timeout_ms: mode === 'pool_only' ? 8500 : undefined,
+        selector_timeout_ms: mode === 'pool_only' ? 10000 : undefined,
       },
     });
-    const mapped = Array.isArray(upstreamOut.alternatives) ? upstreamOut.alternatives : [];
-    const liveEvaluation = evaluateLiveDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
-    const persistEvaluation = evaluateDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
+    const upstreamOut = upstreamOutRaw && typeof upstreamOutRaw === 'object' && !Array.isArray(upstreamOutRaw)
+      ? { ...upstreamOutRaw }
+      : {};
+    let mapped = Array.isArray(upstreamOut.alternatives) ? upstreamOut.alternatives : [];
+    let liveEvaluation = evaluateLiveDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
+    let persistEvaluation = evaluateDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
+    let poolRankFallbackUsed = false;
+    if (
+      mode === 'pool_only' &&
+      !liveEvaluation.viable &&
+      modeCandidatePool.length > 0 &&
+      ['timeout', 'empty_structured'].includes(String(upstreamOut.failure_class || '').trim())
+    ) {
+      const poolRankFallback = buildPoolRankFallbackAlternatives(
+        modeCandidatePool,
+        anchorForEvaluation,
+        { inputText, maxTotal: total },
+      );
+      if (poolRankFallback.alternatives.length > 0) {
+        poolRankFallbackUsed = true;
+        mapped = poolRankFallback.alternatives;
+        liveEvaluation = evaluateLiveDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
+        persistEvaluation = evaluateDupeCandidates(mapped, anchorForEvaluation, { maxDupes, maxComparables });
+        upstreamOut.alternatives = mapped;
+        upstreamOut.field_missing = [];
+        upstreamOut.fallback_source = 'pool_rank_fallback';
+        upstreamOut.selector_meta = {
+          ...(upstreamOut.selector_meta && typeof upstreamOut.selector_meta === 'object' ? upstreamOut.selector_meta : {}),
+          input_count: modeCandidatePool.length,
+          timeout_ms: 10000,
+          local_rank_fallback_used: true,
+        };
+        upstreamOut.raw_output_summary = buildEmptyRawOutputSummary();
+      } else {
+        upstreamOut.no_result_reason = 'pool_rank_fallback_exhausted';
+        upstreamOut.selector_meta = {
+          ...(upstreamOut.selector_meta && typeof upstreamOut.selector_meta === 'object' ? upstreamOut.selector_meta : {}),
+          input_count: modeCandidatePool.length,
+          timeout_ms: 10000,
+          local_rank_fallback_used: false,
+          local_rank_fallback_drop_reasons: poolRankFallback.dropReasons,
+        };
+      }
+    }
     const maxConfidence = mapped.reduce((mx, it) => {
       const confidence = it && typeof it === 'object' ? Number(it.confidence) : 0;
       return Number.isFinite(confidence) && confidence > mx ? confidence : mx;
@@ -1083,6 +1378,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
       mapped,
       liveEvaluation,
       persistEvaluation,
+      poolRankFallbackUsed,
       durationMs: Date.now() - startedAt,
       maxConfidence,
     };
