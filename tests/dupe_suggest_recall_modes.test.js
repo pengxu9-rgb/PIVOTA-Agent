@@ -56,6 +56,16 @@ describe('executeDupeSuggest recall modes', () => {
         field_missing: [],
         source_mode: 'pool_only',
         template_id: 'reco_alternatives_v1_0',
+        raw_output_summary: {
+          raw_output_item_count: 1,
+          raw_items_with_product_object: 1,
+          raw_items_with_nested_brand_name: 1,
+          raw_items_with_flat_brand_name: 0,
+          raw_items_with_tradeoffs_object: 0,
+          raw_preview: [
+            { brand: 'Weak Catalog', name: 'Weak Catalog Lotion', has_product_object: true },
+          ],
+        },
       })
       .mockResolvedValueOnce({
         alternatives: [
@@ -75,6 +85,16 @@ describe('executeDupeSuggest recall modes', () => {
         field_missing: [],
         source_mode: 'open_world_only',
         template_id: 'reco_alternatives_hybrid_v1',
+        raw_output_summary: {
+          raw_output_item_count: 1,
+          raw_items_with_product_object: 1,
+          raw_items_with_nested_brand_name: 1,
+          raw_items_with_flat_brand_name: 0,
+          raw_items_with_tradeoffs_object: 0,
+          raw_preview: [
+            { brand: 'Open Brand', name: 'Real Lightweight Moisturizer', has_product_object: true },
+          ],
+        },
       });
 
     const services = makeBaseServices({
@@ -117,6 +137,23 @@ describe('executeDupeSuggest recall modes', () => {
     expect(result.payload.meta.escalated_to_open_world).toBe(true);
     expect(result.payload.meta.final_source_mix).toEqual(['open_world']);
     expect(result.payload.meta.viability_failure_reasons).toEqual(expect.arrayContaining(['placeholder_candidates_removed']));
+    expect(result.payload.meta.llm_trace.raw_output_item_count).toBe(2);
+    expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
+      recommendation_mode: 'pool_only',
+      raw_output_item_count: 1,
+      mapped_output_item_count: 1,
+      raw_items_with_product_object: 1,
+      field_missing_reasons: [],
+      failure_reasons: expect.arrayContaining(['placeholder_candidates_removed']),
+    }));
+    expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
+      recommendation_mode: 'open_world_only',
+      raw_output_item_count: 1,
+      mapped_output_item_count: 1,
+      raw_items_with_nested_brand_name: 1,
+      field_missing_reasons: [],
+      failure_reasons: [],
+    }));
     expect(fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
     expect(fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(1, expect.objectContaining({
       options: expect.objectContaining({
@@ -154,9 +191,19 @@ describe('executeDupeSuggest recall modes', () => {
             missing_info: ['profile_not_provided'],
           },
         ],
-        field_missing: [],
+        field_missing: [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
         source_mode: 'open_world_only',
         template_id: 'reco_alternatives_hybrid_v1',
+        raw_output_summary: {
+          raw_output_item_count: 1,
+          raw_items_with_product_object: 1,
+          raw_items_with_nested_brand_name: 1,
+          raw_items_with_flat_brand_name: 0,
+          raw_items_with_tradeoffs_object: 0,
+          raw_preview: [
+            { brand: 'Alt Brand', name: 'Anchor Only Lotion', has_product_object: true },
+          ],
+        },
       }),
     });
 
@@ -187,6 +234,18 @@ describe('executeDupeSuggest recall modes', () => {
     expect(result.payload.meta.has_anchor_identity).toBe(true);
     expect(result.payload.meta.final_source_mix).toContain('open_world');
     expect(result.payload.meta.source_hit_counts.open_world_fallback).toBe(1);
+    expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
+      recommendation_mode: 'pool_only',
+      raw_output_item_count: 0,
+      mapped_output_item_count: 0,
+      no_result_reason: 'candidate_pool_empty',
+    }));
+    expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
+      recommendation_mode: 'open_world_only',
+      raw_output_item_count: 1,
+      mapped_output_item_count: 1,
+      field_missing_reasons: ['upstream_missing_or_empty'],
+    }));
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(1);
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledWith(expect.objectContaining({
       profileSummary: null,
@@ -237,6 +296,16 @@ describe('executeDupeSuggest recall modes', () => {
           field_missing: [],
           source_mode: 'pool_only',
           template_id: 'reco_alternatives_v1_0',
+          raw_output_summary: {
+            raw_output_item_count: 1,
+            raw_items_with_product_object: 1,
+            raw_items_with_nested_brand_name: 1,
+            raw_items_with_flat_brand_name: 0,
+            raw_items_with_tradeoffs_object: 0,
+            raw_preview: [
+              { brand: 'Catalog Brand', name: 'Catalog Barrier Serum', has_product_object: true },
+            ],
+          },
         })
         .mockResolvedValueOnce({
           alternatives: [
@@ -257,6 +326,16 @@ describe('executeDupeSuggest recall modes', () => {
           field_missing: [],
           source_mode: 'open_world_only',
           template_id: 'reco_alternatives_hybrid_v1',
+          raw_output_summary: {
+            raw_output_item_count: 1,
+            raw_items_with_product_object: 1,
+            raw_items_with_nested_brand_name: 1,
+            raw_items_with_flat_brand_name: 0,
+            raw_items_with_tradeoffs_object: 0,
+            raw_preview: [
+              { brand: 'Open Brand', name: 'Open World Sensitive Serum', has_product_object: true },
+            ],
+          },
         }),
     });
 
@@ -296,6 +375,19 @@ describe('executeDupeSuggest recall modes', () => {
     expect(result.payload.meta.source_hit_counts.catalog_search).toBeGreaterThanOrEqual(1);
     expect(result.payload.meta.source_hit_counts.open_world_fallback).toBe(1);
     expect(result.payload.meta.final_source_mix).toEqual(expect.arrayContaining(['catalog', 'open_world']));
+    expect(result.payload.meta.llm_trace.raw_output_item_count).toBe(2);
+    expect(result.payload.meta.llm_trace.pass_traces.pool_only).toEqual(expect.objectContaining({
+      recommendation_mode: 'pool_only',
+      candidate_pool_size: 1,
+      raw_output_item_count: 1,
+      mapped_output_item_count: 1,
+    }));
+    expect(result.payload.meta.llm_trace.pass_traces.open_world_only).toEqual(expect.objectContaining({
+      recommendation_mode: 'open_world_only',
+      candidate_pool_size: 0,
+      raw_output_item_count: 1,
+      mapped_output_item_count: 1,
+    }));
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenCalledTimes(2);
     expect(services.fetchRecoAlternativesForProduct).toHaveBeenNthCalledWith(1, expect.objectContaining({
       profileSummary: expect.objectContaining({ sensitivity: 'High' }),

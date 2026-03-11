@@ -41,6 +41,14 @@ function uniqStrings(values) {
   return out;
 }
 
+function summarizeFieldMissingReasons(entries) {
+  return uniqStrings(
+    (Array.isArray(entries) ? entries : []).map((row) => (
+      row && typeof row === 'object' && !Array.isArray(row) ? row.reason : ''
+    )),
+  );
+}
+
 function mergeFieldMissingEntries(...lists) {
   const out = [];
   const seen = new Set();
@@ -117,6 +125,60 @@ function buildStableCandidateKey(item) {
   const name = String(identity.name || '').trim().toLowerCase();
   if (brand || name) return `name:${brand}::${name}`;
   return '';
+}
+
+function buildEmptyRawOutputSummary() {
+  return {
+    raw_output_item_count: 0,
+    raw_items_with_product_object: 0,
+    raw_items_with_nested_brand_name: 0,
+    raw_items_with_flat_brand_name: 0,
+    raw_items_with_tradeoffs_object: 0,
+    raw_preview: [],
+  };
+}
+
+function buildRecommendationPassTrace(pass, { fallbackTemplateId = null } = {}) {
+  const upstreamOut = pass && typeof pass === 'object' ? (pass.upstreamOut || {}) : {};
+  const rawSummary = upstreamOut && typeof upstreamOut.raw_output_summary === 'object' && !Array.isArray(upstreamOut.raw_output_summary)
+    ? upstreamOut.raw_output_summary
+    : buildEmptyRawOutputSummary();
+  const mapped = Array.isArray(pass && pass.mapped) ? pass.mapped : [];
+  const liveEvaluation = pass && pass.liveEvaluation && typeof pass.liveEvaluation === 'object'
+    ? pass.liveEvaluation
+    : {};
+  return {
+    recommendation_mode: String(pass && pass.recommendationMode || '').trim() || null,
+    template_id: String(upstreamOut.template_id || fallbackTemplateId || '').trim() || null,
+    source_mode: String(upstreamOut.source_mode || '').trim() || null,
+    fallback_source: String(upstreamOut.fallback_source || '').trim() || null,
+    no_result_reason: String(upstreamOut.no_result_reason || '').trim() || null,
+    candidate_pool_size: Number.isFinite(Number(pass && pass.candidatePoolSize))
+      ? Math.max(0, Math.trunc(Number(pass.candidatePoolSize)))
+      : 0,
+    duration_ms: Number.isFinite(Number(pass && pass.durationMs))
+      ? Math.max(0, Math.trunc(Number(pass.durationMs)))
+      : 0,
+    raw_output_item_count: Number.isFinite(Number(rawSummary.raw_output_item_count))
+      ? Math.max(0, Math.trunc(Number(rawSummary.raw_output_item_count)))
+      : 0,
+    mapped_output_item_count: mapped.length,
+    raw_items_with_product_object: Number.isFinite(Number(rawSummary.raw_items_with_product_object))
+      ? Math.max(0, Math.trunc(Number(rawSummary.raw_items_with_product_object)))
+      : 0,
+    raw_items_with_nested_brand_name: Number.isFinite(Number(rawSummary.raw_items_with_nested_brand_name))
+      ? Math.max(0, Math.trunc(Number(rawSummary.raw_items_with_nested_brand_name)))
+      : 0,
+    raw_items_with_flat_brand_name: Number.isFinite(Number(rawSummary.raw_items_with_flat_brand_name))
+      ? Math.max(0, Math.trunc(Number(rawSummary.raw_items_with_flat_brand_name)))
+      : 0,
+    raw_items_with_tradeoffs_object: Number.isFinite(Number(rawSummary.raw_items_with_tradeoffs_object))
+      ? Math.max(0, Math.trunc(Number(rawSummary.raw_items_with_tradeoffs_object)))
+      : 0,
+    raw_preview: Array.isArray(rawSummary.raw_preview) ? rawSummary.raw_preview.slice(0, 3) : [],
+    field_missing_reasons: summarizeFieldMissingReasons(upstreamOut.field_missing),
+    failure_reasons: uniqStrings(Array.isArray(liveEvaluation.failureReasons) ? liveEvaluation.failureReasons : []),
+  };
 }
 
 function mergeRankedItems(primaryItems, secondaryItems, { limit = 3 } = {}) {
@@ -736,6 +798,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
           fallback_source: 'none',
           no_result_reason: 'candidate_pool_empty',
           template_id: 'reco_alternatives_v1_0',
+          raw_output_summary: buildEmptyRawOutputSummary(),
         },
         mapped: [],
         liveEvaluation: emptyEvaluation,
@@ -794,6 +857,10 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
   const recommendationModeFinal = openWorldPass ? 'open_world_only' : recommendationMode;
   const openWorldSupplementUsed = Boolean(openWorldPass);
   const escalatedToOpenWorld = openWorldSupplementUsed;
+  const poolPassTrace = buildRecommendationPassTrace(poolPass, { fallbackTemplateId: 'reco_alternatives_v1_0' });
+  const openWorldPassTrace = openWorldPass
+    ? buildRecommendationPassTrace(openWorldPass, { fallbackTemplateId: 'reco_alternatives_hybrid_v1' })
+    : null;
   const dupes = mergeRankedItems(
     poolPass.liveEvaluation.dupes,
     openWorldPass ? openWorldPass.liveEvaluation.dupes : [],
@@ -847,6 +914,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
   };
   const kbGateResult = applyDupeSuggestQualityGate(kbGatePayload, { lang: ctx.lang });
   const kbPersistAllowed = hasResults && !kbGateResult.gated;
+  const rawOutputItemCount = poolPassTrace.raw_output_item_count + (openWorldPassTrace ? openWorldPassTrace.raw_output_item_count : 0);
 
   // LLM trace
   logger?.info({
@@ -861,6 +929,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     has_anchor: hasAnchorIdentity,
     duration_ms: poolPass.durationMs + (openWorldPass ? openWorldPass.durationMs : 0),
     output_item_count: combinedMapped.length,
+    raw_output_item_count: rawOutputItemCount,
     output_dupe_count: dupes.length,
     output_comparable_count: comparables.length,
     output_max_confidence: Math.max(poolPass.maxConfidence, openWorldPass ? openWorldPass.maxConfidence : 0),
@@ -895,6 +964,10 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
       after_synthetic: poolPass.liveEvaluation.candidateCountAfterSynthetic + (openWorldPass ? openWorldPass.liveEvaluation.candidateCountAfterSynthetic : 0),
       after_placeholder: poolPass.liveEvaluation.candidateCountAfterPlaceholder + (openWorldPass ? openWorldPass.liveEvaluation.candidateCountAfterPlaceholder : 0),
       after_viability: finalLiveEvaluation.candidateCountAfterViability,
+    },
+    pass_traces: {
+      pool_only: poolPassTrace,
+      ...(openWorldPassTrace ? { open_world_only: openWorldPassTrace } : {}),
     },
   }, 'aurora bff: dupe_suggest alternatives llm trace');
 
@@ -1009,8 +1082,13 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
         candidate_count: poolResult.candidates.length,
         has_anchor: hasAnchorIdentity,
         output_item_count: combinedMapped.length,
+        raw_output_item_count: rawOutputItemCount,
         output_max_confidence: Math.max(poolPass.maxConfidence, openWorldPass ? openWorldPass.maxConfidence : 0),
         quality_flags: qualityAssessmentFinal.quality_issues,
+        pass_traces: {
+          pool_only: poolPassTrace,
+          ...(openWorldPassTrace ? { open_world_only: openWorldPassTrace } : {}),
+        },
       },
       ...(kbPersistAllowed ? {} : { kb_backfill_blocked_reason: kbGateResult.reason || 'kb_persist_gate_failed' }),
     },
